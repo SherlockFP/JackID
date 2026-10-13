@@ -81,39 +81,42 @@ Useful URLs:
   - frames advance only while taking screenshots
   - port 5173 belongs to another app on this PC
 
-## 6. State as of this handoff
-Done and pushed:
-- Foundation, contracts v1.1, 3D dice menu → PLAY burst → pit
-- Debt Run (Night 1 Watch 1 start, quota, pulls, HUD)
-- All 39 machines + 3 party tables + 8 system devices
-- Tycoon, buffs/totems, horror director, story/cutscenes wired in
-- Lobby server, net layer, server browser
-- RTP of every machine simulated (most within ±1 % of the catalogue)
+## 6. State as of this handoff (last commit on `main`, pushed)
+Everything below is committed and pushed. Typecheck 0 errors, check 0 errors (~820 harmless warnings), 63/63 tests, and the production build all pass.
 
-**Completed since the first handoff:** perf pass (pixel-ratio cap, adaptive internal res, pooled uploads, mannequin LOD), stand-up fix (pause/resume restored machine mode + STAND UP button), seat HUD readability on every machine (`_base/seatHud.ts`, blackjack = gold standard), juice escalation + mega/jackpot sounds + pit-wide gold wave, intro ≤35 s skippable, Calm Mode, contracts/bounty board, grantCharm, totems/buffs persistence.
+Done:
+- Core loop:
+  - foundation, contracts v1.1, the 3D dice main menu, PLAY → burst → pit
+  - Debt Run (Night 1 Watch 1 start, quota, pulls, HUD)
+- Content:
+  - 39 gambling machines, 3 party tables (Son Kart, Tavla, Pişti) and 8 system devices. RTP simulated for each.
+  - Tycoon, buffs/totems, night events, horror director + ActorDirector, story notes + cutscenes, contracts/bounty board, grantCharm.
+- Multiplayer: lobby server (`server/`, 25 smoke checks), net layer (tab / WebRTC / relay / Trystero), 3D CRT server browser + 3D lobby scene.
+- Polish:
+  - stand-up fix and seat HUD readability on every machine (`_base/seatHud.ts`, blackjack is the gold standard)
+  - juice escalation (big/huge/mega/jackpot, pit-wide gold wave, jackpot bells)
+  - intro ≤ 35 s and skippable, Calm Mode, reduced head-bob/hand sway
+- 3D UI: pause is the JackID card in your hands, U opens a 3D ledger book, notes/journal/rule placards are 3D.
+- Perf: pixel-ratio cap, adaptive internal res, pooled uploads, mannequin LOD, GPU pass, "Performance" settings preset.
+- Stacker redesigned with consolation cash-outs at rows 4/7/10.
 
-**Known issues / client feedback still open:**
-- Client score ≈ 5/10 before the polish waves; re-score after a real playtest. Target 8+.
-- Stacker average-player RTP ≈ 15 % (expert ≈ 101 %): needs a structural rethink (slip/jitter model rows 6–10 or consolation prizes).
-- Lag was not measured on real hardware (automation browser only advances frames during screenshots). CPU frame time measured ~1–2 ms in bench, so check GPU/fill and the real game with F3 on the client PC.
-- Settings die: CALM replaced the BACK face (Esc/Backspace still close settings).
-- The game lags. Jackpot sounds are bad. The camera/hands shook too much while walking: bob constants in
-  `player/local.ts` and `player/viewmodel.ts` were reduced by the director, so verify it feels good.
-- The client wants EVERYTHING 3D. Still-2D panels to convert to diegetic 3D next:
-  - server browser, host panel, lobby (`src/menu/*`)
-  - pause/intermission panels and upgrade ledger (`src/game/ingame/panels.ts`)
-  - note reader (`src/game/story/notes.ts`)
-  - fortuneteller and tavla rule panels
-  - The HUD may stay 2D.
-- Real two-machine WebRTC multiplayer has not been tested yet.
-- Some RTP edge cases have open director calls in lane reports: claw expert ~126–130 % (accepted with max bet 25), lootbox pity,
-  fruitmachine headless 83 % vs live 88 %.
-- `check.mjs` shows hundreds of warnings (hard-coded identifier strings, missing `playHeadless` in a few machines).
+**Open issues (priority order):**
+1. The newest 3D UI (CRT server browser, lobby scene, JackID card pause, ledger, notes) is **NOT browser-verified yet**: the tester was stopped. Play through it first and fix what breaks.
+2. Performance on real hardware is unmeasured. The automation browser only advances frames during screenshots. Ask the client for F3 numbers (fps/ms, calls, tris) from the pit.
+3. Real two-machine WebRTC multiplayer is untested. Node tests over the real lobby pass, and the two-tab browser run never completed.
+4. Jackpot/win sounds were reworked but nobody has listened to them. Calibrate TRIM levels with `renderSfx`.
+5. Balance calls are still open:
+   - claw expert ~110–130 % (accepted, max bet 25)
+   - lootbox pity (BRASS ~107 %)
+   - fruitmachine headless 83 % vs live 88 %
+   - verify the new stacker numbers with sims
+6. Settings die: CALM replaced the BACK face (Esc/Backspace still close it).
+7. `check.mjs` warnings: hard-coded identifier strings; missing `playHeadless` in elevator, pisti, roulette, tavla.
+8. The client's last score was about 6.5/10. The target is 8+.
 
 ## 7. Suggested next steps (in order)
-1. Merge and verify the in-flight waves: green build, then play the real game in the browser (menu → pit → sit/stand at 5 machines).
-2. Play feel: stand-up reliability, readable seat HUD, juice and sounds (especially the jackpot), no shaking hands.
-3. Performance: 60 fps in the pit on a mid laptop. Measure with F3.
-4. Convert the remaining 2D panels to 3D diegetic UI.
-5. Multiplayer: 2 tabs, then 2 machines (WebRTC), then a Render deploy with a friend joining via `?join=CODE`.
-6. Content tiers from DECISIONS B: Okey, Liar's Dice, rules-only variants, Boss Nights, porcelain Collateral, proximity voice.
+1. Full browser playthrough (menu → MULTIPLAYER CRT → back → PLAY → pit → sit/play/stand at 5 machines → Esc card → U ledger → J journal). Fix all breakage.
+2. Performance to a steady 60 fps on a mid laptop. Use the client's F3 numbers.
+3. Multiplayer: 2 tabs, then 2 PCs, then a Render deploy (Web Service: build `npm ci && npm run build`, start `npm start`, env NODE_VERSION=22). A friend joins via `?join=CODE`.
+4. Sound pass (jackpot, wins, ambience), then a visual pass on machine models (several are blocky).
+5. Content from DECISIONS B tiers: Okey, Liar's Dice, rules-only variants, Boss Nights, porcelain Collateral, proximity voice.
