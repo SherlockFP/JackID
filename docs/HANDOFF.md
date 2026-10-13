@@ -90,16 +90,13 @@ Done and pushed:
 - Lobby server, net layer, server browser
 - RTP of every machine simulated (most within ±1 % of the catalogue)
 
-**In flight (background workflows when this was written — check `git log` / working tree):**
-1. Polish wave: intro ≤ 35 s and skippable, totem/buff sources + persistence + Calm Mode, skill-machine tuning,
-   juice escalation + mega jingle, two-tab multiplayer end-to-end test.
-2. Performance wave: profiling, then light caps, culling, draw-call merging/instancing, mannequin freezing, adaptive quality.
-3. Stand-up fix: the client could not leave a machine (E/Esc) after sitting.
-4. Readability wave: `_base/seatHud.ts` (goal line, state banner, key numbers, control bar, result callouts,
-   first-sit tip, H rules card), with blackjack as the gold standard, rolled out to every machine.
+**Completed since the first handoff:** perf pass (pixel-ratio cap, adaptive internal res, pooled uploads, mannequin LOD), stand-up fix (pause/resume restored machine mode + STAND UP button), seat HUD readability on every machine (`_base/seatHud.ts`, blackjack = gold standard), juice escalation + mega/jackpot sounds + pit-wide gold wave, intro ≤35 s skippable, Calm Mode, contracts/bounty board, grantCharm, totems/buffs persistence.
 
 **Known issues / client feedback still open:**
-- Client score ≈ 5/10. Target 8+.
+- Client score ≈ 5/10 before the polish waves; re-score after a real playtest. Target 8+.
+- Stacker average-player RTP ≈ 15 % (expert ≈ 101 %): needs a structural rethink (slip/jitter model rows 6–10 or consolation prizes).
+- Lag was not measured on real hardware (automation browser only advances frames during screenshots). CPU frame time measured ~1–2 ms in bench, so check GPU/fill and the real game with F3 on the client PC.
+- Settings die: CALM replaced the BACK face (Esc/Backspace still close settings).
 - The game lags. Jackpot sounds are bad. The camera/hands shook too much while walking: bob constants in
   `player/local.ts` and `player/viewmodel.ts` were reduced by the director, so verify it feels good.
 - The client wants EVERYTHING 3D. Still-2D panels to convert to diegetic 3D next:
