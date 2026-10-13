@@ -1,0 +1,77 @@
+/**
+ * SON KART / LAST CARD — UI and in-world strings (EN + TR). Loaded by the `*.strings.ts` glob in main.ts; keys are
+ * registered under `m.sonkart.` (MachineBase.t adds the prefix). `{n}` / `{name}` placeholders are filled by `t(key, vars)`.
+ * The game is ORIGINAL: never use the UNO name or card art in player text.
+ */
+import type { MachineStrings } from '@/machines/_base/types';
+
+const en: Record<string, string> = {
+  name: 'Son Kart',
+  desc: 'Shed your cards before the others. Match colour or number, stack the +2 and +4, and call LAST CARD or be caught.',
+  rulesTitle: 'SON KART RULES',
+  rules1: 'Match the colour or the number of the top card. Wild cards pick a colour.',
+  rules2: 'Skip ends the next turn. Reverse flips the order. +2 and +4 make the next player draw unless they stack.',
+  rules3: 'JackID cards: Debt owes coins to the next player. Collector: all discard a colour. Curse: swap hands with the wealthiest. Jackpot: go out with it and the pot pays double.',
+  rules4: 'Stake before the deal. The first player to empty their hand takes the pot.',
+  rules5: 'Hand: click a card to select, click again to play. Draw pile: click to draw. Keys: left/right move, primary plays, secondary draws.',
+  rules6: 'House rules: stacking, 7-0 hand swap, jump-in, draw-to-match and LAST CARD (double key: call; collect key: catch).',
+  rulesHint: 'Help key closes this sheet',
+  hPlay: 'Play', hDraw: 'Draw', hPass: 'Pass', hCall: 'LAST CARD', hCatch: 'Catch', hJump: 'Jump in',
+  hColour: 'Colour', hAnte: 'Ante', hRules: 'Rules', hDrawN: 'Draw {n}',
+  sAnte: 'Ante {n} or sit out', sWait: 'Waiting for antes', sYourTurn: 'Your turn', sTurnOf: "{name}'s turn",
+  sBots: 'Empty seats filled by house mannequins', sRound: 'ROUND {n}', sPot: 'POT {n}',
+  sNoAnte: 'No one anted, the table waits', sPlaying: 'Playing', sSpectate: 'Spectating',
+  scrColour: 'COLOUR', scrPend: 'OWED {n}', scrDir: 'ORDER', scrTurn: 'TURN', scrRound: 'ROUND', scrPot: 'POT',
+  scrCards: 'CARDS', scrFwd: '>>', scrBack: '<<', scrJackpot: 'JACKPOT x2', scrCalled: 'LAST CARD!',
+  cR: 'Red', cY: 'Yellow', cG: 'Green', cB: 'Blue',
+  hsOn: 'ON', hsOff: 'OFF',
+  hsStack: 'Stacking', hsSwap: '7-0 swap', hsJump: 'Jump-in', hsMatch: 'Draw-to-match', hsLast: 'LAST CARD',
+  pSkip: 'SKIP', pRev: 'REVERSE', pD2: '+{n}', pW4: '+{n}', pDebt: 'DEBT', pColl: 'COLLECTOR', pCurse: 'CURSE!',
+  pJp: 'JACKPOT x2', pSwap: 'HAND SWAP', pRot: 'HANDS PASS', pCall: 'LAST CARD!', pCaught: 'CAUGHT! +2',
+  pJump: 'JUMP IN', pWin: 'WINNER', pDraw: '+{n}', pPot: 'POT {n}', pAnte: '-{n}', pRefund: 'Refund', pHouse: 'The house takes it',
+  pPass: 'Pass', pOut: 'Out',
+  eOver: 'The round is over', eBadCard: 'That card cannot be played', eNoJump: 'No jump-in with that card',
+  eNotTurn: 'Not your turn', eNeedColour: 'Pick a colour first (keys 1-4)', eNoCall: 'LAST CARD is not available',
+  eNoCatch: 'Nobody to catch', eNoDraw: 'Nothing to draw', eNoFunds: 'Not enough coins for the ante',
+  eNotSeated: 'Take a seat first', eBusy: 'A round is already running', eNeedAnte: 'Ante up first',
+  eBadPhase: 'Wait for the next round', eMinPlayers: 'Need two players', sitOut: 'You sit this round out',
+  bot1: 'Rattle', bot2: 'Mrs Gloom', bot3: 'Tin Tom', bot4: 'Madame Wick',
+};
+
+const tr: Record<string, string> = {
+  name: 'Son Kart',
+  desc: 'Kartlarını diğerlerinden önce bitir. Renk ya da sayı eşleştir, +2 ve +4 üst üste koy ve SON KART de, yoksa yakalanırsın.',
+  rulesTitle: 'SON KART KURALLARI',
+  rules1: 'Üstteki kartın rengini ya da sayısını eşleştir. Joker kartlar bir renk seçer.',
+  rules2: 'Atla sıradaki turu bitirir. Ters çevir sırayı değiştirir. +2 ve +4, sıradaki oyuncu eşleştirmezse kart çektirir.',
+  rules3: 'JackID kartları: Borç sıradakine coin borçlandırır. Toplayıcı: herkes bir renk atar. Lanet: en zenginle el değiştirir. Jackpot: el ikiye katlanır.',
+  rules4: 'Dağıtımdan önce bahis koy. Elini ilk bitiren havuzu alır.',
+  rules5: 'El: seçmek için karta tıkla, oynamak için tekrar tıkla. Çekme destesi: çekmek için tıkla. Tuşlar: sol/sağ gezin, birincil oynar, ikincil çeker.',
+  rules6: 'Ev kuralları: üst üste koyma, 7-0 el değişimi, zıplama, eşleştirerek çekme ve SON KART (çift tuş: çağır; toplama tuşu: yakala).',
+  rulesHint: 'Yardım tuşu bu sayfayı kapatır',
+  hPlay: 'Oyna', hDraw: 'Çek', hPass: 'Geç', hCall: 'SON KART', hCatch: 'Yakala', hJump: 'Zıpla',
+  hColour: 'Renk', hAnte: 'Bahis', hRules: 'Kurallar', hDrawN: '{n} çek',
+  sAnte: '{n} bahis koy ya da izle', sWait: 'Bahisler bekleniyor', sYourTurn: 'Senin sıran', sTurnOf: '{name} oynuyor',
+  sBots: 'Boş koltuklar ev mankenleriyle dolar', sRound: 'EL {n}', sPot: 'HAVUZ {n}',
+  sNoAnte: 'Kimse bahis koymadı, masa bekliyor', sPlaying: 'Oynanıyor', sSpectate: 'İzleniyor',
+  scrColour: 'RENK', scrPend: 'BORÇ {n}', scrDir: 'SIRA', scrTurn: 'SIRA', scrRound: 'EL', scrPot: 'HAVUZ',
+  scrCards: 'KART', scrFwd: '>>', scrBack: '<<', scrJackpot: 'JACKPOT x2', scrCalled: 'SON KART!',
+  cR: 'Kırmızı', cY: 'Sarı', cG: 'Yeşil', cB: 'Mavi',
+  hsOn: 'AÇIK', hsOff: 'KAPALI',
+  hsStack: 'Üst üste koyma', hsSwap: '7-0 el değişimi', hsJump: 'Zıplama', hsMatch: 'Eşleşince çekme', hsLast: 'SON KART',
+  pSkip: 'ATLA', pRev: 'TERS', pD2: '+{n}', pW4: '+{n}', pDebt: 'BORÇ', pColl: 'TOPLAYICI', pCurse: 'LANET!',
+  pJp: 'JACKPOT x2', pSwap: 'EL DEĞİŞTİ', pRot: 'ELLER GEÇTİ', pCall: 'SON KART!', pCaught: 'YAKALANDI! +2',
+  pJump: 'ZIPLA', pWin: 'KAZANAN', pDraw: '+{n}', pPot: 'HAVUZ {n}', pAnte: '-{n}', pRefund: 'İade', pHouse: 'Ev alıyor',
+  pPass: 'Geç', pOut: 'Dışarıda',
+  eOver: 'El bitti', eBadCard: 'Bu kart oynanamaz', eNoJump: 'Bu kartla zıplanamaz',
+  eNotTurn: 'Sıra sende değil', eNeedColour: 'Önce bir renk seç (1-4 tuşları)', eNoCall: 'SON KART şu an kullanılamaz',
+  eNoCatch: 'Yakalanacak kimse yok', eNoDraw: 'Çekilecek bir şey yok', eNoFunds: 'Bahis için yeterli coin yok',
+  eNotSeated: 'Önce bir koltuğa otur', eBusy: 'Bir el zaten oynanıyor', eNeedAnte: 'Önce bahis koy',
+  eBadPhase: 'Sıradaki eli bekle', eMinPlayers: 'En az iki oyuncu gerekli', sitOut: 'Bu elde izliyorsun',
+  bot1: 'Çıngırak', bot2: 'Bayan Gölge', bot3: 'Teneke Tom', bot4: 'Madam Fitil',
+};
+
+export default { prefix: 'm.sonkart.', en, tr };
+
+/** The same tables, typed for `def.strings` (MachineStrings). */
+export const STRINGS: MachineStrings = { en, tr };

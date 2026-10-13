@@ -1,0 +1,692 @@
+/**
+ * Rat Derby "The Rat Run" (`derby`) — shared TableBase device, 8 rail spots, unlimited bettors (MACHINES_tables §13).
+ *
+ * Host timeline (every peer presents): ODDS (tote flips, 1.5 s) → OPEN (solo: until Ready; shared: 20 s, early on all-Ready)
+ * → LOCK (stakes charged, the order drawn and paid at once, so leaving mid-race never loses money) → GATES → RACE (14.0 s)
+ * → [PHOTO] → RESULT → PAYOUT → RESET → ODDS. Shared cadence ≈ 46 s.
+ *
+ * Juice: anticipation (tote flips, gate bell, leader lamp) → action (rats race in their lanes, overtakes spark, tails wag) →
+ * impact (photo flash, finish shake, chequer lamp chase) → follow-through (tote result, pop text, tier celebration, loss and
+ * near-miss beats).
+ *
+ * Controls (keymap §11.6): 1–6 pick a rat (a second pick for Exacta / Quinella) · 7 Win · 8 Place · 9 Exacta · LMB on the console
+ * (rat numbers, bet types; a bet type with its picks placed at once) · Enter place the slip, or Ready when the slip is empty ·
+ * Z/X stake · Backspace clear. Quinella has no digit key, so use its console button.
+ */
+import type { PanelButton } from '@/kit/types';
+import type { KitX } from '@/kit/index';
+import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
+import type { HudHint } from '@/core/ui/types';
+import type { PlayerId } from '@/core/types';
+import { fmtCoins, t as tr } from '@/core/i18n';
+import { TableBase } from '@/machines/_base/TableBase';
+import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
+import { juiceTier } from '@/machines/_base/tiers';
+import { buildModel, GATE_DOWN_Y, GATE_UP_Y, RATS, RAT_COLORS, ratX, type DerbyParts } from './model';
+import {
+  BET_MAX, BET_MIN, BET_TYPES, HOOK_ALBINO, HOOK_DEAD_HEAT, HOOK_EXACTA_INS, HOOK_LONGSHOT, HOOK_ODDS, KEYFRAMES, KEY_DT,
+  MAX_BETS_PER_SEAT, PICKS_NEEDED, exactaIndex, quinellaIndex, field, hookRunnerWeight, oddsFor, playHeadless, runRace, validBet,
+  weighted,
+  type Bet, type BetType, type Mods, type Odds,
+} from './rules';
+import { STRINGS } from './derby.strings';
+
+export { playHeadless };
+
+// ── timing (seconds, ×1 speed) ───────────────────────────────────────────────────────────────────
+const ODDS_S = 1.5;         // tote flips
+const OPEN_S = 20;          // shared betting window
+const LOCK_S = 0.6;         // bell
+const GATE_S = 0.8;         // gate drops
+const RACE_S = 14.0;        // keyframed race
+const PHOTO_S = 1.0;        // photo finish freeze
+const RESULT_S = 2.0;       // tote shows 1-2-3
+const PAYOUT_S = 2.5;       // count-up window
+const RESET_S = 3.0;        // rats wound back
+const SEATS = 8;
+const GOLD = 0xffd040, GREEN = 0x7dff7a;
+const NUM_ACTIONS = ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9'] as const;
+
+// ── contract types (aliases so they are assignable to `Json`) ──────────────────────────────────
+type Show = 'idle' | 'odds' | 'open' | 'lock' | 'race' | 'photo' | 'result' | 'payout' | 'reset';
+type ToteMode = 'last' | 'flip' | 'odds' | 'result' | 'photo';
+type Ev =
+  | { k: 'odds'; raceNo: number; win: number[]; place: number[]; exacta: number[]; quinella: number[] }
+  | { k: 'phase'; p: 'odds' | 'open' | 'lock' }
+  | { k: 'lay'; seat: number; bets: Bet[] }
+  | { k: 'ready'; seat: number; on: boolean }
+  | { k: 'race'; raceNo: number; frames: number[][]; order: number[]; photo: boolean }
+  | { k: 'result'; raceNo: number; order: number[]; rerolled: boolean; seats: Array<{ seat: number; stake: number; gross: number; nearmiss: boolean }> }
+  | { k: 'peek'; last: number };
+type Act = { k: 'bet'; t: BetType; p: number[]; a: number } | { k: 'clear' } | { k: 'ready' };
+/** What every peer knows (public tote and rail state). Mutated only in `present`. */
+type State = { phase: Show; raceNo: number; odds: Odds; bets: Bet[][]; ready: boolean[]; history: number[] };
+type Snap = State;
+type Slip = { t: BetType; p: number[] };
+
+const emptyBets = (): Bet[][] => Array.from({ length: SEATS }, () => [] as Bet[]);
+const emptyReady = (): boolean[] => new Array<boolean>(SEATS).fill(false);
+const emptyOdds = (): Odds => ({ win: [], place: [], exacta: [], quinella: [] });
+const hex = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
+
+export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
+  private st: State = { phase: 'idle', raceNo: 0, odds: emptyOdds(), bets: emptyBets(), ready: emptyReady(), history: [] };
+  /** HOST-ONLY authority: strengths and odds of the open race, bets not yet charged, ready flags, the round timer. */
+  private hs: { phase: 'idle' | 'odds' | 'open' | 'run'; raceNo: number; strengths: number[]; odds: Odds; bets: Bet[][]; ready: boolean[]; timer: number } = {
+    phase: 'idle', raceNo: 0, strengths: [], odds: emptyOdds(), bets: emptyBets(), ready: emptyReady(), timer: 0,
+  };
+  /** Local only: the bet slip being built (picks and type). */
+  private slip: Slip = { t: 'win', p: [] };
+  /** Tote view state (local): what the board shows and the scramble frame while odds flip. */
+  private view: { mode: ToteMode; scramble: number } = { mode: 'last', scramble: 0 };
+  private attractIdx = -1;
+
+  protected createModel(kit: KitX): MachineModel<DerbyParts> { return buildModel(kit, this.modelOpts); }
+
+  init(): void {
+    this.parts.gate.position.y = GATE_UP_Y;
+    this.paintAll();
+  }
+
+  /** Number of runners in the printed field (six, seven once The Albino is in). */
+  private runners(): number { return this.st.odds.win.length || 6; }
+
+  // ── local input → slip / action to the host ───────────────────────────────────────────────────
+  onInput(e: MachineInputEvent): void {
+    if (!e.down) return;
+    const a = e.action;
+    const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
+    if (e.repeat && !isBet) return;
+    const digit = NUM_ACTIONS.indexOf(a as (typeof NUM_ACTIONS)[number]);
+    if (digit >= 0) {
+      if (digit < 6) this.pickRat(digit);
+      else if (digit === 6) this.setType('win');
+      else if (digit === 7) this.setType('place');
+      else this.setType('exacta');
+      return;
+    }
+    switch (a) {
+      case 'betUp': case 'betDown': case 'betMax':
+        if (this.st.phase === 'lock' || this.st.phase === 'race' || this.st.phase === 'photo') break;
+        if (a === 'betMax') this.maxBet(); else this.stepBet(a === 'betUp' ? 1 : -1);
+        this.sfx('click'); this.showHud();
+        break;
+      case 'confirm': this.confirm(); break;                                       // Enter
+      case 'clear': if (this.canBet()) this.act({ k: 'clear' }); break;            // Backspace
+      default: break;
+    }
+  }
+
+  /** LMB on the console: a rat number picks it, a bet type places its slip when the picks are complete. */
+  onPointer(e: MachinePointerEvent): void {
+    if (e.type !== 'down' || this.localSeat < 0) return;
+    const hit = this.pick([this.parts.panel.caps]);
+    if (!hit) return;
+    const btn: PanelButton | null = this.parts.panel.pick(hit);
+    if (!btn) return;
+    void btn.press(0.12);
+    this.sfx('button', { vol: 0.6 });
+    if (btn.id.startsWith('rat')) { this.pickRat(Number(btn.id.slice(3)) - 1); return; }
+    if ((BET_TYPES as readonly string[]).includes(btn.id)) {
+      this.setType(btn.id as BetType);
+      if (this.slip.p.length === PICKS_NEEDED[this.slip.t]) this.placeSlip();
+    }
+  }
+
+  private canBet(): boolean { return this.localSeat >= 0 && this.st.phase === 'open' && !this.st.ready[this.localSeat]; }
+  private myBets(): Bet[] { return this.st.bets[this.localSeat] ?? []; }
+
+  private pickRat(i: number): void {
+    if (this.localSeat < 0 || i < 0 || i >= this.runners()) return;
+    const need = PICKS_NEEDED[this.slip.t];
+    if (need === 1) this.slip.p = [i];
+    else if (this.slip.p.length === 1 && this.slip.p[0] !== i) this.slip.p = [this.slip.p[0], i];
+    else this.slip.p = [i];
+    this.sfx('click');
+    this.showHud();
+  }
+
+  private setType(t: BetType): void {
+    if (this.localSeat < 0) return;
+    this.slip.t = t;
+    this.slip.p = this.slip.p.slice(0, PICKS_NEEDED[t]);
+    this.sfx('click');
+    this.showHud();
+  }
+
+  /** Space: place the slip if its picks are complete, otherwise Ready (the bets already on the rail stand). */
+  private confirm(): void {
+    if (this.localSeat < 0 || this.st.phase !== 'open') return;
+    if (this.slip.p.length === PICKS_NEEDED[this.slip.t]) { this.placeSlip(); return; }
+    if (this.myBets().length && !this.st.ready[this.localSeat]) { this.act({ k: 'ready' }); return; }
+    this.toast(tr(PICKS_NEEDED[this.slip.t] === 1 ? 'm.derby.badPick' : 'm.derby.pickTwo'), 'warn');
+  }
+
+  private placeSlip(): void {
+    if (this.st.phase !== 'open') { this.toast(tr('m.derby.busy'), 'warn'); return; }
+    if (!this.canBet()) return;
+    this.act({ k: 'bet', t: this.slip.t, p: [...this.slip.p], a: this.bet });
+    this.slip.p = [];
+    this.sfx('chip');
+  }
+
+  // ── HOST: actions ─────────────────────────────────────────────────────────────────────────────
+  protected onAction(pid: PlayerId, seat: number, a: Act, rid: number): void {
+    const hs = this.hs;
+    if (a.k === 'bet') {
+      if (hs.phase !== 'open') { this.nak(pid, rid, 'm.derby.busy'); return; }
+      const bets = hs.bets[seat];
+      const total = bets.reduce((s, b) => s + b.a, 0);
+      const bet: Bet = { t: a.t, p: a.p.slice(), a: a.a };
+      const bad = validBet(bet, hs.strengths.length, total);
+      if (bad) { this.nak(pid, rid, `m.derby.${bad}`); return; }
+      if (bets.length >= MAX_BETS_PER_SEAT) { this.nak(pid, rid, 'm.derby.tooMany'); return; }
+      hs.bets[seat] = [...bets, bet];
+      this.unready(seat);
+      void this.emit({ k: 'lay', seat, bets: hs.bets[seat] });
+    } else if (a.k === 'clear') {
+      if (hs.phase !== 'open') { this.nak(pid, rid, 'm.derby.busy'); return; }
+      hs.bets[seat] = [];
+      this.unready(seat);
+      void this.emit({ k: 'lay', seat, bets: [] });
+    } else if (a.k === 'ready') {
+      if (hs.phase !== 'open') { this.nak(pid, rid, 'm.derby.busy'); return; }
+      if (!hs.bets[seat].length) { this.nak(pid, rid, 'm.derby.noBets'); return; }
+      hs.ready[seat] = true;
+      void this.emit({ k: 'ready', seat, on: true });
+      const bettors = this.humans().filter((h) => hs.bets[h.seat].length > 0);
+      if (bettors.every((h) => hs.ready[h.seat])) this.lock();
+    }
+  }
+  private unready(seat: number): void {
+    if (!this.hs.ready[seat]) return;
+    this.hs.ready[seat] = false;
+    void this.emit({ k: 'ready', seat, on: false });
+  }
+
+  /** Host timeline. */
+  hostTick(dt: number): void {
+    const hs = this.hs;
+    const humans = this.humans().length;
+    if (hs.phase === 'idle') {
+      if (humans > 0) this.beginOdds();
+      return;
+    }
+    if (humans === 0 && hs.phase !== 'run') {
+      this.cancelCountdown();
+      this.hs = { phase: 'idle', raceNo: hs.raceNo, strengths: [], odds: emptyOdds(), bets: emptyBets(), ready: emptyReady(), timer: 0 };
+      return;
+    }
+    hs.timer -= dt;
+    if (hs.phase === 'odds') {
+      if (hs.timer <= 0) this.openBetting();
+    } else if (hs.phase === 'open') {
+      if (humans >= 2 && hs.timer <= 0) this.lock();           // shared: the window ends; the race runs even with no bets
+    } else if (hs.timer <= 0) {
+      this.beginOdds();                                        // run finished: next race
+    }
+  }
+
+  /** Host: draws the field for the next race, prints the odds (fixed until LOCK) and starts the flip. */
+  private beginOdds(): void {
+    const hs = this.hs;
+    hs.raceNo++;
+    const solo = this.humans().length === 1;
+    let s = field(this.hostRng, this.mod(HOOK_ALBINO, 0) > 0);
+    if (solo) s = weighted(s, (lane) => this.mod(hookRunnerWeight(lane), 0));   // runnerWeight: solo draws only
+    hs.strengths = s;
+    hs.odds = oddsFor(s);
+    hs.phase = 'odds';
+    hs.timer = ODDS_S;
+    hs.bets = emptyBets();
+    hs.ready = emptyReady();
+    void this.emit({ k: 'odds', raceNo: hs.raceNo, win: hs.odds.win, place: hs.odds.place, exacta: hs.odds.exacta, quinella: hs.odds.quinella });
+    void this.emit({ k: 'phase', p: 'odds' });
+  }
+
+  /** Host: betting window opens (solo: no timer; shared: 20 s). */
+  private openBetting(): void {
+    const hs = this.hs;
+    hs.phase = 'open';
+    hs.timer = OPEN_S;
+    if (this.humans().length >= 2) void this.countdown(OPEN_S, 'bet');
+    void this.emit({ k: 'phase', p: 'open' });
+  }
+
+  /** Charm modifiers from the table's hooks (`m.derby.*`); base values are neutral. */
+  private mods(): Mods {
+    return {
+      deadHeat: this.mod(HOOK_DEAD_HEAT, 0) > 0,
+      longshot: this.mod(HOOK_LONGSHOT, 0),
+      exactaInsurance: this.mod(HOOK_EXACTA_INS, 0) > 0,
+      oddsBonus: this.mod(HOOK_ODDS, 0),
+    };
+  }
+
+  /** Host: LOCK → charge, draw, pay, then announce the whole race to every peer. */
+  private lock(): void {
+    const hs = this.hs;
+    this.cancelCountdown();
+    const active: Array<{ seat: number; bets: Bet[]; stake: number }> = [];
+    for (let s = 0; s < SEATS; s++) {
+      const bets = hs.bets[s];
+      if (!bets.length) continue;
+      const stake = bets.reduce((acc, b) => acc + b.a, 0);
+      const pid = this.seats[s];
+      if (pid === null || !this.chargeSeat(s, stake)) {
+        if (pid !== null) this.nak(pid, 0, 'm.derby.noFunds');
+        hs.bets[s] = [];
+        this.unready(s);
+        void this.emit({ k: 'lay', seat: s, bets: [] });
+        continue;
+      }
+      active.push({ seat: s, bets, stake });
+    }
+
+    const solo = this.humans().length === 1;
+    const out = runRace(this.hostRng, hs.strengths, active.map((a) => a.bets), hs.odds, this.mods(), this.luck(), solo);
+    active.forEach((a, i) => { this.paySeat(a.seat, out.seats[i].gross, { bet: a.stake }); });
+
+    // table charm: the last-place rat is whispered to every bettor before the gates open
+    if (this.tableMod('peekCharges', 0) > 0) {
+      const last = out.order[out.order.length - 1];
+      for (const a of active) {
+        const pid = this.seats[a.seat];
+        if (pid !== null) void this.emitPrivate(pid, { k: 'peek', last });
+      }
+    }
+
+    hs.phase = 'run';
+    hs.timer = LOCK_S + GATE_S + RACE_S + (out.photo ? PHOTO_S : 0) + RESULT_S + PAYOUT_S + RESET_S;
+    hs.bets = emptyBets();
+    hs.ready = emptyReady();
+    void this.emit({ k: 'phase', p: 'lock' });
+    void this.emit({ k: 'race', raceNo: hs.raceNo, frames: out.frames, order: out.order, photo: out.photo });
+    void this.emit({
+      k: 'result', raceNo: hs.raceNo, order: out.order, rerolled: out.rerolled,
+      seats: active.map((a, i) => ({ seat: a.seat, stake: a.stake, gross: out.seats[i].gross, nearmiss: out.seats[i].nearmiss })),
+    });
+  }
+
+  // ── presentation (every peer) ─────────────────────────────────────────────────────────────────
+  async present(ev: Ev, pc: PresentCtx): Promise<void> {
+    switch (ev.k) {
+      case 'odds': {
+        this.st.raceNo = ev.raceNo;
+        this.st.odds = { win: ev.win, place: ev.place, exacta: ev.exacta, quinella: ev.quinella };
+        this.applyRunners();
+        await this.flipTote(pc.fast);
+        this.setTote('odds');
+        if (this.isLocalOccupant) this.showHud();
+        return;
+      }
+      case 'phase': await this.onPhase(ev.p, pc); return;
+      case 'lay':
+        this.st.bets[ev.seat] = ev.bets;
+        this.paintLamps();
+        if (ev.bets.length) this.sfx('chip');
+        if (this.isLocalOccupant) this.showHud();
+        return;
+      case 'ready':
+        this.st.ready[ev.seat] = ev.on;
+        if (ev.on) { this.parts.seatLamps[ev.seat].blink(4, 0.6); this.sfx('click'); }
+        if (this.isLocalOccupant) this.showHud();
+        return;
+      case 'race': await this.raceShow(ev, pc); return;
+      case 'result': await this.resultShow(ev, pc); return;
+      case 'peek':
+        this.toast(tr('m.derby.peekLast', { rat: this.ratName(ev.last) }), 'sys');
+        return;
+    }
+  }
+
+  private async onPhase(p: 'odds' | 'open' | 'lock', pc: PresentCtx): Promise<void> {
+    const s = this.st;
+    if (p === 'open') {
+      s.phase = 'open';
+      this.paintLamps();
+      if (this.isLocalOccupant) this.showHud();
+      return;
+    }
+    if (p === 'odds') {
+      s.phase = 'odds';
+      s.bets = emptyBets();
+      s.ready = emptyReady();
+      this.paintLamps();
+      if (this.isLocalOccupant) this.showHud();
+      return;
+    }
+    // LOCK: anticipation — the bell swings, the rats wind up, then the starting gate drops.
+    s.phase = 'lock';
+    this.sfx('bell');
+    this.parts.laneLamps.forEach((l) => l.setOn(false));
+    this.parts.rats.forEach((r, i) => { if (i < this.runners()) r.position.x = ratX(0); });
+    if (pc.fast) {
+      this.parts.gate.position.y = GATE_DOWN_Y;
+      this.parts.gateBell.rotation.z = 0;
+    } else {
+      const bell = this.parts.gateBell;
+      void this.anim(LOCK_S, (k) => { bell.rotation.z = Math.sin(k * Math.PI * 6) * 0.6 * (1 - k); }, 'outQuad');
+      this.sfx('ratchet', { vol: 0.6 });
+      await this.wait(LOCK_S * 0.5);
+      const gate = this.parts.gate;
+      await this.anim(GATE_S, (k) => { gate.position.y = GATE_UP_Y + (GATE_DOWN_Y - GATE_UP_Y) * k; }, 'outQuad');
+    }
+    this.paintLamps();
+    if (this.isLocalOccupant) this.showHud();
+  }
+
+  /** Action: the rats run their keyframed lanes; the leader lamp follows the front runner; overtakes spark. */
+  private async raceShow(ev: Extract<Ev, { k: 'race' }>, pc: PresentCtx): Promise<void> {
+    const P = this.parts;
+    this.st.phase = 'race';
+    const frames = ev.frames;
+    const n = ev.order.length;
+    const last = frames[KEYFRAMES - 1];
+    const setAt = (i: number, x: number): void => { P.rats[i].position.x = ratX(x); };
+    /** Progress of rat `i` at time `t` (s): 0 at the gate, keyframes every 0.5 s, linear between. */
+    const progress = (t: number, i: number): number => {
+      const pos = t / KEY_DT - 1;
+      if (pos <= 0) return frames[0][i] * (t / KEY_DT);
+      const k = Math.min(KEYFRAMES - 1, Math.floor(pos));
+      const frac = Math.min(1, pos - k);
+      const next = Math.min(KEYFRAMES - 1, k + 1);
+      return frames[k][i] + (frames[next][i] - frames[k][i]) * frac;
+    };
+
+    if (pc.fast) {
+      for (let i = 0; i < n; i++) setAt(i, last[i]);
+    } else {
+      this.sfx('ratchet', { vol: 0.5 });
+      let lead = -1;
+      await this.anim(RACE_S, (k) => {
+        const t = k * RACE_S;
+        let best = 0, bestX = -1;
+        for (let i = 0; i < n; i++) {
+          const x = progress(t, i);
+          setAt(i, x);
+          P.tails[i].rotation.y = Math.sin(t * 18 + i * 1.7) * 0.35;      // tails wag with the stride
+          if (x > bestX) { bestX = x; best = i; }
+        }
+        if (lead >= 0 && best !== lead && t > 1) {
+          this.sfx('click', { vol: 0.35 });                                 // squeak on an overtake
+          this.ctx.fx.sparks(P.rats[best], 6, RAT_COLORS[best]);
+        }
+        if (best !== lead) {
+          lead = best;
+          P.laneLamps.forEach((l, i) => l.setOn(i === best && i < n));
+        }
+      });
+      // trailing rats reach the line in the follow-through beat
+      const from = last.slice(0, n);
+      await this.anim(0.6, (k) => { for (let i = 0; i < n; i++) setAt(i, from[i] + (1 - from[i]) * k); }, 'outQuad');
+    }
+
+    // impact: the chequer lamps chase; the finish shakes the glass
+    P.laneLamps.forEach((l) => l.setOn(false));
+    this.sfx('bell');
+    this.ctx.fx.shake(0.01, 0.25, { roll: 0.3 });
+    this.ctx.fx.sparks(P.finishLine, 10, GOLD);
+
+    if (ev.photo) {
+      this.st.phase = 'photo';
+      this.sfx('click', { vol: 0.9 });
+      this.ctx.fx.flash(0xffffff, 0.7, 0.12);
+      this.setTote('photo');
+      if (!pc.fast) await this.wait(PHOTO_S);
+    }
+    this.st.history = [ev.order[0], ...this.st.history].slice(0, 10);
+  }
+
+  /** Follow-through: tote 1-2-3, pop text, tier celebration, loss and near-miss beats; the rats wind back to the gate. */
+  private async resultShow(ev: Extract<Ev, { k: 'result' }>, pc: PresentCtx): Promise<void> {
+    this.st.phase = 'result';
+    const P = this.parts;
+    this.setTote('result', ev.order);
+    P.laneLamps[ev.order[0]]?.blink(6, 3);
+    const winners = [...ev.seats].filter((r) => r.gross > 0).sort((x, y) => y.gross - x.gross);
+    const best = winners[0];
+    if (best) {
+      const tier = juiceTier(best.gross, best.stake);
+      void this.celebrate(tier, { amount: best.gross, at: P.finishCam, lamps: [P.seatLamps[best.seat]], fast: pc.fast, restore: () => this.paintLamps() });
+    } else {
+      this.sfx('lose', { vol: 0.5 });
+    }
+    for (const r of ev.seats) {
+      if (r.gross <= 0 && r.stake > 0) {
+        if (r.seat === this.localSeat) {
+          this.commiserate({ at: P.finishCam });
+          if (r.nearmiss) void this.nearMiss({ at: P.finishCam });
+        }
+        continue;
+      }
+      if (r.gross > 0) {
+        const tile = P.seatLamps[r.seat];
+        tile.blink(8, 1.2);
+        this.ctx.fx.popText(tile.root, tr('m.derby.win2', { n: fmtCoins(r.gross) }), r.gross > r.stake ? GOLD : GREEN, { dur: 1.2, rise: 0.3 });
+        if (r.gross >= 10 * r.stake) this.ctx.fx.popText(tile.root, tr('m.derby.longshot'), GOLD, { dur: 1.4, rise: 0.5 });
+      }
+    }
+    this.ctx.ui.toast(tr('m.derby.sResult', { a: ev.order[0] + 1, b: ev.order[1] + 1, c: ev.order[2] + 1 }), 'sys');
+    if (ev.rerolled) {
+      this.ctx.fx.glow(P.finishCam, GREEN, 0.4, 0.6);
+      this.ctx.ui.toast(tr('m.derby.rerollLuck'), 'sys');
+    }
+    if (!pc.fast) await this.wait(PAYOUT_S * 0.5);
+
+    // reset: the gate lifts and the rats are wound back to the start
+    this.st.phase = 'reset';
+    this.st.bets = emptyBets();
+    this.st.ready = emptyReady();
+    const n = ev.order.length;
+    const from = P.rats.map((r) => r.position.x);
+    const gate = P.gate;
+    if (pc.fast) {
+      P.rats.forEach((r, i) => { if (i < n) r.position.x = ratX(0); });
+      gate.position.y = GATE_UP_Y;
+    } else {
+      await this.anim(RESET_S, (k) => {
+        P.rats.forEach((r, i) => { if (i < n) r.position.x = from[i] + (ratX(0) - from[i]) * k; });
+        P.tails.forEach((tl) => { tl.rotation.y *= 1 - k; });
+        if (k > 0.2) gate.position.y = GATE_DOWN_Y + (GATE_UP_Y - GATE_DOWN_Y) * Math.min(1, (k - 0.2) / 0.5);
+      }, 'outQuad');
+    }
+    this.setTote('last');
+    this.paintLamps();
+    if (this.isLocalOccupant) this.showHud();
+  }
+
+  // ── snapshots: public tote and rail state only ────────────────────────────────────────────────
+  getSnapshot(): Snap {
+    return {
+      phase: this.st.phase, raceNo: this.st.raceNo, odds: { ...this.st.odds },
+      bets: this.st.bets.map((l) => [...l]), ready: [...this.st.ready], history: [...this.st.history],
+    };
+  }
+  applySnapshot(sn: Snap): void {
+    this.st = {
+      phase: sn.phase, raceNo: sn.raceNo, odds: { ...sn.odds }, bets: sn.bets.map((l) => [...l]),
+      ready: [...sn.ready], history: [...sn.history],
+    };
+    this.parts.gate.position.y = sn.phase === 'race' || sn.phase === 'photo' || sn.phase === 'result' || sn.phase === 'lock' ? GATE_DOWN_Y : GATE_UP_Y;
+    this.paintAll();
+  }
+
+  // ── seats ─────────────────────────────────────────────────────────────────────────────────────
+  onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
+    this.paintLamps();
+    if (local) { this.sfx('chime', { vol: 0.5 }); this.showHud(); }
+  }
+  onRelease(_pid: PlayerId, seat: number, local: boolean): void {
+    if (this.isHost && this.hs.phase === 'open' && this.hs.bets[seat].length) {
+      this.hs.bets[seat] = [];
+      this.unready(seat);
+      void this.emit({ k: 'lay', seat, bets: [] });
+    }
+    if (local) this.slip.p = [];
+    this.paintLamps();
+  }
+  override onLang(): void { this.paintTote(); this.paintLamps(); if (this.isLocalOccupant) this.showHud(); }
+
+  /** Idle: lane lamps chase along the rail so the cabinet reads as alive. */
+  attract(_dt: number, time: number): void {
+    const idx = Math.floor(time * 4) % RATS;
+    if (idx === this.attractIdx) return;
+    this.attractIdx = idx;
+    this.parts.laneLamps.forEach((l, i) => l.setOn(i === idx && i < this.runners()));
+  }
+
+  // ── visuals ───────────────────────────────────────────────────────────────────────────────────
+  private ratName(i: number): string { return tr(`m.derby.rat${i + 1}`); }
+
+  /** The seventh rat, its lane lamp and its console button only exist once The Albino is in the field. */
+  private applyRunners(): void {
+    const n = this.runners();
+    this.parts.rats.forEach((r, i) => { r.visible = i < n; });
+    this.parts.laneLamps.forEach((l, i) => { l.root.visible = i < n; });
+    this.parts.buttons.rat7?.setEnabled(n >= 7);
+  }
+
+  private paintLamps(): void {
+    const P = this.parts;
+    P.seatLamps.forEach((l, s) => l.setOn(this.seats[s] !== null));
+    P.railMeters.forEach((m, s) => m.setOn((this.st.bets[s]?.length ?? 0) > 0));
+    P.laneLamps.forEach((l) => l.setOn(false));
+  }
+
+  private paintAll(): void {
+    this.applyRunners();
+    this.paintLamps();
+    this.setTote('last');
+  }
+
+  private setTote(mode: ToteMode, order?: number[]): void {
+    this.view.mode = mode;
+    if (order) this.toteOrder = order;
+    this.paintTote();
+  }
+  private toteOrder: number[] = [];
+
+  /** Draws the tote for the current mode. Scrambled digits while the odds flip. */
+  private paintTote(): void {
+    const mode = this.view.mode;
+    const o = this.st.odds;
+    const n = this.runners();
+    this.parts.tote.draw((g, w) => {
+      g.fillStyle = '#080c08';
+      g.fillRect(0, 0, w.w, w.h);
+      if (mode === 'odds' || mode === 'flip') {
+        w.text(`${tr('m.derby.toteOdds')} ${this.st.raceNo || ''}`, 4, 1, { font: 'px5', color: '#ffd040' });
+        for (let i = 0; i < n; i++) {
+          const y = 11 + i * 7.5;
+          g.fillStyle = hex(RAT_COLORS[i]);
+          g.fillRect(4, y, 5, 5);
+          w.text(String(i + 1), 12, y, { font: 'px5', color: '#ffffff' });
+          const fw = (v: number | undefined): string => (mode === 'flip' || v === undefined
+            ? `${(this.view.scramble * 7 + i * 3) % 10}${(this.view.scramble * 3 + i) % 10}.${(this.view.scramble + i * 5) % 10}`
+            : v.toFixed(1));
+          w.text(`${tr('m.derby.tWin')} ${fw(o.win[i])}`, 40, y, { font: 'px5', color: '#e8e0c8' });
+          w.text(`${tr('m.derby.tPlace')} ${fw(o.place[i])}`, 110, y, { font: 'px5', color: '#e8e0c8' });
+        }
+      } else if (mode === 'result') {
+        w.text(tr('m.derby.tResult'), 4, 1, { font: 'px5', color: '#ffd040' });
+        this.toteOrder.slice(0, 3).forEach((rat, j) => {
+          const x = 24 + j * 58;
+          g.fillStyle = hex(RAT_COLORS[rat]);
+          g.fillRect(x, 16, 40, 34);
+          w.text(String(rat + 1), x + 20, 22, { font: 'px5', color: '#080c08', align: 'center' });
+          w.text(String(j + 1), x + 20, 38, { font: 'px5', color: '#080c08', align: 'center' });
+        });
+      } else if (mode === 'photo') {
+        g.fillStyle = '#f2f2ea';
+        g.fillRect(0, 0, w.w, w.h);
+        w.text(tr('m.derby.tPhoto'), w.w / 2, w.h / 2 - 3, { font: 'px5', color: '#080c08', align: 'center' });
+      } else {
+        w.text(tr('m.derby.toteLast'), 4, 1, { font: 'px5', color: '#ffd040' });
+        this.st.history.forEach((rat, j) => {
+          const x = 6 + (j % 5) * 37, y = 12 + Math.floor(j / 5) * 26;
+          g.fillStyle = hex(RAT_COLORS[rat]);
+          g.fillRect(x, y, 31, 22);
+          w.text(String(rat + 1), x + 15, y + 7, { font: 'px5', color: '#080c08', align: 'center' });
+        });
+      }
+    });
+  }
+
+  /** Anticipation: the tote digits scramble, then settle on the new odds. */
+  private async flipTote(fast: boolean): Promise<void> {
+    if (fast) return;
+    this.view.mode = 'flip';
+    this.sfx('reelTick', { vol: 0.5 });
+    await this.anim(ODDS_S * 0.7, (k) => {
+      this.view.scramble = Math.floor(k * 12);
+      this.paintTote();
+    });
+  }
+
+  private hudSlipOdds(): number | null {
+    const need = PICKS_NEEDED[this.slip.t];
+    if (this.slip.p.length !== need) return null;
+    const o = this.st.odds;
+    if (!o.win.length) return null;
+    if (this.slip.t === 'win') return o.win[this.slip.p[0]] ?? null;
+    if (this.slip.t === 'place') return o.place[this.slip.p[0]] ?? null;
+    const n = o.win.length;
+    const [a, b] = this.slip.p;
+    if (this.slip.t === 'exacta') return o.exacta[exactaIndex(n, a, b)] ?? null;
+    return o.quinella[quinellaIndex(n, a, b)] ?? null;
+  }
+
+  private showHud(): void {
+    const seat = this.localSeat;
+    const hints: HudHint[] = [];
+    const open = this.st.phase === 'open';
+    if (seat >= 0) {
+      if (open) hints.push({ action: 'confirm', label: this.st.ready[seat] ? tr('m.derby.ready') : tr('m.derby.placeBet') });
+      hints.push({ action: 'n1', label: tr('m.derby.hintRats') }, { action: 'n7', label: tr('m.derby.win') });
+      hints.push({ action: 'n8', label: tr('m.derby.place') }, { action: 'n9', label: tr('m.derby.exacta') });
+      if (open) hints.push({ action: 'clear', label: tr('m.derby.clear') });
+    }
+    hints.push({ action: 'betUp', label: tr('common.bet') }, { action: 'exit', label: tr('common.leave') });
+    const total = this.myBets().reduce((s, b) => s + b.a, 0);
+    const odds = this.hudSlipOdds();
+    const picks = this.slip.p.map((p) => p + 1).join('-');
+    const slipText = `${tr(`m.derby.${this.slip.t}`)} ${picks || '?'}${odds !== null ? ` ×${odds.toFixed(1)}` : ''}`;
+    this.hud({
+      bet: open && seat >= 0 ? this.bet : null,
+      hints,
+      stats: [
+        ...(total > 0 ? [{ label: this.t('potLabel'), value: fmtCoins(total) }] : []),
+        ...(seat >= 0 ? [{ label: tr('m.derby.slip'), value: slipText }] : []),
+      ],
+    });
+  }
+}
+
+export const def: MachineDef = {
+  id: 'derby',
+  category: 'oddity',
+  slotSize: 'XL',
+  zone: 'midway',
+  seats: SEATS,
+  shared: true,
+  tier: 2,
+  minBet: BET_MIN, maxBet: BET_MAX, betSteps: [1, 5, 10, 25, 50, 100, 200],
+  maxPayoutMult: 250,
+  rtp: 0.9,
+  actionCost: 1,
+  idleYield: 0.48,
+  tags: ['table', 'race', 'social', 'curio'],
+  headless: playHeadless,
+  modHooks: {
+    'm.derby.runnerWeight.n': 'float added to lane n (1–7) strength, solo races only; the printed odds follow it',
+    'm.derby.oddsBonus': 'fraction added to every winning payout (Tin Jockey, overheat)',
+    'm.derby.deadHeat': 'bool: a Win pick lost by a photo finish pays at half odds',
+    'm.derby.longshotBonus': 'fraction added to payouts at odds ≥ ×10 (Tote Ticket)',
+    'm.derby.exactaInsurance': 'bool: an exacta in reverse order refunds the stake',
+    'm.derby.albino': 'bool: The Albino (rat 7, strength 0.6–4.0 each race) joins the field',
+    'x.table.peekCharges': 'bool: every bettor is privately told which rat finishes last',
+    luck: 'reroll a losing solo race once with p = luck/100; shared races refund losing seats with the same p',
+  },
+  strings: STRINGS,
+};

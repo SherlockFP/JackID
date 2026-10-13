@@ -1,0 +1,39 @@
+/* Multiplayer DOM panels: server browser, host form, join prompts, party lobby (DECISIONS C7). Tokens come from ui.css. */
+.mp-wide { width: calc(180 * var(--u)); max-width: 96vw; }
+.mp-narrow { width: calc(120 * var(--u)); max-width: 96vw; }
+.mp-row { display: flex; flex-wrap: wrap; gap: calc(4 * var(--u)); align-items: center; }
+.mp-col { display: flex; flex-direction: column; gap: calc(4 * var(--u)); min-width: 0; }
+.mp-grow { flex: 1 1 auto; min-width: 0; }
+.mp-hint { font-family: var(--f-body); font-size: var(--fh); color: var(--slate); line-height: 1.1; }
+.mp-err { font-family: var(--f-body); font-size: var(--fh); color: var(--coral); min-height: 1em; }
+.mp-title { font-family: var(--f-head); font-size: var(--fh); color: var(--bulb); letter-spacing: 0.04em; }
+.mp-tag { display: inline-block; padding: 0 calc(3 * var(--u)); font-family: var(--f-head); font-size: calc(6 * var(--u)); border: 1px solid currentColor; line-height: 1.6; }
+.mp-tag-host { color: var(--bulb); }
+.mp-tag-you { color: var(--cyan); }
+.mp-tag-net { color: var(--bone); }
+.mp-lock { color: var(--amber); }
+
+/* server browser table */
+.mp-table { width: 100%; border-collapse: collapse; font-family: var(--f-body); font-size: var(--fb); color: var(--ivory); }
+.mp-table th { text-align: left; font-family: var(--f-head); font-size: calc(6 * var(--u)); color: var(--concrete); font-weight: normal; padding: calc(2 * var(--u)) calc(3 * var(--u)); border-bottom: 1px solid var(--ash); }
+.mp-table td { padding: calc(2 * var(--u)) calc(3 * var(--u)); border-bottom: 1px dotted var(--coal); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 0; }
+.mp-table tr.mp-sel td { background: var(--coal); color: var(--paper); }
+.mp-table tr.mp-dim td { color: var(--slate); }
+.mp-ping-good { color: var(--green); }
+.mp-ping-mid { color: var(--amber); }
+.mp-ping-bad { color: var(--signal); }
+.mp-scroll { max-height: calc(110 * var(--u)); overflow-y: auto; }
+
+/* lobby roster and chat */
+.mp-roster { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: calc(3 * var(--u)); }
+.mp-seat { display: flex; align-items: center; gap: calc(4 * var(--u)); font-family: var(--f-body); font-size: var(--fb); color: var(--ivory); }
+.mp-swatch { width: calc(8 * var(--u)); height: calc(8 * var(--u)); flex: 0 0 auto; border: 1px solid var(--void); }
+.mp-lamp { font-family: var(--f-head); font-size: calc(6 * var(--u)); color: var(--slate); margin-left: auto; }
+.mp-lamp-on { color: var(--green); }
+.mp-log { font-family: var(--f-body); font-size: var(--fb); line-height: 1.05; color: var(--bone); height: calc(60 * var(--u)); overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.mp-log .mp-sys { color: var(--cyan); }
+.mp-log .mp-from { color: var(--bulb); }
+.mp-cfg { display: flex; gap: calc(6 * var(--u)); flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .mp-table th.mp-hide-sm, .mp-table td.mp-hide-sm { display: none; }
+}

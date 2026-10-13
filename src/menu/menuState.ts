@@ -8,6 +8,7 @@
  * Keep the factory name `createMenuState` (main.ts). Owner: MENU-3D.
  */
 import * as THREE from 'three';
+import { openServerBrowser } from './serverBrowser';
 import type { AppStateHandler } from '@/core/states';
 import { app } from '@/core/app';
 import { bus } from '@/core/events';
@@ -206,9 +207,8 @@ export function createMenuState(): AppStateHandler<'menu'> {
 
   const goMulti = (): void => {
     if (leaving) return;
-    leaving = true;
     sfx('click');
-    void app.go('lobby', { role: 'host' });
+    openServerBrowser();
   };
 
   const openSettings = (): void => {

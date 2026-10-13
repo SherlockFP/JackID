@@ -15,6 +15,7 @@ import { createHud, type Hud, type HudPrompt } from '@/menu/hud';
 import { createRun, resumeRun, type DebtRun } from '@/game/run';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { playableMode } from '@/game/modes';
+import { startOnlineHooks } from './mp';
 
 export interface DebtSession {
   readonly world: WorldHost;
@@ -46,9 +47,11 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
 
   const player = createLocalPlayer(app.camera);
   app.player = player;
-  const spawn = world.spawn('solo');
+  // Online runs spawn on the Mouth rows, one per seat (MP-only branch; single-player keeps the solo spawn).
+  const spawn = params.online ? world.spawn('mouth', Math.max(0, app.net.selfId - 1)) : world.spawn('solo');
   player.teleport(new THREE.Vector3(spawn.pos[0], spawn.pos[1], spawn.pos[2]), spawn.yaw);
   app.input.setMode('walk');
+  const online = params.online ? startOnlineHooks(scene, player, run) : null;
 
   const hud = createHud();
   let ready = false;
@@ -78,6 +81,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       player.fixedUpdate(dt);
       world.fixedUpdate(dt);
       run.tick(dt);
+      online?.fixedUpdate(dt);
     },
     frame(dt, alpha) {
       if (openingWatch && ready) {
@@ -88,11 +92,13 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       }
       player.frame(dt, alpha);
       world.frame(dt, app.time.sim);
+      online?.frame(dt);
       hud.update(dt);
       updatePrompt();
     },
     dispose() {
       window.removeEventListener('pagehide', flush);
+      online?.dispose();
       hud.setPrompt(null);
       hud.dispose();
       player.dispose();

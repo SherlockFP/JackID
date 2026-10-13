@@ -1,0 +1,72 @@
+/**
+ * Tavla — UI and in-world strings (EN + TR). Keys are registered under `m.tavla.` (MachineBase.t adds the prefix).
+ * Turkish terms: Pul = checker, Zar = die, Kapı = point, Küp = cube, Mars = gammon (×2), Çifte Mars = backgammon (×3),
+ * Çift = double, Kabul = take, Pas = drop, Çıkar = bear off, Vur = hit. `{n}` / `{name}` are filled by `t(key, vars)`.
+ */
+const en: Record<string, string> = {
+  name: 'Tavla (Backgammon)',
+  desc: 'Turkish backgammon for up to four at the table. Race your pul home, hit blots, and double the stake with the küp.',
+  ready: 'Ready', roll: 'Roll', double: 'Double', take: 'Take', drop: 'Drop', rules: 'Rules', cancel: 'Cancel',
+  bot: 'Mannikin', botL1: 'MANNIKIN I', botL2: 'MANNIKIN II', botL3: 'MANNIKIN III',
+  sIdle: 'Sit down to start a match', sStake: 'Ready up. Stake {n} per pul', sWaitReady: 'Waiting for {name}',
+  sRoll: '{name} to roll', sMove: 'Your move: pick a pul, then a point', sWaitMove: '{name} is moving',
+  sCube: '{name} offers a double to {n}', sWaitCube: 'Waiting for {name} to answer', sCubeYou: 'Double to {n}: take or drop?',
+  sOver: '{name} wins', sCancel: 'The match was cancelled', sLeft: 'Left the table: the stake goes to the opponent',
+  sQueue: 'Waiting in the queue', sKing: 'Holding the table',
+  first: '{name} starts', opening: 'Opening roll', doubles: 'DOUBLES!', hit: 'HIT!', bar: 'BAR',
+  single: 'WIN', gammon: 'MARS x2', backgammon: 'CIFTE MARS x3', pass: 'PASS', accept: 'ACCEPT',
+  cubeLabel: 'KUP {n}', cubeOwner: 'Küp owner: {name}', cubeCentre: 'Küp centred',
+  pickHint: 'Pick', targetHint: 'Target', noMove: 'No legal move', turnOver: 'Turn over',
+  notYourTurn: 'Not your turn', notYourMove: 'Not your move', badMove: 'That move is not legal',
+  noDouble: 'You cannot double now', noCube: 'Nothing to answer', noReady: 'Not in a match', matchFull: 'The table is full',
+  stakeLine: 'Stake {n}', winLine: '{name} wins {n}', lossLine: 'Stake lost',
+  rulesTitle: 'Tavla rules (Turkish backgammon)',
+  r1: 'Pul = checker. Each side has 15. Start: 2 on the 24-point, 5 on the 13, 3 on the 8, 5 on the 6.',
+  r2: 'Opening: each rolls one die, the higher starts and plays both dice. Ties roll again.',
+  r3: 'Move both dice forward. Play as much of the roll as possible. Doubles are four moves.',
+  r4: 'Kapı = point. You may land on an open point or one with your own pul. Two enemy pul block it.',
+  r5: 'Vur = hit. A lone enemy pul on a point is sent to the bar. It must enter on the opponent home first.',
+  r6: 'Çıkar = bear off. Only when all 15 pul are in your home. An exact die, or any higher die if none is further back.',
+  r7: 'Küp = doubling cube (1, 2, 4 … 64). Double before you roll. The other side takes or drops (Pas).',
+  r8: 'Drop: the doubler wins the stake as it stands. Take: the stake doubles and the taker owns the küp.',
+  r9: 'Win: single ×1, Mars ×2 if the loser bore off nothing, Çifte Mars ×3 if the loser is still on the bar or in your home.',
+  hintReady: 'Ready', hintRoll: 'Roll the dice', hintDouble: 'Double', hintTake: 'Take', hintDrop: 'Drop',
+  hintMove: 'Move', hintRules: 'Rules', hintStake: 'Stake', noFunds: 'Not enough coins for the stake',
+  seatLabel: 'SEAT {n}', turnLabel: 'TURN', cubeHud: 'KUP', stakeHud: 'STAKE',
+};
+
+const tr: Record<string, string> = {
+  name: 'Tavla',
+  desc: 'Masada en fazla dört kişi için Türk tavlası. Pullarını eve yarıştır, açıkta kalanı vur ve küple bahsi katla.',
+  ready: 'Hazır', roll: 'Zar at', double: 'Çift', take: 'Kabul', drop: 'Pas', rules: 'Kurallar', cancel: 'İptal',
+  bot: 'Manken', botL1: 'MANKEN I', botL2: 'MANKEN II', botL3: 'MANKEN III',
+  sIdle: 'Maç için masaya otur', sStake: 'Hazır ol. Pul başına {n} bahis', sWaitReady: '{name} bekleniyor',
+  sRoll: 'Sıra {name}de, zar atacak', sMove: 'Senin hamlen: bir pul seç, sonra bir kapı', sWaitMove: '{name} oynuyor',
+  sCube: '{name} {n} için çift teklif etti', sWaitCube: '{name} yanıtı bekleniyor', sCubeYou: '{n} için çift: kabul mü, pas mı?',
+  sOver: '{name} kazandı', sCancel: 'Maç iptal edildi', sLeft: 'Masadan ayrıldın: bahis rakibe gider',
+  sQueue: 'Sırada bekliyor', sKing: 'Masayı tutuyor',
+  first: '{name} başlıyor', opening: 'Açılış zarı', doubles: 'ÇİFT ZAR!', hit: 'VUR!', bar: 'BAR',
+  single: 'KAZANÇ', gammon: 'MARS x2', backgammon: 'ÇİFTE MARS x3', pass: 'PAS', accept: 'KABUL',
+  cubeLabel: 'KÜP {n}', cubeOwner: 'Küp sahibi: {name}', cubeCentre: 'Küp ortada',
+  pickHint: 'Seç', targetHint: 'Hedef', noMove: 'Yasal hamle yok', turnOver: 'Sıra bitti',
+  notYourTurn: 'Sıra sende değil', notYourMove: 'Hamle sırası sende değil', badMove: 'Bu hamle yasal değil',
+  noDouble: 'Şimdi çift yapamazsın', noCube: 'Yanıtlanacak teklif yok', noReady: 'Bir maçta değilsin', matchFull: 'Masa dolu',
+  stakeLine: 'Bahis {n}', winLine: '{name} {n} kazandı', lossLine: 'Bahis kaybedildi',
+  rulesTitle: 'Tavla kuralları',
+  r1: 'Pul = taş. Her tarafta 15 pul var. Başlangıç: 24 kapıda 2, 13 kapıda 5, 8 kapıda 3, 6 kapıda 5.',
+  r2: 'Açılış: her taraf birer zar atar, yüksek olan başlar ve iki zarı da oynar. Eşitse yeniden atılır.',
+  r3: 'İki zarı da ileri oyna. Zarın mümkün olduğu kadarını oyna. Çift zar dört hamledir.',
+  r4: 'Kapı = nokta. Boş ya da kendi pulun olan kapıya gidebilirsin. Rakibin iki pulu kapıyı kapatır.',
+  r5: 'Vur = tek kalan rakip pul bara gider. Önce rakibin evine girmek zorundadır.',
+  r6: 'Çıkar = pulları dışarı çıkarmak. Yalnızca 15 pulun da evdeyken. Tam zar ya da daha yüksek zar, daha geride pul yoksa.',
+  r7: 'Küp = çift küpü (1, 2, 4 … 64). Zar atmadan önce çift yapabilirsin. Öteki taraf kabul eder ya da pas geçer.',
+  r8: 'Pas: çift yapan, bahsin mevcut değerini alır. Kabul: bahis ikiye katlanır ve kabul eden küpe sahip olur.',
+  r9: 'Kazanç: tek ×1. Rakip hiç pul çıkaramadıysa Mars ×2. Rakip hâlâ barda ya da senin evindeyse Çifte Mars ×3.',
+  hintReady: 'Hazır', hintRoll: 'Zar at', hintDouble: 'Çift', hintTake: 'Kabul', hintDrop: 'Pas',
+  hintMove: 'Hamle', hintRules: 'Kurallar', hintStake: 'Bahis', noFunds: 'Bahis için yeterli jeton yok',
+  seatLabel: 'KOLTUK {n}', turnLabel: 'SIRA', cubeHud: 'KÜP', stakeHud: 'BAHİS',
+};
+
+export default { prefix: 'm.tavla.', en, tr };
+
+export const STRINGS = { en, tr };
