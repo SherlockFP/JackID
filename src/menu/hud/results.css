@@ -1,0 +1,25 @@
+/* The Sump receipt (GDD §9.9): thermal paper on the dark pit. Sizes in UI px (--u). */
+.rcp { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: calc(8 * var(--u)); padding: calc(8 * var(--u)) 16px; overflow: auto; font-family: var(--f-body); color: #191921; }
+.rcp-paper { position: relative; width: min(100%, calc(260 * var(--u))); max-height: 100%; box-sizing: border-box;
+  background: #f7efde; padding: calc(10 * var(--u)) calc(12 * var(--u)); box-shadow: 0 calc(3 * var(--u)) 0 #000; }
+.rcp-title { font-family: var(--f-head); font-size: calc(8 * var(--u) * 1.4); line-height: 1.2; text-align: center; color: #5a1019; }
+.rcp-sub { text-align: center; font-size: calc(16 * var(--u)); color: #5a525a; }
+.rcp-rule { border-top: calc(1 * var(--u)) dashed #7b736b; margin: calc(4 * var(--u)) 0; }
+.rcp-body { display: flex; flex-direction: column; gap: calc(2 * var(--u)); }
+.rcp-line { display: flex; justify-content: space-between; gap: calc(8 * var(--u)); font-size: calc(16 * var(--u)); line-height: 1.05;
+  opacity: 0; transform: translateX(calc(-4 * var(--u))); transition: opacity .05s steps(2), transform .08s steps(2); }
+.rcp-line.on { opacity: 1; transform: none; }
+.rcp-line .k { color: #5a525a; }
+.rcp-line .v { text-align: right; font-variant-numeric: tabular-nums; }
+.rcp-stamp { position: absolute; right: calc(10 * var(--u)); top: 40%; transform: rotate(-12deg); padding: calc(2 * var(--u)) calc(6 * var(--u));
+  border: calc(2 * var(--u)) solid #c52129; color: #c52129; font-family: var(--f-head); font-size: calc(8 * var(--u)); letter-spacing: 1px; }
+.rcp-stamp.good { border-color: #2e7d46; color: #2e7d46; }
+.rcp-stamp.thud { animation: rcp-thud .25s cubic-bezier(.2, 1.6, .4, 1); }
+.rcp-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(8 * var(--u)); }
+.rcp-btn { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--shine); background: var(--coal);
+  border: calc(1 * var(--u)) solid var(--brass); padding: calc(6 * var(--u)) calc(10 * var(--u)); cursor: pointer; }
+.rcp-btn:hover, .rcp-btn:focus-visible { background: var(--brass-dark); outline: none; color: #fff; }
+.rcp-hint { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); text-align: center; }
+@keyframes rcp-thud { 0% { transform: rotate(-12deg) scale(1.6); opacity: 0; } 100% { transform: rotate(-12deg) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .rcp-stamp.thud { animation: none; } }
