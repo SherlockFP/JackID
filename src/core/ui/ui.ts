@@ -778,7 +778,7 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
       if (progress === null) { skipEl.classList.remove('on'); return; }
       if (!skipEl.classList.contains('on')) { skipEl.classList.add('on'); skipKey.textContent = deps.keyLabel('skip'); }
       skipRing.style.setProperty('--p', clamp(progress, 0, 1).toFixed(3));
-      const txt = label ?? t('ui.skip.hold');
+      const txt = label ?? t('ui.skip.hold', { key: deps.keyLabel('skip') });
       if (skipLbl.textContent !== txt) skipLbl.textContent = txt;
     },
 

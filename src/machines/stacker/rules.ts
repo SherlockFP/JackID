@@ -37,7 +37,7 @@ export const SLIP_P = 0.6;              // chance per row that the bar slips by 
 export const HIGH_RAMP = 2;             // speed × on rows above MINOR_ROW (expert ceiling: fast top rows punish fine aim less than luck)
 export const SLIP_T = 1.2;              // slip lands at a seeded time in [0, SLIP_T) s after the row starts
 export const DWELL_MAX = 0.12;          // edge dwell 0–120 ms
-export const COLLAPSE_P = 0.09;         // skill-independent per-row collapse chance (rows 1..MINOR_ROW)
+export const COLLAPSE_P = 0.03;         // skill-independent per-row collapse chance (rows 1..MINOR_ROW), was 0.09
 export const DECIDE_S = 5;             // MINOR decision window (default TAKE)
 export const ROW_GAP_S = 0.45;          // fall + beat between rows
 
@@ -194,6 +194,19 @@ export function collapses(seed: number, row: number): boolean {
   return row <= MINOR_ROW && createRng(hashSeed(seed, row, 'collapse')).next() < COLLAPSE_P;
 }
 
+/**
+ * Resolve one stop: the collapse roll first (a collapsed row loses the whole bar), then `settleRow`. Shared by `playOnce`
+ * and the live machine so both apply the same collapse and the simulated RTP stays the live RTP.
+ */
+export function resolveStop(seed: number, row: number, top: Seg | null, cs: number, w: number, saveAvail: boolean): RowOut {
+  if (collapses(seed, row)) {
+    const fell: number[] = [];
+    for (let c = cs; c < cs + w; c++) fell.push(c);
+    return { ok: false, cs, kept: [], fell, saved: false, seg: null };
+  }
+  return settleRow(top, cs, w, saveAvail);
+}
+
 /** Stochastic rounding of an exact payout: unbiased for fractional stakes. `u` in [0, 1). */
 export function roundPrize(exact: number, u: number): number {
   return exact > 0 ? Math.floor(exact + u) : 0;
@@ -232,8 +245,7 @@ export function playOnce(rng: Rng, stake: number, o: PlayOpts): PlayResult {
     const u1 = Math.max(rng.next(), 1e-12), u2 = rng.next();
     const gauss = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
     const cs = stopCell(m, Math.max(0, m.firstAt(target) + o.sigma * gauss));
-    if (collapses(seed, row)) return finish(rng, stake, 0, 'lose', row, false);
-    const r = settleRow(top, cs, w, save);
+    const r = resolveStop(seed, row, top, cs, w, save);
     if (r.saved) save = false;
     if (!r.ok) return finish(rng, stake, 0, 'lose', row, false);
     top = r.seg;

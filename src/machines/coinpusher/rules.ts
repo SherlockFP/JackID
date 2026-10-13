@@ -83,7 +83,7 @@ export function laneLoss(streak: number): number {
   return Math.min(LANE_LOSS_CAP, LANE_LOSS_STEP * Math.max(0, streak - LANE_STREAK));
 }
 /** Tracks the current lane run. `st` −1 = none yet. Call `trackLane` once per drop and pass the result as `streak`. */
-export interface LaneTrack { st: StationIx | -1; n: number }
+export type LaneTrack = { st: StationIx | -1; n: number };
 export function trackLane(t: LaneTrack, st: StationIx): number {
   t.n = t.st === st ? t.n + 1 : 1;
   t.st = st;

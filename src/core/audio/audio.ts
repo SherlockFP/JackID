@@ -467,7 +467,10 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
       const n = winSfx(tier);
       if (!n) return;
       play(n, o);
-      if (tier === 'big') addHold('music', 0.4, 1.8); else if (tier === 'huge') addHold('music', 0.5, 3.2); else if (tier === 'jackpot') addHold('music', 0.65, 5.5);
+      if (tier === 'big') addHold('music', 0.4, 1.8);
+      else if (tier === 'huge') addHold('music', 0.5, 3.2);
+      else if (tier === 'mega') addHold('music', 0.6, 4.2);
+      else if (tier === 'jackpot') addHold('music', 0.65, 5.5);
     },
     coins(n: number, o: PlayOpts = {}) { playDef('coins', { run: coinCascade(n), meta: { pri: 4, max: 4, gain: 1 } }, o); },
     ambience(id, fade = 1.5) { ambWant = id; if (ctx.state === 'running') applyAmbience(fade); },

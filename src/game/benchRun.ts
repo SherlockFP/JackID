@@ -236,6 +236,7 @@ export class BenchRun implements RunApi {
   deposit(_amount: number): boolean { return false; }
   give(_to: PlayerId, _amount: number): boolean { return false; }
   buyCharm(_id: string, _price: number): boolean { return false; }
+  grantCharm(_id: string): boolean { return false; }
 
   hostBet(pid: PlayerId, amount: number, src: EcoSource): boolean { return pid === this.selfId && this.bet(amount, src); }
   hostWin(pid: PlayerId, gross: number, src: EcoSource, meta: WinMeta): number { return pid === this.selfId ? this.win(gross, src, meta) : 0; }

@@ -173,7 +173,7 @@ export function createFx(): FxApi {
       resolve(at, v);
       const x = v.x, y = v.y, z = v.z;
       const color = o?.color ?? GOLD;
-      const big = tier === 'big' || tier === 'huge' || tier === 'jackpot';
+      const big = tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot';
       const at3: PosLike = [x, y, z];
       const coins = (n: number, over: number): void => ps.burst('coins', x, y, z, n, { over, dir: [0, 1, 0.6] });
 
@@ -208,6 +208,16 @@ export function createFx(): FxApi {
           api.hitstop(0.08);
           api.lightPulse(at3, { color, mul: 2.4, radius: 10, dur: 0.9 });
           break;
+        case 'mega':
+          coins(160, 2.5);
+          api.confetti(at3, 120);
+          api.sparks(at3, 50, color);
+          api.flash(GOLD, 0.55, 0.05);
+          api.shake(0.04, 0.75, { roll: 1.3 });
+          api.zoomPunch(0.06, 0.55);
+          api.hitstop(0.1);
+          api.lightPulse(at3, { color, mul: 2.8, radius: 12, dur: 1.0 });
+          break;
         case 'jackpot':
           coins(200, 3);
           api.confetti(at3, 160);
@@ -226,7 +236,7 @@ export function createFx(): FxApi {
       }
 
       if (o?.amount !== undefined && tier !== 'push') {
-        const scale = tier === 'small' ? 1 : tier === 'medium' ? 1.15 : tier === 'big' ? 1.5 : tier === 'huge' ? 1.8 : 2.2;
+        const scale = tier === 'small' ? 1 : tier === 'medium' ? 1.15 : tier === 'big' ? 1.5 : tier === 'huge' ? 1.8 : tier === 'mega' ? 2 : 2.2;
         api.popText([x, y + 0.25, z], `+${fmtCoins(o.amount, true)}`, WIN_GREEN, {
           dur: big ? 1.4 : 1.1, rise: big ? 0.6 : 0.4, scale, shake: big,
           flyTo: o.flyToWallet ? 'wallet' : undefined, sfx: o.flyToWallet ? 'numberTick' : undefined,

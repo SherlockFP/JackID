@@ -61,6 +61,15 @@ export const BUFF_DATA: BuffDef[] = [
       { name: 'Aşırı Isınma', desc: 'Dolaptan duman yükseliyor. %50 daha yavaş çalışır.' }),
   },
 
+  // ── bounty rewards ──
+  {
+    id: 'bounty.early_interest', kind: 'buff', scope: 'player', icon: 'icon.clock', maxStacks: 1,
+    duration: { kind: 'shift' }, reapply: 'refresh', tags: ['bounty'],
+    effects: [{ hook: 'interest.add', op: 'add', value: 0.1 }],
+    strings: S({ name: 'Early Interest', desc: 'Interest at settle is +10 % higher this Night.' },
+      { name: 'Erken Faiz', desc: 'Bu Gece kapanıştaki faiz +%10 daha yüksek.' }),
+  },
+
   // ── co-op aura (player; refreshed every second while an ally stands near) ──
   {
     id: 'friend_glow', kind: 'buff', scope: 'player', icon: 'icon.heart', maxStacks: 3,

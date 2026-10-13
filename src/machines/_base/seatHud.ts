@@ -57,7 +57,7 @@ export class SeatHud {
   private shown = false;
   private card: 'none' | 'tip' | 'rules' = 'none';
   private tipId = '';
-  private resultTimer = 0;
+  private cancelResult: (() => void) | null = null;
 
   /** `mount` is normally the machine's `ctx.ui.root` (`#ui`). */
   constructor(mount: HTMLElement) {
@@ -138,11 +138,19 @@ export class SeatHud {
     this.resultA.style.display = amount === 0 ? 'none' : '';
     void this.resultEl.offsetWidth;                       // restart the pop-in
     this.resultEl.classList.add('on');
-    this.resultTimer = window.setTimeout(() => { this.resultEl.classList.remove('on'); this.resultTimer = 0; }, hold * 1000);
+    const end = performance.now() + hold * 1000;
+    let live = true;
+    const tick = (): void => {
+      if (!live) return;
+      if (performance.now() >= end) { this.resultEl.classList.remove('on'); this.cancelResult = null; return; }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    this.cancelResult = () => { live = false; };
   }
   private clearResult(): void {
-    if (this.resultTimer) window.clearTimeout(this.resultTimer);
-    this.resultTimer = 0;
+    this.cancelResult?.();
+    this.cancelResult = null;
     this.resultEl.classList.remove('on');
   }
 

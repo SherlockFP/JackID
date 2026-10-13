@@ -29,7 +29,7 @@ import { buildModel, cellPos, setCell, GOLD, AMBER, LIT, type StackerParts } fro
 import { STRINGS } from './stacker.strings';
 import {
   COLS, ROWS, MINOR_ROW, MAJOR_ROW, MIN_STAKE, MAX_STAKE, MINOR_MULT, MAJOR_MULT, DECIDE_S, ROW_GAP_S,
-  HOOK_EXTRA, HOOK_SAVE, HOOK_MINOR, RTP, Motion, rowWidth, speedOf, settleRow, stopCell, roundPrize, playHeadless,
+  HOOK_EXTRA, HOOK_SAVE, HOOK_MINOR, RTP, Motion, rowWidth, speedOf, resolveStop, stopCell, roundPrize, playHeadless,
   type Seg, type Outcome,
 } from './rules';
 
@@ -83,7 +83,7 @@ export const def: MachineDef = {
     luck: 'Metronome: each luck point makes the bar 2 % slower per row (cap 20 %).',
     'x.stacker.extraBlock': 'Extra width for the bar on rows 1–5. Base 0 (Brass Knuckles +1).',
     'm.stacker.saveCell': 'Above 0: the first falling overhang cell is caught, once per play. Base 0.',
-    'm.stacker.minorMult': 'Multiplier on the MINOR take (×2.5 base). Base 1.',
+    'm.stacker.minorMult': 'Multiplier on the MINOR take (×1.6 base). Base 1.',
     'm.stacker.majorCharm': 'Rarity bonus of the MAJOR charm capsule. Base 0.',
   },
   strings: STRINGS,
@@ -206,7 +206,7 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
     if (!p || p.phase !== 'moving' || !p.motion) return;
     const tp = this.simT - p.t0;
     const cs = stopCell(p.motion, tp);
-    const r = settleRow(p.top, cs, p.w, p.save);
+    const r = resolveStop(p.seed, p.row, p.top, cs, p.w, p.save);
     if (r.saved) p.save = false;
     this.bar = null;
     void this.emit({ k: 'stop', row: p.row, w: p.w, v: p.v, seed: p.seed, tp, cs, kept: r.kept, fell: r.fell, saved: r.saved, ok: r.ok });

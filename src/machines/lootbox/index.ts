@@ -2,7 +2,7 @@
  * Mystery Capsule Vendor (`lootbox`, solo, gallery). Three crank tiers (TIN 10 / BRASS 40 / GILDED 150 coins × stake
  * index). Each crank charges the stake (`beginRound`, one action point), rolls the capsule's content on the authority
  * and sends `vend`; the capsule rolls down the spiral chute to your hands. Twist it open (Space, or hold LMB and circle)
- * to send `open`, which settles the coins and grants any charm through `run.buyCharm(id, 0)`.
+ * to send `open`, which settles the coins and grants any charm through `run.grantCharm(id)`.
  *
  * Rules and tables: rules.ts (pure, shared with `playHeadless`). Model: model.ts. Strings: strings.ts.
  *
@@ -261,7 +261,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     void this.emit(ev, () => {
       let coins = ev.coins;
       if (c.kind === 'charm' && !c.dupe) {
-        if (this.ctx.run.buyCharm(c.charmId, 0)) {
+        if (this.ctx.run.grantCharm(c.charmId)) {
           ev.granted = true;
         } else {
           // peg board full, or the run refuses charm grants right now: pay the reference price in coins

@@ -18,6 +18,7 @@ export interface Settings {
   crosshair: 'dot' | 'cross' | 'none';
   subtitles: boolean;
   reduceFlashing: boolean;      // photosensitivity: flashes ×0.35, ≤ 3/s, strobes off
+  calm: boolean;                // Calm Mode: horror scares off, dread bumps halved (HorrorSettings.calm)
   // ── v1 ──
   shake: number;                // 0..1 screen-shake multiplier (ART_BIBLE §9.6)
   textScale: number;            // 1..1.5 UI text scale
@@ -50,6 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   crosshair: 'dot',
   subtitles: true,
   reduceFlashing: false,
+  calm: false,
   shake: 1,
   textScale: 1,
   colorblind: false,

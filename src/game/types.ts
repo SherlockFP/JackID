@@ -123,6 +123,8 @@ export interface RunApi {
   deposit(amount: number): boolean;                         // Debt Terminal only
   give(to: PlayerId, amount: number): boolean;              // co-op transfer
   buyCharm(charmId: string, price: number): boolean;        // Charm vendor only
+  /** Free charm from a prize (lootbox, claw, coin pusher, bounty). No phase gate. True when it was added. */
+  grantCharm(charmId: string): boolean;
   // HOST ONLY — shared tables (throws in dev if !isHost)
   hostBet(pid: PlayerId, amount: number, src: EcoSource): boolean;
   hostWin(pid: PlayerId, gross: number, src: EcoSource, meta: WinMeta): number;

@@ -10,7 +10,7 @@
  * Indices: `shift.index` / `debt.index` are 0-based; `night()` is the printed 1-based Night number.
  */
 import type {
-  ActiveRule, BetLimits, BetOpts, BuffsApi, CharmDef, CharmState, CollateralApi, ContractsApi, CurrencyId,
+  ActiveRule, BetLimits, BetOpts, BuffsApi, CharmDef, CharmState, CollateralApi, ContractDef, ContractGoal, ContractsApi, ContractState, CurrencyId,
   DebtState, EcoSource, JackpotPool, JackpotsApi, ModBreakdown, ModBreakdownStep, ModEffect, ModHook, ModProvider, ModQuery,
   ModSource, ModifierApi, NightEventsApi, OvershootClaim, QuotaState, RefusalReason, RewardSpec, RunApi, RunWindow,
   ShiftApi, ShiftPhase, ShiftRuleDef, ShiftState, TotemState, TotemsApi, TycoonApi, WinMeta, WinTier,
@@ -32,7 +32,7 @@ import {
   assessmentFor, closingSeconds, interestFor, interestRate, isWitchingWatch, lastCallSeconds, nightDef, quotaFor,
 } from './data/schedule';
 import { PAYOUT_GUARD, bettingLadder, charmPrice, settlePayout, snapDown, type PayoutResult } from './economy';
-import { Charms, PEG_CAP_RUN, choiceOffer, charmDef, rollPawnWindow } from './charms/engine';
+import { Charms, PEG_CAP_RUN, allCharmDefs, choiceOffer, charmDef, rollPawnWindow } from './charms/engine';
 import { playableMode, rulesFor, type ModeRules } from './modes';
 import { createTycoon, type Tycoon } from './tycoon';
 import { createBuffSystem, type BuffSystem } from './buffs';
@@ -79,6 +79,24 @@ const PULL_PRICE_TICKETS = 3;
 const PULLS_BOUGHT_MAX = 2;
 /** Machine id used for run-level modifier queries (no machine). */
 const RUN_MACHINE = 'run';
+/** Bounty board: offers per Night and slips one player may hold (GDD §11.9: three per Night). */
+const BOARD_OFFERS = 3;
+const CONTRACT_MAX_ACTIVE = 3;
+
+/** The fields a contract goal reads from a run event (`machine:result`, `machine:round`, `run:deposit`, `jackpot:win`). */
+interface ContractEv {
+  machineId: string; tier?: WinTier; tags?: readonly string[];
+  bet?: number; gross?: number; credited?: number; amount?: number;
+}
+/** True when an event passes a goal's `where` filter. */
+function contractMatches(w: NonNullable<ContractGoal['where']>, ev: ContractEv): boolean {
+  if (w.machineId !== undefined && ev.machineId !== w.machineId) return false;
+  if (w.minTier !== undefined && (ev.tier === undefined || WIN_TIERS.indexOf(ev.tier) < WIN_TIERS.indexOf(w.minTier))) return false;
+  if (w.tags && !w.tags.every((t) => ev.tags?.includes(t) === true)) return false;
+  if (w.minBet !== undefined && (ev.bet ?? 0) < w.minBet) return false;
+  if (w.minGross !== undefined && (ev.gross ?? 0) < w.minGross) return false;
+  return true;
+}
 
 // ── persistence ──────────────────────────────────────────────────────────────────────────────────────
 /** Run-private state that the shared `RunSnapshot` shape does not carry. Stored under `resume.ext` (JSON-safe). */
@@ -102,7 +120,11 @@ export interface RunExt {
   buffs?: BuffSave;
   /** Owned totems (carried and placed). Optional: older saves have none. */
   totems?: TotemState[];
+  /** Bounty board: offers, signed and finished slips, stat baselines. Optional: older saves have none. */
+  contracts?: ContractsSave;
 }
+/** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
+interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
 export interface RunSave extends RunSnapshot { ext: RunExt }
 
 function isRunSave(s: RunSnapshot): s is RunSave {
@@ -167,8 +189,6 @@ export interface DebtRun extends RunApi {
   attachWorld(link: RunWorldLink | null): void;
   /** Idle income credited on resume, read once (null when none). */
   takeIdleReport(): IdleReport | null;
-  /** Free charm from a prize (lootbox, claw, coin pusher, bounty). No phase gate. True when it was added. */
-  grantCharm(charmId: string): boolean;
   /** Unhook the buff and totem systems. Call when the session ends. */
   dispose(): void;
   readonly over: boolean;
@@ -346,6 +366,13 @@ class Run implements DebtRun {
   private dirty = false;
   private sinceFlush = 0;
   private overpays: PendingOverpay[] = [];
+  // bounty board (ContractsApi): defs registered by the device catalogue, offers and slips for this run
+  private readonly contractDefs = new Map<string, ContractDef>();
+  private contractList: ContractState[] = [];
+  private contractNight = -1;
+  private contractSeq = 0;
+  private contractBase = new Map<string, number>();
+  private readonly unsubs: Unsub[] = [];
 
   constructor(opts: RunOpts, resume: RunSave | null) {
     this.mode = playableMode(opts.mode);
@@ -436,7 +463,13 @@ class Run implements DebtRun {
     this.totems = this.itemSys.totems;
 
     this.collateral = inert<CollateralApi>('collateral', {});
-    this.contracts = inert<ContractsApi>('contracts', { board: () => [], active: () => [] });
+    this.contracts = this.makeContractsApi();
+    this.unsubs.push(
+      bus.on('machine:result', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:result', p); }),
+      bus.on('machine:round', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:round', p); }),
+      bus.on('run:deposit', (p) => { if (p.pid === this.selfId) this.advanceContracts('run:deposit', { machineId: '', amount: p.amount }); }),
+      bus.on('jackpot:win', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:jackpot', p); }),
+    );
     this.jackpots = this.makeJackpotsApi();
 
     if (resume) {
@@ -629,7 +662,10 @@ class Run implements DebtRun {
   alive(_pid?: PlayerId): boolean { return this.living; }
   stat(key: string, add = 0): number {
     const v = (this.counters.get(key) ?? 0) + add;
-    if (add) this.counters.set(key, v);
+    if (add) {
+      this.counters.set(key, v);
+      this.syncStatContracts(key);
+    }
     return v;
   }
   phone(): PhoneCallState | null { return null; }
@@ -847,7 +883,11 @@ class Run implements DebtRun {
 
   attachWorld(link: RunWorldLink | null): void { this.worldLink = link; }
   takeIdleReport(): IdleReport | null { return this.tycoonSys.takeIdleReport(); }
-  dispose(): void { this.buffSys.dispose(); this.itemSys.dispose(); }
+  dispose(): void {
+    this.unsubs.splice(0).forEach((u) => u());
+    this.buffSys.dispose();
+    this.itemSys.dispose();
+  }
 
   onChange(fn: () => void): () => void {
     this.listeners.add(fn);
@@ -923,6 +963,7 @@ class Run implements DebtRun {
 
   /** Dawn Collection: the quota is settled. Paid → overpay rewards, the surplus opens the next Night. Short → protections or the trapdoor. */
   private dawn(): void {
+    this.expireContracts();
     const due = this.quota.due;
     let paid = this.debtPaid >= due;
     if (!paid && this.charmBox.has(this.selfId, 'false_bottom') && due - this.debtPaid <= 0.1 * due) {
@@ -1159,6 +1200,10 @@ class Run implements DebtRun {
       savedAt: Date.now(),
       buffs: this.buffSys.buffs.snapshot(),
       totems: this.itemSys.totems.snapshot(),
+      contracts: {
+        night: this.contractNight, seq: this.contractSeq, list: this.contractList.map((c) => ({ ...c })),
+        base: Object.fromEntries(this.contractBase),
+      },
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -1228,6 +1273,156 @@ class Run implements DebtRun {
     return took;
   }
 
+  /** Launch charm pool of one rarity (lootbox and claw prizes read it through `Reflect`). Unlock-gated charms are left out. */
+  charmPool(rarity: string): Array<{ id: string; price: number; maxStacks?: number }> {
+    return allCharmDefs()
+      .filter((d) => d.rarity === rarity && !d.unlock)
+      .map((d) => ({ id: d.id, price: Math.abs(d.price), maxStacks: d.maxStacks }));
+  }
+
+  // ── bounty board (ContractsApi, GDD §11.9) ──────────────────────────────────────────────────────
+  private makeContractsApi(): ContractsApi {
+    return {
+      register: (def) => {
+        this.contractDefs.set(def.id, def);
+        return () => { if (this.contractDefs.get(def.id) === def) this.contractDefs.delete(def.id); };
+      },
+      defs: () => [...this.contractDefs.values()],
+      board: () => {
+        this.ensureOffers();
+        return this.contractList.filter((c) => c.status === 'offered');
+      },
+      active: (pid) => {
+        const who = pid ?? this.selfId;
+        return this.contractList.filter((c) => c.owner === who && (c.status === 'active' || c.status === 'done'));
+      },
+      accept: (uid) => this.acceptContract(uid),
+      abandon: (uid) => this.abandonContract(uid),
+      claim: (uid) => this.claimContract(uid),
+      roll: (n) => { this.rollContracts(n); this.notify(); },
+    };
+  }
+
+  /** Draws the Night's offers once, the first time the board is read with defs registered. */
+  private ensureOffers(): void {
+    if (this.contractNight === this.index || this.contractDefs.size === 0 || this.ended) return;
+    this.rollContracts(BOARD_OFFERS);
+  }
+
+  /** Replaces the unsigned offers with `n` weighted draws (no repeats, none the player already holds). */
+  private rollContracts(n: number): void {
+    this.contractList = this.contractList.filter((c) => c.status !== 'offered');
+    const held = new Set(this.contractList.filter((c) => c.owner === this.selfId).map((c) => c.def));
+    const r = this.rng.fork(`bounty:${this.index}:${++this.contractSeq}`);
+    const pool = [...this.contractDefs.values()].filter((d) => !held.has(d.id) && (d.minShift ?? 0) <= this.index + 1);
+    for (let i = 0; i < n && pool.length > 0; i++) {
+      const total = pool.reduce((s, d) => s + (d.weight ?? 2), 0);
+      let x = r.next() * total;
+      let k = 0;
+      while (k < pool.length - 1 && x >= (pool[k].weight ?? 2)) { x -= pool[k].weight ?? 2; k++; }
+      const [d] = pool.splice(k, 1);
+      this.contractList.push({
+        uid: `k${this.index + 1}-${++this.contractSeq}`, def: d.id, owner: 0, status: 'offered', progress: 0, target: d.goal.count, streak: 0,
+      });
+    }
+    this.contractNight = this.index;
+    this.persistSoon();
+  }
+
+  private statGoal(c: ContractState): string | undefined {
+    const d = this.contractDefs.get(c.def);
+    return d?.goal.on === 'stat' ? d.goal.where?.stat : undefined;
+  }
+
+  private acceptContract(uid: string): boolean {
+    const c = this.contractList.find((x) => x.uid === uid && x.status === 'offered');
+    if (!c || this.ended) return false;
+    const held = this.contractList.filter((x) => x.owner === this.selfId && (x.status === 'active' || x.status === 'done')).length;
+    if (held >= CONTRACT_MAX_ACTIVE) return false;
+    c.status = 'active';
+    c.owner = this.selfId;
+    const key = this.statGoal(c);
+    if (key !== undefined) this.contractBase.set(c.uid, this.stat(key));
+    this.persist();
+    this.notify();
+    return true;
+  }
+
+  private abandonContract(uid: string): boolean {
+    const c = this.contractList.find((x) => x.uid === uid && x.owner === this.selfId && x.status === 'active');
+    if (!c) return false;
+    this.dropContract(c);
+    this.persist();
+    this.notify();
+    return true;
+  }
+
+  /** Pays a finished slip: coins (absolute or quota fraction), then the grant bundle (tickets, buffs, totems, charm). */
+  private claimContract(uid: string): boolean {
+    const c = this.contractList.find((x) => x.uid === uid && x.owner === this.selfId && x.status === 'done');
+    const d = c ? this.contractDefs.get(c.def) : undefined;
+    if (!c || !d) return false;
+    const rw = d.reward;
+    if (rw.coins !== undefined) {
+      const amt = typeof rw.coins === 'number' ? rw.coins : Math.round(this.quota.due * rw.coins.quotaFrac);
+      this.earn('coin', amt, `contract:${d.id}`);
+    }
+    this.grant(rw);
+    this.dropContract(c);
+    this.persist();
+    this.notify();
+    return true;
+  }
+
+  private dropContract(c: ContractState): void {
+    this.contractList = this.contractList.filter((x) => x !== c);
+    this.contractBase.delete(c.uid);
+  }
+
+  /** Dawn: unsigned offers and unfinished slips expire (GDD §11.9). Finished slips stay until they are cashed. */
+  private expireContracts(): void {
+    for (const c of this.contractList) if (c.status === 'offered' || c.status === 'active') this.contractBase.delete(c.uid);
+    this.contractList = this.contractList.filter((c) => c.status !== 'offered' && c.status !== 'active');
+  }
+
+  /** Counts run events toward signed slips whose goal is an event (not a stat). */
+  private advanceContracts(on: ContractGoal['on'], ev: ContractEv): void {
+    let changed = false;
+    for (const c of this.contractList) {
+      if (c.status !== 'active' || c.owner !== this.selfId) continue;
+      const d = this.contractDefs.get(c.def);
+      if (!d || d.goal.on !== on || d.goal.where?.stat !== undefined) continue;
+      const w = d.goal.where ?? {};
+      if (!contractMatches(w, ev)) {
+        // a streak breaks on a non-matching result from the same machine
+        if (d.goal.streak && w.machineId !== undefined && ev.machineId === w.machineId && c.progress > 0) {
+          c.progress = 0;
+          changed = true;
+        }
+        continue;
+      }
+      c.progress += d.goal.sum ? Math.max(0, ev[d.goal.sum] ?? 0) : 1;
+      if (d.goal.streak) c.streak = c.progress;
+      if (c.progress >= c.target) c.status = 'done';
+      changed = true;
+    }
+    if (changed) { this.persistSoon(); this.notify(); }
+  }
+
+  /** Stat goals read the run counter minus the value at signing. */
+  private syncStatContracts(key: string): void {
+    let changed = false;
+    for (const c of this.contractList) {
+      if (c.status !== 'active' || c.owner !== this.selfId || this.statGoal(c) !== key) continue;
+      const p = Math.max(0, this.stat(key) - (this.contractBase.get(c.uid) ?? 0));
+      if (p === c.progress) continue;
+      c.progress = p;
+      if (p >= c.target) c.status = 'done';
+      changed = true;
+    }
+    if (changed) { this.persistSoon(); this.notify(); }
+  }
+
   private restore(s: RunSave): void {
     const e = s.ext;
     this.index = e.index; this.watch = e.watch; this.watches = e.watches; this.overtimeIdx = e.overtimeIdx;
@@ -1257,6 +1452,12 @@ class Run implements DebtRun {
     if (e.tycoon) this.tycoonSys.restore(e.tycoon);
     this.buffSys.buffs.restore(e.buffs);
     this.itemSys.totems.restore(e.totems);
+    if (e.contracts) {
+      this.contractNight = e.contracts.night;
+      this.contractSeq = e.contracts.seq;
+      this.contractList = e.contracts.list.map((c) => ({ ...c }));
+      this.contractBase = new Map(Object.entries(e.contracts.base));
+    }
     if (typeof e.savedAt === 'number') this.tycoonSys.catchUp(Math.max(0, (Date.now() - e.savedAt) / 1000));
     this.ended = !this.living || this.phase === 'over';
   }

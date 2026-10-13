@@ -503,7 +503,7 @@ class InputImpl implements InputExt {
         if (this.dispatchWalk(k, r, mode)) walkHandled = true;
       }
     }
-    if (mode === 'cutscene' && !skipped && CUTSCENE_SKIP_CODES.includes(r.code)) this.dispatchWalk('skip', r, mode);
+    if (mode === 'cutscene' && !skipped && (CUTSCENE_SKIP_CODES.includes(r.code) || r.code === '__pause')) this.dispatchWalk('skip', r, mode);
     // unbound at the machine (and not a live seated walk action such as Esc / Tab / F1) → device letters: delivered raw
     if (mode === 'machine' && !machineBound && !walkHandled && !MODIFIER_CODES.has(r.code) && !r.code.startsWith('Mouse')
         && !r.code.startsWith('Wheel') && r.code !== '__pause') {
@@ -515,7 +515,7 @@ class InputImpl implements InputExt {
   private dispatchWalk(a: string, r: Raw, mode: InputMode): boolean {
     const allowed = mode === 'walk'
       || (mode === 'machine' && SEATED_WALK_ACTIONS.has(a) && !(a === 'chat' && (r.code === 'Enter' || r.code === 'NumpadEnter')))
-      || (mode === 'cutscene' && (a === 'skip' || a === 'pause'))
+      || (mode === 'cutscene' && a === 'skip')                       // cutscenes: Esc / lock loss only skip, never pause
       || (mode === 'menu' && a === 'pause');
     if (!allowed) return false;
     let set = this.walkHeld.get(a);

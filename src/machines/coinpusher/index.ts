@@ -31,7 +31,7 @@ import {
 } from './model';
 import {
   BLOCK, HOOK_WALLS, TILT_S, THUMP_TILT_S, TRAY_CAP, TRAY_TOKEN_RATE, WALLS_S, knobsFor, makeGov, govRecord,
-  playHeadless, rollDrop, rollUnits, type Fate, type Gov, type StationIx,
+  playHeadless, rollDrop, rollUnits, trackLane, type Fate, type Gov, type LaneTrack, type StationIx,
 } from './rules';
 import { STRINGS } from './strings';
 
@@ -40,7 +40,7 @@ export { playHeadless };
 /** Public state (every peer; late joiners get it in the snapshot). Times are host ms. */
 type St = { shelf: number; tilt: [number, number]; walls: number; blk: [number, number]; pay: [number, number]; win: [number, number] };
 /** Host-only bookkeeping that must survive a save. */
-type Host = { tray: [number, number]; tiltAt: [number, number]; wallsAt: number };
+type Host = { tray: [number, number]; tiltAt: [number, number]; wallsAt: number; lane: LaneTrack };
 type Snap = { s: St; g: Gov | null; h: Host | null };
 type Act = { k: 'drop'; x: number } | { k: 'thump' };
 /** Fate of one coin as [station, lost 0/1, units]. */
@@ -91,7 +91,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
   private st: St = { shelf: PILE_START, tilt: [0, 0], walls: 0, blk: [0, 0], pay: [0, 0], win: [0, 0] };
   // ── host-only authority ──
   private gov: Gov = makeGov();
-  private hostState: Host = { tray: [0, 0], tiltAt: [0, 0], wallsAt: 0 };
+  private hostState: Host = { tray: [0, 0], tiltAt: [0, 0], wallsAt: 0, lane: { st: -1, n: 0 } };
   private tok: [number, number] = [TRAY_TOKEN_RATE, TRAY_TOKEN_RATE];
   private open: [boolean, boolean] = [false, false];
   private cnt: [number, number] = [0, 0];
@@ -172,7 +172,8 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     const aim = clamp(x, -1, 1);
     const walls = now < this.hostState.wallsAt;
     const k = knobsFor(this.gov, (h, b) => this.mod(h, b), this.luck(), walls);
-    const r = rollDrop(this.hostRng, k, seat as StationIx, aim);
+    const streak = trackLane(this.hostState.lane, seat as StationIx);   // accepted drops only; same-station run length
+    const r = rollDrop(this.hostRng, k, seat as StationIx, aim, streak);
     if (r.kind === 'W') this.hostState.wallsAt = now + Math.max(1, this.mod(HOOK_WALLS, WALLS_S)) * 1000;
 
     const credit = (f: Fate): void => {
@@ -265,14 +266,14 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     return {
       s,
       g: host ? { ...this.gov, acc: [...this.gov.acc], hist: this.gov.hist.map((p): [number, number] => [p[0], p[1]]) } : null,
-      h: host ? { tray: [...this.hostState.tray], tiltAt: [...this.hostState.tiltAt], wallsAt: this.hostState.wallsAt } : null,
+      h: host ? { tray: [...this.hostState.tray], tiltAt: [...this.hostState.tiltAt], wallsAt: this.hostState.wallsAt, lane: { ...this.hostState.lane } } : null,
     };
   }
 
   applySnapshot(sn: Snap): void {
     this.st = { ...sn.s, tilt: [...sn.s.tilt], blk: [...sn.s.blk], pay: [...sn.s.pay], win: [...sn.s.win] };
     if (sn.g) this.gov = { ...sn.g, acc: [...sn.g.acc], hist: sn.g.hist.map((p): [number, number] => [p[0], p[1]]) };
-    if (sn.h) this.hostState = { tray: [...sn.h.tray], tiltAt: [...sn.h.tiltAt], wallsAt: sn.h.wallsAt };
+    if (sn.h) this.hostState = { tray: [...sn.h.tray], tiltAt: [...sn.h.tiltAt], wallsAt: sn.h.wallsAt, lane: { st: sn.h.lane?.st ?? -1, n: sn.h.lane?.n ?? 0 } };
     this.paintLeds();
     this.paintLamps();
   }

@@ -26,7 +26,7 @@ import {
 } from './model';
 import {
   aimAt, applyGrab, buildPile, charmsOf, CHUTE, GANTRY_LIM, GANTRY_SPEED, grossOf, HOOK_JACKPOT, HOOK_MAGNET, HOOK_TIMER,
-  HOOK_WEAK, HOOK_XRAY, playHeadless, settleDrop, STAKE_MAX, STAKE_MIN, strongChance, TIMER_S,
+  HOOK_WEAK, HOOK_XRAY, KIND, playHeadless, settleDrop, STAKE_MAX, STAKE_MIN, strongChance, TIMER_S,
   type Grab, type Kind, type Prize,
 } from './rules';
 import STR from './claw.strings';
@@ -263,11 +263,37 @@ export default class Claw extends MachineBase<ClawParts, Ev, Snap> {
     const ev: DropEv = {
       k: 'drop', x: this.aim.x, z: this.aim.z, strong: this.strong, gross, grab: r.grab, kinds: r.delivered, tags,
     };
-    const shown = this.emit(ev, () => this.settle({ gross, tags }));
+    const shown = this.emit(ev, () => {
+      // capsules pay a free charm when the run takes one; otherwise their coin value stays in the gross
+      ev.gross = this.capsulePayout(r.delivered, stake, gross);
+      this.settle({ gross: ev.gross, tags });
+    });
     void shown.then(() => {
       this.dropping = false;
       this.showHud();
     });
+  }
+
+  /** Coins a drop pays after the capsules: each capsule whose charm the run grants drops its coin value. */
+  private capsulePayout(kinds: readonly Kind[], stake: number, gross: number): number {
+    let g = gross;
+    for (const k of kinds) {
+      const rarity = KIND[k].charm;
+      if (rarity && this.grantCapsuleCharm(rarity)) g -= KIND[k].mult * stake;
+    }
+    return Math.max(0, g);
+  }
+
+  /** Grants one charm of the capsule's rarity from the run's launch pool, skipping charms already held. False: pay coins. */
+  private grantCapsuleCharm(rarity: 'common' | 'rare'): boolean {
+    const run = this.ctx.run;
+    const f: unknown = Reflect.get(run, 'charmPool');
+    if (typeof f !== 'function') return false;
+    const pool = f.call(run, rarity) as ReadonlyArray<{ id: string; maxStacks?: number }>;
+    const owned = new Set(run.charms(this.selfId).map((s) => s.id));
+    const open = pool.filter((p) => (p.maxStacks ?? 1) > 1 || !owned.has(p.id));
+    if (open.length === 0) return false;
+    return run.grantCharm(open[Math.floor(this.rng.next() * open.length)].id);
   }
 
   // ── presentation: every peer, including the emitter ─────────────────────────────────────────────

@@ -41,6 +41,7 @@ import type {
 } from './types';
 import { benchSlot, fallbackZones, loadArch, type FlickerId, type GateDef, type LevelBuild, type SpawnKind, type SpawnPoint } from './sys/arch';
 import { LightPool, type LightSourceInit } from './sys/lightPool';
+import { createJuiceFx } from './sys/juiceFx';
 import { ItemManager } from './sys/items';
 import { buildBroken, buildPad, playDelivery, playRemoval, type PadServices } from './sys/pads';
 import { fits, resolvePlacements, type Placement } from './sys/placement';
@@ -159,6 +160,7 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
   offs.push(bus.on('phone:ring', () => { ringing = true; }));
   offs.push(bus.on('phone:end', () => { ringing = false; }));
   offs.push(bus.on('dread:change', ({ value }) => pool.api.setDread(value)));
+  const juiceFx = createJuiceFx(pool.api);
 
   // ── level (WORLD-ARCH) ────────────────────────────────────────────────────────────────────────
   const anchors = new Map<string, THREE.Object3D>();
@@ -707,6 +709,7 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
         if (!m || !rec.ready || !m.visible) continue;
         try { m._frame(dt, time); } catch (e) { log.error('world', `${rec.id} frame`, e); }
       }
+      juiceFx.update(dt);
       pool.update(dt, camera.position);
       atmosphere(dt);
       items.update(dt);
@@ -723,6 +726,7 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
       for (const p of props.values()) { try { p.dispose(); } catch (e) { log.error('world', `prop ${p.id}`, e); } }
       props.clear();
       try { level?.dispose?.(); } catch (e) { log.error('world', 'level dispose', e); }
+      juiceFx.dispose();
       pool.dispose();
       collision.clear();
       changeFns.clear();

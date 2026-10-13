@@ -20,7 +20,8 @@ import { MenuBurst } from './menuBurst';
 import { paintDieFace, paintPanel, paintValueFace } from './menuArt';
 
 const MAIN_FACES = ['multi', 'settings', 'credits', 'quit', 'play', 'free'] as const;
-const SET_FACES = ['language', 'back', 'music', 'controls', 'audio', 'graphics'] as const;
+// Six faces per cube: BACK gave way to CALM (Esc / Backspace still close the settings die).
+const SET_FACES = ['language', 'calm', 'music', 'controls', 'audio', 'graphics'] as const;
 type MainItem = typeof MAIN_FACES[number];
 type SetItem = typeof SET_FACES[number];
 /** Per-value steps for the controls face (mouse sensitivity). */
@@ -103,12 +104,13 @@ export function createMenuState(): AppStateHandler<'menu'> {
     mainDie.paint(i, (c, w, h) => paintDieFace(c, w, h, { label: t(`menu.face.${item}`), icon: item, lit: false }));
   };
 
-  const valueOf = (item: Exclude<SetItem, 'back' | 'language'>): { value: string; sub: string } => {
+  const valueOf = (item: Exclude<SetItem, 'language'>): { value: string; sub: string } => {
     const s = settings();
     const bar = (v: number): string => `[${'#'.repeat(Math.round(v * 10))}${'.'.repeat(10 - Math.round(v * 10))}]`;
     switch (item) {
       case 'audio': return { value: `${Math.round(s.vol.master * 100)}%`, sub: bar(s.vol.master) };
       case 'music': return { value: `${Math.round(s.vol.music * 100)}%`, sub: bar(s.vol.music) };
+      case 'calm': return { value: t(s.calm ? 'menu.val.on' : 'menu.val.off'), sub: '' };
       case 'graphics': return { value: t(s.psx.enabled ? 'menu.val.on' : 'menu.val.off'), sub: `${s.psx.targetHeight}p` };
       case 'controls': {
         const n = nearestSens(s.mouseSens) + 1;
@@ -119,10 +121,6 @@ export function createMenuState(): AppStateHandler<'menu'> {
 
   const paintSet = (i: number): void => {
     const item: SetItem = SET_FACES[i];
-    if (item === 'back') {
-      setDie.paint(i, (c, w, h) => paintDieFace(c, w, h, { label: t('menu.face.back'), icon: 'back', lit: false, dark: true }));
-      return;
-    }
     if (item === 'language') {
       const v = settings().lang === 'tr' ? t('menu.val.tr') : t('menu.val.en');
       setDie.paint(i, (c, w, h) => paintValueFace(c, w, h, { label: t('menu.face.language'), value: v, sub: '', lit: false }));
@@ -285,6 +283,9 @@ export function createMenuState(): AppStateHandler<'menu'> {
       case 'graphics':
         app.save.setSetting('psx', { ...s.psx, enabled: !s.psx.enabled });
         break;
+      case 'calm':
+        app.save.setSetting('calm', !s.calm);
+        break;
       case 'controls': {
         const idx = Math.max(0, Math.min(SENS.length - 1, nearestSens(s.mouseSens) + dir));
         app.save.setSetting('mouseSens', SENS[idx]);
@@ -293,13 +294,11 @@ export function createMenuState(): AppStateHandler<'menu'> {
       case 'language':
         app.save.setSetting('lang', s.lang === 'en' ? 'tr' : 'en');
         break;
-      case 'back':
-        return;
     }
     sfx('click');
     const face = setDie.frontFace();
     paintSet(face);
-    const v = item === 'language' ? (settings().lang === 'tr' ? t('menu.val.tr') : t('menu.val.en')) : valueOf(item as Exclude<SetItem, 'back' | 'language'>).value;
+    const v = item === 'language' ? (settings().lang === 'tr' ? t('menu.val.tr') : t('menu.val.en')) : valueOf(item as Exclude<SetItem, 'language'>).value;
     popAt(setDie, v);
   };
 
@@ -317,8 +316,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
 
   const activateSet = (face: number, hit: DieHit | null): void => {
     const item = SET_FACES[face];
-    if (item === 'back') { closeSettings(); return; }
-    if (item === 'language') { adjust(item, 1); return; }
+    if (item === 'language' || item === 'calm') { adjust(item, 1); return; }
     // a click on the left half of the value lowers it, the right half raises it
     const dir = hit && hit.point.x < setDie.base.x ? -1 : 1;
     adjust(item, dir);

@@ -26,7 +26,7 @@ export type SfxName =
   | 'stamp' | 'printer' | 'cashRegister' | 'coinPour' | 'coinMagnet' | 'sparkle' | 'popUp' | 'numberTick'
   | 'whisper' | 'heartbeat' | 'stinger' | 'lightFlicker' | 'powerDown' | 'powerUp' | 'neonBuzz' | 'paClick'
   | 'tapeStop' | 'tinnitus' | 'defib' | 'gunBlank' | 'gunLoad' | 'shellEject' | 'tileClack' | 'cardSlap'
-  | 'totemPlace' | 'totemPulse' | 'porcelainCrack' | 'jackpotSiren' | 'creak' | 'drip' | 'footstepWet';
+  | 'totemPlace' | 'totemPulse' | 'porcelainCrack' | 'jackpotSiren' | 'jackpotBells' | 'creak' | 'drip' | 'footstepWet';
 
 /** Defaults a registered recipe plays with (same meaning as the built-in table). All optional. */
 export interface SfxRegisterMeta {
