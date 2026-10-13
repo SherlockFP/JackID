@@ -51,7 +51,7 @@ export const layerOf = (key: string): Layer => (key.startsWith('m.') ? 'machine'
 
 /** Walk-layer actions that stay live while seated (everything else is suppressed at a machine). */
 export const SEATED_WALK_ACTIONS: ReadonlySet<string> = new Set([
-  'pause', 'scoreboard', 'chat', 'debug', 'debugColliders', 'help', 'upgrade',
+  'pause', 'scoreboard', 'chat', 'debug', 'debugColliders', 'help', 'upgrade', 'journal',
 ]);
 /** During a cutscene these codes act as `skip` in addition to the user's binding. */
 export const CUTSCENE_SKIP_CODES: readonly string[] = ['Space', 'Enter', 'NumpadEnter', 'Escape'];

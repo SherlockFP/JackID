@@ -31,14 +31,14 @@ export interface NightDef {
 
 /** GDD §2.4 base run, Nights 1–8 (index 0..7). */
 export const BASE_NIGHTS: readonly NightDef[] = [
-  { no: 1, floor: 'B7', name: 'first', base: 80, watches: 3, pulls: 7, clock: 150, interest: 0.10, favour: 1.25, si: 1, card: 0 },
-  { no: 2, floor: 'B6', name: 'second', base: 300, watches: 3, pulls: 7, clock: 150, interest: 0.09, favour: 1.15, si: 3, card: 3 },
-  { no: 3, floor: 'B5', name: 'third', base: 1150, watches: 3, pulls: 8, clock: 165, interest: 0.08, favour: 1.07, si: 10, card: 3 },
-  { no: 4, floor: 'B4', name: 'fourth', base: 4400, watches: 3, pulls: 8, clock: 165, interest: 0.07, favour: 1, si: 30, card: 4 },
-  { no: 5, floor: 'B3', name: 'fifth', base: 17000, watches: 4, pulls: 8, clock: 180, interest: 0.06, favour: 1, si: 100, card: 4 },
-  { no: 6, floor: 'B2', name: 'sixth', base: 65000, watches: 4, pulls: 9, clock: 180, interest: 0.05, favour: 1, si: 300, card: 4 },
-  { no: 7, floor: 'B1', name: 'seventh', base: 250000, watches: 4, pulls: 9, clock: 195, interest: 0.04, favour: 1, si: 1000, card: 4 },
-  { no: 8, floor: 'G', name: 'final', base: 1000000, watches: 4, pulls: 10, clock: 210, interest: 0.03, favour: 1, si: 3000, card: 5 },
+  { no: 1, floor: 'B7', name: 'first', base: 14, watches: 3, pulls: 7, clock: 150, interest: 0.40, favour: 1.25, si: 1, card: 0 },
+  { no: 2, floor: 'B6', name: 'second', base: 30, watches: 3, pulls: 7, clock: 150, interest: 0.36, favour: 1.15, si: 3, card: 3 },
+  { no: 3, floor: 'B5', name: 'third', base: 64, watches: 3, pulls: 8, clock: 165, interest: 0.32, favour: 1.07, si: 10, card: 3 },
+  { no: 4, floor: 'B4', name: 'fourth', base: 104, watches: 3, pulls: 8, clock: 165, interest: 0.28, favour: 1, si: 30, card: 4 },
+  { no: 5, floor: 'B3', name: 'fifth', base: 176, watches: 4, pulls: 8, clock: 180, interest: 0.24, favour: 1, si: 100, card: 4 },
+  { no: 6, floor: 'B2', name: 'sixth', base: 310, watches: 4, pulls: 9, clock: 180, interest: 0.20, favour: 1, si: 300, card: 4 },
+  { no: 7, floor: 'B1', name: 'seventh', base: 550, watches: 4, pulls: 9, clock: 195, interest: 0.16, favour: 1, si: 1000, card: 4 },
+  { no: 8, floor: 'G', name: 'final', base: 960, watches: 4, pulls: 10, clock: 210, interest: 0.12, favour: 1, si: 3000, card: 5 },
 ];
 
 export const BASE_RUN_NIGHTS = BASE_NIGHTS.length;
@@ -50,11 +50,11 @@ export function overdrawnNight(no: number): NightDef {
     no,
     floor: `B${no - 7}`,
     name: 'overdrawn',
-    base: sig(1_000_000 * Math.pow(4, k), 3),
+    base: sig(960 * Math.pow(1.7, k), 3),
     watches: 4,
     pulls: 10,
     clock: 210,
-    interest: Math.max(0.01, 0.03 - 0.005 * k),
+    interest: Math.max(0.04, 0.12 - 0.01 * k),
     favour: 1,
     si: sig(3000 * Math.pow(3.5, k), 2),
     card: 5,

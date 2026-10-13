@@ -17,7 +17,7 @@ import { DYNAMIC_EFFECTS, type LiveCharm } from './behaviours';
 /** What a dynamic effect may read: the charm's bag, the run, and the owner (for charm lookups). No rng, no side effects. */
 export interface EngineLive extends LiveCharm { pid?: PlayerId }
 export type EngineDynamic = (live: EngineLive, q?: ModQuery) => ModEffect[];
-type Behaviour = Partial<Pick<CharmDef, 'on'>>;
+type Behaviour = Partial<Pick<CharmDef, 'on' | 'badge'>>;
 
 const num = (v: Json | undefined): number => (typeof v === 'number' && isFinite(v) ? v : 0);
 const mult = (value: number): ModEffect[] => [{ hook: 'payout.mult', op: 'mult', value }];
@@ -59,6 +59,7 @@ function understudyTarget(live: EngineLive): { def: CharmDef; data: Record<strin
 export const ENGINE_BEHAVIOURS: Readonly<Record<string, Behaviour>> = {
   /** A play on a different suit than the last one: +1 Rung (max 6). Same suit as the last play: −3 Rungs. */
   suit_ladder: {
+    badge: (d) => num(d.rungs) || null,
     on: {
       'machine:result': (p, c) => {
         const suit = suitOfTags(p.tags) ?? suitOf(p.machineId)?.toLowerCase() ?? null;
@@ -73,6 +74,7 @@ export const ENGINE_BEHAVIOURS: Readonly<Record<string, Behaviour>> = {
   },
   /** A loss stores Pressure (max 8); a win spends it (the win's payout is read before this handler runs). */
   pressure_valve: {
+    badge: (d) => num(d.pressure) || null,
     on: {
       'machine:result': (p, c) => {
         c.data.pressure = isWin(p) ? 0 : Math.min(8, num(c.data.pressure) + 1);
@@ -81,6 +83,7 @@ export const ENGINE_BEHAVIOURS: Readonly<Record<string, Behaviour>> = {
   },
   /** Plays on Cold or tilted machines store charge (max 6); the next win on a Hot machine spends it. */
   capacitor: {
+    badge: (d) => num(d.charge) || null,
     on: {
       'machine:result': (p, c) => {
         const tilt = circuitView(c.run)?.tilt(p.mid);
@@ -95,13 +98,15 @@ export const ENGINE_BEHAVIOURS: Readonly<Record<string, Behaviour>> = {
   },
   /** A win on a Hot machine adds a wick (max 6, until Dawn). */
   lampwick: {
+    badge: (d) => num(d.wicks) || null,
     on: {
       'machine:result': (p, c) => {
         if (!isWin(p) || num(c.data.wicks) >= 6) return;
         const hot = circuitView(c.run)?.lamps().hot.some((e) => e.mid === p.mid) ?? false;
         if (!hot) return;
         c.data.wicks = num(c.data.wicks) + 1;
-        c.proc();
+        const w = num(c.data.wicks);
+        c.proc(w, `+${8 * w}%`);
       },
       'run:window': (p, c) => { if (p.window === 'dawn') c.data.wicks = 0; },
     },
@@ -112,12 +117,14 @@ export const ENGINE_BEHAVIOURS: Readonly<Record<string, Behaviour>> = {
       'machine:result': (p, c) => {
         if (p.bet <= 0 || p.gross < p.bet * 5) return;
         c.run.earn('ticket', 1, 'charm:ticket_press', c.pid);
-        c.proc();
+        const n = c.run.balance('ticket', c.pid);
+        c.proc(Math.floor(n / 3), `+${Math.min(20, 2 * Math.floor(n / 3))}%`);
       },
     },
   },
   /** Each Watch settled with at least 25 % of the quota deposited: +1 Watch (max 3). Reset at Dawn. */
   snowball_ledger: {
+    badge: (d) => num(d.watches) || null,
     on: {
       'shift:phase': (p, c) => {
         if (p.phase !== 'settle' || c.run.shift.quota().ratio < 0.25) return;

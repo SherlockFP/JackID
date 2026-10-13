@@ -53,7 +53,9 @@ export const def: MachineDef = {
   zone: 'gallery',
   seats: 1,
   shared: false,
-  minBet: 1,
+  // The cheapest capsule (TIN) costs 10 at SI 1, so the floor is that price. A lower floor let a 1-coin stake buy a
+  // 10-coin capsule in headless play (the sim read RTP 905 %) and let a staff shill win ~9 coins per coin staked.
+  minBet: 10,
   maxBet: 150,
   betSteps: [10, 40, 150],
   maxPayoutMult: 5,

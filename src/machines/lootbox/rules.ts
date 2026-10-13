@@ -191,9 +191,14 @@ export function nextPity(count: number, tier: number, rarity: Rarity): number {
 /**
  * Headless play (staff auto-play and balance sims). Coins only, as the live machine settles. Charm rolls use the empty
  * pool, so they pay the reference price in coins: the sim measures value RTP.
+ *
+ * The stake buys `bet / price` of a capsule: the tier is the nearest one to the bet and the payout is scaled by the
+ * stake over that tier's price (after the discount hook). So gross / bet is the value RTP of the tier for ANY stake, and
+ * a stake below the TIN price can no longer be paid as a full 10-coin capsule.
  */
 export const playHeadless: HeadlessPlay = (rng, bet, h) => {
-  const c = rollCapsule(rng, tierForBet(bet), {
+  const tier = tierForBet(bet);
+  const c = rollCapsule(rng, tier, {
     luck: h.luck,
     cursedMult: h.mod('m.lootbox.cursedOdds', 1),
     forceRarePlus: false,
@@ -202,5 +207,7 @@ export const playHeadless: HeadlessPlay = (rng, bet, h) => {
     owned: () => false,
     pool: () => NO_POOL,
   });
-  return { gross: payoutOf(c), tags: [c.rarity] };
+  const price = tierPrice(tier, 1, h.mod('m.lootbox.discount', 0));
+  const share = bet > 0 ? bet / price : 0;
+  return { gross: payoutOf(c) * share, tags: [c.rarity] };
 };

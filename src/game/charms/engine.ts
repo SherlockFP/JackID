@@ -51,6 +51,8 @@ export interface CharmHost {
 export class Charms implements ModProvider {
   readonly kind: ModSourceKind = 'charm';
   private readonly owned = new Map<PlayerId, CharmState[]>();
+  /** Procs per charm id this run (post-mortem 'top charm'); not saved. */
+  readonly procs = new Map<string, number>();
 
   constructor(private readonly host: CharmHost) {}
 
@@ -158,7 +160,10 @@ export class Charms implements ModProvider {
       stacks: state.stacks ?? 1,
       run: this.host.run(),
       rng: this.host.rng.fork(`charm:${id}`),
-      proc: () => { bus.emit('charm:proc', { pid, charmId: id }); },
+      proc: (tier = 0, label?: string) => {
+        this.procs.set(id, (this.procs.get(id) ?? 0) + 1);
+        bus.emit('charm:proc', { pid, charmId: id, tier, label });
+      },
       data: bagOf(state),
     };
   }

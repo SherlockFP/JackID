@@ -80,7 +80,8 @@ export interface GameEvents {
   // ── charms / buffs / totems / collateral ──
   'charm:add': { pid: PlayerId; charmId: string };
   'charm:remove': { pid: PlayerId; charmId: string };
-  'charm:proc': { pid: PlayerId; charmId: string };  // a charm triggered (HUD flash)
+  // a charm triggered (HUD flash, tick, pop). tier: 0-based proc strength (tick pitch 1 + 0.06·tier); label: pop text, e.g. '×1.48'
+  'charm:proc': { pid: PlayerId; charmId: string; tier?: number; label?: string };
   'buff:add': { owner: BuffOwnerKey; buff: BuffState };
   'buff:remove': { owner: BuffOwnerKey; id: string };
   'totem:place': { uid: string; def: string; owner: PlayerId };

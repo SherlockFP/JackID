@@ -45,7 +45,7 @@ export const MACHINE_PROFILES: Readonly<Record<string, MachineProfile>> = {
   fruitmachine: { plays: 200000, bet: 1, hit: 0.1174, p2: 0.1174, p5: 0.07, p10: 0.0281, p25: 0, p100: 0, sigma: 2.8, rtp: 0.8395, cls: 'SWINGY' },
   hilo: { plays: 200000, bet: 5, hit: 0.4201, p2: 0.1515, p5: 0.0056, p10: 0.0056, p25: 0.0008, p100: 0.0008, sigma: 4.95, rtp: 0.9598, cls: 'WILD' },
   keno: { plays: 200000, bet: 1, hit: 0.2578, p2: 0.0458, p5: 0.0458, p10: 0.0034, p25: 0.0034, p100: 0.0034, sigma: 7.03, rtp: 0.976, cls: 'WILD' },
-  lootbox: { plays: 200000, bet: 1, hit: 0.6773, p2: 0.6773, p5: 0.4771, p10: 0.3568, p25: 0.0761, p100: 0.006, sigma: 13.61, rtp: 9.0528, cls: 'WILD' },
+  lootbox: { plays: 200000, bet: 10, hit: 0.6773, p2: 0.0761, p5: 0.006, p10: 0.006, p25: 0, p100: 0, sigma: 1.36, rtp: 0.9053, cls: 'STEADY' },
   lottoblower: { plays: 200000, bet: 5, hit: 0.2849, p2: 0.0977, p5: 0.0422, p10: 0.0035, p25: 0.0035, p100: 0.0002, sigma: 13.23, rtp: 0.8762, cls: 'WILD' },
   mines: { plays: 200000, bet: 1, hit: 0.6684, p2: 0.2989, p5: 0, p10: 0, p25: 0, p100: 0, sigma: 0.79, rtp: 0.9673, cls: 'STEADY' },
   pachinko: { plays: 200000, bet: 1, hit: 0.1056, p2: 0.1056, p5: 0.0706, p10: 0.0002, p25: 0.0002, p100: 0.0002, sigma: 47.49, rtp: 1.0142, cls: 'WILD' },

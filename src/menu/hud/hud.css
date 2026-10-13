@@ -91,6 +91,22 @@
 .hud .hint { left: 50%; top: 50%; transform: translate(-50%, calc(14 * var(--u))); font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 .hud .hidden { display: none; }
 
+/* wave 8 juice: live counter on a charm peg, gold proc pop stacked near the top centre */
+.hud .charm { position: relative; }
+.hud .charm .badge { position: absolute; right: calc(-3 * var(--u)); bottom: calc(-4 * var(--u)); padding: 0 calc(1 * var(--u));
+  font-family: var(--f-body); font-size: calc(8 * var(--u)); line-height: 1.2; color: var(--shine); background: var(--coal);
+  box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass); white-space: nowrap; }
+.hud .charm .badge.hidden { display: none; }
+.hud .charm-pop { position: absolute; left: 50%; top: calc(30% + 12 * var(--i, 0) * var(--u)); transform: translateX(-50%);
+  font-family: var(--f-head); font-size: calc(18 * var(--u)); line-height: 1; color: var(--shine); white-space: nowrap;
+  animation: charm-pop .9s ease-out forwards; }
+
+@keyframes charm-pop {
+  0% { transform: translate(-50%, 0) scale(.6); opacity: 0; }
+  15% { transform: translate(-50%, calc(-4 * var(--u))) scale(1.15); opacity: 1; }
+  70% { transform: translate(-50%, calc(-8 * var(--u))) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, calc(-14 * var(--u))); opacity: 0; }
+}
 @keyframes hud-blink { 50% { opacity: .15; } }
 @keyframes hud-hop { 0% { transform: translateY(0); } 40% { transform: translateY(calc(-2 * var(--u))); } 100% { transform: translateY(0); } }
 @keyframes hud-glow { 0% { filter: brightness(1.8); } 100% { filter: none; } }

@@ -36,7 +36,7 @@ const LOOP_ENV = { a: LOOP_FADE, d: 0.001, s: 1, r: LOOP_FADE };
  * normalised to 0.60 full scale (UI ticks 0.45, big jingles 0.72), clamped to 0.3–3. Re-run when a recipe changes.
  */
 const TRIM: Record<string, number> = {
-  click: 1.13, hover: 3, button: 0.86, popUp: 1.19, numberTick: 3, quotaTick: 2.16,
+  click: 1.13, hover: 3, button: 0.86, popUp: 1.19, numberTick: 3, quotaTick: 2.16, charmTick: 2.2,
   beep: 2.37, error: 1.64, chime: 1.64, lever: 0.46, ratchet: 1.73, reelStart: 1.11,
   reelLoop: 1.75, reelSpin: 1.91, reelTick: 2.79, reelStop: 0.69, crank: 1.75, motor: 0.47,
   gunClick: 2.6, gunBlank: 2.4, blankClick: 2.4, gunLoad: 1.09, shellRack: 1.17, shellEject: 2.53,
@@ -177,6 +177,12 @@ def('quotaTick', (k, o) => {
   snap(k, 0, 0.2, 3000, 0.006, 3);
   return 0.06;
 }, { bus: 'ui', pri: 4, max: 3 });
+// Charm proc tick (wave 8 juice). Pitch rises with the proc tier: the HUD passes PlayOpts.pitch = 12·log2(1 + 0.06·tier).
+def('charmTick', (k) => {
+  k.osc('triangle', 1320, 0.05, { vol: 0.2, env: { a: 0.002, d: 0.035, s: 0, r: 0.012 } });
+  snap(k, 0, 0.2, 3600, 0.005, 3);
+  return 0.06;
+}, { bus: 'ui', pri: 4, max: 6 });
 def('beep', (k) => { k.osc('square', 1000, 0.07, { vol: 0.16, lp: 3500, env: { a: 0.003, d: 0.01, s: 0.8, r: 0.012 } }); return 0.09; }, { bus: 'ui', pri: 6 });
 def('error', (k) => {
   k.osc('square', 440, 0.09, { vol: 0.16, lp: 2200, env: { a: 0.003, d: 0.01, s: 0.8, r: 0.01 } });

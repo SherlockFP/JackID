@@ -100,6 +100,8 @@ export interface RunSummary {
   stats?: Record<string, number>;
   /** The run adds a posed mannequin of this player to the Hall of Losers. */
   hall?: boolean;
+  /** Post-mortem line data for the host's player. */
+  post?: { short: number; pullsLeft: number; bestMachine?: string | null; topCharm?: string | null };
 }
 
 /**

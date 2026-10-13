@@ -19,6 +19,7 @@ import { circuitView, type LampEntry, type LampView } from '@/game/circuit';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { PlayerId } from '@/core/types';
 import { mmss, Roller, signed, wallClock } from './hud/fmt';
+import { createProcPops, pegBadge, playProcTick } from './hud/charmProc';
 import './hud/hud.css';
 
 const PHONE_SECONDS = 10;
@@ -118,6 +119,8 @@ export function createHud(): Hud {
   const charms = h('div', 'hb charms', root);
   const charmRow = h('div', 'charm-row', charms);
   let charmKey = '';
+  let pegs: Array<{ badge: HTMLElement; text: string }> = [];
+  const procPops = createProcPops(root);
 
   // ── feed, phone, prompt, dread ──────────────────────────────────────────────────────────────────
   const feed = h('div', 'feed', root);
@@ -192,10 +195,10 @@ export function createHud(): Hud {
 
   on('pulls:change', ({ pid, pulls: n }) => {
     if (pid !== self()) return;
-    pullsPeak = Math.max(pullsPeak, n);
+    if (Number.isFinite(n)) pullsPeak = Math.max(pullsPeak, n);
   });
 
-  on('charm:proc', ({ pid, charmId }) => {
+  on('charm:proc', ({ pid, charmId, tier, label }) => {
     if (pid !== self()) return;
     for (const el of charmRow.querySelectorAll<HTMLElement>(`[data-id="${charmId}"]`)) {
       el.classList.add('proc');
@@ -204,6 +207,8 @@ export function createHud(): Hud {
       el.classList.add('hop');
       window.setTimeout(() => el.classList.remove('proc'), 100);
     }
+    playProcTick(tier ?? 0);
+    if (label) procPops.show(label);
   });
 
   on('quota:met', () => { addFeed(t('hud.feed.quotaMet'), 'gold'); uiSfx('quotaTick', 1); });
@@ -324,6 +329,13 @@ export function createHud(): Hud {
   function updatePulls(): void {
     const r = app.run;
     const n = r ? r.pulls(self()) : 0;
+    if (!Number.isFinite(n)) {           // Free Casino: unlimited pulls. Never loop over Infinity (that froze the page).
+      if (pullsKey === 'inf') return;
+      pullsKey = 'inf';
+      tokens.replaceChildren();
+      h('i', 'tok', tokens);
+      return;
+    }
     pullsPeak = Math.max(pullsPeak, n);
     const key = `${pullsPeak}:${n}`;
     if (key === pullsKey) return;
@@ -339,12 +351,23 @@ export function createHud(): Hud {
     if (key !== charmKey) {
       charmKey = key;
       charmRow.replaceChildren();
+      pegs = [];
       for (const c of list) {
         const name = has(`charm.${c.id}.name`) ? t(`charm.${c.id}.name`) : c.id;
         const el = h('div', 'charm', charmRow, name.slice(0, 2).toUpperCase());
         el.dataset.id = c.id;
         el.title = name;
+        pegs.push({ badge: h('b', 'badge hidden', el), text: '' });
       }
+    }
+    // Live counters: the list order matches `pegs` until the key changes; badge text is written only on change.
+    for (let i = 0; i < pegs.length && i < list.length; i++) {
+      const peg = pegs[i];
+      const text = pegBadge(list[i].id, list[i].data);
+      if (text === peg.text) continue;
+      peg.text = text;
+      setText(peg.badge, text);
+      setCls(peg.badge, 'hidden', text === '');
     }
   }
 
@@ -389,6 +412,7 @@ export function createHud(): Hud {
     dispose(): void {
       for (const off of disposers.splice(0)) off();
       for (const [id] of anchors) ui().setAnchor(id, null);
+      procPops.dispose();
       root.remove();
     },
   };

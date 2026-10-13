@@ -13,10 +13,41 @@ export const MAX_CHOICES = 3;
 
 const CYCLE_S = RING_ON_S + RING_OFF_S;
 
+/** Seconds the phone rings: the 10 s base plus `x.phone.ringTime` (Tin Whistle, Bell upgrades), kept sane. */
+export function ringTotal(folded: number): number {
+  return Number.isFinite(folded) ? Math.min(40, Math.max(4, folded)) : RING_TOTAL_S;
+}
+
 /** Ringing state `elapsed` seconds after `ringingSince`: lamp on/off, and whether the phone still rings at all. */
-export function ringState(elapsed: number): { ringing: boolean; on: boolean } {
-  if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= RING_TOTAL_S) return { ringing: false, on: false };
+export function ringState(elapsed: number, total = RING_TOTAL_S): { ringing: boolean; on: boolean } {
+  if (!Number.isFinite(elapsed) || elapsed < 0 || elapsed >= total) return { ringing: false, on: false };
   return { ringing: true, on: (elapsed % CYCLE_S) < RING_ON_S };
+}
+
+/** One offer of the call: `PhoneCallState.options[i]` is "<i18n key>|k=v|k=v" (the game's deal key and its numbers). */
+export interface ParsedOption { key: string; vars: Record<string, string | number> }
+export function parseOption(opt: string): ParsedOption {
+  const [key = '', ...rest] = opt.split('|');
+  const vars: Record<string, string | number> = {};
+  for (const p of rest) {
+    const i = p.indexOf('=');
+    if (i < 1) continue;
+    const raw = p.slice(i + 1);
+    vars[p.slice(0, i)] = raw !== '' && Number.isFinite(Number(raw)) ? Number(raw) : raw;
+  }
+  return { key, vars };
+}
+
+/** Resolves vars whose value is written '@key' (an i18n key) with `tr`, so a deal can name a charm in the viewer's language. */
+export function resolveVars(vars: Record<string, string | number>, tr: (k: string) => string): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(vars)) out[k] = typeof v === 'string' && v.startsWith('@') ? tr(v.slice(1)) : v;
+  return out;
+}
+
+/** The three lines of one offer, as i18n keys: title, boon (what you get) and price (what it costs). */
+export function offerKeys(key: string): { name: string; boon: string; cost: string } {
+  return { name: `${key}.name`, boon: `${key}.boon`, cost: `${key}.cost` };
 }
 
 /** Index of the ring cycle that just started (0 = first ring). Used to fire the bell once per ring. */

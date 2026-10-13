@@ -24,6 +24,29 @@ const LINE_S = 0.12;
 const resultKey = (r: string): string => (has(`hud.results.result.${r}`) ? `hud.results.result.${r}` : `hud.results.result.lost`);
 const won = (r: RunSummary['result']): boolean => r === 'escaped' || r === 'won';
 
+/**
+ * Post-mortem for the receipt (wave 8 item 9). Optional on RunSummary (`post?: ResultsPost`, to be added in
+ * net/protocol.ts). Each field is filled by the run at endRun; the line omits what is missing.
+ *  - short: coins below the quota at the end (0 = quota met); pullsLeft: pulls unused at the end;
+ *  - bestMachine: machine id of the biggest win; topCharm: charm id with the most procs.
+ */
+export interface ResultsPost { short: number; pullsLeft: number; bestMachine?: string | null; topCharm?: string | null }
+
+const machineLabel = (id: string): string => (has(`machine.${id}.name`) ? t(`machine.${id}.name`) : id);
+const charmLabel = (id: string): string => (has(`charm.${id}.name`) ? t(`charm.${id}.name`) : id);
+
+/** "You were 120 short · 3 pulls unused · best machine Bandit · top charm Lucky Coin" (segments with no data are dropped). */
+export function postLine(p: ResultsPost | undefined): string {
+  if (!p) return '';
+  const parts: string[] = [
+    p.short > 0 ? t('hud.results.post.short', { x: fmtCoins(p.short, true) }) : t('hud.results.post.met'),
+    p.pullsLeft === 1 ? t('hud.results.post.pull1') : t('hud.results.post.pulls', { n: fmtNum(p.pullsLeft) }),
+  ];
+  if (p.bestMachine) parts.push(t('hud.results.post.best', { name: machineLabel(p.bestMachine) }));
+  if (p.topCharm) parts.push(t('hud.results.post.top', { name: charmLabel(p.topCharm) }));
+  return parts.join(' · ');
+}
+
 /** Stat keys the run may report; unknown keys print verbatim (translations land with the stats pass). */
 function statLines(stats: Record<string, number> | undefined): Array<[string, string]> {
   if (!stats) return [];
@@ -62,6 +85,13 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
     h('span', 'v', row, v);
     return row;
   });
+  const post = postLine((s as RunSummary & { post?: ResultsPost }).post);
+  if (post) {
+    const row = h('div', 'rcp-line', body);
+    h('span', 'k', row, post);
+    h('span', 'v', row);
+    lines.push(row);
+  }
 
   if (s.players.length > 1) {
     h('div', 'rcp-rule', body);

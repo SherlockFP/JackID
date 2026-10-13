@@ -89,8 +89,10 @@ export interface CharmDef {
   unlock?: string;
   /** Cursed charms cannot be sold; they pay a sign-on fee. */
   signOnFee?: number;
+  /** Live counter shown on the HUD peg (null or '' = no counter). Reads the charm's data bag only. */
+  badge?(data: Readonly<Record<string, Json>>): string | number | null;
 }
-export interface CharmCtx { pid: PlayerId; stacks: number; run: RunApi; rng: Rng; proc(): void; data: Record<string, Json> }
+export interface CharmCtx { pid: PlayerId; stacks: number; run: RunApi; rng: Rng; proc(tier?: number, label?: string): void; data: Record<string, Json> }
 
 /**
  * The economy / run facade every machine, HUD and system talks to. Single-player = offline host:

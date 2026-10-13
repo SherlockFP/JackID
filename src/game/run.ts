@@ -34,7 +34,7 @@ import {
   type ObolOutcome,
 } from './data/schedule';
 import {
-  COLD_MULT, Circuit, HOT_MULT, tiltBulbs, tiltFactor, tiltStep,
+  COLD_MULT, Circuit, HOT_MULT, rollLamps, tiltBulbs, tiltFactor, tiltStep,
   type CircuitSave, type CircuitView, type LampCandidate, type LampView, type TiltView,
 } from './circuit';
 import { PAYOUT_GUARD, bettingLadder, charmPrice, settlePayout, snapDown, type PayoutResult } from './economy';
@@ -51,6 +51,7 @@ import { playableMode, rulesFor, type ModeRules } from './modes';
 import { createTycoon, type Tycoon } from './tycoon';
 import { createBuffSystem, type BuffSystem } from './buffs';
 import { createItemSystem, type ItemSystem } from './items';
+import { createHotline, type Hotline, type HotlineSave } from './hotline';
 import type { EventBannerShow } from './buffs/banner';
 import type { IdleReport, TycoonState } from '@/game/types';
 
@@ -154,6 +155,8 @@ export interface RunExt {
   contracts?: ContractsSave;
   /** THE CIRCUIT: Tilt counters and Lamps of the Watch in progress. Optional: older saves have none. */
   circuit?: CircuitSave;
+  /** The hotline: ring schedule and the live call. Optional: older saves have none. */
+  hotline?: HotlineSave;
 }
 /** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
 interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
@@ -344,6 +347,7 @@ class Run implements DebtRun {
   private readonly tycoonSys: Tycoon;
   private readonly buffSys: BuffSystem;
   private readonly itemSys: ItemSystem;
+  private readonly hotline: Hotline;
   private worldLink: RunWorldLink | null = null;
   private readonly pools = new Map<string, JackpotPool>();
   private readonly poolListeners = new Set<(p: JackpotPool) => void>();
@@ -400,6 +404,7 @@ class Run implements DebtRun {
   private stats: Record<string, number> = { rounds: 0, wagered: 0, paid: 0, biggest: 0, wins: 0, nightsPaid: 0, interest: 0, deposited: 0 };
   private maxWallet = START.pocket;
   private biggest = 0;
+  private bestMachine: string | null = null;
   private rounds = 0;
   private dirty = false;
   private sinceFlush = 0;
@@ -490,6 +495,41 @@ class Run implements DebtRun {
       players: () => [this.selfId],
     }, this.modsImpl, { banner: opts.banner });
     this.buffs = this.buffSys.buffs;
+    this.hotline = createHotline(this, {
+      now: () => performance.now(),   // = net.hostTime() offline and on the host (the run only lives on the host)
+      host: {
+        addPulls: (n) => {
+          if (!Number.isFinite(this.pullCount)) return;
+          this.pullCount = Math.max(0, this.pullCount + n);
+          this.emit('pulls:change', { pid: this.selfId, pulls: this.pullCount });
+          this.notify(); this.persist();
+        },
+        creditQuota: (c) => {
+          if (!this.quotaMode || c <= 0) return;
+          this.debtPaid += c;
+          this.stats.deposited = (this.stats.deposited ?? 0) + c;
+          this.syncQuota();
+          this.emit('run:deposit', { pid: this.selfId, amount: c, paid: this.debtPaid, due: this.quota.due });
+          this.checkMet();
+          this.emit('quota:update', { quota: this.quota });
+          this.persist();
+        },
+        previewNextHot: () => {
+          if (!this.quotaMode) return null;
+          const last = this.watch + 1 >= this.watches;
+          const idx = last ? this.index + 1 : this.index;
+          const wt = last ? 0 : this.watch + 1;
+          if (idx + 1 < LAMP_FIRST_NIGHT) return null;
+          const hot = rollLamps(createRng(hashSeed('lamps', this.seed, idx, wt)), this.lampCandidates(), {
+            hot: Math.max(0, hotLampCount(idx + 1) + Math.round(this.mod('x.lamp.hotCount', RUN_MACHINE, 0))),
+            cold: 0,
+            prevHot: this.circ.hot(),
+          }).hot[0];
+          const c = hot === undefined ? undefined : this.lampCandidates().find((m) => m.mid === hot);
+          return c ? { mid: c.mid, machineId: c.machineId } : null;
+        },
+      },
+    });
     this.nightEvents = this.buffSys.nightEvents;
     this.baseEventChance = this.buffSys.nightEvents.chance();
 
@@ -634,6 +674,7 @@ class Run implements DebtRun {
     this.coins += credited;
     this.maxWallet = Math.max(this.maxWallet, this.coins);
     this.stats.paid = (this.stats.paid ?? 0) + credited;
+    if (credited > this.biggest) this.bestMachine = src.machineId;
     this.biggest = Math.max(this.biggest, credited);
     this.stats.biggest = this.biggest;
     if (credited > meta.bet) this.stats.wins = (this.stats.wins ?? 0) + 1;
@@ -729,8 +770,8 @@ class Run implements DebtRun {
     }
     return v;
   }
-  phone(): PhoneCallState | null { return null; }
-  answerPhone(_choice: number): void {}
+  phone(): PhoneCallState | null { return this.hotline.phone(); }
+  answerPhone(choice: number): void { this.hotline.answer(choice); }
 
   balance(cur: CurrencyId, _pid?: PlayerId): number {
     if (cur === 'coin') return this.coins;
@@ -792,6 +833,7 @@ class Run implements DebtRun {
       this.emit('run:clock', { remaining: this.clock.remaining });
     }
     this.buffSys.tick(dt);
+    this.hotline.tick(dt);
     this.itemSys.tick(dt);
     if (this.phase === 'play' || this.phase === 'lastCall') this.tycoonSys.tick(dt);
     if (!this.rules.timed) return;
@@ -927,6 +969,7 @@ class Run implements DebtRun {
   takeIdleReport(): IdleReport | null { return this.tycoonSys.takeIdleReport(); }
   dispose(): void {
     this.unsubs.splice(0).forEach((u) => u());
+    this.hotline.dispose();
     this.buffSys.dispose();
     this.itemSys.dispose();
   }
@@ -1054,6 +1097,22 @@ class Run implements DebtRun {
     this.endRun('fell');
   }
 
+  private postMortem(): NonNullable<RunSummary['post']> {
+    const q = this.shift.quota();
+    let topCharm: string | null = null;
+    let best = 0;
+    for (const s of this.charmBox.list(this.selfId)) {          // owned order: ties go to the earliest
+      const n = this.charmBox.procs.get(s.id) ?? 0;
+      if (n > best) { best = n; topCharm = s.id; }
+    }
+    return {
+      short: Math.max(0, q.due - q.deposited),
+      pullsLeft: Number.isFinite(this.pullCount) ? this.pullCount : 0,
+      bestMachine: this.bestMachine,
+      topCharm,
+    };
+  }
+
   private endRun(result: RunSummary['result'], ending?: string): void {
     this.ended = true;
     this.clock.stop();
@@ -1066,6 +1125,7 @@ class Run implements DebtRun {
       stats: { ...this.stats },
       ...(ending ? { ending } : {}),
       ...(obols !== undefined ? { obols } : {}),
+      post: this.postMortem(),
     };
     this.emit('run:end', { summary });
     if (this.save) {
@@ -1221,8 +1281,7 @@ class Run implements DebtRun {
   }
 
   /** Bell: seeded Lamp roll (stream `lamps`). Lamps start at Night 2; Night 1 only has Tilt. */
-  private rollLamps(): void {
-    if (!this.quotaMode) return;
+  private lampCandidates(): LampCandidate[] {
     const cands: LampCandidate[] = [];
     for (const m of this.worldLink?.machines() ?? []) {
       const cat = registry.get(m.machineId)?.def.category;
@@ -1230,6 +1289,12 @@ class Run implements DebtRun {
       if (this.tycoonSys.staffAt(m.instance).length > 0) continue;        // staffed machines never take a Lamp
       cands.push({ mid: m.instance, machineId: m.machineId });
     }
+    return cands;
+  }
+
+  private rollLamps(): void {
+    if (!this.quotaMode) return;
+    const cands = this.lampCandidates();
     const rng = createRng(hashSeed('lamps', this.seed, this.index, this.watch));
     this.circ.startWatch(rng, cands, {
       lamps: this.night() >= LAMP_FIRST_NIGHT,
@@ -1566,12 +1631,13 @@ class Run implements DebtRun {
         base: Object.fromEntries(this.contractBase),
       },
       circuit: this.circ.snapshot(),
+      hotline: this.hotline.snapshot(),
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
       debts: { [pid]: this.debt(pid) }, wallets: { [pid]: this.coins }, charms: this.charmBox.snapshot(),
       alive: { [pid]: this.living }, jackpots: { net: this.jackpot('net') },
-      tier: this.index + 1, phone: null, stats: { ...this.stats },
+      tier: this.index + 1, phone: this.hotline.phone(), stats: { ...this.stats },
       cfg: { ...this.config }, shift: { ...this.shiftState, rules: [...this.activeRules] },
       quota: { ...this.quota, perPlayer: { ...this.quota.perPlayer }, claimed: [...this.quota.claimed] },
       currencies: { ticket: { [pid]: this.tickets } }, dread: this.dread(),
@@ -1816,6 +1882,7 @@ class Run implements DebtRun {
     this.syncQuota();
     if (e.tycoon) this.tycoonSys.restore(e.tycoon);
     this.buffSys.buffs.restore(e.buffs);
+    this.hotline.restore(e.hotline);
     this.itemSys.totems.restore(e.totems);
     if (e.contracts) {
       this.contractNight = e.contracts.night;

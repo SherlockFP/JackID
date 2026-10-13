@@ -9,6 +9,7 @@
  */
 import * as THREE from 'three';
 import { app } from '@/core/app';
+import type { InputMode } from '@/core/input/types';
 import { t } from '@/core/i18n';
 import { log } from '@/core/log';
 import { uiSfx } from '@/core/ui/widgets';
@@ -46,6 +47,8 @@ let readerOpen: NoteDef | null = null;
 /** The one placard that holds input: the reader, the tape or the journal. */
 let stage: Placard3D | null = null;
 let offInteract: (() => void) | null = null;
+/** The input mode to restore when the last board goes down (set when the first board opens). */
+let resumeMode: InputMode = 'walk';
 
 export function notesFound(): number { return found.size; }
 export function noteFound(id: string): boolean { return found.has(id); }
@@ -112,6 +115,8 @@ export function placeNotes(world: World): () => void {
 function present(p: Placard3D, def: NoteDef | null): void {
   if (!p.show()) { p.dispose(); return; }
   const old = stage;
+  // The mode to come back to is the one the first board was opened from (a board opened from another board keeps it).
+  if (!old) resumeMode = app.input.mode === 'ui' ? 'walk' : app.input.mode;
   stage = p;
   readerOpen = def;
   old?.hide();
@@ -130,12 +135,13 @@ function closeStage(): void {
   restoreWalk();
 }
 
+/** Restores the input mode the boards were opened from (walk, in practice); the pointer lock comes back with walk. */
 function restoreWalk(): void {
   offInteract?.();
   offInteract = null;
   if (app.input.mode === 'ui') {
-    app.input.setMode('walk');
-    void app.input.requestLock();
+    app.input.setMode(resumeMode);
+    if (resumeMode === 'walk') void app.input.requestLock();
   }
 }
 

@@ -36,6 +36,7 @@ import { profileOf } from '@/game/data/machineProfiles';
 import { paceOf } from '@/game/pace';
 import type { QuotaBoardProp } from '@/world/types';
 import { startOnlineHooks } from './mp';
+import { startTutorial, type Tutorial } from '@/game/tutorial';
 
 export interface DebtSession {
   readonly world: WorldHost;
@@ -108,6 +109,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   // A new run opens straight on Night 1 Watch 1 (the bell, then the floor). Intermissions only sit between Watches and Nights.
   let openingWatch = !params.resume && run.rules.timed;
   const offs: Unsub[] = [];
+  // Night 1 onboarding: first run only (its own flag), Debt Run only, never a resumed or online run.
+  const tutorial: Tutorial | null = !params.resume && !params.online && run.rules.timed ? startTutorial({ world, run }) : null;
 
   // ── tycoon: service-plate badges (on the slot group, DECISIONS C26) ──────────────────────────────────
   const badgeKeys = new Map<InstanceId, string>();
@@ -301,6 +304,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
         }
       }
       player.frame(dt, alpha);
+      tutorial?.update(dt);
       world.frame(dt, app.time.sim);
       online?.frame(dt);
       totemView.sync(run.totems.list());
@@ -319,6 +323,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       ledgerOpen = false;
       ledger = null;
       app.ui.closePanel(LEDGER_PANEL);
+      tutorial?.dispose();
       horror.dispose();
       for (const a of actors.all()) actors.despawn(a);
       totemView.dispose();
