@@ -15,7 +15,8 @@
  */
 import type * as THREE from 'three';
 import type {
-  AmbienceId, AudioEngine, BeatEvent, Bus, JukeboxTrack, MusicApi, MusicStateId, PlayOpts, SfxRecipe, SpeakOpts, Voice, VoiceApi,
+  AmbienceId, AudioEngine, BeatEvent, Bus, JukeboxTrack, MusicApi, MusicStateId, PlayOpts, SfxRecipe, SfxRegisterMeta, SpeakOpts,
+  Voice, VoiceApi,
 } from './types';
 import type { Unsub } from '../types';
 import type { WinTier } from '@/game/types';
@@ -43,9 +44,9 @@ const TAU = Math.PI * 2;
 const taper = (v: number): number => { const x = clamp(v, 0, 1.5); return x * x; };
 
 /**
- * What the adaptive score receives. `music.ts` or `music/index.ts` (if present) must `export function createMusic(host: MusicHost): MusicApi`;
- * until then a state-tracking silent fallback is used. Route ALL music audio into `host.out`; keep stingers and the
- * bed on separate sub-gains if stingers should duck the bed (ducking `music` on the engine would duck the stinger too).
+ * What the adaptive score receives. `music/index.ts` exports `createMusic(host: MusicHost): MusicApi` and is wired here
+ * (eagerly, via glob). If it is missing or throws, a state-tracking silent fallback is used and the error is logged.
+ * Route ALL music audio into `host.out`; the score keeps stingers on their own un-ducked bus (see `music/rig.ts`).
  * `createKit` / `makeImpulse` / `createNoiseBank` in `synth.ts` are free to import.
  */
 export interface MusicHost {
@@ -59,7 +60,7 @@ export interface MusicHost {
   readonly engine: AudioEngine;
 }
 type MusicFactory = (host: MusicHost, ...rest: unknown[]) => MusicApi;
-const musicModules = import.meta.glob<{ createMusic?: MusicFactory }>(['./music.ts', './music/index.ts'], { eager: true });
+const musicModules = import.meta.glob<{ createMusic?: MusicFactory }>('./music/index.ts', { eager: true });
 
 function createFallbackMusic(): MusicApi {
   let state: MusicStateId = 'silent', current: string | null = null;
@@ -347,10 +348,25 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
     return v.playing ? v : null;
   }
   const lookup = (name: string): SfxDef | undefined => custom.get(name) ?? SFX_DEFS.get(name);
+  // Unlock queue: UI feedback requested before the first user gesture (browsers keep the context suspended) is kept
+  // for a moment and replayed once audio runs, so the first click or menu blip is not lost.
+  const UNLOCK_MAX = 6, UNLOCK_TTL_MS = 3000;
+  const unlockQueue: Array<{ name: string; o: PlayOpts; t: number }> = [];
   function play(name: string, o: PlayOpts = {}): Voice | null {
     const d = lookup(name);
     if (!d) { log.warnOnce(`audio:missing:${name}`, 'audio', `no sfx recipe "${name}"`); return null; }
+    if (ctx.state !== 'running') {
+      if ((o.bus ?? d.meta.bus ?? 'sfx') === 'ui' && unlockQueue.length < UNLOCK_MAX) unlockQueue.push({ name, o, t: performance.now() });
+      return null;
+    }
     return playDef(name, d, o);
+  }
+  function flushUnlockQueue(): void {
+    const now = performance.now();
+    for (const q of unlockQueue.splice(0)) {
+      const d = lookup(q.name);
+      if (d && now - q.t <= UNLOCK_TTL_MS) playDef(q.name, d, q.o);
+    }
   }
 
   /** Housekeeping at ~30 Hz: loop chunks, expiries, ducks, spatial updates. */
@@ -406,14 +422,21 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
     const v = openVoice(`speak:${speaker}`, 'voice', 9, 1, 1, { pos: o.pos }, true);
     if (!v) return new Promise((r) => window.setTimeout(r, plan.duration * 1000));
     const t0 = ctx.currentTime + 0.02;
-    const hm = addHold('music', mood === 'whisper' ? 0.25 : 0.5, Infinity), ha = addHold('amb', 0.3, Infinity);
+    const ducking = o.duck !== false;                                                                       // opt-out: plays over the score
+    const hm = ducking ? addHold('music', mood === 'whisper' ? 0.25 : 0.5, Infinity) : null;
+    const ha = ducking ? addHold('amb', 0.3, Infinity) : null;
     v.addSend(springIn, prof.spring * (diegetic ? 0.5 : 1));
     renderBabble(v, v.gain, plan, prof, { t0, mood, distort: o.distort });
     v.deadline = t0 + plan.duration + 3; v.seal();
     utterances.add(v);
     if (speaker === 'house' && !diegetic) play('paClick');
     return new Promise<void>((resolve) => {
-      v.onFinish = () => { utterances.delete(v); releaseHold('music', hm); releaseHold('amb', ha); resolve(); };
+      v.onFinish = () => {
+        utterances.delete(v);
+        if (hm) releaseHold('music', hm);
+        if (ha) releaseHold('amb', ha);
+        resolve();
+      };
     });
   }
   const voice: VoiceApi = {
@@ -431,6 +454,7 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
         const b = ctx.createBufferSource();            // iOS: a silent tick unlocks output
         b.buffer = ctx.createBuffer(1, 1, 22050); b.connect(ctx.destination); b.start(0);
       }
+      if (ctx.state === 'running') onRunning();   // idempotent; statechange may already have run it
     },
     setVolume(bus, v) {
       const g = bus === 'master' ? master : busIn[bus];
@@ -438,7 +462,7 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
       if (ctx.state === 'running') g.gain.setTargetAtTime(taper(v), ctx.currentTime, 0.03); else g.gain.value = taper(v);
     },
     play,
-    register(name, recipe: SfxRecipe) { custom.set(name, { run: recipe, meta: {} }); },
+    register(name, recipe: SfxRecipe, meta: SfxRegisterMeta = {}) { custom.set(name, { run: recipe, meta: { ...meta } }); },
     winJingle(tier: WinTier, o: PlayOpts = {}) {
       const n = winSfx(tier);
       if (!n) return;
@@ -470,17 +494,25 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
     duck(bus, amount, dur) { if (holds[bus]) addHold(bus, amount, dur); },
   };
 
-  // ── music: plug in music.ts when it exists, otherwise a silent state tracker ──
+  // ── music: wire music/index.ts (createMusic) when it exists, otherwise a silent state tracker ──
   let music: MusicApi = createFallbackMusic();
   const factory = Object.values(musicModules)[0]?.createMusic;
   if (factory) {
     const host: MusicHost = { ctx, out: busIn.music, reverb: reverbIn, noise, engine };
     // canonical: createMusic(host); a composer that only needs a context and a destination may take (ctx, dest, host)
-    try { music = factory.length >= 2 ? (factory as unknown as (c: AudioContext, d: AudioNode, h: MusicHost) => MusicApi)(ctx, busIn.music, host) : factory(host); } catch (e) { log.error('audio', 'music.ts failed to start — using silent fallback', e); }
-  } else log.debug('audio', 'no music.ts yet — silent music fallback');
+    try { music = factory.length >= 2 ? (factory as unknown as (c: AudioContext, d: AudioNode, h: MusicHost) => MusicApi)(ctx, busIn.music, host) : factory(host); } catch (e) { log.error('audio', 'music/index.ts failed to start — using silent fallback', e); }
+  } else log.debug('audio', 'no music/index.ts — silent music fallback');
 
-  // ── lifecycle ── the first user gesture calls `engine.resume()` (main.ts veil, menu buttons); no DOM listeners here
-  ctx.onstatechange = (): void => { if (ctx.state === 'running') applyAmbience(1.5); };
+  // ── lifecycle ── the first user gesture calls `engine.resume()` (main.ts veil, menu buttons); no DOM listeners here.
+  // Once audio runs: replay queued UI blips, restore the ambience, and start the menu score so the game is never silent
+  // (the game's own states take over with setState from there).
+  function onRunning(): void {
+    flushUnlockQueue();
+    applyAmbience(1.5);
+    if (music.state === 'silent') music.setState('menu', { fade: 1.5 });
+  }
+  ctx.onstatechange = (): void => { if (ctx.state === 'running') onRunning(); };
+  if (ctx.state === 'running') onRunning();
   void loadSamples(SAMPLE_URLS);
   return engine;
 }

@@ -5,7 +5,7 @@
  * clock sync, replication, late-join snapshots, rate limits — TECH_SPEC §6).
  * Keep the type re-export: the spec's import path is `@/net/session`.
  */
-import type { PlayerId } from '@/core/types';
+import type { Json, PlayerId } from '@/core/types';
 import type { Msg, PlayerInfo } from './protocol';
 import type { Session } from './types';
 
@@ -18,6 +18,7 @@ export function createSession(profile: () => LocalProfile): Session {
   const players = new Map<PlayerId, PlayerInfo>();
   const handlers = new Map<string, Set<(msg: never, from: PlayerId) => void>>();
   let inbox: Array<{ msg: Msg; from: PlayerId }> = [];
+  const snapshots = new Map<string, { get: (forPid: PlayerId) => Json; apply: (snap: Json) => void }>();
 
   const syncSelf = (): void => {
     const p = profile();
@@ -54,6 +55,10 @@ export function createSession(profile: () => LocalProfile): Session {
     },
     flush() {},
     inviteLink: () => null,
+    registerSnapshot(channel, get, apply) {
+      snapshots.set(channel, { get, apply });
+      return () => { if (snapshots.get(channel)?.apply === apply) snapshots.delete(channel); };
+    },
   };
   return session;
 }

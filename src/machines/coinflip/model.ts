@@ -7,12 +7,14 @@
  *  - all diegetic text is a `{ key }` TextSource (re-drawn on language change by the kit);
  *  - `o.variant` (0..3) picks one of four colourways so a row of booths never looks identical.
  *
- * Booth: 0.78 × 0.78 × 2.0 m (S slot). Walnut counter with a felt landing dish, glass side panes under a brass-trimmed
- * canopy, a red back panel carrying the streak screen, two call lamps and an 18-bulb chaser marquee, three mushroom
- * buttons (HEADS / FLIP / TAILS) on the deck and a coin tray. Play pose: standing, looking down at the dish.
+ * Booth: 0.78 × 0.78 × 2.0 m (S slot). Walnut counter with a felt landing dish, a red back panel carrying the streak
+ * screen, two call lamps and a 10-bulb chaser marquee, three round buttons (HEADS / FLIP / TAILS) on the deck and a
+ * coin tray. Play pose: standing, looking down at the dish.
  *
- * BUDGET NOTE: this reference model is ~1.5k tris / ~25 draws, above the 700 / 10 machine budget (M2 coinflip pass will
- * trim it). Do NOT copy its detail level: merge static meshes via `kit.finalize` and keep ≤ 700 tris / 10 draws.
+ * BUDGET (ART §1.11 / PLAN §4.2, S slot): ≤ 700 tris, ≤ 10 draw calls. Draw plan: static merged shell 1 · coin 1 ·
+ * three buttons 3 · two lamps 2 · screen 1 · marquee 2. Every static surface uses a FLAT colour (no textures), so the
+ * shell merges into one draw. Cut on purpose: cabinet kit (14–16 draws), glass panes and blob shadow (transparent =
+ * extra draws), button labels (1 draw each; the HUD names the actions), torus rim. Verify with bench F3 before merging.
  */
 import * as THREE from 'three';
 import type { Kit, ButtonPart, LampPart, MarqueePart, ScreenSurface, Palette } from '@/kit/types';
@@ -42,6 +44,7 @@ export const COUNTER_H = 0.9;
 export const DISH_Z = -0.04;
 export const DISH_TOP = COUNTER_H + 0.02;
 export const COIN_R = 0.06, COIN_THICK = 0.012;
+const BULBS = 10;
 
 /** Height of the coin's centre when it rests on the dish at rotation `theta` (0 = flat, π/2 = standing on its edge). */
 export function coinRestY(theta: number): number {
@@ -62,22 +65,17 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CoinFlipParts> 
   const body = pal[cw.body], trim = pal[cw.trim], panelC = pal[cw.panel];
   const root = kit.group('coinflip');
 
-  // ── counter, back panel, canopy, posts, glass ──
-  const cab = kit.cabinet({ style: 'counter', w: W, h: COUNTER_H, d: D, body, trim, grime: 0.25 });
-  root.add(cab.root);
-  kit.box(W, H - COUNTER_H - 0.06, 0.06, { color: panelC, map: kit.tex.wood(panelC) }, { pos: [0, (COUNTER_H + H - 0.06) / 2, -D / 2 + 0.03], parent: root });
-  kit.box(W, 0.06, D, { color: body, map: kit.tex.wood(body) }, { pos: [0, H - 0.03, 0], parent: root });
-  kit.box(W - 0.02, 0.025, D - 0.02, trim, { pos: [0, H - 0.07, 0], parent: root });
-  for (const sx of [-1, 1]) {
-    kit.cyl(0.02, 0.02, H - COUNTER_H - 0.06, trim, { pos: [sx * (W / 2 - 0.025), (COUNTER_H + H - 0.06) / 2, D / 2 - 0.03], seg: 8, parent: root });
-    const pane = kit.glass({ w: 0.012, h: H - COUNTER_H - 0.12, d: D - 0.1, tint: pal.glass, opacity: 0.16 });
-    pane.position.set(sx * (W / 2 - 0.012), (COUNTER_H + H - 0.06) / 2, -0.01);
-    root.add(pane);
-  }
+  // ── static shell: flat colours only, so kit.finalize merges it into ONE draw call ──
+  const at = (x: number, y: number, z: number): { pos: [number, number, number]; parent: THREE.Object3D } => ({ pos: [x, y, z], parent: root });
+  kit.box(W, COUNTER_H, D, body, at(0, COUNTER_H / 2, 0));                                        // counter
+  kit.box(W, H - COUNTER_H - 0.06, 0.06, panelC, at(0, (COUNTER_H + H - 0.06) / 2, -D / 2 + 0.03)); // back panel
+  kit.box(W, 0.06, D, body, at(0, H - 0.03, 0));                                                  // canopy
+  kit.box(W - 0.02, 0.025, D - 0.02, trim, at(0, H - 0.07, 0));                                   // brass trim
+  for (const sx of [-1, 1]) kit.box(0.03, H - COUNTER_H - 0.06, 0.03, trim, at(sx * (W / 2 - 0.02), (COUNTER_H + H - 0.06) / 2, D / 2 - 0.02));
+  kit.cyl(0.17, 0.17, 0.02, pal.felt, { pos: [0, COUNTER_H + 0.01, DISH_Z], seg: 12, parent: root }); // landing dish
+  kit.box(0.2, 0.03, 0.16, trim, at(0.27, COUNTER_H + 0.015, -0.22));                             // coin tray
 
-  // ── landing dish + coin ──
-  kit.cyl(0.17, 0.17, 0.02, { color: pal.felt, map: kit.tex.felt(pal.felt) }, { pos: [0, COUNTER_H + 0.01, DISH_Z], seg: 16, parent: root });
-  kit.torus(0.17, 0.012, trim, { pos: [0, COUNTER_H + 0.02, DISH_Z], rot: [90, 0, 0], seg: 16, parent: root });
+  // ── animated parts (listed in `keep`) ──
   const dish = new THREE.Object3D();
   dish.position.set(0, DISH_TOP, DISH_Z);
   root.add(dish);
@@ -88,18 +86,14 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CoinFlipParts> 
   const coin = kit.coin({ r: COIN_R, thick: COIN_THICK, heads: 'crown', tails: 'eye', color: pal.gold });
   coinPivot.add(coin);
 
-  // ── deck controls ──
-  const btnHeads = kit.button({ shape: 'mushroom', r: 0.034, color: pal.gold, label: { key: 'm.coinflip.heads' } });
+  // unlabelled round buttons: the HUD hint strip names the actions (a label costs a draw call each)
+  const btnHeads = kit.button({ shape: 'round', r: 0.034, color: pal.gold });
   btnHeads.root.position.set(-0.22, COUNTER_H, 0.24);
-  const btnFlip = kit.button({ shape: 'mushroom', r: 0.045, color: pal.red, label: { key: 'm.coinflip.flip' } });
+  const btnFlip = kit.button({ shape: 'round', r: 0.045, color: pal.red });
   btnFlip.root.position.set(0, COUNTER_H, 0.26);
-  const btnTails = kit.button({ shape: 'mushroom', r: 0.034, color: pal.chrome, label: { key: 'm.coinflip.tails' } });
+  const btnTails = kit.button({ shape: 'round', r: 0.034, color: pal.chrome });
   btnTails.root.position.set(0.22, COUNTER_H, 0.24);
   root.add(btnHeads.root, btnFlip.root, btnTails.root);
-
-  const tray = kit.coinTray({ w: 0.2, color: pal.chrome });
-  tray.root.position.set(0.27, COUNTER_H, -0.22);
-  root.add(tray.root);
 
   // ── back panel furniture ──
   const lampHeads = kit.lamp({ r: 0.035, color: pal.gold, shape: 'dome' });
@@ -108,10 +102,9 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CoinFlipParts> 
   lampTails.root.position.set(0.29, 1.4, -D / 2 + 0.065);
   const screen = kit.screen({ w: 0.36, h: 0.18, px: [96, 48], bezel: pal.black });
   screen.mesh.position.set(0, 1.4, -D / 2 + 0.062);
-  const marquee = kit.marquee({ w: W - 0.06, h: 0.2, text: { key: 'm.coinflip.name' }, color: pal.neonYellow, bg: pal.black, bulbs: 18 });
+  const marquee = kit.marquee({ w: W - 0.06, h: 0.2, text: { key: 'm.coinflip.name' }, color: pal.neonYellow, bg: pal.black, bulbs: BULBS });
   marquee.root.position.set(0, 1.83, -D / 2 + 0.07);
   root.add(lampHeads.root, lampTails.root, screen.mesh, marquee.root);
-  root.add(kit.blobShadow(W + 0.06, D + 0.06));
 
   // light hint for the world's pooled lights (no THREE.Light inside machines)
   const light = new THREE.Object3D();
@@ -119,8 +112,16 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CoinFlipParts> 
   light.userData = { color: 0xffe2a0, intensity: 0.6, range: 1.8, flicker: 'STEADY' };
   root.add(light);
 
+  // speaker / coin-out anchors (no mesh: the tray is part of the static shell)
+  const speaker = new THREE.Object3D();
+  speaker.position.set(0, 1.1, 0);
+  root.add(speaker);
+  const coinOut = new THREE.Object3D();
+  coinOut.position.set(0.27, COUNTER_H + 0.04, -0.22);
+  root.add(coinOut);
+
   const parts: CoinFlipParts = { coinPivot, coin, btnHeads, btnTails, btnFlip, lampHeads, lampTails, screen, marquee, dish };
-  kit.finalize(root, { keep: [coinPivot, dish, btnHeads, btnTails, btnFlip, lampHeads, lampTails, screen.mesh, marquee, tray, light] });
+  kit.finalize(root, { keep: [coinPivot, dish, btnHeads.root, btnTails.root, btnFlip.root, lampHeads.root, lampTails.root, screen.mesh, marquee.root, light] });
 
   return {
     root,
@@ -128,7 +129,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CoinFlipParts> 
     playPose: { pos: new THREE.Vector3(0, 1.6, 0.8), look: new THREE.Vector3(0, 1.1, -0.1), fov: 56, mouse: 'primary' },
     colliders: [{ min: [-W / 2, 0, -D / 2], max: [W / 2, H - 0.02, D / 2] }],
     interact: { min: [-W / 2, 0.3, -D / 2], max: [W / 2, H - 0.02, D / 2 + 0.1] },
-    anchors: { speaker: cab.anchors.speaker, prompt: marquee.root, coinOut: tray.anchor, light },
+    anchors: { speaker, prompt: marquee.root, coinOut, light },
     dispose: () => screen.dispose(),
   };
 }

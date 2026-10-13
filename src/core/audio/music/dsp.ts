@@ -33,7 +33,8 @@ export function filterInPlace(x: Float32Array, type: FType, f: number, q: number
   }
 }
 
-type F32 = Float32Array<ArrayBuffer>;
+export type F32 = Float32Array<ArrayBuffer>;
+export type NoiseKind = 'white' | 'pink' | 'brown';
 function normalize(x: F32, peak = 0.9): F32 {
   let m = 0;
   for (let i = 0; i < x.length; i++) { const a = Math.abs(x[i]); if (a > m) m = a; }
@@ -260,10 +261,10 @@ export function renderPluck(ctx: BaseAudioContext, midi: number, len = 1.6, damp
   const sr = ctx.sampleRate, f = mtof(midi);
   const N = Math.max(3, Math.round(sr / f));
   const rnd = makeRand(0x7a1c + midi * 131);
-  const line = new Float32Array(N);
+  const line: F32 = new Float32Array(N);
   let lp = 0;
   for (let i = 0; i < N; i++) { lp += (rnd() * 2 - 1 - lp) * bright; line[i] = lp * 1.8; }
-  const out = new Float32Array(Math.floor(sr * len));
+  const out: F32 = new Float32Array(Math.floor(sr * len));
   for (let i = 0, idx = 0; i < out.length; i++) {
     const nx = idx + 1 === N ? 0 : idx + 1;
     const v = line[idx];
@@ -289,8 +290,8 @@ export function reverseBuffer(ctx: BaseAudioContext, src: AudioBuffer, swell = t
 }
 
 // ── noise loops ─────────────────────────────────────────────────────────────────────────────────
-export function noiseLoop(ctx: BaseAudioContext, seconds: number, kind: 'white' | 'pink' | 'brown', seed = 7): AudioBuffer {
-  const n = Math.floor(ctx.sampleRate * seconds), x = new Float32Array(n), rnd = makeRand(seed);
+export function noiseLoop(ctx: BaseAudioContext, seconds: number, kind: NoiseKind, seed = 7): AudioBuffer {
+  const n = Math.floor(ctx.sampleRate * seconds), x: F32 = new Float32Array(n), rnd = makeRand(seed);
   if (kind === 'white') for (let i = 0; i < n; i++) x[i] = rnd() * 2 - 1;
   else if (kind === 'pink') {
     let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
@@ -314,7 +315,7 @@ export function noiseLoop(ctx: BaseAudioContext, seconds: number, kind: 'white' 
 
 /** Vinyl crackle: sparse clicks of random size over a faint dust floor. */
 export function crackleLoop(ctx: BaseAudioContext, seconds: number, density = 14, seed = 11): AudioBuffer {
-  const sr = ctx.sampleRate, n = Math.floor(sr * seconds), x = new Float32Array(n), rnd = makeRand(seed);
+  const sr = ctx.sampleRate, n = Math.floor(sr * seconds), x: F32 = new Float32Array(n), rnd = makeRand(seed);
   for (let i = 0; i < n; i++) x[i] = (rnd() * 2 - 1) * 0.015;
   const pops = Math.floor(seconds * density);
   for (let p = 0; p < pops; p++) {
@@ -358,12 +359,12 @@ export function makeIR(ctx: BaseAudioContext, o: IrOpts): AudioBuffer {
 }
 
 // ── waveshaper curves ───────────────────────────────────────────────────────────────────────────
-export function satCurve(k: number, n = 2048): Float32Array<ArrayBuffer> {
+export function satCurve(k: number, n = 2048): F32 {
   const c = new Float32Array(n), d = Math.tanh(k);
   for (let i = 0; i < n; i++) c[i] = Math.tanh((k * (i / (n - 1) * 2 - 1))) / d;
   return c;
 }
-export function crushCurve(bits: number, n = 8192): Float32Array<ArrayBuffer> {
+export function crushCurve(bits: number, n = 8192): F32 {
   const c = new Float32Array(n), lv = Math.pow(2, bits - 1);
   for (let i = 0; i < n; i++) c[i] = Math.round((i / (n - 1) * 2 - 1) * lv) / lv;
   return c;

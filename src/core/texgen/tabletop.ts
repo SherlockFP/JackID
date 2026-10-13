@@ -10,6 +10,7 @@ import { t as tr, upper } from '../i18n';
 import { Pix, makeCanvas, mix, uvRect } from './pixel';
 import { drawText, microPix, microWidth, px5Pix, px5Width } from './font';
 import { darker, P01, P03, P05, P07, P08, P09, P13, P14, P22, P23, P24, P29, P30, P37, P42, P44, P45 } from './palette';
+import { RED_NUMBERS, ROULETTE_ORDER } from './rouletteData';
 
 // ── dice ─────────────────────────────────────────────────────────────────────────────────────────
 export type DieStyle = 'bone' | 'craps' | 'sicbo';
@@ -127,12 +128,7 @@ export function wheelFace(segments: ReadonlyArray<{ label: string; color: Hex }>
   return cv;
 }
 
-// ── roulette ─────────────────────────────────────────────────────────────────────────────────────
-/** European wheel, clockwise from 0 (ART_BIBLE §3.8). */
-export const ROULETTE_ORDER: readonly number[] = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
-export const RED_NUMBERS: readonly number[] = [1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36];
-export type RouletteColor = 'red' | 'black' | 'green';
-export const rouletteColor = (n: number): RouletteColor => (n === 0 ? 'green' : RED_NUMBERS.includes(n) ? 'red' : 'black');
+// ── roulette (wheel data lives in the pure `rouletteData.ts`) ──────────────────────────────────────
 const pocketHex = (n: number): Hex => (n === 0 ? P29 : RED_NUMBERS.includes(n) ? P14 : P01);
 
 /** 296×12 pocket strip (37 cells × 8 px) for the wheel's annulus. */

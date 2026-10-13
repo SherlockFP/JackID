@@ -33,8 +33,38 @@ import type { Hex } from '../types';
 /** Pixel-art toolbox and the 48-colour master palette (`PALETTE[14]` = P14), for painters that want to stay palette-pure. */
 export { Pix } from './pixel';
 export { PAL as PALETTE, RAMP, darker } from './palette';
-export { dieUv, ROULETTE_ORDER, RED_NUMBERS, rouletteColor, chipLabel } from './tabletop';
-export type { DieStyle, RouletteColor } from './tabletop';
+export { dieUv, chipLabel } from './tabletop';
+export { ROULETTE_ORDER, RED_NUMBERS, rouletteColor } from './rouletteData';
+export type { RouletteColor } from './rouletteData';
+export type { DieStyle } from './tabletop';
+
+/** The named card-style atlases (`cardAtlas({ atlas })`). */
+export type AtlasName = 'cards' | 'sonkart' | 'okey';
+/** A UV-addressed atlas: `uv(key)` is a card id / `'back'` for `cards`, a SON KART or OKEY key otherwise. */
+export interface AtlasHandle { tex: THREE.Texture; uv(key: string): UV }
+
+/**
+ * The extras promoted into the implementation (DECISIONS G): named atlases, dice / roulette / chip table textures,
+ * the motion-blur reel strip and the surface recipes. `createTexGen()` returns this, so callers that need them go
+ * through `kit.tex` without module-level imports. `types.ts` (frozen `TexGen`) still lacks these members; a director
+ * decision is needed to add them there (see the report).
+ */
+export interface TexGenFull extends TexGen {
+  /** `atlas` picks the card set; default `'cards'` (uv keys are card ids / `'back'`). */
+  cardAtlas(o?: { atlas?: AtlasName }): AtlasHandle;
+  /** 64×32 dice atlas, see `dieUv(n)`. */
+  dieAtlas(style: DieStyle): THREE.Texture;
+  /** 296×12 European wheel ring. */
+  rouletteRing(): THREE.Texture;
+  /** 160×64 betting layout, rebuilt when the language changes. */
+  rouletteLayout(): THREE.Texture;
+  /** 32×4 chip edge strip for the value. */
+  chipEdge(value: number): THREE.Texture;
+  /** Reel strip with motion-blur smear, same layout and `cellV` as `symbolStrip`. */
+  symbolStripBlur(ids: SymbolId[], cell?: number): { tex: THREE.Texture; cellV: number };
+  /** Surface recipes (ART_BIBLE §2.5): carpet, tiles, wallpaper, marble, leather, velvet, wood, concrete, decals. */
+  surface: typeof surface;
+}
 export { drawMicro, microWidth, narrowDigits, px5Width, PX5_LINE_H, hasGlyph } from './font';
 export { neonSign, sevenSegPix, sevenSegRollPix, sevenSegTex, dotMatrixPix, dotMatrixTex, crtScreen, crtTexture, crtPowerFrame, CRT_COLORS } from './displays';
 export type { NeonOpts, NeonSign, CrtScheme, CrtColors } from './displays';
@@ -81,7 +111,7 @@ function stripBackground(id: SymbolId, cell: number, custom: boolean): Pix {
   return p;
 }
 
-export function createTexGen(): TexGen {
+export function createTexGen(): TexGenFull {
   const cache = new Map<string, THREE.Texture>();
   const painters = new Map<SymbolId, CanvasPainter>();
   const vendor = createVendorLoader();
@@ -106,7 +136,7 @@ export function createTexGen(): TexGen {
     return p;
   };
 
-  const gen: TexGen = {
+  const gen: TexGenFull = {
     canvas(w, h, draw, o) {
       const make = (): THREE.CanvasTexture => {
         const [cv, g] = makeCanvas(w, h);
@@ -169,10 +199,17 @@ export function createTexGen(): TexGen {
     },
 
     // ── cards, dice, chips, wheels ────────────────────────────────────────────────────────────
-    cardAtlas() {
-      const a = atlasOf('cards');
-      return { tex: atlasTex('cards'), uv: (card: CardId | 'back'): UV => a.uv(card) };
+    cardAtlas(o) {
+      const name: AtlasName = o?.atlas ?? 'cards';
+      const a = atlasOf(name);
+      return { tex: atlasTex(name), uv: (key: string): UV => a.uv(key) };
     },
+    dieAtlas: (style) => dieAtlasTex(style),
+    rouletteRing: () => rouletteRingTex(),
+    rouletteLayout: () => rouletteLayoutTex(),
+    chipEdge: (value) => chipEdgeTex(value),
+    symbolStripBlur: (ids, cell = 32) => symbolStripBlur(gen, ids, cell),
+    surface,
     dieFace: (n, o) => cached(`die:${n}:${o?.body ?? ''}:${o?.pip ?? ''}`, () => pixTexture(table.dieFace(n, o?.body, o?.pip), clamp)),
     chipTop: (value) => cached(`chip:${value}`, () => pixTexture(table.chipTop(value), clamp)),
     wheelFace: (segments, size = 128) =>

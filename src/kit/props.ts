@@ -11,6 +11,7 @@
  *  held    briefcase ledger clipboard shotgun revolver pistol mint_tin phone cane lantern torch key tonic gavel envelope
  *          cigar glass watch
  *  worn    coat_long (Collector's coat skirt, bone `pelvis`)
+ *  held    … mic (hand_r, caller)
  * `o.color` recolours the main material of masks/hats and the accent of the rest.
  */
 import * as THREE from 'three';

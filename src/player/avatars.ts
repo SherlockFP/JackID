@@ -31,6 +31,8 @@ const NAME_RANGE = 18;
 const OCCLUSION_PERIOD = 0.2;
 const FOOTSTEP_RANGE = 16;
 const MODEL_HEIGHT = 1.75;
+/** At most this many remote mannequins run their mixers; the rest freeze in place (nearest-first). */
+const MAX_ANIMATED = 12;
 
 /** Emote id → clip + duration. Unknown ids are ignored. */
 const EMOTES: Readonly<Record<string, { clip: MannequinClip; dur: number }>> = {
@@ -97,6 +99,7 @@ class Avatar implements RemoteAvatar {
   private readonly lookAt = new THREE.Vector3();
   private readonly tmp = new THREE.Vector3();
   private readonly dir = new THREE.Vector3();
+  private animated = true;
 
   constructor(readonly pid: PlayerId, name: string, color: Hex, private readonly d: AvatarDeps) {
     this.color = color;
@@ -137,6 +140,17 @@ class Avatar implements RemoteAvatar {
     // whole-body bone tint grows with every pawned part; five parts = a full porcelain mannequin
     this.actor.setTint(parts.length ? 0xf4eedc : null, Math.min(1, parts.length * 0.2));
   }
+
+  /** Mixer on/off for the animation budget (frozen = pose held, no clip stepping). */
+  setAnimated(on: boolean): void {
+    if (on === this.animated) return;
+    this.animated = on;
+    this.actor.setFrozen(!on);
+  }
+
+  get shown(): boolean { return this.placed && this.root.visible; }
+
+  distSqTo(p: THREE.Vector3): number { return this.root.position.distanceToSquared(p); }
 
   push(s: Sample): void {
     const a = this.samples;
@@ -308,6 +322,23 @@ export function createAvatarManager(deps: AvatarDeps = defaultDeps()): AvatarMan
   const root = new THREE.Group();
   root.name = 'players';
   const avatars = new Map<PlayerId, Avatar>();
+  const ranked: Avatar[] = [];
+  const camPos = new THREE.Vector3();
+  const byDistance = (p: Avatar, q: Avatar): number => p.distSqTo(camPos) - q.distSqTo(camPos);
+
+  /** Animation budget: the nearest shown avatars run (≤ MAX_ANIMATED); everyone else is frozen. */
+  const rankAnimated = (): void => {
+    camPos.copy(deps.camera.position);
+    ranked.length = 0;
+    for (const a of avatars.values()) ranked.push(a);
+    ranked.sort(byDistance);
+    let budget = MAX_ANIMATED;
+    for (const a of ranked) {
+      const on = a.shown && budget > 0;
+      if (on) budget--;
+      a.setAnimated(on);
+    }
+  };
 
   return {
     root,
@@ -332,6 +363,7 @@ export function createAvatarManager(deps: AvatarDeps = defaultDeps()): AvatarMan
     },
     update(dt, hostTimeMs) {
       for (const a of avatars.values()) a.update(dt, hostTimeMs);
+      rankAnimated();
     },
     clear() {
       for (const a of avatars.values()) a.dispose();

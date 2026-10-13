@@ -12,7 +12,7 @@ import type { Lang } from './types';
 import type { Settings } from './settings';
 import type { CutsceneId, CutsceneResult } from './cutscene/types';
 import type {
-  ActiveEvent, BodyPart, BuffOwnerKey, BuffState, PartStatus, QuotaState, RunPhase, ShiftPhase, WinTier,
+  ActiveEvent, BodyPart, BuffOwnerKey, BuffState, PartStatus, QuotaState, RunWindow, ShiftPhase, WinTier,
 } from '@/game/types';
 import type { RunSummary } from '@/net/protocol';
 import { log } from './log';
@@ -65,7 +65,8 @@ export interface GameEvents {
   'machine:jackpot': { mid: InstanceId; machineId: MachineId; pid: PlayerId; amount: number; pool: string };
   'eco:wallet': { pid: PlayerId; wallet: number; delta: number; reason: string };
   // ── run / shift / quota ──
-  'run:phase': { phase: RunPhase };
+  'run:window': { window: RunWindow; night: number };   // Watch ↔ Dawn (replaces run:phase, C17)
+  'pulls:change': { pid: PlayerId; pulls: number };      // C18
   'run:deadline': { index: number; due: number; seconds: number };
   'run:deposit': { pid: PlayerId; amount: number; paid: number; due: number };
   'run:clock': { remaining: number };               // 1 Hz

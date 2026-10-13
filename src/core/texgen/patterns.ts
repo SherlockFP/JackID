@@ -20,14 +20,17 @@ const seedOf = (...a: Array<string | number>): number => hashSeed(...a) & 0xffff
 const TAU = Math.PI * 2;
 
 // ── felt ─────────────────────────────────────────────────────────────────────────────────────────
-/** 32×32 fuzzy flat colour (ART_BIBLE felt recipe). */
-export function felt(c: Hex, wear = 0.25): Pix {
+/**
+ * 32×32 soft felt: a flat base colour with sparse single-pixel fibres and a faint wear mottle. Softened (DECISIONS G):
+ * fewer specks than the original recipe so it reads as one calm surface under the printed layout and the chips.
+ */
+export function felt(c: Hex, wear = 0.12): Pix {
   const [lo, mid, hi] = rampFor(c, 3);
   const seed = seedOf('felt', c), p = new Pix(32, 32);
   for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
     const h = hash2(x, y, seed);
-    let col = h < 0.12 ? lo : h > 0.93 ? hi : mid;
-    if (fbm(x / 32, y / 32, 4, 4, 3, seed) < wear && bayer(x, y) < 4) col = col === hi ? mid : col === mid ? lo : darker(lo);
+    let col = h < 0.03 ? lo : h > 0.985 ? hi : mid;
+    if (fbm(x / 32, y / 32, 4, 4, 3, seed) < wear && bayer(x, y) < 2) col = col === hi ? mid : col === mid ? lo : darker(lo);
     p.px(x, y, col);
   }
   return p;

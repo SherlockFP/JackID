@@ -5,18 +5,12 @@
  *   0 → none · ≤ 1× push · < 3× small · < 10× medium · < 25× big (tag `bigwin`) · < 50× huge (`hugewin`)
  *   · ≥ 50× mega (`megawin`) · `jackpot` only when the machine tags the round `jackpot`.
  *
- * The frozen `WinTier` union (game/types.ts) has no `'mega'` yet, so there are two scales:
- *  - `tierFor` / {@link toWinTier} → the economy-facing `WinTier` (mega is folded into `'huge'`),
- *  - `juiceTier` → the five-step presentation scale {@link JuiceTier} that `juice.ts` and machines use.
- * When `'mega'` joins `WinTier`, change {@link MEGA_AS} to `'mega'` and nothing else.
+ * 'mega' is a member of the frozen `WinTier` (Contracts v1.1), so `JuiceTier` and `WinTier` are one scale.
  */
 import { WIN_TIERS, type WinTier } from '@/game/types';
 
-/** Presentation tiers: `WinTier` plus `'mega'`. */
-export type JuiceTier = WinTier | 'mega';
-
-/** What `'mega'` is reported as to the economy until `WinTier` has its own member. */
-const MEGA_AS: WinTier = 'huge';
+/** Presentation tiers (= `WinTier` since v1.1). */
+export type JuiceTier = WinTier;
 
 /** Lower bounds (× stake) of each tier. */
 export const TIER_MULT = { medium: 3, big: 10, huge: 25, mega: 50 } as const;
@@ -41,7 +35,7 @@ export function tierFor(gross: number, bet: number, tags?: readonly string[]): W
 }
 
 export function toWinTier(t: JuiceTier): WinTier {
-  return t === 'mega' ? MEGA_AS : t;
+  return t;
 }
 
 /** Catalogue tags implied by a tier (`bigwin` ≥ ×10, `hugewin` ≥ ×25, `megawin` ≥ ×50, `jackpot`); cumulative. */

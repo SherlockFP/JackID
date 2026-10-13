@@ -26,17 +26,18 @@ export const DEFAULT_BINDINGS: Record<BindingKey, string[]> = {
   'm.secondary': ['Mouse2'],                                  // RMB TAP (< 0.2 s); RMB hold = free-look
   'm.up': ['KeyW', 'ArrowUp'], 'm.down': ['KeyS', 'ArrowDown'], 'm.left': ['KeyA', 'ArrowLeft'], 'm.right': ['KeyD', 'ArrowRight'],
   'm.betUp': ['KeyX', 'WheelUp', 'Equal'], 'm.betDown': ['KeyZ', 'WheelDown', 'Minus'], 'm.betMax': ['KeyB'],
-  'm.confirm': ['Enter', 'NumpadEnter'], 'm.alt': ['KeyR'], 'm.help': ['KeyH'], 'm.exit': ['KeyE'],
+  'm.confirm': ['Enter', 'NumpadEnter'], 'm.alt': [], 'm.help': ['KeyH'], 'm.exit': ['KeyE'],
   'm.n1': ['Digit1', 'Numpad1'], 'm.n2': ['Digit2', 'Numpad2'], 'm.n3': ['Digit3', 'Numpad3'],
   'm.n4': ['Digit4', 'Numpad4'], 'm.n5': ['Digit5', 'Numpad5'], 'm.n6': ['Digit6', 'Numpad6'],
   'm.n7': ['Digit7', 'Numpad7'], 'm.n8': ['Digit8', 'Numpad8'], 'm.n9': ['Digit9', 'Numpad9'],
+  // TECH §11.6 machine actions (v1.1)
+  'm.collect': ['KeyQ'], 'm.fast': ['KeyF'], 'm.auto': ['KeyG'], 'm.camera': ['KeyV'],
+  'm.clear': ['Backspace'], 'm.double': ['KeyR'],   // DECISIONS G: double = R (D stays move)
 };
 
-/** §11.6 actions not yet in the frozen unions (see file header). Keys are binding keys, same syntax as above. */
+/** §11.6 walk-side actions not yet in the frozen `Action` union. Keys are binding keys, same syntax as above. */
 export const EXTRA_BINDINGS: Record<string, string[]> = {
   jump: ['Space'], punch: ['KeyQ'], cheer: ['Digit7'], shrug: ['Digit8'], dance: ['Digit9'],
-  'm.collect': ['KeyQ'], 'm.fast': ['KeyF'], 'm.auto': ['KeyG'], 'm.camera': ['KeyV'],
-  'm.clear': ['Backspace'], 'm.double': ['KeyD'],
 };
 
 /** Every binding key the service knows (frozen + extra) with its default codes. */
@@ -89,8 +90,18 @@ export function actionLabel(key: string): string {
   return t(`ui.action.${key}`);
 }
 
-/** Binding keys of the same layer (other than `key`) that already use `code`. */
+/**
+ * Walk actions that deliberately share one code (DECISIONS G): skip and jump both use Space in the pit. Sharing is
+ * not a conflict, so the rebinding UI never swaps them apart.
+ */
+export const SHARED_CODES: Readonly<Record<string, readonly string[]>> = { Space: ['skip', 'jump'] };
+
+/** Binding keys of the same layer (other than `key`) that already use `code`, minus deliberate shares. */
 export function conflictsFor(bindings: Readonly<Record<string, readonly string[]>>, key: string, code: string): string[] {
   const layer = layerOf(key);
-  return Object.keys(bindings).filter((k) => k !== key && layerOf(k) === layer && bindings[k].includes(code));
+  const shared = SHARED_CODES[code];
+  return Object.keys(bindings).filter((k) => {
+    if (k === key || layerOf(k) !== layer || !bindings[k].includes(code)) return false;
+    return !(shared?.includes(key) && shared.includes(k));
+  });
 }

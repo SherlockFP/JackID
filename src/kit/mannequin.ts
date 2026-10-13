@@ -107,9 +107,16 @@ export interface MannequinInternal extends MannequinActor {
 interface Pending { clip: string; o: MannequinPlayOpts; resolve: () => void }
 interface Attachment { obj: THREE.Object3D; bone: string; o?: { pos?: V3; rot?: V3; scale?: number }; live: boolean }
 
-export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Group): Pick<Kit, 'loadMannequin'> & { mannequin(o?: MannequinOpts): MannequinInternal; update(dt: number): void } {
+/** At most this many visible mannequins run their mixer per frame (C13); the rest freeze, nearest first. */
+const MAX_ACTIVE = 12;
+/** Mannequins farther than this from the LOD camera freeze (metres). */
+const LOD_FAR = 30;
+
+export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Group): Pick<Kit, 'loadMannequin'> & { mannequin(o?: MannequinOpts): MannequinInternal; update(dt: number): void; setLodCamera(cam: THREE.Camera | null): void } {
   const actors = new Set<WeakRef<Actor>>();
   let serial = 0;
+  let lodCam: THREE.Camera | null = null;
+  const lodPos = new THREE.Vector3();
 
   class Actor implements MannequinInternal {
     readonly root = new THREE.Group();
@@ -121,7 +128,10 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
     private readonly look: Look;
     private readonly height: number;
     private stepFps: number | null;
-    private frozen: boolean;
+    /** Frozen by the caller (`setFrozen`, or `frozen` in the options). */
+    private pinned: boolean;
+    /** Frozen by the distance / visibility LOD pass (`makeMannequins.update`). */
+    private lod = false;
     private mixer: THREE.AnimationMixer | null = null;
     private rig: THREE.Object3D | null = null;
     private placeholder: THREE.Group | null = null;
@@ -158,7 +168,7 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
       this.look = lookOf(o);
       this.height = o.height ?? DEFAULT_HEIGHT;
       this.stepFps = o.stepFps === undefined ? DEFAULT_STEP_FPS : o.stepFps;
-      this.frozen = !!o.frozen;
+      this.pinned = !!o.frozen;
       this.initialClip = o.clip ?? 'Idle_Loop';
       this.baseLoop = this.initialClip;
       this.initialMask = o.mask ?? null;
@@ -284,9 +294,34 @@ ${GLSL_CRACKS}`,
       this.clip = clip;
       if (o.at !== undefined || fade <= 0) { this.mixer.update(0); this.captureAnimPose(); }
       if (loop) { this.baseLoop = clip; return Promise.resolve(); }
-      return new Promise<void>((resolve) => { this.playing = { resolve, action: next }; this.oneShotHold = !!o.hold; });
+      const done = new Promise<void>((resolve) => { this.playing = { resolve, action: next }; this.oneShotHold = !!o.hold; });
+      if (this.isFrozen) this.finishOneShot();          // a frozen actor never advances: the one-shot completes now
+      return done;
     }
     private oneShotHold = false;
+
+    get isFrozen(): boolean { return this.pinned || this.lod; }
+    get disposedNow(): boolean { return this.disposed; }
+
+    /** Jump the running one-shot to its last frame and resolve it (used when the actor freezes). */
+    private finishOneShot(): void {
+      const p = this.playing;
+      if (!p || !this.mixer) return;
+      this.playing = null;
+      p.action.time = p.action.getClip().duration;
+      this.mixer.update(0);
+      this.captureAnimPose();
+      if (!this.oneShotHold && !this.disposed) void this.play(this.baseLoop, { fade: 0 });
+      p.resolve();
+    }
+
+    /** Called by the LOD pass (`lodPass`): freeze while far, hidden or beyond the active cap. */
+    setLodState(on: boolean): void {
+      if (this.lod === on) return;
+      const was = this.isFrozen;
+      this.lod = on;
+      if (!was && this.isFrozen) this.finishOneShot();
+    }
 
     private onFinished(e: { action: THREE.AnimationAction }): void {
       if (!this.playing || e.action !== this.playing.action) return;
@@ -323,7 +358,12 @@ ${GLSL_CRACKS}`,
 
     // ── bones & attachments ──
     own(obj: THREE.Object3D): void { this.owned.push(obj); }
-    setFrozen(on: boolean): void { this.frozen = on; }
+    setFrozen(on: boolean): void {
+      if (this.pinned === on) return;
+      const was = this.isFrozen;
+      this.pinned = on;
+      if (!was && this.isFrozen) this.finishOneShot();
+    }
     bone(name: MannequinBone): THREE.Object3D | null { return this.bones.get(name) ?? null; }
 
     attach(obj: THREE.Object3D, bone: MannequinBone, o?: { pos?: V3; rot?: V3; scale?: number }): () => void {
@@ -371,7 +411,7 @@ ${GLSL_CRACKS}`,
 
     // ── per frame ──
     update(dt: number): void {
-      if (!this.mixer || this.frozen || this.disposed) return;
+      if (!this.mixer || this.isFrozen || this.disposed) return;
       const step = this.stepFps && this.stepFps > 0 ? 1 / this.stepFps : 0;
       if (step > 0) {
         this.acc += dt;
@@ -464,11 +504,40 @@ ${GLSL_CRACKS}`,
       await Promise.all([loadMannequinSource(), ctx.tex.preloadVendor(VENDOR_PATHS)]);
     },
     update(dt) {
+      lodPass();
       for (const ref of actors) {
         const a = ref.deref();
         if (!a) { actors.delete(ref); continue; }
         try { a.update(dt); } catch (e) { log.error('kit', e); }
       }
     },
+    setLodCamera(cam) { lodCam = cam; },
   };
+
+  /**
+   * Distance / visibility LOD (C13, DECISIONS G): a mannequin with a hidden ancestor freezes, one beyond `LOD_FAR` freezes,
+   * and of the rest only the `MAX_ACTIVE` nearest keep animating. Without a LOD camera only visibility and the cap apply.
+   */
+  function lodPass(): void {
+    if (lodCam) lodCam.getWorldPosition(lodPos);
+    const near: Array<{ a: Actor; d: number }> = [];
+    for (const ref of actors) {
+      const a = ref.deref();
+      if (!a) { actors.delete(ref); continue; }
+      if (a.disposedNow) continue;
+      if (!inScene(a.root)) { a.setLodState(true); continue; }
+      const d = lodCam ? a.root.getWorldPosition(lodVec).distanceTo(lodPos) : 0;
+      if (lodCam && d > LOD_FAR) { a.setLodState(true); continue; }
+      near.push({ a, d });
+    }
+    near.sort((x, y) => x.d - y.d);
+    near.forEach((n, i) => n.a.setLodState(i >= MAX_ACTIVE));
+  }
+}
+
+const lodVec = new THREE.Vector3();
+/** True when `obj` and every ancestor are visible. */
+function inScene(obj: THREE.Object3D): boolean {
+  for (let o: THREE.Object3D | null = obj; o; o = o.parent) if (!o.visible) return false;
+  return true;
 }

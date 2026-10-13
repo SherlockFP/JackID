@@ -21,44 +21,8 @@ import { keep, part, type KitCtx } from './ctx';
 import { createBulbChain } from './lights';
 import type { BulbChain, CardPool, Kit, LampPart, ScreenSurface, TextSource } from './types';
 
-export interface LedPanelPart { root: THREE.Object3D; screen: ScreenSurface; set(text: string): void; setColor(css: string): void }
-export interface PanelButtonSpec { id: string; label?: TextSource; color: Hex; x: number; z: number; w?: number; h?: number; lit?: boolean; font?: FontId }
-export interface ButtonPanelOpts { buttons: PanelButtonSpec[]; w: number; d: number; slope?: number /* deg, default 12 */; plate?: Hex; capH?: number }
-export interface PanelButton { id: string; /** Anchor at the cap's top centre (panel space). */ root: THREE.Object3D; press(dur?: number): Promise<void>; setLit(on: boolean): void; setEnabled(on: boolean): void }
-export interface ButtonPanelPart {
-  /** Origin = plate centre, +Y = plate normal; already tilted by `slope`. */
-  root: THREE.Group;
-  /** The single dynamic mesh holding every cap (raycast target). */
-  caps: THREE.Mesh;
-  buttons: Record<string, PanelButton>;
-  list: PanelButton[];
-  /** Which button owns a raycast hit on `caps`. */
-  pick(hit: THREE.Intersection): PanelButton | null;
-}
-
-/** `CardPool` for atlases whose card ids are plain strings. */
-export interface StringCardPool extends Omit<CardPool, 'add' | 'setCard'> {
-  add(card: string | null, at: THREE.Vector3, rotY?: number): number;
-  setCard(id: number, card: string): void;
-}
-
-export interface KitExtras {
-  chair(o?: { h?: number; seat?: Hex; wood?: Hex }): THREE.Group;
-  crtMonitor(o?: { w?: number; h?: number; px?: [number, number]; scheme?: 'green' | 'amber' | 'cyan' | 'red'; glow?: number }): { root: THREE.Group; screen: ScreenSurface };
-  ledPanel(o: { digits: number; color?: string; h?: number }): LedPanelPart;
-  plaque(o: { text: TextSource; w?: number; h?: number; color?: Hex }): THREE.Group;
-  towerLight(o?: { colors?: [Hex, Hex] }): { root: THREE.Group; top: LampPart; bottom: LampPart };
-  stanchion(o?: { h?: number; color?: Hex }): THREE.Group;
-  velvetRope(a: V3, b: V3, o?: { sag?: number; color?: Hex }): THREE.Mesh;
-  cardShoe(): { root: THREE.Group; mouth: THREE.Object3D };
-  decal(o: { tex: THREE.Texture; w: number; h: number; alphaTest?: number }): THREE.Mesh;
-  buttonPanel(o: ButtonPanelOpts): ButtonPanelPart;
-  /** Card pool on the SON KART / OKEY texgen atlas (string ids: `R7`, `W+4`, `K13`, `FJ`, …; `back` is the card back). */
-  cards(o: { max: number; scale?: number; atlas: 'sonkart' | 'okey' }): StringCardPool;
-  /** Emissive light strip made of `segments` bars along `axis` (centred): pattern chase / alt / blink / all / off / rainbow. */
-  lightStrip(o: { length: number; color: Hex; thickness?: number; segments?: number; axis?: 'x' | 'y' | 'z' }): BulbChain;
-}
-
+export type { LedPanelPart, PanelButtonSpec, ButtonPanelOpts, PanelButton, ButtonPanelPart, StringCardPool, KitExtras } from './types';
+import type { KitExtras, LedPanelPart, ButtonPanelOpts, ButtonPanelPart, PanelButton, PanelButtonSpec, StringCardPool } from './types';
 const lum = (c: Hex): number => (((c >> 16) & 255) * 0.3 + ((c >> 8) & 255) * 0.59 + (c & 255) * 0.11) / 255;
 
 export function makeExtras(ctx: KitCtx, base: Pick<Kit, 'screen' | 'label' | 'lamp' | 'cards'> & { chair: KitExtras['chair'] }): KitExtras {

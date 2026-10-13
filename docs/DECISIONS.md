@@ -78,3 +78,14 @@ GDD > catalogues > ART_BIBLE > TECH_SPEC §1–10. Items reference `docs/PLAN.md
 ## F. Juice (client's #1 concern)
 Every machine and system ships the ART/BRIEF juice checklist. Sonnet reviewers reject packages whose
 interactions lack anticipation → action → impact → follow-through, or whose win tiers don't escalate.
+
+## G. Foundation review answers (binding)
+- Fog: states build `THREE.Fog` from drawDistance (18/26/40 m); shader fog scale = 1. Pop text stays always-on-top.
+- Cutscenes: positional sfx/light cues deferred to integration; input gate = Input exposes `anyPressed()`; skip is disabled while a choice is open.
+- Machines: **settle (credit wallet) BEFORE presentation** is a MachineBase rule; snapshots carry explicit `owner` pid; `WinTier` adds `'mega'` with its own fx/jingle tier; `MachineAction` gains all §11.6 actions (no casts); **SLOT_DIMS = GDD §8.5**; coinflip reference brought to 700 tris / 10 draws now; bench/debug panel loaded via DEV-only dynamic import.
+- Keys: machine `double` = **R** (D stays move); skip/jump share Space and are excluded from conflict checks; banner-skip press is consumed; at `pick` poses RMB goes to onPointer, free-look = hold Alt.
+- Pointer lock: if lock is refused, fall back automatically to drag-to-look (also `?nolock=1`) so QA and odd browsers can play.
+- Kit: `KitExtras` moves into `kit/types.ts`; dealer styles oracle/caller/cashier; cards `atlas: 'sonkart'|'okey'`; actor gets own/setFrozen/addProc/onPose. Stools stay 0.68 m and `SeatDef` gains `standY`. Mannequins auto-freeze when far or invisible (one-shot clips complete instantly on freeze). `FeltTableOpts.w/d` include seats; dealer takes `feltY` from the table. texgen felt is softened and becomes the single felt source.
+- Music/audio: Last Call = `setIntensity(1)` and the composer also pitches jukebox +3 %. Milestone stingers are exempt from the cue cap and from music-bus ducking. Machines use `winJingle`/SFX, never `music.stinger`. Jukebox positional later (T2). Ducking stays default, with `SpeakOpts.duck=false` opt-out; `register()` takes optional meta {pri,bus,max,long}; a small unlock queue replays first UI sounds. `music/index.ts` exports `createMusic` and is wired by the audio engine.
+- Texgen: extras promoted into the TexGen interface; roulette order/reds move to pure `core/texgen/rouletteData.ts`. Machine-specific felts/boards are built by machine owners with texgen helpers.
+- UI: DOM overlay accepted (amends TECH §11.7).

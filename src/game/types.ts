@@ -31,15 +31,37 @@ export * from './buffs.types';
 export * from './items.types';
 export * from './economy.types';
 
-export type WinTier = 'none' | 'push' | 'small' | 'medium' | 'big' | 'huge' | 'jackpot';
+export type WinTier = 'none' | 'push' | 'small' | 'medium' | 'big' | 'huge' | 'mega' | 'jackpot';
 /** Ascending order, for comparisons: `WIN_TIERS.indexOf(a) >= WIN_TIERS.indexOf(b)`. */
-export const WIN_TIERS: readonly WinTier[] = ['none', 'push', 'small', 'medium', 'big', 'huge', 'jackpot'];
+export const WIN_TIERS: readonly WinTier[] = ['none', 'push', 'small', 'medium', 'big', 'huge', 'mega', 'jackpot'];
 // tierFor(gross, bet) (machines/_base/tiers.ts): 0 → none; ≤1× → push; <3× small; <10× medium; <50× big; <200× huge; else jackpot
+// 'mega' (v1.1, DECISIONS §G) has its own fx/jingle tier; tiers.ts thresholds for it follow the amended §2.13 comment.
 
-export type RunPhase = 'intro' | 'play' | 'deadline' | 'falling' | 'ascending' | 'endless' | 'over';
+/**
+ * Time words (TECH §11.5 / DECISIONS C17) — `RunPhase` is removed.
+ * Night = `QuotaState.index` (the night you are in); Watch = one play window (shift timer running);
+ * Dawn = collection (between windows, the quota is settled).
+ */
+export type RunWindow = 'watch' | 'dawn';
+
+/** Why `run.bet()` / a play was refused (`run.lastRefusal()`). */
+export type RefusalReason = 'funds' | 'pulls' | 'phase' | 'limit';
+
+/** Catalogue range × SI × Cap (TECH §11.5). `ladder` = the bet steps `stepBet()` walks. */
+export interface BetLimits { min: number; max: number; ladder: number[] }
 
 export interface EcoSource { mid: InstanceId; machineId: MachineId }
-export interface WinMeta { bet: number; tier: WinTier; tags?: string[]; silent?: boolean }
+export interface WinMeta {
+  bet: number; tier: WinTier; tags?: string[]; silent?: boolean;
+  /** No modifiers, no juice: buy-ins, cash-outs, refunds (TECH §11.5). */
+  raw?: boolean;
+  /** Set by GAME-RUN when `payoutFactor` was already applied to `gross` (elevator). */
+  factorApplied?: boolean;
+}
+export interface BetOpts {
+  /** Pulls this bet costs (default: the machine's `def.actionCost`; block-cost devices pass their own). */
+  pulls?: number;
+}
 export interface DebtState { index: number; due: number; paid: number; deadlineAt: number /* host ms */; floor: number; total: number }
 export interface CharmState { id: string; stacks: number; data?: Json }
 
@@ -78,12 +100,24 @@ export interface CharmCtx { pid: PlayerId; stacks: number; run: RunApi; rng: Rng
  * own; machines normally need only the flat economy members at the top plus `mod`/`getModifier`.
  */
 export interface RunApi {
-  readonly mode: GameMode; readonly phase: RunPhase; readonly seed: number; readonly selfId: PlayerId;
+  readonly mode: GameMode; readonly seed: number; readonly selfId: PlayerId;
   readonly config: Readonly<RunConfig>;
+  /** Current Night (= `shift.quota.index`) and Watch/Dawn window (TECH §11.5, C17). */
+  night(): number;
+  window(): RunWindow;
   wallet(pid?: PlayerId): number;
   canAfford(cost: number, pid?: PlayerId): boolean;
-  /** Local player stakes `amount` (nominal). Charges ceil(amount × bet.costMult). Sync. MP: optimistic + host confirm. */
-  bet(amount: number, src: EcoSource): boolean;
+  /** Pulls (action points) left for the player (tickets are `balance('ticket')`, not pulls). */
+  pulls(pid?: PlayerId): number;
+  /** Reason of the last refused `bet()` / play, or null. */
+  lastRefusal(): RefusalReason | null;
+  /** Catalogue range × SI × Cap (`x.bet.maxStep`, GDD §3.2). `stepBet()` / `maxBet()` use it. */
+  betLimits(machineId: MachineId, instanceId: InstanceId): BetLimits;
+  /** GDD §3.3 `econ.payoutFactor` (read-only; elevator uses it). */
+  payoutFactor(machineId: MachineId, instanceId: InstanceId): number;
+  /** Local player stakes `amount` (nominal). Charges ceil(amount × bet.costMult). Sync. MP: optimistic + host confirm.
+   *  Refusals set `lastRefusal()`. Pulls: `o.pulls`, else the machine's `actionCost` (GAME-RUN applies x.actionCostDelta). */
+  bet(amount: number, src: EcoSource, o?: BetOpts): boolean;
   /** Local player wins `gross` (pre-modifier). Applies payout.mult/flat or loss.refund. Shows personal toast/banner by tier. Returns coins credited. */
   win(gross: number, src: EcoSource, meta: WinMeta): number;
   deposit(amount: number): boolean;                         // Debt Terminal only

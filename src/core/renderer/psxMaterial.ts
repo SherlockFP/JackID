@@ -24,7 +24,7 @@ THREE.ColorManagement.enabled = false;
 export interface PsxSharedUniforms extends PsxUniforms {
   /** Internal resolution in px (text/popText snapping). */
   uPsxLowRes: { value: THREE.Vector2 };
-  /** Multiplier on the scene fog near/far (settings `drawDistance`). */
+  /** Multiplier on the scene fog near/far; the renderer keeps it at 1 (draw distance is baked into THREE.Fog, see fog.ts). */
   uPsxFogScale: { value: number };
 }
 

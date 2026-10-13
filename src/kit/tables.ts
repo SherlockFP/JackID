@@ -8,6 +8,9 @@
  *
  * Seated avatars: the Quaternius `Sitting_*` clips put the pelvis 0.54 m above the root, so chairs are 0.48 m high and
  * `SeatDef.stand` is where the mannequin ROOT goes: 0.30 m in front of the chair centre, at y = 0.
+ *
+ * DECISIONS G: `w × d` is the FULL footprint including the seats. The rail sits `SEAT_ZONE` inside the box edge, so a
+ * chair back (0.22 m half-depth) stays inside it. `SeatDef.standY` carries each seat height (stool 0.68, chair 0.48).
  */
 import * as THREE from 'three';
 import type { Hex, LocalAABB, SeatDef } from '@/core/types';
@@ -24,6 +27,9 @@ const CHAIR_H = 0.48;
 const SEAT_DIST = 0.4;          // rail edge → chair centre
 const STAND_FWD = 0.3;          // chair centre → mannequin root (towards the table)
 const EYE_Y = 1.15;             // seated eye on a casino chair (ART_BIBLE §4.2)
+/** Box edge to rail outer edge: a seat centre sits SEAT_DIST outside the rail and its back reaches just inside the box. */
+const SEAT_ZONE = SEAT_DIST + 0.24;
+export const DEFAULT_FELT_Y = 0.76;    // table top height unless `feltTable({ h })` says otherwise (dealer feltY is relative to it)
 
 // ── outlines ────────────────────────────────────────────────────────────────────────────────────
 /** Table outline shrunk by `inset` metres from the outer edge of the rail (`w × d` is the OUTER bounding box). */
@@ -78,18 +84,19 @@ function seatsAlong(outer: Path, n: number, keepPoint: (x: number, z: number, ph
 function seatSlots(o: FeltTableOpts, outer: Path): SeatSlot[] {
   const { shape, w, d, seats: n } = o;
   if (shape === 'rect' || shape === 'craps') {
+    const rw = w - 2 * SEAT_ZONE, hd = d / 2 - SEAT_ZONE;      // rail outer edge (the seats sit SEAT_DIST outside it)
     const cap = (len: number): number => Math.max(1, Math.floor((len - 0.2) / (shape === 'craps' ? 0.55 : 0.62)));
-    const front = Math.min(n, cap(w));
+    const front = Math.min(n, cap(rw));
     const slots: SeatSlot[] = [];
-    for (let i = 0; i < front; i++) slots.push({ x: -w / 2 + (w * (i + 0.5)) / front, z: d / 2, nx: 0, nz: 1 });
+    for (let i = 0; i < front; i++) slots.push({ x: -rw / 2 + (rw * (i + 0.5)) / front, z: hd, nx: 0, nz: 1 });
     const rest = n - front;
     for (let i = 0; i < rest; i++) {
       const side = i % 2 === 0 ? -1 : 1;
-      slots.push({ x: side * w / 2, z: d * 0.12, nx: side, nz: 0 });
+      slots.push({ x: side * rw / 2, z: d * 0.12, nx: side, nz: 0 });
     }
     return slots.sort((a, b) => a.x - b.x || b.z - a.z);
   }
-  if (shape === 'kidney') return seatsAlong(outer, n, (_x, z) => z > -d / 2 + 0.02);
+  if (shape === 'kidney') return seatsAlong(outer, n, (_x, z) => z > -d / 2 + SEAT_ZONE + 0.02);
   const gap = o.dealer ? 0.5 : 0.12;      // radians kept free around the dealer side (−Z)
   return seatsAlong(outer, n, (_x, _z, phi) => Math.abs(phi) <= Math.PI - gap);
 }
@@ -149,13 +156,13 @@ export function makeTables(ctx: KitCtx, seating: ReturnType<typeof makeSeating>)
   }, { key: 'kit:foam' });
 
   const feltTable: Kit['feltTable'] = (o): FeltTablePart => {
-    const h = o.h ?? 0.76;
+    const h = o.h ?? DEFAULT_FELT_Y;
     const { shape, w, d } = o;
     const root = P.group('felt_table');
     const craps = shape === 'craps';
     const railH = craps ? 0.14 : 0.045;
-    const feltPath = tableOutline(shape, w, d, RAIL_W);
-    const outer = tableOutline(shape, w, d, 0);
+    const feltPath = tableOutline(shape, w, d, SEAT_ZONE + RAIL_W);
+    const outer = tableOutline(shape, w, d, SEAT_ZONE);          // rail outer edge: the seats are placed along it
 
     // ── felt ──
     const feltMat = M.felt(o.felt);
@@ -228,7 +235,7 @@ export function makeTables(ctx: KitCtx, seating: ReturnType<typeof makeSeating>)
     }
 
     // ── dealer chip tray (on the felt, at the dealer edge) ──
-    const dealerZ = -d / 2 + RAIL_W + 0.14;
+    const dealerZ = -d / 2 + SEAT_ZONE + RAIL_W + 0.14;
     const tray = new THREE.Object3D();
     tray.name = 'chip_tray';
     tray.position.set(0, h + 0.03, dealerZ);
@@ -281,19 +288,21 @@ export function makeTables(ctx: KitCtx, seating: ReturnType<typeof makeSeating>)
         },
         stand: new THREE.Vector3(cx + inwardX * (craps ? 0 : STAND_FWD), 0, cz + inwardZ * (craps ? 0 : STAND_FWD)),
         avatar: craps ? 'stand' : 'sit',
+        standY: height,
       });
     });
 
     // dealer spot
     const dealerAnchor = new THREE.Object3D();
     dealerAnchor.name = 'dealer';
-    dealerAnchor.position.set(0, 0, -d / 2 - 0.4);
+    const dealerZ0 = -d / 2 + SEAT_ZONE - SEAT_DIST;          // 0.4 m behind the rail, like the seats
+    dealerAnchor.position.set(0, 0, dealerZ0);
     dealerAnchor.userData.anchor = true;
     root.add(dealerAnchor);
-    if (o.dealer) colliders.push({ min: [-0.3, 0, -d / 2 - 0.7], max: [0.3, 1.8, -d / 2 - 0.1], tag: 'solid' });
+    if (o.dealer) colliders.push({ min: [-0.3, 0, dealerZ0 - 0.3], max: [0.3, 1.8, dealerZ0 + 0.3], tag: 'solid' });
 
     root.userData.feltY = h;
-    return { root, top, seats: seatDefs, seatAnchors, dealerAnchor, chipTray: tray, colliders };
+    return { root, top, seats: seatDefs, seatAnchors, dealerAnchor, chipTray: tray, colliders, feltY: h };
   };
 
   /** Mesh from a prepared geometry + material (UV already set, colours already baked). */

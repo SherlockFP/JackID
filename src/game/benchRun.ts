@@ -11,8 +11,8 @@
 import type { GameMode, InstanceId, MachineId, PlayerId } from '@/core/types';
 import type {
   ActiveRule, CharmState, DebtState, EcoSource, HeadlessResult, ModBreakdown, ModBreakdownStep, ModEffect, ModHook, ModProvider,
-  ModQuery, ModSource, ModifierApi, RunApi, RunPhase, WinMeta, TycoonApi, ShiftApi, BuffsApi, TotemsApi, CollateralApi,
-  NightEventsApi, ContractsApi, JackpotsApi, CurrencyId,
+  ModQuery, ModSource, ModifierApi, RunApi, RunWindow, WinMeta, TycoonApi, ShiftApi, BuffsApi, TotemsApi, CollateralApi,
+  NightEventsApi, ContractsApi, JackpotsApi, CurrencyId, BetLimits, BetOpts, RefusalReason,
 } from '@/game/types';
 import { foldEffects, modHookMeta, scopeMatches, stackedValue } from '@/game/types';
 import type { PhoneCallState, RunConfig } from '@/net/protocol';
@@ -101,7 +101,16 @@ export interface BenchStats { rounds: number; wagered: number; paid: number; big
 
 export class BenchRun implements RunApi {
   readonly mode: GameMode = 'free';
-  phase: RunPhase = 'play';
+  private win_: RunWindow = 'watch';
+  private refusal: RefusalReason | null = null;
+  night(): number { return 0; }
+  window(): RunWindow { return this.win_; }
+  pulls(_pid?: PlayerId): number { return Number.POSITIVE_INFINITY; }
+  lastRefusal(): RefusalReason | null { return this.refusal; }
+  betLimits(_machineId: MachineId, _instanceId: InstanceId): BetLimits {
+    return { min: 1, max: 100, ladder: [1, 5, 10, 25, 50, 100] };
+  }
+  payoutFactor(_machineId: MachineId, _instanceId: InstanceId): number { return 1; }
   readonly selfId: PlayerId = 1;
   readonly config: Readonly<RunConfig> = { startWallet: BENCH_WALLET, deadlines: 99, difficulty: 'normal', friendlyGive: true };
   readonly mods = new BenchMods();
@@ -170,9 +179,10 @@ export class BenchRun implements RunApi {
   wallet(_pid?: PlayerId): number { return this.coins; }
   canAfford(cost: number, _pid?: PlayerId): boolean { return this.coins >= cost; }
 
-  bet(amount: number, src: EcoSource): boolean {
+  bet(amount: number, src: EcoSource, _o?: BetOpts): boolean {
     const cost = Math.ceil(amount * this.mod('bet.costMult', src.machineId, 1));
-    if (cost > this.coins) return false;
+    if (cost > this.coins) { this.refusal = 'funds'; return false; }
+    this.refusal = null;
     this.coins -= cost;
     this.stats.wagered += cost;
     if (!this.openRounds.has(src.mid)) {          // extra stakes (double, split …) belong to the same round

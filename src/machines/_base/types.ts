@@ -9,9 +9,11 @@
  * Model bounds rule: everything inside `x∈[−w/2,w/2], z∈[−d/2,d/2], y∈[0,h]`; the strip
  * `z∈[d/2, d/2+stand]` in front must stay free of colliders (players stand there).
  *
- * Anchors a model may expose (`anchors.<name>`): `speaker` (REQUIRED, positional sfx), `prompt`, `light`
- * (pooled-light hint, `userData.color`/`intensity`), `insideGlass`, `coinOut` (FX origin for wins),
- * `plate` (tycoon Service Plate), `staff` (where an Attendant mannequin sits), `dealer`, plus machine-specific ones.
+ * Anchors a model may expose (`anchors.<name>`, TECH §11.5, list in `core/ids.ts` `MODEL_ANCHORS`): `speaker`
+ * (REQUIRED, positional sfx), `prompt`, `label`, `marqueeTop` (WORLD-SYS mounts the Circuit badge),
+ * `servicePlate` (Level plate, nameplate, staff badge, Shill P&L), `upgradeMounts` (tycoon visual parts),
+ * optional `light`/`light2` (pooled-light hint, `userData.color`/`intensity`), `insideGlass`, `coinOut`
+ * (FX origin for wins), `stand`, `fxTwist`, `seatLantern0..3`, plus machine-specific ones.
  */
 import type * as THREE from 'three';
 import type {

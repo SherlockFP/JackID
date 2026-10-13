@@ -18,7 +18,7 @@ import type { MannequinActor, MannequinClip } from '@/kit/types';
 
 export interface CinematicKey { pos: V3; look: V3; dur: number; ease?: Ease }
 
-/** First-person hands / held items (own scene, fov 55). */
+/** First-person hands / held items (own scene, fov 50, near 0.01 — TECH §11.7). */
 export type HeldItem = 'none' | 'coin' | 'card' | 'totem' | 'tonic' | 'gun' | 'phone' | 'ticket' | 'ledger' | (string & {});
 export interface Viewmodel {
   setVisible(on: boolean): void;

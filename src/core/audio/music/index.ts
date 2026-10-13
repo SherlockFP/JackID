@@ -12,21 +12,25 @@
  * pick the song, so lounge → tense → dread is one song getting busier and sourer, not a cut. Seeded: with
  * `setSeed` the same seed writes the same arrangement; without it every start differs.
  */
-import { log } from '../log';
-import { hashSeed, randomSeed } from '../rng';
-import type { Unsub, ZoneId } from '../types';
-import type { MusicHost } from './audio';
-import type { BeatEvent, JukeboxTrack, MusicApi, MusicStateId, StingerId } from './types';
-import type { SongDef } from './music/model';
-import { Rig } from './music/rig';
-import { Arrangement, type BeatMark } from './music/sequencer';
-import { BEDS } from './music/songs/beds';
-import { JUKEBOX } from './music/songs/jukebox';
-import { Stingers } from './music/stingers';
+import { log } from '../../log';
+import { hashSeed, randomSeed } from '../../rng';
+import type { Unsub, ZoneId } from '../../types';
+import type { MusicHost } from '../audio';
+import type { BeatEvent, JukeboxTrack, MusicApi, MusicStateId, StingerId } from '../types';
+import type { SongDef } from './model';
+import { Rig } from './rig';
+import { Arrangement, type BeatMark } from './sequencer';
+import { BEDS } from './songs/beds';
+import { JUKEBOX } from './songs/jukebox';
+import { Stingers } from './stingers';
 
 const PUMP_MS = 25;
 const LOOKAHEAD = 0.22, LOOKAHEAD_MAX = 1.8;
 const JUKE_INTENSITY = 0.9;
+/** Milestone stingers: exempt from the cue cap and from bed ducking (the moment must not pump the score down). */
+const MILESTONES: ReadonlySet<string> = new Set(['quotaMet', 'quotaFail', 'jackpot', 'bigWin']);
+/** Rise (cents) of a tempo-following song or a jukebox track at full intensity — Last Call pitches up +3 %. */
+const LAST_CALL_CENTS = 51;
 const DEFAULT_FADE = 2.5;
 const clamp01 = (v: number): number => (v > 0 ? (v < 1 ? v : 1) : 0);   // NaN → 0
 const smooth = (lo: number, hi: number, x: number): number => {
@@ -124,7 +128,7 @@ export function createMusic(host: MusicHost): MusicApi {
   }
 
   function targets(song: SongDef | null, juke: boolean): { i: number; d: number } {
-    if (juke) return { i: JUKE_INTENSITY, d: Math.min(0.45, userD * 0.5) };
+    if (juke) return { i: Math.max(JUKE_INTENSITY, userI), d: Math.min(0.45, userD * 0.5) };
     const cfg = cfgOf(state);
     const bedState = !jukeId;
     return {
@@ -226,7 +230,7 @@ export function createMusic(host: MusicHost): MusicApi {
     lastLook = now;
     const i = effI.at(now), d = effD.at(now);
     rig.setLook(Math.round(d * 100) / 100, cur ? cur.song.fx ?? {} : undefined, 0.8);
-    const rise = cur && cur.song.tempoFollowsIntensity ? 51 * smooth(0.86, 1, i) : 0;       // Last Call: +3 %
+    const rise = cur && (jukeId || cur.song.tempoFollowsIntensity) ? LAST_CALL_CENTS * smooth(0.86, 1, i) : 0;   // Last Call: +3 %
     const sag = -40 * d * d + (d > 0.5 ? Math.sin(now * 0.9) * 22 * (d - 0.5) * 2 : 0);
     rig.setDetune(rise + sag + detuneBias, 0.35);
     // calm beds sit ~5 dB under tense ones (the glue compressor would otherwise flatten the difference); dread pulls back ~2 dB
@@ -295,16 +299,19 @@ export function createMusic(host: MusicHost): MusicApi {
 
     stinger(id: StingerId, o?: { vol?: number; duck?: number }): void {
       const now = ctx.currentTime;
+      const milestone = MILESTONES.has(id);
       if (now - (lastSting.get(id) ?? -9) < 0.12) return;                  // the same cue twice in a blink is one cue
       lastSting.set(id, now);
-      while (stingTimes.length && now - stingTimes[0] > 1) stingTimes.shift();
-      if (stingTimes.length >= 4) return;                                   // and never a machine-gun of cues
-      stingTimes.push(now);
+      if (!milestone) {                                                     // milestones are exempt from the cue cap
+        while (stingTimes.length && now - stingTimes[0] > 1) stingTimes.shift();
+        if (stingTimes.length >= 4) return;                                 // and never a machine-gun of cues
+        stingTimes.push(now);
+      }
       try {
         stingers ??= new Stingers(rig, {
           detune: (cents, ramp) => { detuneBias = cents; rig.setDetune(cents, ramp); lastLook = ctx.currentTime + ramp; },
         });
-        stingers.play(id, ctx.currentTime + 0.03, o);
+        stingers.play(id, ctx.currentTime + 0.03, milestone ? { ...o, duck: 0 } : o);   // duck 0 = no bed ducking
       } catch (e) { log.warn('music', `stinger "${id}" failed`, e); }
     },
 

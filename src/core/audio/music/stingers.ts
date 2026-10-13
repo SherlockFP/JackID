@@ -191,7 +191,8 @@ export class Stingers {
     };
     r.play(pen);
     const hold = r.hold ?? 1.5;
-    this.rig.duck(o.duck ?? r.duck ?? 0.65, hold, when);
+    const duck = o.duck ?? r.duck ?? 0.65;
+    if (duck > 0) this.rig.duck(duck, hold, when);                       // duck 0 = milestone, leave the bed alone
     return hold;
   }
 

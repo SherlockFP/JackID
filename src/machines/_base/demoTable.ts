@@ -23,7 +23,7 @@ import type { CardId } from '@/core/texgen/types';
 import type { PlayerId } from '@/core/types';
 import { isBot } from '@/core/types';
 import type { Kit, LampPart, ScreenSurface } from '@/kit/types';
-import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import type { MachineInputEvent } from '@/core/input/types';
 import type { HudHint } from '@/core/ui/types';
 import { fmtCoins, t } from '@/core/i18n';
 import { TableBase } from './TableBase';
@@ -206,7 +206,7 @@ export default class HighCardDuel extends TableBase<DemoParts, Ev, Snap, Act> {
   // ── local input → action to the host ─────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    const a = e.action as MachineAction | 'double';
+    const a = e.action;
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     const idle = this.st.phase === 'idle', mine = this.localSeat;

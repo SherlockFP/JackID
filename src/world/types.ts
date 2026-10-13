@@ -13,7 +13,11 @@ import type { AnyMachine } from '@/machines/_base/types';
 export type { LocalAABB, SlotSize, ZoneId, KnownZoneId } from '@/core/types';
 
 /** One placement position. **Ids, sizes and zones are the contract; coordinates may be tuned by WORLD-ARCH.** */
-export interface SlotDef { id: InstanceId; size: SlotSize; pos: V3; rotY: 0 | 90 | 180 | 270; zone: ZoneId }
+/**
+ * `y` = floor height of the slot's dais / platform in metres (DECISIONS C25; WELL-01 dais y = 0.15). Optional, default 0.
+ * Machines are placed on `y`; `pos[1]` stays the level-floor height used by the layout tables.
+ */
+export interface SlotDef { id: InstanceId; size: SlotSize; pos: V3; rotY: 0 | 90 | 180 | 270; zone: ZoneId; y?: number }
 
 // ── interaction & collision (TECH_SPEC §2.14) ────────────────────────────────────────────────────
 export interface Interactable {

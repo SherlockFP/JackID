@@ -8,9 +8,11 @@
  *    machine actions go to the seated machine's `MachineSink` (with raw `code` + `mods`, see `MachineInputEventX`).
  *  - Effective `mode` = 'ui' while the UI overlay is blocking (`ui:blocking` event) or a text field has focus,
  *    otherwise the mode the game set. Entering 'walk' (re)acquires pointer lock; 'machine' / 'menu' / 'ui' release it.
- *    A lock lost to the browser's Esc becomes a synthetic `pause` press. A refused lock raises the "CLICK TO CONTINUE"
- *    veil (`input:veil`, drawn by core/ui).
+ *    A lock lost to the browser's Esc becomes a synthetic `pause` press.
+ *  - Lock refused (or `?nolock=1`) → automatic DRAG-TO-LOOK fallback (`dragLook`): in walk mode, holding LMB or RMB on
+ *    the canvas and moving turns the camera through `look()`. No "click to continue" veil is raised any more.
  *  - Seated rules (§11.6): RMB is a TAP (< 0.2 s → `secondary`), RMB hold = free-look (`freeLook`, `look()` deltas);
+ *    at `mouse:'pick'` poses RMB goes to `onPointer` and free-look is hold-Alt instead;
  *    wheel notches become `WheelUp/WheelDown` presses; unbound keys reach the sink as `{action:'key'}` with their `code`
  *    (device letters J/K/L, P, [ ] …); Esc pauses, E stands up.
  *  - Never binds Ctrl/Alt/Meta chords (browser shortcuts keep working); F5/F11/F12 stay with the browser.
@@ -52,6 +54,8 @@ export interface InputExt extends Input {
   readonly freeLook: boolean;
   /** Drop every user rebinding and persist. */
   resetBindings(): void;
+  /** True when walk look comes from drag-to-look (lock refused, or `?nolock=1`) instead of pointer lock. */
+  readonly dragLook: boolean;
   /** Codes currently bound to a binding key (copy). */
   codesOf(key: string): string[];
   /** Every binding key with its codes (frozen + extra, copy). */
@@ -94,6 +98,11 @@ class InputImpl implements InputExt {
   locked = false;
   readonly pointerNdc = new THREE.Vector2();
   freeLook = false;
+  /** Drag-to-look fallback active (see the header). Set by `?nolock=1` or a refused lock; cleared by a successful lock. */
+  dragLook = false;
+  /** `?nolock=1`: never request pointer lock (QA automation, odd browsers). */
+  private readonly noLock: boolean;
+  private dragging = false;                // LMB / RMB held on the canvas during drag-to-look
 
   private base: InputMode = 'menu';
   private uiBlocked = false;
@@ -123,6 +132,8 @@ class InputImpl implements InputExt {
   private readonly lookOut = { dx: 0, dy: 0 };
 
   constructor(private readonly canvas: HTMLCanvasElement, keybinds: Partial<Record<string, string[]>>) {
+    this.noLock = typeof location !== 'undefined' && new URLSearchParams(location.search).get('nolock') === '1';
+    this.dragLook = this.noLock;
     for (const [k, v] of Object.entries(ALL_DEFAULTS)) this.bind[k] = [...v];
     for (const [k, v] of Object.entries(keybinds)) {
       if (k in ALL_DEFAULTS && Array.isArray(v) && v.every((c) => typeof c === 'string')) {
@@ -163,7 +174,7 @@ class InputImpl implements InputExt {
     if (cur === prev) return;
     this.releaseWalk();
     this.releaseMachine();
-    this.rmbT = -1; this.freeLook = false; this.wheelAcc = 0;
+    this.rmbT = -1; this.freeLook = false; this.wheelAcc = 0; this.dragging = false;
     this.pendDx = this.pendDy = this.availDx = this.availDy = 0;
     this.ptrQueue.length = 0;
     this.applyCursor(cur);
@@ -176,7 +187,9 @@ class InputImpl implements InputExt {
   }
 
   private applyCursor(m: InputMode): void {
-    this.canvas.dataset.cursor = m === 'walk' || (m === 'cutscene' && this.locked) ? 'none' : 'glove';
+    // walk hides the OS cursor only under pointer lock; drag-to-look keeps it visible so the player can aim the drag
+    const hidden = (m === 'walk' && !this.dragLook) || (m === 'cutscene' && this.locked);
+    this.canvas.dataset.cursor = hidden ? 'none' : 'glove';
   }
   private focusCanvas(): void {
     const a = document.activeElement;
@@ -187,10 +200,13 @@ class InputImpl implements InputExt {
   // ── pointer lock ────────────────────────────────────────────────────────────────────────────────
   requestLock(): Promise<boolean> {
     if (this.locked) return Promise.resolve(true);
+    if (this.noLock) return Promise.resolve(false);                  // ?nolock=1: drag-to-look only
     if (this.lockPending) return this.lockPending;
     const p = this.acquireLock().then((ok) => {
       this.lockPending = null;
-      this.setVeil(!ok && this.mode === 'walk');
+      // refused → drag-to-look takes over (no veil); a later successful lock switches back in onLockChange
+      if (!ok && !this.dragLook) { this.dragLook = true; this.applyCursor(this.mode); }
+      this.setVeil(false);
       return ok;
     });
     this.lockPending = p;
@@ -236,7 +252,10 @@ class InputImpl implements InputExt {
       if (this.expectUnlock) this.expectUnlock = false;
       else if (this.mode === 'walk' || this.mode === 'cutscene') this.pushPause();   // the browser ate Esc
     }
-    if (this.locked) this.setVeil(false);
+    if (this.locked) {
+      this.setVeil(false);
+      if (this.dragLook) { this.dragLook = false; this.dragging = false; this.applyCursor(this.mode); }
+    }
     bus.emit('input:lock', { locked: this.locked });
   }
 
@@ -274,12 +293,17 @@ class InputImpl implements InputExt {
     if (e.button >= 3 && !isTextEl(e.target)) e.preventDefault();          // side buttons must not navigate history
     const b = Math.min(2, e.button) as 0 | 1 | 2;
     const code = `Mouse${e.button}`;
+    const dragBtn = e.button === 0 || e.button === 2;
     if (down) {
       if (e.target !== this.canvas || mode === 'ui') return;
-      if (mode === 'walk' && !this.locked) { void this.requestLock(); return; }   // the click that re-locks is swallowed
+      if (mode === 'walk' && !this.locked) {
+        if (!this.dragLook) { void this.requestLock(); return; }      // the click that re-locks is swallowed
+        if (dragBtn) this.dragging = true;                            // drag-to-look: this click starts the drag
+      }
       this.phys.add(code);
     } else {
       this.phys.delete(code);
+      if (dragBtn) this.dragging = false;
       if (mode === 'ui') return;
     }
     this.queue.push({ code, down, repeat: false, t: performance.now(), mods: this.mods(e) });
@@ -296,14 +320,20 @@ class InputImpl implements InputExt {
       return;
     }
     this.updateNdc(e);
+    if (mode === 'walk' && this.dragging) {                          // drag-to-look (unlocked fallback)
+      if (Math.abs(e.movementX) < MAX_LOOK_PX && Math.abs(e.movementY) < MAX_LOOK_PX) { this.pendDx += e.movementX; this.pendDy += e.movementY; }
+      return;
+    }
     if (mode === 'machine') {
-      if (this.rmbT >= 0 && performance.now() - this.rmbT >= TAP_MS) {
-        this.freeLook = true;
-        this.pendDx += e.movementX; this.pendDy += e.movementY;
-      }
+      // pick poses: free-look is hold-Alt (RMB belongs to onPointer); other poses: RMB hold past the tap window
+      if (this.sink?.mouse === 'pick') this.freeLook = this.altHeld();
+      else if (this.rmbT >= 0 && performance.now() - this.rmbT >= TAP_MS) this.freeLook = true;
+      if (this.freeLook) { this.pendDx += e.movementX; this.pendDy += e.movementY; }
       this.pushPtr({ type: 'move', button: 0, ndc: this.pointerNdc.clone(), t: performance.now() });
     }
   }
+
+  private altHeld(): boolean { return this.phys.has('AltLeft') || this.phys.has('AltRight'); }
 
   private pushPtr(p: PtrEvt): void {
     const last = this.ptrQueue[this.ptrQueue.length - 1];
@@ -345,6 +375,7 @@ class InputImpl implements InputExt {
   // ── polling API ─────────────────────────────────────────────────────────────────────────────────
   down(a: Action): boolean { return this.down_.has(a); }
   pressed(a: Action): boolean { return this.pressed_.has(a); }
+  anyPressed(): boolean { return this.pressed_.size > 0; }
   released(a: Action): boolean { return this.released_.has(a); }
   move(): { x: number; z: number } {
     const x = (this.down_.has('right') ? 1 : 0) - (this.down_.has('left') ? 1 : 0);
@@ -432,7 +463,10 @@ class InputImpl implements InputExt {
   beginFrame(): void {
     this.availDx += this.pendDx; this.availDy += this.pendDy;
     this.pendDx = 0; this.pendDy = 0;
-    if (this.rmbT >= 0 && !this.freeLook && this.mode === 'machine' && performance.now() - this.rmbT >= TAP_MS) this.freeLook = true;
+    if (this.mode === 'machine') {
+      if (this.sink?.mouse === 'pick') this.freeLook = this.altHeld();
+      else if (this.rmbT >= 0 && !this.freeLook && performance.now() - this.rmbT >= TAP_MS) this.freeLook = true;
+    }
   }
 
   beginStep(): void {

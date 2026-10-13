@@ -12,8 +12,9 @@
  *  5. Never `setTimeout`: use `this.wait` / `this.anim` (they honour the Speed upgrade and freeze with SP pause).
  *  6. `present()` must tolerate `pc.fast` and must not assume the local player is the occupant.
  *  7. Your round must always reach `settle()` (try/finally). Release while `busy` is deferred (honoured as soon as
- *     `busy` clears, forced after 10 s). Credit FIRST, present after: call `settle()` before awaiting the payout
- *     presentation so a reload mid-show never loses coins (`const p = this.emit(ev); this.settle(..); await p;`).
+ *     `busy` clears, forced after 10 s). Credit FIRST, present after: pass the wallet step as `emit`'s `credit`
+ *     so it runs before the presentation is queued (`const p = this.emit(ev, () => this.settle(..)); await p;`).
+ *     A reload mid-show then never loses coins. Awaiting `emit` and settling afterwards is a contract violation.
  *     `anim`/`wait`/`nearMiss`/`celebrate`/`pourCoins` all honour the Speed upgrade.
  *  8. No module-level mutable state; no imports from other machine folders.
  *  9. Hidden information (cards, tiles, shells): publish redacted public events, send secrets with
@@ -72,7 +73,11 @@ const FORCE_RELEASE_S = 10;
 export interface ModelOpts { seed: number; variant: 0 | 1 | 2 | 3; lod?: 0 | 1 }
 
 /** Wire / save form of a machine: base bookkeeping around the machine's own snapshot `s`. */
-export interface MachineSnap<S extends Json = Json> { r: number; q: number; s: S | null; tm?: { until: number; label: string } | null }
+/** Snapshot envelope. `owner` = explicit occupant pid (DECISIONS G); null when unoccupied. Old saves may lack it. */
+export interface MachineSnap<S extends Json = Json> { r: number; q: number; s: S | null; owner?: PlayerId | null; tm?: { until: number; label: string } | null }
+
+/** Cosmetic non-player on a seat (DECISIONS C27): staff, shill or patron. Never affects outcomes or the wallet. */
+export type NpcKind = 'staff' | 'shill' | 'patron';
 
 export abstract class MachineBase<P extends object = Record<string, THREE.Object3D>,
                                   E extends MachineEvent = MachineEvent,
@@ -136,6 +141,21 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   onPointer(_e: MachinePointerEvent): void {} // local occupant only, pose.mouse === 'pick'
   /** The language changed: repaint diegetic screens and the HUD strip (kit `{ key }` texts re-draw themselves). */
   onLang(): void {}
+
+  // ── cosmetic NPCs and headless replay (DECISIONS C27) ──
+  private _npc: { seat: number; kind: NpcKind } | null = null;
+  /** Put a cosmetic staff / shill / patron on `seat`. Visual only: no wallet, no outcome, no seat grant. */
+  npcOccupy(seat: number, kind: NpcKind): void { this._npc = { seat, kind }; }
+  npcRelease(): void { this._npc = null; }
+  get npc(): { seat: number; kind: NpcKind } | null { return this._npc; }
+  /**
+   * Cosmetic replay of a headless round (`def.headless`) on this device: runs `present()` as a fast, non-local
+   * event so NPCs and shills show the result without touching the wallet or the round counter.
+   */
+  presentHeadless(result: E): void {
+    const pc: PresentCtx = { local: false, pid: 0, seq: 0, fast: true, priv: false, t: this.ctx.net.hostTime() };
+    void this.present(result, pc);
+  }
   abstract present(ev: E, pc: PresentCtx): void | Promise<void>;   // ALL peers incl. emitter
   /**
    * State for late joiners / saves. `forPid` is the recipient: hidden-information machines MUST redact
@@ -217,10 +237,16 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     return this.timerState ? Math.max(0, (this.timerState.until - this.ctx.net.hostTime()) / 1000) : 0;
   }
 
-  /** Stamp → present locally (queued) → network; resolves when the local present finished. */
-  protected emit(ev: E): Promise<void> {
+  /**
+   * Stamp → present locally (queued) → network; resolves when the local present finished.
+   * `credit` (DECISIONS G, settle-before-present): the wallet step of this event (`settle(...)`, `run.win`). It runs
+   * synchronously, after the authority check and BEFORE the event is queued, so a reload or a stalled show can never
+   * lose the payout. Use it instead of `await emit(); settle()`: `const shown = this.emit(ev, () => this.settle(r)); await shown;`.
+   */
+  protected emit(ev: E, credit?: () => void): Promise<void> {
     const ok = this.def.shared ? this.isHost : this.isLocalOccupant;
     if (!ok || this._disposed) { log.warn('machine', `${this.id} illegal emit ${ev.k}`); return Promise.resolve(); }
+    credit?.();
     const env: MachineEnvelope = { mid: this.id, seq: ++this._seqOut, pid: this.selfId, ev, t: this.ctx.net.hostTime() };
     this.ctx.net.sendEvent(env);            // client → host (host validates & forwards) | host → all clients
     return this._enqueue(env, true);
@@ -274,7 +300,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   // ── snapshots ──
   /** World / Session call this instead of `getSnapshot` so the round counter and event cursor travel along. */
   _snapshot(forPid?: PlayerId): MachineSnap<S> {
-    return { r: this._round, q: this._seqOut, s: this.getSnapshot(forPid), tm: this.timerState };
+    return { r: this._round, q: this._seqOut, s: this.getSnapshot(forPid), owner: this.occupant, tm: this.timerState };
   }
   /** Inverse of `_snapshot`. `from` = the emitting peer (host) whose events with `seq ≤ q` are already baked in. */
   _restore(snap: MachineSnap<S>, from?: PlayerId): void {

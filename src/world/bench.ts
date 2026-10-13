@@ -341,7 +341,8 @@ export class Bench {
     }
     kit.plane(ROOM, ROOM, { color: 0x1a1520 }, { rot: [90, 0, 0], pos: [0, h, 0], shade: false, parent: this.root });
     this.collision.addStatic(new THREE.Box3(new THREE.Vector3(-ROOM, -1, -ROOM), new THREE.Vector3(ROOM, 0, ROOM)), 'walkable');
-    this.root.add(new THREE.HemisphereLight(0xe6edff, 0x8a6a62, 1.9));
+    // brighter default (DECISIONS C38): reference screenshots must read the machine, not the dark room
+    this.root.add(new THREE.HemisphereLight(0xf2f5ff, 0xa08a80, 2.9));
     for (let i = 0; i < 2; i++) {                       // constant light count: machine light anchors drive these
       const l = new THREE.PointLight(0xffe2a0, 0, 4);
       this.lights.push(l);
@@ -589,7 +590,7 @@ export class Bench {
       const u = a.userData as { color?: number; intensity?: number; range?: number };
       a.getWorldPosition(l.position);
       l.color.setHex(u.color ?? 0xffe2a0);
-      l.intensity = (u.intensity ?? 0.6) * 1.6;
+      l.intensity = (u.intensity ?? 0.6) * 2.6;
       l.distance = u.range ?? 3;
     }
   }

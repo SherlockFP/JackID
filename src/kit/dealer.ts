@@ -10,8 +10,10 @@
  *  - stable `head / armL / armR / handL / handR` proxy nodes that follow the real bones, so modelers can parent cards
  *    and chips to a hand before the GLB has even loaded.
  *
- * Styles: croupier · porcelain · puppet (strings to a crossbar, 9 fps) · devil (tall, long arms) — and, beyond the
- * frozen union, oracle · caller · cashier (pass them with a cast; Contracts v1.1 adds them to the type).
+ * Styles: croupier · porcelain · puppet (strings to a crossbar, 9 fps) · devil (tall, long arms) · oracle · caller ·
+ * cashier (Contracts v1.1). `feltY` is the table top the dealer works at (`FeltTablePart.feltY`): every reach target
+ * is lifted or lowered by `feltY − 0.76` m, so hands land on the felt of any table height.
+ * Face proxies: `jaw` and `eyes` are children of `head` (chin and eye line), for mouths, eyes and mic-style props.
  * Gestures are promises that always resolve. All timing runs on the kit clock. Root space: +Z forward (towards the
  * table), +X = the dealer's left, y up; reach targets are authored for a 1.78 m dealer and scale with `height`.
  */
@@ -21,6 +23,7 @@ import { PAL } from './palette';
 import type { KitCtx } from './ctx';
 import type { MannequinInternal } from './mannequin';
 import type { DealerPart, DealerPose, Kit, MannequinOpts } from './types';
+import { DEFAULT_FELT_Y } from './tables';
 
 export type DealerStyle = 'croupier' | 'porcelain' | 'puppet' | 'devil' | 'oracle' | 'caller' | 'cashier';
 
@@ -146,6 +149,12 @@ export function makeDealers(ctx: KitCtx, mq: { mannequin(o?: MannequinOpts): Man
     // proxies that follow the real bones
     const mkProxy = (name: string): THREE.Object3D => { const n = new THREE.Object3D(); n.name = name; root.add(n); return n; };
     const head = mkProxy('head'), armL = mkProxy('armL'), armR = mkProxy('armR'), handL = mkProxy('handL'), handR = mkProxy('handR');
+    // face points ride the head proxy (head bone space: +Y up, +Z face), so they follow nods and shakes
+    const jaw = new THREE.Object3D(), eyes = new THREE.Object3D();
+    jaw.name = 'jaw'; jaw.position.set(0, -0.11 * k, 0.07 * k);
+    eyes.name = 'eyes'; eyes.position.set(0, 0.03 * k, 0.085 * k);
+    head.add(jaw, eyes);
+    const dy = (o.feltY ?? DEFAULT_FELT_Y) - DEFAULT_FELT_Y;   // table-height offset for every arm target
     const proxies: Array<[THREE.Object3D, string]> = [[head, 'Head'], [armL, 'upperarm_l'], [armR, 'upperarm_r'], [handL, 'hand_l'], [handR, 'hand_r']];
     const strings = styleId === 'puppet' ? makeStrings(ctx, root, [head, armL, armR, handL, handR], height) : null;
 
@@ -208,7 +217,7 @@ export function makeDealers(ctx: KitCtx, mq: { mannequin(o?: MannequinOpts): Man
         const w0 = arm.w;
         return ctx.anim.run(dur, (t) => { arm.w = lerp(w0, 0, t); }, { owner: arm, ease }).then(() => { arm.w = 0; arm.has = false; });
       }
-      const target = new THREE.Vector3(to[0], to[1], to[2]);
+      const target = new THREE.Vector3(to[0], to[1] + dy, to[2]);
       if (arm.w < 0.01 || !arm.has) arm.pos.copy(target);
       const p0 = arm.pos.clone(), w0 = arm.w;
       arm.has = true;
@@ -243,7 +252,7 @@ export function makeDealers(ctx: KitCtx, mq: { mannequin(o?: MannequinOpts): Man
 
     // ── API ──
     const api: DealerPart = {
-      root, head, armL, armR, handL, handR,
+      root, head, armL, armR, handL, handR, jaw, eyes,
       pose(p, dur = 0.35) {
         const def = POSES[p];
         gid++;                                   // cancels any running gesture

@@ -79,6 +79,7 @@ export function createKit(rawTex: TexGen): KitX {
     ...dealers,
     mannequin: mannequins.mannequin,
     loadMannequin: mannequins.loadMannequin,
+    setLodCamera: mannequins.setLodCamera,
     prop: props.prop, totem: totems.totem, ...states,
     update(dt) {
       ctx.anim.update(dt);

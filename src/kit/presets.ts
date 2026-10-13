@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import type { Hex } from '@/core/types';
 import type { TexGen, VendorTexOpts } from '@/core/texgen/types';
-import { PAL, mixHex, hexR, hexG, hexB, rgbHex, css } from './palette';
+import { PAL, mixHex, hexR, hexG, hexB, rgbHex } from './palette';
 import { psx } from './materials';
 import { withTiles } from './tiles';
 
@@ -122,18 +122,7 @@ function build(tex: TexGen): Presets {
     for (let y = 1; y < h; y += 4) for (let x = ((y >> 2) & 1) * 2 + 1; x < w; x += 4) g.fillRect(x, y, 2, 2);
   }, { key: 'kit:grille' });
   const tag = (t: THREE.Texture, tile: number): THREE.Texture => { if (t.userData.tile === undefined) t.userData.tile = tile; return t; };
-  /** Calm table felt: a fine two-tone weave with a few lint specks (texgen's felt is much busier). */
-  const feltTex = (c: Hex): THREE.Texture => tex.canvas(32, 32, (g, w, h) => {
-    g.fillStyle = css(c); g.fillRect(0, 0, w, h);
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      if (((x >> 1) + (y >> 1)) & 1) { g.fillStyle = 'rgba(0,0,0,0.055)'; g.fillRect(x, y, 1, 1); }
-      else if (((x + y) & 3) === 0) { g.fillStyle = 'rgba(255,255,255,0.025)'; g.fillRect(x, y, 1, 1); }
-    }
-    let s = c;
-    const rnd = (): number => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
-    const light = css(mixHex(c, 0xf7efde, 0.2)), dark = css(mixHex(c, 0x000000, 0.3));
-    for (let i = 0; i < 9; i++) { g.fillStyle = i < 5 ? light : dark; g.fillRect(Math.floor(rnd() * w), Math.floor(rnd() * h), 1, 1); }
-  }, { key: `kit:felt:${c}` });
+
 
   return {
     enamel: (c, grime = 0.15) => mat(c, tag(enamelTex(grime), 0.5)),
@@ -148,7 +137,8 @@ function build(tex: TexGen): Presets {
     woodStain: (c) => mat(tintFor('wood_pine', c), v('wood_pine')),
     leather: (c, tufted = true) => (tufted ? mat(tintFor('tufted', c), v('tufted')) : mat(c, tex.noise(0xffffff, { size: 16, amount: 0.07, seed: 3 }))),
     velvet: (c) => mat(tintFor('velvet', c), v('velvet')),
-    felt: (c) => mat(0xffffff, tag(feltTex(c), 0.5)),
+    /** The single felt source: texgen (softened, DECISIONS G). */
+    felt: (c) => mat(0xffffff, tag(tex.felt(c), 0.5)),
     metal: (c) => mat(tintFor('brushed', c), v('brushed')),
     brass: () => mat(tintFor('brushed', mixHex(PAL.BRASS, PAL.GOLD, 0.3)), v('brushed')),
     gold: () => mat(tintFor('brushed', PAL.GOLD), v('brushed')),

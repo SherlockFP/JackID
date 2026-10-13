@@ -211,3 +211,18 @@ export interface CutscenePlayer {
   onEnd(fn: (id: CutsceneId, r: CutsceneResult) => void): Unsub;
   update(dt: number): void;               // real-time dt, called once per frame by the loop
 }
+
+// ── Actor director (DECISIONS C33) — owned by horror; world-sys provides A* over the nav graph ─────────
+/** Opaque handle to a spawned actor (mannequin-backed in practice). */
+export interface ActorHandle { readonly id: string; readonly pos: V3 }
+export interface ActorDirector {
+  /** Spawn a dressed actor at `at`. Resolves null when the kit cannot build it. */
+  spawn(id: string, at: V3, o?: { dressing?: string; frozen?: boolean }): Promise<ActorHandle | null>;
+  /** Walk along an A* path over the world nav graph; resolves false when no path exists. */
+  walkPath(actor: ActorHandle, to: V3, o?: { speed?: number }): Promise<boolean>;
+  /** Play a mannequin clip; one-shot clips resolve when done (instantly when the actor is frozen). */
+  play(actor: ActorHandle, clip: string, o?: { loop?: boolean }): Promise<void>;
+  lookAt(actor: ActorHandle, target: V3): void;
+  /** Sit the actor at a seat of a machine or prop (seat id from the world). */
+  sitAt(actor: ActorHandle, seatId: string): Promise<boolean>;
+}

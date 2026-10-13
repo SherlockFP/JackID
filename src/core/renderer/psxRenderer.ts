@@ -35,8 +35,7 @@ export type PsxSettingsX = PsxSettings & { scaleMode?: 'fill' | 'integer' };
 
 const MIN_ASPECT = 4 / 3;
 const MAX_ASPECT = 21 / 9;
-// Renderer owns draw-distance fog: states build THREE.Fog at the 26 m (normal) reference; this scales to 18 | 26 | 40 m.
-const FOG_SCALE: Record<PsxSettings['drawDistance'], number> = { near: 18 / 26, normal: 1, far: 40 / 26 };
+// Fog: states build THREE.Fog with `makeFog()` (renderer/fog.ts), so the shader applies it unscaled (DECISIONS §G).
 const BAR_COLOR = 0x080808;
 
 function makeTarget(w: number, h: number): THREE.WebGLRenderTarget {
@@ -84,7 +83,7 @@ export function createPsxRenderer(canvas: HTMLCanvasElement, initial: PsxSetting
     uniforms.uPsxSnap.value = on && settings.jitter > 0 ? 1 : 0;
     uniforms.uPsxAffine.value = on && settings.affine ? 1 : 0;
     uniforms.uPsxSnapRes.value.copy(lowRes).divideScalar(2 * (1 + 2 * settings.jitter));
-    psxUniforms.uPsxFogScale.value = FOG_SCALE[settings.drawDistance] ?? 1;
+    psxUniforms.uPsxFogScale.value = 1;                  // draw distance lives in the scene's THREE.Fog (see fog.ts)
     psxUniforms.uPsxLowRes.value.copy(lowRes);
   }
 

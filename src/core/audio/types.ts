@@ -28,6 +28,14 @@ export type SfxName =
   | 'tapeStop' | 'tinnitus' | 'defib' | 'gunBlank' | 'gunLoad' | 'shellEject' | 'tileClack' | 'cardSlap'
   | 'totemPlace' | 'totemPulse' | 'porcelainCrack' | 'jackpotSiren' | 'creak' | 'drip' | 'footstepWet';
 
+/** Defaults a registered recipe plays with (same meaning as the built-in table). All optional. */
+export interface SfxRegisterMeta {
+  bus?: Bus;          // default 'sfx'
+  pri?: number;       // voice-stealing priority 0..10, default 5
+  max?: number;       // max starts per 100 ms, default 5
+  long?: boolean;     // worth wiring into slow-motion / pitch
+}
+
 export interface PlayOpts {
   pos?: THREE.Vector3 | THREE.Object3D;  // positional (PannerNode) if set
   vol?: number;        // 0..2, default 1
@@ -108,6 +116,8 @@ export interface SpeakOpts {
   distort?: number;                  // 0..1 PA distortion
   pos?: THREE.Object3D;              // positional (diegetic speaker); omitted = PA (non-positional)
   seed?: number;
+  /** Duck the music and ambience while speaking (default true). `false` = the line plays over the score untouched. */
+  duck?: boolean;
 }
 export interface VoiceApi {
   speak(o: SpeakOpts): Promise<void>;   // resolves when the utterance ends (or is stopped)
@@ -122,7 +132,8 @@ export interface AudioEngine {
   resume(): Promise<void>;
   setVolume(bus: Bus | 'master', v: number): void;
   play(name: SfxName | string, o?: PlayOpts): Voice | null;
-  register(name: string, recipe: SfxRecipe): void;   // machine-private sounds: name 'm.<id>.<snd>'
+  /** Machine-private sounds: name 'm.<id>.<snd>'. `meta` sets the defaults (bus, priority, rate cap, long). */
+  register(name: string, recipe: SfxRecipe, meta?: SfxRegisterMeta): void;
   winJingle(tier: WinTier, o?: PlayOpts): void;
   coins(n: number, o?: PlayOpts): void;               // rapid coin clinks, n ≤ 40
   ambience(id: AmbienceId | null, fade?: number): void;

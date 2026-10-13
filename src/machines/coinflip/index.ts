@@ -21,7 +21,7 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
 import { countUp } from '@/machines/_base/juice';
-import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import type { MachineInputEvent } from '@/core/input/types';
 import type { HudHint } from '@/core/ui/types';
 import type { TweenHandle } from '@/core/tween';
 import type { Kit } from '@/kit/types';
@@ -42,7 +42,6 @@ type Ev =
 type State = { call: Side; streak: number; history: Side[]; pot: number; ride: number; bet: number };
 
 const HISTORY = 8;
-type CoinKey = MachineAction | 'collect' | 'double';
 const GOLD = 0xffd040;
 const ARC = 0.36;                    // toss height above the dish (m)
 const other = (s: Side): Side => (s === 'H' ? 'T' : 'H');
@@ -160,7 +159,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
   // ── input (local occupant) ───────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    const a = e.action as CoinKey;         // `collect` / `double` are catalogue §11.6 actions (not yet in MachineAction)
+    const a = e.action;
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -212,21 +211,19 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
       stake = bet = this.bet; idx = 0;
     }
     this.showHud();                                          // busy: only "Leave" stays on the strip
-    let r: Roll | null = null, settled = false;
+    let r: Roll | null = null;
     try {
       r = this.forceRoll(roll(this.rng, clampP(this.mod(HOOK_P, WIN_P)), this.luck()));
       const call = this.state.call;
-      await this.emit({ k: 'flip', call, res: r.win ? call : other(call), bet, stake, ride: idx, turns: r.turns, near: r.near, lucky: r.rerolled });
-      if (!r.win) {
-        const tags = [...(r.near ? ['nearmiss'] : []), ...(r.rerolled ? ['lucky'] : []), ...(idx > 0 ? ['ladder'] : [])];
-        this.settle({ gross: 0, tags });
-        settled = true;
-      }
+      const tags = [...(r.near ? ['nearmiss'] : []), ...(r.rerolled ? ['lucky'] : []), ...(idx > 0 ? ['ladder'] : [])];
+      // Settle-before-present (DECISIONS G): a loss closes the round in the credit step, before the toss is queued.
+      // A win keeps the pot pending (no payout yet), so there is nothing to credit.
+      const lost = !r.win;
+      const credit = lost ? () => { this.settle({ gross: 0, tags }); this.busy = true; } : undefined;
+      await this.emit({ k: 'flip', call, res: r.win ? call : other(call), bet, stake, ride: idx, turns: r.turns, near: r.near, lucky: r.rerolled }, credit);
     } finally {
-      if (!settled) {
-        if (r?.win) this.busy = false;                      // pot pending: release & decisions allowed
-        else if (this.roundOpen) this.settle({ gross: 0 }); // never strand a stake (rule 7)
-      }
+      if (this.roundOpen && !r?.win) this.settle({ gross: 0 });   // never strand a stake (rule 7)
+      this.busy = false;                                          // pot pending (win) or round closed (loss)
     }
     if (r?.win && idx >= this.rideCap()) await this.collect();   // ladder top reached: pay out
     else this.showHud();
@@ -238,9 +235,10 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     this.showHud();
     const amount = this.state.pot, bet = this.roundBet;
     const tags = ['ladder', ...(this.state.streak >= 2 ? [`streak:${this.state.streak}`] : [])];
-    // credit first, present after (a reload mid-show must not lose the pot)
-    const shown = this.emit({ k: 'collect', amount, bet });
-    this.settle({ gross: amount, tags });
+    // credit first, present after (DECISIONS G): a reload mid-show must not lose the pot
+    const credit = (): void => { this.settle({ gross: amount, tags }); };
+    const shown = this.emit({ k: 'collect', amount, bet }, credit);
+    if (this.roundOpen) credit();                    // the emit was refused: still pay out, never strand the pot
     try { await shown; } finally { this.showHud(); }
   }
 

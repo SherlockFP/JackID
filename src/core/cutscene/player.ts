@@ -48,7 +48,6 @@ declare module '@/core/events' {
 
 const SKIP_HOLD = 0.8;          // s, hold-to-skip
 const HINT_SECS = 4;            // s, the skip ring is shown dimly at the start of every scene
-const TAP_MAX = 0.4;            // s, a shorter press of the skip key resolves an `input` gate (longer = skip hold)
 const SEEK_MIN = 0.05;          // s, a late start below this is just played
 const READY_WAIT = 2;           // s, SP: wait this long for mannequin meshes before starting
 const GATE_FAILSAFE = 90;       // s, online: a lost gate message must never soft-lock a client
@@ -293,13 +292,8 @@ class Run {
       const options = (cue.options ?? []).map((k) => t(k));
       a.ui.choice(t('cutscene.choose'), options, { timeout: cue.timeout })
         .then((i) => this.settle(cue.id, Math.max(0, i)), () => this.settle(cue.id, 0));
-    } else if (cue.until === 'input') {
-      let downAt = -1;
-      g.off = a.input.on('skip', (down) => {
-        if (down) downAt = this.clock;
-        else if (downAt >= 0 && this.clock - downAt < TAP_MAX) this.settle(cue.id, 0);
-      });
     }
+    // `input` gates are polled in tickGate() via Input.anyPressed()
   }
 
   private tickGate(dt: number): void {
@@ -307,6 +301,8 @@ class Run {
     if (!g) return;
     g.waited += dt;
     const c = g.cue;
+    // any press resolves an `input` gate; online only the host decides (its value is relayed to peers)
+    if (c.until === 'input' && (!app.net.online || app.net.isHost) && app.input.anyPressed()) { this.settle(c.id, 0); return; }
     const limit = c.until === 'timeout' ? (c.timeout ?? 0)
       : c.timeout !== undefined ? c.timeout + (c.until === 'choice' ? 1 : 0)
         : app.net.online ? GATE_FAILSAFE : Infinity;

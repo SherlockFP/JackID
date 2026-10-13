@@ -94,6 +94,15 @@ export interface MannequinActor {
   lookAt(target: THREE.Vector3 | null, dur?: number): void;
   update(dt: number): void;       // advanced automatically by `Kit.update`; call manually only for off-screen actors
   dispose(): void;                // frees non-shared GPU resources, stops the mixer
+  // ── DECISIONS G: actor own / setFrozen / addProc / onPose ──
+  /** Dispose `obj` (a prop built for this actor) together with the actor. */
+  own(obj: THREE.Object3D): void;
+  /** Freeze / thaw the mixer (distance LOD: mannequins far or invisible freeze; one-shot clips complete instantly). */
+  setFrozen(on: boolean): void;
+  /** Register named procedural events fired from clip markers (`proc` tracks). */
+  addProc(names: readonly string[]): void;
+  /** Per-frame pose hook after (`post`, default) or before (`pre`) the mixer. Returns the unsubscribe. */
+  onPose(fn: (dt: number) => void, phase?: 'pre' | 'post'): () => void;
 }
 /** @deprecated spec-era name for the procedural mannequin; kept so older snippets compile. */
 export type MannequinPart = MannequinActor;
@@ -158,7 +167,8 @@ export interface Kit {
   dome(o: { r: number; tint?: Hex; opacity?: number }): THREE.Mesh;
   cage(o: { r: number; h: number; bars: number; color?: Hex }): THREE.Group;
   // ── characters ──
-  dealer(o: { style: 'croupier' | 'porcelain' | 'puppet' | 'devil'; height?: number; suit?: Hex; skin?: Hex }): DealerPart;
+  /** `feltY`: the table top the dealer works at (FeltTablePart.feltY); reach targets follow it. */
+  dealer(o: { style: DealerStyle; height?: number; suit?: Hex; skin?: Hex; feltY?: number }): DealerPart;
   /** Animated actor backed by the Quaternius GLB (placeholder capsule until it loads). */
   mannequin(o?: MannequinOpts): MannequinActor;
   /** Fetch + parse the mannequin GLB once (boot step 9 / menu build) so `mannequin()` has no pop-in. */
@@ -173,6 +183,8 @@ export interface Kit {
   outOfOrder(size: SlotSize): THREE.Group;      // placeholder cabinet "OUT OF ORDER"
   /** Advance animated actors (mixers, stepped animation). Called once per frame by the loop. */
   update(dt: number): void;
+  /** Camera for the mannequin distance LOD (DECISIONS G): far or hidden actors freeze, at most 12 animate. Null = visibility and cap only. */
+  setLodCamera(cam: THREE.Camera | null): void;
 }
 
 export interface CabinetOpts {
@@ -206,12 +218,57 @@ export interface LampPart { root: THREE.Group; setOn(on: boolean): void; setColo
 export interface BulbChain { root: THREE.InstancedMesh; pattern(p: 'chase' | 'alt' | 'blink' | 'rainbow' | 'all' | 'off', hz?: number): void; setBulb(i: number, c: Hex | null): void }
 export interface ReelPart { root: THREE.Group; drum: THREE.Mesh; readonly count: number; angleOf(index: number): number; setIndex(index: number): void; startSpin(speed: number /* rev/s */): void; stopAt(index: number, dur: number, bounce?: number): Promise<void> }
 export interface WheelPart { root: THREE.Group; disc: THREE.Object3D; angleOf(i: number): number; spinTo(i: number, turns: number, dur: number): Promise<void>; pegs: THREE.Object3D[] }
+/** `w`/`d` are the FULL footprint including the seats (DECISIONS G). */
 export interface FeltTableOpts { shape: 'rect' | 'kidney' | 'oval' | 'round' | 'craps'; w: number; d: number; h?: number /* 0.76 */; felt: Hex; rail: Hex; print?: THREE.Texture; seats: number; stools?: boolean; dealer?: boolean }
-export interface FeltTablePart { root: THREE.Group; top: THREE.Mesh; seats: SeatDef[]; seatAnchors: THREE.Object3D[]; dealerAnchor: THREE.Object3D; chipTray: THREE.Object3D; colliders: LocalAABB[] }
+export interface FeltTablePart { root: THREE.Group; top: THREE.Mesh; seats: SeatDef[]; seatAnchors: THREE.Object3D[]; dealerAnchor: THREE.Object3D; chipTray: THREE.Object3D; colliders: LocalAABB[]; /** Felt top height, m (pass to `dealer({ feltY })`). */ feltY: number }
 export type ChipValue = 1 | 5 | 10 | 25 | 100 | 500 | 1000 | 5000;
 export interface ChipPool { root: THREE.InstancedMesh; add(v: ChipValue, at: THREE.Vector3): number; stack(vs: ChipValue[], at: THREE.Vector3): number[]; move(id: number, to: THREE.Vector3, dur?: number, arc?: number): Promise<void>; remove(id: number): void; clear(): void; readonly count: number }
 export interface CardPool { root: THREE.Group; add(card: CardId | null, at: THREE.Vector3, rotY?: number): number; setCard(id: number, c: CardId): void; flip(id: number, dur?: number): Promise<void>; move(id: number, to: THREE.Vector3, dur?: number, o?: { arc?: number; rotY?: number }): Promise<void>; remove(id: number): void; clear(): void }
 export interface DicePool { dice: THREE.Mesh[]; setFace(i: number, face: number): void; roll(i: number, from: THREE.Vector3, to: THREE.Vector3, face: number, dur: number): Promise<void> }
 export interface BallPool { root: THREE.InstancedMesh; set(i: number, x: number, y: number, z: number): void; hide(i: number): void; readonly max: number }
 export type DealerPose = 'idle' | 'deal' | 'reach' | 'spin' | 'collect' | 'point' | 'bow' | 'arms';
-export interface DealerPart { root: THREE.Group; head: THREE.Object3D; armL: THREE.Object3D; armR: THREE.Object3D; handL: THREE.Object3D; handR: THREE.Object3D; pose(p: DealerPose, dur?: number): Promise<void>; lookAt(target: THREE.Vector3, dur?: number): void; gesture(g: 'deal' | 'collect' | 'spin' | 'point' | 'nod' | 'shake' | 'wave', target?: THREE.Vector3): Promise<void>; idle(on: boolean): void }
+/** Croupier, porcelain, puppet, devil (Quaternius-era styles) and oracle, caller, cashier (Contracts v1.1). */
+export type DealerStyle = 'croupier' | 'porcelain' | 'puppet' | 'devil' | 'oracle' | 'caller' | 'cashier';
+export interface DealerPart { root: THREE.Group; head: THREE.Object3D; armL: THREE.Object3D; armR: THREE.Object3D; handL: THREE.Object3D; handR: THREE.Object3D;
+  /** Face proxies (children of `head`): chin and eye line. */
+  jaw: THREE.Object3D; eyes: THREE.Object3D; pose(p: DealerPose, dur?: number): Promise<void>; lookAt(target: THREE.Vector3, dur?: number): void; gesture(g: 'deal' | 'collect' | 'spin' | 'point' | 'nod' | 'shake' | 'wave', target?: THREE.Vector3): Promise<void>; idle(on: boolean): void }
+
+// ── Kit extras (DECISIONS C32 / G: moved here from kit/extras.ts in Contracts v1.1) ─────────────────
+export interface LedPanelPart { root: THREE.Object3D; screen: ScreenSurface; set(text: string): void; setColor(css: string): void }
+export interface PanelButtonSpec { id: string; label?: TextSource; color: Hex; x: number; z: number; w?: number; h?: number; lit?: boolean; font?: FontId }
+export interface ButtonPanelOpts { buttons: PanelButtonSpec[]; w: number; d: number; slope?: number /* deg, default 12 */; plate?: Hex; capH?: number }
+export interface PanelButton { id: string; /** Anchor at the cap's top centre (panel space). */ root: THREE.Object3D; press(dur?: number): Promise<void>; setLit(on: boolean): void; setEnabled(on: boolean): void }
+export interface ButtonPanelPart {
+  /** Origin = plate centre, +Y = plate normal; already tilted by `slope`. */
+  root: THREE.Group;
+  /** The single dynamic mesh holding every cap (raycast target). */
+  caps: THREE.Mesh;
+  buttons: Record<string, PanelButton>;
+  list: PanelButton[];
+  /** Which button owns a raycast hit on `caps`. */
+  pick(hit: THREE.Intersection): PanelButton | null;
+}
+
+/** `CardPool` for atlases whose card ids are plain strings. */
+export interface StringCardPool extends Omit<CardPool, 'add' | 'setCard'> {
+  add(card: string | null, at: THREE.Vector3, rotY?: number): number;
+  setCard(id: number, card: string): void;
+}
+
+export interface KitExtras {
+  chair(o?: { h?: number; seat?: Hex; wood?: Hex }): THREE.Group;
+  crtMonitor(o?: { w?: number; h?: number; px?: [number, number]; scheme?: 'green' | 'amber' | 'cyan' | 'red'; glow?: number }): { root: THREE.Group; screen: ScreenSurface };
+  ledPanel(o: { digits: number; color?: string; h?: number }): LedPanelPart;
+  plaque(o: { text: TextSource; w?: number; h?: number; color?: Hex }): THREE.Group;
+  towerLight(o?: { colors?: [Hex, Hex] }): { root: THREE.Group; top: LampPart; bottom: LampPart };
+  stanchion(o?: { h?: number; color?: Hex }): THREE.Group;
+  velvetRope(a: V3, b: V3, o?: { sag?: number; color?: Hex }): THREE.Mesh;
+  cardShoe(): { root: THREE.Group; mouth: THREE.Object3D };
+  decal(o: { tex: THREE.Texture; w: number; h: number; alphaTest?: number }): THREE.Mesh;
+  buttonPanel(o: ButtonPanelOpts): ButtonPanelPart;
+  /** Card pool on the SON KART / OKEY texgen atlas (string ids: `R7`, `W+4`, `K13`, `FJ`, …; `back` is the card back). */
+  cards(o: { max: number; scale?: number; atlas: 'sonkart' | 'okey' }): StringCardPool;
+  /** Emissive light strip made of `segments` bars along `axis` (centred): pattern chase / alt / blink / all / off / rainbow. */
+  lightStrip(o: { length: number; color: Hex; thickness?: number; segments?: number; axis?: 'x' | 'y' | 'z' }): BulbChain;
+}
+

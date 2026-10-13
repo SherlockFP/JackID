@@ -182,7 +182,16 @@ function build(): THREE.CanvasTexture {
     });
   });
 
-  for (const c of [Cell.solid, Cell.solidBack]) drawCell(g, c, (put) => { for (let y = 0; y < CELL; y++) for (let x = 0; x < CELL; x++) put(x, y, 0xffffff); });
+  // confetti: front is flat white (tinted per piece); back (cell 19, sampled for gl_FrontFacing == false) is the
+  // reverse of the card: a 1 px dim rim and a Bayer-dithered grey, so a tumbling piece never reads as one face.
+  drawCell(g, Cell.solid, (put) => { for (let y = 0; y < CELL; y++) for (let x = 0; x < CELL; x++) put(x, y, 0xffffff); });
+  drawCell(g, Cell.solidBack, (put) => {
+    for (let y = 0; y < CELL; y++) for (let x = 0; x < CELL; x++) {
+      const rim = x === 0 || y === 0 || x === CELL - 1 || y === CELL - 1;
+      const dither = BAYER4[(y & 3) * 4 + (x & 3)] / 16 < 0.5;
+      put(x, y, rim ? 0xa8a8b0 : dither ? 0xd2d2da : 0xffffff);
+    }
+  });
 
   const t = new THREE.CanvasTexture(cv);
   t.magFilter = THREE.NearestFilter;

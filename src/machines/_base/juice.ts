@@ -2,8 +2,9 @@
  * Machine juice helpers (base-machines WP). BRIEF ADDENDUM 8 "JUICE IS KING": every interaction =
  * anticipation → action → impact → follow-through. This file standardises the machine-side half so ~40 machines
  * feel alike: tiered win celebrations, loss feedback, near-miss tease, coin pours with a count-up, and the
- * attract-mode scheduler. Particles / screen effects come from `ctx.fx`, sounds from `ctx.audio`, stingers
- * from `ctx.audio.music`; this file only decides WHEN and HOW MUCH, per tier (GDD §10.4, ART_BIBLE §9).
+ * attract-mode scheduler. Particles / screen effects come from `ctx.fx`, sounds from `ctx.audio` (win jingles via
+ * `audio.winJingle`, never `music.stinger`: DECISIONS G); this file only decides WHEN and HOW MUCH, per tier
+ * (GDD §10.4, ART_BIBLE §9).
  *
  * Rules of use
  *  - Call from `present()` (all peers). Spectators automatically get an attenuated version (no hit-stop /
@@ -17,7 +18,7 @@
  */
 import type * as THREE from 'three';
 import type { Hex } from '@/core/types';
-import type { SfxName, StingerId } from '@/core/audio/types';
+import type { SfxName } from '@/core/audio/types';
 import type { Rng } from '@/core/rng';
 import type { BulbChain, LampPart, MarqueePart } from '@/kit/types';
 import { clamp, lerp, tmpV3a, tmpV3b } from '@/core/math';
@@ -41,21 +42,19 @@ export interface TierShow {
   hz: number;
   /** Sound layered over `audio.winJingle`; null = jingle only. */
   sfx: SfxName | null;
-  /** Music stinger for the room; null = none. */
-  stinger: StingerId | null;
   /** Colour of the light pulse at the machine. */
   glow: Hex;
 }
 
 export const TIER_SHOW: Readonly<Record<JuiceTier, TierShow>> = {
-  none:    { show: 0,   hz: 0,  sfx: null,       stinger: null,     glow: 0 },
-  push:    { show: 0.4, hz: 2,  sfx: 'coin',     stinger: null,     glow: 0xe8d35a },
-  small:   { show: 1.2, hz: 6,  sfx: 'sparkle',  stinger: null,     glow: 0xffce5a },
-  medium:  { show: 2,   hz: 8,  sfx: 'sparkle',  stinger: null,     glow: 0xffce5a },
-  big:     { show: 3,   hz: 8,  sfx: 'chime',    stinger: 'bigWin', glow: 0xffd040 },
-  huge:    { show: 5,   hz: 10, sfx: 'chime',    stinger: 'bigWin', glow: 0xffd040 },
-  mega:    { show: 7,   hz: 12, sfx: 'jackpot',  stinger: 'bigWin', glow: 0xffd040 },
-  jackpot: { show: 9,   hz: 14, sfx: 'jackpotSiren', stinger: 'jackpot', glow: 0xfff0a0 },
+  none:    { show: 0,   hz: 0,  sfx: null,       glow: 0 },
+  push:    { show: 0.4, hz: 2,  sfx: 'coin',     glow: 0xe8d35a },
+  small:   { show: 1.2, hz: 6,  sfx: 'sparkle',  glow: 0xffce5a },
+  medium:  { show: 2,   hz: 8,  sfx: 'sparkle',  glow: 0xffce5a },
+  big:     { show: 3,   hz: 8,  sfx: 'chime',    glow: 0xffd040 },
+  huge:    { show: 5,   hz: 10, sfx: 'chime',    glow: 0xffd040 },
+  mega:    { show: 7,   hz: 12, sfx: 'jackpot',  glow: 0xffd040 },
+  jackpot: { show: 9,   hz: 14, sfx: 'jackpotSiren', glow: 0xfff0a0 },
 };
 
 const GOLD_FLASH: Hex = 0xffd040;
@@ -101,7 +100,7 @@ export interface CelebrateOpts {
 
 /**
  * Tier-escalating win show: `fx.winBurst` (coins/sparks/flash/shake/hit-stop per tier) + jingle + layer sound +
- * stinger + gold light pulse + marquee/bulb/lamp pattern for `TIER_SHOW[tier].show` seconds. Mega adds a gold
+ * gold light pulse + marquee/bulb/lamp pattern for `TIER_SHOW[tier].show` seconds. Mega adds a gold
  * strobe flash and an extra coin fountain. Resolves when the show ends.
  */
 export function celebrate(host: JuiceHost, tier: JuiceTier, o: CelebrateOpts = {}): Promise<void> {
@@ -120,7 +119,6 @@ export function celebrate(host: JuiceHost, tier: JuiceTier, o: CelebrateOpts = {
     ctx.fx.winBurst(toWinTier(shown), at, { amount: o.amount, flyToWallet: host.isLocalOccupant && !fast });
     ctx.audio.winJingle(toWinTier(tier), { pos: speaker });
     if (spec.sfx && !fast) ctx.audio.play(spec.sfx, { pos: speaker, vol: 0.8 });
-    if (spec.stinger && (host.isLocalOccupant || dist < 10)) ctx.audio.music.stinger(spec.stinger);
     if (tier !== 'small') ctx.fx.lightPulse(at, { color: spec.glow, mul: tier === 'medium' ? 1.3 : 1.7, dur: 0.5 });
     if ((tier === 'mega' || tier === 'jackpot') && host.isLocalOccupant && !fast) {
       ctx.fx.flash(GOLD_FLASH, 0.35, 0.25);

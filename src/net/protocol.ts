@@ -18,7 +18,7 @@
 import type { GameMode, Hex, InstanceId, Json, Lang, MachineId, PlayerId, V3 } from '@/core/types';
 import type {
   ActiveEvent, BodyPart, BuffOwnerKey, BuffState, CharmState, CollateralState, ContractState, CurrencyId,
-  DebtState, QuotaState, RunPhase, ShiftState, TotemState, TycoonNoReason, TycoonRequest, TycoonState,
+  DebtState, QuotaState, RunWindow, ShiftState, TotemState, TycoonNoReason, TycoonRequest, TycoonState,
   WinTier,
 } from '@/game/types';
 import type { MachineEnvelope } from '@/machines/_base/types';
@@ -62,7 +62,7 @@ export interface RunConfig {
 export interface PhoneCallState { id: number; script: string; target: PlayerId /* 0 = anyone */; ringingSince: number; answeredBy: PlayerId | null; step: number; options: string[] /* i18n keys */ }
 
 export interface RunSnapshot {
-  mode: GameMode; seed: number; phase: RunPhase;
+  mode: GameMode; seed: number; window: RunWindow;
   debts: Record<number, DebtState>;
   wallets: Record<number, number>;
   charms: Record<number, CharmState[]>;
@@ -100,7 +100,15 @@ export interface RunSummary {
   hall?: boolean;
 }
 
-export type Msg =
+/**
+ * Extensible protocol (DECISIONS C30). Feature folders add their messages by declaration merging:
+ *   declare module '@/net/protocol' { interface MsgMap { foo: { t: 'foo'; ... } } }
+ * `Msg` is the core union plus every `MsgMap` entry. The generic `intent` message carries feature requests.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface MsgMap {}
+
+type CoreMsg =
   // ── session ──────────────────────────────────────────── (dir)
   | { t: 'hello'; v: number; cid: string; name: string; color: Hex; lang: Lang; pass?: string; char?: string }   // C→H
   | { t: 'welcome'; you: PlayerId; room: RoomInfo; players: PlayerInfo[]; phase: 'lobby' | 'ingame'; hostTime: number;
@@ -140,7 +148,8 @@ export type Msg =
   | { t: 'tnak'; mid: InstanceId; rid: number; reason: string }                                            // H→C (i18n key)
   | { t: 'msnap'; mid: InstanceId; snap: Json; seq: number }                                               // H→C late join (built per recipient)
   // ── party tables / hidden information ──
-  | { t: 'mpriv'; mid: InstanceId; to: PlayerId; seq: number; ev: Json }                                   // H→C private event: own cards/tiles/shells
+  | { t: 'mevp'; e: MachineEnvelope }                                                                      // H→C private envelope, one recipient (`MachineNet.sendPrivate`, §11.4; `e.to` set)
+  | { t: 'mpriv'; mid: InstanceId; to: PlayerId; seq: number; ev: Json }                                   // H→C private event: own cards/tiles/shells (legacy form of mevp)
   | { t: 'mbot'; mid: InstanceId; seat: number; name: string | null; level?: number }                      // H→* bot sits (name) / leaves (null)
   | { t: 'sbet'; mid: InstanceId; target: PlayerId; amt: number; rid: number }                             // C→H spectator side bet on a seated player
   // ── run / economy ──
@@ -182,7 +191,11 @@ export type Msg =
   | { t: 'fall'; pid: PlayerId }                                                                           // H→* (pid 0 = whole team)
   | { t: 'ascend'; pid: PlayerId }                                                                         // H→*
   // ── transport utility ──
-  | { t: 'frag'; id: number; i: number; n: number; d: string };
+  | { t: 'frag'; id: number; i: number; n: number; d: string }
+  // ── generic feature request (C30): C→H, host answers with a reply keyed by `rid` ──
+  | { t: 'intent'; k: string; d: Json; rid: number };
+
+export type Msg = CoreMsg | MsgMap[keyof MsgMap];
 
 export type MsgType = Msg['t'];
 

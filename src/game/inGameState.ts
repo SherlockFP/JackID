@@ -9,7 +9,6 @@ import * as THREE from 'three';
 import type { AppStateHandler } from '@/core/states';
 import { app } from '@/core/app';
 import { t } from '@/core/i18n';
-import { bootParams } from '@/core/bootParams';
 import * as registry from '@/machines/_base/registry';
 import type { Bench } from '@/world/bench';
 import { createWorld } from '@/world/world';
@@ -23,7 +22,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
 
   let left = false;
 
-  /** Dev tooling is split out of the production bundle: only `?bench=` in a dev build or with `?debug=1` loads it. */
+  /** Dev tooling is split out of the production bundle: `?bench=` is honoured only in a DEV build (DECISIONS G). */
   const enterBench = async (requested: string, seed: number): Promise<void> => {
     const [{ createBench }, demoTable] = await Promise.all([import('@/world/bench'), import('@/machines/_base/demoTable')]);
     if (left) return;
@@ -58,7 +57,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   return {
     enter(params) {
       left = false;
-      if (params.bench && (import.meta.env.DEV || bootParams.debug)) return enterBench(params.bench, params.seed);
+      if (params.bench && import.meta.env.DEV) return enterBench(params.bench, params.seed);
       enterStub();
     },
     exit() {

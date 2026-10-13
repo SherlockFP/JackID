@@ -5,6 +5,7 @@
  *  - F3 / `stats()`    stats overlay: fps, draw calls, tris, GPU memory, particles, net, last log lines (4 Hz refresh)
  *  - F4 / `colliders()` collider wireframes drawn in the FX layer (needs `world.collision.forEach`, see WORLD-SYS)
  *  - `devCut()`        a throw-away cutscene around the camera that exercises path, gate, subtitles, actors and fx
+ *  - `shot()`          the next frame as a PNG data URL (Promise); `/?bench=<id>&shot=1` also stores one as `jackid.shotUrl`
  * F3/F4 arrive as input actions, so they work while walking or seated; `?debug=1` opens the overlay at boot.
  */
 import * as THREE from 'three';
@@ -31,22 +32,44 @@ const OFF_COLOR = 0x6a6a80;
 const MAX_BOXES = 6000;
 const EDGES = [0, 1, 1, 3, 3, 2, 2, 0, 4, 5, 5, 7, 7, 6, 6, 4, 0, 4, 1, 5, 2, 6, 3, 7];
 
+/**
+ * Buffers are allocated on the first F4 and then reused: nothing is allocated per refresh (the old code built a
+ * closure and a corner array every 0.5 s, and the 3.5 MB of vertex buffers existed even when F4 was never pressed).
+ */
 class ColliderLines implements FxSystem {
-  private readonly geo = new THREE.BufferGeometry();
-  private readonly lines: THREE.LineSegments;
-  private readonly pos = new Float32Array(MAX_BOXES * 72);
-  private readonly col = new Float32Array(MAX_BOXES * 72);
+  private geo: THREE.BufferGeometry | null = null;
+  private lines: THREE.LineSegments | null = null;
+  private pos: Float32Array | null = null;
+  private col: Float32Array | null = null;
+  private readonly corners = new Float32Array(24);
+  private readonly c = new THREE.Color();
+  private n = 0;
   private acc = 0;
   private on = false;
-  private readonly c = new THREE.Color();
 
-  constructor(private readonly app: App) {
-    const mat = new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, fog: false, transparent: true, opacity: 0.85 });
+  constructor(private readonly app: App) {}
+
+  get active(): boolean { return this.on; }
+
+  toggle(force?: boolean): boolean {
+    this.on = force ?? !this.on;
+    if (this.on) this.ensure();
+    if (this.lines) this.lines.visible = this.on;
+    this.acc = 1;
+    return this.on;
+  }
+
+  private ensure(): void {
+    if (this.lines) return;
+    this.pos = new Float32Array(MAX_BOXES * 72);
+    this.col = new Float32Array(MAX_BOXES * 72);
+    this.geo = new THREE.BufferGeometry();
     const pa = new THREE.BufferAttribute(this.pos, 3), ca = new THREE.BufferAttribute(this.col, 3);
     pa.setUsage(THREE.DynamicDrawUsage); ca.setUsage(THREE.DynamicDrawUsage);
     this.geo.setAttribute('position', pa);
     this.geo.setAttribute('color', ca);
     this.geo.setDrawRange(0, 0);
+    const mat = new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, fog: false, transparent: true, opacity: 0.85 });
     this.lines = new THREE.LineSegments(this.geo, mat);
     this.lines.frustumCulled = false;
     this.lines.renderOrder = 200;
@@ -56,43 +79,36 @@ class ColliderLines implements FxSystem {
     fxLayer.register(this);
   }
 
-  get active(): boolean { return this.on; }
-
-  toggle(force?: boolean): boolean {
-    this.on = force ?? !this.on;
-    this.lines.visible = this.on;
-    this.acc = 1;
-    return this.on;
-  }
+  /** Per-box visitor, bound once so `forEach` gets no fresh closure on each refresh. */
+  private readonly visit = (c: ColliderView): void => {
+    if (!this.pos || !this.col || this.n >= MAX_BOXES) return;
+    const b = c.box, k = this.corners;
+    for (let i = 0; i < 8; i++) {
+      k[i * 3] = i & 1 ? b.max.x : b.min.x;
+      k[i * 3 + 1] = i & 4 ? b.max.y : b.min.y;
+      k[i * 3 + 2] = i & 2 ? b.max.z : b.min.z;
+    }
+    this.c.setHex(c.on ? (TAG_COLOR[c.tag] ?? 0xffffff) : OFF_COLOR);
+    for (let e = 0; e < EDGES.length; e++) {
+      const o = (this.n * 24 + e) * 3, s = EDGES[e] * 3;
+      this.pos[o] = k[s]; this.pos[o + 1] = k[s + 1]; this.pos[o + 2] = k[s + 2];
+      this.col[o] = this.c.r; this.col[o + 1] = this.c.g; this.col[o + 2] = this.c.b;
+    }
+    this.n++;
+  };
 
   update(dt: number): void {
-    if (!this.on) return;
+    if (!this.on || !this.geo) return;
     this.acc += dt;
     if (this.acc < 0.5) return;
     this.acc = 0;
     const src = this.app.world?.collision as unknown as ColliderSource | undefined;
     if (!src?.forEach) { this.geo.setDrawRange(0, 0); return; }
-    let n = 0;
-    const corners: number[] = new Array(24);
-    src.forEach((c) => {
-      if (n >= MAX_BOXES) return;
-      const b = c.box;
-      for (let i = 0; i < 8; i++) {
-        corners[i * 3] = i & 1 ? b.max.x : b.min.x;
-        corners[i * 3 + 1] = i & 4 ? b.max.y : b.min.y;
-        corners[i * 3 + 2] = i & 2 ? b.max.z : b.min.z;
-      }
-      this.c.setHex(c.on ? (TAG_COLOR[c.tag] ?? 0xffffff) : OFF_COLOR);
-      for (let e = 0; e < EDGES.length; e++) {
-        const o = (n * 24 + e) * 3, k = EDGES[e] * 3;
-        this.pos[o] = corners[k]; this.pos[o + 1] = corners[k + 1]; this.pos[o + 2] = corners[k + 2];
-        this.col[o] = this.c.r; this.col[o + 1] = this.c.g; this.col[o + 2] = this.c.b;
-      }
-      n++;
-    });
+    this.n = 0;
+    src.forEach(this.visit);
     this.geo.getAttribute('position').needsUpdate = true;
     this.geo.getAttribute('color').needsUpdate = true;
-    this.geo.setDrawRange(0, n * 24);
+    this.geo.setDrawRange(0, this.n * 24);
   }
 }
 
@@ -199,14 +215,56 @@ function devScene(app: App): CutsceneDef {
   };
 }
 
+// ── screenshots ──────────────────────────────────────────────────────────────────────────────────
+/**
+ * The next frame as a PNG data URL. The canvas is read straight after `render()` returns, inside the same task, so the
+ * drawing buffer still holds the frame and the WebGL context needs no `preserveDrawingBuffer`.
+ */
+function captureNextFrame(app: App): Promise<string> {
+  const r = app.renderer;
+  return new Promise((resolve) => {
+    const orig = r.render;
+    r.render = (scene, camera, overlay) => {
+      r.render = orig;
+      orig.call(r, scene, camera, overlay);
+      resolve(r.canvas.toDataURL('image/png'));
+    };
+  });
+}
+
+/** `/?bench=<id>&shot=1`: once the bench room has been on screen for a moment, store its PNG as `window.jackid.shotUrl`. */
+const SHOT_SETTLE_MS = 2500;
+const SHOT_TIMEOUT_MS = 60000;
+function autoShot(app: App): void {
+  const t0 = performance.now();
+  const poll = (): void => {
+    const now = performance.now();
+    if (app.state === 'ingame' && app.world && !app.cutscene.playing && now - t0 >= SHOT_SETTLE_MS) {
+      void captureNextFrame(app).then((url) => {
+        if (window.jackid) window.jackid.shotUrl = url;
+        log.info('debug', 'bench shot ready: window.jackid.shotUrl');
+      });
+      return;
+    }
+    if (now - t0 > SHOT_TIMEOUT_MS) { log.warn('debug', 'bench shot timed out (no ingame state)'); return; }
+    setTimeout(poll, 250);
+  };
+  setTimeout(poll, 250);
+}
+
 // ── install ──────────────────────────────────────────────────────────────────────────────────────
+let installed = false;
+
 export function installDebug(app: App): void {
   if (!import.meta.env.DEV && !bootParams.debug) return;
+  if (installed) return;                    // HMR re-runs main.ts; a second install would stack overlays and systems
+  installed = true;
   const stats = new StatsOverlay(app);
   const colliders = new ColliderLines(app);
   app.input.on('debug', (down) => { if (down) stats.toggle(); });
   app.input.on('debugColliders', (down) => { if (down) colliders.toggle(); });
   if (bootParams.debug) stats.toggle(true);
+  if (bootParams.bench && new URLSearchParams(location.search).get('shot') === '1') autoShot(app);
 
   window.jackid = {
     app,
@@ -218,6 +276,8 @@ export function installDebug(app: App): void {
       to === 'menu' ? app.go('menu', undefined) : app.go('ingame', { mode, seed: 1, online: false }),
     stats: (on?: boolean) => stats.toggle(on),
     colliders: (on?: boolean) => colliders.toggle(on),
+    /** The next rendered frame as a PNG data URL: `await window.jackid.shot()`. */
+    shot: (): Promise<string> => captureNextFrame(app),
     /** Fire the win feedback for a tier at a point 2.5 m ahead of the camera. */
     win: (tier: WinTier = 'big', amount = 12500) => {
       const p = app.camera.getWorldPosition(new THREE.Vector3());

@@ -20,7 +20,7 @@ export type GameMode = 'debt' | 'coop' | 'versus' | 'free';
 /** 0xRRGGBB. Colours appear on screen exactly as written (no colour management). */
 export type Hex = number;
 export type V3 = [number, number, number];
-/** folder name, snake_case, e.g. 'coin_flip' */
+/** folder name = `def.id` (TECH §11.1 catalogue id, e.g. 'coinflip'). Not snake_case (v1.1). */
 export type MachineId = string;
 /** slot id, e.g. 'B07' (unique machine instance) */
 export type InstanceId = string;
@@ -41,14 +41,14 @@ export const botId = (seat: number): PlayerId => -1 - seat;
 export type SlotSize = 'S' | 'M' | 'L' | 'XL';
 export const SLOT_SIZES: readonly SlotSize[] = ['S', 'M', 'L', 'XL'];
 /**
- * Footprint of each slot size in metres (w = X, d = Z, h = Y) and the free strip `stand` in front (+Z)
- * where players stand. Models must fit inside; the strip must stay free of colliders.
+ * Footprint of each slot class in metres (w = X, d = Z, h = Y max height) and the stand strip in front (+Z)
+ * where players stand. Values = GDD §8.5 (v1.1, binding). Models must fit inside; the strip stays collider-free.
  */
 export const SLOT_DIMS: Record<SlotSize, { w: number; d: number; h: number; stand: number }> = {
-  S:  { w: 1.2, d: 1.0, h: 2.4, stand: 1.2 },
-  M:  { w: 1.8, d: 1.4, h: 2.8, stand: 1.2 },
-  L:  { w: 3.6, d: 3.0, h: 2.6, stand: 0.8 },   // tables: stools/seats are inside the footprint
-  XL: { w: 5.0, d: 3.6, h: 6.0, stand: 1.6 },
+  S:  { w: 0.8, d: 0.8, h: 2.0, stand: 1.0 },
+  M:  { w: 1.2, d: 1.0, h: 3.2, stand: 1.0 },
+  L:  { w: 2.6, d: 1.8, h: 2.4, stand: 1.0 },   // tables: stools/seats inside the footprint; ring on player sides
+  XL: { w: 4.8, d: 2.6, h: 3.8, stand: 1.2 },   // ring on player sides
 };
 /** Zones the reference layout uses. The union is open: level/GDD may introduce more (e.g. 'parlor'). */
 export type KnownZoneId = 'atrium' | 'slots' | 'tables' | 'parlour' | 'arcade' | 'lottery' | 'services';
@@ -68,4 +68,6 @@ export interface SeatDef {
   pose: PlayPose;
   stand: THREE.Vector3;           // where the avatar body stands/sits (machine-local, y = 0)
   avatar: 'stand' | 'sit';
+  /** Seat height for sitting avatars, m. Stools stay 0.68 m; default 0.68 when omitted (v1.1). */
+  standY?: number;
 }

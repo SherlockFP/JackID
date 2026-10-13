@@ -11,7 +11,7 @@
  * Host hub: `Session` starts all enabled host transports at once; peers are keyed `'<kind>:<peerId>'`
  * internally and mapped to a `PlayerId`. Clients send only to the host (`peer === 'host'`).
  */
-import type { GameMode, PlayerId } from '@/core/types';
+import type { GameMode, Json, PlayerId, Unsub } from '@/core/types';
 import type { Msg, PlayerInfo, RoomInfo } from './protocol';
 
 export type TransportKind = 'webrtc' | 'relay' | 'tab' | 'p2p';
@@ -63,4 +63,9 @@ export interface Session {
   flush(dt: number): void;                               // loop: transforms 20 Hz, pings 1 Hz
   /** Shareable link for friends: `<origin>/?join=<ROOMCODE>` (null when not hosting a joinable room). */
   inviteLink(): string | null;
+  /**
+   * Late-join state for a feature channel (DECISIONS C30). The host calls `get(forPid)` when a player joins
+   * (or a machine snapshot is requested) and the joiner's `apply(snap)` restores it. Returns the unsubscribe.
+   */
+  registerSnapshot(channel: string, get: (forPid: PlayerId) => Json, apply: (snap: Json) => void): Unsub;
 }
