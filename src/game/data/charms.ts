@@ -6,6 +6,7 @@
  * Scopes use the GDD family tags in lower case (`reels`, `cards`, `dice`, `wheels`, `drops`, `curios`, `ledger`, `tycoon`).
  */
 import type { CharmDef, CharmRarity, ModEffect, ModHook, ModOp, ModScope } from '@/game/types';
+import { ENGINE_CHARM_IDS } from './charmsEngines';
 
 const fx = (hook: ModHook, op: ModOp, value: number, scope?: ModScope): ModEffect => ({ hook, op, value, scope });
 const tag = (t: string): ModScope => ({ tags: [t] });
@@ -196,4 +197,6 @@ export const LAUNCH_CHARM_IDS: ReadonlySet<string> = new Set<string>([
   'crown_of_coins', 'engravers_plate', 'operators_glove',
   // #90–95
   'wet_ledger', 'sand_hourglass', 'gluttons_bib', 'moth_swarm', 'gold_tooth',
+  // Wave 8: ten engine charms (data/charmsEngines.ts)
+  ...ENGINE_CHARM_IDS,
 ]);

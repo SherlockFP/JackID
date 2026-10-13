@@ -9,6 +9,7 @@ import type { Hex } from '@/core/types';
 import type { QuotaBoardProp } from '../types';
 import type { ScreenSurface } from '@/kit/types';
 import { t } from '@/core/i18n';
+import { fmtNeed, type Pace } from '@/game/pace';
 import { Sched } from './sched';
 
 export const BOARD_W = 4.0;
@@ -60,6 +61,8 @@ interface BoardState {
   lastCall: boolean;
   ledger: Array<{ name: string; color: Hex; amount: number }>;
   stamp: 'PAID' | 'SHORT' | null;
+  /** WAVE8 item 5: the NEED line (null hides it). */
+  pace: Pace | null;
 }
 
 const fmt = (n: number): string => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -73,7 +76,7 @@ export class QuotaBoard implements QuotaBoardProp {
   readonly id = 'quotaBoard';
   readonly root: THREE.Group;
   private readonly sched = new Sched();
-  private state: BoardState = { due: 0, deposited: 0, ratio: 0, timeLeft: 0, lastCall: false, ledger: [], stamp: null };
+  private state: BoardState = { due: 0, deposited: 0, ratio: 0, timeLeft: 0, lastCall: false, ledger: [], stamp: null, pace: null };
   private stampPulse = 0;
 
   constructor(private readonly parts: QuotaBoardParts, private readonly kit: KitX) {
@@ -81,8 +84,11 @@ export class QuotaBoard implements QuotaBoardProp {
     this.paint();
   }
 
-  set(q: { due: number; deposited: number; ratio: number; timeLeft: number; lastCall: boolean }): void {
-    Object.assign(this.state, q);
+  /** `pace` (optional, WAVE8 item 5) drives the NEED line; omit it to keep the last value, pass null to hide it. */
+  set(q: { due: number; deposited: number; ratio: number; timeLeft: number; lastCall: boolean; pace?: Pace | null }): void {
+    const { pace, ...rest } = q;
+    Object.assign(this.state, rest);
+    if (pace !== undefined) this.state.pace = pace;
     this.paint();
   }
 
@@ -134,6 +140,16 @@ export class QuotaBoard implements QuotaBoardProp {
         g.fillRect(16, 118, W - 32, 14);
         g.fillStyle = s.ratio >= 1 ? '#7dff7a' : s.lastCall ? '#ff4a3a' : '#ffb000';
         g.fillRect(16, 118, Math.max(0, Math.min(1, s.ratio)) * (W - 32), 14);
+        // NEED line (pace): coins per pull still to find, and the pulls they are spread over
+        if (s.pace) {
+          const p = s.pace;
+          const line = p.state === 'met' ? t('pace.quota.met')
+            : p.state === 'dead' ? t('pace.quota.dead')
+              : p.pullsLeft === 1 ? t('pace.quota.need.one', { x: fmtNeed(p.perPull) })
+                : t('pace.quota.need', { x: fmtNeed(p.perPull), n: p.pullsLeft });
+          const col = p.state === 'met' ? '#7dff7a' : s.lastCall || p.state === 'dead' ? '#ff4a3a' : amber;
+          tex.drawText(g, line, W / 2, 88, { font: 'px5', color: col, align: 'center', scale: 2 });
+        }
         // ledger (co-op)
         tex.drawText(g, t('prop.quota.ledger'), 16, 140, { font: 'px5', color: '#8a6a30', align: 'left' });
         s.ledger.forEach((l, i) => {

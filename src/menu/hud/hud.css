@@ -78,7 +78,7 @@
 .hud .card i.line { background: var(--gold); }
 
 /* feed, phone, dread */
-.hud .feed { left: calc(4 * var(--u)); top: calc(80 * var(--u)); display: flex; flex-direction: column; gap: calc(2 * var(--u)); width: 45%; }
+.hud .feed { position: absolute; left: calc(4 * var(--u)); top: calc(80 * var(--u)); display: flex; flex-direction: column; gap: calc(2 * var(--u)); width: 45%; }
 .hud .feed .ln { font-size: calc(16 * var(--u)); color: var(--bone); transition: opacity .6s linear; }
 .hud .feed .ln.old { opacity: 0; }
 .hud .feed .ln.gold { color: var(--shine); }

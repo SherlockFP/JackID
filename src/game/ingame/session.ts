@@ -17,6 +17,7 @@ import { createRng, hashSeed } from '@/core/rng';
 import { makeFog } from '@/core/renderer/fog';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { createWorld, type WorldHost } from '@/world/world';
+import { rosterFor, type RosterCandidate } from '@/world/layout';
 import type { SlotChange } from '@/world/world';
 import { createLocalPlayer, type LocalPlayerHost } from '@/player/local';
 import { createHud, type Hud, type HudPrompt } from '@/menu/hud';
@@ -29,6 +30,11 @@ import { EVENT_DREAD, createHorror, type DreadEventKind, type HorrorDirector, ty
 import { openJournal } from '@/game/story';
 import { createActorDirector } from '@/world/actors';
 import { charmDef } from '@/game/charms/engine';
+import * as registry from '@/machines/_base/registry';
+import { suitOf } from '@/game/suits';
+import { profileOf } from '@/game/data/machineProfiles';
+import { paceOf } from '@/game/pace';
+import type { QuotaBoardProp } from '@/world/types';
 import { startOnlineHooks } from './mp';
 
 export interface DebtSession {
@@ -54,20 +60,34 @@ const BADGE_POP_S = 0.45;
 const BULBS_UPGRADE = 'imp_brighter_bulbs';
 const isCursed = (id: string): boolean => charmDef(id)?.rarity === 'cursed';
 
+/** Every registered machine with the facts the Pit Deck line-up reads (WAVE8 item 8). */
+function rosterCandidates(): RosterCandidate[] {
+  return registry.all().map(({ def }) => ({
+    id: def.id, slotSize: def.slotSize, tier: def.tier, seats: def.seats, shared: def.shared, modes: def.modes,
+    suit: suitOf(def.id) ?? undefined, volatility: profileOf(def.id)?.cls,
+  }));
+}
+
 export function startDebtSession(params: InGameParams, scene: THREE.Scene): DebtSession {
   // The run exists before the world: machines read `app.run` (wallet, tycoon) while they are built.
   const banner = (text: string, o?: { color?: string; hold?: number; size?: 8 | 16 | 24 }): void => {
     void (app.ui as UIOverlayX).banner(text, o);
   };
   const run = (params.resume ? resumeRun(app.save, { banner }) : null)
-    ?? createRun({ seed: params.seed, mode: playableMode(params.mode), save: app.save, banner });
+    ?? createRun({
+      seed: params.seed, mode: playableMode(params.mode), save: app.save, banner,
+      // Only the starting kit travels from the menu for now; the MP lobby config is not applied here yet.
+      cfg: params.config?.kit ? { kit: params.config.kit } : undefined,
+    });
   app.run = run;
   const self = run.selfId;
 
   scene.background = new THREE.Color(LOBBY_FOG);
   scene.fog = makeFog(LOBBY_FOG, LOBBY_NEAR, app.save.data.settings.psx.drawDistance);
 
-  const world = createWorld({ mode: run.mode, seed: run.seed }, app.camera);
+  // Pit Deck: a seeded line-up for the flexible pads (WAVE8 item 8). `randomLineup: false` keeps the GDD §8.6 layout.
+  const lineup = run.config.randomLineup !== false ? rosterFor(run.seed, rosterCandidates(), run.mode) : undefined;
+  const world = createWorld({ mode: run.mode, seed: run.seed, assign: lineup }, app.camera);
   scene.add(world.root);
   app.world = world;
   run.attachWorld({
@@ -243,6 +263,24 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   const idle = run.takeIdleReport();
   if (idle && idle.earned > 0) app.ui.toast(t('ingame.idle', { n: Math.round(idle.earned) }), 'sys', 3);
 
+  // The quota board above the Well: numbers plus the NEED / PULL line (WAVE8 item 5). Repainted only when the text would change.
+  let boardAcc = 0;
+  let boardKey = '';
+  const syncBoard = (): void => {
+    const board = world.prop<QuotaBoardProp>('quotaBoard');
+    if (!board) return;
+    const q = run.shift.quota();
+    const pace = run.rules.quota
+      ? paceOf({ due: q.due, deposited: q.deposited, pocket: run.wallet(), pullsLeft: Number.isFinite(run.pulls()) ? run.pulls() : 0 })
+      : null;
+    const timeLeft = Math.max(0, Math.ceil(run.shift.timeLeft()));
+    const lastCall = run.shift.phase === 'lastCall';
+    const key = `${q.due}|${q.deposited}|${timeLeft}|${lastCall ? 1 : 0}|${JSON.stringify(pace)}`;
+    if (key === boardKey) return;
+    boardKey = key;
+    board.set({ due: q.due, deposited: q.deposited, ratio: q.ratio, timeLeft, lastCall, pace });
+  };
+
   return {
     world, player, run, hud,
     ready: () => ready,
@@ -254,6 +292,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       online?.fixedUpdate(dt);
     },
     frame(dt, alpha) {
+      boardAcc += dt;
+      if (ready && boardAcc >= 0.25) { boardAcc = 0; syncBoard(); }
       if (openingWatch && ready) {
         openingWatch = false;
         if (run.shift.phase === 'intermission' && run.startWatch()) {

@@ -9,3 +9,8 @@ import './reels.test.mjs';
 import './cards.test.mjs';
 import './check.test.mjs';
 import './circuit.test.mjs';
+import './suits.test.mjs';
+import './pace.test.mjs';
+import './shop.test.mjs';
+import './engines.test.mjs';
+import './run.wave8.test.mjs';

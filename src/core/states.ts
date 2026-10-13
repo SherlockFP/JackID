@@ -20,7 +20,7 @@ export interface InGameParams {
   mode: GameMode; seed: number; online: boolean;
   bench?: MachineId;                     // ?bench mode: single slot test room
   resume?: RunSnapshot;                  // SP continue
-  config?: RunConfig;                    // from lobby (MP)
+  config?: Partial<RunConfig>;           // from lobby (MP), or the SP start kit
 }
 
 export interface StateParams {

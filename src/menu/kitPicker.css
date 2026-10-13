@@ -1,0 +1,25 @@
+/* Starting-kit picker (WAVE8 item 6). A full-screen veil over the die menu; the cards wrap onto phone widths. */
+.kp-root { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(4, 3, 2, .78); font-family: var(--f-body, monospace); color: var(--ivory, #e6dec5); }
+.kp-box { width: min(720px, 100%); max-height: 100%; overflow: auto; padding: 16px; box-sizing: border-box;
+  background: #14100c; border: 2px solid var(--amber, #e69431); box-shadow: 0 0 0 2px #000; }
+.kp-title { margin: 0 0 6px; font-family: var(--f-head, monospace); font-size: 16px; font-weight: normal; color: var(--shine, #efd67b); }
+.kp-hint { margin: 0 0 14px; font-size: 18px; color: var(--bone, #c5bda5); }
+.kp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.kp-kit { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-height: 96px; padding: 10px;
+  box-sizing: border-box; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  background: #1d1712; border: 2px solid #3a2e24; }
+.kp-kit:focus-visible { outline: 2px solid var(--shine, #efd67b); outline-offset: 2px; }
+.kp-kit.sel { border-color: var(--shine, #efd67b); background: #2a2016; }
+.kp-kit.locked { color: #7a7060; filter: grayscale(1); cursor: not-allowed; border-style: dashed; }
+.kp-name { font-family: var(--f-head, monospace); font-size: 10px; line-height: 1.3; color: var(--ivory, #e6dec5); }
+.kp-kit.locked .kp-name { color: #8a8070; }
+.kp-start { font-size: 18px; line-height: 1.1; color: var(--bone, #c5bda5); }
+.kp-status { margin-top: auto; font-size: 16px; color: var(--amber, #e69431); }
+.kp-kit.locked .kp-status { color: #8a8070; }
+.kp-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; flex-wrap: wrap; }
+.kp-balance { font-size: 18px; color: var(--bone, #c5bda5); }
+.kp-start-btn { font-family: var(--f-head, monospace); font-size: 12px; padding: 10px 16px; cursor: pointer; color: #120c06;
+  background: var(--shine, #efd67b); border: 2px solid #000; }
+.kp-start-btn:disabled { opacity: .4; cursor: not-allowed; }
+.kp-start-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }

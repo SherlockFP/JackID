@@ -9,15 +9,15 @@
  *    `win()` treats it as part of M and the even-money dampener never sees it.
  * `modify` is kept only for the few effects with no split (e.g. the `long_shot` threshold).
  */
-import type { CharmCtx, CharmDef, ModEffect, ModHook, RunApi } from '@/game/types';
-import type { Json } from '@/core/types';
+import type { CharmCtx, CharmDef, ModEffect, ModHook, ModQuery, RunApi } from '@/game/types';
+import type { Json, PlayerId } from '@/core/types';
 
 type Behaviour = Partial<Pick<CharmDef, 'on' | 'modify'>>;
 
 /** What a dynamic effect may read: the charm's data bag and the run (no rng, no side effects). */
-export interface LiveCharm { data: Record<string, Json>; run: RunApi }
+export interface LiveCharm { data: Record<string, Json>; run: RunApi; pid?: PlayerId }
 /** Payout effects (`payout.mult`) for this instant. Appended to the charm source on every modifier query. */
-export type DynamicEffects = (live: LiveCharm) => ModEffect[];
+export type DynamicEffects = (live: LiveCharm, q?: ModQuery) => ModEffect[];
 
 const num = (v: Json | undefined): number => (typeof v === 'number' && isFinite(v) ? v : 0);
 const isPayout = (h: ModHook): boolean => h === 'payout.mult';

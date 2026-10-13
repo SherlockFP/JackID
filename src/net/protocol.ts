@@ -58,6 +58,8 @@ export interface RunConfig {
   /** Fill empty party-table seats with mannequin bots (default true). */
   botFill?: boolean;
   botLevel?: 1 | 2 | 3;
+  /** Starting kit id (src/game/data/kits.ts). Absent = Pauper. */
+  kit?: string;
 }
 export interface PhoneCallState { id: number; script: string; target: PlayerId /* 0 = anyone */; ringingSince: number; answeredBy: PlayerId | null; step: number; options: string[] /* i18n keys */ }
 

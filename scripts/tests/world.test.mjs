@@ -368,3 +368,85 @@ test('light pool: setLevel dims by zone, strobe/pulse are transient, reset resto
   assert.ok(Math.abs(Math.max(...p.lights.map((l) => l.intensity)) - base) < 0.05 * base + 1e-6, 'pulse over');
   p.dispose();
 });
+
+// ── Pit Deck (WAVE8 item 8): the seeded random line-up for the flexible pads ─────────────────────────
+const PIT_SUITS = ['REELS', 'CARDS', 'DICE', 'WHEELS', 'DROPS', 'CURIOS'];
+const PIT_VOL = ['STEADY', 'SWINGY', 'WILD'];
+const PIT_SIZES = ['S', 'M', 'L', 'XL'];
+/** A synthetic catalogue: 40 solo tier-1 machines spanning every size, suit and volatility class. */
+function pitCatalog() {
+  const out = [];
+  for (let i = 0; i < 40; i++) {
+    out.push({ id: `pit${i}`, slotSize: PIT_SIZES[i % 4], tier: 1, seats: 1, suit: PIT_SUITS[i % 6], volatility: PIT_VOL[i % 3] });
+  }
+  return out;
+}
+const sizeRank = (s) => ['S', 'M', 'L', 'XL'].indexOf(s);
+
+test('pit deck: the same seed gives the same line-up, and other seeds change it', async () => {
+  const { rosterFor } = await load('src/world/layout.ts');
+  const cat = pitCatalog();
+  assert.deepEqual(rosterFor(12345, cat), rosterFor(12345, cat));
+  const seen = new Set();
+  for (let s = 1; s <= 20; s++) seen.add(JSON.stringify(rosterFor(s, cat)));
+  assert.ok(seen.size > 10, `only ${seen.size} distinct line-ups in 20 seeds`);
+});
+
+test('pit deck: only the eight flexible pads are returned; each gets a machine that fits it and is solo tier 1', async () => {
+  const { rosterFor, ROSTER_PADS, SLOTS } = await load('src/world/layout.ts');
+  const cat = pitCatalog();
+  const byId = new Map(cat.map((c) => [c.id, c]));
+  const size = new Map(SLOTS.map((s) => [s.id, s.size]));
+  for (let seed = 1; seed <= 30; seed++) {
+    const r = rosterFor(seed, cat);
+    assert.deepEqual(Object.keys(r).sort(), [...ROSTER_PADS].sort(), `seed ${seed} keys`);
+    for (const pad of ROSTER_PADS) {
+      const id = r[pad];
+      const c = byId.get(id);
+      if (c) {
+        assert.ok(sizeRank(c.slotSize) <= sizeRank(size.get(pad)), `seed ${seed}: ${id} is ${c.slotSize} on ${pad} (${size.get(pad)})`);
+      }
+    }
+  }
+});
+
+test('pit deck: fixed machines, tier-3 and shared machines never enter the line-up', async () => {
+  const { rosterFor, ROSTER_FIXED } = await load('src/world/layout.ts');
+  const cat = [
+    ...pitCatalog(),
+    ...[...ROSTER_FIXED].map((id) => ({ id, slotSize: 'S', tier: 1, seats: 1, suit: 'REELS', volatility: 'WILD' })),
+    { id: 'tier3only', slotSize: 'S', tier: 3, seats: 1, suit: 'DICE', volatility: 'STEADY' },
+    { id: 'partyhost', slotSize: 'S', tier: 1, seats: 4, shared: true, suit: 'DROPS', volatility: 'STEADY' },
+  ];
+  for (let seed = 1; seed <= 30; seed++) {
+    for (const id of Object.values(rosterFor(seed, cat))) {
+      assert.ok(!ROSTER_FIXED.has(id), `seed ${seed}: fixed ${id} moved`);
+      assert.ok(id !== 'tier3only' && id !== 'partyhost', `seed ${seed}: ${id} is not eligible`);
+    }
+  }
+});
+
+test('pit deck: a passing line-up shows at least four suits and holds a STEADY and a WILD machine', async () => {
+  const { rosterFor, ROSTER_MIN_SUITS } = await load('src/world/layout.ts');
+  const cat = pitCatalog();
+  const bySuit = new Map(cat.map((c) => [c.id, c]));
+  for (let seed = 1; seed <= 40; seed++) {
+    const r = rosterFor(seed, cat);
+    const picks = Object.values(r).map((id) => bySuit.get(id)).filter(Boolean);
+    assert.ok(new Set(picks.map((c) => c.suit)).size >= ROSTER_MIN_SUITS, `seed ${seed}: suits`);
+    assert.ok(picks.some((c) => c.volatility === 'STEADY'), `seed ${seed}: no STEADY`);
+    assert.ok(picks.some((c) => c.volatility === 'WILD'), `seed ${seed}: no WILD`);
+  }
+});
+
+test('pit deck: the guard keeps the GDD §8.6 devices when the catalogue cannot pass', async () => {
+  const { rosterFor, ROSTER_PADS, DEFAULT_ASSIGN } = await load('src/world/layout.ts');
+  const defaults = Object.fromEntries(ROSTER_PADS.map((p) => [p, DEFAULT_ASSIGN[p]]));
+  assert.deepEqual(rosterFor(7, []), defaults, 'empty catalogue');
+  const noSuits = pitCatalog().map((c) => ({ ...c, suit: undefined }));
+  assert.deepEqual(rosterFor(7, noSuits), defaults, 'no suit data');
+  const noVol = pitCatalog().map((c) => ({ ...c, volatility: 'SWINGY' }));
+  assert.deepEqual(rosterFor(7, noVol), defaults, 'no STEADY or WILD');
+  const modeOut = pitCatalog().map((c) => ({ ...c, modes: ['coop'] }));
+  assert.deepEqual(rosterFor(7, modeOut, 'debt'), defaults, 'no machine in this mode');
+});

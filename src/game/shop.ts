@@ -1,0 +1,421 @@
+/**
+ * The Pawn Window's stock keeper (`run.pawn`, Wave 8 items 2 and 7). Implements `PawnApi` from the charm_vendor lane.
+ *
+ *  - Stock is drawn ONCE per intermission from the stream `pawn:${night}:${watch}`; buying never reshuffles anything.
+ *  - Rerolls (`pawn:${night}:${watch}` → fork `r<n>`) replace only slots that are unlocked and unsold.
+ *    Free rerolls are used first; the paid cost is 1 Ticket, +1 per further paid reroll in the same intermission.
+ *  - A lock (1 Ticket, max 2) keeps the item on the shelf through rerolls and into the next intermission until it is
+ *    bought or unlocked. Prices follow the current SI, so a locked charm costs what it costs now.
+ *  - From Night 2 the under-the-counter slot (index 3) holds a Rare/Legendary or a Cursed charm, 50 / 50.
+ *  - Shelf bias: slot 0 weighs charms that share the suit / archetype key you hold most x3.
+ *  - FIT n: held charms sharing a key with the candidate, +1 when it boosts the payout of your most-played machine.
+ *  - Swap on full pegs: `buy(pid, i, replaceId)` sells the replaced charm back at the host's sell value, then buys.
+ *  - `snapshot()` / `restore()` carry the whole state into the save (plain JSON).
+ *
+ * The run supplies a `PawnHost`; this file never touches run.ts internals. Seeded rng only.
+ */
+import type { PlayerId } from '@/core/types';
+import type { Rng } from '@/core/rng';
+import { allCharmDefs, charmDef } from '@/game/charms/engine';
+import { LAUNCH_CHARM_IDS, SUIT_SCALED_CHARMS } from '@/game/data/charms';
+import { charmPrice, rollRarity, type ShopRarity } from '@/game/economy';
+import { foldEffects, scopeMatches, stackedValue } from '@/game/types';
+import type { CharmDef, ModBreakdown } from '@/game/types';
+import {
+  LOCK_TICKETS, MAX_LOCKS, REMOVE_CURSE_TICKETS, SLOTS, UNDER_COUNTER_INDEX,
+  type PawnApi, type PawnBuy, type PawnPreview, type PawnSlot, type SwapChoice,
+} from '@/machines/charm_vendor/rules';
+
+/** Slot that gets the shelf bias, and the slot the `x.shop.discountSlot` charm discounts. */
+export const BIAS_SLOT = 0;
+export const DISCOUNT_SLOT = 2;
+export const BIAS_WEIGHT = 3;
+const REGULAR = 3;
+
+/** The machine the player used most, with the tags `scopeMatches` needs. */
+export interface PawnMachine { machineId: string; tags: readonly string[]; category?: string }
+
+/** What the Pawn needs from the run. All reads are live (the run owns the truth). */
+export interface PawnHost {
+  readonly selfId: PlayerId;
+  /** The run rng (its streams are forked by label, so it is never advanced here). */
+  rng(): Rng;
+  /** 0-based Night index and Watch index (the stock key). */
+  night(): number;
+  watch(): number;
+  /** True while the window is open (phase 'intermission' and not ended). */
+  open(): boolean;
+  /** Stake index (price multiplier). */
+  si(): number;
+  /** Ids of every charm held. */
+  held(): readonly string[];
+  /** False when another copy cannot be taken (non-stackable and held, or stacks maxed). */
+  canTake(id: string): boolean;
+  /** Free pegs (pegs() - pegsUsed). */
+  pegsFree(): number;
+  wallet(): number;
+  tickets(): number;
+  /** Spend Tickets; false when short. */
+  spendTickets(n: number, reason: string): boolean;
+  freeRerolls(): number;
+  /** Consume one free reroll; false when none. */
+  useFreeReroll(): boolean;
+  /** `run.buyCharm`. Atomic: false means nothing was charged. */
+  buyCharm(id: string, price: number): boolean;
+  /** `run.sellCharm`. */
+  sellCharm(id: string): boolean;
+  /** Coins `sellCharm(id)` will pay (0 for a cursed charm: it cannot be sold). */
+  sellValue(id: string): number;
+  /** Remove the cursed charm `id` from the pegs (the Tickets are charged by the Pawn). */
+  removeCurse(id: string): boolean;
+  /** Optional: `shop.discount` fraction (0..0.9) applied to every positive price. */
+  discount?(): number;
+  /** Optional: `x.shop.discountSlot` fraction applied to the DISCOUNT_SLOT only. */
+  discountSlot?(): number;
+  /** Optional: shelf bias on/off (default on). */
+  bias?(): boolean;
+  /** Optional: is a meta unlock code (F3, W, A:...) earned? Default: never, so cursed charms (F3) stay off the shelf. */
+  meta?(code: string): boolean;
+  /** Optional: only v1.0 launch charms are offered (default true). */
+  launchOnly?(): boolean;
+  /** Optional: the most-played machine, for FIT and the payout preview. */
+  mostPlayed?(): PawnMachine | null;
+  /** Optional: `run.explain('payout.mult', machineId, 1)` for the payout preview. */
+  explain?(machineId: string): ModBreakdown;
+}
+
+interface SlotState { id: string; locked: boolean; sold: boolean }
+export interface PawnSnapshot {
+  v: 1;
+  /** `${night}:${watch}` of the visit the stock was drawn for; '' = never drawn. */
+  key: string;
+  slots: (SlotState | null)[];
+  /** Rerolls done this intermission (free + paid): the stream label of the next one. */
+  rolls: number;
+  /** Paid rerolls this intermission: the escalation. */
+  paid: number;
+}
+
+// ── pure helpers (exported for the tests) ────────────────────────────────────────────────────────────────
+
+/** Suit / archetype keys of a charm, lower-case (suit table `tag`, plus `tags` such as 'hot' or 'banker'). */
+export function defKeys(d: Pick<CharmDef, 'tag' | 'tags'>): string[] {
+  const out: string[] = [];
+  for (const k of [d.tag, ...(d.tags ?? [])]) {
+    if (!k) continue;
+    const n = k.toLowerCase();
+    if (!out.includes(n)) out.push(n);
+  }
+  return out;
+}
+
+/** The key shared by most held charms (ties: alphabetical), or null with nothing held. */
+export function dominantKey(held: readonly Pick<CharmDef, 'tag' | 'tags'>[]): string | null {
+  const count = new Map<string, number>();
+  for (const d of held) for (const k of defKeys(d)) count.set(k, (count.get(k) ?? 0) + 1);
+  let best: string | null = null;
+  let n = 0;
+  for (const [k, c] of count) if (c > n || (c === n && best !== null && k < best)) { best = k; n = c; }
+  return best;
+}
+
+/** Does the charm raise payouts / luck on this machine? (the "+1" of FIT) */
+export function boostsMachine(d: CharmDef, m: PawnMachine): boolean {
+  return (d.effects ?? []).some((e) =>
+    (e.hook === 'payout.mult' || e.hook === 'payout.flat' || e.hook === 'luck' || e.hook === 'loss.refund')
+    && scopeMatches(e.scope, { machineId: m.machineId, tags: m.tags }));
+}
+
+/** FIT n: held charms (other than itself) sharing a suit / archetype key, +1 when it boosts the most-played machine. */
+export function fitOf(d: CharmDef, held: readonly CharmDef[], m: PawnMachine | null): number {
+  const mine = defKeys(d);
+  let n = 0;
+  for (const h of held) if (h.id !== d.id && defKeys(h).some((k) => mine.includes(k))) n += 1;
+  if (m && boostsMachine(d, m)) n += 1;
+  return n;
+}
+
+/** Payout of `bd` before and after adding charm `d` (only `payout.mult` effects that reach the machine). Null when none. */
+export function previewPayout(bd: ModBreakdown, d: CharmDef, m: PawnMachine, sameSuitHeld = 0): { from: number; to: number } | null {
+  const scale = SUIT_SCALED_CHARMS.has(d.id) ? 1 + sameSuitHeld : 1;
+  const mine = (d.effects ?? []).filter((e) => e.hook === 'payout.mult' && scopeMatches(e.scope, { machineId: m.machineId, tags: m.tags }));
+  if (!mine.length) return null;
+  const cur = bd.steps.map((s) => ({ op: s.op, value: stackedValue({ hook: bd.hook, op: s.op, value: s.value }, s.stacks) }));
+  const add = mine.map((e) => ({ op: e.op, value: e.op === 'mult' ? e.value : e.value * scale, priority: e.priority }));
+  return { from: bd.result, to: foldEffects('payout.mult', bd.base, [...cur, ...add]) };
+}
+
+/**
+ * Unlock gate: '' = open, 'N<k>' = reached Night k. Any other code (F3, W, A:...) is meta progress the run owns: it is
+ * offered only when `meta(code)` says so (no `meta` = never, the old behaviour).
+ */
+function unlockedAt(d: CharmDef, night: number, meta?: (code: string) => boolean): boolean {
+  const u = d.unlock ?? '';
+  if (!u) return true;
+  const m = /^N(\d+)$/.exec(u);
+  return m ? night + 1 >= Number(m[1]) : (meta?.(u) ?? false);
+}
+
+const clamp01 = (v: number): number => Math.min(0.9, Math.max(0, v));
+
+// ── the Pawn ─────────────────────────────────────────────────────────────────────────────────────────────
+
+export class Pawn implements PawnApi {
+  private key = '';
+  private slots: (SlotState | null)[] = new Array<SlotState | null>(SLOTS).fill(null);
+  private rolls = 0;
+  private paid = 0;
+  /** Bumped on every mutation, so a consumer can cache against it. */
+  rev = 0;
+
+  constructor(private readonly host: PawnHost, snap?: PawnSnapshot | null) {
+    if (snap) this.restore(snap);
+  }
+
+  // ── lifecycle ──
+  /** Draw this intermission's stock if it has not been drawn yet. The run may call it on entering the intermission. */
+  sync(): void {
+    if (!this.host.open()) return;
+    const key = `${this.host.night()}:${this.host.watch()}`;
+    if (key === this.key) return;
+    this.newVisit(key);
+  }
+
+  private newVisit(key: string): void {
+    const old = this.slots;
+    this.key = key;
+    this.rolls = 0;
+    this.paid = 0;
+    this.slots = new Array<SlotState | null>(SLOTS).fill(null);
+    // Locked, unsold items stay on their shelf.
+    for (let i = 0; i < SLOTS; i++) {
+      const s = old[i];
+      if (s && s.locked && !s.sold && charmDef(s.id) && this.host.canTake(s.id)) this.slots[i] = { id: s.id, locked: true, sold: false };
+    }
+    const rng = this.host.rng().fork(`pawn:${this.host.night()}:${this.host.watch()}`);
+    this.fill(rng, this.freeSlots());
+    this.rev += 1;
+  }
+
+  private freeSlots(): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < SLOTS; i++) {
+      const s = this.slots[i];
+      if (i === UNDER_COUNTER_INDEX && this.host.night() < 1) continue;
+      if (!s) out.push(i);
+    }
+    return out;
+  }
+
+  private eligible(d: CharmDef, exclude: ReadonlySet<string>): boolean {
+    const launch = this.host.launchOnly?.() ?? true;
+    return !exclude.has(d.id) && this.host.canTake(d.id) && (!launch || LAUNCH_CHARM_IDS.has(d.id)) && unlockedAt(d, this.host.night(), (c) => this.host.meta?.(c) ?? false);
+  }
+
+  private heldDefs(): CharmDef[] {
+    const out: CharmDef[] = [];
+    for (const id of this.host.held()) { const d = charmDef(id); if (d) out.push(d); }
+    return out;
+  }
+
+  /** Fill the given empty slots in order from `rng`. Ids already on a shelf (or sold this visit) are never repeated. */
+  private fill(rng: Rng, idx: readonly number[], avoid: ReadonlySet<string> = new Set()): void {
+    const night = this.host.night();
+    const exclude = new Set<string>([...avoid, ...this.slots.flatMap((s) => (s ? [s.id] : []))]);
+    const all = allCharmDefs();
+    const biasKey = (this.host.bias?.() ?? true) ? dominantKey(this.heldDefs()) : null;
+    for (const i of idx) {
+      let pick: CharmDef | undefined;
+      if (i === UNDER_COUNTER_INDEX) {
+        const cursed = all.filter((d) => d.rarity === 'cursed' && this.eligible(d, exclude));
+        const rare = all.filter((d) => (d.rarity === 'rare' || d.rarity === 'legendary') && this.eligible(d, exclude));
+        const first = rng.chance(0.5) ? cursed : rare;
+        let pool = first.length ? first : (first === cursed ? rare : cursed);
+        // Nothing rare or cursed is unlocked yet (early Nights): the best the counter has is an Uncommon.
+        if (!pool.length) pool = all.filter((d) => d.rarity === 'uncommon' && this.eligible(d, exclude));
+        if (pool.length) pick = rng.pick(pool);
+      } else {
+        const rarity: ShopRarity = rollRarity(rng, night);
+        let pool = all.filter((d) => d.rarity === rarity && this.eligible(d, exclude));
+        if (!pool.length) pool = all.filter((d) => d.rarity !== 'cursed' && this.eligible(d, exclude));
+        if (pool.length) {
+          pick = i === BIAS_SLOT && biasKey
+            ? rng.weighted(pool, pool.map((d) => (defKeys(d).includes(biasKey) ? BIAS_WEIGHT : 1)))
+            : rng.pick(pool);
+        }
+      }
+      if (pick) { this.slots[i] = { id: pick.id, locked: false, sold: false }; exclude.add(pick.id); }
+    }
+  }
+
+  // ── PawnApi: reads ──
+  open(): boolean { return this.host.open(); }
+
+  stock(_pid: PlayerId): readonly (PawnSlot | null)[] {
+    if (!this.host.open()) return [];
+    this.sync();
+    const held = this.heldDefs();
+    const m = this.host.mostPlayed?.() ?? null;
+    return this.slots.map((s, i) => {
+      if (!s || s.sold || !this.host.canTake(s.id)) return null;
+      const d = charmDef(s.id);
+      if (!d) return null;
+      const price = this.priceOf(d, i);
+      return {
+        charmId: s.id, price, rarity: d.rarity, cursed: d.rarity === 'cursed', underCounter: i === UNDER_COUNTER_INDEX,
+        locked: s.locked, fit: fitOf(d, held, m), bias: i === BIAS_SLOT, discounted: price > 0 && price < charmPrice(d, this.host.si()),
+      };
+    });
+  }
+
+  private priceOf(d: CharmDef, i: number): number {
+    const base = charmPrice(d, this.host.si());
+    if (base <= 0) return base;
+    let f = 1 - clamp01(this.host.discount?.() ?? 0);
+    if (i === DISCOUNT_SLOT) f *= 1 - clamp01(this.host.discountSlot?.() ?? 0);
+    return Math.max(1, Math.round(base * f));
+  }
+
+  rerollCost(): number { return this.host.freeRerolls() > 0 ? 0 : 1 + this.paid; }
+  freeRerolls(): number { return this.host.freeRerolls(); }
+
+  private rerollable(): number[] {
+    this.sync();
+    const out: number[] = [];
+    for (let i = 0; i < SLOTS; i++) {
+      if (i === UNDER_COUNTER_INDEX && this.host.night() < 1) continue;
+      const s = this.slots[i];
+      if (!s || (!s.locked && !s.sold)) out.push(i);
+    }
+    return out;
+  }
+
+  canReroll(): boolean { return this.host.open() && this.rerollable().length > 0; }
+
+  preview(_pid: PlayerId, i: number): PawnPreview | null {
+    const m = this.host.mostPlayed?.() ?? null;
+    const s = this.slots[i];
+    if (!m || !s || s.sold || !this.host.explain) return null;
+    const d = charmDef(s.id);
+    if (!d) return null;
+    const suit = d.tag ? this.heldDefs().filter((h) => h.tag === d.tag).length : 0;
+    const r = previewPayout(this.host.explain(m.machineId), d, m, suit);
+    return r ? { machineId: m.machineId, from: r.from, to: r.to } : null;
+  }
+
+  cursedOwned(_pid: PlayerId): readonly string[] {
+    return this.host.held().filter((id) => charmDef(id)?.rarity === 'cursed');
+  }
+
+  // ── PawnApi: actions ──
+  reroll(): boolean {
+    if (!this.host.open()) return false;
+    const idx = this.rerollable();
+    if (!idx.length) return false;
+    const free = this.host.freeRerolls() > 0;
+    if (free) { if (!this.host.useFreeReroll()) return false; }
+    else if (!this.host.spendTickets(1 + this.paid, 'pawn:reroll')) return false;
+    const avoid = new Set<string>();
+    for (const i of idx) { const s = this.slots[i]; if (s) avoid.add(s.id); this.slots[i] = null; }
+    const rng = this.host.rng().fork(`pawn:${this.host.night()}:${this.host.watch()}`).fork(`r${this.rolls}`);
+    this.fill(rng, idx, avoid);
+    this.fill(rng, idx.filter((i) => !this.slots[i]));   // a thin pool: allow a repeat rather than an empty shelf
+    this.rolls += 1;
+    if (!free) this.paid += 1;
+    this.rev += 1;
+    return true;
+  }
+
+  lock(i: number): boolean {
+    if (!this.host.open()) return false;
+    this.sync();
+    const s = this.slots[i];
+    if (!s || s.sold || s.locked) return false;
+    if (this.slots.filter((x) => x?.locked && !x.sold).length >= MAX_LOCKS) return false;
+    if (!this.host.spendTickets(LOCK_TICKETS, 'pawn:lock')) return false;
+    s.locked = true;
+    this.rev += 1;
+    return true;
+  }
+
+  unlock(i: number): boolean {
+    const s = this.slots[i];
+    if (!s || !s.locked) return false;
+    s.locked = false;
+    this.rev += 1;
+    return true;
+  }
+
+  needsSwap(_pid: PlayerId, i: number): boolean {
+    const s = this.slots[i];
+    return !!s && !s.sold && this.host.pegsFree() <= 0 && !this.host.held().includes(s.id);
+  }
+
+  swapChoices(_pid: PlayerId, _i: number): readonly SwapChoice[] {
+    const out: SwapChoice[] = [];
+    for (const id of this.host.held()) {
+      const d = charmDef(id);
+      if (!d || d.rarity === 'cursed') continue;
+      out.push({ id, refund: this.host.sellValue(id) });
+    }
+    return out;
+  }
+
+  buy(pid: PlayerId, i: number, replaceId?: string): PawnBuy {
+    if (!this.host.open()) return { ok: false, why: 'closed' };
+    this.sync();
+    const s = this.slots[i];
+    const d = s ? charmDef(s.id) : undefined;
+    if (!s || !d || s.sold || !this.host.canTake(s.id)) return { ok: false, why: 'none' };
+    const price = this.priceOf(d, i);
+    let refund = 0;
+    const swap = this.needsSwap(pid, i);
+    if (swap) {
+      if (replaceId === undefined) return { ok: false, why: 'swap' };
+      const pick = this.swapChoices(pid, i).find((c) => c.id === replaceId);
+      if (!pick) return { ok: false, why: 'limit' };
+      refund = pick.refund;
+    }
+    if (price > 0 && this.host.wallet() + refund < price) return { ok: false, why: 'funds' };
+    if (swap && (replaceId === undefined || !this.host.sellCharm(replaceId))) return { ok: false, why: 'fail' };
+    if (!this.host.buyCharm(s.id, price)) {
+      if (swap && replaceId !== undefined) this.host.buyCharm(replaceId, 0);   // put the sold charm back; the sale was refused
+      return { ok: false, why: 'fail' };
+    }
+    s.sold = true;
+    s.locked = false;
+    this.rev += 1;
+    return { ok: true, why: '' };
+  }
+
+  removeCurse(charmId: string): boolean {
+    if (!this.host.open()) return false;
+    if (charmDef(charmId)?.rarity !== 'cursed' || !this.host.held().includes(charmId)) return false;
+    if (this.host.tickets() < REMOVE_CURSE_TICKETS) return false;
+    if (!this.host.spendTickets(REMOVE_CURSE_TICKETS, 'pawn:curse')) return false;
+    if (!this.host.removeCurse(charmId)) return false;
+    this.rev += 1;
+    return true;
+  }
+
+  // ── save ──
+  snapshot(): PawnSnapshot {
+    return {
+      v: 1, key: this.key, rolls: this.rolls, paid: this.paid,
+      slots: this.slots.map((s) => (s ? { id: s.id, locked: s.locked, sold: s.sold } : null)),
+    };
+  }
+
+  restore(snap: PawnSnapshot): void {
+    if (!snap || snap.v !== 1 || !Array.isArray(snap.slots)) return;
+    this.key = typeof snap.key === 'string' ? snap.key : '';
+    this.rolls = Math.max(0, Math.floor(snap.rolls) || 0);
+    this.paid = Math.max(0, Math.floor(snap.paid) || 0);
+    this.slots = new Array<SlotState | null>(SLOTS).fill(null);
+    for (let i = 0; i < SLOTS; i++) {
+      const s = snap.slots[i];
+      if (s && typeof s.id === 'string' && charmDef(s.id)) this.slots[i] = { id: s.id, locked: !!s.locked, sold: !!s.sold };
+    }
+    this.rev += 1;
+  }
+}

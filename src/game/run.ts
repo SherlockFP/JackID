@@ -38,7 +38,15 @@ import {
   type CircuitSave, type CircuitView, type LampCandidate, type LampView, type TiltView,
 } from './circuit';
 import { PAYOUT_GUARD, bettingLadder, charmPrice, settlePayout, snapDown, type PayoutResult } from './economy';
-import { Charms, PEG_CAP_RUN, allCharmDefs, choiceOffer, charmDef, rollPawnWindow } from './charms/engine';
+import { Charms, PEG_CAP_RUN, allCharmDefs, choiceOffer, charmDef } from './charms/engine';
+import { Pawn, type PawnSnapshot } from './shop';
+import { scopeTags } from './suits';
+import { paceOf, oddsLine, type OddsLine } from './pace';
+import { profileOf } from './data/machineProfiles';
+import { bossFor, type BossNight } from './bosses';
+import { applyKit, kitById } from './data/kits';
+import { BOSS_REWARD, BOSS_TEMPLATES } from './data/bosses';
+import { registerStrings, t } from '@/core/i18n';
 import { playableMode, rulesFor, type ModeRules } from './modes';
 import { createTycoon, type Tycoon } from './tycoon';
 import { createBuffSystem, type BuffSystem } from './buffs';
@@ -85,6 +93,14 @@ const PULL_PRICE_TICKETS = 3;
 const PULLS_BOUGHT_MAX = 2;
 /** Machine id used for run-level modifier queries (no machine). */
 const RUN_MACHINE = 'run';
+
+let bossStringsDone = false;
+/** Boss names and texts to `event.<id>.name|desc|announce` (the banner and HUD read them like any Night event). Once. */
+function registerBossStrings(): void {
+  if (bossStringsDone) return;
+  bossStringsDone = true;
+  for (const b of Object.values(BOSS_TEMPLATES)) registerStrings(`event.${b.id}.`, { en: b.strings.en, tr: b.strings.tr });
+}
 /** Red Thread (GDD §4.2 #41): its Tilt grace is for the first instance played in a Watch only. */
 const RED_THREAD_GRACE = 3;
 /** Bounty board: offers per Night and slips one player may hold (GDD §11.9: three per Night). */
@@ -115,7 +131,13 @@ export interface RunExt {
   clock: ClockSnapshot; clockLen: number; lastCallSec: number;
   pulls: number; pullsMax: number; watchPulls: number; boughtThisWatch: number;
   tickets: number; debtPaid: number; dreadPts: number;
-  freeRerolls: number; pawnRerolls: number; skipRest: number;
+  freeRerolls: number; skipRest: number;
+  /** Pawn Window stock (wave 8). Optional: older saves have none. */
+  pawn?: PawnSnapshot;
+  /** Rounds opened per machine id (the Pawn's most-played machine). Optional. */
+  plays?: Record<string, number>;
+  /** Legacy (pre-wave 8 reroll counter), ignored. */
+  pawnRerolls?: number;
   discount: number; nextDiscount: number; elapsed: number; maxWallet: number; biggest: number; rounds: number;
   rng: [number, number, number, number];
   /** Pending overpay choices (optional: older v1 saves have none). */
@@ -160,9 +182,6 @@ export interface RunWorldLink {
   instancePos(mid: InstanceId): V3 | undefined;
 }
 
-/** One Pawn Window slot: the charm and its SI price. */
-export interface PawnOffer { def: CharmDef; price: number }
-
 /** Run control surface on top of `RunApi` (HUD, intermission UI, frame loop). */
 export interface DebtRun extends RunApi {
   /** Advance the run by `dt` sim seconds. Call from the fixed step. */
@@ -183,10 +202,8 @@ export interface DebtRun extends RunApi {
   settleEarly(): boolean;
   /** Buy +1 pull for 3 Tickets (max +2 per Watch). */
   buyPull(): boolean;
-  /** Pawn Window: current offers at SI prices (empty outside intermissions). */
-  pawnOffers(): PawnOffer[];
-  /** Pawn Window: 1 Ticket, then +1 per further reroll in the same intermission (free rerolls first). */
-  rerollPawn(): boolean;
+  /** Pawn Window stock keeper (wave 8): stock, locks, rerolls, swap. The charm vendor reads it. */
+  readonly pawn: Pawn;
   /** Sell a charm for 50 % (70 % with Pawn Ticket). Cursed charms cannot be sold. */
   sellCharm(id: string): boolean;
   /** Topside: STAY UP ends the run as a win. */
@@ -256,7 +273,7 @@ class Mods implements ModifierApi {
     const r = this.run();
     const def = registry.get(machineId)?.def;
     const m = {
-      machineId, category: def?.category, tags: def?.tags, zone: def?.zone, instance: q.instance,
+      machineId, category: def?.category, tags: scopeTags(machineId, def?.tags), zone: def?.zone, instance: q.instance,
       mode: r.mode, pid: q.pid ?? r.selfId, pos: q.pos,
     };
     const out: Array<{ src: ModSource; eff: ModEffect; value: number }> = [];
@@ -310,6 +327,7 @@ class Run implements DebtRun {
   readonly tycoon: TycoonApi;
   readonly buffs: BuffsApi;
   readonly totems: TotemsApi;
+  readonly pawn: Pawn;
   readonly collateral: CollateralApi;
   readonly nightEvents: NightEventsApi;
   readonly contracts: ContractsApi;
@@ -363,8 +381,13 @@ class Run implements DebtRun {
   private pullsMax = 0;
   private watchPulls = 0;
   private boughtThisWatch = 0;
-  private pawnRerolls = 0;
   private freeRerolls = 0;
+  private pawnRev = 0;
+  private readonly lastBet = new Map<string, number>();
+  private oddsKey = '';
+  private baseEventChance = 0.35;
+  private readonly plays = new Map<string, number>();
+  private readonly banner: EventBannerShow | undefined;
   private ropeUsed = false;
   private dreadPts = 0;
 
@@ -394,11 +417,12 @@ class Run implements DebtRun {
     this.seed = opts.seed;
     this.rules = rulesFor(this.mode);
     this.save = opts.save ?? null;
+    this.banner = opts.banner;
     this.rng = createRng(opts.seed);
     this.config = {
       startWallet: this.rules.startWallet, deadlines: BASE_RUN_NIGHTS, difficulty: 'normal', friendlyGive: false,
       realtimeShift: this.rules.timed, shiftSeconds: nightDef(0).clock, sharedBank: false, stake: 0, modifiers: [],
-      daily: false, randomLineup: false, collateral: false, botFill: false, ...opts.cfg,
+      daily: false, randomLineup: true, collateral: false, botFill: false, ...opts.cfg,
     };
 
     const nd = nightDef(0);
@@ -467,6 +491,7 @@ class Run implements DebtRun {
     }, this.modsImpl, { banner: opts.banner });
     this.buffs = this.buffSys.buffs;
     this.nightEvents = this.buffSys.nightEvents;
+    this.baseEventChance = this.buffSys.nightEvents.chance();
 
     this.itemSys = createItemSystem({
       selfId: this.selfId,
@@ -480,13 +505,15 @@ class Run implements DebtRun {
     }, this.modsImpl);
     this.totems = this.itemSys.totems;
 
+    this.pawn = this.makePawn();
     this.collateral = inert<CollateralApi>('collateral', {});
     this.contracts = this.makeContractsApi();
     this.unsubs.push(
       bus.on('player:seat', (p) => {
         if (p.pid !== this.selfId) return;
         this.seatedMid = p.on ? p.mid : null;
-        if (p.on) this.emitTilt(p.mid);
+        this.oddsKey = '';
+        if (p.on) { this.emitTilt(p.mid); this.refreshOdds(true); }
       }),
       bus.on('machine:result', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:result', p); }),
       bus.on('machine:round', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:round', p); }),
@@ -500,7 +527,9 @@ class Run implements DebtRun {
     } else {
       this.recomputeQuota();
       this.enter(this.rules.timed ? 'intermission' : 'play', 0);
+      this.applyStartKit();
     }
+    this.prepareBoss();
   }
 
   // ── identity and time words ───────────────────────────────────────────────────────────────────────
@@ -555,10 +584,12 @@ class Run implements DebtRun {
     this.coins -= cost;
     this.stats.wagered = (this.stats.wagered ?? 0) + cost;
     if (this.quotaMode) this.feedJackpot('net', Math.floor(amount * NETWORK_FEED));
+    this.lastBet.set(src.mid, amount);
     if (!this.openRounds.has(src.mid)) {
       this.openRounds.add(src.mid);
       this.rounds++;
       this.stats.rounds = this.rounds;
+      this.plays.set(src.machineId, (this.plays.get(src.machineId) ?? 0) + 1);
       this.countTilt(src.mid, src.machineId, pullCost);
       this.emit('machine:round', { mid: src.mid, machineId: src.machineId, pid: this.selfId, bet: amount });
     }
@@ -568,12 +599,15 @@ class Run implements DebtRun {
       if (pullCost > 0 && this.pullCount <= 0) this.enter('closing', closingSeconds(this.isLastWatch()));
     }
     this.notify();
+    this.refreshOdds();
     return true;
   }
 
   win(gross: number, src: EcoSource, meta: WinMeta): number {
     this.openRounds.delete(src.mid);
-    const q: ModQuery = { pid: this.selfId, instance: src.mid };
+    // betFrac (bet / max bet) lets Gilded Chip read the stake; Capacitor scopes through `instance`.
+    const maxBet = this.betLimits(src.machineId, src.mid).max;
+    const q: ModQuery = { pid: this.selfId, instance: src.mid, ctx: { betFrac: Number.isFinite(maxBet) && maxBet > 0 ? meta.bet / maxBet : 0 } };
     let credited: number;
     let pr: PayoutResult | null = null;
     if (meta.raw) {
@@ -591,7 +625,8 @@ class Run implements DebtRun {
         M = br.result / (1 + A);
       }
       const flat = meta.factorApplied ? 0 : this.mod('payout.flat', src.machineId, 0, q);
-      const r = settlePayout({ gross, bet: meta.bet, A, M, flat, quota: this.quotaMode ? this.quota.due : 0 });
+      const limitMult = this.mod('x.house.limitMult', src.machineId, 1, q);
+      const r = settlePayout({ gross, bet: meta.bet, A, M, flat, quota: this.quotaMode ? this.quota.due : 0, limitMult });
       pr = r;
       credited = r.credited;
       if (r.excess > 0) this.feedJackpot('net', r.excess);
@@ -614,6 +649,7 @@ class Run implements DebtRun {
     }
     this.notify();
     this.persistSoon();
+    this.refreshOdds();
     return credited;
   }
 
@@ -745,6 +781,7 @@ class Run implements DebtRun {
       this.sinceFlush += dt;
       if (this.sinceFlush >= SAVE_SOON_SEC) this.persist();
     }
+    if (this.pawn.rev !== this.pawnRev) { this.pawnRev = this.pawn.rev; this.persistSoon(); }
     const head = this.overpays[0];
     if (head) {
       head.left -= dt;
@@ -790,7 +827,7 @@ class Run implements DebtRun {
     if (this.ended || !this.quotaMode || this.phase !== 'intermission' || this.nightDone || this.topside) return false;
     const nd = nightDef(this.index);
     const isOvertime = this.watch === this.overtimeIdx;
-    this.pawnRerolls = 0;
+    this.ensureBoss(); // before the clock and pull mods are read below
     this.boughtThisWatch = 0;
     this.clockLen = isOvertime ? OVERTIME_SEC : Math.max(10, Math.round(this.mod('x.run.clockAdd', RUN_MACHINE, nd.clock)));
     this.lastCallSec = lastCallSeconds(this.isLastWatch());
@@ -806,6 +843,7 @@ class Run implements DebtRun {
     this.rollLamps();
     this.buffSys.onBell();
     this.persist();
+    this.refreshOdds();
     return true;
   }
 
@@ -827,12 +865,12 @@ class Run implements DebtRun {
     this.discount = this.nextDiscount;
     this.nextDiscount = 0;
     this.quota.claimed = [];
-    this.pawnRerolls = 0;
     this.shiftState.index = this.index;
     this.shiftState.floor = this.index + 1;
     this.shiftState.stake = nd.si;
     this.shiftState.segment = { index: 0, count: nd.watches };
     this.recomputeQuota();
+    this.prepareBoss();
     this.enter('intermission', 0);
     this.persist();
     return true;
@@ -859,32 +897,6 @@ class Run implements DebtRun {
     this.boughtThisWatch += 1;
     this.pullCount += 1;
     this.emit('pulls:change', { pid: this.selfId, pulls: this.pullCount });
-    this.notify();
-    this.persist();
-    return true;
-  }
-
-  pawnOffers(): PawnOffer[] {
-    if (this.phase !== 'intermission' || this.ended) return [];
-    const rng = this.rng.fork(`pawn:${this.index}:${this.watch}:${this.pawnRerolls}`);
-    const defs = rollPawnWindow(rng, this.index, (id) => this.charmBox.has(this.selfId, id), { launchOnly: true });
-    const si = nightDef(this.index).si;
-    return defs.map((def) => ({ def, price: charmPrice(def, si) }));
-  }
-
-  rerollPawn(): boolean {
-    if (this.phase !== 'intermission' || this.ended) return false;
-    if (this.freeRerolls > 0) {
-      this.freeRerolls -= 1;
-      this.pawnRerolls += 1;
-      this.notify();
-      this.persist();
-      return true;
-    }
-    const cost = 1 + this.pawnRerolls;
-    if (this.tickets < cost) return this.refuse('funds');
-    this.tickets -= cost;
-    this.pawnRerolls += 1;
     this.notify();
     this.persist();
     return true;
@@ -988,6 +1000,7 @@ class Run implements DebtRun {
       this.skipRest = 0;
       this.tycoonSys.onDawn();
       this.enter('collection', COLLECTION_SEC);
+      this.announceNextBoss();
     }
     this.persist();
   }
@@ -1023,6 +1036,7 @@ class Run implements DebtRun {
         this.emit('quota:overshoot', { tier: tier.id, pid: this.selfId });
       }
     }
+    this.finishBoss();
     this.debtPaid = Math.max(0, this.debtPaid - due);
     this.stats.nightsPaid = (this.stats.nightsPaid ?? 0) + 1;
     this.syncQuota();
@@ -1315,6 +1329,7 @@ class Run implements DebtRun {
   private emit<K extends keyof GameEvents>(key: K, payload: GameEvents[K]): void {
     bus.emit(key, payload);
     this.charmBox.dispatch(key, payload);
+    this.modsImpl.touch(); // charm `on` handlers write their data bags
   }
 
   // ── shift API ──────────────────────────────────────────────────────────────────────────────────────
@@ -1382,6 +1397,150 @@ class Run implements DebtRun {
     this.notify();
   }
 
+  // ── wave 8: Pawn Window, boss Nights, starting kits, Tell Sheet ───────────────────────────────────────
+  private makePawn(): Pawn {
+    return new Pawn({
+      selfId: this.selfId,
+      rng: () => this.rng,
+      night: () => this.index,
+      watch: () => this.watch,
+      open: () => this.phase === 'intermission' && !this.ended,
+      si: () => nightDef(this.index).si,
+      held: () => this.charmBox.list(this.selfId).map((s) => s.id),
+      canTake: (id) => {
+        const s = this.charmBox.find(this.selfId, id);
+        return !s || (s.stacks ?? 1) < (charmDef(id)?.maxStacks ?? 1);
+      },
+      pegsFree: () => this.pegs() - this.charmBox.pegsUsed(this.selfId),
+      wallet: () => this.coins,
+      tickets: () => this.tickets,
+      spendTickets: (n) => {
+        if (n < 0 || this.tickets < n) return false;
+        this.tickets -= n;
+        this.notify();
+        this.persistSoon();
+        return true;
+      },
+      freeRerolls: () => this.freeRerolls,
+      useFreeReroll: () => {
+        if (this.freeRerolls <= 0) return false;
+        this.freeRerolls -= 1;
+        this.notify();
+        return true;
+      },
+      buyCharm: (id, price) => this.buyCharm(id, price),
+      sellCharm: (id) => this.sellCharm(id),
+      sellValue: (id) => {
+        const def = charmDef(id);
+        if (!def || def.rarity === 'cursed') return 0;
+        return Math.floor(charmPrice(def, this.shiftState.stake) * (this.charmBox.has(this.selfId, 'pawn_ticket') ? 0.7 : 0.5));
+      },
+      removeCurse: (id) => {
+        const ok = this.charmBox.remove(this.selfId, id);
+        if (ok) { this.notify(); this.persist(); }
+        return ok;
+      },
+      discount: () => Math.min(0.9, Math.max(0, this.mod('shop.discount', RUN_MACHINE, 0))),
+      discountSlot: () => Math.min(0.9, Math.max(0, this.mod('x.shop.discountSlot', RUN_MACHINE, 0))),
+      meta: (code) => {
+        const d = this.save?.data;
+        if (!d) return false;
+        if (code.startsWith('A:')) return d.achievements.includes(code.slice(2));
+        return d.meta.unlocked.includes(code);
+      },
+      mostPlayed: () => {
+        let best = '';
+        let n = 0;
+        for (const [id, c] of this.plays) if (c > n || (c === n && best !== '' && id < best)) { best = id; n = c; }
+        if (!best) return null;
+        const def = registry.get(best)?.def;
+        return { machineId: best, tags: [...(scopeTags(best, def?.tags) ?? [])], category: def?.category };
+      },
+      explain: (machineId) => this.explain('payout.mult', machineId, 1, { pid: this.selfId }),
+    });
+  }
+
+  /** Kit from `RunConfig.kit` (debt run start): wallet, Tickets, charms and the pre-deposit toward the first quota. */
+  private applyStartKit(): void {
+    const kit = this.quotaMode && this.config.kit ? kitById(this.config.kit) : undefined;
+    if (!kit) return;
+    this.coins = kit.coins;
+    this.maxWallet = kit.coins;
+    this.tickets = 0;
+    const got = applyKit(this, kit, this.selfId);
+    if (got && got.predeposit > 0) {
+      this.debtPaid += got.predeposit;
+      this.stats.deposited = (this.stats.deposited ?? 0) + got.predeposit;
+    }
+    this.syncQuota();
+    this.persist();
+  }
+
+  /** The Night's boss (null off boss Nights and outside the debt run). */
+  private bossToday(): BossNight | null {
+    return this.quotaMode ? bossFor(this.seed, this.night()) : null;
+  }
+
+  /** Registers the Night's boss and zeroes the random event chance on boss Nights. */
+  private prepareBoss(): void {
+    const boss = this.bossToday();
+    this.buffSys.nightEvents.setChance(boss ? 0 : this.baseEventChance);
+    if (!boss) return;
+    registerBossStrings();
+    this.buffSys.nightEvents.register(boss);
+    if (this.inWatch()) this.ensureBoss();
+  }
+
+  /** Boss active for this Watch. Must run before `startWatch` reads the clock and pull mods. */
+  private ensureBoss(): void {
+    const boss = this.bossToday();
+    if (!boss) return;
+    registerBossStrings();
+    const ne = this.buffSys.nightEvents;
+    ne.setChance(0);
+    ne.register(boss);
+    if (!ne.isActive(boss.id)) ne.trigger(boss.id);
+  }
+
+  /** Night paid on a boss Night: the boss ends; reward = choose 1 of 3 Rare charms + 3 Tickets. */
+  private finishBoss(): void {
+    const boss = this.bossToday();
+    if (!boss) return;
+    this.buffSys.nightEvents.end(boss.id);
+    this.grant({ currencies: { coin: 0, obol: 0, ticket: BOSS_REWARD.tickets }, charm: { choose: 1, of: BOSS_REWARD.charmChoices, rarity: BOSS_REWARD.charmRarity }, text: 'boss' });
+  }
+
+  /** Dawn card: names tomorrow's boss (if the Night was paid and a boss follows). */
+  private announceNextBoss(): void {
+    if (!this.banner || !this.quotaMode || this.debtPaid < this.quota.due) return;
+    const next = bossFor(this.seed, this.night() + 1);
+    if (!next) return;
+    registerBossStrings();
+    const p = { suit: (next.suit ?? '').toUpperCase(), name: t(`event.${next.id}.name`) };
+    this.banner(t('boss.dawn.next', p), { color: '#ff7a5a', hold: 5, size: 16 });
+    this.banner(t(`event.${next.id}.announce`, p), { color: '#ffd060', hold: 5, size: 8 });
+  }
+
+  /** Tell Sheet: sends the seat HUD the odds line of the seat the player is in (only when it changed). */
+  private refreshOdds(force = false): void {
+    const mid = this.seatedMid;
+    if (mid === null) return;
+    const machineId = this.circ.machineOf(mid) || this.worldLink?.machines().find((m) => m.instance === mid)?.machineId || '';
+    const def = machineId ? registry.get(machineId)?.def : undefined;
+    let line: OddsLine | null = null;
+    if (def && def.category !== 'system' && def.category !== 'party') {
+      const bet = this.lastBet.get(mid) ?? this.betLimits(machineId, mid).min;
+      const pace = this.quotaMode
+        ? paceOf({ due: this.quota.due, deposited: this.debtPaid, pocket: this.coins, pullsLeft: Number.isFinite(this.pullCount) ? this.pullCount : 0 })
+        : null;
+      line = oddsLine(profileOf(machineId), pace, def.actionCost ?? 1, bet);
+    }
+    const key = JSON.stringify(line);
+    if (key === this.oddsKey && !force) return;
+    this.oddsKey = key;
+    bus.emit('seat:odds', { pid: this.selfId, mid, line });
+  }
+
   // ── save and resume ────────────────────────────────────────────────────────────────────────────────
   snapshot(): RunSave {
     const pid = this.selfId;
@@ -1392,7 +1551,8 @@ class Run implements DebtRun {
       clock: this.clock.snapshot(), clockLen: this.clockLen, lastCallSec: this.lastCallSec,
       pulls: this.pullCount, pullsMax: this.pullsMax, watchPulls: this.watchPulls, boughtThisWatch: this.boughtThisWatch,
       tickets: this.tickets, debtPaid: this.debtPaid, dreadPts: this.dreadPts,
-      freeRerolls: this.freeRerolls, pawnRerolls: this.pawnRerolls, skipRest: this.skipRest,
+      freeRerolls: this.freeRerolls, skipRest: this.skipRest,
+      pawn: this.pawn.snapshot(), plays: Object.fromEntries(this.plays),
       discount: this.discount, nextDiscount: this.nextDiscount, elapsed: this.elapsed,
       maxWallet: this.maxWallet, biggest: this.biggest, rounds: this.rounds,
       rng: this.rng.getState(),
@@ -1634,7 +1794,10 @@ class Run implements DebtRun {
     this.pullCount = this.rules.unlimitedPulls ? Number.POSITIVE_INFINITY : e.pulls;
     this.pullsMax = e.pullsMax; this.watchPulls = e.watchPulls; this.boughtThisWatch = e.boughtThisWatch;
     this.tickets = e.tickets; this.debtPaid = e.debtPaid; this.dreadPts = e.dreadPts;
-    this.freeRerolls = e.freeRerolls; this.pawnRerolls = e.pawnRerolls; this.skipRest = e.skipRest;
+    this.freeRerolls = e.freeRerolls; this.skipRest = e.skipRest;
+    if (e.pawn) this.pawn.restore(e.pawn);
+    this.plays.clear();
+    for (const [id, n] of Object.entries(e.plays ?? {})) this.plays.set(id, n);
     this.discount = e.discount; this.nextDiscount = e.nextDiscount; this.elapsed = e.elapsed;
     this.maxWallet = e.maxWallet; this.biggest = e.biggest; this.rounds = e.rounds;
     this.rng.setState(e.rng);

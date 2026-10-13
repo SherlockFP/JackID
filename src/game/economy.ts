@@ -22,6 +22,8 @@ export interface PayoutInput {
   flat: number;
   /** Current quota (House Limit = 5 × quota). 0 = no quota (Free Casino): no cap. */
   quota: number;
+  /** Multiplies the House Limit (`x.house.limitMult`, False Ceiling). Default 1. */
+  limitMult?: number;
 }
 
 export interface PayoutResult {
@@ -49,7 +51,7 @@ export function settlePayout(i: PayoutInput): PayoutResult {
   const dampened = gross <= 2 * i.bet;
   const a = dampened ? i.A * 0.5 : i.A;
   const factor = Math.min(PAYOUT_GUARD, Math.max(0, 1 + a) * i.M);
-  const cap = i.quota > 0 ? HOUSE_LIMIT_QUOTA_MULT * i.quota : Number.POSITIVE_INFINITY;
+  const cap = i.quota > 0 ? HOUSE_LIMIT_QUOTA_MULT * Math.max(0, i.limitMult ?? 1) * i.quota : Number.POSITIVE_INFINITY;
   const raw = Math.floor(gross * factor) + Math.max(0, i.flat);
   const capped = raw > cap;
   const credited = capped ? cap : raw;

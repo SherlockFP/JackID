@@ -12,6 +12,8 @@
  * Wall-mounted items have no size class in GDD §8.5, so they take M or L by footprint (director to confirm).
  */
 import type { GameMode, Hex, InstanceId, MachineId, SlotSize, ZoneId } from '@/core/types';
+import { SLOT_SIZES } from '@/core/types';
+import { createRng, hashSeed, type Rng } from '@/core/rng';
 import type { SlotDef } from './types';
 import type { ZoneDef } from './sys/arch';
 
@@ -221,3 +223,100 @@ export const NAV_EDGES: NavEdge[] = [
   { a: 'c.lobby', b: 'd.counting' }, { a: 'd.counting', b: 'c.counting', doorway: true },
   { a: 'c.mouth', b: 'd.lift' },
 ];
+
+// ── Pit Deck (WAVE 8 item 8): the random line-up ─────────────────────────────────────────────────────
+/** The flexible pads: the only slots `rosterFor` reassigns. Every other slot keeps its GDD §8.6 device. */
+export const ROSTER_PADS: readonly InstanceId[] = ['WELL-04', 'WELL-06', 'WELL-07', 'WELL-08', 'WELL-09', 'WELL-11', 'WELL-13', 'LOB-01'];
+/** Machines that never move, whatever the line-up: the marquee and table games, plus the vendors and terminals. */
+export const ROSTER_FIXED: ReadonlySet<MachineId> = new Set<MachineId>([
+  'bigone', 'roulette', 'blackjack', 'coinflip',
+  'charm_vendor', 'concession_desk', 'cashier', 'jukebox', 'tape_deck', 'tonic_vendor', 'bounty_board', 'hotline',
+  'debt_terminal', 'shrine',
+]);
+/** Volatility class (WAVE8 item 5). */
+export type Volatility = 'STEADY' | 'SWINGY' | 'WILD';
+/** One machine the line-up may draw from. The caller builds these from the registry; this file stays pure data. */
+export interface RosterCandidate {
+  id: MachineId;
+  slotSize: SlotSize;
+  /** Unlock tier (0 = system device, never drawn). The line-up draws tiers 1 to `ROSTER_MAX_TIER`. */
+  tier?: number;
+  /** Solo machines have one seat and are not shared. */
+  seats: number;
+  shared?: boolean;
+  modes?: readonly GameMode[];
+  /** Suit name (GDD §3.4.1: REELS, CARDS, DICE, WHEELS, DROPS, CURIOS). Undefined = unknown. */
+  suit?: string;
+  volatility?: Volatility;
+}
+/** At least this many distinct suits among the rolled pads (GDD §3.4.1 has six). */
+export const ROSTER_MIN_SUITS = 4;
+/**
+ * Highest unlock tier in the line-up pool. The spec asks for tier 1, but in the registry only bandit, scratch and
+ * videopoker are solo and tier 1 (bigone, roulette and blackjack are fixed), which can never pass the suit rule.
+ * Tier 2 adds the solo machines that make it reachable (cyclone, hilo, lootbox, mines, pachinko, pachislot, plinko).
+ */
+export const ROSTER_MAX_TIER = 2;
+const ROSTER_TRIES = 48;
+const PAD_SIZE: ReadonlyMap<InstanceId, SlotSize> = new Map<InstanceId, SlotSize>(
+  SLOTS.filter((s) => ROSTER_PADS.includes(s.id)).map((s): [InstanceId, SlotSize] => [s.id, s.size]),
+);
+const fitsSlot = (machine: SlotSize, slot: SlotSize): boolean => SLOT_SIZES.indexOf(machine) <= SLOT_SIZES.indexOf(slot);
+
+function shuffled<T>(items: readonly T[], rng: Rng): T[] {
+  const a = items.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = rng.int(0, i);
+    const tmp = a[i];
+    a[i] = a[j];
+    a[j] = tmp;
+  }
+  return a;
+}
+
+/** The line-up is valid when the rolled pads show ≥ `ROSTER_MIN_SUITS` suits and hold a STEADY and a WILD machine. */
+function rosterOk(chosen: ReadonlyArray<RosterCandidate | null>): boolean {
+  const picked = chosen.filter((c): c is RosterCandidate => c !== null);
+  const suits = new Set(picked.map((c) => c.suit).filter((s): s is string => !!s));
+  return suits.size >= ROSTER_MIN_SUITS
+    && picked.some((c) => c.volatility === 'STEADY')
+    && picked.some((c) => c.volatility === 'WILD');
+}
+
+/**
+ * Seeded random line-up for the flexible pads (WAVE8 item 8). Same seed and catalogue → same line-up. Returns one
+ * device per entry of `ROSTER_PADS`, to pass as `createWorld({ assign })`. The guard: when no line-up passes the
+ * suit and volatility rules after `ROSTER_TRIES` shuffles (or the catalogue is empty), every pad keeps its GDD §8.6
+ * default, so the result is never worse than the fixed layout.
+ */
+export function rosterFor(seed: number, candidates: readonly RosterCandidate[], mode: GameMode = 'debt'): Partial<Record<InstanceId, MachineId>> {
+  const fallback = (): Partial<Record<InstanceId, MachineId>> => {
+    const out: Partial<Record<InstanceId, MachineId>> = {};
+    for (const pad of ROSTER_PADS) { const d = DEFAULT_ASSIGN[pad]; if (d) out[pad] = d; }
+    return out;
+  };
+  const pool = candidates.filter((c) => !ROSTER_FIXED.has(c.id) && c.tier !== undefined && c.tier >= 1 && c.tier <= ROSTER_MAX_TIER
+    && c.seats === 1 && !c.shared
+    && (!c.modes || c.modes.includes(mode)));
+  if (pool.length === 0) return fallback();
+  const rng = createRng(hashSeed('pitdeck', seed));
+  for (let attempt = 0; attempt < ROSTER_TRIES; attempt++) {
+    const order = shuffled(pool, rng);
+    const used = new Set<MachineId>();
+    const chosen: Array<RosterCandidate | null> = [];
+    for (const pad of ROSTER_PADS) {
+      const fitting = order.filter((c) => fitsSlot(c.slotSize, PAD_SIZE.get(pad) ?? 'S'));
+      const pick = fitting.find((c) => !used.has(c.id)) ?? fitting[0] ?? null;
+      if (pick) used.add(pick.id);
+      chosen.push(pick);
+    }
+    if (!rosterOk(chosen)) continue;
+    const out: Partial<Record<InstanceId, MachineId>> = {};
+    ROSTER_PADS.forEach((pad, i) => {
+      const id = chosen[i]?.id ?? DEFAULT_ASSIGN[pad];
+      if (id) out[pad] = id;
+    });
+    return out;
+  }
+  return fallback();
+}

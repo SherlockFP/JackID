@@ -21,6 +21,7 @@
 import { bus } from '@/core/events';
 import { t as tr, fmtCoins, type I18nVars } from '@/core/i18n';
 import type { TiltView } from '@/game/circuit';
+import type { OddsLine } from '@/game/pace';
 import { BRASS, CREAM, INK, INK_SOFT, Placard3D, button, paginate, put, rowsIn, wrapPx5 } from './placard3d';
 import './seatHud.css';
 
@@ -38,6 +39,24 @@ const RESULT_KEY: Record<HudResultKind, string> = {
 };
 
 const txt = (x: Txt): string => (typeof x === 'string' ? x : tr(x.k, x.v));
+
+/** The Tell Sheet parts as text: HIT · ×10+ · CLASS · NEED. The numbers are formatted in pace.ts; this lays out words. */
+function oddsText(l: OddsLine): string[] {
+  const out = [
+    l.hit === null ? tr('pace.odds.hitRare', { n: l.plays }) : tr('pace.odds.hit', { n: l.hit }),
+    l.big === null ? tr('pace.odds.bigRare', { x: 10, n: l.plays }) : tr('pace.odds.big', { x: 10, n: l.big }),
+    tr(`pace.odds.cls.${l.cls}`),
+  ];
+  const need = l.need;
+  if (need) {
+    if (need.kind === 'met') out.push(tr('pace.odds.met'));
+    else if (need.kind === 'dead') out.push(tr('pace.odds.dead'));
+    else out.push(need.odds === null
+      ? tr('pace.odds.needRare', { k: need.k, n: l.plays })
+      : tr('pace.odds.need', { k: need.k, n: need.odds }));
+  }
+  return out;
+}
 
 // card geometry: canvas texels and metres (the board is ~0.44 m wide at arm's length)
 const CARD_PX: [number, number] = [272, 232];
@@ -68,6 +87,11 @@ export class SeatHud {
   private readonly tiltL: HTMLElement;
   private readonly tiltLamp: HTMLElement;
   private readonly bulbs: HTMLElement[] = [];
+  /** The Tell Sheet line (WAVE8 item 5): HIT · ×10+ · CLASS · NEED. */
+  private readonly oddsEl: HTMLElement;
+  private oddsShown = '';
+  /** `ui:blocking` is on (pause card, ledger, any modal): the input mode is 'ui' and the HUD steps aside. */
+  private uiBlocked = false;
   private tiltKey = '';
   /** The latest Tilt state the run announced (`circuit:tilt`); shown while this HUD is. */
   private tilt: TiltView | null = null;
@@ -98,9 +122,34 @@ export class SeatHud {
     for (let i = 0; i < 4; i++) this.bulbs.push(make('i', '', row));
     this.tiltLamp = make('span', 'shud-tilt-lamp', this.tiltEl);
     this.tiltEl.style.display = 'none';
+    this.oddsEl = make('div', 'shud-odds shud-panel', bottom);
+    this.oddsEl.style.display = 'none';
     this.numsEl = make('div', 'shud-nums', bottom);
     this.ctrlEl = make('div', 'shud-ctrl shud-panel', bottom);
     this.offs.push(bus.on('circuit:tilt', (e) => { this.tilt = e.tilt; this.refreshTilt(); }));
+    this.offs.push(bus.on('seat:odds', (e) => this.odds(e.line)));
+    this.offs.push(bus.on('ui:blocking', ({ blocking }) => this.setUiBlocked(blocking)));
+  }
+
+  /**
+   * Steps the HUD aside while the UI is blocking (`ui:blocking`, wired in the constructor). Machines can also call it
+   * from their own input-mode check: the mode is 'ui' during text entry too, which emits no event.
+   */
+  setUiBlocked(on: boolean): void {
+    this.uiBlocked = on;
+    this.root.style.display = on ? 'none' : '';
+  }
+
+  /**
+   * The Tell Sheet line (WAVE8 item 5): `HIT 1 in n · ×10+ 1 in m · CLASS · NEED ×k → 1 in j`. `line` comes from
+   * `oddsLine()` (pace.ts) built run-side from MACHINE_PROFILES and the quota pace; pass null to hide the line.
+   */
+  odds(line: OddsLine | null): void {
+    const next = line ? oddsText(line).join(' · ') : '';
+    if (next === this.oddsShown) return;
+    this.oddsShown = next;
+    this.oddsEl.textContent = next;
+    this.oddsEl.style.display = next === '' ? 'none' : '';
   }
 
   /** Repaints the Tilt bulbs (cheap: the DOM is touched only when the state changes). */

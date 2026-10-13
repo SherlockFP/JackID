@@ -5,9 +5,11 @@
  * The purchase itself goes through `ctx.run.buyCharm(charmId, price)`. Coins are checked with `run.canAfford`, Tickets
  * with `run.balance('ticket')`. The machine never prices anything.
  *
- * Controls (seated): 1–4 or ←/→ pick a slot · Space/Enter buy · Z/X are unused · R (double) locks the slot for the next
- * visit (1 Ticket) · Q (collect) removes the curse from your first cursed charm (5 Tickets) · E stands up.
- * Reroll is the ALT key (1 Ticket, +1 per further reroll this intermission).
+ * Controls (seated): 1–4 or ←/→ pick a slot · Space/Enter buy · R (double) locks the slot (1 Ticket, it stays until bought;
+ * R again unlocks) · Q (collect) removes the curse from your first cursed charm (5 Tickets) · E stands up.
+ * Reroll is the ALT key (free rerolls first, then 1 Ticket, +1 per further paid reroll). Only unlocked, unsold slots change.
+ * Pegs full: buying opens the swap picker (←/→ choose the charm to replace, Space/Enter confirm, secondary cancels);
+ * the replaced charm sells back for 50 %. Each slot shows a FIT n badge; the HUD previews the payout on your main machine.
  *
  * Every peer draws the same stock from the same state (tags, ledger, ticket LED, shutter). `present()` plays the juice
  * for the local choices. Credit first, present after: the wallet step runs inside `emit`'s credit.
@@ -22,8 +24,8 @@ import { fmtNum, t as tr } from '@/core/i18n';
 import { lerp } from '@/core/math';
 import { buildModel, SHUTTER_DROP, type CharmVendorParts } from './model';
 import {
-  LOCK_TICKETS, REMOVE_CURSE_TICKETS, SLOTS, buyJuice, pawnFrom, priceText, stockKey, wrapSlot,
-  type PawnApi, type PawnSlot,
+  LOCK_TICKETS, MAX_LOCKS, REMOVE_CURSE_TICKETS, SLOTS, buyJuice, multText, pawnFrom, priceText, stockKey, wrapIndex, wrapSlot,
+  type PawnApi, type PawnSlot, type SwapChoice,
 } from './rules';
 
 type Juice = 'plain' | 'rare' | 'legend' | 'cursed';
@@ -31,7 +33,7 @@ type Ev =
   /** A purchase. `why` names the refusal when `ok` is false. */
   | { k: 'buy'; i: number; charmId: string; price: number; juice: Juice; ok: boolean; why: string }
   | { k: 'reroll'; ok: boolean; why: string }
-  | { k: 'lock'; i: number; ok: boolean; why: string }
+  | { k: 'lock'; i: number; ok: boolean; why: string; off?: boolean }
   | { k: 'curse'; charmId: string; ok: boolean; why: string };
 
 const GOLD = 0xffd040;
@@ -144,6 +146,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   private seatHud?: SeatHud;
   private idle = 0;
   private drumming = false;
+  /** Swap picker (pegs full): which slot is being bought and which charm would be replaced. */
+  private swap: { i: number; choices: readonly SwapChoice[]; idx: number } | null = null;
 
   protected createModel(kit: KitX): MachineModel<CharmVendorParts> {
     return buildModel(kit, this.modelOpts);
@@ -163,6 +167,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   private tickets(): number { return this.ctx.run.balance('ticket', this.selfId); }
 
   tick(dt: number): void {
+    if (this.swap && !this.open()) this.swap = null;
     const target = this.open() ? 0 : -SHUTTER_DROP;
     const sh = this.parts.shutter;
     sh.position.y += (target - sh.position.y) * Math.min(1, dt * 6);
@@ -197,6 +202,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
+    this.swap = null;
     if (local) { this.seatHud?.hide(); this.hudKey = ''; }
   }
 
@@ -213,6 +219,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (e.repeat) return;
     this.idle = 0;
+    if (this.swap) { this.onSwapInput(e); return; }
     switch (e.action) {
       case 'left': this.moveCursor(wrapSlot(this.cursor, -1)); return;
       case 'right': this.moveCursor(wrapSlot(this.cursor, 1)); return;
@@ -236,18 +243,55 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     if (!pawn || !pawn.open()) { void this.emit({ k: 'buy', i, charmId: '', price: 0, juice: 'plain', ok: false, why: 'closed' }); return; }
     const slot = pawn.stock(this.selfId)[i] ?? null;
     if (!slot) { void this.emit({ k: 'buy', i, charmId: '', price: 0, juice: 'plain', ok: false, why: 'none' }); return; }
+    if (pawn.needsSwap(this.selfId, i)) {                       // pegs full: choose the charm to replace first
+      const choices = pawn.swapChoices(this.selfId, i);
+      if (!choices.length) { void this.emit({ k: 'buy', i, charmId: slot.charmId, price: slot.price, juice: 'plain', ok: false, why: 'shop.limit' }); return; }
+      this.swap = { i, choices, idx: 0 };
+      this.sfx('hover');
+      this.refresh(true);
+      return;
+    }
     const ok = slot.price <= 0 || this.ctx.run.canAfford(slot.price, this.selfId);
-    const why = ok ? '' : 'funds';
+    this.commitBuy(pawn, i, slot, ok, ok ? '' : 'funds');
+  }
+
+  /** Emit the purchase; the wallet moves inside the credit step through `pawn.buy`, which also marks the slot sold. */
+  private commitBuy(pawn: PawnApi, i: number, slot: PawnSlot, ok: boolean, why: string, replaceId?: string): void {
     const juice = buyJuice(slot.rarity, slot.cursed);
     void this.emit(
       { k: 'buy', i, charmId: slot.charmId, price: slot.price, juice, ok, why },
-      ok ? () => { if (!this.ctx.run.buyCharm(slot.charmId, slot.price)) this.ctx.ui.toast(this.t('funds'), 'bad'); } : undefined,
+      ok ? () => {
+        const r = pawn.buy(this.selfId, i, replaceId);
+        if (!r.ok) this.ctx.ui.toast(r.why === 'funds' ? this.t('funds') : tr(r.why === 'limit' ? 'shop.limit' : 'shop.fail'), 'bad');
+      } : undefined,
     );
+  }
+
+  private onSwapInput(e: MachineInputEvent): void {
+    const sw = this.swap;
+    const pawn = this.pawn();
+    if (!sw || !pawn) { this.swap = null; return; }
+    switch (e.action) {
+      case 'left': case 'up': sw.idx = wrapIndex(sw.idx, -1, sw.choices.length); this.sfx('hover'); this.refresh(true); return;
+      case 'right': case 'down': sw.idx = wrapIndex(sw.idx, 1, sw.choices.length); this.sfx('hover'); this.refresh(true); return;
+      case 'secondary': this.swap = null; this.sfx('click'); this.refresh(true); return;
+      case 'primary': case 'confirm': {
+        const slot = pawn.stock(this.selfId)[sw.i] ?? null;
+        const pick = sw.choices[sw.idx];
+        this.swap = null;
+        if (!slot || !pick) { this.refresh(true); return; }
+        const ok = slot.price <= 0 || this.wallet() + pick.refund >= slot.price;
+        this.commitBuy(pawn, sw.i, slot, ok, ok ? '' : 'funds', pick.id);
+        this.refresh(true);
+        return;
+      }
+    }
   }
 
   private reroll(): void {
     const pawn = this.pawn();
     if (!pawn || !pawn.open()) { void this.emit({ k: 'reroll', ok: false, why: 'closed' }); return; }
+    if (!pawn.canReroll()) { void this.emit({ k: 'reroll', ok: false, why: 'shop.noReroll' }); return; }
     const cost = pawn.rerollCost();
     const ok = this.tickets() >= cost;
     void this.emit({ k: 'reroll', ok, why: ok ? '' : 'tickets' }, ok ? () => { pawn.reroll(); } : undefined);
@@ -258,8 +302,10 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     if (!pawn || !pawn.open()) { void this.emit({ k: 'lock', i, ok: false, why: 'closed' }); return; }
     const slot = pawn.stock(this.selfId)[i] ?? null;
     if (!slot) { void this.emit({ k: 'lock', i, ok: false, why: 'none' }); return; }
-    const ok = this.tickets() >= LOCK_TICKETS && !slot.locked;
-    void this.emit({ k: 'lock', i, ok, why: ok ? '' : (slot.locked ? 'locked' : 'tickets') }, ok ? () => { pawn.lock(i); } : undefined);
+    if (slot.locked) { void this.emit({ k: 'lock', i, ok: true, why: '', off: true }, () => { pawn.unlock(i); }); return; }
+    const locks = pawn.stock(this.selfId).filter((s) => s?.locked).length;
+    const ok = this.tickets() >= LOCK_TICKETS && locks < MAX_LOCKS;
+    void this.emit({ k: 'lock', i, ok, why: ok ? '' : (locks >= MAX_LOCKS ? 'shop.lockFull' : 'tickets') }, ok ? () => { pawn.lock(i); } : undefined);
   }
 
   private uncurse(): void {
@@ -286,7 +332,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const sh = this.parts.shutter;
     const y0 = sh.position.y;
     void this.anim(0.2, (k) => { sh.position.y = y0 + Math.sin(k * Math.PI * 6) * 0.01; });
-    if (this.isLocalOccupant && why) this.toast(this.t(why), 'warn');
+    if (this.isLocalOccupant && why) this.toast(why.startsWith('shop.') ? tr(why) : this.t(why), 'warn');
   }
 
   private async presentBuy(ev: Extract<Ev, { k: 'buy' }>, pc: PresentCtx): Promise<void> {
@@ -350,10 +396,10 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
 
   private async presentLock(ev: Extract<Ev, { k: 'lock' }>): Promise<void> {
     if (!ev.ok) { this.denied(ev.why); return; }
-    this.sfx('click');
+    this.sfx(ev.off ? 'hover' : 'click');
     const tag = this.parts.tags[ev.i];
     if (tag) this.ctx.fx.squash(tag.mesh, 0.15, 0.2);
-    this.ctx.fx.popText(this.parts.itemSlots[ev.i] ?? this.model.anchors.prompt, this.t('locked'), GOLD, { scale: 1.1 });
+    this.ctx.fx.popText(this.parts.itemSlots[ev.i] ?? this.model.anchors.prompt, ev.off ? tr('shop.unlocked') : this.t('locked'), GOLD, { scale: 1.1 });
     this.refresh(true);
   }
 
@@ -372,7 +418,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const open = pawn !== null && pawn.open();
     const stock = pawn && open ? pawn.stock(this.selfId) : [];
     this.stockCache = stock;
-    const key = [stockKey(stock), open ? 1 : 0, this.wallet(), this.tickets(), this.cursor].join('|');
+    const key = [stockKey(stock), open ? 1 : 0, this.wallet(), this.tickets(), this.cursor, this.swap ? `s${this.swap.i}.${this.swap.idx}` : ''].join('|');
     if (!force && key === this.repaintKey) { if (this.isLocalOccupant) this.showHud(); return; }
     this.repaintKey = key;
 
@@ -394,13 +440,25 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       s.text(this.t('ledgerClosed'), 64, 40, { font: 'px5', color: '#a07020', align: 'center' });
       return;
     }
+    const sw = this.swap;
+    if (sw) {                                                    // swap picker: the charm that would be replaced
+      s.text(tr('shop.ledgerSwap'), 64, 24, { font: 'px5', color: '#ffe0a0', align: 'center' });
+      const c = sw.choices[sw.idx];
+      if (c) {
+        s.text(tr(`charm.${c.id}.name`).slice(0, 24), 64, 40, { font: 'px5', color: '#ffd060', align: 'center' });
+        s.text(`${sw.idx + 1}/${sw.choices.length}  +${fmtNum(c.refund)}`, 64, 52, { font: 'px5', color: '#a07020', align: 'center' });
+      }
+      s.text(`${this.t('ledgerTickets')} ${fmtNum(this.tickets())}`, 4, 72, { font: 'px5', color: '#a07020' });
+      return;
+    }
     for (let i = 0; i < SLOTS; i++) {
       const sl = stock[i] ?? null;
       const y = 26 + i * 11;
       const mark = i === this.cursor ? '>' : ' ';
-      const name = sl ? tr(`charm.${sl.charmId}.name`).slice(0, 14) : this.t('sold');
+      const name = sl ? tr(`charm.${sl.charmId}.name`).slice(0, 12) : this.t('sold');
       s.text(`${mark}${i + 1} ${name}`, 4, y, { font: 'px5', color: sl?.cursed ? '#c0a0ff' : '#ffe0a0' });
-      s.text(sl ? priceText(sl, fmtNum, this.t('free')) : '--', 124, y, { font: 'px5', color: '#ffd060', align: 'right' });
+      if (sl && sl.fit > 0) s.text(tr('shop.fit', { n: sl.fit }), 78, y, { font: 'px5', color: '#80d0ff' });
+      s.text(sl ? priceText(sl, fmtNum, this.t('free')) : '--', 124, y, { font: 'px5', color: sl?.locked ? '#ffffff' : '#ffd060', align: 'right' });
     }
     s.text(`${this.t('ledgerTickets')} ${fmtNum(this.tickets())}`, 4, 72, { font: 'px5', color: '#a07020' });
   }
@@ -418,22 +476,43 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   }
 
   private rulesLines(): Txt[] {
-    return [1, 2, 3, 4].map((i) => ({ k: `m.charm_vendor.rule${i}` }));
+    return [...[1, 2, 3, 4].map((i) => ({ k: `m.charm_vendor.rule${i}` })), { k: 'shop.rule5' }];
   }
 
   /** Banner, coins / tickets / price numbers and the valid controls only. Only while the local player stands here. */
   private showHud(): void {
     const sh = this.seatHud;
     if (!sh || !this.isLocalOccupant) return;
-    const key = [this.cursor, this.wallet(), this.tickets(), this.open() ? 1 : 0, this.stockCache[this.cursor]?.charmId ?? ''].join('|');
+    const cur = this.stockCache[this.cursor] ?? null;
+    const key = [this.cursor, this.wallet(), this.tickets(), this.open() ? 1 : 0, cur?.charmId ?? '', cur?.locked ? 1 : 0, cur?.fit ?? 0,
+      this.pawn()?.rerollCost() ?? 0, this.swap ? `s${this.swap.idx}` : ''].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
     const open = this.open(), wallet = this.wallet(), tix = this.tickets();
     const pawn = this.pawn();
     const sel = this.stockCache[this.cursor] ?? null;
-    const canBuy = sel !== null && (sel.price <= 0 || wallet >= sel.price);
+    const full = sel !== null && pawn !== null && pawn.needsSwap(this.selfId, this.cursor);
+    const canBuy = sel !== null && (sel.price <= 0 || wallet >= sel.price || (full && pawn !== null && pawn.swapChoices(this.selfId, this.cursor).some((c) => wallet + c.refund >= sel.price)));
     const ctrl: HudControl[] = [];
     sh.goal({ k: 'm.charm_vendor.goal' });
+
+    // SWAP PICKER (pegs full): the HUD shows only the picker
+    const sw = this.swap;
+    if (sw && open && pawn && sel) {
+      const c = sw.choices[sw.idx];
+      sh.state({ k: 'shop.swapState' }, 'warn', { k: 'shop.swapSub' });
+      sh.numbers([
+        { label: { k: 'm.charm_vendor.nItem' }, value: c ? tr(`charm.${c.id}.name`) : '--', tone: 'neutral' },
+        { label: { k: 'm.charm_vendor.nCoins' }, value: fmtNum(wallet), tone: 'gold' },
+        { label: { k: 'm.charm_vendor.nPrice' }, value: fmtNum(Math.max(0, sel.price - (c?.refund ?? 0))), tone: 'gold' },
+      ]);
+      sh.controls([
+        { key: `${this.k('left')}/${this.k('right')}`, label: { k: 'shop.cPickSwap' }, action: 'left' },
+        { key: this.k('primary'), label: { k: 'shop.cReplace' }, action: 'primary', primary: true },
+        { key: this.k('secondary'), label: { k: 'shop.cCancel' }, action: 'secondary' },
+      ]);
+      return;
+    }
 
     // STATE
     if (!open) sh.state({ k: 'm.charm_vendor.stShut' }, 'neutral', { k: 'm.charm_vendor.stShutSub' });
@@ -448,6 +527,9 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       { label: { k: 'm.charm_vendor.nTickets' }, value: fmtNum(tix), tone: 'cyan' },
     ];
     if (open && pawn) nums.push({ label: { k: 'm.charm_vendor.nReroll' }, value: fmtNum(pawn.rerollCost()), tone: 'neutral' });
+    if (open && sel && sel.fit > 0) nums.push({ label: { k: 'shop.nFit' }, value: { k: 'shop.fit', v: { n: sel.fit } }, tone: 'cyan' });
+    const pv = open && pawn && sel ? pawn.preview(this.selfId, this.cursor) : null;
+    if (pv) nums.push({ label: { k: 'shop.nPayout' }, value: { k: 'shop.payout', v: { from: multText(pv.from), to: multText(pv.to) } }, tone: pv.to > pv.from ? 'good' : 'neutral' });
     nums.push({ label: { k: 'm.charm_vendor.nItem' }, value: sel ? tr(`charm.${sel.charmId}.name`) : '--', tone: 'neutral' });
     sh.numbers(nums);
 
@@ -455,8 +537,14 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     if (open) {
       ctrl.push({ key: `${this.k('left')}/${this.k('right')}`, label: { k: 'm.charm_vendor.cPick' }, action: 'left' });
       if (canBuy) ctrl.push({ key: this.k('primary'), label: { k: 'm.charm_vendor.cBuy' }, action: 'primary', primary: true });
-      if (pawn && tix >= pawn.rerollCost()) ctrl.push({ key: this.k('alt'), label: { k: 'm.charm_vendor.cReroll', v: { n: pawn.rerollCost() } }, action: 'alt' });
-      if (sel && !sel.locked && tix >= LOCK_TICKETS) ctrl.push({ key: this.k('double'), label: { k: 'm.charm_vendor.cLock', v: { n: LOCK_TICKETS } }, action: 'double' });
+      if (pawn && pawn.canReroll() && tix >= pawn.rerollCost()) {
+        ctrl.push({
+          key: this.k('alt'), action: 'alt',
+          label: pawn.rerollCost() === 0 ? { k: 'shop.rerollFree' } : { k: 'm.charm_vendor.cReroll', v: { n: pawn.rerollCost() } },
+        });
+      }
+      if (sel?.locked) ctrl.push({ key: this.k('double'), label: { k: 'shop.cUnlock' }, action: 'double' });
+      else if (sel && tix >= LOCK_TICKETS) ctrl.push({ key: this.k('double'), label: { k: 'm.charm_vendor.cLock', v: { n: LOCK_TICKETS } }, action: 'double' });
       if (pawn && pawn.cursedOwned(this.selfId).length > 0 && tix >= REMOVE_CURSE_TICKETS) {
         ctrl.push({ key: this.k('collect'), label: { k: 'm.charm_vendor.cCurse', v: { n: REMOVE_CURSE_TICKETS } }, action: 'collect' });
       }

@@ -72,7 +72,7 @@ export interface ClockProp extends WorldProp {
 }
 /** Diegetic quota board above the Debt Terminal (also read by the HUD for numbers). */
 export interface QuotaBoardProp extends WorldProp {
-  set(q: { due: number; deposited: number; ratio: number; timeLeft: number; lastCall: boolean }): void;
+  set(q: { due: number; deposited: number; ratio: number; timeLeft: number; lastCall: boolean; pace?: import('@/game/pace').Pace | null }): void;
   stamp(kind: 'PAID' | 'SHORT'): Promise<void>;
   /** "Who paid what" ledger lines (co-op). */
   setLedger(lines: Array<{ name: string; color: Hex; amount: number }>): void;

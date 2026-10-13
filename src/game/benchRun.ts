@@ -24,6 +24,7 @@ import { log } from '@/core/log';
 import { fmtCoins, t } from '@/core/i18n';
 import type { UIOverlay } from '@/core/ui/types';
 import * as registry from '@/machines/_base/registry';
+import { scopeTags } from './suits';
 
 export const BENCH_WALLET = 10_000;
 
@@ -59,7 +60,7 @@ class BenchMods implements ModifierApi {
   }
   private matching(hook: ModHook, machineId: MachineId, q: ModQuery, sources: ModSource[]): Array<{ src: ModSource; eff: ModEffect; value: number }> {
     const def = registry.get(machineId)?.def;
-    const m = { machineId, category: def?.category, tags: def?.tags, zone: def?.zone, instance: q.instance, mode: 'free' as GameMode, pid: q.pid ?? 1, pos: q.pos };
+    const m = { machineId, category: def?.category, tags: scopeTags(machineId, def?.tags), zone: def?.zone, instance: q.instance, mode: 'free' as GameMode, pid: q.pid ?? 1, pos: q.pos };
     const out: Array<{ src: ModSource; eff: ModEffect; value: number }> = [];
     for (const src of sources) {
       for (const eff of src.effects) {

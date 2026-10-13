@@ -21,7 +21,8 @@ const hex = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
 export function bridgeEventBanners(lookup: (id: string) => NightEventDef | undefined, show: EventBannerShow): Unsub {
   const offStart = bus.on('event:start', ({ id }) => {
     const color = lookup(id)?.world?.lightColor;
-    show(t(`event.${id}.announce`), { color: color !== undefined ? hex(color) : DEFAULT_COLOR, hold: HOLD_S, size: 16 });
+    const suit = (lookup(id) as { suit?: string | null } | undefined)?.suit;
+    show(t(`event.${id}.announce`, { suit: (suit ?? '').toUpperCase() }), { color: color !== undefined ? hex(color) : DEFAULT_COLOR, hold: HOLD_S, size: 16 });
   });
   const offEnd = bus.on('event:end', ({ id }) => {
     show(t('buff.banner.ended', { name: t(`event.${id}.name`) }), { color: '#9a9a9a', hold: ENDED_HOLD_S, size: 8 });

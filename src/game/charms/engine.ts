@@ -9,15 +9,20 @@ import { bus } from '@/core/events';
 import { registerStrings } from '@/core/i18n';
 import type { Rng } from '@/core/rng';
 import { CHARM_DATA, LAUNCH_CHARM_IDS, SUIT_SCALED_CHARMS } from '@/game/data/charms';
-import { BEHAVIOURS, DYNAMIC_EFFECTS } from './behaviours';
+import { BEHAVIOURS, DYNAMIC_EFFECTS as BASE_DYNAMIC, type DynamicEffects } from './behaviours';
+import { ENGINE_BEHAVIOURS, ENGINE_DYNAMIC_EFFECTS } from './engines';
+import { CHARM_ENGINE_DATA } from '@/game/data/charmsEngines';
 import { rollRarity, type ShopRarity } from '@/game/economy';
+
+/** Per-instant effects: base table plus the engine charms (wave 8). */
+const DYNAMIC_EFFECTS: Readonly<Record<string, DynamicEffects>> = { ...BASE_DYNAMIC, ...ENGINE_DYNAMIC_EFFECTS };
 
 /** Charm pegs on the Charm Board: 6 at start, +3 per House Improvement, 9 in run (GDD §4.1). */
 export const PEG_CAP_RUN = 9;
 
 /** Definition table with behaviours merged in. Built once. */
 const DEFS: ReadonlyMap<string, CharmDef> = new Map(
-  CHARM_DATA.map((d) => [d.id, { ...d, ...BEHAVIOURS[d.id] }] as const),
+  [...CHARM_DATA, ...CHARM_ENGINE_DATA].map((d) => [d.id, { ...d, ...BEHAVIOURS[d.id], ...ENGINE_BEHAVIOURS[d.id] }] as const),
 );
 
 // Charm names and descriptions → `charm.<id>.name|desc` (check.mjs warns on charm.* keys that do not resolve).
@@ -124,7 +129,7 @@ export class Charms implements ModProvider {
       const scaled = SUIT_SCALED_CHARMS.has(state.id) && def.tag
         ? (def.effects ?? []).map((e) => ({ ...e, value: e.value * this.suitHeld(pid, def.tag as string) }))
         : (def.effects ?? []);
-      const effects = dyn ? [...scaled, ...dyn({ data: bagOf(state), run: this.host.run() })] : scaled;
+      const effects = dyn ? [...scaled, ...dyn({ data: bagOf(state), run: this.host.run(), pid }, q)] : scaled;
       const src: ModSource = {
         kind: 'charm', id: state.id, owner: pid, stacks: state.stacks ?? 1, effects, order,
       };

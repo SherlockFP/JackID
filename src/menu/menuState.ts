@@ -15,6 +15,7 @@ import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
 import { hashSeed, randomSeed } from '@/core/rng';
 import { openSettingsScreen } from '@/core/ui/settingsScreen';
+import { openKitPicker } from './kitPicker';
 import { buildCabinet, DIE_CENTER, type Cabinet } from './menuCabinet';
 import { MenuDie, easeOutBack, type DieHit } from './menuDie';
 import { MenuBurst } from './menuBurst';
@@ -522,7 +523,12 @@ export function createMenuState(): AppStateHandler<'menu'> {
         burst.update(dt);
         if (burst.done && !leaving) {
           leaving = true;
-          void app.go('ingame', { mode: 'debt', seed: hashSeed('run', randomSeed()), online: false });
+          // Starting-kit picker (WAVE8 item 6) sits between the burst and the run. Its pick travels as `RunConfig.kit`.
+          const seed = hashSeed('run', randomSeed());
+          openKitPicker((kit) => {
+            // Only the kit id travels here; session.ts hands it to createRun, which fills the rest of the defaults.
+            void app.go('ingame', { mode: 'debt', seed, online: false, config: { kit } });
+          });
         }
       }
       const dist = cameraDistance() - burst.dolly * 1.6;

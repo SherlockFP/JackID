@@ -86,9 +86,10 @@ export class NightEvents implements NightEventsApi, ModProvider {
     for (const e of [...this.live]) if (e.endsAt > 0 && now >= e.endsAt) this.end(e.id);
   }
 
-  /** Shift end: events with duration 'shift' (and any left over) finish. */
+  /** Shift end: events with duration 'shift' (and any left over) finish. A boss (exclusive 'boss') lasts the whole Night: the run ends it at Dawn. */
   onShiftEnd(): void {
     for (const e of [...this.live]) {
+      if (this.defMap.get(e.id)?.exclusive === 'boss') continue;
       const d = this.defMap.get(e.id)?.duration;
       if (d === 'shift' || e.endsAt === 0) this.end(e.id);
     }
