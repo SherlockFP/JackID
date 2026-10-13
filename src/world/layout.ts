@@ -118,8 +118,10 @@ export const SLOTS: SlotDef[] = [
   S('WH-06', 'wheels', 'L', 25.5, 10.95, 180),
   // The Parlour
   S('PAR-01', 'parlour', 'L', 24.0, 16.0, 270),
-  S('PAR-02', 'parlour', 'M', 16.0, 19.35, 180),
-  S('PAR-03', 'parlour', 'M', 16.0, 12.65, 0),
+  // Director decision: the Parlour seats the three T1 card/tile tables as L slots (PAR-02/03 resized M→L, PAR-04 new L).
+  S('PAR-02', 'parlour', 'L', 14.6, 18.6, 180),   // pisti
+  S('PAR-03', 'parlour', 'L', 14.0, 13.8, 0),     // sonkart
+  S('PAR-04', 'parlour', 'L', 19.0, 13.8, 0),     // tavla
   S('PAR-SHRINE', 'parlour', 'S', 28.0, 12.55, 0),
   // The Counting Room (meta-unlocked pads only)
   S('CNT-01', 'counting', 'M', -28.0, 12.65, 0),
@@ -130,7 +132,7 @@ export const SLOTS: SlotDef[] = [
 /** Default device per slot (GDD §8.6). Instance id = slot id; duplicates are independent instances. */
 export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   'MOUTH-01': 'fortuneteller', 'MOUTH-TERM': 'debt_terminal', 'MOUTH-PHONE': 'hotline', 'MOUTH-BOUNTY': 'bounty_board',
-  'WELL-01': 'bigone', 'WELL-02': 'roulette', 'WELL-03': 'blackjack', 'WELL-04': 'bandit', 'WELL-06': 'bandit',
+  'WELL-01': 'bigone', 'WELL-02': 'roulette', 'WELL-03': 'blackjack', 'WELL-04': 'bandit', 'WELL-06': 'bandit', 'WELL-07': 'shellgame',
   'WELL-08': 'hilo', 'WELL-09': 'plinko', 'WELL-11': 'mines', 'WELL-13': 'coinflip',
   'LOB-01': 'scratch', 'LOB-PAWN': 'charm_vendor', 'LOB-PHONE2': 'hotline', 'LOB-DESK': 'concession_desk',
   'LOB-CASH': 'cashier', 'LOB-JUKE': 'jukebox', 'LOB-TAPE': 'tape_deck', 'LOB-TONIC': 'tonic_vendor',
@@ -142,7 +144,7 @@ export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   'GAL-01': 'pachislot', 'GAL-02': 'pachislot', 'GAL-03': 'pachislot', 'GAL-04': 'fruitmachine', 'GAL-05': 'fruitmachine',
   'GAL-06': 'lootbox', 'GAL-07': 'bandit', 'GAL-08': 'bandit',
   'WH-01': 'bigsix', 'WH-02': 'tombola', 'WH-03': 'fantan',
-  'PAR-01': 'devilstable', 'PAR-02': 'shellgame', 'PAR-SHRINE': 'shrine',
+  'PAR-01': 'devilstable', 'PAR-02': 'pisti', 'PAR-03': 'sonkart', 'PAR-04': 'tavla', 'PAR-SHRINE': 'shrine',
 };
 
 /** GDD §8.6 busy-floor override: pad → device (host option, default on with ≥ 4 players). */

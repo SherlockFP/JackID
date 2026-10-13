@@ -162,65 +162,159 @@ export function drawHand(deck: readonly number[], hand: readonly number[], mask:
   return e2.ppc > 0 ? { ...e2, final: second, rerolled: true } : { ...e1, final: first, rerolled: true };
 }
 
-// ── strategy (simple table; the Shill and the HOLD hint use it) ──────────────────────────────────
-function groupMask(hand: readonly number[], minK: number, exclude = 0): number {
-  const cnt = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-  hand.forEach((c, i) => { if (!((exclude >> i) & 1)) cnt[rankOf(c)]++; });
-  let m = 0;
-  hand.forEach((c, i) => { if (!((exclude >> i) & 1) && cnt[rankOf(c)] >= minK) m |= 1 << i; });
-  return m;
+// ── strategy: exact EV-optimal hold (the Shill and the HOLD hint use it) ─────────────────────────────
+// A hold's expected payout is an exact sum over every draw of the 47 undealt cards. Re-enumerating those draws for
+// each of the 32 holds is too slow for a live deal, so every 5-card hand is paid once per game and variant into a table,
+// and the sums over all hands that contain a card set are built from it (subsets up to size 5, combinatorial number
+// system). A hold then costs at most 3^5 reads, by inclusion–exclusion over the discarded cards. The result is exact.
+
+const BINOM: number[][] = [];
+for (let n = 0; n <= 52; n++) {
+  BINOM.push([]);
+  for (let k = 0; k <= 5; k++) BINOM[n][k] = k === 0 ? 1 : n === 0 ? 0 : BINOM[n - 1][k - 1] + BINOM[n - 1][k];
 }
-function suitMask(hand: readonly number[], k: number, exclude = 0): number {
-  for (let s = 0; s < 4; s++) {
-    let m = 0;
-    hand.forEach((c, i) => { if (suitOf(c) === s && !((exclude >> i) & 1)) m |= 1 << i; });
-    if (popCount(m) >= k) return m;
+/** Offset of the size-j subsets in a table; the size-j rank of a sorted set is `combRank(set)`. */
+const OFF: number[] = [0];
+for (let j = 1; j <= HAND + 1; j++) OFF.push(OFF[j - 1] + BINOM[52][j - 1]);
+const combRank = (a: readonly number[]): number => {
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r += BINOM[a[i]][i + 1];
+  return r;
+};
+/** The four natural royals (ranks 10…A, one per suit), sorted. */
+const NAT_ROYALS: readonly (readonly number[])[] = [0, 1, 2, 3].map((s) => [8, 9, 10, 11, 12].map((r) => s * 13 + r));
+
+const paysFor = (game: Game, v: Variant): Partial<Record<Cat, number>> =>
+  game === 'jacks' ? (v.upgraded ? JACKS_UP : JACKS) : (v.upgraded ? DEUCES_FULL : DEUCES);
+
+/**
+ * Deuces Down with 1–3 wild deuces: the best pay over every substitution, read off the non-wild cards (what each category
+ * needs) instead of searching the 52^w substitutions. Same answer as `evaluate(hand).ppc`; `scripts` sims cross-check it.
+ */
+export function wildPpc(hand: readonly number[], w: number, t: Partial<Record<Cat, number>>): number {
+  const n = HAND - w;
+  const cnt = new Array<number>(13).fill(0);
+  let suit = -1, sameSuit = true, lo = 13, hi = -1;
+  for (const c of hand) {
+    if (rankOf(c) === 0) continue;
+    const r = rankOf(c), s = suitOf(c);
+    cnt[r]++;
+    if (suit < 0) suit = s; else if (s !== suit) sameSuit = false;
+    if (r < lo) lo = r;
+    if (r > hi) hi = r;
   }
-  return 0;
-}
-function straightDraw(hand: readonly number[]): number {
-  for (let m = 0; m < 32; m++) {
-    if (popCount(m) !== 4) continue;
-    let lo = 99, hi = -1, seen = 0, ok = true;
-    for (let i = 0; i < HAND && ok; i++) {
-      if (!((m >> i) & 1)) continue;
-      const r = rankOf(hand[i]);
-      if ((seen >> r) & 1) ok = false;
-      seen |= 1 << r;
-      lo = Math.min(lo, r); hi = Math.max(hi, r);
-    }
-    if (ok && hi - lo <= 4) return m;
-  }
-  return 0;
+  const rs: number[] = [];
+  let maxC = 0;
+  for (let r = 0; r < 13; r++) { if (cnt[r]) rs.push(r); if (cnt[r] > maxC) maxC = cnt[r]; }
+  const distinct = rs.length === n;
+  // five consecutive ranks L…L+4 (L 0…8, no ace-low) must hold every non-wild rank
+  const window = distinct && Math.max(0, hi - 4) <= Math.min(lo, 8);
+  const fullHouse = rs.length === 1 ? cnt[rs[0]] <= 3
+    : rs.length === 2 && ((cnt[rs[0]] <= 3 && cnt[rs[1]] <= 2) || (cnt[rs[1]] <= 3 && cnt[rs[0]] <= 2));
+  let best = 0;
+  const take = (cat: Cat, ok: boolean): void => { if (ok && (t[cat] ?? 0) > best) best = t[cat] ?? 0; };
+  take('wildRoyal', sameSuit && distinct && lo >= 8);
+  take('sflush', sameSuit && window);
+  take('kind5', rs.length === 1);
+  take('quads', maxC + w >= 4);
+  take('fullHouse', fullHouse);
+  take('flush', sameSuit);
+  take('straight', window);
+  take('trips', maxC + w >= 3);
+  return best;
 }
 
 /**
- * Simple hold table: made hand straight or better → hold all; trips / two pair / jacks-or-better pair → hold the pair(s);
- * 4-card flush draw → hold it; 4-card straight draw → hold it; low pair; otherwise hold the J–A cards.
- * Deuces Down: wild deuces are always held. Returns the hold mask (bit i = card i).
- * Not the EV-optimal hold (MACHINES §4.6 hintOptimal is approximated by this table).
+ * `t[OFF[j] + combRank(Y)]` = Σ over 5-card hands F ⊇ Y of the per-credit pay ppc(F), natural royals excluded (they pay
+ * a credits-dependent amount and are counted separately).
  */
-export function holdHint(hand: readonly number[], game: Game): number {
-  const full = evaluate(hand, game);
-  const ord = ORDER[full.cat];
-  if (ord >= ORDER.straight) return 31;
-  let wild = 0;
-  if (game === 'deuces') hand.forEach((c, i) => { if (rankOf(c) === 0) wild |= 1 << i; });
-  if (wild) {
-    if (ord >= ORDER.trips) return 31;
-    const fl = suitMask(hand, 4 - popCount(wild), wild);   // wild deuces complete a flush draw
-    return wild | (fl || groupMask(hand, 2, wild));
+function buildTable(game: Game, v: Variant): Float64Array {
+  const t = new Float64Array(OFF[HAND + 1]);
+  const a = [0, 0, 0, 0, 0];
+  for (a[0] = 0; a[0] < 52; a[0]++)
+    for (a[1] = a[0] + 1; a[1] < 52; a[1]++)
+      for (a[2] = a[1] + 1; a[2] < 52; a[2]++)
+        for (a[3] = a[2] + 1; a[3] < 52; a[3]++)
+          for (a[4] = a[3] + 1; a[4] < 52; a[4]++) {
+            const w = game === 'deuces' ? a.reduce((n, c) => n + (rankOf(c) === 0 ? 1 : 0), 0) : 0;
+            if (w >= 1 && w <= 3) { t[OFF[HAND] + combRank(a)] = wildPpc(a, w, paysFor(game, v)); continue; }
+            const e = evaluate(a, game, v);
+            const nat = e.cat === 'royal' || e.cat === 'naturalRoyal';
+            t[OFF[HAND] + combRank(a)] = nat ? 0 : e.ppc;
+          }
+  // A size-m set's sum also belongs to each of its (m−1)-subsets; each hand is counted (5−(m−1)) times there, so divide.
+  for (let m = HAND; m >= 1; m--) {
+    const g: number[] = new Array(m).fill(0);
+    const sub: number[] = new Array(m - 1).fill(0);
+    const rec = (start: number, d: number): void => {
+      if (d === m) {
+        const val = t[OFF[m] + combRank(g)] / (HAND + 1 - m);
+        for (let p = 0, q = 0; p < m; p++) {
+          q = 0;
+          for (let i = 0; i < m; i++) if (i !== p) sub[q++] = g[i];
+          t[OFF[m - 1] + combRank(sub)] += val;
+        }
+        return;
+      }
+      for (let c = start; c <= 52 - (m - d); c++) { g[d] = c; rec(c + 1, d + 1); }
+    };
+    rec(0, 0);
   }
-  if (ord >= ORDER.trips || full.cat === 'jacks') return groupMask(hand, 2);
-  const fl = suitMask(hand, 4);
-  if (fl) return fl;
-  const st = straightDraw(hand);
-  if (st) return st;
-  const low = groupMask(hand, 2);
-  if (low) return low;
-  let high = 0;
-  hand.forEach((c, i) => { if (rankOf(c) >= 9) high |= 1 << i; });
-  return high;
+  return t;
+}
+
+const tableCache = new Map<string, Float64Array>();
+function tableFor(game: Game, v: Variant): Float64Array {
+  const key = `${game}|${v.upgraded ? 1 : 0}|${v.bonusQuads ? 1 : 0}`;
+  let t = tableCache.get(key);
+  if (!t) {
+    if (tableCache.size >= 4) tableCache.clear();
+    t = buildTable(game, v);
+    tableCache.set(key, t);
+  }
+  return t;
+}
+
+/** Expected credits of keeping `held` (bit i = card i) and drawing the rest from the 47 cards the hand does not use. */
+function holdEV(hand: readonly number[], held: number, game: Game, credits: number, v: Variant): number {
+  const t = tableFor(game, v);
+  const H: number[] = [], D: number[] = [];
+  for (let i = 0; i < HAND; i++) ((held >> i) & 1 ? H : D).push(hand[i]);
+  const k = D.length;
+  const royalPay = payCredits(evaluate(NAT_ROYALS[0], game, v), credits, v);
+  let total = 0;
+  for (let x = 0; x < 1 << k; x++) {
+    const Y = H.slice();
+    let sign = 1;
+    for (let j = 0; j < k; j++) if ((x >> j) & 1) { Y.push(D[j]); sign = -sign; }
+    Y.sort((p, q) => p - q);
+    let nat = 0;
+    for (const roy of NAT_ROYALS) if (Y.every((c) => roy.includes(c))) nat++;
+    total += sign * (credits * t[OFF[Y.length] + combRank(Y)] + nat * royalPay);
+  }
+  return total / BINOM[52 - HAND][k];
+}
+
+/** Best hold per dealt hand (key = game, variant, bet and the cards in deal order). Bounded: cleared when full. */
+const HOLD_CACHE_MAX = 4096;
+const holdCache = new Map<string, number>();
+
+/**
+ * EV-optimal hold mask (bit i = card i kept) for a dealt hand: every hold (32) is scored exactly. `credits` defaults to
+ * the max bet, the strategy the HOLD hint shows. Ties keep the larger mask. Second Look is not part of the strategy.
+ */
+export function holdHint(hand: readonly number[], game: Game, credits = MAX_CREDITS, v: Variant = {}): number {
+  const key = `${game}|${credits}|${v.upgraded ? 1 : 0}|${v.bonusQuads ? 1 : 0}|${v.royalMult ?? 1}|${hand.join(',')}`;
+  const hit = holdCache.get(key);
+  if (hit !== undefined) return hit;
+  let best = 31, bestEV = -Infinity;
+  for (let m = 31; m >= 0; m--) {
+    const ev = holdEV(hand, m, game, credits, v);
+    if (ev > bestEV + 1e-9) { bestEV = ev; best = m; }
+  }
+  if (holdCache.size >= HOLD_CACHE_MAX) holdCache.clear();
+  holdCache.set(key, best);
+  return best;
 }
 
 // ── round helpers ────────────────────────────────────────────────────────────────────────────────
@@ -234,11 +328,11 @@ export function doubleResult(dealer: number, picked: number): DoubleRes {
   return b > a ? 'win' : b === a ? 'push' : 'lose';
 }
 
-/** One whole hand with the simple hold table (sims and headless play). Consumes the round stream. */
+/** One whole hand with the EV-optimal hold (sims and headless play). Consumes the round stream. */
 export function playHand(rng: Rng, game: Game, credits: number, v: Variant = {}, luck = 0): { credits: number; cat: Cat; rerolled: boolean } {
   const deck = newDeck(rng);
   const hand = deck.slice(0, HAND);
-  const mask = holdHint(hand, game);
+  const mask = holdHint(hand, game, credits, v);
   const gate = rng.next() < secondLookChance(luck);
   const out = drawHand(deck, hand, mask, game, v, gate);
   return { credits: payCredits(out, credits, v), cat: out.cat, rerolled: out.rerolled };

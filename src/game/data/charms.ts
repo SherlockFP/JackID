@@ -11,6 +11,29 @@ const fx = (hook: ModHook, op: ModOp, value: number, scope?: ModScope): ModEffec
 const tag = (t: string): ModScope => ({ tags: [t] });
 const machines = (...ids: string[]): ModScope => ({ machines: ids });
 
+/**
+ * Luck points a machine can take from charms before its headless RTP passes 98.5 % (balance pass, 5e5–1e6 rounds per
+ * point; the margin covers sim noise). Machines not listed, or at 0, get no charm luck. Luck charms stack on one machine,
+ * so each of the two luck charms (Metronome, Glass Heart) gets half of the machine's budget (`charmLuckFor`).
+ */
+export const CHARM_LUCK_CAP: Readonly<Record<string, number>> = {
+  baccarat: 0, bandit: 4, bigone: 0, bigsix: 4, blackjack: 4, bingo: 8, bounty_board: 0, cardwar: 4, cashier: 0,
+  charm_vendor: 0, claw: 6, coinflip: 0, craps: 0, cyclone: 20, debt_terminal: 0, derby: 8, devilstable: 0,
+  dicetower: 8, elevator: 8, fortuneteller: 8, hilo: 2, hotline: 0, jukebox: 0, keno: 2, lottoblower: 0, mines: 2,
+  pachinko: 4, pachislot: 2, pisti: 0, plinko: 4, roulette: 0, scratch: 8, shellgame: 8, shrine: 0, sicbo: 2,
+  sonkart: 0, stacker: 4, tavla: 0, tonic_vendor: 0, videopoker: 2,
+};
+const LUCK_CHARMS_PER_MACHINE = 2;
+/** Luck one luck charm may add to `machineId` when it asks for `points`. */
+export const charmLuckFor = (machineId: string, points: number): number =>
+  Math.max(0, Math.min(points, Math.floor((CHARM_LUCK_CAP[machineId] ?? 0) / LUCK_CHARMS_PER_MACHINE)));
+/** One clamped luck effect per machine; machines without budget get none. */
+const luckFx = (points: number, ids: readonly string[]): ModEffect[] =>
+  ids.flatMap((id) => {
+    const v = charmLuckFor(id, points);
+    return v > 0 ? [fx('luck', 'add', v, machines(id))] : [];
+  });
+
 function charm(
   id: string, rarity: CharmRarity, price: number, family: string | null, unlock: string,
   en: [string, string], tr: [string, string], effects: ModEffect[] = [],
@@ -66,7 +89,7 @@ const UNCOMMON: CharmDef[] = [
   charm('spare_number', 'uncommon', 20, 'DROPS', 'N2', ['Spare Number', 'Extra private number or ball on lottery devices'], ['Yedek Numara', 'Piyango cihazlarında +1 özel numara veya top'], [fx('x.keno.extraNumber', 'add', 1), fx('x.lottoblower.extraBall', 'add', 1)]),
   charm('false_bottom', 'uncommon', 22, 'LEDGER', '', ['False Bottom', 'At Dawn, a shortfall of 10% or less is forgiven; the charm breaks'], ['Yanlış Dip', 'Şafakta kotanın %10\'undan az açık affedilir; tılsım kırılır'], []),
   charm('long_thumbnail', 'uncommon', 16, 'REELS', 'N2', ['Long Thumbnail', 'Scratch cards cost −20%'], ['Uzun Başparmak', 'Kazı kartlar %20 ucuz'], [fx('x.scratch.discount', 'add', 0.2)]),
-  charm('metronome', 'uncommon', 18, 'WHEELS', 'N3', ['Metronome', 'Luck +10 on timing devices'], ['Metronom', 'Zamanlama cihazlarında şans +10'], [fx('luck', 'add', 10, machines('cyclone', 'pachislot', 'stacker'))]),
+  charm('metronome', 'uncommon', 18, 'WHEELS', 'N3', ['Metronome', 'Luck +10 on timing devices'], ['Metronom', 'Zamanlama cihazlarında şans +10'], luckFx(10, ['cyclone', 'pachislot', 'stacker'])),
   charm('red_thread', 'uncommon', 16, null, '', ['Red Thread', 'First instance you play each Watch: Tilt grace +3 and +10%'], ['Kırmızı İplik', 'Watch\'ta oynadığın ilk makine: Tilt +3 ve +%10'], [fx('x.tilt.grace', 'add', 3), fx('x.red.firstPlay', 'inc', 0.1)]),
   charm('cold_hands', 'uncommon', 16, null, 'N3', ['Cold Hands', 'Cold Lamp ×1.00 instead of ×0.75'], ['Soğuk Eller', 'Soğuk Lamba ×1.00 (×0.75 yerine)'], [fx('x.lamp.coldMult', 'set', 1)]),
   charm('croupiers_rake', 'uncommon', 18, 'WHEELS', '', ['Croupier\'s Rake', 'Roulette outside bets +20%'], ['Krupiyenin Tırmığı', 'Rulet dış bahisleri +%20'], [fx('payout.mult', 'inc', 0.2, machines('roulette'))]),
@@ -138,7 +161,7 @@ const CURSED: CharmDef[] = [
   // Night 8 also receives quota.mult (×1.1), so its own factor is divided by 1.1 to land on the GDD's net ×0.75.
   charm('pawn_ticket_13', 'cursed', -50, null, 'F3', ['Pawn Ticket No. 13', 'Occupies a peg; the Pawn Window offers one item at −50%'], ['Rehin Bileti No. 13', 'Bir çivi işgal eder; Rehin Penceresi bir ürünü %50 indirimle sunar'], [fx('x.shop.discountSlot', 'set', 0.5)]),
   charm('cracked_mirror', 'cursed', -30, null, 'F3', ['Cracked Mirror', 'All wins ×1.4; one instance per zone is out of order each Bell'], ['Çatlak Ayna', 'Tüm kazançlar ×1.4; her zilde her bölgede bir makine arızalı'], [fx('payout.mult', 'mult', 1.4), fx('x.buff.out_of_order', 'add', 1)]),
-  charm('glass_heart', 'cursed', -20, null, 'F3', ['Glass Heart', 'Luck +8; after 6 losses in a row it shatters (−25% pocket)'], ['Cam Kalp', 'Şans +8; üst üste 6 kayıptan sonra kırılır (cebin %25\'i gider)'], [fx('luck', 'add', 8)]),
+  charm('glass_heart', 'cursed', -20, null, 'F3', ['Glass Heart', 'Luck +8; after 6 losses in a row it shatters (−25% pocket)'], ['Cam Kalp', 'Şans +8; üst üste 6 kayıptan sonra kırılır (cebin %25\'i gider)'], luckFx(8, Object.keys(CHARM_LUCK_CAP))),
   charm('blank_jackid', 'cursed', 0, null, 'A:all_tapes', ['Blank JackID', '+25% payouts; the House no longer addresses you'], ['Adsız JackID', 'Kazançlar +%25; Ev seni artık anmaz'], [fx('payout.mult', 'inc', 0.25), fx('x.phone.mute', 'set', 1)]),
 ];
 

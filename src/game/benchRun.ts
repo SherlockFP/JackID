@@ -16,6 +16,7 @@ import type {
 } from '@/game/types';
 import { foldEffects, modHookMeta, scopeMatches, stackedValue } from '@/game/types';
 import type { PhoneCallState, RunConfig } from '@/net/protocol';
+import type { ShiftState } from '@/game/shift.types';
 import type { CutscenePlayOpts, CutsceneResult } from '@/core/cutscene/types';
 import { createRng } from '@/core/rng';
 import { bus } from '@/core/events';
@@ -116,7 +117,16 @@ export class BenchRun implements RunApi {
   readonly mods = new BenchMods();
   readonly stats: BenchStats = { rounds: 0, wagered: 0, paid: 0, biggest: 0, wins: 0 };
 
-  readonly shift = stubApi<ShiftApi>('shift', { phase: 'idle', timeLeft: () => 3599, rules: (): readonly ActiveRule[] => [] });
+  readonly shift = stubApi<ShiftApi>('shift', {
+    phase: 'idle',
+    timeLeft: () => 3599,
+    rules: (): readonly ActiveRule[] => [],
+    // Machines read `state().stake` / `.floor` / `.segment` (cashier, shrine, charms): give the bench a real shape.
+    state: (): Readonly<ShiftState> => ({
+      index: 0, floor: 1, phase: 'idle', startedAt: 0, endsAt: 0, duration: 0, lastCallSec: 0,
+      stake: 1, clock: 0, rules: [],
+    } as unknown as ShiftState),
+  });
   readonly tycoon: TycoonApi;
   readonly buffs = stubApi<BuffsApi>('buffs', { has: () => false, stacks: () => 0, list: () => [] });
   readonly totems = stubApi<TotemsApi>('totems', { list: () => [], mine: () => [], inRadius: () => [] });

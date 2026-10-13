@@ -1,0 +1,78 @@
+/**
+ * Fortune-Teller "Mother Moth" — UI and in-world strings (EN + TR). Loaded by the `*.strings.ts` glob in main.ts;
+ * keys are registered under `m.fortuneteller.` (MachineBase.t adds the prefix). `{n}` / `{s}` / `{name}` are filled by `t(key, vars)`.
+ */
+import type { MachineStrings } from '@/machines/_base/types';
+
+const en: Record<string, string> = {
+  name: 'Mother Moth',
+  desc: 'Three veils, three cards. Pick one omen: coins now and a blessing or a curse for a while. Defy Fate to pay again and choose another.',
+  pick: 'Pick', defy: 'Defy Fate', read: 'Read', almanac: 'Almanac', pickLong: 'Pick card',
+  past: 'PAST', present: 'PRESENT', future: 'FUTURE',
+  defyCost: 'Defy {n}', defyFree: 'Defy free', defyOpen: 'Defy Fate? {s}s',
+  defied: 'Fate is defied', defyNo: 'Not enough coins to defy', lucky: 'The stars shift',
+  blessing: 'BLESSING', curse: 'CURSE', neutral: 'OMEN', mirror: 'MIRROR', grand: 'THE GRAND OMEN',
+  win: 'WIN {n}', last: 'LAST {n}', potLabel: 'Stake', busy: 'The teller is still reading',
+  veil: 'The veil lifts: {name}', almanacTitle: 'Omen almanac', almanacClose: 'Close',
+  veilBtn: 'Veil {n}', hintRead: 'Read', hintPick: 'Pick', hintDefy: 'Defy',
+  'omen.0.name': 'The Pit', 'omen.0.desc': 'Curse: luck -10 for 5 plays',
+  'omen.1.name': 'The Moth', 'omen.1.desc': 'No effect',
+  'omen.2.name': 'The Debtor', 'omen.2.desc': 'Curse: current quota +2 %',
+  'omen.3.name': 'The Cracked Bell', 'omen.3.desc': 'Curse: your next win is halved',
+  'omen.4.name': 'The Empty Purse', 'omen.4.desc': 'No effect',
+  'omen.5.name': 'The Drowned Lamp', 'omen.5.desc': 'No effect',
+  'omen.6.name': 'The Rat King', 'omen.6.desc': 'Blessing: your next losing bet is refunded',
+  'omen.7.name': 'The Lantern', 'omen.7.desc': 'Blessing: luck +5 for 5 plays',
+  'omen.8.name': 'The Mirror', 'omen.8.desc': 'Repeats your previous omen',
+  'omen.9.name': 'The Hollow Coin', 'omen.9.desc': 'No effect',
+  'omen.10.name': 'The Staircase', 'omen.10.desc': 'Blessing: luck +3 for 10 plays',
+  'omen.11.name': 'The Key', 'omen.11.desc': 'Blessing: next charm costs 30 % less',
+  'omen.12.name': 'The Clock', 'omen.12.desc': 'Blessing: refund one action',
+  'omen.13.name': 'The Twins', 'omen.13.desc': 'Blessing: next win pays x1.5',
+  'omen.14.name': 'The Lamb', 'omen.14.desc': 'Blessing: next loss refunded 50 %',
+  'omen.15.name': 'The Wheel', 'omen.15.desc': 'No effect',
+  'omen.16.name': 'The Gambler', 'omen.16.desc': 'No effect',
+  'omen.17.name': 'The Furnace', 'omen.17.desc': 'Curse: luck -5 for 3 plays',
+  'omen.18.name': 'The Crown', 'omen.18.desc': 'No effect',
+  'omen.19.name': 'The Hanged Croupier', 'omen.19.desc': 'Curse: luck -10 for 3 plays',
+  'omen.20.name': 'The Eye', 'omen.20.desc': 'Blessing: luck +10 for 5 plays',
+  'omen.21.name': 'The Grand Omen', 'omen.21.desc': 'Blessing: a random common charm, free',
+};
+
+const tr: Record<string, string> = {
+  name: 'Güve Ana',
+  desc: 'Üç perde, üç kart. Bir kehanet seç: anında jeton, bir süreliğine nimet ya da lanet. Kaderi boz, parayla yenisini seç.',
+  pick: 'Seç', defy: 'Kaderi Boz', read: 'Oku', almanac: 'Kehanet Kitabı', pickLong: 'Kart seç',
+  past: 'GEÇMİŞ', present: 'ŞİMDİ', future: 'GELECEK',
+  defyCost: 'Boz {n}', defyFree: 'Boz bedava', defyOpen: 'Kaderi boz? {s}s',
+  defied: 'Kader bozuldu', defyNo: 'Kaderi bozmak için yeterli jeton yok', lucky: 'Yıldızlar kayıyor',
+  blessing: 'NİMET', curse: 'LANET', neutral: 'KEHANET', mirror: 'AYNA', grand: 'BÜYÜK KEHANET',
+  win: 'KAZANÇ {n}', last: 'SON {n}', potLabel: 'Bahis', busy: 'Falcı hâlâ okuyor',
+  veil: 'Perde açılıyor: {name}', almanacTitle: 'Kehanet kitabı', almanacClose: 'Kapat',
+  veilBtn: 'Perde {n}', hintRead: 'Oku', hintPick: 'Seç', hintDefy: 'Boz',
+  'omen.0.name': 'Çukur', 'omen.0.desc': 'Lanet: 5 oyun boyunca şans -10',
+  'omen.1.name': 'Güve', 'omen.1.desc': 'Etkisiz',
+  'omen.2.name': 'Borçlu', 'omen.2.desc': 'Lanet: güncel kota +%2',
+  'omen.3.name': 'Çatlak Çan', 'omen.3.desc': 'Lanet: bir sonraki kazancın yarısı',
+  'omen.4.name': 'Boş Kese', 'omen.4.desc': 'Etkisiz',
+  'omen.5.name': 'Boğulmuş Lamba', 'omen.5.desc': 'Etkisiz',
+  'omen.6.name': 'Fare Kral', 'omen.6.desc': 'Nimet: bir sonraki kaybın iade edilir',
+  'omen.7.name': 'Fener', 'omen.7.desc': 'Nimet: 5 oyun boyunca şans +5',
+  'omen.8.name': 'Ayna', 'omen.8.desc': 'Bir önceki kehaneti tekrarlar',
+  'omen.9.name': 'Kof Sikke', 'omen.9.desc': 'Etkisiz',
+  'omen.10.name': 'Merdiven', 'omen.10.desc': 'Nimet: 10 oyun boyunca şans +3',
+  'omen.11.name': 'Anahtar', 'omen.11.desc': 'Nimet: bir sonraki tılsım %30 ucuz',
+  'omen.12.name': 'Saat', 'omen.12.desc': 'Nimet: bir hamle iade',
+  'omen.13.name': 'İkizler', 'omen.13.desc': 'Nimet: bir sonraki kazanç x1,5',
+  'omen.14.name': 'Kuzu', 'omen.14.desc': 'Nimet: bir sonraki kayıp %50 iade',
+  'omen.15.name': 'Çark', 'omen.15.desc': 'Etkisiz',
+  'omen.16.name': 'Kumarbaz', 'omen.16.desc': 'Etkisiz',
+  'omen.17.name': 'Fırın', 'omen.17.desc': 'Lanet: 3 oyun boyunca şans -5',
+  'omen.18.name': 'Taç', 'omen.18.desc': 'Etkisiz',
+  'omen.19.name': 'Asılı Krupiye', 'omen.19.desc': 'Lanet: 3 oyun boyunca şans -10',
+  'omen.20.name': 'Göz', 'omen.20.desc': 'Nimet: 5 oyun boyunca şans +10',
+  'omen.21.name': 'Büyük Kehanet', 'omen.21.desc': 'Nimet: rastgele yaygın bir tılsım, bedava',
+};
+
+export const STRINGS: MachineStrings = { en, tr };
+export default { prefix: 'm.fortuneteller.', en, tr };

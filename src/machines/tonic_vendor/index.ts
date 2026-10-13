@@ -1,0 +1,267 @@
+/**
+ * Apothecary (`tonic_vendor`, system) — buys tonics: timed buffs that feed the modifier pipeline (BRIEF ADDENDUM 3).
+ * Stock, prices and buffs come from rules.ts and data/buffs.ts. The coins move through `run.spend('coin')` in the credit
+ * step; the dose is applied with `run.buffs.add(buffId, { pid })`. The machine never prices anything itself.
+ *
+ * Controls (seated): 1–4 or ←/→ pick a bottle · Space/Enter buy · E stands up.
+ * Every peer draws the same shelf from the same run seed and Night. `present()` plays the juice for the local choices.
+ */
+import { MachineBase } from '@/machines/_base/MachineBase';
+import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
+import type { HeadlessPlay } from '@/game/types';
+import type { MachineInputEvent } from '@/core/input/types';
+import type { HudHint } from '@/core/ui/types';
+import type { KitX } from '@/kit';
+import { fmtNum, t as tr } from '@/core/i18n';
+import { lerp } from '@/core/math';
+import { buildModel, DRAWER_SLIDE, type TonicVendorParts } from './model';
+import { SLOTS, priceText, stockKey, tonicStock, wrapSlot, type TonicOffer } from './rules';
+
+type Juice = 'plain' | 'rare' | 'cursed';
+type Ev =
+  /** A sale. `why` names the refusal when `ok` is false. */
+  { k: 'buy'; i: number; buffId: string; price: number; juice: Juice; ok: boolean; why: string };
+
+const GREEN = 0x60ff90;
+const BLUE = 0x60a0ff;
+const VIOLET = 0x8040ff;
+
+export const def: MachineDef = {
+  id: 'tonic_vendor',
+  category: 'system',
+  slotSize: 'M',
+  zone: 'services',
+  seats: 1,
+  shared: false,
+  minBet: 0, maxBet: 0,
+  maxPayoutMult: 1,
+  tier: 0,
+  actionCost: 0,
+  tags: ['system', 'shop', 'apothecary'],
+  modHooks: {},
+  strings: {
+    en: {
+      name: 'Apothecary',
+      desc: 'Tonics behind the glass. Each dose changes the odds for a while. Every dose has a side effect.',
+      h_pick: 'PICK', h_buy: 'DRINK', h_leave: 'LEAVE',
+      s_coins: 'COINS', s_dose: 'DOSE', s_length: 'LASTS',
+      funds: 'NOT ENOUGH COINS', none: 'EMPTY SHELF',
+      ledger: 'APOTHECARY', ledgerHint: '1-4 PICK  SPACE DRINK',
+      free: 'FREE',
+    },
+    tr: {
+      name: 'Eczane',
+      desc: 'Camın arkasında tonikler. Her doz bir süre oranları değiştirir. Her dozun bir yan etkisi var.',
+      h_pick: 'SEÇ', h_buy: 'İÇ', h_leave: 'AYRIL',
+      s_coins: 'PARA', s_dose: 'DOZ', s_length: 'SÜRE',
+      funds: 'PARA YETMİYOR', none: 'RAF BOŞ',
+      ledger: 'ECZANE', ledgerHint: '1-4 SEÇ  BOŞLUK İÇ',
+      free: 'BEDAVA',
+    },
+  },
+};
+
+/** System devices never wager: staff do not play them (TECH_SPEC §11.5 export; no-op). */
+export const playHeadless: HeadlessPlay = () => ({ gross: 0, tags: [] });
+
+export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null> {
+  private cursor = 0;
+  private shelf: readonly TonicOffer[] = [];
+  private shelfNight = -1;
+  private shelfSeed = NaN;
+  private stockCache: readonly TonicOffer[] = [];
+  private repaintKey = '';
+  private hudKey = '';
+
+  protected createModel(kit: KitX): MachineModel<TonicVendorParts> {
+    return buildModel(kit, this.modelOpts);
+  }
+
+  init(): void {
+    this.refresh(true);
+    this.attractor.every('glint', 9, () => this.ctx.fx.glow(this.model.anchors.light, GREEN, 0.25, 0.5), { first: 5 });
+  }
+
+  // ── run state (every peer) ──────────────────────────────────────────────────────────────────────
+  /** The shelf is a pure function of (seed, Night): memoised so the per-frame refresh does not re-roll it. */
+  private stock(): readonly TonicOffer[] {
+    const run = this.ctx.run;
+    const night = run.night();
+    if (night !== this.shelfNight || run.seed !== this.shelfSeed) {
+      this.shelfNight = night;
+      this.shelfSeed = run.seed;
+      this.shelf = tonicStock(run.seed, night);
+    }
+    return this.shelf;
+  }
+  private wallet(): number { return this.ctx.run.wallet(this.selfId); }
+
+  tick(_dt: number): void {
+    this.refresh(false);
+  }
+
+  attract(dt: number, _t: number): void {
+    this.attractor.update(dt);
+  }
+
+  onOccupy(_pid: number, _seat: number, local: boolean): void {
+    this.cursor = 0;
+    if (local) { this.sfx('chime'); this.refresh(true); }
+  }
+
+  onRelease(_pid: number, _seat: number, local: boolean): void {
+    if (local) { this.ctx.ui.machineHud(null); this.hudKey = ''; }
+  }
+
+  onLang(): void {
+    this.repaintKey = '';
+    this.hudKey = '';
+    this.refresh(true);
+  }
+
+  // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
+  onInput(e: MachineInputEvent): void {
+    if (!e.down || e.repeat) return;
+    switch (e.action) {
+      case 'left': this.moveCursor(wrapSlot(this.cursor, -1)); return;
+      case 'right': this.moveCursor(wrapSlot(this.cursor, 1)); return;
+      case 'n1': case 'n2': case 'n3': case 'n4': this.moveCursor(Number(e.action.slice(1)) - 1); return;
+      case 'primary': case 'confirm': this.buy(this.cursor); return;
+    }
+  }
+
+  private moveCursor(i: number): void {
+    this.cursor = i;
+    this.sfx('hover');
+    this.refresh(true);
+  }
+
+  /** Purchase: refusals are checked here; the coins and the dose move in the credit step. */
+  private buy(i: number): void {
+    const offer = this.stock()[i] ?? null;
+    if (!offer || i >= SLOTS) { void this.emit({ k: 'buy', i, buffId: '', price: 0, juice: 'plain', ok: false, why: 'none' }); return; }
+    const ok = offer.price <= 0 || this.ctx.run.canAfford(offer.price, this.selfId);
+    void this.emit(
+      { k: 'buy', i, buffId: offer.buffId, price: offer.price, juice: offer.juice, ok, why: ok ? '' : 'funds' },
+      ok ? () => {
+        if (offer.price > 0 && !this.ctx.run.spend('coin', offer.price, 'tonic', this.selfId)) {
+          this.ctx.ui.toast(this.t('funds'), 'bad');
+          return;
+        }
+        this.ctx.run.buffs.add(offer.buffId, { pid: this.selfId, source: { kind: 'tonic', id: offer.buffId } });
+      } : undefined,
+    );
+  }
+
+  // ── presentation (every peer) ───────────────────────────────────────────────────────────────────
+  present(ev: Ev, pc: PresentCtx): void | Promise<void> {
+    return this.presentBuy(ev, pc);
+  }
+
+  private denied(why: string): void {
+    this.sfx('error');
+    const dr = this.parts.drawer;
+    const z0 = dr.position.z;
+    void this.anim(0.2, (k) => { dr.position.z = z0 + Math.sin(k * Math.PI * 6) * 0.012; });
+    if (this.isLocalOccupant && why) this.toast(this.t(why), 'warn');
+  }
+
+  private async presentBuy(ev: Ev, pc: PresentCtx): Promise<void> {
+    if (!ev.ok) { this.denied(ev.why); return; }
+    const { drawer, bottles } = this.parts;
+    const fx = this.ctx.fx;
+    const anchor = this.model.anchors.coinOut;
+    const name = tr(`buff.${ev.buffId}.name`);
+    if (pc.fast) { this.refresh(true); return; }
+
+    // anticipation: the drawer slides out, the bottle is tilted up
+    this.sfx('button');
+    const z0 = drawer.position.z;
+    const bottle = bottles[ev.i] ?? null;
+    const b0 = bottle ? bottle.position.y : 0;
+    await this.anim(0.14, (k) => {
+      drawer.position.z = lerp(z0, z0 + DRAWER_SLIDE, k);
+      if (bottle) bottle.rotation.z = lerp(0, 0.25, k);
+    }, 'outQuad');
+
+    // action: the coins change hands; a cursed jar pays you a sign-on fee
+    if (ev.price > 0) { this.sfx('cashRegister'); fx.coins(anchor, 8, { spread: 0.1, up: 0.2 }); }
+    else this.sfx('purchase');
+
+    // impact: tier by juice
+    const at = bottle ?? anchor;
+    switch (ev.juice) {
+      case 'rare':
+        this.sfx('win2'); fx.flash(BLUE, 0.18, 0.3); fx.popText(at, name, BLUE, { scale: 1.3 });
+        break;
+      case 'cursed':
+        this.sfx('porcelainCrack'); fx.tint(VIOLET, 0.25, 0.6); fx.popText(at, name, VIOLET, { scale: 1.2 });
+        break;
+      default:
+        this.sfx('stamp'); fx.popText(at, name, GREEN, { scale: 1.0 });
+    }
+    if (bottle) {
+      await this.anim(0.25, (k) => {
+        bottle.position.y = b0 + Math.sin(k * Math.PI) * 0.12;
+        bottle.rotation.z = lerp(0.25, 0, k);
+      }, 'outQuad');
+      bottle.position.y = b0;
+    }
+
+    // follow-through: the drawer returns, the ledger repaints
+    await this.anim(0.25, (k) => { drawer.position.z = lerp(z0 + DRAWER_SLIDE, z0, k); }, 'outQuad');
+    this.refresh(true);
+  }
+
+  // ── screens, tags and HUD ───────────────────────────────────────────────────────────────────────
+  private refresh(force: boolean): void {
+    const stock = this.stock();
+    this.stockCache = stock;
+    const key = [stockKey(stock), this.wallet(), this.cursor].join('|');
+    if (!force && key === this.repaintKey) { if (this.isLocalOccupant) this.showHud(); return; }
+    this.repaintKey = key;
+
+    for (let i = 0; i < SLOTS; i++) {
+      this.parts.tags[i]?.setText(priceText(stock[i] ?? null, fmtNum, this.t('free')));
+    }
+    this.drawLedger(stock);
+    if (this.isLocalOccupant) this.showHud();
+  }
+
+  private drawLedger(stock: readonly TonicOffer[]): void {
+    const s = this.parts.ledger;
+    s.clear('#081410');
+    s.text(this.t('ledger'), 64, 10, { font: 'px5', color: '#80ffb0', align: 'center' });
+    for (let i = 0; i < SLOTS; i++) {
+      const o = stock[i] ?? null;
+      const y = 26 + i * 12;
+      const mark = i === this.cursor ? '>' : ' ';
+      const name = o ? tr(`buff.${o.buffId}.name`).slice(0, 14) : this.t('none');
+      s.text(`${mark}${i + 1} ${name}`, 4, y, { font: 'px5', color: o?.juice === 'cursed' ? '#c0a0ff' : '#c8ffe0' });
+      s.text(o ? priceText(o, fmtNum, this.t('free')) : '--', 124, y, { font: 'px5', color: '#ffd060', align: 'right' });
+    }
+    s.text(this.t('ledgerHint'), 64, 72, { font: 'px5', color: '#50a070', align: 'center' });
+  }
+
+  private showHud(): void {
+    const sel = this.stockCache[this.cursor] ?? null;
+    const key = [this.cursor, this.wallet(), sel?.buffId ?? ''].join('|');
+    if (key === this.hudKey) return;
+    this.hudKey = key;
+    const hints: HudHint[] = [
+      { action: 'left', label: this.t('h_pick') },
+      { action: 'primary', label: this.t('h_buy') },
+      { action: 'exit', label: this.t('h_leave') },
+    ];
+    this.hud({
+      bet: null,
+      hints,
+      stats: [
+        { label: this.t('s_coins'), value: fmtNum(this.wallet()) },
+        { label: this.t('s_dose'), value: sel ? tr(`buff.${sel.buffId}.name`) : '--' },
+        { label: this.t('s_length'), value: sel ? tr(`buff.${sel.buffId}.desc`) : '--' },
+      ],
+    });
+  }
+}
+
