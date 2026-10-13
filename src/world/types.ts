@@ -1,0 +1,157 @@
+/**
+ * World contracts — TD-FROZEN. Implementation: WORLD-ARCH (`level`, `lights`, `layout`, `props/**`) and
+ * WORLD-SYS (`world`, `collision`, `interact`). Contract: TECH_SPEC §2.14, §5; ART_BIBLE §6.
+ * `LocalAABB`, `SlotSize`, `ZoneId` are defined in `core/types` (kit/ needs them) and re-exported here.
+ *
+ * World units: metres, Y up, floor y = 0, north = −Z. Slot `rotY` ∈ {0,90,180,270}: machine front (+Z local)
+ * faces 0 → +Z (south), 90 → +X (east), 180 → −Z (north), 270 → −X (west).
+ */
+import type * as THREE from 'three';
+import type { GameMode, Hex, InstanceId, LocalAABB, MachineId, PlayerId, SlotSize, Unsub, V3, Vec3Like, ZoneId } from '@/core/types';
+import type { AnyMachine } from '@/machines/_base/types';
+
+export type { LocalAABB, SlotSize, ZoneId, KnownZoneId } from '@/core/types';
+
+/** One placement position. **Ids, sizes and zones are the contract; coordinates may be tuned by WORLD-ARCH.** */
+export interface SlotDef { id: InstanceId; size: SlotSize; pos: V3; rotY: 0 | 90 | 180 | 270; zone: ZoneId }
+
+// ── interaction & collision (TECH_SPEC §2.14) ────────────────────────────────────────────────────
+export interface Interactable {
+  id: string; box: THREE.Box3;               // world space
+  maxDist?: number;                          // default 2.2 m (tables 2.8)
+  priority?: number;                         // higher wins when overlapping
+  enabled(): boolean;
+  label(): string;                           // translated, e.g. "Play Coin Flip"
+  sub?(): string;                            // "Bet 5–100" / "Occupied: Ayşe" / "Locked until floor 3"
+  onInteract(): void;
+}
+export interface InteractionSystem {
+  add(i: Interactable): () => void;
+  readonly focused: Interactable | null;     // updated each step: ray from camera centre, occluded by 'solid'
+}
+export interface CollisionWorld {
+  addStatic(box: THREE.Box3, tag?: LocalAABB['tag']): number;
+  addLocal(boxes: LocalAABB[], matrix: THREE.Matrix4, tag?: string): number[];  // machine colliders → world AABBs
+  remove(id: number): void;
+  setEnabled(id: number, on: boolean): void;   // trapdoor floor panels
+  moveAndSlide(pos: THREE.Vector3, half: THREE.Vector3, delta: THREE.Vector3): { grounded: boolean; hitX: boolean; hitZ: boolean };
+  raycast(origin: THREE.Vector3, dir: THREE.Vector3, maxDist: number): { dist: number; id: number } | null;
+  floorAt(x: number, z: number, fromY: number): number | null;   // null = hole
+}
+
+// ── props (WORLD-ARCH) ──────────────────────────────────────────────────────────────────────────
+export interface WorldProp {
+  readonly id: string;
+  readonly root: THREE.Object3D;
+  update?(dt: number): void;
+  dispose(): void;
+}
+export interface TrapdoorProp extends WorldProp {
+  readonly isOpen: boolean;
+  /** Swing the plates under `who` (a player, or everyone). Resolves when fully open. */
+  open(who?: PlayerId | 'all', dur?: number): Promise<void>;
+  close(dur?: number): Promise<void>;
+}
+export interface ElevatorProp extends WorldProp {
+  readonly doorsOpen: boolean;
+  doors(open: boolean, dur?: number): Promise<void>;
+  /** Cabin ride between floors (the Ascent / final ride). */
+  ride(dir: 'up' | 'down', dur?: number): Promise<void>;
+  /** Floor dial needle (1 = start; beyond the printed scale in endless). */
+  setFloor(n: number, animate?: boolean): void;
+}
+export interface ClockProp extends WorldProp {
+  /** 0..1 progress of the shift on the wall clock face. */
+  setProgress(frac: number): void;
+  setRemaining(sec: number, lastCall: boolean): void;
+  alarm(on: boolean): void;
+}
+/** Diegetic quota board above the Debt Terminal (also read by the HUD for numbers). */
+export interface QuotaBoardProp extends WorldProp {
+  set(q: { due: number; deposited: number; ratio: number; timeLeft: number; lastCall: boolean }): void;
+  stamp(kind: 'PAID' | 'SHORT'): Promise<void>;
+  /** "Who paid what" ledger lines (co-op). */
+  setLedger(lines: Array<{ name: string; color: Hex; amount: number }>): void;
+}
+/** Known prop ids; the type stays open for decor props. */
+export type PropId = 'clock' | 'trapdoor' | 'elevator' | 'quotaBoard' | (string & {});
+
+// ── lights (WORLD-ARCH `lights.ts`) ─────────────────────────────────────────────────────────────
+export type WorldLightTarget = 'all' | ZoneId | InstanceId | THREE.Object3D;
+/** Light-pool facade used by cutscenes, events, dread and big-win light shows. One pool of 6 PointLights, constant count. */
+export interface WorldLights {
+  /** Tween a target's light level (1 = normal, 0 = out) and optional colour grade. */
+  setLevel(target: WorldLightTarget, level: number, dur?: number, color?: Hex | null): void;
+  flicker(target: WorldLightTarget, amount: number, dur: number): void;
+  /** One momentary bump (jackpot ripple, buff proc). */
+  pulse(target: WorldLightTarget, o?: { color?: Hex; mul?: number; dur?: number }): void;
+  /** Pit-wide strobe (Jackpot lightshow ART_BIBLE §9.5; honours reduceFlashing). */
+  strobe(target: WorldLightTarget, hz: number, dur: number, color?: Hex): void;
+  /** 0..1 horror grade: darker rooms, colder colour, shorter fog, more flicker. */
+  setDread(v: number): void;
+  reset(): void;
+}
+
+// ── world items (totems, notes, pickups) ────────────────────────────────────────────────────────
+export interface WorldItemSpec {
+  id: string;
+  kind: 'totem' | 'pickup' | 'note' | 'prop';
+  model: THREE.Object3D;
+  pos: V3; rotY?: number;
+  /** Shows a glowing floor ring of this radius (Totems). */
+  radius?: number; color?: Hex;
+  interact?: { label(): string; sub?(): string; enabled(): boolean; onInteract(): void; maxDist?: number };
+}
+export interface WorldItemHandle {
+  readonly id: string;
+  readonly root: THREE.Object3D;
+  setPos(p: V3, dur?: number): void;
+  setRadius(r: number | null): void;
+  setActive(on: boolean): void;
+  remove(): void;
+}
+
+// ── the world ───────────────────────────────────────────────────────────────────────────────────
+export interface WorldBuildOpts {
+  mode: GameMode;
+  seed: number;
+  /** `?bench=<id>`: build the single-machine test room instead of the pit. */
+  bench?: MachineId;
+  /** Override slots/assignment (tests, randomised line-up per floor visit). */
+  slots?: SlotDef[];
+  assign?: Partial<Record<InstanceId, MachineId | null>>;
+}
+export interface World {
+  /** Root group ("world" in the scene graph) holding level, props, machines. */
+  readonly root: THREE.Group;
+  readonly slots: readonly SlotDef[];
+  readonly collision: CollisionWorld;
+  readonly interact: InteractionSystem;
+  readonly lights: WorldLights;
+  readonly items: { spawn(spec: WorldItemSpec): WorldItemHandle; all(): readonly WorldItemHandle[] };
+
+  // machines
+  machine(id: InstanceId): AnyMachine | undefined;
+  machines(): readonly AnyMachine[];
+  slot(id: InstanceId): SlotDef | undefined;
+  zoneAt(p: Vec3Like): ZoneId | null;
+  nearestMachine(p: Vec3Like, maxDist?: number): AnyMachine | null;
+
+  // tycoon expansion: empty pads, ordering, wings
+  /** Slots with no machine ("FOR LEASE" stands). */
+  pads(): readonly SlotDef[];
+  /** Build + register a machine into a pad (delivery animation, colliders, interact, net routing). */
+  place(slot: InstanceId, machineId: MachineId): Promise<AnyMachine | null>;
+  remove(slot: InstanceId): Promise<void>;
+  setZoneOpen(zone: ZoneId, open: boolean, animate?: boolean): Promise<void>;
+  isZoneOpen(zone: ZoneId): boolean;
+
+  // props & named anchors (cutscene targets: 'terminal', 'trapdoor', 'elevator.door', 'clock', …)
+  prop<T extends WorldProp = WorldProp>(id: PropId): T | null;
+  anchor(name: string): THREE.Object3D | null;
+  registerAnchor(name: string, obj: THREE.Object3D): Unsub;
+
+  fixedUpdate(dt: number): void;
+  frame(dt: number, t: number): void;
+  dispose(): void;
+}

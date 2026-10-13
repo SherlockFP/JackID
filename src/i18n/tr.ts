@@ -1,0 +1,69 @@
+/**
+ * Türkçe metinler: yalnızca `common.*` ve `ui.*` (TECH_SPEC §9.3). Diğer ad alanları kodun yanındaki
+ * `*.strings.ts` dosyalarındadır. Anahtarlar en.ts ile birebir aynı olmalıdır (`npm run check`).
+ * Çoğul: Türkçe her zaman `.other` kullanır.
+ */
+import type { StringTable } from '@/core/i18n';
+
+const tr: StringTable = {
+  // ── common ──
+  'common.bet': 'Bahis',
+  'common.leave': 'Ayrıl',
+  'common.play': '{name} oyna',
+  'common.streak': 'Seri',
+  'common.win': 'Kazanç',
+  'common.lose': 'Kayıp',
+  'common.noFunds': 'Yeterli jeton yok',
+  'common.occupied': 'Dolu: {name}',
+  'common.locked': '{n}. vadeye kadar kilitli',
+  'common.notSeated': 'Burada oturmuyorsun',
+  'common.coinSuffix': ' j',
+  'common.coins.one': '{n} jeton',
+  'common.coins.other': '{n} jeton',
+  'common.yes': 'Evet',
+  'common.no': 'Hayır',
+  'common.ok': 'Tamam',
+  'common.cancel': 'İptal',
+  'common.back': 'Geri',
+  'common.close': 'Kapat',
+  'common.confirm': 'Onayla',
+  'common.skip': 'Atla',
+  'common.guest': 'Misafir',
+  'common.loading': 'Yükleniyor…',
+  'common.quota': 'Kota',
+  'common.debt': 'Borç',
+  'common.deposit': 'Yatır',
+  'common.timeLeft': 'Kalan süre',
+  'common.jackpot': 'Büyük ikramiye',
+  // ── ui ──
+  'ui.title': 'JackID',
+  'ui.enter': 'ÇUKURA GİRMEK İÇİN TIKLA',
+  'ui.error.title': 'Başlatılamadı',
+  'ui.error.webgl': 'JackID için WebGL2 gerekir. Donanım hızlandırması açık, güncel bir Chrome, Edge veya Firefox deneyin.',
+  'ui.error.generic': 'Bir şey bozuldu: {msg}',
+  'ui.error.reload': 'Yeniden yükle',
+  'ui.stub.play': 'OYNA',
+  'ui.stub.lang': 'English / Türkçe',
+  'ui.stub.hint': 'Temel sürüm: jackpot menüsü, çukur ve makineler sırada.',
+  'ui.stub.ingame': 'Boş çukur (temel sürüm)',
+  'ui.stub.notReady': 'Henüz kullanılamıyor',
+  'ui.key.Space': 'BOŞLUK',
+  'ui.key.Enter': 'ENTER',
+  'ui.key.NumpadEnter': 'ENTER',
+  'ui.key.Escape': 'ESC',
+  'ui.key.Tab': 'TAB',
+  'ui.key.ShiftLeft': 'SHIFT',
+  'ui.key.ArrowUp': 'YUKARI',
+  'ui.key.ArrowDown': 'AŞAĞI',
+  'ui.key.ArrowLeft': 'SOL',
+  'ui.key.ArrowRight': 'SAĞ',
+  'ui.key.Equal': '=',
+  'ui.key.Minus': '−',
+  'ui.key.Mouse0': 'SOL TIK',
+  'ui.key.Mouse1': 'ORTA TIK',
+  'ui.key.Mouse2': 'SAĞ TIK',
+  'ui.key.WheelUp': 'TEKER ↑',
+  'ui.key.WheelDown': 'TEKER ↓',
+};
+
+export default tr;

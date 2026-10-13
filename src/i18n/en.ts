@@ -1,0 +1,69 @@
+/**
+ * English strings: `common.*` and `ui.*` only (TECH_SPEC §9.3). Other namespaces live next to their code in
+ * `*.strings.ts` files. Owner: I18N WP (TD seeds the keys the foundation uses). Keys MUST match tr.ts exactly
+ * (`npm run check`). Plurals: `<key>.one` / `<key>.other` selected by `vars.n`.
+ */
+import type { StringTable } from '@/core/i18n';
+
+const en: StringTable = {
+  // ── common ──
+  'common.bet': 'Bet',
+  'common.leave': 'Leave',
+  'common.play': 'Play {name}',
+  'common.streak': 'Streak',
+  'common.win': 'Win',
+  'common.lose': 'Lose',
+  'common.noFunds': 'Not enough coins',
+  'common.occupied': 'Occupied: {name}',
+  'common.locked': 'Locked until deadline {n}',
+  'common.notSeated': 'You are not seated here',
+  'common.coinSuffix': '¢',
+  'common.coins.one': '{n} coin',
+  'common.coins.other': '{n} coins',
+  'common.yes': 'Yes',
+  'common.no': 'No',
+  'common.ok': 'OK',
+  'common.cancel': 'Cancel',
+  'common.back': 'Back',
+  'common.close': 'Close',
+  'common.confirm': 'Confirm',
+  'common.skip': 'Skip',
+  'common.guest': 'Guest',
+  'common.loading': 'Loading…',
+  'common.quota': 'Quota',
+  'common.debt': 'Debt',
+  'common.deposit': 'Deposit',
+  'common.timeLeft': 'Time left',
+  'common.jackpot': 'Jackpot',
+  // ── ui ──
+  'ui.title': 'JackID',
+  'ui.enter': 'CLICK TO ENTER THE PIT',
+  'ui.error.title': 'Cannot start',
+  'ui.error.webgl': 'JackID needs WebGL2. Try a current Chrome, Edge or Firefox with hardware acceleration enabled.',
+  'ui.error.generic': 'Something broke: {msg}',
+  'ui.error.reload': 'Reload',
+  'ui.stub.play': 'PLAY',
+  'ui.stub.lang': 'English / Türkçe',
+  'ui.stub.hint': 'Foundation build: the jackpot menu, the pit and the machines arrive next.',
+  'ui.stub.ingame': 'Empty pit (foundation build)',
+  'ui.stub.notReady': 'Not available yet',
+  'ui.key.Space': 'SPACE',
+  'ui.key.Enter': 'ENTER',
+  'ui.key.NumpadEnter': 'ENTER',
+  'ui.key.Escape': 'ESC',
+  'ui.key.Tab': 'TAB',
+  'ui.key.ShiftLeft': 'SHIFT',
+  'ui.key.ArrowUp': 'UP',
+  'ui.key.ArrowDown': 'DOWN',
+  'ui.key.ArrowLeft': 'LEFT',
+  'ui.key.ArrowRight': 'RIGHT',
+  'ui.key.Equal': '=',
+  'ui.key.Minus': '−',
+  'ui.key.Mouse0': 'LMB',
+  'ui.key.Mouse1': 'MMB',
+  'ui.key.Mouse2': 'RMB',
+  'ui.key.WheelUp': 'WHEEL UP',
+  'ui.key.WheelDown': 'WHEEL DOWN',
+};
+
+export default en;

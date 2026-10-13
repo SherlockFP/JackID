@@ -1,0 +1,6 @@
+{
+  "frame": { "tris": 90000, "drawCalls": 210, "textureBytes": 8388608, "jsMsFrame": 1.2, "jsMsTick": 0.4 },
+  "machines": [
+    { "id": "coinflip", "size": "S", "tris": 2600, "drawCalls": 6, "textures": 3 }
+  ]
+}
