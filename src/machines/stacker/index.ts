@@ -6,14 +6,14 @@
  *    `Motion` at the local press time (`stopCell`), packed into a `stop` event and `emit`ted. `present()` plays it on every
  *    peer. The bar is driven from the same `Motion` on every peer, so the on-screen bar and the outcome always agree;
  *  - ladder round: `beginRound` charges the stake; between rows the round stays open with `busy = false` (release = forfeit,
- *    E at MINOR = TAKE). Every ending goes through `finish()`: settle-before-present, then the show;
- *  - the MINOR decision runs on the sim clock (5 s, default TAKE) in `tick`;
- *  - juice: anticipation (bar sweep, rising chime per row), chunk on stop, falling whistle + smash on overhang, MINOR ding-dong
- *    + amber glow, MAJOR gold fill top-down + capsule + pit-wide bell, LOSE commiseration;
+ *    E on a rung = TAKE). Every ending goes through `finish()`: settle-before-present, then the show;
+ *  - a rung (rows 4, 7, 10) opens the cash-out decision: it runs on the sim clock (5 s, default TAKE) in `tick`;
+ *  - juice: anticipation (bar sweep, rising chime per row), chunk on stop, falling whistle + smash on overhang, rung bell
+ *    (MINOR ding-dong + amber glow on row 10), MAJOR gold fill top-down + capsule + pit-wide bell, LOSE commiseration;
  *  - instanced grid painted through instance colours; `playHeadless` (shared rules) for staff auto-play and the bench Sim.
  *
- * Controls: Space / LMB STOP (first press starts the round) · Q at MINOR = TAKE · R at MINOR = CLIMB · wheel / Z / X stake ·
- * E leave (at MINOR = TAKE, otherwise forfeit). Round life-cycle: `beginRound(stake)` → `emit(bar)` → `stop` … →
+ * Controls: Space / LMB STOP (first press starts the round) · Q on a rung = TAKE · R on a rung = CLIMB · wheel / Z / X stake ·
+ * E leave (on a rung = TAKE, otherwise forfeit). Round life-cycle: `beginRound(stake)` → `emit(bar)` → `stop` … →
  * `emit(end, credit)` → present → release.
  */
 import * as THREE from 'three';
@@ -28,9 +28,9 @@ import { clamp } from '@/core/math';
 import { buildModel, cellPos, setCell, GOLD, AMBER, LIT, type StackerParts } from './model';
 import { STRINGS } from './stacker.strings';
 import {
-  COLS, ROWS, MINOR_ROW, MAJOR_ROW, MIN_STAKE, MAX_STAKE, MINOR_MULT, MAJOR_MULT, DECIDE_S, ROW_GAP_S,
+  COLS, ROWS, MINOR_ROW, MAJOR_ROW, MIN_STAKE, MAX_STAKE, MAJOR_MULT, DECIDE_S, ROW_GAP_S,
   HOOK_EXTRA, HOOK_SAVE, HOOK_MINOR, RTP, Motion, rowWidth, speedOf, resolveStop, stopCell, roundPrize, playHeadless,
-  type Seg, type Outcome,
+  rungMult, takeMult, type Seg, type Outcome,
 } from './rules';
 
 export { playHeadless };
@@ -52,7 +52,7 @@ const WHITE = 0xfff0e0;
 const DIM_PREVIEW = 0x3a1010;
 const DIM_PANEL = '#ff3020';
 
-/** Colour of a placed row: amber on MINOR, gold on MAJOR, red otherwise. */
+/** Colour of a placed row: amber on MINOR (row 10), gold on MAJOR, red otherwise (rungs 4 and 7 included). */
 export function rowColour(row: number): number {
   return row === MAJOR_ROW ? GOLD : row === MINOR_ROW ? AMBER : LIT;
 }
@@ -61,7 +61,7 @@ export function rowColour(row: number): number {
 interface Play {
   seed: number; stake: number; luck: number; extra: number; save: boolean; minorMult: number;
   row: number; top: Seg | null; motion: Motion | null; w: number; v: number; t0: number;
-  phase: 'gap' | 'moving' | 'minor' | 'done'; gapAt: number; decideAt: number;
+  phase: 'gap' | 'moving' | 'rung' | 'done'; gapAt: number; decideAt: number;
 }
 
 export const def: MachineDef = {
@@ -83,7 +83,7 @@ export const def: MachineDef = {
     luck: 'Metronome: each luck point makes the bar 2 % slower per row (cap 20 %).',
     'x.stacker.extraBlock': 'Extra width for the bar on rows 1–5. Base 0 (Brass Knuckles +1).',
     'm.stacker.saveCell': 'Above 0: the first falling overhang cell is caught, once per play. Base 0.',
-    'm.stacker.minorMult': 'Multiplier on the MINOR take (×1.6 base). Base 1.',
+    'm.stacker.minorMult': 'Multiplier on the top ladder take (row 10, ×1.6 base). Base 1.',
     'm.stacker.majorCharm': 'Rarity bonus of the MAJOR charm capsule. Base 0.',
   },
   strings: STRINGS,
@@ -124,10 +124,10 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
     if (local && this.roundOpen) {
-      // E at MINOR = TAKE; any other point of the round is a forfeit.
+      // E on a rung = TAKE; any other point of the round is a forfeit.
       const p = this.play;
-      const gross = p && p.phase === 'minor' ? roundPrize(p.stake * MINOR_MULT * p.minorMult, this.rng.next()) : 0;
-      this.settle({ gross, tags: gross > 0 ? ['stacker:minor'] : [] });
+      const gross = p && p.phase === 'rung' ? roundPrize(p.stake * takeMult(p.row, p.minorMult), this.rng.next()) : 0;
+      this.settle({ gross, tags: gross > 0 ? ['stacker:take'] : [] });
     }
     this.play = null;
     this.bar = null;
@@ -162,13 +162,13 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
     this.showHud();
   }
 
-  /** Space / LMB: start the round when idle, stop the bar while it moves, TAKE at MINOR. */
+  /** Space / LMB: start the round when idle, stop the bar while it moves, TAKE on a rung. */
   private press(): void {
     if (!this.roundOpen) { this.commit(); return; }
     const p = this.play;
     if (!p) return;
     if (p.phase === 'moving') this.stop();
-    else if (p.phase === 'minor') this.take();
+    else if (p.phase === 'rung') this.take();
   }
 
   // ── authority-side logic: runs only on the local occupant ──────────────────────────────────────
@@ -213,8 +213,8 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
     if (!r.ok || !r.seg) { void this.finish('lose'); return; }
     p.top = r.seg;
     if (p.row === MAJOR_ROW) { void this.finish('major'); return; }
-    if (p.row === MINOR_ROW) {
-      p.phase = 'minor';
+    if (rungMult(p.row) > 0) {
+      p.phase = 'rung';
       p.decideAt = this.simT + DECIDE_S;
     } else {
       p.phase = 'gap';
@@ -225,29 +225,29 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
 
   private take(): void {
     const p = this.play;
-    if (!p || p.phase !== 'minor') return;
-    void this.finish('minor');
+    if (!p || p.phase !== 'rung') return;
+    void this.finish('take');
   }
 
   private climb(): void {
     const p = this.play;
-    if (!p || p.phase !== 'minor') return;
+    if (!p || p.phase !== 'rung') return;
     p.phase = 'gap';
     p.gapAt = this.simT + ROW_GAP_S;
     void this.emit({ k: 'decide', climb: true });
     this.showHud();
   }
 
-  /** Every ending: MINOR take, MAJOR, or a lost stack. Settle first (credit), then the show. */
+  /** Every ending: a rung take, MAJOR, or a lost stack. Settle first (credit), then the show. */
   private async finish(outcome: Outcome): Promise<void> {
     const p = this.play;
     if (!p || p.phase === 'done') return;
     p.phase = 'done';
     this.bar = null;
-    const exact = outcome === 'minor' ? p.stake * MINOR_MULT * p.minorMult
+    const exact = outcome === 'take' ? p.stake * takeMult(p.row, p.minorMult)
       : outcome === 'major' ? p.stake * MAJOR_MULT : 0;
     const gross = roundPrize(exact, this.rng.next());
-    const tags = outcome === 'minor' ? ['stacker:minor'] : outcome === 'major' ? ['stacker:major'] : [];
+    const tags = outcome === 'take' ? ['stacker:take'] : outcome === 'major' ? ['stacker:major'] : [];
     const ev: Ev = { k: 'end', row: p.row, outcome, gross, bet: p.stake, capsule: outcome === 'major', tags };
     const credit = (): void => { this.settle({ gross, tags }); this.busy = true; };   // credit FIRST, present after
     try {
@@ -262,13 +262,13 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
     }
   }
 
-  /** Tick (fixed 60 Hz, every peer): row gaps and the MINOR decision window (default TAKE). */
+  /** Tick (fixed 60 Hz, every peer): row gaps and the rung decision window (default TAKE). */
   tick(dt: number): void {
     this.simT += dt;
     const p = this.play;
     if (!p) return;
     if (p.phase === 'gap' && this.simT >= p.gapAt) this.startRow();
-    else if (p.phase === 'minor' && this.simT >= p.decideAt) this.take();
+    else if (p.phase === 'rung' && this.simT >= p.decideAt) this.take();
   }
 
   // ── present: every peer, including the emitter ──────────────────────────────────────────────────
@@ -312,9 +312,9 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
     }
     if (ev.saved) this.ctx.fx.popText(this.model.anchors.label, this.t('saved'), GOLD, { dur: 0.8, rise: 0.2, scale: 1.0 });
     if (ev.ok) this.drawRow(ev.row);
-    if (ev.ok && ev.row === MINOR_ROW) {
-      this.ctx.fx.glow(this.parts.bands.minor, AMBER, 0.6, 1.2);
-      this.sfx('bell', { vol: 0.6 });                        // MINOR ding-dong
+    if (ev.ok && rungMult(ev.row) > 0) {
+      if (ev.row === MINOR_ROW) this.ctx.fx.glow(this.parts.bands.minor, AMBER, 0.6, 1.2);
+      this.sfx('bell', { vol: 0.6 });                        // rung ding-dong (row 10: amber band glows too)
       await this.wait(0.22);
       if (!this.disposed) this.sfx('chime', { vol: 0.6, pitch: -5 });
     } else if (ev.ok && ev.row === MAJOR_ROW) {
@@ -433,8 +433,8 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
     const bet = this.roundOpen && p ? p.stake : this.bet;
     const hints: HudHint[] = [];
     if (!this.busy) {
-      if (p && p.phase === 'minor') {
-        const prize = Math.floor(p.stake * MINOR_MULT * p.minorMult);
+      if (p && p.phase === 'rung') {
+        const prize = Math.floor(p.stake * takeMult(p.row, p.minorMult));
         hints.push({ action: 'collect', label: `${this.t('hintTake')} ${fmtCoins(prize)}` });
         hints.push({ action: 'double', label: this.t('hintClimb') });
       } else {

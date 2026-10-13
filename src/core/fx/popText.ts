@@ -16,6 +16,7 @@ import { clamp } from '../math';
 import { GLSL_BAYER, psxUniforms } from '../renderer/psxMaterial';
 import type { FxSystem } from './layer';
 
+const ATLAS_UPLOAD_MS = 1000 / 15;   // glyph atlas re-upload cap (≤ 15 Hz)
 const CELL = 10;               // 8 px glyph + 1 px outline each side
 const ATLAS = 256;
 const COLS = Math.floor(ATLAS / CELL);
@@ -56,6 +57,16 @@ class GlyphAtlas {
       void document.fonts.load(FONT).then(redo).catch((): void => { /* fallback font stays */ });
     }
   }
+
+  /** Upload the atlas when it changed, at most 15 times per second (glyph draws are bursty on the first pop). */
+  flush(now: number): void {
+    if (!this.dirty || now - this.lastUpload < ATLAS_UPLOAD_MS) return;
+    this.lastUpload = now;
+    this.dirty = false;
+    this.tex.needsUpdate = true;
+  }
+
+  private lastUpload = -Infinity;
 
   get(ch: string): Glyph | null {
     let gl = this.map.get(ch);
@@ -209,7 +220,7 @@ export class PopTextSystem implements FxSystem {
   }
 
   update(dt: number): void {
-    if (this.atlas.dirty) { this.atlas.tex.needsUpdate = true; this.atlas.dirty = false; }
+    this.atlas.flush(performance.now());
     const cam = app?.camera;
     if (cam) cam.getWorldPosition(this.camPos);
 
@@ -251,7 +262,11 @@ export class PopTextSystem implements FxSystem {
     }
     this.geo.instanceCount = n;
     this.mesh.visible = n > 0;
-    if (n > 0) for (const a of this.attrs) a.needsUpdate = true;
+    // upload only the live glyph instances [0, n)
+    for (const a of this.attrs) {
+      a.clearUpdateRanges();
+      if (n > 0) { a.addUpdateRange(0, n * 4); a.needsUpdate = true; }
+    }
   }
 
   /** The world phase is over: let the HUD carry the number into its counter. */

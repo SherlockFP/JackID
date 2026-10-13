@@ -1,9 +1,13 @@
 /**
  * Light pool (WORLD-SYS). TECH_SPEC §5.5 / ART_BIBLE §1.7: the level and the machines register any number of light
  * SOURCES (up to ~128: sconces, marquee glows, CRT spill, a machine's `anchors.light`), but the renderer only ever
- * sees `POOL_SIZE` real `PointLight`s whose count never changes (the count is part of the shader key). Every
+ * sees at most `POOL_SIZE` real `PointLight`s (the visible count is part of the shader key, so programs are cached per count). Every
  * `REASSIGN_S` seconds the pool re-targets the best-scoring sources around the camera; a light that changes its
  * source fades out at the old spot and in at the new one, so nothing pops.
+ *
+ * Scene count: a pool light with zero output after `IDLE_HIDE_S` is hidden, which takes it out of the renderer's light
+ * list (lights are counted only while visible). Idle slots cost nothing in the shader; at most POOL_SIZE + 1 program
+ * variants exist (one per visible count), each compiled once.
  *
  * On top of the pool this file implements the `WorldLights` facade used by cutscenes, events and big-win shows:
  * `setLevel` (persistent dimming / colour grade), `flicker`, `pulse`, `strobe` and `setDread`, all as small envelopes on
@@ -126,7 +130,11 @@ interface PoolSlot {
   hint: Hint | null;      // what the light shows right now
   want: Hint | null;      // what it should show (a change fades out, swaps, fades in)
   fade: number;
+  idle: number;           // seconds at zero output (drives the scene-count removal)
 }
+
+/** A slot at zero output for this long leaves the renderer's light list (grace avoids churn on every reassign). */
+const IDLE_HIDE_S = 0.75;
 
 export interface LightPoolOpts {
   parent: THREE.Object3D;
@@ -167,9 +175,10 @@ export class LightPool {
     for (let i = 0; i < POOL_SIZE; i++) {
       const light = new THREE.PointLight(0xffe2a0, 0, 8, DECAY);
       light.name = `pool:${i}`;
+      light.visible = false;               // idle until a source is assigned
       o.parent.add(light);
       this.lights.push(light);
-      this.slots.push({ light, hint: null, want: null, fade: 0 });
+      this.slots.push({ light, hint: null, want: null, fade: 0, idle: 0 });
     }
     this.api = this.makeApi();
   }
@@ -286,7 +295,14 @@ export class LightPool {
         }
       } else if (s.hint) s.fade = damp(s.fade, 1, FADE_RATE, dt);
       const h = s.hint;
-      if (!h || h.removed || s.fade < 0.004) { s.light.intensity = 0; continue; }
+      if (!h || h.removed || s.fade < 0.004) {
+        s.light.intensity = 0;
+        s.idle += dt;
+        if (s.idle > IDLE_HIDE_S) s.light.visible = false;   // out of the light list (shader count)
+        continue;
+      }
+      s.idle = 0;
+      s.light.visible = true;
       const k = h.base * LIGHT_GAIN * h.level * gl * h.fxMul * h.value * dreadMul * s.fade;
       s.light.intensity = Math.max(0, k);
       const c = this.tmp.copy(h.color);

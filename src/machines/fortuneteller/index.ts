@@ -17,7 +17,7 @@ import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/type
 import { juiceTier } from '@/machines/_base/tiers';
 import { breathe } from '@/machines/_base/juice';
 import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { PanelHandle } from '@/core/ui/types';
+import { Placard3D, INK, INK_SOFT, button, paginate, put, rowsIn, rule, wrapPx5 } from '@/machines/_base/placard3d';
 import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { Kit } from '@/kit/types';
 import { fmtCoins, type I18nVars } from '@/core/i18n';
@@ -47,6 +47,11 @@ type Phase = 'idle' | 'pick' | 'reveal' | 'defy' | 'pick2' | 'apply';
 
 const KIND_TONE: Record<OmenKind, string> = { blessing: '#ffc83d', curse: '#b56cff', neutral: '#c8c8c8', mirror: '#bfe6f2' };
 const SLOT_KEYS = ['n1', 'n2', 'n3'] as const;
+// almanac book geometry (canvas texels / metres)
+const ALMANAC_PX: [number, number] = [288, 256];
+const ALMANAC_W = 0.46, ALMANAC_H = 0.41;
+const ALMANAC_TEXT_W = ALMANAC_PX[0] - 28;
+const ALMANAC_BODY_H = ALMANAC_PX[1] - 30 - 36;
 /** Cards stand on the shelf: half the card height lifts the plane's centre off the shelf top. */
 const CARD_H_HALF = CARD_H / 2;
 
@@ -86,7 +91,8 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
   /** Bumped whenever the Defy window closes early, so a stale timer does nothing. */
   private token = 0;
   private faceUp: boolean[] = [false, false, false];
-  private almanac: PanelHandle | null = null;
+  /** The omen almanac (3D book in front of the eye), or null when closed. */
+  private almanac: Placard3D | null = null;
   /** Seat HUD overlay (readability standard, see _base/seatHud.ts). */
   private seatHud?: SeatHud;
 
@@ -138,7 +144,7 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
     this.phase = 'idle';
     this.dealt = []; this.undealt = []; this.finalSlot = -1; this.voided = -1; this.swapped = false;
     this.token++;
-    this.almanac?.close(); this.almanac = null;
+    this.almanac?.hide(); this.almanac = null;
     this.refresh();
   }
 
@@ -613,33 +619,53 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
       this.tx('tip3', { defy: this.k('n4'), help: this.k('help') }),
     ];
   }
-  /** Omen almanac: all 22 cards with their coin multiplier and effect (EN/TR). Toggled with H. */
+  /**
+   * Omen almanac: all 22 cards with their coin multiplier and effect (EN/TR), a 3D book held up in front of the eye.
+   * Toggled with H; Esc or a click on CLOSE shuts it, arrows / A D or a click on the page turn the pages.
+   */
   private toggleAlmanac(): void {
-    if (this.almanac) { this.almanac.close(); this.almanac = null; return; }
-    this.almanac = this.ctx.ui.panel('fortuneteller-almanac', (el) => {
-      const h = document.createElement('h3');
-      h.textContent = this.t('almanacTitle');
-      el.appendChild(h);
-      const ul = document.createElement('ul');
-      for (const o of OMENS) {
-        const li = document.createElement('li');
-        li.textContent = `${roman(o.id)}  ${this.t(`omen.${o.id}.name`)}  ×${o.coin}  ${this.t(`omen.${o.id}.desc`)}`;
-        li.style.color = KIND_TONE[o.kind];
-        ul.appendChild(li);
-      }
-      el.appendChild(ul);
-      const close = document.createElement('button');
-      close.textContent = this.t('almanacClose');
-      close.onclick = () => this.toggleAlmanac();
-      el.appendChild(close);
-      return () => { this.almanac = null; };
+    if (this.almanac) { this.almanac.hide(); this.almanac = null; return; }
+    const rows: Array<{ text: string; color: string }> = [];
+    for (const o of OMENS) {
+      rows.push({ text: `${roman(o.id)}  ${this.t(`omen.${o.id}.name`)}  x${o.coin}`, color: KIND_TONE[o.kind] });
+      for (const r of wrapPx5(this.t(`omen.${o.id}.desc`), ALMANAC_TEXT_W)) rows.push({ text: r, color: INK });
+    }
+    const pages = paginate(rows, rowsIn(ALMANAC_BODY_H));
+    this.almanac = new Placard3D({
+      name: 'fortuneteller-almanac',
+      w: ALMANAC_W, h: ALMANAC_H, px: ALMANAC_PX,
+      pages: () => pages.length,
+      bg: '#e9dfbf',
+      frame: { color: 0x5a2a2a, pad: 0.014, depth: 0.01 },
+      rest: [0, -0.03, -0.5],
+      paint: (c) => {
+        const { g, w, h } = c;
+        put(g, this.t('almanacTitle'), w / 2, 8, INK, 'center');
+        rule(g, 14, 22, w - 28);
+        pages[c.page].forEach((r, i) => put(g, r.text, 14, 30 + i * 10, r.color));
+        if (pages.length > 1) {
+          button(c, 14, h - 24, 22, 13, '<', 'prev');
+          button(c, w - 36, h - 24, 22, 13, '>', 'next');
+          put(g, `${c.page + 1}/${pages.length}`, w / 2, h - 21, INK_SOFT, 'center');
+        }
+        button(c, w / 2 - 34, h - 24, 68, 13, this.t('almanacClose'), 'close');
+        c.region(14, 30, w - 28, ALMANAC_BODY_H, 'next');          // a click on the text turns the page
+      },
+      act: (a) => {
+        if (a === 'prev') this.almanac?.turn(-1);
+        else if (a === 'next') this.almanac?.turn(1);
+        else if (a === 'close') this.toggleAlmanac();
+      },
+      keys: { ArrowLeft: 'prev', KeyA: 'prev', ArrowRight: 'next', KeyD: 'next', Escape: 'close' },
+      onGone: () => { this.almanac = null; },
     });
+    if (!this.almanac.show()) { this.almanac.dispose(); this.almanac = null; }
   }
 
   override dispose(): void {
     this.seatHud?.dispose();
     this.token++;
-    this.almanac?.close(); this.almanac = null;
+    this.almanac?.dispose(); this.almanac = null;
     super.dispose();
   }
 

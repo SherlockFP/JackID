@@ -4,7 +4,8 @@
  * Board: 7 columns × 15 rows (row 1 at the bottom). Row r's bar width = min(stack top width, cap(r)), cap = 3 (rows 1–5),
  * 2 (rows 6–10), 1 (rows 11–15), +extraBlock on rows 1–5. The bar bounces across the board; the occupant's press time
  * picks the stop cell from the deterministic `Motion` (seeded per play, per row). Overhang falls; no overlap = lose.
- * Row 10 complete → MINOR (TAKE ×2.5 or CLIMB). Row 15 complete → MAJOR (×25 + a charm capsule).
+ * Consolation ladder: clearing row 4, 7 or 10 opens a cash-out (TAKE ×0.5 / ×1 / ×1.6 of the stake) or CLIMB on.
+ * Row 15 complete → MAJOR (×25 + a charm capsule).
  *
  * The live machine and `playHeadless` share `Motion`, `settleRow` and the payout maths, so the simulated RTP IS the live
  * RTP for the same press-timing model. Payouts are stochastically rounded (floor(exact + u)): 1-coin stakes stay unbiased.
@@ -20,34 +21,56 @@ export const MIN_STAKE = 1;
 export const MAX_STAKE = 25;
 export const MINOR_MULT = 1.6;
 export const MAJOR_MULT = 25;
+/** Consolation ladder: a cash-out opens after clearing these rows, paying `mult` × stake (× the take hook). */
+export const RUNGS: ReadonlyArray<{ readonly row: number; readonly mult: number }> = [
+  { row: 4, mult: 0.5 }, { row: 7, mult: 1 }, { row: MINOR_ROW, mult: MINOR_MULT },
+];
+/** Cash-out multiplier for a row (0 when the row is not a rung). */
+export function rungMult(row: number): number {
+  return RUNGS.find((r) => r.row === row)?.mult ?? 0;
+}
+/** Take multiplier for a rung: the `minorMult` hook only scales the top rung (row 10, the MINOR take). */
+export function takeMult(row: number, minorMult: number): number {
+  return rungMult(row) * (row === MINOR_ROW ? minorMult : 1);
+}
 /**
- * Speed table: row r moves at (SPEED0 + SPEED_STEP·(r−1)) cells/s before luck. The only RTP knob. Tuned in the scratchpad
- * sim so the average-player model (AVG_SIGMA, AVG_TAKE) gives ≈ 70 %. The brief's 5.0 start was ≈ 9 % for that model.
- * Balance note: with MINOR 2.5× a fine-aim expert (σ 0.03) TAKEs reliably, so the 110 % expert ceiling is not met by
- * speed and slip alone (see the sim notes in the balance report).
+ * Speed table: rows 1–10 move at (SPEED0 + SPEED_STEP·(r−1)) cells/s, rows 11–15 at TOP_SPEED0 + TOP_SPEED_STEP·(r−11), both
+ * before luck. Slow rows keep the average's timing error (σ × speed, in cells) small, so the ladder is mostly the rungs; the
+ * fast top rows make MAJOR a fine-aim prize. Tuned in the scratchpad sim (AVG_SIGMA/AVG_TAKE in the 60–75 % band, the expert
+ * σ 0.03 policies ≤ 115 %; see `playOnce`).
  */
-export const SPEED0 = 1.8;
-export const SPEED_STEP = 0.6;
+export const SPEED0 = 1.0;
+export const SPEED_STEP = 0.2;
 export const LUCK_STEP = 0.02;          // −2 % speed per luck point …
 export const LUCK_CAP = 0.2;            // … capped at −20 %
 export const JITTER_ROW = 8;            // from this row each traverse is faster/slower and dwells at the edge
 export const JITTER = 0.2;              // traverse speed × (1 ± JITTER)
 export const SLIP_ROW = 6;              // from this row a seeded slip may jolt the bar (skill-independent width loss)
-export const SLIP_P = 0.6;              // chance per row that the bar slips by one cell (width-loss randomness)
-export const HIGH_RAMP = 2;             // speed × on rows above MINOR_ROW (expert ceiling: fast top rows punish fine aim less than luck)
+export const SLIP_P = 0.6;              // chance per row (rows 11–15) that the bar slips by one cell (width-loss randomness)
+export const SLIP_P_MID = 0.2;          // the same chance on rows 6–10 (reduced: the middle ladder is about the rungs, not luck)
+export const TOP_SPEED0 = 12;           // rows 11–15 speed: TOP_SPEED0 + TOP_SPEED_STEP·(r−11) cells/s (fast top rows: fine aim decides MAJOR)
+export const TOP_SPEED_STEP = 2;
 export const SLIP_T = 1.2;              // slip lands at a seeded time in [0, SLIP_T) s after the row starts
 export const DWELL_MAX = 0.12;          // edge dwell 0–120 ms
-export const COLLAPSE_P = 0.03;         // skill-independent per-row collapse chance (rows 1..MINOR_ROW), was 0.09
-export const DECIDE_S = 5;             // MINOR decision window (default TAKE)
+/** Skill-independent collapse chance per row, by band: low on rows 1–7, the wobble on rows 8–10, and the top rows 11–15. */
+export const COLLAPSE_P = 0.002;
+export const COLLAPSE_MID_P = 0.06;
+export const COLLAPSE_TOP_P = 0.14;
+export const DECIDE_S = 5;             // rung decision window (default TAKE)
 export const ROW_GAP_S = 0.45;          // fall + beat between rows
 
 export const HOOK_EXTRA = 'x.stacker.extraBlock' as ModHook;   // +1 width rows 1–5 (Brass Knuckles)
 export const HOOK_SAVE = 'm.stacker.saveCell' as ModHook;      // > 0: the first falling overhang cell is caught, once
-export const HOOK_MINOR = 'm.stacker.minorMult' as ModHook;    // × on the MINOR take (base 1)
+export const HOOK_MINOR = 'm.stacker.minorMult' as ModHook;    // × on the row-10 take (base 1)
 export const HOOK_CHARM = 'm.stacker.majorCharm' as ModHook;   // capsule rarity +N (base 0)
 
 /** Target RTP for an average player (informational; the sim checks the average-player model, see scratchpad). */
-export const RTP = 0.70;
+export const RTP = 0.675;
+
+/** Slip chance for `row`: reduced on rows 6–10 (SLIP_P_MID), full on rows 11–15 (SLIP_P). */
+export function slipChance(row: number): number {
+  return row <= MINOR_ROW ? SLIP_P_MID : SLIP_P;
+}
 
 /** Half-open column span [a, b) of the stack top. */
 export interface Seg { a: number; b: number }
@@ -80,7 +103,8 @@ export function rowWidth(row: number, topW: number | null, extra: number): numbe
 /** Bar speed in cells/s for `row` at `luck` points. */
 export function speedOf(row: number, luck: number): number {
   const cut = Math.min(LUCK_CAP, Math.max(0, luck) * LUCK_STEP);
-  return (SPEED0 + SPEED_STEP * (row - 1)) * (row > MINOR_ROW ? HIGH_RAMP : 1) * (1 - cut);
+  const base = row > MINOR_ROW ? TOP_SPEED0 + TOP_SPEED_STEP * (row - MINOR_ROW - 1) : SPEED0 + SPEED_STEP * (row - 1);
+  return base * (1 - cut);
 }
 
 interface Leg { t0: number; t1: number; end: number; from: number; to: number }
@@ -111,7 +135,7 @@ export class Motion {
     this.jit = row >= JITTER_ROW;
     this.start = row % 2 === 1 ? 0 : this.span;
     this.edge = this.start;
-    if (row >= SLIP_ROW && this.rng.next() < SLIP_P) {
+    if (row >= SLIP_ROW && this.rng.next() < slipChance(row)) {
       this.slipAt = this.rng.next() * SLIP_T;
       this.slipBy = this.rng.next() < 0.5 ? -1 : 1;
     }
@@ -187,11 +211,15 @@ export function settleRow(top: Seg | null, cs: number, w: number, saveAvail: boo
 }
 
 /**
- * Skill-independent collapse: on rows 1..MINOR_ROW the stack may give way (a loss) with COLLAPSE_P, whatever the aim.
+ * Skill-independent collapse: the stack may give way (a loss) on a row, whatever the aim, with `collapseChance(row)`.
  * A pure function of (seed, row), so the live machine (which holds the seed, not the sim rng) checks the same roll.
  */
+export function collapseChance(row: number): number {
+  return row <= 7 ? COLLAPSE_P : row <= MINOR_ROW ? COLLAPSE_MID_P : COLLAPSE_TOP_P;
+}
+
 export function collapses(seed: number, row: number): boolean {
-  return row <= MINOR_ROW && createRng(hashSeed(seed, row, 'collapse')).next() < COLLAPSE_P;
+  return createRng(hashSeed(seed, row, 'collapse')).next() < collapseChance(row);
 }
 
 /**
@@ -212,11 +240,11 @@ export function roundPrize(exact: number, u: number): number {
   return exact > 0 ? Math.floor(exact + u) : 0;
 }
 
-export type Outcome = 'lose' | 'minor' | 'major' | 'forfeit';
+export type Outcome = 'lose' | 'take' | 'major' | 'forfeit';
 
 /** Average-player timing model for the headless sim: press error σ (s) around the first pass over the target column. */
 export const AVG_SIGMA = 0.09;
-/** Average player TAKEs the MINOR this fraction of the time (the rest CLIMB). */
+/** Average player TAKEs a rung this fraction of the time (the rest CLIMB). */
 export const AVG_TAKE = 0.5;
 
 export interface PlayOpts {
@@ -225,14 +253,15 @@ export interface PlayOpts {
   save: boolean;
   minorMult: number;
   sigma: number;
-  takeP: number;
+  /** TAKE probability at a rung: a number for every rung, or a per-row policy (sim tuning). */
+  takeP: number | ((row: number) => number);
   /** Speed table override (sim tuning only); live and headless use `speedOf`. */
   speed?: (row: number, luck: number) => number;
 }
 
 export interface PlayResult { gross: number; outcome: Outcome; row: number; capsule: boolean; tags: string[] }
 
-/** One full play under the timing model above. Pure. Draw order: seed, per row (σ noise), MINOR choice, final u. */
+/** One full play under the timing model above. Pure. Draw order: seed, per row (σ noise), rung choice, final u. */
 export function playOnce(rng: Rng, stake: number, o: PlayOpts): PlayResult {
   const seed = rng.int(1, 0x7fffffff);
   let top: Seg | null = null;
@@ -250,14 +279,18 @@ export function playOnce(rng: Rng, stake: number, o: PlayOpts): PlayResult {
     if (!r.ok) return finish(rng, stake, 0, 'lose', row, false);
     top = r.seg;
     if (row === MAJOR_ROW) return finish(rng, stake, MAJOR_MULT, 'major', row, true);
-    if (row === MINOR_ROW && rng.next() < o.takeP) return finish(rng, stake, MINOR_MULT * o.minorMult, 'minor', row, false);
+    if (rungMult(row) > 0 && rng.next() < takeOf(o.takeP, row)) return finish(rng, stake, takeMult(row, o.minorMult), 'take', row, false);
   }
   return finish(rng, stake, 0, 'lose', ROWS, false);
 }
 
+function takeOf(p: PlayOpts['takeP'], row: number): number {
+  return typeof p === 'number' ? p : p(row);
+}
+
 function finish(rng: Rng, stake: number, mult: number, outcome: Outcome, row: number, capsule: boolean): PlayResult {
   const gross = roundPrize(stake * mult, rng.next());
-  const tags = outcome === 'minor' ? ['stacker:minor'] : outcome === 'major' ? ['stacker:major'] : [];
+  const tags = outcome === 'take' ? ['stacker:take'] : outcome === 'major' ? ['stacker:major'] : [];
   return { gross, outcome, row, capsule, tags };
 }
 

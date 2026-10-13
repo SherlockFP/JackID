@@ -227,7 +227,12 @@ class Emitter {
     this.n = w;
     this.geo.instanceCount = w;
     this.mesh.visible = w > 0;
-    for (const a of this.attrs) a.needsUpdate = true;
+    // only the live prefix is re-written by the steps above: upload [0, w) instead of the whole capacity
+    for (const a of this.attrs) {
+      a.clearUpdateRanges();
+      if (w > 0) a.addUpdateRange(0, w * 4);
+      a.needsUpdate = true;
+    }
   }
 
   /** Write the GPU record for slot `w`. */

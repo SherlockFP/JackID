@@ -198,12 +198,10 @@ export function buildCabinet(): Cabinet {
   const motes = new THREE.Points(moteGeo, new THREE.PointsMaterial({ color: 0xffd98a, size: 0.035, transparent: true, opacity: 0.6, depthWrite: false }));
   root.add(motes);
 
-  // Light inside the cabinet: warm key over the die, red bounce from below.
+  // Light inside the cabinet: one warm key over the die (the red under-bounce light is gone: ≤ 1 light per menu cabinet).
   const key = new THREE.PointLight(0xffc06a, 7, 9, 1.4);
   key.position.set(0, 0.6, 2.4);
-  const bounce = new THREE.PointLight(0xff3050, 2.4, 7, 1.6);
-  bounce.position.set(-1.5, -1.3, 1.6);
-  root.add(key, bounce);
+  root.add(key);
 
   let t = 0;
   let lever = 0;
@@ -215,7 +213,7 @@ export function buildCabinet(): Cabinet {
     reels,
     glass,
     halo,
-    lightsOn: [key, bounce],
+    lightsOn: [key],
     context,
     info,
     infoMesh,
@@ -230,12 +228,15 @@ export function buildCabinet(): Cabinet {
         const v = 0.5 + 0.5 * Math.sin(t * 7 * spin - b.i * 0.42);
         b.mat.color.setRGB(0.35 + 0.65 * v, 0.2 + 0.45 * v, 0.05 + 0.1 * v);
       }
-      // marquee flicker (repaint ~4 Hz)
+      // marquee flicker (sampled ~4 Hz; repaint + texture upload only when the flicker state actually changes)
       marqueeT += dt;
       if (marqueeT > 0.25) {
         marqueeT = 0;
-        flick = Math.sin(t * 37.1) + Math.sin(t * 11.3) > -0.9 ? 1 : 0.2;   // deterministic flicker (no Math.random)
-        marquee.paint((ctx, w, h) => paintMarquee(ctx, w, h, 'JACKID', flick));
+        const next = Math.sin(t * 37.1) + Math.sin(t * 11.3) > -0.9 ? 1 : 0.2;   // deterministic flicker (no Math.random)
+        if (next !== flick) {
+          flick = next;
+          marquee.paint((ctx, w, h) => paintMarquee(ctx, w, h, 'JACKID', flick));
+        }
       }
       haloMat.opacity = 0.42 + 0.14 * Math.sin(t * 2.1);
       motes.rotation.y = t * 0.02;

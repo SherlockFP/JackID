@@ -1,40 +1,31 @@
 /**
- * Server browser (GDD §9.6): the MULTIPLAYER face of the die menu opens this lit DOM panel. Columns: lock, room, host, mode,
- * players, ping, state, net. Keys: W/S select · Enter join · R refresh · H host · J join by code · F filter · Esc back.
- * Joining succeeds → `app.go('lobby', { role: 'client' })`; hosting → `openHostPanel` → `app.go('lobby', { role: 'host' })`.
+ * Server browser (GDD §9.6): the MULTIPLAYER face of the die menu. An old CRT monitor rises in front of the dice cabinet
+ * (see mp/stage.ts) and shows the room list in green phosphor. Keys: W/S or arrows select · Enter join · R refresh · H host ·
+ * J join by code · F filter · Esc back. Mouse: click a row (double-click joins), click the tabs and buttons, or press the keys
+ * on the 3D keyboard. Joining succeeds → `enterLobby('client')`; hosting → the host screen → `enterLobby('host')`.
  */
 import { app } from '@/core/app';
 import { t } from '@/core/i18n';
-import { button, focusFirst, frame, h, modalPanel, tabs, textField } from '@/core/ui/widgets';
 import { addRoomSource, listRooms, targetOf, type ListedRoom } from './mp/directory';
 import { joinByCode, joinTarget, type JoinResult } from './mp/join';
 import { openHostPanel } from './hostPanel';
 import { enterLobby } from './mp/nav';
-import './mp/mp.css';
+import { stage, hookStageOverlay, type Screen, type StageKey } from './mp/stage';
+import { HitMap, PHOS, PIX, box, button, say, sayFit, wrapLines } from './mp/crtArt';
 
-export const BROWSER_PANEL = 'mp-browser';
-const PASS_PANEL = 'mp-pass';
-const CODE_PANEL = 'mp-code';
 const REFRESH_MS = 5000;
+const DOUBLE_MS = 380;
+const ROW_H = 20;
+const ROW_Y = 104;
+const ROWS = 9;
+const CODE_MAX = 8;
+const PASS_MAX = 32;
 
 type Tab = 'lobby' | 'tab';
 type Filter = 'all' | 'coop' | 'versus' | 'free' | 'space';
+type Mode = 'list' | 'code' | 'pass';
 const FILTERS: readonly Filter[] = ['all', 'coop', 'versus', 'free', 'space'];
 const MODE_OF: Record<Filter, string | null> = { all: null, coop: 'coop', versus: 'versus', free: 'free', space: null };
-
-/** Open the server browser over the menu (the MULTIPLAYER face calls this). */
-export function openServerBrowser(): void {
-  // The LOBBY source (lobby server rooms). Re-registering replaces the previous entry, so this is safe to repeat.
-  addRoomSource({ net: 'LOBBY', list: () => app.net.discoverServer() });
-  app.ui.panel(BROWSER_PANEL, (el) => buildBrowser(el));
-}
-
-function pingClass(ms: number | undefined): string {
-  if (ms === undefined) return 'mp-dim';
-  if (ms < 60) return 'mp-ping-good';
-  if (ms < 150) return 'mp-ping-mid';
-  return 'mp-ping-bad';
-}
 
 /** Visible list: filter, then full rooms last, then ping ascending (unknown ping last). */
 export function arrangeRooms(rooms: readonly ListedRoom[], tab: Tab, filter: Filter): ListedRoom[] {
@@ -51,189 +42,280 @@ export function arrangeRooms(rooms: readonly ListedRoom[], tab: Tab, filter: Fil
     });
 }
 
-function buildBrowser(el: HTMLElement): () => void {
-  modalPanel(el, { escClose: true, dim: true });
-  el.dataset.panel = BROWSER_PANEL;
-  el.classList.add('mp-wide');
-  const f = frame(el, { title: t('mp.browser.title'), variant: 'cyan' });
+const roomKey = (r: ListedRoom): string => `${r.net}:${r.id}`;
 
-  let tab: Tab = 'lobby';
-  let filter: Filter = 'all';
-  let rooms: ListedRoom[] = [];
-  let shown: ListedRoom[] = [];
-  let selected: string | null = null;
-  let busy = false;
-  let disposed = false;
+function pingColor(ms: number | undefined): string {
+  if (ms === undefined) return PHOS.dim;
+  if (ms < 60) return PHOS.fg;
+  if (ms < 150) return PHOS.warn;
+  return PHOS.bad;
+}
 
-  const tabBar = tabs(f.body, {
-    tabs: [{ id: 'lobby', label: t('mp.browser.tab.lobby') }, { id: 'tab', label: t('mp.browser.tab.tab') }],
-    active: 'lobby',
-    onChange: (id) => { tab = id as Tab; selected = null; render(); },
-  });
-  void tabBar;
+class BrowserScreen implements Screen {
+  private tab: Tab = 'lobby';
+  private filter: Filter = 'all';
+  private rooms: ListedRoom[] = [];
+  private shown: ListedRoom[] = [];
+  private selected: string | null = null;
+  private scroll = 0;
+  private busy = false;
+  private err = '';
+  private mode: Mode = 'list';
+  private buf = '';
+  private passRoom: ListedRoom | null = null;
+  private active = false;
+  private timer = 0;
+  private scanning = false;
+  private last = { id: '', at: 0 };
+  private readonly hits = new HitMap();
 
-  const wrap = h('div', 'mp-scroll', f.body);
-  const table = h('table', 'mp-table', wrap);
-  const thead = h('thead', '', table);
-  const headRow = h('tr', '', thead);
-  const cols: Array<[string, string]> = [
-    ['', ''], ['room', 'browser.col.room'], ['host', 'browser.col.host'], ['mode', 'browser.col.mode'],
-    ['players', 'browser.col.players'], ['ping', 'browser.col.ping'], ['state', 'browser.col.state'], ['net', 'browser.col.net'],
-  ];
-  for (const [id, key] of cols) {
-    const th = h('th', id === 'host' || id === 'mode' || id === 'net' ? 'mp-hide-sm' : '', headRow, key ? t(`mp.${key}`) : '');
-    th.scope = 'col';
-  }
-  const tbody = h('tbody', '', table);
-
-  const empty = h('div', 'mp-hint', f.body);
-  const err = h('div', 'mp-err', f.body);
-
-  const bar = h('div', 'mp-row', f.body);
-  const filterBtn = button(bar, { label: '', onClick: () => cycleFilter() });
-  button(bar, { label: t('mp.browser.refresh'), onClick: () => { void refresh(); } });
-  button(bar, { label: t('mp.browser.joinCode'), onClick: () => openCodePrompt() });
-  button(bar, { label: t('mp.browser.host'), kind: 'primary', onClick: () => openHostFromBrowser() });
-  button(bar, { label: t('mp.browser.back'), kind: 'ghost', onClick: () => { app.ui.closePanel(BROWSER_PANEL); } });
-  h('p', 'mp-hint', f.body, t('mp.browser.hint'));
-
-  const setErr = (s: string): void => { err.textContent = s; };
-
-  function render(): void {
-    shown = arrangeRooms(rooms, tab, filter);
-    filterBtn.setLabel(t('mp.browser.filter', { f: t(`mp.browser.filter.${filter}`) }));
-    tbody.replaceChildren();
-    for (const r of shown) {
-      const full = r.players >= r.max;
-      const tr = h('tr', `${r.id === selected ? 'mp-sel' : ''} ${full ? 'mp-dim' : ''}`.trim(), tbody);
-      tr.dataset.id = roomKey(r);
-      h('td', 'mp-lock', tr, r.locked ? t('mp.browser.lock') : '');
-      h('td', '', tr, r.name);
-      h('td', 'mp-hide-sm', tr, r.host);
-      h('td', 'mp-hide-sm', tr, t(`mp.mode.${r.mode}`));
-      h('td', '', tr, `${r.players}/${r.max}`);
-      h('td', pingClass(r.ping), tr, r.ping === undefined ? '--' : `${Math.round(r.ping)}`);
-      h('td', '', tr, full ? t('mp.browser.full') : r.started ? t('mp.browser.inProgress') : t('mp.state.lobby'));
-      h('td', 'mp-tag mp-tag-net mp-hide-sm', tr, t(`mp.browser.net.${r.net}`));
-      tr.addEventListener('click', () => { selected = roomKey(r); render(); });
-      tr.addEventListener('dblclick', () => { selected = roomKey(r); void joinRow(r); });
-    }
-    empty.textContent = shown.length === 0 ? t('mp.browser.empty') : '';
-    focusSelected();
+  open(): void {
+    if (this.active) return;
+    this.active = true;
+    this.mode = 'list';
+    this.buf = '';
+    void this.refresh();
+    this.timer = window.setInterval(() => { void this.refresh(); }, REFRESH_MS);
   }
 
-  const roomKey = (r: ListedRoom): string => `${r.net}:${r.id}`;
-  const selectedRoom = (): ListedRoom | null => shown.find((r) => roomKey(r) === selected) ?? null;
-
-  function focusSelected(): void {
-    const row = tbody.querySelector<HTMLElement>('tr.mp-sel');
-    row?.scrollIntoView({ block: 'nearest' });
+  close(): void {
+    this.active = false;
+    window.clearInterval(this.timer);
   }
 
-  async function refresh(): Promise<void> {
-    rooms = await listRooms();
-    if (disposed) return;
-    if (selected && !rooms.some((r) => roomKey(r) === selected)) selected = null;
-    render();
+  private arrange(): void {
+    this.shown = arrangeRooms(this.rooms, this.tab, this.filter);
+    if (this.selected && !this.shown.some((r) => roomKey(r) === this.selected)) this.selected = null;
   }
 
-  function cycleFilter(): void {
-    filter = FILTERS[(FILTERS.indexOf(filter) + 1) % FILTERS.length]!;
-    render();
+  private async refresh(): Promise<void> {
+    this.scanning = true;
+    const rooms = await listRooms();
+    this.scanning = false;
+    if (!this.active) return;
+    this.rooms = rooms;
+    this.arrange();
   }
 
-  function moveSelection(step: number): void {
-    if (shown.length === 0) return;
-    const i = shown.findIndex((r) => roomKey(r) === selected);
-    const next = (i < 0 ? (step > 0 ? 0 : shown.length - 1) : (i + step + shown.length) % shown.length);
-    selected = roomKey(shown[next]!);
-    render();
+  private cycleFilter(): void {
+    this.filter = FILTERS[(FILTERS.indexOf(this.filter) + 1) % FILTERS.length]!;
+    this.arrange();
   }
 
-  async function joinRow(r: ListedRoom): Promise<void> {
-    if (busy) return;
-    if (r.players >= r.max) { setErr(t('mp.browser.full')); return; }
+  private moveSelection(step: number): void {
+    if (this.shown.length === 0) return;
+    const i = this.shown.findIndex((r) => roomKey(r) === this.selected);
+    const next = i < 0 ? (step > 0 ? 0 : this.shown.length - 1) : (i + step + this.shown.length) % this.shown.length;
+    this.selected = roomKey(this.shown[next]!);
+    this.keepVisible();
+  }
+
+  private keepVisible(): void {
+    const i = this.shown.findIndex((r) => roomKey(r) === this.selected);
+    if (i < 0) return;
+    if (i < this.scroll) this.scroll = i;
+    if (i >= this.scroll + ROWS) this.scroll = i - ROWS + 1;
+  }
+
+  private selectedRoom(): ListedRoom | null {
+    return this.shown.find((r) => roomKey(r) === this.selected) ?? null;
+  }
+
+  private async joinRow(r: ListedRoom): Promise<void> {
+    if (this.busy) return;
+    if (r.players >= r.max) { this.err = t('mp.browser.full'); return; }
     if (r.locked) {
-      openPasswordPrompt(r.name, (pw) => joinTarget(targetOf(r), pw));
+      this.passRoom = r;
+      this.buf = '';
+      this.err = '';
+      this.mode = 'pass';
       return;
     }
-    await runJoin(() => joinTarget(targetOf(r)));
+    await this.runJoin(() => joinTarget(targetOf(r)));
   }
 
-  async function runJoin(attempt: () => Promise<JoinResult>): Promise<JoinResult> {
-    busy = true;
-    setErr('');
+  private async runJoin(attempt: () => Promise<JoinResult>): Promise<void> {
+    this.busy = true;
+    this.err = '';
     const res = await attempt();
-    busy = false;
-    if (res.ok === false) setErr(res.reason);
+    this.busy = false;
+    if (res.ok === false) this.err = res.reason;
     else enterLobby('client');
-    return res;
   }
 
-  function openHostFromBrowser(): void {
-    openHostPanel();
+  private openCode(): void {
+    this.buf = '';
+    this.err = '';
+    this.mode = 'code';
   }
 
-  function openCodePrompt(): void {
-    app.ui.panel(CODE_PANEL, (c) => {
-      modalPanel(c, { escClose: true, dim: true });
-      const cf = frame(c, { title: t('mp.code.title'), variant: 'cyan' });
-      const field = textField(cf.body, { placeholder: t('mp.code.field'), maxLength: 8, onSubmit: () => { void go(); } });
-      h('p', 'mp-hint', cf.body, t('mp.code.hint'));
-      const e = h('div', 'mp-err', cf.body);
-      const go = async (): Promise<void> => {
-        const res = await joinByCode(field.value);
-        if (res.ok === false) e.textContent = res.reason;
-        else enterLobby('client');
-      };
-      button(cf.body, { label: t('mp.code.join'), kind: 'primary', onClick: () => { void go(); } });
-      focusFirst(c);
-      field.focus();
-    });
+  private submitPrompt(): void {
+    if (this.mode === 'code') {
+      void this.runJoin(() => joinByCode(this.buf));
+    } else if (this.mode === 'pass' && this.passRoom) {
+      const room = this.passRoom;
+      void this.runJoin(() => joinTarget(targetOf(room), this.buf));
+    }
   }
 
-  function openPasswordPrompt(name: string, submit: (pw: string) => Promise<JoinResult>): void {
-    app.ui.panel(PASS_PANEL, (p) => {
-      modalPanel(p, { escClose: true, dim: true });
-      const pf = frame(p, { title: t('mp.pass.title'), variant: 'brass' });
-      h('p', 'mp-hint', pf.body, t('mp.pass.body', { name }));
-      const field = textField(pf.body, { password: true, maxLength: 32, placeholder: t('mp.pass.field'), onSubmit: () => { void go(); } });
-      const e = h('div', 'mp-err', pf.body);
-      const go = async (): Promise<void> => {
-        const res = await submit(field.value);
-        if (res.ok === false) e.textContent = res.reason;
-        else enterLobby('client');
-      };
-      button(pf.body, { label: t('mp.pass.join'), kind: 'primary', onClick: () => { void go(); } });
-      focusFirst(p);
-      field.focus();
-    });
+  private host(): void {
+    openHostPanel(() => showServerBrowser());
   }
 
-  const onKey = (e: KeyboardEvent): void => {
-    if (e.target instanceof HTMLInputElement) return;
+  private back(): void {
+    stage.close();
+  }
+
+  // ── Screen ────────────────────────────────────────────────────────────────────────────────────
+
+  key(e: StageKey): void {
+    if (this.mode !== 'list') {
+      if (e.code === 'Escape') { this.mode = 'list'; this.err = ''; return; }
+      if (e.code === 'Enter' || e.code === 'NumpadEnter') { this.submitPrompt(); return; }
+      if (e.code === 'Backspace') { this.buf = this.buf.slice(0, -1); return; }
+      const max = this.mode === 'code' ? CODE_MAX : PASS_MAX;
+      if (e.key.length !== 1 || this.buf.length >= max) return;
+      if (this.mode === 'code') { if (/^[A-Za-z0-9]$/.test(e.key)) this.buf += e.key.toUpperCase(); }
+      else this.buf += e.key;
+      return;
+    }
     switch (e.code) {
-      case 'KeyW': case 'ArrowUp': moveSelection(-1); break;
-      case 'KeyS': case 'ArrowDown': moveSelection(1); break;
-      case 'Enter': { const r = selectedRoom(); if (r) void joinRow(r); break; }
-      case 'KeyR': void refresh(); break;
-      case 'KeyH': openHostFromBrowser(); break;
-      case 'KeyJ': openCodePrompt(); break;
-      case 'KeyF': cycleFilter(); break;
+      case 'KeyW': case 'ArrowUp': this.moveSelection(-1); break;
+      case 'KeyS': case 'ArrowDown': this.moveSelection(1); break;
+      case 'Enter': case 'NumpadEnter': { const r = this.selectedRoom(); if (r) void this.joinRow(r); break; }
+      case 'KeyR': void this.refresh(); break;
+      case 'KeyH': this.host(); break;
+      case 'KeyJ': this.openCode(); break;
+      case 'KeyF': this.cycleFilter(); break;
+      case 'Escape': this.back(); break;
       default: return;
     }
     e.preventDefault();
-  };
-  el.addEventListener('keydown', onKey);
+  }
 
-  render();
-  void refresh();
-  const timer = window.setInterval(() => { void refresh(); }, REFRESH_MS);
-  focusFirst(el);
+  click(x: number, y: number): void {
+    const id = this.hits.at(x, y);
+    if (!id) return;
+    if (id.startsWith('row:')) {
+      const r = this.shown[Number(id.slice(4))];
+      if (!r) return;
+      const now = performance.now();
+      const dbl = this.last.id === id && now - this.last.at < DOUBLE_MS;
+      this.last = { id, at: now };
+      this.selected = roomKey(r);
+      if (dbl) void this.joinRow(r);
+      return;
+    }
+    switch (id) {
+      case 'tab:lobby': this.tab = 'lobby'; this.selected = null; this.scroll = 0; this.arrange(); break;
+      case 'tab:tab': this.tab = 'tab'; this.selected = null; this.scroll = 0; this.arrange(); break;
+      case 'filter': this.cycleFilter(); break;
+      case 'refresh': void this.refresh(); break;
+      case 'code': this.openCode(); break;
+      case 'host': this.host(); break;
+      case 'back': this.back(); break;
+      case 'prompt:go': this.submitPrompt(); break;
+      case 'prompt:cancel': this.mode = 'list'; this.err = ''; break;
+      default: break;
+    }
+  }
 
-  return () => {
-    disposed = true;
-    window.clearInterval(timer);
-    el.removeEventListener('keydown', onKey);
-  };
+  paint(c: CanvasRenderingContext2D, w: number, h: number, time: number): void {
+    const hits = this.hits;
+    hits.clear();
+    c.fillStyle = PHOS.bg;
+    c.fillRect(0, 0, w, h);
+    say(c, t('mp.browser.title'), 18, 14, PHOS.fg, 12, 'left', PIX);
+    if (this.scanning || Math.floor(time * 2) % 2 === 0) say(c, t('mp.browser.live'), w - 18, 16, PHOS.cyan, 16, 'right');
+    box(c, 10, 8, w - 20, 34, null, PHOS.dim);
+
+    if (this.mode !== 'list') { this.paintPrompt(c, w, time); return; }
+
+    button(c, hits, 'tab:lobby', t('mp.browser.tab.lobby'), 18, 48, 130, 22, this.tab === 'lobby');
+    button(c, hits, 'tab:tab', t('mp.browser.tab.tab'), 156, 48, 170, 22, this.tab === 'tab');
+    say(c, t('mp.browser.count', { n: this.shown.length }), w - 18, 52, PHOS.dim, 16, 'right');
+
+    const cols = [
+      { x: 20, w: 18, label: '', align: 'left' as const },
+      { x: 42, w: 150, label: t('mp.browser.col.room'), align: 'left' as const },
+      { x: 196, w: 66, label: t('mp.browser.col.host'), align: 'left' as const },
+      { x: 266, w: 54, label: t('mp.browser.col.net'), align: 'left' as const },
+      { x: 324, w: 60, label: t('mp.browser.col.mode'), align: 'left' as const },
+      { x: 388, w: 36, label: t('mp.browser.col.players'), align: 'right' as const },
+      { x: 428, w: 28, label: t('mp.browser.col.ping'), align: 'right' as const },
+      { x: 462, w: 50, label: t('mp.browser.col.state'), align: 'left' as const },
+    ];
+    for (const col of cols) sayFit(c, col.label, col.x, 78, col.w, PHOS.dim, 15, col.align);
+    c.fillStyle = PHOS.dim;
+    c.fillRect(16, ROW_Y - 5, w - 32, 1);
+
+    if (this.shown.length === 0) {
+      say(c, this.scanning ? t('mp.browser.scan') : t('mp.browser.empty'), w / 2, ROW_Y + 60, PHOS.dim, 16, 'center');
+    }
+    this.keepVisible();
+    for (let i = 0; i < ROWS; i++) {
+      const idx = this.scroll + i;
+      const r = this.shown[idx];
+      if (!r) break;
+      const y = ROW_Y + i * ROW_H;
+      const sel = roomKey(r) === this.selected;
+      const full = r.players >= r.max;
+      const ink = sel ? PHOS.ink : full ? PHOS.dim : PHOS.fg;
+      if (sel) { c.fillStyle = PHOS.sel; c.fillRect(16, y, w - 32, ROW_H - 1); }
+      hits.add(`row:${idx}`, 16, y, w - 32, ROW_H - 1);
+      if (r.locked) say(c, t('mp.browser.lock'), 20, y, sel ? ink : PHOS.amber, 15);
+      sayFit(c, r.name, 42, y, 146, ink, 16);
+      sayFit(c, r.host, 196, y, 64, ink, 16);
+      sayFit(c, t(`mp.browser.net.${r.net}`), 266, y, 54, sel ? ink : PHOS.cyan, 15);
+      sayFit(c, t(`mp.mode.${r.mode}`), 324, y, 58, ink, 16);
+      say(c, `${r.players}/${r.max}`, 424, y, ink, 16, 'right');
+      say(c, r.ping === undefined ? '--' : `${Math.round(r.ping)}`, 456, y, sel ? ink : pingColor(r.ping), 16, 'right');
+      sayFit(c, full ? t('mp.browser.full') : r.started ? t('mp.browser.inProgress') : t('mp.state.lobby'), 462, y, 50, ink, 14);
+    }
+
+    if (this.err) sayFit(c, this.err, 20, 296, w - 40, PHOS.bad, 16);
+    button(c, hits, 'filter', t('mp.browser.filter', { f: t(`mp.browser.filter.${this.filter}`) }), 18, 316, 200, 22);
+    button(c, hits, 'refresh', t('mp.browser.refresh'), 18, 344, 116, 24);
+    button(c, hits, 'code', t('mp.browser.joinCode'), 140, 344, 130, 24);
+    button(c, hits, 'host', t('mp.browser.host'), 276, 344, 104, 24, false, PHOS.warn);
+    button(c, hits, 'back', t('mp.browser.back'), 386, 344, 108, 24, false, PHOS.dim);
+    for (const line of wrapLines(c, t('mp.browser.hint'), w - 36, 12)) say(c, line, w / 2, 372, PHOS.dim, 12, 'center');
+  }
+
+  private paintPrompt(c: CanvasRenderingContext2D, w: number, time: number): void {
+    const hits = this.hits;
+    const pass = this.mode === 'pass';
+    const title = pass ? t('mp.pass.title') : t('mp.code.title');
+    box(c, 70, 70, w - 140, 230, PHOS.bg, PHOS.fg);
+    say(c, title, w / 2, 90, PHOS.fg, 12, 'center', PIX);
+    const body = pass && this.passRoom ? t('mp.pass.body', { name: this.passRoom.name }) : t('mp.code.hint');
+    for (let i = 0; i < 2; i++) {
+      const line = wrapLines(c, body, w - 170, 17)[i];
+      if (line) say(c, line, w / 2, 118 + i * 24, PHOS.fg, 17, 'center');
+    }
+    say(c, pass ? t('mp.pass.field') : t('mp.code.field'), 100, 176, PHOS.dim, 15);
+    box(c, 100, 196, w - 200, 30, PHOS.ink, PHOS.fg);
+    const shown = pass ? '*'.repeat(this.buf.length) : this.buf;
+    const cursor = Math.floor(time * 2) % 2 === 0 ? '_' : ' ';
+    sayFit(c, `${shown}${cursor}`, 108, 201, w - 216, PHOS.hi, 20);
+    button(c, hits, 'prompt:go', pass ? t('mp.pass.join') : t('mp.code.join'), 100, 248, 150, 28, true);
+    button(c, hits, 'prompt:cancel', t('mp.browser.back'), w - 250, 248, 150, 28, false, PHOS.dim);
+    if (this.err) sayFit(c, this.err, w / 2, 288, w - 140, PHOS.bad, 16, 'center');
+  }
+}
+
+let browser: BrowserScreen | null = null;
+
+/** Open the server browser on the CRT (the MULTIPLAYER face calls this). */
+export function openServerBrowser(): void {
+  // The LOBBY source (lobby server rooms). Re-registering replaces the previous entry, so this is safe to repeat.
+  addRoomSource({ net: 'LOBBY', list: () => app.net.discoverServer() });
+  hookStageOverlay();
+  browser ??= new BrowserScreen();
+  stage.show(browser);
+}
+
+/** Put the browser back on the monitor (the host form's BACK). */
+export function showServerBrowser(): void {
+  if (browser) stage.show(browser);
 }

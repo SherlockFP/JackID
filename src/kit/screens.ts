@@ -4,7 +4,7 @@
  *
  * Canvas textures are per-instance (unique materials, non-shared textures) so `disposeObject3D` frees them.
  * Text is bound to the language hub: `{ key }` sources repaint on `lang:changed`. Screen uploads are queued
- * and flushed by `Kit.update` (≤ 4 per frame, ≤ ~20 Hz per screen) — `draw()` itself is cheap.
+ * and flushed by `Kit.update` (≤ 4 per frame, ≤ 15 Hz per screen, dirty screens only) — `draw()` itself is cheap.
  */
 import * as THREE from 'three';
 import type { TextOpts } from '@/core/texgen/types';
@@ -20,7 +20,7 @@ import { css } from './palette';
 import { createBulbChain, rectLoop, spread } from './lights';
 import type { Kit, LabelPart, MarqueePart, NeonPart, ScreenSurface } from './types';
 
-const MIN_FLUSH_INTERVAL = 0.045;   // s — ≈ 20 Hz per screen
+const MIN_FLUSH_INTERVAL = 1 / 15 + 0.002;   // s — ≤ 15 Hz per screen
 
 const canvasOf = (t: THREE.Texture): HTMLCanvasElement => t.image as HTMLCanvasElement;
 const ctx2d = (c: HTMLCanvasElement): CanvasRenderingContext2D => {
@@ -57,7 +57,7 @@ export function makeScreens(ctx: KitCtx): Pick<Kit, 'screen' | 'marquee' | 'labe
   /**
    * `canvas` IS the texture image: modelers draw straight into it (`draw`, `text`, `clear`, or their own 2D context).
    * CRT scanlines (every odd texel row ×0.78) and the 1-px rounded corners are applied in the fragment shader, so
-   * nothing is composited per flush; uploads are throttled to ≈ 20 Hz per screen and ≤ 4 screens per frame.
+   * nothing is composited per flush; uploads are throttled to ≤ 15 Hz per screen and ≤ 4 screens per frame.
    */
   const screen: Kit['screen'] = (o) => {
     const [pw, ph] = o.px;

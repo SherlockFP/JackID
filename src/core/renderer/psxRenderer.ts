@@ -242,7 +242,10 @@ export function createPsxRenderer(canvas: HTMLCanvasElement, initial: PsxSetting
 
       three.setRenderTarget(null);
       writePost();
+      // the post triangle covers every canvas pixel (letterbox bars are painted by the shader): a clear would be a wasted full-screen write
+      three.autoClear = false;
       three.render(pass.scene, pass.camera);
+      three.autoClear = true;
       st.cpuMs = performance.now() - t0;
     },
 
@@ -257,7 +260,9 @@ export function createPsxRenderer(canvas: HTMLCanvasElement, initial: PsxSetting
       pass.copy.uniforms.tScene.value = rt.texture;
       pass.copy.uniforms.uLowRes.value.copy(lowRes);
       three.setRenderTarget(g);
+      three.autoClear = false;                 // the copy triangle covers the whole target
       three.render(pass.copy.scene, pass.camera);
+      three.autoClear = true;
       three.setRenderTarget(null);
       return g.texture;
     },

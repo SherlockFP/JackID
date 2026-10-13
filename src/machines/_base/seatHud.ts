@@ -10,12 +10,16 @@
  *   FIRST SIT  3-line how-to, once per machine (localStorage)  firstTip(machineId, lines) → true if shown
  *   RULES      full rules card, re-opened by the help key      rules(lines) / dismiss()
  *
+ * The FIRST-SIT tip and the RULES card are 3D placards (`placard3d.ts`): a board held up in front of the eye in the
+ * first-person overlay, with bitmap text and page buttons. The DOM part is the HUD bar only.
+ *
  * Lifecycle: the machine calls `show()` when the local player is seated and `hide()` on stand-up. Every text
  * argument is an i18n key (`{ k, v? }`) or a literal string for values that need no translation (numbers). The
  * machine re-sends its content from `onLang()`. While `blocking` is true the machine routes its next action to
- * `dismiss()` and swallows it (any key closes a card).
+ * `dismiss()` and swallows it (any key closes a card; a click on the card closes it too).
  */
 import { t as tr, fmtCoins, type I18nVars } from '@/core/i18n';
+import { BRASS, CREAM, INK, INK_SOFT, Placard3D, button, paginate, put, rowsIn, wrapPx5 } from './placard3d';
 import './seatHud.css';
 
 export type HudTone = 'neutral' | 'gold' | 'good' | 'bad' | 'cyan' | 'warn';
@@ -32,6 +36,13 @@ const RESULT_KEY: Record<HudResultKind, string> = {
 };
 
 const txt = (x: Txt): string => (typeof x === 'string' ? x : tr(x.k, x.v));
+
+// card geometry: canvas texels and metres (the board is ~0.44 m wide at arm's length)
+const CARD_PX: [number, number] = [272, 232];
+const CARD_W = 0.44, CARD_H = 0.375;
+const CARD_HEAD = 24, CARD_BODY_Y = 32, CARD_PAD = 14;
+const CARD_TEXT_W = CARD_PX[0] - CARD_PAD * 2;
+const CARD_BODY_H = CARD_PX[1] - CARD_BODY_Y - 40;
 function make<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent?: HTMLElement): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -50,10 +61,8 @@ export class SeatHud {
   private readonly resultA: HTMLElement;
   private readonly numsEl: HTMLElement;
   private readonly ctrlEl: HTMLElement;
-  private readonly cardEl: HTMLElement;
-  private readonly cardH: HTMLElement;
-  private readonly cardB: HTMLElement;
-  private readonly cardF: HTMLElement;
+  /** The open tip / rules card (3D placard), or null. */
+  private cardP: Placard3D | null = null;
   private shown = false;
   private card: 'none' | 'tip' | 'rules' = 'none';
   private tipId = '';
@@ -73,11 +82,6 @@ export class SeatHud {
     const bottom = make('div', 'shud-bottom', this.root);
     this.numsEl = make('div', 'shud-nums', bottom);
     this.ctrlEl = make('div', 'shud-ctrl shud-panel', bottom);
-    this.cardEl = make('div', 'shud-card', this.root);
-    this.cardH = make('div', 'shud-card-h', this.cardEl);
-    this.cardB = make('ol', 'shud-card-b', this.cardEl);
-    this.cardF = make('div', 'shud-card-f', this.cardEl);
-    this.cardEl.addEventListener('pointerdown', () => this.dismiss());
   }
 
   // ── lifecycle ─────────────────────────────────────────────────────────────────────────────────
@@ -95,7 +99,7 @@ export class SeatHud {
     this.clearResult();
     this.closeCard();
   }
-  dispose(): void { this.clearResult(); this.root.remove(); }
+  dispose(): void { this.clearResult(); this.cardP?.dispose(); this.cardP = null; this.root.remove(); }
 
   // ── standard slots ────────────────────────────────────────────────────────────────────────────
   goal(text: Txt): void { this.goalEl.textContent = txt(text); }
@@ -181,16 +185,47 @@ export class SeatHud {
     return true;
   }
 
+  /** The card as a 3D placard: numbered rules, paginated, with page buttons; a click on the board closes it. */
   private openCard(kind: 'tip' | 'rules', title: string, lines: Txt[]): void {
+    this.cardP?.dispose();
     this.card = kind;
-    this.cardH.textContent = title;
-    this.cardB.replaceChildren();
-    for (const l of lines) make('li', '', this.cardB).textContent = txt(l);
-    this.cardF.textContent = tr('hud.seat.anyKey');
-    this.cardEl.classList.add('on');
+    const rows: string[] = [];
+    lines.forEach((l, i) => { for (const r of wrapPx5(`${i + 1}. ${txt(l)}`, CARD_TEXT_W)) rows.push(r); });
+    const pages = paginate(rows, rowsIn(CARD_BODY_H));
+    const hint = tr('hud.seat.anyKey');
+    const p = new Placard3D({
+      name: `seat-${kind}`,
+      w: CARD_W, h: CARD_H, px: CARD_PX,
+      pages: () => pages.length,
+      bg: CREAM,
+      frame: { color: 0x6b4f1d, pad: 0.012, depth: 0.008 },
+      rest: [0, -0.03, -0.5],
+      paint: (c) => {
+        const { g, w, h } = c;
+        g.fillStyle = BRASS; g.fillRect(0, 0, w, CARD_HEAD);
+        put(g, title, w / 2, 8, INK, 'center');
+        pages[c.page].forEach((r, i) => put(g, r, CARD_PAD, CARD_BODY_Y + i * 10));
+        put(g, hint, w / 2, h - 12, INK_SOFT, 'center');
+        if (pages.length > 1) {
+          button(c, CARD_PAD, h - 26, 22, 13, '<', 'prev');
+          button(c, w - CARD_PAD - 22, h - 26, 22, 13, '>', 'next');
+          put(g, `${c.page + 1}/${pages.length}`, w / 2, h - 23, INK, 'center');
+        }
+        c.region(0, 0, w, h, 'close');                           // the whole board closes it (registered last)
+      },
+      act: (a) => {
+        if (a === 'prev') this.cardP?.turn(-1);
+        else if (a === 'next') this.cardP?.turn(1);
+        else if (a === 'close') this.dismiss();
+      },
+    });
+    this.cardP = p;
+    if (!p.show()) { p.dispose(); this.cardP = null; }            // no overlay (menus): the card is simply absent
   }
   private closeCard(): void {
     this.card = 'none';
-    this.cardEl.classList.remove('on');
+    const p = this.cardP;
+    this.cardP = null;
+    p?.hide();
   }
 }
