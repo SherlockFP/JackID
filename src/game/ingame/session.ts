@@ -13,6 +13,7 @@ import { createWorld, type WorldHost } from '@/world/world';
 import { createLocalPlayer, type LocalPlayerHost } from '@/player/local';
 import { createHud, type Hud, type HudPrompt } from '@/menu/hud';
 import { createRun, resumeRun, type DebtRun } from '@/game/run';
+import type { UIOverlayX } from '@/core/ui/ui';
 import { playableMode } from '@/game/modes';
 
 export interface DebtSession {
@@ -27,7 +28,7 @@ export interface DebtSession {
   dispose(): void;
 }
 
-const LOBBY_FOG = 0x0d0a06;
+const LOBBY_FOG = 0x1c1610;
 const LOBBY_NEAR = 6;
 
 export function startDebtSession(params: InGameParams, scene: THREE.Scene): DebtSession {
@@ -51,6 +52,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
 
   const hud = createHud();
   let ready = false;
+  // A new run opens straight on Night 1 Watch 1 (the bell, then the floor). Intermissions only sit between Watches and Nights.
+  let openingWatch = !params.resume && run.rules.timed;
   world.ready.then(() => { ready = true; }, (e: unknown) => log.error('ingame', 'world build failed', e));
   void world.prebuild().catch((e: unknown) => log.error('ingame', 'prebuild failed', e));
   app.ui.toast(t('ingame.loading'), 'sys', 2);
@@ -77,6 +80,12 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       run.tick(dt);
     },
     frame(dt, alpha) {
+      if (openingWatch && ready) {
+        openingWatch = false;
+        if (run.shift.phase === 'intermission' && run.startWatch()) {
+          void (app.ui as UIOverlayX).banner(t('ingame.night', { n: run.night() }));
+        }
+      }
       player.frame(dt, alpha);
       world.frame(dt, app.time.sim);
       hud.update(dt);

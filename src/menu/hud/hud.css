@@ -5,26 +5,34 @@
 .hud .lbl { font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1; color: var(--bone); }
 .hud .num { font-family: var(--f-body); font-size: calc(16 * var(--u)); line-height: 1; }
 
+/* top band: a 3-column grid (left | centre | right) so the blocks can never overlap at any width */
+.hud .hud-top { position: absolute; left: calc(4 * var(--u)); right: calc(4 * var(--u)); top: calc(4 * var(--u));
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; column-gap: calc(8 * var(--u)); }
+.hud .hud-tl, .hud .hud-tc, .hud .hud-tr { display: flex; flex-direction: column; min-width: 0; }
+.hud .hud-tl { align-items: flex-start; gap: calc(2 * var(--u)); }
+.hud .hud-tc { align-items: center; gap: calc(3 * var(--u)); }
+.hud .hud-tr { align-items: flex-end; }
+.hud .hud-top .hb { position: relative; left: auto; top: auto; right: auto; transform: none; }
+
 /* top-left: pocket, tickets, staff */
-.hud .wallet { left: calc(4 * var(--u)); top: calc(4 * var(--u)); }
 .hud .wallet .num { color: var(--shine); font-size: calc(16 * var(--u)); }
 .hud .wallet.spend .num { color: var(--signal); }
 .hud .wallet.gain { animation: hud-glow .35s ease-out; }
-.hud .tix { left: calc(4 * var(--u)); top: calc(20 * var(--u)); color: var(--coral); }
+.hud .tix { color: var(--coral); }
 .hud .tix .num { color: var(--coral); }
-.hud .staff { left: calc(4 * var(--u)); top: calc(34 * var(--u)); color: var(--green); font-size: calc(8 * var(--u)); }
+.hud .staff { color: var(--green); font-size: calc(8 * var(--u)); }
 
 /* top-centre: watch clock, night line */
-.hud .clock { left: 50%; top: calc(4 * var(--u)); transform: translateX(-50%); flex-direction: column; gap: calc(2 * var(--u)); }
+.hud .clock { display: flex; align-items: baseline; gap: calc(4 * var(--u)); white-space: nowrap; }
 .hud .clock .num { font-size: calc(16 * var(--u)); color: var(--ivory); }
-.hud .clock .wall { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
+.hud .sub { display: flex; align-items: center; gap: calc(6 * var(--u)); white-space: nowrap; }
+.hud .sub .wall { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 .hud .clock.lastcall .num, .hud .clock.lastcall .phase { color: var(--signal); animation: hud-blink .5s steps(2, start) infinite; }
 .hud .phase { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
-.hud .night { left: 50%; top: calc(22 * var(--u)); transform: translateX(-50%); font-family: var(--f-head);
-  font-size: calc(8 * var(--u)); color: var(--bone); }
+.hud .night { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 
 /* top-right: quota */
-.hud .quota { right: calc(4 * var(--u)); top: calc(4 * var(--u)); flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u)); }
+.hud .quota { flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u)); }
 .hud .quota .num { font-size: calc(16 * var(--u)); }
 .hud .bar { position: relative; width: calc(64 * var(--u)); height: calc(4 * var(--u)); background: #000;
   box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark); }
@@ -70,7 +78,7 @@
 .hud .feed .ln.old { opacity: 0; }
 .hud .feed .ln.gold { color: var(--shine); }
 .hud .feed .ln.red { color: var(--coral); }
-.hud .phone { left: 50%; top: calc(34 * var(--u)); transform: translateX(-50%); }
+.hud .phone { left: 50%; top: calc(52 * var(--u)); transform: translateX(-50%); }
 .hud .phone .bell { width: calc(12 * var(--u)); height: calc(12 * var(--u)); background: var(--amber); animation: hud-blink .4s steps(2, start) infinite; }
 .hud .phone .arc { width: calc(14 * var(--u)); height: calc(14 * var(--u)); border-radius: 50%; background: conic-gradient(var(--amber) var(--p, 360deg), transparent 0); }
 .hud .dread { position: absolute; inset: 0; pointer-events: none; opacity: 0;

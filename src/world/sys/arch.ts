@@ -104,8 +104,8 @@ export const GDD_ZONE_LOOK: Readonly<Record<string, { fog: { color: Hex; near: n
   boiler:   { fog: { color: 0x140404, near: 4, far: 22 }, ambient: 0x200808 },
   gallery:  { fog: { color: 0x08040f, near: 5, far: 24 }, ambient: 0x10061a },
   wheels:   { fog: { color: 0x140505, near: 4, far: 22 }, ambient: 0x1e0808 },
-  parlour:  { fog: { color: 0x030202, near: 2, far: 10 }, ambient: 0x050303 },
-  counting: { fog: { color: 0x050302, near: 2, far: 12 }, ambient: 0x080504 },
+  parlour:  { fog: { color: 0x0a0606, near: 3, far: 16 }, ambient: 0x140c0a },
+  counting: { fog: { color: 0x0a0604, near: 3, far: 16 }, ambient: 0x140c08 },
   lift:     { fog: { color: 0x2a2418, near: 20, far: 60 }, ambient: 0x2a2418 },
   sump:     { fog: { color: 0x000000, near: 2, far: 14 }, ambient: 0x000000 },
 };

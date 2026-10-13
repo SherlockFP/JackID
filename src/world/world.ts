@@ -57,8 +57,8 @@ declare module '@/core/events' {
 
 // ── tuning ────────────────────────────────────────────────────────────────────────────────────────
 const BUILD_BUDGET_MS = 7;
-const AMBIENT_SKY_GAIN = 1.6;
-const AMBIENT_GROUND_GAIN = 0.9;
+const AMBIENT_SKY_GAIN = 4.8;
+const AMBIENT_GROUND_GAIN = 2.6;
 const ATMOSPHERE_RATE = 6;
 const TELEPORT_JUMP_M = 8;
 const DEFAULT_ATTRACT_M = 14;

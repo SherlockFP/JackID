@@ -62,26 +62,33 @@ export function createHud(): Hud {
     disposers.push(bus.on(type, fn));
   };
 
+  // The top band is a three-column grid (left | centre | right), so the centre clock never overlaps the corner blocks.
+  const top = h('div', 'hud-top', root);
+  const topL = h('div', 'hud-tl', top);
+  const topC = h('div', 'hud-tc', top);
+  const topR = h('div', 'hud-tr', top);
+
   // ── top-left: pocket, tickets, staff ────────────────────────────────────────────────────────────
-  const wallet = h('div', 'hb wallet', root);
+  const wallet = h('div', 'hb wallet', topL);
   const walletNum = h('span', 'num', wallet, `${coinSym()} 0`);
-  const tix = h('div', 'hb tix', root);
+  const tix = h('div', 'hb tix', topL);
   h('span', 'lbl', tix, t('hud.tickets'));
   const tixNum = h('span', 'num', tix, '0');
-  const staff = h('div', 'hb staff hidden', root);
+  const staff = h('div', 'hb staff hidden', topL);
   const roll = new Roller();
   let walletSeen = false;
   let walletFlash = 0;
 
   // ── top-centre: clock + night line ──────────────────────────────────────────────────────────────
-  const clock = h('div', 'hb clock', root);
+  const clock = h('div', 'clock', topC);
   const clockNum = h('span', 'num', clock, '00:00');
   const clockPhase = h('span', 'phase', clock, '');
-  const clockWall = h('span', 'wall', clock, '');
-  const night = h('div', 'hb night', root, '');
+  const sub = h('div', 'sub', topC);
+  const night = h('span', 'night', sub, '');
+  const clockWall = h('span', 'wall', sub, '');
 
   // ── top-right: quota ────────────────────────────────────────────────────────────────────────────
-  const quota = h('div', 'hb quota', root);
+  const quota = h('div', 'hb quota', topR);
   const quotaNum = h('span', 'num', quota, '0 / 0');
   const quotaBar = h('div', 'bar', quota);
   const quotaFill = h('i', '', quotaBar);

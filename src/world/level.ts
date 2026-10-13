@@ -27,6 +27,9 @@ const LINTEL_Y = 3.2;     // doorway header
 const HERO_PLATE = { x: 0, z: 12 };   // hero trapdoor (Lobby centre); the Sump lies under it
 const SUMP_POS: V3 = [0, -30, 12];
 const WELL_DAIS = { x: 0, z: -4 };    // WELL-01 dais 4 × 4 × 0.15
+/** Playtest lift (director): the pit read as too dark. Every fixture hint gets this intensity and reach gain. */
+const FIXTURE_GAIN = 1.5;
+const FIXTURE_RANGE = 1.2;
 
 const CEILING: Record<string, number> = {
   mouth: 6.0, well: 9.0, lobby: 4.5, midway: 4.0, cards: 3.2, laundry: 5.0, boiler: 3.6,
@@ -448,10 +451,17 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   // ── finish: merge the static shell into a few draw calls (fixtures and props stay separate) ──────
   kit.finalize(statical);
 
+  // Fixture light levels are boosted once here, so each fixture keeps its own tuning in the table above.
+  const boosted: LightHint[] = lights.map((l) => ({
+    ...l,
+    intensity: (l.intensity ?? 1.2) * FIXTURE_GAIN,
+    range: (l.range ?? 8) * FIXTURE_RANGE,
+  }));
+
   return {
     root,
     statics,
-    lights,
+    lights: boosted,
     anchors,
     props,
     gates,
