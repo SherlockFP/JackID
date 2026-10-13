@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import type { InstanceId, PlayerId, PlayPose } from '@/core/types';
 import type { Action } from '@/core/input/types';
+import type { InputExt } from '@/core/input';
 import type { PlayerFx } from '@/game/types';
 import type { CollisionWorld } from '@/world/types';
 import { app } from '@/core/app';
@@ -201,6 +202,8 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
   }
 
   const inputMode = (): string => app.input.mode;
+  /** Tell the input service the camera starts / stops gliding into a seat (it buffers machine presses meanwhile). */
+  const seatInput = (on: boolean): void => { (app.input as Partial<InputExt> | null)?.seatTransition?.(on); };
 
   function walkBlocked(): boolean {
     return phase !== 'free' || cutscene || cinematicActive || carriedBy !== null || fallT >= 0 || ctrl.lost;
@@ -256,6 +259,7 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
       computeSeatPose(pose, poseMatrix);
       lookYaw = lookPitch = lookIdle = 0;
       phase = 'glideIn';
+      seatInput(true);       // presses made during the ~0.6 s glide are buffered and replayed when the sink attaches
       ctrl.vel.set(0, 0, 0);
       ctrl.crouching = false;
       ctrl.sprinting = false;
@@ -267,11 +271,13 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
       await rig.glide(GLIDE_IN_S, 'inOutCubic');
       if (my !== token) return;
       phase = 'seated';
+      seatInput(false);
     },
 
     async exitMachine() {
       if (phase === 'free' || phase === 'glideOut') return;
       const my = ++token;
+      seatInput(false);
       let ex = hasExit ? exitPos : preSeat.pos;
       const col = collision();
       if (col && col.floorAt(ex.x, ex.z, ex.y + 0.5) === null) ex = preSeat.pos;      // never stand up over a hole
@@ -292,6 +298,7 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
 
     teleport(p, yawRad) {
       token++;
+      seatInput(false);
       phase = 'free'; seat = null; seatSit = false; bodyGlide = null; bodyYawTarget = null;
       ctrl.reset(p.x, p.y, p.z);
       ctrl.yaw = yawRad; pitch = 0;
@@ -489,6 +496,7 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
 
     dispose() {
       token++;
+      seatInput(false);
       cin?.resolve(); cin = null;
       rig.clearShake();
       viewmodel.dispose();

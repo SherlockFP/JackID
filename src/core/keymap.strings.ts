@@ -22,13 +22,16 @@ const strings = {
     'action.m.primary': 'Primary (spin / deal)', 'action.m.secondary': 'Secondary (tap RMB)',
     'action.m.up': 'Up', 'action.m.down': 'Down', 'action.m.left': 'Left', 'action.m.right': 'Right',
     'action.m.betUp': 'Raise bet', 'action.m.betDown': 'Lower bet', 'action.m.betMax': 'Max bet',
-    'action.m.confirm': 'Confirm', 'action.m.alt': 'Repeat last bet', 'action.m.help': 'Paytable',
+    'action.m.confirm': 'Confirm', 'action.m.alt': 'Second action (reroll / jump card)', 'action.m.help': 'Paytable',
     'action.m.exit': 'Stand up', 'action.m.collect': 'Collect / cash out', 'action.m.fast': 'Fast mode',
     'action.m.auto': 'Autoplay menu', 'action.m.camera': 'Cycle camera', 'action.m.clear': 'Clear bets',
     'action.m.double': 'Double bets',
     'action.m.n1': 'Button 1', 'action.m.n2': 'Button 2', 'action.m.n3': 'Button 3', 'action.m.n4': 'Button 4',
     'action.m.n5': 'Button 5', 'action.m.n6': 'Button 6', 'action.m.n7': 'Button 7', 'action.m.n8': 'Button 8',
     'action.m.n9': 'Button 9',
+    // controls lane
+    'ctl.capture': 'CLICK TO CAPTURE MOUSE',
+    'ctl.standAfterRound': 'Standing up after this round',
   },
   tr: {
     'key.none': '—',
@@ -49,13 +52,16 @@ const strings = {
     'action.m.primary': 'Ana eylem (çevir / dağıt)', 'action.m.secondary': 'İkincil (sağ tık)',
     'action.m.up': 'Yukarı', 'action.m.down': 'Aşağı', 'action.m.left': 'Sol', 'action.m.right': 'Sağ',
     'action.m.betUp': 'Bahsi artır', 'action.m.betDown': 'Bahsi azalt', 'action.m.betMax': 'En yüksek bahis',
-    'action.m.confirm': 'Onayla', 'action.m.alt': 'Son bahsi tekrarla', 'action.m.help': 'Ödeme tablosu',
+    'action.m.confirm': 'Onayla', 'action.m.alt': 'İkinci eylem (yenile / atlama kartı)', 'action.m.help': 'Ödeme tablosu',
     'action.m.exit': 'Ayağa kalk', 'action.m.collect': 'Topla / bozdur', 'action.m.fast': 'Hızlı mod',
     'action.m.auto': 'Otomatik oyun menüsü', 'action.m.camera': 'Kamerayı değiştir', 'action.m.clear': 'Bahisleri temizle',
     'action.m.double': 'Bahisleri ikiye katla',
     'action.m.n1': 'Düğme 1', 'action.m.n2': 'Düğme 2', 'action.m.n3': 'Düğme 3', 'action.m.n4': 'Düğme 4',
     'action.m.n5': 'Düğme 5', 'action.m.n6': 'Düğme 6', 'action.m.n7': 'Düğme 7', 'action.m.n8': 'Düğme 8',
     'action.m.n9': 'Düğme 9',
+    // controls lane
+    'ctl.capture': 'FAREYİ YAKALAMAK İÇİN TIKLA',
+    'ctl.standAfterRound': 'Bu turdan sonra kalkılıyor',
   },
 };
 

@@ -1,0 +1,34 @@
+/*
+ * Settings screen (core/ui/settingsScreen.ts). Same pixel-unit rules as ui.css: every size is calc(N * var(--u)).
+ * The screen is one brass frame (title plaque, tab row, scroll area, footer) over the dim backdrop.
+ */
+.st-frame { height: calc(246 * var(--u)); max-height: calc(100% - 12 * var(--u)); }
+.st-frame .px-frame-body { flex: 1 1 auto; display: flex; flex-direction: column; gap: calc(4 * var(--u)); overflow: hidden; }
+.st-tabs { flex: 0 0 auto; }
+.st-tabs .px-tab { flex: 1 1 0; min-width: 0; text-align: center; }
+.st-scroll { flex: 1 1 auto; min-height: 0; }
+.st-body { display: flex; flex-direction: column; gap: calc(1 * var(--u)); padding-bottom: calc(2 * var(--u)); }
+
+.st-h {
+  margin: calc(7 * var(--u)) 0 calc(3 * var(--u)); padding-bottom: calc(2 * var(--u));
+  font-family: var(--f-head); font-size: var(--fh); line-height: 1; color: var(--shine);
+  box-shadow: 0 calc(var(--u)) 0 var(--brass-dark);
+}
+.st-body > .st-h:first-child { margin-top: calc(1 * var(--u)); }
+.st-note { margin: calc(1 * var(--u)) 0 calc(3 * var(--u)); font-family: var(--f-body); font-size: var(--fb); line-height: 1.1; color: var(--grout); overflow-wrap: anywhere; }
+.st-row { display: flex; flex-wrap: wrap; align-items: center; gap: calc(6 * var(--u)); padding: calc(2 * var(--u)) 0; }
+.st-row .st-grow { flex: 1 1 calc(80 * var(--u)); min-width: 0; }
+.st-status { font-family: var(--f-head); font-size: var(--fh); line-height: 1; color: var(--cyan); }
+
+.st-keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(calc(188 * var(--u)), 1fr)); gap: calc(8 * var(--u)); }
+.st-keys .col { display: flex; flex-direction: column; gap: calc(2 * var(--u)); min-width: 0; }
+.st-keys .col > .px-h { margin-bottom: calc(2 * var(--u)); font-family: var(--f-head); font-size: var(--fh); line-height: 1; color: var(--cyan); }
+.st-keys .row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: calc(4 * var(--u));
+  font-family: var(--f-body); font-size: var(--fb); line-height: 1; color: var(--bone);
+}
+.st-keys .row .what { overflow-wrap: anywhere; }
+.st-keys .px-keybind { min-width: calc(52 * var(--u)); max-width: calc(112 * var(--u)); height: auto; min-height: calc(12 * var(--u)); padding: calc(2 * var(--u)) calc(4 * var(--u)); overflow: hidden; text-overflow: ellipsis; }
+
+.st-foot { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: calc(6 * var(--u)); padding-top: calc(2 * var(--u)); }
+.st-foot .hint { flex: 1 1 auto; min-width: 0; font-family: var(--f-body); font-size: var(--fb); line-height: 1; color: var(--grout); overflow-wrap: anywhere; }

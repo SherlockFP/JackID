@@ -116,7 +116,7 @@ export function button(ctx: CanvasRenderingContext2D, hits: HitMap, id: string, 
   w: number, h: number, on = false, color: string = PHOS.fg): void {
   box(ctx, x, y, w, h, on ? color : PHOS.bg, color);
   const c = on ? PHOS.ink : color;
-  say(ctx, label, x + w / 2, y + h / 2 - 9, c, 18, 'center');
+  say(ctx, label, x + w / 2, y + h / 2 - 10, c, 20, 'center');
   hits.add(id, x, y, w, h);
 }
 

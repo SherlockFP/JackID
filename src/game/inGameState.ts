@@ -5,6 +5,9 @@
  *    the HUD. Free Casino (`mode: 'free'`) uses the same session without quota or Intermission.
  * This state owns the shell around the session: Esc pause, the Intermission panel between Watches and Nights, and the
  * run-end hand-off to the Results state (quota fail, fall, quit, Stay Up). Quota success opens the next Night.
+ * It also owns the Settings screen wiring (pause card SETTINGS line, F1 = the CONTROLS page) and the seated U (Upgrade
+ * Ledger) / J (journal): the session wires both for walk mode only, so here they open at a machine too and hand the
+ * input mode back to 'machine' when they close. In an online session Esc is an overlay only: the sim keeps running.
  */
 import * as THREE from 'three';
 import type { AppStateHandler } from '@/core/states';
@@ -14,7 +17,11 @@ import type { RunSummary } from '@/net/protocol';
 import * as registry from '@/machines/_base/registry';
 import type { Bench } from '@/world/bench';
 import { startDebtSession, type DebtSession } from './ingame/session';
-import { startStory, holdForStory } from '@/game/story';
+import { t } from '@/core/i18n';
+import type { InputExt } from '@/core/input';
+import { closeSettingsScreen, openSettingsScreen, settingsScreenOpen } from '@/core/ui/settingsScreen';
+import { startStory, holdForStory, openJournal } from '@/game/story';
+import { mountLedger } from '@/game/tycoon/ledger';
 import { buildIntermission, buildPause, INTER_PANEL, PAUSE_PANEL } from './ingame/panels';
 
 /** A fall shows its fade before the Results state takes over; other endings hand off at once. */
@@ -22,6 +29,10 @@ const FALL_HOLD_S = 1.6;
 const END_HOLD_S = 0.4;
 /** Ignore a second Esc within this window after resuming (the browser and the input layer can both report it). */
 const PAUSE_DEBOUNCE_MS = 250;
+/** The seated Upgrade Ledger (the walk-mode one lives in the session). */
+const SEAT_LEDGER_PANEL = 'ingame-ledger-seated';
+/** After the journal closes at a machine, pointer lock is refused for this long (the journal asks for it on its way out). */
+const LOCK_GUARD_S = 0.6;
 
 export function createInGameState(): AppStateHandler<'ingame'> {
   const scene = new THREE.Scene();
@@ -36,6 +47,15 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   let interKey = '';
   let storyOff: (() => void) | null = null;
   let offs: Array<() => void> = [];
+  /** Online: Esc opens the card but the sim keeps running (no `app.simPaused`). */
+  let pauseLive = false;
+  /** True while the pause card is swapped for the Settings screen (closing the card must not resume). */
+  let toSettings = false;
+  /** Which seated overlay (U ledger / J journal) is open, so closing it can hand the machine mode back. */
+  let overlay: 'ledger' | 'journal' | null = null;
+  let lockGuard = 0;
+  /** J pressed at a machine: opened on the next frame (the journal listens for J on window, so the same event would close it). */
+  let wantJournal = false;
 
   /** Dev tooling is split out of the production bundle: `?bench=` is honoured only in a DEV build (DECISIONS G). */
   const enterBench = async (requested: string, seed: number): Promise<void> => {
@@ -50,20 +70,42 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     app.player = bench.player;
   };
 
+  /** The pause card. Built again after the Settings screen closes (the card is closed while Settings is up). */
+  const showPauseCard = (): void => {
+    const seated = app.player?.seat != null;
+    app.ui.panel(PAUSE_PANEL, (el) => buildPause(el, {
+      live: pauseLive,
+      onResume: () => { app.ui.closePanel(PAUSE_PANEL); },
+      onQuit: () => { session?.run.quit(); },
+      onGone: () => { if (paused && !toSettings) setPaused(false); },
+      // seated: STAND UP releases the seat (deferred while the round settles), then the pause closes
+      onStandUp: seated ? () => { session?.world.standUp(); app.ui.closePanel(PAUSE_PANEL); } : undefined,
+      onSettings: openSettingsFromPause,
+    }));
+  };
+
+  /**
+   * SETTINGS on the pause card. The screen opens first and the card closes after it, so the input mode never drops to
+   * walk in between (no stray pointer lock). Closing the screen brings the card back; Esc on the card then resumes.
+   */
+  const openSettingsFromPause = (): void => {
+    toSettings = true;
+    try {
+      openSettingsScreen({ onClose: () => { if (paused && !ending && !left) showPauseCard(); } });
+      if (settingsScreenOpen()) app.ui.closePanel(PAUSE_PANEL);
+    } finally {
+      toSettings = false;
+    }
+  };
+
   const setPaused = (on: boolean): void => {
     if (paused === on || !session || ending) return;
     paused = on;
-    app.simPaused = on;
+    pauseLive = on && app.net.online;
+    app.simPaused = on && !pauseLive;
     if (on) {
       app.input.exitLock();
-      const seated = app.player?.seat != null;
-      app.ui.panel(PAUSE_PANEL, (el) => buildPause(el, {
-        onResume: () => { app.ui.closePanel(PAUSE_PANEL); },
-        onQuit: () => { session?.run.quit(); },
-        onGone: () => { if (paused) setPaused(false); },
-        // seated: STAND UP releases the seat (deferred while the round settles), then the pause closes
-        onStandUp: seated ? () => { session?.world.standUp(); app.ui.closePanel(PAUSE_PANEL); } : undefined,
-      }));
+      showPauseCard();
     } else {
       resumedAt = performance.now();
       app.ui.closePanel(PAUSE_PANEL);
@@ -75,6 +117,59 @@ export function createInGameState(): AppStateHandler<'ingame'> {
         void app.input.requestLock();
       }
     }
+  };
+
+  // ── seated U (ledger) and J (journal) ───────────────────────────────────────────────────────────
+  /** Hand the right mode back after a seated overlay: 'machine' while still seated, otherwise 'walk' with the lock. */
+  const restoreSeatMode = (): void => {
+    if (left) return;
+    if (app.player?.seat != null) {
+      app.input.setMode('machine');
+      app.input.exitLock();
+      lockGuard = LOCK_GUARD_S;
+    } else {
+      app.input.setMode('walk');
+      void app.input.requestLock();
+    }
+  };
+  const canOpenSeated = (): boolean => !!session && !paused && !ending && !left && !overlay && app.input.mode === 'machine';
+
+  const closeSeatedLedger = (): void => {
+    if (overlay !== 'ledger') return;
+    overlay = null;
+    app.ui.closePanel(SEAT_LEDGER_PANEL);
+    restoreSeatMode();
+  };
+  const openSeatedLedger = (): void => {
+    const s = session;
+    if (!s || !canOpenSeated()) return;
+    const mid = s.world.seat?.mid ?? null;
+    if (!mid || !s.world.machine(mid)) { app.ui.toast(t('ingame.ledger.none'), 'warn'); return; }
+    overlay = 'ledger';
+    app.input.setMode('ui');
+    app.input.exitLock();
+    app.ui.panel(SEAT_LEDGER_PANEL, (el) => {
+      mountLedger(el, s.run.tycoon, mid, { onClose: closeSeatedLedger, toast: (text) => app.ui.toast(text, 'sys') });
+    });
+  };
+  const openSeatedJournal = (): void => {
+    if (!canOpenSeated()) return;
+    overlay = 'journal';
+    openJournal();   // takes the mouse and the keys (mode 'ui'); on its way out it asks for walk mode, `watchOverlay` corrects that
+  };
+  /** The journal closes itself and sets walk mode; at a machine that must become 'machine' again (and the lock must go). */
+  const watchOverlay = (dt: number): void => {
+    if (wantJournal) { wantJournal = false; openSeatedJournal(); }
+    if (overlay === 'journal' && app.input.mode !== 'ui') { overlay = null; restoreSeatMode(); }
+    if (lockGuard > 0) {
+      lockGuard -= dt;
+      if (app.input.mode === 'machine' && app.input.locked) app.input.exitLock();
+    }
+  };
+  // J is not a live action while seated (core/keymap SEATED_WALK_ACTIONS), so the raw key opens it at a machine
+  const onSeatedKey = (e: KeyboardEvent): void => {
+    if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
+    if ((app.input as InputExt).codesOf('journal').includes(e.code) && canOpenSeated()) wantJournal = true;
   };
 
   /** Intermission panel follows the run's phase: open while `intermission`, closed otherwise. */
@@ -116,8 +211,23 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       paused = false;
       interOpen = false;
       interKey = '';
+      pauseLive = false;
+      toSettings = false;
+      overlay = null;
+      lockGuard = 0;
+      wantJournal = false;
       app.canvas.addEventListener('click', onCanvasClick);
       offs.push(() => app.canvas.removeEventListener('click', onCanvasClick));
+      app.canvas.addEventListener('keydown', onSeatedKey);
+      offs.push(() => app.canvas.removeEventListener('keydown', onSeatedKey));
+      offs.push(app.input.on('upgrade', (down) => { if (down && app.input.mode === 'machine') openSeatedLedger(); }));
+      offs.push(app.input.on('journal', (down) => { if (down && app.input.mode === 'machine') openSeatedJournal(); }));
+      // F1: the CONTROLS page (the key bindings), at a machine or on foot
+      offs.push(app.input.on('help', (down) => {
+        const m = app.input.mode;
+        if (!down || left || ending || paused || (m !== 'walk' && m !== 'machine')) return;
+        openSettingsScreen({ page: 'controls', focus: 'keys' });
+      }));
       offs.push(bus.on('run:end', ({ summary }) => endRun(summary)));
       offs.push(app.input.on('pause', (down) => {
         if (!down || !session || ending) return;
@@ -134,6 +244,10 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       offs = [];
       app.simPaused = false;
       paused = false;
+      pauseLive = false;
+      overlay = null;
+      closeSettingsScreen();
+      app.ui.closePanel(SEAT_LEDGER_PANEL);
       app.ui.closePanel(PAUSE_PANEL);
       app.ui.closePanel(INTER_PANEL);
       interOpen = false;
@@ -151,12 +265,13 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       app.world = null; app.player = null; app.run = null;
     },
     fixedUpdate(dt) {
-      if (session) { if (!paused) session.fixedUpdate(dt); return; }
+      if (session) { if (!paused || pauseLive) session.fixedUpdate(dt); return; }
       app.world?.fixedUpdate(dt);
     },
     frame(dt, alpha) {
       if (session) {
         session.frame(dt, alpha);
+        watchOverlay(dt);
         syncIntermission();
         app.renderer.render(scene, app.camera, session.player.overlay);
         return;

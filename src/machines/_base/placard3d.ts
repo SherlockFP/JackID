@@ -23,13 +23,21 @@ import { drawText, measureText, PX5_LINE_H } from '@/core/texgen/font';
 import type { Hex } from '@/core/types';
 
 // ── palette (canvas CSS colours; the bitmap font draws in these) ────────────────────────────────────
-export const PAPER = '#d9cfae';
-export const PAPER_DARK = '#bfb28c';
-export const INK = '#2a2116';
-export const INK_SOFT = '#6b5a3c';
-export const BRASS = '#c9a24a';
-export const CREAM = '#f1e6c8';
+export const PAPER = '#f1e8cc';
+export const PAPER_DARK = '#d6c9a2';
+export const INK = '#1a130a';
+export const INK_SOFT = '#4f3f27';
+export const BRASS = '#d6ad4f';
+export const CREAM = '#fbf3dc';
 export const RED = '#c0392b';
+
+/**
+ * Texel supersampling of every placard face: the canvas is RES× the logical size (`spec.px`), shapes are drawn through
+ * a RES scale, and text is drawn straight at device resolution (see `put`). Layout code keeps working in logical px.
+ * Kept at 1: the game renders at ~224p with NearestFilter and no mipmaps, so a 2x face is minified ~2.5x on a seat card and
+ * the 5x7 glyph strokes drop out (checked in the browser). Raise it only together with mipmapped/linear sampling.
+ */
+export const RES = 1;
 
 // ── host: the first-person overlay and the game canvas ─────────────────────────────────────────────
 export interface OverlayRig { readonly scene: THREE.Scene; readonly camera: THREE.Camera }
@@ -47,21 +55,22 @@ export function setPlacardHost(h: PlacardHost): void { host = h; }
 const overlayRig = (): OverlayRig | null => host?.overlay() ?? null;
 
 // ── text helpers (px5 is the PSX bitmap face; it carries Turkish glyphs) ─────────────────────────────
-const W5 = (s: string): number => measureText(s, { font: 'px5' });
+const W5s = (s: string, scale: number): number => measureText(s, { font: 'px5', scale: Math.max(1, Math.floor(scale)) });
 
-/** Word-wrap `text` (paragraphs split on '\n') into rows no wider than `maxW` canvas px. */
-export function wrapPx5(text: string, maxW: number): string[] {
+/** Word-wrap `text` (paragraphs split on '\n') into rows no wider than `maxW` canvas px at text `scale` (1 or 2). */
+export function wrapPx5(text: string, maxW: number, scale = 1): string[] {
   const out: string[] = [];
+  const Ws = (s: string): number => W5s(s, scale);
   for (const para of text.split('\n')) {
     let line = '';
     for (const word of para.split(/\s+/).filter(Boolean)) {
       const cand = line ? `${line} ${word}` : word;
-      if (W5(cand) <= maxW) { line = cand; continue; }
+      if (Ws(cand) <= maxW) { line = cand; continue; }
       if (line) out.push(line);
       let chunk = word;
-      while (W5(chunk) > maxW && chunk.length > 1) {          // a word wider than the column: hard-break it
+      while (Ws(chunk) > maxW && chunk.length > 1) {          // a word wider than the column: hard-break it
         let k = chunk.length - 1;
-        while (k > 1 && W5(chunk.slice(0, k)) > maxW) k--;
+        while (k > 1 && Ws(chunk.slice(0, k)) > maxW) k--;
         out.push(chunk.slice(0, k));
         chunk = chunk.slice(k);
       }
@@ -72,11 +81,11 @@ export function wrapPx5(text: string, maxW: number): string[] {
   return out;
 }
 
-/** `s` cut down with a trailing '..' so it fits `maxW` canvas px (one line). */
-export function fitPx5(s: string, maxW: number): string {
-  if (W5(s) <= maxW) return s;
+/** `s` cut down with a trailing '..' so it fits `maxW` canvas px (one line) at text `scale`. */
+export function fitPx5(s: string, maxW: number, scale = 1): string {
+  if (W5s(s, scale) <= maxW) return s;
   let x = s;
-  while (x.length > 1 && W5(`${x}..`) > maxW) x = x.slice(0, -1);
+  while (x.length > 1 && W5s(`${x}..`, scale) > maxW) x = x.slice(0, -1);
   return `${x}..`;
 }
 
@@ -88,13 +97,24 @@ export function paginate<T>(rows: readonly T[], per: number): T[][] {
   return pages.length ? pages : [[]];
 }
 
-/** Draw px5 text with its cap-top-left at (x, y). `align: 'center'` centres on x. */
-export function put(g: CanvasRenderingContext2D, s: string, x: number, y: number, color = INK, align: 'left' | 'center' | 'right' = 'left'): void {
-  if (s) drawText(g, s, Math.round(x), Math.round(y), { font: 'px5', color, align });
+/**
+ * Draw px5 text with its cap-top-left at logical (x, y). `align: 'center'` centres on x. `scale` 2 doubles the glyphs
+ * (body text on a face). Glyphs are drawn at device resolution (RES× logical) through the identity transform, so they
+ * stay crisp; at scale 1 the stems get one extra device px so they read bolder than the bare 5×7 face.
+ */
+export function put(g: CanvasRenderingContext2D, s: string, x: number, y: number, color = INK, align: 'left' | 'center' | 'right' = 'left', scale = 1): void {
+  if (!s) return;
+  const sc = Math.max(1, Math.floor(scale));
+  const dx = Math.round(x * RES), dy = Math.round(y * RES);
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  drawText(g, s, dx, dy, { font: 'px5', color, align, scale: sc * RES });
+  if (sc === 1) drawText(g, s, dx + 1, dy, { font: 'px5', color, align, scale: RES });
+  g.restore();
 }
 
-/** Rows of px5 that fit between two y values. */
-export const rowsIn = (h: number): number => Math.max(1, Math.floor(h / PX5_LINE_H));
+/** Rows of px5 at text `scale` that fit between two y values. */
+export const rowsIn = (h: number, scale = 1): number => Math.max(1, Math.floor(h / (PX5_LINE_H * Math.max(1, Math.floor(scale)))));
 
 /** A rule line (1 px). */
 export function rule(g: CanvasRenderingContext2D, x: number, y: number, w: number, color = INK_SOFT): void {
@@ -155,6 +175,9 @@ export class Placard3D {
   private readonly cv: HTMLCanvasElement;
   private readonly g: CanvasRenderingContext2D;
   private readonly tex: THREE.CanvasTexture;
+  /** Logical face size (`spec.px`); the canvas itself is RES× that. */
+  private readonly lw: number;
+  private readonly lh: number;
   private readonly mats: THREE.Material[] = [];
   private readonly geos: THREE.BufferGeometry[] = [];
   private readonly rest: THREE.Vector3;
@@ -173,7 +196,8 @@ export class Placard3D {
 
   constructor(readonly spec: PlacardSpec) {
     const [cw, ch] = spec.px;
-    [this.cv, this.g] = makeCanvas(cw, ch);
+    this.lw = cw; this.lh = ch;
+    [this.cv, this.g] = makeCanvas(cw * RES, ch * RES);
     this.tex = finishTexture(this.cv, { wrap: 'clamp' }, false);
     this.geos.push(new THREE.PlaneGeometry(spec.w, spec.h));
     const mat = psxMaterial({ map: this.tex, lit: false, side: 'double', unique: true });
@@ -262,8 +286,8 @@ export class Placard3D {
   repaint(): void {
     const n = Math.max(1, this.spec.pages());
     this.pageNo = Math.max(0, Math.min(n - 1, this.pageNo));
-    const g = this.g, w = this.cv.width, h = this.cv.height;
-    g.setTransform(1, 0, 0, 1, 0, 0);
+    const g = this.g, w = this.lw, h = this.lh;
+    g.setTransform(RES, 0, 0, RES, 0, 0);            // shapes in logical px, drawn at RES× texels
     g.fillStyle = this.spec.bg ?? PAPER;
     g.fillRect(0, 0, w, h);
     this.regions = [];
@@ -271,6 +295,7 @@ export class Placard3D {
       g, w, h, page: this.pageNo, pages: n, hover: this.hovered,
       region: (x, y, rw, rh, act) => { this.regions.push({ x, y, w: rw, h: rh, act }); },
     });
+    g.setTransform(1, 0, 0, 1, 0, 0);
     this.tex.needsUpdate = true;
   }
 
@@ -283,7 +308,7 @@ export class Placard3D {
     raycaster.setFromCamera(ndcVec, this.cam);
     const hit = raycaster.intersectObject(this.face, false)[0];
     if (!hit || !hit.uv) return null;
-    const x = hit.uv.x * this.cv.width, y = (1 - hit.uv.y) * this.cv.height;
+    const x = hit.uv.x * this.lw, y = (1 - hit.uv.y) * this.lh;
     for (const r of this.regions) if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return r.act;
     return '';
   }

@@ -15,6 +15,7 @@ import type { Action } from '@/core/input/types';
 import type { HudAnchorId } from '@/core/ui/types';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { COLORS, h, uiSfx } from '@/core/ui/widgets';
+import { circuitView, type LampEntry, type LampView } from '@/game/circuit';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { PlayerId } from '@/core/types';
 import { mmss, Roller, signed, wallClock } from './hud/fmt';
@@ -87,6 +88,12 @@ export function createHud(): Hud {
   const sub = h('div', 'sub', topC);
   const night = h('span', 'night', sub, '');
   const clockWall = h('span', 'wall', sub, '');
+  // THE CIRCUIT: the Watch's Hot / Cold Lamps, shown while walking the floor
+  const lampsEl = h('div', 'lamps hidden', topC);
+  const lampHot = h('span', 'hot', lampsEl);
+  const lampCold = h('span', 'cold', lampsEl);
+  let lampsSeen: LampView = { hot: [], cold: [] };
+  let seated = false;
 
   // ── top-right: quota ────────────────────────────────────────────────────────────────────────────
   const quota = h('div', 'hb quota', topR);
@@ -136,6 +143,21 @@ export function createHud(): Hud {
     feedLines.push({ el, age: 0 });
     while (feedLines.length > FEED_MAX) feedLines.shift()?.el.remove();
   }
+
+  const lampName = (e: LampEntry): string => {
+    const custom = app.run?.tycoon.owned(e.mid)?.name;
+    return custom && custom.length > 0 ? custom : machineName(e.machineId);
+  };
+  function showLamps(v: LampView): void {
+    lampsSeen = v;
+    const hot = v.hot.map(lampName).join(', ');
+    const cold = v.cold.map(lampName).join(', ');
+    setText(lampHot, hot ? t('circuit.hud.hot', { name: hot }) : '');
+    setText(lampCold, cold ? t('circuit.hud.cold', { name: cold }) : '');
+    setCls(lampsEl, 'hidden', seated || (!hot && !cold));
+  }
+  const circuit0 = circuitView(app.run);
+  if (circuit0) showLamps(circuit0.lamps());
 
   // ── events ──────────────────────────────────────────────────────────────────────────────────────
   on('eco:wallet', ({ pid, delta }) => {
@@ -190,6 +212,15 @@ export function createHud(): Hud {
   on('event:end', ({ id }) => { addFeed(t('hud.feed.eventEnd', { name: t(`event.${id}.name`) }), ''); });
   on('tycoon:milestone', ({ upgrade, level }) => { addFeed(t('hud.feed.milestone', { name: upgrade, n: level }), 'gold'); });
   on('charm:add', ({ pid, charmId }) => { if (pid === self()) addFeed(t('hud.feed.charm', { name: t(`charm.${charmId}.name`) })); });
+  on('circuit:lamps', (v) => {
+    showLamps(v);
+    if (v.hot.length > 0) addFeed(t('circuit.feed.hot', { name: v.hot.map(lampName).join(', ') }), 'gold');
+  });
+  on('player:seat', ({ pid, on: sat }) => {
+    if (pid !== self()) return;
+    seated = sat;
+    showLamps(lampsSeen);
+  });
   on('phone:ring', () => { phoneLeft = PHONE_SECONDS; setCls(phone, 'hidden', false); uiSfx('phoneRing', 0.8); });
   on('phone:end', () => { phoneLeft = 0; setCls(phone, 'hidden', true); });
 

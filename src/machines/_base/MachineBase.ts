@@ -54,7 +54,8 @@ import * as THREE from 'three';
 import type { InstanceId, Json, PlayerId } from '@/core/types';
 import type { PlayOpts, SfxName } from '@/core/audio/types';
 import type { MachineHudSpec, ToastKind } from '@/core/ui/types';
-import type { MachineInputEvent, MachinePointerEvent, MachineSink } from '@/core/input/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent, MachineSink } from '@/core/input/types';
+import { REPEATABLE_MACHINE_ACTIONS } from '@/core/keymap';
 import type { Ease } from '@/core/tween';
 import type { Kit } from '@/kit/types';
 import type { EcoSource, ModHook, WinMeta, WinTier } from '@/game/types';
@@ -68,6 +69,16 @@ import { juiceTier, tierTags, toWinTier, type JuiceTier } from './tiers';
 import * as juice from './juice';
 
 const FORCE_RELEASE_S = 10;
+
+/**
+ * Space / LMB (`primary`) and Enter (`confirm`) are aliases on every machine (TECH §11.6). Machines were written
+ * against one of the two, so the sink folds the other onto the one the machine handles; machines that handle both
+ * (the vast majority) receive each press as it came, once. Keyed by `def.id`; a subclass may override `inputAlias`.
+ */
+const CONFIRM_ONLY = new Set([
+  'roulette', 'craps', 'keno', 'sicbo', 'bigsix', 'bingo', 'lottoblower', 'derby', 'dicetower', 'fantan', 'tombola',
+]);
+const PRIMARY_ONLY = new Set(['bingopin', 'coinpusher', 'pachinko', 'shellgame', 'stacker']);
 
 /** Argument of `buildModel(kit, o)` (TECH §11.5): deterministic per-instance variation. */
 export interface ModelOpts { seed: number; variant: 0 | 1 | 2 | 3; lod?: 0 | 1 }
@@ -224,11 +235,38 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       get mouse() { return self.mouse; },
       onInput(e) {
         if (e.action === 'exit') { if (e.down && !e.repeat) { self.onStandUpRequest(); self.standUp(); } return; }
-        self.onInput(e);
+        if (e.down && e.repeat && !REPEATABLE_MACHINE_ACTIONS.has(e.action)) return;   // auto-repeat: bet ladder / cursor only
+        self._route(e);
       },
       onPointer(e) { self.onPointer(e); },
     };
     return this._sink;
+  }
+  /**
+   * Which of `primary` / `confirm` this machine actually handles when it handles only one (the sink folds the other
+   * onto it); `null` = handles both (or treats them differently, e.g. mines): events pass unchanged.
+   */
+  protected get inputAlias(): 'primary' | 'confirm' | null {
+    const id = this.def.id;
+    return CONFIRM_ONLY.has(id) ? 'confirm' : PRIMARY_ONLY.has(id) ? 'primary' : null;
+  }
+  /** primary ↔ confirm held sources per folded press, so Space + Enter together fire the machine once. */
+  private _aliasHeld = new Set<MachineAction>();
+  /** Sink → machine: fold the primary / confirm alias, then `onInput`. */
+  private _route(e: MachineInputEvent): void {
+    const to = this.inputAlias;
+    if (to === null || (e.action !== 'primary' && e.action !== 'confirm')) { this.onInput(e); return; }
+    const src = e.action;
+    const held = this._aliasHeld;
+    let pass: boolean;
+    if (e.down) {
+      if (e.repeat) pass = held.size === 1 && held.has(src);
+      else { pass = held.size === 0; held.add(src); }
+    } else {
+      held.delete(src);
+      pass = held.size === 0;
+    }
+    if (pass) this.onInput(src === to ? e : { ...e, action: to });
   }
   /**
    * Public "STAND UP" (pause menu, world.standUp): same as pressing E — deferred while busy.
@@ -440,7 +478,11 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   }
   /** Request release; deferred while `busy` (forced after 10 s). */
   protected standUp(): void {
-    if (this.busy) { this._releaseRequested = true; return; }
+    if (this.busy) {
+      if (!this._releaseRequested) this.toast(tr('ui.ctl.standAfterRound'), 'info');   // once per request, not silently ignored
+      this._releaseRequested = true;
+      return;
+    }
     this._releaseRequested = false;
     this._releaseWait = 0;
     const seat = this.localSeat;
@@ -506,6 +548,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   _occupy(pid: PlayerId, seat: number, seed: number, local: boolean): void {
     this.seats[seat] = pid;
     if (local) {
+      this._aliasHeld.clear();
       this.rng = createRng(seed);
       this._releaseRequested = false;
       this.bet = clamp(this.bet, this.def.minBet, this.def.maxBet);

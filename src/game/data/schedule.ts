@@ -140,3 +140,30 @@ export function indexConventionProblems(): string[] {
   }
   return out;
 }
+
+// ── THE CIRCUIT (GDD §3.4): Tilt and Lamps ────────────────────────────────────────────────────────
+/** Pulls on one instance per Watch that still pay in full (GDD §3.4.3: pulls 1–4 are ×1.00). */
+export const TILT_FREE_PULLS = 4;
+/** Lamps and the punch card come with B6 (GDD §1 tiers): Night 2. */
+export const LAMP_FIRST_NIGHT = 2;
+/** Hot Lamps per Watch (GDD §3.4.4): none on Night 1, 1 on Nights 2–4, 2 from Night 5. Co-op adds +1 per 3 players elsewhere. */
+export function hotLampCount(nightNo: number): number {
+  if (nightNo < LAMP_FIRST_NIGHT) return 0;
+  return nightNo >= 5 ? 2 : 1;
+}
+
+// ── Obols (GDD §11.2) ─────────────────────────────────────────────────────────────────────────────
+export type ObolOutcome = 'fell' | 'descend' | 'topside' | 'quit';
+/** Outcome multipliers: fall ×0.5, Descend ×1.0, Topside STAY UP ×1.5, abandon ×0.25. */
+export const OBOL_OUTCOME_MULT: Readonly<Record<ObolOutcome, number>> = { fell: 0.5, descend: 1, topside: 1.5, quit: 0.25 };
+/**
+ * `floor( floor(0.6 × cbrt(totalDeposited)) × outcomeMult × (1 + 0.10 × HouseEdge) × gain )`.
+ * `deposited` is the run's total deposited (it grows with every Night paid), `gain` the Foundations multiplier (`x.meta.obolGain`).
+ */
+export function obolsFor(o: { deposited: number; outcome: ObolOutcome; edge?: number; gain?: number }): number {
+  const dep = Math.max(0, o.deposited);
+  if (dep <= 0) return 0;
+  const base = Math.floor(0.6 * Math.cbrt(dep));
+  const v = base * OBOL_OUTCOME_MULT[o.outcome] * (1 + 0.1 * Math.max(0, o.edge ?? 0)) * Math.max(0, o.gain ?? 1);
+  return Math.max(0, Math.floor(v + 1e-9));
+}

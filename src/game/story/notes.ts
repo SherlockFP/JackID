@@ -37,6 +37,8 @@ const TAPE_PX: [number, number] = [224, 176], TAPE_W = 0.28, TAPE_H = 0.22;
 const JOURNAL_PX: [number, number] = [336, 216], JOURNAL_W = 0.36, JOURNAL_H = 0.23;
 const PAGE_W = 144;                       // one page of the journal spread / the note's text column
 const LIST_TOP = 38, LIST_ROW = 12;
+/** Paper-note text is drawn at double size (the 5×7 face read as mush at 800×450); its line pitch is 2 × 10 rows. */
+const TEXT_SC = 2, LINE = 10 * TEXT_SC;
 
 const found = new Set<string>();
 /** The NoteDef of the reader open right now (null when no note is being read). */
@@ -159,9 +161,9 @@ export function openJournal(): void {
 // ── paper note ─────────────────────────────────────────────────────────────────────────────────────
 function notePlacard(def: NoteDef): Placard3D {
   const i = indexOf(def.id);
-  const title = wrapPx5(t(`story.note.${def.id}.t`), NOTE_PX[0] - 28);
-  const bodyY = 12 + title.length * 10 + 8;
-  const pages = paginate(wrapPx5(t(`story.note.${def.id}.b`), NOTE_PX[0] - 28), rowsIn(NOTE_PX[1] - bodyY - 64));
+  const title = wrapPx5(t(`story.note.${def.id}.t`), NOTE_PX[0] - 28, TEXT_SC);
+  const bodyY = 12 + title.length * LINE + 8;
+  const pages = paginate(wrapPx5(t(`story.note.${def.id}.b`), NOTE_PX[0] - 28, TEXT_SC), rowsIn(NOTE_PX[1] - bodyY - 64, TEXT_SC));
   const isNote = def.kind === 'note';
   return new Placard3D({
     name: `story-${def.id}`,
@@ -174,9 +176,9 @@ function notePlacard(def: NoteDef): Placard3D {
       const { g, w, h } = c;
       speckle(g, w, h, 97 * (i + 3), PAPER_DARK, 70);
       let y = 12;
-      for (const r of title) { put(g, r, 14, y, INK); y += 10; }
+      for (const r of title) { put(g, r, 14, y, INK, 'left', TEXT_SC); y += LINE; }
       rule(g, 14, y + 2, w - 28);
-      pages[Math.min(c.page, pages.length - 1)].forEach((r, k) => put(g, r, 14, bodyY + k * 10, INK));
+      pages[Math.min(c.page, pages.length - 1)].forEach((r, k) => put(g, r, 14, bodyY + k * LINE, INK, 'left', TEXT_SC));
       rule(g, 14, h - 62, w - 28);
       put(g, t('story.ui.noteCount', { i: i + 1, total: NOTES.length }), w / 2, h - 54, INK_SOFT, 'center');
       if (pages.length > 1) {

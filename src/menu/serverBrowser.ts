@@ -8,12 +8,36 @@ import { app } from '@/core/app';
 import { t } from '@/core/i18n';
 import { addRoomSource, listRooms, targetOf, type ListedRoom } from './mp/directory';
 import { joinByCode, joinTarget, type JoinResult } from './mp/join';
+import { httpBaseOf, resolveLobbyUrl } from '@/net/lobbyClient';
 import { openHostPanel } from './hostPanel';
 import { enterLobby } from './mp/nav';
 import { stage, hookStageOverlay, type Screen, type StageKey } from './mp/stage';
 import { HitMap, PHOS, PIX, box, button, say, sayFit, wrapLines } from './mp/crtArt';
 
 const REFRESH_MS = 5000;
+/** Footer and tab labels, and the hint line: brighter than the dim phosphor so they read on the glass. */
+const LABEL = '#7ff0a0';
+const LABEL_DIM = '#5fcf86';
+const LOBBY_PROBE_MS = 3000;
+
+/**
+ * Is the lobby server answering? The net layer's `discoverServer()` returns an empty list when the socket is down, so
+ * an empty LOBBY list alone cannot tell "nobody is hosting" from "offline". This probes the same `/api/rooms` endpoint
+ * the net layer falls back to, with a short timeout. Settings-level lobby URLs are not visible here, so the default URL
+ * (same host `/lobby`, or VITE_LOBBY_URL) is probed.
+ */
+async function probeLobby(): Promise<boolean> {
+  const ctl = new AbortController();
+  const timer = window.setTimeout(() => ctl.abort(), LOBBY_PROBE_MS);
+  try {
+    const res = await fetch(`${httpBaseOf(resolveLobbyUrl())}/rooms`, { cache: 'no-store', signal: ctl.signal });
+    return res.ok;
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
 const DOUBLE_MS = 380;
 const ROW_H = 20;
 const ROW_Y = 104;
@@ -66,6 +90,8 @@ class BrowserScreen implements Screen {
   private active = false;
   private timer = 0;
   private scanning = false;
+  /** The lobby server did not answer the last probe: the LOBBY tab shows OFFLINE instead of an empty list. */
+  private lobbyDown = false;
   private last = { id: '', at: 0 };
   private readonly hits = new HitMap();
 
@@ -90,10 +116,11 @@ class BrowserScreen implements Screen {
 
   private async refresh(): Promise<void> {
     this.scanning = true;
-    const rooms = await listRooms();
+    const [rooms, up] = await Promise.all([listRooms(), probeLobby()]);
     this.scanning = false;
     if (!this.active) return;
     this.rooms = rooms;
+    this.lobbyDown = !up;
     this.arrange();
   }
 
@@ -147,6 +174,17 @@ class BrowserScreen implements Screen {
     this.buf = '';
     this.err = '';
     this.mode = 'code';
+  }
+
+  /** Ctrl+V: the clipboard text goes into the open prompt (room code: A-Z 0-9 only; password: as typed, one line). */
+  paste(text: string): void {
+    if (this.mode === 'code') {
+      const clean = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      this.buf = (this.buf + clean).slice(0, CODE_MAX);
+    } else if (this.mode === 'pass') {
+      const clean = text.replace(/[\r\n\t]/g, '');
+      this.buf = (this.buf + clean).slice(0, PASS_MAX);
+    }
   }
 
   private submitPrompt(): void {
@@ -231,9 +269,11 @@ class BrowserScreen implements Screen {
 
     if (this.mode !== 'list') { this.paintPrompt(c, w, time); return; }
 
-    button(c, hits, 'tab:lobby', t('mp.browser.tab.lobby'), 18, 48, 130, 22, this.tab === 'lobby');
-    button(c, hits, 'tab:tab', t('mp.browser.tab.tab'), 156, 48, 170, 22, this.tab === 'tab');
-    say(c, t('mp.browser.count', { n: this.shown.length }), w - 18, 52, PHOS.dim, 16, 'right');
+    button(c, hits, 'tab:lobby', t('mp.browser.tab.lobby'), 18, 48, 130, 22, this.tab === 'lobby', LABEL);
+    button(c, hits, 'tab:tab', t('mp.browser.tab.tab'), 156, 48, 170, 22, this.tab === 'tab', LABEL);
+    const offline = this.tab === 'lobby' && this.lobbyDown && !this.scanning;
+    if (offline) say(c, t('mp.browser.offline'), w - 18, 52, PHOS.bad, 16, 'right');
+    else say(c, t('mp.browser.count', { n: this.shown.length }), w - 18, 52, LABEL_DIM, 16, 'right');
 
     const cols = [
       { x: 20, w: 18, label: '', align: 'left' as const },
@@ -245,12 +285,17 @@ class BrowserScreen implements Screen {
       { x: 428, w: 28, label: t('mp.browser.col.ping'), align: 'right' as const },
       { x: 462, w: 50, label: t('mp.browser.col.state'), align: 'left' as const },
     ];
-    for (const col of cols) sayFit(c, col.label, col.x, 78, col.w, PHOS.dim, 15, col.align);
+    for (const col of cols) sayFit(c, col.label, col.x, 78, col.w, LABEL_DIM, 16, col.align);
     c.fillStyle = PHOS.dim;
     c.fillRect(16, ROW_Y - 5, w - 32, 1);
 
-    if (this.shown.length === 0) {
-      say(c, this.scanning ? t('mp.browser.scan') : t('mp.browser.empty'), w / 2, ROW_Y + 60, PHOS.dim, 16, 'center');
+    if (offline) {
+      say(c, t('mp.browser.offline'), w / 2, ROW_Y + 36, PHOS.bad, 13, 'center', PIX);
+      for (const [i, line] of wrapLines(c, t('mp.browser.offlineHint'), w - 80, 17).slice(0, 3).entries()) {
+        say(c, line, w / 2, ROW_Y + 84 + i * 20, LABEL, 17, 'center');
+      }
+    } else if (this.shown.length === 0) {
+      say(c, this.scanning ? t('mp.browser.scan') : t('mp.browser.empty'), w / 2, ROW_Y + 60, LABEL_DIM, 17, 'center');
     }
     this.keepVisible();
     for (let i = 0; i < ROWS; i++) {
@@ -274,12 +319,12 @@ class BrowserScreen implements Screen {
     }
 
     if (this.err) sayFit(c, this.err, 20, 296, w - 40, PHOS.bad, 16);
-    button(c, hits, 'filter', t('mp.browser.filter', { f: t(`mp.browser.filter.${this.filter}`) }), 18, 316, 200, 22);
-    button(c, hits, 'refresh', t('mp.browser.refresh'), 18, 344, 116, 24);
-    button(c, hits, 'code', t('mp.browser.joinCode'), 140, 344, 130, 24);
+    button(c, hits, 'filter', t('mp.browser.filter', { f: t(`mp.browser.filter.${this.filter}`) }), 18, 316, 200, 22, false, LABEL);
+    button(c, hits, 'refresh', t('mp.browser.refresh'), 18, 344, 116, 24, false, LABEL);
+    button(c, hits, 'code', t('mp.browser.joinCode'), 140, 344, 130, 24, false, LABEL);
     button(c, hits, 'host', t('mp.browser.host'), 276, 344, 104, 24, false, PHOS.warn);
-    button(c, hits, 'back', t('mp.browser.back'), 386, 344, 108, 24, false, PHOS.dim);
-    for (const line of wrapLines(c, t('mp.browser.hint'), w - 36, 12)) say(c, line, w / 2, 372, PHOS.dim, 12, 'center');
+    button(c, hits, 'back', t('mp.browser.back'), 386, 344, 108, 24, false, LABEL_DIM);
+    for (const line of wrapLines(c, t('mp.browser.hint'), w - 36, 14)) say(c, line, w / 2, 372, LABEL_DIM, 14, 'center');
   }
 
   private paintPrompt(c: CanvasRenderingContext2D, w: number, time: number): void {
@@ -298,8 +343,9 @@ class BrowserScreen implements Screen {
     const shown = pass ? '*'.repeat(this.buf.length) : this.buf;
     const cursor = Math.floor(time * 2) % 2 === 0 ? '_' : ' ';
     sayFit(c, `${shown}${cursor}`, 108, 201, w - 216, PHOS.hi, 20);
+    say(c, t('mp.browser.pasteHint'), w / 2, 230, LABEL_DIM, 13, 'center');
     button(c, hits, 'prompt:go', pass ? t('mp.pass.join') : t('mp.code.join'), 100, 248, 150, 28, true);
-    button(c, hits, 'prompt:cancel', t('mp.browser.back'), w - 250, 248, 150, 28, false, PHOS.dim);
+    button(c, hits, 'prompt:cancel', t('mp.browser.back'), w - 250, 248, 150, 28, false, LABEL_DIM);
     if (this.err) sayFit(c, this.err, w / 2, 288, w - 140, PHOS.bad, 16, 'center');
   }
 }

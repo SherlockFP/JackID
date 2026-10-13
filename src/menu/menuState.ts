@@ -14,6 +14,7 @@ import { app } from '@/core/app';
 import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
 import { hashSeed, randomSeed } from '@/core/rng';
+import { openSettingsScreen } from '@/core/ui/settingsScreen';
 import { buildCabinet, DIE_CENTER, type Cabinet } from './menuCabinet';
 import { MenuDie, easeOutBack, type DieHit } from './menuDie';
 import { MenuBurst } from './menuBurst';
@@ -308,7 +309,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
       case 'play': startPlay(); break;
       case 'multi': goMulti(); break;
       case 'free': goFree(); break;
-      case 'settings': openSettings(); break;
+      case 'settings': sfx('click'); openSettingsScreen(); break;   // the full Settings screen (the settings die below is no longer reached)
       case 'credits': openInfo('credits'); break;
       case 'quit': openInfo('quit'); break;
     }

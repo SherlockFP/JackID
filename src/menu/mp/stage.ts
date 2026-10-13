@@ -13,6 +13,8 @@ export interface Screen {
   /** Draw into the canvas (called every frame while shown). `time` is real seconds. */
   paint(ctx: CanvasRenderingContext2D, w: number, h: number, time: number): void;
   key(e: StageKey): void;
+  /** Clipboard text (Ctrl+V) while the monitor is up. Screens without text fields leave it out. */
+  paste?(text: string): void;
   click(x: number, y: number): void;
   move?(x: number, y: number): void;
   open?(): void;
@@ -134,12 +136,26 @@ class Stage {
 
   private readonly onKey = (e: KeyboardEvent): void => {
     if (!this.screen || !this.wantOpen) return;
+    // Browser and OS keys stay with the browser: F1-F12 (F5 reload, F11 full screen, F12 devtools) and every Ctrl /
+    // Alt / Meta chord (Ctrl+V paste, Ctrl+C copy). The 3D keyboard never sees them and the page does not block them.
+    if (e.ctrlKey || e.metaKey || e.altKey || /^F\d{1,2}$/.test(e.code)) return;
     e.preventDefault();
     e.stopImmediatePropagation();
     if (e.type !== 'keydown') return;
     this.rig.pressKey(e.code);
     if (!e.repeat) sfx('typewriter', 0.35);
     this.screen.key(e);
+  };
+
+  /** Ctrl+V (or the context menu's paste) lands in the open prompt. Text fields in the DOM keep their own paste. */
+  private readonly onPaste = (e: ClipboardEvent): void => {
+    if (!this.screen || !this.wantOpen || !this.screen.paste) return;
+    const el = document.activeElement as HTMLElement | null;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+    const text = e.clipboardData?.getData('text/plain') ?? '';
+    if (!text) return;
+    e.preventDefault();
+    this.screen.paste(text);
   };
 
   private readonly onDown = (e: PointerEvent): void => {
@@ -184,6 +200,7 @@ class Stage {
     if (this.attached) return;
     this.attached = true;
     window.addEventListener('keydown', this.onKey, { capture: true });
+    window.addEventListener('paste', this.onPaste, { capture: true });
     window.addEventListener('pointerdown', this.onDown, { capture: true });
     window.addEventListener('pointermove', this.onMove, { capture: true });
     window.addEventListener('pointerup', this.onUp, { capture: true });
@@ -193,6 +210,7 @@ class Stage {
     if (!this.attached) return;
     this.attached = false;
     window.removeEventListener('keydown', this.onKey, { capture: true });
+    window.removeEventListener('paste', this.onPaste, { capture: true });
     window.removeEventListener('pointerdown', this.onDown, { capture: true });
     window.removeEventListener('pointermove', this.onMove, { capture: true });
     window.removeEventListener('pointerup', this.onUp, { capture: true });

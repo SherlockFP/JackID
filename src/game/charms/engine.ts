@@ -8,7 +8,7 @@ import type { GameEvents } from '@/core/events';
 import { bus } from '@/core/events';
 import { registerStrings } from '@/core/i18n';
 import type { Rng } from '@/core/rng';
-import { CHARM_DATA, LAUNCH_CHARM_IDS } from '@/game/data/charms';
+import { CHARM_DATA, LAUNCH_CHARM_IDS, SUIT_SCALED_CHARMS } from '@/game/data/charms';
 import { BEHAVIOURS, DYNAMIC_EFFECTS } from './behaviours';
 import { rollRarity, type ShopRarity } from '@/game/economy';
 
@@ -104,6 +104,13 @@ export class Charms implements ModProvider {
     return out;
   }
 
+  /** Charms of one suit family held by `pid` (stacks count), the charm's own copy included. */
+  private suitHeld(pid: PlayerId, suit: string): number {
+    let n = 0;
+    for (const s of this.owned.get(pid) ?? []) if (DEFS.get(s.id)?.tag === suit) n += s.stacks ?? 1;
+    return n;
+  }
+
   /** ModProvider: every owned charm of the queried player contributes its effects (and its code modify, if any). */
   collect(q: ModQuery, out: ModSource[]): void {
     const pid = q.pid ?? this.host.selfId;
@@ -113,7 +120,11 @@ export class Charms implements ModProvider {
       const def = DEFS.get(state.id);
       if (!def) return;
       const dyn = DYNAMIC_EFFECTS[state.id];
-      const effects = dyn ? [...(def.effects ?? []), ...dyn({ data: bagOf(state), run: this.host.run() })] : (def.effects ?? []);
+      // Suit-tag charms scale per same-suit charm held (data: SUIT_SCALED_CHARMS / SUIT_SCALE_STEP).
+      const scaled = SUIT_SCALED_CHARMS.has(state.id) && def.tag
+        ? (def.effects ?? []).map((e) => ({ ...e, value: e.value * this.suitHeld(pid, def.tag as string) }))
+        : (def.effects ?? []);
+      const effects = dyn ? [...scaled, ...dyn({ data: bagOf(state), run: this.host.run() })] : scaled;
       const src: ModSource = {
         kind: 'charm', id: state.id, owner: pid, stacks: state.stacks ?? 1, effects, order,
       };

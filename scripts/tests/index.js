@@ -8,3 +8,4 @@ import './i18n.test.mjs';
 import './reels.test.mjs';
 import './cards.test.mjs';
 import './check.test.mjs';
+import './circuit.test.mjs';

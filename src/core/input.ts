@@ -11,10 +11,16 @@
  *    A lock lost to the browser's Esc becomes a synthetic `pause` press.
  *  - Lock refused (or `?nolock=1`) → automatic DRAG-TO-LOOK fallback (`dragLook`): in walk mode, holding LMB or RMB on
  *    the canvas and moving turns the camera through `look()`. No "click to continue" veil is raised any more.
- *  - Seated rules (§11.6): RMB is a TAP (< 0.2 s → `secondary`), RMB hold = free-look (`freeLook`, `look()` deltas);
+ *  - Seated rules (§11.6): RMB is a TAP (< 0.28 s, or a press that never moved the pointer more than 4 px at any
+ *    duration → `secondary`), RMB hold + drag = free-look (`freeLook`, `look()` deltas);
  *    at `mouse:'pick'` poses RMB goes to `onPointer` and free-look is hold-Alt instead;
  *    wheel notches become `WheelUp/WheelDown` presses; unbound keys reach the sink as `{action:'key'}` with their `code`
  *    (device letters J/K/L, P, [ ] …); Esc pauses, E stands up.
+ *  - Key-repeat reaches a machine only for the bet ladder and cursor / aim movement (`REPEATABLE_MACHINE_ACTIONS`).
+ *  - Seat glide: while the camera glides into a seat (`seatTransition(true)`, called by the player) the mode is still
+ *    'walk'; machine-layer presses made then are buffered (last one wins) and replayed once the machine sink attaches.
+ *  - Lock refused in walk mode → a small non-blocking centre hint "CLICK TO CAPTURE MOUSE"; any click while walking and
+ *    unlocked requests the lock again (the hint hides on `input:lock`).
  *  - Never binds Ctrl/Alt/Meta chords (browser shortcuts keep working); F5/F11/F12 stay with the browser.
  */
 import * as THREE from 'three';
@@ -22,8 +28,8 @@ import type {
   Action, BindingKey, Input, InputMode, MachineAction, MachineInputEvent, MachineSink,
 } from './input/types';
 import {
-  ALL_DEFAULTS, CUTSCENE_SKIP_CODES, MODIFIER_CODES, RESERVED_CODES, SEATED_WALK_ACTIONS, TAP_ONLY_CODES,
-  codeLabel,
+  ALL_DEFAULTS, BUFFERABLE_MACHINE_ACTIONS, CUTSCENE_SKIP_CODES, MODIFIER_CODES, REPEATABLE_MACHINE_ACTIONS,
+  RESERVED_CODES, SEATED_WALK_ACTIONS, TAP_ONLY_CODES, codeLabel,
 } from './keymap';
 import { bus } from './events';
 import { app } from './app';
@@ -56,6 +62,12 @@ export interface InputExt extends Input {
   resetBindings(): void;
   /** True when walk look comes from drag-to-look (lock refused, or `?nolock=1`) instead of pointer lock. */
   readonly dragLook: boolean;
+  /**
+   * The player starts (`true`) / ends (`false`) the camera glide into a seat. While on, machine-layer presses are
+   * buffered instead of lost and walk actions other than the seated ones are ignored; the last buffered press is
+   * replayed once `setMachineSink` attaches a sink in 'machine' mode.
+   */
+  seatTransition(on: boolean): void;
   /** Codes currently bound to a binding key (copy). */
   codesOf(key: string): string[];
   /** Every binding key with its codes (frozen + extra, copy). */
@@ -75,13 +87,19 @@ export function stepParallax(p: Parallax, ndc: THREE.Vector2, dt: number, streng
   return p;
 }
 
-interface Raw { code: string; down: boolean; repeat: boolean; t: number; mods: Mods }
+interface Raw {
+  code: string; down: boolean; repeat: boolean; t: number; mods: Mods;
+  /** RMB release only: the largest pointer travel (px) since the press. */
+  moved?: number;
+}
 interface PtrEvt { type: 'down' | 'up' | 'move'; button: 0 | 1 | 2; ndc: THREE.Vector2; t: number }
 
 const PREVENT = new Set([
   'Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Backspace', 'F1', 'F3', 'F4', 'Slash', 'Quote',
 ]);
-const TAP_MS = 200;               // RMB tap window
+const TAP_MS = 280;               // RMB tap window (a press that never moved is a tap at any duration)
+const TAP_MOVE_PX = 4;            // pointer travel (px) above which an RMB hold turns into free-look
+const SEAT_REPLAY_MS = 1500;      // a press buffered during the glide-in is replayed only if younger than this
 const WHEEL_MOUSE_PX = 50;        // |deltaY| at or above this = a real mouse notch (fires immediately)
 const WHEEL_STEP_PX = 100;        // trackpad accumulation per notch
 const MAX_LOOK_PX = 500;          // Chromium occasionally reports a huge movementX when the lock toggles
@@ -127,6 +145,11 @@ class InputImpl implements InputExt {
   private lockPending: Promise<boolean> | null = null;
   private veil = false;
   private rmbT = -1;                       // RMB press time (ms), −1 = up
+  private rmbX = 0; private rmbY = 0;      // RMB press position (client px)
+  private rmbMoved = 0;                    // largest pointer travel since the RMB press
+  private seatGlide = false;               // the camera is gliding into a seat (mode still 'walk', no sink yet)
+  private seatBuf: { action: string; code: string; mods: Mods; t: number } | null = null;
+  private hintEl: HTMLDivElement | null = null;   // "CLICK TO CAPTURE MOUSE"
   private wheelAcc = 0;
   private readonly moveOut = { x: 0, z: 0 };
   private readonly lookOut = { dx: 0, dy: 0 };
@@ -158,6 +181,8 @@ class InputImpl implements InputExt {
       if (!isTextEl(e.relatedTarget)) this.setFlags(() => { this.domText = false; });
     });
     bus.on('ui:blocking', ({ blocking }) => this.setFlags(() => { this.uiBlocked = blocking; }));
+    bus.on('input:lock', ({ locked }) => { if (locked) this.setCaptureHint(false); });
+    bus.on('lang:changed', () => { if (this.hintEl && this.hintEl.style.display !== 'none') this.hintEl.textContent = t('ui.ctl.capture'); });
     this.applyCursor(this.mode);
   }
 
@@ -183,6 +208,7 @@ class InputImpl implements InputExt {
     else {
       if (cur !== 'cutscene') this.exitLock();
       this.setVeil(false);
+      this.setCaptureHint(false);
     }
   }
 
@@ -207,6 +233,7 @@ class InputImpl implements InputExt {
       // refused → drag-to-look takes over (no veil); a later successful lock switches back in onLockChange
       if (!ok && !this.dragLook) { this.dragLook = true; this.applyCursor(this.mode); }
       this.setVeil(false);
+      this.setCaptureHint(!ok && this.mode === 'walk' && !this.locked);   // refused: tell the player a click will capture
       return ok;
     });
     this.lockPending = p;
@@ -259,6 +286,23 @@ class InputImpl implements InputExt {
     bus.emit('input:lock', { locked: this.locked });
   }
 
+  /** Small non-blocking centre hint (never a veil): shown when walk-mode pointer lock was refused, hidden on lock. */
+  private setCaptureHint(show: boolean): void {
+    if (!show && !this.hintEl) return;
+    if (!this.hintEl) {
+      const el = document.createElement('div');
+      el.setAttribute('aria-hidden', 'true');
+      el.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,calc(5 * var(--u, 2px)));z-index:6;'
+        + 'pointer-events:none;white-space:nowrap;padding:calc(2 * var(--u, 2px)) calc(4 * var(--u, 2px));'
+        + 'background:rgba(8,8,8,0.7);color:#efd67b;letter-spacing:0.04em;'
+        + "font:calc(6 * var(--u, 2px))/1 var(--f-head, 'Press Start 2P', monospace);display:none;";
+      (document.getElementById('ui') ?? document.body).appendChild(el);
+      this.hintEl = el;
+    }
+    if (show) this.hintEl.textContent = t('ui.ctl.capture');
+    this.hintEl.style.display = show ? 'block' : 'none';
+  }
+
   private setVeil(show: boolean): void {
     if (show === this.veil) return;
     this.veil = show;
@@ -296,17 +340,22 @@ class InputImpl implements InputExt {
     const dragBtn = e.button === 0 || e.button === 2;
     if (down) {
       if (e.target !== this.canvas || mode === 'ui') return;
-      if (mode === 'walk' && !this.locked) {
-        if (!this.dragLook) { void this.requestLock(); return; }      // the click that re-locks is swallowed
-        if (dragBtn) this.dragging = true;                            // drag-to-look: this click starts the drag
+      if (mode === 'walk' && !this.locked && !this.seatGlide) {
+        // every click while walking unlocked asks for the lock again (a refused auto re-lock needs this gesture)
+        if (!this.noLock) void this.requestLock();
+        if (!this.dragLook) return;                                   // the click that re-locks is swallowed
+        if (dragBtn) this.dragging = true;                            // drag-to-look: this click also starts the drag
       }
       this.phys.add(code);
+      if (e.button === 2) { this.rmbX = e.clientX; this.rmbY = e.clientY; this.rmbMoved = 0; }
     } else {
       this.phys.delete(code);
       if (dragBtn) this.dragging = false;
       if (mode === 'ui') return;
     }
-    this.queue.push({ code, down, repeat: false, t: performance.now(), mods: this.mods(e) });
+    const raw: Raw = { code, down, repeat: false, t: performance.now(), mods: this.mods(e) };
+    if (!down && e.button === 2) raw.moved = this.rmbMoved;
+    this.queue.push(raw);
     if (mode === 'machine') {
       this.updateNdc(e);
       this.pushPtr({ type: down ? 'down' : 'up', button: b, ndc: this.pointerNdc.clone(), t: performance.now() });
@@ -320,6 +369,7 @@ class InputImpl implements InputExt {
       return;
     }
     this.updateNdc(e);
+    if (this.phys.has('Mouse2')) this.rmbMoved = Math.max(this.rmbMoved, Math.hypot(e.clientX - this.rmbX, e.clientY - this.rmbY));
     if (mode === 'walk' && this.dragging) {                          // drag-to-look (unlocked fallback)
       if (Math.abs(e.movementX) < MAX_LOOK_PX && Math.abs(e.movementY) < MAX_LOOK_PX) { this.pendDx += e.movementX; this.pendDy += e.movementY; }
       return;
@@ -327,7 +377,7 @@ class InputImpl implements InputExt {
     if (mode === 'machine') {
       // pick poses: free-look is hold-Alt (RMB belongs to onPointer); other poses: RMB hold past the tap window
       if (this.sink?.mouse === 'pick') this.freeLook = this.altHeld();
-      else if (this.rmbT >= 0 && performance.now() - this.rmbT >= TAP_MS) this.freeLook = true;
+      else if (this.rmbT >= 0 && performance.now() - this.rmbT >= TAP_MS && this.rmbMoved > TAP_MOVE_PX) this.freeLook = true;
       if (this.freeLook) { this.pendDx += e.movementX; this.pendDy += e.movementY; }
       this.pushPtr({ type: 'move', button: 0, ndc: this.pointerNdc.clone(), t: performance.now() });
     }
@@ -396,9 +446,15 @@ class InputImpl implements InputExt {
     return () => { set!.delete(fn); };
   }
   setMachineSink(s: MachineSink | null): void {
+    if (s === null) this.seatBuf = null;                  // leaving the seat: a stale press must never reach the next one
     if (s === this.sink) return;
     this.releaseMachine();
     this.sink = s;
+  }
+
+  seatTransition(on: boolean): void {
+    this.seatGlide = on;
+    if (on) { this.seatBuf = null; this.releaseWalk(); }   // walk actions end; the buffer starts empty
   }
 
   // ── bindings ────────────────────────────────────────────────────────────────────────────────────
@@ -465,11 +521,12 @@ class InputImpl implements InputExt {
     this.pendDx = 0; this.pendDy = 0;
     if (this.mode === 'machine') {
       if (this.sink?.mouse === 'pick') this.freeLook = this.altHeld();
-      else if (this.rmbT >= 0 && !this.freeLook && performance.now() - this.rmbT >= TAP_MS) this.freeLook = true;
+      else if (this.rmbT >= 0 && !this.freeLook && performance.now() - this.rmbT >= TAP_MS && this.rmbMoved > TAP_MOVE_PX) this.freeLook = true;
     }
   }
 
   beginStep(): void {
+    if (this.seatBuf) this.replaySeatBuffer();
     if (this.queue.length) {
       const q = this.queue; this.queue = [];
       for (const r of q) this.dispatch(r);
@@ -491,6 +548,8 @@ class InputImpl implements InputExt {
   private dispatch(r: Raw): void {
     const mode = this.mode;
     if (mode === 'ui') return;
+    const gliding = this.seatGlide && mode === 'walk';     // gliding into a seat: seated walk rules, machine presses buffered
+    const wmode = gliding ? 'machine' : mode;
     const keys = this.reverse.get(r.code) ?? EMPTY;
     let machineBound = false;
     let walkHandled = false;
@@ -498,17 +557,36 @@ class InputImpl implements InputExt {
     for (const k of keys) {
       if (k.startsWith('m.')) {
         if (mode === 'machine') { machineBound = true; this.dispatchMachine(k.slice(2), r); }
+        else if (gliding) this.bufferSeatPress(k.slice(2), r);
       } else {
         if (k === 'skip') skipped = true;
-        if (this.dispatchWalk(k, r, mode)) walkHandled = true;
+        if (this.dispatchWalk(k, r, wmode)) walkHandled = true;
       }
     }
     if (mode === 'cutscene' && !skipped && (CUTSCENE_SKIP_CODES.includes(r.code) || r.code === '__pause')) this.dispatchWalk('skip', r, mode);
     // unbound at the machine (and not a live seated walk action such as Esc / Tab / F1) → device letters: delivered raw
     if (mode === 'machine' && !machineBound && !walkHandled && !MODIFIER_CODES.has(r.code) && !r.code.startsWith('Mouse')
-        && !r.code.startsWith('Wheel') && r.code !== '__pause') {
+        && !r.code.startsWith('Wheel') && r.code !== '__pause' && !(r.down && r.repeat)) {   // device letters never auto-repeat
       this.sendMachine('key', r.down, r.repeat, r);
     }
+  }
+
+  /** Remember the last machine-layer press made while the camera glides into the seat (see `seatTransition`). */
+  private bufferSeatPress(action: string, r: Raw): void {
+    if (!r.down || r.repeat || !BUFFERABLE_MACHINE_ACTIONS.has(action)) return;
+    this.seatBuf = { action, code: r.code, mods: r.mods, t: r.t };
+  }
+
+  /** The sink attached and the mode is 'machine': replay the buffered press once (down + up), or drop it when stale. */
+  private replaySeatBuffer(): void {
+    const b = this.seatBuf;
+    if (!b) return;
+    const now = performance.now();
+    if (now - b.t > SEAT_REPLAY_MS) { this.seatBuf = null; return; }
+    if (this.seatGlide || this.mode !== 'machine' || !this.sink) return;          // still gliding: keep waiting
+    this.seatBuf = null;
+    this.dispatchMachine(b.action, { code: b.code, down: true, repeat: false, t: now, mods: b.mods });
+    this.dispatchMachine(b.action, { code: b.code, down: false, repeat: false, t: now, mods: b.mods });
   }
 
   /** Route a walk-layer action. Returns whether the action is live in the current mode (it may still be a repeat). */
@@ -540,14 +618,18 @@ class InputImpl implements InputExt {
     if (r.code.startsWith('Mouse') && pick) return;                   // pick poses use onPointer only
     if (TAP_ONLY_CODES.has(r.code)) {                                 // RMB: tap = action, hold = free-look
       if (r.down) { this.rmbT = r.t; return; }
-      const tap = this.rmbT >= 0 && r.t - this.rmbT < TAP_MS;
+      // tap = a short press, or one that never moved the pointer (more than TAP_MOVE_PX) however long it lasted
+      const tap = this.rmbT >= 0 && (r.t - this.rmbT < TAP_MS || (r.moved ?? 0) <= TAP_MOVE_PX);
       this.rmbT = -1; this.freeLook = false;
       if (tap) { this.sendMachine(action, true, false, r); this.sendMachine(action, false, false, r); }
       return;
     }
     let set = this.machHeld.get(action);
     if (r.down) {
-      if (r.repeat) { if (set?.has(r.code)) this.sendMachine(action, true, true, r); return; }
+      if (r.repeat) {                                                 // auto-repeat: bet ladder and cursor movement only
+        if (set?.has(r.code) && REPEATABLE_MACHINE_ACTIONS.has(action)) this.sendMachine(action, true, true, r);
+        return;
+      }
       if (!set) { set = new Set(); this.machHeld.set(action, set); }
       if (set.has(r.code)) return;
       const first = set.size === 0;

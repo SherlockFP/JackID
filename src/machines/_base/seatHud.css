@@ -27,7 +27,8 @@
 .shud-result-a { display: block; font-size: calc(var(--su) * 5); margin-top: calc(var(--su) * 2); color: #f4f0dc; }
 
 /* bottom: key numbers, then the control bar */
-.shud-bottom { position: absolute; left: 0; right: 0; bottom: calc(var(--su) * 3); display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 2); }
+/* lifted above the HUD's PULLS coin row (hud.css: bottom 10u, about 20u tall), which it used to overlap */
+.shud-bottom { position: absolute; left: 0; right: 0; bottom: calc(var(--su) * 34); display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 2); }
 .shud-nums { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--su) * 2); max-width: 96%; }
 .shud-num { padding: calc(var(--su) * 1.5) calc(var(--su) * 3); background: rgba(6, 9, 6, 0.9); border-top: calc(var(--su) * 1.5) solid #ffd040; min-width: calc(var(--su) * 30); text-align: center; }
 .shud-num-l { display: block; font-size: calc(var(--su) * 5.5); line-height: 1; color: #b8c0a8; }
@@ -65,3 +66,20 @@
 .shud-card-b { margin: 0; padding-left: calc(var(--su) * 6); font-size: calc(var(--su) * 7); line-height: 1.15; }
 .shud-card-b li { margin-bottom: calc(var(--su) * 1.5); }
 .shud-card-f { margin-top: calc(var(--su) * 2); text-align: right; font-size: calc(var(--su) * 6); color: #b8c0a8; }
+
+/* THE CIRCUIT: Tilt bulbs (GDD 3.4.3). Four amber bulbs = full-value pulls left; at 0 the red TILT label flickers faster per step. */
+.shud-tilt { display: flex; align-items: center; gap: calc(var(--su) * 3); padding: calc(var(--su) * 1.5) calc(var(--su) * 3); border-top: calc(var(--su) * 1.5) solid #ffb000; }
+.shud-tilt-l { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 4); line-height: 1.2; color: #ffb000; white-space: nowrap; }
+.shud-tilt-lamp { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3.5); line-height: 1.2; color: #5aa0ff; white-space: nowrap; }
+.shud-bulbs { display: flex; gap: calc(var(--su) * 2); }
+.shud-bulbs i { display: block; width: calc(var(--su) * 5); height: calc(var(--su) * 5); border-radius: 50%; background: #3a2a08; box-shadow: inset 0 0 0 calc(var(--su) * 0.5) #000; }
+.shud-bulbs i.on { background: #ffb000; box-shadow: inset 0 0 0 calc(var(--su) * 0.5) #000, 0 0 calc(var(--su) * 2) #ffb000; }
+.shud-tilt.tilted { border-top-color: #ff2020; }
+.shud-tilt.tilted .shud-tilt-l { color: #ff2020; animation: shud-tilt-blink 0.8s steps(2, start) infinite; }
+.shud-tilt.tilted.step-2 .shud-tilt-l { animation-duration: 0.5s; }
+.shud-tilt.tilted.step-3 .shud-tilt-l { animation-duration: 0.3s; }
+.shud-tilt.lamp-hot { border-top-color: #ff3020; }
+.shud-tilt.lamp-hot .shud-tilt-l { color: #ff5a3a; }
+.shud-tilt.lamp-hot .shud-bulbs i.on { background: #ff3020; box-shadow: inset 0 0 0 calc(var(--su) * 0.5) #000, 0 0 calc(var(--su) * 2) #ff3020; }
+@keyframes shud-tilt-blink { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .shud-tilt .shud-tilt-l { animation: none !important; } }

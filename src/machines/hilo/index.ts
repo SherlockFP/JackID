@@ -153,8 +153,9 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
       case 'n3': void this.skip(); break;
       case 'collect': void this.collect(); break;
       case 'primary': case 'confirm': void this.deal(); break;
-      case 'betUp': if (this.roundOpen) void this.guess('hi'); else this.changeBet(() => this.stepBet(1)); break;
-      case 'betDown': if (this.roundOpen) void this.guess('lo'); else this.changeBet(() => this.stepBet(-1)); break;
+      // bet keys and the mouse wheel only ever change the stake (never an irreversible guess; ignored while a round is open)
+      case 'betUp': this.changeBet(() => this.stepBet(1)); break;
+      case 'betDown': this.changeBet(() => this.stepBet(-1)); break;
       case 'betMax': this.changeBet(() => this.maxBet()); break;
     }
   }

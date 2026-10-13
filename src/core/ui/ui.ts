@@ -801,7 +801,9 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     if (veilOn && (enter || code === 'Space')) { eat(e); relock(); return; }
     if (bwActive && performance.now() >= bwActive.skippableAt && (enter || code === 'Space')) { eat(e); bwActive.skip(); return; }
     const text = isTextTarget(e.target);
-    if (choiceActive && !text && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    // seated (input mode 'machine'): Digit1-9 belong to the machine's buttons, so a choice never steals them; it stays
+    // on screen and is answered with the mouse (or by number keys once the player is on their feet again)
+    if (choiceActive && !text && !e.ctrlKey && !e.altKey && !e.metaKey && app?.input?.mode !== 'machine') {
       const m = /^(?:Digit|Numpad)([1-9])$/.exec(code);
       if (m && Number(m[1]) <= choiceActive.options.length) { eat(e); choiceActive.pick(Number(m[1]) - 1); return; }
     }

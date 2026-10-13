@@ -26,7 +26,10 @@ export const DEFAULT_BINDINGS: Record<BindingKey, string[]> = {
   'm.secondary': ['Mouse2'],                                  // RMB TAP (< 0.2 s); RMB hold = free-look
   'm.up': ['KeyW', 'ArrowUp'], 'm.down': ['KeyS', 'ArrowDown'], 'm.left': ['KeyA', 'ArrowLeft'], 'm.right': ['KeyD', 'ArrowRight'],
   'm.betUp': ['KeyX', 'WheelUp', 'Equal'], 'm.betDown': ['KeyZ', 'WheelDown', 'Minus'], 'm.betMax': ['KeyB'],
-  'm.confirm': ['Enter', 'NumpadEnter'], 'm.alt': [], 'm.help': ['KeyH'], 'm.exit': ['KeyE'],
+  'm.confirm': ['Enter', 'NumpadEnter'],
+  // alt = the machine's second action (charm vendor REROLL, Son Kart JUMP CARD, double-ups). KeyC is free while seated:
+  // the walk-layer `crouch` that shares the code is suppressed at a machine (not in SEATED_WALK_ACTIONS).
+  'm.alt': ['KeyC'], 'm.help': ['KeyH'], 'm.exit': ['KeyE'],
   'm.n1': ['Digit1', 'Numpad1'], 'm.n2': ['Digit2', 'Numpad2'], 'm.n3': ['Digit3', 'Numpad3'],
   'm.n4': ['Digit4', 'Numpad4'], 'm.n5': ['Digit5', 'Numpad5'], 'm.n6': ['Digit6', 'Numpad6'],
   'm.n7': ['Digit7', 'Numpad7'], 'm.n8': ['Digit8', 'Numpad8'], 'm.n9': ['Digit9', 'Numpad9'],
@@ -52,6 +55,22 @@ export const SEATED_WALK_ACTIONS: ReadonlySet<string> = new Set([
 ]);
 /** During a cutscene these codes act as `skip` in addition to the user's binding. */
 export const CUTSCENE_SKIP_CODES: readonly string[] = ['Space', 'Enter', 'NumpadEnter', 'Escape'];
+/**
+ * Machine actions that may auto-repeat while their key is held (bet ladder, cursor / aim movement). Everything else
+ * (primary, confirm, collect, number buttons, device letters …) fires once per physical press: key-repeat never
+ * re-triggers a spin, a guess, a deposit or any other irreversible action.
+ */
+export const REPEATABLE_MACHINE_ACTIONS: ReadonlySet<string> = new Set([
+  'betUp', 'betDown', 'betMax', 'up', 'down', 'left', 'right',
+]);
+/**
+ * Machine-layer presses worth replaying when they were made during the glide into the seat (the camera is still moving
+ * and the machine sink is not attached yet). Movement, bet ladder, help and exit are deliberately left out.
+ */
+export const BUFFERABLE_MACHINE_ACTIONS: ReadonlySet<string> = new Set([
+  'primary', 'confirm', 'collect', 'fast', 'auto', 'camera', 'clear', 'double', 'alt',
+  'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9',
+]);
 /** Codes whose machine binding fires on a quick TAP only (hold = free-look). */
 export const TAP_ONLY_CODES: ReadonlySet<string> = new Set(['Mouse2']);
 /** Codes that never reach the game: browser / OS shortcuts the player expects to keep. */

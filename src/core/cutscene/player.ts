@@ -12,7 +12,8 @@
  * Camera: sampled every frame (`camera.ts`) and handed to the FX layer, which writes it over the state's camera for
  * the draw only (`fx/layer.ts`), so gameplay code never sees it. Actors, audio, screen FX, lights and subtitles are
  * applied by `actors.ts` / `effects.ts`. The run never touches `setTimeout` or DOM listeners: skipping follows the
- * `skip` action edges (`input.on('skip')`): a tap (press released before SKIP_HOLD) or a hold of SKIP_HOLD skips.
+ * `skip` action edges (`input.on('skip')`): a tap (press released before SKIP_HOLD) advances to the next subtitle line,
+ * a hold of SKIP_HOLD skips the scene.
  * The skip hint is visible from t = 0 of every scene.
  *
  * Multiplayer glue (the NET layer owns the messages):
@@ -329,14 +330,34 @@ class Run {
     return !this.ended && this.skippable && !paused && !this.voted && this.gate?.cue.until !== 'choice';
   }
 
-  /** Edge of a skip key (Space / Enter / Escape). A press released before SKIP_HOLD is a tap and skips at once. */
+  /**
+   * Edge of a skip key (Space / Enter / Escape). A press released before SKIP_HOLD is a TAP: it advances the current
+   * line (next subtitle). Holding for SKIP_HOLD skips the whole scene (online: casts the skip vote).
+   */
   private onSkipKey(down: boolean): void {
     if (this.ended) return;
     if (down) { this.keyDown = true; this.hold = 0; return; }
     const tap = this.keyDown && this.hold < SKIP_HOLD;
     this.keyDown = false;
     this.hold = 0;
-    if (tap && this.canSkip(app.simPaused)) this.requestSkip();
+    if (tap) this.tapLine(app.simPaused);
+  }
+
+  /**
+   * Tap: jump the timeline to the start of the next subtitle line. The cues in between are applied in seek mode (the
+   * same path a late join uses). Never crosses a gate (choice / input), and does nothing online (the clock is shared,
+   * so a local jump would desync peers) or on the last line (hold to skip the rest).
+   */
+  private tapLine(paused: boolean): void {
+    if (!this.skippable || !this.locked || paused || this.voted || this.gate || app.net.online) return;
+    let next = -1;
+    for (let i = this.cursor; i < this.cues.length; i++) {
+      const c = this.cues[i];
+      if (c.k === 'gate') return;
+      if (c.k === 'subtitle' && c.t > this.t) { next = i; break; }
+    }
+    if (next < 0) return;
+    this.seekTo(this.cues[next].t);
   }
 
   private updateSkip(dt: number, paused: boolean): void {
@@ -345,8 +366,14 @@ class Run {
     const live = this.canSkip(paused);
     if (this.keyDown && live) this.hold = Math.min(SKIP_HOLD, this.hold + dt);
     if (this.voted) a.ui.skipHint(1, t('cutscene.skipVote'));
-    else a.ui.skipHint(this.hold / SKIP_HOLD);                   // shown from the first frame of every scene
+    else a.ui.skipHint(this.hold / SKIP_HOLD, this.skipPrompt());   // shown from the first frame of every scene
     if (this.keyDown && live && this.hold >= SKIP_HOLD) this.requestSkip();
+  }
+
+  /** The skip prompt text: "TAP <key>: next line · HOLD <key>: skip scene" (online: the vote wording). */
+  private skipPrompt(): string {
+    const key = app.input.keyLabel('skip');
+    return t(app.net.online ? 'cutscene.skip.online' : 'cutscene.skip.prompt', { key });
   }
 
   /** SP: skip now. Online: cast a vote (`cutscene:skip`); the net calls `forceSkip()` when it passes. */

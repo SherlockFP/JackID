@@ -512,7 +512,11 @@ export function tabs(parent: Node | null, o: TabsOpts): Tabs {
     select(id) {
       if (!btns.has(id)) return;
       active = id;
-      for (const [k, b] of btns) { b.classList.toggle('on', k === id); b.setAttribute('aria-selected', String(k === id)); b.tabIndex = k === id ? 0 : -1; }
+      for (const [k, b] of btns) {
+        b.classList.toggle('on', k === id); b.setAttribute('aria-selected', String(k === id)); b.tabIndex = k === id ? 0 : -1;
+        // only the active tab joins the W/S focus walk; ←/→ (or Q/E in the settings screen) switch tabs
+        if (k === id) b.dataset.nav = '1'; else delete b.dataset.nav;
+      }
     },
   };
   for (const tb of o.tabs) {
@@ -847,7 +851,7 @@ export function keyBind(parent: Node | null, o: KeyBindOpts): KeyBind {
   };
   const onKey = (e: KeyboardEvent): void => {
     e.preventDefault(); e.stopImmediatePropagation();
-    if (e.repeat) return;
+    if (e.repeat || !e.code) return;   // synthetic / IME events without a physical code never bind
     if (MODIFIER_CODES.has(e.code) && e.code !== 'ShiftLeft' && e.code !== 'ShiftRight') return;   // chords are never bound
     if (e.code === 'Escape' && o.key !== 'pause') { stop(); return; }
     if (e.code === 'Delete') { rb(o.key, []); stop(); o.onChange?.(); return; }

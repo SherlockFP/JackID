@@ -4,6 +4,8 @@
 //               no empty values, identical {placeholders}, `.one` has an `.other`; en.ts/tr.ts hold common.* and ui.* only.
 //  2. keys      every literal t('key') in src resolves to a registered key (charm.* / phone.* only warn: their strings
 //               are registered from defs that may not exist yet).
+//  2b. charms   every hook a LAUNCH_CHARM_IDS charm sets needs a reader in src outside src/game/data/ (warn
+//               'inert-charm'; charms with a code behaviour, and circuit-lane x.lamp.* / x.tilt.* hooks, are skipped).
 //  3. literals  prose string literals outside t() in UI code (core/ui, core/cutscene, menu, game, machines, world).
 //               ERROR inside a text sink (.textContent, .innerHTML, .placeholder, .title, label:/text:/title: …,
 //               toast(), banner(), …); WARNING elsewhere. Literals inside `en:` / `tr:` tables (def.strings) are data and
@@ -376,6 +378,34 @@ try {
       if (defined.has(key) || defined.has(`${key}.one`) || defined.has(`${key}.other`)) continue;
       const msg = `t("${key}") is not registered in any i18n table or *.strings.ts (line ${u.line(tok.start)})`;
       if (/^(charm|phone)\./.test(key)) warn(u.f, msg); else err(u.f, msg);
+    }
+  }
+  // Charm hooks (rule 2b): every hook a launch charm sets needs a reader in src/ outside src/game/data/ (data files
+  // name hooks, they do not read them). A charm with a code behaviour (charms/behaviours.ts) is live and skipped.
+  // Circuit-lane hooks (x.lamp.*, x.tilt.*) and the circuit charms are pending, not inert.
+  const charmFile = join(SRC, 'game', 'data', 'charms.ts');
+  if (existsSync(charmFile)) {
+    const { CHARM_DATA, LAUNCH_CHARM_IDS } = await load(charmFile);
+    const behaviourFile = join(SRC, 'game', 'charms', 'behaviours.ts');
+    const behaviours = existsSync(behaviourFile) ? ((await load(behaviourFile)).BEHAVIOURS ?? {}) : {};
+    const corpus = units.filter((u) => !u.r.startsWith('src/game/data/')).map((u) => u.src).join('\n');
+    const CIRCUIT_PENDING_CHARMS = new Set(['hot_coal', 'cold_hands', 'worn_glove', 'red_thread', 'circuit_breaker', 'blackout_lamp']);
+    const CIRCUIT_PENDING_HOOK = /^x\.(lamp|tilt)\./;
+    const hasReader = (hook) => {
+      const base = hook.replace(/\[[^\]]*\]$/, '');
+      if (corpus.includes(base)) return true;
+      const dot = base.lastIndexOf('.');
+      return dot > 0 && corpus.includes(`${base.slice(0, dot + 1)}\${`);   // template reader, e.g. `m.bandit.symbolPayAdd.${s}`
+    };
+    for (const def of CHARM_DATA) {
+      if (!LAUNCH_CHARM_IDS.has(def.id) || CIRCUIT_PENDING_CHARMS.has(def.id) || behaviours[def.id]) continue;
+      if (!def.effects?.length) { warn(charmFile, `inert-charm: ${def.id} sets no hooks and has no behaviour`); continue; }
+      for (const e of def.effects) {
+        if (CIRCUIT_PENDING_HOOK.test(e.hook) || hasReader(e.hook)) continue;
+        const alt = e.hook.replace(/^x\./, 'm.');
+        const hint = alt !== e.hook && hasReader(alt) ? ` (code reads ${alt.replace(/\[[^\]]*\]$/, '')})` : '';
+        warn(charmFile, `inert-charm: ${def.id} sets ${e.hook}, no reader in src${hint}`);
+      }
     }
   }
   info.push(`i18n: ${defined.size} keys across en.ts, ${stringFiles} *.strings.ts file(s) and ${machineIds.length} machine def(s)`);

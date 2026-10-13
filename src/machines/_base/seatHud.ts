@@ -18,7 +18,9 @@
  * machine re-sends its content from `onLang()`. While `blocking` is true the machine routes its next action to
  * `dismiss()` and swallows it (any key closes a card; a click on the card closes it too).
  */
+import { bus } from '@/core/events';
 import { t as tr, fmtCoins, type I18nVars } from '@/core/i18n';
+import type { TiltView } from '@/game/circuit';
 import { BRASS, CREAM, INK, INK_SOFT, Placard3D, button, paginate, put, rowsIn, wrapPx5 } from './placard3d';
 import './seatHud.css';
 
@@ -43,6 +45,7 @@ const CARD_W = 0.44, CARD_H = 0.375;
 const CARD_HEAD = 24, CARD_BODY_Y = 32, CARD_PAD = 14;
 const CARD_TEXT_W = CARD_PX[0] - CARD_PAD * 2;
 const CARD_BODY_H = CARD_PX[1] - CARD_BODY_Y - 40;
+const fmtX = (x: number): string => String(Number(x.toFixed(2)));
 function make<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent?: HTMLElement): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -61,6 +64,14 @@ export class SeatHud {
   private readonly resultA: HTMLElement;
   private readonly numsEl: HTMLElement;
   private readonly ctrlEl: HTMLElement;
+  private readonly tiltEl: HTMLElement;
+  private readonly tiltL: HTMLElement;
+  private readonly tiltLamp: HTMLElement;
+  private readonly bulbs: HTMLElement[] = [];
+  private tiltKey = '';
+  /** The latest Tilt state the run announced (`circuit:tilt`); shown while this HUD is. */
+  private tilt: TiltView | null = null;
+  private readonly offs: Array<() => void> = [];
   /** The open tip / rules card (3D placard), or null. */
   private cardP: Placard3D | null = null;
   private shown = false;
@@ -80,8 +91,34 @@ export class SeatHud {
     this.resultT = make('span', 'shud-result-t', this.resultEl);
     this.resultA = make('span', 'shud-result-a', this.resultEl);
     const bottom = make('div', 'shud-bottom', this.root);
+    // THE CIRCUIT: four Tilt bulbs and the TILT / HOT / COLD label for the instance you sit at
+    this.tiltEl = make('div', 'shud-tilt shud-panel', bottom);
+    this.tiltL = make('span', 'shud-tilt-l', this.tiltEl);
+    const row = make('span', 'shud-bulbs', this.tiltEl);
+    for (let i = 0; i < 4; i++) this.bulbs.push(make('i', '', row));
+    this.tiltLamp = make('span', 'shud-tilt-lamp', this.tiltEl);
+    this.tiltEl.style.display = 'none';
     this.numsEl = make('div', 'shud-nums', bottom);
     this.ctrlEl = make('div', 'shud-ctrl shud-panel', bottom);
+    this.offs.push(bus.on('circuit:tilt', (e) => { this.tilt = e.tilt; this.refreshTilt(); }));
+  }
+
+  /** Repaints the Tilt bulbs (cheap: the DOM is touched only when the state changes). */
+  private refreshTilt(): void {
+    const v: TiltView | null = this.shown ? this.tilt : null;
+    if (v === null) {
+      if (this.tiltKey !== '') { this.tiltKey = ''; this.tiltEl.style.display = 'none'; }
+      return;
+    }
+    const key = `${v.lit}:${v.step}:${v.hot ? 1 : 0}:${v.cold ? 1 : 0}:${fmtX(v.lamp)}:${fmtX(v.factor)}`;
+    if (key === this.tiltKey) return;
+    this.tiltKey = key;
+    this.tiltEl.style.display = '';
+    this.tiltEl.className = `shud-tilt shud-panel${v.hot ? ' lamp-hot' : ''}${v.step > 0 ? ` tilted step-${v.step}` : ''}`;
+    this.tiltL.textContent = v.hot ? tr('circuit.hot', { x: fmtX(v.lamp) }) : v.step > 0 ? tr('circuit.tiltFactor', { x: fmtX(v.factor) }) : tr('circuit.tilt');
+    this.bulbs.forEach((b, i) => { b.className = i < v.lit ? 'on' : ''; });
+    this.tiltLamp.textContent = v.cold ? `${tr('circuit.cold')} ×${fmtX(v.lamp)}` : '';
+    this.tiltLamp.style.display = v.cold ? '' : 'none';
   }
 
   // ── lifecycle ─────────────────────────────────────────────────────────────────────────────────
@@ -91,15 +128,16 @@ export class SeatHud {
   get rulesOpen(): boolean { return this.card === 'rules'; }
 
   /** Seated: show the overlay. */
-  show(): void { this.shown = true; this.root.classList.add('on'); }
+  show(): void { this.shown = true; this.root.classList.add('on'); this.refreshTilt(); }
   /** Stood up: hide everything, drop the result and any open card (an unseen tip stays unseen). */
   hide(): void {
     this.shown = false;
     this.root.classList.remove('on');
     this.clearResult();
     this.closeCard();
+    this.refreshTilt();
   }
-  dispose(): void { this.clearResult(); this.cardP?.dispose(); this.cardP = null; this.root.remove(); }
+  dispose(): void { for (const off of this.offs.splice(0)) off(); this.clearResult(); this.cardP?.dispose(); this.cardP = null; this.root.remove(); }
 
   // ── standard slots ────────────────────────────────────────────────────────────────────────────
   goal(text: Txt): void { this.goalEl.textContent = txt(text); }

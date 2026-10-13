@@ -12,6 +12,16 @@ const tag = (t: string): ModScope => ({ tags: [t] });
 const machines = (...ids: string[]): ModScope => ({ machines: ids });
 
 /**
+ * Suit-tag charms (the six common charms with a REELS / CARDS / DICE / WHEELS / DROPS / CURIOS family) scale with the
+ * number of charms of their suit held: effect value = `SUIT_SCALE_STEP × held` (held includes the charm itself).
+ * The engine (`charms/engine.ts`) applies the count; the data keeps the per-charm step here.
+ */
+export const SUIT_SCALE_STEP = 0.10;
+export const SUIT_SCALED_CHARMS: ReadonlySet<string> = new Set<string>([
+  'brass_thimble', 'billiard_chalk', 'loaded_pip', 'greased_axle', 'lead_shot', 'glass_eye',
+]);
+
+/**
  * Luck points a machine can take from charms before its headless RTP passes 98.5 % (balance pass, 5e5–1e6 rounds per
  * point; the margin covers sim noise). Machines not listed, or at 0, get no charm luck. Luck charms stack on one machine,
  * so each of the two luck charms (Metronome, Glass Heart) gets half of the machine's budget (`charmLuckFor`).
@@ -46,20 +56,20 @@ function charm(
 
 // ── Common (22) ────────────────────────────────────────────────────────────────────────────────
 const COMMON: CharmDef[] = [
-  charm('brass_thimble', 'common', 8, 'REELS', '', ['Brass Thimble', '+15% payouts on REELS machines'], ['Pirinç Yüzük', 'REELS makinelerinde kazançlar +%15'], [fx('payout.mult', 'inc', 0.15, tag('reels'))]),
-  charm('billiard_chalk', 'common', 8, 'CARDS', '', ['Billiard Chalk', '+15% payouts on CARDS machines'], ['Bilardo Tebeşiri', 'CARDS makinelerinde kazançlar +%15'], [fx('payout.mult', 'inc', 0.15, tag('cards'))]),
-  charm('loaded_pip', 'common', 8, 'DICE', '', ['Loaded Pip', '+15% payouts on DICE machines'], ['Yüklü Pul', 'DICE makinelerinde kazançlar +%15'], [fx('payout.mult', 'inc', 0.15, tag('dice'))]),
-  charm('greased_axle', 'common', 8, 'WHEELS', '', ['Greased Axle', '+15% payouts on WHEELS machines'], ['Yağlı Aks', 'WHEELS makinelerinde kazançlar +%15'], [fx('payout.mult', 'inc', 0.15, tag('wheels'))]),
-  charm('lead_shot', 'common', 8, 'DROPS', '', ['Lead Shot', '+15% payouts on DROPS machines'], ['Kurşun Mermi', 'DROPS makinelerinde kazançlar +%15'], [fx('payout.mult', 'inc', 0.15, tag('drops'))]),
-  charm('glass_eye', 'common', 8, 'CURIOS', '', ['Glass Eye', '+15% payouts on CURIOS machines'], ['Cam Göz', 'CURIOS makinelerinde kazançlar +%15'], [fx('payout.mult', 'inc', 0.15, tag('curios'))]),
+  charm('brass_thimble', 'common', 8, 'REELS', '', ['Brass Thimble', '+10% payouts on REELS machines per REELS charm held'], ['Pirinç Yüzük', 'REELS makinelerinde kazançlar, tutulan her REELS tılsımı için +%10'], [fx('payout.mult', 'inc', SUIT_SCALE_STEP, tag('reels'))]),
+  charm('billiard_chalk', 'common', 8, 'CARDS', '', ['Billiard Chalk', '+10% payouts on CARDS machines per CARDS charm held'], ['Bilardo Tebeşiri', 'CARDS makinelerinde kazançlar, tutulan her CARDS tılsımı için +%10'], [fx('payout.mult', 'inc', SUIT_SCALE_STEP, tag('cards'))]),
+  charm('loaded_pip', 'common', 8, 'DICE', '', ['Loaded Pip', '+10% payouts on DICE machines per DICE charm held'], ['Yüklü Pul', 'DICE makinelerinde kazançlar, tutulan her DICE tılsımı için +%10'], [fx('payout.mult', 'inc', SUIT_SCALE_STEP, tag('dice'))]),
+  charm('greased_axle', 'common', 8, 'WHEELS', '', ['Greased Axle', '+10% payouts on WHEELS machines per WHEELS charm held'], ['Yağlı Aks', 'WHEELS makinelerinde kazançlar, tutulan her WHEELS tılsımı için +%10'], [fx('payout.mult', 'inc', SUIT_SCALE_STEP, tag('wheels'))]),
+  charm('lead_shot', 'common', 8, 'DROPS', '', ['Lead Shot', '+10% payouts on DROPS machines per DROPS charm held'], ['Kurşun Mermi', 'DROPS makinelerinde kazançlar, tutulan her DROPS tılsımı için +%10'], [fx('payout.mult', 'inc', SUIT_SCALE_STEP, tag('drops'))]),
+  charm('glass_eye', 'common', 8, 'CURIOS', '', ['Glass Eye', '+10% payouts on CURIOS machines per CURIOS charm held'], ['Cam Göz', 'CURIOS makinelerinde kazançlar, tutulan her CURIOS tılsımı için +%10'], [fx('payout.mult', 'inc', SUIT_SCALE_STEP, tag('curios'))]),
   charm('piggy_tooth', 'common', 10, 'LEDGER', '', ['Piggy Tooth', '+1% interest every Watch'], ['Kumbara Dişi', 'Her Watch faizi +%1'], [fx('x.econ.interestAdd', 'add', 0.01)]),
   charm('wax_seal', 'common', 6, 'LEDGER', '', ['Wax Seal', 'Every deposit gains a 3% bonus'], ['Mum Mühür', 'Her yatırıma %3 bonus'], [fx('deposit.bonus', 'add', 0.03)]),
   charm('spare_token', 'common', 12, null, '', ['Spare Token', '+1 pull every Watch'], ['Yedek Jeton', 'Her Watch +1 hamle'], [fx('x.run.pullsAdd', 'add', 1)]),
   charm('cracked_watch', 'common', 8, null, '', ['Cracked Pocket Watch', '+20 s on every Watch clock'], ['Çatlak Cep Saati', 'Her Watch saatine +20 sn'], [fx('x.run.clockAdd', 'add', 20)]),
   charm('stub_spike', 'common', 8, null, 'N2', ['Stub Spike', '+1 Ticket per punched card cell'], ['Kör Çivi', 'Delinen her kart hücresinden +1 Bilet'], [fx('x.card.onPunch', 'add', 1)]),
   charm('worn_glove', 'common', 10, null, '', ['Worn Glove', 'Tilt starts 2 pulls later on every machine'], ['Eskimiş Eldiven', 'Tilt her makinede 2 hamle geç başlar'], [fx('x.tilt.grace', 'add', 2)]),
-  charm('polished_molar', 'common', 8, 'REELS', '', ['Polished Molar', 'The Big One TOOTH worth 2; Bandit SHOE +1 per credit'], ['Cilalı Azı Dişi', 'Big One DİŞ değeri 2; Bandit AYAKKABI +1'], [fx('x.bigone.symbolValueAdd[TOOTH]', 'add', 1), fx('x.bandit.symbolPayAdd[SHOE]', 'add', 1)]),
-  charm('dealers_button', 'common', 10, 'CARDS', '', ['Dealer\'s Button', 'Blackjack naturals pay 2:1; Baccarat commission −5 pp'], ['Krupiye Düğmesi', 'Blackjack doğal eller 2:1; Baccarat komisyonu −%5'], [fx('x.blackjack.bjPayAdd', 'add', 0.5), fx('x.table.rakeDelta', 'add', -0.05)]),
+  charm('polished_molar', 'common', 8, 'REELS', '', ['Polished Molar', 'The Big One TOOTH worth 2; Bandit SHOE +1 per credit'], ['Cilalı Azı Dişi', 'Big One DİŞ değeri 2; Bandit AYAKKABI +1'], [fx('x.bigone.symbolValueAdd[TOOTH]', 'add', 1), fx('m.bandit.symbolPayAdd.SHOE', 'add', 1)]),
+  charm('dealers_button', 'common', 10, 'CARDS', '', ['Dealer\'s Button', 'Blackjack naturals pay 2:1; Baccarat commission −5 pp'], ['Krupiye Düğmesi', 'Blackjack doğal eller 2:1; Baccarat komisyonu −%5'], [fx('m.blackjack.bjPayAdd', 'add', 0.5), fx('x.table.rakeDelta', 'add', -0.05)]),
   charm('felt_square', 'common', 8, 'CARDS', '', ['Felt Square', 'Losing CARDS plays refund 10% of the stake'], ['Keçe Kare', 'Kaybeden CARDS oyunları bahsin %10\'unu iade eder'], [fx('loss.refund', 'add', 0.1, tag('cards'))]),
   charm('rusty_key', 'common', 10, null, '', ['Rusty Key', '1 free Pawn reroll per intermission'], ['Paslı Anahtar', 'Her ara evrede 1 bedava rehin yenileme'], [fx('x.shop.freeRerolls', 'add', 1)]),
   charm('chipped_die', 'common', 8, 'DICE', '', ['Chipped Die', 'Losing Coin-Flip and Dice Tower plays refund 15%'], ['Çatlak Zar', 'Kaybeden Yazı-Tura ve Zar Kulesi oyunları %15 iade'], [fx('loss.refund', 'add', 0.15, tag('dice'))]),
@@ -82,25 +92,25 @@ const UNCOMMON: CharmDef[] = [
   charm('circuit_breaker', 'uncommon', 18, null, '', ['Circuit Breaker', '+12% if this play\'s suit differs from the last play\'s'], ['Devre Kesici', 'Bu oyunun takımı önceki oyundan farklıysa +%12'], [fx('x.circuit.suitSwitch', 'inc', 0.12)]),
   charm('velvet_rope', 'uncommon', 20, 'CURIOS', '', ['Velvet Rope', 'Two-pull devices cost 1 pull instead'], ['Kadife İp', 'İki hamlelik cihazlar 1 hamle tutar'], [fx('x.actionCostDelta', 'add', -1, machines('claw', 'stacker', 'devilstable', 'shellgame', 'bingopin'))]),
   charm('bent_nail', 'uncommon', 18, 'DROPS', '', ['Bent Nail', 'Luck +8 on DROPS machines'], ['Eğri Çivi', 'DROPS makinelerinde şans +8'], [fx('luck', 'add', 8, tag('drops'))]),
-  charm('tin_jockey', 'uncommon', 16, 'CURIOS', 'N3', ['Tin Jockey', 'Derby: your pick strength +25% (solo) or odds +15% (shared)'], ['Teneke Jokey', 'Derbi: seçimin gücü +%25 (tek) veya oran +%15 (ortak)'], [fx('x.derby.runnerWeight[lane]', 'inc', 0.25), fx('x.derby.oddsBonus', 'inc', 0.15)]),
-  charm('sappers_badge', 'uncommon', 18, 'CURIOS', '', ['Sapper\'s Badge', 'Once per Watch, the first mine hit or fall below ×2 is refunded'], ['Lağımcı Rozeti', 'Watch başına bir kez ilk mayın veya ×2 altı düşüş tam iade'], [fx('x.mines.insurance', 'add', 1)]),
-  charm('magnet_coin', 'uncommon', 20, 'DROPS', '', ['Magnet Coin', 'Claw magnet ×3; Coin Pusher gold chance +2%'], ['Mıknatıs Jeton', 'Pençe mıknatısı ×3; Jeton İtici altın şansı +%2'], [fx('x.claw.magnet', 'mult', 3), fx('x.coinpusher.goldCoin', 'add', 0.02)]),
+  charm('tin_jockey', 'uncommon', 16, 'CURIOS', 'N3', ['Tin Jockey', 'Derby: your pick strength +25% (solo) or odds +15% (shared)'], ['Teneke Jokey', 'Derbi: seçimin gücü +%25 (tek) veya oran +%15 (ortak)'], [fx('x.derby.runnerWeight[lane]', 'inc', 0.25), fx('m.derby.oddsBonus', 'inc', 0.15)]),
+  charm('sappers_badge', 'uncommon', 18, 'CURIOS', '', ['Sapper\'s Badge', 'Once per Watch, the first mine hit or fall below ×2 is refunded'], ['Lağımcı Rozeti', 'Watch başına bir kez ilk mayın veya ×2 altı düşüş tam iade'], [fx('m.mines.insurance', 'add', 100)]),
+  charm('magnet_coin', 'uncommon', 20, 'DROPS', '', ['Magnet Coin', 'Claw magnet ×3; Coin Pusher gold chance +2%'], ['Mıknatıs Jeton', 'Pençe mıknatısı ×3; Jeton İtici altın şansı +%2'], [fx('m.claw.magnet', 'mult', 3), fx('m.coinpusher.goldCoin', 'add', 0.02)]),
   charm('night_owl', 'uncommon', 16, null, '', ['Night Owl', 'During Last Call, payouts +40%'], ['Gece Baykuşu', 'Son Çağrı sırasında kazançlar +%40'], []),
-  charm('spare_number', 'uncommon', 20, 'DROPS', 'N2', ['Spare Number', 'Extra private number or ball on lottery devices'], ['Yedek Numara', 'Piyango cihazlarında +1 özel numara veya top'], [fx('x.keno.extraNumber', 'add', 1), fx('x.lottoblower.extraBall', 'add', 1)]),
+  charm('spare_number', 'uncommon', 20, 'DROPS', 'N2', ['Spare Number', 'Extra private number or ball on lottery devices'], ['Yedek Numara', 'Piyango cihazlarında +1 özel numara veya top'], [fx('m.keno.extraNumber', 'add', 1), fx('x.lottoblower.extraBall', 'add', 1)]),
   charm('false_bottom', 'uncommon', 22, 'LEDGER', '', ['False Bottom', 'At Dawn, a shortfall of 10% or less is forgiven; the charm breaks'], ['Yanlış Dip', 'Şafakta kotanın %10\'undan az açık affedilir; tılsım kırılır'], []),
-  charm('long_thumbnail', 'uncommon', 16, 'REELS', 'N2', ['Long Thumbnail', 'Scratch cards cost −20%'], ['Uzun Başparmak', 'Kazı kartlar %20 ucuz'], [fx('x.scratch.discount', 'add', 0.2)]),
+  charm('long_thumbnail', 'uncommon', 16, 'REELS', 'N2', ['Long Thumbnail', 'Scratch cards cost −20%'], ['Uzun Başparmak', 'Kazı kartlar %20 ucuz'], [fx('m.scratch.discount', 'add', 20)]),
   charm('metronome', 'uncommon', 18, 'WHEELS', 'N3', ['Metronome', 'Luck +10 on timing devices'], ['Metronom', 'Zamanlama cihazlarında şans +10'], luckFx(10, ['cyclone', 'pachislot', 'stacker'])),
   charm('red_thread', 'uncommon', 16, null, '', ['Red Thread', 'First instance you play each Watch: Tilt grace +3 and +10%'], ['Kırmızı İplik', 'Watch\'ta oynadığın ilk makine: Tilt +3 ve +%10'], [fx('x.tilt.grace', 'add', 3), fx('x.red.firstPlay', 'inc', 0.1)]),
   charm('cold_hands', 'uncommon', 16, null, 'N3', ['Cold Hands', 'Cold Lamp ×1.00 instead of ×0.75'], ['Soğuk Eller', 'Soğuk Lamba ×1.00 (×0.75 yerine)'], [fx('x.lamp.coldMult', 'set', 1)]),
   charm('croupiers_rake', 'uncommon', 18, 'WHEELS', '', ['Croupier\'s Rake', 'Roulette outside bets +20%'], ['Krupiyenin Tırmığı', 'Rulet dış bahisleri +%20'], [fx('payout.mult', 'inc', 0.2, machines('roulette'))]),
-  charm('weighted_cup', 'uncommon', 18, 'DICE', 'N3', ['Weighted Cup', 'Sic Bo triple +2; Craps hardways +2'], ['Ağırlıklı Kap', 'Sic Bo üçlü +2; Craps hardway +2'], [fx('x.sicbo.singleTripleAdd', 'add', 2), fx('x.craps.hardwayPayAdd', 'add', 2)]),
+  charm('weighted_cup', 'uncommon', 18, 'DICE', 'N3', ['Weighted Cup', 'Sic Bo triple +2; Craps hardways +2'], ['Ağırlıklı Kap', 'Sic Bo üçlü +2; Craps hardway +2'], [fx('m.sicbo.singleTripleAdd', 'add', 2), fx('x.craps.hardwayPayAdd', 'add', 2)]),
   charm('brass_washer', 'uncommon', 20, null, '', ['Brass Washer', '15% chance a play costs 0 pulls'], ['Pirinç Pul', 'Her oyunda %15 ihtimalle 0 hamle'], [fx('x.freePlayChance', 'add', 0.15)]),
   charm('muzzle', 'uncommon', 18, 'REELS', 'N2', ['Muzzle', 'The Big One curse chance ×0.5; EATEN spins refund 50%'], ['Ağızlık', 'Big One lanet şansı ×0.5; YENMİŞ dönüşler %50 iade'], [fx('x.bigone.curseChanceMult', 'mult', 0.5)]),
   charm('brass_alarm', 'uncommon', 18, null, '', ['Brass Alarm Bell', 'Each Bell: +1 Ticket and +4 × SI coins'], ['Pirinç Alarm Zili', 'Her zilde +1 Bilet ve +4 × SI jeton'], []),
   charm('porcelain_pig', 'uncommon', 18, 'LEDGER', 'N2', ['Porcelain Pig', 'Each Bell: +4% of pocket (cap 40 × SI)'], ['Porselen Domuz', 'Her zilde cebin %4\'ü (en fazla 40 × SI)'], []),
   charm('bargain_coupon', 'uncommon', 14, null, '', ['Bargain Coupon', 'The first charm you buy each intermission costs −30%'], ['Pazarlık Kuponu', 'Her ara evredeki ilk tılsım %30 indirimli'], [fx('x.shop.discountFirst', 'add', 0.3)]),
   charm('votive_candle', 'uncommon', 16, null, 'N4', ['Votive Candle', 'Moth Shrine odds 85/15; at Dread 50+ luck +3'], ['Adak Mumu', 'Güve Türbesi 85/15; Korku 50+ iken şans +3'], [fx('x.buff.shrineOdds', 'set', 0.85), fx('x.votive.luckAtDread', 'add', 3)]),
-  charm('dowsing_rod', 'uncommon', 18, 'CURIOS', 'N3', ['Dowsing Rod', 'Mines marks one safe tile; Shell palm glints earlier'], ['Su Bulma Çubuğu', 'Mayında bir güvenli kare işaretlenir'], [fx('x.mines.scanner', 'add', 1)]),
+  charm('dowsing_rod', 'uncommon', 18, 'CURIOS', 'N3', ['Dowsing Rod', 'Mines marks one safe tile; Shell palm glints earlier'], ['Su Bulma Çubuğu', 'Mayında bir güvenli kare işaretlenir'], [fx('m.mines.scanner', 'add', 1)]),
   charm('pawn_ticket', 'uncommon', 12, null, '', ['Pawn Ticket', 'Charms sell for 70% of the price paid'], ['Rehin Bileti', 'Tılsımlar ödenen fiyatın %70\'ine satılır'], [fx('x.shop.sellMult', 'set', 0.7)]),
   charm('holy_water', 'uncommon', 20, null, 'F3', ['Holy Water Flask', 'Consumable: removes one cursed charm, then breaks'], ['Kutsal Su Şişesi', 'Tek kullanımlık: bir lanetli tılsımı kaldırır'], []),
   charm('foremans_whistle', 'uncommon', 20, 'TYCOON', 'N2', ['Foreman\'s Whistle', 'Attendant income +25%'], ['Ustabaşı Düdüğü', 'Görevli geliri +%25'], [fx('x.tycoon.staffMult', 'mult', 1.25)]),
@@ -118,17 +128,17 @@ const RARE: CharmDef[] = [
   charm('mirror_shoe', 'rare', 45, 'CARDS', 'N4', ['Mirror Shoe', '+1 peek charge on every CARDS table'], ['Ayna Ayakkabı', 'Her KART masasında +1 gözetleme hakkı'], [fx('x.table.peekCharges', 'add', 1, tag('cards'))]),
   charm('hollow_dice', 'rare', 40, 'DICE', 'N3', ['Hollow Dice', 'Sic Bo +1 shake; Craps one seven-out shield; Coin-Flip re-flip'], ['Boş Zarlar', 'Sic Bo +1 sallama; Craps bir yedi-kayıp kalkanı; Yazı-Tura tekrar atış'], [fx('x.sicbo.cageShake', 'add', 1), fx('x.craps.sevenOutShield', 'add', 1)]),
   charm('golden_ratchet', 'rare', 45, 'WHEELS', 'N4', ['Golden Ratchet', 'Pay 25% of the stake to nudge the wheel one step'], ['Altın Cırcır', 'Bahsin %25\'i karşılığında çarkı bir adım döndür'], [fx('x.wheel.nudge', 'add', 1)]),
-  charm('glass_funnel', 'rare', 40, 'DROPS', 'N4', ['Glass Funnel', 'Plinko +1 free puck; Pachinko wider sweet zone'], ['Cam Huni', 'Plinko +1 bedava top; Pachinko tatlı bölgesi geniş'], [fx('x.plinko.extraPuck', 'add', 1), fx('x.pachinko.sweetWiden', 'add', 0.1), fx('x.bingopin.freeSpace', 'add', 1)]),
+  charm('glass_funnel', 'rare', 40, 'DROPS', 'N4', ['Glass Funnel', 'Plinko +1 free puck; Pachinko wider sweet zone'], ['Cam Huni', 'Plinko +1 bedava top; Pachinko tatlı bölgesi geniş'], [fx('x.plinko.extraPuck', 'add', 1), fx('x.pachinko.sweetWiden', 'add', 0.1), fx('m.bingopin.freeSpace', 'add', 1)]),
   charm('ringmasters_whistle', 'rare', 45, null, '', ['Ringmaster\'s Whistle', 'Each distinct suit you win adds +15% for the Watch (max +90%)'], ['Ringmaster Düdüğü', 'Kazandığın her farklı takım Watch boyunca +%15 (en fazla +%90)'], [fx('x.onTag.win', 'add', 0.15)]),
   charm('collectors_tag', 'rare', 40, 'LEDGER', 'N4', ['Collector\'s Tag', 'Each paid Night permanently adds +10% to all payouts'], ['Tahsildar Etiketi', 'Ödenen her gece kalıcı olarak kazançlara +%10'], []),
   charm('long_shot', 'rare', 45, null, '', ['Long Shot', 'Plays with base multiplier 20 or more pay ×2'], ['Uzun Atış', 'Çarpanı 20 ve üstü olan oyunlar ×2 öder'], []),
   charm('coiled_cord', 'rare', 35, null, 'N2', ['Coiled Phone Cord', 'Random-call chance 100% per Watch; phone deals −25%'], ['Kıvrık Telefon Kablosu', 'Watch başına rastgele arama %100; telefon anlaşmaları %25 ucuz'], [fx('x.phone.callChance', 'set', 1), fx('x.phone.dealCost', 'mult', 0.75)]),
   charm('house_keys', 'rare', 50, null, 'N5', ['House Keys', 'On purchase, open one closed wing (never Parlour or Counting Room)'], ['Ev Anahtarları', 'Satın alınca kapalı bir kanat açılır (Salon ve Sayım Odası hariç)'], [fx('x.world.openWing', 'add', 1)]),
   charm('tilt_switch', 'rare', 40, null, 'A:tilted', ['Tilt Switch', 'Your most-played instance ignores Tilt; others Tilt harder'], ['Eğim Anahtarı', 'En çok oynadığın makine Tilt\'ten etkilenmez; diğerleri daha sert'], [fx('x.tilt.ignoreMostPlayed', 'set', 1)]),
-  charm('brass_knuckles', 'rare', 40, 'CURIOS', 'N3', ['Brass Knuckles', 'Stacker +1 block; Claw +4 s; Shell Automaton slower'], ['Pirinç Yumruk', 'Stacker +1 blok; Pençe +4 sn; Kabuk Otomatı yavaş'], [fx('x.stacker.extraBlock', 'add', 1), fx('x.claw.timer', 'add', 4)]),
+  charm('brass_knuckles', 'rare', 40, 'CURIOS', 'N3', ['Brass Knuckles', 'Stacker +1 block; Claw +4 s; Shell Automaton slower'], ['Pirinç Yumruk', 'Stacker +1 blok; Pençe +4 sn; Kabuk Otomatı yavaş'], [fx('x.stacker.extraBlock', 'add', 1), fx('m.claw.timer', 'add', 4)]),
   charm('high_rollers_cufflink', 'rare', 45, null, 'N4', ['High Roller\'s Cufflink', 'Every max bet is one ladder step higher'], ['Yüksek Bahisçi Kol Düğmesi', 'Her maksimum bahis bir basamak yukarı'], [fx('bet.maxMult', 'mult', 2.5)]),
   charm('photo_negative', 'rare', 45, null, 'W', ['Photo Negative', 'Losing plays have a 7% chance to invert and pay ×2'], ['Fotoğraf Negatifi', 'Kaybeden oyunların %7\'si tersine döner ve ×2 öder'], [fx('x.onTag.loss.invert', 'add', 0.07)]),
-  charm('tote_ticket', 'rare', 35, 'WHEELS', '', ['Tote Ticket', 'Derby, Big Six and Roulette show history; ×10 bets pay +25%'], ['Bahis Fişi', 'Derbi, Big Six ve Rulet geçmişi gösterir; ×10 bahisler +%25'], [fx('x.derby.longshotBonus', 'add', 0.25), fx('payout.mult', 'inc', 0.25, machines('derby', 'bigsix', 'roulette'))]),
+  charm('tote_ticket', 'rare', 35, 'WHEELS', '', ['Tote Ticket', 'Derby, Big Six and Roulette show history; ×10 bets pay +25%'], ['Bahis Fişi', 'Derbi, Big Six ve Rulet geçmişi gösterir; ×10 bahisler +%25'], [fx('m.derby.longshotBonus', 'add', 0.25), fx('payout.mult', 'inc', 0.25, machines('derby', 'bigsix', 'roulette'))]),
   charm('cuckoo_feather', 'rare', 40, null, 'N3', ['Cuckoo Feather', 'After each Bell, your next win is ×2'], ['Guguk Tüyü', 'Her zilden sonra ilk kazancın ×2'], []),
   charm('blueprint', 'rare', 40, 'TYCOON', 'N3', ['Blueprint', 'Each wing opened: one instance starts at Payout L5 and Speed L5'], ['Plan', 'Açılan her kanatta bir makine Ödeme L5 ve Hız L5 ile başlar'], [fx('x.world.onWingOpen', 'add', 1)]),
   charm('brass_plaque', 'rare', 40, 'TYCOON', 'N5', ['Brass Plaque', 'Instances at Payout L25+ give you luck +2 there'], ['Pirinç Plaket', 'Ödeme L25+ makinelerde şans +2'], [fx('x.plaque.luckAtPayoutL25', 'add', 2)]),
@@ -173,18 +183,17 @@ export const CHARM_DATA: readonly CharmDef[] = [...COMMON, ...UNCOMMON, ...RARE,
  * never silently changes the cut. Everything else arrives in v1.1 without system changes. Keep this list in sync with CHARM_DATA.
  */
 export const LAUNCH_CHARM_IDS: ReadonlySet<string> = new Set<string>([
+  // Wave 7: cut as inert (no reader in src after the hook renames; keep the data): stub_spike, rusty_key, tin_whistle, receipt_roll, snake_eye_ring, apology_card, ledger_pen, consolation_ribbon, brass_washer, bargain_coupon, votive_candle, pawn_ticket, holy_water, false_bottom, tonic_belt, mirror_shard, seven_floor_key, perpetual_ledger, card_of_all_suits, unblinking_eye.
   // #1–60
   'brass_thimble', 'billiard_chalk', 'loaded_pip', 'greased_axle', 'lead_shot', 'glass_eye', 'piggy_tooth',
-  'wax_seal', 'spare_token', 'cracked_watch', 'stub_spike', 'worn_glove', 'polished_molar', 'dealers_button',
-  'felt_square', 'rusty_key', 'chipped_die', 'tin_whistle', 'consolation_ribbon', 'lucky_receipt', 'night_light',
-  'receipt_roll', 'moth_lantern', 'hot_coal', 'snake_eye_ring', 'counting_bead', 'chain_link', 'apology_card',
-  'ledger_pen', 'circuit_breaker', 'velvet_rope', 'bent_nail', 'tin_jockey', 'sappers_badge', 'magnet_coin',
-  'night_owl', 'spare_number', 'false_bottom', 'long_thumbnail', 'metronome', 'red_thread', 'cold_hands',
-  'croupiers_rake', 'weighted_cup', 'brass_washer', 'muzzle', 'brass_alarm', 'porcelain_pig', 'bargain_coupon',
-  'votive_candle', 'dowsing_rod', 'pawn_ticket', 'holy_water', 'foremans_whistle', 'ledger_of_leases',
-  'grand_opening', 'heat_lamp', 'tonic_belt', 'mirror_shard', 'seven_floor_key',
+  'wax_seal', 'spare_token', 'cracked_watch', 'worn_glove', 'polished_molar', 'dealers_button', 'felt_square',
+  'chipped_die', 'lucky_receipt', 'night_light', 'moth_lantern', 'hot_coal', 'counting_bead', 'chain_link',
+  'circuit_breaker', 'velvet_rope', 'bent_nail', 'tin_jockey', 'sappers_badge', 'magnet_coin', 'night_owl',
+  'spare_number', 'long_thumbnail', 'metronome', 'red_thread', 'cold_hands', 'croupiers_rake', 'weighted_cup',
+  'muzzle', 'brass_alarm', 'porcelain_pig', 'dowsing_rod', 'foremans_whistle', 'ledger_of_leases', 'grand_opening',
+  'heat_lamp',
   // #82–86
-  'crown_of_coins', 'perpetual_ledger', 'engravers_plate', 'operators_glove', 'card_of_all_suits',
+  'crown_of_coins', 'engravers_plate', 'operators_glove',
   // #90–95
-  'wet_ledger', 'sand_hourglass', 'gluttons_bib', 'unblinking_eye', 'moth_swarm', 'gold_tooth',
+  'wet_ledger', 'sand_hourglass', 'gluttons_bib', 'moth_swarm', 'gold_tooth',
 ]);

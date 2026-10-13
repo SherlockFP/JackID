@@ -11,20 +11,29 @@ import { fmtCoins, t } from '@/core/i18n';
 import type { InstanceId } from '@/core/types';
 import type { Pix } from '@/core/texgen/pixel';
 import type { BuyMode, TycoonApi, UpgradeView } from '@/game/tycoon.types';
-import { boxGeo, cue, dimVeil, ease, fit, PixSurface, Stage3D, txt, unlit, wrap } from './ui3d';
+import { boxGeo, cue, dimVeil, ease, fit, PixSurface, Stage3D, txt, unlit, wrap, type TxtOpts } from './ui3d';
 
 const MODES: readonly BuyMode[] = [1, 10, 'max'];
 
 /** Upgrades per page; a spread is the summary + list page on the left and list pages on the right. */
 const PER = 4;
-/** Page canvas (low-res) and its size on the table, in metres. */
-const PX_W = 112, PX_H = 150;
+/**
+ * Page canvas (texels) and its size on the table, in metres. The pages are 2× the old texel count and every line is
+ * drawn at text scale 2 (`BIG` / `SMALL`), so the glyphs are about 14 texels tall and survive the 400×225 internal frame.
+ */
+const PX_W = 224, PX_H = 300;
 const PW = 0.15, PH = 0.2;
 /** Book tilt (rotation about X): the pages face the eye and the spine stands upright in the middle. */
 const TILT = 1.07;
 const BOOK_REST = -0.12, BOOK_LOW = -0.42;
 const LEATHER = 0x5a3320;
-const PAPER = 0xe9dcb4, PAPER_EDGE = 0xb9a06e, INK = 0x2a1a0c, MUTED = 0x7a6446, ACCENT = 0x8a2a1a, HILITE = 0xd6bd82;
+const PAPER = 0xf3e9cc, PAPER_EDGE = 0xa88f5e, INK = 0x1c1108, MUTED = 0x5b4a30, ACCENT = 0x9b2414, HILITE = 0xe0c97f;
+/** Text styles: px5 headline/body at scale 2, and the 3×5 micro face at scale 2 for small print. */
+const BIG: TxtOpts = { scale: 2 };
+const BIG_R: TxtOpts = { scale: 2, align: 'right' };
+const SMALL: TxtOpts = { micro: true, scale: 2 };
+const SMALL_R: TxtOpts = { micro: true, scale: 2, align: 'right' };
+const SMALL_C: TxtOpts = { micro: true, scale: 2, align: 'center' };
 
 export interface LedgerOpts {
   /** Called once when the book closes (Esc / U / `close()`). */
@@ -140,68 +149,71 @@ export function mountLedger(host: HTMLElement, api: TycoonApi, instance: Instanc
   /** Row indices shown by spread `s` (its left page 2s, right page 2s+1; page 0 is the summary). */
   const rangeOf = (s: number): [number, number] => [(Math.max(2 * s, 1) - 1) * PER, Math.min(rows.length, (2 * s + 1) * PER)];
 
+  const TW = PX_W - 24;   // usable text width on a page
+
   function paintSummary(p: Pix): void {
-    txt(p, fit(t('tyc.ledger.title'), PX_W - 12), 6, 6, INK);
-    txt(p, fit(String(instance), PX_W - 12, { micro: true }), 6, 17, MUTED, { micro: true });
-    p.rect(6, 25, PX_W - 12, 1, PAPER_EDGE);
+    txt(p, fit(t('tyc.ledger.title'), TW, BIG), 12, 12, INK, BIG);
+    txt(p, fit(String(instance), TW, SMALL), 12, 36, MUTED, SMALL);
+    p.rect(12, 54, TW, 2, PAPER_EDGE);
     const owned = api.owned(instance);
     if (owned) {
-      txt(p, fit(t('tyc.ledger.owner', { who: owned.owner ? String(owned.owner) : '-' }), PX_W - 12, { micro: true }), 6, 30, INK, { micro: true });
+      txt(p, fit(t('tyc.ledger.owner', { who: owned.owner ? String(owned.owner) : '-' }), TW, SMALL), 12, 64, INK, SMALL);
     } else {
-      wrap(t('tyc.ledger.notOwned'), PX_W - 12).forEach((ln, i) => txt(p, ln, 6, 30 + i * 7, INK, { micro: true }));
+      wrap(t('tyc.ledger.notOwned'), TW, SMALL).forEach((ln, i) => txt(p, ln, 12, 64 + i * 12, INK, SMALL));
     }
-    txt(p, fit(t('tyc.ledger.pit'), PX_W - 12, { micro: true }), 6, 52, MUTED, { micro: true });
-    txt(p, fit(fmtCoins(api.holdings(), true), PX_W - 12), 6, 60, ACCENT);
-    txt(p, fit(modeLabel(mode), PX_W - 12), 6, 80, INK);
-    wrap(t('tyc.ledger.hint3d'), PX_W - 12).forEach((ln, i) => txt(p, ln, 6, 100 + i * 8, MUTED, { micro: true }));
+    txt(p, fit(t('tyc.ledger.pit'), TW, SMALL), 12, 108, MUTED, SMALL);
+    txt(p, fit(fmtCoins(api.holdings(), true), TW, BIG), 12, 124, ACCENT, BIG);
+    txt(p, fit(modeLabel(mode), TW, BIG), 12, 160, INK, BIG);
+    wrap(t('tyc.ledger.hint3d'), TW, SMALL).forEach((ln, i) => txt(p, ln, 12, 200 + i * 12, MUTED, SMALL));
   }
 
   function paintRows(p: Pix, page: number, hits: Hit2[] | null): void {
-    txt(p, fit(t('tyc.ledger.title'), PX_W - 12, { micro: true }), 6, 5, MUTED, { micro: true });
-    p.rect(6, 13, PX_W - 12, 1, PAPER_EDGE);
+    txt(p, fit(t('tyc.ledger.title'), TW, SMALL), 12, 10, MUTED, SMALL);
+    p.rect(12, 24, TW, 2, PAPER_EDGE);
     const first = (page - 1) * PER;
     for (let i = 0; i < PER; i++) {
       const idx = first + i;
       const v = rows[idx];
       if (!v) break;
-      const y0 = 18 + i * 30;
+      // one upgrade = 62 texels: name, description, level + price, next step
+      const y0 = 34 + i * 62;
       const cur = idx === sel;
       if (cur) {
-        p.rect(3, y0 - 3, PX_W - 6, 28, HILITE);
-        txt(p, '>', 5, y0, ACCENT);
+        p.rect(4, y0 - 6, PX_W - 8, 62, HILITE);
+        txt(p, '>', 8, y0, ACCENT, BIG);
       }
       const swatch = v.def.template.color;
-      if (swatch !== undefined) p.rect(12, y0 + 1, 3, 5, swatch);
+      if (swatch !== undefined) p.rect(22, y0 + 2, 6, 12, swatch);
       const max = v.def.maxLevel;
-      txt(p, fit(trackName(v), PX_W - 56), 18, y0, INK);
-      txt(p, t('tyc.ledger.level', { n: v.level, max }), PX_W - 5, y0 + 2, MUTED, { micro: true, align: 'right' });
-      txt(p, fit(trackDesc(v), PX_W - 22, { micro: true }), 18, y0 + 8, MUTED, { micro: true });
-      const next = v.next;
-      const nextTxt = next ? t('tyc.ledger.next', { n: next.level, what: next.feature ?? next.visual ?? '' }) : t('tyc.ledger.nextNone');
-      txt(p, fit(nextTxt, 46, { micro: true }), 18, y0 + 17, MUTED, { micro: true });
+      txt(p, fit(trackName(v), TW - 20, BIG), 34, y0, INK, BIG);
+      txt(p, fit(trackDesc(v), TW - 20, SMALL), 34, y0 + 16, MUTED, SMALL);
+      txt(p, t('tyc.ledger.level', { n: v.level, max }), 34, y0 + 30, MUTED, SMALL);
       const q = api.quote(v.def.id, mode);
       const maxed = v.level >= max;
       const priceTxt = maxed ? t('tyc.ledger.maxed') : `${t('tyc.ledger.buy')} ${fmtCoins(q.cost, true)}`;
-      txt(p, fit(priceTxt, 56), PX_W - 5, y0 + 15, !maxed && q.affordable ? ACCENT : MUTED, { align: 'right' });
-      if (hits) hits.push({ x: 2, y: y0 - 3, w: PX_W - 4, h: 28, act: () => rowAct(idx) });
+      txt(p, fit(priceTxt, 110, BIG), PX_W - 12, y0 + 28, !maxed && q.affordable ? ACCENT : MUTED, BIG_R);
+      const next = v.next;
+      const nextTxt = next ? t('tyc.ledger.next', { n: next.level, what: next.feature ?? next.visual ?? '' }) : t('tyc.ledger.nextNone');
+      txt(p, fit(nextTxt, TW - 20, SMALL), 34, y0 + 46, MUTED, SMALL);
+      if (hits) hits.push({ x: 2, y: y0 - 6, w: PX_W - 4, h: 62, act: () => rowAct(idx) });
     }
   }
 
   /** One page of the spread. `hits` is given only for the static pages (the turning leaves are not clickable). */
   function paintPage(p: Pix, page: number, side: 'L' | 'R', hits: Hit2[] | null): void {
     p.clear(PAPER);
-    p.rect(side === 'L' ? PX_W - 4 : 0, 0, 4, PX_H, PAPER_EDGE);
+    p.rect(side === 'L' ? PX_W - 8 : 0, 0, 8, PX_H, PAPER_EDGE);
     if (page === 0) paintSummary(p);
     else paintRows(p, page, hits);
-    txt(p, t('tyc.ledger.pageOf', { n: page + 1, max: pageCount() }), PX_W / 2, PX_H - 9, MUTED, { micro: true, align: 'center' });
+    txt(p, t('tyc.ledger.pageOf', { n: page + 1, max: pageCount() }), PX_W / 2, PX_H - 14, MUTED, SMALL_C);
     if (!hits) return;
     if (side === 'L' && spread > 0) {
-      txt(p, '<', 5, PX_H - 10, ACCENT, { micro: true });
-      hits.push({ x: 0, y: PX_H - 16, w: 28, h: 16, act: () => turn(-1) });
+      txt(p, '<', 12, PX_H - 16, ACCENT, SMALL);
+      hits.push({ x: 0, y: PX_H - 24, w: 56, h: 24, act: () => turn(-1) });
     }
     if (side === 'R' && spread < spreadCount() - 1) {
-      txt(p, '>', PX_W - 9, PX_H - 10, ACCENT, { micro: true });
-      hits.push({ x: PX_W - 28, y: PX_H - 16, w: 28, h: 16, act: () => turn(1) });
+      txt(p, '>', PX_W - 20, PX_H - 16, ACCENT, SMALL);
+      hits.push({ x: PX_W - 56, y: PX_H - 24, w: 56, h: 24, act: () => turn(1) });
     }
   }
 

@@ -30,6 +30,11 @@
 .hud .clock.lastcall .num, .hud .clock.lastcall .phase { color: var(--signal); animation: hud-blink .5s steps(2, start) infinite; }
 .hud .phase { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 .hud .night { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
+/* THE CIRCUIT: Hot / Cold Lamps line under the night line (walk mode) */
+.hud .lamps { display: flex; flex-direction: column; align-items: center; gap: calc(1 * var(--u)); font-family: var(--f-head); font-size: calc(8 * var(--u)); white-space: nowrap; }
+.hud .lamps .hot { color: #ff5a3a; }
+.hud .lamps .cold { color: #5aa0ff; }
+.hud .lamps span:empty { display: none; }
 
 /* top-right: quota */
 .hud .quota { flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u)); }

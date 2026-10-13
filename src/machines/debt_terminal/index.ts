@@ -209,7 +209,13 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       case 'primary': case 'confirm': if (!e.repeat) this.pressKey(KEYS[this.cursor]); return;
       case 'n1': case 'n2': case 'n3': case 'n4': case 'n5': case 'n6': case 'n7': case 'n8': case 'n9':
         this.typeDigit(Number(e.action.slice(1))); return;
-      case 'betUp': this.typeDigit(0); return;               // no digit 0 in the machine keymap (see header)
+      case 'betUp': {                                        // no digit 0 in the machine keymap (see header)
+        // the mouse wheel is bound to betUp too: a stray notch must never type a digit
+        const code = (e as MachineInputEvent & { code?: string }).code ?? '';
+        if (e.repeat || code.startsWith('Wheel')) return; // i18n-ok: key code
+        this.typeDigit(0);
+        return;
+      }
       case 'clear': if (!e.repeat) { this.entry = backspace(this.entry); this.sfx('click'); this.refresh(true); } return;
       case 'double': if (!e.repeat) this.pullLever('settle'); return;
       case 'fast': if (!e.repeat) this.pullLever('floor'); return;

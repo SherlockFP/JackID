@@ -410,6 +410,7 @@
   padding: calc(2 * var(--u)) calc(4 * var(--u)); background: rgba(8, 8, 8, 0.7); white-space: nowrap;
 }
 .px-skip.on { display: flex; }
+.px-skip, .px-root.mh-on .px-skip { top: calc(var(--lb) * var(--bar-h) + 8 * var(--u)); bottom: auto; }
 .px-skip .ring {
   position: relative; width: calc(12 * var(--u)); height: calc(12 * var(--u)); border-radius: 50%;
   background: conic-gradient(var(--shine) calc(var(--p, 0) * 360deg), var(--slate) 0);

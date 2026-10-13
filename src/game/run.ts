@@ -15,6 +15,7 @@ import type {
   ModSource, ModifierApi, NightEventsApi, OvershootClaim, QuotaState, RefusalReason, RewardSpec, RunApi, RunWindow,
   ShiftApi, ShiftPhase, ShiftRuleDef, ShiftState, TotemState, TotemsApi, TycoonApi, WinMeta, WinTier,
 } from '@/game/types';
+import type { MetaState } from '@/game/types';
 import type { BuffSave } from './buffs/engine';
 import { foldEffects, modHookMeta, scopeMatches, stackedValue, WIN_TIERS } from '@/game/types';
 import type { GameMode, InstanceId, MachineId, PlayerId, SlotSize, Unsub, V3 } from '@/core/types';
@@ -28,9 +29,14 @@ import type { SaveStore } from '@/core/save';
 import * as registry from '@/machines/_base/registry';
 import { WatchClock, type ClockSnapshot } from './clock';
 import {
-  ACTIVITY_MIN_PULLS, BASE_RUN_NIGHTS, NETWORK_FEED, OVERSHOOT_TIERS, START, TICKET_CAP,
-  assessmentFor, closingSeconds, interestFor, interestRate, isWitchingWatch, lastCallSeconds, nightDef, quotaFor,
+  ACTIVITY_MIN_PULLS, BASE_RUN_NIGHTS, LAMP_FIRST_NIGHT, NETWORK_FEED, OVERSHOOT_TIERS, START, TICKET_CAP,
+  assessmentFor, closingSeconds, hotLampCount, interestFor, interestRate, isWitchingWatch, lastCallSeconds, nightDef, obolsFor, quotaFor,
+  type ObolOutcome,
 } from './data/schedule';
+import {
+  COLD_MULT, Circuit, HOT_MULT, tiltBulbs, tiltFactor, tiltStep,
+  type CircuitSave, type CircuitView, type LampCandidate, type LampView, type TiltView,
+} from './circuit';
 import { PAYOUT_GUARD, bettingLadder, charmPrice, settlePayout, snapDown, type PayoutResult } from './economy';
 import { Charms, PEG_CAP_RUN, allCharmDefs, choiceOffer, charmDef, rollPawnWindow } from './charms/engine';
 import { playableMode, rulesFor, type ModeRules } from './modes';
@@ -79,6 +85,8 @@ const PULL_PRICE_TICKETS = 3;
 const PULLS_BOUGHT_MAX = 2;
 /** Machine id used for run-level modifier queries (no machine). */
 const RUN_MACHINE = 'run';
+/** Red Thread (GDD §4.2 #41): its Tilt grace is for the first instance played in a Watch only. */
+const RED_THREAD_GRACE = 3;
 /** Bounty board: offers per Night and slips one player may hold (GDD §11.9: three per Night). */
 const BOARD_OFFERS = 3;
 const CONTRACT_MAX_ACTIVE = 3;
@@ -122,6 +130,8 @@ export interface RunExt {
   totems?: TotemState[];
   /** Bounty board: offers, signed and finished slips, stat baselines. Optional: older saves have none. */
   contracts?: ContractsSave;
+  /** THE CIRCUIT: Tilt counters and Lamps of the Watch in progress. Optional: older saves have none. */
+  circuit?: CircuitSave;
 }
 /** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
 interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
@@ -304,8 +314,13 @@ class Run implements DebtRun {
   readonly nightEvents: NightEventsApi;
   readonly contracts: ContractsApi;
   readonly jackpots: JackpotsApi;
+  /** THE CIRCUIT (Tilt bulbs and Lamps), read by the HUD, the seat HUD and the world beacons. */
+  readonly circuit: CircuitView;
 
   private readonly rng: Rng;
+  private readonly circ = new Circuit();
+  /** The instance the local player sits at (from `player:seat`), for the seat HUD's Tilt bulbs. */
+  private seatedMid: InstanceId | null = null;
   private readonly save: SaveStore | null;
   private readonly modsImpl: Mods;
   private readonly tycoonSys: Tycoon;
@@ -359,7 +374,7 @@ class Run implements DebtRun {
   private refusal: RefusalReason | null = null;
   private elapsed = 0;
   private clockAcc = 0;
-  private stats: Record<string, number> = { rounds: 0, wagered: 0, paid: 0, biggest: 0, wins: 0, nightsPaid: 0, interest: 0 };
+  private stats: Record<string, number> = { rounds: 0, wagered: 0, paid: 0, biggest: 0, wins: 0, nightsPaid: 0, interest: 0, deposited: 0 };
   private maxWallet = START.pocket;
   private biggest = 0;
   private rounds = 0;
@@ -416,6 +431,9 @@ class Run implements DebtRun {
       },
     });
 
+    this.circuit = this.makeCircuitView();
+    this.modsImpl.register(this.makeCircuitProvider());
+
     this.pools.set('net', { id: 'net', value: START.jackpotSeed, seed: START.jackpotSeed, feed: NETWORK_FEED, drip: 0, scope: 'network', lastWin: null });
 
     this.shift = this.makeShiftApi();
@@ -428,7 +446,7 @@ class Run implements DebtRun {
       tradeOpen: () => this.tradeOpen(),
       quotaDue: () => this.quota.due,
       shiftIndex: () => this.index,
-      deposited: () => this.debtPaid,
+      deposited: () => this.stats.deposited ?? 0,
       save: opts.save,
       onDescend: () => { this.endRun('escaped', 'descend'); },
       now: () => Math.round(this.elapsed * 1000),
@@ -465,6 +483,11 @@ class Run implements DebtRun {
     this.collateral = inert<CollateralApi>('collateral', {});
     this.contracts = this.makeContractsApi();
     this.unsubs.push(
+      bus.on('player:seat', (p) => {
+        if (p.pid !== this.selfId) return;
+        this.seatedMid = p.on ? p.mid : null;
+        if (p.on) this.emitTilt(p.mid);
+      }),
       bus.on('machine:result', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:result', p); }),
       bus.on('machine:round', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:round', p); }),
       bus.on('run:deposit', (p) => { if (p.pid === this.selfId) this.advanceContracts('run:deposit', { machineId: '', amount: p.amount }); }),
@@ -536,6 +559,7 @@ class Run implements DebtRun {
       this.openRounds.add(src.mid);
       this.rounds++;
       this.stats.rounds = this.rounds;
+      this.countTilt(src.mid, src.machineId, pullCost);
       this.emit('machine:round', { mid: src.mid, machineId: src.machineId, pid: this.selfId, bet: amount });
     }
     this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: -cost, reason: `bet:${src.machineId}` });
@@ -600,6 +624,7 @@ class Run implements DebtRun {
     this.coins -= amt;
     const credit = Math.floor(amt * (1 + this.mod('deposit.bonus', RUN_MACHINE, 0)));
     this.debtPaid += credit;
+    this.stats.deposited = (this.stats.deposited ?? 0) + credit;
     this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: -amt, reason: 'deposit' });
     this.syncQuota();
     this.emit('run:deposit', { pid: this.selfId, amount: credit, paid: this.debtPaid, due: this.quota.due });
@@ -778,6 +803,7 @@ class Run implements DebtRun {
     this.emit('pulls:change', { pid: this.selfId, pulls: this.pullCount });
     this.emit('run:deadline', { index: this.index, due: this.quota.due, seconds: this.clockLen });
     this.enter('bell', BELL_SEC);
+    this.rollLamps();
     this.buffSys.onBell();
     this.persist();
     return true;
@@ -881,7 +907,11 @@ class Run implements DebtRun {
     return true;
   }
 
-  attachWorld(link: RunWorldLink | null): void { this.worldLink = link; }
+  attachWorld(link: RunWorldLink | null): void {
+    this.worldLink = link;
+    // a resumed Watch already has Lamps: tell the beacons once the pit exists
+    if (link && (this.circ.hot().length > 0 || this.circ.cold().length > 0)) this.emitLamps();
+  }
   takeIdleReport(): IdleReport | null { return this.tycoonSys.takeIdleReport(); }
   dispose(): void {
     this.unsubs.splice(0).forEach((u) => u());
@@ -921,6 +951,7 @@ class Run implements DebtRun {
     const overtime = this.watch === this.overtimeIdx;
     const pid = this.selfId;
     this.enter('settle', SETTLE_SEC);
+    this.settleCircuit();
     if (this.quotaMode) {
       const rate = interestRate(nd.interest, this.mod('x.econ.interestAdd', RUN_MACHINE, 0));
       const active = !overtime && this.watchPulls >= ACTIVITY_MIN_PULLS;
@@ -1013,29 +1044,199 @@ class Run implements DebtRun {
     this.ended = true;
     this.clock.stop();
     this.enter('over', 0);
+    const obols = this.quotaMode ? this.runObols(result, ending) : undefined;
     const summary: RunSummary = {
       mode: this.mode, seed: this.seed, result, floor: this.index + 1, deadlines: this.index + 1, maxWallet: this.maxWallet,
       rounds: this.rounds, biggestWin: this.biggest, durationSec: Math.round(this.elapsed),
       players: [{ id: this.selfId, name: '', placement: 1, wallet: this.coins }],
       stats: { ...this.stats },
       ...(ending ? { ending } : {}),
+      ...(obols !== undefined ? { obols } : {}),
     };
     this.emit('run:end', { summary });
     if (this.save) {
+      // Descend banked its Obols (and the descent count) in the tycoon's prestige; every other ending banks them here.
+      const banked = ending === 'descend' ? null : this.bankObols(obols ?? 0);
       this.save.update((d) => {
         d.resume = null;
         d.history = [...d.history, summary].slice(-20);
+        if (banked) d.meta = banked;
       });
       this.save.flush();
     }
     this.notify();
   }
 
+  /**
+   * Obols for this ending (GDD §11.2): a fall pays ×0.5, Descend ×1.0, Topside STAY UP ×1.5, abandoning ×0.25, on the
+   * run's total deposited (so it grows with every Night paid) and the Foundations gain.
+   */
+  private runObols(result: RunSummary['result'], ending?: string): number {
+    const outcome: ObolOutcome = ending === 'descend' ? 'descend' : result === 'fell' ? 'fell' : result === 'escaped' ? 'topside' : 'quit';
+    const prestige = this.tycoonSys.prestige;
+    if (outcome === 'descend') return prestige.preview().obols;
+    return obolsFor({ deposited: this.stats.deposited ?? 0, outcome, gain: prestige.preview().multiplier });
+  }
+
+  /** Adds Obols to the tycoon's meta (so a later `persistMeta` keeps them) and returns the copy for the save. */
+  private bankObols(obols: number): MetaState {
+    const meta = this.tycoonSys.prestige.state() as MetaState;
+    meta.obols += Math.max(0, obols);
+    meta.bestShift = Math.max(meta.bestShift, this.index);
+    return { ...meta, nodes: { ...meta.nodes }, unlocked: [...meta.unlocked] };
+  }
+
+  // ── THE CIRCUIT: Tilt and Lamps (GDD §3.4) ──────────────────────────────────────────────────────────
+  /** The Circuit only applies inside a timed quota Watch (not in the Free Casino, not between Watches). */
+  private circuitLive(): boolean { return this.quotaMode && this.rules.timed && this.inWatch(); }
+
+  private tiltGrace(machineId: MachineId, mid: InstanceId, q: ModQuery): number {
+    let g = this.mod('x.tilt.grace', machineId, 0, q);
+    const first = this.circ.firstPlayed();
+    if (first !== null && first !== mid) {
+      g -= RED_THREAD_GRACE * (this.charmBox.list(this.selfId).find((c) => c.id === 'red_thread')?.stacks ?? 0);
+    }
+    return Math.round(g);
+  }
+
+  /** Tilt state of one instance now (shared by the payout fold and the views). */
+  private tiltOf(machineId: MachineId, mid: InstanceId, q: ModQuery): TiltView {
+    const plays = this.circ.playsOf(mid);
+    const hot = this.circ.isHot(mid);
+    const cold = this.circ.isCold(mid);
+    // Tilt Switch: the most played instance ignores Tilt, every other one tilts harder
+    const switchOn = this.mod('x.tilt.ignoreMostPlayed', machineId, 0, q) > 0;
+    const ignored = hot || (switchOn && this.circ.mostPlayed() === mid);
+    const grace = this.tiltGrace(machineId, mid, q);
+    const step = ignored ? 0 : tiltStep(plays, grace);
+    return {
+      plays, hot, cold, step,
+      lit: ignored ? 4 : tiltBulbs(plays, grace),
+      factor: ignored ? 1 : tiltFactor(plays, grace, switchOn),
+      lamp: hot ? this.hotMult(machineId, q) : cold ? this.coldMult(machineId, q) : 1,
+    };
+  }
+
+  /** Hot Lamp factor: Hot Coal sets it to ×2.0, Warm Lamps (Foundations H4) scale it. */
+  private hotMult(machineId: MachineId, q: ModQuery): number {
+    let scale = 1;
+    for (const s of this.explain('x.lamp.hot', machineId, 1, q).steps) if (s.op === 'mult') scale *= s.value;
+    return this.mod('x.lamp.hotMult', machineId, HOT_MULT, q) * scale;
+  }
+
+  /** Cold Lamp factor: Cold Hands sets it to ×1.00. */
+  private coldMult(machineId: MachineId, q: ModQuery): number {
+    return this.mod('x.lamp.coldMult', machineId, COLD_MULT, q);
+  }
+
+  /** Lamp and Tilt factor (M) for one play. Hot ×1.5 ignores Tilt; Cold ×0.75 still tilts. */
+  private circuitFactor(machineId: MachineId, q: ModQuery): number {
+    const mid = q.instance;
+    if (mid === undefined || (q.pid !== undefined && q.pid !== this.selfId) || !this.circuitLive()) return 1;
+    const v = this.tiltOf(machineId, mid, q);
+    return v.lamp * v.factor;
+  }
+
+  /** The Circuit's mod source: `payout.mult` ×(Lamp × Tilt) through `modify`, plus Red Thread's +10 % (A) on the first instance. */
+  private makeCircuitProvider(): ModProvider {
+    const base: ModSource = {
+      kind: 'house', id: 'circuit', owner: 0, effects: [],
+      modify: (hook, machineId, value, q) => (hook === 'payout.mult' ? value * this.circuitFactor(machineId, q) : value),
+    };
+    return {
+      kind: 'house',
+      collect: (q, out) => {
+        if (q.instance === undefined || !this.circuitLive()) return;
+        out.push(base);
+        if (q.instance !== this.circ.firstPlayed()) return;
+        const owned: ModSource[] = [];
+        this.charmBox.collect(q, owned);
+        const effs: ModEffect[] = [];
+        for (const s of owned) {
+          for (const e of s.effects) {
+            if (e.hook === 'x.red.firstPlay') effs.push({ hook: 'payout.mult', op: e.op, value: stackedValue(e, s.stacks ?? 1) });
+          }
+        }
+        if (effs.length) out.push({ kind: 'house', id: 'circuit:first', owner: 0, effects: effs });
+      },
+    };
+  }
+
+  private makeCircuitView(): CircuitView {
+    return {
+      active: () => this.circuitLive(),
+      tilt: (mid) => {
+        const machineId = this.tiltMachine(mid);
+        return machineId === null ? null : this.tiltOf(machineId, mid, { pid: this.selfId, instance: mid });
+      },
+      lamps: () => this.lampView(),
+    };
+  }
+
+  private lampView(): LampView {
+    const entry = (mid: InstanceId): { mid: InstanceId; machineId: MachineId } => ({ mid, machineId: this.circ.machineOf(mid) });
+    return { hot: this.circ.hot().map(entry), cold: this.circ.cold().map(entry) };
+  }
+
+  private emitLamps(): void {
+    bus.emit('circuit:lamps', { ...this.lampView(), night: this.night(), watch: this.watch + 1 });
+    if (this.seatedMid !== null) this.emitTilt(this.seatedMid);
+  }
+
+  /** The machine id of an instance that tracks Tilt right now (a gambling machine in a live Watch), else null. */
+  private tiltMachine(mid: InstanceId): MachineId | null {
+    if (!this.circuitLive()) return null;
+    const id = this.circ.machineOf(mid) || this.worldLink?.machines().find((m) => m.instance === mid)?.machineId || '';
+    const cat = id ? registry.get(id)?.def.category : undefined;
+    return cat === undefined || cat === 'system' || cat === 'party' ? null : id;
+  }
+
+  /** Tells the seat HUD the Tilt state of an instance (null = no Tilt there). */
+  private emitTilt(mid: InstanceId): void {
+    const machineId = this.tiltMachine(mid);
+    const tilt = machineId === null ? null : this.tiltOf(machineId, mid, { pid: this.selfId, instance: mid });
+    bus.emit('circuit:tilt', { pid: this.selfId, mid, machineId: machineId ?? '', tilt });
+  }
+
+  /** A round opened on `mid`: the pulls it cost count toward Tilt (a free action does not tilt). */
+  private countTilt(mid: InstanceId, machineId: MachineId, pulls: number): void {
+    if (!this.circuitLive() || pulls <= 0) return;
+    this.circ.note(mid, machineId);
+    this.circ.addPlays(mid, pulls);
+    this.emitTilt(mid);
+  }
+
+  /** Bell: seeded Lamp roll (stream `lamps`). Lamps start at Night 2; Night 1 only has Tilt. */
+  private rollLamps(): void {
+    if (!this.quotaMode) return;
+    const cands: LampCandidate[] = [];
+    for (const m of this.worldLink?.machines() ?? []) {
+      const cat = registry.get(m.machineId)?.def.category;
+      if (cat === undefined || cat === 'system' || cat === 'party') continue;
+      if (this.tycoonSys.staffAt(m.instance).length > 0) continue;        // staffed machines never take a Lamp
+      cands.push({ mid: m.instance, machineId: m.machineId });
+    }
+    const rng = createRng(hashSeed('lamps', this.seed, this.index, this.watch));
+    this.circ.startWatch(rng, cands, {
+      lamps: this.night() >= LAMP_FIRST_NIGHT,
+      hot: Math.max(0, hotLampCount(this.night()) + Math.round(this.mod('x.lamp.hotCount', RUN_MACHINE, 0))),
+      cold: Math.max(0, 1 + Math.round(this.mod('x.lamp.coldCount', RUN_MACHINE, 0))),
+      newIsHot: this.mod('x.lamp.hot', RUN_MACHINE, 0) > 0,                // Grand Opening Ribbon: machines new this Watch are Hot
+    });
+    this.emitLamps();
+  }
+
+  /** Settle: Tilt resets, the Lamps go dark. */
+  private settleCircuit(): void {
+    this.circ.settle();
+    this.emitLamps();
+  }
+
   // ── quota and debt ─────────────────────────────────────────────────────────────────────────────────
   private recomputeQuota(): void {
     if (!this.quotaMode) { this.quota.due = 0; this.syncQuota(); return; }
     const nd = nightDef(this.index);
-    const holdings = 0;
+    const holdings = this.tycoonSys.holdings();
     const rate = this.mod('x.tycoon.assessRate', RUN_MACHINE, 0.08);
     let due = quotaFor(this.index, { discount: this.discount, holdings, assessRate: rate });
     due = Math.round(due * this.mod('quota.mult', RUN_MACHINE, 1));
@@ -1124,7 +1325,7 @@ class Run implements DebtRun {
       get phase() { return run.phase; },
       timeLeft: () => run.timeLeft(),
       quota: () => run.quota,
-      quotaFor: (i: number) => quotaFor(i, { discount: run.discount, holdings: 0, assessRate: 0.08 }),
+      quotaFor: (i: number) => quotaFor(i, { discount: run.discount, holdings: run.tycoonSys.holdings(), assessRate: run.mod('x.tycoon.assessRate', RUN_MACHINE, 0.08) }),
       overshootTiers: () => OVERSHOOT_TIERS,
       extend: (sec: number) => { run.clock.extend(sec); run.persist(); },
       settleEarly: () => run.settleEarly(),
@@ -1204,6 +1405,7 @@ class Run implements DebtRun {
         night: this.contractNight, seq: this.contractSeq, list: this.contractList.map((c) => ({ ...c })),
         base: Object.fromEntries(this.contractBase),
       },
+      circuit: this.circ.snapshot(),
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -1458,6 +1660,7 @@ class Run implements DebtRun {
       this.contractList = e.contracts.list.map((c) => ({ ...c }));
       this.contractBase = new Map(Object.entries(e.contracts.base));
     }
+    this.circ.restore(e.circuit);
     if (typeof e.savedAt === 'number') this.tycoonSys.catchUp(Math.max(0, (Date.now() - e.savedAt) / 1000));
     this.ended = !this.living || this.phase === 'over';
   }
