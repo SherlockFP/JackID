@@ -4,7 +4,7 @@
  *
  * Rules (MACHINES_machines §3): credits 1–3 × denomination {1, 5, 25}, centre payline only. Three reels of 22 physical
  * stops (= 22 symbol runs of the 64-stop virtual strip). Each reel draws one of 64 virtual stops with its weights, and
- * the weights map to a physical stop. Lucky Nudge: on a loss, with p = min(0.30, 0.01 · luck), the best single-stop
+ * the weights map to a physical stop. Lucky Nudge: on a loss, with p = min(4 %, 0.4 % · luck), the best single-stop
  * nudge is applied (never creates STAR×3). Charm `jackpotChance` forces STAR×3 with extra chance (mult−1)/65 536.
  *
  * Every roll consumes exactly five RNG draws, so the stream position never depends on the outcome or on the charms.
@@ -30,6 +30,9 @@ export const STOPS = 22;
 export const VIRTUAL = 64;
 export const DENOMS: readonly number[] = [1, 5, 25];
 export const MAX_CREDITS = 3;
+/** Lucky Nudge: 0.4 % chance per luck point on a loss, capped at 4 % (luck 10 keeps RTP ≤ 99 %). */
+export const NUDGE_STEP = 0.004;
+export const NUDGE_CAP = 0.04;
 
 /** Pays per credit for a triple (STAR is the top award, see `evalLine`). */
 export const TRIPLE_PAY: Partial<Record<Sym, number>> = { PLUM: 20, ORANGE: 30, MELON: 100, BAR: 50, '2BAR': 100, '3BAR': 200, SHOE: 50 };
@@ -176,7 +179,7 @@ export function roll(rng: Rng, o: RollOpts): Roll {
   let line = evalLine(symsOf(seg), o.credits, o.cfg);
   let nudge: Nudge | null = null;
   if (line.units === 0 && o.luck > 0) {
-    const p = Math.min(0.30, 0.01 * o.luck);
+    const p = Math.min(NUDGE_CAP, NUDGE_STEP * o.luck);
     if (gate < p) {
       const best = bestNudge(seg, o.credits, o.cfg);
       if (best) { nudge = best.nudge; seg = best.seg; line = evalLine(symsOf(seg), o.credits, o.cfg); }

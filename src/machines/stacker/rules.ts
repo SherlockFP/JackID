@@ -22,7 +22,9 @@ export const MINOR_MULT = 2.5;
 export const MAJOR_MULT = 25;
 /**
  * Speed table: row r moves at (SPEED0 + SPEED_STEP·(r−1)) cells/s before luck. The only RTP knob. Tuned in the scratchpad
- * sim so the average-player model (AVG_SIGMA, AVG_TAKE) gives ≈ 68 %. The brief's 5.0 start was ≈ 9 % for that model.
+ * sim so the average-player model (AVG_SIGMA, AVG_TAKE) gives ≈ 70 %. The brief's 5.0 start was ≈ 9 % for that model.
+ * Balance note: with MINOR 2.5× a fine-aim expert (σ 0.03) TAKEs reliably, so the 110 % expert ceiling is not met by
+ * speed and slip alone (see the sim notes in the balance report).
  */
 export const SPEED0 = 1.8;
 export const SPEED_STEP = 0.6;
@@ -30,6 +32,10 @@ export const LUCK_STEP = 0.02;          // −2 % speed per luck point …
 export const LUCK_CAP = 0.2;            // … capped at −20 %
 export const JITTER_ROW = 8;            // from this row each traverse is faster/slower and dwells at the edge
 export const JITTER = 0.2;              // traverse speed × (1 ± JITTER)
+export const SLIP_ROW = 6;              // from this row a seeded slip may jolt the bar (skill-independent width loss)
+export const SLIP_P = 0.6;              // chance per row that the bar slips by one cell (width-loss randomness)
+export const HIGH_RAMP = 2;             // speed × on rows above MINOR_ROW (expert ceiling: fast top rows punish fine aim less than luck)
+export const SLIP_T = 1.2;              // slip lands at a seeded time in [0, SLIP_T) s after the row starts
 export const DWELL_MAX = 0.12;          // edge dwell 0–120 ms
 export const DECIDE_S = 5;              // MINOR decision window (default TAKE)
 export const ROW_GAP_S = 0.45;          // fall + beat between rows
@@ -73,7 +79,7 @@ export function rowWidth(row: number, topW: number | null, extra: number): numbe
 /** Bar speed in cells/s for `row` at `luck` points. */
 export function speedOf(row: number, luck: number): number {
   const cut = Math.min(LUCK_CAP, Math.max(0, luck) * LUCK_STEP);
-  return (SPEED0 + SPEED_STEP * (row - 1)) * (1 - cut);
+  return (SPEED0 + SPEED_STEP * (row - 1)) * (row > MINOR_ROW ? HIGH_RAMP : 1) * (1 - cut);
 }
 
 interface Leg { t0: number; t1: number; end: number; from: number; to: number }
@@ -93,6 +99,9 @@ export class Motion {
   private readonly legs: Leg[] = [];
   private cursor = 0;
   private edge: number;
+  /** Slip (skill-independent width loss): from SLIP_ROW a seeded jolt moves the bar by one cell at `slipAt` s. */
+  private slipAt = Infinity;
+  private slipBy = 0;
 
   constructor(seed: number, row: number, w: number, speed: number) {
     this.rng = createRng(hashSeed(seed, row, 'stacker'));
@@ -101,6 +110,10 @@ export class Motion {
     this.jit = row >= JITTER_ROW;
     this.start = row % 2 === 1 ? 0 : this.span;
     this.edge = this.start;
+    if (row >= SLIP_ROW && this.rng.next() < SLIP_P) {
+      this.slipAt = this.rng.next() * SLIP_T;
+      this.slipBy = this.rng.next() < 0.5 ? -1 : 1;
+    }
   }
 
   /** Largest left-edge column (COLS − w). */
@@ -122,6 +135,12 @@ export class Motion {
 
   /** Continuous left edge at `t` seconds after the row started. */
   posAt(t: number): number {
+    const base = this.baseAt(t);
+    if (t < this.slipAt) return base;
+    return Math.min(this.span, Math.max(0, base + this.slipBy));
+  }
+
+  private baseAt(t: number): number {
     if (t <= 0) return this.start;
     this.grow(t);
     for (const L of this.legs) {

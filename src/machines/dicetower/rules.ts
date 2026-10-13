@@ -16,7 +16,7 @@ export const SPOT_MAX = 200;           // per spot, per seat
 export const SPOTS_MAX = 4;            // distinct spots per seat
 export const PARLAY_RIDES = 3;         // a winning spot rides up to this many rolls
 export const RIDE_STEP = 1.05;         // +5 % on every ride
-export const LUCKY_MAX_P = 0.3;        // Lucky Chip refund chance cap
+export const LUCKY_MAX_P = 0.08;       // Lucky Chip refund chance cap
 
 export const EXACT_TOTALS: readonly number[] = [2, 3, 4, 5, 6, 8, 9, 10, 11, 12];
 /** Every spot id, in layout order of the felt print. */
@@ -87,7 +87,7 @@ export interface SpotCtx {
   /** This seat is the shooter (Shooter bonus applies to its wins). */
   shooter: boolean;
   shooterPct: number;
-  /** Parlay charm: wins ride automatically (see `RIDE_STEP`, `PARLAY_RIDES`). */
+  /** Parlay charm: wins ride automatically; the first win returns the fresh stake, only the profit rides (`RIDE_STEP`). */
   parlay: boolean;
 }
 export interface SpotSettle {
@@ -112,11 +112,17 @@ export function settleSpot(spot: string, a: number, ride: RideState | null, c: S
   }
   if (c.shooter && c.shooterPct > 0) gross = a + Math.floor((gross - a) * (1 + c.shooterPct / 100));
   if (!c.parlay) return { gross, settled: ride ? ride.orig : a, carry: 0, ride: null };
-  gross = Math.floor(gross * RIDE_STEP);
   const n = (ride?.n ?? 0) + 1;
-  const orig = ride?.orig ?? a;
-  if (n < PARLAY_RIDES) return { gross: 0, settled: 0, carry: gross, ride: { n, orig } };
-  return { gross, settled: orig, carry: 0, ride: null };
+  if (!ride) {
+    // Parlay: the first win returns the fresh stake now; only the profit rides on (× RIDE_STEP per ride)
+    const profit = Math.floor((gross - a) * RIDE_STEP);
+    if (n < PARLAY_RIDES) return { gross: a, settled: a, carry: profit, ride: { n, orig: 0 } };
+    return { gross: a + profit, settled: a, carry: 0, ride: null };
+  }
+  // later rides: the riding profit is paid when the chain ends (nothing more to settle)
+  const carried = Math.floor(gross * RIDE_STEP);
+  if (n < PARLAY_RIDES) return { gross: 0, settled: 0, carry: carried, ride: { n, orig: 0 } };
+  return { gross: carried, settled: 0, carry: 0, ride: null };
 }
 
 /** Lucky Chip refund chance for a luck value (per seat, per roll). */

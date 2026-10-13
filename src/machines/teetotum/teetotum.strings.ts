@@ -1,0 +1,59 @@
+/**
+ * Put-and-Take Top — UI and in-world strings (EN + TR). Loaded by the `*.strings.ts` glob in main.ts; keys are registered
+ * under `m.teetotum.` (MachineBase.t adds the prefix). `{pot}` / `{a}` / `{n}` / `{r}` placeholders are filled by `t(key, vars)`.
+ * The face pictograms on the top are language-free; the legend only names them with symbols.
+ */
+const en: Record<string, string> = {
+  name: 'Put-and-Take Top',
+  desc: 'Six-seat pot table. Spin the brass top: puts fill the pot, takes empty it, ALL takes the lot. Rake 5 %. Bots keep the table going.',
+  legend: '▼ put   ▲ take   * all   ½ half   ∅ nothing',
+  ready: 'Ready', ante: 'Ante {a}', pot: 'Pot {pot}', stake: 'In {n}', won: 'Won {n}', rake: 'Rake {r}',
+  bot1: 'Apprentice', bot2: 'Regular', bot3: 'Shark',
+  double: 'DOUBLE', golden: 'GOLDEN FACE', split: 'SPLIT', lost: 'LOST', win: 'WIN {n}',
+  sBet: 'Press Space to sit in at ante {a}', sWait: 'Waiting for the others', sAnte: 'Antes in',
+  sTurn: 'Your spin: Space or click the top', sWatch: '{n} is spinning', sSpin: 'The top spins',
+  sEnd: 'Cycle over', sSitOut: 'Sitting out the next cycle', sLeave: 'Leaving after this cycle',
+  hSpin: 'Spin', hReady: 'Sit in', hDouble: 'Double', hSit: 'Sit out', hLeave: 'Leave after cycle',
+  hAnte: 'Ante', help: 'Rules', away: 'Left: auto-spin', peek: 'The top wobbles toward a take',
+  badAnte: 'That ante does not match this table', busy: 'A cycle is in progress', notYourTurn: 'Not your turn',
+  rulesTitle: 'Put-and-Take Top — rules',
+  okLabel: 'OK',
+  rule1: 'Sit in with an ante. Every seat that covers it puts the ante into the pot.',
+  rule2: 'Turns run clockwise. Spin the top on your turn; the face up when it falls counts.',
+  rule3: 'Puts (▼) add to the pot. Takes (▲) move coins out of it. ½ takes half, ALL takes the lot.',
+  rule4: 'ALL (*) is the pot minus the rake and ends the cycle. ALL+ (+*) has everyone put the ante in.',
+  rule5: 'Double (R) before your spin doubles ±1 and ±2. Half, ALL and nothing ignore it.',
+  rule6: 'A put you cannot cover sits you out until the next cycle. An empty pot ends the cycle.',
+  rule7: 'After 20 spins the pot is split among the seats still in. Rake 5 % of ALL and of the split.',
+  rule8: 'Stake and winnings settle at the end of the cycle. Nothing is hidden except the face until it lands.',
+};
+
+const tr: Record<string, string> = {
+  name: 'Al-Ver Topacı',
+  desc: 'Altı kişilik havuz masası. Pirinç topacı çevir: koymalar havuzu doldurur, almalar boşaltır, HEPSİ tümünü alır. Komisyon %5. Botlar masayı canlı tutar.',
+  legend: '▼ koy   ▲ al   * hepsi   ½ yarısı   ∅ hiçbiri',
+  ready: 'Hazır', ante: 'Giriş {a}', pot: 'Havuz {pot}', stake: 'Masada {n}', won: 'Kazanç {n}', rake: 'Komisyon {r}',
+  bot1: 'Çırak', bot2: 'Müdavim', bot3: 'Köpekbalığı',
+  double: 'İKİ KAT', golden: 'ALTIN YÜZ', split: 'BÖLÜŞÜLDÜ', lost: 'KAYBETTİN', win: 'KAZANÇ {n}',
+  sBet: 'Giriş {a} ile oturmak için Boşluk', sWait: 'Diğerleri bekleniyor', sAnte: 'Girişler yapılıyor',
+  sTurn: 'Sıra sende: Boşluk ya da topa tıkla', sWatch: '{n} çeviriyor', sSpin: 'Topaç dönüyor',
+  sEnd: 'Tur bitti', sSitOut: 'Bir sonraki turda bekliyorsun', sLeave: 'Bu turdan sonra ayrılıyorsun',
+  hSpin: 'Çevir', hReady: 'Otur', hDouble: 'İki kat', hSit: 'Bekle', hLeave: 'Turdan sonra ayrıl',
+  hAnte: 'Giriş', help: 'Kurallar', away: 'Ayrıldı: otomatik çevriliyor', peek: 'Topaç al yüzüne doğru sallanıyor',
+  badAnte: 'Bu giriş bu masayla uyuşmuyor', busy: 'Bir tur sürüyor', notYourTurn: 'Sıra sende değil',
+  rulesTitle: 'Al-Ver Topacı — kurallar',
+  okLabel: 'Tamam',
+  rule1: 'Bir giriş bedeliyle otur. Girişi karşılayan her koltuk havuza girer.',
+  rule2: 'Sıra saat yönünde döner. Sıran gelince topacı çevir; yere düşünce üstte kalan yüz geçerlidir.',
+  rule3: 'Koymalar (▼) havuza ekler. Almalar (▲) havuzdan çıkarır. ½ yarısını, HEPSİ tümünü alır.',
+  rule4: 'HEPSİ (*) havuzun komisyon düşülmüş tümüdür ve turu bitirir. HEPSİ+ (+*) herkesin giriş kadar koymasıdır.',
+  rule5: 'Çevirmeden önce İki kat (R) ±1 ve ±2 miktarlarını ikiye katlar. Yarısı, HEPSİ ve hiçbiri etkilenmez.',
+  rule6: 'Karşılayamadığın koyma seni bir sonraki tura kadar bekletir. Boş havuz turu bitirir.',
+  rule7: '20 çevirmeden sonra havuz kalan koltuklara bölüşülür. HEPSİ ve bölüşümde komisyon %5.',
+  rule8: 'Bahis ve kazanç tur sonunda kesinleşir. Yüz düşene kadar hiçbir şey gizli değildir.',
+};
+
+export default { prefix: 'm.teetotum.', en, tr };
+
+/** The same tables, typed for `def.strings` (MachineStrings). */
+export const STRINGS = { en, tr };

@@ -7,7 +7,8 @@
  * stake × multiplier[slot]. Stake is debited per puck; extra pucks (charm) are free.
  *
  * Randomness: every puck consumes exactly 24 draws (bit + repeat per row) and every drop 2 golden draws, whatever
- * the luck or charms, so a seed replays identically. Money: the exact float payout is rounded with a carry
+ * the luck or charms, so a seed replays identically. Expected return is capped at PAYOUT_CAP (97 %), which compensates
+ * the Rubber Pegs repeats, extra pucks, golden slots, edge and floor charms (base tables stay at 96.4 / 96.7 / 96.4 %). Money: the exact float payout is rounded with a carry
  * (stochastic / dust rounding), so the average is unbiased even for 1-coin stakes.
  */
 import type { Rng } from '@/core/rng';
@@ -126,6 +127,58 @@ export function pathBits(rng: Rng, luck: number): number {
   return bits;
 }
 
+/** Exact landing distribution over the 13 slots for Rubber Pegs repeat chance p (same law as pathBits, by DP). */
+const slotCache = new Map<number, number[]>();
+export function slotDist(p: number): number[] {
+  const key = Math.round(p * 1e6);
+  const hit = slotCache.get(key);
+  if (hit) return hit;
+  const same = p + (1 - p) / 2, diff = (1 - p) / 2;
+  // dp[d][c]: prob that the last hop went d (1 = right) with c rights so far
+  let dp: number[][] = [new Array<number>(ROWS + 1).fill(0), new Array<number>(ROWS + 1).fill(0)];
+  dp[0][0] = 0.5; dp[1][1] = 0.5;                       // hop 0 is a fair coin
+  for (let i = 1; i < ROWS; i++) {
+    const nd: number[][] = [new Array<number>(ROWS + 1).fill(0), new Array<number>(ROWS + 1).fill(0)];
+    for (let d = 0; d < 2; d++) for (let c = 0; c <= ROWS; c++) {
+      const pr = dp[d][c];
+      if (!pr) continue;
+      nd[d][c + d] += pr * same;
+      nd[1 - d][c + (1 - d)] += pr * diff;
+    }
+    dp = nd;
+  }
+  const out = Array.from({ length: SLOTS }, (_, k) => dp[0][k] + dp[1][k]);
+  slotCache.set(key, out);
+  return out;
+}
+
+/** Expected multiplier of one puck (before the payout cap), exact over the path law, edge, floor and golden chance. */
+export function puckEV(risk: Risk, luck: number, goldenChance: number, edgeMult: number, floor: number): number {
+  const p = Math.min(LUCK_CAP, Math.max(0, luck) * LUCK_STEP);
+  const dist = slotDist(p);
+  const g = clampChance(goldenChance) / SLOTS;            // chance that a given slot is the golden one
+  const edge = Math.max(1, edgeMult), fl = Math.max(0, floor);
+  let e = 0;
+  for (let k = 0; k < SLOTS; k++) {
+    let m = Math.max(baseMult(risk, k), fl);
+    if (k === 0 || k === SLOTS - 1) m *= edge;
+    e += dist[k] * m * (1 + g);
+  }
+  return e;
+}
+
+/**
+ * Payout cap (director balance pass): Rubber Pegs, Glass Funnel extra pucks, golden slots, edge and floor charms may
+ * lift the expected return, so every puck is scaled down when the drop expectation passes PAYOUT_CAP. Base tables
+ * (≈ 96.4 %) are below the cap, so the cap only binds with charms and luck. Pure, so live and headless agree.
+ */
+export const PAYOUT_CAP = 0.97;
+export function payoutScale(risk: Risk, paid: number, total: number, o: { luck: number; goldenChance: number; edgeMult: number; floor: number }): number {
+  const e = puckEV(risk, o.luck, o.goldenChance, o.edgeMult, o.floor);
+  const perStake = (total * e) / Math.max(1, paid);
+  return perStake > PAYOUT_CAP ? PAYOUT_CAP / perStake : 1;
+}
+
 /** One drop: golden slot, then every puck (paid first, then free extras). Pure. */
 export function rollDrop(rng: Rng, o: DropOpts): DropRoll {
   const risk = clampRisk(o.risk);
@@ -135,12 +188,13 @@ export function rollDrop(rng: Rng, o: DropOpts): DropRoll {
   const goldenSlot = gU < clampChance(o.goldenChance) ? gS : -1;
   const total = paid + clampExtra(o.extra);
   const floor = Math.max(0, o.floor), edge = Math.max(1, o.edgeMult);
+  const scale = payoutScale(risk, paid, total, { luck: o.luck, goldenChance: o.goldenChance, edgeMult: edge, floor });
   const pucks: Puck[] = [];
   let exact = 0, anyEdge = false;
   for (let i = 0; i < total; i++) {
     const bits = pathBits(rng, o.luck);
     const slot = popcount(bits);
-    let m = Math.max(baseMult(risk, slot), floor);
+    let m = Math.max(baseMult(risk, slot), floor) * scale;
     if (slot === 0 || slot === SLOTS - 1) { m *= edge; anyEdge = true; }
     const golden = slot === goldenSlot;
     if (golden) m *= 2;

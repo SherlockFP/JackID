@@ -6,7 +6,8 @@
  *  - aim: the target is the nearest reachable prize (top layer first). Alignment a = clamp(1 − d / R, 0, 1),
  *    R = 0.05 m + 0.01 m per magnet stack.
  *  - lift: the prize lifts with p = √a × g (g = grabbability of its kind). A failed lift nudges it ±0.03 m.
- *  - carry: a strong grip (rolled at commit, p = 0.10 × jackpotChance + 1.5 % per luck point, cap +30 %) keeps the
+ *  - carry: a strong grip (rolled at commit, p = 0.10 × jackpotChance + 1.5 % per luck point, luck part capped at 10 %,
+ *    total capped at 20 %) keeps the
  *    prize with 0.98 × 0.95 = 0.93; a weak grip with 0.35 × 0.40 = 0.14 (× weakCarry, capped at 0.5). The golden egg
  *    never survives a weak grip.
  *  - tumble: a prize left within 0.08 m of the chute falls in by itself with p = 0.03 (at most one per round).
@@ -29,7 +30,8 @@ export const DROP_R = 0.05;            // alignment radius, m
 export const MAGNET_STEP = 0.01;       // + radius per claw.magnet stack
 export const P_STRONG = 0.10;          // strong grip chance (before luck / jackpotChance)
 export const LUCK_STEP = 0.015;        // per luck point
-export const LUCK_CAP = 0.30;          // luck contribution cap
+export const LUCK_CAP = 0.10;          // luck contribution cap (director: strong grip ≤ 0.2 at any luck)
+export const STRONG_MAX = 0.20;        // hard cap on the strong grip chance, after jackpotChance
 export const LIFT_STRONG = 0.98;
 export const TRAVEL_STRONG = 0.95;
 export const LIFT_WEAK = 0.35;
@@ -51,12 +53,15 @@ export const HOOK_JACKPOT = 'm.claw.jackpotChance' as ModHook;   // × strong gr
 export type Kind = 'sackS' | 'sackM' | 'sackL' | 'capC' | 'capR' | 'egg';
 export interface KindDef { g: number; mult: number; charm?: 'common' | 'rare'; strong?: boolean }
 /** Grabbability g, coin value as × stake (0 = no coins), charm reward, strong-grip-only flag. */
+/** Capsules carry a coin value too (× stake): the base RTP sits near 80 % (DECISIONS: director balance pass). */
+export const CAP_C = 1;
+export const CAP_R = 2.5;
 export const KIND: Readonly<Record<Kind, KindDef>> = {
   sackS: { g: 1.00, mult: 5 },
   sackM: { g: 0.65, mult: 8 },
   sackL: { g: 0.25, mult: 20 },
-  capC: { g: 0.90, mult: 0, charm: 'common' },
-  capR: { g: 0.60, mult: 0, charm: 'rare' },
+  capC: { g: 0.90, mult: CAP_C, charm: 'common' },
+  capR: { g: 0.60, mult: CAP_R, charm: 'rare' },
   egg: { g: 0.35, mult: 35, strong: true },
 };
 /** Restock mix: 8 S, 5 M, 2 L, 3 common capsules, 1 rare capsule, 1 golden egg. */
@@ -110,9 +115,9 @@ export function aimAt(pile: readonly Prize[], x: number, z: number, magnet: numb
   return { target: best, a: clamp(1 - bd / r, 0, 1) };
 }
 
-/** Commit-time strong grip chance: 0.10 × jackpotChance + min(30 %, 1.5 % per luck point). */
+/** Commit-time strong grip chance: 0.10 × jackpotChance + min(10 %, 1.5 % per luck point), capped at 20 %. */
 export function strongChance(luck: number, jackpotMult: number): number {
-  return clamp(P_STRONG * jackpotMult + Math.min(LUCK_CAP, LUCK_STEP * Math.max(0, luck)), 0, 1);
+  return clamp(P_STRONG * jackpotMult + Math.min(LUCK_CAP, LUCK_STEP * Math.max(0, luck)), 0, STRONG_MAX);
 }
 
 /** Weak total carry after claw.weakCarry (× base, capped). */

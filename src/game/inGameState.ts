@@ -14,6 +14,7 @@ import type { RunSummary } from '@/net/protocol';
 import * as registry from '@/machines/_base/registry';
 import type { Bench } from '@/world/bench';
 import { startDebtSession, type DebtSession } from './ingame/session';
+import { startStory, holdForStory } from '@/game/story';
 import { buildIntermission, buildPause, INTER_PANEL, PAUSE_PANEL } from './ingame/panels';
 
 /** A fall shows its fade before the Results state takes over; other endings hand off at once. */
@@ -33,6 +34,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   let resumedAt = -Infinity;
   let interOpen = false;
   let interKey = '';
+  let storyOff: (() => void) | null = null;
   let offs: Array<() => void> = [];
 
   /** Dev tooling is split out of the production bundle: `?bench=` is honoured only in a DEV build (DECISIONS G). */
@@ -90,7 +92,8 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     const hold = summary.result === 'fell' ? FALL_HOLD_S : END_HOLD_S;
     app.timers.ui.after(hold, () => {
       if (left) return;
-      void app.go('results', { summary });
+      // a fall or an ending plays its scene first; the Results hand-off waits for the story queue
+      void holdForStory().then(() => { if (!left) void app.go('results', { summary }); });
     });
   };
 
@@ -115,6 +118,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       }));
       if (params.bench && import.meta.env.DEV) return enterBench(params.bench, params.seed);
       session = startDebtSession(params, scene);
+      storyOff = startStory(session.world, params);
     },
     exit() {
       left = true;
@@ -129,6 +133,9 @@ export function createInGameState(): AppStateHandler<'ingame'> {
         bench.dispose();
         bench = null;
       }
+      storyOff?.();
+      storyOff = null;
+      if (app.cutscene.playing) app.cutscene.abort();   // a scene must not carry over into the menu
       if (session) {
         session.dispose();
         session = null;

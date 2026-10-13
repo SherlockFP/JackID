@@ -16,12 +16,12 @@ import type {
   ShiftApi, ShiftPhase, ShiftRuleDef, ShiftState, TotemsApi, TycoonApi, WinMeta, WinTier,
 } from '@/game/types';
 import { foldEffects, modHookMeta, scopeMatches, stackedValue, WIN_TIERS } from '@/game/types';
-import type { GameMode, InstanceId, MachineId, PlayerId, Unsub } from '@/core/types';
+import type { GameMode, InstanceId, MachineId, PlayerId, SlotSize, Unsub, V3 } from '@/core/types';
 import type { PhoneCallState, RunConfig, RunSnapshot, RunSummary } from '@/net/protocol';
 import type { CutscenePlayOpts, CutsceneResult } from '@/core/cutscene/types';
 import type { GameEvents } from '@/core/events';
 import { bus } from '@/core/events';
-import { createRng, type Rng } from '@/core/rng';
+import { createRng, hashSeed, type Rng } from '@/core/rng';
 import { log } from '@/core/log';
 import type { SaveStore } from '@/core/save';
 import * as registry from '@/machines/_base/registry';
@@ -33,6 +33,11 @@ import {
 import { PAYOUT_GUARD, bettingLadder, charmPrice, settlePayout, snapDown, type PayoutResult } from './economy';
 import { Charms, PEG_CAP_RUN, choiceOffer, charmDef, rollPawnWindow } from './charms/engine';
 import { playableMode, rulesFor, type ModeRules } from './modes';
+import { createTycoon, type Tycoon } from './tycoon';
+import { createBuffSystem, type BuffSystem } from './buffs';
+import { createItemSystem, type ItemSystem } from './items';
+import type { EventBannerShow } from './buffs/banner';
+import type { IdleReport, TycoonState } from '@/game/types';
 
 /**
  * Win-tier juice event (DECISIONS §F): emitted by `win()` for every paid play above the stake, after settle. `credited`
@@ -88,6 +93,10 @@ export interface RunExt {
   rng: [number, number, number, number];
   /** Pending overpay choices (optional: older v1 saves have none). */
   overpays?: PendingOverpay[];
+  /** Tycoon layer state (owned machines, levels, staff). Optional: older saves have none. */
+  tycoon?: Partial<TycoonState>;
+  /** Host ms wall clock at save time; resume credits the time away to the tycoon (idle income). */
+  savedAt?: number;
 }
 export interface RunSave extends RunSnapshot { ext: RunExt }
 
@@ -104,6 +113,14 @@ export interface RunOpts {
   cfg?: Partial<RunConfig>;
   /** When set, every resolved action is written to `save.data.resume` (the store debounces the disk write). */
   save?: SaveStore;
+  /** Event banners (night events) for the HUD. Optional: without it events still run, silently. */
+  banner?: EventBannerShow;
+}
+
+/** What the world exposes to the run (machines and slot positions). Attached once the pit exists. */
+export interface RunWorldLink {
+  machines(): ReadonlyArray<{ instance: InstanceId; machineId: MachineId; size?: SlotSize }>;
+  instancePos(mid: InstanceId): V3 | undefined;
 }
 
 /** One Pawn Window slot: the charm and its SI price. */
@@ -141,6 +158,12 @@ export interface DebtRun extends RunApi {
   goBackDown(): boolean;
   /** Abandon the run. */
   quit(): boolean;
+  /** Connect the pit (owned machines, slot positions for totems). Null detaches. */
+  attachWorld(link: RunWorldLink | null): void;
+  /** Idle income credited on resume, read once (null when none). */
+  takeIdleReport(): IdleReport | null;
+  /** Unhook the buff and totem systems. Call when the session ends. */
+  dispose(): void;
   readonly over: boolean;
   readonly topsideOpen: boolean;
   readonly rules: ModeRules;
@@ -152,10 +175,10 @@ export function createRun(opts: RunOpts): DebtRun {
 }
 
 /** Continue the saved run, if the save holds a resumable run; otherwise null. The Watch clock resumes frozen. */
-export function resumeRun(save: SaveStore): DebtRun | null {
+export function resumeRun(save: SaveStore, extra: { banner?: EventBannerShow } = {}): DebtRun | null {
   const snap = save.data.resume;
   if (!snap || !isRunSave(snap)) return null;
-  return new Run({ seed: snap.seed, mode: snap.mode, cfg: snap.cfg, save }, snap);
+  return new Run({ seed: snap.seed, mode: snap.mode, cfg: snap.cfg, save, banner: extra.banner }, snap);
 }
 
 // ── inert sub-APIs (owned by other packages; warns once when touched) ─────────────────────────────────
@@ -258,6 +281,10 @@ class Run implements DebtRun {
   private readonly rng: Rng;
   private readonly save: SaveStore | null;
   private readonly modsImpl: Mods;
+  private readonly tycoonSys: Tycoon;
+  private readonly buffSys: BuffSystem;
+  private readonly itemSys: ItemSystem;
+  private worldLink: RunWorldLink | null = null;
   private readonly pools = new Map<string, JackpotPool>();
   private readonly poolListeners = new Set<(p: JackpotPool) => void>();
   private readonly counters = new Map<string, number>();
@@ -358,19 +385,49 @@ class Run implements DebtRun {
     this.pools.set('net', { id: 'net', value: START.jackpotSeed, seed: START.jackpotSeed, feed: NETWORK_FEED, drip: 0, scope: 'network', lastWin: null });
 
     this.shift = this.makeShiftApi();
-    this.tycoon = inert<TycoonApi>('tycoon', {
-      state: () => ({ levels: {}, machines: {}, staff: [], zones: [], floor: 1, holdings: 0, orders: 0, idleEarned: 0 }),
-      hasFeature: () => false,
-      features: () => new Set<string>(),
-      level: () => 0,
-      incomePerSec: () => 0,
-      holdings: () => 0,
-      onChange: () => noop,
+    // tycoon, buffs, night events and totems (BRIEF addenda 1–3, 8). Each registers its providers on `mods`.
+    this.tycoonSys = createTycoon({
+      run: () => this,
+      seed: opts.seed,
+      isHost: () => true,
+      machines: () => this.worldLink?.machines() ?? [],
+      tradeOpen: () => this.tradeOpen(),
+      quotaDue: () => this.quota.due,
+      shiftIndex: () => this.index,
+      deposited: () => this.debtPaid,
+      save: opts.save,
+      onDescend: () => { this.endRun('escaped', 'descend'); },
+      now: () => Math.round(this.elapsed * 1000),
     });
-    this.buffs = inert<BuffsApi>('buffs', { has: () => false, stacks: () => 0, list: () => [] });
-    this.totems = inert<TotemsApi>('totems', { list: () => [], mine: () => [], inRadius: () => [] });
+    this.modsImpl.register(this.tycoonSys.provider);
+    this.tycoon = this.tycoonSys;
+    this.tycoonSys.onChange(() => { this.persistSoon(); this.notify(); });
+
+    this.buffSys = createBuffSystem({
+      selfId: this.selfId,
+      isHost: true,
+      rng: createRng(hashSeed('buffs', opts.seed)),
+      run: () => this,
+      now: () => Math.round(this.elapsed * 1000),
+      touch: () => this.modsImpl.touch(),
+      players: () => [this.selfId],
+    }, this.modsImpl, { banner: opts.banner });
+    this.buffs = this.buffSys.buffs;
+    this.nightEvents = this.buffSys.nightEvents;
+
+    this.itemSys = createItemSystem({
+      selfId: this.selfId,
+      isHost: true,
+      rng: createRng(hashSeed('totems', opts.seed)),
+      run: () => this,
+      now: () => Math.round(this.elapsed * 1000),
+      touch: () => this.modsImpl.touch(),
+      allied: (a, b) => a === b,
+      instancePos: (mid) => this.worldLink?.instancePos(mid),
+    }, this.modsImpl);
+    this.totems = this.itemSys.totems;
+
     this.collateral = inert<CollateralApi>('collateral', {});
-    this.nightEvents = inert<NightEventsApi>('nightEvents', { active: () => [], isActive: () => false, defs: () => [], chance: () => 0 });
     this.contracts = inert<ContractsApi>('contracts', { board: () => [], active: () => [] });
     this.jackpots = this.makeJackpotsApi();
 
@@ -628,6 +685,9 @@ class Run implements DebtRun {
       this.clockAcc -= 1;
       this.emit('run:clock', { remaining: this.clock.remaining });
     }
+    this.buffSys.tick(dt);
+    this.itemSys.tick(dt);
+    if (this.phase === 'play' || this.phase === 'lastCall') this.tycoonSys.tick(dt);
     if (!this.rules.timed) return;
     switch (this.phase) {
       case 'bell':
@@ -674,6 +734,7 @@ class Run implements DebtRun {
     this.emit('pulls:change', { pid: this.selfId, pulls: this.pullCount });
     this.emit('run:deadline', { index: this.index, due: this.quota.due, seconds: this.clockLen });
     this.enter('bell', BELL_SEC);
+    this.buffSys.onBell();
     this.persist();
     return true;
   }
@@ -761,7 +822,7 @@ class Run implements DebtRun {
 
   stayUp(): boolean {
     if (!this.topside || this.ended) return false;
-    this.endRun('won');
+    this.endRun('escaped', 'elevator');
     return true;
   }
   goBackDown(): boolean {
@@ -775,6 +836,10 @@ class Run implements DebtRun {
     this.endRun('quit');
     return true;
   }
+
+  attachWorld(link: RunWorldLink | null): void { this.worldLink = link; }
+  takeIdleReport(): IdleReport | null { return this.tycoonSys.takeIdleReport(); }
+  dispose(): void { this.buffSys.dispose(); this.itemSys.dispose(); }
 
   onChange(fn: () => void): () => void {
     this.listeners.add(fn);
@@ -842,6 +907,7 @@ class Run implements DebtRun {
       this.enter('intermission', 0);
     } else {
       this.skipRest = 0;
+      this.tycoonSys.onDawn();
       this.enter('collection', COLLECTION_SEC);
     }
     this.persist();
@@ -894,7 +960,7 @@ class Run implements DebtRun {
     this.endRun('fell');
   }
 
-  private endRun(result: RunSummary['result']): void {
+  private endRun(result: RunSummary['result'], ending?: string): void {
     this.ended = true;
     this.clock.stop();
     this.enter('over', 0);
@@ -903,6 +969,7 @@ class Run implements DebtRun {
       rounds: this.rounds, biggestWin: this.biggest, durationSec: Math.round(this.elapsed),
       players: [{ id: this.selfId, name: '', placement: 1, wallet: this.coins }],
       stats: { ...this.stats },
+      ...(ending ? { ending } : {}),
     };
     this.emit('run:end', { summary });
     if (this.save) {
@@ -971,6 +1038,11 @@ class Run implements DebtRun {
 
   private pegs(): number {
     return Math.min(PEG_CAP_RUN, START.pegs + Math.max(0, Math.round(this.mod('x.pegs.add', RUN_MACHINE, 0))));
+  }
+
+  /** Tycoon trade is shut during Closing, Settle, Dawn Collection and after the run (GDD §3.7.1). */
+  private tradeOpen(): boolean {
+    return !(this.phase === 'closing' || this.phase === 'settle' || this.phase === 'collection' || this.phase === 'over');
   }
 
   private refuse(reason: RefusalReason): false {
@@ -1067,6 +1139,8 @@ class Run implements DebtRun {
       maxWallet: this.maxWallet, biggest: this.biggest, rounds: this.rounds,
       rng: this.rng.getState(),
       overpays: this.overpays.map((o) => ({ rarity: o.rarity, ids: [...o.ids], left: o.left })),
+      tycoon: JSON.parse(JSON.stringify(this.tycoonSys.state())) as Partial<TycoonState>,
+      savedAt: Date.now(),
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -1154,6 +1228,8 @@ class Run implements DebtRun {
     const pool = this.pools.get('net');
     if (pool) pool.value = s.jackpots['net'] ?? pool.seed;
     this.syncQuota();
+    if (e.tycoon) this.tycoonSys.restore(e.tycoon);
+    if (typeof e.savedAt === 'number') this.tycoonSys.catchUp(Math.max(0, (Date.now() - e.savedAt) / 1000));
     this.ended = !this.living || this.phase === 'over';
   }
 }

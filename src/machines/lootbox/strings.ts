@@ -1,0 +1,44 @@
+/**
+ * Mystery Capsule Vendor (`lootbox`) — UI and in-world strings (EN + TR). Keys are auto-prefixed `m.lootbox.` by the
+ * registry. `{n}` / `{name}` placeholders are filled by `MachineBase.t(key, vars)`.
+ */
+import type { MachineStrings } from '@/machines/_base/types';
+
+export const STRINGS: MachineStrings = {
+  en: {
+    name: 'Mystery Capsule Vendor',
+    desc: 'Crank a capsule, twist it open. Charms inside. Mostly trinkets, sometimes coins, rarely something that bites.',
+    marquee: 'MYSTERY CAPSULES',
+    tin: 'TIN', brass: 'BRASS', gilded: 'GILDED',
+    price: 'PRICE {n}', hint: '1-3 TIER  SPACE CRANK  HOLD LMB TWIST',
+    h_tier: 'TIER', h_crank: 'CRANK', h_open: 'TWIST', h_table: 'TABLE', h_leave: 'LEAVE',
+    s_coins: 'COINS', s_price: 'PRICE', s_pity: 'PITY {n}/{m}', s_tier: 'TIER',
+    tableTitle: 'CONTENTS', tableTin: 'TIN 10c: trinket 32 · coins 40 · common 22 · uncommon 5 · rare 0.6',
+    tableBrass: 'BRASS 40c: trinket 10 · coins 35 · common 25 · uncommon 20 · rare 7 · legend 0.75 · cursed 2',
+    tableGilded: 'GILDED 150c: coins 30 · uncommon 32 · rare 25 · legend 8 · cursed 5',
+    funds: 'NOT ENOUGH COINS', noPulls: 'NO PULLS LEFT', busy: 'WAIT', nothing: 'NOTHING TO OPEN',
+    dud: 'Bottle cap', dud2: 'Glass eye', dud3: 'A tooth, probably', dud4: 'Brass button', dud5: 'Tiny key', dud6: 'Pressed flower',
+    coins: '{n} COINS', dupe: 'DUPLICATE: {n} COINS', empty: 'POOL EMPTY: {n} COINS', pegFull: 'CHARM BOARD FULL: {n} COINS',
+    pity: 'THE DOME OWES YOU', cursedSign: 'THE DOME GOES DARK', legendSign: 'LEGENDARY',
+    r_dud: 'TRINKET', r_coins: 'COINS', r_common: 'COMMON', r_uncommon: 'UNCOMMON', r_rare: 'RARE', r_legendary: 'LEGENDARY', r_cursed: 'CURSED',
+    rerolled: 'SECOND TWIST', ratchet: 'CLICK',
+  },
+  tr: {
+    name: 'Sürpriz Kapsül Otomatı',
+    desc: 'Bir kapsül çevir, kendin aç. İçinde tılsımlar var. Çoğu oyalanacak bir şey, bazen para, nadiren ısıran bir şey.',
+    marquee: 'SÜRPRİZ KAPSÜLLER',
+    tin: 'TENEKE', brass: 'PİRİNÇ', gilded: 'ALTIN',
+    price: 'FİYAT {n}', hint: '1-3 SEÇ  BOŞLUK ÇEVİR  SOL TUŞ BURUK',
+    h_tier: 'SEÇ', h_crank: 'ÇEVİR', h_open: 'BURUR', h_table: 'LİSTE', h_leave: 'AYRIL',
+    s_coins: 'PARA', s_price: 'FİYAT', s_pity: 'BORÇ {n}/{m}', s_tier: 'SEVİYE',
+    tableTitle: 'İÇERİK', tableTin: 'TENEKE 10c: eşya 32 · para 40 · yaygın 22 · nadir-az 5 · nadir 0,6',
+    tableBrass: 'PİRİNÇ 40c: eşya 10 · para 35 · yaygın 25 · az nadir 20 · nadir 7 · efsane 0,75 · lanetli 2',
+    tableGilded: 'ALTIN 150c: para 30 · az nadir 32 · nadir 25 · efsane 8 · lanetli 5',
+    funds: 'PARA YETMİYOR', noPulls: 'HAMLE KALMADI', busy: 'BEKLE', nothing: 'AÇILACAK BİR ŞEY YOK',
+    dud: 'Kapak', dud2: 'Cam göz', dud3: 'Bir diş, galiba', dud4: 'Pirinç düğme', dud5: 'Minik anahtar', dud6: 'Preslenmiş çiçek',
+    coins: '{n} PARA', dupe: 'TEKRAR: {n} PARA', empty: 'HAVUZ BOŞ: {n} PARA', pegFull: 'TILSIM TAHTASI DOLU: {n} PARA',
+    pity: 'KUBBE SANA BORÇLU', cursedSign: 'KUBBE KARARIYOR', legendSign: 'EFSANE',
+    r_dud: 'EŞYA', r_coins: 'PARA', r_common: 'YAYGIN', r_uncommon: 'AZ NADİR', r_rare: 'NADİR', r_legendary: 'EFSANE', r_cursed: 'LANETLİ',
+    rerolled: 'İKİNCİ BURUK', ratchet: 'TIK',
+  },
+};

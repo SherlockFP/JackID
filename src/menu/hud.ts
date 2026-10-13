@@ -41,6 +41,7 @@ const self = (): PlayerId => app.run?.selfId ?? 0;
 const ui = (): UIOverlayX => app.ui as UIOverlayX;
 const coinSym = (): string => t('common.coinSuffix').trim();
 const money = (n: number): string => fmtCoins(n);
+const hexCss = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
 const machineName = (id: string): string => (has(`machine.${id}.name`) ? t(`machine.${id}.name`) : id);
 const tierIndex = (tier: WinTier): number => WIN_TIERS.indexOf(tier);
 const BIG = WIN_TIERS.indexOf('big');
@@ -98,6 +99,7 @@ export function createHud(): Hud {
   const buffs = h('div', 'hb buffs', root);
   let buffKey = '';
   let buffTimers: Array<{ el: HTMLElement; b: BuffState; color: string }> = [];
+  let buffIds = new Set<string>();
   let buffRefresh = 0;
 
   // ── bottom: pulls tokens, charms ───────────────────────────────────────────────
@@ -261,17 +263,20 @@ export function createHud(): Hud {
       const list = r.buffs.list({ pid: self() });
       const key = list.map((b) => `${b.id}:${b.stacks}`).join('|');
       if (key !== buffKey) {
+        const fresh = new Set(list.map((b) => b.id).filter((id) => !buffIds.has(id)));
+        buffIds = new Set(list.map((b) => b.id));
         buffKey = key;
         buffs.replaceChildren();
         buffTimers = [];
         for (const b of list.slice(0, 8)) {
           const def = r.buffs.def(b.id);
-          const color = def?.color !== undefined ? String(def.color) : def?.kind === 'debuff' ? COLORS.signal : COLORS.green;
-          const el = h('div', `ico${def?.kind === 'debuff' ? ' debuff' : ''}`, buffs);
-          el.title = has(`buff.${b.id}.name`) ? t(`buff.${b.id}.name`) : b.id;
+          const color = def?.color !== undefined ? hexCss(def.color) : def?.kind === 'debuff' ? COLORS.signal : COLORS.green;
+          const name = has(`buff.${b.id}.name`) ? t(`buff.${b.id}.name`) : b.id;
+          const el = h('div', `ico${def?.kind === 'debuff' ? ' debuff' : ''}${fresh.has(b.id) ? ' hop' : ''}`, buffs);
+          el.title = name;
           const timer = h('i', 'timer', el);
           timer.style.setProperty('--c', color);
-          h('span', '', el, b.id.slice(0, 2).toUpperCase());
+          h('span', '', el, name.slice(0, 2).toUpperCase());
           if (b.stacks > 1) h('span', 'stk', el, String(b.stacks));
           buffTimers.push({ el: timer, b, color });
         }
