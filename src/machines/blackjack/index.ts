@@ -32,11 +32,13 @@ import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { HudHint } from '@/core/ui/types';
 import { fmtCoins, t } from '@/core/i18n';
 import { TableBase } from '@/machines/_base/TableBase';
+import { SeatHud, type HudControl, type HudNumber, type HudResultKind, type Txt } from '@/machines/_base/seatHud';
+import { bjTotal, rankOf } from '@/machines/_base/cards';
 import { juiceTier } from '@/machines/_base/tiers';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { STRINGS } from './blackjack.strings';
 import {
-  buildModel, arcAt, dealerSlot, shoeMouth, slotPos, spotPhi, type BlackjackParts, SPOTS, SPOT_R, TOP,
+  buildModel, arcAt, dealerSlot, shoeMouth, slotPos, spotPhi, type BlackjackParts, SPOTS, SPOT_R, TOP, CARD_SLOT_R,
 } from './model';
 import * as R from './rules';
 
@@ -109,6 +111,18 @@ const spotPoint = (box: number, r: number): THREE.Vector3 => {
   return new THREE.Vector3(c.x, TOP + 0.005, c.z);
 };
 const nextSide = (s: number): number => SIDE_STEPS[(SIDE_STEPS.indexOf(s) + 1) % SIDE_STEPS.length];
+const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.blackjack.' + k }));
+const LABEL_W = 128, LABEL_H = 64;
+type LabelSprite = { sp: THREE.Sprite; cv: HTMLCanvasElement; cx: CanvasRenderingContext2D; tex: THREE.CanvasTexture; last: string };
+/** Callout kind for the local box's settlement (net = coins back minus stake). */
+function resultKind(results: string[], net: number): HudResultKind {
+  if (results.includes('even')) return 'even';
+  if (results.includes('bj') && net > 0) return 'blackjack';
+  if (results.includes('surr')) return 'surrender';
+  if (results.length > 0 && results.every((r) => r === 'bust')) return 'bust';
+  if (net > 0) return 'win';
+  return net === 0 ? 'push' : 'lose';
+}
 
 export const def: MachineDef = {
   id: 'blackjack',
@@ -143,19 +157,34 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
   private cardRefs = new Map<string, number>();
   private chipRefs = new Map<number, number[]>();
   private shownSecond = -1;
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
+  /** Floating totals: one per spot, then the dealer (index SPOTS). */
+  private labels: LabelSprite[] = [];
 
   protected createModel(kit: KitX): MachineModel<BlackjackParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
+    this.buildLabels();
     this.repaintAll();
+    void document.fonts?.ready.then(() => this.refreshLabels(true));
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   // ── local input → action to the host ─────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     const st = this.st, seat = this.localSeat;
@@ -167,11 +196,11 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
       case 'betUp': case 'betDown': case 'betMax':
         if (st.phase !== 'bet' || (b && b.ready)) break;
         if (a === 'betUp') this.stepBet(1); else if (a === 'betDown') this.stepBet(-1); else this.maxBet();
-        this.sfx('click'); this.showHud();
+        this.sfx('click'); this.refreshHud();
         break;
       case 'n8':
         if (st.phase !== 'bet' || (b && b.ready)) break;
-        this.sideBet = nextSide(this.sideBet); this.sfx('click'); this.showHud();
+        this.sideBet = nextSide(this.sideBet); this.sfx('click'); this.refreshHud();
         break;
       case 'n1': case 'n2': case 'n3': case 'n4': case 'n5': {
         const act = KEY_ACTION[a];
@@ -541,12 +570,17 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
         }
       }
     }
-    if (local) this.hud(null);
+    if (local) { this.hud(null); this.seatHud?.hide(); }
   }
 
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.refreshLamps();
-    if (local) { this.sfx('chime'); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show();
+      this.refreshHud();
+      this.seatHud?.firstTip('blackjack', this.tipLines());
+    }
   }
 
   // ── host timers ──────────────────────────────────────────────────────────────────────────────
@@ -604,7 +638,7 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
         this.repaintBets(ev.box);
         this.refreshLamps();
         this.drawTotals();
-        if (this.isLocalOccupant) this.showHud();
+        if (this.isLocalOccupant) this.refreshHud();
         return;
       }
       case 'phase':
@@ -613,7 +647,7 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
         p.phaseLamp.setOn(ev.p !== 'bet');
         this.refreshLamps();
         this.drawTotals();
-        if (this.isLocalOccupant) this.showHud();
+        if (this.isLocalOccupant) this.refreshHud();
         return;
       case 'deal':
         await this.presentDeal(ev, fast);
@@ -624,7 +658,7 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
         b.offer = ev.open ? ev.offer : 0;
         if (ev.open) { this.sfx('chime'); this.ctx.fx.glow(p.spots[ev.box], GOLD, 0.18, 0.4); }
         p.insuranceLine.setOn(st.boxes.some((x) => x.offer > 0));
-        if (ev.open && this.localSeat === ev.box) this.showHud();
+        if (ev.open && this.localSeat === ev.box) this.refreshHud();
         this.drawTotals();
         return;
       }
@@ -639,7 +673,7 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
         }
         p.insuranceLine.setOn(st.boxes.some((x) => x.offer > 0));
         this.drawTotals();
-        if (this.isLocalOccupant) this.showHud();
+        if (this.isLocalOccupant) this.refreshHud();
         return;
       }
       case 'peek':
@@ -656,7 +690,7 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
         this.paintButtons();
         this.refreshLamps();
         this.drawTotals();
-        if (this.isLocalOccupant) this.showHud();
+        if (this.isLocalOccupant) this.refreshHud();
         return;
       case 'act': {
         const b = st.boxes[ev.box];
@@ -739,6 +773,9 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
     const at = p.spots[ev.box];
     const bj = ev.results.includes('bj');
     const tier = juiceTier(ev.ret, ev.stake, bj ? ['blackjack'] : []);
+    if (this.isLocalOccupant && ev.box === this.localSeat && ev.stake > 0) {
+      this.seatHud?.result(resultKind(ev.results, ev.ret - ev.stake), ev.ret - ev.stake);
+    }
     this.drawTotals();
     if (ev.ret > ev.stake && ev.stake > 0) {
       const win = ev.ret - ev.stake;
@@ -803,7 +840,7 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
     this.paintButtons();
     this.refreshLamps();
     this.drawTotals();
-    if (this.isLocalOccupant) this.showHud();
+    if (this.isLocalOccupant) this.refreshHud();
   }
 
   /** Dealer hands lift and tilt (peek): `angle` in radians, `dur` seconds. */
@@ -848,15 +885,15 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
     this.paintButtons();
     this.refreshLamps();
     this.drawTotals();
-    if (this.isLocalOccupant) this.showHud();
+    if (this.isLocalOccupant) this.refreshHud();
   }
 
   // ── visuals ───────────────────────────────────────────────────────────────────────────────────
   frame(): void {
     const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
-    if (left !== this.shownSecond) { this.shownSecond = left; this.drawTotals(); }
+    if (left !== this.shownSecond) { this.shownSecond = left; this.drawTotals(); this.refreshHud(); }
   }
-  onLang(): void { this.drawTotals(); if (this.isLocalOccupant) this.showHud(); }
+  onLang(): void { this.drawTotals(); if (this.isLocalOccupant) this.refreshHud(); }
 
   private statusText(): string {
     const st = this.st, seat = this.localSeat, mine = seat >= 0 ? st.boxes[seat] : undefined;
@@ -903,28 +940,182 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
         w.text(text, x, 30, { font: 'px5', color: `#${color.toString(16).padStart(6, '0')}`, align: 'center' });
       }
     });
+    this.refreshLabels();
   }
 
-  // ── HUD ──────────────────────────────────────────────────────────────────────────────────────
-  private showHud(): void {
-    const st = this.st, seat = this.localSeat;
-    const b = seat >= 0 ? st.boxes[seat] : undefined;
-    const hints: HudHint[] = [];
-    if (st.phase === 'bet' && b && !b.ready) {
-      hints.push({ action: 'primary', label: this.t('ready') }, { action: 'betUp', label: t('common.bet') }, { action: 'n8', label: this.t('side') });
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.blackjack.tip1' },
+      { k: 'm.blackjack.tip2', v: { ready: this.k('primary'), bet: `${this.k('betDown')}/${this.k('betUp')}` } },
+      { k: 'm.blackjack.tip3', v: { hit: this.k('n1'), stand: this.k('n2'), help: this.k('help') } },
+    ];
+  }
+
+  /** One hand as the player reads it: total, soft total "7/17", BJ or BUST. */
+  private handText(cards: readonly string[]): string {
+    if (cards.length === 0) return '-';
+    const tot = bjTotal(cards as CardId[]);
+    if (tot.bust) return this.t('tagBust');
+    if (tot.blackjack) return this.t('tagBj');
+    return tot.soft ? `${tot.total - 10}/${tot.total}` : String(tot.total);
+  }
+
+  /** The dealer's up card as a label: A, K, Q, J or the pip value. */
+  private upText(c: string): string {
+    const r = rankOf(c as CardId);
+    return r === 14 ? 'A' : r === 13 ? 'K' : r === 12 ? 'Q' : r === 11 ? 'J' : String(r);
+  }
+
+  /** Banner, key numbers and valid controls. Only while the local player sits at a box. */
+  private refreshHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const st = this.st, seat = this.localSeat, b = st.boxes[seat];
+    const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
+    const secs: Txt | undefined = left > 0 ? { k: 'm.blackjack.stSecs', v: { n: left } } : undefined;
+    const myTurn = st.phase === 'turn' && st.turn !== null && st.turn.box === seat;
+    const legal: string[] = myTurn && st.turn ? st.turn.legal : [];
+    const ctrl: HudControl[] = [];
+    sh.goal({ k: 'm.blackjack.goal' });
+
+    // STATE: whose turn, what phase
+    switch (st.phase) {
+      case 'bet':
+        if (b.ready) sh.state({ k: 'm.blackjack.stReady' }, 'cyan');
+        else sh.state({ k: 'm.blackjack.stBet' }, 'gold', secs);
+        break;
+      case 'deal': sh.state({ k: 'm.blackjack.stDeal' }, 'neutral'); break;
+      case 'ins':
+        if (b.offer === 2) sh.state({ k: 'm.blackjack.stInsEven' }, 'warn', secs);
+        else if (b.offer === 1) sh.state({ k: 'm.blackjack.stIns' }, 'warn', { k: 'm.blackjack.stInsOffer', v: { n: fmtCoins(R.insuranceMax(b.main)) } });
+        else sh.state({ k: 'm.blackjack.stIns' }, 'neutral');
+        break;
+      case 'turn':
+        if (myTurn) sh.state({ k: 'm.blackjack.stTurn' }, 'good', secs);
+        else sh.state({ k: 'm.blackjack.stOther' }, 'cyan');
+        break;
+      case 'dealer': sh.state({ k: 'm.blackjack.stDealerPlays' }, 'neutral'); break;
+      case 'settle': sh.state({ k: 'm.blackjack.stPayout' }, 'neutral'); break;
+      case 'end': sh.state({ k: 'm.blackjack.stEnd' }, 'neutral'); break;
+      default: sh.state({ k: 'm.blackjack.stShuffle' }, 'neutral');
     }
-    if (st.phase === 'ins' && b && b.offer > 0) {
-      hints.push({ action: 'n6', label: this.t(b.offer === 2 ? 'even' : 'insurance') }, { action: 'n7', label: this.t('decline') });
+
+    // KEY NUMBERS: bet, side stake, insurance, balance, your hand(s), dealer (hole card flagged)
+    const nums: HudNumber[] = [];
+    const stake = st.phase === 'bet' && !b.ready ? this.bet : b.main + b.extra;
+    nums.push({ label: { k: 'm.blackjack.nBet' }, value: fmtCoins(stake), tone: 'gold' });
+    const side = st.phase === 'bet' && !b.ready ? this.sideBet : b.side;
+    if (side > 0) nums.push({ label: { k: 'm.blackjack.nSide' }, value: fmtCoins(side), tone: 'cyan' });
+    if (b.ins > 0) nums.push({ label: { k: 'm.blackjack.nIns' }, value: fmtCoins(b.ins), tone: 'warn' });
+    nums.push({ label: { k: 'm.blackjack.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    const dealt = b.hands.filter((h) => h.cards.length > 0);
+    if (dealt.length > 0) {
+      const first = bjTotal(dealt[0].cards as CardId[]);
+      const tone = dealt.every((h) => bjTotal(h.cards as CardId[]).bust) ? 'bad' : first.total === 21 ? 'good' : 'neutral';
+      nums.push({ label: { k: 'm.blackjack.nHand' }, value: dealt.map((h) => this.handText(h.cards)).join(' · '), tone });
     }
-    if (st.phase === 'turn' && st.turn && st.turn.box === seat) {
-      for (const a of st.turn.legal) hints.push({ action: ACTION_KEY[a], label: this.t(a) });
+    const d = st.dealer;
+    const hidden = d.length >= 2 && d[1] === '';
+    const shown = d.filter((c) => c !== '');
+    if (d.length > 0) {
+      const dv: Txt = hidden ? { k: 'm.blackjack.nHidden', v: { n: this.upText(d[0]) } } : this.handText(shown);
+      const dTone = !hidden && shown.length > 0 && bjTotal(shown as CardId[]).bust ? 'bad' : 'neutral';
+      nums.push({ label: { k: hidden ? 'm.blackjack.nDealerHole' : 'm.blackjack.nDealer' }, value: dv, tone: dTone });
     }
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: st.phase === 'bet' && b && !b.ready ? this.bet : null,
-      hints,
-      stats: st.phase === 'bet' && this.sideBet > 0 ? [{ label: this.t('side'), value: fmtCoins(this.sideBet) }] : [],
-    });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys bound to it
+    if (st.phase === 'bet' && !b.ready) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.blackjack.cReady' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.blackjack.cBet' }, action: 'betUp' });
+      ctrl.push({ key: this.k('n8'), label: { k: 'm.blackjack.cSide' }, action: 'n8' });
+    }
+    if (st.phase === 'ins' && b.offer > 0) {
+      ctrl.push({ key: this.k('n6'), label: { k: b.offer === 2 ? 'm.blackjack.cEvenMoney' : 'm.blackjack.cInsure' }, action: 'n6', primary: true });
+      ctrl.push({ key: this.k('n7'), label: { k: 'm.blackjack.cNoIns' }, action: 'n7' });
+    }
+    for (const a of legal) ctrl.push({ key: this.k(ACTION_KEY[a]), label: { k: `m.blackjack.${a}` }, action: a });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.blackjack.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.blackjack.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
+  }
+
+  // ── floating 3D totals: one canvas sprite above each spot, one above the dealer ──────────────
+  private buildLabels(): void {
+    for (let i = 0; i <= SPOTS; i++) {
+      const cv = document.createElement('canvas');
+      cv.width = LABEL_W; cv.height = LABEL_H;
+      const cx = cv.getContext('2d');
+      if (!cx) continue;
+      const tex = new THREE.CanvasTexture(cv);
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+      sp.renderOrder = 20;
+      sp.scale.set(0.15, 0.075, 1);
+      if (i < SPOTS) {
+        const c = arcAt(CARD_SLOT_R, spotPhi(i));
+        sp.position.set(c.x, TOP + 0.17, c.z);
+      } else {
+        const d = dealerSlot(0);
+        sp.position.set(d.x + 0.05, TOP + 0.2, d.z);
+      }
+      this.root.add(sp);
+      this.labels.push({ sp, cv, cx, tex, last: '\u0000' });
+    }
+  }
+
+  private refreshLabels(force = false): void {
+    for (let i = 0; i <= SPOTS; i++) {
+      const L = this.labels[i];
+      if (!L) continue;
+      const { text, color } = i < SPOTS ? this.boxLabel(i) : this.dealerLabel();
+      const key = `${text}|${color}`;
+      if (!force && key === L.last) continue;
+      L.last = key;
+      this.paintLabel(L, text, color);
+    }
+  }
+
+  private boxLabel(i: number): { text: string; color: string } {
+    const b = this.st.boxes[i];
+    if (b.results.length > 0) {
+      const good = b.results.some((r) => r === 'win' || r === 'bj' || r === 'even');
+      const bad = b.results.every((r) => r === 'loss' || r === 'bust' || r === 'surr');
+      return { text: b.results.map((r) => this.t('r_' + r)).join(' '), color: good ? '#7dff7a' : bad ? '#ff5a4a' : '#ffd040' };
+    }
+    const dealt = b.hands.filter((h) => h.cards.length > 0);
+    if (dealt.length === 0) return { text: '', color: '#ffd040' };
+    const turn = this.st.turn !== null && this.st.turn.box === i;
+    const bust = dealt.every((h) => bjTotal(h.cards as CardId[]).bust);
+    return { text: dealt.map((h) => this.handText(h.cards)).join(' · '), color: turn ? '#39e6ff' : bust ? '#ff5a4a' : '#ffd040' };
+  }
+
+  private dealerLabel(): { text: string; color: string } {
+    const d = this.st.dealer;
+    if (d.length === 0) return { text: '', color: '#ffd040' };
+    if (d.length >= 2 && d[1] === '') return { text: `${this.upText(d[0])}+?`, color: '#ffd040' };
+    const cards = d.filter((c) => c !== '');
+    return { text: this.handText(cards), color: bjTotal(cards as CardId[]).bust ? '#ff5a4a' : '#ffd040' };
+  }
+
+  private paintLabel(L: LabelSprite, text: string, color: string): void {
+    const g = L.cx, w = LABEL_W, h = LABEL_H;
+    g.clearRect(0, 0, w, h);
+    L.sp.visible = text !== '';
+    if (text) {
+      g.fillStyle = 'rgba(6, 9, 6, 0.88)';
+      g.fillRect(2, 8, w - 4, h - 16);
+      g.strokeStyle = color; g.lineWidth = 4;
+      g.strokeRect(2, 8, w - 4, h - 16);
+      let size = 30;
+      g.font = `${size}px "Press Start 2P", monospace`;
+      while (size > 12 && g.measureText(text).width > w - 14) { size -= 2; g.font = `${size}px "Press Start 2P", monospace`; }
+      g.fillStyle = color; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(text, w / 2, h / 2 + 1);
+    }
+    L.tex.needsUpdate = true;
   }
 }
-

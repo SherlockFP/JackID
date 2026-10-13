@@ -14,12 +14,12 @@
  * Widow's head-shake; a restock pops the Widow up to clap.
  */
 import type { KitX } from '@/kit';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { PlayerId } from '@/core/types';
 import type { ModHook } from '@/game/types';
 import { fmtCoins, t as tr } from '@/core/i18n';
 import { TableBase } from '@/machines/_base/TableBase';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
 import { buildModel, WIDOW_DOWN_Y, WIDOW_UP_Y, type TombolaParts } from './model';
@@ -39,6 +39,7 @@ const PULL_S = 0.6;
 const BLANK_S = 0.8;
 const PRIZE_S = 1.5;
 // Hex for lamps and pop texts (fx), CSS for the canvas screens.
+const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.tombola.' + k }));
 const GOLD = 0xffd040, GREEN = 0x7dff7a, RED = 0xff6a5a;
 const GOLD_CSS = '#ffd040', GREEN_CSS = '#7dff7a', RED_CSS = '#ff6a5a', CREAM = '#f3e7c4', DIM = '#6f5a3a';
 const LAMP_OFF = 0x2a2018;
@@ -77,10 +78,22 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
   private unfoldFrom: number | null = null;
   private spin = 0;
   private spinAngle = 0;
+  /** Seat HUD overlay (goal, state, key numbers, controls, result callout, tip and rules cards). */
+  private seatHud?: SeatHud;
+  private hudSig = '';
 
   protected createModel(kit: KitX): MachineModel<TombolaParts> { return buildModel(kit, this.modelOpts); }
 
-  init(): void { this.paintAll(); }
+  init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
+    this.paintAll();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
 
   private get mine(): boolean { return this.st.owner !== null && this.st.owner === this.selfId; }
   private get restockAt(): number { return Math.max(0, Math.round(this.mod('m.tombola.restockAt' as ModHook, DEFAULT_RESTOCK_AT))); }
@@ -89,6 +102,8 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -252,7 +267,15 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
   // ── seats ────────────────────────────────────────────────────────────────────────────────────
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintQueue();
-    if (local) { this.cranked = false; this.sfx('chime', { vol: 0.5 }); this.showHud(); }
+    if (local) {
+      this.cranked = false;
+      this.sfx('chime', { vol: 0.5 });
+      this.hud(null);
+      this.seatHud?.show();
+      this.hudSig = '';
+      this.showHud();
+      this.seatHud?.firstTip('tombola', this.tipLines());
+    }
   }
 
   onRelease(pid: PlayerId, _seat: number, local: boolean): void {
@@ -265,12 +288,17 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
         void this.emit({ k: 'refund', p: pid, price });
       }
     }
-    if (local) { this.cranked = false; this.crankAuto = 0; this.crankDrag = 0; this.dragging = false; this.showHud(); }
+    if (local) {
+      this.cranked = false; this.crankAuto = 0; this.crankDrag = 0; this.dragging = false;
+      this.hud(null);
+      this.seatHud?.hide();
+    }
     this.paintQueue();
   }
 
   override onLang(): void {
     this.paintAll();
+    this.hudSig = '';
     if (this.isLocalOccupant) this.showHud();
   }
 
@@ -331,6 +359,7 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
   }
 
   private async onPrize(ev: Extract<Ev, { k: 'prize' }>, pc: PresentCtx): Promise<void> {
+    if (ev.p === this.selfId) this.seatHud?.result('win', ev.gross - ev.price, 1.5);
     this.st.owner = null;
     this.st.held = null;
     this.st.remaining = ev.remaining;
@@ -360,6 +389,7 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
   }
 
   private async onBlank(ev: Extract<Ev, { k: 'blank' }>, pc: PresentCtx): Promise<void> {
+    if (ev.p === this.selfId) this.seatHud?.result('lose', -ev.price, 1.5);
     this.st.owner = null;
     this.st.held = null;
     this.st.remaining = ev.remaining;
@@ -433,6 +463,7 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
     this.paintQueue();
     this.paintEV();
     this.paintPaper();
+    if (this.isLocalOccupant) this.showHud();
   }
 
   private paintShelf(): void {
@@ -487,29 +518,62 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
     if (!shown) this.parts.hatch.rotation.x = 0;
   }
 
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.tombola.tip1' },
+      { k: 'm.tombola.tip2', v: { go: this.k('confirm') } },
+      { k: 'm.tombola.tip3', v: { help: this.k('help') } },
+    ];
+  }
+
+  /** Banner, key numbers and valid controls for the local player. Redraws only when something changed. */
   private showHud(): void {
-    const seat = this.localSeat;
-    const hints: HudHint[] = [];
-    if (seat >= 0) {
-      if (this.mine && this.st.held !== null) {
-        hints.push({ action: 'confirm', label: tr('m.tombola.hintUnfold') });
-        if (!isWinner(this.st.held)) hints.push({ action: 'n4', label: tr('m.tombola.hintFeel') });
-      } else if (this.mine) {
-        hints.push({ action: 'confirm', label: this.cranked ? tr('m.tombola.hintPull') : tr('m.tombola.hintCrank') });
-      } else {
-        hints.push({ action: 'confirm', label: tr('m.tombola.hintPay') });
-      }
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const held = this.st.held, mine = this.mine, owned = this.st.owner !== null;
+    const wallet = this.ctx.run.wallet();
+    const price = priceOf(this.bet, this.mod('m.tombola.priceMult' as ModHook, 1));
+    const sig = [mine, owned, held, this.cranked, this.st.remaining, this.bet, Math.round(liveEV(this.st.remaining, this.st.shelf) * 100), wallet].join('|');
+    if (sig === this.hudSig) return;
+    this.hudSig = sig;
+    sh.goal({ k: 'm.tombola.goal' });
+
+    // STATE: pay, crank, pull, unfold, or someone else's ticket
+    if (mine && held !== null) sh.state({ k: 'm.tombola.stUnfold' }, 'warn', { k: 'm.tombola.stUnfoldSub', v: { n: held } });
+    else if (mine && !this.cranked) sh.state({ k: 'm.tombola.stCrank' }, 'gold');
+    else if (mine) sh.state({ k: 'm.tombola.stPull' }, 'good');
+    else if (owned) sh.state({ k: 'm.tombola.stOther' }, 'cyan');
+    else sh.state({ k: 'm.tombola.stPay' }, 'gold');
+
+    // KEY NUMBERS
+    const nums: HudNumber[] = [
+      { label: { k: 'm.tombola.nPrice' }, value: fmtCoins(price), tone: 'gold' },
+      { label: { k: 'm.tombola.nLeft' }, value: String(this.st.remaining), tone: 'cyan' },
+      { label: { k: 'm.tombola.nEV' }, value: `${Math.round(liveEV(this.st.remaining, this.st.shelf) * 100)}%`, tone: 'neutral' },
+    ];
+    if (held !== null) nums.push({ label: { k: 'm.tombola.nTicket' }, value: String(held), tone: isWinner(held) ? 'good' : 'neutral' });
+    nums.push({ label: { k: 'm.tombola.nBalance' }, value: fmtCoins(wallet), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only the one next step, plus feel, the stake and the help keys
+    const ctrl: HudControl[] = [];
+    if (mine && held !== null) {
+      ctrl.push({ key: this.k('confirm'), label: { k: 'm.tombola.cUnfold' }, action: 'confirm', primary: true });
+      if (!isWinner(held)) ctrl.push({ key: this.k('n4'), label: { k: 'm.tombola.cFeel' }, action: 'n4' });
+    } else if (mine && !this.cranked) {
+      ctrl.push({ key: this.k('confirm'), label: { k: 'm.tombola.cCrank' }, action: 'confirm', primary: true });
+    } else if (mine) {
+      ctrl.push({ key: this.k('confirm'), label: { k: 'm.tombola.cPull' }, action: 'confirm', primary: true });
+    } else if (!owned) {
+      ctrl.push({ key: this.k('confirm'), label: { k: 'm.tombola.cPay', v: { n: fmtCoins(price) } }, action: 'confirm', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.tombola.cStake' }, action: 'betUp' });
     }
-    hints.push({ action: 'betUp', label: tr('m.tombola.hintRate') }, { action: 'exit', label: tr('common.leave') });
-    this.hud({
-      bet: seat >= 0 ? this.bet : null,
-      hints,
-      stats: [
-        { label: tr('m.tombola.statLeft'), value: String(this.st.remaining) },
-        { label: tr('m.tombola.statPrice'), value: fmtCoins(priceOf(this.bet, this.mod('m.tombola.priceMult' as ModHook, 1))) },
-        { label: tr('m.tombola.statEV'), value: `${Math.round(liveEV(this.st.remaining, this.st.shelf) * 100)}%` },
-      ],
-    });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.tombola.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.tombola.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }
 

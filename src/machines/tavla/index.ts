@@ -23,11 +23,11 @@
 import * as THREE from 'three';
 import type { PlayerId } from '@/core/types';
 import { isBot } from '@/core/types';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint, PanelHandle } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { Rng } from '@/core/rng';
 import { fmtCoins } from '@/core/i18n';
 import { TableBase } from '@/machines/_base/TableBase';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { juiceTier, tierAtLeast, type JuiceTier } from '@/machines/_base/tiers';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import type { KitX } from '@/kit/index';
@@ -106,21 +106,32 @@ export default class Tavla extends TableBase<TavlaParts, Ev, Pub, Act> {
   private idleT = 0;
   /** Local: the picked source (distance for the local side), −1 none. */
   private sel = -1;
-  private rules: PanelHandle | null = null;
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: KitX): MachineModel<TavlaParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.assignPieces(this.st.board);
     this.layoutPieces();
     this.repaint();
   }
 
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
+
   // ── local input ─────────────────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
-    if (!e.down || e.repeat) return;
+    if (!e.down) return;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
+    if (e.repeat) return;
     const st = this.st, me = this.localSide();
     const readyNow = st.ph === 'stake' && me >= 0 && !st.rdy[me];
     switch (e.action) {
@@ -144,9 +155,6 @@ export default class Tavla extends TableBase<TavlaParts, Ev, Pub, Act> {
         break;
       case 'secondary':
         this.sel = -1; this.markTargets();
-        break;
-      case 'help':
-        this.toggleRules();
         break;
     }
   }
@@ -546,13 +554,17 @@ export default class Tavla extends TableBase<TavlaParts, Ev, Pub, Act> {
       hs.q = hs.q.filter((s) => s !== seat);
     }
     if (isBot(pid)) this.showBot(seat, 0, false);
-    if (local) { this.hud(null); this.closeRules(); this.sel = -1; }
+    if (local) { this.seatHud?.hide(); this.sel = -1; }
   }
 
   onOccupy(pid: PlayerId, seat: number, local: boolean): void {
     if (isBot(pid)) this.showBot(seat, this.bots.find((b) => b.seat === seat)?.level ?? 2, true);
     this.repaint();
-    if (local) { this.sfx('chime'); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show(); this.showHud();
+      this.seatHud?.firstTip('tavla', this.tipLines());
+    }
   }
 
   private showBot(seat: number, level: number, on: boolean): void {
@@ -680,6 +692,10 @@ export default class Tavla extends TableBase<TavlaParts, Ev, Pub, Act> {
         this.ctx.fx.popText(anchor, label, GOLD, { dur: 1.4, rise: 0.35, scale: 1.3 });
         this.ctx.fx.shake(0.01, 0.3);
         if (won && ev.m >= 2 && !fast) this.ctx.fx.flash(GOLD, 0.3, 0.25);
+        if (mine >= 0) {
+          if (ev.w === mine) this.seatHud?.result('win', ev.gross - ev.stake);
+          else this.seatHud?.result('lose', -(this.st.stake[mine] ?? 0));
+        }
         if (ev.w >= 0 && (ev.w === mine || mine < 0)) void this.celebrate(tier, { amount: ev.gross - ev.stake, at, fast });
         else if (mine >= 0) this.commiserate({ at, amount: ev.stake });
         this.refresh();
@@ -800,57 +816,83 @@ export default class Tavla extends TableBase<TavlaParts, Ev, Pub, Act> {
     return '';
   }
 
-  // ── HUD and rules sheet ─────────────────────────────────────────────────────────────────────────
-  onLang(): void {
-    this.repaint();
-    if (this.rules) { this.closeRules(); this.toggleRules(); }
-    if (this.isLocalOccupant) this.showHud();
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.tavla.tip1' },
+      { k: 'm.tavla.tip2', v: { ready: this.k('primary'), stake: `${this.k('betDown')}/${this.k('betUp')}` } },
+      { k: 'm.tavla.tip3', v: { roll: this.k('primary'), double: this.k('n1'), help: this.k('help') } },
+    ];
   }
 
+  private rulesLines(): Txt[] {
+    return [1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => ({ k: `m.tavla.r${i}` }));
+  }
+
+  /** Banner, key numbers and the valid controls only. Only while the local player sits here. */
   private showHud(): void {
-    if (!this.isLocalOccupant) return;
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const st = this.st, me = this.localSide();
-    const hints: HudHint[] = [];
-    if (st.ph === 'stake' && me >= 0 && !st.rdy[me]) hints.push({ action: 'primary', label: this.t('hintReady') }, { action: 'betUp', label: this.t('hintStake') });
-    if (st.ph === 'roll' && st.turn === me) {
-      hints.push({ action: 'primary', label: this.t('hintRoll') });
-      if (this.canDouble(me)) hints.push({ action: 'n1', label: this.t('hintDouble') });
-    }
-    if (st.ph === 'cube' && me >= 0 && st.offer !== me) {
-      hints.push({ action: 'n6', label: this.t('hintTake') }, { action: 'n7', label: this.t('hintDrop') });
-    }
-    hints.push({ action: 'help', label: this.t('hintRules') }, { action: 'exit', label: this.t('common.leave') });
-    this.hud({
-      bet: st.ph === 'stake' && me >= 0 && !st.rdy[me] ? this.bet : null,
-      hints,
-      stats: st.ph === 'idle' ? [] : [{ label: this.t('cubeHud'), value: String(st.cube) }, { label: this.t('stakeHud'), value: fmtCoins(st.unit) }],
-    });
-  }
+    const ready = st.ph === 'stake' && me >= 0 && !st.rdy[me];
+    const myRoll = st.ph === 'roll' && st.turn === me;
+    const myMove = st.ph === 'move' && st.turn === me;
+    const cubeMine = st.ph === 'cube' && me >= 0 && st.offer !== me;
+    const ctrl: HudControl[] = [];
+    sh.goal({ k: 'm.tavla.goal' });
 
-  /** Bilingual rules sheet (H / help): EN then TR, from the strings module. */
-  private toggleRules(): void {
-    if (this.rules) { this.closeRules(); return; }
-    this.rules = this.ctx.ui.panel('tavla-rules', (el) => {
-      el.textContent = '';
-      const sheet = (lang: 'en' | 'tr'): void => {
-        const map = STRINGS[lang];
-        const h = document.createElement('h3');
-        h.textContent = map.rulesTitle;
-        el.appendChild(h);
-        for (let i = 1; i <= 9; i++) {
-          const p = document.createElement('p');
-          p.textContent = `${i}. ${map[`r${i}`]}`;
-          el.appendChild(p);
-        }
-      };
-      sheet('en');
-      const sep = document.createElement('hr');
-      el.appendChild(sep);
-      sheet('tr');
-    });
-  }
-  private closeRules(): void {
-    this.rules?.close();
-    this.rules = null;
+    // STATE: phase and whose turn
+    switch (st.ph) {
+      case 'idle': sh.state({ k: 'm.tavla.stIdle' }, 'neutral'); break;
+      case 'stake':
+        if (me < 0) sh.state({ k: 'm.tavla.stQueue' }, 'neutral');
+        else if (ready) sh.state({ k: 'm.tavla.stStake' }, 'gold', { k: 'm.tavla.stStakeSub', v: { n: fmtCoins(this.bet) } });
+        else sh.state({ k: 'm.tavla.stWaitRdy' }, 'cyan', { k: 'm.tavla.stWaitRdySub', v: { name: this.nameOf(1 - me) } });
+        break;
+      case 'roll':
+        if (myRoll) sh.state({ k: 'm.tavla.stRoll' }, 'good');
+        else sh.state({ k: 'm.tavla.stRollOther' }, 'cyan', { k: 'm.tavla.stOtherOf', v: { name: this.nameOf(st.turn) } });
+        break;
+      case 'move':
+        if (myMove) sh.state({ k: 'm.tavla.stMove' }, 'good', { k: 'm.tavla.stMoveSub', v: { n: st.left.length } });
+        else sh.state({ k: 'm.tavla.stMoveOther' }, 'cyan', { k: 'm.tavla.stOtherOf', v: { name: this.nameOf(st.turn) } });
+        break;
+      case 'cube':
+        if (cubeMine) sh.state({ k: 'm.tavla.stCube' }, 'warn', { k: 'm.tavla.stCubeSub', v: { n: R.nextCube(st.cube) } });
+        else if (me < 0) sh.state({ k: 'm.tavla.stCubeWatch' }, 'neutral');
+        else sh.state({ k: 'm.tavla.stCubeWait' }, 'cyan', { k: 'm.tavla.stOtherOf', v: { name: this.nameOf(1 - st.offer) } });
+        break;
+      default: sh.state({ k: 'm.tavla.stOver' }, 'neutral');
+    }
+
+    // KEY NUMBERS: stake per pul, cube, its holder, dice, balance
+    const nums: HudNumber[] = [];
+    nums.push({ label: { k: 'm.tavla.nStake' }, value: fmtCoins(st.ph === 'idle' ? this.bet : st.unit), tone: 'gold' });
+    nums.push({ label: { k: 'm.tavla.nCube' }, value: String(st.cube), tone: 'cyan' });
+    nums.push({ label: { k: 'm.tavla.nHolder' }, value: st.owner >= 0 ? this.nameOf(st.owner) : '-', tone: 'neutral' });
+    if (st.dice.length > 0) nums.push({ label: { k: 'm.tavla.nDice' }, value: st.dice.join(' · '), tone: 'good' });
+    nums.push({ label: { k: 'm.tavla.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now
+    if (ready) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.tavla.cReady' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.tavla.cStake' }, action: 'betUp' });
+    }
+    if (myRoll) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.tavla.cRoll' }, action: 'primary', primary: true });
+      if (this.canDouble(me)) ctrl.push({ key: this.k('n1'), label: { k: 'm.tavla.cDouble' }, action: 'n1' });
+    }
+    if (myMove && this.sel >= 0) ctrl.push({ key: this.k('secondary'), label: { k: 'm.tavla.cClear' }, action: 'secondary' });
+    if (cubeMine) {
+      ctrl.push({ key: this.k('n6'), label: { k: 'm.tavla.cTake' }, action: 'n6', primary: true });
+      ctrl.push({ key: this.k('n7'), label: { k: 'm.tavla.cDrop' }, action: 'n7' });
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.tavla.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.tavla.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }

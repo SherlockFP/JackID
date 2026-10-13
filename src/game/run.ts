@@ -13,8 +13,9 @@ import type {
   ActiveRule, BetLimits, BetOpts, BuffsApi, CharmDef, CharmState, CollateralApi, ContractsApi, CurrencyId,
   DebtState, EcoSource, JackpotPool, JackpotsApi, ModBreakdown, ModBreakdownStep, ModEffect, ModHook, ModProvider, ModQuery,
   ModSource, ModifierApi, NightEventsApi, OvershootClaim, QuotaState, RefusalReason, RewardSpec, RunApi, RunWindow,
-  ShiftApi, ShiftPhase, ShiftRuleDef, ShiftState, TotemsApi, TycoonApi, WinMeta, WinTier,
+  ShiftApi, ShiftPhase, ShiftRuleDef, ShiftState, TotemState, TotemsApi, TycoonApi, WinMeta, WinTier,
 } from '@/game/types';
+import type { BuffSave } from './buffs/engine';
 import { foldEffects, modHookMeta, scopeMatches, stackedValue, WIN_TIERS } from '@/game/types';
 import type { GameMode, InstanceId, MachineId, PlayerId, SlotSize, Unsub, V3 } from '@/core/types';
 import type { PhoneCallState, RunConfig, RunSnapshot, RunSummary } from '@/net/protocol';
@@ -97,6 +98,10 @@ export interface RunExt {
   tycoon?: Partial<TycoonState>;
   /** Host ms wall clock at save time; resume credits the time away to the tycoon (idle income). */
   savedAt?: number;
+  /** Active buffs and tonics per owner key. Optional: older saves have none. */
+  buffs?: BuffSave;
+  /** Owned totems (carried and placed). Optional: older saves have none. */
+  totems?: TotemState[];
 }
 export interface RunSave extends RunSnapshot { ext: RunExt }
 
@@ -162,6 +167,8 @@ export interface DebtRun extends RunApi {
   attachWorld(link: RunWorldLink | null): void;
   /** Idle income credited on resume, read once (null when none). */
   takeIdleReport(): IdleReport | null;
+  /** Free charm from a prize (lootbox, claw, coin pusher, bounty). No phase gate. True when it was added. */
+  grantCharm(charmId: string): boolean;
   /** Unhook the buff and totem systems. Call when the session ends. */
   dispose(): void;
   readonly over: boolean;
@@ -409,7 +416,8 @@ class Run implements DebtRun {
       rng: createRng(hashSeed('buffs', opts.seed)),
       run: () => this,
       now: () => Math.round(this.elapsed * 1000),
-      touch: () => this.modsImpl.touch(),
+      // buffs change outside the boundary actions (timers, auras, round spends): mark the save dirty, `tick` writes it
+      touch: () => { this.modsImpl.touch(); this.persistSoon(); },
       players: () => [this.selfId],
     }, this.modsImpl, { banner: opts.banner });
     this.buffs = this.buffSys.buffs;
@@ -421,8 +429,8 @@ class Run implements DebtRun {
       rng: createRng(hashSeed('totems', opts.seed)),
       run: () => this,
       now: () => Math.round(this.elapsed * 1000),
-      touch: () => this.modsImpl.touch(),
       allied: (a, b) => a === b,
+      touch: () => { this.modsImpl.touch(); this.persistSoon(); },
       instancePos: (mid) => this.worldLink?.instancePos(mid),
     }, this.modsImpl);
     this.totems = this.itemSys.totems;
@@ -1019,7 +1027,15 @@ class Run implements DebtRun {
       for (const [cur, n] of Object.entries(reward.currencies)) if (n > 0) this.earn(cur, n, reward.text ?? 'overshoot');
     }
     if (reward.buffs) {
-      for (const b of reward.buffs) this.counters.set(`buff:${b.id}`, (this.counters.get(`buff:${b.id}`) ?? 0) + 1);
+      for (const b of reward.buffs) {
+        this.buffSys.buffs.add(b.id, { pid: this.selfId, stacks: b.stacks, durationScale: b.durationScale, source: { kind: 'system', id: 'reward' } });
+      }
+    }
+    if (reward.totems) {
+      for (const id of reward.totems) {
+        // a full hand (one hand totem at a time) loses the reward; the receipt line is the bounty text
+        if (!this.itemSys.totems.grant(this.selfId, id)) log.warnOnce(`reward:totem:${id}`, 'run', `totem reward "${id}" not granted (hand full or unknown)`);
+      }
     }
     if (reward.nextQuotaDiscount) this.nextDiscount = Math.min(0.15, this.nextDiscount + reward.nextQuotaDiscount);
     if (reward.charm) {
@@ -1141,6 +1157,8 @@ class Run implements DebtRun {
       overpays: this.overpays.map((o) => ({ rarity: o.rarity, ids: [...o.ids], left: o.left })),
       tycoon: JSON.parse(JSON.stringify(this.tycoonSys.state())) as Partial<TycoonState>,
       savedAt: Date.now(),
+      buffs: this.buffSys.buffs.snapshot(),
+      totems: this.itemSys.totems.snapshot(),
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -1178,6 +1196,14 @@ class Run implements DebtRun {
     if (!head) return null;
     const candidates = head.ids.map((id) => charmDef(id)).filter((d): d is CharmDef => d !== undefined);
     return { rarity: head.rarity, candidates, left: head.left };
+  }
+
+  grantCharm(charmId: string): boolean {
+    if (!charmDef(charmId)) return false;
+    if (!this.charmBox.add(this.selfId, charmId, this.pegs())) return false;
+    this.notify();
+    this.persist();
+    return true;
   }
 
   pickOverpay(charmId: string): boolean {
@@ -1229,6 +1255,8 @@ class Run implements DebtRun {
     if (pool) pool.value = s.jackpots['net'] ?? pool.seed;
     this.syncQuota();
     if (e.tycoon) this.tycoonSys.restore(e.tycoon);
+    this.buffSys.buffs.restore(e.buffs);
+    this.itemSys.totems.restore(e.totems);
     if (typeof e.savedAt === 'number') this.tycoonSys.catchUp(Math.max(0, (Date.now() - e.savedAt) / 1000));
     this.ended = !this.living || this.phase === 'over';
   }

@@ -123,6 +123,27 @@ export class Totems implements TotemsApi, ModProvider {
     return () => { this.procFns.delete(fn); };
   }
 
+  // ── save and resume ───────────────────────────────────────────────────────────────────────────
+  /** JSON-safe copy of every owned totem (stored under `resume.ext.totems`). */
+  snapshot(): TotemState[] {
+    return this.items.map((t) => JSON.parse(JSON.stringify(t)) as TotemState);
+  }
+
+  /** Rebuilds the list from a save. Totems whose def is no longer registered are dropped; uid sequence resumes after the highest. */
+  restore(list: readonly TotemState[] | null | undefined): void {
+    this.items = [];
+    this.seq = 0;
+    if (Array.isArray(list)) {
+      for (const t of list) {
+        if (!t || typeof t.uid !== 'string' || !this.defMap.has(t.def)) continue;
+        this.items.push(JSON.parse(JSON.stringify(t)) as TotemState);
+        const n = Number(t.uid.split('-').pop());
+        if (Number.isFinite(n)) this.seq = Math.max(this.seq, n);
+      }
+    }
+    this.host.touch();
+  }
+
   // ── lifecycle (driven by the system's tick and bus wiring) ───────────────────────────────────────
   /** Once per frame: expire timed totems. */
   tick(): void {

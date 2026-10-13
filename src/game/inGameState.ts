@@ -56,16 +56,24 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     app.simPaused = on;
     if (on) {
       app.input.exitLock();
+      const seated = app.player?.seat != null;
       app.ui.panel(PAUSE_PANEL, (el) => buildPause(el, {
         onResume: () => { app.ui.closePanel(PAUSE_PANEL); },
         onQuit: () => { session?.run.quit(); },
         onGone: () => { if (paused) setPaused(false); },
+        // seated: STAND UP releases the seat (deferred while the round settles), then the pause closes
+        onStandUp: seated ? () => { session?.world.standUp(); app.ui.closePanel(PAUSE_PANEL); } : undefined,
       }));
     } else {
       resumedAt = performance.now();
       app.ui.closePanel(PAUSE_PANEL);
-      app.input.setMode('walk');
-      void app.input.requestLock();
+      // A seated player resumes AT the machine (the machine sink is still attached): never force walk mode over a seat,
+      // or E would no longer reach the machine and the player could not stand up.
+      if (app.player?.seat != null) app.input.setMode('machine');
+      else {
+        app.input.setMode('walk');
+        void app.input.requestLock();
+      }
     }
   };
 

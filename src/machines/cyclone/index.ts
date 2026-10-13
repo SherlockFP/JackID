@@ -26,10 +26,10 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
 import { blinkOn } from '@/machines/_base/juice';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { Kit } from '@/kit/types';
 import { fmtCoins, t } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { lerp, TAU } from '@/core/math';
 import { buildModel, LAMP_HEX, LAMP_Z, RING_Y, lampXY, valueHex, type CyclonParts } from './model';
 import {
@@ -155,7 +155,14 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
     return buildModel(kit, this.modelOpts);
   }
 
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts); shown while seated. */
+  private seatHud?: SeatHud;
+  /** The banner's countdown key, so the HUD refreshes only when the state or the displayed second changes. */
+  private hudKeyShown = '';
+
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);
     this.horrorIn = this.cosmetic.float(300, 540);
     this.refresh();
     this.attractor.every('sweep', 9, () => this.idleSweep(), { first: 3 });
@@ -165,13 +172,24 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
     this.attractor.update(dt);
   }
 
-  onOccupy(_pid: number, _seat: number, local: boolean): void {
-    this.refresh();
-    if (local) { this.sfx('chime'); this.showHud(); }
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
-  onRelease(_pid: number, _seat: number, _local: boolean): void {
+  onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.refresh();
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip('cyclone', this.tipLines());
+    }
+  }
+
+  onRelease(_pid: number, _seat: number, local: boolean): void {
+    this.refresh();
+    if (local) { this.seatHud?.hide(); this.hud(null); }
   }
 
   onLang(): void {
@@ -185,6 +203,7 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
     this.horrorIn -= dt;
     this.visClock += dt;
     if (this.visMode === 'chase') this.visT += dt;
+    this.tickHud();
     const r = this.rnd;
     if (!r) return;
     if (r.revealLeft > 0) { r.revealLeft -= dt; return; }
@@ -202,6 +221,8 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
     if (!e.down) return;
     const a = e.action;
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.ruleLines()); return; }
     if (e.repeat && !isBet) return;
     switch (a) {
       case 'primary': case 'confirm': this.primary(); break;
@@ -356,6 +377,10 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
 
   private async presentLand(ev: LandEv, pc: PresentCtx): Promise<void> {
     this.st.hist = [ev.value, ...this.st.hist].slice(0, HIST);
+    if (this.isLocalOccupant) {
+      const net = ev.gross - ev.bet;
+      this.seatHud?.result(ev.gross <= 0 ? 'lose' : net > 0 ? 'win' : 'push', net);
+    }
     if (pc.fast) { this.finishVisual(ev); this.refresh(); return; }
 
     // 1. coast: the light runs `coast` lamps clockwise and slows, its ticks falling in pitch
@@ -553,23 +578,81 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
     this.parts.buttons.stop.setLit(this.rnd !== null);
   }
 
-  private showHud(): void {
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.cyclone.hTip1', v: { up: this.k('betUp'), down: this.k('betDown'), start: this.k('primary') } },
+      { k: 'm.cyclone.hTip2', v: { start: this.k('primary') } },
+      { k: 'm.cyclone.hTip3', v: { help: this.k('help') } },
+    ];
+  }
+
+  private ruleLines(): Txt[] {
+    return [
+      { k: 'm.cyclone.hR1', v: { min: fmtCoins(MIN_STAKE), max: fmtCoins(MAX_STAKE) } },
+      { k: 'm.cyclone.hR2' },
+      { k: 'm.cyclone.hR3' },
+      { k: 'm.cyclone.hR4', v: { jp: JP_BASE } },
+      { k: 'm.cyclone.hR5', v: { nudge: this.k('n4') } },
+      { k: 'm.cyclone.hR6' },
+    ];
+  }
+
+  /** What the banner counts down: the auto-stop, or the nudge window. Empty when nothing ticks. */
+  private hudKey(): string {
     const r = this.rnd;
-    const hints: HudHint[] = [];
-    if (r && r.nudgeOpen) {
-      hints.push({ action: 'n4', label: this.t('hintNudge') });
-    } else if (r && !r.pressed) {
-      hints.push({ action: 'primary', label: this.t('hintStop') });
-    } else if (!r && !this.busy && !this.roundOpen) {
-      hints.push({ action: 'primary', label: `${this.t('hintStart')} ${fmtCoins(this.bet)}` });
-      hints.push({ action: 'betUp', label: `${this.t('hintStake')} ${fmtCoins(this.bet)}` });
+    if (!r) return '';
+    if (r.revealLeft > 0) return 'reveal';
+    if (r.nudgeOpen) return `nudge${Math.ceil(r.nudgeLeft)}`;
+    if (r.pressed) return 'coast';
+    return `turn${Math.max(0, Math.ceil(r.commit.autoT - r.chaseT))}`;
+  }
+
+  /** Refreshes the banner when the countdown moves on (once per displayed second). */
+  private tickHud(): void {
+    if (!this.isLocalOccupant) return;
+    const key = this.hudKey();
+    if (key !== this.hudKeyShown) { this.hudKeyShown = key; this.showHud(); }
+  }
+
+  /** Banner, key numbers and the valid controls only. Only while the local player sits at the machine. */
+  private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const r = this.rnd;
+    sh.goal({ k: 'm.cyclone.hGoal' });
+
+    // STATE: where the round is and what the player does next
+    if (r) {
+      if (r.revealLeft > 0) sh.state({ k: 'm.cyclone.hReveal' }, 'warn');
+      else if (r.nudgeOpen) sh.state({ k: 'm.cyclone.hNudge' }, 'warn', { k: 'm.cyclone.hSecs', v: { n: Math.ceil(r.nudgeLeft) } });
+      else if (r.pressed) sh.state({ k: 'm.cyclone.hCoast' }, 'cyan');
+      else sh.state({ k: 'm.cyclone.hTurn' }, 'good', { k: 'm.cyclone.hAuto', v: { n: Math.max(0, Math.ceil(r.commit.autoT - r.chaseT)) } });
+    } else if (this.busy || this.roundOpen) sh.state({ k: 'm.cyclone.hPay' }, 'neutral');
+    else sh.state({ k: 'm.cyclone.hBet' }, 'gold');
+
+    // KEY NUMBERS: stake, jackpot status, last lamp, balance
+    const nums: HudNumber[] = [{ label: { k: 'm.cyclone.hNStake' }, value: fmtCoins(r ? r.stake : this.bet), tone: 'gold' }];
+    if (r?.commit.armed) nums.push({ label: { k: 'm.cyclone.hNJackpot' }, value: t('m.cyclone.hEyeOpen'), tone: 'warn' });
+    const last = this.st.hist[0];
+    if (last !== undefined) nums.push({ label: { k: 'm.cyclone.hNLast' }, value: last > 0 ? `×${last}` : '0', tone: last > 0 ? 'good' : 'neutral' });
+    nums.push({ label: { k: 'm.cyclone.hNBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys bound to it
+    const ctrl: HudControl[] = [];
+    if (!r && !this.busy && !this.roundOpen) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.cyclone.hCStart' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.cyclone.hCStake' }, action: 'betUp' });
     }
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: this.roundOpen ? null : this.bet,
-      hints,
-      stats: [{ label: this.t('stakeLabel'), value: fmtCoins(r ? r.stake : this.bet) }],
-    });
+    if (r && r.revealLeft <= 0 && !r.pressed) ctrl.push({ key: this.k('primary'), label: { k: 'm.cyclone.hCStop' }, action: 'primary', primary: true });
+    if (r && r.nudgeOpen && !r.nudged) ctrl.push({ key: this.k('n4'), label: { k: 'm.cyclone.hCNudge', v: { n: fmtCoins(nudgeCost(r.stake)) } }, action: 'n4' });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.cyclone.hCRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.cyclone.hCLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 
   // ── per-frame presentation (only while visible) ───────────────────────────────────────────────

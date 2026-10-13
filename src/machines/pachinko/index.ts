@@ -22,11 +22,11 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
 import { countUp } from '@/machines/_base/juice';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { TweenHandle } from '@/core/tween';
 import type { Kit } from '@/kit/types';
-import { fmtCoins, t } from '@/core/i18n';
+import { fmtCoins, type I18nVars } from '@/core/i18n';
 import { clamp, lerp } from '@/core/math';
 import { buildModel, type PachinkoParts } from './model';
 import { LANE_NODES, POCKET_DEFS, laneRng, railNode, walkPath, type Pocket } from './lanes';
@@ -116,12 +116,16 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
   private ballFree: boolean[] = new Array(64).fill(true);
   private tweens = new Set<TweenHandle>();
   private anchors: Partial<Record<Pocket, THREE.Object3D>> = {};
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: Kit): MachineModel<PachinkoParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.refresh();
     this.attractor.every('drop', 3.2, () => this.attractDrop(), { first: 2 });
   }
@@ -152,11 +156,13 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
     this.refreshOpts();
     this.refresh();
     this.sfx('chime', { vol: 0.5 });
+    this.seatHud?.show();
     this.showHud();
+    this.seatHud?.firstTip(this.def.id, this.tipLines());
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
-    if (local) this.flushPartials(true);            // safety net for forced / external releases
+    if (local) { this.seatHud?.hide(); this.flushPartials(true); }            // safety net for forced / external releases
     this.auth = freshAuth(this.state);
     this.refresh();
   }
@@ -197,6 +203,8 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
   // ── input (local occupant) ───────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     const a = e.action;
+    if (e.down && this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.down && a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (a === 'primary') {
       if (e.down && !e.repeat && !this.auth.leaving) this.sfx('lever', { vol: 0.4 });
       this.auth.firing = e.down && !this.auth.leaving;
@@ -581,6 +589,7 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
   }
 
   private presentBlock(ev: Extract<Ev, { k: 'block' }>, pc: PresentCtx): Promise<void> | void {
+    this.callResult(ev.amount - ev.bet);
     if (ev.amount <= 0) { this.commiserate({ amount: ev.bet, at: this.parts.field }); return; }
     return this.pourCoins(ev.amount, { bet: ev.bet, fast: pc.fast, onCount: (v) => this.drawScreen(v) }).then(() => {
       if (!this.disposed) this.drawScreen();
@@ -588,6 +597,7 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
   }
 
   private async presentChain(ev: Extract<Ev, { k: 'chain' }>, pc: PresentCtx): Promise<void> {
+    this.callResult(ev.amount - ev.bet);
     const tags = ev.bonus ? ['bonus'] : ['jackpot', 'bonus'];
     const tier = juiceTier(ev.amount, ev.bet, tags);
     if (tier === 'none' || tier === 'push' || tier === 'small') {
@@ -609,6 +619,7 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
   }
 
   override dispose(): void {
+    this.seatHud?.dispose();
     for (const h of this.tweens) h.cancel();
     this.tweens.clear();
     super.dispose();
@@ -652,25 +663,58 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
     });
   }
 
+  /** Seat HUD: goal, phase banner, key numbers and the valid controls only. */
   private showHud(): void {
-    const a = this.auth;
-    const hints: HudHint[] = a.leaving ? [] : [
-      { action: 'primary', label: this.t('fire') },
-      { action: 'left', label: this.t('hintPower') },
-      { action: 'fast', label: this.t('snap') },
-      { action: 'betUp', label: this.t('hintBall') },
-      { action: 'help', label: this.t('hintInfo') },
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const a = this.auth, s = a.sim;
+    const zone = this.zoneNow();
+    const sweet = zone === 'SWEET';
+    sh.goal(this.tx('goal'));
+    if (a.leaving) sh.state(this.tx('stLeave'), 'neutral');
+    else if (s.mode === 'A') {
+      if (s.gate) sh.state(this.tx('stAttOpen'), 'good', this.tx('stAttSub', { n: s.round }));
+      else sh.state(this.tx('stAttClosed'), 'warn');
+    } else if (s.mode === 'K') sh.state(this.tx('stKaku'), 'warn', this.tx('stKakuSub'));
+    else if (a.firing) sh.state(this.tx('stFire'), 'cyan');
+    else sh.state(this.tx('stReady'), 'gold', this.tx('stReadySub'));
+    sh.numbers([
+      { label: this.tx('nBall'), value: fmtCoins(this.bet), tone: 'gold' },
+      { label: this.tx('nPower'), value: `${Math.round(a.strength)}% ${this.t(ZONE_KEY[zone])}`, tone: sweet ? 'good' : 'warn' },
+      { label: this.tx('nTray'), value: String(a.tray), tone: 'cyan' },
+      { label: this.tx('nHolds'), value: String(a.holds), tone: 'neutral' },
+      { label: this.tx('nBalance'), value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
+    ]);
+    const ctrl: HudControl[] = [];
+    if (!a.leaving && !a.firing) {
+      ctrl.push({ key: this.k('primary'), label: this.tx('cFire'), action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('left')}/${this.k('right')}`, label: this.tx('cPower'), action: 'left' });
+      ctrl.push({ key: this.k('fast'), label: this.tx('cSnap'), action: 'fast' });
+      if (!this.roundOpen && s.mode === 'N' && a.pending === 0 && this.inFlight() === 0) {
+        ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: this.tx('cBall'), action: 'betUp' });
+      }
+    }
+    if (!a.leaving) ctrl.push({ key: this.k('help'), label: this.tx('cRules'), action: 'help' });
+    if (!a.leaving) ctrl.push({ key: this.k('exit'), label: this.tx('cLeave'), action: 'exit' });
+    sh.controls(ctrl);
+  }
+
+  // ── seat HUD helpers ────────────────────────────────────────────────────────────────────────────
+  private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.${this.def.id}.${key}`, v } : { k: `m.${this.def.id}.${key}` }; }
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+  private tipLines(): Txt[] {
+    return [
+      this.tx('tip1', { fire: this.k('primary'), power: `${this.k('left')}/${this.k('right')}` }),
+      this.tx('tip2'),
+      this.tx('tip3', { help: this.k('help') }),
     ];
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: this.roundOpen || a.sim.mode !== 'N' ? null : this.bet,
-      hints,
-      stats: [
-        { label: this.t('potLabel'), value: String(a.tray) },
-        { label: this.t('holdsLabel'), value: String(a.holds) },
-        { label: this.t('modeLabel'), value: this.t(a.sim.mode === 'K' ? 'mKaku' : a.sim.mode === 'A' ? 'mAtt' : 'mNormal', { n: a.sim.round }) },
-        { label: this.t(ZONE_KEY[this.zoneNow()]), value: this.t('power', { n: Math.round(a.strength) }) },
-      ],
-    });
+  }
+  private rulesLines(): Txt[] {
+    return [this.tx('rule1', { fire: this.k('primary') }), this.tx('rule2'), this.tx('rule3'), this.tx('rule4'), this.tx('rule5')];
+  }
+  /** Result callout for a settled block or chain (net = paid − staked). */
+  private callResult(net: number): void {
+    if (this.isLocalOccupant) this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'lose', net);
   }
 }

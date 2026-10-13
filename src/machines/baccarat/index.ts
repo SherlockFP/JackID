@@ -25,9 +25,9 @@ import type { CardId } from '@/core/texgen/types';
 import type { PlayerId } from '@/core/types';
 import type { ChipValue, LampPart } from '@/kit/types';
 import type { KitX } from '@/kit/index';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
-import { fmtCoins, t } from '@/core/i18n';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
+import { fmtCoins } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type HudResultKind, type Txt } from '@/machines/_base/seatHud';
 import { TableBase } from '@/machines/_base/TableBase';
 import { juiceTier } from '@/machines/_base/tiers';
 import { baccaratValue, cardText } from '@/machines/_base/cards';
@@ -159,18 +159,29 @@ export default class Baccarat extends TableBase<BaccaratParts, Ev, Snap, Act> {
   private cardIds: number[][] = [[-1, -1, -1], [-1, -1, -1]];
   private overlay: { side: number; seat: number } | null = null;
   private drag: { side: number; idx: number; y0: number; bend: number; sent: number } | null = null;
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: KitX): MachineModel<BaccaratParts> { return buildModel(kit, this.modelOpts); }
 
   init(): void {
     // the host state starts in OPEN with timer 0: the first host tick opens the first betting window
     this.hs = freshHost(new R.BacShoe(this.hostRng));
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.paintAll();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   // ── local input ────────────────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const seat = this.localSeat;
     const open = this.st.phase === 'open' && seat >= 0 && !this.st.locked[seat];
     switch (e.action) {
@@ -441,13 +452,18 @@ export default class Baccarat extends TableBase<BaccaratParts, Ev, Snap, Act> {
       }
       if (hs.phase === 'squeeze' && hs.sq[hs.side] === seat) this.revealSide(hs.side);
     }
-    if (local) { this.drag = null; this.clearDraft(); }
+    if (local) { this.drag = null; this.clearDraft(); this.seatHud?.hide(); }
     this.paintAll();
   }
 
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintLamps();
-    if (local) { this.sfx('chime'); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip('baccarat', this.tipLines());
+    }
   }
 
   // ── presentation (every peer) ──────────────────────────────────────────────────────────────────
@@ -584,6 +600,11 @@ export default class Baccarat extends TableBase<BaccaratParts, Ev, Snap, Act> {
       const seat = row[0], payout = row[1];
       if (seat !== mine) continue;
       const stake = sumOf(st.bets[seat]);
+      if (stake > 0) {
+        const net = payout - stake;
+        const kind: HudResultKind = net > 0 ? 'win' : net === 0 ? 'push' : 'lose';
+        this.seatHud?.result(kind, net);
+      }
       if (payout > 0) {
         const tier = juiceTier(payout, stake);
         const lamp: LampPart | undefined = ev.winner === 'P' ? p.lamps.player : ev.winner === 'B' ? p.lamps.banker : undefined;
@@ -782,28 +803,86 @@ export default class Baccarat extends TableBase<BaccaratParts, Ev, Snap, Act> {
     this.showHud();
   }
 
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.baccarat.hTip1', v: { p: this.k('n1'), b: this.k('n2'), t: this.k('n3') } },
+      { k: 'm.baccarat.hTip2', v: { lock: this.k('primary') } },
+      { k: 'm.baccarat.hTip3', v: { skip: this.k('primary'), help: this.k('help') } },
+    ];
+  }
+
+  private rulesLines(): Txt[] {
+    return ['hRule1', 'hRule2', 'hRule3', 'hRule4', 'hRule5'].map((r) => ({ k: 'm.baccarat.' + r }));
+  }
+
+  /** Banner, key numbers and valid controls. Only while the local player sits at the table. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || this.localSeat < 0) return;
     const s = this.st, seat = this.localSeat;
-    const open = s.phase === 'open' && seat >= 0 && !s.locked[seat];
-    const hints: HudHint[] = [];
+    const open = s.phase === 'open' && !s.locked[seat];
+    const locked = s.locked[seat];
+    const squeezing = s.phase === 'squeeze' && this.overlay !== null && s.sq[this.overlay.side] === seat;
+    const stake = locked ? sumOf(s.bets[seat]) : sumOf(this.draft);
+    const picks = locked ? s.bets[seat] : this.draft;
+    sh.goal({ k: 'm.baccarat.hGoal' });
+
+    // STATE: whose turn, what phase
+    switch (s.phase) {
+      case 'open':
+        if (locked) sh.state({ k: 'm.baccarat.hStLocked' }, 'cyan', { k: 'm.baccarat.hStLockedSub' });
+        else sh.state({ k: 'm.baccarat.hStBet' }, 'gold', { k: 'm.baccarat.hStBetSub', v: { lock: this.k('primary') } });
+        break;
+      case 'lock': sh.state({ k: 'm.baccarat.hStNoMore' }, 'warn'); break;
+      case 'deal': sh.state({ k: 'm.baccarat.hStDeal' }, 'neutral'); break;
+      case 'squeeze':
+        if (squeezing) sh.state({ k: 'm.baccarat.hStSqueeze' }, 'good', { k: 'm.baccarat.hStSqueezeSub', v: { skip: this.k('primary') } });
+        else sh.state({ k: 'm.baccarat.hStSqueezeOther' }, 'cyan');
+        break;
+      case 'reveal': case 'third': sh.state({ k: 'm.baccarat.hStTurn' }, 'neutral'); break;
+      case 'result':
+        sh.state({ k: s.win === 'P' ? 'm.baccarat.hStPlayer' : s.win === 'B' ? 'm.baccarat.hStBanker' : 'm.baccarat.hStTie' },
+          s.win === 'T' ? 'gold' : s.win === 'P' ? 'cyan' : 'bad');
+        break;
+      case 'payout': sh.state({ k: 'm.baccarat.hStPayout' }, 'neutral'); break;
+      case 'shuffle': sh.state({ k: 'm.baccarat.hStShuffle' }, 'neutral'); break;
+      default: sh.state({ k: 'm.baccarat.hStIdle' }, 'neutral');
+    }
+
+    // KEY NUMBERS: stake, picks, hand totals, balance
+    const nums: HudNumber[] = [];
+    nums.push({ label: { k: 'm.baccarat.hNStake' }, value: fmtCoins(stake), tone: 'gold' });
+    const legs: string[] = [];
+    const names = ['hsB', 'hsP', 'hsT', 'hsPP', 'hsBP'] as const;
+    names.forEach((n, i) => { if (picks[i] > 0) legs.push(`${this.t(n)} ${fmtCoins(picks[i])}`); });
+    if (legs.length > 0) nums.push({ label: { k: 'm.baccarat.hNPicks' }, value: legs.join(' · '), tone: 'cyan' });
+    const total = (side: number): string => {
+      const cards = s.cards[side].filter((c) => c !== '') as CardId[];
+      return cards.length ? String(baccaratValue(cards)) : '-';
+    };
+    if (s.cards[0].some((c) => c !== '')) nums.push({ label: { k: 'm.baccarat.hNPlayer' }, value: total(0), tone: 'cyan' });
+    if (s.cards[1].some((c) => c !== '')) nums.push({ label: { k: 'm.baccarat.hNBanker' }, value: total(1), tone: 'bad' });
+    nums.push({ label: { k: 'm.baccarat.hNBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys bound to it
+    const ctrl: HudControl[] = [];
     if (open) {
-      hints.push(
-        { action: 'primary', label: this.t('hLock') },
-        { action: 'n1', label: this.t('hPlayer') },
-        { action: 'n2', label: this.t('hBanker') },
-        { action: 'n3', label: this.t('hTie') },
-        { action: 'clear', label: this.t('hClear') },
-      );
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.baccarat.hCLock' }, action: 'primary', primary: true });
+      ctrl.push({ key: this.k('n1'), label: { k: 'm.baccarat.hCPlayer' }, action: 'n1' });
+      ctrl.push({ key: this.k('n2'), label: { k: 'm.baccarat.hCBanker' }, action: 'n2' });
+      ctrl.push({ key: this.k('n3'), label: { k: 'm.baccarat.hCTie' }, action: 'n3' });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.baccarat.hCBet' }, action: 'betUp' });
+      if (stake > 0) ctrl.push({ key: this.k('clear'), label: { k: 'm.baccarat.hCClear' }, action: 'clear' });
+    } else if (squeezing) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.baccarat.hCReveal' }, action: 'primary', primary: true });
     }
-    if (s.phase === 'squeeze' && this.overlay && seat >= 0 && s.sq[this.overlay.side] === seat) {
-      hints.push({ action: 'primary', label: this.t('hSkip') });
-    }
-    hints.push({ action: 'exit', label: t('common.leave') });
-    const stake = sumOf(this.draft);
-    this.hud({
-      bet: open ? this.bet : null,
-      hints,
-      stats: stake > 0 ? [{ label: this.t('potLabel'), value: fmtCoins(stake) }] : [],
-    });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.baccarat.hCRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.baccarat.hCLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }

@@ -63,6 +63,9 @@ export interface Session {
   flush(dt: number): void;                               // loop: transforms 20 Hz, pings 1 Hz
   /** Shareable link for friends: `<origin>/?join=<ROOMCODE>` (null when not hosting a joinable room). */
   inviteLink(): string | null;
+  /** Server browser sources: rooms listed by the lobby server (LOBBY) and by same-browser tabs (TAB). */
+  discoverServer(): Promise<RoomInfo[]>;
+  discoverTabRooms(): Promise<RoomInfo[]>;
   /**
    * Late-join state for a feature channel (DECISIONS C30). The host calls `get(forPid)` when a player joins
    * (or a machine snapshot is requested) and the joiner's `apply(snap)` restores it. Returns the unsubscribe.

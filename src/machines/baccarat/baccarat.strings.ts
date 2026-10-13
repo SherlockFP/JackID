@@ -22,6 +22,28 @@ const en: Record<string, string> = {
   badBet: 'That bet is not allowed', limit: 'Limit {n} on that spot', busy: 'The table is busy',
   noBets: 'Place a bet first', notSquad: 'Not your card to squeeze', notSeated: 'Sit down first',
   tableMax: 'Table limit {n} per seat',
+
+  // ── seat HUD (readability standard) ──
+  hGoal: 'Bet on Player, Banker or Tie. The hand closest to 9 wins.',
+  hTip1: 'Bet: PLAYER [{p}]  ·  BANKER [{b}]  ·  TIE [{t}]',
+  hTip2: 'Lock your bets with [{lock}] before the cards are dealt.',
+  hTip3: 'Squeeze: hold and drag a card down to flip it. [{skip}] reveals all, [{help}] RULES.',
+  hRule1: 'Punto Banco: the hand closest to 9 wins. Face cards count 0, aces count 1.',
+  hRule2: 'PLAYER pays 1 to 1, BANKER 1 to 1 less 5% commission, TIE 8 to 1. On a tie, PLAYER and BANKER bets come back.',
+  hRule3: 'A pair (the first two cards match) pays 11 to 1 on the PLAYER PAIR or BANKER PAIR spot.',
+  hRule4: 'Bets lock before the cards are dealt. Hold and drag a card down to flip it, or REVEAL ALL.',
+  hRule5: 'A natural (8 or 9 on the first two cards) ends the coup early. A lost bet stays on the table.',
+  hStLocked: 'BETS LOCKED', hStLockedSub: 'Waiting for the cards',
+  hStBet: 'PLACE YOUR BETS', hStBetSub: 'Press [{lock}] to lock them',
+  hStNoMore: 'NO MORE BETS', hStDeal: 'DEALING',
+  hStSqueeze: 'YOUR SQUEEZE', hStSqueezeSub: 'Drag a card down, or [{skip}] reveals all',
+  hStSqueezeOther: 'SOMEONE IS SQUEEZING', hStTurn: 'TURNING THE CARDS',
+  hStPlayer: 'PLAYER WINS', hStBanker: 'BANKER WINS', hStTie: 'TIE',
+  hStPayout: 'PAYING OUT', hStShuffle: 'SHUFFLING', hStIdle: 'THE SHOE IS QUIET',
+  hNStake: 'YOUR STAKE', hNPicks: 'YOUR PICKS', hNPlayer: 'PLAYER', hNBanker: 'BANKER', hNBalance: 'BALANCE',
+  hsB: 'B', hsP: 'P', hsT: 'T', hsPP: 'PP', hsBP: 'BP',
+  hCLock: 'LOCK', hCPlayer: 'PLAYER', hCBanker: 'BANKER', hCTie: 'TIE', hCBet: 'BET', hCClear: 'CLEAR',
+  hCReveal: 'REVEAL ALL', hCRules: 'RULES', hCLeave: 'LEAVE',
 };
 
 const tr: Record<string, string> = {
@@ -44,6 +66,28 @@ const tr: Record<string, string> = {
   badBet: 'Bu bahis geçerli değil', limit: 'Bu noktada limit {n}', busy: 'Masa meşgul',
   noBets: 'Önce bir bahis koy', notSquad: 'Bu kart senin değil', notSeated: 'Önce otur',
   tableMax: 'Koltuk başına masa limiti {n}',
+
+  // ── seat HUD (readability standard) ──
+  hGoal: 'Oyuncu, Banker ya da Beraberlik\'e bahis koy. Eli 9\'a en yakın olan kazanır.',
+  hTip1: 'Bahis: OYUNCU [{p}]  ·  BANKER [{b}]  ·  BERABERE [{t}]',
+  hTip2: 'Kartlar dağıtılmadan önce bahislerini [{lock}] ile kilitle.',
+  hTip3: 'Kart sık: basılı tut, kartı aşağı çek. [{skip}] hepsini açar, [{help}] KURALLAR.',
+  hRule1: 'Punto Banco: eli 9\'a en yakın olan kazanır. Resimli kartlar 0, as 1 sayılır.',
+  hRule2: 'OYUNCU 1\'e 1, BANKER %5 komisyon düşülerek 1\'e 1, BERABERE 8\'e 1 öder. Berabere kalınca OYUNCU ve BANKER bahisleri iade edilir.',
+  hRule3: 'İlk iki kartı eş olan çift, OYUNCU ÇİFT ya da BANKER ÇİFT bahsine 11\'e 1 öder.',
+  hRule4: 'Kartlar dağıtılmadan bahisler kilitlenir. Kartı basılı tutup aşağı çekerek çevir ya da HEPSİNİ AÇ.',
+  hRule5: 'İlk iki kartta 8 ya da 9 (doğal) el turu erken bitirir. Kaybedilen bahis masada kalır.',
+  hStLocked: 'BAHİSLER KİLİTLENDİ', hStLockedSub: 'Kartlar bekleniyor',
+  hStBet: 'BAHİSLERİNİ YAP', hStBetSub: '[{lock}] ile kilitle',
+  hStNoMore: 'ARTIK BAHİS YOK', hStDeal: 'DAĞITILIYOR',
+  hStSqueeze: 'SIRA SENDE: KART SIK', hStSqueezeSub: 'Kartı aşağı çek ya da [{skip}] hepsini açar',
+  hStSqueezeOther: 'BİRİ KARTINI SIKIYOR', hStTurn: 'KARTLAR ÇEVRİLİYOR',
+  hStPlayer: 'OYUNCU KAZANDI', hStBanker: 'BANKER KAZANDI', hStTie: 'BERABERE',
+  hStPayout: 'ÖDENİYOR', hStShuffle: 'SABOT KARIŞTIRILIYOR', hStIdle: 'SABOT SESSİZ',
+  hNStake: 'BAHSİN', hNPicks: 'SEÇİMLERİN', hNPlayer: 'OYUNCU', hNBanker: 'BANKER', hNBalance: 'BAKİYE',
+  hsB: 'B', hsP: 'O', hsT: 'BE', hsPP: 'OÇ', hsBP: 'BÇ',
+  hCLock: 'KİLİTLE', hCPlayer: 'OYUNCU', hCBanker: 'BANKER', hCTie: 'BERABERE', hCBet: 'BAHİS', hCClear: 'TEMİZLE',
+  hCReveal: 'HEPSİNİ AÇ', hCRules: 'KURALLAR', hCLeave: 'ÇIK',
 };
 
 export default { prefix: 'm.baccarat.', en, tr };

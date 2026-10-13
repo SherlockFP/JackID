@@ -15,6 +15,23 @@ const en: Record<string, string> = {
   hint: 'Arrows / WASD move · Space reveal · Q cash out · [ ] mines · 1–5 presets · H help',
   help: 'Pick the mine count, arm the field, then reveal tiles one at a time. Safe tiles raise the multiplier. A mine ends the round. Cash out whenever you like after the first safe tile.',
   sMines: 'MINES', sLadder: 'LADDER', sStake: 'STAKE',
+  // seat HUD (readability standard)
+  goal: 'Reveal safe tiles and cash out before you hit a mine',
+  stArm: 'READY: ARM THE FIELD', stArmSub: 'Pick the number of mines, then arm',
+  stBusy: 'PLEASE WAIT', stFirst: 'REVEAL A SAFE TILE', stFirstSub: 'Your first safe tile unlocks CASH OUT',
+  stPlay: 'REVEAL OR CASH OUT', stPlaySub: 'Each safe tile raises the ladder',
+  nStake: 'YOUR STAKE', nMines: 'MINES', nLadder: 'LADDER', nSafe: 'SAFE TILES', nWin: 'CASH OUT NOW', nBalance: 'BALANCE',
+  cArm: 'ARM FIELD', cReveal: 'REVEAL', cCash: 'CASH OUT', cMove: 'MOVE', cMines: 'MINES', cPreset: 'PRESET',
+  cBet: 'BET', cRandom: 'RANDOM', cRules: 'RULES', cLeave: 'LEAVE',
+  tip1: 'Pick the number of mines, arm the field, then reveal tiles one at a time.',
+  tip2: '[{primary}] ARM / REVEAL  ·  [{move}] MOVE  ·  [{mines}] MINE COUNT',
+  tip3: 'Safe tiles raise the ladder. [{cash}] CASH OUT after one safe tile. [{help}] RULES.',
+  rule1: 'Arm the field, then reveal tiles. Each safe tile raises your multiplier.',
+  rule2: 'A mine ends the round and you lose the stake.',
+  rule3: 'Cash out after at least one safe tile. You are paid the ladder you have reached.',
+  rule4: 'More mines means a faster ladder and more risk.',
+  rule5: 'Luck can defuse the first mine you hit in a round.',
+  rule6: 'E stands you up: a round with a safe tile is cashed out, one without is refunded.',
 };
 
 const tr: Record<string, string> = {
@@ -30,6 +47,23 @@ const tr: Record<string, string> = {
   hint: 'Oklar / WASD hareket · Boşluk aç · Q çek · [ ] mayın · 1–5 hazır ayar · H yardım',
   help: 'Mayın sayısını seç, tarlayı kur, kareleri tek tek aç. Güvenli kareler çarpanı yükseltir. Mayına basarsan el biter. İlk güvenli kareden sonra istediğin an çekebilirsin.',
   sMines: 'MAYIN', sLadder: 'MERDİVEN', sStake: 'BAHİS',
+  // seat HUD (readability standard)
+  goal: 'Güvenli kareleri aç, mayına basmadan çek',
+  stArm: 'HAZIR: TARLAYI KUR', stArmSub: 'Mayın sayısını seç, sonra kur',
+  stBusy: 'LÜTFEN BEKLE', stFirst: 'GÜVENLİ BİR KARE AÇ', stFirstSub: 'İlk güvenli kare ÇEK tuşunu açar',
+  stPlay: 'AÇ YA DA ÇEK', stPlaySub: 'Her güvenli kare merdiveni yükseltir',
+  nStake: 'BAHSİN', nMines: 'MAYIN', nLadder: 'MERDİVEN', nSafe: 'GÜVENLİ KARE', nWin: 'ŞİMDİ ÇEK', nBalance: 'BAKİYE',
+  cArm: 'TARLAYI KUR', cReveal: 'AÇ', cCash: 'ÇEK', cMove: 'HAREKET', cMines: 'MAYIN', cPreset: 'HAZIR AYAR',
+  cBet: 'BAHİS', cRandom: 'RASTGELE', cRules: 'KURALLAR', cLeave: 'AYRIL',
+  tip1: 'Mayın sayısını seç, tarlayı kur, kareleri tek tek aç.',
+  tip2: '[{primary}] KUR / AÇ  ·  [{move}] HAREKET  ·  [{mines}] MAYIN SAYISI',
+  tip3: 'Güvenli kareler merdiveni yükseltir. İlk güvenli kareden sonra [{cash}] ile çek. [{help}] KURALLAR.',
+  rule1: 'Tarlayı kur, sonra kareleri aç. Her güvenli kare çarpanı yükseltir.',
+  rule2: 'Mayına basarsan el biter ve bahsini kaybedersin.',
+  rule3: 'En az bir güvenli kareden sonra çekebilirsin. Ulaştığın merdiven ödenir.',
+  rule4: 'Mayın sayısı arttıkça merdiven hızlanır, risk de artar.',
+  rule5: 'Şans, bir eldeki ilk mayını etkisiz bırakabilir.',
+  rule6: 'E ile kalkarsan güvenli kare açılmış el çekilir, açılmamışsa bahis iade edilir.',
 };
 
 export default { prefix: 'm.mines.', en, tr };

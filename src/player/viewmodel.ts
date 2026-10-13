@@ -372,7 +372,7 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20): ViewmodelHost {
     setSleeveColor(c) { right.setSleeve(c); left.setSleeve(c); },
     setLightLevel(v) { lightLevel = clamp(v, 0.2, 1); },
     drive(d) {
-      bobX = d.bobX * 1.5; bobY = d.bobY * 1.5;
+      bobX = d.bobX * 0.4; bobY = d.bobY * 0.4;
       sprintTarget = d.sprint ? 1 : 0;
       crouchK = d.crouch; airK = d.grounded ? 0 : 1;
       lookX = d.lookDx; lookY = d.lookDy;

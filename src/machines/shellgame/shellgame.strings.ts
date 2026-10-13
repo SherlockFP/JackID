@@ -15,6 +15,25 @@ const en: Record<string, string> = {
   help: 'Insert a coin. Watch the pearl under the middle cup, then the cups move. Lift the cup that holds the pearl and win one to one. Call Cheat if you think he palmed it: that pays three to one. The more wins in a row, the more he palms. Five in a row and he goes out of order.',
   sStake: 'STAKE', sHeat: 'HEAT', sTimer: 'TIME', hInsert: 'Insert', hCup: 'Lift {n}', hCheat: 'Call Cheat',
   hBet: 'Bet', hHelp: 'Help',
+  // seat HUD (readability standard)
+  goal: 'Find the pearl under the cups and lift the right one',
+  stInsert: 'INSERT A COIN', stInsertSub: 'Then watch where the pearl goes',
+  stShow: 'WATCH THE PEARL', stShowSub: 'Keep your eyes on the middle cup',
+  stShuffle: 'SHUFFLING', stShuffleSub: 'Follow the pearl through the swaps',
+  stPick: 'LIFT A CUP', stPickSub: 'Lift the cup that holds the pearl',
+  stSecond: 'SECOND GUESS', stSecondSub: 'One more cup, a half pays',
+  stReveal: 'ROUND OVER', stRevealSub: 'Stake settled',
+  stJam: 'OUT OF ORDER', stJamSub: 'Back after the next Night',
+  nStake: 'YOUR STAKE', nHeat: 'HEAT', nCheat: 'CHEAT PAYS', nTime: 'TIME', nBalance: 'BALANCE',
+  cInsert: 'INSERT COIN', cBet: 'STAKE', cLift: 'LIFT A CUP', cCheat: 'CALL CHEAT', cRules: 'RULES', cLeave: 'LEAVE',
+  tip1: 'Watch the pearl go under a cup while the cups swap around.',
+  tip2: '[{insert}] INSERT a coin, then [{cups}] LIFT the cup that holds the pearl.',
+  tip3: '[{cheat}] CALLS CHEAT if you think he palmed it. [{help}] RULES.',
+  rule1: 'Insert a coin. The cups swap around and one pearl is hidden under one of them.',
+  rule2: 'Lift the cup that holds the pearl to win one to one. A wrong cup loses the stake.',
+  rule3: 'Call Cheat before a lift if you think he palmed the pearl. It pays {n} to 1.',
+  rule4: 'Every win raises the heat, and more heat means more palming. Too many wins sets him out of order until the next Night.',
+  rule5: 'Standing up during a lift counts the round as a loss.',
 };
 
 const tr: Record<string, string> = {
@@ -30,6 +49,25 @@ const tr: Record<string, string> = {
   help: 'Bir jeton at. Ortadaki bardağın altındaki inciyi izle, sonra bardaklar karışır. İnciyi taşıyan bardağı kaldır: bire bir kazanırsın. Avucunda sakladığını düşünüyorsan Hile Çağır: üçe bir öder. Arka arkaya kazandıkça daha çok saklar. Beş üst üste kazanırsan arızalanır.',
   sStake: 'BAHİS', sHeat: 'ISI', sTimer: 'SÜRE', hInsert: 'Para at', hCup: 'Kaldır {n}', hCheat: 'Hile Çağır',
   hBet: 'Bahis', hHelp: 'Yardım',
+  // seat HUD (readability standard)
+  goal: 'İnciyi bardakların altında bul ve doğru bardağı kaldır',
+  stInsert: 'PARA AT', stInsertSub: 'Sonra inciyi nereye götürdüğünü izle',
+  stShow: 'İNCİYİ İZLE', stShowSub: 'Gözün ortadaki bardakta olsun',
+  stShuffle: 'KARIŞTIRILIYOR', stShuffleSub: 'Değişimlerde inciyi takip et',
+  stPick: 'BİR BARDAK KALDIR', stPickSub: 'İnciyi taşıyan bardağı kaldır',
+  stSecond: 'İKİNCİ TAHMİN', stSecondSub: 'Bir bardak daha, yarım öder',
+  stReveal: 'TUR BİTTİ', stRevealSub: 'Bahis hesaplandı',
+  stJam: 'ARIZALI', stJamSub: 'Bir sonraki Gece\'ye kadar',
+  nStake: 'BAHSİN', nHeat: 'ISI', nCheat: 'HİLE ÖDÜLÜ', nTime: 'SÜRE', nBalance: 'BAKİYE',
+  cInsert: 'PARA AT', cBet: 'BAHİS', cLift: 'BARDAK KALDIR', cCheat: 'HİLE ÇAĞIR', cRules: 'KURALLAR', cLeave: 'AYRIL',
+  tip1: 'İnciyi bir bardağın altında izle, bardaklar bu sırada yer değiştirir.',
+  tip2: '[{insert}] PARA AT, sonra [{cups}] ile inciyi taşıyan bardağı kaldır.',
+  tip3: 'Avucunda sakladığını düşünüyorsan [{cheat}] HİLE ÇAĞIR. [{help}] KURALLAR.',
+  rule1: 'Para at. Bardaklar karışır ve tek bir inci bunlardan birinin altına saklanır.',
+  rule2: 'İnciyi taşıyan bardağı kaldırırsan bire bir kazanırsın. Yanlış bardak bahsi kaybettirir.',
+  rule3: 'İnciyi avucunda sakladığını düşünürsen, kaldırmadan önce Hile Çağır. {n}’e 1 öder.',
+  rule4: 'Her kazanç ısıyı yükseltir, ısı arttıkça avuç da sıklaşır. Çok kazanırsan bir sonraki Gece\'ye kadar arızalanır.',
+  rule5: 'Kaldırma sırasında kalkarsan tur kayıp sayılır.',
 };
 
 export default { prefix: 'm.shellgame.', en, tr };

@@ -24,6 +24,30 @@ const en: Record<string, string> = {
   noBets: 'Place a bet first', notSeated: 'Sit down first', badSeat: 'Seats 7 and 8 are closed for War',
   noRaise: 'Not enough coins to go to war', notYourTie: 'Not your decision', noDecision: 'Nothing to decide',
   tableMax: 'Table limit {n} per seat', variantNo: 'Only the table can switch rules',
+
+  // ── seat HUD (readability standard) ──
+  hGoalWar: 'Beat the dealer\'s card. On a tie, go to war or surrender.',
+  hGoalDt: 'Bet on the Dragon or the Tiger. The higher card wins.',
+  hTip1: 'Pick your spots: [{n1}] [{n2}] [{n3}]. Click the plaque to change the game.',
+  hTip2: 'Lock your bets with [{lock}] before the cards turn.',
+  hTip3: 'On a tie in War: [{war}] go to war, [{surr}] surrender. [{help}] RULES.',
+  hRule1: 'War: beat the dealer\'s card. Aces are high, and suits do not count.',
+  hRule2: 'On a tie, GO TO WAR matches your bet and plays on. SURRENDER gives back half. A won war pays 1 to 1.',
+  hRule3: 'The TIE side bet pays 10 to 1 when your card matches the dealer\'s rank.',
+  hRule4: 'Dragon-Tiger: the higher card wins. Dragon or Tiger pays 1 to 1; on a tie, half of those bets come back.',
+  hRule5: 'Side bets: BIG (8 and up) or SMALL, ODD or EVEN on a card pay 1 to 1. TIE pays 11 to 1, SUITED TIE 50 to 1.',
+  hRule6: 'Click the plaque to switch game while no chips are down. In War, seats 7 and 8 are closed.',
+  hStLocked: 'BETS LOCKED', hStLockedSub: 'Waiting for the others',
+  hStBet: 'PLACE YOUR BETS', hStBetSub: 'Press [{lock}] to lock them',
+  hStNoMore: 'NO MORE BETS', hStDeal: 'DEALING', hStTurn: 'TURNING THE CARDS',
+  hStTie: 'TIE! WAR OR SURRENDER', hStTieSub: 'Decide now: [{war}] war  ·  [{surr}] surrender',
+  hStTieWait: 'TIE: WAITING FOR THE DECISION',
+  hStWar: 'WAR!', hStPay: 'PAYING OUT', hStShuffle: 'SHUFFLING THE SHOE', hStIdle: 'THE TABLE IS QUIET',
+  hNGame: 'GAME', hNStake: 'YOUR STAKE', hNPicks: 'YOUR PICKS', hNDealer: 'DEALER', hNYou: 'YOUR CARD',
+  hNDragon: 'DRAGON', hNTiger: 'TIGER', hNBalance: 'BALANCE',
+  hsMain: 'WAR', hsTie: 'TIE', hsD: 'D', hsT: 'T', hsSuit: 'SUIT', hsSide: 'SIDE',
+  hCLock: 'LOCK', hCMain: 'WAR BET', hCTie: 'TIE', hCDragon: 'DRAGON', hCTiger: 'TIGER', hCBet: 'BET', hCClear: 'CLEAR',
+  hCWar: 'GO TO WAR', hCSurr: 'SURRENDER', hCRules: 'RULES', hCLeave: 'LEAVE',
 };
 
 const tr: Record<string, string> = {
@@ -48,6 +72,30 @@ const tr: Record<string, string> = {
   noBets: 'Önce bir bahis koy', notSeated: 'Önce otur', badSeat: 'Savaşta 7. ve 8. koltuklar kapalı',
   noRaise: 'Savaşa girmek için yeterli jeton yok', notYourTie: 'Bu karar senin değil', noDecision: 'Karar bekleyen yok',
   tableMax: 'Koltuk başına masa limiti {n}', variantNo: 'Kuralları yalnızca masa değiştirir',
+
+  // ── seat HUD (readability standard) ──
+  hGoalWar: 'Krupiyenin kartını yen. Berabere kalırsan savaşa gir ya da teslim ol.',
+  hGoalDt: 'Ejder ya da Kaplan\'a bahis koy. Yüksek kart kazanır.',
+  hTip1: 'Bahis yerlerini [{n1}] [{n2}] [{n3}] ile seç. Oyunu değiştirmek için plakete tıkla.',
+  hTip2: 'Kartlar çevrilmeden önce bahsini [{lock}] ile kilitle.',
+  hTip3: 'Savaşta berabere kalırsan [{war}] savaşa gir, [{surr}] teslim ol. [{help}] KURALLAR.',
+  hRule1: 'Savaş: krupiyenin kartını yen. As en yüksektir, kart rengi sayılmaz.',
+  hRule2: 'Berabere kalınca SAVAŞA GİR bahsi kadar ek bahis koyar, TESLİM yarısını geri verir. Kazanılan savaş 1\'e 1 öder.',
+  hRule3: 'BERABERE yan bahsi, kartın krupiyeninkiyle aynı değerdeyse 10\'a 1 öder.',
+  hRule4: 'Ejder-Kaplan: yüksek kart kazanır. Ejder ya da Kaplan 1\'e 1 öder; berabere kalırsa bu bahislerin yarısı iade edilir.',
+  hRule5: 'Yan bahisler: BÜYÜK (8 ve üstü) ya da KÜÇÜK, TEK ya da ÇİFT bir karta 1\'e 1 öder. BERABERE 11\'e 1, AYNI KART 50\'ye 1 öder.',
+  hRule6: 'Bahis yokken plakete tıklayarak oyunu değiştirebilirsin. Savaşta 7. ve 8. koltuklar kapalıdır.',
+  hStLocked: 'BAHİSLER KİLİTLENDİ', hStLockedSub: 'Diğerleri bekleniyor',
+  hStBet: 'BAHİSLERİNİ YAP', hStBetSub: '[{lock}] ile kilitle',
+  hStNoMore: 'ARTIK BAHİS YOK', hStDeal: 'DAĞITILIYOR', hStTurn: 'KARTLAR ÇEVRİLİYOR',
+  hStTie: 'BERABERE! SAVAŞ YA DA TESLİM', hStTieSub: 'Şimdi karar ver: [{war}] savaş  ·  [{surr}] teslim',
+  hStTieWait: 'BERABERE: KARAR BEKLENİYOR',
+  hStWar: 'SAVAŞ!', hStPay: 'ÖDENİYOR', hStShuffle: 'SABOT KARIŞTIRILIYOR', hStIdle: 'MASA SESSİZ',
+  hNGame: 'OYUN', hNStake: 'BAHSİN', hNPicks: 'SEÇİMLERİN', hNDealer: 'KRUPİYE', hNYou: 'SENİN KARTIN',
+  hNDragon: 'EJDER', hNTiger: 'KAPLAN', hNBalance: 'BAKİYE',
+  hsMain: 'SAVAŞ', hsTie: 'BE', hsD: 'EJ', hsT: 'KA', hsSuit: 'AK', hsSide: 'YAN',
+  hCLock: 'KİLİTLE', hCMain: 'SAVAŞ BAHSİ', hCTie: 'BERABERE', hCDragon: 'EJDER', hCTiger: 'KAPLAN', hCBet: 'BAHİS', hCClear: 'TEMİZLE',
+  hCWar: 'SAVAŞA GİR', hCSurr: 'TESLİM OL', hCRules: 'KURALLAR', hCLeave: 'ÇIK',
 };
 
 export default { prefix: 'm.cardwar.', en, tr };

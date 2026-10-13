@@ -72,6 +72,24 @@ export interface Knobs {
 export interface Fate { st: StationIx; lost: boolean; units: number; gold: boolean; tag: Tag; prize: Prize | null }
 export interface Roll { coin: Fate; kind: Bonus | null; fates: Fate[]; prize: Prize | null }
 
+/**
+ * Lane streak: drops on the same station in a row. Beyond LANE_STREAK the gutter loss grows by LANE_LOSS_STEP per drop
+ * (capped at LANE_LOSS_CAP), so a player who stays on one lane and aims at the centre settles near TARGET_RTP.
+ */
+export const LANE_STREAK = 5;
+export const LANE_LOSS_STEP = 0.02;
+export const LANE_LOSS_CAP = 0.22;
+export function laneLoss(streak: number): number {
+  return Math.min(LANE_LOSS_CAP, LANE_LOSS_STEP * Math.max(0, streak - LANE_STREAK));
+}
+/** Tracks the current lane run. `st` −1 = none yet. Call `trackLane` once per drop and pass the result as `streak`. */
+export interface LaneTrack { st: StationIx | -1; n: number }
+export function trackLane(t: LaneTrack, st: StationIx): number {
+  t.n = t.st === st ? t.n + 1 : 1;
+  t.st = st;
+  return t.n;
+}
+
 /** Gutter loss probability per shelf coin: 30 % at the narrowest gutter, 60 % at the widest. */
 export function gutterLoss(width: number): number {
   const k = clamp01((width - GUTTER_MIN) / (GUTTER_MAX - GUTTER_MIN));
@@ -88,8 +106,8 @@ export function gateChance(aim: number, gateAdd: number): number {
 }
 
 /** Resolve where one shelf coin ends: gutter (house), or the tray it crosses to. */
-function fall(rng: Rng, k: Knobs, st: StationIx, tag: Tag, units: number, gold: boolean, prize: Prize | null): Fate {
-  const lost = !k.walls && rng.next() < gutterLoss(k.gutter);
+function fall(rng: Rng, k: Knobs, st: StationIx, extra: number, tag: Tag, units: number, gold: boolean, prize: Prize | null): Fate {
+  const lost = !k.walls && rng.next() < clamp01(gutterLoss(k.gutter) + extra);
   const crossP = CROSS * (1 - clamp01(k.magnet));
   const crosses = rng.next() < crossP;
   const to: StationIx = crosses ? (st === 0 ? 1 : 0) : st;
@@ -97,10 +115,11 @@ function fall(rng: Rng, k: Knobs, st: StationIx, tag: Tag, units: number, gold: 
 }
 
 /** One drop by station `st` at aim `aim`: the coin, and any lucky-gate bonus it triggers. */
-export function rollDrop(rng: Rng, k: Knobs, st: StationIx, aim: number): Roll {
+export function rollDrop(rng: Rng, k: Knobs, st: StationIx, aim: number, streak = 0): Roll {
+  const extra = laneLoss(streak);
   const gate = rng.next() < gateChance(aim, k.gateAdd);
   const gold = rng.next() < k.gold;
-  const coin = fall(rng, k, st, 'coin', gold ? GOLD_UNITS : 1, gold, null);
+  const coin = fall(rng, k, st, extra, 'coin', gold ? GOLD_UNITS : 1, gold, null);
   const out: Roll = { coin, kind: null, fates: [], prize: null };
   if (!gate) return out;
   const weights = [BONUS_WEIGHTS[0], BONUS_WEIGHTS[1], BONUS_WEIGHTS[2], BONUS_WEIGHTS[3] * Math.max(0, k.prize), BONUS_WEIGHTS[4]];
@@ -108,14 +127,14 @@ export function rollDrop(rng: Rng, k: Knobs, st: StationIx, aim: number): Roll {
   out.kind = kind;
   if (kind === 'S' || kind === 'L') {
     const n = Math.round((kind === 'S' ? SHOWER_S : SHOWER_L) * k.shower);
-    for (let i = 0; i < n; i++) out.fates.push(fall(rng, k, st, 'shower', 1, false, null));
+    for (let i = 0; i < n; i++) out.fates.push(fall(rng, k, st, extra, 'shower', 1, false, null));
   } else if (kind === 'P') {
     const p = PRIZE_KINDS[rng.weightedIndex(PRIZE_WEIGHTS)];
     out.prize = p;
-    out.fates.push(fall(rng, k, st, 'prize', PRIZE_UNITS[p], false, p));
+    out.fates.push(fall(rng, k, st, extra, 'prize', PRIZE_UNITS[p], false, p));
   } else if (kind === 'J') {
-    for (let i = 0; i < JACKPOT_COINS; i++) out.fates.push(fall(rng, k, st, 'shower', 1, false, null));
-    out.fates.push(fall(rng, k, st, 'plate', PLATE_UNITS, false, null));
+    for (let i = 0; i < JACKPOT_COINS; i++) out.fates.push(fall(rng, k, st, extra, 'shower', 1, false, null));
+    out.fates.push(fall(rng, k, st, extra, 'plate', PLATE_UNITS, false, null));
   }
   return out;
 }
@@ -176,8 +195,10 @@ export const playHeadless: HeadlessPlay = (rng, bet, h) => {
   const k = knobsFor(makeGov(), h.mod, h.luck, false);
   let units = 0;
   const tags: string[] = [];
+  const lane: LaneTrack = { st: -1, n: 0 };
   for (let i = 0; i < BLOCK; i++) {
-    const r = rollDrop(rng, k, rng.chance(0.5) ? 0 : 1, rng.float(-1, 1));
+    const st: StationIx = rng.chance(0.5) ? 0 : 1;
+    const r = rollDrop(rng, k, st, rng.float(-1, 1), trackLane(lane, st));
     units += rollUnits(r);
     if (r.kind) tags.push('bonus');
     if (r.kind === 'J') tags.push('jackpot');

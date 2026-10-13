@@ -22,12 +22,12 @@ import type { CardId } from '@/core/texgen/types';
 import type { PlayerId } from '@/core/types';
 import type { ChipValue, LampPart } from '@/kit/types';
 import type { KitX } from '@/kit/index';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
-import { fmtCoins, t } from '@/core/i18n';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import { fmtCoins } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type HudResultKind, type HudTone, type Txt } from '@/machines/_base/seatHud';
 import { TableBase } from '@/machines/_base/TableBase';
 import { juiceTier } from '@/machines/_base/tiers';
-import { rankOf } from '@/machines/_base/cards';
+import { cardText, rankOf } from '@/machines/_base/cards';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { STRINGS } from './reddog.strings';
 import {
@@ -132,6 +132,8 @@ export const def: MachineDef = {
 export { playHeadless } from './rules';
 
 export default class RedDog extends TableBase<ReddogParts, Ev, Snap, Act> {
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
   /** What every peer sees (mutated only in `present`). */
   private st: Snap = freshSnap();
   /** HOST ONLY authority state. */
@@ -146,12 +148,21 @@ export default class RedDog extends TableBase<ReddogParts, Ev, Snap, Act> {
 
   init(): void {
     this.hs = freshHost(new R.RdShoe(this.hostRng, R.DECKS));
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.paintAll();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   // ── local input ──────────────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const seat = this.localSeat;
     const s = this.st;
     const open = s.phase === 'open' && seat >= 0 && !s.locked[seat];
@@ -378,7 +389,7 @@ export default class RedDog extends TableBase<ReddogParts, Ev, Snap, Act> {
         if (this.raiseDone()) this.endRaise();
       }
     }
-    if (local) this.raiseSent = false;
+    if (local) { this.raiseSent = false; this.seatHud?.hide(); }
     this.paintLamps();
     this.paintBets();
     this.showHud();
@@ -386,7 +397,12 @@ export default class RedDog extends TableBase<ReddogParts, Ev, Snap, Act> {
 
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintLamps();
-    if (local) { this.sfx('chime'); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip('reddog', this.tipLines());
+    }
   }
 
   // ── presentation (every peer) ──────────────────────────────────────────────────────────────────
@@ -482,6 +498,11 @@ export default class RedDog extends TableBase<ReddogParts, Ev, Snap, Act> {
       const seat = row[0], payout = row[1];
       if (seat !== mine) continue;
       const stake = st.bets[seat] + st.raises[seat];
+      if (stake > 0) {
+        const net = payout - stake;
+        const kind: HudResultKind = net > 0 ? 'win' : net === 0 ? 'push' : 'lose';
+        this.seatHud?.result(kind, net);
+      }
       if (payout > 0) {
         const tier = juiceTier(payout, stake);
         void this.celebrate(tier, {
@@ -494,6 +515,7 @@ export default class RedDog extends TableBase<ReddogParts, Ev, Snap, Act> {
       }
     }
     // the cards go to the discard tray; the chips are paid out and cleared at OPEN
+    if (this.isLocalOccupant) this.showHud();
     if (!fast) await this.wait(0.3);
     this.model.parts.cards.clear();
     this.cardIds.clear();
@@ -679,32 +701,96 @@ export default class RedDog extends TableBase<ReddogParts, Ev, Snap, Act> {
     });
   }
 
-  // ── HUD and betting helpers ────────────────────────────────────────────────────────────────────
-  private showHud(): void {
-    const s = this.st, seat = this.localSeat;
-    const inHand = seat >= 0 && s.locked[seat];
-    const open = s.phase === 'open' && seat >= 0 && !s.locked[seat];
-    const raising = s.phase === 'raise' && inHand && !this.raiseSent;
-    const hints: HudHint[] = [];
-    if (open) hints.push({ action: 'primary', label: this.t('hLock') });
-    if (raising) {
-      const pay = this.payNow();
-      const full = R.raiseAmount(s.bets[seat], 'full', pay);
-      hints.push(
-        { action: 'n1', label: this.t('hRaiseFull', { n: fmtCoins(full) }) },
-        { action: 'n3', label: this.t('hHalf') },
-        { action: 'n2', label: this.t('hPass') },
-      );
-    }
-    hints.push({ action: 'exit', label: t('common.leave') });
-    const stats: Array<{ label: string; value: string }> = [];
-    if (inHand) stats.push({ label: this.t('potLabel'), value: fmtCoins(s.bets[seat] + s.raises[seat]) });
-    if (s.phase === 'spread' && this.feature('spreadOdds') && s.shoeLeft > 0) {
-      const odds = Math.round((100 * s.spread * 4 * R.DECKS) / s.shoeLeft);
-      stats.push({ label: this.t('odds', { p: odds }), value: '' });
-    }
-    if (this.tableMod('shoeInfo', 0) > 0) stats.push({ label: this.t('countLabel', { n: s.rc }), value: this.t('trueLabel', { n: s.tc }) });
-    this.hud({ bet: open ? this.bet : null, hints, stats });
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.reddog.hTip1', v: { bet: this.k('primary'), down: this.k('betDown'), up: this.k('betUp') } },
+      { k: 'm.reddog.hTip2' },
+      { k: 'm.reddog.hTip3', v: { raise: this.k('n1'), pass: this.k('n2'), help: this.k('help') } },
+    ];
   }
 
+  /** Settle banner for the round's result kind (see `presentResult`). */
+  private resultBanner(kind: string): { k: string; tone: HudTone } {
+    switch (kind) {
+      case 'win': return { k: 'm.reddog.hResWin', tone: 'good' };
+      case 'trips': case 'pairTrips': return { k: 'm.reddog.hResTrips', tone: 'gold' };
+      case 'consec': return { k: 'm.reddog.hResConsec', tone: 'neutral' };
+      case 'pairPush': return { k: 'm.reddog.hResPairNo', tone: 'neutral' };
+      case 'lose': return { k: 'm.reddog.hResLose', tone: 'bad' };
+      case 'refund': return { k: 'm.reddog.hResRefund', tone: 'neutral' };
+      default: return { k: 'm.reddog.hResPush', tone: 'neutral' };
+    }
+  }
+
+  private rulesLines(): Txt[] {
+    return ['hRule1', 'hRule2', 'hRule3', 'hRule4', 'hRule5', 'hRule6'].map((r) => ({ k: 'm.reddog.' + r }));
+  }
+
+  /** Banner, key numbers and valid controls. Only while the local player sits at the table. */
+  private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || this.localSeat < 0) return;
+    const s = this.st, seat = this.localSeat;
+    const inHand = s.locked[seat];
+    const open = s.phase === 'open' && !inHand;
+    const raising = s.phase === 'raise' && inHand && !this.raiseSent;
+    const stake = inHand ? s.bets[seat] + s.raises[seat] : this.bet;
+    const pay = this.payNow();
+    sh.goal({ k: 'm.reddog.hGoal' });
+
+    // STATE: what phase, what the player must decide
+    switch (s.phase) {
+      case 'open':
+        if (inHand) sh.state({ k: 'm.reddog.hStLocked' }, 'cyan', { k: 'm.reddog.hStLockedSub' });
+        else sh.state({ k: 'm.reddog.hStBet' }, 'gold', { k: 'm.reddog.hStBetSub', v: { bet: this.k('primary') } });
+        break;
+      case 'deal': sh.state({ k: 'm.reddog.hStDeal' }, 'neutral'); break;
+      case 'spread':
+        if (s.kind === 'consecutive') sh.state({ k: 'm.reddog.hStConsec' }, 'neutral');
+        else if (s.kind === 'pair') sh.state({ k: 'm.reddog.hStPair' }, 'gold', { k: 'm.reddog.hStPairSub' });
+        else sh.state({ k: 'm.reddog.hStSpread', v: { n: String(s.spread) } }, 'gold', { k: 'm.reddog.hStSpreadSub', v: { n: String(s.pays) } });
+        break;
+      case 'raise':
+        if (raising) sh.state({ k: 'm.reddog.hStRaise' }, 'warn', { k: 'm.reddog.hStRaiseSub', v: { n: fmtCoins(R.raiseAmount(s.bets[seat], 'full', pay)) } });
+        else if (inHand && this.raiseSent) sh.state({ k: 'm.reddog.hStRaiseSent' }, 'cyan');
+        else sh.state({ k: 'm.reddog.hStRaiseWait' }, 'neutral');
+        break;
+      case 'third': sh.state({ k: 'm.reddog.hStThird' }, 'gold'); break;
+      case 'settle': {
+        const b = this.resultBanner(s.result);
+        sh.state({ k: b.k }, b.tone);
+        break;
+      }
+      default: sh.state({ k: 'm.reddog.hStShuffle' }, 'neutral');
+    }
+
+    // KEY NUMBERS: bet, raise, the two cards, the pay of the spread, the third card, balance
+    const nums: HudNumber[] = [];
+    nums.push({ label: { k: 'm.reddog.hNBet' }, value: fmtCoins(stake), tone: 'gold' });
+    if (inHand && s.raises[seat] > 0) nums.push({ label: { k: 'm.reddog.hNRaise' }, value: fmtCoins(s.raises[seat]), tone: 'warn' });
+    if (s.c1 && s.c2) nums.push({ label: { k: 'm.reddog.hNCards' }, value: `${cardText(s.c1 as CardId)}  ${cardText(s.c2 as CardId)}`, tone: 'cyan' });
+    if (s.kind === 'spread' && s.phase !== 'open') nums.push({ label: { k: 'm.reddog.hNPays' }, value: { k: 'm.reddog.hNPaysV', v: { n: String(s.pays) } }, tone: 'good' });
+    if (s.third) nums.push({ label: { k: 'm.reddog.hNThird' }, value: cardText(s.third as CardId), tone: 'neutral' });
+    nums.push({ label: { k: 'm.reddog.hNBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys bound to it
+    const ctrl: HudControl[] = [];
+    if (open) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.reddog.hCBet' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.reddog.hCAmount' }, action: 'betUp' });
+    }
+    if (raising) {
+      ctrl.push({ key: this.k('n1'), label: { k: 'm.reddog.hCRaise' }, action: 'n1', primary: true });
+      ctrl.push({ key: this.k('n3'), label: { k: 'm.reddog.hCHalf' }, action: 'n3' });
+      ctrl.push({ key: this.k('n2'), label: { k: 'm.reddog.hCPass' }, action: 'n2' });
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.reddog.hCRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.reddog.hCLeave' }, action: 'exit' });
+    sh.controls(ctrl);
+  }
 }

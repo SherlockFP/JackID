@@ -20,7 +20,7 @@ import type { Rng } from '@/core/rng';
 import type { HeadlessPlay, ModHook } from '@/game/types';
 
 export const STAKE_MIN = 2;
-export const STAKE_MAX = 50;
+export const STAKE_MAX = 25;
 export const TIMER_S = 15;             // move window, seconds (before claw.timer)
 export const GANTRY_SPEED = 0.25;      // m/s
 export const GANTRY_LIM = 0.35;        // |x|, |z| of the claw centre

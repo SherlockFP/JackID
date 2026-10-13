@@ -25,10 +25,10 @@
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { KitX } from '@/kit';
-import { fmtCoins, t } from '@/core/i18n';
+import { fmtCoins } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { TAU } from '@/core/math';
 import { buildModel, type PachislotParts } from './model';
 import {
@@ -44,7 +44,7 @@ export { playHeadless };
 type StartEv = { k: 'start'; v: number; free: boolean; game: number };
 type StopEv = { k: 'stop'; reel: number; press: number; final: number; slip: number };
 type ResultEv = {
-  k: 'result'; v: number; game: number; role: string; medals: number; replay: boolean; bonus: Bonus | null;
+  k: 'result'; v: number; game: number; role: string; medals: number; replay: boolean; free: boolean; bonus: Bonus | null;
   of: number; carry: Bonus | null; lost: boolean; tease: boolean; stops: number[];
 };
 type BonusEv = { k: 'bonus'; v: number; type: Bonus; game: number; of: number; out: number; net: number };
@@ -99,6 +99,10 @@ export const def: MachineDef = {
   strings: STRINGS,
 };
 
+const RULE_LINES: Txt[] = [
+  ...['rule1', 'rule2', 'rolesHelp', 'rBigPay', 'rRegPay'].map((k) => ({ k: 'm.pachislot.' + k })),
+];
+
 export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
   private state: State = {
     setting: 0, games: 0, held: null, freeNext: false, bonus: null, stops: [6, 10, 14],
@@ -112,7 +116,8 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
   private reelSpin: boolean[] = [false, false, false];
   private cycle = 0;
   private peekT = 0;
-  private card = false;
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
   private beaconOn = false;
   private bonusRunning = false;
   private attractOn = false;
@@ -122,6 +127,8 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     if (this.state.setting === 0) this.state.setting = rollSetting(this.worldRng);   // world 'init' stream: same on every peer
     this.refresh();
   }
@@ -156,14 +163,16 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
     if (local) {
       this.sfx('chime');
       if (this.mod(HOOK.peek, 0) > 0) this.peekT = 3;
+      this.seatHud?.show();
       this.showHud();
+      this.seatHud?.firstTip('pachislot', this.tipLines());
       if (this.state.bonus) void this.runBonus();      // a feast left unfinished (reload / snapshot) goes on
     }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
     if (local) {
-      this.card = false;
+      this.seatHud?.hide();
       if (this.roundOpen) this.settle({ gross: 0 });   // safety net: never strand a stake
       this.game = null;
       this.spinning = false;
@@ -182,6 +191,8 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -192,7 +203,6 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
       case 'betUp': this.changeBet(() => this.stepBet(1)); break;
       case 'betDown': this.changeBet(() => this.stepBet(-1)); break;
       case 'betMax': this.changeBet(() => this.maxBet()); break;
-      case 'help': this.card = !this.card; this.sfx('click'); this.drawScreen(); this.showHud(); break;
     }
   }
 
@@ -265,7 +275,7 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
     const tags = [...(g.free ? ['free'] : []), ...(j.bonus ? ['bonus'] : []), ...(j.role !== 'MISS' ? [`role:${j.role}`] : [])];
     const credit = j.bonus ? undefined : (): void => { this.settle({ gross: coins, tags }); };   // a bonus settles at its end
     const shown = this.emit({
-      k: 'result', v: g.v, game: this.state.games, role: j.role, medals: j.medals, replay: j.replay, bonus: j.bonus,
+      k: 'result', v: g.v, game: this.state.games, role: j.role, medals: j.medals, replay: j.replay, free: g.free, bonus: j.bonus,
       of, carry: j.carry, lost: j.lost, tease: j.tease, stops,
     }, credit);
     this.showHud();
@@ -354,6 +364,10 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
     const bet = BET_IN * ev.v;
     const coins = ev.medals * ev.v;
     const tier = juiceTier(coins, bet);
+    if (pc.local && !ev.bonus && (!ev.free || coins > 0)) {
+      const net = coins - (ev.free ? 0 : bet);
+      this.callout(net);
+    }
     this.refresh();
     if (ev.bonus) {
       // the announcement: all sound cuts for 0.3 s, then a taiko hit, the oni eyes flare and the beacon turns
@@ -409,6 +423,7 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
 
   private async presentBonusEnd(ev: BonusEndEv, pc: PresentCtx): Promise<void> {
     const { lamps, beacon } = this.parts;
+    if (pc.local) this.callout(ev.net * ev.v);
     this.state.bonus = null;
     this.state.hint = ev.hint;
     this.beaconOn = false;
@@ -471,15 +486,6 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
     const s = this.state;
     this.parts.screens.lcd.draw((g, sc) => {
       g.fillStyle = '#0a0408'; g.fillRect(0, 0, sc.w, sc.h);
-      if (this.card) {
-        sc.text(this.t('rolesTitle'), 80, 4, { font: 'px5', color: LCD_GOLD, align: 'center' });
-        const rows = [
-          [this.t('rBig'), '#ff5aa0'], [this.t('rReg'), '#ff5aa0'], [this.t('rKoi'), '#ff9a40'],
-          [this.t('rLantern'), '#ffcc66'], [this.t('rReplay'), '#4da6ff'], [this.t('rFan'), '#b070ff'],
-        ] as const;
-        rows.forEach(([label, color], i) => sc.text(label, 80, 18 + i * 12, { font: 'px5', color, align: 'center' }));
-        return;
-      }
       sc.text(this.t('game', { n: s.games }), 80, 6, { font: 'px5', color: LCD_PINK, align: 'center' });
       if (s.bonus) {
         const key = s.bonus.type === 'BIG' ? 'feast' : 'parade';
@@ -498,26 +504,70 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
     });
   }
 
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.pachislot.tip1', v: { lever: this.k('primary') } },
+      { k: 'm.pachislot.tip2', v: { l: this.k('n1'), c: this.k('n2'), r: this.k('n3') } },
+      { k: 'm.pachislot.tip3', v: { bet: `${this.k('betDown')}/${this.k('betUp')}`, max: this.k('betMax'), help: this.k('help') } },
+    ];
+  }
+
+  /** Result callout for the local player: `net` = coins back minus the stake. */
+  private callout(net: number): void {
+    this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'lose', net);
+  }
+
+  /** Banner, key numbers and the controls valid right now. Only while the local player sits here. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const s = this.state;
-    const hints: HudHint[] = [];
-    if (this.spinning && this.game) {
+    const stopping = this.spinning && this.game !== null;
+    sh.goal({ k: 'm.pachislot.goal' });
+
+    // STATE: what the cabinet waits for
+    if (s.bonus) sh.state({ k: 'm.pachislot.stBonus', v: { n: s.bonus.game, of: s.bonus.of } }, 'warn', { k: 'm.pachislot.fullBonus' });
+    else if (stopping) sh.state({ k: 'm.pachislot.stStop' }, 'cyan', { k: 'm.pachislot.stStopSub' });
+    else if (this.busy) sh.state({ k: 'm.pachislot.stBusy' }, 'neutral');
+    else if (s.freeNext) sh.state({ k: 'm.pachislot.stFree' }, 'cyan', { k: 'm.pachislot.stFreeSub' });
+    else if (s.held) sh.state({ k: s.held === 'BIG' ? 'm.pachislot.stHoldOni' : 'm.pachislot.stHoldLantern' }, 'good', { k: 'm.pachislot.stHoldSub' });
+    else sh.state({ k: 'm.pachislot.stLever' }, 'gold', { k: 'm.pachislot.stLeverSub', v: { n: fmtCoins(this.bet) } });
+
+    // KEY NUMBERS: stake (free on a replay), game count, last pay, bonus net, balance
+    const nums: HudNumber[] = [
+      s.freeNext
+        ? { label: { k: 'm.pachislot.nBet' }, value: { k: 'm.pachislot.nFree' }, tone: 'cyan' }
+        : { label: { k: 'm.pachislot.nBet' }, value: fmtCoins(this.bet), tone: 'gold' },
+      { label: { k: 'm.pachislot.nGame' }, value: String(s.games), tone: 'neutral' },
+    ];
+    if (s.last.medals > 0) nums.push({ label: { k: 'm.pachislot.nLast' }, value: { k: 'm.pachislot.medalsN', v: { n: s.last.medals } }, tone: 'good' });
+    if (s.bonus) nums.push({ label: { k: 'm.pachislot.nBonus' }, value: fmtCoins(s.bonus.net * s.bonus.v), tone: s.bonus.net >= 0 ? 'good' : 'bad' });
+    nums.push({ label: { k: 'm.pachislot.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now
+    const ctrl: HudControl[] = [];
+    if (stopping) {
       const keys = ['n1', 'n2', 'n3'] as const;
-      this.stopped.forEach((st, k) => { if (st === null) hints.push({ action: keys[k], label: this.t('stop', { n: k + 1 }) }); });
-    } else if (!this.busy && !this.state.bonus) {
-      hints.push({ action: 'primary', label: this.t('lever') });
-      hints.push({ action: 'betUp', label: t('common.bet') });
-      hints.push({ action: 'betMax', label: this.t('max') });
-      hints.push({ action: 'help', label: this.t('roles') });
+      this.stopped.forEach((st, r) => {
+        if (st === null) ctrl.push({ key: this.k(keys[r]), label: { k: 'm.pachislot.cStop', v: { n: r + 1 } }, action: keys[r], primary: true });
+      });
+    } else if (!this.busy && !s.bonus) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.pachislot.cLever' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.pachislot.cBet' }, action: 'betUp' });
+      ctrl.push({ key: this.k('betMax'), label: { k: 'm.pachislot.cMax' }, action: 'betMax' });
     }
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: this.roundOpen || this.spinning ? null : this.bet,
-      hints,
-      stats: [
-        { label: this.t('medal'), value: String(this.bet / MEDALS_IN) },
-        ...(s.bonus ? [{ label: this.t(s.bonus.type === 'BIG' ? 'feast' : 'parade', { n: s.bonus.game, of: s.bonus.of }), value: fmtCoins(s.bonus.net * s.bonus.v) }] : []),
-      ],
-    });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.pachislot.cRoles' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.pachislot.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
+  }
+
+  override dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 }

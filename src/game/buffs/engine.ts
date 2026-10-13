@@ -48,6 +48,13 @@ function ownerOf(key: BuffOwnerKey): PlayerId | InstanceId {
   return 0;
 }
 
+/** Save shape of the buff store: `[ownerKey, buffs]` pairs. */
+export type BuffSave = Array<[BuffOwnerKey, BuffState[]]>;
+
+function cloneJson<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v)) as T;
+}
+
 function dataOf(st: BuffState): Record<string, Json> {
   const d = st.data;
   if (d && typeof d === 'object' && !Array.isArray(d)) return d;
@@ -228,6 +235,30 @@ export class Buffs implements BuffsApi, ModProvider {
         }
       }
     }
+  }
+
+  // ── save and resume ───────────────────────────────────────────────────────────────────────────
+  /** JSON-safe copy of every owner key with its buffs (stored under `resume.ext.buffs`). */
+  snapshot(): BuffSave {
+    return [...this.store].map(([key, list]) => [key, list.map((st) => cloneJson(st))]);
+  }
+
+  /** Rebuilds the store from a save. Buffs whose def is no longer registered are dropped. Does not re-run `on.add`. */
+  restore(s: BuffSave | null | undefined): void {
+    this.store.clear();
+    this.tickAcc.clear();
+    if (Array.isArray(s)) {
+      for (const entry of s) {
+        if (!Array.isArray(entry) || entry.length !== 2) continue;
+        const [key, list] = entry;
+        if (typeof key !== 'string' || !Array.isArray(list)) continue;
+        const kept = (list as BuffState[])
+          .filter((st) => !!st && typeof st.id === 'string' && this.defMap.has(st.id))
+          .map((st) => cloneJson(st));
+        if (kept.length) this.store.set(key as BuffOwnerKey, kept);
+      }
+    }
+    this.host.touch();
   }
 
   // ── ModProvider ───────────────────────────────────────────────────────────────────────────────

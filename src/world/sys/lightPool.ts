@@ -157,6 +157,11 @@ export class LightPool {
   private serial = 0;
   private readonly tmp = new THREE.Color();
   private readonly cam = new THREE.Vector3();
+  private readonly scoredBuf: Array<{ h: Hint; s: number }> = [];
+  private readonly curSet = new Set<Hint>();
+  private readonly desiredBuf: Hint[] = [];
+  private readonly wantedSet = new Set<Hint>();
+  private readonly placedSet = new Set<Hint>();
 
   constructor(private readonly o: LightPoolOpts) {
     for (let i = 0; i < POOL_SIZE; i++) {
@@ -231,20 +236,28 @@ export class LightPool {
 
   /** Pick the best `POOL_SIZE` sources around the camera and hand them to the lights. */
   private select(): void {
-    const scored: Array<{ h: Hint; s: number }> = [];
-    const cur = new Set<Hint>();
+    // scratch buffers are reused (select runs every 0.5 s; no per-call allocation churn)
+    const scored = this.scoredBuf;
+    scored.length = 0;
+    const cur = this.curSet;
+    cur.clear();
     for (const s of this.slots) if (s.want) cur.add(s.want);
     for (const h of this.hints) {
-      const reach = h.range + 4;
+      const reach = h.range + 4;   // beyond this a fixture is emissive only (no pool light)
       const d = h.pos.distanceTo(this.cam);
       if (d > reach) continue;
       const s = h.base * Math.max(0.05, h.level) * (1 - d / reach) * (cur.has(h) ? 1.25 : 1);
       scored.push({ h, s });
     }
     scored.sort((a, b) => b.s - a.s);
-    const desired = scored.slice(0, POOL_SIZE).map((e) => e.h);
-    const wanted = new Set(desired);
-    const placed = new Set<Hint>();
+    const desired = this.desiredBuf;
+    desired.length = 0;
+    for (let i = 0; i < scored.length && i < POOL_SIZE; i++) desired.push(scored[i].h);
+    const wanted = this.wantedSet;
+    wanted.clear();
+    for (const h of desired) wanted.add(h);
+    const placed = this.placedSet;
+    placed.clear();
     for (const s of this.slots) {
       if (s.want && wanted.has(s.want)) placed.add(s.want);
       else s.want = null;

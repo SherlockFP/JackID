@@ -18,8 +18,8 @@ import * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import { fmtCoins, t } from '@/core/i18n';
 import { aimArm, buildModel, CUP_LIFT, CUP_Z, FELT_Y, REST_L, REST_R, SHOULDER_L, SHOULDER_R, SLOT_X, type ShellParts } from './model';
@@ -122,14 +122,23 @@ export default class ShellGame extends MachineBase<ShellParts, Ev, Snap> {
   private away = 0;                 // seconds since the last round closed (heat decay)
   private leaving = false;
   private wagT = 0;
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts). Created in init, shown while seated. */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: KitX): MachineModel<ShellParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.refresh();
     this.attractor.every('wag', 7, () => this.wag(), { first: 3 });
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   // ── attract: the automaton wags a finger now and then ────────────────────────────────────────────
@@ -151,11 +160,14 @@ export default class ShellGame extends MachineBase<ShellParts, Ev, Snap> {
     if (local) {
       if (this.st.open && !this.roundOpen) this.recoverRound();
       this.sfx('chime');
+      this.seatHud?.show();
       this.showHud();
+      this.seatHud?.firstTip('shellgame', this.tipLines());
     }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
+    if (local) { this.hud(null); this.seatHud?.hide(); }
     // Normal path: standUp() already settled a pick-phase round. Safety net: never strand a stake.
     if (local && this.roundOpen) {
       const s = this.st;
@@ -190,6 +202,8 @@ export default class ShellGame extends MachineBase<ShellParts, Ev, Snap> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (e.repeat && a !== 'betUp' && a !== 'betDown') return;
     switch (a) {
       case 'primary': if (!this.roundOpen) void this.insert(); break;            // Space inserts the coin
@@ -198,7 +212,7 @@ export default class ShellGame extends MachineBase<ShellParts, Ev, Snap> {
       case 'betUp': this.changeBet(() => this.stepBet(1)); break;
       case 'betDown': this.changeBet(() => this.stepBet(-1)); break;
       case 'betMax': this.changeBet(() => this.maxBet()); break;
-      case 'help': this.toast(this.t('help'), 'sys'); break;
+
     }
   }
 
@@ -471,6 +485,11 @@ export default class ShellGame extends MachineBase<ShellParts, Ev, Snap> {
     s.palmed = ev.palmed;
     s.phase = 'reveal';
     s.lastRes = ev.win ? (ev.kind === 'cheat' ? 'cheat' : 'win') : 'lose';
+    if (this.isLocalOccupant) {
+      if (ev.gross > ev.bet) this.seatHud?.result('win', ev.gross - ev.bet);
+      else if (ev.gross === ev.bet) this.seatHud?.result('push');
+      else this.seatHud?.result('lose', ev.gross - ev.bet);
+    }
     if (ev.jam) { s.jammed = true; s.jamNight = this.ctx.run.night(); s.phase = 'jam'; }
     if (pc.fast) {
       this.liftAll(CUP_LIFT);
@@ -581,33 +600,63 @@ export default class ShellGame extends MachineBase<ShellParts, Ev, Snap> {
     this.parts.lamp.setOn(this.occupant !== null || s.open);
   }
 
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.shellgame.tip1' },
+      { k: 'm.shellgame.tip2', v: { insert: this.k('primary'), cups: `${this.k('n1')}/${this.k('n2')}/${this.k('n3')}` } },
+      { k: 'm.shellgame.tip3', v: { cheat: this.k('n4'), help: this.k('help') } },
+    ];
+  }
+
+  private rulesLines(): Txt[] {
+    return [
+      { k: 'm.shellgame.rule1' }, { k: 'm.shellgame.rule2' }, { k: 'm.shellgame.rule3', v: { n: this.st.cheatTo } },
+      { k: 'm.shellgame.rule4' }, { k: 'm.shellgame.rule5' },
+    ];
+  }
+
+  /** Banner, key numbers and the controls valid right now. Only while the local player sits at the machine. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const s = this.st;
     const live = s.phase === 'pick' || s.phase === 'second';
-    const hints: HudHint[] = this.busy ? [] : !this.roundOpen
-      ? [
-        { action: 'primary', label: this.t('hInsert') },
-        { action: 'betUp', label: t('common.bet') },
-      ]
-      : live
-        ? [
-          { action: 'n1', label: this.t('hCup', { n: 1 }) },
-          { action: 'n2', label: this.t('hCup', { n: 2 }) },
-          { action: 'n3', label: this.t('hCup', { n: 3 }) },
-          ...(s.phase === 'pick' ? [{ action: 'n4' as const, label: this.t('hCheat') }] : []),
-        ]
-        : [];
-    hints.push({ action: 'help', label: this.t('hHelp') });
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: this.roundOpen ? null : this.bet,
-      hints,
-      stats: [
-        { label: this.t('sHeat'), value: s.jammed ? 'X' : String(s.streak) },
-        { label: this.t('sStake'), value: fmtCoins(this.roundOpen ? s.stake : this.bet) },
-        ...(live ? [{ label: this.t('sTimer'), value: String(Math.max(0, Math.ceil(PICK_S - this.idle))) }] : []),
-      ],
-    });
+    const ctrl: HudControl[] = [];
+    sh.goal({ k: 'm.shellgame.goal' });
+
+    // STATE: insert, watch, lift, or out of order
+    if (s.jammed) sh.state({ k: 'm.shellgame.stJam' }, 'bad', { k: 'm.shellgame.stJamSub' });
+    else if (!this.roundOpen) sh.state({ k: 'm.shellgame.stInsert' }, 'gold', { k: 'm.shellgame.stInsertSub' });
+    else if (s.phase === 'show') sh.state({ k: 'm.shellgame.stShow' }, 'cyan', { k: 'm.shellgame.stShowSub' });
+    else if (s.phase === 'shuffle') sh.state({ k: 'm.shellgame.stShuffle' }, 'neutral', { k: 'm.shellgame.stShuffleSub' });
+    else if (s.phase === 'second') sh.state({ k: 'm.shellgame.stSecond' }, 'warn', { k: 'm.shellgame.stSecondSub' });
+    else if (s.phase === 'pick') sh.state({ k: 'm.shellgame.stPick' }, 'good', { k: 'm.shellgame.stPickSub' });
+    else sh.state({ k: 'm.shellgame.stReveal' }, 'neutral', { k: 'm.shellgame.stRevealSub' });
+
+    // KEY NUMBERS: stake, heat (consecutive wins), cheat payout, lift timer, balance
+    const nums: HudNumber[] = [];
+    nums.push({ label: { k: 'm.shellgame.nStake' }, value: fmtCoins(this.roundOpen ? s.stake : this.bet), tone: 'gold' });
+    nums.push({ label: { k: 'm.shellgame.nHeat' }, value: s.jammed ? 'X' : String(s.streak), tone: s.streak >= 3 ? 'warn' : 'neutral' });
+    if (s.phase === 'pick') nums.push({ label: { k: 'm.shellgame.nCheat' }, value: `${s.cheatTo}:1`, tone: 'cyan' });
+    if (live) nums.push({ label: { k: 'm.shellgame.nTime' }, value: String(Math.max(0, Math.ceil(PICK_S - this.idle))), tone: 'warn' });
+    nums.push({ label: { k: 'm.shellgame.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys the machine really reads
+    if (!this.busy && !this.roundOpen && !s.jammed) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.shellgame.cInsert' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.shellgame.cBet' }, action: 'betUp' });
+    }
+    if (!this.busy && live) {
+      ctrl.push({ key: `${this.k('n1')}/${this.k('n2')}/${this.k('n3')}`, label: { k: 'm.shellgame.cLift' }, action: 'n1', primary: true });
+      if (s.phase === 'pick') ctrl.push({ key: this.k('n4'), label: { k: 'm.shellgame.cCheat' }, action: 'n4' });
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.shellgame.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.shellgame.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 
   // ── late join / save ──────────────────────────────────────────────────────────────────────────────

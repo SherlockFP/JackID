@@ -8,29 +8,42 @@ import { createRng, hashSeed } from '@/core/rng';
 
 export const SLOTS = 4;
 
-/** Dose catalogue: buff id, coin price, juice tier for the sale. The Apothecary rolls 4 of these per Night. */
-export const TONIC_CATALOGUE: ReadonlyArray<{ id: string; price: number; juice: 'plain' | 'rare' | 'cursed' }> = [
-  { id: 'tonic.lucky_mint', price: 40, juice: 'plain' },
-  { id: 'tonic.iron_nerve', price: 60, juice: 'plain' },
-  { id: 'tonic.quick_pulse', price: 80, juice: 'plain' },
-  { id: 'tonic.cold_coffee', price: 35, juice: 'plain' },
-  { id: 'tonic.dread_salts', price: 50, juice: 'rare' },
-  { id: 'tonic.energy_drink', price: 90, juice: 'rare' },
-  { id: 'tonic.cursed_candy', price: 25, juice: 'cursed' },
+export type TonicJuice = 'plain' | 'rare' | 'cursed';
+/** What a shelf slot sells: a timed buff (tonic) or a physical totem (carried item). */
+export type TonicKind = 'buff' | 'totem';
+
+/** Totems the Apothecary stocks (ids from items/data.ts). Their prices come from that catalogue. */
+export const SHELF_TOTEMS: readonly string[] = ['lucky_idol', 'loss_shield', 'profit_bell'];
+
+interface CatalogueEntry { kind: TonicKind; id: string; price: number; juice: TonicJuice }
+
+/** Shelf catalogue: buff or totem id, coin price, juice tier for the sale. The Apothecary rolls 4 of these per Night. */
+export const TONIC_CATALOGUE: ReadonlyArray<CatalogueEntry> = [
+  { kind: 'buff', id: 'tonic.lucky_mint', price: 40, juice: 'plain' },
+  { kind: 'buff', id: 'tonic.iron_nerve', price: 60, juice: 'plain' },
+  { kind: 'buff', id: 'tonic.quick_pulse', price: 80, juice: 'plain' },
+  { kind: 'buff', id: 'tonic.cold_coffee', price: 35, juice: 'plain' },
+  { kind: 'buff', id: 'tonic.dread_salts', price: 50, juice: 'rare' },
+  { kind: 'buff', id: 'tonic.energy_drink', price: 90, juice: 'rare' },
+  { kind: 'buff', id: 'tonic.cursed_candy', price: 25, juice: 'cursed' },
+  // Prices mirror items/data.ts (lucky_idol 120, loss_shield 150, profit_bell 260). Kept inline: machines must not import game/items.
+  { kind: 'totem', id: 'lucky_idol', price: 120, juice: 'rare' },
+  { kind: 'totem', id: 'loss_shield', price: 150, juice: 'rare' },
+  { kind: 'totem', id: 'profit_bell', price: 260, juice: 'rare' },
 ];
 
-
 export interface TonicOffer {
-  /** Buff id applied on purchase (e.g. 'tonic.lucky_mint'). */
-  buffId: string;
+  kind: TonicKind;
+  /** Buff id (tonic.*) or totem id (lucky_idol …). */
+  id: string;
   price: number;
-  juice: 'plain' | 'rare' | 'cursed';
+  juice: TonicJuice;
 }
 
-/** The four doses on the shelf for `night` of the run with `seed`. Infinite supply within a Night. */
+/** The four slots on the shelf for `night` of the run with `seed`. Infinite supply within a Night. */
 export function tonicStock(seed: number, night: number): TonicOffer[] {
   const rng = createRng(hashSeed(seed, 'apothecary', night));
-  return rng.shuffle([...TONIC_CATALOGUE]).slice(0, SLOTS).map((c) => ({ buffId: c.id, price: c.price, juice: c.juice }));
+  return rng.shuffle([...TONIC_CATALOGUE]).slice(0, SLOTS).map((c) => ({ kind: c.kind, id: c.id, price: c.price, juice: c.juice }));
 }
 
 /** Cursor step over the slots, wrapping. */
@@ -46,5 +59,5 @@ export function priceText(o: TonicOffer | null, fmt: (n: number) => string, free
 
 /** Stock fingerprint so the tags and the ledger repaint only when the shelf changes. */
 export function stockKey(stock: readonly TonicOffer[]): string {
-  return stock.map((o) => `${o.buffId}:${o.price}`).join('|');
+  return stock.map((o) => `${o.kind}:${o.id}:${o.price}`).join('|');
 }

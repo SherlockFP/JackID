@@ -12,11 +12,11 @@
  */
 import * as THREE from 'three';
 import type { Kit, ChipValue } from '@/kit/types';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { PlayerId } from '@/core/types';
 import type { ModHook } from '@/game/types';
 import { fmtCoins, t as tr } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { TableBase } from '@/machines/_base/TableBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
@@ -117,12 +117,19 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
 
   protected createModel(kit: Kit): MachineModel<CrapsParts> { return buildModel(kit, this.modelOpts); }
 
-  init(): void { this.paintAll(); }
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts); shown while seated. */
+  private seatHud?: SeatHud;
+  private shownSecond = -1;
+
+  init(): void { this.seatHud = new SeatHud(this.ctx.ui.root); this.hud(null); this.paintAll(); }
+  dispose(): void { this.seatHud?.dispose(); super.dispose(); }
 
   // ── local input → action to the host ──────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.ruleLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     const seat = this.localSeat;
@@ -529,6 +536,10 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
     const lamps = this.parts.seatLamps;
     const tier = juiceTier(ev.gross, ev.stake);
     const won = ev.gross > ev.stake;
+    if (ev.seat === this.localSeat && ev.stake > 0) {
+      const net = ev.gross - ev.stake;
+      this.seatHud?.result(ev.gross <= 0 ? 'lose' : net > 0 ? 'win' : 'push', net);
+    }
     if (ev.gross > 0) {
       if (ev.seat === this.localSeat) {
         if (won) void this.celebrate(tier, { amount: ev.gross - ev.stake, at: this.parts.stick, lamps: [lamps[ev.seat]], fast: pc.fast, restore: () => this.paintLamps() });
@@ -562,7 +573,12 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
   // ── seats ─────────────────────────────────────────────────────────────────────────────────────
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintLamps();
-    if (local) { this.sfx('chime', { vol: 0.5 }); this.showHud(); }
+    if (local) {
+      this.sfx('chime', { vol: 0.5 });
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip('craps', this.tipLines());
+    }
   }
   onRelease(_pid: PlayerId, seat: number, local: boolean): void {
     if (this.isHost) {
@@ -570,7 +586,7 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
       this.hs.working[seat] = false;
     }
     this.paintLamps();
-    if (local) this.showHud();
+    if (local) { this.seatHud?.hide(); this.hud(null); }
   }
   override onLang(): void { this.paintLayout(); this.drawLast(); this.paintChips(); if (this.isLocalOccupant) this.showHud(); }
 
@@ -627,23 +643,81 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
     this.drawLast();
   }
 
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.craps.hTip1', v: { up: this.k('betUp'), down: this.k('betDown') } },
+      { k: 'm.craps.hTip2', v: { throw: this.k('confirm') } },
+      { k: 'm.craps.hTip3', v: { help: this.k('help') } },
+    ];
+  }
+
+  private ruleLines(): Txt[] {
+    return [
+      { k: 'm.craps.hR1' },
+      { k: 'm.craps.hR2' },
+      { k: 'm.craps.hR3' },
+      { k: 'm.craps.hR4' },
+      { k: 'm.craps.hR5', v: { working: this.k('n2') } },
+      { k: 'm.craps.hR6', v: { clear: this.k('clear') } },
+    ];
+  }
+
+  /** The banner and the countdown: refresh once per displayed second while a window is open. */
+  frame(): void {
+    if (!this.isLocalOccupant) return;
+    const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
+    if (left !== this.shownSecond) { this.shownSecond = left; this.showHud(); }
+  }
+
+  /** Banner, key numbers and the valid controls only. Only while the local player sits at the table. */
   private showHud(): void {
-    const seat = this.localSeat;
-    const hints: HudHint[] = [];
-    const open = this.st.phase === 'comeout' || this.st.phase === 'point';
-    if (open && seat >= 0 && this.st.shooter === seat) hints.push({ action: 'confirm', label: tr('m.craps.throw') });
-    if (seat >= 0) {
-      hints.push({ action: 'n2', label: tr('m.craps.working') });
-      if (this.st.point > 0) hints.push({ action: 'n1', label: tr('m.craps.maxOdds') });
-      hints.push({ action: 'n4', label: tr('m.craps.takeDown') }, { action: 'n5', label: tr('m.craps.horn') });
+    const sh = this.seatHud, seat = this.localSeat;
+    if (!sh || seat < 0) return;
+    const st = this.st;
+    const open = st.phase === 'comeout' || st.phase === 'point';
+    const mine = open && st.shooter === seat;
+    const total = sumBook(this.myBook());
+    sh.goal({ k: 'm.craps.hGoal' });
+
+    // STATE: whose roll it is, and the point
+    const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
+    const secs: Txt | undefined = left > 0 ? { k: 'm.craps.hSecs', v: { n: left } } : undefined;
+    const who: Txt = mine ? { k: 'm.craps.hYouShoot' } : { k: 'm.craps.hShooter', v: { n: st.shooter + 1 } };
+    if (st.phase === 'comeout') sh.state({ k: 'm.craps.hComeout' }, mine ? 'good' : 'gold', secs ?? who);
+    else if (st.phase === 'point') sh.state({ k: 'm.craps.hPoint', v: { n: st.point } }, mine ? 'good' : 'warn', secs ?? who);
+    else if (st.phase === 'busy') sh.state({ k: 'm.craps.hBusy' }, 'cyan');
+    else if (st.phase === 'idle') sh.state({ k: 'm.craps.hWait' }, 'neutral');
+    else sh.state({ k: 'm.craps.hPay' }, 'neutral');
+
+    // KEY NUMBERS: chip, your felt, the point, last roll, working flag, balance
+    const nums: HudNumber[] = [{ label: { k: 'm.craps.hNBet' }, value: fmtCoins(this.bet), tone: 'gold' }];
+    if (total > 0) nums.push({ label: { k: 'm.craps.hNFelt' }, value: fmtCoins(total), tone: 'cyan' });
+    nums.push({ label: { k: 'm.craps.hNPoint' }, value: st.point > 0 ? String(st.point) : tr('m.craps.hOff'), tone: st.point > 0 ? 'gold' : 'neutral' });
+    const last = st.last[0];
+    if (last !== undefined) nums.push({ label: { k: 'm.craps.hNLast' }, value: String(last), tone: last === 7 ? 'bad' : 'neutral' });
+    nums.push({ label: { k: 'm.craps.hNWorking' }, value: tr(st.working[seat] ? 'm.craps.hOn' : 'm.craps.hOff'), tone: st.working[seat] ? 'good' : 'neutral' });
+    nums.push({ label: { k: 'm.craps.hNBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys bound to it
+    const ctrl: HudControl[] = [];
+    ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.craps.hCBet' }, action: 'betUp' });
+    if (mine) ctrl.push({ key: this.k('confirm'), label: { k: 'm.craps.hCThrow' }, action: 'confirm', primary: true });
+    if (open) {
+      ctrl.push({ key: this.k('n2'), label: { k: 'm.craps.hCWorking' }, action: 'n2' });
+      if (st.point > 0) ctrl.push({ key: this.k('n1'), label: { k: 'm.craps.hCMaxOdds' }, action: 'n1' });
+      ctrl.push({ key: this.k('n4'), label: { k: 'm.craps.hCPlace' }, action: 'n4' });
+      ctrl.push({ key: this.k('n5'), label: { k: 'm.craps.hCHorn' }, action: 'n5' });
+      if (st.point > 0) ctrl.push({ key: this.k('n6'), label: { k: 'm.craps.hCOdds' }, action: 'n6' });
+      if (total > 0) ctrl.push({ key: this.k('clear'), label: { k: 'm.craps.hCClear' }, action: 'clear' });
     }
-    hints.push({ action: 'betUp', label: tr('common.bet') }, { action: 'exit', label: tr('common.leave') });
-    const total = seat >= 0 ? sumBook(this.myBook()) : 0;
-    this.hud({
-      bet: open && seat >= 0 ? this.bet : null,
-      hints,
-      stats: total > 0 ? [{ label: this.t('potLabel'), value: fmtCoins(total) }] : [],
-    });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.craps.hCRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.craps.hCLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }
 

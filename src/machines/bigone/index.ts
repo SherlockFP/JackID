@@ -18,10 +18,10 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
 import { countUp, blinkOn } from '@/machines/_base/juice';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { KitX } from '@/kit';
-import { fmtCoins, t } from '@/core/i18n';
+import { fmtCoins } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { TAU } from '@/core/math';
 import { buildModel, type BigOneParts } from './model';
 import {
@@ -108,7 +108,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   private autoLeft = 0;
   private autoSize = AUTO_SIZES[0];
   private fastOn = false;
-  private card = false;
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
   private attractStep = -1;
   private inRound = false;
 
@@ -122,6 +123,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.refresh();
     this.bulbsIdle();
     this.attractor.every('medal', 9, () => this.spinMedal(), { first: 4 });
@@ -140,18 +143,30 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.refresh();
     this.bulbsIdle();
-    if (local) { this.sfx('chime'); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip('bigone', this.tipLines());
+    }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
     if (local) {
       this.autoLeft = 0;
-      this.card = false;
+      this.seatHud?.hide();
       if (this.roundOpen) this.settle({ gross: 0 });   // safety net: never strand a stake
     }
     this.attractor.reset();
     this.refresh();
     this.bulbsIdle();
+  }
+
+  /** E / pause "STAND UP": cancel autoplay now. The current round (if any) still settles, then the seat is released. */
+  protected override onStandUpRequest(): void {
+    if (this.autoLeft === 0) return;
+    this.autoLeft = 0;
+    this.showHud();
   }
 
   onLang(): void {
@@ -163,6 +178,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -173,7 +190,6 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       case 'auto': this.toggleAuto(); break;
       case 'clear': this.cycleAutoSize(); break;
       case 'fast': this.fastOn = !this.fastOn; this.sfx('click'); this.showHud(); break;
-      case 'help': this.card = !this.card; this.sfx('click'); this.drawScreen(); break;
       case 'n1': case 'n2': case 'n3': case 'n4': case 'n5': this.toggleHold(HOLD_KEYS[a]); break;
     }
   }
@@ -346,6 +362,10 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     const s = this.state;
     s.meter = ev.meter;
     s.gross = ev.gross;
+    if (pc.local) {
+      if (ev.curse) this.seatHud?.result('bust', -ev.stake);
+      else this.callout(ev.gross - ev.stake);
+    }
     const code = ev.curse ? 2 : ev.fill ? 3 : ev.gross > 0 ? 1 : 0;
     s.last10 = [code, ...s.last10].slice(0, LAST10);
     this.drawLast10();
@@ -531,16 +551,6 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     this.parts.screens.top.draw((g, sc) => {
       g.fillStyle = '#120406';
       g.fillRect(0, 0, sc.w, sc.h);
-      if (this.card) {
-        sc.text(this.t('cardTitle'), 80, 1, { font: 'px5', color: '#ffd040', align: 'center' });
-        PATTERN_IDS.forEach((pat, i) => {
-          const col = i < 7 ? 4 : 84;
-          const row = i % 7;
-          const mult = pat === 'CLUSTER' ? 'n-5' : String(PATTERN_MULT[pat]);
-          sc.text(`${this.t(`pat_${pat}`)} x${mult}`, col, 9 + row * 5, { font: 'px5', color: '#7dffe0' });
-        });
-        return;
-      }
       sc.text(`${this.t('jackpot')} ${fmtCoins(Math.floor(s.meter))}`, 80, 3, { font: 'px5', color: '#ffd040', align: 'center' });
       if (shown !== undefined) {
         sc.text(`+${fmtCoins(shown)}`, 80, 13, { font: 'px5', color: '#ffd040', align: 'center' });
@@ -572,23 +582,84 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     });
   }
 
-  private showHud(): void {
-    const hints: HudHint[] = this.busy ? [] : [
-      { action: 'primary', label: this.t('spin') },
-      { action: 'betUp', label: t('common.bet') },
-      { action: 'auto', label: this.autoLeft > 0 ? this.t('autoStop') : this.t('auto') },
-      { action: 'help', label: this.t('card') },
-      { action: 'fast', label: this.fastOn ? this.t('fastOn') : this.t('fast') },
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.bigone.tip1', v: { spin: this.k('primary'), stake: `${this.k('betDown')}/${this.k('betUp')}` } },
+      { k: 'm.bigone.tip2', v: { auto: this.k('auto') } },
+      { k: 'm.bigone.tip3', v: { help: this.k('help') } },
     ];
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: this.roundOpen ? null : this.bet,
-      hints,
-      stats: [
-        { label: this.t('jackpot'), value: fmtCoins(Math.floor(this.state.meter)) },
-        { label: this.t('hunger'), value: `${Math.round(this.hungerPct() * 100)}%` },
-      ],
-    });
+  }
+
+  /** The rules card: three rules, then every pattern with its multiplier, four to a line. */
+  private rulesLines(): Txt[] {
+    const lines: Txt[] = ['rule1', 'rule2', 'rule3'].map((k) => ({ k: 'm.bigone.' + k }));
+    for (let i = 0; i < PATTERN_IDS.length; i += 4) {
+      lines.push(PATTERN_IDS.slice(i, i + 4)
+        .map((pat) => `${this.t(`pat_${pat}`)} x${pat === 'CLUSTER' ? 'n-5' : PATTERN_MULT[pat]}`)
+        .join('   '));
+    }
+    return lines;
+  }
+
+  /** Result callout for the local player: `net` = coins back minus the stake. */
+  private callout(net: number): void {
+    this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'lose', net);
+  }
+
+  /** Banner, key numbers and the controls valid right now. Only while the local player sits here. */
+  private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const s = this.state;
+    const busy = this.inRound || this.busy || this.roundOpen;
+    sh.goal({ k: 'm.bigone.goal' });
+
+    // STATE: auto, spinning, a held reel, or ready for the next spin
+    if (this.autoLeft > 0) sh.state({ k: 'm.bigone.stAuto', v: { n: this.autoLeft } }, 'cyan', { k: 'm.bigone.stAutoSub' });
+    else if (busy) sh.state({ k: 'm.bigone.stSpinning' }, 'cyan');
+    else if (s.hold >= 0) sh.state({ k: 'm.bigone.stHold', v: { n: s.hold + 1 } }, 'good', { k: 'm.bigone.stHoldSub' });
+    else sh.state({ k: 'm.bigone.stReady' }, 'gold', { k: 'm.bigone.stReadySub', v: { n: fmtCoins(this.bet) } });
+
+    // KEY NUMBERS: stake, last win, jackpot meter, hunger, balance
+    const hunger = this.hungerPct();
+    const nums: HudNumber[] = [
+      { label: { k: 'm.bigone.nStake' }, value: fmtCoins(this.roundOpen ? this.roundBet : this.bet), tone: 'gold' },
+      { label: { k: 'm.bigone.nLast' }, value: fmtCoins(s.gross), tone: s.gross > 0 ? 'good' : 'neutral' },
+      { label: { k: 'm.bigone.nJackpot' }, value: fmtCoins(Math.floor(s.meter)), tone: 'gold' },
+      { label: { k: 'm.bigone.nHunger' }, value: `${Math.round(hunger * 100)}%`, tone: hunger > 0.7 ? 'bad' : 'neutral' },
+      { label: { k: 'm.bigone.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
+    ];
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now
+    const ctrl: HudControl[] = [];
+    if (this.autoLeft > 0) {
+      ctrl.push({ key: this.k('auto'), label: { k: 'm.bigone.cStopAuto' }, action: 'auto', primary: true });
+    } else {
+      if (!busy) {
+        ctrl.push({ key: this.k('primary'), label: { k: 'm.bigone.cSpin' }, action: 'primary', primary: true });
+        ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.bigone.cStake' }, action: 'betUp' });
+        ctrl.push({ key: this.k('betMax'), label: { k: 'm.bigone.cMax' }, action: 'betMax' });
+      }
+      ctrl.push({ key: this.k('auto'), label: { k: 'm.bigone.cAuto' }, action: 'auto' });
+      if (!busy) {
+        ctrl.push({ key: this.k('clear'), label: { k: 'm.bigone.cSize', v: { n: this.autoSize } }, action: 'clear' });
+        if (this.currentMods().holdOn) ctrl.push({ key: `${this.k('n1')}-${this.k('n5')}`, label: { k: 'm.bigone.cHold' }, action: 'n1' });
+      }
+    }
+    ctrl.push({ key: this.k('fast'), label: { k: this.fastOn ? 'm.bigone.cFastOn' : 'm.bigone.cFast' }, action: 'fast' });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.bigone.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.bigone.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
+  }
+
+  override dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   // ── late join / save ────────────────────────────────────────────────────────────────────────────

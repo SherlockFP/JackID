@@ -14,7 +14,7 @@ import type { ContractState, HeadlessPlay } from '@/game/types';
 import type { MachineInputEvent } from '@/core/input/types';
 import type { HudHint } from '@/core/ui/types';
 import type { KitX } from '@/kit';
-import { fmtNum } from '@/core/i18n';
+import { fmtNum, t as tr } from '@/core/i18n';
 import { lerp } from '@/core/math';
 import { buildModel, STAMP_LIFT, type BountyBoardParts } from './model';
 import {
@@ -235,6 +235,8 @@ export default class BountyBoard extends MachineBase<BountyBoardParts, Ev, null>
     const d = this.ctx.run.contracts.defs().find((x) => x.id === defId);
     const n = ticketReward(d);
     if (n > 0) return this.t('pays', { n: `${n}T` });
+    const totem = d?.reward.totems?.[0];
+    if (totem) return this.t('pays', { n: tr(`totem.${totem}.name`) });
     const frac = d?.reward.coins;
     if (frac && typeof frac === 'object') return this.t('pays', { n: `${Math.round(frac.quotaFrac * 100)}%` });
     return '--';

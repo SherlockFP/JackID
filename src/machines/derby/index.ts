@@ -15,11 +15,11 @@
  */
 import type { PanelButton } from '@/kit/types';
 import type { KitX } from '@/kit/index';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { PlayerId } from '@/core/types';
 import { fmtCoins, t as tr } from '@/core/i18n';
 import { TableBase } from '@/machines/_base/TableBase';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
 import { buildModel, GATE_DOWN_Y, GATE_UP_Y, RATS, RAT_COLORS, ratX, type DerbyParts } from './model';
@@ -29,6 +29,7 @@ import {
   weighted,
   type Bet, type BetType, type Mods, type Odds,
 } from './rules';
+const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.derby.' + k }));
 import { STRINGS } from './derby.strings';
 
 export { playHeadless };
@@ -80,12 +81,22 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
   /** Tote view state (local): what the board shows and the scramble frame while odds flip. */
   private view: { mode: ToteMode; scramble: number } = { mode: 'last', scramble: 0 };
   private attractIdx = -1;
+  /** Seat HUD overlay (goal, state, key numbers, controls, result callout, tip and rules cards). */
+  private seatHud?: SeatHud;
+  private hudSig = '';
 
   protected createModel(kit: KitX): MachineModel<DerbyParts> { return buildModel(kit, this.modelOpts); }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.parts.gate.position.y = GATE_UP_Y;
     this.paintAll();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   /** Number of runners in the printed field (six, seven once The Albino is in). */
@@ -95,6 +106,8 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     const digit = NUM_ACTIONS.indexOf(a as (typeof NUM_ACTIONS)[number]);
@@ -452,6 +465,11 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
     } else {
       this.sfx('lose', { vol: 0.5 });
     }
+    const mineRow = ev.seats.find((r) => r.seat === this.localSeat);
+    if (mineRow && mineRow.stake > 0) {
+      const net = mineRow.gross - mineRow.stake;
+      this.seatHud?.result(mineRow.gross <= 0 ? 'lose' : net === 0 ? 'push' : 'win', net, 1.5);
+    }
     for (const r of ev.seats) {
       if (r.gross <= 0 && r.stake > 0) {
         if (r.seat === this.localSeat) {
@@ -515,7 +533,14 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
   // ── seats ─────────────────────────────────────────────────────────────────────────────────────
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintLamps();
-    if (local) { this.sfx('chime', { vol: 0.5 }); this.showHud(); }
+    if (local) {
+      this.sfx('chime', { vol: 0.5 });
+      this.hud(null);
+      this.seatHud?.show();
+      this.hudSig = '';
+      this.showHud();
+      this.seatHud?.firstTip('derby', this.tipLines());
+    }
   }
   onRelease(_pid: PlayerId, seat: number, local: boolean): void {
     if (this.isHost && this.hs.phase === 'open' && this.hs.bets[seat].length) {
@@ -523,10 +548,19 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
       this.unready(seat);
       void this.emit({ k: 'lay', seat, bets: [] });
     }
-    if (local) this.slip.p = [];
+    if (local) { this.slip.p = []; this.hud(null); this.seatHud?.hide(); }
     this.paintLamps();
   }
-  override onLang(): void { this.paintTote(); this.paintLamps(); if (this.isLocalOccupant) this.showHud(); }
+  override onLang(): void {
+    this.paintTote(); this.paintLamps();
+    this.hudSig = '';
+    if (this.isLocalOccupant) this.showHud();
+  }
+
+  /** Redraws the banner and countdown when something changed (cheap: the signature gates the DOM). */
+  frame(_dt: number, _t: number): void {
+    if (this.isLocalOccupant) this.showHud();
+  }
 
   /** Idle: lane lamps chase along the rail so the cabinet reads as alive. */
   attract(_dt: number, time: number): void {
@@ -637,29 +671,78 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
     return o.quinella[quinellaIndex(n, a, b)] ?? null;
   }
 
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.derby.tip1', v: { pick: `${this.k('n1')}-${this.k('n6')}`, win: this.k('n7'), place: this.k('n8'), exacta: this.k('n9') } },
+      { k: 'm.derby.tip2', v: { go: this.k('confirm') } },
+      { k: 'm.derby.tip3', v: { help: this.k('help') } },
+    ];
+  }
+
+  /** Banner, key numbers and valid controls for the local player. Redraws only when something changed. */
   private showHud(): void {
+    const sh = this.seatHud;
     const seat = this.localSeat;
-    const hints: HudHint[] = [];
-    const open = this.st.phase === 'open';
-    if (seat >= 0) {
-      if (open) hints.push({ action: 'confirm', label: this.st.ready[seat] ? tr('m.derby.ready') : tr('m.derby.placeBet') });
-      hints.push({ action: 'n1', label: tr('m.derby.hintRats') }, { action: 'n7', label: tr('m.derby.win') });
-      hints.push({ action: 'n8', label: tr('m.derby.place') }, { action: 'n9', label: tr('m.derby.exacta') });
-      if (open) hints.push({ action: 'clear', label: tr('m.derby.clear') });
-    }
-    hints.push({ action: 'betUp', label: tr('common.bet') }, { action: 'exit', label: tr('common.leave') });
-    const total = this.myBets().reduce((s, b) => s + b.a, 0);
+    if (!sh || seat < 0) return;
+    const ph = this.st.phase, open = ph === 'open';
+    const bets = this.myBets();
+    const total = bets.reduce((s, b) => s + b.a, 0);
+    const ready = this.st.ready[seat] === true;
+    const need = PICKS_NEEDED[this.slip.t];
+    const complete = this.slip.p.length === need;
     const odds = this.hudSlipOdds();
-    const picks = this.slip.p.map((p) => p + 1).join('-');
-    const slipText = `${tr(`m.derby.${this.slip.t}`)} ${picks || '?'}${odds !== null ? ` ×${odds.toFixed(1)}` : ''}`;
-    this.hud({
-      bet: open && seat >= 0 ? this.bet : null,
-      hints,
-      stats: [
-        ...(total > 0 ? [{ label: this.t('potLabel'), value: fmtCoins(total) }] : []),
-        ...(seat >= 0 ? [{ label: tr('m.derby.slip'), value: slipText }] : []),
-      ],
-    });
+    const left = this.timerState && open ? Math.ceil(this.timerLeft) : 0;
+    const wallet = this.ctx.run.wallet();
+    const last = this.st.history[0];
+    const sig = [ph, seat, ready, total, bets.length, this.bet, this.slip.t, this.slip.p.join(','), odds ?? '-', left,
+      last ?? -1, wallet, this.st.raceNo].join('|');
+    if (sig === this.hudSig) return;
+    this.hudSig = sig;
+    sh.goal({ k: 'm.derby.goal' });
+
+    // STATE: betting window, race, photo, result
+    const secs: Txt | undefined = left > 0 ? { k: 'm.derby.stSecs', v: { n: left } } : undefined;
+    if (ph === 'idle') sh.state({ k: 'm.derby.stWait' }, 'neutral');
+    else if (ph === 'odds') sh.state({ k: 'm.derby.stOdds' }, 'neutral');
+    else if (open && ready) sh.state({ k: 'm.derby.stReady' }, 'good', secs);
+    else if (open) sh.state({ k: 'm.derby.stBet' }, 'gold', secs);
+    else if (ph === 'lock') sh.state({ k: 'm.derby.stLock' }, 'warn');
+    else if (ph === 'race') sh.state({ k: 'm.derby.stRace' }, 'cyan');
+    else if (ph === 'photo') sh.state({ k: 'm.derby.stPhoto' }, 'cyan');
+    else if (ph === 'result') sh.state({ k: 'm.derby.stResult' }, 'neutral', last === undefined ? undefined : { k: 'm.derby.stLast', v: { n: last + 1 } });
+    else if (ph === 'payout') sh.state({ k: 'm.derby.stPay' }, 'neutral');
+    else sh.state({ k: 'm.derby.stReset' }, 'neutral');
+
+    // KEY NUMBERS: the slip being built (type, picks, odds), your bets, the chip, the last winner, balance
+    const slipPicks = this.slip.p.map((p) => p + 1).join('-') || '?';
+    const slipText = `${tr(`m.derby.${this.slip.t}`)} ${slipPicks}${odds !== null ? ` x${odds.toFixed(1)}` : ''}`;
+    const nums: HudNumber[] = [
+      { label: { k: 'm.derby.nSlip' }, value: slipText, tone: complete ? 'good' : 'gold' },
+      { label: { k: 'm.derby.nBets' }, value: fmtCoins(total), tone: total > 0 ? 'gold' : 'neutral' },
+      { label: { k: 'm.derby.nChip' }, value: fmtCoins(this.bet), tone: 'cyan' },
+    ];
+    if (last !== undefined) nums.push({ label: { k: 'm.derby.nLast' }, value: `#${last + 1}`, tone: 'neutral' });
+    nums.push({ label: { k: 'm.derby.nBalance' }, value: fmtCoins(wallet), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now
+    const ctrl: HudControl[] = [];
+    if (open && !ready) {
+      if (complete) ctrl.push({ key: this.k('confirm'), label: { k: 'm.derby.cPlace' }, action: 'confirm', primary: true });
+      else if (bets.length > 0) ctrl.push({ key: this.k('confirm'), label: { k: 'm.derby.cReady' }, action: 'confirm', primary: true });
+      ctrl.push({ key: `${this.k('n1')}-${this.k('n6')}`, label: { k: 'm.derby.cRat' }, action: 'n1' });
+      ctrl.push({ key: this.k('n7'), label: { k: 'm.derby.cWin' }, action: 'n7' });
+      ctrl.push({ key: this.k('n8'), label: { k: 'm.derby.cPlaceType' }, action: 'n8' });
+      ctrl.push({ key: this.k('n9'), label: { k: 'm.derby.cExacta' }, action: 'n9' });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.derby.cChip' }, action: 'betUp' });
+      if (bets.length > 0) ctrl.push({ key: this.k('clear'), label: { k: 'm.derby.cClear' }, action: 'clear' });
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.derby.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.derby.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }
 

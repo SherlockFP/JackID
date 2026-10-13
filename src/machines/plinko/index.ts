@@ -22,10 +22,10 @@ import * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { Kit } from '@/kit/types';
-import { fmtCoins, t } from '@/core/i18n';
+import { fmtCoins, t, type I18nVars } from '@/core/i18n';
 import { lerp, TAU } from '@/core/math';
 import { buildModel, pegX, pegY, slotX, FUNNEL_Y, LAND_Y, ROWS, DX, RISK_ANGLE, type PlinkoParts } from './model';
 import {
@@ -128,12 +128,16 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
   /** Authority-side fractional payout carried between drops (per machine instance). */
   private dust = 0;
   private readonly dummy = new THREE.Object3D();
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: Kit): MachineModel<PlinkoParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     const pegs = this.parts.pegs;
     if (!pegs.instanceColor) pegs.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(pegs.count * 3).fill(1), 3);
     this.refresh();
@@ -148,12 +152,23 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.refresh();
     this.idleChase();
-    if (local) { this.sfx('chime'); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip(this.def.id, this.tipLines());
+    }
   }
 
-  onRelease(_pid: number, _seat: number, _local: boolean): void {
+  onRelease(_pid: number, _seat: number, local: boolean): void {
+    if (local) this.seatHud?.hide();
     this.refresh();
     this.idleChase();
+  }
+
+  override dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   onLang(): void {
@@ -165,6 +180,8 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet && a !== 'up' && a !== 'down') return;
     switch (a) {
@@ -343,6 +360,8 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
   private async verdict(ev: { k: 'drop' } & DropEv): Promise<void> {
     const { marquee } = this.parts;
     const tier = juiceTier(ev.gross, ev.bet, ev.tags);
+    const net = ev.gross - ev.bet;
+    if (this.isLocalOccupant) this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'lose', net);
     this.drawLeds(ev.gross);
     if (ev.edge && ev.risk === 2) void this.edgeAlarm();
     if (ev.gross > 0) {
@@ -449,24 +468,48 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
     });
   }
 
+  /** Seat HUD: goal, phase banner, key numbers and the valid controls only. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const s = this.state;
-    const bet = this.bet * s.pucks;
-    const hints: HudHint[] = this.busy ? [] : [
-      { action: 'primary', label: `${this.t('hintDrop')} ${fmtCoins(bet)}` },
-      { action: 'up', label: `${this.t('hintPucks')} ${s.pucks}` },
-      { action: 'betUp', label: `${this.t('hintStake')} ${fmtCoins(this.bet)}` },
-      { action: 'n1', label: this.t('hintRisk') },
+    const live = this.roundOpen || this.busy;
+    const risk = this.t(RISK_KEYS[clampRisk(s.risk)]);
+    sh.goal(this.tx('goal'));
+    if (live) sh.state(this.tx('stFall'), 'cyan');
+    else sh.state(this.tx('stReady'), 'gold', this.tx('stReadySub', { risk }));
+    sh.numbers([
+      { label: this.tx('nBet'), value: fmtCoins(live ? this.roundBet : this.bet * s.pucks), tone: 'gold' },
+      { label: this.tx('nPucks'), value: String(s.pucks), tone: 'cyan' },
+      { label: this.tx('nRisk'), value: risk, tone: 'neutral' },
+      { label: this.tx('nLast'), value: s.hist.length ? `×${baseMult(s.risk as Risk, s.hist[0])}` : '-', tone: 'good' },
+      { label: this.tx('nBalance'), value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
+    ]);
+    const ctrl: HudControl[] = [];
+    if (!live) {
+      ctrl.push({ key: this.k('primary'), label: this.tx('cDrop'), action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('up')}/${this.k('down')}`, label: this.tx('cPucks'), action: 'up' });
+      ctrl.push({ key: `${this.k('n1')}-${this.k('n3')}`, label: this.tx('cRisk'), action: 'n1' });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: this.tx('cStake'), action: 'betUp' });
+    }
+    ctrl.push({ key: this.k('help'), label: this.tx('cRules'), action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: this.tx('cLeave'), action: 'exit' });
+    sh.controls(ctrl);
+  }
+
+  // ── seat HUD helpers ────────────────────────────────────────────────────────────────────────────
+  private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.${this.def.id}.${key}`, v } : { k: `m.${this.def.id}.${key}` }; }
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+  private tipLines(): Txt[] {
+    return [
+      this.tx('tip1', { risk: `${this.k('n1')}-${this.k('n3')}`, pucks: `${this.k('up')}/${this.k('down')}` }),
+      this.tx('tip2', { drop: this.k('primary') }),
+      this.tx('tip3', { help: this.k('help') }),
     ];
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: this.roundOpen ? null : bet,
-      hints,
-      stats: [
-        { label: this.t('risk'), value: this.t(RISK_KEYS[clampRisk(s.risk)]) },
-        { label: this.t('potLabel'), value: fmtCoins(this.roundOpen ? this.roundBet : bet) },
-      ],
-    });
+  }
+  private rulesLines(): Txt[] {
+    return [this.tx('rule1'), this.tx('rule2'), this.tx('rule3'), this.tx('rule4', { keys: `${this.k('betDown')}/${this.k('betUp')}` }), this.tx('rule5')];
   }
 
   // ── late join / save ────────────────────────────────────────────────────────────────────────────

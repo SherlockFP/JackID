@@ -12,12 +12,12 @@
  * the screen shakes) → follow-through (tier celebration, commiseration or the "1 TO GO" amber blink).
  */
 import type { KitX } from '@/kit';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { PlayerId } from '@/core/types';
 import type { ModHook } from '@/game/types';
 import { fmtCoins, t as tr } from '@/core/i18n';
 import { TableBase } from '@/machines/_base/TableBase';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier, tierTags } from '@/machines/_base/tiers';
 import { buildModel, commitBoard, setLamp, type BingoDesk, type BingoParts } from './model';
@@ -37,6 +37,7 @@ const OFFER_S = 6;             // extra-ball offer window
 const REVEAL_S = 1.4;          // one extra ball on screen
 const AWARD_S = 2.0;
 const LETTERS = ['B', 'I', 'N', 'G', 'O'] as const;
+const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.bingo.' + k }));
 const GOLD = 0xffd040, GREEN = 0x7dff7a, RED = 0xff3b30, AMBER = 0xffb000;
 const PATTERN_KEY: Record<string, string> = {
   line: 'pLine', corners: 'pCorners', double: 'pDouble', triple: 'pTriple', x: 'pX', frame: 'pFrame', none: 'pNone',
@@ -83,10 +84,23 @@ export default class BingoHall extends TableBase<BingoParts, Ev, Snap, Act> {
   /** Local only: the seated player's card count and the open extra-ball offer. */
   private cardCount = 1;
   private offerLocal: { price: number; n: number; pattern: string } | null = null;
+  /** Seat HUD overlay (goal, state, key numbers, controls, result callout, tip and rules cards). */
+  private seatHud?: SeatHud;
+  private hudSig = '';
 
   protected createModel(kit: KitX): MachineModel<BingoParts> { return buildModel(kit, this.modelOpts); }
 
-  init(): void { this.paintBoardScreen(); this.paintAll(); }
+  init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
+    this.paintBoardScreen();
+    this.paintAll();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
 
   private adjust(): Adj { return (name, base) => this.mod(`m.bingo.${name}` as ModHook, base); }
   private cap(): number { return CARD_CAP + Math.max(0, Math.round(this.mod('m.bingo.cardSlotsAdd' as ModHook, 0))); }
@@ -96,6 +110,8 @@ export default class BingoHall extends TableBase<BingoParts, Ev, Snap, Act> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     const seat = this.localSeat;
@@ -364,7 +380,12 @@ export default class BingoHall extends TableBase<BingoParts, Ev, Snap, Act> {
         b.left = true;                                                      // mid-round: the stake is forfeit
       }
     }
-    if (local) { this.cardCount = Math.min(this.cardCount, this.cap()); this.offerLocal = null; this.showHud(); }
+    if (local) {
+      this.cardCount = Math.min(this.cardCount, this.cap());
+      this.offerLocal = null;
+      this.hud(null);
+      this.seatHud?.hide();
+    }
     this.paintLamps();
   }
 
@@ -464,6 +485,10 @@ export default class BingoHall extends TableBase<BingoParts, Ev, Snap, Act> {
     const mine = ev.seat === this.localSeat;
     const tags = frame ? ['jackpot'] : [];
     for (const c of ev.cards) if (c.nearmiss && desk) void desk.oneToGo.blink(6, 1.0);
+    if (mine) {
+      const net = ev.total - ev.stake;
+      this.seatHud?.result(ev.total === 0 ? 'lose' : frame ? 'win' : net === 0 ? 'even' : net > 0 ? 'win' : 'lose', net, 1.5);
+    }
     if (ev.total > 0) {
       const tier = juiceTier(ev.total, ev.stake, tags);
       const text = frame ? this.t('jackpot', { n: fmtCoins(ev.total) }) : this.t('win', { n: fmtCoins(ev.total) });
@@ -518,17 +543,26 @@ export default class BingoHall extends TableBase<BingoParts, Ev, Snap, Act> {
   // ── seats ─────────────────────────────────────────────────────────────────────────────────────
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintLamps();
-    if (local) { this.sfx('chime', { vol: 0.5 }); this.showHud(); }
+    if (local) {
+      this.sfx('chime', { vol: 0.5 });
+      this.hud(null);
+      this.seatHud?.show();
+      this.hudSig = '';
+      this.showHud();
+      this.seatHud?.firstTip('bingo', this.tipLines());
+    }
   }
 
   override onLang(): void {
     this.paintAll();
+    this.hudSig = '';
     if (this.isLocalOccupant) this.showHud();
   }
 
   /** The Caller's countdown runs on the balls LED while the buy window is open (visual only). */
   frame(_dt: number, _t: number): void {
     if (this.timerState && this.st.phase === 'buy') this.parts.leds.balls.set(String(Math.ceil(this.timerLeft)).padStart(2, '0'));
+    if (this.isLocalOccupant) this.showHud();              // cheap: only redraws the HUD when its content changed
   }
 
   // ── state helpers (presentation) ──────────────────────────────────────────────────────────────
@@ -621,37 +655,77 @@ export default class BingoHall extends TableBase<BingoParts, Ev, Snap, Act> {
     }
   }
 
-  private showHud(): void {
-    const seat = this.localSeat;
-    const ph = this.st.phase;
-    const hints: HudHint[] = [];
-    if (seat >= 0) {
-      if (ph === 'buy') hints.push({ action: 'confirm', label: this.t('hintBuy') }, { action: 'n6', label: this.t('hintCards') });
-      if (this.offerLocal) hints.push({ action: 'n5', label: this.t('hintExtra') }, { action: 'clear', label: this.t('hintDecline') });
-    }
-    hints.push({ action: 'betUp', label: tr('common.bet') }, { action: 'exit', label: tr('common.leave') });
-    const stats = [
-      { label: this.t('statusLbl'), value: this.statusText() },
-      { label: this.t('cardsLbl'), value: String(this.cardCount) },
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.bingo.tip1' },
+      { k: 'm.bingo.tip2', v: { buy: this.k('confirm'), cards: this.k('n6'), bet: `${this.k('betDown')}/${this.k('betUp')}` } },
+      { k: 'm.bingo.tip3', v: { help: this.k('help') } },
     ];
-    if (this.offerLocal) stats.push({ label: this.t('offerTitle'), value: fmtCoins(this.offerLocal.price) });
-    this.hud({
-      bet: seat >= 0 && ph === 'buy' ? this.bet : null,
-      hints,
-      stats,
-    });
   }
 
-  private statusText(): string {
-    const ph = this.st.phase;
-    if (ph === 'buy') return this.timerState ? this.t('sBuy', { n: Math.ceil(this.timerLeft) }) : this.t('sBuyOpen');
-    if (ph === 'lock') return this.t('sLock');
-    if (ph === 'call') return this.t('sCall', { n: this.st.called.length });
-    if (ph === 'extra') return this.offerLocal
-      ? this.t('sOffer', { n: Math.ceil(this.timerLeft) })
-      : this.t('ballNo', { n: this.st.called.length });
-    if (ph === 'award') return this.t('sAward');
-    return this.t('sIdle');
+  /** Banner, key numbers and valid controls for the local player. Redraws only when something changed. */
+  private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const seat = this.localSeat, ph = this.st.phase, called = this.st.called;
+    const mine = this.st.seats.find((x) => x.seat === seat);
+    const offer = this.offerLocal;
+    const left = this.timerState && (ph === 'buy' || (ph === 'extra' && offer)) ? Math.ceil(this.timerLeft) : 0;
+    const wallet = this.ctx.run.wallet();
+    const sig = [ph, seat, this.bet, this.cardCount, mine?.cards.length ?? 0, mine?.stake ?? 0, called.length,
+      offer ? `${offer.n}:${offer.price}` : '', left, wallet].join('|');
+    if (sig === this.hudSig) return;
+    this.hudSig = sig;
+    sh.goal({ k: 'm.bingo.goal' });
+
+    // STATE: buy window, cage, calls, extra-ball offer, payout
+    const secs: Txt | undefined = left > 0 ? { k: 'm.bingo.stSecs', v: { n: left } } : undefined;
+    if (offer) {
+      sh.state({ k: 'm.bingo.stOffer' }, 'warn', { k: 'm.bingo.stOfferSub', v: { ball: `${letterOf(offer.n)} ${offer.n}`, price: fmtCoins(offer.price), n: left } });
+    } else if (ph === 'buy') {
+      if (mine) sh.state({ k: 'm.bingo.stIn' }, 'good', secs);
+      else sh.state({ k: 'm.bingo.stBuy' }, 'gold', secs);
+    } else if (ph === 'lock') sh.state({ k: 'm.bingo.stLock' }, 'warn');
+    else if (ph === 'call') sh.state({ k: 'm.bingo.stCall' }, 'neutral', { k: 'm.bingo.stCallSub', v: { n: called.length } });
+    else if (ph === 'extra') sh.state({ k: 'm.bingo.stExtra' }, 'cyan');
+    else if (ph === 'award') sh.state({ k: 'm.bingo.stAward' }, 'neutral');
+    else sh.state({ k: 'm.bingo.stIdle' }, 'neutral');
+
+    // KEY NUMBERS
+    const nums: HudNumber[] = [];
+    if (mine) {
+      nums.push({ label: { k: 'm.bingo.nMyCards' }, value: String(mine.cards.length), tone: 'good' });
+      nums.push({ label: { k: 'm.bingo.nStake' }, value: fmtCoins(mine.stake), tone: 'gold' });
+    } else if (ph === 'buy') {
+      nums.push({ label: { k: 'm.bingo.nCards' }, value: String(this.cardCount), tone: 'gold' });
+      nums.push({ label: { k: 'm.bingo.nStake' }, value: fmtCoins(this.bet), tone: 'gold' });
+      nums.push({ label: { k: 'm.bingo.nTotal' }, value: fmtCoins(this.cardCount * this.bet), tone: 'gold' });
+    }
+    if (called.length) {
+      const last = called[called.length - 1];
+      nums.push({ label: { k: 'm.bingo.nLast' }, value: `${letterOf(last)} ${last}`, tone: 'cyan' });
+      nums.push({ label: { k: 'm.bingo.nCalled' }, value: `${called.length}/40`, tone: 'neutral' });
+    }
+    nums.push({ label: { k: 'm.bingo.nBalance' }, value: fmtCoins(wallet), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now
+    const ctrl: HudControl[] = [];
+    if (ph === 'buy' && !mine) {
+      ctrl.push({ key: this.k('confirm'), label: { k: 'm.bingo.cBuy', v: { n: this.cardCount } }, action: 'confirm', primary: true });
+      ctrl.push({ key: this.k('n6'), label: { k: 'm.bingo.cCards' }, action: 'n6' });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.bingo.cBet' }, action: 'betUp' });
+    }
+    if (offer) {
+      ctrl.push({ key: this.k('n5'), label: { k: 'm.bingo.cBall', v: { price: fmtCoins(offer.price) } }, action: 'n5', primary: true });
+      ctrl.push({ key: this.k('clear'), label: { k: 'm.bingo.cNo' }, action: 'clear' });
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.bingo.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.bingo.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }
 

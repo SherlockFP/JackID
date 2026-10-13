@@ -103,7 +103,8 @@ export class LobbyClient {
       const timer = setTimeout(() => finish(false), timeoutMs);
       try { ws = new WebSocket(this.url); } catch { finish(false); return; }
       this.ws = ws;
-      ws.onopen = () => this.raw({ op: 'hi', v: PROTO, name: 'JackID' });
+      // `raw()` only sends once `peer` is set (after welcome), so the handshake frame goes straight to the socket.
+      ws.onopen = () => { try { ws.send(JSON.stringify({ op: 'hi', v: PROTO, name: 'JackID' })); } catch { finish(false); } };
       ws.onmessage = (e: MessageEvent<string>) => {
         const m = parseMsg(e.data);
         if (!m) return;

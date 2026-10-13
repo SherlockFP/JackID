@@ -10,11 +10,11 @@
  */
 import * as THREE from 'three';
 import type { Kit, LampPart, ChipValue } from '@/kit/types';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { PlayerId } from '@/core/types';
 import type { ModHook } from '@/game/types';
 import { fmtCoins, t as tr } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { TableBase } from '@/machines/_base/TableBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
@@ -100,12 +100,18 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
 
   protected createModel(kit: Kit): MachineModel<RouletteParts> { return buildModel(kit, this.modelOpts); }
 
-  init(): void { this.paintAll(); }
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts); shown while seated. */
+  private seatHud?: SeatHud;
+
+  init(): void { this.seatHud = new SeatHud(this.ctx.ui.root); this.hud(null); this.paintAll(); }
+  dispose(): void { this.seatHud?.dispose(); super.dispose(); }
 
   // ── local input → action to the host ──────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.ruleLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -335,6 +341,8 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
 
   /** Action: the wheel and the ball run in opposite directions, the ball decays onto the pocket. */
   private async spinShow(ev: Extract<Ev, { k: 'spin' }>, pc: PresentCtx): Promise<void> {
+    this.st.phase = 'spin';
+    if (this.isLocalOccupant) this.showHud();
     const { rotor, ballPivot, rim, dolly, ball } = this.parts;
     const a = pocketAngle(ev.pocket);
     const rStart = rotor.rotation.y;
@@ -392,6 +400,11 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
       if (r.gross > 0) this.ctx.fx.popText(seatTile.root, tr('m.roulette.win', { n: fmtCoins(r.gross) }), r.gross > r.stake ? GOLD : GREEN, { dur: 1.2, rise: 0.3 });
     }
     this.ctx.ui.toast(tr('m.roulette.winNum', { n: ev.pocket, color: tr(`m.roulette.${colorOf(ev.pocket)}`) }), 'sys');
+    const mine = ev.seats.find((r) => r.seat === this.localSeat && r.stake > 0);
+    if (mine && this.isLocalOccupant) {
+      const net = mine.gross - mine.stake;
+      this.seatHud?.result(mine.gross <= 0 ? 'lose' : net > 0 ? 'win' : 'push', net);
+    }
     if (ev.rerolled) this.ctx.fx.glow(wheel, GREEN, 0.4, 0.6);
     if (!pc.fast) await this.wait(PAYOUT_S * 0.5);
     this.drawHistory();
@@ -410,7 +423,12 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
   // ── seats ─────────────────────────────────────────────────────────────────────────────────────
   onOccupy(_pid: PlayerId, seat: number, local: boolean): void {
     this.paintLamps();
-    if (local) { this.sfx('chime', { vol: 0.5 }); this.showHud(); }
+    if (local) {
+      this.sfx('chime', { vol: 0.5 });
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip('roulette', this.tipLines());
+    }
   }
   onRelease(_pid: PlayerId, seat: number, local: boolean): void {
     if (this.isHost && this.hs.phase === 'open' && this.hs.layouts[seat].length) {
@@ -418,7 +436,7 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
       this.unready(seat);
       void this.emit({ k: 'lay', seat, bets: [] });
     }
-    if (local) this.lastMine = [];
+    if (local) { this.lastMine = []; this.seatHud?.hide(); this.hud(null); }
     this.paintLamps();
   }
   override onLang(): void { this.drawHistory(); this.paintChips(); if (this.isLocalOccupant) this.showHud(); }
@@ -479,22 +497,82 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     this.parts.dolly.visible = false;
   }
 
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** Refreshes the banner once per displayed second of the shared betting window. */
+  private shownSecond = -1;
+  frame(): void {
+    if (!this.isLocalOccupant) return;
+    const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
+    if (left !== this.shownSecond) { this.shownSecond = left; this.showHud(); }
+  }
+
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.roulette.hTip1', v: { up: this.k('betUp'), down: this.k('betDown') } },
+      { k: 'm.roulette.hTip2', v: { ready: this.k('confirm') } },
+      { k: 'm.roulette.hTip3', v: { help: this.k('help') } },
+    ];
+  }
+
+  private ruleLines(): Txt[] {
+    const keys: Txt[] = ['hR1', 'hR2', 'hR3', 'hR4', 'hR5'].map((k) => ({ k: `m.roulette.${k}` }));
+    return [...keys, { k: 'm.roulette.hR6', v: { rebet: this.k('double') } }];
+  }
+
+  /** Banner, key numbers and the valid controls only. Only while the local player sits at the table. */
   private showHud(): void {
-    const seat = this.localSeat;
-    const hints: HudHint[] = [];
-    const open = this.st.phase === 'open';
-    if (open && seat >= 0) {
-      hints.push({ action: 'confirm', label: this.st.ready[seat] ? tr('m.roulette.ready') : tr('m.roulette.spin') });
-      hints.push({ action: 'clear', label: tr('m.roulette.clear') }, { action: 'double', label: tr('m.roulette.rebet') });
-      hints.push({ action: 'n2', label: tr('m.roulette.callZero') }, { action: 'n3', label: tr('m.roulette.callThird') });
+    const sh = this.seatHud, seat = this.localSeat;
+    if (!sh || seat < 0) return;
+    const st = this.st, open = st.phase === 'open';
+    const ready = st.ready[seat];
+    const betting = open && !ready;
+    const layout = this.myBets().reduce((s, b) => s + b.a, 0);
+    sh.goal({ k: 'm.roulette.hGoal' });
+
+    // STATE: what phase, and what you have to do
+    if (st.phase === 'idle') sh.state({ k: 'm.roulette.hWait' }, 'neutral');
+    else if (open && ready) sh.state({ k: 'm.roulette.hReady' }, 'cyan');
+    else if (open) {
+      const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
+      sh.state({ k: 'm.roulette.hBet' }, 'gold', left > 0 ? { k: 'm.roulette.hSecs', v: { n: left } } : undefined);
     }
-    hints.push({ action: 'betUp', label: tr('common.bet') }, { action: 'exit', label: tr('common.leave') });
-    const total = this.myBets().reduce((s, b) => s + b.a, 0);
-    this.hud({
-      bet: open && seat >= 0 ? this.bet : null,
-      hints,
-      stats: total > 0 ? [{ label: this.t('potLabel'), value: fmtCoins(total) }] : [],
-    });
+    else if (st.phase === 'lock') sh.state({ k: 'm.roulette.hLock' }, 'warn');
+    else if (st.phase === 'spin') sh.state({ k: 'm.roulette.hSpin' }, 'cyan');
+    else if (st.phase === 'payout') sh.state({ k: 'm.roulette.hPay' }, 'neutral');
+    else sh.state({ k: 'm.roulette.hClear' }, 'neutral');
+
+    // KEY NUMBERS: chip, your layout, last pocket, balance
+    const nums: HudNumber[] = [{ label: { k: 'm.roulette.hNBet' }, value: fmtCoins(this.bet), tone: 'gold' }];
+    if (layout > 0) nums.push({ label: { k: 'm.roulette.hNLayout' }, value: fmtCoins(layout), tone: 'cyan' });
+    const last = st.history[0];
+    if (last !== undefined) {
+      const c = colorOf(last);
+      nums.push({ label: { k: 'm.roulette.hNLast' }, value: `${last} ${tr(`m.roulette.${c}`)}`, tone: c === 'red' ? 'bad' : c === 'green' ? 'good' : 'neutral' });
+    }
+    nums.push({ label: { k: 'm.roulette.hNBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys bound to it
+    const ctrl: HudControl[] = [];
+    if (betting || st.phase === 'idle') ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.roulette.hCBet' }, action: 'betUp' });
+    if (betting && layout > 0) {
+      const many = this.humans().length >= 2;
+      ctrl.push({ key: this.k('confirm'), label: { k: many ? 'm.roulette.hCReady' : 'm.roulette.hCSpin' }, action: 'confirm', primary: true });
+      ctrl.push({ key: this.k('clear'), label: { k: 'm.roulette.hCClear' }, action: 'clear' });
+    }
+    if (betting && this.lastMine.length > 0) ctrl.push({ key: this.k('double'), label: { k: 'm.roulette.hCRebet' }, action: 'double' });
+    if (betting) {
+      ctrl.push({ key: this.k('n2'), label: { k: 'm.roulette.hCZero' }, action: 'n2' });
+      ctrl.push({ key: this.k('n3'), label: { k: 'm.roulette.hCThird' }, action: 'n3' });
+      ctrl.push({ key: this.k('n4'), label: { k: 'm.roulette.hCOrph' }, action: 'n4' });
+      ctrl.push({ key: this.k('n5'), label: { k: 'm.roulette.hCZeroGame' }, action: 'n5' });
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.roulette.hCRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.roulette.hCLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }
 

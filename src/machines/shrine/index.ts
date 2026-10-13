@@ -11,8 +11,8 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import type { HeadlessPlay } from '@/game/types';
 import type { PlayerId } from '@/core/types';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import { fmtNum } from '@/core/i18n';
 import { lerp } from '@/core/math';
@@ -61,12 +61,16 @@ export default class Shrine extends MachineBase<ShrineParts, Ev, ShrineState> {
   private st: ShrineState = { lit: 0, watch: {} };
   private repaintKey = '';
   private hudKey = '';
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: KitX): MachineModel<ShrineParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.ctx.ui.machineHud(null);                          // the seat HUD replaces the generic bottom bar
     this.refresh(true);
     this.attractor.every('ember', 5, () => this.ctx.fx.glow(this.model.anchors.light, FLAME, 0.3, 0.6), { first: 2 });
   }
@@ -102,12 +106,21 @@ export default class Shrine extends MachineBase<ShrineParts, Ev, ShrineState> {
 
   attract(dt: number): void { this.attractor.update(dt); }
 
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
+
   onOccupy(_pid: number, _seat: number, local: boolean): void {
-    if (local) { this.sfx('chime'); this.refresh(true); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show(); this.refresh(true);
+      this.seatHud?.firstTip('shrine', this.tipLines());
+    }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
-    if (local) { this.ctx.ui.machineHud(null); this.hudKey = ''; }
+    if (local) { this.seatHud?.hide(); this.hudKey = ''; }
   }
 
   onLang(): void {
@@ -118,7 +131,10 @@ export default class Shrine extends MachineBase<ShrineParts, Ev, ShrineState> {
 
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
-    if (!e.down || e.repeat) return;
+    if (!e.down) return;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
+    if (e.repeat) return;
     if (e.action === 'primary' || e.action === 'confirm') this.light();
   }
 
@@ -172,6 +188,7 @@ export default class Shrine extends MachineBase<ShrineParts, Ev, ShrineState> {
     const flame = flames[idx] ?? null;
     const name = this.t(`${ev.kind === 'curse' ? 'cu' : 'bl'}.${ev.buffId}.n`);
     const blessing = ev.kind === 'blessing';
+    if (ev.pid === this.selfId) this.seatHud?.result(blessing ? 'win' : 'lose', blessing ? 0 : -ev.cost);
 
     // anticipation: the moth wakes, the dish takes the coins
     this.sfx('button');
@@ -222,27 +239,55 @@ export default class Shrine extends MachineBase<ShrineParts, Ev, ShrineState> {
     if (this.isLocalOccupant) this.showHud();
   }
 
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.shrine.tip1' },
+      { k: 'm.shrine.tip2', v: { light: this.k('primary') } },
+      { k: 'm.shrine.tip3', v: { help: this.k('help') } },
+    ];
+  }
+
+  private rulesLines(): Txt[] {
+    return [1, 2, 3].map((i) => ({ k: `m.shrine.rule${i}` }));
+  }
+
+  /** Banner, coins / price / odds numbers and the valid controls only. Only while the local player stands here. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const run = this.ctx.run;
     const pid = this.selfId;
     const check = canLight(this.st, run, pid);
     const key = [this.st.lit, check, run.balance('coin', pid)].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
-    const hints: HudHint[] = [
-      { action: 'primary', label: this.t('h_light') },
-      { action: 'exit', label: this.t('h_leave') },
-    ];
+    const cost = priceNow(run, pid);
     const odds = Math.round(blessOdds(run, pid) * 100);
-    this.hud({
-      bet: null,
-      hints,
-      stats: [
-        { label: this.t('s_coins'), value: fmtNum(run.balance('coin', pid)) },
-        { label: this.t('s_cost'), value: fmtNum(priceNow(run, pid)) },
-        { label: this.t('s_odds'), value: `${odds} / ${100 - odds}` },
-        { label: this.t('s_lit'), value: `${this.st.lit}/${CANDLE_CAP}` },
-      ],
-    });
+    const ctrl: HudControl[] = [];
+    sh.goal({ k: 'm.shrine.goal', v: { n: odds } });
+
+    // STATE: can a candle be lit now
+    if (check === 'ok') sh.state({ k: 'm.shrine.stReady' }, 'gold', { k: 'm.shrine.stReadySub', v: { n: fmtNum(cost) } });
+    else if (check === 'once') sh.state({ k: 'm.shrine.stOnce' }, 'cyan', { k: 'm.shrine.stOnceSub' });
+    else if (check === 'funds') sh.state({ k: 'm.shrine.stFunds' }, 'warn', { k: 'm.shrine.stFundsSub', v: { n: fmtNum(Math.max(0, cost - run.balance('coin', pid))) } });
+    else sh.state({ k: 'm.shrine.stFull' }, 'neutral');
+
+    // KEY NUMBERS
+    sh.numbers([
+      { label: { k: 'm.shrine.nCoins' }, value: fmtNum(run.balance('coin', pid)), tone: 'gold' },
+      { label: { k: 'm.shrine.nCost' }, value: fmtNum(cost), tone: check === 'funds' ? 'bad' : 'gold' },
+      { label: { k: 'm.shrine.nOdds' }, value: `${odds} / ${100 - odds}`, tone: 'good' },
+      { label: { k: 'm.shrine.nLit' }, value: `${this.st.lit}/${CANDLE_CAP}`, tone: 'cyan' },
+    ]);
+
+    // CONTROL BAR
+    if (check === 'ok') ctrl.push({ key: this.k('primary'), label: { k: 'm.shrine.cLight' }, action: 'primary', primary: true });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.shrine.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.shrine.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }

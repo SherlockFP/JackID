@@ -20,10 +20,10 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
 import { countUp } from '@/machines/_base/juice';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { KitX } from '@/kit';
-import { fmtCoins, t } from '@/core/i18n';
+import { fmtCoins } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { buildModel, cellPos, FLIP_OPEN, type MinesParts } from './model';
 import {
   CAP, CAP_RAISED, CELLS, COLS, HOOK_CAP, HOOK_EDGE, HOOK_INSURE, HOOK_SCAN, IDLE_S, PRESETS, RTP,
@@ -121,12 +121,16 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
   private guardUp = false;
   private scanCell = -1;
   private burnt = false;
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts). Created in init, shown while seated. */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: KitX): MachineModel<MinesParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.refresh();
     this.attractor.every('rattle', 8, () => this.rattle(), { first: 4 });
   }
@@ -150,11 +154,19 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
     if (local) {
       if (this.st.open && !this.roundOpen) this.resumeRound(this.st.stake);   // restored round: the sitter owns it
       this.sfx('chime');
+      this.seatHud?.show();
       this.showHud();
+      this.seatHud?.firstTip('mines', this.tipLines());
     }
   }
 
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
+
   onRelease(_pid: number, _seat: number, local: boolean): void {
+    if (local) { this.hud(null); this.seatHud?.hide(); }
     // Normal path: standUp() settled first. Safety net for forced / external releases: never strand a stake.
     if (local && this.roundOpen) {
       const s = this.st;
@@ -191,6 +203,8 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const moves = a === 'left' || a === 'right' || a === 'up' || a === 'down';
     if (e.repeat && !moves && a !== 'betUp' && a !== 'betDown' && a !== 'n6' && a !== 'n7') return;
     switch (a) {
@@ -504,6 +518,12 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
       s.dust = takeDust(s.stake, s.mult, s.dust).dust;   // the same remainder every peer computes
     }
     s.lastRes = ev.result === 'cash' ? 'cashed' : ev.result === 'void' ? 'void' : 'boom';
+    if (this.isLocalOccupant) {
+      if (ev.result === 'cash') this.seatHud?.result('win', ev.gross - bet);
+      else if (ev.result === 'void') this.seatHud?.result('push');
+      else if (ev.gross > 0) this.seatHud?.result('lose', ev.gross - bet);   // insured bust: part of the stake back
+      else this.seatHud?.result('bust', -bet);
+    }
     s.open = false;
     // SHOW_ALL: every unrevealed tile flips; every mine gets the trap walked over it (the pooled trap)
     const unopened: number[] = [];
@@ -647,29 +667,65 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
     return takeDust(s.stake, s.mult, s.dust).gross;
   }
 
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  /** The four move keys read as one label, e.g. "WASD". */
+  private moveKeys(): string { return `${this.k('up')}${this.k('left')}${this.k('down')}${this.k('right')}`; }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.mines.tip1' },
+      { k: 'm.mines.tip2', v: { primary: this.k('primary'), move: this.moveKeys(), mines: `${this.k('n6')}/${this.k('n7')}` } },
+      { k: 'm.mines.tip3', v: { cash: this.k('collect'), help: this.k('help') } },
+    ];
+  }
+
+  private rulesLines(): Txt[] {
+    return ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.mines.' + k }));
+  }
+
+  /** Banner, key numbers and the controls valid right now. Only while the local player sits at the terminal. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const s = this.st;
-    const hints: HudHint[] = this.busy ? [] : !this.roundOpen
-      ? [
-        { action: 'primary', label: this.t('hArm') },
-        { action: 'left', label: this.t('hMove') },
-        { action: 'n6', label: this.t('hMines') },
-        { action: 'betUp', label: t('common.bet') },
-      ]
-      : [
-        { action: 'primary', label: this.t('hPick') },
-        ...(s.k >= 1 ? [{ action: 'collect' as const, label: this.t('hCash', { n: fmtCoins(this.potential()) }) }] : []),
-        { action: 'left', label: this.t('hMove') },
-      ];
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: this.roundOpen ? null : this.bet,
-      hints,
-      stats: [
-        { label: this.t('sMines'), value: String(this.roundOpen ? s.rm : s.m) },
-        { label: this.t('sLadder'), value: `x${fmtMult(s.mult)}` },
-      ],
-    });
+    const ctrl: HudControl[] = [];
+    const canCash = this.roundOpen && s.k >= 1;
+    sh.goal({ k: 'm.mines.goal' });
+
+    // STATE: arm, reveal, or cash out
+    if (this.busy) sh.state({ k: 'm.mines.stBusy' }, 'neutral');
+    else if (!this.roundOpen) sh.state({ k: 'm.mines.stArm' }, 'gold', { k: 'm.mines.stArmSub' });
+    else if (!canCash) sh.state({ k: 'm.mines.stFirst' }, 'cyan', { k: 'm.mines.stFirstSub' });
+    else sh.state({ k: 'm.mines.stPlay' }, 'good', { k: 'm.mines.stPlaySub' });
+
+    // KEY NUMBERS: stake, mines, ladder, safe reveals, cash-out value, balance
+    const nums: HudNumber[] = [];
+    nums.push({ label: { k: 'm.mines.nStake' }, value: fmtCoins(this.roundOpen ? s.stake : this.bet), tone: 'gold' });
+    nums.push({ label: { k: 'm.mines.nMines' }, value: String(this.roundOpen ? s.rm : s.m), tone: 'bad' });
+    nums.push({ label: { k: 'm.mines.nLadder' }, value: `x${fmtMult(canCash ? s.mult : 1)}`, tone: 'cyan' });
+    if (this.roundOpen) nums.push({ label: { k: 'm.mines.nSafe' }, value: String(s.k), tone: 'good' });
+    if (canCash) nums.push({ label: { k: 'm.mines.nWin' }, value: fmtCoins(this.potential()), tone: 'good' });
+    nums.push({ label: { k: 'm.mines.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys the terminal really reads
+    if (!this.busy && !this.roundOpen) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.mines.cArm' }, action: 'primary', primary: true });
+      ctrl.push({ key: this.moveKeys(), label: { k: 'm.mines.cMove' }, action: 'left' });
+      ctrl.push({ key: `${this.k('n6')}/${this.k('n7')}`, label: { k: 'm.mines.cMines' }, action: 'n6' });
+      ctrl.push({ key: `${this.k('n1')}-${this.k('n5')}`, label: { k: 'm.mines.cPreset' }, action: 'n1' });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.mines.cBet' }, action: 'betUp' });
+    } else if (!this.busy) {
+      if (canCash) ctrl.push({ key: this.k('collect'), label: { k: 'm.mines.cCash' }, action: 'collect', primary: true });
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.mines.cReveal' }, action: 'primary', primary: !canCash });
+      ctrl.push({ key: this.moveKeys(), label: { k: 'm.mines.cMove' }, action: 'left' });
+      ctrl.push({ key: this.k('clear'), label: { k: 'm.mines.cRandom' }, action: 'clear' });
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.mines.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.mines.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 
   // ── late join / save ──────────────────────────────────────────────────────────────────────────────

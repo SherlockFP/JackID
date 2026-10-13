@@ -1,0 +1,67 @@
+/* Seat HUD (_base/seatHud.ts): PSX overlay, every size in --su (= the UI pixel unit). Mounted inside #ui. */
+.seat-hud {
+  --su: var(--u, 4px);
+  position: absolute; inset: 0; pointer-events: none; display: none;
+  font-family: var(--f-body, 'VT323', monospace); color: #f4f0dc; text-shadow: 0 calc(var(--su) * 0.5) 0 #000;
+  image-rendering: pixelated;
+}
+.seat-hud.on { display: block; }
+.seat-hud .shud-panel { background: rgba(6, 9, 6, 0.9); box-shadow: 0 0 0 calc(var(--su) * 0.5) #000 inset; }
+
+/* top: goal + state banner */
+.shud-top { position: absolute; top: calc(var(--su) * 3); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 2); }
+.shud-goal { font-size: calc(var(--su) * 7); line-height: 1; padding: calc(var(--su) * 1) calc(var(--su) * 3); background: rgba(6, 9, 6, 0.82); color: #f4f0dc; max-width: 92%; text-align: center; }
+.shud-state { padding: calc(var(--su) * 2) calc(var(--su) * 5); border: calc(var(--su) * 1.5) solid currentColor; text-align: center; min-width: calc(var(--su) * 60); }
+.shud-state-t { display: block; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 5); line-height: 1.2; letter-spacing: 0; }
+.shud-state-s { display: block; font-size: calc(var(--su) * 7); line-height: 1; margin-top: calc(var(--su) * 1); color: #f4f0dc; }
+
+/* centre: result callout */
+.shud-result {
+  position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.6); opacity: 0;
+  font-family: var(--f-head, 'Press Start 2P', monospace); text-align: center; padding: calc(var(--su) * 3) calc(var(--su) * 6);
+  border: calc(var(--su) * 2) solid currentColor; background: rgba(6, 9, 6, 0.92); white-space: nowrap;
+  transition: transform 0.12s steps(3), opacity 0.12s steps(3);
+}
+.shud-result.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.shud-result-t { display: block; font-size: calc(var(--su) * 9); line-height: 1.1; }
+.shud-result-a { display: block; font-size: calc(var(--su) * 5); margin-top: calc(var(--su) * 2); color: #f4f0dc; }
+
+/* bottom: key numbers, then the control bar */
+.shud-bottom { position: absolute; left: 0; right: 0; bottom: calc(var(--su) * 3); display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 2); }
+.shud-nums { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--su) * 2); max-width: 96%; }
+.shud-num { padding: calc(var(--su) * 1.5) calc(var(--su) * 3); background: rgba(6, 9, 6, 0.9); border-top: calc(var(--su) * 1.5) solid #ffd040; min-width: calc(var(--su) * 30); text-align: center; }
+.shud-num-l { display: block; font-size: calc(var(--su) * 5.5); line-height: 1; color: #b8c0a8; }
+.shud-num-v { display: block; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 4.5); line-height: 1.3; margin-top: calc(var(--su) * 1); white-space: nowrap; }
+.shud-ctrl { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--su) * 2); padding: calc(var(--su) * 2); background: rgba(6, 9, 6, 0.92); border: calc(var(--su) * 1) solid #2c3a2c; max-width: 98%; }
+.shud-btn { display: flex; align-items: center; gap: calc(var(--su) * 2); padding: calc(var(--su) * 1.5) calc(var(--su) * 3); background: #1b261b; border: calc(var(--su) * 1.5) solid #7dff7a; font-size: calc(var(--su) * 6.5); line-height: 1; color: #7dff7a; white-space: nowrap; }
+.shud-btn.primary { background: #ffd040; border-color: #ffd040; color: #080b08; }
+.shud-btn.primary .shud-key { background: #080b08; color: #ffd040; }
+.shud-key { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3.5); line-height: 1; padding: calc(var(--su) * 1.5) calc(var(--su) * 1.5) calc(var(--su) * 1) ; background: #f4f0dc; color: #080b08; min-width: calc(var(--su) * 7); text-align: center; }
+
+/* tone colours (state banner, number tops) */
+.tone-neutral { color: #f4f0dc; }
+.tone-gold { color: #ffd040; }
+.tone-good { color: #7dff7a; }
+.tone-bad { color: #ff5a4a; }
+.tone-cyan { color: #39e6ff; }
+.tone-warn { color: #ffb347; }
+.shud-num.tone-good { border-top-color: #7dff7a; }
+.shud-num.tone-bad { border-top-color: #ff5a4a; }
+.shud-num.tone-cyan { border-top-color: #39e6ff; }
+.shud-num.tone-warn { border-top-color: #ffb347; }
+.shud-num.tone-neutral { border-top-color: #f4f0dc; }
+.shud-num.tone-gold { border-top-color: #ffd040; }
+
+/* result colours (border + text share the colour) */
+.shud-result.r-win, .shud-result.r-blackjack, .shud-result.r-even { color: #7dff7a; }
+.shud-result.r-blackjack { color: #ffd040; }
+.shud-result.r-push { color: #f4f0dc; }
+.shud-result.r-lose, .shud-result.r-bust, .shud-result.r-surrender { color: #ff5a4a; }
+
+/* centre card: first-sit tip and rules */
+.shud-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(calc(var(--su) * 118), 94%); pointer-events: auto; cursor: pointer; display: none; background: #0c120c; border: calc(var(--su) * 2) solid #ffd040; box-shadow: 0 0 0 calc(var(--su) * 2) #000; padding: calc(var(--su) * 3) calc(var(--su) * 4); }
+.shud-card.on { display: block; }
+.shud-card-h { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 5); color: #ffd040; padding-bottom: calc(var(--su) * 2); border-bottom: calc(var(--su) * 1) solid #2c3a2c; margin-bottom: calc(var(--su) * 2); }
+.shud-card-b { margin: 0; padding-left: calc(var(--su) * 6); font-size: calc(var(--su) * 7); line-height: 1.15; }
+.shud-card-b li { margin-bottom: calc(var(--su) * 1.5); }
+.shud-card-f { margin-top: calc(var(--su) * 2); text-align: right; font-size: calc(var(--su) * 6); color: #b8c0a8; }

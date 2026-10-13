@@ -14,12 +14,12 @@
  */
 import * as THREE from 'three';
 import type { KitX } from '@/kit';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { PlayerId } from '@/core/types';
 import type { ModHook } from '@/game/types';
 import { fmtCoins, t as tr } from '@/core/i18n';
 import { TableBase } from '@/machines/_base/TableBase';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier, tierTags, toWinTier } from '@/machines/_base/tiers';
 import { MOON_C, MOON_R, SPHERE_C, SPHERE_R, buildModel, rackXY, type LottoParts } from './model';
@@ -41,6 +41,7 @@ const BALL_S = 1.6;                  // per ball: rise the tube and settle in th
 const MOON_S = 5.0;
 const RESULT_S = 5.0;
 const STEPS = 12;
+const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.lottoblower.' + k }));
 const GOLD = 0xffd040, GREEN = 0x7dff7a;
 const GOLD_CSS = '#ffd040', CREAM = '#f3e7c4', DIM = '#6b5a3a';
 const SIREN_S = 2.0;
@@ -116,6 +117,9 @@ export default class LottoBlower extends TableBase<LottoParts, Ev, Snap, Act> {
   private drawIdx = 0;
   private stamps: number[] = [];
   private sphereHex = 0xbdf7ef;
+  /** Seat HUD overlay (goal, state, key numbers, controls, result callout, tip and rules cards). */
+  private seatHud?: SeatHud;
+  private hudSig = '';
   /** Last known ball positions (animation start points); `null` = never placed. */
   private ballAt: Array<THREE.Vector3 | null> = Array.from({ length: MAIN_POOL }, (): THREE.Vector3 | null => null);
   private moonAt: Array<THREE.Vector3 | null> = Array.from({ length: MOON_POOL }, (): THREE.Vector3 | null => null);
@@ -123,14 +127,23 @@ export default class LottoBlower extends TableBase<LottoParts, Ev, Snap, Act> {
   protected createModel(kit: KitX): MachineModel<LottoParts> { return buildModel(kit, this.modelOpts); }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.sphereHex = (this.parts.sphere.material as THREE.MeshBasicMaterial).color.getHex();
     this.paintAll();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   // ── local input → action to the host ──────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -491,7 +504,12 @@ export default class LottoBlower extends TableBase<LottoParts, Ev, Snap, Act> {
     this.st.phase = 'open';
     this.paintWinners();
     this.paintKiosk();
-    if (mine) this.showHud();
+    if (mine) {
+      const net = ev.payout - ev.charged;
+      const kind = ev.jp > 0 ? 'win' : ev.payout === 0 ? 'lose' : net === 0 ? 'even' : net > 0 ? 'win' : 'lose';
+      this.seatHud?.result(kind, net, 1.5);
+      this.showHud();
+    }
     if (!pc.fast) await this.wait(mine ? RESULT_S * 0.5 : 0.3);
   }
 
@@ -586,15 +604,28 @@ export default class LottoBlower extends TableBase<LottoParts, Ev, Snap, Act> {
   // ── seats ─────────────────────────────────────────────────────────────────────────────────────
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintKiosk();
-    if (local) { this.sfx('chime', { vol: 0.5 }); this.showHud(); }
+    if (local) {
+      this.sfx('chime', { vol: 0.5 });
+      this.hud(null);
+      this.seatHud?.show();
+      this.hudSig = '';
+      this.showHud();
+      this.seatHud?.firstTip('lottoblower', this.tipLines());
+    }
   }
   onRelease(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintKiosk();
-    if (local) this.showHud();
+    if (local) { this.hud(null); this.seatHud?.hide(); }
   }
 
   override onLang(): void {
     this.paintAll();
+    this.hudSig = '';
+    if (this.isLocalOccupant) this.showHud();
+  }
+
+  /** Keeps the HUD countdown and key numbers in step with the timer (redraws only on change). */
+  frame(_dt: number, _t: number): void {
     if (this.isLocalOccupant) this.showHud();
   }
 
@@ -656,40 +687,72 @@ export default class LottoBlower extends TableBase<LottoParts, Ev, Snap, Act> {
     });
   }
 
-  private showHud(): void {
-    const seat = this.localSeat;
-    const hints: HudHint[] = [];
-    if (seat >= 0) {
-      hints.push({ action: 'confirm', label: tr('m.lottoblower.hintDraw') });
-      hints.push({ action: 'n1', label: tr('m.lottoblower.hintQuick') }, { action: 'n2', label: tr('m.lottoblower.hintAdd') });
-      hints.push({ action: 'n3', label: tr('m.lottoblower.hintBatch') }, { action: 'n4', label: tr('m.lottoblower.hintBatchSize') });
-      hints.push({ action: 'clear', label: tr('m.lottoblower.hintClear') });
-    }
-    hints.push({ action: 'betUp', label: tr('common.bet') }, { action: 'exit', label: tr('common.leave') });
-    this.hud({
-      bet: seat >= 0 ? this.bet : null,
-      hints,
-      stats: [
-        { label: tr('m.lottoblower.lineLabel'), value: `${this.lines.length}` },
-        { label: 'x', value: `${QUICK_BATCHES[this.batchIdx]}` },
-        { label: tr('m.lottoblower.drawNo', { n: this.st.drawNo }), value: this.statusText() },
-      ],
-    });
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.lottoblower.tip1' },
+      { k: 'm.lottoblower.tip2', v: { quick: this.k('n1'), add: this.k('n2'), batch: this.k('n3') } },
+      { k: 'm.lottoblower.tip3', v: { buy: this.k('confirm'), help: this.k('help') } },
+    ];
   }
 
-  private statusText(): string {
-    if (this.timerLeft > 0 && (this.st.phase === 'idle' || this.st.phase === 'open')) {
-      return tr('m.lottoblower.sOpenShared', { n: Math.ceil(this.timerLeft) });
+  /** Banner, key numbers and valid controls for the local player. Redraws only when something changed. */
+  private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const ph = this.st.phase;
+    const live = this.st.tickets.some((t) => t.p === this.selfId);
+    const solo = this.humans().length <= 1;
+    const left = this.timerState && ph === 'open' ? Math.ceil(this.timerLeft) : 0;
+    const draft = this.picks.length === MAIN_PICK && this.moonPick > 0;
+    const wallet = this.ctx.run.wallet();
+    const sig = [ph, live, solo, this.lines.length, this.picks.join(','), this.moonPick, this.bet, this.batchIdx,
+      Math.floor(this.st.pool), this.st.peek, left, this.drawIdx, wallet].join('|');
+    if (sig === this.hudSig) return;
+    this.hudSig = sig;
+    sh.goal({ k: 'm.lottoblower.goal' });
+
+    // STATE: sales, the blower, the moon, payout
+    const secs: Txt | undefined = left > 0 ? { k: 'm.lottoblower.stSecs', v: { n: left } } : undefined;
+    if (ph === 'idle' || ph === 'open') {
+      if (live) sh.state({ k: 'm.lottoblower.stLive' }, 'cyan', secs);
+      else if (this.lines.length > 0) sh.state({ k: 'm.lottoblower.stBuy' }, 'good', secs);
+      else sh.state({ k: 'm.lottoblower.stPick' }, 'gold', secs);
+    } else if (ph === 'close') sh.state({ k: 'm.lottoblower.stLock' }, 'warn');
+    else if (ph === 'blow') sh.state({ k: 'm.lottoblower.stBlow' }, 'neutral');
+    else if (ph === 'draw') sh.state({ k: 'm.lottoblower.stDraw' }, 'neutral', this.drawIdx > 0 ? { k: 'm.lottoblower.stDrawSub', v: { n: this.drawIdx } } : undefined);
+    else if (ph === 'moon') sh.state({ k: 'm.lottoblower.stMoon' }, 'warn');
+    else sh.state({ k: 'm.lottoblower.stPay' }, 'neutral');
+
+    // KEY NUMBERS
+    const nums: HudNumber[] = [
+      { label: { k: 'm.lottoblower.nLines' }, value: `${this.lines.length}/${MAX_LINES}`, tone: this.lines.length > 0 ? 'good' : 'gold' },
+      { label: { k: 'm.lottoblower.nPick' }, value: `${this.picks.length}/${MAIN_PICK} + ${this.moonPick || '-'}`, tone: draft ? 'good' : 'cyan' },
+      { label: { k: 'm.lottoblower.nStake' }, value: fmtCoins(this.bet), tone: 'gold' },
+      { label: { k: 'm.lottoblower.nJackpot' }, value: fmtCoins(Math.floor(this.st.pool)), tone: 'gold' },
+    ];
+    if (this.st.peek > 0) nums.push({ label: { k: 'm.lottoblower.nPeek' }, value: String(this.st.peek), tone: 'cyan' });
+    nums.push({ label: { k: 'm.lottoblower.nBalance' }, value: fmtCoins(wallet), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys bound to it
+    const ctrl: HudControl[] = [];
+    if (this.lines.length > 0 || draft) {
+      ctrl.push(solo
+        ? { key: this.k('confirm'), label: { k: 'm.lottoblower.cPull' }, action: 'confirm', primary: true }
+        : { key: this.k('confirm'), label: { k: 'm.lottoblower.cBuy' }, action: 'confirm', primary: true });
     }
-    switch (this.st.phase) {
-      case 'idle': return tr('m.lottoblower.sIdle');
-      case 'open': return tr('m.lottoblower.sOpen');
-      case 'close': return tr('m.lottoblower.sLock');
-      case 'blow': return tr('m.lottoblower.sBlow');
-      case 'draw': return tr('m.lottoblower.sDraw', { n: this.drawIdx });
-      case 'moon': return tr('m.lottoblower.sMoon');
-      case 'payout': return tr('m.lottoblower.sPay');
-    }
+    if (this.lines.length < MAX_LINES) ctrl.push({ key: this.k('n1'), label: { k: 'm.lottoblower.cQuick' }, action: 'n1' });
+    if (draft) ctrl.push({ key: this.k('n2'), label: { k: 'm.lottoblower.cAdd' }, action: 'n2' });
+    ctrl.push({ key: this.k('n3'), label: { k: 'm.lottoblower.cBatch', v: { n: QUICK_BATCHES[this.batchIdx] } }, action: 'n3' });
+    ctrl.push({ key: this.k('n4'), label: { k: 'm.lottoblower.cSize' }, action: 'n4' });
+    if (this.lines.length > 0 || this.picks.length > 0 || this.moonPick > 0) ctrl.push({ key: this.k('clear'), label: { k: 'm.lottoblower.cClear' }, action: 'clear' });
+    ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.lottoblower.cBet' }, action: 'betUp' });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.lottoblower.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.lottoblower.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }
 

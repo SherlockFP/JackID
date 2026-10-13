@@ -19,12 +19,12 @@ import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/type
 import { MachineBase } from '@/machines/_base/MachineBase';
 import { juiceTier } from '@/machines/_base/tiers';
 import { blinkOn, countUp } from '@/machines/_base/juice';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { ScreenSurface } from '@/kit/types';
 import type { KitX } from '@/kit/index';
 import type { ModHook } from '@/game/modifiers.types';
-import { fmtCoins, t } from '@/core/i18n';
+import { fmtCoins } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { buildModel, type VideoPokerParts, type VpButton } from './model';
 import { STRINGS } from './strings';
 import {
@@ -57,6 +57,8 @@ const HOLDS: readonly VpButton[] = ['hold0', 'hold1', 'hold2', 'hold3', 'hold4']
 const CARD_W = 30, CARD_H = 46;
 const CRT_BLUE = '#0B1E8C', CRT_YELLOW = '#FFE45C', CARD_WHITE = '#F4F4F0', CARD_RED = '#D01818', CARD_INK = '#101010';
 const GAMES: readonly Game[] = ['jacks', 'deuces'];
+
+const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5'].map((k) => ({ k: 'm.videopoker.' + k }));
 
 export const def: MachineDef = {
   id: 'videopoker',
@@ -98,12 +100,16 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
   private hintBlink = false;
   private attractLit = false;
   private idle = 0;
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: KitX): MachineModel<VideoPokerParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.syncBet();
     this.refresh();
     this.showHud();
@@ -146,7 +152,9 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
       const s = this.state;
       if ((s.phase === 'hold' || s.phase === 'win' || s.phase === 'pick') && !this.roundOpen) this.resumeRound(this.stake());
       this.sfx('chime');
+      this.seatHud?.show();
       this.showHud();
+      this.seatHud?.firstTip('videopoker', this.tipLines());
     }
   }
 
@@ -158,6 +166,7 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     }
     this.state.pot = 0; this.state.phase = 'ready'; this.state.held = 0; this.evalCat = '';
     this.refresh();
+    if (local) this.seatHud?.hide();
   }
 
   onLang(): void {
@@ -180,6 +189,8 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     this.idle = 0;
@@ -400,6 +411,7 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     if (!pc.fast) await this.wait(0.5);
     s.pot = ev.pay;
     s.phase = ev.pay > 0 ? 'win' : 'ready';
+    if (pc.local) this.callout(ev.pay - this.roundBet);
     this.refresh();
     if (ev.pay > 0) {
       const tier = juiceTier(ev.pay, this.roundBet, isRoyalCat(ev.cat) ? ['jackpot'] : []);
@@ -437,6 +449,11 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     s.steps = ev.step;
     s.pot = ev.pot;
     s.phase = ev.res === 'lose' ? 'ready' : 'win';
+    if (pc.local) {
+      if (ev.res === 'win') this.callout(ev.pot - this.roundBet);
+      else if (ev.res === 'push') this.seatHud?.result('push', 0);
+      else this.callout(-this.roundBet);
+    }
     this.drawScreen();
     if (ev.res === 'win') {
       this.ctx.fx.sparks(screen.mesh, 10, 0xffd040);
@@ -460,6 +477,7 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     const { marquee, screen } = this.parts;
     s.pot = 0; s.phase = 'ready'; s.steps = 0; s.held = 0;
     this.evalCat = ''; this.dbl = null;
+    if (pc.local) this.callout(ev.amount - ev.bet);
     const tier = juiceTier(ev.amount, ev.bet, isRoyalCat(s.cat) ? ['jackpot'] : []);
     this.refresh();
     if (tier === 'medium' || tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot') {
@@ -543,22 +561,78 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     });
   }
 
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.videopoker.tip1', v: { deal: this.k('primary'), hold: `${this.k('n1')}-${this.k('n5')}` } },
+      { k: 'm.videopoker.tip2', v: { draw: this.k('primary'), double: this.k('double'), collect: this.k('collect') } },
+      { k: 'm.videopoker.tip3', v: { help: this.k('help') } },
+    ];
+  }
+
+  /** Result callout for the local player: `net` = coins back minus the stake. */
+  private callout(net: number): void {
+    this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'lose', net);
+  }
+
+  /** Banner, key numbers and the controls valid right now. Only while the local player sits here. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const s = this.state;
-    const hints: HudHint[] = this.busy ? [] : s.phase === 'ready'
-      ? [
-        { action: 'auto', label: this.t('game') },
-        { action: 'camera', label: this.t('denom', { n: s.denom }) },
-        { action: 'primary', label: this.t('deal') },
-        { action: 'betUp', label: this.t('bet') },
-      ]
-      : s.phase === 'hold'
-        ? [{ action: 'n1', label: this.t('hold') }, { action: 'primary', label: this.t('draw') }]
-        : s.phase === 'win'
-          ? [{ action: 'double', label: this.t('double') }, { action: 'collect', label: `${this.t('collect')} ${fmtCoins(s.pot)}` }]
-          : [{ action: 'n1', label: this.t('pick') }, { action: 'collect', label: `${this.t('collect')} ${fmtCoins(s.pot)}` }];
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({ bet: this.roundOpen ? null : this.bet, hints, stats: [] });
+    const busy = this.busy;
+    sh.goal({ k: 'm.videopoker.goal' });
+
+    // STATE: what phase the hand is in
+    if (busy) sh.state({ k: 'm.videopoker.stBusy' }, 'cyan');
+    else if (s.phase === 'ready') sh.state({ k: 'm.videopoker.stReady' }, 'gold', { k: 'm.videopoker.stReadySub', v: { n: fmtCoins(this.stake()) } });
+    else if (s.phase === 'hold') sh.state({ k: 'm.videopoker.stHold' }, 'good', { k: 'm.videopoker.stHoldSub' });
+    else if (s.phase === 'win') sh.state({ k: 'm.videopoker.stWin' }, 'gold', { k: 'm.videopoker.stWinSub' });
+    else sh.state({ k: 'm.videopoker.stPick' }, 'warn', { k: 'm.videopoker.stPickSub' });
+
+    // KEY NUMBERS: stake, credits, coin size, balance, then the live hand, pot and doubles
+    const nums: HudNumber[] = [
+      { label: { k: 'm.videopoker.nBet' }, value: fmtCoins(this.roundOpen ? this.roundBet : this.stake()), tone: 'gold' },
+      { label: { k: 'm.videopoker.nCredits' }, value: `${s.credits}/${MAX_CREDITS}`, tone: 'neutral' },
+      { label: { k: 'm.videopoker.nCoin' }, value: fmtCoins(s.denom), tone: 'neutral' },
+      { label: { k: 'm.videopoker.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
+    ];
+    if (this.evalCat !== '') nums.push({ label: { k: 'm.videopoker.nHand' }, value: { k: `m.videopoker.cat_${this.evalCat}` }, tone: 'cyan' });
+    if (s.pot > 0) nums.push({ label: { k: 'm.videopoker.nPot' }, value: fmtCoins(s.pot), tone: 'good' });
+    if (s.phase === 'win' || s.phase === 'pick') nums.push({ label: { k: 'm.videopoker.nDouble' }, value: `${s.steps}/${DOUBLE_STEPS}`, tone: 'warn' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now
+    const ctrl: HudControl[] = [];
+    if (!busy) {
+      if (s.phase === 'ready') {
+        ctrl.push({ key: this.k('primary'), label: { k: 'm.videopoker.cDeal' }, action: 'primary', primary: true });
+        ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.videopoker.cCredits' }, action: 'betUp' });
+        ctrl.push({ key: this.k('betMax'), label: { k: 'm.videopoker.cMax' }, action: 'betMax' });
+        ctrl.push({ key: this.k('camera'), label: { k: 'm.videopoker.cCoin' }, action: 'camera' });
+        ctrl.push({ key: this.k('auto'), label: { k: 'm.videopoker.cGame' }, action: 'auto' });
+      } else if (s.phase === 'hold') {
+        ctrl.push({ key: `${this.k('n1')}-${this.k('n5')}`, label: { k: 'm.videopoker.cHold' }, action: 'n1' });
+        ctrl.push({ key: this.k('primary'), label: { k: 'm.videopoker.cDraw' }, action: 'primary', primary: true });
+      } else if (s.phase === 'win') {
+        ctrl.push({ key: this.k('double'), label: { k: 'm.videopoker.cDouble' }, action: 'double' });
+        ctrl.push({ key: this.k('collect'), label: { k: 'm.videopoker.cCollect' }, action: 'collect', primary: true });
+      } else {
+        ctrl.push({ key: `${this.k('n1')}-${this.k('n4')}`, label: { k: 'm.videopoker.cPick' }, action: 'n1' });
+        ctrl.push({ key: this.k('collect'), label: { k: 'm.videopoker.cCollect' }, action: 'collect', primary: true });
+      }
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.videopoker.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.videopoker.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
+  }
+
+  override dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   // ── late join / save ──────────────────────────────────────────────────────────────────────────────

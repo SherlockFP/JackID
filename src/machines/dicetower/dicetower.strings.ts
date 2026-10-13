@@ -23,6 +23,21 @@ const en: Record<string, string> = {
   rule4: 'EXACT pays on one total: 31:1 on 2 and 12, 15:1 on 3 and 11, 10:1 on 4 and 10, 7:1 on 5 and 9, 11:2 on 6 and 8.',
   rulesOk: 'OK',
   pot: 'Stake', fair: 'FAIR', last12: 'LAST 12', seed: 'SEED {n}', boardBet: 'BET', boardRoll: 'ROLL',
+  // seat HUD (readability standard)
+  goal: 'Put chips on the totals you back. Each spot pays its own odds.',
+  stIdle: 'WAITING FOR PLAYERS', stIdleSub: 'Sit down to start the next roll',
+  stBet: 'PLACE YOUR CHIPS', stBetSub: 'Press [{ready}] when your bets are set',
+  stReady: 'YOU ARE READY', stReadySub: 'Waiting for the others or the timer',
+  stLock: 'BETS LOCKED', stLockSub: 'Fair seed published',
+  stYouDrop: 'YOUR DROP', stYouDropSub: 'Press [{drop}] to drop the dice',
+  stWaitDrop: 'WAITING FOR THE SHOOTER', stWaitDropSub: 'The dice are in the tower',
+  stRoll: 'DICE IN THE AIR', stResult: 'TOTAL {n}', stResultSub: 'Paying out',
+  nBets: 'YOUR BETS', nChip: 'CHIP', nLast: 'LAST ROLL', nBalance: 'BALANCE',
+  cReady: 'READY', cUnready: 'NOT READY', cDrop: 'DROP', cRepeat: 'REPEAT', cClear: 'CLEAR', cChip: 'CHIP SIZE',
+  cRules: 'RULES', cLeave: 'LEAVE',
+  tip1: 'Click a spot on the felt to place chips. Right click takes one back.',
+  tip2: '[{ready}] READY when your bets are set. Then the shooter drops the dice.',
+  tip3: 'Each spot pays its own odds. [{help}] RULES shows the full payout table.',
 };
 
 const tr: Record<string, string> = {
@@ -46,6 +61,21 @@ const tr: Record<string, string> = {
   rule4: 'TAM tek toplama bahistir: 2 ve 12’de 31:1, 3 ve 11’de 15:1, 4 ve 10’da 10:1, 5 ve 9’da 7:1, 6 ve 8’de 11:2.',
   rulesOk: 'Tamam',
   pot: 'Bahis', fair: 'ADİL', last12: 'SON 12', seed: 'TOHUM {n}', boardBet: 'BAHİS', boardRoll: 'ZAR',
+  // seat HUD (readability standard)
+  goal: 'Zarların toplamına fiş koy. Her alan kendi oranıyla öder.',
+  stIdle: 'OYUNCU BEKLENİYOR', stIdleSub: 'Sıradaki atış için otur',
+  stBet: 'FİŞLERİNİ KOY', stBetSub: 'Bahislerin hazırsa [{ready}] ile hazır ol',
+  stReady: 'HAZIRSIN', stReadySub: 'Diğerleri ya da süre bekleniyor',
+  stLock: 'BAHİSLER KİLİTLENDİ', stLockSub: 'Adil tohum yayımlandı',
+  stYouDrop: 'SENİN ATIŞIN', stYouDropSub: 'Zarları bırakmak için [{drop}]',
+  stWaitDrop: 'ATICI BEKLENİYOR', stWaitDropSub: 'Zarlar kulenin içinde',
+  stRoll: 'ZARLAR HAVADA', stResult: 'TOPLAM {n}', stResultSub: 'Ödeniyor',
+  nBets: 'BAHSİN', nChip: 'FİŞ', nLast: 'SON ATIŞ', nBalance: 'BAKİYE',
+  cReady: 'HAZIR', cUnready: 'GERİ AL', cDrop: 'BIRAK', cRepeat: 'TEKRARLA', cClear: 'TEMİZLE', cChip: 'FİŞ BOYU',
+  cRules: 'KURALLAR', cLeave: 'AYRIL',
+  tip1: 'Masadaki bir alana tıklayıp fiş koy. Sağ tık bir fişi geri alır.',
+  tip2: 'Bahislerin tamamsa [{ready}] ile hazır ol. Sonra atıcı zarları bırakır.',
+  tip3: 'Her alan kendi oranıyla öder. [{help}] tam ödeme tablosu için KURALLAR.',
 };
 
 export default { prefix: 'm.dicetower.', en, tr };

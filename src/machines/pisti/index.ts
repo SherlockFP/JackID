@@ -27,9 +27,9 @@ import type { CardId } from '@/core/texgen/types';
 import type { PlayerId } from '@/core/types';
 import { isBot } from '@/core/types';
 import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
-import { fmtCoins, t } from '@/core/i18n';
+import { fmtCoins } from '@/core/i18n';
 import { TableBase } from '@/machines/_base/TableBase';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { juiceTier } from '@/machines/_base/tiers';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import type { KitX } from '@/kit/index';
@@ -127,13 +127,25 @@ export default class Pisti extends TableBase<PistiParts, Ev, Snap, Act> {
     return buildModel(kit, this.modelOpts);
   }
 
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
+
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.repaintAll();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   // ── local input → action to the host ─────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const a = e.action as MachineAction;
     const seat = this.localSeat;
     const mine = seat >= 0 ? this.st.seats[seat] : undefined;
@@ -156,9 +168,6 @@ export default class Pisti extends TableBase<PistiParts, Ev, Snap, Act> {
         if (i !== undefined && this.st.phase === 'play') this.playLocal(i);
         break;
       }
-      case 'help':
-        if (!e.repeat) void this.showRules();
-        break;
     }
   }
 
@@ -193,11 +202,6 @@ export default class Pisti extends TableBase<PistiParts, Ev, Snap, Act> {
     const cur = Math.max(0, ladder.indexOf(this.bet));
     const v = ladder[Math.min(ladder.length - 1, Math.max(0, cur + dir))];
     if (v !== undefined && (v <= wallet || v === 0 || dir < 0)) this.bet = v;
-  }
-
-  private async showRules(): Promise<void> {
-    const body = RULE_KEYS.map((k) => this.t(k)).join('\n');
-    await this.ctx.ui.modal({ title: this.t('rulesTitle'), body, buttons: [{ id: 'ok', label: this.t('okLabel') }] });
   }
 
   // ── HOST: actions ────────────────────────────────────────────────────────────────────────────
@@ -389,7 +393,7 @@ export default class Pisti extends TableBase<PistiParts, Ev, Snap, Act> {
         if (hs.turnSeat === seat) hs.botAt = Math.min(hs.botAt, BOT_MIN);
       }
     }
-    if (local) { this.hud(null); this.repaintAll(); }
+    if (local) { this.seatHud?.hide(); this.repaintAll(); }
     this.refresh();
   }
 
@@ -397,7 +401,11 @@ export default class Pisti extends TableBase<PistiParts, Ev, Snap, Act> {
     if (isBot(pid)) this.parts.bots[seat]?.setVisible(true);
     if (this.isHost && !isBot(pid)) this.tidyBots();
     this.refresh();
-    if (local) { this.sfx('chime'); this.repaintAll(); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show(); this.repaintAll(); this.showHud();
+      this.seatHud?.firstTip('pisti', this.tipLines());
+    }
   }
 
   // ── host clock ───────────────────────────────────────────────────────────────────────────────
@@ -489,6 +497,11 @@ export default class Pisti extends TableBase<PistiParts, Ev, Snap, Act> {
         this.lampsFor();
         this.refresh();
         const me = this.localSeat;
+        if (me >= 0 && st.seats[me]?.ready) {
+          const mineRow = ev.rows.find((r) => r.seat === me);
+          if (mineRow && mineRow.pay > 0) this.seatHud?.result('win', Math.max(0, mineRow.pay - st.stake));
+          else this.seatHud?.result('lose', -st.stake);
+        }
         for (const r of ev.rows) {
           if (r.pay <= 0) continue;
           const tier = juiceTier(r.pay, st.stake || 1);
@@ -709,23 +722,71 @@ export default class Pisti extends TableBase<PistiParts, Ev, Snap, Act> {
     this.lampsFor();
   }
 
-  private showHud(): void {
-    const st = this.st, seat = this.localSeat;
-    const mine = seat >= 0 ? st.seats[seat] : undefined;
-    const hints: HudHint[] = [];
-    if (st.phase === 'bet' && mine && !mine.ready) {
-      hints.push({ action: 'primary', label: this.t('ready') }, { action: 'betUp', label: t('common.bet') });
-    }
-    if (st.phase === 'play' && st.turn === seat) {
-      this.myHand.forEach((_c, k) => { if (k < HAND_MAX) hints.push({ action: `n${k + 1}` as MachineAction, label: this.t('card', { n: k + 1 }) }); });
-    }
-    hints.push({ action: 'help', label: this.t('help') }, { action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: st.phase === 'bet' && mine && !mine.ready ? this.bet : null,
-      hints,
-      stats: st.pot > 0 ? [{ label: this.t('bet'), value: fmtCoins(st.pot) }] : [],
-    });
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.pisti.tip1' },
+      { k: 'm.pisti.tip2', v: { ready: this.k('primary'), stake: `${this.k('betDown')}/${this.k('betUp')}` } },
+      { k: 'm.pisti.tip3', v: { cards: `${this.k('n1')}-${this.k('n4')}`, help: this.k('help') } },
+    ];
   }
 
+  private rulesLines(): Txt[] {
+    return RULE_KEYS.map((key) => ({ k: `m.pisti.${key}` }));
+  }
+
+  /** Banner, key numbers and the valid controls only. Only while the local player sits here. */
+  private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const st = this.st, seat = this.localSeat;
+    const mine = seat >= 0 ? st.seats[seat] : undefined;
+    const others = st.seats.some((x, i) => i !== seat && x.ready);
+    const myTurn = st.phase === 'play' && seat >= 0 && st.turn === seat;
+    const ctrl: HudControl[] = [];
+    sh.goal({ k: 'm.pisti.goal' });
+
+    // STATE: phase and whose turn
+    if (st.phase === 'bet') {
+      if (mine && mine.ready) sh.state({ k: 'm.pisti.stWait' }, 'cyan', { k: 'm.pisti.stWaitSub' });
+      else if (mine) sh.state({ k: 'm.pisti.stBet' }, 'gold', { k: 'm.pisti.stBetSub', v: { n: fmtCoins(others ? st.stake : this.bet) } });
+      else sh.state({ k: 'm.pisti.stSit' }, 'neutral');
+    } else if (st.phase === 'play') {
+      if (myTurn) sh.state({ k: 'm.pisti.stTurn' }, 'good', { k: 'm.pisti.stTurnSub' });
+      else if (st.turn >= 0) sh.state({ k: 'm.pisti.stOther' }, 'cyan', { k: 'm.pisti.stOtherOf', v: { n: st.turn + 1 } });
+      else sh.state({ k: 'm.pisti.stDeal' }, 'neutral');
+    } else if (st.phase === 'end') {
+      sh.state({ k: 'm.pisti.stEnd' }, 'neutral');
+    } else {
+      sh.state({ k: 'm.pisti.stDeal' }, 'neutral');
+    }
+
+    // KEY NUMBERS
+    const nums: HudNumber[] = [];
+    nums.push({ label: { k: 'm.pisti.nStake' }, value: fmtCoins(others ? st.stake : this.bet), tone: 'gold' });
+    nums.push({ label: { k: 'm.pisti.nPot' }, value: fmtCoins(st.pot), tone: 'gold' });
+    if (mine && st.phase !== 'bet') nums.push({ label: { k: 'm.pisti.nCaps' }, value: String(mine.caps), tone: 'cyan' });
+    if (seat >= 0 && this.myHand.length > 0) nums.push({ label: { k: 'm.pisti.nCards' }, value: String(this.myHand.length), tone: 'neutral' });
+    nums.push({ label: { k: 'm.pisti.nDeck' }, value: String(st.deck), tone: 'neutral' });
+    nums.push({ label: { k: 'm.pisti.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only the actions valid right now
+    if (st.phase === 'bet' && mine && !mine.ready) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.pisti.cReady' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.pisti.cStake' }, action: 'betUp' });
+    }
+    if (myTurn) {
+      this.myHand.forEach((_c, i) => {
+        if (i < HAND_MAX) ctrl.push({ key: this.k(`n${i + 1}` as MachineAction), label: { k: 'm.pisti.cCard', v: { n: i + 1 } }, action: `n${i + 1}`, primary: i === 0 });
+      });
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.pisti.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.pisti.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
+  }
 }
 

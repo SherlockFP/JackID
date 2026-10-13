@@ -136,6 +136,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<PistiParts> {
   light.userData = { color: 0xffe2a0, intensity: 0.6, range: 2.6, flicker: 'STEADY' };
   root.add(light);
 
+  // static geometry merges per material; the raycast pick boxes (raw transparent meshes) stay as they are
+  kit.finalize(root, { keep: picks });
+
   const parts: PistiParts = { cards, lamps, screen, bots, picks, flash, seatPos, centre, deckPos, feltY };
   return {
     root,

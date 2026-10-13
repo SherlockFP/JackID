@@ -20,6 +20,24 @@ const en: Record<string, string> = {
   peekOne: 'The next result is a 1', peekNotOne: 'The next result is not a 1',
   fair: 'FAIR', bell: 'NO MORE BETS', rim: 'MARQUEE',
   hintQuick: 'Quick bet',
+  // seat HUD (readability standard)
+  hGoal: 'Back the symbol the flapper stops on. HOUSE takes every bet',
+  hWait: 'WAITING FOR PLAYERS', hBet: 'BACK A SYMBOL', hSecs: 'BETS CLOSE IN {n}S',
+  hReady: 'READY · WAITING FOR OTHERS', hLock: 'NO MORE BETS', hSpin: 'THE FLAPPER IS SPINNING',
+  hPay: 'PAYING OUT', hClear: 'CLEARING THE COUNTER',
+  hNBet: 'YOUR CHIP', hNCounter: 'YOUR COUNTER', hNLast: 'LAST STOP', hNX2: 'DOUBLE ON',
+  hNRatchet: 'RATCHET', hRatchetOn: 'ARMED', hRatchetOff: 'OFF', hNBalance: 'BALANCE',
+  hCBet: 'CHIP', hCSym: 'BACK SYMBOL', hCPull: 'PULL', hCReady: 'READY', hCClear: 'CLEAR',
+  hCRebet: 'REPEAT', hCNudge: 'RATCHET', hCRules: 'RULES', hCLeave: 'LEAVE',
+  hTip1: 'Set your chip with {up} and {down}, then press {syms} to back a symbol.',
+  hTip2: 'Press {pull} to pull the handle. At a shared table it readies you up.',
+  hTip3: 'Press {help} for the full rules and payouts. Any key closes a card.',
+  hR1: 'The flapper stops on one of 54 segments. Back 1, 3, 6, 12, 25 or EYE on the counter.',
+  hR2: 'Pays 1 to 1 on 1, 3 to 1 on 3, 6, 12, 25 to 1, and 50 to 1 on the EYE. A win returns your stake too.',
+  hR3: 'HOUSE beats every bet: the stake is lost and the eye closes.',
+  hR4: 'Shared table: bets close when the timer runs out or every bettor is ready. Alone, pull once ready.',
+  hR5: 'With the Golden Ratchet, [{nudge}] pays 25% of your stake to nudge the wheel toward your symbol.',
+  hR6: 'Limits: 1 to 200 per symbol, 1000 per player in total. [{rebet}] repeats your last layout.',
 };
 
 const tr: Record<string, string> = {
@@ -40,6 +58,24 @@ const tr: Record<string, string> = {
   peekOne: 'Sonraki sonuç 1', peekNotOne: 'Sonraki sonuç 1 değil',
   fair: 'ADİL', bell: 'ARTIK BAHİS YOK', rim: 'ÇERÇEVE',
   hintQuick: 'Hızlı bahis',
+  // seat HUD (readability standard)
+  hGoal: 'Tırnağın duracağı sembole bahis koy. EV tüm bahisleri alır',
+  hWait: 'OYUNCULAR BEKLENİYOR', hBet: 'BİR SEMBOLE BAHİS KOY', hSecs: 'BAHİSLER {n} SN SONRA KAPANIR',
+  hReady: 'HAZIR · DİĞERLERİ BEKLENİYOR', hLock: 'ARTIK BAHİS YOK', hSpin: 'TIRNAK DÖNÜYOR',
+  hPay: 'ÖDEME YAPILIYOR', hClear: 'TEZGÂH TEMİZLENİYOR',
+  hNBet: 'FİŞİN', hNCounter: 'TEZGÂHIN', hNLast: 'SON DURUŞ', hNX2: 'ÇİFT ÖDEME',
+  hNRatchet: 'CIRCIR', hRatchetOn: 'HAZIR', hRatchetOff: 'KAPALI', hNBalance: 'BAKİYE',
+  hCBet: 'FİŞ', hCSym: 'SEMBOL KOY', hCPull: 'ÇEK', hCReady: 'HAZIR', hCClear: 'TEMİZLE',
+  hCRebet: 'TEKRAR', hCNudge: 'CIRCIR', hCRules: 'KURALLAR', hCLeave: 'AYRIL',
+  hTip1: 'Fişini {up} ve {down} ile seç, sonra {syms} tuşlarıyla bir sembole koy.',
+  hTip2: '{pull} ile kolu çek. Ortak masada bu tuş seni hazır yapar.',
+  hTip3: '{help} ile tam kuralları ve ödemeleri gör. Her tuş kartı kapatır.',
+  hR1: 'Tırnak 54 segmentin birinde durur. Tezgâha 1, 3, 6, 12, 25 ya da GÖZ bahsi koy.',
+  hR2: '1\'e 1, 3, 6, 12 ve 25\'e katları, GÖZ\'e 50\'ye 1 öder. Kazanınca bahsin de geri gelir.',
+  hR3: 'EV tüm bahisleri yener: bahsin kaybolur ve göz kapanır.',
+  hR4: 'Ortak masada bahisler süre dolunca ya da herkes hazır olunca kapanır. Yalnızsan hazır olunca çek.',
+  hR5: 'Altın Cırcır ile [{nudge}] bahsinin %25\'ini öder ve çarkı sembolüne doğru bir adım iter.',
+  hR6: 'Limitler: sembol başına 1-200, oyuncu başına toplam 1000. [{rebet}] son dizilimi tekrarlar.',
 };
 
 export default { prefix: 'm.bigsix.', en, tr };

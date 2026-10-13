@@ -16,10 +16,11 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
 import { breathe } from '@/machines/_base/juice';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint, PanelHandle } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
+import type { PanelHandle } from '@/core/ui/types';
+import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { Kit } from '@/kit/types';
-import { fmtCoins, t } from '@/core/i18n';
+import { fmtCoins, type I18nVars } from '@/core/i18n';
 import { buildModel, CARD_H, CARD_X, FOLD, SHELF_Y, SHELF_Z, SPREAD, CRYSTAL, roman, type FortunetellerParts } from './model';
 import {
   DEFY_WINDOW_S, GRAND_OMEN, HOOK_CURSE_IMMUNE, HOOK_DEFY_MULT, HOOK_GRAND_RARITY, HOOK_OMEN_DUR, HOOK_VEIL, HOOK_WEIGHT,
@@ -86,12 +87,16 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
   private token = 0;
   private faceUp: boolean[] = [false, false, false];
   private almanac: PanelHandle | null = null;
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: Kit): MachineModel<FortunetellerParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     const p = this.parts;
     p.buttons.veil1.cap.userData.slot = 0;
     p.buttons.veil2.cap.userData.slot = 1;
@@ -118,10 +123,16 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
 
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.refresh();
-    if (local) { this.sfx('chime'); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip(this.def.id, this.tipLines());
+    }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
+    if (local) this.seatHud?.hide();
     if (local && this.roundOpen) this.settle({ gross: 0, tags: ['abandoned'] });   // safety net: never strand a stake
     this.busy = false;
     this.phase = 'idle';
@@ -150,6 +161,7 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip card
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -413,6 +425,8 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
     const o = omenOf(ev.omen);
     s.prev = ev.omen;                                       // Mirror repeats this next time
     s.last = { omen: ev.omen, coins: ev.coins, bet: ev.bet };
+    const net = ev.coins - ev.bet;                          // the bet includes any Defy Fate stake
+    if (this.isLocalOccupant) this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'lose', net);
     this.setCrystal(o.kind);
     if (ev.buff && this.isLocalOccupant) this.toast(`${this.t(`omen.${ev.omen}.name`)} — ${this.t(`omen.${ev.omen}.desc`)}`, 'sys');
     if (pc.fast) { this.drawScreen(); this.refresh(); return; }
@@ -544,29 +558,61 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
     });
   }
 
+  /** Seat HUD: goal, phase banner, key numbers and the valid controls only. */
   private showHud(): void {
-    const hints: HudHint[] = [];
-    if (this.busy) {
-      // presentation running: only leave
-    } else if (this.phase === 'idle') {
-      hints.push({ action: 'primary', label: this.t('read') }, { action: 'betUp', label: t('common.bet') });
-      hints.push({ action: 'help', label: this.t('almanac') });
-    } else if (this.phase === 'pick') {
-      for (let i = 0; i < 3; i++) hints.push({ action: SLOT_KEYS[i], label: `${this.t('pick')} ${i + 1}` });
-    } else if (this.phase === 'pick2') {
-      for (let i = 0; i < 3; i++) if (i !== this.voided) hints.push({ action: SLOT_KEYS[i], label: `${this.t('pick')} ${i + 1}` });
-    } else if (this.phase === 'defy') {
-      const cost = this.defyCost();
-      hints.push({ action: 'n4', label: cost > 0 ? this.t('defyCost', { n: fmtCoins(cost) }) : this.t('defyFree') });
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const s = this.state;
+    const cost = this.defyCost();
+    const pick = `${this.k('n1')}-${this.k('n3')}`;
+    sh.goal(this.tx('goal'));
+    switch (this.phase) {
+      case 'idle': sh.state(this.tx('stIdle'), 'gold', this.tx('stIdleSub')); break;
+      case 'pick': sh.state(this.tx('stPick'), 'gold', this.tx('stPickSub')); break;
+      case 'pick2': sh.state(this.tx('stPick2'), 'warn', this.tx('stPick2Sub')); break;
+      case 'defy': sh.state(this.tx('stDefy'), 'warn', this.tx('stDefySub', { defy: this.k('n4'), cost: cost > 0 ? fmtCoins(cost) : this.t('freeWord') })); break;
+      case 'apply': sh.state(this.tx('stApply'), 'neutral'); break;
+      default: sh.state(this.tx('stWait'), 'cyan');
     }
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: this.roundOpen ? null : this.bet,
-      hints,
-      stats: this.state.last ? [{ label: this.t('potLabel'), value: fmtCoins(this.roundBet) }] : [],
-    });
+    const last = s.last;
+    sh.numbers([
+      { label: this.tx('nStake'), value: fmtCoins(this.roundOpen ? this.roundBet : this.bet), tone: 'gold' },
+      { label: this.tx('nLast'), value: last ? roman(last.omen) : '-', tone: 'neutral' },
+      { label: this.tx('nPaid'), value: last ? fmtCoins(last.coins) : '-', tone: last && last.coins > 0 ? 'good' : 'neutral' },
+      { label: this.tx('nDefy'), value: this.phase === 'defy' && cost > 0 ? fmtCoins(cost) : '-', tone: 'warn' },
+      { label: this.tx('nBalance'), value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
+    ]);
+
+    const ctrl: HudControl[] = [];
+    if (!this.busy) {
+      if (this.phase === 'idle') {
+        ctrl.push({ key: this.k('primary'), label: this.tx('cRead'), action: 'primary', primary: true });
+        ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: this.tx('cStake'), action: 'betUp' });
+      } else if (this.phase === 'pick') {
+        ctrl.push({ key: pick, label: this.tx('cPick'), action: 'n1', primary: true });
+      } else if (this.phase === 'pick2') {
+        const keys = [0, 1, 2].filter((i) => i !== this.voided).map((i) => this.k(SLOT_KEYS[i]));
+        ctrl.push({ key: keys.join('/'), label: this.tx('cPick'), action: 'n1', primary: true });
+      } else if (this.phase === 'defy') {
+        ctrl.push({ key: this.k('n4'), label: cost > 0 ? this.tx('cDefyCost', { cost: fmtCoins(cost) }) : this.tx('cDefyFree'), action: 'n4', primary: true });
+      }
+    }
+    ctrl.push({ key: this.k('help'), label: this.tx('cAlmanac'), action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: this.tx('cLeave'), action: 'exit' });
+    sh.controls(ctrl);
   }
 
+  // ── seat HUD helpers ────────────────────────────────────────────────────────────────────────────
+  private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.${this.def.id}.${key}`, v } : { k: `m.${this.def.id}.${key}` }; }
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+  private tipLines(): Txt[] {
+    return [
+      this.tx('tip1', { read: this.k('primary') }),
+      this.tx('tip2', { pick: `${this.k('n1')}-${this.k('n3')}` }),
+      this.tx('tip3', { defy: this.k('n4'), help: this.k('help') }),
+    ];
+  }
   /** Omen almanac: all 22 cards with their coin multiplier and effect (EN/TR). Toggled with H. */
   private toggleAlmanac(): void {
     if (this.almanac) { this.almanac.close(); this.almanac = null; return; }
@@ -591,6 +637,7 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
   }
 
   override dispose(): void {
+    this.seatHud?.dispose();
     this.token++;
     this.almanac?.close(); this.almanac = null;
     super.dispose();

@@ -23,10 +23,10 @@ import * as THREE from 'three';
 import type { PlayerId } from '@/core/types';
 import { isBot } from '@/core/types';
 import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
 import { fmtCoins, t } from '@/core/i18n';
 import type { ModHook } from '@/game/types';
 import { TableBase } from '@/machines/_base/TableBase';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { juiceTier } from '@/machines/_base/tiers';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import type { KitX } from '@/kit/index';
@@ -35,6 +35,7 @@ import { buildModel, faceYaw, GLYPH, type TeetotumParts } from './model';
 import * as R from './rules';
 
 export { playHeadless } from './rules';
+const RULE_LINES: Txt[] = ['hr1', 'hr2', 'hr3', 'hr4', 'hr5', 'hr6'].map((k) => ({ k: 'm.teetotum.' + k }));
 
 const BET_S = 10;
 const TURN_S = 8;
@@ -130,6 +131,9 @@ export default class Teetotum extends TableBase<TeetotumParts, Ev, Snap, Act> {
   private hs: Host = freshHost();
   /** Local: Q pressed, stand up once this cycle ends. */
   private leaveAfter = false;
+  /** Seat HUD overlay (goal, state, key numbers, controls, result callout, tip and rules cards). */
+  private seatHud?: SeatHud;
+  private hudSig = '';
 
   protected createModel(kit: KitX): MachineModel<TeetotumParts> {
     return buildModel(kit, this.modelOpts);
@@ -137,14 +141,22 @@ export default class Teetotum extends TableBase<TeetotumParts, Ev, Snap, Act> {
 
   init(): void {
     const p = this.parts;
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     p.topYaw.rotation.set(0, 0, 0);
     p.topTilt.rotation.set(0, 0, 0);
     this.repaintAll();
   }
 
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
+
   // ── local input → action to the host ─────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
     const a = e.action as MachineAction;
     const seat = this.localSeat;
     const mine = seat >= 0 ? this.st.seats[seat] : undefined;
@@ -174,7 +186,7 @@ export default class Teetotum extends TableBase<TeetotumParts, Ev, Snap, Act> {
         this.sfx('click'); this.showHud();
         break;
       case 'help':
-        if (!e.repeat) void this.showRules();
+        if (!e.repeat) this.seatHud?.rules(RULE_LINES);
         break;
     }
   }
@@ -209,12 +221,6 @@ export default class Teetotum extends TableBase<TeetotumParts, Ev, Snap, Act> {
     const cur = Math.max(0, ladder.indexOf(this.bet));
     const v = ladder[Math.min(ladder.length - 1, Math.max(0, cur + dir))];
     if (v !== undefined && (v <= wallet || dir < 0)) this.bet = v;
-  }
-
-  private async showRules(): Promise<void> {
-    const keys = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6', 'rule7', 'rule8'] as const;
-    const body = keys.map((k) => this.t(k)).join('\n');
-    await this.ctx.ui.modal({ title: this.t('rulesTitle'), body, buttons: [{ id: 'ok', label: this.t('okLabel') }] });
   }
 
   // ── HOST: actions ────────────────────────────────────────────────────────────────────────────
@@ -460,7 +466,7 @@ export default class Teetotum extends TableBase<TeetotumParts, Ev, Snap, Act> {
       }
       this.tidyBots();
     }
-    if (local) { this.hud(null); this.leaveAfter = false; }
+    if (local) { this.hud(null); this.seatHud?.hide(); this.leaveAfter = false; }
     this.refresh();
   }
 
@@ -468,7 +474,15 @@ export default class Teetotum extends TableBase<TeetotumParts, Ev, Snap, Act> {
     if (isBot(pid)) this.parts.bots[seat]?.setVisible(true);
     if (this.isHost && !isBot(pid)) this.tidyBots();
     this.refresh();
-    if (local) { this.sfx('chime'); this.repaintAll(); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.hud(null);
+      this.seatHud?.show();
+      this.hudSig = '';
+      this.repaintAll();
+      this.showHud();
+      this.seatHud?.firstTip('teetotum', this.tipLines());
+    }
   }
 
   // ── presentation (every peer) ────────────────────────────────────────────────────────────────
@@ -550,6 +564,11 @@ export default class Teetotum extends TableBase<TeetotumParts, Ev, Snap, Act> {
         }
         if (ev.split) this.ctx.fx.popText(p.potBowl, this.t('split'), GOLD, { dur: 1.0, rise: 0.25, scale: 1 });
         if (me >= 0 && !ev.rows.some((r) => r.seat === me && r.won > 0) && ev.rows.some((r) => r.seat === me)) this.commiserate();
+        const mineRow = ev.rows.find((r) => r.seat === me);
+        if (mineRow) {
+          const net = mineRow.won - mineRow.stake;
+          this.seatHud?.result(mineRow.won <= 0 ? 'lose' : net === 0 ? 'push' : net > 0 ? 'win' : 'lose', net, 1.5);
+        }
         this.repaintPot(0, st.ante);
         this.lampsFor();
         this.refresh();
@@ -687,12 +706,15 @@ export default class Teetotum extends TableBase<TeetotumParts, Ev, Snap, Act> {
   private shownSecond = -1;
   frame(): void {
     const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
-    if (left !== this.shownSecond) { this.shownSecond = left; this.drawBoard(); }
+    if (left !== this.shownSecond) { this.shownSecond = left; this.drawBoard(); if (this.isLocalOccupant) this.showHud(); }
   }
 
-  onLang(): void { this.drawBoard(); this.drawRails(); if (this.isLocalOccupant) this.showHud(); }
+  onLang(): void { this.drawBoard(); this.drawRails(); this.hudSig = ''; if (this.isLocalOccupant) this.showHud(); }
 
-  private refresh(): void { this.drawBoard(); this.drawRails(); this.lampsFor(); }
+  private refresh(): void {
+    this.drawBoard(); this.drawRails(); this.lampsFor();
+    if (this.isLocalOccupant) this.showHud();
+  }
 
   private statusText(): string {
     const st = this.st, seat = this.localSeat;
@@ -741,24 +763,71 @@ export default class Teetotum extends TableBase<TeetotumParts, Ev, Snap, Act> {
     });
   }
 
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.teetotum.tip1' },
+      { k: 'm.teetotum.tip2', v: { spin: this.k('confirm'), double: this.k('double'), ante: `${this.k('betDown')}/${this.k('betUp')}` } },
+      { k: 'm.teetotum.tip3', v: { sit: this.k('n1'), leave: this.k('collect'), help: this.k('help') } },
+    ];
+  }
+
+  /** Banner, key numbers and valid controls for the local player. Redraws only when something changed. */
   private showHud(): void {
-    const st = this.st, seat = this.localSeat;
-    const mine = seat >= 0 ? st.seats[seat] : undefined;
-    const hints: HudHint[] = [];
-    if (st.phase === 'turn' && st.turn === seat) {
-      hints.push({ action: 'primary', label: this.t('hSpin') });
-      if (!st.doubled) hints.push({ action: 'double', label: this.t('hDouble') });
+    const sh = this.seatHud;
+    const seat = this.localSeat;
+    if (!sh || seat < 0) return;
+    const st = this.st, mine = st.seats[seat];
+    const myTurn = st.phase === 'turn' && st.turn === seat;
+    const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
+    const wallet = this.ctx.run.wallet();
+    const ante = this.anteHere();
+    const sig = [st.phase, st.turn, st.doubled, st.face, st.pot, st.ante, mine.ready, mine.live, mine.stake, mine.won,
+      seat, this.leaveAfter, left, ante, wallet].join('|');
+    if (sig === this.hudSig) return;
+    this.hudSig = sig;
+    sh.goal({ k: 'm.teetotum.goal' });
+
+    // STATE: sit in, the antes, whose spin it is, the top, the end of the cycle
+    const secs: Txt | undefined = left > 0 ? { k: 'm.teetotum.stSecs', v: { n: left } } : undefined;
+    if (myTurn) sh.state({ k: 'm.teetotum.stYourSpin' }, 'good', secs);
+    else if (st.phase === 'turn') sh.state({ k: 'm.teetotum.stOther', v: { n: st.turn + 1 } }, 'cyan');
+    else if (st.phase === 'bet') {
+      if (mine.ready) sh.state({ k: 'm.teetotum.stReady' }, 'good', secs);
+      else sh.state({ k: 'm.teetotum.stSitIn', v: { a: fmtCoins(ante) } }, 'gold', secs);
+    } else if (st.phase === 'ante') sh.state({ k: 'm.teetotum.stAnte' }, 'neutral');
+    else if (st.phase === 'spin' || st.phase === 'apply') sh.state({ k: 'm.teetotum.stSpin' }, 'neutral');
+    else sh.state({ k: 'm.teetotum.stEnd' }, 'neutral');
+
+    // KEY NUMBERS
+    const nums: HudNumber[] = [
+      { label: { k: 'm.teetotum.nAnte' }, value: fmtCoins(st.ante > 0 ? st.ante : ante), tone: 'gold' },
+      { label: { k: 'm.teetotum.nPot' }, value: fmtCoins(st.pot), tone: 'gold' },
+    ];
+    if (mine.live || mine.stake > 0) nums.push({ label: { k: 'm.teetotum.nIn' }, value: fmtCoins(mine.stake), tone: 'cyan' });
+    if (mine.won > 0) nums.push({ label: { k: 'm.teetotum.nWon' }, value: fmtCoins(mine.won), tone: 'good' });
+    if (st.face) nums.push({ label: { k: 'm.teetotum.nFace' }, value: GLYPH[st.face as R.Face] ?? '-', tone: 'neutral' });
+    nums.push({ label: { k: 'm.teetotum.nBalance' }, value: fmtCoins(wallet), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now
+    const ctrl: HudControl[] = [];
+    if (myTurn) {
+      ctrl.push({ key: this.k('confirm'), label: { k: 'm.teetotum.cSpin' }, action: 'primary', primary: true });
+      if (!st.doubled) ctrl.push({ key: this.k('double'), label: { k: 'm.teetotum.cDouble' }, action: 'double' });
+    } else if (!mine.ready) {
+      ctrl.push({ key: this.k('confirm'), label: { k: 'm.teetotum.cSitIn' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.teetotum.cAnte' }, action: 'betUp' });
     }
-    if (mine && !mine.ready) {
-      hints.push({ action: 'primary', label: this.t('hReady') }, { action: 'betUp', label: this.t('hAnte') });
+    if (mine.ready) {
+      ctrl.push({ key: this.k('n1'), label: { k: 'm.teetotum.cSitOut' }, action: 'n1' });
+      if (st.phase !== 'end') ctrl.push({ key: this.k('collect'), label: { k: 'm.teetotum.cAfter' }, action: 'collect' });
     }
-    if (mine) hints.push({ action: 'n1', label: mine.ready ? this.t('hSit') : this.t('hReady') }, { action: 'collect', label: this.t('hLeave') });
-    hints.push({ action: 'help', label: this.t('help') }, { action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: mine && !mine.ready ? this.anteHere() : null,
-      hints,
-      stats: st.pot > 0 ? [{ label: this.t('ante', { a: fmtCoins(st.ante) }), value: fmtCoins(st.pot) }] : [],
-    });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.teetotum.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.teetotum.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 
   // ── snapshots: public state for everyone, the host's own timers and cycle only for a host save ──

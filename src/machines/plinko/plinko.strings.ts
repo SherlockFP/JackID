@@ -10,6 +10,18 @@ const en: Record<string, string> = {
   golden: 'GOLD ×2', edge: 'EDGE', win: 'WIN {n}', last: 'LAST', bet: 'BET {n}', credit: 'CREDIT',
   extra: '+{n} FREE', multLabel: '×{n}', lost: 'Nothing this time',
   busy: 'Pucks are still falling', chaseEdge: 'EDGE!', potLabel: 'Bet',
+  goal: 'Drop pucks and land them in the big multiplier slots at the edges.',
+  stFall: 'PUCKS FALLING', stReady: 'READY TO DROP', stReadySub: 'Risk: {risk}',
+  nBet: 'BET', nPucks: 'PUCKS', nRisk: 'RISK', nLast: 'LAST', nBalance: 'BALANCE',
+  cDrop: 'DROP', cPucks: 'PUCKS', cRisk: 'RISK', cStake: 'STAKE', cRules: 'RULES', cLeave: 'LEAVE',
+  tip1: 'Set the risk with {risk} and the pucks with {pucks}.',
+  tip2: 'Press {drop} to drop every puck. Edge slots pay the most.',
+  tip3: 'Gold slots double. Press {help} for the full rules.',
+  rule1: 'Each puck bounces down the pegs and lands in one of 13 slots.',
+  rule2: 'You pay the stake for every puck. The slot it lands in pays its multiplier.',
+  rule3: 'Risk LOW keeps the multipliers close together. HIGH pays the edges much more.',
+  rule4: 'Up to five pucks drop at once. {keys} or the wheel changes the stake per puck.',
+  rule5: 'Golden slots double the multiplier. The HIGH edge alarm is a warning only.',
 };
 
 const tr: Record<string, string> = {
@@ -20,6 +32,18 @@ const tr: Record<string, string> = {
   golden: 'ALTIN ×2', edge: 'KENAR', win: 'KAZANÇ {n}', last: 'SON', bet: 'BAHİS {n}', credit: 'KREDİ',
   extra: '+{n} BEDAVA', multLabel: '×{n}', lost: 'Bu sefer olmadı',
   busy: 'Toplar hâlâ düşüyor', chaseEdge: 'KENAR!', potLabel: 'Bahis',
+  goal: 'Topları kenardaki büyük çarpanlı gözlere düşürerek kazan.',
+  stFall: 'TOPLAR DÜŞÜYOR', stReady: 'BIRAKMAYA HAZIR', stReadySub: 'Risk: {risk}',
+  nBet: 'BAHİS', nPucks: 'TOP', nRisk: 'RİSK', nLast: 'SON', nBalance: 'BAKİYE',
+  cDrop: 'BIRAK', cPucks: 'TOP', cRisk: 'RİSK', cStake: 'BAHİS', cRules: 'KURALLAR', cLeave: 'AYRIL',
+  tip1: 'Riski {risk} ile, top sayısını {pucks} ile seç.',
+  tip2: 'Tüm topları bırakmak için {drop} bas. Kenar gözler en çok öder.',
+  tip3: 'Altın gözler ikiye katlar. Tüm kurallar için {help} bas.',
+  rule1: 'Her top çivilerin arasında sekerek 13 gözden birine düşer.',
+  rule2: 'Her top için bahis ödenir. Topun düştüğü gözün çarpanı kadar geri alırsın.',
+  rule3: 'DÜŞÜK risk çarpanları birbirine yakın tutar. YÜKSEK risk kenarlara çok daha fazla öder.',
+  rule4: 'Bir seferde beş topa kadar bırakılır. {keys} ya da tekerlek bahsi topa göre değiştirir.',
+  rule5: 'Altın gözler çarpanı ikiye katlar. YÜKSEK risk kenar alarmı yalnızca uyarıdır.',
 };
 
 export default { prefix: 'm.plinko.', en, tr };

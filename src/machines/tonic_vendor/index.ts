@@ -1,7 +1,7 @@
 /**
  * Apothecary (`tonic_vendor`, system) — buys tonics: timed buffs that feed the modifier pipeline (BRIEF ADDENDUM 3).
  * Stock, prices and buffs come from rules.ts and data/buffs.ts. The coins move through `run.spend('coin')` in the credit
- * step; the dose is applied with `run.buffs.add(buffId, { pid })`. The machine never prices anything itself.
+ * step; the dose is applied with `run.buffs.add(id, { pid })` and a totem with `run.totems.grant(pid, id)`. The machine never prices anything itself.
  *
  * Controls (seated): 1–4 or ←/→ pick a bottle · Space/Enter buy · E stands up.
  * Every peer draws the same shelf from the same run seed and Night. `present()` plays the juice for the local choices.
@@ -15,12 +15,15 @@ import type { KitX } from '@/kit';
 import { fmtNum, t as tr } from '@/core/i18n';
 import { lerp } from '@/core/math';
 import { buildModel, DRAWER_SLIDE, type TonicVendorParts } from './model';
-import { SLOTS, priceText, stockKey, tonicStock, wrapSlot, type TonicOffer } from './rules';
+import { SLOTS, priceText, stockKey, tonicStock, wrapSlot, type TonicJuice, type TonicKind, type TonicOffer } from './rules';
 
-type Juice = 'plain' | 'rare' | 'cursed';
 type Ev =
   /** A sale. `why` names the refusal when `ok` is false. */
-  { k: 'buy'; i: number; buffId: string; price: number; juice: Juice; ok: boolean; why: string };
+  { k: 'buy'; i: number; kind: TonicKind; id: string; price: number; juice: TonicJuice; ok: boolean; why: string };
+
+/** Display name / one-line effect of a shelf slot (tonic buffs and totems keep their strings under different prefixes). */
+const nameOf = (o: Pick<TonicOffer, 'kind' | 'id'>): string => tr(`${o.kind === 'totem' ? 'totem' : 'buff'}.${o.id}.name`);
+const descOf = (o: Pick<TonicOffer, 'kind' | 'id'>): string => tr(`${o.kind === 'totem' ? 'totem' : 'buff'}.${o.id}.desc`);
 
 const GREEN = 0x60ff90;
 const BLUE = 0x60a0ff;
@@ -45,7 +48,7 @@ export const def: MachineDef = {
       desc: 'Tonics behind the glass. Each dose changes the odds for a while. Every dose has a side effect.',
       h_pick: 'PICK', h_buy: 'DRINK', h_leave: 'LEAVE',
       s_coins: 'COINS', s_dose: 'DOSE', s_length: 'LASTS',
-      funds: 'NOT ENOUGH COINS', none: 'EMPTY SHELF',
+      funds: 'NOT ENOUGH COINS', none: 'EMPTY SHELF', hand: 'HAND ALREADY FULL',
       ledger: 'APOTHECARY', ledgerHint: '1-4 PICK  SPACE DRINK',
       free: 'FREE',
     },
@@ -54,7 +57,7 @@ export const def: MachineDef = {
       desc: 'Camın arkasında tonikler. Her doz bir süre oranları değiştirir. Her dozun bir yan etkisi var.',
       h_pick: 'SEÇ', h_buy: 'İÇ', h_leave: 'AYRIL',
       s_coins: 'PARA', s_dose: 'DOZ', s_length: 'SÜRE',
-      funds: 'PARA YETMİYOR', none: 'RAF BOŞ',
+      funds: 'PARA YETMİYOR', none: 'RAF BOŞ', hand: 'ELİ DOLU',
       ledger: 'ECZANE', ledgerHint: '1-4 SEÇ  BOŞLUK İÇ',
       free: 'BEDAVA',
     },
@@ -136,21 +139,42 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
     this.refresh(true);
   }
 
-  /** Purchase: refusals are checked here; the coins and the dose move in the credit step. */
+  /** Purchase: refusals are checked here; the coins and the dose or totem move in the credit step. */
   private buy(i: number): void {
     const offer = this.stock()[i] ?? null;
-    if (!offer || i >= SLOTS) { void this.emit({ k: 'buy', i, buffId: '', price: 0, juice: 'plain', ok: false, why: 'none' }); return; }
-    const ok = offer.price <= 0 || this.ctx.run.canAfford(offer.price, this.selfId);
+    if (!offer || i >= SLOTS) { void this.emit({ k: 'buy', i, kind: 'buff', id: '', price: 0, juice: 'plain', ok: false, why: 'none' }); return; }
+    const run = this.ctx.run;
+    const why = offer.kind === 'totem' && this.handBusy() ? 'hand'
+      : offer.price > 0 && !run.canAfford(offer.price, this.selfId) ? 'funds' : '';
     void this.emit(
-      { k: 'buy', i, buffId: offer.buffId, price: offer.price, juice: offer.juice, ok, why: ok ? '' : 'funds' },
-      ok ? () => {
-        if (offer.price > 0 && !this.ctx.run.spend('coin', offer.price, 'tonic', this.selfId)) {
-          this.ctx.ui.toast(this.t('funds'), 'bad');
-          return;
-        }
-        this.ctx.run.buffs.add(offer.buffId, { pid: this.selfId, source: { kind: 'tonic', id: offer.buffId } });
-      } : undefined,
+      { k: 'buy', i, kind: offer.kind, id: offer.id, price: offer.price, juice: offer.juice, ok: why === '', why },
+      why === '' ? () => this.sell(offer) : undefined,
     );
+  }
+
+  /** A carried totem already sits in the hand slot (one hand totem at a time). */
+  private handBusy(): boolean {
+    const totems = this.ctx.run.totems;
+    return totems.mine(this.selfId).some((t) => t.pos === null && totems.def(t.def)?.carry === 'hand');
+  }
+
+  /** Credit step: a totem is granted first (so a full hand refunds nothing), then the coins move. */
+  private sell(o: TonicOffer): void {
+    const run = this.ctx.run;
+    if (o.kind === 'totem') {
+      const uid = run.totems.grant(this.selfId, o.id);
+      if (!uid) { this.ctx.ui.toast(this.t('hand'), 'bad'); return; }
+      if (o.price > 0 && !run.spend('coin', o.price, 'totem', this.selfId)) {
+        run.totems.discard(uid);
+        this.ctx.ui.toast(this.t('funds'), 'bad');
+      }
+      return;
+    }
+    if (o.price > 0 && !run.spend('coin', o.price, 'tonic', this.selfId)) {
+      this.ctx.ui.toast(this.t('funds'), 'bad');
+      return;
+    }
+    run.buffs.add(o.id, { pid: this.selfId, source: { kind: 'tonic', id: o.id } });
   }
 
   // ── presentation (every peer) ───────────────────────────────────────────────────────────────────
@@ -171,7 +195,7 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
     const { drawer, bottles } = this.parts;
     const fx = this.ctx.fx;
     const anchor = this.model.anchors.coinOut;
-    const name = tr(`buff.${ev.buffId}.name`);
+    const name = nameOf(ev);
     if (pc.fast) { this.refresh(true); return; }
 
     // anticipation: the drawer slides out, the bottle is tilted up
@@ -236,7 +260,7 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
       const o = stock[i] ?? null;
       const y = 26 + i * 12;
       const mark = i === this.cursor ? '>' : ' ';
-      const name = o ? tr(`buff.${o.buffId}.name`).slice(0, 14) : this.t('none');
+      const name = o ? nameOf(o).slice(0, 14) : this.t('none');
       s.text(`${mark}${i + 1} ${name}`, 4, y, { font: 'px5', color: o?.juice === 'cursed' ? '#c0a0ff' : '#c8ffe0' });
       s.text(o ? priceText(o, fmtNum, this.t('free')) : '--', 124, y, { font: 'px5', color: '#ffd060', align: 'right' });
     }
@@ -245,7 +269,7 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
 
   private showHud(): void {
     const sel = this.stockCache[this.cursor] ?? null;
-    const key = [this.cursor, this.wallet(), sel?.buffId ?? ''].join('|');
+    const key = [this.cursor, this.wallet(), sel ? `${sel.kind}:${sel.id}` : ''].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
     const hints: HudHint[] = [
@@ -258,8 +282,8 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
       hints,
       stats: [
         { label: this.t('s_coins'), value: fmtNum(this.wallet()) },
-        { label: this.t('s_dose'), value: sel ? tr(`buff.${sel.buffId}.name`) : '--' },
-        { label: this.t('s_length'), value: sel ? tr(`buff.${sel.buffId}.desc`) : '--' },
+        { label: this.t('s_dose'), value: sel ? nameOf(sel) : '--' },
+        { label: this.t('s_length'), value: sel ? descOf(sel) : '--' },
       ],
     });
   }

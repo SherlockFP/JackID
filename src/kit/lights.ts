@@ -60,16 +60,22 @@ export function createBulbChain(ctx: KitCtx, positions: V3[], colors: Hex[], r: 
   let pat: BulbPattern = 'off', hz = 1, lastStep = -1;
   const tmp = new THREE.Color();
 
+  /** Recolour every bulb; the GPU upload is queued only when at least one bulb actually changed. */
   const paint = (): void => {
+    let changed = false;
     for (let i = 0; i < n; i++) {
       let c = base[i], k = dead[i] ? 0 : level[i];
       if (pat === 'rainbow' && !dead[i]) c = RAINBOW[(i + Math.floor(ctx.anim.time * hz)) % RAINBOW.length];
       if (override[i] !== null) { c = override[i] as Hex; k = 1; }
       tmp.setHex(c);
       const f = 0.25 + 0.75 * k;
-      arr[i * 3] = tmp.r * f; arr[i * 3 + 1] = tmp.g * f; arr[i * 3 + 2] = tmp.b * f;
+      const r = tmp.r * f, g = tmp.g * f, b = tmp.b * f;
+      if (arr[i * 3] !== r || arr[i * 3 + 1] !== g || arr[i * 3 + 2] !== b) {
+        changed = true;
+        arr[i * 3] = r; arr[i * 3 + 1] = g; arr[i * 3 + 2] = b;
+      }
     }
-    (mesh.instanceColor as THREE.InstancedBufferAttribute).needsUpdate = true;
+    if (changed) (mesh.instanceColor as THREE.InstancedBufferAttribute).needsUpdate = true;
   };
 
   const compute = (step: number, t: number): void => {

@@ -11,8 +11,9 @@
  *
  * Camera: sampled every frame (`camera.ts`) and handed to the FX layer, which writes it over the state's camera for
  * the draw only (`fx/layer.ts`), so gameplay code never sees it. Actors, audio, screen FX, lights and subtitles are
- * applied by `actors.ts` / `effects.ts`. The run never touches `setTimeout` or DOM listeners: skipping reads the
- * `skip` action (hold 0.8 s) and tap-gates use `input.on('skip')`.
+ * applied by `actors.ts` / `effects.ts`. The run never touches `setTimeout` or DOM listeners: skipping follows the
+ * `skip` action edges (`input.on('skip')`): a tap (press released before SKIP_HOLD) or a hold of SKIP_HOLD skips.
+ * The skip hint is visible from t = 0 of every scene.
  *
  * Multiplayer glue (the NET layer owns the messages):
  *  - the host calls `play(id, { startAt, seed })`; every peer does the same with the same `startAt`;
@@ -46,8 +47,7 @@ declare module '@/core/events' {
   }
 }
 
-const SKIP_HOLD = 0.8;          // s, hold-to-skip
-const HINT_SECS = 4;            // s, the skip ring is shown dimly at the start of every scene
+const SKIP_HOLD = 0.6;          // s, hold-to-skip; a press released sooner is a tap and skips at once
 const SEEK_MIN = 0.05;          // s, a late start below this is just played
 const READY_WAIT = 2;           // s, SP: wait this long for mannequin meshes before starting
 const GATE_FAILSAFE = 90;       // s, online: a lost gate message must never soft-lock a client
@@ -114,6 +114,8 @@ class Run {
   private clock = 0;                 // real seconds since start()
   private readyWait = 0;
   private hold = 0;
+  private keyDown = false;           // a skip key is down (edges come from input.on('skip'))
+  private skipOff: (() => void) | null = null;
   private voted = false;
   private staged = false;
   private begun = false;
@@ -149,6 +151,7 @@ class Run {
       this.player = a.player;
       this.player?.setCutscene(true);
     }
+    if (this.skippable && this.locked) this.skipOff = a.input.on('skip', (down) => this.onSkipKey(down));
     if (def.hideHud !== false) { a.ui.setHudVisible(false); this.hidHud = true; }
     if (def.letterbox !== false) void a.ui.letterbox(1, 0.5);
     if ((def.fadeIn ?? 0.4) > 0) void a.ui.fade(1, 0);              // black until t = 0, then fades in
@@ -321,16 +324,29 @@ class Run {
   }
 
   // ── skipping ────────────────────────────────────────────────────────────────────────────────────
+  /** Skipping is ignored while a choice dialog is open (it cannot be cancelled from here), paused, or already voted. */
+  private canSkip(paused: boolean): boolean {
+    return !this.ended && this.skippable && !paused && !this.voted && this.gate?.cue.until !== 'choice';
+  }
+
+  /** Edge of a skip key (Space / Enter / Escape). A press released before SKIP_HOLD is a tap and skips at once. */
+  private onSkipKey(down: boolean): void {
+    if (this.ended) return;
+    if (down) { this.keyDown = true; this.hold = 0; return; }
+    const tap = this.keyDown && this.hold < SKIP_HOLD;
+    this.keyDown = false;
+    this.hold = 0;
+    if (tap && this.canSkip(app.simPaused)) this.requestSkip();
+  }
+
   private updateSkip(dt: number, paused: boolean): void {
-    if (!this.skippable || !this.locked) return;
+    if (!this.skippable || !this.locked || this.ended) return;
     const a = app;
-    // A choice dialog cannot be cancelled from here, so skipping is ignored while one is open.
-    const held = !paused && !this.voted && this.gate?.cue.until !== 'choice' && a.input.down('skip');
-    this.hold = held ? Math.min(SKIP_HOLD, this.hold + dt) : Math.max(0, this.hold - dt * 3);
+    const live = this.canSkip(paused);
+    if (this.keyDown && live) this.hold = Math.min(SKIP_HOLD, this.hold + dt);
     if (this.voted) a.ui.skipHint(1, t('cutscene.skipVote'));
-    else if (this.hold > 0 || this.clock < HINT_SECS) a.ui.skipHint(this.hold / SKIP_HOLD);
-    else a.ui.skipHint(null);
-    if (held && this.hold >= SKIP_HOLD) this.requestSkip();
+    else a.ui.skipHint(this.hold / SKIP_HOLD);                   // shown from the first frame of every scene
+    if (this.keyDown && live && this.hold >= SKIP_HOLD) this.requestSkip();
   }
 
   /** SP: skip now. Online: cast a vote (`cutscene:skip`); the net calls `forceSkip()` when it passes. */
@@ -355,6 +371,9 @@ class Run {
 
   private release(): void {
     const a = app;
+    this.skipOff?.();
+    this.skipOff = null;
+    this.keyDown = false;
     this.gate?.off?.();
     this.gate = null;
     for (const v of this.voices) v.voice.stop(0.2);

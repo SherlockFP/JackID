@@ -18,7 +18,7 @@ export const MINOR_ROW = 10;
 export const MAJOR_ROW = 15;
 export const MIN_STAKE = 1;
 export const MAX_STAKE = 25;
-export const MINOR_MULT = 2.5;
+export const MINOR_MULT = 1.6;
 export const MAJOR_MULT = 25;
 /**
  * Speed table: row r moves at (SPEED0 + SPEED_STEP·(r−1)) cells/s before luck. The only RTP knob. Tuned in the scratchpad
@@ -37,7 +37,8 @@ export const SLIP_P = 0.6;              // chance per row that the bar slips by 
 export const HIGH_RAMP = 2;             // speed × on rows above MINOR_ROW (expert ceiling: fast top rows punish fine aim less than luck)
 export const SLIP_T = 1.2;              // slip lands at a seeded time in [0, SLIP_T) s after the row starts
 export const DWELL_MAX = 0.12;          // edge dwell 0–120 ms
-export const DECIDE_S = 5;              // MINOR decision window (default TAKE)
+export const COLLAPSE_P = 0.09;         // skill-independent per-row collapse chance (rows 1..MINOR_ROW)
+export const DECIDE_S = 5;             // MINOR decision window (default TAKE)
 export const ROW_GAP_S = 0.45;          // fall + beat between rows
 
 export const HOOK_EXTRA = 'x.stacker.extraBlock' as ModHook;   // +1 width rows 1–5 (Brass Knuckles)
@@ -185,6 +186,14 @@ export function settleRow(top: Seg | null, cs: number, w: number, saveAvail: boo
   return { ok: true, cs, kept: span(lo, hi), fell, saved, seg: { a: lo, b: hi } };
 }
 
+/**
+ * Skill-independent collapse: on rows 1..MINOR_ROW the stack may give way (a loss) with COLLAPSE_P, whatever the aim.
+ * A pure function of (seed, row), so the live machine (which holds the seed, not the sim rng) checks the same roll.
+ */
+export function collapses(seed: number, row: number): boolean {
+  return row <= MINOR_ROW && createRng(hashSeed(seed, row, 'collapse')).next() < COLLAPSE_P;
+}
+
 /** Stochastic rounding of an exact payout: unbiased for fractional stakes. `u` in [0, 1). */
 export function roundPrize(exact: number, u: number): number {
   return exact > 0 ? Math.floor(exact + u) : 0;
@@ -223,6 +232,7 @@ export function playOnce(rng: Rng, stake: number, o: PlayOpts): PlayResult {
     const u1 = Math.max(rng.next(), 1e-12), u2 = rng.next();
     const gauss = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
     const cs = stopCell(m, Math.max(0, m.firstAt(target) + o.sigma * gauss));
+    if (collapses(seed, row)) return finish(rng, stake, 0, 'lose', row, false);
     const r = settleRow(top, cs, w, save);
     if (r.saved) save = false;
     if (!r.ok) return finish(rng, stake, 0, 'lose', row, false);

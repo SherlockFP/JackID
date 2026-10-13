@@ -45,6 +45,26 @@ const HIDDEN = new THREE.Matrix4().makeScale(0, 0, 0);
 /** Shortest angular path from a to b (radians). */
 const shortest = (a: number, b: number): number => a + ((((b - a) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI);
 
+/**
+ * Partial GPU uploads for pooled attributes. `touch(i)` records a changed item (`stride` array elements per item);
+ * `flush()` queues only the touched [lo, hi] span. three merges queued ranges and clears them after each upload, so
+ * several flushes between two renders simply accumulate. A full upload is forced when the queue grows past `MAX_RANGES`.
+ */
+const MAX_RANGES = 16;
+class Span {
+  private lo = Infinity;
+  private hi = -1;
+  constructor(private readonly attr: THREE.BufferAttribute, private readonly stride: number) {}
+  touch(i: number): void { if (i < this.lo) this.lo = i; if (i > this.hi) this.hi = i; }
+  flush(): void {
+    if (this.hi < 0) return;
+    if (this.attr.updateRanges.length >= MAX_RANGES) this.attr.clearUpdateRanges();
+    else this.attr.addUpdateRange(this.lo * this.stride, (this.hi - this.lo + 1) * this.stride);
+    this.attr.needsUpdate = true;
+    this.lo = Infinity; this.hi = -1;
+  }
+}
+
 // ── chips ───────────────────────────────────────────────────────────────────────────────────────
 const CHIP_VALUES: readonly ChipValue[] = [1, 5, 10, 25, 100, 500, 1000, 5000];
 const CHIP_SHEET_H = 36;       // 32 px chip top + 4 px edge strip
@@ -82,12 +102,14 @@ function makeChips(ctx: KitCtx, max: number): ChipPool {
   }
   const idx = new THREE.InstancedBufferAttribute(new Float32Array(max), 1);
   geo.setAttribute('aChip', idx);
+  const idxSpan = new Span(idx, 1);
   const mat = psx({ color: 0xffffff, map: chipSheet(ctx), vertexColors: true, unique: true });
   patchShader(mat, 'chips', { vertexDecl: 'attribute float aChip;', vertexAfterUv: 'vMapUv.x = (vMapUv.x + aChip) * 0.125;' });
   const mesh = new THREE.InstancedMesh(geo, mat, max);
   mesh.name = 'chips';
   mesh.frustumCulled = false;
   keep(mesh);
+  const matSpan = new Span(mesh.instanceMatrix, 16);
   const rng: Rng = createRng(max * 97 + 11);
   const active = new Uint8Array(max);
   const free: number[] = [];
@@ -103,8 +125,9 @@ function makeChips(ctx: KitCtx, max: number): ChipPool {
   for (let i = 0; i < max; i++) mesh.setMatrixAt(i, HIDDEN);
   mesh.instanceMatrix.needsUpdate = true;
 
-  const flush = (): void => { mesh.instanceMatrix.needsUpdate = true; };
+  const flush = (): void => { matSpan.flush(); idxSpan.flush(); };
   const write = (id: number): void => {
+    matSpan.touch(id);
     if (!active[id]) { mesh.setMatrixAt(id, HIDDEN); return; }
     tmpQ.setFromAxisAngle(UP, yaw[id]);
     mesh.setMatrixAt(id, tmpM.compose(pos[id], tmpQ, tmpV.set(1, 1, 1)));
@@ -143,7 +166,7 @@ function makeChips(ctx: KitCtx, max: number): ChipPool {
       active[id] = 1; count++;
       yaw[id] = rng.float(0, Math.PI * 2);
       idx.setX(id, Math.max(0, CHIP_VALUES.indexOf(v)));
-      idx.needsUpdate = true;
+      idxSpan.touch(id);
       attach(id, at.x, at.y, at.z);
       write(id);
       flush();
@@ -231,7 +254,9 @@ function makeCards(ctx: KitCtx, max: number, back: 'red' | 'blue' | 'black' | un
   for (let i = max - 1; i >= 0; i--) free.push(i);
   const qFlip = new THREE.Quaternion(), qYaw = new THREE.Quaternion();
   const p = new THREE.Vector3(), nv = new THREE.Vector3();
-  const attrs = geo.attributes as Record<'position' | 'normal' | 'uv', THREE.BufferAttribute>;
+  const posSpan = new Span(geo.getAttribute('position') as THREE.BufferAttribute, 8 * 3);
+  const norSpan = new Span(geo.getAttribute('normal') as THREE.BufferAttribute, 8 * 3);
+  const uvSpan = new Span(geo.getAttribute('uv') as THREE.BufferAttribute, 8 * 2);
   // corner: x, y, z, uv corner (0 TL, 1 TR, 2 BR, 3 BL)
   const FRONT: Array<[number, number, number, number]> = [
     [-w / 2, CARD_T / 2, -h / 2, 0], [w / 2, CARD_T / 2, -h / 2, 1], [w / 2, CARD_T / 2, h / 2, 2], [-w / 2, CARD_T / 2, h / 2, 3],
@@ -264,9 +289,8 @@ function makeCards(ctx: KitCtx, max: number, back: 'red' | 'blue' | 'black' | un
         uv[ui + 1] = c === 0 || c === 1 ? t[3] : t[1];
       }
     }
-    attrs.position.needsUpdate = true;
-    attrs.normal.needsUpdate = true;
-    attrs.uv.needsUpdate = true;
+    posSpan.touch(i); norSpan.touch(i); uvSpan.touch(i);
+    posSpan.flush(); norSpan.flush(); uvSpan.flush();
   };
 
   const pool: CardPool = {
@@ -413,18 +437,19 @@ function makeBalls(max: number, r: number, color: Hex | undefined, metal: boolea
   for (let i = 0; i < max; i++) mesh.setMatrixAt(i, HIDDEN);
   mesh.instanceMatrix.needsUpdate = true;
   keep(mesh);
+  const span = new Span(mesh.instanceMatrix, 16);
   return {
     root: mesh,
     max,
     set(i, x, y, z) {
       if (i < 0 || i >= max) return;
       mesh.setMatrixAt(i, tmpM.makeTranslation(x, y, z));
-      mesh.instanceMatrix.needsUpdate = true;
+      span.touch(i); span.flush();
     },
     hide(i) {
       if (i < 0 || i >= max) return;
       mesh.setMatrixAt(i, HIDDEN);
-      mesh.instanceMatrix.needsUpdate = true;
+      span.touch(i); span.flush();
     },
   };
 }

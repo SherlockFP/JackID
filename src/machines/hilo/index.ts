@@ -19,10 +19,10 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
 import { countUp } from '@/machines/_base/juice';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
-import { fmtCoins, t } from '@/core/i18n';
+import { fmtCoins } from '@/core/i18n';
 import { clamp, lerp } from '@/core/math';
 import { buildModel, FLAP_REST, type FlapCard, type HiloParts } from './model';
 import {
@@ -83,14 +83,23 @@ export const def: MachineDef = {
 
 export default class HiLo extends MachineBase<HiloParts, Ev, State> {
   private state: State = { cur: null, run: 1, steps: 0, skips: 0, bet: 0 };
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: KitX): MachineModel<HiloParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.refresh();
     this.idleChase();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   onOccupy(_pid: number, _seat: number, local: boolean): void {
@@ -99,7 +108,9 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
     if (local) {
       if (this.state.cur && !this.roundOpen) this.resumeRound(this.state.bet);   // restored round: the sitter owns it
       this.sfx('chime');
+      this.seatHud?.show();
       this.showHud();
+      this.seatHud?.firstTip('hilo', this.tipLines());
     }
   }
 
@@ -112,6 +123,7 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
     this.state = { cur: null, run: 1, steps: 0, skips: 0, bet: 0 };          // every peer drops the ladder of whoever left
     this.refresh();
     this.idleChase();
+    if (local) this.seatHud?.hide();
   }
 
   onLang(): void {
@@ -131,6 +143,8 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -297,6 +311,10 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
     // 1. data first (snapshots stay consistent), pixels later
     if (ev.ok) { s.cur = ev.next; s.run = ev.run; s.steps = ev.steps; }
     else { s.cur = null; s.run = 1; s.steps = 0; s.skips = 0; s.bet = 0; }
+    if (pc.local && !ev.ok) {
+      const net = ev.refund - ev.bet;                       // a safety-net refund can leave a profit
+      this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'bust', net);
+    }
 
     if (pc.fast) {
       this.refresh();
@@ -370,6 +388,7 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
     const s = this.state;
     s.cur = null; s.run = 1; s.steps = 0; s.skips = 0; s.bet = ev.bet;
     const tier = juiceTier(ev.amount, ev.bet);
+    if (pc.local) this.seatHud?.result(ev.amount > ev.bet ? 'win' : 'push', ev.amount - ev.bet);
     if (pc.fast) { this.refresh(); return; }
     rungs.pattern('off');
     this.sfx('coinPour', { vol: 0.6 });
@@ -503,31 +522,66 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
     });
   }
 
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.hilo.tip1', v: { deal: this.k('primary'), bet: `${this.k('betDown')}/${this.k('betUp')}` } },
+      { k: 'm.hilo.tip2', v: { up: this.k('up'), down: this.k('down') } },
+      { k: 'm.hilo.tip3', v: { collect: this.k('collect'), help: this.k('help') } },
+    ];
+  }
+
+  private rulesLines(): Txt[] {
+    return ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((r) => ({ k: 'm.hilo.' + r }));
+  }
+
+  /** Banner, key numbers and valid controls. Only while the local player sits at the machine. */
   private showHud(): void {
-    const s = this.state;
-    const open = this.roundOpen;
-    const hints: HudHint[] = [];
-    if (!this.busy) {
-      if (open && s.cur) {
-        const c = s.cur, r = this.rtpNow();
-        if (guessable(c.rank, 'hi')) hints.push({ action: 'up', label: `${this.t('higher')} ×${stepMult(c.rank, 'hi', r).toFixed(2)}` });
-        if (guessable(c.rank, 'lo')) hints.push({ action: 'down', label: `${this.t('lower')} ×${stepMult(c.rank, 'lo', r).toFixed(2)}` });
-        hints.push({ action: 'n3', label: `${this.t('skip')} ${Math.max(0, this.skipCap() - s.skips)}` });
-        if (s.steps > 0) hints.push({ action: 'collect', label: `${this.t('collect')} ${fmtCoins(Math.floor(this.roundBet * s.run))}` });
-      } else {
-        hints.push({ action: 'primary', label: this.t('deal') });
-        hints.push({ action: 'betUp', label: t('common.bet') });
-      }
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const s = this.state, open = this.roundOpen, busy = this.busy;
+    const bet = open ? this.roundBet : this.bet;
+    const card = s.cur;
+    sh.goal({ k: 'm.hilo.goal' });
+
+    // STATE: what phase, what the player must decide
+    if (busy) sh.state({ k: 'm.hilo.stBusy' }, 'neutral');
+    else if (!open || !card) sh.state({ k: 'm.hilo.stBet' }, 'gold', { k: 'm.hilo.stBetSub', v: { deal: this.k('primary') } });
+    else if (s.steps === 0) sh.state({ k: 'm.hilo.stGuess' }, 'good', { k: 'm.hilo.stGuessSub' });
+    else sh.state({ k: 'm.hilo.stClimb' }, 'good', { k: 'm.hilo.stClimbSub', v: { n: fmtCoins(Math.floor(bet * s.run)) } });
+
+    // KEY NUMBERS
+    const nums: HudNumber[] = [];
+    if (open && card) nums.push({ label: { k: 'm.hilo.nCard' }, value: rankText(card.rank), tone: 'neutral' });
+    nums.push({ label: { k: 'm.hilo.nBet' }, value: fmtCoins(bet), tone: 'gold' });
+    if (open) {
+      nums.push({ label: { k: 'm.hilo.nRun' }, value: `×${s.run.toFixed(2)}`, tone: 'gold' });
+      nums.push({ label: { k: 'm.hilo.nSteps' }, value: String(s.steps), tone: 'neutral' });
+      if (s.steps > 0) nums.push({ label: { k: 'm.hilo.nCollect' }, value: fmtCoins(Math.floor(bet * s.run)), tone: 'good' });
+      nums.push({ label: { k: 'm.hilo.nSkips' }, value: String(Math.max(0, this.skipCap() - s.skips)), tone: 'cyan' });
     }
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: open ? null : this.bet,
-      hints,
-      stats: open ? [
-        { label: this.t('runLabel'), value: `×${s.run.toFixed(2)}` },
-        { label: this.t('stepsLabel'), value: String(s.steps) },
-      ] : [],
-    });
+    nums.push({ label: { k: 'm.hilo.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys bound to it
+    const ctrl: HudControl[] = [];
+    if (!open) {
+      if (!busy) {
+        ctrl.push({ key: this.k('primary'), label: { k: 'm.hilo.cDeal' }, action: 'primary', primary: true });
+        ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.hilo.cBet' }, action: 'betUp' });
+      }
+    } else if (!busy && card) {
+      if (guessable(card.rank, 'hi')) ctrl.push({ key: this.k('up'), label: { k: 'm.hilo.cHigher' }, action: 'up' });
+      if (guessable(card.rank, 'lo')) ctrl.push({ key: this.k('down'), label: { k: 'm.hilo.cLower' }, action: 'down' });
+      if (s.skips < this.skipCap()) ctrl.push({ key: this.k('n3'), label: { k: 'm.hilo.cSkip' }, action: 'n3' });
+      if (s.steps > 0) ctrl.push({ key: this.k('collect'), label: { k: 'm.hilo.cCollect' }, action: 'collect', primary: true });
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.hilo.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.hilo.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 
   private rtpNow(): number { return clampRtp(BASE_RTP + this.mod(HOOK_RTP, 0)); }

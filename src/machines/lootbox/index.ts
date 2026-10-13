@@ -14,10 +14,10 @@
 import * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
-import { fmtNum, t as tr } from '@/core/i18n';
+import { fmtNum, t as tr, type I18nVars } from '@/core/i18n';
 import { lerp } from '@/core/math';
 import { buildModel, type LootboxParts } from './model';
 import {
@@ -78,7 +78,12 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   private twistAngle = 0;
   private twistLast = 0;
   private twistAcc = 0;
-  private showTable = false;
+  /** Price of the capsule in play (set on vend, read on open for the result callout). */
+  private vendPrice = 0;
+  /** True while the reveal of an opened capsule runs. */
+  private revealing = false;
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts) and the last key it was drawn from. */
+  private seatHud?: SeatHud;
   private hudKey = '';
 
   protected createModel(kit: KitX): MachineModel<LootboxParts> {
@@ -86,11 +91,18 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.lightTier();
     this.parts.marquee.chase('chase', 2);
     this.attractor.every('glint', 9, () => this.ctx.fx.glow(this.model.anchors.light, GOLD, 0.25, 0.5), { first: 4 });
     this.hudKey = '';
     this.refreshHud(true);
+  }
+
+  override dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   // ── run helpers (every peer; read-only) ─────────────────────────────────────────────────────────
@@ -113,11 +125,18 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   attract(dt: number, _t: number): void { this.attractor.update(dt); }
 
   onOccupy(_pid: number, _seat: number, local: boolean): void {
-    if (local) { this.sfx('chime'); this.hudKey = ''; this.refreshHud(true); }
+    if (local) {
+      this.sfx('chime');
+      this.hudKey = '';
+      this.seatHud?.show();
+      this.refreshHud(true);
+      this.seatHud?.firstTip(this.def.id, this.tipLines());
+    }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
     if (local) {
+      this.seatHud?.hide();
       if (this.pending) this.openCapsule();          // an unopened capsule never leaves with the player
       this.ctx.ui.machineHud(null);
       this.hudKey = '';
@@ -138,6 +157,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down || e.repeat) return;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or contents card
     switch (e.action) {
       case 'n1': this.selectTier(0); return;
       case 'n2': this.selectTier(1); return;
@@ -148,7 +168,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
         if (this.inHand && this.pending) this.openCapsule();
         else this.crank(this.tierSel);
         return;
-      case 'help': this.showTable = !this.showTable; this.hudKey = ''; this.refreshHud(true); return;
+      case 'help': this.seatHud?.rules(this.contentsLines(), this.tx('tableTitle')); return;
     }
   }
 
@@ -272,6 +292,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     for (const g of [capsuleTop, capsuleBottom]) {
       g.traverse((c) => { if (c instanceof THREE.Mesh) (c.material as THREE.MeshLambertMaterial).color?.copy(colour); });
     }
+    this.vendPrice = ev.price;
     this.refreshHud(true);
     const crank = cranks[ev.tier];
     if (!pc.fast) {
@@ -322,6 +343,8 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     const { capsuleTop, capsuleBottom, revealAnchor, rarityBeam } = this.parts;
     const rarity = ev.rarity as Rarity;
     const at = revealAnchor;
+    this.revealing = true;
+    this.callResult(ev);
     this.refreshHud(true);
 
     if (!pc.fast) {
@@ -383,6 +406,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     rarityBeam.visible = false;
     mat.opacity = 0.6;
     this.parts.leds.win.setOn(false);
+    this.revealing = false;
     this.refreshHud(true);
   }
 
@@ -409,26 +433,58 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   }
 
   private refreshHud(force: boolean): void {
-    if (!this.isLocalOccupant) return;
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const key = [this.tierSel, this.wallet(), this.price(this.tierSel), this.pityCount(), this.inHand ? 1 : 0,
-      this.pending ? 1 : 0, this.showTable ? 1 : 0].join('|');
+      this.pending ? 1 : 0, this.revealing ? 1 : 0].join('|');
     if (!force && key === this.hudKey) return;
     this.hudKey = key;
-    const tierName = this.t(tierDef(this.tierSel).id);
-    const hints: HudHint[] = [
-      { action: 'left', label: this.t('h_tier') },
-      { action: 'primary', label: this.inHand ? this.t('h_open') : this.t('h_crank') },
-      { action: 'help', label: this.t('h_table') },
-      { action: 'exit', label: this.t('h_leave') },
+    const pity = pityThreshold(this.mod('m.lootbox.pityAt', 0));
+    const count = this.pityCount();
+    sh.goal(this.tx('goal'));
+    if (this.revealing) sh.state(this.tx('stReveal'), 'neutral');
+    else if (this.pending && this.inHand) sh.state(this.tx('stTwist'), 'good', this.tx('stTwistSub'));
+    else if (this.pending) sh.state(this.tx('stRoll'), 'cyan');
+    else sh.state(this.tx('stReady'), 'gold', this.tx('stReadySub'));
+    sh.numbers([
+      { label: this.tx('nTier'), value: this.t(tierDef(this.tierSel).id), tone: 'gold' },
+      { label: this.tx('nPrice'), value: fmtNum(this.price(this.tierSel)), tone: 'neutral' },
+      { label: this.tx('nPity'), value: `${count}/${pity}`, tone: count >= pity - 2 ? 'warn' : 'neutral' },
+      { label: this.tx('nBalance'), value: fmtNum(this.wallet()), tone: 'neutral' },
+    ]);
+
+    const ctrl: HudControl[] = [];
+    if (this.pending && this.inHand) {
+      ctrl.push({ key: this.k('primary'), label: this.tx('cTwist'), action: 'primary', primary: true });
+    } else if (!this.pending && !this.revealing) {
+      ctrl.push({ key: this.k('primary'), label: this.tx('cCrank'), action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('n1')}-${this.k('n3')}`, label: this.tx('cTier'), action: 'n1' });
+    }
+    ctrl.push({ key: this.k('help'), label: this.tx('cContents'), action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: this.tx('cLeave'), action: 'exit' });
+    sh.controls(ctrl);
+  }
+
+  // ── seat HUD helpers ────────────────────────────────────────────────────────────────────────────
+  private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.lootbox.${key}`, v } : { k: `m.lootbox.${key}` }; }
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+  private tipLines(): Txt[] {
+    return [
+      this.tx('tip1', { tiers: `${this.k('n1')}-${this.k('n3')}`, crank: this.k('primary') }),
+      this.tx('tip2', { twist: this.k('primary') }),
+      this.tx('tip3', { help: this.k('help') }),
     ];
-    const stats = this.showTable
-      ? [{ label: this.t('tableTitle'), value: '' }, { label: '', value: this.t('tableTin') },
-        { label: '', value: this.t('tableBrass') }, { label: '', value: this.t('tableGilded') }]
-      : [
-        { label: this.t('s_tier'), value: tierName },
-        { label: this.t('s_price'), value: fmtNum(this.price(this.tierSel)) },
-        { label: this.t('s_pity', { n: this.pityCount(), m: pityThreshold(this.mod('m.lootbox.pityAt', 0)) }), value: '' },
-      ];
-    this.hud({ bet: null, hints, stats });
+  }
+  /** Contents card (H): the three tier tables. */
+  private contentsLines(): Txt[] {
+    return [this.tx('tableTin'), this.tx('tableBrass'), this.tx('tableGilded'), this.tx('pityRule')];
+  }
+  /** Result callout for one open: net = coins paid − price; a charm grant is a win with no amount shown. */
+  private callResult(ev: Extract<Ev, { k: 'open' }>): void {
+    if (!this.isLocalOccupant) return;
+    if (ev.granted) { this.seatHud?.result('win', 0); return; }
+    const net = ev.coins - this.vendPrice;
+    this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'lose', net);
   }
 }

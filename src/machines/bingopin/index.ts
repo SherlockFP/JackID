@@ -25,10 +25,10 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
 import { countUp } from '@/machines/_base/juice';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { Kit } from '@/kit/types';
-import { fmtCoins, t } from '@/core/i18n';
+import { fmtCoins, type I18nVars } from '@/core/i18n';
 import { createRng, hashSeed, type Rng } from '@/core/rng';
 import { clamp } from '@/core/math';
 import { buildModel, type BingoParts, BALL_R, LANE, holePos } from './model';
@@ -141,12 +141,17 @@ export default class Bingopin extends MachineBase<BingoParts, Ev, State> {
   private optT = 0;
   private plungeK = 0;                       // plunger pull 0..1 (presentation)
   private ballNow: [number, number] = [0, 0];// last presented ball position (field coordinates)
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts) and the last key it was drawn from. */
+  private seatHud?: SeatHud;
+  private seatKey = '';
 
   protected createModel(kit: Kit): MachineModel<BingoParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     const rng = createRng(hashSeed(this.ctx.runSeed, this.id, 'card'));
     const card = [...IDENTITY_CARD];
     for (let i = card.length - 1; i > 0; i--) {                   // Fisher–Yates, per instance and run
@@ -181,12 +186,17 @@ export default class Bingopin extends MachineBase<BingoParts, Ev, State> {
     this.refreshOpts();
     this.refresh();
     this.sfx('chime', { vol: 0.5 });
+    this.seatKey = '';
+    this.seatHud?.show();
     this.showHud();
+    this.seatHud?.firstTip(this.def.id, this.tipLines());
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
     if (!local) return;
     this.auth = freshAuth(this.state);
+    this.seatHud?.hide();
+    this.seatKey = '';
     this.plungeK = 0;
     this.refresh();
   }
@@ -194,6 +204,11 @@ export default class Bingopin extends MachineBase<BingoParts, Ev, State> {
   onLang(): void {
     this.refresh();
     if (this.isLocalOccupant) this.showHud();
+  }
+
+  override dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   /** Leaving mid-game: the rest of the balls fire automatically at MEDIUM power, no extras, then the game pays. */
@@ -224,6 +239,8 @@ export default class Bingopin extends MachineBase<BingoParts, Ev, State> {
   // ── input (local occupant) ───────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     const a = e.action;
+    if (e.down && this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.down && a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (a === 'primary') {
       if (e.down) { if (!e.repeat) this.pressPlunger(); } else this.releasePlunger();
       return;
@@ -408,7 +425,8 @@ export default class Bingopin extends MachineBase<BingoParts, Ev, State> {
     }
     if (a.leaving) this.tryLeave();
     const zone = powerZone(a.power);
-    if (zone !== a.zone) { a.zone = zone; this.showHud(); }
+    if (zone !== a.zone) a.zone = zone;
+    this.showHud();
   }
 
   private refreshOpts(): void {
@@ -506,6 +524,7 @@ export default class Bingopin extends MachineBase<BingoParts, Ev, State> {
   }
 
   private async presentEnd(ev: Extract<Ev, { k: 'end' }>, pc: PresentCtx): Promise<void> {
+    this.callResult(ev.pay - ev.stake);
     if (ev.tilt) {
       for (let i = 0; i < this.parts.balls.max; i++) this.parts.balls.hide(i);
       await this.wait(0.6);
@@ -601,28 +620,77 @@ export default class Bingopin extends MachineBase<BingoParts, Ev, State> {
     });
   }
 
+  /** Seat HUD: goal, phase banner, key numbers and the valid controls. Cached: only redraws when a shown value changes. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const a = this.auth;
-    const hints: HudHint[] = a.leaving ? [] : [
-      { action: 'primary', label: this.t('plunger') },
-      { action: 'left', label: this.t('nudge') },
-      { action: 'betUp', label: this.t('stake') },
-    ];
-    if (!a.leaving && a.phase === 'offer') {
-      hints.unshift({ action: 'primary', label: this.t('buyBall') });
-      hints.push({ action: 'collect', label: this.t('collect') });
+    const zone = powerZone(a.power);
+    const nudgeOpen = a.phase === 'roll' && a.rollT >= a.rollDur - NUDGE_WINDOW_S;
+    const secs = a.phase === 'offer' ? Math.ceil(a.offerT) : 0;
+    const lit = litCells(this.state.card, a.occ, this.state.fs);
+    const lines = linesPay(lit, this.opt).lines.length;
+    const stake = this.roundOpen ? a.stake : this.bet;
+    const wallet = this.ctx.run.wallet();
+    const key = [a.phase, a.leaving, a.plunging, Math.round(a.power), zone, nudgeOpen, secs, a.landed, a.extras, a.price, lit, stake, wallet].join('|');
+    if (key === this.seatKey) return;
+    this.seatKey = key;
+
+    sh.goal(this.tx('goal'));
+    if (a.leaving) sh.state(this.tx('bLeave'), 'neutral');
+    else if (a.phase === 'roll') {
+      if (nudgeOpen) sh.state(this.tx('bNudge'), 'warn', this.tx('bNudgeSub', { nudge: `${this.k('left')}/${this.k('right')}` }));
+      else sh.state(this.tx('bRoll'), 'cyan');
+    } else if (a.phase === 'offer') sh.state(this.tx('bOffer'), 'warn', this.tx('bOfferSub', { price: fmtCoins(a.price), n: secs }));
+    else if (a.phase === 'tilt') sh.state(this.tx('bTilt'), 'bad', this.tx('bTiltSub'));
+    else if (a.plunging) sh.state(this.tx('bPull', { n: Math.round(a.power) }), 'cyan', this.tx(PINK_ZONE[zone]));
+    else if (this.roundOpen) sh.state(this.tx('bNext'), 'gold', this.tx('bReadySub', { fire: this.k('primary') }));
+    else sh.state(this.tx('bReady'), 'gold', this.tx('bReadySub', { fire: this.k('primary') }));
+
+    const ball = Math.min(BALLS_PER_GAME, a.landed + 1);
+    const third: HudNumber = a.phase === 'offer'
+      ? { label: this.tx('nPrice'), value: fmtCoins(a.price), tone: 'warn' }
+      : { label: this.tx('nPower'), value: `${Math.round(a.power)}%`, tone: 'neutral' };
+    sh.numbers([
+      { label: this.tx('nBet'), value: fmtCoins(stake), tone: 'gold' },
+      { label: this.tx('nBall'), value: `${ball}/${BALLS_PER_GAME}${a.extras ? `+${a.extras}` : ''}`, tone: 'cyan' },
+      { label: this.tx('nLines'), value: String(lines), tone: lines > 0 ? 'good' : 'neutral' },
+      third,
+      { label: this.tx('nBalance'), value: fmtCoins(wallet), tone: 'neutral' },
+    ]);
+
+    const ctrl: HudControl[] = [];
+    if (!a.leaving) {
+      if (a.phase === 'offer') {
+        ctrl.push({ key: this.k('primary'), label: this.tx('cBuy'), action: 'primary', primary: true });
+        ctrl.push({ key: this.k('collect'), label: this.tx('cCollect'), action: 'collect' });
+      } else if (a.phase === 'ready') {
+        ctrl.push({ key: this.k('primary'), label: this.tx('cPlunger'), action: 'primary', primary: true });
+        if (!this.roundOpen) ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: this.tx('cStake'), action: 'betUp' });
+      }
+      if (nudgeOpen) ctrl.push({ key: `${this.k('left')}/${this.k('right')}`, label: this.tx('cNudge'), action: 'left' });
+      ctrl.push({ key: this.k('help'), label: this.tx('cRules'), action: 'help' });
+      ctrl.push({ key: this.k('exit'), label: this.tx('cLeave'), action: 'exit' });
     }
-    hints.push({ action: 'help', label: this.t('hintInfo') });
-    hints.push({ action: 'exit', label: t('common.leave') });
-    const stateKey = a.phase === 'roll' ? 'stRoll' : a.phase === 'offer' ? 'stOffer' : a.phase === 'tilt' ? 'stTilt' : 'stBalls';
-    this.hud({
-      bet: this.roundOpen ? null : this.bet,
-      hints,
-      stats: [
-        { label: this.t('ballLabel', { n: Math.min(BALLS_PER_GAME, a.landed + 1) }), value: this.t(stateKey) },
-        { label: this.t('extrasLabel', { n: a.extras }), value: a.phase === 'offer' ? fmtCoins(a.price) : '' },
-        { label: this.t('powerLabel', { n: Math.round(a.power) }), value: this.t(PINK_ZONE[powerZone(a.power)]) },
-      ],
-    });
+    sh.controls(ctrl);
+  }
+
+  // ── seat HUD helpers ────────────────────────────────────────────────────────────────────────────
+  private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.${this.def.id}.${key}`, v } : { k: `m.${this.def.id}.${key}` }; }
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+  private tipLines(): Txt[] {
+    return [
+      this.tx('tip1', { fire: this.k('primary') }),
+      this.tx('tip2'),
+      this.tx('tip3', { nudge: `${this.k('left')}/${this.k('right')}`, help: this.k('help') }),
+    ];
+  }
+  private rulesLines(): Txt[] {
+    return ['rule1', 'rule2', 'rule3', 'rule4', 'rule5'].map((r) => this.tx(r, r === 'rule4' ? { nudge: `${this.k('left')}/${this.k('right')}` } : undefined));
+  }
+  /** Result callout for a settled game (net = paid − staked; a tilt is a loss of the stake). */
+  private callResult(net: number): void {
+    if (this.isLocalOccupant) this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'lose', net);
   }
 }

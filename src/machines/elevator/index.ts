@@ -22,9 +22,9 @@ import type { KitX } from '@/kit';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { TableBase } from '@/machines/_base/TableBase';
 import { juiceTier, tierTags, toWinTier } from '@/machines/_base/tiers';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
-import { t } from '@/core/i18n';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import { t, fmtCoins } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { TAU, clamp01, lerp } from '@/core/math';
 import { buildModel, layoutCable, type ElevatorParts } from './model';
 import {
@@ -105,10 +105,15 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
   private carMode: 'rest' | 'ride' | 'free' = 'rest';
   private ledText = '';
   private clockText = '';
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts). Created in init, shown while seated. */
+  private seatHud?: SeatHud;
+  private hudTick = 0;                        // throttle for the live multiplier on the HUD (ms, host clock)
 
   protected createModel(kit: KitX): MachineModel<ElevatorParts> { return buildModel(kit, this.modelOpts); }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.drawHistory();
     this.attractor.every('chase', 9, () => this.parts.shaftBulbs.pattern('chase', 3), { first: 2 });
     this.parts.shaftBulbs.pattern('chase', 1.5);
@@ -117,8 +122,18 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
 
   attract(dt: number): void { this.attractor.update(dt); }
 
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
+
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
-    if (local) { this.sfx('chime'); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip('elevator', this.tipLines());
+    }
   }
 
   onLang(): void {
@@ -131,6 +146,8 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     const isAuto = /^n[1-9]$/.test(a);
     if (e.repeat && !isBet && !isAuto) return;
@@ -190,7 +207,8 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
   }
 
   /** Host: a rider leaves the car. Boarding is free; stepping off mid-ride cashes out; anything else is written off. */
-  override onRelease(pid: PlayerId, seat: number, _local: boolean): void {
+  override onRelease(pid: PlayerId, seat: number, local: boolean): void {
+    if (local) { this.hud(null); this.seatHud?.hide(); }
     if (!this.isHost) return;
     const hs = this.hs;
     const r = hs.riders[seat];
@@ -389,6 +407,8 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
         this.sfx('coin');
         this.ctx.fx.popText(at, `x${ev.mult.toFixed(2)}`, GOLD, { dur: 1, rise: 0.25 });
         if (ev.seat === this.localSeat) {
+          const net = ev.payout - ev.stake;
+          this.seatHud?.result(net > 0 ? 'win' : 'even', net);
           this.showHud();
           const tier = juiceTier(ev.payout, ev.stake, ev.roof ? ['elevator:roof'] : []);
           await this.celebrate(tier, { amount: ev.payout, at });
@@ -404,6 +424,9 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
         const at = p.stations[ev.seat].strapLamp.root;
         this.ctx.fx.popText(at, ev.refund > 0 ? t('m.elevator.refund') : t('m.elevator.fell'), ev.refund > 0 ? GOLD : RED, { dur: 1.2, rise: 0.3 });
         if (ev.seat === this.localSeat) {
+          const stake = r ? r.stake : 0;
+          if (ev.refund > 0) this.seatHud?.result('lose', ev.refund - stake);
+          else this.seatHud?.result('bust', -stake);
           this.commiserate({ amount: ev.refund, at });
           this.showHud();
         }
@@ -444,6 +467,7 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
     const now = this.ctx.net.hostTime();
     const live = this.carMode === 'ride' && s.t0 > 0;
     const m = live ? Math.min(MAX_MULT, multAt(Math.max(0, (now - s.t0) / 1000))) : 1;
+    if (live && this.isLocalOccupant && now - this.hudTick > 150) { this.hudTick = now; this.showHud(); }
     if (this.carMode === 'ride') {
       const amp = 0.002 + 0.006 * clamp01(Math.log(Math.max(1, m)) / Math.log(50));
       p.car.position.y = carYOf(m);
@@ -504,23 +528,91 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
     });
   }
 
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.elevator.tip1' },
+      { k: 'm.elevator.tip2', v: { ride: this.k('primary'), bet: `${this.k('betDown')}/${this.k('betUp')}`, auto: `${this.k('n1')}-${this.k('n9')}` } },
+      { k: 'm.elevator.tip3', v: { out: this.k('primary'), help: this.k('help') } },
+    ];
+  }
+
+  private rulesLines(): Txt[] {
+    return ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.elevator.' + k }));
+  }
+
+  /** The multiplier on the car right now (host clock, the same maths as `frame`). */
+  private liveMult(): number {
+    const s = this.st;
+    if (this.carMode !== 'ride' || s.t0 <= 0) return 1;
+    return Math.min(MAX_MULT, multAt(Math.max(0, (this.ctx.net.hostTime() - s.t0) / 1000)));
+  }
+
+  /** Banner, key numbers and the controls valid right now. Only while the local player sits in the car line. */
   private showHud(): void {
-    if (!this.isLocalOccupant) return;
-    const r = this.st.riders[this.localSeat];
-    const hints: HudHint[] = [];
-    if (this.st.phase === 'ride' && r.st === 'ride') {
-      hints.push({ action: 'primary', label: this.t('stepOff') });
-    } else if (this.st.phase === 'board') {
-      hints.push({ action: 'primary', label: this.t('ride2') });
-      hints.push({ action: 'betUp', label: t('common.bet') });
-      hints.push({ action: 'n1', label: this.autoIdx > 0 ? this.t('auto', { n: TARGETS[this.autoIdx - 1] }) : this.t('autoOff') });
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const s = this.st, r = s.riders[this.localSeat], ph = s.phase;
+    const live = this.liveMult();
+    const ctrl: HudControl[] = [];
+    sh.goal({ k: 'm.elevator.goal' });
+
+    // STATE: what phase, and where this rider stands in it
+    switch (ph) {
+      case 'board': {
+        const secs: Txt | undefined = this.timerState ? { k: 'm.elevator.stBoardSub', v: { n: Math.ceil(this.timerLeft) } } : undefined;
+        if (r.st === 'board') sh.state({ k: 'm.elevator.stIn' }, 'cyan', { k: 'm.elevator.stInSub' });
+        else sh.state({ k: 'm.elevator.stBoard' }, 'gold', secs);
+        break;
+      }
+      case 'doors': sh.state({ k: 'm.elevator.stDoors' }, 'warn'); break;
+      case 'ride':
+        if (r.st === 'ride') sh.state({ k: 'm.elevator.stRide' }, 'good', { k: 'm.elevator.stRideSub' });
+        else if (r.st === 'out') sh.state({ k: 'm.elevator.stOut' }, 'good', { k: 'm.elevator.stOutSub', v: { n: r.mult.toFixed(2) } });
+        else sh.state({ k: 'm.elevator.stWatch' }, 'cyan', { k: 'm.elevator.stWatchSub' });
+        break;
+      case 'snap':
+        if (r.st === 'out') sh.state({ k: s.roof ? 'm.elevator.stRoof' : 'm.elevator.stOut' }, 'gold', { k: 'm.elevator.stOutSub', v: { n: r.mult.toFixed(2) } });
+        else if (r.st === 'fell') sh.state({ k: 'm.elevator.stFell' }, 'bad', { k: 'm.elevator.stFellSub', v: { n: s.crash.toFixed(2) } });
+        else sh.state({ k: 'm.elevator.stWatch' }, 'cyan');
+        break;
+      case 'after': sh.state({ k: 'm.elevator.stAfter' }, 'neutral'); break;
+      default: sh.state({ k: 'm.elevator.stIdle' }, 'neutral');
     }
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: r.st === 'ride' ? null : this.bet,
-      hints,
-      stats: [{ label: this.t('stake'), value: String(r.stake || this.bet) }],
+
+    // KEY NUMBERS: stake, live multiplier and cash-out value, last crash, auto target, balance
+    const nums: HudNumber[] = [];
+    nums.push({ label: { k: 'm.elevator.nStake' }, value: fmtCoins(r.stake || this.bet), tone: 'gold' });
+    if (ph === 'ride' && r.st === 'ride') {
+      nums.push({ label: { k: 'm.elevator.nMult' }, value: `x${live.toFixed(2)}`, tone: 'good' });
+      nums.push({ label: { k: 'm.elevator.nCash' }, value: fmtCoins(Math.floor(r.stake * cashMult(live, this.mod(HOOK_FLOOR, 0)))), tone: 'good' });
+    } else if (r.st === 'out') {
+      nums.push({ label: { k: 'm.elevator.nMult' }, value: `x${r.mult.toFixed(2)}`, tone: 'good' });
+    }
+    const last = s.hist[s.hist.length - 1];
+    if (last !== undefined) nums.push({ label: { k: 'm.elevator.nLast' }, value: `x${last.toFixed(2)}`, tone: 'neutral' });
+    nums.push({
+      label: { k: 'm.elevator.nAuto' },
+      value: this.autoIdx > 0 ? `x${TARGETS[this.autoIdx - 1]}` : { k: 'm.elevator.nOff' },
+      tone: 'cyan',
     });
+    nums.push({ label: { k: 'm.elevator.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only the actions valid right now, with the keys the machine really reads
+    if (ph === 'board') {
+      if (r.st !== 'board') ctrl.push({ key: this.k('primary'), label: { k: 'm.elevator.cRide' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.elevator.cStake' }, action: 'betUp' });
+      ctrl.push({ key: `${this.k('n1')}-${this.k('n9')}`, label: { k: 'm.elevator.cAuto' }, action: 'n1' });
+    }
+    if (ph === 'ride' && r.st === 'ride') {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.elevator.cStepOff' }, action: 'primary', primary: true });
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.elevator.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.elevator.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 
   // ── snapshots (late join): the crash point is only ever in `st` after `snap` ─────────────────

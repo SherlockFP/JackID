@@ -223,15 +223,20 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     this._sink = {
       get mouse() { return self.mouse; },
       onInput(e) {
-        if (e.action === 'exit') { if (e.down && !e.repeat) self.standUp(); return; }
+        if (e.action === 'exit') { if (e.down && !e.repeat) { self.onStandUpRequest(); self.standUp(); } return; }
         self.onInput(e);
       },
       onPointer(e) { self.onPointer(e); },
     };
     return this._sink;
   }
-  /** Public "STAND UP" (pause menu, double-tap exit): same as pressing E — deferred while busy. */
-  requestStandUp(): void { this.standUp(); }
+  /**
+   * Public "STAND UP" (pause menu, world.standUp): same as pressing E — deferred while busy.
+   * Runs `onStandUpRequest` first, so autoplay is cancelled at once even when the release waits for the round.
+   */
+  requestStandUp(): void { this.onStandUpRequest(); this.standUp(); }
+  /** Hook: the player asked to stand up (E or pause menu). Cancel autoplay / hold-over state here; the release may still wait for `busy`. */
+  protected onStandUpRequest(): void {}
   /** Seconds left on the table countdown (0 if none). */
   protected get timerLeft(): number {
     return this.timerState ? Math.max(0, (this.timerState.until - this.ctx.net.hostTime()) / 1000) : 0;

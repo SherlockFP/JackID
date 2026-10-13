@@ -35,6 +35,18 @@ export type PsxSettingsX = PsxSettings & { scaleMode?: 'fill' | 'integer' };
 
 const MIN_ASPECT = 4 / 3;
 const MAX_ASPECT = 21 / 9;
+/** Canvas pixel ratio cap: the post pass fills the whole canvas, so 2x DPR costs 4x fill for no visible PSX gain. */
+const PIXEL_RATIO_CAP = 1.5;
+/**
+ * Adaptive internal resolution (rungs of `targetHeight`). The user's setting is never touched; the frame drops one
+ * rung when the wall-clock frame time stays above SLOW_MS and climbs back after a long calm stretch.
+ */
+const QUALITY_RUNGS = [1, 0.8, 0.64, 0.5] as const;
+const MIN_TARGET_H = 144;
+const SLOW_MS = 20;
+const CALM_MS = 13.5;
+const DROP_AFTER_S = 1.5;
+const RAISE_AFTER_S = 8;
 // Fog: states build THREE.Fog with `makeFog()` (renderer/fog.ts), so the shader applies it unscaled (DECISIONS §G).
 const BAR_COLOR = 0x080808;
 
@@ -75,6 +87,7 @@ export function createPsxRenderer(canvas: HTMLCanvasElement, initial: PsxSetting
   const st = {
     scale: 1, viewX: 0, viewY: 0, viewW: 1, viewH: 1,
     dirty: true, lost: false, cpuMs: 0, lastNow: 0, simTime: 0, realTime: 0,
+    rung: 0, frameEma: 16, rungClockS: 0,
   };
 
   /** Push everything derived from `settings` + size into the shared uniforms. */
@@ -88,7 +101,7 @@ export function createPsxRenderer(canvas: HTMLCanvasElement, initial: PsxSetting
   }
 
   function resize(): void {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, PIXEL_RATIO_CAP);
     const W = Math.max(1, Math.floor(canvas.clientWidth * dpr));
     const H = Math.max(1, Math.floor(canvas.clientHeight * dpr));
     three.setSize(W, H, false);
@@ -97,7 +110,8 @@ export function createPsxRenderer(canvas: HTMLCanvasElement, initial: PsxSetting
       const aspect = W / H;
       if (aspect > MAX_ASPECT) vw = Math.round(H * MAX_ASPECT);
       else if (aspect < MIN_ASPECT) vh = Math.round(W / MIN_ASPECT);
-      lh = Math.max(1, Math.round(settings.targetHeight));
+      const rungH = Math.round(settings.targetHeight * QUALITY_RUNGS[st.rung]);
+      lh = Math.max(1, Math.min(settings.targetHeight, Math.max(MIN_TARGET_H, rungH)));
       lw = Math.max(2, 2 * Math.round((lh * vw) / vh / 2));
       if (settings.scaleMode === 'integer') {
         const k = Math.floor(Math.min(vw / lw, vh / lh));
@@ -121,6 +135,18 @@ export function createPsxRenderer(canvas: HTMLCanvasElement, initial: PsxSetting
   const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(onResize) : null;
   ro?.observe(canvas);
   resize();
+
+  /** Step the internal resolution rung from the smoothed wall-clock frame time (gapMs = time since last render). */
+  function adapt(gapMs: number): void {
+    if (gapMs <= 0 || gapMs > 250) return;             // first frame, or a tab switch / stall: not a load signal
+    st.frameEma += (gapMs - st.frameEma) * 0.05;
+    st.rungClockS += gapMs / 1000;
+    if (st.frameEma > SLOW_MS && st.rung < QUALITY_RUNGS.length - 1 && st.rungClockS > DROP_AFTER_S) {
+      st.rung++; st.rungClockS = 0; st.dirty = true;
+    } else if (st.frameEma < CALM_MS && st.rung > 0 && st.rungClockS > RAISE_AFTER_S) {
+      st.rung--; st.rungClockS = 0; st.dirty = true;
+    }
+  }
 
   function syncAspect(cam: THREE.Camera): void {
     const pc = cam as THREE.PerspectiveCamera;
@@ -176,10 +202,12 @@ export function createPsxRenderer(canvas: HTMLCanvasElement, initial: PsxSetting
 
     render(scene, camera, overlay) {
       if (st.lost) return;
-      if (st.dirty) { st.dirty = false; resize(); }
       const t0 = performance.now();
-      const real = st.lastNow === 0 ? 0 : Math.min((t0 - st.lastNow) / 1000, 0.1);
+      const gapMs = st.lastNow === 0 ? 0 : t0 - st.lastNow;
+      const real = Math.min(gapMs / 1000, 0.1);
       st.lastNow = t0;
+      adapt(gapMs);
+      if (st.dirty) { st.dirty = false; resize(); }
       st.realTime += real;
       const a = app;
       st.simTime += real * (a && !a.simPaused && a.hitstopLeft <= 0 ? a.timeScale : 0);

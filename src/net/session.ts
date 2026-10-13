@@ -158,6 +158,7 @@ export function createSession(profile: () => LocalProfile, opts: SessionOptions 
   const kicked = new Set<string>();
   let password: string | undefined;
   let publicRoom = false;
+  let friendsHidden = false;        // friends-only rooms stay out of the browser lists (tabs included)
   let lobbyRoomId = '';
   let lobbyToken = '';
   let p2pUp = false;
@@ -168,6 +169,7 @@ export function createSession(profile: () => LocalProfile, opts: SessionOptions 
 
   // ── lobby ──
   let lobby: LobbyClient | null = null;
+  let lobbyReachable = false;
   const getLobby = (): LobbyClient => {
     if (!lobby) {
       lobby = new LobbyClient(resolveLobbyUrl(netCfg().lobbyUrl));
@@ -532,6 +534,7 @@ export function createSession(profile: () => LocalProfile, opts: SessionOptions 
     kicked.clear();
     password = undefined;
     publicRoom = false;
+    friendsHidden = false;
     lobbyRoomId = '';
     lobbyToken = '';
     p2pUp = false;
@@ -589,6 +592,7 @@ export function createSession(profile: () => LocalProfile, opts: SessionOptions 
       const pwd = o.password ? clean(o.password, 32) : '';
       password = pwd || undefined;
       publicRoom = o.public;
+      friendsHidden = o.friendsOnly === true;
       mode = 'host';
       selfId = 1;
       hostId = 1;
@@ -618,7 +622,10 @@ export function createSession(profile: () => LocalProfile, opts: SessionOptions 
           for (let attempt = 0; attempt < 3 && !created; attempt++) {
             try {
               const r = await lb.create(id, { ...base, salt: salt || undefined, verifier: verifier || undefined, status: 'LOBBY', unlisted: !o.public });
+              // The lobby mints the code: every transport and the lobby screen must use that same id (DECISIONS C5).
               lobbyRoomId = r.id || id;
+              id = lobbyRoomId;
+              room.id = id;
               lobbyToken = r.token;
               created = true;
             } catch {
@@ -640,7 +647,8 @@ export function createSession(profile: () => LocalProfile, opts: SessionOptions 
         const t = new TabTransport('host', id);
         wireHost(t);
         await t.start();
-        stops.push(announceTab(() => (publicRoom && roomState ? roomState : null)));
+        // Same-browser tabs see every room that is not friends-only ('tab' visibility is unlisted on the server).
+        stops.push(announceTab(() => (!friendsHidden && roomState ? roomState : null)));
         if (!lobbyOk) room.via = 'tab';
       }
       if (useP2P || (useServer && !lobbyOk)) {
@@ -799,31 +807,42 @@ export function createSession(profile: () => LocalProfile, opts: SessionOptions 
       return snaps.register(channel, get, apply);
     },
 
+    /** Rooms listed by the lobby server (LOBBY). Falls back to HTTP `/api/rooms` when the socket is down. */
+    async discoverServer(): Promise<RoomInfo[]> {
+      const net = netCfg();
+      lobbyReachable = false;
+      if (!((net.useServer && !forced) || forced === 'relay' || forced === 'webrtc')) return [];
+      const lb = getLobby();
+      const out = new Map<string, RoomInfo>();
+      lobbyReachable = await lb.connect(3000);
+      if (lobbyReachable) {
+        try {
+          for (const r of await lb.list()) if (!out.has(r.id)) out.set(r.id, roomInfoOf(r, 'server'));
+          return [...out.values()];
+        } catch { /* list failed: fall through to HTTP */ }
+      }
+      try {
+        const res = await withTimeout(fetch(`${httpBaseOf(lb.url)}/rooms`, { cache: 'no-store' }), 3000, 'rooms');
+        if (res.ok) {
+          const list = (await res.json()) as RoomPublic[];
+          for (const r of list) if (!out.has(r.id)) out.set(r.id, roomInfoOf(r, 'server'));
+        }
+      } catch { /* lobby unreachable */ }
+      return [...out.values()];
+    },
+
+    /** Rooms announced by hosts in other tabs of this browser (TAB). */
+    discoverTabRooms(): Promise<RoomInfo[]> {
+      if (!(netCfg().useTab && (!forced || forced === 'tab'))) return Promise.resolve([]);
+      return discoverTab(1200);
+    },
+
     async discover(): Promise<RoomInfo[]> {
       const net = netCfg();
       const out = new Map<string, RoomInfo>();
-      let serverOk = false;
-      if (net.useServer && !forced || forced === 'relay' || forced === 'webrtc') {
-        const lb = getLobby();
-        serverOk = await lb.connect(3000);
-        if (serverOk) {
-          try {
-            for (const r of await lb.list()) if (!out.has(r.id)) out.set(r.id, roomInfoOf(r, 'server'));
-          } catch { /* list failed: fall through to HTTP */ }
-        }
-        if (!serverOk) {
-          try {
-            const res = await withTimeout(fetch(`${httpBaseOf(lb.url)}/rooms`, { cache: 'no-store' }), 3000, 'rooms');
-            if (res.ok) {
-              const list = (await res.json()) as RoomPublic[];
-              for (const r of list) if (!out.has(r.id)) out.set(r.id, roomInfoOf(r, 'server'));
-            }
-          } catch { /* lobby unreachable */ }
-        }
-      }
-      if (net.useTab && (!forced || forced === 'tab')) {
-        for (const r of await discoverTab(1200)) if (!out.has(r.id)) out.set(r.id, r);
-      }
+      for (const r of await session.discoverServer()) out.set(r.id, r);
+      const serverOk = lobbyReachable;
+      for (const r of await session.discoverTabRooms()) if (!out.has(r.id)) out.set(r.id, r);
       if ((net.useP2P && !forced) || forced === 'p2p' || (net.useServer && !serverOk && !forced)) {
         for (const r of await discoverP2P(6000)) if (!out.has(r.id)) out.set(r.id, r);
       }

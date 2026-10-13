@@ -6,7 +6,7 @@
 import { app } from '@/core/app';
 import { t } from '@/core/i18n';
 import { button, focusFirst, frame, h, modalPanel, tabs, textField } from '@/core/ui/widgets';
-import { listRooms, targetOf, type ListedRoom } from './mp/directory';
+import { addRoomSource, listRooms, targetOf, type ListedRoom } from './mp/directory';
 import { joinByCode, joinTarget, type JoinResult } from './mp/join';
 import { openHostPanel } from './hostPanel';
 import { enterLobby } from './mp/nav';
@@ -24,6 +24,8 @@ const MODE_OF: Record<Filter, string | null> = { all: null, coop: 'coop', versus
 
 /** Open the server browser over the menu (the MULTIPLAYER face calls this). */
 export function openServerBrowser(): void {
+  // The LOBBY source (lobby server rooms). Re-registering replaces the previous entry, so this is safe to repeat.
+  addRoomSource({ net: 'LOBBY', list: () => app.net.discoverServer() });
   app.ui.panel(BROWSER_PANEL, (el) => buildBrowser(el));
 }
 

@@ -21,8 +21,8 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
 import { countUp } from '@/machines/_base/juice';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { TweenHandle } from '@/core/tween';
 import type { Kit } from '@/kit/types';
 import { fmtCoins, t } from '@/core/i18n';
@@ -71,17 +71,51 @@ export const def: MachineDef = {
       desc: 'Call heads or tails. A win pays 2× — double it again, or take the pot.',
       heads: 'Heads', tails: 'Tails', flip: 'Flip', double: 'Double', collect: 'Collect',
       streak: 'STREAK {n}', pot: 'POT {n}', potLabel: 'Pot', h: 'H', t: 'T',
+      // seat HUD (readability standard)
+      goal: 'Call heads or tails. Win and it pays 2x, then double it or collect.',
+      stPick: 'PICK A SIDE, THEN FLIP', stPickSub: 'You call it, the coin decides',
+      stAir: 'IN THE AIR', stAirSub: 'Watch the coin land',
+      stWon: 'YOU WON: RIDE OR COLLECT', stWonSub: 'Double for 2x more, or take the pot',
+      nStake: 'YOUR BET', nCall: 'YOUR CALL', nChance: 'CHANCE', nPot: 'WINNINGS', nStreak: 'STREAK', nBalance: 'BALANCE',
+      cHeads: 'HEADS', cTails: 'TAILS', cFlip: 'FLIP', cDouble: 'DOUBLE', cCollect: 'COLLECT', cBet: 'BET',
+      cRules: 'RULES', cLeave: 'LEAVE',
+      tip1: 'Pick heads or tails, then flip. The coin decides.',
+      tip2: '[{heads}] HEADS  ·  [{tails}] TAILS  ·  [{flip}] FLIP  ·  [{bet}] BET',
+      tip3: 'After a win: [{double}] DOUBLE for more, or [{collect}] COLLECT. [{help}] RULES.',
+      rule1: 'Call heads or tails and flip. A win pays 2x your bet.',
+      rule2: 'After a win you can double again (ride) or collect. Each ride doubles the pot.',
+      rule3: 'A lost flip takes the amount at risk. Leaving with a pot pays the pot you hold.',
+      rule4: 'Doubling stops at the ride limit, and the pot then pays out by itself.',
+      rule5: 'Each flip wins about {p} of the time.',
     },
     tr: {
       name: 'Yazı-Tura Kabini',
       desc: 'Tura mı yazı mı? Kazanırsan 2 kat öder — tekrar ikiye katla ya da kasayı al.',
       heads: 'Tura', tails: 'Yazı', flip: 'At', double: 'İkiye Katla', collect: 'Kasayı Al',
       streak: 'SERİ {n}', pot: 'KASA {n}', potLabel: 'Kasa', h: 'T', t: 'Y',
+      // seat HUD (readability standard)
+      goal: 'Tura mı yazı mı? Bilirsen 2 kat öder; ikiye katla ya da kasayı al.',
+      stPick: 'BİR YÜZ SEÇ, SONRA AT', stPickSub: 'Tura ya da yazıyı sen seç, sonucu para belirler',
+      stAir: 'HAVADA', stAirSub: 'Paranın düşüşünü izle',
+      stWon: 'KAZANDIN: KATLA YA DA AL', stWonSub: 'Bir daha 2 kat için katla, ya da kasayı al',
+      nStake: 'BAHSİN', nCall: 'TAHMİNİN', nChance: 'ŞANS', nPot: 'KASA', nStreak: 'SERİ', nBalance: 'BAKİYE',
+      cHeads: 'TURA', cTails: 'YAZI', cFlip: 'AT', cDouble: 'İKİYE KAT', cCollect: 'KASAYI AL', cBet: 'BAHİS',
+      cRules: 'KURALLAR', cLeave: 'AYRIL',
+      tip1: 'Tura ya da yazı seç, sonra at. Sonucu para belirler.',
+      tip2: '[{heads}] TURA  ·  [{tails}] YAZI  ·  [{flip}] AT  ·  [{bet}] BAHİS',
+      tip3: 'Kazanınca [{double}] İKİYE KAT ya da [{collect}] KASAYI AL. [{help}] KURALLAR.',
+      rule1: 'Tura ya da yazı seç ve at. Bilirsen bahsinin 2 katını alırsın.',
+      rule2: 'Kazanınca bir daha katlayabilir (devam) ya da kasayı alabilirsin. Her devam kasayı ikiye katlar.',
+      rule3: 'Kaybettiğin atışta o atışa koyduğun tutar gider. Kasayla ayrılırsan elindeki kasa ödenir.',
+      rule4: 'Devam sınırına gelince katlama durur ve kasa kendiliğinden ödenir.',
+      rule5: 'Her atışta kazanma şansı yaklaşık {p}.',
     },
   },
 };
 
 export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts). Created in init, shown while seated. */
+  private seatHud?: SeatHud;
   private state: State = { call: 'H', streak: 0, history: [], pot: 0, ride: 0, bet: 0 };
   private forced: 'win' | 'loss' | 'near' | null = null;
   private hopTween: TweenHandle | null = null;
@@ -92,6 +126,8 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.refresh();
     this.idleChase();
     this.attractor.every('hop', 14, () => this.hop(), { first: 5 });
@@ -132,10 +168,13 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     if (local) {
       if (this.state.pot > 0 && !this.roundOpen) this.resumeRound(this.state.bet);   // restored pot: the sitter owns it
       this.sfx('chime'); this.showHud();
+      this.seatHud?.show();
+      this.seatHud?.firstTip('coinflip', this.tipLines());
     }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
+    if (local) { this.hud(null); this.seatHud?.hide(); }
     this.attractOn = !this.attractOn;           // force the lamps to re-sync in attract()
     this.attractor.reset();
     // Normal path: standUp() collected first. This is the safety net for forced / external releases.
@@ -160,6 +199,8 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -363,6 +404,10 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
       this.commiserate({ amount: ev.stake, at: dish });
       marquee.chase('blink', 1.5);
     }
+    if (this.isLocalOccupant) {
+      if (won) this.seatHud?.result('win', ev.stake);       // the hit adds the stake; the pot waits for ride or collect
+      else this.seatHud?.result('lose', -ev.bet);           // a lost ride takes the whole round bet
+    }
     if (!fast) await this.wait(won ? 0.5 : 0.35);
     if (!this.disposed) this.idleChase();
   }
@@ -371,6 +416,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     const { marquee, lampHeads, lampTails } = this.parts;
     const s = this.state;
     s.pot = 0; s.ride = 0; s.bet = ev.bet;
+    if (this.isLocalOccupant) this.seatHud?.result('win', ev.amount - ev.bet);
     const tier = juiceTier(ev.amount, ev.bet);
     this.drawScreen(0);
     if (tier === 'medium' || tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot') {
@@ -385,6 +431,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
 
   override dispose(): void {
     this.hopTween?.cancel(); this.hopTween = null;
+    this.seatHud?.dispose();
     super.dispose();
   }
 
@@ -442,27 +489,65 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     });
   }
 
-  private showHud(): void {
-    const s = this.state;
-    const hints: HudHint[] = this.busy ? [] : this.pending
-      ? [
-        { action: 'alt', label: `${this.t('double')} ×${PAYOUT_MULT}` },
-        { action: 'primary', label: `${this.t('collect')} ${fmtCoins(s.pot)}` },
-      ]
-      : [
-        { action: 'left', label: this.t('heads') },
-        { action: 'right', label: this.t('tails') },
-        { action: 'primary', label: this.t('flip') },
-        { action: 'betUp', label: t('common.bet') },
-      ];
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: this.roundOpen ? null : this.bet,
-      hints,
-      stats: [
-        { label: t('common.streak'), value: String(s.streak) },
-        ...(s.pot > 0 ? [{ label: this.t('potLabel'), value: fmtCoins(s.pot) }] : []),
-      ],
-    });
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  /** The chance of one flip winning, as a whole percentage (hooks included). */
+  private chance(): string { return `${Math.round(clampP(this.mod(HOOK_P, WIN_P)) * 100)}%`; }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.coinflip.tip1' },
+      { k: 'm.coinflip.tip2', v: { heads: this.k('n1'), tails: this.k('n2'), flip: this.k('primary'), bet: `${this.k('betDown')}/${this.k('betUp')}` } },
+      { k: 'm.coinflip.tip3', v: { double: this.k('double'), collect: this.k('primary'), help: this.k('help') } },
+    ];
   }
+
+  private rulesLines(): Txt[] {
+    return [
+      { k: 'm.coinflip.rule1' }, { k: 'm.coinflip.rule2' }, { k: 'm.coinflip.rule3' }, { k: 'm.coinflip.rule4' },
+      { k: 'm.coinflip.rule5', v: { p: this.chance() } },
+    ];
+  }
+
+  /** Banner, key numbers and the controls valid right now. Only while the local player sits at the booth. */
+  private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const s = this.state;
+    const pending = this.pending;
+    const ctrl: HudControl[] = [];
+    sh.goal({ k: 'm.coinflip.goal' });
+
+    // STATE: call and flip, in the air, or a win waiting for ride or collect
+    if (this.busy) sh.state({ k: 'm.coinflip.stAir' }, 'neutral', { k: 'm.coinflip.stAirSub' });
+    else if (pending) sh.state({ k: 'm.coinflip.stWon' }, 'good', { k: 'm.coinflip.stWonSub' });
+    else sh.state({ k: 'm.coinflip.stPick' }, 'gold', { k: 'm.coinflip.stPickSub' });
+
+    // KEY NUMBERS: bet (or the pot at risk), your call, chance, winnings, streak, balance
+    const nums: HudNumber[] = [];
+    nums.push({ label: { k: 'm.coinflip.nStake' }, value: fmtCoins(this.roundOpen ? this.roundBet : this.bet), tone: 'gold' });
+    nums.push({ label: { k: 'm.coinflip.nCall' }, value: { k: s.call === 'H' ? 'm.coinflip.cHeads' : 'm.coinflip.cTails' }, tone: 'cyan' });
+    nums.push({ label: { k: 'm.coinflip.nChance' }, value: this.chance(), tone: 'neutral' });
+    if (s.pot > 0) nums.push({ label: { k: 'm.coinflip.nPot' }, value: fmtCoins(s.pot), tone: 'good' });
+    nums.push({ label: { k: 'm.coinflip.nStreak' }, value: String(s.streak), tone: 'neutral' });
+    nums.push({ label: { k: 'm.coinflip.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys the booth really reads
+    if (!this.busy && !pending) {
+      ctrl.push({ key: this.k('n1'), label: { k: 'm.coinflip.cHeads' }, action: 'left' });
+      ctrl.push({ key: this.k('n2'), label: { k: 'm.coinflip.cTails' }, action: 'right' });
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.coinflip.cFlip' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.coinflip.cBet' }, action: 'betUp' });
+    }
+    if (!this.busy && pending) {
+      if (s.ride <= this.rideCap()) ctrl.push({ key: this.k('double'), label: { k: 'm.coinflip.cDouble' }, action: 'double' });
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.coinflip.cCollect' }, action: 'collect', primary: true });
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.coinflip.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.coinflip.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
+  }
+
 }

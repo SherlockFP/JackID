@@ -13,12 +13,12 @@
  * chase on the relay brain, commiseration or near-miss).
  */
 import type { KitX } from '@/kit';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { PlayerId } from '@/core/types';
 import type { ModHook } from '@/game/types';
 import { fmtCoins, t as tr } from '@/core/i18n';
 import { TableBase } from '@/machines/_base/TableBase';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier, tierTags, toWinTier } from '@/machines/_base/tiers';
 import { buildModel, commitBoard, setLamp, LAMP_DRAWN, LAMP_OFF, type KenoParts } from './model';
@@ -62,6 +62,7 @@ type Tk = { p: PlayerId; slot: number; picks: number[]; stake: number; left: num
 type Draft = { picks: number[]; live: boolean };
 
 const keyOf = (p: PlayerId, slot: number): string => `${p}:${slot}`;
+const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.keno.' + k }));
 const drawSecs = (stepMs: number): number => LOCK_S + (DRAWN * stepMs) / 1000 + TALLY_S + PAYOUT_S;
 
 export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
@@ -73,15 +74,29 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
   private slot = 0;
   private spotTarget = 4;
   private drawIdx = 0;
+  /** Seat HUD overlay (goal, state, key numbers, controls, result callout, tip and rules cards). */
+  private seatHud?: SeatHud;
+  private hudSig = '';
 
   protected createModel(kit: KitX): MachineModel<KenoParts> { return buildModel(kit, this.modelOpts); }
 
-  init(): void { this.paintAll(); }
+  init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
+    this.paintAll();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
 
   // ── local input → action to the host ──────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -359,7 +374,11 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
     this.st.phase = 'open';
     this.paintDesks();
     this.paintRail();
-    if (mine) this.showHud();
+    if (mine) {
+      const net = ev.payout - ev.stake;
+      this.seatHud?.result(ev.top ? 'win' : ev.payout === 0 ? 'lose' : net === 0 ? 'even' : net > 0 ? 'win' : 'lose', net, 1.5);
+      this.showHud();
+    }
     if (!pc.fast) await this.wait(0.3);
   }
 
@@ -376,22 +395,31 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintDesks();
     this.paintRail();
-    if (local) { this.sfx('chime', { vol: 0.5 }); this.showHud(); }
+    if (local) {
+      this.sfx('chime', { vol: 0.5 });
+      this.hud(null);
+      this.seatHud?.show();
+      this.hudSig = '';
+      this.showHud();
+      this.seatHud?.firstTip('keno', this.tipLines());
+    }
   }
   onRelease(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintDesks();
     this.paintRail();
-    if (local) this.showHud();
+    if (local) { this.hud(null); this.seatHud?.hide(); }
   }
 
   override onLang(): void {
     this.paintAll();
+    this.hudSig = '';
     if (this.isLocalOccupant) this.showHud();
   }
 
   /** The NEXT led counts down the shared sales window while it runs (visual only). */
   frame(_dt: number, _t: number): void {
     if (this.timerState && this.st.phase === 'open') this.parts.leds.next.set(String(Math.ceil(this.timerLeft)).padStart(4, ' '));
+    if (this.isLocalOccupant) this.showHud();              // cheap: only redraws the HUD when its content changed
   }
 
   // ── painting ──────────────────────────────────────────────────────────────────────────────────
@@ -462,35 +490,64 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
     }
   }
 
-  private showHud(): void {
-    const seat = this.localSeat;
-    const hints: HudHint[] = [];
-    if (seat >= 0) {
-      hints.push({ action: 'confirm', label: tr('m.keno.hintPlay') });
-      hints.push({ action: 'n1', label: tr('m.keno.hintQuick') }, { action: 'n2', label: tr('m.keno.hintSpots') });
-      hints.push({ action: 'n3', label: tr('m.keno.hintDraws') }, { action: 'n4', label: tr('m.keno.hintSlot') });
-      hints.push({ action: 'clear', label: tr('m.keno.hintClear') });
-    }
-    hints.push({ action: 'betUp', label: tr('common.bet') }, { action: 'exit', label: tr('common.leave') });
-    this.hud({
-      bet: seat >= 0 ? this.bet : null,
-      hints,
-      stats: [
-        { label: tr('m.keno.callSpots'), value: String(this.cur.picks.length) },
-        { label: 'x', value: String(DRAW_COUNTS[this.drawIdx]) },
-        { label: tr('m.keno.drawNo', { n: this.st.drawNo }), value: this.statusText() },
-      ],
-    });
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.keno.tip1' },
+      { k: 'm.keno.tip2', v: { quick: this.k('n1'), spots: this.k('n2'), clear: this.k('clear') } },
+      { k: 'm.keno.tip3', v: { play: this.k('confirm'), help: this.k('help') } },
+    ];
   }
 
-  private statusText(): string {
-    if (this.timerLeft > 0 && this.st.phase === 'open') return tr('m.keno.sOpenShared', { n: Math.ceil(this.timerLeft) });
-    switch (this.st.phase) {
-      case 'open': case 'idle': return tr('m.keno.sOpen');
-      case 'lock': return tr('m.keno.sLock');
-      case 'draw': return tr('m.keno.sDraw');
-      case 'payout': return tr('m.keno.sPay');
+  /** Banner, key numbers and valid controls for the local player. Redraws only when something changed. */
+  private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const seat = this.localSeat, d = this.cur, phase = this.st.phase;
+    const mine = this.st.tickets.find((x) => x.p === this.selfId && x.slot === this.slot);
+    const live = d.live || mine !== undefined;
+    const left = this.timerState && phase === 'open' ? Math.ceil(this.timerLeft) : 0;
+    const wallet = this.ctx.run.wallet();
+    const sig = [phase, seat, this.bet, this.drawIdx, this.spotTarget, this.slot, d.picks.join(','), live, left, this.st.drawNo, wallet, mine?.left ?? 0].join('|');
+    if (sig === this.hudSig) return;
+    this.hudSig = sig;
+    sh.goal({ k: 'm.keno.goal' });
+
+    // STATE: what phase the draw is in, and what the player should do
+    const secs: Txt | undefined = left > 0 ? { k: 'm.keno.stSecs', v: { n: left } } : undefined;
+    if (phase === 'lock') sh.state({ k: 'm.keno.stLock' }, 'warn');
+    else if (phase === 'draw') sh.state({ k: 'm.keno.stDraw' }, 'neutral');
+    else if (phase === 'payout') sh.state({ k: 'm.keno.stPay' }, 'neutral');
+    else if (live) sh.state({ k: 'm.keno.stLive' }, 'cyan', mine ? { k: 'm.keno.stLeft', v: { n: mine.left } } : secs);
+    else if (d.picks.length > 0) sh.state({ k: 'm.keno.stReady' }, 'good', secs);
+    else sh.state({ k: 'm.keno.stPick' }, 'gold', secs);
+
+    // KEY NUMBERS
+    const nums: HudNumber[] = [
+      { label: { k: 'm.keno.nPicks' }, value: `${d.picks.length}/${this.spotTarget}`, tone: d.picks.length > 0 ? 'good' : 'gold' },
+      { label: { k: 'm.keno.nStake' }, value: fmtCoins(this.bet), tone: 'gold' },
+      { label: { k: 'm.keno.nDraws' }, value: `x${DRAW_COUNTS[this.drawIdx]}`, tone: 'cyan' },
+      { label: { k: 'm.keno.nSlot' }, value: `${this.slot + 1}/${SLOTS}`, tone: 'neutral' },
+      { label: { k: 'm.keno.nBalance' }, value: fmtCoins(wallet), tone: 'neutral' },
+    ];
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now
+    const ctrl: HudControl[] = [];
+    if (!live) {
+      if (d.picks.length > 0) ctrl.push({ key: this.k('confirm'), label: { k: 'm.keno.cPlay' }, action: 'confirm', primary: true });
+      ctrl.push({ key: this.k('n1'), label: { k: 'm.keno.cQuick' }, action: 'n1' });
+      ctrl.push({ key: this.k('n2'), label: { k: 'm.keno.cSpots' }, action: 'n2' });
+      if (d.picks.length > 0) ctrl.push({ key: this.k('clear'), label: { k: 'm.keno.cClear' }, action: 'clear' });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.keno.cBet' }, action: 'betUp' });
     }
+    ctrl.push({ key: this.k('n3'), label: { k: 'm.keno.cDraws' }, action: 'n3' });
+    ctrl.push({ key: this.k('n4'), label: { k: 'm.keno.cSlot' }, action: 'n4' });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.keno.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.keno.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }
 

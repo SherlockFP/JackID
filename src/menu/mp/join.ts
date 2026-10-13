@@ -33,15 +33,11 @@ export async function joinTarget(target: JoinTarget, password?: string): Promise
   }
 }
 
-/** Join by typed code: the lobby server first, then same-browser tabs, then the global transport. */
+/** Join by typed code: lobby server first, then same-browser tabs, then the global transport (inside the session). */
 export async function joinByCode(rawCode: string, password?: string): Promise<JoinResult> {
   const code = normaliseCode(rawCode);
   if (!isRoomCode(code)) return { ok: false, reason: t('mp.join.failed', { code: rawCode.trim() || '?' }), answered: false };
-  let last: JoinResult = { ok: false, reason: t('mp.join.failed', { code }), answered: false };
-  for (const via of ['server', 'tab', 'p2p'] as const) {
-    const r = await joinTarget({ via, roomId: code }, password);
-    if (r.ok || r.answered) return r;
-    last = r;
-  }
-  return last;
+  // One call: the session already walks server → same browser → global in its own order (net settings apply).
+  const r = await joinTarget({ via: 'server', roomId: code }, password);
+  return r.ok ? r : { ...r, reason: r.reason || t('mp.join.failed', { code }) };
 }

@@ -18,8 +18,8 @@
 import * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import type { PhoneCallState } from '@/net/protocol';
 import type { HeadlessPlay } from '@/game/types';
@@ -59,6 +59,30 @@ export const def: MachineDef = {
       h_pick: 'PICK UP', h_choose: 'CHOOSE', h_leave: 'LEAVE', all: 'ALL',
       s_ring: 'RINGING', s_choose: 'CHOOSE', s_busy: 'ON THE LINE', s_notYou: 'NOT FOR YOU',
       notYou: 'That call is not for you.', ringing: 'RING RING', choice: 'OPTION {n}',
+      goal: "Answer the call that is for you, then pick the reply that fits the caller.",
+      stQuiet: "LINE IS QUIET",
+      stQuietSub: "Wait for the phone to ring",
+      stRing: "PHONE IS RINGING",
+      stRingSub: "Pick up within {n}s",
+      stRingOther: "CALL FOR SOMEONE ELSE",
+      stRingOtherSub: "You cannot answer this one",
+      stChoose: "CHOOSE A REPLY",
+      stChooseSub: "Pick one of the numbered replies",
+      stBusy: "ON THE LINE",
+      stBusySub: "Another player is on the line",
+      nCaller: "CALLER",
+      nRing: "RINGING",
+      nTime: "TIME LEFT",
+      cPick: "PICK UP",
+      cRules: "RULES",
+      cLeave: "LEAVE",
+      rule1: "When the phone rings, pick up. Only the player the call is for can answer it.",
+      rule2: "After you pick up, choose a reply with 1, 2 or 3 within 8 seconds. Your reply decides how the call goes.",
+      rule3: "If nobody answers in time, the game resolves the call on its own clock.",
+      rule4: "E stands up from the booth. Hanging up is not possible yet, so leaving only stands you up.",
+      tip1: "Answer the phone when it rings. Only the call's player can pick up.",
+      tip2: "[{pick}] PICK UP, then choose a reply within 8 seconds",
+      tip3: "On the line: [{choose}] CHOOSE A REPLY  ·  [{help}] RULES",
     },
     tr: {
       name: 'Hat Telefonu',
@@ -66,6 +90,30 @@ export const def: MachineDef = {
       h_pick: 'AÇ', h_choose: 'SEÇ', h_leave: 'AYRIL', all: 'HEPSİ',
       s_ring: 'ÇALIYOR', s_choose: 'SEÇ', s_busy: 'HATTA', s_notYou: 'SANA DEĞİL',
       notYou: 'Bu çağrı sana ait değil.', ringing: 'TRIN TRIN', choice: 'SEÇENEK {n}',
+      goal: "Sana gelen çağrıyı aç, sonra arayana uygun yanıtı seç.",
+      stQuiet: "HAT SESSİZ",
+      stQuietSub: "Telefonun çalmasını bekle",
+      stRing: "TELEFON ÇALIYOR",
+      stRingSub: "{n} sn içinde aç",
+      stRingOther: "BAŞKASI İÇİN ÇAĞRI",
+      stRingOtherSub: "Bu çağrıyı sen açamazsın",
+      stChoose: "BİR YANIT SEÇ",
+      stChooseSub: "Numaralı yanıtlardan birini seç",
+      stBusy: "HATTA",
+      stBusySub: "Başka bir oyuncu hatta",
+      nCaller: "ARAYAN",
+      nRing: "ÇALIYOR",
+      nTime: "KALAN SÜRE",
+      cPick: "AÇ",
+      cRules: "KURALLAR",
+      cLeave: "AYRIL",
+      rule1: "Telefon çaldığında aç. Çağrı kime aitse yalnız o oyuncu açabilir.",
+      rule2: "Açtıktan sonra 8 saniye içinde 1, 2 ya da 3 ile bir yanıt seç. Yanıtın çağrının nasıl biteceğini belirler.",
+      rule3: "Kimse zamanında açmazsa oyun çağrıyı kendi saatiyle çözer.",
+      rule4: "E tuşu kabinden kalkar. Henüz kapatma yok, bu yüzden ayrılmak yalnızca kalkmaktır.",
+      tip1: "Telefon çalınca aç. Yalnızca çağrının sahibi açabilir.",
+      tip2: "[{pick}] AÇ, sonra 8 saniye içinde bir yanıt seç",
+      tip3: "Hatta: [{choose}] YANIT SEÇ  ·  [{help}] KURALLAR",
     },
   },
 };
@@ -81,12 +129,16 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
   private restRot = new THREE.Euler();
   private shownTarget = '';
   private hudKey = '';
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: KitX): MachineModel<HotlineParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.ctx.ui.machineHud(null);                          // the seat HUD replaces the generic bottom bar
     this.restPos.copy(this.parts.handset.position);
     this.restRot.copy(this.parts.handset.rotation);
     this.parts.lamp.setOn(false);
@@ -127,12 +179,21 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
     if (this.isLocalOccupant) this.showHud(call);
   }
 
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
+
   onOccupy(_pid: number, _seat: number, local: boolean): void {
-    if (local) { this.sfx('chime'); this.hudKey = ''; this.showHud(this.ctx.run.phone()); }
+    if (local) {
+      this.sfx('chime'); this.hudKey = '';
+      this.seatHud?.show(); this.showHud(this.ctx.run.phone());
+      this.seatHud?.firstTip('hotline', this.tipLines());
+    }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
-    if (local) { this.ctx.ui.machineHud(null); this.hudKey = ''; }
+    if (local) { this.seatHud?.hide(); this.hudKey = ''; }
   }
 
   onLang(): void {
@@ -143,7 +204,10 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
 
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
-    if (!e.down || e.repeat) return;
+    if (!e.down) return;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
+    if (e.repeat) return;
     const call = this.ctx.run.phone();
     if (e.action === 'primary' || e.action === 'confirm') {
       if (!call || call.answeredBy !== null) return;
@@ -204,41 +268,65 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
     return this.anim(0.28, tween, 'outQuad');
   }
 
-  // ── HUD ─────────────────────────────────────────────────────────────────────────────────────────
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.hotline.tip1' },
+      { k: 'm.hotline.tip2', v: { pick: this.k('primary') } },
+      { k: 'm.hotline.tip3', v: { choose: `${this.k('n1')}-${this.k('n3')}`, help: this.k('help') } },
+    ];
+  }
+
+  private rulesLines(): Txt[] {
+    return [1, 2, 3, 4].map((i) => ({ k: `m.hotline.rule${i}` }));
+  }
+
+  /** Banner, caller and timer numbers, and the valid controls only. Only while the local player stands here. */
   private showHud(call: PhoneCallState | null): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const now = this.now();
-    let hints: HudHint[] = [];
-    let stats: Array<{ label: string; value: string }> = [];
+    const mine = call !== null && canAnswer(call.target, this.selfId);
+    const ctrl: HudControl[] = [];
+    const nums: HudNumber[] = [];
     let key = '';
+    sh.goal({ k: 'm.hotline.goal' });
 
     if (!call) {
-      hints = [{ action: 'exit', label: this.t('h_leave') }];
+      sh.state({ k: 'm.hotline.stQuiet' }, 'neutral', { k: 'm.hotline.stQuietSub' });
       key = 'idle';
     } else if (call.answeredBy === null) {
-      const el = (now - call.ringingSince) / 1000;
-      const left = Math.max(0, Math.ceil(RING_TOTAL_S - el));
-      hints = canAnswer(call.target, this.selfId)
-        ? [{ action: 'primary', label: this.t('h_pick') }, { action: 'exit', label: this.t('h_leave') }]
-        : [{ action: 'exit', label: this.t('h_leave') }];
-      stats = [{ label: this.t('s_ring'), value: canAnswer(call.target, this.selfId) ? `${left}s` : this.t('s_notYou') }];
-      key = `ring|${canAnswer(call.target, this.selfId) ? left : 'no'}`;
+      const left = Math.max(0, Math.ceil(RING_TOTAL_S - (now - call.ringingSince) / 1000));
+      if (mine) sh.state({ k: 'm.hotline.stRing' }, 'warn', { k: 'm.hotline.stRingSub', v: { n: left } });
+      else sh.state({ k: 'm.hotline.stRingOther' }, 'neutral', { k: 'm.hotline.stRingOtherSub' });
+      nums.push({ label: { k: 'm.hotline.nCaller' }, value: targetLabel(call.target, this.t('all')), tone: 'cyan' });
+      nums.push({ label: { k: 'm.hotline.nRing' }, value: `${left}s`, tone: left <= 3 ? 'bad' : 'warn' });
+      if (mine) ctrl.push({ key: this.k('primary'), label: { k: 'm.hotline.cPick' }, action: 'primary', primary: true });
+      key = `ring|${mine ? left : 'no'}`;
     } else if (call.answeredBy === this.selfId) {
       const n = choiceCount(call.options);
       const left = this.timerState ? choiceSecondsLeft(this.timerState.until, now) : 0;
-      hints = [];
-      for (let i = 0; i < n; i++) hints.push({ action: `n${i + 1}` as HudHint['action'], label: tr(call.options[i] ?? '') });
-      hints.push({ action: 'exit', label: this.t('h_leave') });
-      stats = [{ label: this.t('s_choose'), value: `${left}s` }];
+      sh.state({ k: 'm.hotline.stChoose' }, 'good', { k: 'm.hotline.stChooseSub' });
+      nums.push({ label: { k: 'm.hotline.nTime' }, value: `${left}s`, tone: left <= 3 ? 'bad' : 'gold' });
+      nums.push({ label: { k: 'm.hotline.nCaller' }, value: targetLabel(call.target, this.t('all')), tone: 'cyan' });
+      for (let i = 0; i < n; i++) {
+        ctrl.push({ key: this.k(`n${i + 1}` as MachineAction), label: { k: call.options[i] ?? '' }, action: `n${i + 1}`, primary: i === 0 });
+      }
       key = `ans|${n}|${left}`;
     } else {
-      hints = [{ action: 'exit', label: this.t('h_leave') }];
-      stats = [{ label: this.t('s_busy'), value: '' }];
+      sh.state({ k: 'm.hotline.stBusy' }, 'cyan', { k: 'm.hotline.stBusySub' });
       key = 'busy';
     }
 
-    if (key === this.hudKey) return;
+    if (key === this.hudKey) return;             // only redraw when a number or a control changed
     this.hudKey = key;
-    this.hud({ bet: null, hints, stats });
+    sh.numbers(nums);
+    ctrl.push({ key: this.k('help'), label: { k: 'm.hotline.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.hotline.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }
 

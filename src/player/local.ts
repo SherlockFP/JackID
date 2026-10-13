@@ -39,8 +39,8 @@ const LOOK_RETURN_DELAY_S = 0.3;
 const GHOST_EYE = 1.2;
 const CARRIED_EYE = 1.9;
 const SPRINT_FOV_KICK = 4;
-const BOB_Y = 0.035;
-const BOB_X = 0.02;
+const BOB_Y = 0.014;
+const BOB_X = 0.006;
 const UP = new THREE.Vector3(0, 1, 0);
 const X_AXIS = new THREE.Vector3(1, 0, 0);
 

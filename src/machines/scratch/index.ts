@@ -16,10 +16,10 @@ import type * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
-import { fmtCoins, t } from '@/core/i18n';
+import { fmtCoins, type I18nVars } from '@/core/i18n';
 import { buildModel, CARD_Y, FRONT_Z, SLOT_X, SLOT_Z, type ScratchParts } from './model';
 import {
   CARD_COUNT, HOOK_CHARM, HOOK_DISCOUNT, HOOK_SECOND, HOOK_TOP, MAX_QTY, PRIZE_MULTS, PRIZE_WEIGHTS,
@@ -101,13 +101,16 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   private stroking = false;
   private strokeQ: number[] = [];
   private flushT = 0;
-  private showTables = false;
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: KitX): MachineModel<ScratchParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     const tex = this.ctx.kit.tex;
     this.views = this.parts.cardTex.map((card) => {
       // scratch canvases come from the texgen helper (no DOM access in machines)
@@ -140,10 +143,15 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
       this.sfx('chime');
     }
     this.refreshVisuals();
-    if (local) this.showHud();
+    if (local) {
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip(this.def.id, this.tipLines());
+    }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
+    if (local) this.seatHud?.hide();
     if (local && this.pend) {                 // forced release mid-batch: settle what was bought, never strand the stake
       const total = this.pend.total;
       this.pend = null;
@@ -158,6 +166,11 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     if (this.isLocalOccupant) this.showHud();
   }
 
+  override dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
+
   /** Leaving with cards still to scratch auto-sweeps them and settles (the safe default for a batch game). */
   protected override standUp(): void {
     if (this.pend) this.autoFinish();
@@ -168,6 +181,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
     const isQty = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isQty) return;
     switch (a) {
@@ -179,7 +193,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
       case 'betMax': this.setQty(MAX_QTY); break;
       case 'primary': case 'confirm': if (this.pend) this.sweepActive(); else this.vend(); break;
       case 'collect': case 'secondary': if (this.pend) this.autoFinish(); break;
-      case 'help': this.showTables = !this.showTables; this.sfx('click'); this.showHud(); break;
+      case 'help': this.sfx('click'); this.seatHud?.rules(this.rulesLines()); break;
     }
   }
 
@@ -415,6 +429,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
         this.sfx('chime', { vol: 0.6 });
       }
     }
+    if (!c.free || c.gross > 0) this.callResult(c.gross - (c.free ? 0 : c.price));
     const tier = juiceTier(c.gross, c.price, c.lucky ? ['lucky'] : []);
     if (c.gross > 0) {
       fx.popText(plane, `×${c.mult}`, GOLD, { dur: 1.1, rise: 0.3, scale: 1.1 + 0.1 * Math.min(4, Math.log10(c.mult + 1)), shake: c.mult >= 50 });
@@ -518,29 +533,65 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     this.idleChase();
   }
 
+  /** Seat HUD: goal, phase banner, key numbers and the valid controls only. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const s = this.state, p = this.pend;
     const price = priceOf(s.sel, this.discount());
-    const hints: HudHint[] = this.busy ? []
-      : p && p.next < p.n
-        ? [{ action: 'primary', label: this.t('scratchAll') }]
-        : [
-          { action: 'primary', label: `${this.t('vend')} ${fmtCoins(price * s.qty)}` },
-          { action: 'left', label: this.t('card') },
-          { action: 'betUp', label: t('common.bet') },
-          { action: 'help', label: this.t('prizes') },
-        ];
-    hints.push({ action: 'exit', label: t('common.leave') });
-    const stats = this.showTables
-      ? PRIZE_MULTS[s.sel].map((m, j) => ({ label: this.t('tblLine', { m, p: (PRIZE_WEIGHTS[s.sel][j] / WEIGHT_TOTAL * 100).toFixed(2) }), value: '' }))
-      : [
-        { label: this.t('card'), value: this.t(`c${s.sel}`) },
-        { label: this.t('leftLabel'), value: p ? String(p.n - p.next) : '-' },
-        ...(s.bin > 0 ? [{ label: this.t('binFree'), value: String(s.bin) }] : []),
-      ];
-    this.hud({ bet: s.batch ? null : price * s.qty, hints, stats });
+    const open = !!p && p.next < p.n;
+    sh.goal(this.tx('goal'));
+    if (open && p) sh.state(this.tx('stScratch', { n: p.next + 1, of: p.n }), 'cyan', this.tx('stScratchSub'));
+    else if (p || this.busy || this.roundOpen) sh.state(this.tx('stPay'), 'neutral');
+    else sh.state(this.tx('stReady'), 'gold', this.tx('stReadySub', { card: this.t(`c${s.sel}`) }));
+    sh.numbers([
+      { label: this.tx('nBet'), value: fmtCoins(s.batch ? s.bet : price * s.qty), tone: 'gold' },
+      { label: this.tx('nCards'), value: s.batch && p ? `${p.n - p.next}/${p.n}` : `×${s.qty}`, tone: 'cyan' },
+      { label: this.tx('nPrice'), value: fmtCoins(price), tone: 'neutral' },
+      { label: this.tx('nLast'), value: s.hist.length ? `×${s.hist[0]}` : '-', tone: 'good' },
+      { label: this.tx('nBalance'), value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
+    ]);
+    const ctrl: HudControl[] = [];
+    if (open) {
+      ctrl.push({ key: this.k('primary'), label: this.tx('cSweep'), action: 'primary', primary: true });
+      ctrl.push({ key: this.k('collect'), label: this.tx('cSweepAll'), action: 'collect' });
+    } else if (!this.busy && !p && !s.batch && !this.roundOpen) {
+      ctrl.push({ key: this.k('primary'), label: this.tx('cVend', { n: fmtCoins(price * s.qty) }), action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('n1')}-${this.k('n5')}`, label: this.tx('cCard'), action: 'n1' });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: this.tx('cQty'), action: 'betUp' });
+    }
+    ctrl.push({ key: this.k('help'), label: this.tx('cRules'), action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: this.tx('cLeave'), action: 'exit' });
+    sh.controls(ctrl);
   }
 
+  // ── seat HUD helpers ────────────────────────────────────────────────────────────────────────────
+  private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.${this.def.id}.${key}`, v } : { k: `m.${this.def.id}.${key}` }; }
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+  private tipLines(): Txt[] {
+    return [
+      this.tx('tip1', { pick: `${this.k('n1')}-${this.k('n5')}`, vend: this.k('primary') }),
+      this.tx('tip2'),
+      this.tx('tip3', { sweep: this.k('primary'), help: this.k('help') }),
+    ];
+  }
+  /** Rules card: the static rules, then the top prize of the selected card. */
+  private rulesLines(): Txt[] {
+    const sel = this.state.sel;
+    const last = PRIZE_MULTS[sel].length - 1;
+    const odds = (PRIZE_WEIGHTS[sel][last] / WEIGHT_TOTAL * 100).toFixed(3);
+    return [
+      this.tx('rule1'),
+      this.tx('rule2'),
+      this.tx('rule3'),
+      this.tx('topOdds', { m: PRIZE_MULTS[sel][last], p: odds, card: this.t(`c${sel}`) }),
+    ];
+  }
+  /** Result callout for one finished card: net = prize − price (a free card only ever wins). */
+  private callResult(net: number): void {
+    if (this.isLocalOccupant) this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'lose', net);
+  }
   getSnapshot(): State {
     return JSON.parse(JSON.stringify(this.state)) as State;
   }

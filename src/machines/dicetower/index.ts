@@ -16,8 +16,8 @@
  */
 import * as THREE from 'three';
 import type { ChipValue, Kit } from '@/kit/types';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { isBot, type PlayerId } from '@/core/types';
 import { createRng } from '@/core/rng';
 import { fmtCoins, t as tr } from '@/core/i18n';
@@ -112,11 +112,24 @@ export default class Dicetower extends TableBase<DicetowerParts, Ev, Snap, Act> 
 
   protected createModel(kit: Kit): MachineModel<DicetowerParts> { return buildModel(kit, this.modelOpts); }
 
-  init(): void { this.paintAll(); }
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts). Created in init, shown while seated. */
+  private seatHud?: SeatHud;
+
+  init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
+    this.paintAll();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
 
   // ── local input → action to the host ─────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
     const seat = this.localSeat;
     switch (e.action) {
       case 'betUp': case 'n2': this.stepBet(1); this.sfx('click'); this.showHud(); break;     // X / wheel up
@@ -131,7 +144,7 @@ export default class Dicetower extends TableBase<DicetowerParts, Ev, Snap, Act> 
         break;
       case 'double': if (!e.repeat && seat >= 0) this.act({ k: 'repeat' }); break;            // R
       case 'clear': if (seat >= 0) this.act({ k: 'clear' }); break;                          // Backspace
-      case 'help': if (!e.repeat) void this.showRules(); break;                              // H
+      case 'help': if (!e.repeat) this.seatHud?.rules(this.rulesLines(), { k: 'm.dicetower.rulesTitle' }); break;                              // H
       default: break;
     }
   }
@@ -375,7 +388,12 @@ export default class Dicetower extends TableBase<DicetowerParts, Ev, Snap, Act> 
   onOccupy(pid: PlayerId, _seat: number, local: boolean): void {
     if (this.isHost && this.hs.phase === 'idle' && !isBot(pid)) this.startBetting();
     this.paintLamps();
-    if (local) { this.sfx('chime', { vol: 0.5 }); this.showHud(); }
+    if (local) {
+      this.sfx('chime', { vol: 0.5 });
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip('dicetower', this.tipLines());
+    }
   }
 
   onRelease(_pid: PlayerId, seat: number, local: boolean): void {
@@ -393,7 +411,7 @@ export default class Dicetower extends TableBase<DicetowerParts, Ev, Snap, Act> 
       }
     }
     this.paintLamps();
-    if (local) this.showHud();
+    if (local) { this.hud(null); this.seatHud?.hide(); }
   }
 
   override onLang(): void { this.paintAll(); if (this.isLocalOccupant) this.showHud(); }
@@ -481,6 +499,11 @@ export default class Dicetower extends TableBase<DicetowerParts, Ev, Snap, Act> 
       const tier = juiceTier(s.gross, s.stake, pair ? ['doubles'] : []);
       if (s.gross > 0) {
         this.ctx.fx.popText(lamp.root, tr(won ? 'm.dicetower.win' : 'm.dicetower.lose', { n: fmtCoins(won ? s.gross - s.stake : s.stake) }), won ? GOLD : GREEN, { dur: 1.2, rise: 0.3 });
+      }
+      if (s.p === this.localSeat && s.stake > 0) {
+        if (s.gross > s.stake) this.seatHud?.result('win', s.gross - s.stake);
+        else if (s.gross === s.stake) this.seatHud?.result('push');
+        else this.seatHud?.result('lose', s.gross - s.stake);
       }
       if (s.p === this.localSeat) {
         if (won) void this.celebrate(tier, { amount: s.gross - s.stake, fast: pc.fast, lamps: [lamp], restore: () => this.paintLamps() });
@@ -574,28 +597,73 @@ export default class Dicetower extends TableBase<DicetowerParts, Ev, Snap, Act> 
   }
 
   // ── local HUD and help ──────────────────────────────────────────────────────────────────────────
-  private async showRules(): Promise<void> {
-    const body = ['rule1', 'rule2', 'rule3', 'rule4'].map((k) => this.t(k)).join('\n');
-    await this.ctx.ui.modal({ title: this.t('rulesTitle'), body, buttons: [{ id: 'ok', label: this.t('rulesOk') }] });
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.dicetower.tip1' },
+      { k: 'm.dicetower.tip2', v: { ready: this.k('confirm') } },
+      { k: 'm.dicetower.tip3', v: { help: this.k('help') } },
+    ];
   }
 
+  private rulesLines(): Txt[] { return ['rule1', 'rule2', 'rule3', 'rule4'].map((k) => ({ k: 'm.dicetower.' + k })); }
+
+  /** Banner, key numbers and the controls valid right now. Only while the local player sits at the tower. */
   private showHud(): void {
+    const sh = this.seatHud;
     const seat = this.localSeat;
-    const hints: HudHint[] = [];
-    const betting = this.st.phase === 'betting';
-    if (betting && seat >= 0) {
-      hints.push({ action: 'confirm', label: this.t('hReady') });
-      hints.push({ action: 'double', label: this.t('hRepeat') }, { action: 'clear', label: this.t('hClear') });
+    if (!sh || seat < 0) return;
+    const st = this.st, ph = st.phase;
+    const ready = st.ready[seat] === true;
+    const myDrop = ph === 'drop' && st.shooter === seat;
+    const last = st.last.length === 2 ? st.last : null;
+    const total = last ? last[0] + last[1] : 0;
+    const ctrl: HudControl[] = [];
+    sh.goal({ k: 'm.dicetower.goal' });
+
+    // STATE: whose turn, what phase
+    switch (ph) {
+      case 'idle': sh.state({ k: 'm.dicetower.stIdle' }, 'neutral', { k: 'm.dicetower.stIdleSub' }); break;
+      case 'betting':
+        if (ready) sh.state({ k: 'm.dicetower.stReady' }, 'good', { k: 'm.dicetower.stReadySub' });
+        else sh.state({ k: 'm.dicetower.stBet' }, 'gold', { k: 'm.dicetower.stBetSub', v: { ready: this.k('confirm') } });
+        break;
+      case 'lock': sh.state({ k: 'm.dicetower.stLock' }, 'warn', { k: 'm.dicetower.stLockSub' }); break;
+      case 'drop':
+        if (myDrop) sh.state({ k: 'm.dicetower.stYouDrop' }, 'good', { k: 'm.dicetower.stYouDropSub', v: { drop: this.k('confirm') } });
+        else sh.state({ k: 'm.dicetower.stWaitDrop' }, 'cyan', { k: 'm.dicetower.stWaitDropSub' });
+        break;
+      case 'result':
+        sh.state(last ? { k: 'm.dicetower.stResult', v: { n: total } } : { k: 'm.dicetower.stRoll' }, 'gold', { k: 'm.dicetower.stResultSub' });
+        break;
+      default: sh.state({ k: 'm.dicetower.stRoll' }, 'neutral');
     }
-    if (this.st.phase === 'drop' && seat >= 0 && this.st.shooter === seat) hints.push({ action: 'confirm', label: this.t('hDrop') });
-    hints.push({ action: 'betUp', label: tr('common.bet') }, { action: 'exit', label: tr('common.leave') });
-    const total = seat >= 0 ? sumOf(this.st.lay[seat]) : 0;
-    this.hud({
-      bet: betting && seat >= 0 ? this.bet : null,
-      hints,
-      stats: total > 0 ? [{ label: this.t('pot'), value: fmtCoins(total) }] : [],
-    });
+
+    // KEY NUMBERS: your bets on the felt, chip size, last roll, balance
+    const nums: HudNumber[] = [];
+    nums.push({ label: { k: 'm.dicetower.nBets' }, value: fmtCoins(sumOf(st.lay[seat] ?? [])), tone: 'gold' });
+    nums.push({ label: { k: 'm.dicetower.nChip' }, value: fmtCoins(this.bet), tone: 'cyan' });
+    if (last) nums.push({ label: { k: 'm.dicetower.nLast' }, value: `${last[0]} + ${last[1]} = ${total}`, tone: total === 7 ? 'bad' : 'neutral' });
+    nums.push({ label: { k: 'm.dicetower.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys the tower really reads
+    if (ph === 'betting') {
+      ctrl.push({
+        key: this.k('confirm'), label: { k: ready ? 'm.dicetower.cUnready' : 'm.dicetower.cReady' }, action: 'confirm', primary: !ready,
+      });
+      ctrl.push({ key: this.k('double'), label: { k: 'm.dicetower.cRepeat' }, action: 'double' });
+      ctrl.push({ key: this.k('clear'), label: { k: 'm.dicetower.cClear' }, action: 'clear' });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.dicetower.cChip' }, action: 'betUp' });
+    }
+    if (myDrop) ctrl.push({ key: this.k('confirm'), label: { k: 'm.dicetower.cDrop' }, action: 'confirm', primary: true });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.dicetower.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.dicetower.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
+
 }
 
 export { playHeadless };

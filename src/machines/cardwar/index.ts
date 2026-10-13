@@ -25,9 +25,9 @@ import type { CardId } from '@/core/texgen/types';
 import { isBot, type PlayerId } from '@/core/types';
 import type { ChipValue, LampPart } from '@/kit/types';
 import type { KitX } from '@/kit/index';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
-import { fmtCoins, t } from '@/core/i18n';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
+import { fmtCoins } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type HudResultKind, type Txt } from '@/machines/_base/seatHud';
 import { TableBase } from '@/machines/_base/TableBase';
 import { juiceTier } from '@/machines/_base/tiers';
 import { cardText, isRed } from '@/machines/_base/cards';
@@ -159,18 +159,29 @@ export default class CardWar extends TableBase<CardwarParts, Ev, Snap, Act> {
   private draftIds: number[][] = Array.from({ length: SPOTS }, (): number[] => []);
   private betIds: number[][][] = Array.from({ length: SEATS }, () => Array.from({ length: SPOTS }, (): number[] => []));
   private cardIds = new Map<string, number>();
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: KitX): MachineModel<CardwarParts> { return buildModel(kit, this.modelOpts); }
 
   init(): void {
     this.hs = freshHost(new R.CwShoe(this.hostRng, R.WAR_DECKS));
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.paintAll();
     this.applyVariant();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   // ── local input ────────────────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const seat = this.localSeat;
     const v = this.st.variant;
     const open = this.st.phase === 'open' && seat >= 0 && !this.st.locked[seat];
@@ -481,13 +492,18 @@ export default class CardWar extends TableBase<CardwarParts, Ev, Snap, Act> {
         if (hs.tieSeats.every((s) => hs.choices[s] !== null)) this.resolveTies();
       }
     }
-    if (local) { this.draft = new Array<number>(SPOTS).fill(0); this.paintDraftAll(); }
+    if (local) { this.draft = new Array<number>(SPOTS).fill(0); this.paintDraftAll(); this.seatHud?.hide(); }
     this.paintLamps();
   }
 
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintLamps();
-    if (local) { this.sfx('chime'); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip('cardwar', this.tipLines());
+    }
   }
 
   // ── presentation (every peer) ──────────────────────────────────────────────────────────────────
@@ -612,6 +628,11 @@ export default class CardWar extends TableBase<CardwarParts, Ev, Snap, Act> {
       const seat = row[0], payout = row[1];
       if (seat !== mine) continue;
       const stake = sumOf(st.bets[seat]);
+      if (stake > 0) {
+        const net = payout - stake;
+        const kind: HudResultKind = net > 0 ? 'win' : net === 0 ? 'push' : 'lose';
+        this.seatHud?.result(kind, net);
+      }
       if (payout > 0) {
         const tier = juiceTier(payout, stake);
         void this.celebrate(tier, {
@@ -845,30 +866,98 @@ export default class CardWar extends TableBase<CardwarParts, Ev, Snap, Act> {
     this.showHud();
   }
 
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.cardwar.hTip1', v: { n1: this.k('n1'), n2: this.k('n2'), n3: this.k('n3') } },
+      { k: 'm.cardwar.hTip2', v: { lock: this.k('primary') } },
+      { k: 'm.cardwar.hTip3', v: { war: this.k('n1'), surr: this.k('n2'), help: this.k('help') } },
+    ];
+  }
+
+  private rulesLines(): Txt[] {
+    return ['hRule1', 'hRule2', 'hRule3', 'hRule4', 'hRule5', 'hRule6'].map((r) => ({ k: 'm.cardwar.' + r }));
+  }
+
+  /** Banner, key numbers and valid controls. Only while the local player sits at the table. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || this.localSeat < 0) return;
     const s = this.st, seat = this.localSeat, v = s.variant;
-    const open = s.phase === 'open' && seat >= 0 && !s.locked[seat];
-    const deciding = s.phase === 'tie' && v === 'war' && seat >= 0 && s.tie.includes(seat) && s.choices[seat] === '';
-    const hints: HudHint[] = [];
+    const open = s.phase === 'open' && !s.locked[seat];
+    const locked = s.locked[seat];
+    const deciding = s.phase === 'tie' && v === 'war' && s.tie.includes(seat) && s.choices[seat] === '';
+    const stake = locked ? sumOf(s.bets[seat]) : sumOf(this.draft);
+    const picks = locked ? s.bets[seat] : this.draft;
+    sh.goal({ k: v === 'war' ? 'm.cardwar.hGoalWar' : 'm.cardwar.hGoalDt' });
+
+    // STATE: whose turn, what phase
+    switch (s.phase) {
+      case 'open':
+        if (locked) sh.state({ k: 'm.cardwar.hStLocked' }, 'cyan', { k: 'm.cardwar.hStLockedSub' });
+        else sh.state({ k: 'm.cardwar.hStBet' }, 'gold', { k: 'm.cardwar.hStBetSub', v: { lock: this.k('primary') } });
+        break;
+      case 'lock': sh.state({ k: 'm.cardwar.hStNoMore' }, 'warn'); break;
+      case 'deal': sh.state({ k: 'm.cardwar.hStDeal' }, 'neutral'); break;
+      case 'compare': case 'reveal': sh.state({ k: 'm.cardwar.hStTurn' }, 'neutral'); break;
+      case 'tie':
+        if (deciding) sh.state({ k: 'm.cardwar.hStTie' }, 'warn', { k: 'm.cardwar.hStTieSub', v: { war: this.k('n1'), surr: this.k('n2') } });
+        else sh.state({ k: 'm.cardwar.hStTieWait' }, 'cyan');
+        break;
+      case 'war': sh.state({ k: 'm.cardwar.hStWar' }, 'bad'); break;
+      case 'settle': sh.state({ k: 'm.cardwar.hStPay' }, 'neutral'); break;
+      case 'shuffle': sh.state({ k: 'm.cardwar.hStShuffle' }, 'neutral'); break;
+      default: sh.state({ k: 'm.cardwar.hStIdle' }, 'neutral');
+    }
+
+    // KEY NUMBERS: game, stake, picks, the cards in play, balance
+    const nums: HudNumber[] = [];
+    nums.push({ label: { k: 'm.cardwar.hNGame' }, value: this.t(v === 'war' ? 'variantWar' : 'variantDt'), tone: 'neutral' });
+    nums.push({ label: { k: 'm.cardwar.hNStake' }, value: fmtCoins(stake), tone: 'gold' });
+    const legs: string[] = [];
+    if (v === 'war') {
+      if (picks[0] > 0) legs.push(`${this.t('hsMain')} ${fmtCoins(picks[0])}`);
+      if (picks[1] > 0) legs.push(`${this.t('hsTie')} ${fmtCoins(picks[1])}`);
+    } else {
+      const named = ['hsD', 'hsT', 'hsTie', 'hsSuit'] as const;
+      named.forEach((n, i) => { if (picks[i] > 0) legs.push(`${this.t(n)} ${fmtCoins(picks[i])}`); });
+      const side = picks.slice(4).reduce((a, b) => a + b, 0);
+      if (side > 0) legs.push(`${this.t('hsSide')} ${fmtCoins(side)}`);
+    }
+    if (legs.length > 0) nums.push({ label: { k: 'm.cardwar.hNPicks' }, value: legs.join(' · '), tone: 'cyan' });
+    if (v === 'war') {
+      if (s.dealer) nums.push({ label: { k: 'm.cardwar.hNDealer' }, value: cardText(s.dealer as CardId), tone: 'bad' });
+      if (s.seatCards[seat]) nums.push({ label: { k: 'm.cardwar.hNYou' }, value: cardText(s.seatCards[seat] as CardId), tone: 'cyan' });
+    } else {
+      if (s.dt[0]) nums.push({ label: { k: 'm.cardwar.hNDragon' }, value: cardText(s.dt[0] as CardId), tone: 'bad' });
+      if (s.dt[1]) nums.push({ label: { k: 'm.cardwar.hNTiger' }, value: cardText(s.dt[1] as CardId), tone: 'cyan' });
+    }
+    nums.push({ label: { k: 'm.cardwar.hNBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys bound to it
+    const ctrl: HudControl[] = [];
     if (open) {
-      hints.push({ action: 'primary', label: this.t('hLock') });
-      if (v === 'war') hints.push({ action: 'n1', label: this.t('hMain') });
-      else hints.push(
-        { action: 'n1', label: this.t('hDragon') },
-        { action: 'n2', label: this.t('hTiger') },
-        { action: 'n3', label: this.t('hTieBet') },
-      );
-      hints.push({ action: 'clear', label: this.t('hClear') });
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.cardwar.hCLock' }, action: 'primary', primary: true });
+      if (v === 'war') {
+        ctrl.push({ key: this.k('n1'), label: { k: 'm.cardwar.hCMain' }, action: 'n1' });
+        ctrl.push({ key: this.k('n3'), label: { k: 'm.cardwar.hCTie' }, action: 'n3' });
+      } else {
+        ctrl.push({ key: this.k('n1'), label: { k: 'm.cardwar.hCDragon' }, action: 'n1' });
+        ctrl.push({ key: this.k('n2'), label: { k: 'm.cardwar.hCTiger' }, action: 'n2' });
+        ctrl.push({ key: this.k('n3'), label: { k: 'm.cardwar.hCTie' }, action: 'n3' });
+      }
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.cardwar.hCBet' }, action: 'betUp' });
+      if (stake > 0) ctrl.push({ key: this.k('clear'), label: { k: 'm.cardwar.hCClear' }, action: 'clear' });
+    } else if (deciding) {
+      ctrl.push({ key: this.k('n1'), label: { k: 'm.cardwar.hCWar' }, action: 'n1', primary: true });
+      ctrl.push({ key: this.k('n2'), label: { k: 'm.cardwar.hCSurr' }, action: 'n2' });
     }
-    if (deciding) {
-      hints.push({ action: 'n1', label: this.t('hWar') }, { action: 'n2', label: this.t('hSurrender') });
-    }
-    hints.push({ action: 'exit', label: t('common.leave') });
-    const stake = sumOf(this.draft);
-    this.hud({
-      bet: open ? this.bet : null,
-      hints,
-      stats: stake > 0 ? [{ label: this.t('potLabel'), value: fmtCoins(stake) }] : [],
-    });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.cardwar.hCRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.cardwar.hCLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }

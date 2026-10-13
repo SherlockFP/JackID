@@ -28,9 +28,9 @@ import type { PlayerId } from '@/core/types';
 import { isBot } from '@/core/types';
 import type { ChipValue } from '@/kit/types';
 import type { KitX } from '@/kit/index';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
-import { fmtCoins, t } from '@/core/i18n';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import { fmtCoins } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type HudResultKind, type Txt } from '@/machines/_base/seatHud';
 import { TableBase } from '@/machines/_base/TableBase';
 import { juiceTier } from '@/machines/_base/tiers';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
@@ -119,6 +119,8 @@ export const def: MachineDef = {
 export { playHeadless } from './rules';
 
 export default class ThreeCard extends TableBase<ThreecardParts, Ev, Snap, Act> {
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
   /** What every peer sees (mutated only in `present`). */
   private st: Snap = freshPub();
   /** HOST ONLY authority state. */
@@ -135,13 +137,22 @@ export default class ThreeCard extends TableBase<ThreecardParts, Ev, Snap, Act> 
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.repaintAll();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   // ── local input → action to the host ─────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax' || a === 'n8';
     if (e.repeat && !isBet) return;
     const st = this.st, seat = this.localSeat;
@@ -399,12 +410,17 @@ export default class ThreeCard extends TableBase<ThreecardParts, Ev, Snap, Act> 
         }
       }
     }
-    if (local) this.hud(null);
+    if (local) this.seatHud?.hide();
   }
 
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.refreshLamps();
-    if (local) { this.sfx('chime'); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip('threecard', this.tipLines());
+    }
   }
 
   // ── host timers ──────────────────────────────────────────────────────────────────────────────
@@ -577,8 +593,14 @@ export default class ThreeCard extends TableBase<ThreecardParts, Ev, Snap, Act> 
         if (r.ret === 0) this.commiserate({ at, amount: r.stake });
         this.ctx.fx.popText(at, this.t(r.out === 'fold' ? 'rFold' : 'rLose'), RED, { dur: 0.9, rise: 0.2 });
       }
+      if (r.seat === this.localSeat && r.stake > 0) {
+        const net = r.ret - r.stake;
+        const kind: HudResultKind = net > 0 ? 'win' : net === 0 ? 'push' : 'lose';
+        this.seatHud?.result(kind, net);
+      }
       this.clearChipsFor(r.seat);
     }
+    if (this.isLocalOccupant) this.showHud();
     if (!fast) await this.wait(0.2);
   }
 
@@ -694,22 +716,81 @@ export default class ThreeCard extends TableBase<ThreecardParts, Ev, Snap, Act> 
     });
   }
 
-  // ── HUD ──────────────────────────────────────────────────────────────────────────────────────
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.threecard.hTip1', v: { down: this.k('betDown'), up: this.k('betUp'), pp: this.k('n8') } },
+      { k: 'm.threecard.hTip2', v: { ready: this.k('primary'), play: this.k('n1'), fold: this.k('n2') } },
+      { k: 'm.threecard.hTip3', v: { help: this.k('help') } },
+    ];
+  }
+
+  private rulesLines(): Txt[] {
+    return ['hRule1', 'hRule2', 'hRule3', 'hRule4', 'hRule5'].map((r) => ({ k: 'm.threecard.' + r }));
+  }
+
+  /** Banner, key numbers and valid controls. Only while the local player sits at the table. */
   private showHud(): void {
-    const st = this.st, seat = this.localSeat;
-    const b = seat >= 0 ? st.seats[seat] : undefined;
-    const hints: HudHint[] = [];
-    if (st.phase === 'bet' && b && !b.ready) {
-      hints.push({ action: 'primary', label: this.t('ready') }, { action: 'betUp', label: this.t('anteStep') }, { action: 'n8', label: this.t('side') });
+    const sh = this.seatHud;
+    if (!sh || this.localSeat < 0) return;
+    const st = this.st, seat = this.localSeat, mine = st.seats[seat];
+    const betting = st.phase === 'bet' && !mine.ready;
+    const deciding = st.phase === 'decide' && mine.ante > 0 && mine.choice === 'none';
+    sh.goal({ k: 'm.threecard.hGoal' });
+
+    // STATE: whose turn, what phase
+    switch (st.phase) {
+      case 'bet':
+        if (mine.ready) sh.state({ k: 'm.threecard.hStWait' }, 'cyan');
+        else sh.state({ k: 'm.threecard.hStBet' }, 'gold', { k: 'm.threecard.hStBetSub', v: { ready: this.k('primary') } });
+        break;
+      case 'deal': sh.state({ k: 'm.threecard.hStDeal' }, 'neutral'); break;
+      case 'decide':
+        if (deciding) sh.state({ k: 'm.threecard.hStDecide' }, 'warn', { k: 'm.threecard.hStDecideSub', v: { n: fmtCoins(mine.ante) } });
+        else if (mine.choice === 'fold') sh.state({ k: 'm.threecard.hStFolded' }, 'bad');
+        else if (mine.choice === 'play') sh.state({ k: 'm.threecard.hStPlayed' }, 'good');
+        else sh.state({ k: 'm.threecard.hStWait' }, 'cyan');
+        break;
+      case 'reveal': sh.state({ k: 'm.threecard.hStReveal' }, 'neutral'); break;
+      case 'settle': {
+        const key = mine.cat ? CAT_KEY[mine.cat as R.Cat] : undefined;
+        if (key) sh.state({ k: 'm.threecard.' + key }, 'gold', { k: 'm.threecard.hStSettle' });
+        else sh.state({ k: 'm.threecard.hStSettle' }, 'neutral');
+        break;
+      }
+      default: sh.state({ k: 'm.threecard.hStEnd' }, 'neutral');
     }
-    if (st.phase === 'decide' && b && b.ante > 0 && b.choice === 'none') {
-      hints.push({ action: 'n1', label: this.t('hintPlay') }, { action: 'n2', label: this.t('hintFold') });
+
+    // KEY NUMBERS: ante, pair plus, play bet, your hand, dealer (hole cards flagged), balance
+    const nums: HudNumber[] = [];
+    nums.push({ label: { k: 'm.threecard.hNAnte' }, value: fmtCoins(betting ? this.ante : mine.ante), tone: 'gold' });
+    const pp = betting ? this.pp : mine.pp;
+    if (pp > 0) nums.push({ label: { k: 'm.threecard.hNPp' }, value: fmtCoins(pp), tone: 'cyan' });
+    if (mine.choice === 'play') nums.push({ label: { k: 'm.threecard.hNPlay' }, value: fmtCoins(mine.ante), tone: 'good' });
+    if (mine.cards.some((c) => c !== '')) nums.push({ label: { k: 'm.threecard.hNHand' }, value: rankText(mine.cards), tone: 'neutral' });
+    if (st.dealer.length > 0) {
+      const hidden = st.dealer.some((c) => c === '');
+      nums.push({ label: { k: 'm.threecard.hNDealer' }, value: hidden ? '? ? ?' : rankText(st.dealer), tone: 'bad' });
     }
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: st.phase === 'bet' && b && !b.ready ? this.ante : null,
-      hints,
-      stats: st.phase === 'bet' && this.pp > 0 ? [{ label: this.t('side'), value: fmtCoins(this.pp) }] : [],
-    });
+    nums.push({ label: { k: 'm.threecard.hNBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys bound to it
+    const ctrl: HudControl[] = [];
+    if (betting) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.threecard.hCReady' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.threecard.hCAnte' }, action: 'betUp' });
+      ctrl.push({ key: this.k('n8'), label: { k: 'm.threecard.hCPp' }, action: 'n8' });
+    }
+    if (deciding) {
+      ctrl.push({ key: this.k('n1'), label: { k: 'm.threecard.hCPlay' }, action: 'n1', primary: true });
+      ctrl.push({ key: this.k('n2'), label: { k: 'm.threecard.hCFold' }, action: 'n2' });
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.threecard.hCRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.threecard.hCLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }

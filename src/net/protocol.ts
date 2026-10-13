@@ -219,6 +219,6 @@ export const UNRELIABLE: ReadonlySet<MsgType> = new Set<MsgType>(['pt', 'pts']);
  * Types not listed share a 60/s per-peer budget.
  */
 export const RATE_LIMITS: Partial<Record<MsgType, number>> = {
-  pt: 30, chat: 1, eco: 20, mev: 30, tact: 10, mocc: 4, mrel: 4, voteCast: 2,
+  pt: 30, chat: 4, eco: 20, mev: 30, tact: 10, mocc: 4, mrel: 4, voteCast: 2,
   tyc: 8, totemReq: 6, collReq: 4, contractReq: 4, emote: 3, mark: 3, vsig: 20, sbet: 4,
 };

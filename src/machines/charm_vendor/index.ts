@@ -15,8 +15,8 @@
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import type { HeadlessPlay } from '@/game/types';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import { fmtNum, t as tr } from '@/core/i18n';
 import { lerp } from '@/core/math';
@@ -62,6 +62,34 @@ export const def: MachineDef = {
       noService: 'NOTHING TO UNCURSE', free: 'FREE', locked: 'LOCKED', rerolled: 'NEW STOCK', cleansed: 'CLEANSED',
       sold: 'SOLD', paid: 'PAID', ledger: 'PAWN LEDGER', ledgerClosed: 'CLOSED',
       ledgerHint: '1-4 PICK  SPACE BUY', ledgerTickets: 'TICKETS',
+      goal: "Buy a charm you can afford. Reroll or lock stock with tickets, and remove curses for a fee.",
+      stShut: "WINDOW CLOSED",
+      stShutSub: "The pawn window opens between shifts",
+      stEmpty: "NOTHING IN THIS SLOT",
+      stEmptySub: "Pick another slot",
+      stFunds: "NOT ENOUGH COINS",
+      stFundsSub: "Short by {n} coins",
+      stChoose: "CHOOSE A CHARM",
+      stChooseSub: "Buy it, reroll the stock or lock it for later",
+      nPrice: "PRICE",
+      nCoins: "COINS",
+      nTickets: "TICKETS",
+      nReroll: "REROLL",
+      nItem: "ITEM",
+      cPick: "PICK",
+      cBuy: "BUY",
+      cReroll: "REROLL {n} TIX",
+      cLock: "LOCK {n} TIX",
+      cCurse: "UNCURSE {n} TIX",
+      cRules: "RULES",
+      cLeave: "LEAVE",
+      rule1: "The pawn window is open between shifts only. Pick a slot and buy a charm with coins.",
+      rule2: "REROLL refreshes the stock for tickets. Each further reroll in the same intermission costs one more ticket.",
+      rule3: "LOCK keeps one charm for your next visit. A cursed charm pays you coins when you buy it; UNCURSE removes a curse for tickets.",
+      rule4: "Keys: arrows or 1-4 pick a slot, PRIMARY buys, the ALT key rerolls, E leaves.",
+      tip1: "The pawn window is open only between shifts. Pick a charm, then buy it.",
+      tip2: "[{move}] PICK A CHARM  ·  [{buy}] BUY WITH COINS",
+      tip3: "Tickets: [{reroll}] REROLL  ·  [{lock}] LOCK  ·  [{help}] RULES",
     },
     tr: {
       name: 'Rehin Penceresi',
@@ -72,6 +100,34 @@ export const def: MachineDef = {
       noService: 'AÇILACAK LANET YOK', free: 'BEDAVA', locked: 'KİLİTLİ', rerolled: 'YENİ STOK', cleansed: 'TEMİZLENDİ',
       sold: 'SATILDI', paid: 'ÖDENDİ', ledger: 'REHİN DEFTERİ', ledgerClosed: 'KAPALI',
       ledgerHint: '1-4 SEÇ  BOŞLUK AL', ledgerTickets: 'BİLET',
+      goal: "Ödeyebildiğin bir tılsım al. Stoku biletlerle yenile ya da kilitle, lanetleri bedelini ödeyip aç.",
+      stShut: "PENCERE KAPALI",
+      stShutSub: "Rehin penceresi ara dönemlerde açılır",
+      stEmpty: "BU YUVADA BİR ŞEY YOK",
+      stEmptySub: "Başka bir yuva seç",
+      stFunds: "PARA YETMİYOR",
+      stFundsSub: "{n} jeton eksik",
+      stChoose: "BİR TILSIM SEÇ",
+      stChooseSub: "Al, stoku yenile ya da sonraya kilitle",
+      nPrice: "FİYAT",
+      nCoins: "PARA",
+      nTickets: "BİLET",
+      nReroll: "YENİLEME",
+      nItem: "EŞYA",
+      cPick: "SEÇ",
+      cBuy: "AL",
+      cReroll: "YENİLE {n} BİLET",
+      cLock: "KİLİTLE {n} BİLET",
+      cCurse: "LANETİ AÇ {n} BİLET",
+      cRules: "KURALLAR",
+      cLeave: "AYRIL",
+      rule1: "Rehin penceresi yalnızca ara dönemlerde açık. Bir yuva seç ve tılsımı parayla al.",
+      rule2: "YENİLE stoku biletle yeniler. Aynı ara dönemde her ek yenileme bir bilet daha tutar.",
+      rule3: "KİLİTLE bir tılsımı bir sonraki ziyaretine saklar. Lanetli tılsım alınca sana para öder; LANETİ AÇ laneti biletle kaldırır.",
+      rule4: "Tuşlar: ok ya da 1-4 yuva seçer, BİRİNCİL satın alır, ALT yenilettirir, E ayrılır.",
+      tip1: "Rehin penceresi yalnızca ara dönemlerde açık. Bir tılsım seç, sonra al.",
+      tip2: "[{move}] TILSIM SEÇ  ·  [{buy}] PARAYLA AL",
+      tip3: "Biletler: [{reroll}] YENİLE  ·  [{lock}] KİLİTLE  ·  [{help}] KURALLAR",
     },
   },
 };
@@ -84,6 +140,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   private stockCache: readonly (PawnSlot | null)[] = [];
   private repaintKey = '';
   private hudKey = '';
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
   private idle = 0;
   private drumming = false;
 
@@ -92,6 +150,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.ctx.ui.machineHud(null);                          // the seat HUD replaces the generic bottom bar
     this.refresh(true);
     this.attractor.every('glint', 11, () => this.ctx.fx.glow(this.model.anchors.light, GOLD, 0.25, 0.5), { first: 6 });
   }
@@ -121,14 +181,23 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     this.attractor.update(dt);
   }
 
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
+
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.cursor = 0;
     this.idle = 0;
-    if (local) { this.sfx('chime'); this.refresh(true); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show(); this.refresh(true);
+      this.seatHud?.firstTip('charm_vendor', this.tipLines());
+    }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
-    if (local) { this.ctx.ui.machineHud(null); this.hudKey = ''; }
+    if (local) { this.seatHud?.hide(); this.hudKey = ''; }
   }
 
   onLang(): void {
@@ -139,7 +208,10 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
 
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
-    if (!e.down || e.repeat) return;
+    if (!e.down) return;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
+    if (e.repeat) return;
     this.idle = 0;
     switch (e.action) {
       case 'left': this.moveCursor(wrapSlot(this.cursor, -1)); return;
@@ -333,27 +405,64 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     s.text(`${this.t('ledgerTickets')} ${fmtNum(this.tickets())}`, 4, 72, { font: 'px5', color: '#a07020' });
   }
 
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.charm_vendor.tip1' },
+      { k: 'm.charm_vendor.tip2', v: { move: `${this.k('left')}/${this.k('right')}`, buy: this.k('primary') } },
+      { k: 'm.charm_vendor.tip3', v: { reroll: this.k('alt'), lock: this.k('double'), help: this.k('help') } },
+    ];
+  }
+
+  private rulesLines(): Txt[] {
+    return [1, 2, 3, 4].map((i) => ({ k: `m.charm_vendor.rule${i}` }));
+  }
+
+  /** Banner, coins / tickets / price numbers and the valid controls only. Only while the local player stands here. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const key = [this.cursor, this.wallet(), this.tickets(), this.open() ? 1 : 0, this.stockCache[this.cursor]?.charmId ?? ''].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
+    const open = this.open(), wallet = this.wallet(), tix = this.tickets();
+    const pawn = this.pawn();
     const sel = this.stockCache[this.cursor] ?? null;
-    const hints: HudHint[] = [
-      { action: 'left', label: this.t('h_pick') },
-      { action: 'primary', label: this.t('h_buy') },
-      { action: 'alt', label: this.t('h_reroll') },
-      { action: 'double', label: this.t('h_lock') },
-      { action: 'collect', label: this.t('h_curse') },
-      { action: 'exit', label: this.t('h_leave') },
+    const canBuy = sel !== null && (sel.price <= 0 || wallet >= sel.price);
+    const ctrl: HudControl[] = [];
+    sh.goal({ k: 'm.charm_vendor.goal' });
+
+    // STATE
+    if (!open) sh.state({ k: 'm.charm_vendor.stShut' }, 'neutral', { k: 'm.charm_vendor.stShutSub' });
+    else if (!sel) sh.state({ k: 'm.charm_vendor.stEmpty' }, 'neutral', { k: 'm.charm_vendor.stEmptySub' });
+    else if (!canBuy) sh.state({ k: 'm.charm_vendor.stFunds' }, 'warn', { k: 'm.charm_vendor.stFundsSub', v: { n: fmtNum(sel.price - wallet) } });
+    else sh.state({ k: 'm.charm_vendor.stChoose' }, 'gold', { k: 'm.charm_vendor.stChooseSub' });
+
+    // KEY NUMBERS
+    const nums: HudNumber[] = [
+      { label: { k: 'm.charm_vendor.nPrice' }, value: priceText(sel, fmtNum, this.t('free')), tone: sel && sel.price < 0 ? 'good' : 'gold' },
+      { label: { k: 'm.charm_vendor.nCoins' }, value: fmtNum(wallet), tone: 'gold' },
+      { label: { k: 'm.charm_vendor.nTickets' }, value: fmtNum(tix), tone: 'cyan' },
     ];
-    this.hud({
-      bet: null,
-      hints,
-      stats: [
-        { label: this.t('s_coins'), value: fmtNum(this.wallet()) },
-        { label: this.t('s_tickets'), value: fmtNum(this.tickets()) },
-        { label: this.t('s_item'), value: sel ? tr(`charm.${sel.charmId}.name`) : '--' },
-      ],
-    });
+    if (open && pawn) nums.push({ label: { k: 'm.charm_vendor.nReroll' }, value: fmtNum(pawn.rerollCost()), tone: 'neutral' });
+    nums.push({ label: { k: 'm.charm_vendor.nItem' }, value: sel ? tr(`charm.${sel.charmId}.name`) : '--', tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now
+    if (open) {
+      ctrl.push({ key: `${this.k('left')}/${this.k('right')}`, label: { k: 'm.charm_vendor.cPick' }, action: 'left' });
+      if (canBuy) ctrl.push({ key: this.k('primary'), label: { k: 'm.charm_vendor.cBuy' }, action: 'primary', primary: true });
+      if (pawn && tix >= pawn.rerollCost()) ctrl.push({ key: this.k('alt'), label: { k: 'm.charm_vendor.cReroll', v: { n: pawn.rerollCost() } }, action: 'alt' });
+      if (sel && !sel.locked && tix >= LOCK_TICKETS) ctrl.push({ key: this.k('double'), label: { k: 'm.charm_vendor.cLock', v: { n: LOCK_TICKETS } }, action: 'double' });
+      if (pawn && pawn.cursedOwned(this.selfId).length > 0 && tix >= REMOVE_CURSE_TICKETS) {
+        ctrl.push({ key: this.k('collect'), label: { k: 'm.charm_vendor.cCurse', v: { n: REMOVE_CURSE_TICKETS } }, action: 'collect' });
+      }
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.charm_vendor.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.charm_vendor.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }

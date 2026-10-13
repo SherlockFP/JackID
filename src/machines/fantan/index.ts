@@ -5,13 +5,13 @@
  */
 import * as THREE from 'three';
 import type { ChipValue, Kit } from '@/kit/types';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { PlayerId } from '@/core/types';
 import type { ModHook } from '@/game/types';
 import { createRng } from '@/core/rng';
 import { fmtCoins, t as tr } from '@/core/i18n';
 import { TableBase } from '@/machines/_base/TableBase';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
 import { buildModel, SIDE_HEX, SIDE_XZ, SQ, TC, TOP, BUTTON_CAP, type FantanParts } from './model';
@@ -37,6 +37,7 @@ const CHIP_CAP = 290;       // InstancedMesh budget (300 chips)
 const CHIP_Z = 0.012;
 const BAND = 0.11;          // painted-square edge band (sides); the corners are the Kwok squares
 const GOLD = 0xffd040;
+const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.fantan.' + k }));
 const GLOW_HEX = 0xffe27a;
 const REL: ReadonlyArray<readonly [number, number]> = SIDE_XZ.map(([x, z]) => [x, z - TC] as const);
 
@@ -124,18 +125,30 @@ export default class FanTan extends TableBase<FantanParts, Ev, Snap, Act> {
   private heapYaw: number[] = [];
   private heapN = 0;
   private readonly dummy = new THREE.Object3D();
+  /** Seat HUD overlay (goal, state, key numbers, controls, result callout, tip and rules cards). */
+  private seatHud?: SeatHud;
+  private hudSig = '';
 
   protected createModel(kit: Kit): MachineModel<FantanParts> { return buildModel(kit, this.modelOpts); }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.paintSquare();
     this.paintAll();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 
   // ── local input → action to the host ──────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -501,6 +514,12 @@ export default class FanTan extends TableBase<FantanParts, Ev, Snap, Act> {
     } else if (!best) {
       this.sfx('coin');
     }
+    const mineSeat = ev.seats.find((s) => s.seat === this.localSeat);
+    if (mineSeat && mineSeat.stake > 0) {
+      const net = mineSeat.gross - mineSeat.stake;
+      const kind = mineSeat.gross <= 0 ? 'lose' : net === 0 ? 'push' : 'win';
+      this.seatHud?.result(kind, net, 1.5);
+    }
     for (const s of ev.seats) {
       if (s.gross <= 0) {
         if (s.seat === this.localSeat) this.commiserate({ at: square.mesh });
@@ -578,7 +597,14 @@ export default class FanTan extends TableBase<FantanParts, Ev, Snap, Act> {
   // ── seats ─────────────────────────────────────────────────────────────────────────────────────
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintLamps();
-    if (local) { this.sfx('chime', { vol: 0.5 }); this.showHud(); }
+    if (local) {
+      this.sfx('chime', { vol: 0.5 });
+      this.hud(null);
+      this.seatHud?.show();
+      this.hudSig = '';
+      this.showHud();
+      this.seatHud?.firstTip('fantan', this.tipLines());
+    }
   }
   onRelease(_pid: PlayerId, seat: number, local: boolean): void {
     if (this.isHost && this.hs.phase === 'open' && this.hs.layouts[seat].length) {
@@ -586,10 +612,19 @@ export default class FanTan extends TableBase<FantanParts, Ev, Snap, Act> {
       this.unready(seat);
       void this.emit({ k: 'lay', seat, bets: [] });
     }
-    if (local) this.lastMine = [];
+    if (local) { this.lastMine = []; this.hud(null); this.seatHud?.hide(); }
     this.paintLamps();
   }
-  override onLang(): void { this.drawHistory(); this.paintSquare(); this.paintChips(); if (this.isLocalOccupant) this.showHud(); }
+  /** Keeps the bet countdown and the phase banner in step (redraws only when something changed). */
+  frame(_dt: number, _t: number): void {
+    if (this.isLocalOccupant) this.showHud();
+  }
+
+  override onLang(): void {
+    this.drawHistory(); this.paintSquare(); this.paintChips();
+    this.hudSig = '';
+    if (this.isLocalOccupant) this.showHud();
+  }
 
   // ── visuals ───────────────────────────────────────────────────────────────────────────────────
   private paintLamps(): void {
@@ -652,21 +687,66 @@ export default class FanTan extends TableBase<FantanParts, Ev, Snap, Act> {
     this.paintSquare();
   }
 
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.fantan.tip1' },
+      { k: 'm.fantan.tip2', v: { side: `${this.k('n1')}-${this.k('n4')}`, ssh: `${this.k('n5')}-${this.k('n8')}`, oe: `${this.k('up')}/${this.k('down')}` } },
+      { k: 'm.fantan.tip3', v: { ready: this.k('confirm'), help: this.k('help') } },
+    ];
+  }
+
+  /** Banner, key numbers and valid controls for the local player. Redraws only when something changed. */
   private showHud(): void {
-    const seat = this.localSeat;
-    const hints: HudHint[] = [];
-    const open = this.st.phase === 'open';
-    if (open && seat >= 0) {
-      hints.push({ action: 'confirm', label: this.st.ready[seat] ? tr('m.fantan.ready') : tr('m.fantan.spin') });
-      hints.push({ action: 'clear', label: tr('m.fantan.clear') }, { action: 'double', label: tr('m.fantan.rebet') });
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const seat = this.localSeat, ph = this.st.phase, open = ph === 'open';
+    const ready = this.st.ready[seat] === true;
+    const bets = this.myBets();
+    const total = bets.reduce((acc, b) => acc + b.a, 0);
+    const solo = this.humans().length < 2;
+    const left = this.timerState && open && !solo ? Math.ceil(this.timerLeft) : 0;
+    const wallet = this.ctx.run.wallet();
+    const last = this.st.history[0] ?? 0;
+    const sig = [ph, seat, ready, this.bet, total, bets.map((b) => `${b.s}:${b.a}`).join(','), this.lastMine.length,
+      left, last, wallet, this.st.history.length].join('|');
+    if (sig === this.hudSig) return;
+    this.hudSig = sig;
+    sh.goal({ k: 'm.fantan.goal' });
+
+    // STATE: betting, ready, the count, payout
+    const secs: Txt | undefined = left > 0 ? { k: 'm.fantan.stSecs', v: { n: left } } : undefined;
+    if (ph === 'idle') sh.state({ k: 'm.fantan.stWait' }, 'neutral');
+    else if (ph === 'scoop') sh.state({ k: 'm.fantan.stScoop' }, 'neutral');
+    else if (open && ready) sh.state({ k: 'm.fantan.stReady' }, 'good', secs);
+    else if (open) sh.state({ k: 'm.fantan.stBet' }, 'gold', secs);
+    else sh.state({ k: 'm.fantan.stCount' }, 'warn', this.st.history.length ? { k: 'm.fantan.stLast', v: { n: last } } : undefined);
+
+    // KEY NUMBERS
+    const nums: HudNumber[] = [
+      { label: { k: 'm.fantan.nBets' }, value: fmtCoins(total), tone: total > 0 ? 'gold' : 'neutral' },
+      { label: { k: 'm.fantan.nChip' }, value: fmtCoins(this.bet), tone: 'cyan' },
+    ];
+    if (this.st.history.length) nums.push({ label: { k: 'm.fantan.nLast' }, value: this.st.history.slice(0, 4).join(' '), tone: 'neutral' });
+    nums.push({ label: { k: 'm.fantan.nBalance' }, value: fmtCoins(wallet), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now
+    const ctrl: HudControl[] = [];
+    if (open && seat >= 0 && !ready) {
+      if (bets.length > 0) ctrl.push({ key: this.k('confirm'), label: { k: solo ? 'm.fantan.cSpin' : 'm.fantan.cReady' }, action: 'confirm', primary: true });
+      ctrl.push({ key: `${this.k('n1')}-${this.k('n4')}`, label: { k: 'm.fantan.cSide' }, action: 'n1' });
+      ctrl.push({ key: `${this.k('n5')}-${this.k('n8')}`, label: { k: 'm.fantan.cSsh' }, action: 'n5' });
+      ctrl.push({ key: `${this.k('up')}/${this.k('down')}`, label: { k: 'm.fantan.cOdd' }, action: 'up' });
+      if (bets.length > 0) ctrl.push({ key: this.k('clear'), label: { k: 'm.fantan.cClear' }, action: 'clear' });
+      if (this.lastMine.length > 0) ctrl.push({ key: this.k('double'), label: { k: 'm.fantan.cRebet' }, action: 'double' });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.fantan.cChip' }, action: 'betUp' });
     }
-    hints.push({ action: 'betUp', label: tr('common.bet') }, { action: 'exit', label: tr('common.leave') });
-    const total = this.myBets().reduce((acc, b) => acc + b.a, 0);
-    this.hud({
-      bet: open && seat >= 0 ? this.bet : null,
-      hints,
-      stats: total > 0 ? [{ label: this.t('potLabel'), value: fmtCoins(total) }] : [],
-    });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.fantan.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.fantan.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }
 

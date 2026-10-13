@@ -19,10 +19,10 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
 import { blinkOn } from '@/machines/_base/juice';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { KitX } from '@/kit';
 import { fmtCoins, t } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { buildModel, REEL_X, type FruitParts } from './model';
 import {
   HOOK, LADDER, STOPS, SQUARES, TOP_RUNG, canPick, gambleStep, newCore, nudgeReel, openGamble,
@@ -71,6 +71,10 @@ const LED_AMBER = '#ffb020';
 
 const SQ_KEY: Record<Square['k'], string> = { NUDGE: 'lab_nudge', CASH: 'lab_win', HOLD: 'lab_hold' };
 
+const RULE_LINES: Txt[] = [
+  ...['rule1', 'rule2', 'rule3', 'card0', 'card1', 'card2', 'card3'].map((k) => ({ k: 'm.fruitmachine.' + k })),
+];
+
 export const def: MachineDef = {
   id: 'fruitmachine',
   category: 'slot',
@@ -109,7 +113,10 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
   private cycle = 0;
   private gambleT = 0;
   private noT = 0;
-  private card = false;
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
+  /** Gross paid in the open round, as the presentation sees it (drives the result callout). */
+  private pGross = 0;
   private attractOn = false;
   private lastBlink = -1;
 
@@ -118,6 +125,8 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     if (!this.s.inited) {
       this.s.core = newCore(Math.max(1, Math.floor(this.mod(HOOK.trailStart, 1))));
       this.s.inited = true;
@@ -169,7 +178,9 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
     if (local) {
       this.sfx('chime');
       if (this.s.gamble || this.s.core.nudges > 0 || this.s.gross > 0) this.resumeOpen();
+      this.seatHud?.show();
       this.showHud();
+      this.seatHud?.firstTip('fruitmachine', this.tipLines());
     }
     this.refresh();
   }
@@ -184,7 +195,7 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
       }
       this.closeRound();
       this.picks = [false, false, false];
-      this.card = false;
+      this.seatHud?.hide();
     }
     this.busy = false;
     this.syncView();
@@ -200,6 +211,8 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -213,7 +226,6 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
       case 'betUp': this.changeStake(() => this.stepBet(1)); break;
       case 'betDown': this.changeStake(() => this.stepBet(-1)); break;
       case 'betMax': this.changeStake(() => this.maxBet()); break;
-      case 'help': this.card = !this.card; this.sfx('click'); this.drawGlass(); this.showHud(); break;
     }
   }
 
@@ -406,6 +418,7 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
     lamps.feature.setOn(false);
     this.view.gamble = null;
     this.view.win = 0;
+    this.pGross = 0;
     this.view.stake = ev.stake;
     this.sfx('lever', { vol: 0.9 });
     this.sfx('ratchet', { vol: 0.5 });
@@ -435,6 +448,7 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
       this.sfx('jackpot', { vol: 0.5 });
     }
     this.refresh();
+    this.pGross += ev.gross;
     if (ev.line > 0 && ev.gamble) {
       this.view.gamble = ev.gamble;
       this.view.win = ev.line;
@@ -453,6 +467,7 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
       this.commiserate({ at: reels[1].root });
     }
     this.refresh();
+    this.roundEnd(pc, ev.stake, ev.pub.nudges, false);
   }
 
   private async presentNudge(ev: NudgeEv, pc: PresentCtx): Promise<void> {
@@ -463,6 +478,7 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
     this.sfx('thud', { vol: 0.8 });
     this.sfx('click', { vol: 0.7, pitch: ev.reel });
     for (const q of ev.squares) this.showSquare(q, pc.fast);
+    this.pGross += ev.squares.reduce((a, q) => a + q.cash, 0) + (ev.gamble ? 0 : ev.line);
     this.view.gamble = ev.gamble;
     if (ev.gamble) {
       this.view.win = ev.line;
@@ -472,6 +488,7 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
       await this.payShow(ev.line, ev.stake, pc.fast);
     }
     this.refresh();
+    this.roundEnd(pc, ev.stake, ev.pub.nudges, !!ev.gamble);
   }
 
   private async presentGamble(ev: GambleEv, pc: PresentCtx): Promise<void> {
@@ -481,6 +498,7 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
     if (ev.result === 'end') {
       this.view.gamble = null;
       this.refresh();
+      this.roundEnd(pc, ev.stake, ev.pub.nudges, false);
       return;
     }
     if (ev.result === 'lose') {
@@ -489,6 +507,7 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
       this.ctx.fx.popText(at, this.t('gambleLost'), 0xff4040, { dur: 0.9, rise: 0.2, scale: 1.1, shake: true });
       this.commiserate({ at });
       this.refresh();
+      this.roundEnd(pc, ev.stake, ev.pub.nudges, false);
       return;
     }
     if (ev.result !== 'collect') {
@@ -503,12 +522,14 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
       this.ctx.fx.popText(at, this.t('gambleWon', { n: fmtCoins(ev.value) }), 0xffd040, { dur: 0.9, rise: 0.25, scale: 1.1 });
     }
     this.view.gamble = ev.done || ev.value <= 0 ? null : { shown: ev.next, value: ev.value };
+    this.pGross += ev.collected;
     if (ev.collected > 0) {
       this.view.win = ev.collected;
       leds.win.set(String(Math.floor(ev.collected)));
       await this.payShow(ev.collected, ev.stake, pc.fast);
     }
     this.refresh();
+    this.roundEnd(pc, ev.stake, ev.pub.nudges, !!this.view.gamble);
   }
 
   private showSquare(q: SquareEv, fast: boolean): void {
@@ -581,10 +602,6 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
     this.parts.glass.draw((g, sc) => {
       g.fillStyle = '#05080d';
       g.fillRect(0, 0, sc.w, sc.h);
-      if (this.card) {
-        [0, 1, 2, 3].forEach((i) => sc.text(t(`m.fruitmachine.card${i}`), sc.w / 2, 18 + i * 26, { font: 'px5', color: '#ffd040', align: 'center' }));
-        return;
-      }
       const cw = sc.w / SQUARES.length;
       SQUARES.forEach((sq, i) => {
         const lit = i === v.trail;
@@ -609,34 +626,75 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
     });
   }
 
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.fruitmachine.tip1', v: { start: this.k('primary'), hold: `${this.k('n1')}-${this.k('n3')}` } },
+      { k: 'm.fruitmachine.tip2', v: { nudge: `${this.k('n1')}-${this.k('n3')}`, hi: this.k('up'), lo: this.k('down'), collect: this.k('collect') } },
+      { k: 'm.fruitmachine.tip3', v: { stake: `${this.k('betDown')}/${this.k('betUp')}`, max: this.k('betMax'), help: this.k('help') } },
+    ];
+  }
+
+  /** Result callout once the round has settled: no gamble open and no nudges left. Local player only. */
+  private roundEnd(pc: PresentCtx, stake: number, nudges: number, gambleOpen: boolean): void {
+    if (!pc.local || nudges > 0 || gambleOpen) return;
+    const net = this.pGross - stake;
+    this.pGross = 0;
+    this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'lose', net);
+  }
+
+  /** Banner, key numbers and the controls valid right now. Only while the local player sits here. */
   private showHud(): void {
-    const hints: HudHint[] = [];
-    if (this.s.gamble) {
-      if (canPick('HI', this.s.gamble.shown)) hints.push({ action: 'up', label: this.t('hi') });
-      if (canPick('LO', this.s.gamble.shown)) hints.push({ action: 'down', label: this.t('lo') });
-      hints.push({ action: 'collect', label: this.t('collect') });
-    } else if (this.roundOpen && this.view.nudges > 0) {
-      hints.push({ action: 'n1', label: this.t('nudge', { n: 1 }) }, { action: 'n2', label: this.t('nudge', { n: 2 }) });
-      hints.push({ action: 'n3', label: this.t('nudge', { n: 3 }) });
-      hints.push({ action: 'collect', label: this.t('collect') });
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const g = this.s.gamble;
+    const nudging = !g && this.roundOpen && this.view.nudges > 0;
+    sh.goal({ k: 'm.fruitmachine.goal' });
+
+    // STATE: what the machine is waiting for
+    if (g) sh.state({ k: 'm.fruitmachine.stGamble' }, 'warn', { k: 'm.fruitmachine.stGambleSub' });
+    else if (nudging) sh.state({ k: 'm.fruitmachine.stNudge' }, 'cyan', { k: 'm.fruitmachine.stNudgeSub' });
+    else if (this.busy) sh.state({ k: 'm.fruitmachine.stSpin' }, 'cyan');
+    else if (this.view.hold) sh.state({ k: 'm.fruitmachine.stHold' }, 'good', { k: 'm.fruitmachine.stHoldSub' });
+    else sh.state({ k: 'm.fruitmachine.stStart' }, 'gold', { k: 'm.fruitmachine.stStartSub', v: { n: fmtCoins(this.bet) } });
+
+    // KEY NUMBERS: stake, the win on the line or the gamble at risk, nudges, trail, balance
+    const nums: HudNumber[] = [
+      { label: { k: 'm.fruitmachine.nStake' }, value: fmtCoins(this.roundOpen || g ? this.s.stake : this.bet), tone: 'gold' },
+    ];
+    if (g) nums.push({ label: { k: 'm.fruitmachine.nAtRisk' }, value: fmtCoins(g.value), tone: 'warn' });
+    else nums.push({ label: { k: 'm.fruitmachine.nWin' }, value: fmtCoins(this.view.win), tone: this.view.win > 0 ? 'good' : 'neutral' });
+    if (nudging) nums.push({ label: { k: 'm.fruitmachine.nNudges' }, value: String(this.view.nudges), tone: 'cyan' });
+    nums.push({ label: { k: 'm.fruitmachine.nTrail' }, value: String(this.view.trail), tone: 'neutral' });
+    nums.push({ label: { k: 'm.fruitmachine.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now
+    const ctrl: HudControl[] = [];
+    if (g) {
+      if (canPick('HI', g.shown)) ctrl.push({ key: this.k('up'), label: { k: 'm.fruitmachine.cHi' }, action: 'up', primary: true });
+      if (canPick('LO', g.shown)) ctrl.push({ key: this.k('down'), label: { k: 'm.fruitmachine.cLo' }, action: 'down', primary: true });
+      ctrl.push({ key: this.k('collect'), label: { k: 'm.fruitmachine.cCollect' }, action: 'collect' });
+    } else if (nudging) {
+      ctrl.push({ key: `${this.k('n1')}-${this.k('n3')}`, label: { k: 'm.fruitmachine.cNudge' }, action: 'n1', primary: true });
+      ctrl.push({ key: this.k('collect'), label: { k: 'm.fruitmachine.cCollect' }, action: 'collect' });
     } else if (!this.busy) {
-      hints.push({ action: 'primary', label: this.t('start') });
-      if (this.view.hold) {
-        hints.push({ action: 'n1', label: this.t('hold', { n: 1 }) }, { action: 'n2', label: this.t('hold', { n: 2 }) });
-        hints.push({ action: 'n3', label: this.t('hold', { n: 3 }) });
-      }
-      hints.push({ action: 'betUp', label: t('common.bet') }, { action: 'betMax', label: this.t('max') });
-      hints.push({ action: 'help', label: this.t('help') });
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.fruitmachine.cStart' }, action: 'primary', primary: true });
+      if (this.view.hold) ctrl.push({ key: `${this.k('n1')}-${this.k('n3')}`, label: { k: 'm.fruitmachine.cHold' }, action: 'n1' });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.fruitmachine.cStake' }, action: 'betUp' });
+      ctrl.push({ key: this.k('betMax'), label: { k: 'm.fruitmachine.cMax' }, action: 'betMax' });
     }
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: this.roundOpen || this.s.gamble ? null : this.bet,
-      hints,
-      stats: [
-        { label: this.t('featNudge'), value: String(this.view.nudges) },
-        { label: this.t('lab_win'), value: fmtCoins(this.view.win) },
-      ],
-    });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.fruitmachine.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.fruitmachine.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
+  }
+
+  override dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
   }
 }
 

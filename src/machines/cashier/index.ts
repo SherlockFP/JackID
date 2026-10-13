@@ -9,13 +9,13 @@
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import type { HeadlessPlay } from '@/game/types';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { BindingKey, MachineAction, MachineInputEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import { fmtNum, t as tr } from '@/core/i18n';
 import { lerp } from '@/core/math';
 import { buildModel, CAP_SINK, TRAY_SLIDE, LAMP, type CashierParts } from './model';
-import { OFFERS, apply, check, quote, stakeOf, wrapOffer, type Offer, type OfferOp } from './rules';
+import { BUY_PER_SI, OFFERS, SELL_PER_SI, apply, check, quote, stakeOf, wrapOffer, type Offer, type OfferOp } from './rules';
 
 type Ev =
   /** An exchange. `coins` / `tickets` are the signed amounts for the emitter; `why` names the refusal when `ok` is false. */
@@ -56,12 +56,16 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
   private cursor = 0;
   private repaintKey = '';
   private hudKey = '';
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: KitX): MachineModel<CashierParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.ctx.ui.machineHud(null);                          // the seat HUD replaces the generic bottom bar
     this.refresh(true);
     this.attractor.every('blink', 7, () => this.ctx.fx.glow(this.model.anchors.light, LAMP, 0.25, 0.5), { first: 4 });
   }
@@ -74,13 +78,22 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
 
   attract(dt: number): void { this.attractor.update(dt); }
 
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
+
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.cursor = 0;
-    if (local) { this.sfx('chime'); this.refresh(true); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show(); this.refresh(true);
+      this.seatHud?.firstTip('cashier', this.tipLines());
+    }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
-    if (local) { this.ctx.ui.machineHud(null); this.hudKey = ''; }
+    if (local) { this.seatHud?.hide(); this.hudKey = ''; }
   }
 
   onLang(): void {
@@ -91,7 +104,10 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
 
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
-    if (!e.down || e.repeat) return;
+    if (!e.down) return;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
+    if (e.repeat) return;
     switch (e.action) {
       case 'up': case 'left': this.moveCursor(wrapOffer(this.cursor, -1)); return;
       case 'down': case 'right': this.moveCursor(wrapOffer(this.cursor, 1)); return;
@@ -213,24 +229,56 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
     s.text(this.t('ledgerHint'), 64, 66, { font: 'px5', color: '#50a070', align: 'center' });
   }
 
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+  /** The key bound to a general action (arrows, help, exit). */
+  private g(a: BindingKey): string { return this.ctx.input.keyLabel(a); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.cashier.tip1' },
+      { k: 'm.cashier.tip2', v: { move: `${this.k('up')}/${this.k('down')}`, go: this.k('primary') } },
+      { k: 'm.cashier.tip3', v: { help: this.g('help') } },
+    ];
+  }
+
+  private rulesLines(): Txt[] {
+    return [1, 2, 3].map((i) => ({ k: `m.cashier.rule${i}` }));
+  }
+
+  /** Banner, coins / tickets / price and the valid controls only. Only while the local player stands here. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const sel = OFFERS[this.cursor] ?? null;
     const key = [this.cursor, this.coins(), this.tickets()].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
-    const hints: HudHint[] = [
-      { action: 'up', label: this.t('h_pick') },
-      { action: 'primary', label: this.t('h_go') },
-      { action: 'exit', label: this.t('h_leave') },
-    ];
-    this.hud({
-      bet: null,
-      hints,
-      stats: [
-        { label: this.t('s_coins'), value: fmtNum(this.coins()) },
-        { label: this.t('s_tickets'), value: String(this.tickets()) },
-        { label: this.t('s_offer'), value: sel ? this.label(sel) : '--' },
-      ],
-    });
+    const ctrl: HudControl[] = [];
+    const si = stakeOf(this.ctx.run);
+    sh.goal({ k: 'm.cashier.goal' });
+
+    // STATE: can the selected exchange go through
+    const verdict = sel ? check(sel, this.ctx.run, this.selfId) : 'ok';
+    if (!sel) sh.state({ k: 'm.cashier.stNone' }, 'neutral');
+    else if (verdict === 'ok') sh.state({ k: 'm.cashier.stReady' }, 'gold', this.label(sel));
+    else sh.state({ k: `m.cashier.${verdict}` }, 'warn', { k: 'm.cashier.stBlocked' });
+
+    // KEY NUMBERS
+    const q = sel ? quote(sel, si) : null;
+    sh.numbers([
+      { label: { k: 'm.cashier.nCoins' }, value: fmtNum(this.coins()), tone: 'gold' },
+      { label: { k: 'm.cashier.nTickets' }, value: fmtNum(this.tickets()), tone: 'cyan' },
+      { label: { k: 'm.cashier.nPrice' }, value: q ? `${fmtNum(q.coins)}` : '--', tone: verdict === 'ok' ? 'good' : 'bad' },
+      { label: { k: 'm.cashier.nRate' }, value: { k: 'm.cashier.rate', v: { b: fmtNum(BUY_PER_SI * si), s: fmtNum(SELL_PER_SI * si) } }, tone: 'neutral' },
+    ]);
+
+    // CONTROL BAR: a valid exchange only
+    ctrl.push({ key: `${this.k('up')}/${this.k('down')}`, label: { k: 'm.cashier.cPick' }, action: 'up' });
+    if (verdict === 'ok') ctrl.push({ key: this.k('primary'), label: { k: 'm.cashier.cGo' }, action: 'primary', primary: true });
+    ctrl.push({ key: this.g('help'), label: { k: 'm.cashier.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.cashier.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }

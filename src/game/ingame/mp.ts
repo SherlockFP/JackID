@@ -53,11 +53,19 @@ export function startOnlineHooks(scene: THREE.Scene, player: LocalPlayerHost, ru
     if (cur && m.patch.name) cur.setName(m.patch.name, m.patch.color ?? net.players.get(m.id)?.color ?? 0xffffff);
   }));
   offs.push(net.on('pleave', (m) => avatars.remove(m.id)));
+  // Samples are stamped with the host clock at arrival: the avatar buffer interpolates in host milliseconds, and the
+  // packet sequence number is not a time (it would make every mannequin extrapolate wildly).
   offs.push(net.on('pts', (m) => {
+    const at = net.hostTime();
     for (const [id, x, y, z, yaw, pitch, f] of m.a) {
       if (id === net.selfId) continue;
-      avatars.sample(id, m.s, [x, y, z], yaw, pitch, f);
+      avatars.sample(id, at, [x, y, z], yaw, pitch, f);
     }
+  }));
+  // The host never receives its own `pts`, so clients' poses reach it as `pt` frames (the host re-broadcasts them).
+  offs.push(net.on('pt', (m, from) => {
+    if (!isHost || from === net.selfId) return;
+    avatars.sample(from as PlayerId, net.hostTime(), m.p, m.r[0], m.r[1], m.f);
   }));
   offs.push(net.on('emote', (m, from) => {
     avatars.get(m.from ?? from)?.emote(m.id);

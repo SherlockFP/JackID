@@ -25,22 +25,27 @@ export function addRoomSource(s: RoomSource): void {
   if (i >= 0) sources[i] = s; else sources.push(s);
 }
 
-function ensureChannel(): void {
-  if (channel || typeof BroadcastChannel === 'undefined') return;
+/** Opens the announcement channel once. Returns true when it was opened by this call (replies need a moment). */
+function ensureChannel(): boolean {
+  if (channel || typeof BroadcastChannel === 'undefined') return false;
   try {
     channel = new BroadcastChannel(BROADCAST_LOBBY);
     channel.onmessage = (ev: MessageEvent<unknown>) => {
-      const m = ev.data as { t?: string; room?: RoomInfo } | null;
-      if (m?.t === 'ann' && m.room && typeof m.room.id === 'string') tabRooms.set(m.room.id, { room: m.room, seen: Date.now() });
+      // Frames are `{ k: 'room', room }` (net/transports/broadcast.ts announceTab).
+      const m = ev.data as { k?: string; room?: RoomInfo } | null;
+      if (m?.k === 'room' && m.room && typeof m.room.id === 'string') tabRooms.set(m.room.id, { room: m.room, seen: Date.now() });
     };
+    channel.postMessage({ k: 'q' });   // ask open hosts to announce now
+    return true;
   } catch {
     channel = null;   // private windows and locked-down browsers: the tab source simply stays empty
+    return false;
   }
 }
 
 /** Every known room, unsorted. Unlisted rooms are never returned (they only join by code). Source errors are skipped. */
 export async function listRooms(): Promise<ListedRoom[]> {
-  ensureChannel();
+  if (ensureChannel()) await new Promise((r) => setTimeout(r, 150));   // first call: let the hosts answer the query
   const now = Date.now();
   for (const [id, e] of tabRooms) if (now - e.seen > TAB_TTL_MS) tabRooms.delete(id);
   const out: ListedRoom[] = [];

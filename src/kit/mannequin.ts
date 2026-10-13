@@ -109,8 +109,8 @@ interface Attachment { obj: THREE.Object3D; bone: string; o?: { pos?: V3; rot?: 
 
 /** At most this many visible mannequins run their mixer per frame (C13); the rest freeze, nearest first. */
 const MAX_ACTIVE = 12;
-/** Mannequins farther than this from the LOD camera freeze (metres). */
-const LOD_FAR = 30;
+/** Mannequins farther than this from the LOD camera freeze and hide (metres). */
+const LOD_FAR = 20;
 
 export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Group): Pick<Kit, 'loadMannequin'> & { mannequin(o?: MannequinOpts): MannequinInternal; update(dt: number): void; setLodCamera(cam: THREE.Camera | null): void } {
   const actors = new Set<WeakRef<Actor>>();
@@ -132,6 +132,9 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
     private pinned: boolean;
     /** Frozen by the distance / visibility LOD pass (`makeMannequins.update`). */
     private lod = false;
+    /** Hidden by the distance LOD (folded into `root.visible`; the owner's own visibility stays in `ownVis`). */
+    private lodHidden = false;
+    private ownVis = true;
     private mixer: THREE.AnimationMixer | null = null;
     private rig: THREE.Object3D | null = null;
     private placeholder: THREE.Group | null = null;
@@ -175,6 +178,12 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
       this.clips = [...MANNEQUIN_CLIPS];
       this.root.name = 'mannequin';
       this.root.userData.kitKeep = true;                  // finalize must never merge or prune a live actor
+      // `root.visible` = the owner's flag AND not LOD-hidden, so owners keep their plain `visible` API
+      Object.defineProperty(this.root, 'visible', {
+        configurable: true, enumerable: true,
+        get: () => this.ownVis && !this.lodHidden,
+        set: (v: boolean) => { this.ownVis = v; },
+      });
       this.acc = ((serial++ * 0.6180339887) % 1) / (this.stepFps ?? DEFAULT_STEP_FPS);   // de-synchronise the 15 fps ticks
       this.buildPlaceholder();
       this.selfRef = new WeakRef(this);
@@ -315,6 +324,10 @@ ${GLSL_CRACKS}`,
       p.resolve();
     }
 
+    /** Visibility the owner asked for (ignores the distance LOD). */
+    get ownVisible(): boolean { return this.ownVis; }
+    /** Called by the LOD pass (`lodPass`): hide the actor while it is beyond `LOD_FAR`. */
+    setLodHidden(on: boolean): void { this.lodHidden = on; }
     /** Called by the LOD pass (`lodPass`): freeze while far, hidden or beyond the active cap. */
     setLodState(on: boolean): void {
       if (this.lod === on) return;
@@ -515,7 +528,7 @@ ${GLSL_CRACKS}`,
   };
 
   /**
-   * Distance / visibility LOD (C13, DECISIONS G): a mannequin with a hidden ancestor freezes, one beyond `LOD_FAR` freezes,
+   * Distance / visibility LOD (C13, DECISIONS G): a mannequin with a hidden ancestor freezes, one beyond `LOD_FAR` freezes and hides,
    * and of the rest only the `MAX_ACTIVE` nearest keep animating. Without a LOD camera only visibility and the cap apply.
    */
   function lodPass(): void {
@@ -525,9 +538,11 @@ ${GLSL_CRACKS}`,
       const a = ref.deref();
       if (!a) { actors.delete(ref); continue; }
       if (a.disposedNow) continue;
-      if (!inScene(a.root)) { a.setLodState(true); continue; }
+      if (!inScene(a.root.parent) || !a.ownVisible) { a.setLodHidden(false); a.setLodState(true); continue; }
       const d = lodCam ? a.root.getWorldPosition(lodVec).distanceTo(lodPos) : 0;
-      if (lodCam && d > LOD_FAR) { a.setLodState(true); continue; }
+      const far = !!lodCam && d > LOD_FAR;
+      a.setLodHidden(far);
+      if (far) { a.setLodState(true); continue; }
       near.push({ a, d });
     }
     near.sort((x, y) => x.d - y.d);

@@ -45,7 +45,7 @@ const TRIM: Record<string, number> = {
   shuffle: 0.81, cardSlap: 0.77, dice: 0.68, diceRoll: 0.66, diceLand: 0.74, wheelTick: 2.45,
   ballRoll: 2.82, ballBounce: 1.8, ballDrop: 1.17, bell: 1.01, buzzer: 1.22, lose: 1.76,
   whoosh: 1.2, thud: 0.6, glass: 1.08, glassBreak: 1.08, win1: 0.87, win2: 0.7,
-  win3: 0.8, winHuge: 0.5, winPush: 2.9, jackpot: 0.32, jackpotSiren: 1.77, jackpotBells: 1.76,
+  win3: 0.8, winHuge: 0.5, winRise: 0.8, winMega: 0.6, winPush: 2.9, jackpot: 0.32, jackpotSiren: 1.77, jackpotBells: 1.76,
   stinger: 0.57, quotaMet: 0.82, quotaFail: 0.46, upgrade: 1.05, purchase: 1.06, cashRegister: 0.89,
   unlock: 1.15, buffGain: 1.02, buffLose: 1.24, stamp: 0.64, printer: 1.82, sparkle: 3,
   whisper: 0.9, whispers: 0.98, heartbeat: 0.6, lightFlicker: 2.14, powerDown: 1.02, powerUp: 0.98,
@@ -481,6 +481,30 @@ def('winHuge', (k) => {
   return 3.9;
 }, { pri: 9 });
 def('winPush', (k) => { for (let i = 0; i < 2; i++) k.osc('triangle', hz('G4'), 0.07, { at: i * 0.09, vol: 0.22, env: { a: 0.004, d: 0.06, s: 0, r: 0.02 } }); return 0.25; }, { pri: 6 });
+/** Huge win rising chord: fast ascending arpeggio over a riser (≈1.1 s), layered on the huge-win slow-mo. */
+def('winRise', (k) => {
+  riser(k, 0, 0.5, 0.22, 250, 5000);
+  ['C4', 'E4', 'G4', 'C5', 'E5', 'G5', 'C6'].forEach((n, i) => brass(k, i * 0.075, [hz(n)], 0.42, 0.2, { a: 0.008, d: 0.05, s: 0.6, r: 0.08 }));
+  pad(k, 0.45, [hz('C4'), hz('E4'), hz('G4'), hz('C5')], 0.9, 0.18);
+  bellNote(k, 0.5, hz('C6'), 0.2, 1);
+  return 1.1;
+}, { pri: 9, max: 2 });
+/** Mega win jingle (≈3.6 s): riser into a bright brass fanfare, a bell shimmer and a coin-shower tail. */
+def('winMega', (k) => {
+  riser(k, 0, 0.6, 0.28, 300, 6500);
+  const T = 0.6;
+  thump(k, T, 90, 36, 0.6, 0.9); snap(k, T, 0.45, 1400, 0.03, 1);
+  brass(k, T, [hz('C4'), hz('E4'), hz('G4')], 0.16, 0.26, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
+  brass(k, T + 0.18, [hz('C4'), hz('E4'), hz('G4')], 0.16, 0.26, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
+  brass(k, T + 0.36, [hz('F4'), hz('A4'), hz('C5')], 0.4, 0.3);
+  brass(k, T + 0.8, [hz('G4'), hz('B4'), hz('D5'), hz('G5')], 2.2, 0.34);
+  pad(k, T, [hz('C3'), hz('G3'), hz('E4'), hz('C5')], 3, 0.2);
+  ['C6', 'E6', 'G6', 'C7', 'E7', 'G7'].forEach((n, i) => bellNote(k, T + 0.4 + i * 0.09, hz(n), 0.26 - i * 0.02, 1.2));
+  cascade(k, T + 0.2, 2.4, 34, 0.34);
+  sparkle(k, T + 0.6, 2.2, 18, 0.07);
+  bellNote(k, T + 2.6, hz('C7'), 0.3, 1.6);
+  return 3.6;
+}, { pri: 10, max: 2 });
 /** The big one: riser → boom → fanfare (C → A♭) → bell rain → coin flood → shimmer. */
 def('jackpot', (k) => {
   for (let i = 0; i < 14; i++) { const t = 0.9 * Math.pow(i / 14, 0.8); k.osc('sine', 700 + i * 70, 0.05, { at: t, vol: 0.14, env: { a: 0.002, d: 0.05, s: 0, r: 0.01 } }); snap(k, t, 0.25, 3000, 0.008, 3); }
@@ -829,7 +853,7 @@ def('footstepWet', (k) => {
 SFX_DEFS.set('boom', SFX_DEFS.get('gunShot')!);
 
 /** Sounds longer than ~0.8 s: their voices are wired into slow-motion (`setTimeScale`) so a big win drags with the screen. */
-const LONG = ['win2', 'win3', 'winHuge', 'jackpot', 'jackpotBells', 'quotaMet', 'quotaFail', 'stinger', 'trapdoor', 'powerDown', 'powerUp', 'tapeStop',
+const LONG = ['win2', 'win3', 'winHuge', 'winRise', 'winMega', 'jackpot', 'jackpotBells', 'quotaMet', 'quotaFail', 'stinger', 'trapdoor', 'powerDown', 'powerUp', 'tapeStop',
   'tinnitus', 'defib', 'totemPlace', 'lose', 'bell', 'upgrade', 'unlock', 'coinShower', 'glassBreak', 'shuffle', 'dice', 'printer', 'whisper', 'creak',
   'phoneRing', 'clockAlarm', 'cashRegister', 'elevatorDing', 'gunShot', 'door', 'doorCreak', 'heartbeat'];
 for (const n of LONG) { const d = SFX_DEFS.get(n); if (d) d.meta.long = true; }
@@ -849,6 +873,7 @@ export function winSfx(tier: WinTier): string | null {
     case 'medium': return 'win2';
     case 'big': return 'win3';
     case 'huge': return 'winHuge';
+    case 'mega': return 'winMega';
     case 'jackpot': return 'jackpot';
   }
 }

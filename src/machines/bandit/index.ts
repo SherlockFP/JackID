@@ -21,19 +21,21 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
 import { countUp, breathe } from '@/machines/_base/juice';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { Kit, ScreenSurface } from '@/kit/types';
-import { fmtCoins, t } from '@/core/i18n';
+import { fmtCoins } from '@/core/i18n';
 import { clamp, lerp } from '@/core/math';
 import { buildModel, LEVER_MAX, LEVER_TRIP, MAW_COINS, type BanditParts } from './model';
 import {
   DENOMS, facetOf, HOOK_JACKPOT, HOOK_LUCK, MAX_CREDITS, STOPS, coinsFor, playHeadless, readCfg, roll, tagsOf,
   type PayCfg, type Roll, type Sym,
 } from './rules';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { STRINGS } from './strings';
 
 export { playHeadless };
+
+const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5'].map((k) => ({ k: 'm.bandit.' + k }));
 
 type Ev =
   | { k: 'lever'; angle: number }
@@ -86,6 +88,8 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
   private thumps: number[] = [];
   private lampOn = false;
   private tiltLampOn = false;
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: Kit): MachineModel<BanditParts> {
     return buildModel(kit, this.modelOpts);
@@ -94,6 +98,8 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
   private get denom(): number { return DENOMS[this.denomIdx]; }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.bet = this.credits * this.denom;
     this.refresh();
     this.drawAward();
@@ -115,19 +121,24 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
 
   tick(_dt: number): void {
     const on = this.tiltOn();
-    if (on !== this.tiltLampOn) { this.tiltLampOn = on; this.parts.lampTilt.setOn(on); }
+    if (on !== this.tiltLampOn) { this.tiltLampOn = on; this.parts.lampTilt.setOn(on); this.showHud(); }
   }
 
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.refresh();
-    if (local) { this.sfx('chime'); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip('bandit', this.tipLines());
+    }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
     this.dragging = null;
     this.attractor.reset();
     this.refresh();
-    if (local) this.setLever(0);
+    if (local) { this.setLever(0); this.seatHud?.hide(); }
   }
 
   onLang(): void {
@@ -140,6 +151,8 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax' || a === 'n1';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -294,6 +307,8 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
     // 5. verdict
     s.lastWin = ev.pay;
     s.losses = won ? 0 : s.losses + 1;
+    const net = ev.pay - ev.credits * ev.denom;
+    if (pc.local) this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'lose', net);
     this.drawLeds(ev.pay);
     if (won) {
       const bet = ev.credits * ev.denom;
@@ -397,20 +412,58 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
     });
   }
 
-  private showHud(): void {
-    const hints: HudHint[] = this.busy ? [] : [
-      { action: 'primary', label: this.t('pull') },
-      { action: 'betUp', label: this.t('credits', { n: this.credits }) },
-      { action: 'n1', label: this.t('denom', { n: this.denom }) },
-      { action: 'betMax', label: this.t('max') },
-      { action: 'n2', label: this.t('thump') },
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.bandit.tip1', v: { pull: this.k('primary') } },
+      { k: 'm.bandit.tip2', v: { bet: `${this.k('betDown')}/${this.k('betUp')}`, coin: this.k('n1'), max: this.k('betMax') } },
+      { k: 'm.bandit.tip3', v: { help: this.k('help') } },
     ];
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({ bet: this.roundOpen ? null : this.bet, hints });
+  }
+
+  /** Banner, key numbers and the controls valid right now. Only while the local player sits here. */
+  private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
+    const busy = this.busy || this.roundOpen;
+    const tilt = this.tiltOn();
+    sh.goal({ k: 'm.bandit.goal' });
+
+    // STATE: what the cabinet is doing
+    if (tilt) sh.state({ k: 'm.bandit.stTilt' }, 'bad', { k: 'm.bandit.stTiltSub' });
+    else if (busy) sh.state({ k: 'm.bandit.stSpin' }, 'cyan');
+    else sh.state({ k: 'm.bandit.stReady' }, 'gold', { k: 'm.bandit.stReadySub', v: { n: fmtCoins(this.bet) } });
+
+    // KEY NUMBERS: stake, credits, coin size, balance, last win
+    const nums: HudNumber[] = [
+      { label: { k: 'm.bandit.nBet' }, value: fmtCoins(this.bet), tone: 'gold' },
+      { label: { k: 'm.bandit.nCredits' }, value: `${this.credits}/${MAX_CREDITS}`, tone: 'neutral' },
+      { label: { k: 'm.bandit.nCoin' }, value: fmtCoins(this.denom), tone: 'neutral' },
+      { label: { k: 'm.bandit.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
+      { label: { k: 'm.bandit.nLast' }, value: fmtCoins(this.state.lastWin), tone: this.state.lastWin > 0 ? 'good' : 'neutral' },
+    ];
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now
+    const ctrl: HudControl[] = [];
+    if (!busy && !tilt) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.bandit.cPull' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.bandit.cCredits' }, action: 'betUp' });
+      ctrl.push({ key: this.k('n1'), label: { k: 'm.bandit.cCoin' }, action: 'n1' });
+      ctrl.push({ key: this.k('betMax'), label: { k: 'm.bandit.cMax' }, action: 'betMax' });
+    }
+    if (!tilt) ctrl.push({ key: this.k('n2'), label: { k: 'm.bandit.cThump' }, action: 'n2' });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.bandit.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.bandit.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 
   override dispose(): void {
     this.dragging = null;
+    this.seatHud?.dispose();
     super.dispose();
   }
 }

@@ -22,8 +22,20 @@ import type { SfxName } from '@/core/audio/types';
 import type { Rng } from '@/core/rng';
 import type { BulbChain, LampPart, MarqueePart } from '@/kit/types';
 import { clamp, lerp, tmpV3a, tmpV3b } from '@/core/math';
-import { toWinTier, tierMin, type JuiceTier } from './tiers';
+import { setPostLevel } from '@/core/fx';
+import type { WinTier } from '@/game/types';
+import { tierAtLeast, toWinTier, tierMin, type JuiceTier } from './tiers';
 import type { MachineContext, MachineModel } from './types';
+
+// Pit-wide juice events. The world layer may listen (floor lights, ceiling rain); juice never waits on them.
+declare module '@/core/events' {
+  interface GameEvents {
+    /** Jackpot gold wave rolling out from a machine across the pit. */
+    'juice:pitWave': { x: number; y: number; z: number; radius: number; dur: number };
+    /** Floor lights strobe for the length of a mega win or jackpot show. */
+    'juice:floorStrobe': { tier: WinTier; hz: number; dur: number; color: Hex };
+  }
+}
 
 /** What juice needs from a machine; `MachineBase` satisfies it. */
 export interface JuiceHost {
@@ -53,11 +65,12 @@ export const TIER_SHOW: Readonly<Record<JuiceTier, TierShow>> = {
   medium:  { show: 2,   hz: 8,  sfx: 'sparkle',  glow: 0xffce5a },
   big:     { show: 3,   hz: 8,  sfx: 'chime',    glow: 0xffd040 },
   huge:    { show: 5,   hz: 10, sfx: 'chime',    glow: 0xffd040 },
-  mega:    { show: 7,   hz: 12, sfx: 'jackpot',  glow: 0xffd040 },
-  jackpot: { show: 9,   hz: 14, sfx: 'jackpotSiren', glow: 0xfff0a0 },
+  mega:    { show: 7,   hz: 12, sfx: 'bell',       glow: 0xffd040 },
+  jackpot: { show: 6,   hz: 14, sfx: 'jackpotSiren', glow: 0xfff0a0 },
 };
 
 const GOLD_FLASH: Hex = 0xffd040;
+const GOLD_WAVE: Hex = 0xffe27a;
 const RED_PULSE: Hex = 0xff3b30;
 
 function anchorOf(host: JuiceHost, ...names: string[]): THREE.Object3D {
@@ -99,9 +112,13 @@ export interface CelebrateOpts {
 }
 
 /**
- * Tier-escalating win show: `fx.winBurst` (coins/sparks/flash/shake/hit-stop per tier) + jingle + layer sound +
- * gold light pulse + marquee/bulb/lamp pattern for `TIER_SHOW[tier].show` seconds. Mega adds a gold
- * strobe flash and an extra coin fountain. Resolves when the show ends.
+ * Tier-escalating win show. Base: `fx.winBurst` (coins/sparks/flash/shake/hit-stop per tier) + jingle + layer sound +
+ * gold light pulse + marquee/bulb/lamp pattern for `TIER_SHOW[tier].show` seconds. Escalation (not `fast`):
+ *   big      coin fountain + shake
+ *   huge     0.4 s slow-mo at 40 % speed, rising chord, gold flash
+ *   mega     screen-wide confetti, chromatic pulse, zoom punch, floor-light strobe (+ `juice:floorStrobe`)
+ *   jackpot  6 s show: pit-wide gold wave (+ `juice:pitWave`), bell layer, coin rain from the ceiling
+ * Spectators get the attenuated tier, so they see the fountain/shake at most. Resolves when the show ends.
  */
 export function celebrate(host: JuiceHost, tier: JuiceTier, o: CelebrateOpts = {}): Promise<void> {
   const { ctx } = host;
@@ -110,30 +127,103 @@ export function celebrate(host: JuiceHost, tier: JuiceTier, o: CelebrateOpts = {
   const speaker = anchorOf(host, 'speaker');
   const dist = host.isLocalOccupant ? 0 : distanceToCamera(host, at);
   const shown = host.isLocalOccupant ? tier : spectatorTier(tier, dist);
-  const spec = TIER_SHOW[tier];
+  const show = TIER_SHOW[tier];
   const fast = !!o.fast;
+  const sp = o.speed ?? 1;
 
   if (tier === 'push') {
     ctx.audio.play('coin', { pos: speaker });
   } else {
-    ctx.fx.winBurst(toWinTier(shown), at, { amount: o.amount, flyToWallet: host.isLocalOccupant && !fast });
+    // core `winBurst` has no 'mega' branch: mega = the huge burst plus the mega layer in `escalate`
+    ctx.fx.winBurst(shown === 'mega' ? 'huge' : shown, at, { amount: o.amount, flyToWallet: host.isLocalOccupant && !fast });
     ctx.audio.winJingle(toWinTier(tier), { pos: speaker });
-    if (spec.sfx && !fast) ctx.audio.play(spec.sfx, { pos: speaker, vol: 0.8 });
-    if (tier !== 'small') ctx.fx.lightPulse(at, { color: spec.glow, mul: tier === 'medium' ? 1.3 : 1.7, dur: 0.5 });
-    if ((tier === 'mega' || tier === 'jackpot') && host.isLocalOccupant && !fast) {
-      ctx.fx.flash(GOLD_FLASH, 0.35, 0.25);
-      ctx.fx.coins(at, 40, { spread: 0.08, up: 1.8, over: 2 });
-    }
+    if (show.sfx && !fast) ctx.audio.play(show.sfx, { pos: speaker, vol: 0.8 });
+    if (tier !== 'small') ctx.fx.lightPulse(at, { color: show.glow, mul: tier === 'medium' ? 1.3 : 1.7, dur: 0.5 });
+    if (!fast) escalate(host, shown, at, speaker, sp);
   }
 
-  const run = !fast && spec.show > 0;
+  const run = !fast && show.show > 0;
   if (run) {
-    o.marquee?.chase('win', spec.hz);
-    o.bulbs?.pattern(tier === 'huge' || tier === 'mega' || tier === 'jackpot' ? 'rainbow' : 'chase', spec.hz);
-    o.lamps?.forEach((l) => l.blink(spec.hz, spec.show));
+    o.marquee?.chase('win', show.hz);
+    o.bulbs?.pattern(tier === 'huge' || tier === 'mega' || tier === 'jackpot' ? 'rainbow' : 'chase', show.hz);
+    o.lamps?.forEach((l) => l.blink(show.hz, show.show));
   }
   if (!run) { o.restore?.(); return Promise.resolve(); }
-  return ctx.timers.wait(spec.show * (o.speed ?? 1)).then(() => { if (!host.disposed) o.restore?.(); });
+  return ctx.timers.wait(show.show * sp).then(() => { if (!host.disposed) o.restore?.(); });
+}
+
+/** The extra layers that make each tier feel bigger than the one below (see {@link celebrate}). */
+function escalate(host: JuiceHost, shown: JuiceTier, at: THREE.Object3D, speaker: THREE.Object3D, sp: number): void {
+  const { ctx } = host;
+  if (tierAtLeast(shown, 'big')) {
+    ctx.fx.coins(at, 60, { spread: 0.25, up: 3.2, over: 1.4 });          // coin fountain
+    ctx.fx.shake(0.03, 0.6, { roll: 1.2 });
+  }
+  if (tierAtLeast(shown, 'huge')) {
+    ctx.fx.slowmo(0.4, 0.4);                                             // 0.4 s held breath
+    ctx.audio.play('winRise', { pos: speaker, vol: 0.8 });               // rising chord
+    ctx.timers.wait(0.1 * sp).then(() => { if (!host.disposed) ctx.fx.flash(GOLD_FLASH, 0.4, 0.3); });
+  }
+  if (tierAtLeast(shown, 'mega')) {
+    // screen-wide confetti: a volley spawned in front of the camera
+    ctx.camera.getWorldPosition(tmpV3a);
+    ctx.camera.getWorldDirection(tmpV3b);
+    const cx = tmpV3a.x + tmpV3b.x * 3.5, cy = tmpV3a.y + tmpV3b.y * 3.5 + 0.6, cz = tmpV3a.z + tmpV3b.z * 3.5;
+    ctx.fx.burst('confetti', [cx, cy, cz], 120, { spread: 3, up: 2.5, over: 1.2 });
+    ctx.fx.chroma(2.2, 0.7);
+    ctx.fx.zoomPunch(0.08, 0.5);
+    floorStrobe(host, shown, at, sp);
+  }
+  if (shown === 'jackpot') {
+    pitWave(host, at, sp);
+    ctx.timers.wait(0.4 * sp).then(() => { if (!host.disposed) ctx.audio.play('jackpotBells', { pos: speaker, vol: 0.9 }); });
+    // coin rain: six waves from ceiling height over the first 3 s
+    at.getWorldPosition(tmpV3a);
+    const bx = tmpV3a.x, by = tmpV3a.y + 3.2, bz = tmpV3a.z;
+    for (let w = 0; w < 6; w++) {
+      ctx.timers.wait(w * 0.5 * sp).then(() => {
+        if (host.disposed) return;
+        ctx.fx.coins([bx + host.cosmetic.float(-2, 2), by, bz + host.cosmetic.float(-1.5, 1.5)], 24, { spread: 1.4, up: 0, over: 1.2 });
+      });
+    }
+  }
+}
+
+/** Floor lights strobe: a local pulse chain at the machine plus the `juice:floorStrobe` event for the world layer. */
+function floorStrobe(host: JuiceHost, tier: JuiceTier, at: THREE.Object3D, sp: number): void {
+  const { ctx } = host;
+  const show = TIER_SHOW[tier];
+  ctx.events.emit('juice:floorStrobe', { tier: toWinTier(tier), hz: show.hz, dur: show.show, color: show.glow });
+  at.getWorldPosition(tmpV3a);
+  const bx = tmpV3a.x, by = tmpV3a.y, bz = tmpV3a.z;
+  const gap = 0.25;                                                  // four strobe flashes a second
+  const steps = Math.min(16, Math.round(show.show / gap));           // budget cap: 16 flashes per show
+  for (let i = 0; i < steps; i++) {
+    ctx.timers.wait(i * gap * sp).then(() => {
+      if (host.disposed) return;
+      const side = i % 2 ? 2 : -2;
+      ctx.fx.lightPulse([bx + side, by + 1.5, bz], { color: show.glow, mul: 2.6, radius: 7, dur: gap * 0.8 });
+    });
+  }
+}
+
+/** Jackpot gold wave: four expanding rings of light pulses across the pit, plus `juice:pitWave`. */
+function pitWave(host: JuiceHost, at: THREE.Object3D, sp: number): void {
+  const { ctx } = host;
+  at.getWorldPosition(tmpV3a);
+  const x = tmpV3a.x, y = tmpV3a.y, z = tmpV3a.z;
+  ctx.events.emit('juice:pitWave', { x, y, z, radius: 12, dur: 1.6 });
+  for (let r = 0; r < 4; r++) {
+    const rad = 2.5 + r * 3;
+    const n = 4 + r * 2;
+    ctx.timers.wait(r * 0.35 * sp).then(() => {
+      if (host.disposed) return;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        ctx.fx.lightPulse([x + Math.cos(a) * rad, y + 1.2, z + Math.sin(a) * rad], { color: GOLD_WAVE, mul: 2.6, radius: 6, dur: 0.7 });
+      }
+    });
+  }
 }
 
 /** Small, readable loss feedback (dust puff, short low shake, red-tinted pop) + the loss sound. */
@@ -166,7 +256,11 @@ export async function nearMiss(host: JuiceHost, o: NearMissOpts = {}): Promise<v
   if (!o.fast) {
     ctx.audio.play('heartbeat', { pos: anchorOf(host, 'speaker'), vol: 0.9 });
     ctx.fx.lightPulse(at, { color: RED_PULSE, mul: 1.4, dur });
-    if (host.isLocalOccupant) ctx.fx.zoomPunch(0.015, dur);
+    if (host.isLocalOccupant) {
+      ctx.fx.zoomPunch(0.015, dur);
+      setPostLevel('vignetteBoost', 0.45, dur * 0.25);                  // vignette pulse: the screen closes in
+      ctx.timers.wait(dur * 0.5).then(() => { if (!host.disposed) setPostLevel('vignetteBoost', 0, dur * 0.4); });
+    }
     o.lamps?.forEach((l) => l.blink(7, dur));
   }
   await ctx.timers.wait(dur);

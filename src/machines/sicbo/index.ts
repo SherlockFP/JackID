@@ -12,10 +12,10 @@
  */
 import * as THREE from 'three';
 import type { Kit, LampPart, ChipValue } from '@/kit/types';
-import type { MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { PlayerId } from '@/core/types';
 import { fmtCoins, t as tr } from '@/core/i18n';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { TableBase } from '@/machines/_base/TableBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
@@ -80,12 +80,18 @@ export default class SicBo extends TableBase<SicBoParts, Ev, Snap, Act> {
 
   protected createModel(kit: Kit): MachineModel<SicBoParts> { return buildModel(kit, this.modelOpts); }
 
-  init(): void { this.paintAll(); }
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts); shown while seated. */
+  private seatHud?: SeatHud;
+
+  init(): void { this.seatHud = new SeatHud(this.ctx.ui.root); this.hud(null); this.paintAll(); }
+  dispose(): void { this.seatHud?.dispose(); super.dispose(); }
 
   // ── local input → action to the host ──────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.ruleLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -309,6 +315,7 @@ export default class SicBo extends TableBase<SicBoParts, Ev, Snap, Act> {
     const faces = toDice(ev.faces), first = toDice(ev.first);
     const fast = pc.fast;
     this.st.phase = 'roll';
+    if (this.isLocalOccupant) this.showHud();
 
     // ACTION: the cage turns 180° twice on the crank
     this.sfx('ratchet');
@@ -380,6 +387,11 @@ export default class SicBo extends TableBase<SicBoParts, Ev, Snap, Act> {
 
   private async payoutShow(ev: Extract<Ev, { k: 'roll' }>, pc: PresentCtx): Promise<void> {
     this.st.phase = 'payout';
+    const mine = ev.seats.find((r) => r.seat === this.localSeat && r.stake > 0);
+    if (mine && this.isLocalOccupant) {
+      const net = mine.gross - mine.stake;
+      this.seatHud?.result(mine.gross <= 0 ? 'lose' : net > 0 ? 'win' : 'push', net);
+    }
     const lamps = this.parts.seatLamps, at = this.parts.cageSpin;
     const winners = [...ev.seats].filter((r) => r.gross > 0).sort((x, y) => y.gross - x.gross);
     const best = winners[0];
@@ -421,7 +433,12 @@ export default class SicBo extends TableBase<SicBoParts, Ev, Snap, Act> {
   // ── seats ─────────────────────────────────────────────────────────────────────────────────────
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintLamps();
-    if (local) { this.sfx('chime', { vol: 0.5 }); this.showHud(); }
+    if (local) {
+      this.sfx('chime', { vol: 0.5 });
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip('sicbo', this.tipLines());
+    }
   }
   onRelease(_pid: PlayerId, seat: number, local: boolean): void {
     if (this.isHost && this.hs.phase === 'open' && this.hs.layouts[seat].length) {
@@ -429,7 +446,7 @@ export default class SicBo extends TableBase<SicBoParts, Ev, Snap, Act> {
       this.unready(seat);
       void this.emit({ k: 'lay', seat, bets: [] });
     }
-    if (local) this.lastMine = [];
+    if (local) { this.lastMine = []; this.seatHud?.hide(); this.hud(null); }
     this.paintLamps();
   }
   override onLang(): void { this.paintLabels(); this.drawHistory(); this.paintChips(); if (this.isLocalOccupant) this.showHud(); }
@@ -516,23 +533,86 @@ export default class SicBo extends TableBase<SicBoParts, Ev, Snap, Act> {
     });
   }
 
-  private showHud(): void {
-    const seat = this.localSeat;
-    const hints: HudHint[] = [];
-    const open = this.st.phase === 'open';
-    if (open && seat >= 0) {
-      hints.push({ action: 'confirm', label: this.st.ready[seat] ? tr('m.sicbo.ready') : tr('m.sicbo.roll') });
-      hints.push({ action: 'clear', label: tr('m.sicbo.clear') }, { action: 'double', label: tr('m.sicbo.rebet') });
-      hints.push({ action: 'n1', label: tr('m.sicbo.quick', { n: 1 }) });
-    }
-    hints.push({ action: 'betUp', label: tr('common.bet') }, { action: 'exit', label: tr('common.leave') });
-    const total = this.myBets().reduce((s, b) => s + b.a, 0);
-    this.hud({
-      bet: open && seat >= 0 ? this.bet : null,
-      hints,
-      stats: total > 0 ? [{ label: this.t('potLabel'), value: fmtCoins(total) }] : [],
-    });
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** Refreshes the banner once per displayed second of the shared betting window. */
+  private shownSecond = -1;
+  frame(): void {
+    if (!this.isLocalOccupant) return;
+    const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
+    if (left !== this.shownSecond) { this.shownSecond = left; this.showHud(); }
   }
+
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.sicbo.hTip1', v: { up: this.k('betUp'), down: this.k('betDown') } },
+      { k: 'm.sicbo.hTip2', v: { ready: this.k('confirm') } },
+      { k: 'm.sicbo.hTip3', v: { help: this.k('help') } },
+    ];
+  }
+
+  private ruleLines(): Txt[] {
+    return [
+      { k: 'm.sicbo.hR1' },
+      { k: 'm.sicbo.hR2' },
+      { k: 'm.sicbo.hR3' },
+      { k: 'm.sicbo.hR4' },
+      { k: 'm.sicbo.hR5', v: { quick: `${this.k('n1')}-${this.k('n6')}` } },
+      { k: 'm.sicbo.hR6', v: { rebet: this.k('double') } },
+    ];
+  }
+
+  /** Banner, key numbers and the valid controls only. Only while the local player sits at the layout. */
+  private showHud(): void {
+    const sh = this.seatHud, seat = this.localSeat;
+    if (!sh || seat < 0) return;
+    const st = this.st, open = st.phase === 'open';
+    const ready = st.ready[seat];
+    const betting = open && !ready;
+    const layout = this.myBets().reduce((s, b) => s + b.a, 0);
+    sh.goal({ k: 'm.sicbo.hGoal' });
+
+    // STATE: what phase, and what you have to do
+    if (st.phase === 'idle') sh.state({ k: 'm.sicbo.hWait' }, 'neutral');
+    else if (open && ready) sh.state({ k: 'm.sicbo.hReady' }, 'cyan');
+    else if (open) {
+      const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
+      sh.state({ k: 'm.sicbo.hBet' }, 'gold', left > 0 ? { k: 'm.sicbo.hSecs', v: { n: left } } : undefined);
+    }
+    else if (st.phase === 'lock') sh.state({ k: 'm.sicbo.hLock' }, 'warn');
+    else if (st.phase === 'roll') sh.state({ k: 'm.sicbo.hRoll' }, 'cyan');
+    else if (st.phase === 'payout') sh.state({ k: 'm.sicbo.hPay' }, 'neutral');
+    else sh.state({ k: 'm.sicbo.hClear' }, 'neutral');
+
+    // KEY NUMBERS: chip, your layout, last roll, balance
+    const nums: HudNumber[] = [{ label: { k: 'm.sicbo.hNBet' }, value: fmtCoins(this.bet), tone: 'gold' }];
+    if (layout > 0) nums.push({ label: { k: 'm.sicbo.hNLayout' }, value: fmtCoins(layout), tone: 'cyan' });
+    const last = st.history[0];
+    if (last && last.length === 3) {
+      const triple = last[0] === last[1] && last[1] === last[2];
+      const sum = last[0] + last[1] + last[2];
+      nums.push({ label: { k: 'm.sicbo.hNLast' }, value: `${last.join('-')} = ${sum}`, tone: triple ? 'warn' : 'neutral' });
+    }
+    nums.push({ label: { k: 'm.sicbo.hNBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only what is valid right now, with the keys bound to it
+    const ctrl: HudControl[] = [];
+    if (betting || st.phase === 'idle') ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.sicbo.hCBet' }, action: 'betUp' });
+    if (betting && layout > 0) {
+      const many = this.humans().length >= 2;
+      ctrl.push({ key: this.k('confirm'), label: { k: many ? 'm.sicbo.hCReady' : 'm.sicbo.hCRoll' }, action: 'confirm', primary: true });
+      ctrl.push({ key: this.k('clear'), label: { k: 'm.sicbo.hCClear' }, action: 'clear' });
+    }
+    if (betting && this.lastMine.length > 0) ctrl.push({ key: this.k('double'), label: { k: 'm.sicbo.hCRebet' }, action: 'double' });
+    if (betting) ctrl.push({ key: `${this.k('n1')}-${this.k('n6')}`, label: { k: 'm.sicbo.hCSingle' }, action: 'n1' });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.sicbo.hCRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.sicbo.hCLeave' }, action: 'exit' });
+    sh.controls(ctrl);
+  }
+
 }
 
 export const def: MachineDef = {

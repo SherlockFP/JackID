@@ -280,6 +280,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TeetotumParts>
   servicePlate.position.set(0.5, 0.9, -0.86);
   root.add(servicePlate);
 
+  // static geometry merges per material; the spinning top, pot bowl, stools, pot chips and raycast pick stay live
+  kit.finalize(root, { keep: [top, bowl, pick, potChips.root, ...stools] });
+
   const parts: TeetotumParts = {
     top, topYaw, topTilt, topFaces, potBowl: bowl, potChips, stacks, turnLamps, railMeters, stools, botSeats, bots,
     legend, pendant, screen, picks, goldGlow, seatPos, centre, topPos, feltY,

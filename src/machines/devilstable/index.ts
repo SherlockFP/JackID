@@ -21,10 +21,10 @@
 import * as THREE from 'three';
 import type { PlayerId } from '@/core/types';
 import { isBot } from '@/core/types';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
-import { fmtCoins, t } from '@/core/i18n';
+import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import { fmtCoins } from '@/core/i18n';
 import { TableBase } from '@/machines/_base/TableBase';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
 import type { Kit } from '@/kit/types';
@@ -118,10 +118,23 @@ export default class DevilsTable extends TableBase<DevilParts, Ev, Snap, Act> {
   private aim = -1;
   private holding = false;
   private holdT = 0;
+  /** Seat HUD overlay (readability standard, see _base/seatHud.ts). Created in init, shown while seated. */
+  private seatHud?: SeatHud;
+  /** The stake this seat put in for the current match (net result = payout minus this). */
+  private myStake = 0;
 
   protected createModel(kit: Kit): MachineModel<DevilParts> { return buildModel(kit, this.modelOpts); }
 
-  init(): void { this.paintAll(); }
+  init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.hud(null);                                        // the seat HUD replaces the generic bottom bar
+    this.paintAll();
+  }
+
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
 
   // ── local input → action to the host ─────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
@@ -131,6 +144,8 @@ export default class DevilsTable extends TableBase<DevilParts, Ev, Snap, Act> {
       else if (a === 'secondary' && this.holding) { this.holding = false; this.holdT = 0; this.showHud(); }
       return;
     }
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
     const s = this.localSeat, v = this.view;
@@ -402,7 +417,10 @@ export default class DevilsTable extends TableBase<DevilParts, Ev, Snap, Act> {
         void this.emit({ k: 'stake', seat, S: 0 });
       }
     }
-    if (local) { this.mine = null; this.holding = false; }
+    if (local) {
+      this.mine = null; this.holding = false; this.myStake = 0;
+      this.hud(null); this.seatHud?.hide();
+    }
     this.paintAll();
   }
 
@@ -425,7 +443,12 @@ export default class DevilsTable extends TableBase<DevilParts, Ev, Snap, Act> {
   }
 
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
-    if (local) { this.sfx('chime'); this.showHud(); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show();
+      this.showHud();
+      this.seatHud?.firstTip('devilstable', this.tipLines());
+    }
     this.paintAll();
   }
 
@@ -451,6 +474,7 @@ export default class DevilsTable extends TableBase<DevilParts, Ev, Snap, Act> {
     switch (ev.k) {
       case 'stake':
         v.stake[ev.seat] = ev.S;
+        if (ev.seat === this.localSeat) this.myStake = ev.S;
         if (ev.S > 0) { this.sfx('chip'); fx.sparks(P.lanterns[ev.seat], 6, GOLD); }
         this.paintAll();
         return;
@@ -533,6 +557,10 @@ export default class DevilsTable extends TableBase<DevilParts, Ev, Snap, Act> {
       case 'roundEnd': {
         if (ev.winner >= 0) v.wins[ev.winner]++;
         this.drawScreen();
+        if (this.localSeat >= 0 && v.seats.includes(this.localSeat)) {
+          if (ev.winner === this.localSeat) this.seatHud?.result('win');
+          else if (v.charges[this.localSeat] <= 0) this.seatHud?.result('lose');
+        }
         if (ev.winner >= 0) {
           fx.popText(P.lanterns[ev.winner], this.t('sRound', { n: ev.round, name: this.seatName(ev.winner) }), GOLD, { dur: 1.4, rise: 0.3, scale: 1.2 });
           if (ev.winner === this.localSeat) this.celebrate('medium', { at: P.lanterns[ev.winner], fast: pc.fast });
@@ -562,6 +590,7 @@ export default class DevilsTable extends TableBase<DevilParts, Ev, Snap, Act> {
       case 'collect':
         v.gross = 0; v.rider = -1;
         this.sfx('coinPour');
+        if (local(ev.seat)) { this.seatHud?.result('win', ev.amount - this.myStake); this.myStake = 0; }
         if (local(ev.seat)) await this.pourCoins(ev.amount, { bet: v.S, fast: pc.fast });
         this.paintAll();
         return;
@@ -617,6 +646,12 @@ export default class DevilsTable extends TableBase<DevilParts, Ev, Snap, Act> {
       this.sfx('win2', { vol: 0.8 });
       fx.popText(P.lanterns[ev.winner], `×1.9`, GOLD, { dur: 1.2, rise: 0.3, scale: 1.2 });
     } else {
+      if (this.localSeat >= 0 && this.myStake > 0) {          // the callout only for a seat that staked
+        if (ev.winner < 0) this.seatHud?.result('push');
+        else if (ev.winner === this.localSeat) this.seatHud?.result('win', ev.payout - this.myStake);
+        else this.seatHud?.result('lose', -this.myStake);
+      }
+      this.myStake = 0;
       v.inMatch = false; v.rider = -1; v.gross = 0;
       if (ev.winner === this.localSeat && ev.payout > 0) {
         this.celebrate(juiceTier(ev.payout, v.S || 1), { amount: ev.payout, at: P.lanterns[ev.winner], fast: pc.fast });
@@ -716,30 +751,88 @@ export default class DevilsTable extends TableBase<DevilParts, Ev, Snap, Act> {
     });
   }
 
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.devilstable.tip1' },
+      { k: 'm.devilstable.tip2', v: { fire: this.k('primary'), aim: `${this.k('left')}/${this.k('right')}` } },
+      { k: 'm.devilstable.tip3', v: { help: this.k('help') } },
+    ];
+  }
+
+  private rulesLines(): Txt[] {
+    return [
+      { k: 'm.devilstable.rule1' }, { k: 'm.devilstable.rule2' }, { k: 'm.devilstable.rule3' },
+      { k: 'm.devilstable.rule4' }, { k: 'm.devilstable.rule5', v: { n1: this.k('n1'), n8: this.k('n8') } },
+      { k: 'm.devilstable.rule6' },
+    ];
+  }
+
+  /** Banner, key numbers and the controls valid right now. Only while the local player sits at the table. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const v = this.view, s = this.localSeat;
-    const hints: HudHint[] = [];
+    const staked = v.stake[s] > 0;
+    const myTurn = v.inMatch && v.turn === s;
+    const ctrl: HudControl[] = [];
+    sh.goal({ k: 'm.devilstable.goal' });
+
+    // STATE: whose turn, what phase
     if (v.rider === s) {
-      hints.push({ action: 'double', label: this.t('ride') });
-      hints.push({ action: 'collect', label: `${this.t('collect')} ${fmtCoins(v.gross)}` });
-    } else if (v.inMatch && v.turn === s) {
-      hints.push({ action: 'primary', label: this.t('fire') });
-      hints.push({ action: 'left', label: this.t('aim') });
-      hints.push({ action: 'n1', label: this.t('items') });
-      hints.push({ action: 'secondary', label: this.t('lower') });
-    } else if (!v.inMatch && v.stake[s] <= 0 && s >= 0) {
-      hints.push({ action: 'primary', label: this.t('stake', { n: fmtCoins(this.bet) }) });
-      hints.push({ action: 'betUp', label: t('common.bet') });
+      sh.state({ k: 'm.devilstable.stRide' }, 'gold', { k: 'm.devilstable.stRideSub', v: { ride: this.k('double'), collect: this.k('collect') } });
+    } else if (myTurn) {
+      sh.state({ k: 'm.devilstable.stTurn' }, 'good', { k: 'm.devilstable.stTurnSub', v: { fire: this.k('primary') } });
+    } else if (v.inMatch && v.turn >= 0) {
+      sh.state({ k: this.isBotSeat(v.turn) ? 'm.devilstable.stDevil' : 'm.devilstable.stOther' }, 'cyan');
+    } else if (v.inMatch) {
+      sh.state({ k: 'm.devilstable.stRound', v: { n: v.round } }, 'neutral');
+    } else if (staked) {
+      sh.state({ k: 'm.devilstable.stWait' }, 'cyan', { k: 'm.devilstable.stBetSub' });
+    } else {
+      sh.state({ k: 'm.devilstable.stBet' }, 'gold');
     }
-    hints.push({ action: 'exit', label: t('common.leave') });
-    this.hud({
-      bet: v.inMatch || v.stake[s] > 0 ? null : this.bet,
-      hints,
-      stats: [
-        { label: this.t('rounds'), value: `${v.wins[s] ?? 0}/${v.round || 0}` },
-        ...(v.gross > 0 ? [{ label: this.t('potLabel'), value: fmtCoins(v.gross) }] : []),
-      ],
-    });
+
+    // KEY NUMBERS: stake, charges, rounds, shells in the gun, winnings, balance
+    const nums: HudNumber[] = [];
+    nums.push({ label: { k: 'm.devilstable.nStake' }, value: fmtCoins(staked ? v.stake[s] : this.bet), tone: 'gold' });
+    const charges = v.charges[s] ?? 0;
+    if (v.inMatch) {
+      nums.push({ label: { k: 'm.devilstable.nCharges' }, value: String(charges), tone: charges > 1 ? 'good' : 'bad' });
+      nums.push({ label: { k: 'm.devilstable.nRounds' }, value: `${v.wins[s] ?? 0}/${v.round || 0}`, tone: 'neutral' });
+      if (v.live + v.blank > 0) {
+        nums.push({ label: { k: 'm.devilstable.nShells' }, value: { k: 'm.devilstable.nShellsVal', v: { live: v.live, blank: v.blank } }, tone: 'warn' });
+      }
+    }
+    if (v.gross > 0) nums.push({ label: { k: 'm.devilstable.nWin' }, value: fmtCoins(v.gross), tone: 'good' });
+    nums.push({ label: { k: 'm.devilstable.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
+    sh.numbers(nums);
+
+    // CONTROL BAR: only the actions valid right now, with the keys the machine really reads
+    if (!v.inMatch && !staked) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.devilstable.cStake' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.devilstable.cBet' }, action: 'betUp' });
+    }
+    if (v.rider === s) {
+      ctrl.push({ key: this.k('double'), label: { k: 'm.devilstable.cRide' }, action: 'double', primary: true });
+      ctrl.push({ key: this.k('collect'), label: { k: 'm.devilstable.cCollect' }, action: 'collect' });
+    }
+    if (myTurn) {
+      ctrl.push({ key: this.k('primary'), label: { k: this.holding ? 'm.devilstable.cRelease' : 'm.devilstable.cFire' }, action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('left')}/${this.k('right')}`, label: { k: 'm.devilstable.cAim' }, action: 'left' });
+      const n = Math.min(8, v.items[s]?.length ?? 0);
+      if (n > 0) {
+        const slots: MachineAction[] = ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8'];
+        const key = n === 1 ? this.k('n1') : `${this.k('n1')}-${this.k(slots[n - 1])}`;
+        ctrl.push({ key, label: { k: 'm.devilstable.cItems' }, action: 'n1' });
+      }
+      if (this.holding) ctrl.push({ key: this.k('secondary'), label: { k: 'm.devilstable.cLower' }, action: 'secondary' });
+    }
+    ctrl.push({ key: this.k('help'), label: { k: 'm.devilstable.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.devilstable.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 
   private firstFoe(s: number): number {

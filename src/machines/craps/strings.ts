@@ -6,6 +6,23 @@ import type { MachineStrings } from '@/machines/_base/types';
 
 export const STRINGS: MachineStrings = {
   en: {
+    // seat HUD (readability standard)
+    hGoal: 'Win your line: 7 or 11 on the come-out, or make the point before a 7',
+    hComeout: 'COME-OUT ROLL', hPoint: 'POINT {n} · MAKE IT OR SEVEN OUT', hBusy: 'DICE ARE IN THE AIR',
+    hWait: 'WAITING FOR PLAYERS', hPay: 'PAYING OUT', hYouShoot: 'YOU SHOOT · PRESS THROW',
+    hShooter: 'SHOOTER: SEAT {n}', hSecs: 'CLOSES IN {n}S', hOff: 'OFF', hOn: 'ON',
+    hNBet: 'YOUR CHIP', hNFelt: 'ON THE FELT', hNPoint: 'POINT', hNLast: 'LAST ROLL', hNWorking: 'WORKING', hNBalance: 'BALANCE',
+    hCBet: 'CHIP', hCThrow: 'THROW', hCWorking: 'WORKING', hCMaxOdds: 'MAX ODDS', hCPlace: 'TAKE DOWN PLACE',
+    hCHorn: 'HORN', hCOdds: 'TAKE ODDS DOWN', hCClear: 'TAKE ALL DOWN', hCRules: 'RULES', hCLeave: 'LEAVE',
+    hTip1: 'Set the chip with {up} and {down}. Click the felt to place it, right-click to take it back.',
+    hTip2: 'When you are the shooter, press {throw} to roll. Anyone can bet on any roll.',
+    hTip3: 'Press {help} for the full rules. Any key closes a card.',
+    hR1: 'Come-out: a 7 or 11 wins the Pass line, and 2, 3 or 12 loses it. Any other total becomes the point.',
+    hR2: 'Point: the shooter must roll the point again before a 7. Making the point wins. A 7 is a seven-out.',
+    hR3: 'Don\'t Pass takes the other side. Come bets start their own point on the next roll.',
+    hR4: 'Odds back a line bet once a point is set. Place, buy, hardway, field and prop bets are on the felt.',
+    hR5: '[{working}] WORKING: place and buy bets work on the come-out only when you turn them on.',
+    hR6: 'Limits: lines and place bets 5 to 500, props 1 to 100. [{clear}] takes everything down.',
     name: 'Craps "The Bone Pit"',
     desc: 'Sunken tub, black felt, a hooked stick and two red dice. Back the shooter or bet against them, and listen for the Hook.',
     // felt print
@@ -35,6 +52,23 @@ export const STRINGS: MachineStrings = {
     fair: 'FAIR', rail: 'Rail {n}',
   },
   tr: {
+    // seat HUD (readability standard)
+    hGoal: 'Pas hattını kazan: çıkışta 7 ya da 11, ya da 7 gelmeden noktayı tut',
+    hComeout: 'ÇIKIŞ ATIŞI', hPoint: 'NOKTA {n} · ÖNCE NOKTA YA DA 7', hBusy: 'ZARLAR HAVADA',
+    hWait: 'OYUNCULAR BEKLENİYOR', hPay: 'ÖDEME YAPILIYOR', hYouShoot: 'ATICI SENSİN · ATMAK İÇİN AT',
+    hShooter: 'ATICI: KOLTUK {n}', hSecs: '{n} SN SONRA KAPANIR', hOff: 'KAPALI', hOn: 'AÇIK',
+    hNBet: 'FİŞİN', hNFelt: 'ZEMİNDE', hNPoint: 'NOKTA', hNLast: 'SON ATIŞ', hNWorking: 'ÇALIŞIYOR', hNBalance: 'BAKİYE',
+    hCBet: 'FİŞ', hCThrow: 'AT', hCWorking: 'ÇALIŞTIR', hCMaxOdds: 'MAKS ORAN', hCPlace: 'PLASE KALDIR',
+    hCHorn: 'BOYNUZ', hCOdds: 'ORANI KALDIR', hCClear: 'HEPSİNİ KALDIR', hCRules: 'KURALLAR', hCLeave: 'AYRIL',
+    hTip1: 'Fişi {up} ve {down} ile seç. Zemine tıklayarak koy, sağ tıkla geri al.',
+    hTip2: 'Atıcı sen olunca {throw} ile zarı at. Herkes her atışa bahis koyabilir.',
+    hTip3: '{help} ile tam kuralları gör. Her tuş kartı kapatır.',
+    hR1: 'Çıkış atışında 7 ya da 11 Pas hattını kazandırır; 2, 3 ya da 12 kaybettirir. Diğer toplamlar nokta olur.',
+    hR2: 'Nokta: atıcı 7 gelmeden noktayı yeniden atmalı. Noktayı tutmak kazandırır, 7 ise atıcıyı bitirir.',
+    hR3: 'Pas Değil tersine oynar. Gel bahisleri bir sonraki atışta kendi noktasını başlatır.',
+    hR4: 'Oran, nokta belirlenince hat bahsinin arkasına konur. Plase, satın alma, hardway, saha ve prop bahisleri zeminde.',
+    hR5: '[{working}] ÇALIŞTIR: plase ve satın alma bahisleri, sen açmadıkça çıkış atışında çalışmaz.',
+    hR6: 'Limitler: hat ve plase bahisleri 5-500, proplar 1-100. [{clear}] her şeyi geri alır.',
     name: 'Craps «Kemik Çukuru»',
     desc: 'Çukur masa, siyah çuha, kancalı bir değnek ve iki kırmızı zar. Atıcıya oyna ya da karşısında dur; Kanca’yı dinle.',
     'lay.pass': 'PAS HATTI', 'lay.dpass': 'PAS DEĞİL ÇUBUK', 'lay.come': 'GEL', 'lay.dcome': 'GELME',

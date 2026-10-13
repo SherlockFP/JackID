@@ -11,8 +11,8 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import type { HeadlessPlay } from '@/game/types';
 import type { JukeboxTrack } from '@/core/audio/types';
-import type { MachineInputEvent } from '@/core/input/types';
-import type { HudHint } from '@/core/ui/types';
+import type { BindingKey, MachineAction, MachineInputEvent } from '@/core/input/types';
+import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import { fmtNum, t as tr } from '@/core/i18n';
 import { lerp } from '@/core/math';
@@ -62,12 +62,16 @@ export default class Jukebox extends MachineBase<JukeboxParts, Ev, null> {
   private repaintKey = '';
   private hudKey = '';
   private spin = 0;
+  /** Seat HUD overlay (created in init, shown while seated). */
+  private seatHud?: SeatHud;
 
   protected createModel(kit: KitX): MachineModel<JukeboxParts> {
     return buildModel(kit, this.modelOpts);
   }
 
   init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.ctx.ui.machineHud(null);                          // the seat HUD replaces the generic bottom bar
     this.catalog = this.ctx.audio.music.catalog();
     this.refresh(true);
     this.attractor.every('glow', 8, () => this.ctx.fx.glow(this.model.anchors.light, GLOW, 0.3, 0.5), { first: 4 });
@@ -95,13 +99,22 @@ export default class Jukebox extends MachineBase<JukeboxParts, Ev, null> {
     this.attractor.update(dt);
   }
 
+  dispose(): void {
+    this.seatHud?.dispose();
+    super.dispose();
+  }
+
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.cursor = 0;
-    if (local) { this.sfx('chime'); this.refresh(true); }
+    if (local) {
+      this.sfx('chime');
+      this.seatHud?.show(); this.refresh(true);
+      this.seatHud?.firstTip('jukebox', this.tipLines());
+    }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
-    if (local) { this.ctx.ui.machineHud(null); this.hudKey = ''; }
+    if (local) { this.seatHud?.hide(); this.hudKey = ''; }
   }
 
   onLang(): void {
@@ -112,7 +125,10 @@ export default class Jukebox extends MachineBase<JukeboxParts, Ev, null> {
 
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
-    if (!e.down || e.repeat) return;
+    if (!e.down) return;
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
+    if (e.repeat) return;
     const n = this.catalog.length;
     switch (e.action) {
       case 'left': this.moveTo(moveCursor(this.cursor, n, -1, 0)); return;
@@ -229,28 +245,62 @@ export default class Jukebox extends MachineBase<JukeboxParts, Ev, null> {
     });
   }
 
+  // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The key bound to a machine action, as the player sees it. */
+  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+  /** The key bound to a general action (arrows, help, exit). */
+  private g(a: BindingKey): string { return this.ctx.input.keyLabel(a); }
+
+  private tipLines(): Txt[] {
+    return [
+      { k: 'm.jukebox.tip1' },
+      { k: 'm.jukebox.tip2', v: { move: `${this.g('left')}/${this.g('right')}`, play: this.k('primary') } },
+      { k: 'm.jukebox.tip3', v: { stop: this.k('secondary'), help: this.g('help') } },
+    ];
+  }
+
+  private rulesLines(): Txt[] {
+    return [1, 2, 3].map((i) => ({ k: `m.jukebox.rule${i}` }));
+  }
+
+  /** Banner, tickets / song numbers and the valid controls only. Only while the local player stands here. */
   private showHud(): void {
+    const sh = this.seatHud;
+    if (!sh || !this.isLocalOccupant) return;
     const rows = this.rows();
     const sel = rows[this.cursor] ?? null;
     const key = [this.cursor, this.wallet(), this.ctx.audio.music.current ?? '', sel?.track.id ?? ''].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
-    const hints: HudHint[] = [
-      { action: 'left', label: this.t('h_pick') },
-      { action: 'primary', label: this.t('h_play') },
-      { action: 'secondary', label: this.t('h_stop') },
-      { action: 'exit', label: this.t('h_leave') },
-    ];
+    const ctrl: HudControl[] = [];
     const now = this.ctx.audio.music.current;
-    const playingTitle = now ? tr(this.catalog.find((c) => c.id === now)?.titleKey ?? now) : this.t('off');
-    this.hud({
-      bet: null,
-      hints,
-      stats: [
-        { label: this.t('s_tickets'), value: fmtNum(this.wallet()) },
-        { label: this.t('s_song'), value: playingTitle },
-        { label: this.t('s_cost'), value: sel?.locked ? this.t('locked') : `${SONG_PRICE}` },
-      ],
-    });
+    const playingTitle = now ? tr(this.catalog.find((c) => c.id === now)?.titleKey ?? now) : null;
+    const check = playCheck(sel, this.ctx.run, this.selfId);
+    sh.goal({ k: 'm.jukebox.goal' });
+
+    // STATE
+    if (sel && check === 'funds') sh.state({ k: 'm.jukebox.stFunds' }, 'warn', { k: 'm.jukebox.stFundsSub', v: { n: SONG_PRICE } });
+    else if (sel && check === 'locked') sh.state({ k: 'm.jukebox.stLocked' }, 'warn', { k: 'm.jukebox.stLockedSub' });
+    else if (playingTitle) sh.state({ k: 'm.jukebox.stPlaying' }, 'cyan', playingTitle);
+    else sh.state({ k: 'm.jukebox.stPick' }, 'gold', { k: 'm.jukebox.stPickSub', v: { n: SONG_PRICE } });
+
+    // KEY NUMBERS
+    sh.numbers([
+      { label: { k: 'm.jukebox.nTickets' }, value: fmtNum(this.wallet()), tone: 'gold' },
+      { label: { k: 'm.jukebox.nPrice' }, value: fmtNum(SONG_PRICE), tone: 'neutral' },
+      { label: { k: 'm.jukebox.nNow' }, value: playingTitle ?? { k: 'm.jukebox.off' }, tone: 'cyan' },
+      { label: { k: 'm.jukebox.nSelected' }, value: sel ? tr(sel.track.titleKey) : '--', tone: 'neutral' },
+    ]);
+
+    // CONTROL BAR: only what is valid right now
+    if (rows.length > 1) {
+      ctrl.push({ key: `${this.g('left')}/${this.g('right')}`, label: { k: 'm.jukebox.cMove' }, action: 'left' });
+      ctrl.push({ key: `${this.k('n1')}-${this.k('n9')}`, label: { k: 'm.jukebox.cPick' }, action: 'n1' });
+    }
+    if (check === 'ok') ctrl.push({ key: this.k('primary'), label: { k: 'm.jukebox.cPlay' }, action: 'primary', primary: true });
+    if (now !== null) ctrl.push({ key: this.k('secondary'), label: { k: 'm.jukebox.cStop' }, action: 'secondary' });
+    ctrl.push({ key: this.g('help'), label: { k: 'm.jukebox.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.jukebox.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
   }
 }

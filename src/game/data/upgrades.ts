@@ -9,6 +9,7 @@
 import type { MachineId } from '@/core/types';
 import type { SlotSize } from '@/core/types';
 import type { SymbolId } from '@/core/texgen/types';
+import type { ModEffect, ModHook } from '@/game/modifiers.types';
 import type {
   CostCurve, EffectCurve, MachineFilter, MetaNode, MilestoneDef, OrderPricing, StaffDef, UpgradeTemplate, WingDef,
 } from '@/game/tycoon.types';
@@ -65,16 +66,35 @@ export const FAMILY_FEATURES: Record<MachineId, [string, string, string, string]
   pachislot: ['pachislot.settingPeek', 'pachislot.slipFrames', 'pachislot.settingShift', 'pachislot.bonusGames'],
   pachinko: ['pachinko.tulipBoost', 'pachinko.holdMax', 'pachinko.kakuhenRate', 'pachinko.sweetWiden'],
   plinko: ['plinko.goldenSlot', 'plinko.extraPuck', 'plinko.safetyFloor', 'plinko.edgeMult'],
-  coinpusher: ['coinpusher.wallsUp', 'coinpusher.goldCoin', 'coinpusher.prizeChance', 'coinpusher.trayMagnet'],
+  coinpusher: ['m.coinpusher.wallsUp', 'm.coinpusher.goldCoin', 'm.coinpusher.prizeChance', 'm.coinpusher.trayMagnet'],
   cyclone: ['cyclone.slowMo', 'cyclone.jpWindow', 'cyclone.secondLight', 'cyclone.jpMult'],
   mines: ['mines.scanner', 'mines.edgeBonus', 'mines.insurance', 'mines.capRaise'],
   dicetower: ['dicetower.fieldBoost', 'dicetower.sevenPay', 'dicetower.parlay', 'dicetower.shooterBonus'],
   lootbox: ['lootbox.pityAt', 'lootbox.rerollToken', 'lootbox.discount', 'lootbox.cursedOdds'],
-  claw: ['claw.xray', 'claw.timer', 'claw.weakCarry', 'claw.magnet'],
-  stacker: ['stacker.saveCell', 'stacker.extraBlock', 'stacker.minorMult', 'stacker.majorCharm'],
+  claw: ['m.claw.xray', 'm.claw.timer', 'm.claw.weakCarry', 'm.claw.magnet'],
+  stacker: ['m.stacker.saveCell', 'x.stacker.extraBlock', 'm.stacker.minorMult', 'm.stacker.majorCharm'],
   fruitmachine: ['fruitmachine.gambleSafety', 'fruitmachine.holdOdds', 'fruitmachine.trailStart', 'luck+5'],
   bingopin: ['bingopin.freeSpace', 'bingopin.tiltGuard', 'bingopin.extraBallDiscount', 'bingopin.lineMult.5'],
 } as Record<MachineId, [string, string, string, string]>;
+
+/**
+ * Machine-hook effects behind the device features above (hook names match the machine's `HOOK_*` constants). A feature
+ * name alone is only a flag, so each one that a machine reads through `mod()` also carries its modifier here.
+ */
+const FEATURE_EFFECTS: Partial<Record<string, ModEffect[]>> = {
+  'm.coinpusher.wallsUp': [{ hook: 'm.coinpusher.wallsUp' as ModHook, op: 'add', value: 5 }],
+  'm.coinpusher.goldCoin': [{ hook: 'm.coinpusher.goldCoin' as ModHook, op: 'add', value: 0.02 }],
+  'm.coinpusher.prizeChance': [{ hook: 'm.coinpusher.prizeChance' as ModHook, op: 'mult', value: 1.25 }],
+  'm.coinpusher.trayMagnet': [{ hook: 'm.coinpusher.trayMagnet' as ModHook, op: 'add', value: 0.15 }],
+  'm.claw.xray': [{ hook: 'm.claw.xray' as ModHook, op: 'add', value: 1 }],
+  'm.claw.timer': [{ hook: 'm.claw.timer' as ModHook, op: 'add', value: 3 }],
+  'm.claw.weakCarry': [{ hook: 'm.claw.weakCarry' as ModHook, op: 'mult', value: 1.5 }],
+  'm.claw.magnet': [{ hook: 'm.claw.magnet' as ModHook, op: 'add', value: 1 }],
+  'm.stacker.saveCell': [{ hook: 'm.stacker.saveCell' as ModHook, op: 'add', value: 1 }],
+  'x.stacker.extraBlock': [{ hook: 'x.stacker.extraBlock' as ModHook, op: 'add', value: 1 }],
+  'm.stacker.minorMult': [{ hook: 'm.stacker.minorMult' as ModHook, op: 'mult', value: 1.25 }],
+  'm.stacker.majorCharm': [{ hook: 'm.stacker.majorCharm' as ModHook, op: 'add', value: 1 }],
+};
 
 /** Milestone entries for one device: payout ladder with its device features folded in (first matching family wins). */
 export function familyMilestones(machineId: MachineId): MilestoneDef[] {
@@ -89,7 +109,7 @@ export function familyMilestones(machineId: MachineId): MilestoneDef[] {
     const level = levels[i];
     for (const part of raw.split('|')) {
       if (part === 'luck+5') out.push({ level, effects: [{ hook: 'luck', op: 'add', value: 5 }] });
-      else out.push({ level, feature: part });
+      else out.push({ level, feature: part, ...(FEATURE_EFFECTS[part] ? { effects: FEATURE_EFFECTS[part] } : {}) });
     }
   });
   return out;

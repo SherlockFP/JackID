@@ -59,6 +59,7 @@ export const BOUNTY_CATALOGUE: readonly ContractDef[] = [
   def('b_natural', { on: 'machine:result', where: machine('baccarat', undefined, { tags: ['natural'] }), count: 1 }, tickets(2)),
   def('b_milestone', { on: 'stat', where: { stat: 'upgrade.milestone' }, count: 1 }, tickets(3)),
   def('b_staff25', { on: 'stat', where: { stat: 'staff.share.pct' }, count: 25 }, quota(0.05)),
+  def('b_bell_night', { on: 'machine:result', where: { minTier: 'big' }, count: 3 }, { totems: ['profit_bell'] }, 1),
 ];
 
 export const bountyDef = (id: string): ContractDef | undefined => BOUNTY_CATALOGUE.find((d) => d.id === id);

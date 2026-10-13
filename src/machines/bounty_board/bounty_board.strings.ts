@@ -58,6 +58,8 @@ const tr: Record<string, string> = {
   'c.b_milestone.d': 'Bir yükseltme kilometre taşına ulaş (L10 / 25 / 50 / 100). 3 bilet.',
   'c.b_staff25.t': 'Personel Payı',
   'c.b_staff25.d': 'Bu gece kotanın %25’ini personelden kazan. Kotanın %5’i.',
+  'c.b_bell_night.t': 'Kâr Çanı Gecesi',
+  'c.b_bell_night.d': 'Üç kez büyük veya üstü kazan. Bir Kâr Çanı tılsımı.',
 };
 
 const en2: Record<string, string> = {
@@ -95,6 +97,8 @@ const en2: Record<string, string> = {
   'c.b_milestone.d': 'Reach any upgrade milestone (L10 / 25 / 50 / 100). 3 Tickets.',
   'c.b_staff25.t': 'Staff Share',
   'c.b_staff25.d': 'Earn 25 % of the quota from staff this Night. 5 % of quota.',
+  'c.b_bell_night.t': 'Bell Night',
+  'c.b_bell_night.d': 'Win three times at BIG or better. Pays a Profit Bell totem.',
 };
 
 Object.assign(en, en2);
