@@ -1,6 +1,6 @@
 # JackID — Handoff (read this first if you are a new AI / developer taking over)
 
-Last updated: 2026-10-13 by the Opus director session. Repo: https://github.com/SherlockFP/JackID (branch `main`).
+Last updated: 2026-10-13, Waves 7–15 on branch `wave7-controls-circuit` (HEAD 73bf5a4). Repo: https://github.com/SherlockFP/JackID (`main` is the base branch).
 
 ## 1. What this is
 **JackID** is a first-person, PSX-style (1997 look) light-horror casino roguelike + tycoon, built with
@@ -16,7 +16,8 @@ npm run server       # lobby/signaling/relay on :8787 (also serves dist/)
 npm run typecheck    # tsc --noEmit
 npm run build        # typecheck + vite build
 npm run check        # scripts/check.mjs: i18n parity, forbidden imports, Math.random, ownership
-npm test             # node scripts/tests/index.js (63 unit tests)
+npm test             # node scripts/tests/index.js (235 passing)
+node scripts/sim/run.mjs   # economy sim. node scripts/sim-profiles.mjs [--plays N] rewrites machine odds (Tell Sheet)
 ```
 Useful URLs:
 - `/?bench=<machineId>&debug=1&nolock=1` opens one machine in a test room. `nolock` = drag-to-look, with no pointer lock.
@@ -56,6 +57,9 @@ Useful URLs:
     tombola, shellgame, fantan, teetotum.
   - 3 party tables: sonkart, tavla, pisti.
   - System devices: debt_terminal, hotline, charm_vendor, tonic_vendor, jukebox, cashier, bounty_board, shrine.
+- Wave 7–15 systems: `src/game/circuit.ts` (Circuit Tilt/Lamps, Obols), `shop.ts` (Pawn), `charms/engines.ts` (engine charms),
+  `bosses.ts` (boss Nights), `pace.ts` (Tell Sheet), `data/kits.ts`, `suits.ts`, `hotline.ts`, `rescue.ts`, `float.ts`, `tutorial.ts`,
+  `clockHold.ts`, `core/keymap.ts` and `core/ui/settingsScreen.ts` (rebind screen).
 - `src/world/`: level.ts/layout.ts (GDD §8 slots, zones, nav graph), props (clock, trapdoor, lift, quota board),
   world.ts (placement, lights), collision, interact, actors/ (ActorDirector + A*).
 - `src/player/`: FPS controller, camera glide into machine play poses, viewmodel hands, remote avatars.
@@ -68,55 +72,76 @@ Useful URLs:
 - `server/`: Node lobby (rooms, signaling, relay, static dist). Run `node server/smoke.mjs` for 25 smoke checks.
 
 ## 5. How work has been done (process the client asked for)
-- **Opus (main session) = director only.** It decides, reads reports and verifies. It does not spawn separate Opus subagents.
-- **Haiku agents do almost all implementation** (cost). Sonnet is used only when truly needed (reviews/critical work).
-  Testing is done by Haiku.
-- Work is dispatched as Workflow scripts with parallel lanes and **exclusive file ownership** per lane, then an
-  integrator/tester lane (typecheck, build, check, test, browser smoke).
-- **Agents never run git write commands.** Only the director commits and pushes, and only pushes when the client asks.
-- **Agents never kill processes they didn't start.** One tester once killed all vite/node servers on the machine, including the client's other
-  projects. Use a free port and stop only your own PID.
-- Browser-pane testing quirks:
-  - automation key presses are too short to move the player, so hold keys via `window.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyW'}))` … `keyup`
-  - frames advance only while taking screenshots
-  - port 5173 belongs to another app on this PC
+- **Opus (main session) = director.** It decides, reads reports and verifies. It does not spawn Opus subagents.
+- **Haiku first.** Haiku lanes do nearly all implementation, testing and docs (cost). Work is dispatched as Workflow
+  scripts with parallel lanes and **exclusive file ownership** per lane (`docs/OWNERS.json`).
+- **Sonnet** only for integration and review (merging lanes, cross-file bugs, critical reviews).
+- **Token-thrifty:** short briefs, no whole-file re-reads, one integrator lane runs `npm run typecheck && npm test`
+  (plus `npm run check` and `build` when shared code changes).
+- **Agents never run git write commands.** Only the director commits and pushes, and only when the client asks.
+- **Agents never kill processes they didn't start.** One tester once killed every vite/node server on the PC, including
+  the client's other projects. Use your own port and stop only your own PID. Port 5173 belongs to another app here;
+  the dev default is 5180 (strict).
+- Browser-pane testing:
+  - **Mute first:** `jackid.app.audio.ctx.suspend(); jackid.app.audio.resume=()=>{}` (`?debug=1` exposes `window.jackid`).
+  - If the pane is hidden, install a rAF shim before the game loop starts (`requestAnimationFrame` → `setTimeout(fn,16)`),
+    via an init script or a reload after setting it. Otherwise frames stall.
+  - Automation key taps are too short to move the player. Hold keys with
+    `window.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyW'}))` and then `keyup`.
+  - Without the shim, frames advance only while screenshots are taken.
 
-## 6. State as of this handoff (last commit on `main`, pushed)
-Everything below is committed and pushed. Typecheck 0 errors, check 0 errors (~820 harmless warnings), 63/63 tests, and the production build all pass.
+## 6. State (branch `wave7-controls-circuit`, HEAD `73bf5a4` = Wave 15)
+Waves 1–6 are the base history. Waves 7–15 are committed on `wave7-controls-circuit`. Whether that branch has been
+pushed or merged to `main` is not recorded here, so check git before assuming.
 
-Done:
-- Core loop:
-  - foundation, contracts v1.1, the 3D dice main menu, PLAY → burst → pit
-  - Debt Run (Night 1 Watch 1 start, quota, pulls, HUD)
-- Content:
-  - 39 gambling machines, 3 party tables (Son Kart, Tavla, Pişti) and 8 system devices. RTP simulated for each.
-  - Tycoon, buffs/totems, night events, horror director + ActorDirector, story notes + cutscenes, contracts/bounty board, grantCharm.
-- Multiplayer: lobby server (`server/`, 25 smoke checks), net layer (tab / WebRTC / relay / Trystero), 3D CRT server browser + 3D lobby scene.
-- Polish:
-  - stand-up fix and seat HUD readability on every machine (`_base/seatHud.ts`, blackjack is the gold standard)
-  - juice escalation (big/huge/mega/jackpot, pit-wide gold wave, jackpot bells)
-  - intro ≤ 35 s and skippable, Calm Mode, reduced head-bob/hand sway
-- 3D UI: pause is the JackID card in your hands, U opens a 3D ledger book, notes/journal/rule placards are 3D.
-- Perf: pixel-ratio cap, adaptive internal res, pooled uploads, mannequin LOD, GPU pass, "Performance" settings preset.
-- Stacker redesigned with consolation cash-outs at rows 4/7/10.
+Verified for this handoff: `npm run typecheck` 0 errors; `npm test` 235 passing, 0 failing. `check.mjs` and `build`
+were not re-run for this doc pass.
 
-**Open issues (priority order):**
-1. The newest 3D UI (CRT server browser, lobby scene, JackID card pause, ledger, notes) is **NOT browser-verified yet**: the tester was stopped. Play through it first and fix what breaks.
-2. Performance on real hardware is unmeasured. The automation browser only advances frames during screenshots. Ask the client for F3 numbers (fps/ms, calls, tris) from the pit.
-3. Real two-machine WebRTC multiplayer is untested. Node tests over the real lobby pass, and the two-tab browser run never completed.
-4. Jackpot/win sounds were reworked but nobody has listened to them. Calibrate TRIM levels with `renderSfx`.
-5. Balance calls are still open:
-   - claw expert ~110–130 % (accepted, max bet 25)
-   - lootbox pity (BRASS ~107 %)
-   - fruitmachine headless 83 % vs live 88 %
-   - verify the new stacker numbers with sims
-6. Settings die: CALM replaced the BACK face (Esc/Backspace still close it).
+Wave log:
+- **W7 controls + Circuit:** controls overhaul; settings and rebind screen (`src/core/ui/settingsScreen.ts`,
+  `src/core/keymap.ts`); Circuit (`src/game/circuit.ts`): Tilt, Hot/Cold lamps, Obols; charm hook cleanup; readability.
+- **W8 engines, shop, odds:** suit table (`src/game/suits.ts`); Pawn shop (`src/game/shop.ts`); 10 engine charms
+  (`src/game/charms/engines.ts`, `engine.ts`); boss Nights (`src/game/bosses.ts`, `data/bosses.ts`); Tell Sheet odds and
+  pace (`src/game/pace.ts`, generated `src/game/data/machineProfiles.ts`); starting kits (`data/kits.ts`); Pit Deck.
+  Plan: `docs/WAVE8_PLAN.md`.
+- **W9 hotline and economy:** Hotline phone bargains (`src/game/hotline.ts`); economy sim (`scripts/sim/run.mjs`);
+  quota and interest rebalance; charm proc juice and badges; run post-mortem; Night 1 tutorial (`src/game/tutorial.ts`);
+  Free Casino hang fixed.
+- **W10:** launch Rares and gated choice offers; Night 1 fairness; hotline ring time; tutorial skip; unregistered props
+  replaced; lower-poly party/table models.
+- **W11:** free-roam intermission and OPEN THE FLOOR lever; debt keypad fixes; toast queue and dedupe; first-sit-only
+  rules; lamp glow; economy rescale.
+- **W12:** lamp halo and beam; family charm glyphs; rules chip; pop tiers; Turkish terminology pass; note/terminal focus fix.
+- **W13:** Big One pattern tally and near-miss; charm-aware sim and rising quota ladder; Night 1 stake cap and high-stake
+  confirm (`src/game/stake.strings.ts`); rescue loan (`src/game/rescue.ts`); clock hold for tutorial and dialogue
+  (`src/game/clockHold.ts`); shop restock; HUD top band and stake readout; debt terminal and cashier list.
+- **W14:** tiered win juice on all machines (`src/machines/_base/juice.ts`, `tiers.ts`); Big One about 29 % hit rate;
+  Dawn surplus back to pocket; float-aware sim (`src/game/float.ts`); rotation tutorial; net-win callout; real bet limits;
+  terminal, results and phone layout; phone direction hint.
+- **W15:** empty-pocket rescue toast and deposit float; terminal keypad and entry fixes; one-press sit; note dismiss and
+  HUD collision fixes; Pawn prices, clamped nav and two-press buy; net-win callouts on all machines.
+
+**Latest playtest: 6.5/10. Target 8+.** The top issues from that playtest were not in this pass's brief, so the list
+below carries the open items from the Wave 6 handoff. The director should add the playtest's own top issues.
+1. The 3D UI (CRT server browser, lobby scene, JackID card pause, ledger, notes) is not browser-verified end to end.
+2. Performance on real hardware is unmeasured. Need F3 numbers (fps/ms, calls, tris) from the pit.
+3. Real two-machine WebRTC multiplayer is untested. Node tests over the real lobby pass.
+4. Win and jackpot sounds were reworked but not listened to. Calibrate TRIM levels with `renderSfx`.
+5. Balance still open: claw expert ~110–130 % (accepted, max bet 25); lootbox pity (BRASS ~107 %); fruitmachine headless
+   83 % vs live 88 %; re-sim stacker and Big One after the W13–W14 changes.
+6. Settings: CALM replaced the BACK face (Esc/Backspace still close it).
 7. `check.mjs` warnings: hard-coded identifier strings; missing `playHeadless` in elevator, pisti, roulette, tavla.
-8. The client's last score was about 6.5/10. The target is 8+.
+8. No gamepad support yet (no gamepad code under `src/`).
 
 ## 7. Suggested next steps (in order)
-1. Full browser playthrough (menu → MULTIPLAYER CRT → back → PLAY → pit → sit/play/stand at 5 machines → Esc card → U ledger → J journal). Fix all breakage.
-2. Performance to a steady 60 fps on a mid laptop. Use the client's F3 numbers.
-3. Multiplayer: 2 tabs, then 2 PCs, then a Render deploy (Web Service: build `npm ci && npm run build`, start `npm start`, env NODE_VERSION=22). A friend joins via `?join=CODE`.
-4. Sound pass (jackpot, wins, ambience), then a visual pass on machine models (several are blocky).
-5. Content from DECISIONS B tiers: Okey, Liar's Dice, rules-only variants, Boss Nights, porcelain Collateral, proximity voice.
+1. Playtest fixes toward 8+: take the top issues from the 6.5/10 notes and fix them in Haiku lanes.
+2. Full browser playthrough: menu → CRT server browser → PLAY → pit → sit/play/stand at 5 machines → Esc card → U ledger →
+   J journal → Tell Sheet, Pawn shop, Circuit, hotline, rescue loan. Fix all breakage.
+3. Gamepad support (none yet): menu, pit movement, machine play, settings rebind.
+4. Performance to a steady 60 fps on a mid laptop. Check the mannequin LOD and pit with the client's F3 numbers.
+5. Multiplayer: 2 tabs, then 2 PCs, then a Render deploy (Web Service: build `npm ci && npm run build`, start
+   `npm start`, env `NODE_VERSION=22`). A friend joins via `?join=CODE`.
+6. Sound pass (jackpot, wins, ambience), then machine model visuals (several are blocky).
+7. Content from DECISIONS B tiers: Okey, Liar's Dice, rules-only variants, more Boss Nights, porcelain Collateral,
+   proximity voice.
+8. Merge `wave7-controls-circuit` into `main` when the director decides, and push only when the client asks.

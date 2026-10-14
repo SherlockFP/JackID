@@ -174,7 +174,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   /** First Space on a buyable slot: the price shows and a second Space on the same slot buys, within BUY_CONFIRM_S. */
   private armed: { i: number; left: number } | null = null;
   /** The selected charm's card (DOM, crisp text): name, rarity, effect. */
-  private card?: { el: HTMLElement; icon: HTMLCanvasElement; name: HTMLElement; meta: HTMLElement; desc: HTMLElement; note: HTMLElement };
+  private card?: { el: HTMLElement; icon: HTMLCanvasElement; name: HTMLElement; meta: HTMLElement; price: HTMLElement; desc: HTMLElement; note: HTMLElement };
   private cardKey = '';
   private uiBlocked = false;
   private offBlock: (() => void) | null = null;
@@ -553,7 +553,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const DEG = Math.PI / 180;
     const cam = [0, 1.25, 1.8];
     const pts: Array<[number, number, number]> = [];
-    for (const x of [-0.88, 0.88]) for (const y of [0.76, 0.84]) pts.push([x, y, 0.64]);   // price tags
+    for (const x of [-0.98, 0.98]) for (const y of [0.72, 0.88]) pts.push([x, y, 0.64]);   // price plates (0.46 m wide)
     for (const x of [-0.75, 0.75]) for (const y of [1.0, 1.3]) pts.push([x, y, 0.2]);      // pedestals and charms
     for (const x of [-0.28, 0.28]) for (const y of [2.03, 2.37]) pts.push([x, y, -0.62]);  // ledger
     let vMin = Infinity, vMax = -Infinity, hMax = 0;
@@ -580,13 +580,14 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const head = document.createElement('div');
     const name = document.createElement('div'); name.className = 'pc-name';
     const meta = document.createElement('div'); meta.className = 'pc-meta';
-    head.append(name, meta);
+    const price = document.createElement('div'); price.className = 'pc-price';   // the price chip: the figure the buy spends
+    head.append(name, meta, price);
     top.append(icon, head);
     const desc = document.createElement('div'); desc.className = 'pc-desc';
     const note = document.createElement('div'); note.className = 'pc-note';
     el.append(top, desc, note);
     this.ctx.ui.root.appendChild(el);
-    this.card = { el, icon, name, meta, desc, note };
+    this.card = { el, icon, name, meta, price, desc, note };
   }
 
   private rarityName(r: CharmRarity, cursed: boolean): string {
@@ -625,6 +626,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     c.desc.textContent = d === descKey ? this.t('noDesc') : d;
     const g = c.icon.getContext('2d');
     if (g) { g.clearRect(0, 0, 24, 24); charmIconPix(id, rarity, cursed, true, sw ? undefined : sel?.tag).drawTo(g); }
+    c.price.textContent = sw ? '' : sel ? priceText(sel, fmtNum, this.t('free')) : '';
+    c.price.style.display = c.price.textContent ? '' : 'none';
     if (sw && out) {
       c.meta.textContent = this.t('swapOut', { n: fmtNum(out.refund) });
       c.note.textContent = '';

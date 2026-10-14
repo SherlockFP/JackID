@@ -168,7 +168,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CharmVendorPar
     icon.root.position.set(x, COUNTER_H + 0.05, COUNTER_Z - 0.05);
     root.add(icon.root);
     icons.push(icon);
-    const tag = kit.label({ text: '--', w: 0.26, h: 0.08, px: [96, 28], color: pal.gold, bg: pal.black, font: 'vt' });
+    // price plate: directly under its charm, twice the old size so the figure reads from the seat
+    const tag = kit.label({ text: '--', w: 0.46, h: 0.16, px: [192, 56], color: pal.gold, bg: pal.black, font: 'vt' });
     tag.mesh.position.set(x, COUNTER_H - 0.2, COUNTER_Z + D / 2 + 0.04);
     root.add(tag.mesh);
     tags.push(tag);

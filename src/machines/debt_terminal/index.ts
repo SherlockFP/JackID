@@ -29,7 +29,7 @@ import type { KitX } from '@/kit';
 import { fmtCoins, fmtNum } from '@/core/i18n';
 import type { OvershootTier, QuotaState, RunApi } from '@/game/types';
 import { nightPaid } from './night';
-import { bandFromPx, frameConsole, type Vec3 } from './fit';
+import { bandFromPx, CONTROL_MARGIN, frameConsole, type Vec3 } from './fit';
 
 const EMPTY_QUOTA: QuotaState = { due: 0, base: 0, assessment: 0, deposited: 0, perPlayer: {}, met: false, overshoot: 0, ratio: 0, claimed: [] };
 import { lerp, clamp } from '@/core/math';
@@ -78,7 +78,7 @@ export const def: MachineDef = {
       goal: "Pay tonight's quota in coins. Once it is met, settle the terminal.",
       rule1: "The house sets a quota for tonight. Deposit coins towards it until it is covered.",
       rule2: "Keypad: 10%, 25% or 50% of your wallet, ALL, or REST (what is still due). Or type an amount and press ENTER.",
-      rule3: "10/25/50% and REST never pass what is due. ALL, or a typed amount, overpays on purpose. Once the quota is met, SETTLE closes the terminal early.",
+      rule3: "10/25/50% and REST never pass what is due. ALL, or a typed amount, overpays on purpose: the extra goes straight back to your pocket. Once the quota is met, SETTLE closes the terminal early.",
       rule4: "Keys: arrows move the keypad cursor, PRESS hits a key, 1-9 type an amount, BACK removes a digit.",
       crt_paid: 'NIGHT {n} PAID', crt_carry: 'CARRIED', crt_floor: 'PULL: OPEN THE FLOOR', crt_bell: 'PULL: RING THE BELL',
       floorOpen: 'FLOOR OPEN', belled: 'BELL', nightN: 'NIGHT {n}',
@@ -126,7 +126,7 @@ export const def: MachineDef = {
       goal: "Bu gecenin kotasını jetonla öde. Kota tamamlanınca terminali kapat.",
       rule1: "Ev bu gece için bir kota koyar. Kota kapanana kadar jeton yatır.",
       rule2: "Tuş takımı: cüzdanının %10, %25 ya da %50'si, HEPSİ, ya da KALAN (hâlâ borçlu olduğun). Ya da bir tutar yaz ve ONAY'a bas.",
-      rule3: "%10/%25/%50 ve KALAN borcu aşmaz. HEPSİ ya da yazdığın tutar bilerek fazla öder. Kota tamamlanınca KAPAT terminali erken kapatır.",
+      rule3: "%10/%25/%50 ve KALAN borcu aşmaz. HEPSİ ya da yazdığın tutar bilerek fazla öder: fazla hemen cebine döner. Kota tamamlanınca KAPAT terminali erken kapatır.",
       rule4: "Tuşlar: oklar tuş takımında gezer, BAS tuşa basar, 1-9 tutar yazar, GERİ bir rakam siler.",
       crt_paid: '{n}. GECE ÖDENDİ', crt_carry: 'DEVİR', crt_floor: 'ÇEK: KATI AÇ', crt_bell: 'ÇEK: ZİLİ ÇAL',
       floorOpen: 'KAT AÇIK', belled: 'ZİL', nightN: '{n}. GECE',
@@ -215,7 +215,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     const aspect = Math.max(0.4, window.innerWidth / H);
     const { topPx, botPx } = this.bandPx();
     // the keypad and the CRT must fit the band; the LEDs too when the camera can take them in (`frameConsole`)
-    const f = frameConsole(base, [...crt, ...leds, ...keypad], [...crt, ...keypad], bandFromPx(topPx, botPx, H), aspect);
+    const f = frameConsole(base, [...crt, ...leds, ...keypad], [...crt, ...keypad], bandFromPx(topPx, botPx, H), aspect, CONTROL_MARGIN);
     const DEG = Math.PI / 180;
     const pose = this.model.playPose;
     pose.pos.set(f.cam[0], f.cam[1], f.cam[2]);
@@ -527,39 +527,41 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   }
 
   /**
-   * The CRT is a 512 × 384 texture (2× the old layout, every size here is doubled): a label at the left and a big value
-   * at the right on each row (DUE / DEPOSITED / LEFT), a boxed AMOUNT field with the typed digits, one status line.
+   * The CRT is a 512 × 384 texture: each figure (DUE / DEPOSITED / LEFT) sits under its label at up to 72 px, the amount
+   * field is boxed below them, and one status line closes the screen. A figure shrinks only when it would run past the glass.
    */
   private drawCrt(q: Readonly<QuotaState>, left: number, paid: boolean, inter: boolean): void {
     const s = this.parts.crt;
     const ratio = ratioOf(this.shownDep, q.due);
     const next = nextTier(this.tiers(), ratio);
-    s.clear('#060300');
+    s.clear('#060300');                              // an opaque dark ground: the figures are full-bright on it
     const amber = '#ffc02a', hot = '#fff0a0';
-    const row = (label: string, value: string, y: number, col = hot): void => {
-      s.text(label, 14, y + 6, { font: 'vt', size: 34, color: amber, align: 'left' });
-      s.text(value, 498, y + 6, { font: 'ps2p', size: 40, color: col, align: 'right' });   // a wide face: VT323 digits go thin at distance
+    const RIGHT = 500, ROW_W = 486, BIG = 72;
+    /** A label above its figure, the figure right-aligned at full size (BIG px per digit cell; Press Start is 1 em a cell). */
+    const block = (label: string, value: string, y: number, col = hot): void => {
+      s.text(label, 14, y, { font: 'vt', size: 30, color: amber, align: 'left' });
+      const size = Math.min(BIG, Math.floor(ROW_W / Math.max(1, value.length)));
+      s.text(value, RIGHT, y + 26, { font: 'ps2p', size, color: col, align: 'right' });
     };
-    s.text(this.t('crt_title'), 256, 4, { font: 'vt', size: 34, color: hot, align: 'center' });
     if (paid) {                                   // Dawn paid the Night: no stale quota, just the carry-over and the lever
-      s.text(this.t('crt_paid', { n: this.ctx.run.night() }), 256, 90, { font: 'vt', size: 60, color: '#fff070', align: 'center' });
-      if (q.deposited > 0) row(this.t('crt_carry'), fmtNum(q.deposited), 180, '#fff4b8');
-      s.text(this.t('crt_floor'), 256, 320, { font: 'vt', size: 40, color: '#fff0c0', align: 'center' });
+      s.text(this.t('crt_paid', { n: this.ctx.run.night() }), 256, 40, { font: 'vt', size: 56, color: '#fff070', align: 'center' });
+      if (q.deposited > 0) block(this.t('crt_carry'), fmtNum(q.deposited), 120, '#fff4b8');
+      s.text(this.t('crt_floor'), 256, 300, { font: 'vt', size: 40, color: '#fff0c0', align: 'center' });
       return;
     }
-    row(this.t('nDue'), fmtNum(q.due), 46);
-    row(this.t('nDeposited'), fmtNum(this.shownDep), 126, '#fff4b8');
-    row(this.t('nLeft'), fmtNum(left), 206, left > 0 ? '#ff9a70' : '#b4ffb4');
+    block(this.t('nDue'), fmtNum(q.due), 4);
+    block(this.t('nDeposited'), fmtNum(this.shownDep), 100, hot);
+    block(this.t('nLeft'), fmtNum(left), 196, left > 0 ? '#ff9a70' : '#b4ffb4');
     // the typed amount: a boxed input field, the digits as they are typed
-    s.draw((g) => { g.fillStyle = '#1e1400'; g.fillRect(6, 284, 500, 56); g.strokeStyle = amber; g.lineWidth = 2; g.strokeRect(7, 285, 498, 54); });
-    s.text(this.t('nAmount'), 16, 296, { font: 'vt', size: 34, color: amber, align: 'left' });
+    s.draw((g) => { g.fillStyle = '#1e1400'; g.fillRect(6, 296, 500, 36); g.strokeStyle = amber; g.lineWidth = 2; g.strokeRect(7, 297, 498, 34); });
+    s.text(this.t('nAmount'), 16, 302, { font: 'vt', size: 28, color: amber, align: 'left' });
     const typed = this.entry === '' ? '_' : `${fmtNum(customAmount(this.entry))}_`;
-    s.text(typed, 498, 294, { font: 'ps2p', size: 30, color: '#fff0c0', align: 'right' });
+    s.text(typed, RIGHT, 303, { font: 'ps2p', size: 24, color: '#fff0c0', align: 'right' });
     // status line: the share of the quota paid, then the next tier, or the bell / quota-met prompt
-    s.text(`${pct(ratio)} ${this.t('crt_ratio')}`, 14, 352, { font: 'vt', size: 30, color: amber, align: 'left' });
-    if (inter) s.text(this.t('crt_bell'), 498, 352, { font: 'vt', size: 30, color: hot, align: 'right' });
-    else if (q.met) s.text(this.t('crt_met'), 498, 352, { font: 'vt', size: 30, color: hot, align: 'right' });
-    else if (next !== null) s.text(`${this.t('crt_next')} ${pct(next.ratio)}`, 498, 352, { font: 'vt', size: 30, color: '#e0a040', align: 'right' });
+    s.text(`${pct(ratio)} ${this.t('crt_ratio')}`, 14, 344, { font: 'vt', size: 30, color: amber, align: 'left' });
+    if (inter) s.text(this.t('crt_bell'), RIGHT, 344, { font: 'vt', size: 30, color: hot, align: 'right' });
+    else if (q.met) s.text(this.t('crt_met'), RIGHT, 344, { font: 'vt', size: 30, color: hot, align: 'right' });
+    else if (next !== null) s.text(`${this.t('crt_next')} ${pct(next.ratio)}`, RIGHT, 344, { font: 'vt', size: 30, color: '#e0a040', align: 'right' });
   }
 
   /** The keypad cursor is the one lit cap plus a gold frame on its cell, so the selection reads from the seat. */

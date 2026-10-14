@@ -292,12 +292,11 @@ class InputImpl implements InputExt {
     if (show && (this.seatGlide || this.mode !== 'walk' || this.locked)) show = false;
     if (!show && !this.hintEl) return;
     if (!this.hintEl) {
+      // position, size and the hide-while-a-prompt-or-toast rule live in ui.css (.cap-hint): small, top centre
       const el = document.createElement('div');
+      el.className = 'cap-hint';
       el.setAttribute('aria-hidden', 'true');
-      el.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,calc(5 * var(--u, 2px)));z-index:6;'
-        + 'pointer-events:none;white-space:nowrap;padding:calc(2 * var(--u, 2px)) calc(4 * var(--u, 2px));'
-        + 'background:rgba(8,8,8,0.7);color:#efd67b;letter-spacing:0.04em;'
-        + "font:calc(6 * var(--u, 2px))/1 var(--f-head, 'Press Start 2P', monospace);display:none;";
+      el.style.display = 'none';
       (document.getElementById('ui') ?? document.body).appendChild(el);
       this.hintEl = el;
     }

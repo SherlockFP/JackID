@@ -37,6 +37,54 @@ test('Dawn: an exact payment returns nothing extra', () => {
   run.dispose();
 });
 
+test('quota met: the deposit that covers it returns the surplus to the pocket at once, not at Dawn', () => {
+  const run = RUN.createRun({ seed: 45, mode: 'debt' });
+  const due = run.quota.due;
+  run.debtPaid = due - 100;
+  run.syncQuota();
+  run.coins = 1000;
+  assert.ok(run.deposit(300, true), 'the deposit is accepted');
+  assert.equal(run.coins, 1000 - 300 + 200, 'the 200 above the quota is back in the pocket straight away');
+  assert.equal(run.debtPaid, due + 200, 'the terminal still counts the whole deposit');
+  assert.equal(run.quota.deposited, due + 200);
+  assert.equal(run.quota.overshoot, 200, 'overshoot (and so the tiers) read the total, not the held part');
+  assert.ok(run.quota.met);
+  run.dispose();
+});
+
+test('quota met: later overpays are released as they land, and Dawn returns only what was not released', () => {
+  const run = RUN.createRun({ seed: 46, mode: 'debt' });
+  const due = run.quota.due;
+  run.debtPaid = due;
+  run.syncQuota();
+  run.coins = 500;
+  run.deposit(120, true);
+  run.deposit(80, true);
+  assert.equal(run.coins, 500 - 120 - 80 + 200, 'every overpay goes back at once');
+  const before = run.coins;
+  run.dawn();
+  assert.equal(run.coins, before, 'nothing is paid twice at Dawn');
+  assert.equal(run.debtPaid, 0, 'the next quota starts from zero deposited');
+  run.dispose();
+});
+
+test('quota met: interest booked at Settle is on the whole deposit, and its surplus goes back too', () => {
+  const run = RUN.createRun({ seed: 47, mode: 'debt' });
+  const due = run.quota.due;
+  run.debtPaid = due;
+  run.syncQuota();
+  run.coins = 500;
+  run.deposit(100, true);
+  const released = run.released;
+  assert.equal(released, 100);
+  const deposited = run.debtPaid;
+  run.debtPaid += 30;                         // the interest settleWatch books (on the total deposit)
+  run.releaseSurplus();
+  assert.equal(run.debtPaid, deposited + 30, 'the total keeps the interest');
+  assert.equal(run.released, released + 30, 'the interest above the quota is released as well');
+  run.dispose();
+});
+
 test('WIN callout: previewCredit is exactly what win() credits', () => {
   const run = RUN.createRun({ seed: 43, mode: 'debt' });
   const src = { machineId: 'bigone', mid: 'm-preview' };
@@ -83,6 +131,8 @@ test('float: the first deposit of a Watch leaves min(30 % of the pocket, 2 cheap
 
 test('float: the run refuses a first deposit that empties the pocket, accepts the rest, and a confirmed ALL goes through', () => {
   const run = RUN.createRun({ seed: 51, mode: 'debt' });
+  run.quota.due = 1_000_000;                  // far above these deposits: the quota is not met, so no surplus comes back here
+  run.syncQuota();
   run.coins = 100;
   run.watchDeposits = 0;
   const floor = run.depositFloor();

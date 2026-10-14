@@ -5,7 +5,7 @@
  * enter, calls `update(dt)` every frame and `dispose()` on exit. Everything reads the run facade (`app.run`) when it exists
  * and shows neutral values otherwise; live changes arrive through the event bus (pops, feed lines, phone, charms).
  *
- * Juice: wallet counter rolls 30 ticks/s; gains fly as numbers into the wallet anchor and bump it; spends flash red; big
+ * Juice: wallet counter rolls 30 ticks/s; gains fly as numbers into the wallet anchor and bump it; spends bump, red only when the pocket is short; big
  * results add hit-stop and a feed line; Last Call runs a banner and blinks the clock.
  */
 import * as THREE from 'three';
@@ -97,7 +97,6 @@ export function createHud(): Hud {
   const staff = h('div', 'hb staff hidden', topL);
   const roll = new Roller();
   let walletSeen = false;
-  let walletFlash = 0;
 
   // ── top-centre: clock + night line ──────────────────────────────────────────────────────────────
   const clock = h('div', 'clock', topC);
@@ -212,8 +211,7 @@ export function createHud(): Hud {
         onArrive: () => { ui().bump('wallet', 1 + Math.min(1, delta / 2000)); uiSfx('numberTick', 0.7); },
       });
     } else {
-      walletFlash = 0.2;
-      setCls(wallet, 'spend', true);
+      // a spend (stake, purchase) is not an alarm: it bumps the figure, it does not turn it red
       ui().bump('wallet', 0.6);
     }
   });
@@ -288,10 +286,8 @@ export function createHud(): Hud {
     else roll.set(w);
     roll.tick(dt);
     setText(walletNum, `${coinSym()} ${money(roll.shown)}`);
-    if (walletFlash > 0) {
-      walletFlash -= dt;
-      if (walletFlash <= 0) setCls(wallet, 'spend', false);
-    }
+    // red only while the pocket cannot cover the last thing asked for (the run refused it for funds)
+    setCls(wallet, 'short', r.lastRefusal() === 'funds');
     setText(tixNum, String(r.balance('ticket', self())));
     const perMin = r.tycoon.incomePerSec() * 60;
     setCls(staff, 'hidden', perMin <= 0);

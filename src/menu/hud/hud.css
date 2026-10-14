@@ -16,7 +16,7 @@
 
 /* top-left: pocket, tickets, staff */
 .hud .wallet .num { color: var(--shine); font-size: calc(16 * var(--u)); }
-.hud .wallet.spend .num { color: var(--signal); }
+.hud .wallet.short .num { color: var(--signal); }
 .hud .wallet.gain { animation: hud-glow .35s ease-out; }
 .hud .tix { color: var(--coral); }
 .hud .tix .num { color: var(--coral); }

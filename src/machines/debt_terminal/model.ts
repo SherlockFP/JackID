@@ -16,9 +16,10 @@ import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import type { PanelButtonSpec } from '@/kit/types';
 import { KEYS } from './rules';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 export type DebtParts = {
-  /** 256 × 192 amber CRT: quota breakdown, deposit, entry buffer. */
+  /** 512 × 384 amber CRT: due, deposited, left, the amount being typed. */
   crt: ScreenSurface;
   /** Red 10-digit quota LED and amber deposit LED. */
   leds: { quota: LedPanelPart; deposit: LedPanelPart };
@@ -55,17 +56,6 @@ export const KEY_W = 0.2, KEY_H = 0.14;
 /** Top of a keypad cap in panel space (`kit.buttonPanel`: plate 0.012 + cap 0.03). */
 const CAP_TOP = 0.042;
 
-/**
- * Text on a small screen: nearest magnification keeps the glyph edges, mip-maps keep the minified text readable.
- * (The PSX pass samples at about 224 lines, so a 512 × 384 CRT is still minified; the mips stop the shimmer.)
- */
-function mipText(t: THREE.Texture): void {
-  t.magFilter = THREE.NearestFilter;
-  t.minFilter = THREE.LinearMipmapLinearFilter;
-  t.generateMipmaps = true;
-  t.needsUpdate = true;
-}
-
 export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   const { pal } = kit;
   const root = kit.group('debt_terminal');
@@ -89,10 +79,13 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
 
   // ── animated parts (listed in `keep`) ──
   // 512 × 384 texels (2× the old 256 × 192): the CRT is the readout, so its figures need the texels
-  const crt = kit.crtMonitor({ w: 0.46, h: 0.36, px: [512, 384], scheme: 'amber', glow: 0.95 });
-  mipText(crt.screen.tex);
-  crt.root.position.set(0, 1.56, 0.03);
-  root.add(crt.root);
+  // Built on the screen itself (not `crtMonitor`) with the scanlines off: they dim every other texel row and thin the figures.
+  const crtScreen = kit.screen({ w: 0.46, h: 0.36, px: [512, 384], bezel: pal.black, glow: 0.95, scanlines: false });
+  crtScreen.clear('#060300');
+  crispTexture(crtScreen.tex, 4);                       // after the psx material (it forces nearest): linear + mips at native size
+  crtScreen.mesh.position.set(0, 1.56, 0.03);
+  kit.box(0.52, 0.42, 0.06, pal.black, at(0, 1.56, -0.012));   // the casing behind the glass
+  root.add(crtScreen.mesh);
 
   const quota = kit.ledPanel({ digits: 10, color: '#ff2a2a', h: 0.08 });
   quota.root.position.set(0, 1.9, 0.0);
@@ -188,11 +181,11 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   root.add(light);
 
   const parts: DebtParts = {
-    crt: crt.screen, leds: { quota, deposit }, keys, keyCursor, receipt, receiptPivot, mouthLips, emblemLid,
+    crt: crtScreen, leds: { quota, deposit }, keys, keyCursor, receipt, receiptPivot, mouthLips, emblemLid,
     settleLever, floorLever, bellRope, swipe, readyLamp,
   };
   kit.finalize(root, {
-    keep: [crt.root, quota.root, deposit.root, keys.root, receiptPivot, mouthLips, emblemLid,
+    keep: [crtScreen.mesh, quota.root, deposit.root, keys.root, receiptPivot, mouthLips, emblemLid,
       settleLever.root, floorLever.root, bellRope, swipe.root, readyLamp.root, light],
   });
 
@@ -206,7 +199,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
       { min: [-0.5, 0, -0.2], max: [0.5, COUNTER_TOP, 0.4] },          // counter
     ],
     interact: { min: [-W / 2, 0.3, -D / 2], max: [W / 2, H, D / 2 + 0.1] },
-    anchors: { speaker, prompt, light, coinOut: coinIn, collectorHand, insideGlass: crt.root },
-    dispose: () => { crt.screen.dispose(); receipt.dispose(); },
+    anchors: { speaker, prompt, light, coinOut: coinIn, collectorHand, insideGlass: crtScreen.mesh },
+    dispose: () => { crtScreen.dispose(); receipt.dispose(); },
   };
 }

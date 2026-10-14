@@ -152,6 +152,8 @@ export interface RunExt {
   clock: ClockSnapshot; clockLen: number; lastCallSec: number;
   pulls: number; pullsMax: number; watchPulls: number; boughtThisWatch: number;
   tickets: number; debtPaid: number; dreadPts: number;
+  /** Surplus above the quota already returned to the pocket this Night (see `releaseSurplus`). Optional: older saves have none. */
+  released?: number;
   freeRerolls: number; skipRest: number;
   /** Pawn Window stock (wave 8). Optional: older saves have none. */
   pawn?: PawnSnapshot;
@@ -410,7 +412,10 @@ class Run implements DebtRun {
   // money, pulls, debt
   private coins = START.pocket;
   private tickets = START.tickets;
+  /** Total deposited this Night (interest and overpay included). Quota, ratio, overshoot and interest all read this. */
   private debtPaid = 0;
+  /** Part of `debtPaid` above the quota already paid back to the pocket this Night. Dawn returns only what is left. */
+  private released = 0;
   private pullCount = 0;
   private pullsMax = 0;
   private watchPulls = 0;
@@ -547,6 +552,7 @@ class Run implements DebtRun {
           if (!this.quotaMode || c <= 0) return;
           this.debtPaid += c;
           this.stats.deposited = (this.stats.deposited ?? 0) + c;
+          this.releaseSurplus();
           this.syncQuota();
           this.emit('run:deposit', { pid: this.selfId, amount: c, paid: this.debtPaid, due: this.quota.due });
           this.checkMet();
@@ -787,6 +793,7 @@ class Run implements DebtRun {
     this.debtPaid += credit;
     this.stats.deposited = (this.stats.deposited ?? 0) + credit;
     this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: -amt, reason: 'deposit' });
+    this.releaseSurplus();
     this.syncQuota();
     this.emit('run:deposit', { pid: this.selfId, amount: credit, paid: this.debtPaid, due: this.quota.due });
     this.checkMet();
@@ -1116,6 +1123,7 @@ class Run implements DebtRun {
         if (pocket > 0) this.earn('coin', pocket, 'charm:perpetual_ledger');
       }
     }
+    this.releaseSurplus();                                   // the interest just added may be surplus too
     if (!this.rules.unlimitedPulls && this.pullCount > 0) {
       if (this.watchPulls >= ACTIVITY_MIN_PULLS) this.earn('ticket', this.pullCount, 'settle:unused-pulls');
       this.pullCount = 0;
@@ -1172,9 +1180,11 @@ class Run implements DebtRun {
       }
     }
     this.finishBoss();
-    // Surplus above the quota (its interest is already in debtPaid, Settle) returns to the pocket: Night N+1 starts with cash for the Pawn.
-    const surplus = Math.max(0, this.debtPaid - due);
+    // Whatever surplus is still held (interest booked after the release, or a Night paid exactly) returns now. The rest went
+    // back at the deposit that met the quota (`releaseSurplus`), so Night N+1 starts with the cash either way.
+    const surplus = Math.max(0, this.debtPaid - due - this.released);
     this.debtPaid = 0;
+    this.released = 0;
     if (surplus > 0) this.earn('coin', surplus, 'dawn:surplus');
     this.stats.nightsPaid = (this.stats.nightsPaid ?? 0) + 1;
     this.syncQuota();
@@ -1443,6 +1453,20 @@ class Run implements DebtRun {
     q.met = this.debtPaid >= q.due;
     q.overshoot = Math.max(0, this.debtPaid - q.due);
     q.ratio = q.due > 0 ? this.debtPaid / q.due : 0;
+  }
+
+  /**
+   * Quota met: the surplus above the quota goes back to the pocket at once, so the player can shop in the Intermission
+   * (Mola) with it. `debtPaid` keeps the whole deposit, so interest (`settleWatch`) and overshoot still read the full
+   * amount; `released` tracks what has already gone back so no coin is paid twice. The reason is the Night summary's
+   * carry key (`inGameState.ts`).
+   */
+  private releaseSurplus(): void {
+    if (!this.quotaMode || this.quota.due <= 0) return;
+    const extra = this.debtPaid - this.quota.due - this.released;
+    if (extra <= 0) return;
+    this.released += extra;
+    this.earn('coin', extra, 'dawn:surplus');
   }
 
   private checkMet(): void {
@@ -1799,7 +1823,7 @@ class Run implements DebtRun {
       metFired: this.metFired, ropeUsed: this.ropeUsed,
       clock: this.clock.snapshot(), clockLen: this.clockLen, lastCallSec: this.lastCallSec,
       pulls: this.pullCount, pullsMax: this.pullsMax, watchPulls: this.watchPulls, boughtThisWatch: this.boughtThisWatch,
-      tickets: this.tickets, debtPaid: this.debtPaid, dreadPts: this.dreadPts,
+      tickets: this.tickets, debtPaid: this.debtPaid, released: this.released, dreadPts: this.dreadPts,
       freeRerolls: this.freeRerolls, skipRest: this.skipRest,
       pawn: this.pawn.snapshot(), plays: Object.fromEntries(this.plays),
       discount: this.discount, nextDiscount: this.nextDiscount, elapsed: this.elapsed,
@@ -2045,7 +2069,7 @@ class Run implements DebtRun {
     this.clock.restore(e.clock); this.clockLen = e.clockLen; this.lastCallSec = e.lastCallSec;
     this.pullCount = this.rules.unlimitedPulls ? Number.POSITIVE_INFINITY : e.pulls;
     this.pullsMax = e.pullsMax; this.watchPulls = e.watchPulls; this.boughtThisWatch = e.boughtThisWatch;
-    this.tickets = e.tickets; this.debtPaid = e.debtPaid; this.dreadPts = e.dreadPts;
+    this.tickets = e.tickets; this.debtPaid = e.debtPaid; this.released = Math.max(0, e.released ?? 0); this.dreadPts = e.dreadPts;
     this.freeRerolls = e.freeRerolls; this.skipRest = e.skipRest;
     if (e.pawn) this.pawn.restore(e.pawn);
     this.plays.clear();

@@ -125,6 +125,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   private seatHud?: SeatHud;
   private attractStep = -1;
   private inRound = false;
+  /** The stake of the last settled spin: the WIN line on the top screen shows its net against this. */
+  private lastStake = 0;
 
   protected createModel(kit: KitX): MachineModel<BigOneParts> {
     return buildModel(kit, this.modelOpts);
@@ -408,9 +410,10 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     const s = this.state;
     s.meter = ev.meter;
     s.gross = ev.gross;
+    this.lastStake = ev.stake;
     if (pc.local) {
       if (ev.curse) this.seatHud?.result('bust', -ev.stake);
-      else if (pc.fast || !ev.tally.length) this.callout(ev.gross - ev.stake);   // a counted win is called out pattern by pattern below
+      else if (pc.fast || !ev.tally.length) this.callout(this.netOf(ev.gross, ev.stake, pc.local));   // a counted win is called out pattern by pattern below
     }
     const code = ev.curse ? 2 : ev.fill ? 3 : ev.gross > 0 ? 1 : 0;
     s.last10 = [code, ...s.last10].slice(0, LAST10);
@@ -420,14 +423,15 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
 
     s.tally = ev.tally.map((t) => ({ ...t }));
     // the tally: one pattern at a time, smallest first. Each one lights, rings a higher note, and counts the total up
-    if (!pc.fast && ev.tally.length) { await this.tallyShow(ev.tally, pc.local); if (pc.local) this.callout(ev.gross - ev.stake); }
+    if (!pc.fast && ev.tally.length) { await this.tallyShow(ev.tally, pc.local); if (pc.local) this.callout(this.netOf(ev.gross, ev.stake, pc.local)); }
     else for (const pay of ev.tally) this.lightPay(pay, false);
 
     if (ev.gross > 0) {
-      // every win is felt: a x2 already flashes, pours coins and pops; the show scales with the multiplier
+      // every win is felt: a x2 already flashes, pours coins and pops; the show scales with the multiplier.
+      // The pop shows the same net as the WIN callout; the multiplier (gross / stake) still sets the feel.
       await this.celebrate(juiceTier(ev.gross, ev.stake, ev.tags), {
-        amount: ev.gross, bet: ev.stake, bulbs: this.parts.bulbs.window, lamps: this.parts.paylineLamps,
-        restore: () => this.bulbsIdle(), fast: pc.fast,
+        amount: Math.max(0, this.netOf(ev.gross, ev.stake, pc.local)), mult: ev.gross / Math.max(1, ev.stake),
+        bet: ev.stake, bulbs: this.parts.bulbs.window, lamps: this.parts.paylineLamps, restore: () => this.bulbsIdle(), fast: pc.fast,
       });
     } else {
       this.commiserate({ amount: ev.stake, at: this.parts.screens.top.mesh });
@@ -495,9 +499,10 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     const fx = this.ctx.fx;
     fx.flash(GOLD, 0.8, 0.4);
     fx.hitstop(0.12);
+    const net = Math.max(0, this.netOf(ev.gross, ev.stake, pc.local));   // the count and the pop land on the WIN callout's figure
     await Promise.all([
-      this.celebrate('jackpot', { amount: ev.gross, bulbs: p.bulbs.window, lamps: p.last10, restore: () => this.bulbsIdle() }),
-      countUp(this.ctx, 0, ev.gross, JACKPOT_COUNT * this.speed, (v) => this.drawScreen(v)),
+      this.celebrate('jackpot', { amount: net, mult: ev.gross / Math.max(1, ev.stake), bulbs: p.bulbs.window, lamps: p.last10, restore: () => this.bulbsIdle() }),
+      countUp(this.ctx, 0, net, JACKPOT_COUNT * this.speed, (v) => this.drawScreen(v)),
       this.anim(0.4, (k) => { p.topLid.rotation.x = LID_OPEN * k; }, 'outBack')
         .then(() => this.anim(0.4, (k) => { p.topLid.rotation.x = LID_OPEN * (1 - k); })),
       this.anim(1.4, (k) => { p.medallion.rotation.y = TAU * 3 * k; }, 'outCubic'),
@@ -631,7 +636,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       } else if (s.last10[0] === 2) {
         sc.text(this.t('eaten'), 80, 13, { font: 'px5', color: '#ff3040', align: 'center' });
       } else if (s.gross > 0) {
-        sc.text(this.t('win', { n: fmtCoins(this.ctx.run.previewCredit(s.gross, this.src, { bet: this.roundOpen ? this.roundBet : this.bet })) }), 80, 13, { font: 'px5', color: '#ffd040', align: 'center' });
+        sc.text(this.t('win', { n: fmtCoins(Math.max(0, this.netOf(s.gross, this.lastStake, this.isLocalOccupant))) }), 80, 13, { font: 'px5', color: '#ffd040', align: 'center' });
       } else {
         sc.text(`${this.t('bet')} ${fmtCoins(this.bet)}`, 80, 13, { font: 'px5', color: '#4a8a4a', align: 'center' });
       }
@@ -714,6 +719,16 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
         .join('   '));
     }
     return lines;
+  }
+
+  /**
+   * The player's net on a win: what `win()` credits (previewCredit, after House Favour and the limit) less the stake.
+   * Every WIN figure (callout, top-screen line, pop, jackpot count) comes from here, so they never disagree.
+   * Spectators have no credit of their own to preview, so they see the gross less the stake.
+   */
+  private netOf(gross: number, stake: number, local: boolean): number {
+    const credit = local && gross > 0 ? this.ctx.run.previewCredit(gross, this.src, { bet: stake }) : gross;
+    return credit - stake;
   }
 
   /** Result callout for the local player: `net` = coins back minus the stake. */

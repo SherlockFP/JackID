@@ -16,6 +16,8 @@ export interface Band { top: number; bot: number }
 
 /** Clearance kept between the console and the band edges, in NDC units (2 = the full window height). */
 export const FIT_MARGIN = 0.04;
+/** Clearance kept between the whole console (keypad included) and the control bar: a clear gap above the seat bar at 720 p. */
+export const CONTROL_MARGIN = 0.1;
 /** The game's fov clamp (degrees, vertical): the solver never leaves this range. */
 export const FOV_MIN_DEG = 40;
 export const FOV_MAX_DEG = 80;
@@ -126,15 +128,15 @@ export interface Framing extends View { cam: Vec3 }
  * Frames the console for the window. `pts` is the whole console; `must` (the keypad and the CRT) must always fit. The camera
  * takes the cheapest offset from `cameraCandidates` that fits everything, else the cheapest that fits `must`, else the base.
  */
-export function frameConsole(base: Vec3, pts: readonly Vec3[], must: readonly Vec3[], band: Band, aspect: number): Framing {
+export function frameConsole(base: Vec3, pts: readonly Vec3[], must: readonly Vec3[], band: Band, aspect: number, margin = FIT_MARGIN): Framing {
   const cands = cameraCandidates(base);
   for (const c of cands) {
-    const v = fitView(c, pts, band, aspect);
+    const v = fitView(c, pts, band, aspect, margin);
     if (v.fits) return { ...v, cam: c };
   }
   for (const c of cands) {
-    const v = fitView(c, must, band, aspect);
+    const v = fitView(c, must, band, aspect, margin);
     if (v.fits) return { ...v, cam: c };
   }
-  return { ...fitView(base, pts, band, aspect), cam: base };
+  return { ...fitView(base, pts, band, aspect, margin), cam: base };
 }

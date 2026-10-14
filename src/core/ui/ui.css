@@ -105,6 +105,8 @@
 }
 /* A placard (note, seat card, journal) is up (placard3d.ts sets .note-open): the tutorial box steps aside. */
 .px-root.note-open .px-tut { display: none !important; }
+/* One text lane: while a toast is up the tutorial box dims, so the news reads first and the tutorial stays readable. */
+.px-root:has(> .px-toasts > .px-toast) .px-tut { opacity: 0.3; transition: opacity 0.2s steps(2, end); }
 
 /* ── crosshair ────────────────────────────────────────────────────────────────────────────── */
 .px-cross { position: absolute; left: 50%; top: 50%; width: 0; height: 0; z-index: 2; pointer-events: none; }
@@ -249,6 +251,16 @@
 .mh-hints .hint { display: inline-flex; align-items: center; gap: calc(3 * var(--u)); }
 
 /* ── prompts and subtitles ────────────────────────────────────────────────────────────────── */
+/* "CLICK TO CAPTURE MOUSE" (input.ts, a direct child of #ui): small, top centre, under the HUD top band. It is the one
+   text that gives way: hidden while the interact prompt or a toast is up (one text lane), so it never sits on either. */
+.cap-hint {
+  position: absolute; left: 50%; top: calc(var(--hud-top-h, calc(52 * var(--u))) + 4 * var(--u)); transform: translateX(-50%);
+  z-index: 6; pointer-events: none; white-space: nowrap; display: none;
+  padding: calc(1.5 * var(--u)) calc(3 * var(--u)); background: rgba(8, 8, 8, 0.7); color: #efd67b; letter-spacing: 0.04em;
+  font-family: var(--f-head); font-size: calc(4 * var(--u)); line-height: 1;
+}
+.px-root:has(> .px-prompt.on) > .cap-hint,
+.px-root:has(> .px-toasts > .px-toast) > .cap-hint { display: none !important; }
 .px-subtitle {
   position: absolute; left: 50%; bottom: calc(var(--lb) * var(--bar-h) + 10 * var(--u)); transform: translateX(-50%);
   z-index: 3; width: max-content; max-width: min(70vw, calc(100% - 16 * var(--u)));
@@ -272,7 +284,7 @@
 .px-tut {
   position: absolute; left: calc(4 * var(--u)); top: calc(var(--hud-top-h, calc(52 * var(--u))) + 22 * var(--u)); bottom: auto; z-index: 2;
   /* Narrow enough to stay clear of the centred debt CRT and the console (fitPose), and ends above the centre line so the
-     "CLICK TO CAPTURE MOUSE" hint (input.ts, centre +5u) and the world prompt (centre -12u, up) never sit under it. */
+     world prompt (centre, up) never sits under it. The capture hint (top centre) is not in the way: the tutorial is upper-left. */
   max-width: min(34%, calc(200 * var(--u)));
   max-height: calc(50% - var(--hud-top-h, calc(52 * var(--u))) - 70 * var(--u)); overflow: hidden;
   padding: calc(3 * var(--u)) calc(5 * var(--u));
@@ -376,6 +388,12 @@
   display: flex; flex-direction: column; align-items: center; gap: calc(2 * var(--u));
   width: calc(168 * var(--u)); max-width: calc(100% - 16 * var(--u));
 }
+/* Seated: toasts anchor to the upper right, away from the seat's central view (the machine, the reels, the stake lane). */
+.px-root.seated .px-toasts {
+  left: auto; right: calc(6 * var(--u)); top: calc(var(--hud-top-h, calc(52 * var(--u))) + 6 * var(--u));
+  transform: none; align-items: flex-end; width: min(calc(120 * var(--u)), 40%);
+}
+.px-root.seated .px-toast { width: auto; max-width: 100%; }
 .px-toast {
   --tc: var(--grout);
   position: relative; display: flex; align-items: center; gap: calc(3 * var(--u)); width: 100%;
