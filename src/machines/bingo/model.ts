@@ -14,6 +14,7 @@ import type { KitX } from '@/kit';
 import type { BallPool, DealerPart, LampPart, LedPanelPart, ScreenSurface } from '@/kit/types';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 import type { SeatDef } from '@/core/types';
 import { makeCanvas } from '@/core/texgen/pixel';
 
@@ -73,7 +74,7 @@ const DAIS_POS: readonly [number, number, number] = [-1.3, 0.125, -0.9];
 const DAIS_SIZE: readonly [number, number, number] = [1.3, 0.25, 0.7];
 const CALLER_POS: readonly [number, number, number] = [-1.3, 0.25, -0.92];
 const CARD_W = 0.2, CARD_H = 0.24;
-const CARD_TEX_W = 40, CARD_TEX_H = 48;
+const CARD_TEX_W = 240, CARD_TEX_H = 288;   // 6 px per design unit of the 40 x 48 card layout (index.ts drawCard): crisp numerals at native size
 const CARD_OFFS: ReadonlyArray<readonly [number, number]> = [[-0.11, -0.11], [0.11, -0.11], [-0.11, 0.11], [0.11, 0.11]];
 const BENCH_DZ = 0.34;           // bench sits this far in front of its desk
 const BALLS = 75;
@@ -206,7 +207,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BingoParts> {
       const tex = new THREE.CanvasTexture(cv);
       tex.colorSpace = THREE.NoColorSpace;                                                    // C14
       const mat = kit.mat({ map: tex, lit: false, side: 'double', snap: false, affine: false });
-      const mesh = kit.plane(CARD_W, CARD_H, mat, { pos: [x + cx, DESK_TOP + 0.012, dz + cz], rot: [-60, 0, 0], parent: root });
+      // lifted: the card leans back 30 degrees, so its lower half sank into the desk top at the old height
+      const mesh = kit.plane(CARD_W, CARD_H, mat, { pos: [x + cx, DESK_TOP + 0.072, dz + cz], rot: [-60, 0, 0], parent: root });
       cards.push(mesh);
       cardCanvas.push(cv);
       cardTex.push(tex);
@@ -229,7 +231,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BingoParts> {
     seats.push({
       pose: {
         pos: new THREE.Vector3(x, 1.12, bz),
-        look: new THREE.Vector3(x, DESK_TOP + 0.02, dz),
+        // seat view: the look point sits above the desk so the card grid lands mid-frame, clear of the top banner and the bottom bar
+        look: new THREE.Vector3(x, DESK_TOP + 0.12, dz),
         fov: 55,
         mouse: 'primary',
       },
@@ -263,6 +266,10 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BingoParts> {
     ...desks.flatMap((d) => [...d.cards, d.dauber, d.oneToGo.root, d.rail.root]),
     ...bulbs.map((b) => b.root), light, light2, speaker, prompt, label, marqueeTop, servicePlate, callerCam,
   ];
+  crispTexture(boardScreen.tex, 4);                            // on-machine text: linear + mips, not nearest
+  crispTexture(ballDisplay.tex, 4);
+  crispTexture(balls.screen.tex, 4);
+  for (const d of desks) for (const t of d.cardTex) crispTexture(t, 4);
   kit.finalize(root, { keep });
 
   const colliders = [

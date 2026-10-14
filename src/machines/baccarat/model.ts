@@ -19,6 +19,7 @@ import type { BulbChain, CardPool, ChipPool, Kit, LampPart, MannequinActor, Scre
 import type { KitX } from '@/kit/index';
 import type { MachineModel, SeatDef } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 export const TOP = 0.78;                 // felt height, m
 export const SEATS = 7;
@@ -151,9 +152,11 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BaccaratParts>
     stool.position.set(x, 0, SEAT_Z);
     root.add(stool);
     seats.push({
+      // seat view: high over the stool, steep look-down, so the whole 2.4 x 1.2 m felt, the card boxes and every bet spot sit
+      // between the HUD top strip and the control bar at 16:9 and 4:3. The camera drifts only 12 % of the seat offset.
       pose: {
-        pos: new THREE.Vector3(x, 1.18, 0.75),
-        look: new THREE.Vector3(x * 0.6, TOP, -0.15),
+        pos: new THREE.Vector3(x * 0.12, 2.25, 1.1),
+        look: new THREE.Vector3(x * 0.12, TOP, -0.05),
         fov: 60, mouse: 'pick',
       },
       stand: new THREE.Vector3(x, 0, SEAT_Z + 0.12),
@@ -233,17 +236,19 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BaccaratParts>
   }
 
   // totals (brass flip tiles, two small screens) above the card boxes
-  const totalP = kit.screen({ w: 0.12, h: 0.08, px: [32, 24], bezel: pal.brass });
+  const totalP = kit.screen({ w: 0.12, h: 0.08, px: [32, 24], bezel: pal.brass, scanlines: false });
   totalP.mesh.position.set(-0.30, TOP + 0.09, -0.36);
   totalP.mesh.rotation.x = -0.2;
-  const totalB = kit.screen({ w: 0.12, h: 0.08, px: [32, 24], bezel: pal.brass });
+  const totalB = kit.screen({ w: 0.12, h: 0.08, px: [32, 24], bezel: pal.brass, scanlines: false });
+  crispTexture(totalP.tex, 4); crispTexture(totalB.tex, 4);                       // linear + mips: the running totals stay readable from the seat camera
   totalB.mesh.position.set(0.34, TOP + 0.09, -0.36);
   totalB.mesh.rotation.x = -0.2;
   root.add(totalP.mesh, totalB.mesh);
 
   // roadmap on a chrome pole at the +X end, screen facing the seats
   kit.cyl(0.02, 0.02, 1.6, pal.chrome, { pos: [1.4, 0.8, 0], seg: 8, parent: root });
-  const roadmap = kit.screen({ w: 0.5, h: 0.25, px: [96, 48], bezel: pal.black, glow: 0.6 });
+  const roadmap = kit.screen({ w: 0.5, h: 0.25, px: [96, 48], bezel: pal.black, glow: 0.6, scanlines: false });
+  crispTexture(roadmap.tex, 4);
   roadmap.mesh.position.set(1.4, 1.36, 0);
   roadmap.mesh.rotation.y = -Math.PI / 2;
   root.add(roadmap.mesh);

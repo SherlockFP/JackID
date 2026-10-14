@@ -231,6 +231,18 @@ export const NAV_EDGES: NavEdge[] = [
 // ── Pit Deck (WAVE 8 item 8): the random line-up ─────────────────────────────────────────────────────
 /** The flexible pads: the only slots `rosterFor` reassigns. Every other slot keeps its GDD §8.6 device. */
 export const ROSTER_PADS: readonly InstanceId[] = ['WELL-04', 'WELL-06', 'WELL-07', 'WELL-08', 'WELL-09', 'WELL-11', 'WELL-13', 'LOB-01'];
+/**
+ * Machines the Pit Deck line-up may draw for the flexible pads, for now (WAVE 20). Only machines whose seat views have
+ * passed the readability check are listed; the rest keep their GDD §8.6 pads until their views pass. Fixed machines
+ * (`ROSTER_FIXED`) are never drawn, whatever this list says.
+ */
+export const FLOOR_READY: ReadonlySet<MachineId> = new Set<MachineId>([
+  'bigone', 'coinflip', 'tavla', 'threecard', 'videopoker', 'scratch', 'cyclone', 'roulette', 'pachinko', 'pachislot',
+  'fortuneteller', 'hilo', 'blackjack', 'bandit',
+  // WAVE 20 integrator pass (1280x720 bench screenshots): whole play surface in frame, clear of the HUD strips, readable.
+  'craps', 'keno', 'devilstable', 'pisti', 'sonkart', 'fruitmachine', 'lootbox', 'coinpusher', 'bigsix', 'bingopin',
+  'cardwar', 'derby', 'reddog', 'shellgame', 'stacker', 'lottoblower',
+]);
 /** Machines that never move, whatever the line-up: the marquee and table games, plus the vendors and terminals. */
 export const ROSTER_FIXED: ReadonlySet<MachineId> = new Set<MachineId>([
   'bigone', 'roulette', 'blackjack', 'coinflip',
@@ -299,7 +311,7 @@ export function rosterFor(seed: number, candidates: readonly RosterCandidate[], 
     for (const pad of ROSTER_PADS) { const d = DEFAULT_ASSIGN[pad]; if (d) out[pad] = d; }
     return out;
   };
-  const pool = candidates.filter((c) => !ROSTER_FIXED.has(c.id) && c.tier !== undefined && c.tier >= 1 && c.tier <= ROSTER_MAX_TIER
+  const pool = candidates.filter((c) => FLOOR_READY.has(c.id) && !ROSTER_FIXED.has(c.id) && c.tier !== undefined && c.tier >= 1 && c.tier <= ROSTER_MAX_TIER
     && c.seats === 1 && !c.shared
     && (!c.modes || c.modes.includes(mode)));
   if (pool.length === 0) return fallback();

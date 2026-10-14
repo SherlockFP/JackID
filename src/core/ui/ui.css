@@ -96,11 +96,26 @@
    (input.ts, appended to #ui with aria-hidden) step aside; the seat HUD carries the controls. */
 .px-root.seated .px-prompt,
 .px-root.seated > [aria-hidden="true"]:not(.px-layer) { display: none !important; }
-/* Seated: the Night 1 tutorial box (tutorial.ts) sits between the seat goal / state stack (--seat-top-b) and the STAKE /
-   odds stack (--seat-bot-t, both set by seatHud.ts). Its height is capped to that gap, so it never covers either. */
+/* Seated (WAVE 20): the Night 1 tutorial box becomes a compact chip at the top left, under the seat goal / state stack
+   (--seat-top-b, seatHud.ts). Narrow and short, so it stays off the centred machine (reels, layout, cabinet) and off the
+   STAKE / odds stack (--seat-bot-t). The news feed moves under the chip (tutorial.ts sets --tut-b), so the hint line is clear. */
 .px-root.seated .px-tut {
   top: calc(var(--seat-top-b, var(--hud-top-h, calc(52 * var(--u)))) + 4 * var(--u));
+  max-width: min(28%, calc(150 * var(--u)));
+  padding: calc(2 * var(--u)) calc(4 * var(--u)) calc(3 * var(--u));
+  font-size: calc(var(--fb) * 0.9);
 }
+.px-root.seated .px-tut .hint { margin-top: calc(1 * var(--u)); padding-bottom: 0; }
+
+/* Wheel inset (roulette, WAVE 20): a small top-down view of the wheel while the ball runs. Top right, under the HUD band,
+   off the centred seat banners; pointer-transparent. Built and drawn by machines/roulette/wheelInset.ts. */
+.rl-inset {
+  position: absolute; right: calc(4 * var(--u)); z-index: 3; pointer-events: none;
+  top: calc(var(--hud-top-h, calc(52 * var(--u))) + 34 * var(--u));
+  width: calc(56 * var(--u)); height: calc(56 * var(--u));
+  background: #06100a; box-shadow: 0 0 0 var(--u) var(--brass), 0 0 0 calc(2 * var(--u)) var(--void);
+}
+.rl-inset canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 /* A placard (note, seat card, journal) is up (placard3d.ts sets .note-open): the tutorial box steps aside. */
 .px-root.note-open .px-tut { display: none !important; }
 /* One text lane: while a toast is up the tutorial box dims, so the news reads first and the tutorial stays readable. */

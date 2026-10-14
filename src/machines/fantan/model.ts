@@ -63,7 +63,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<FantanParts> {
   // ── static shell ───────────────────────────────────────────────────────────────────────────
   kit.box(1.40, 0.66, 1.40, lacquer, at(0, 0.33, TC));                              // lacquer body
   kit.box(1.44, 0.04, 1.44, lacquer, at(0, TOP - 0.02, TC));                        // lacquer top
-  kit.box(1.20, 0.004, 1.20, pal.felt, at(0, TOP + 0.001, TC));                     // green felt inlay
+  kit.box(1.20, 0.004, 1.20, 0x23704a, at(0, TOP + 0.001, TC));                     // green felt inlay (lifted from the dark palette felt, short of neon)
   // no floor cushions: the stand strip must stay clear of model geometry (seat pads are a T2 visual)
 
   // ── the painted square (canvas 128 × 128) ─────────────────────────────────────────────────
@@ -141,7 +141,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<FantanParts> {
     root.add(l.root);
     seatLamps.push(l);
     seats.push({
-      pose: { pos: new THREE.Vector3(sx, 1.05, sz), look: new THREE.Vector3(0, TOP, TC), fov: 60, mouse: 'pick' },
+      // seat standard: the painted square is the play surface, large and centred for every seat (one shared view)
+      pose: { pos: new THREE.Vector3(0, 1.75, TC + 0.98), look: new THREE.Vector3(0, TOP + 0.01, TC), fov: 62, mouse: 'pick' },
       stand: new THREE.Vector3(sx, 0, sz),
       avatar: 'stand',
     });

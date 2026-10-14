@@ -49,6 +49,16 @@ export const PED_W = 0.40, PED_H = 0.78;
 export const HEAD_TOP = 1.36, TOP = 1.52;
 export const REEL_R = 0.15, REEL_WIDTH = 0.095, REEL_X: readonly number[] = [-0.11, 0, 0.11], REEL_Y = 1.10;
 export const WIN_W = 0.345, WIN_H = 0.13;
+/** Award glass (paytable), 2:1 like its texture, just above the reel window. */
+export const AWARD_W = 0.20, AWARD_H = 0.10, AWARD_GAP = 0.005;
+/**
+ * Seat frame (WAVE 20): the reel window fills ≥ 45 % of the frame height (0.13 of 0.28 m = 46 %). The frame spans the
+ * window and the glass, with a 3 cm margin above the glass so the seat's top banner does not cover the paytable title.
+ */
+export const SEAT_FRAME_Y0 = 1.02, SEAT_FRAME_Y1 = 1.30;
+/** Camera distance from the reel face that frames exactly that height with the 50° seat lens. */
+const SEAT_FOV = 50;
+const SEAT_D = ((SEAT_FRAME_Y1 - SEAT_FRAME_Y0) / 2) / Math.tan(THREE.MathUtils.degToRad(SEAT_FOV / 2));
 export const LEVER_PIVOT: readonly [number, number, number] = [0.24, 1.18, 0];
 export const LEVER_LEN = 0.42;
 export const MAW_COINS = 30;
@@ -124,8 +134,10 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BanditParts> {
 
   // ── screens and lamps ──
   // 256 × 128 texels (2× the old density): the numerals are drawn at integer scale 2, so each glyph pixel is 2 texels
-  const award = kit.screen({ w: 0.34, h: 0.17, px: [256, 128], bezel: pal.black, scanlines: false });   // no scanline dimming: it striped the 2-texel strokes
-  award.mesh.position.set(0, (winTop + HEAD_TOP) / 2, D / 2 + 0.002);
+  // WAVE 20: the glass is shrunk to 0.22 × 0.11 and sits right on top of the reel window (not in the upper band), so the seat
+  // frame can give the reels ≥ 45 % of its height. The full paytable is also on the RULES card (seatHud).
+  const award = kit.screen({ w: AWARD_W, h: AWARD_H, px: [256, 128], bezel: pal.black, scanlines: false });   // no scanline dimming: it striped the 2-texel strokes
+  award.mesh.position.set(0, winTop + AWARD_GAP + AWARD_H / 2, D / 2 + 0.002);
   crispTexture(award.tex, 4);                       // linear: nearest minification of 2-texel strokes is what garbled 'PAYTABLE'
   award.tex.minFilter = THREE.LinearFilter;         // the glass is only ~1.4x minified: plain bilinear stays sharper than mip blending
   award.tex.generateMipmaps = false;
@@ -197,7 +209,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BanditParts> {
     root,
     parts,
     // framing: award glass (top) + reel window (bottom) inside the band between the HUD banner and the control bar, 4:3 and 16:9
-    playPose: { pos: new THREE.Vector3(0, 1.25, 0.80), look: new THREE.Vector3(0, 1.14, 0), fov: 50, mouse: 'pick' },
+    // WAVE 20: the reels fill the frame (window 0.13 of 0.28 m = 46 %); the glass above and the lever arm are the rest of it.
+    playPose: { pos: new THREE.Vector3(0, (SEAT_FRAME_Y0 + SEAT_FRAME_Y1) / 2, D / 2 + SEAT_D), look: new THREE.Vector3(0, (SEAT_FRAME_Y0 + SEAT_FRAME_Y1) / 2, 0), fov: SEAT_FOV, mouse: 'pick' },
     colliders: [
       { min: [-PED_W / 2, 0, -PED_W / 2], max: [PED_W / 2, PED_H, PED_W / 2] },
       { min: [-W / 2, PED_H, -D / 2], max: [W / 2, HEAD_TOP, D / 2] },

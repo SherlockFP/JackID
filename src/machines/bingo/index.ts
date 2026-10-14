@@ -627,6 +627,8 @@ export default class BingoHall extends TableBase<BingoParts, Ev, Snap, Act> {
     const g = cv.getContext('2d');
     if (!g) return;
     const W = 40, H = 48, HEAD = 7;
+    const S = cv.width / W;                       // canvas is 6 px per unit: draw the layout scaled so the text stays sharp
+    g.setTransform(S, 0, 0, S, 0, 0);
     const cw = W / 5, ch = (H - HEAD) / 5;
     const marks = marksOf({ grid: c.grid, free: c.free }, baseSet(this.st.called), c.daubs);
     g.fillStyle = '#f2e7c9'; g.fillRect(0, 0, W, H);

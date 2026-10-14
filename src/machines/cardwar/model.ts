@@ -15,6 +15,7 @@ import type { CardPool, ChipPool, Kit, LampPart, MannequinActor, ScreenSurface }
 import type { KitX } from '@/kit/index';
 import type { MachineModel, SeatDef } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 import type { Variant } from './rules';
 
 export const TOP = 0.78;                 // felt height, m
@@ -57,6 +58,8 @@ export interface HeadParts { root: THREE.Group; jaw: THREE.Object3D; eyes: LampP
 export type CardwarParts = {
   /** "The Twin": a standing mannequin behind the felt. */
   dealer: MannequinActor;
+  /** Stool group (kept out of the static merge): the local seat camera hides it, the stools are the foreground. */
+  stools: THREE.Object3D;
   dragon: HeadParts;
   tiger: HeadParts;
   /** Shoe (static), its gauge and the discard stack (scale.y = how full). */
@@ -180,14 +183,19 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CardwarParts> 
   root.add(plaqueLabel.mesh);
 
   // stools and play poses (camera above the stool, looking down the felt)
+  const stoolGroup = new THREE.Group();
+  stoolGroup.name = 'stools';
+  root.add(stoolGroup);
   const seats: SeatDef[] = [];
   for (let i = 0; i < SEATS; i++) {
     const x = seatX(i);
     const stool = kit.stool({ h: 0.68 });
     stool.position.set(x, 0, SEAT_Z);
-    root.add(stool);
+    stoolGroup.add(stool);
     seats.push({
-      pose: { pos: new THREE.Vector3(x, 1.20, 0.85), look: new THREE.Vector3(x * 0.6, TOP, -0.10), fov: 60, mouse: 'pick' },
+      // seat view: one shared framing (camera offset by half the seat x) that takes in the whole felt, both bet rows,
+      // the shoe and discard and the Twin's card zone, clear of the top and bottom HUD strips
+      pose: { pos: new THREE.Vector3(x * 0.5, 2.00, 1.90), look: new THREE.Vector3(0, 0.95, -0.20), fov: 70, mouse: 'pick' },   // higher and back: the near stool cushions drop below the frame, the felt and Twin stay in it
       stand: new THREE.Vector3(x, 0, SEAT_Z + 0.12),
       avatar: 'sit',
     });
@@ -263,11 +271,13 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CardwarParts> 
 
   const parts: CardwarParts = {
     dealer, dragon, tiger, shoe: shoePart.root, shoeLevel, discardStack: discard, cards, chips, felt, plaque,
-    history, railMeters, seatLamps, beadCounter, spotHits, spots,
+    history, railMeters, seatLamps, beadCounter, spotHits, spots, stools: stoolGroup,
   };
+  crispTexture(felt.tex, 4);                                   // on-machine text: linear + mips, not nearest
+  crispTexture(history.tex, 4);
   kit.finalize(root, {
     keep: [
-      dealer.root, felt.mesh, history.mesh, cards.root, chips.root, shoeLevel, discard, light, shoePart.root, tray,
+      stoolGroup, dealer.root, felt.mesh, history.mesh, cards.root, chips.root, shoeLevel, discard, light, shoePart.root, tray,
       beadCounter, dragon.root, tiger.root, ...seatLamps.map((l) => l.root), plaque, ...railMeters,
     ],
   });

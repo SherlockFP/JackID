@@ -15,6 +15,7 @@ import type { Kit, LampPart, ChipValue } from '@/kit/types';
 import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { PlayerId } from '@/core/types';
 import { fmtCoins, t as tr } from '@/core/i18n';
+import { crispTexture } from '@/core/ui/textOverlay';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { TableBase } from '@/machines/_base/TableBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
@@ -83,7 +84,11 @@ export default class SicBo extends TableBase<SicBoParts, Ev, Snap, Act> {
   /** Seat HUD overlay (readability standard, see _base/seatHud.ts); shown while seated. */
   private seatHud?: SeatHud;
 
-  init(): void { this.seatHud = new SeatHud(this.ctx.ui.root); this.hud(null); this.paintAll(); }
+  init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root); this.hud(null); this.paintAll();
+    // layout text is drawn by the native-resolution pass (placard3d standard): sharp at any PSX target size
+    crispTexture(this.parts.labelTex, 4);   // linear + mipmaps for the label sheet (placard3d texture rule)
+  }
   dispose(): void { this.seatHud?.dispose(); super.dispose(); }
 
   // ── local input → action to the host ──────────────────────────────────────────────────────────

@@ -261,7 +261,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<LootboxParts> 
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.45, 0.70), look: new THREE.Vector3(0, 1.30, 0), fov: 55, mouse: 'pick' },
+    // seat view: lifted and backed off so the capsule heap (to 1.30) and the crank row (0.75 to 1.01) clear the bottom control bar
+    playPose: { pos: new THREE.Vector3(0, 1.40, 1.30), look: new THREE.Vector3(0, 1.00, 0), fov: 60, mouse: 'pick' },
     colliders: [
       { min: [-0.40, 0, -0.40], max: [0.40, TOP_Y, 0.40] },
     ],

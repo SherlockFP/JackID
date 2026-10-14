@@ -41,7 +41,7 @@ const CYAN = 0x39e6ff;
 const WHITE = 0xffffff;
 const SCREEN_BG = '#001a08';
 const PHOSPHOR = '#33ff66';
-const DIM = '#1f6b2c';
+const DIM = '#3fae55';
 
 type Res = 'safe' | 'mine' | 'defused';
 type Ev =

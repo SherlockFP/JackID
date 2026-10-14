@@ -36,7 +36,8 @@ import { STRINGS } from './strings';
 
 export { playHeadless };
 
-const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5'].map((k) => ({ k: 'm.bandit.' + k }));
+/** The rules card. `rule6` is the paytable in text: the glass on the reels is too small to read from the seat. */
+const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.bandit.' + k }));
 
 type Ev =
   | { k: 'lever'; angle: number }
@@ -175,7 +176,8 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
     if (!this.isLocalOccupant) return;
     if (e.type === 'down' && e.button === 0) {
       if (this.busy || this.roundOpen || this.tiltOn()) return;      // the latch holds the lever while reels spin
-      if (this.pick([this.parts.knob])) this.dragging = { y0: e.ndc.y, a0: this.leverAngle };
+      // WAVE 20: the arm is grabbable too, not only the knob (the knob sits below the seat frame; the arm is in it)
+      if (this.pick([this.parts.knob, this.parts.lever])) this.dragging = { y0: e.ndc.y, a0: this.leverAngle };
     } else if (e.type === 'move' && this.dragging) {
       const a = clamp(this.dragging.a0 + (this.dragging.y0 - e.ndc.y) * LEVER_SENS, 0, LEVER_MAX);
       this.setLever(a);

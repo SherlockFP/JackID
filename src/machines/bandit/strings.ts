@@ -28,6 +28,7 @@ export const STRINGS: MachineStrings = {
     rule3: 'Your bet is credits times coin. Stake changes are locked while the reels turn.',
     rule4: 'LUCKY NUDGE can move one reel one stop after a pull.',
     rule5: 'Five losses in a row and the maw swallows the pile. THUMP 3 times in 10 s locks the cabinet for 8 s.',
+    rule6: 'Pays per credit: STAR 1000 · 3BAR 200 · 2BAR 100 · BAR 50 · MELON 100 · ORANGE 30 · PLUM 20 · SHOE 50 · any BAR 15.',
   },
   tr: {
     name: 'Tek Kollu Haydut',
@@ -52,5 +53,6 @@ export const STRINGS: MachineStrings = {
     rule3: 'Bahis = kredi × jeton. Makaralar dönerken bahis değiştirilemez.',
     rule4: 'ŞANSLI İTME, çekişten sonra bir makarayı bir adım oynatabilir.',
     rule5: 'Arka arkaya beş kayıpta ağız parayı yutar. 10 sn içinde 3 kez VUR, makineyi 8 sn kilitler.',
+    rule6: 'Kredi başına ödeme: YILDIZ 1000 · 3BAR 200 · 2BAR 100 · BAR 50 · KAVUN 100 · PORTAKAL 30 · EROZ 20 · NAL 50 · her BAR 15.',
   },
 };

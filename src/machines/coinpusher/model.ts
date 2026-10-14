@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import type { Kit, LampPart, MarqueePart, ReelPart, ScreenSurface } from '@/kit/types';
 import type { MachineModel, SeatDef } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 import { createRng } from '@/core/rng';
 import { SHELF_CAP } from './rules';
 
@@ -69,10 +70,14 @@ export type CoinpusherParts = {
 export const PRIZE_POS: ReadonlyArray<[number, number]> = [[-0.36, -0.12], [0.36, -0.12], [-0.20, 0.02], [0.20, 0.02], [-0.36, 0.14], [0.36, 0.14]];
 export const TEETH_SEED = 0x5eed;
 
-/** Seats (TECH §3.4): standing, camera 0.70 m above-front of the shelf, pitch −35°, FOV 60°, offset to each station. */
+/** Seat pose, shared by both stations: the camera backs off to 1.15 m and looks down at the shelf, so the bonus reels and
+ *  the upper coin chutes (1.42 to 1.72) stay under the top band and the shelf stays above the bottom bar. */
+export const SEAT_POSE = { pos: new THREE.Vector3(0, 1.62, 1.15), look: new THREE.Vector3(0, 1.19, -0.20), fov: 58 } as const;
+
+/** Seats (TECH §3.4): standing, offset to each station; both stations share the framing. */
 export function seatDefs(): SeatDef[] {
   return STATION_X.map((x) => ({
-    pose: { pos: new THREE.Vector3(x, 1.70, 0.92), look: new THREE.Vector3(x * 0.8, 0.98, -0.20), fov: 60, mouse: 'primary' as const },
+    pose: { pos: new THREE.Vector3(x * 0.5, SEAT_POSE.pos.y, SEAT_POSE.pos.z), look: new THREE.Vector3(x * 0.3, SEAT_POSE.look.y, SEAT_POSE.look.z), fov: SEAT_POSE.fov, mouse: 'primary' as const },
     stand: new THREE.Vector3(x, 0, 0.92),
     avatar: 'stand' as const,
   }));
@@ -260,6 +265,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CoinpusherParts
     pusher, coins, teeth, prizes, goldenPlate, chutes, gate, bonusReels, walls, trays,
     gutterConveyors: [gutterL, gutterR], stationLamps, tiltLamp, leds: { L: ledL, R: ledR }, marquee,
   };
+  crispTexture(ledL.tex, 4);                                   // on-machine text: linear + mips, not nearest
+  crispTexture(ledR.tex, 4);
   kit.finalize(root, {
     keep: [pusher, coins, teeth, ...prizes, goldenPlate, ...chutes, gate, ...bonusReels.map((r) => r.root), ...walls,
       gutterL, gutterR, ...trays, ...stationLamps.map((l) => l.root), tiltLamp.root, ledL.mesh, ledR.mesh, marquee.root, front, light],
@@ -268,7 +275,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CoinpusherParts
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.70, 0.92), look: new THREE.Vector3(0, 0.98, -0.2), fov: 60, mouse: 'primary' },
+    playPose: { pos: SEAT_POSE.pos.clone(), look: SEAT_POSE.look.clone(), fov: SEAT_POSE.fov, mouse: 'primary' },
     seats: seatDefs(),
     colliders: [{ min: [-w / 2, 0, -d / 2], max: [w / 2, h, d / 2 - 0.1] }],
     interact: { min: [-w / 2, 0.2, -d / 2], max: [w / 2, h, d / 2 + 0.3] },

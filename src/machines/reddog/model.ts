@@ -167,7 +167,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ReddogParts> {
     root.add(stool);
     stools.push(stool);
     seats.push({
-      pose: { pos: new THREE.Vector3(x, 1.18, 0.7), look: new THREE.Vector3(x * 0.5, TOP, -0.2), fov: 60, mouse: 'pick' },
+      // seat standard: the whole felt (shoe, discard, bet row, spread bar) in frame, clear of the HUD strips;
+      // the dealer rises above the far rail so it never covers the felt
+      pose: { pos: new THREE.Vector3(x * 0.25, 1.85, 1.75), look: new THREE.Vector3(0, TOP, -0.3), fov: 62, mouse: 'pick' },
       stand: new THREE.Vector3(x, 0, SEAT_Z + 0.12),
       avatar: 'sit',
     });

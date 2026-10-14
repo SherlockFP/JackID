@@ -15,6 +15,7 @@ import * as THREE from 'three';
 import type { Kit, BallPool, LampPart, ButtonPart, ScreenSurface } from '@/kit/types';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 /** Contract between modeler and coder. Field coordinates are playfield-local (metres). */
 export type BingoParts = {
@@ -201,6 +202,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BingoParts> {
     field, balls, holes, holeLamps, bumpers, backglass, lamps: { extraBall, tilt }, priceWheel,
     leds: { price, credit, bet, win }, plunger, buttons: { lift }, stool,
   };
+  crispTexture(backglass.tex, 4);                              // on-machine text: linear + mips, not nearest
+  crispTexture(price.tex, 4);
   kit.finalize(root, {
     keep: [field, balls.root, plunger, priceWheel, backglass.mesh, price.mesh, extraBall.root, tilt.root, lift.root,
       credit.root, bet.root, win.root, ...holeLamps.map((l) => l.root)],
@@ -210,7 +213,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BingoParts> {
     root,
     parts,
     // Play pose: 0.60 m above the front of the playfield, pitch −35°, backglass in the top of the frame, FOV 62.
-    playPose: { pos: new THREE.Vector3(0, 1.45, 0.78), look: new THREE.Vector3(0, 0.92, -0.10), fov: 62, mouse: 'primary' },
+    playPose: { pos: new THREE.Vector3(0, 1.62, 1.90), look: new THREE.Vector3(0, 1.05, -0.50), fov: 60, mouse: 'primary' },
     colliders: [
       { min: [-CAB.w / 2, 0, CAB.backZ], max: [CAB.w / 2, 1.9, CAB.frontZ] },
     ],

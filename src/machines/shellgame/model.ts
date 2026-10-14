@@ -94,7 +94,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ShellParts> {
   kit.box(1.16, 0.95, 0.04, wood, at(0, 1.425, -0.38));                   // back wall, 0.95 → 1.90
   for (const sx of [-1, 1]) kit.box(0.04, 1.82, 0.80, wood, at(sx * 0.58, 0.99, 0));   // side panels
   kit.box(1.00, 0.01, 0.48, felt, at(0, COUNTER_Y + 0.005, -0.02));       // felt mat (top at 0.96)
-  kit.box(1.16, 0.04, 0.80, brass, at(0, COUNTER_Y + 0.02, 0));           // brass counter rail
+  // brass counter rail: front and back lips only, so the green mat reads instead of a full brass top (was overexposed yellow)
+  kit.box(1.16, 0.04, 0.06, 0x7a5a24, at(0, COUNTER_Y + 0.02, 0.37));   // dull brass: the lit top no longer blooms yellow
+  kit.box(1.16, 0.04, 0.06, 0x7a5a24, at(0, COUNTER_Y + 0.02, -0.37));
   kit.box(0.60, 0.22, 0.02, pal.black, at(0, 1.62, 0.37));                // name plate behind the label
 
   // ── striped awning: 8 stripes, alternating colourway ──
@@ -134,8 +136,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ShellParts> {
   head.add(jaw);
   kit.box(0.10, 0.03, 0.10, ivory, { pos: [0, -0.01, 0.03], parent: jaw });       // hinged chin
 
-  kit.box(0.34, 0.34, 0.22, pal.red, at(0, 1.19, -0.24));                // striped vest (base)
-  for (let i = 0; i < 4; i++) kit.box(0.03, 0.34, 0.01, ivory, at(-0.12 + i * 0.08, 1.19, -0.125));   // vest stripes
+  // torso raised clear of the cups' sight line (the cups sit 0.22 m in front of it, seen from the seat)
+  kit.box(0.34, 0.30, 0.22, pal.red, at(0, 1.25, -0.24));                // striped vest (base)
+  for (let i = 0; i < 4; i++) kit.box(0.03, 0.30, 0.01, ivory, at(-0.12 + i * 0.08, 1.25, -0.125));   // vest stripes
 
   const arm = (shoulder: THREE.Vector3, side: string): ArmParts => {
     const armG = kit.group(`thimble_arm_${side}`);
@@ -212,8 +215,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ShellParts> {
   lamp.root.position.set(0, 1.78, 0.24);
   root.add(lamp.root);
   const light = new THREE.Object3D();
-  light.position.set(0, 1.50, 0.30);
-  light.userData = { color: 0xffce5a, intensity: 0.9, range: 2.5, flicker: 'CANDLE' };
+  light.position.set(0, 1.62, 0.42);
+  light.userData = { color: 0xffce5a, intensity: 0.45, range: 2.0, flicker: 'CANDLE' };
   root.add(light);
 
   // anchors (MODEL_ANCHORS)
@@ -241,7 +244,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ShellParts> {
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.30, 0.55), look: new THREE.Vector3(0, 1.00, 0), fov: 55, mouse: 'pick' },
+    // seat standard: cups mid-frame, the automaton's head and arms inside the top band, booth counter clear of the control bar
+    playPose: { pos: new THREE.Vector3(0, 1.45, 1.5), look: new THREE.Vector3(0, 1.08, -0.1), fov: 57, mouse: 'pick' },
     colliders: [{ min: [-0.60, 0, -0.40], max: [0.60, 1.95, 0.40] }],
     interact: { min: [-0.60, 0.05, -0.40], max: [0.60, 1.95, 0.55] },
     anchors: { speaker, prompt, label: label.mesh, marqueeTop, servicePlate, stand, light, fxHead },

@@ -18,6 +18,7 @@ import type { Kit, ScreenSurface, MarqueePart } from '@/kit/types';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { createRng, type Rng } from '@/core/rng';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 export const W = 1.2, D = 0.35, H = 2.4, FOOT_D = 1.0;
 export const ROWS = 12;
@@ -136,7 +137,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PlinkoParts> {
   root.add(pucks);
 
   // ── slot plate: one canvas, 13 painted multipliers (repainted per risk by index.ts) ─────────────
-  const slotPlates = kit.screen({ w: 13 * DX, h: 0.07, px: [208, 16], bezel: black });
+  const slotPlates = kit.screen({ w: 13 * DX, h: 0.07, px: [208, 16], bezel: black, scanlines: false });   // no scanline shader: it halves every other row of the 16 px plates
+  crispTexture(slotPlates.tex, 4);                                                                       // linear + mips: the multipliers stay sharp from the seat camera
   slotPlates.mesh.position.set(0, SLOT_PLATE_Y, BACK_Z + 0.012);
   root.add(slotPlates.mesh);
 
@@ -155,7 +157,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PlinkoParts> {
   root.add(riskSwitch);
 
   // ── credit / bet / win LEDs + last-12 row ──────────────────────────────────────────────────────
-  const leds = kit.screen({ w: 0.5, h: 0.1, px: [160, 32], bezel: black });
+  const leds = kit.screen({ w: 0.5, h: 0.1, px: [160, 32], bezel: black, scanlines: false });
+  crispTexture(leds.tex, 4);
   leds.mesh.position.set(-0.12, 0.27, 0.178);
   root.add(leds.mesh);
 
@@ -203,7 +206,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PlinkoParts> {
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.62, 1.35), look: new THREE.Vector3(0, 1.25, 0), fov: 66, mouse: 'primary' },
+    // seat view: the whole board (funnel to slot plate, 1.8 m) between the HUD top strip and the control bar, 2.7 m back
+    playPose: { pos: new THREE.Vector3(0, 1.3, 2.7), look: new THREE.Vector3(0, 1.2, 0), fov: 58, mouse: 'primary' },
     colliders: [{ min: [-W / 2, 0, -D / 2], max: [W / 2, H, D / 2] }],
     interact: { min: [-W / 2, 0.3, -D / 2], max: [W / 2, H, D / 2 + 0.3] },
     anchors: { speaker, prompt, label, marqueeTop, servicePlate, stand, coinOut, light },

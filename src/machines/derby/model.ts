@@ -12,6 +12,7 @@ import type { ButtonPanelPart, PanelButton, PanelButtonSpec, LampPart, ScreenSur
 import type { KitX } from '@/kit/index';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 import type { LocalAABB, SeatDef } from '@/core/types';
 
 export type DerbyParts = {
@@ -169,7 +170,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DerbyParts> {
     root.add(m.root);
     railMeters.push(m);
     seats.push({
-      pose: { pos: new THREE.Vector3(sx, 1.5, SEAT_Z), look: new THREE.Vector3(sx, 0.95, 0), fov: 60, mouse: 'pick' },
+      // seat view: one shared framing for every stand. The 3.5 m track, finish and lane lamps need a wide FOV from 2.6 m back.
+      // (raised so the betting console top cannot hide the near lanes; a level-ish look keeps the track readable)
+      pose: { pos: new THREE.Vector3(0, 1.80, 2.60), look: new THREE.Vector3(0, 1.39, 0), fov: 76, mouse: 'pick' },
       stand: new THREE.Vector3(sx, 0, SEAT_Z + 0.02),
       avatar: 'stand',
     });
@@ -192,6 +195,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DerbyParts> {
     rats, tails, gate, gateBell, finishLine, finishCam, tote, panel, buttons: panel.buttons, laneLamps, drainGrate,
     railMeters, seatLamps, bulbs,
   };
+  crispTexture(tote.tex, 4);                                   // on-machine text: linear + mips, not nearest
   kit.finalize(root, {
     keep: [...rats, gate, tote.mesh, panel.root, bulbs.root, ...laneLamps.map((l) => l.root), ...seatLamps.map((l) => l.root), ...railMeters.map((l) => l.root)],
   });

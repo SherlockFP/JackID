@@ -16,9 +16,8 @@ import type { BulbChain, LampPart, MannequinActor, ScreenSurface, StringCardPool
 import type { KitX } from '@/kit/index';
 import type { MachineModel, SeatDef } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { buildPartyTable } from './partyTable';
 
-export const FELT_SHAPE_W = 1.8;
-export const FELT_SHAPE_D = 1.6;
 export const HAND_MAX = 24;
 export const TABLE_MAX = 96;
 /** Card size on the felt (matches the kit card pools), metres. */
@@ -46,19 +45,18 @@ export type SonKartParts = {
   coinOut: THREE.Object3D;               // FX origin for wins
 };
 
-const FELT = 0x0f4a2c;
+const FELT = 0x1a7048;
 const LAMP_OFF = 0x2a2a2a;
 
 export function buildModel(kit: KitX, o: ModelOpts): MachineModel<SonKartParts> {
   const { pal } = kit;
   const root = kit.group('sonkart');
 
-  // the table: round felt, rail, four chairs (seat positions come from the kit)
-  const ft = kit.feltTable({ shape: 'round', w: FELT_SHAPE_W, d: FELT_SHAPE_D, felt: FELT, rail: pal.woodDark, seats: 4, stools: false, dealer: false });
+  // the table: round felt (0.46 m), rail and four chairs OUTSIDE it (partyTable.ts); the layout anchors sit on the felt
+  const ft = buildPartyTable(kit, root, FELT, 4);
   const feltY = ft.feltY;
-  root.add(ft.root);
-  const seats: SeatDef[] = ft.seats.slice(0, 4);
-  const anchors = ft.seatAnchors.slice(0, 4).map((a) => a.position.clone());
+  const seats: SeatDef[] = ft.seats;
+  const anchors = ft.anchors;
 
   const deckSpot = new THREE.Vector3(-0.2, feltY + 0.004, 0);
   const discSpot = new THREE.Vector3(0.12, feltY + 0.004, 0);
@@ -124,7 +122,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<SonKartParts> 
   const bots: MannequinActor[] = [];
   anchors.forEach((p, s) => {
     const m = kit.mannequin({ style: 'plain', color: [0x2a1a14, 0x3a2a1e, 0x1e2a33, 0x2d1f2f][s % 4], jointColor: 0x3a3a3a, height: 1.7, clip: 'Sitting_Idle_Loop' });
-    m.root.position.set(p.x, 0.42, p.z);
+    const c = ft.chairs[s];
+    m.root.position.set(c.x, 0.42, c.z);
     m.root.rotation.y = Math.atan2(-p.x, -p.z);
     m.setVisible(false);
     root.add(m.root);
@@ -142,7 +141,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<SonKartParts> 
   root.add(labelAnchor);
   const light = new THREE.Object3D();
   light.position.set(0, 2.1, 0);
-  light.userData = { color: 0xffe2a0, intensity: 0.6, range: 2.6, flicker: 'STEADY' };
+  light.userData = { color: 0xffe2a0, intensity: 1.1, range: 3.2, flicker: 'STEADY' };
   root.add(light);
 
   const parts: SonKartParts = {
@@ -159,7 +158,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<SonKartParts> 
   return {
     root, parts, seats,
     playPose: seats[0].pose,
-    colliders: [...ft.colliders],
+    colliders: ft.colliders,
     interact: { min: [-1.0, 0.2, -1.0], max: [1.0, 1.6, 1.0] },
     anchors: { speaker: prompt, prompt, label: labelAnchor, coinOut, light, servicePlate: coinOut },
     dispose: () => { screen.dispose(); },

@@ -104,7 +104,7 @@ export function drawLayoutLabels(g: CanvasRenderingContext2D, w: number, h: numb
   }
 }
 
-export const DIM: [number, number, number] = [0.30, 0.28, 0.34];   // milk glass, lamp off
+export const DIM: [number, number, number] = [0.44, 0.42, 0.50];   // milk glass, lamp off (lifted for legibility at seat distance)
 export const LIT: [number, number, number] = [1.0, 0.78, 0.24];  // #FFC83D
 
 export function buildModel(kit: Kit, o: ModelOpts): MachineModel<SicBoParts> {
@@ -142,7 +142,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<SicBoParts> {
   root.add(crank.root);
 
   // ── dice ──
-  const dice = kit.dice({ count: 3, size: 0.04, body: 0xf2ead8, pip: 0x1a0f0c });
+  const dice = kit.dice({ count: 3, size: 0.05, body: 0xf2ead8, pip: 0x1a0f0c });
   const diceRest = [-0.12, 0, 0.12].map((x) => new THREE.Vector3(x, DICE_REST_Y, DICE_REST_Z));
   dice.dice.forEach((m, i) => { m.position.copy(diceRest[i]); root.add(m); });
   const diceFrom = new THREE.Vector3(0, AXLE_Y, AXLE_Z);
@@ -154,7 +154,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<SicBoParts> {
     const corners: Array<[number, number]> = [[c.x0, c.z0], [c.x0, c.z1], [c.x1, c.z1], [c.x1, c.z0]];
     corners.forEach(([x, z], k) => {
       const v = (i * 4 + k) * 3;
-      pos.set([x, TOP + 0.004, z], v);
+      pos.set([x, TOP + 0.012, z], v);   // 1.2 cm over the slab: the low-res depth buffer z-fights below ~1 cm at 2 m
       col.set(DIM, v);
     });
     idx.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3);
@@ -168,13 +168,15 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<SicBoParts> {
   root.add(panels);
 
   // label overlay (canvas texture, language-dependent; repainted by index.ts)
-  const LW = 1024, LH = Math.round((LW * (LAYOUT.z1 - LAYOUT.z0)) / (LAYOUT.x1 - LAYOUT.x0));
+  // sheet sized to the PSX pixels it covers (psxMaterial forces nearest, no mips): ~1 texel per screen pixel
+  const LW = 512, LH = Math.round((LW * (LAYOUT.z1 - LAYOUT.z0)) / (LAYOUT.x1 - LAYOUT.x0));
   const labelTex = kit.tex.canvas(LW, LH, () => undefined);
   labelTex.colorSpace = THREE.NoColorSpace;
   const labelCanvas = labelTex.image as HTMLCanvasElement;
+  // blended, not alpha-tested: the 55 % cell fill would otherwise break into blotches under mip filtering
   const labels = kit.plane(LAYOUT.x1 - LAYOUT.x0, LAYOUT.z1 - LAYOUT.z0,
-    kit.mat({ map: labelTex, lit: false, transparent: true, alphaTest: 0.5 }),
-    { pos: [0, TOP + 0.007, (LAYOUT.z0 + LAYOUT.z1) / 2], rot: [-90, 0, 0], shade: false, name: 'labels' });
+    kit.mat({ map: labelTex, lit: false, transparent: true, alphaTest: 0.01 }),
+    { pos: [0, TOP + 0.02, (LAYOUT.z0 + LAYOUT.z1) / 2], rot: [-90, 0, 0], shade: false, name: 'labels' });
   root.add(labels);
 
   // ── history board ──
@@ -192,7 +194,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<SicBoParts> {
     root.add(l.root);
     seatLamps.push(l);
     seats.push({
-      pose: { pos: new THREE.Vector3(sx, 1.30, 0.90), look: new THREE.Vector3(0, 0.85, 0), fov: 60, mouse: 'pick' },
+      // seat standard (1024x768 and 1280x720): whole layout, dice and cage in frame, clear of the HUD strips
+      pose: { pos: new THREE.Vector3(sx * 0.25, 1.85, 2.05), look: new THREE.Vector3(0, 0.78, -0.2), fov: 64, mouse: 'pick' },
       stand: new THREE.Vector3(sx, 0, 0.92),
       avatar: 'stand',
     });

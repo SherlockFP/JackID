@@ -193,7 +193,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<LottoParts> {
   kit.finalize(root, { keep });
 
   const seats: SeatDef[] = SEAT_X.map((x) => ({
-    pose: { pos: new THREE.Vector3(x, 1.3, POSE_Z), look: KIOSK_CRT.clone(), fov: 55, mouse: 'primary' },
+    // seat standard: tank, winners board, kiosk and jackpot board in frame, the base well clear of the lens (was 5 cm)
+    pose: { pos: new THREE.Vector3(0, 1.6, 1.9), look: new THREE.Vector3(0, 1.2, 0), fov: 62, mouse: 'primary' },
     stand: new THREE.Vector3(x, 0, SEAT_Z),
     avatar: 'stand',
   }));

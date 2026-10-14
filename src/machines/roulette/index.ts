@@ -25,6 +25,7 @@ import {
   type Bet, type CallId, type Mods,
 } from './rules';
 import { STRINGS } from './strings';
+import { WheelInset } from './wheelInset';
 
 // ── timing (seconds, ×1 speed) ──────────────────────────────────────────────────────────────────
 const OPEN_S = 20;          // shared betting window
@@ -102,9 +103,16 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
 
   /** Seat HUD overlay (readability standard, see _base/seatHud.ts); shown while seated. */
   private seatHud?: SeatHud;
+  /** Wheel inset: the wheel is out of the seat frame, so a small top-down view shows the spin (WAVE 20). */
+  private inset?: WheelInset;
 
-  init(): void { this.seatHud = new SeatHud(this.ctx.ui.root); this.hud(null); this.paintAll(); }
-  dispose(): void { this.seatHud?.dispose(); super.dispose(); }
+  init(): void {
+    this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.inset = new WheelInset(this.ctx.ui.root);
+    this.hud(null);
+    this.paintAll();
+  }
+  dispose(): void { this.seatHud?.dispose(); this.inset?.dispose(); super.dispose(); }
 
   // ── local input → action to the host ──────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
@@ -348,6 +356,8 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
   private async spinShow(ev: Extract<Ev, { k: 'spin' }>, pc: PresentCtx): Promise<void> {
     this.st.phase = 'spin';
     if (this.isLocalOccupant) this.showHud();
+    // the wheel inset for the seated player: the whole spin plus a hold after the landing (WAVE 20)
+    if (this.isLocalOccupant) this.inset?.show((pc.fast ? 1200 : ev.orbitMs + ev.dropMs + 2200));
     const { rotor, ballPivot, rim, dolly, ball } = this.parts;
     const a = pocketAngle(ev.pocket);
     const rStart = rotor.rotation.y;
@@ -374,6 +384,7 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     const pz = numberXZ(ev.pocket);
     this.parts.puck.position.set(pz[0], this.parts.puck.position.y, pz[1]);   // the puck on the layout: the player's view has no wheel in it
     this.parts.puck.visible = true;
+    this.inset?.land(ev.pocket);
     this.ctx.fx.sparks(ball, 10, colorOf(ev.pocket) === 'red' ? 0xff4040 : GOLD);
     this.ctx.fx.shake(0.012, 0.25, { roll: 0.4 });
     this.sfx('cardSlap', { vol: 0.8 });
@@ -444,7 +455,7 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
       this.unready(seat);
       void this.emit({ k: 'lay', seat, bets: [] });
     }
-    if (local) { this.lastMine = []; this.seatHud?.hide(); this.hud(null); }
+    if (local) { this.lastMine = []; this.seatHud?.hide(); this.inset?.hide(); this.hud(null); }
     this.paintLamps();
   }
   override onLang(): void { paintLayout(this.parts.layoutTex, this.ctx.kit.tex as Parameters<typeof paintLayout>[1]); this.drawHistory(); this.paintChips(); if (this.isLocalOccupant) this.showHud(); }
@@ -511,6 +522,7 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
   /** Refreshes the banner once per displayed second of the shared betting window. */
   private shownSecond = -1;
   frame(): void {
+    this.inset?.update(() => ({ rotor: this.parts.rotor.rotation.y, ball: this.parts.ballPivot.rotation.y }));
     if (!this.isLocalOccupant) return;
     const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
     if (left !== this.shownSecond) { this.shownSecond = left; this.showHud(); }

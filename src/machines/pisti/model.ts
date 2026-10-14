@@ -1,7 +1,7 @@
 /**
  * Pişti — procedural model (TableBase party table, 4 seats, 2–4 players).
  *
- * A round felt table (kit.feltTable, seats 0..3 around the rim) with a pool for the 52 cards, a face-up table pile
+ * A round felt table (partyTable.ts, chairs 0..3 outside the rim) with a pool for the 52 cards, a face-up table pile
  * in the centre, a deck at dealer-left and per-seat capture piles between the rim and the centre. Each seat has a
  * turn lamp and an invisible pick box row for the first-person hand (the local player picks cards with the mouse).
  * House mannequins (kit.mannequin, sitting) are shown on the seats that hold a bot. A scoreboard screen stands
@@ -12,13 +12,13 @@ import type { CardPool, LampPart, MannequinActor, ScreenSurface } from '@/kit/ty
 import type { KitX } from '@/kit/index';
 import type { MachineModel, SeatDef } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { buildPartyTable } from './partyTable';
 
 export const SEATS = 4;
 export const HAND_MAX = 4;
-const FELT = 0x1d5a3c;
+const FELT = 0x26805a;
 const LAMP_OFF = 0x2a2a2a;
 const LAMP_ON = 0xffd040;
-const TABLE_W = 1.5, TABLE_D = 1.5;
 
 export type PistiParts = {
   /** One pool for all 52 cards (each card id sits in exactly one place: deck, hand, table, a pile). */
@@ -64,13 +64,11 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<PistiParts> {
   const { pal } = kit;
   const root = kit.group('pisti');
 
-  // the table: round felt, rail and four seats (positions come from the kit)
-  const ft = kit.feltTable({ shape: 'round', w: TABLE_W, d: TABLE_D, felt: FELT, rail: pal.woodDark, seats: SEATS, stools: false, dealer: false });
-  root.add(ft.root);
+  // the table: round felt (0.46 m), rail and four chairs OUTSIDE it (partyTable.ts); the layout anchors sit on the felt
+  const ft = buildPartyTable(kit, root, FELT, SEATS);
   const feltY = ft.feltY;
-  const seatPos = ft.seatAnchors.slice(0, SEATS).map((a) => a.position.clone().setY(feltY));
-  const seats: SeatDef[] = ft.seats.slice(0, SEATS);
-  seats.forEach((s) => { s.pose = { ...s.pose, mouse: 'pick' }; });
+  const seatPos = ft.anchors;
+  const seats: SeatDef[] = ft.seats;
 
   const centre = new THREE.Vector3(0, feltY + 0.004, 0);
   const deckPos = new THREE.Vector3(-0.26, feltY + 0.004, 0);
@@ -96,7 +94,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<PistiParts> {
   // house mannequins: sitting, hidden until a bot takes the seat
   const bots: MannequinActor[] = seatPos.map((p, s) => {
     const m = kit.mannequin({ style: 'plain', color: [0x2a1a14, 0x3a2a1e, 0x1e2a33, 0x2d1f2f][s % 4], jointColor: 0x3a3a3a, height: 1.7, clip: 'Sitting_Idle_Loop' });
-    m.root.position.set(p.x * 1.18, 0.42, p.z * 1.18);
+    const c = ft.chairs[s];
+    m.root.position.set(c.x, 0.42, c.z);
     m.root.rotation.y = Math.atan2(-p.x, -p.z);
     m.setVisible(false);
     root.add(m.root);
@@ -133,7 +132,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<PistiParts> {
   root.add(labelAnchor);
   const light = new THREE.Object3D();
   light.position.set(0, 2.1, 0);
-  light.userData = { color: 0xffe2a0, intensity: 0.6, range: 2.6, flicker: 'STEADY' };
+  light.userData = { color: 0xffe2a0, intensity: 1.1, range: 3.2, flicker: 'STEADY' };
   root.add(light);
 
   // static geometry merges per material; the raycast pick boxes (raw transparent meshes) stay as they are
@@ -145,7 +144,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<PistiParts> {
     parts: parts as unknown as PistiParts,
     playPose: seats[0].pose,
     seats,
-    colliders: [...ft.colliders],
+    colliders: ft.colliders,
     interact: { min: [-1.0, 0.2, -1.0], max: [1.0, 1.6, 1.0] },
     anchors: { speaker: prompt, prompt, label: labelAnchor, coinOut, light, servicePlate: coinOut },
     dispose: () => { screen.dispose(); pickMat.dispose(); },

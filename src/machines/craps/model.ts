@@ -12,6 +12,7 @@ import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import type { SeatDef } from '@/core/types';
 import { makeCanvas } from '@/core/texgen/pixel';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 export type CrapsParts = {
   /** Pivot of the stickman's stick (a Group, rotated about X to point at the dice). */
@@ -52,7 +53,9 @@ export const SEAT_X: readonly number[] = [-1.12, -0.8, -0.48, -0.16, 0.16, 0.48,
 export const SEAT_Z = 0.95;
 export const DICE_REST: readonly [number, number, number][] = [[-0.12, TOP + 0.02, -0.2], [0.12, TOP + 0.02, -0.2]];
 export const PLACE_ORDER: readonly number[] = [4, 5, 6, 8, 9, 10];
-export const LAYOUT_W = 384, LAYOUT_H = 192;   // 1 px ≈ 0.75 cm over 2.88 × 1.24 m
+/** Layout print: 4x the old texel density (1 px ≈ 1.9 mm over 2.88 × 1.24 m) so the labels stay legible from the seat camera. */
+const LAYOUT_S = 4;
+export const LAYOUT_W = 384 * LAYOUT_S, LAYOUT_H = 192 * LAYOUT_S;
 
 // Layout spots (felt-plane x, z in metres). Canvas top = far rail (−Z), so z grows toward the players.
 const PLACE_Z = 0.34;
@@ -94,31 +97,56 @@ const BOX: Record<string, [number, number]> = {
   pass: [0.9, 0.12], dpass: [0.9, 0.12], odds: [0.5, 0.1], dodds: [0.5, 0.1], field: [1.26, 0.22],
   come: [0.46, 0.2], dcome: [0.46, 0.2], 'big:6': [0.3, 0.2], 'big:8': [0.3, 0.2], furnace: [0.36, 0.14], horn: [0.36, 0.14], ce: [0.36, 0.14],
 };
-const boxOf = (spot: string): [number, number] => BOX[spot] ?? (spot.startsWith('place') || spot.startsWith('buy') ? [0.3, 0.14] : [0.3, 0.12]);
+const boxOf = (spot: string): [number, number] => BOX[spot] ?? (spot.startsWith('place') || spot.startsWith('buy') ? [0.3, 0.14] : spot.startsWith('p:') || spot === 'anycraps' || spot === 'any7' ? [0.31, 0.16] : [0.3, 0.12]);
 
 /** Paints the bone-white layout. `label` maps the `lay.*` keys to the current language. */
 export function drawLayout(c: HTMLCanvasElement, label: (key: string) => string): void {
   const g = c.getContext('2d');
   if (!g) return;
-  g.fillStyle = '#121212';
+  g.fillStyle = '#16171a';
   g.fillRect(0, 0, LAYOUT_W, LAYOUT_H);
   const px = (x: number): number => ((x + 1.44) / 2.88) * LAYOUT_W;
   const pz = (z: number): number => ((z + 0.62) / 1.24) * LAYOUT_H;
-  g.strokeStyle = '#e8e0c8';
-  g.fillStyle = '#e8e0c8';
-  g.lineWidth = 1;
-  g.font = 'bold 9px monospace';
+  const INK = '#f6f0d8';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
+  g.lineJoin = 'round';
+  /** Largest bold size (px) at which `s` fits `w` wide, capped at `cap`. */
+  const fit = (s: string, w: number, cap: number): number => {
+    g.font = 'bold 100px monospace';
+    return Math.min(cap, (100 * w) / Math.max(1, g.measureText(s).width));
+  };
   for (const spot of Object.keys(SPOT_XZ)) {
     const [x, z] = SPOT_XZ[spot];
     const [w, h] = boxOf(spot);
     const cx = px(x), cy = pz(z), bw = (w / 2.88) * LAYOUT_W, bh = (h / 1.24) * LAYOUT_H;
+    g.fillStyle = 'rgba(246,240,216,0.10)';
+    g.fillRect(cx - bw / 2, cy - bh / 2, bw, bh);
+    g.strokeStyle = INK;
+    g.lineWidth = LAYOUT_S * 3;
     g.strokeRect(cx - bw / 2, cy - bh / 2, bw, bh);
     const [kind, arg = ''] = spot.split(':');
-    // place boxes show the number only; the rest read as "LABEL n" (e.g. BIG 6, HARD 8, PROP 2)
-    const text = kind === 'place' ? arg : arg ? `${label(`lay.${kind}`)} ${arg}` : label(`lay.${spot}`);
-    g.fillText(text, cx, cy);
+    // place and prop boxes show the number only (big enough for the low-res pass); the rest read as "LABEL n" (e.g. BIG 6, HARD 8, PROP 2)
+    const text = kind === 'place' || kind === 'p' ? arg : arg ? `${label(`lay.${kind}`)} ${arg}` : label(`lay.${spot}`);
+    g.fillStyle = INK;
+    const cap = bh * (kind === 'place' || kind === 'p' ? 0.78 : 0.62), room = bw * 0.92;
+    const one = fit(text, room, cap);
+    const words = text.split(' ');
+    if (one >= bh * 0.4 || words.length < 2) {
+      g.font = `bold ${Math.floor(one)}px monospace`;
+      g.lineWidth = one * 0.07; g.strokeStyle = INK;     // faux-bold: the glyph strokes survive the low-res pass
+      g.strokeText(text, cx, cy + one * 0.04);
+      g.fillText(text, cx, cy + one * 0.04);
+    } else {                                   // too long for one line: two lines
+      const half = Math.ceil(words.length / 2);
+      const a = words.slice(0, half).join(' '), b = words.slice(half).join(' ');
+      const sz = Math.min(fit(a, room, bh * 0.4), fit(b, room, bh * 0.4));
+      g.font = `bold ${Math.floor(sz)}px monospace`;
+      g.lineWidth = sz * 0.07; g.strokeStyle = INK;
+      g.strokeText(a, cx, cy - sz * 0.52); g.strokeText(b, cx, cy + sz * 0.52);
+      g.fillText(a, cx, cy - sz * 0.52);
+      g.fillText(b, cx, cy + sz * 0.52);
+    }
   }
 }
 
@@ -157,15 +185,16 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CrapsParts> {
   const layoutTex = new THREE.CanvasTexture(layoutCanvas);
   layoutTex.colorSpace = THREE.NoColorSpace;
   const layoutMat = kit.mat({ map: layoutTex, lit: false, side: 'double', snap: false, affine: false });
+  crispTexture(layoutTex, 4);                                                       // linear + mips: the printed labels stay sharp from the seat camera
   const layout = kit.plane(2.88, 1.24, layoutMat, { pos: [0, TOP + 0.012, 0], rot: [-90, 0, 0], shade: false, name: 'layout' });
   root.add(layout);
 
   // ── the Hook: a porcelain-masked stickman behind the table, with his stick ──
   const hook = kit.mannequin({ style: 'porcelain', mask: 'mask_porcelain', height: 1.78, color: 0x1c1c1c, clip: 'Idle_Loop' });
-  hook.root.position.set(0, 0, -1.02);
+  hook.root.position.set(-1.0, 0, -1.02);      // off to the left of the banner column: the seat camera sees him beside it, not behind it
   root.add(hook.root);
   const stick = new THREE.Object3D();
-  stick.position.set(0.3, 1.02, -0.92);
+  stick.position.set(-0.7, 1.02, -0.92);
   root.add(stick);
   kit.cyl(0.012, 0.012, 1.2, walnut, { pos: [0, 0.2, 0], rot: [0, 0, 18], seg: 6, parent: stick });
   kit.sphere(0.022, bone, { pos: [-0.05, -0.36, 0.02], wSeg: 6, hSeg: 4, parent: stick });   // bone-white finger hook
@@ -216,7 +245,9 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CrapsParts> {
     root.add(origin);
     throwOrigins.push(origin);
     seats.push({
-      pose: { pos: new THREE.Vector3(sx, 1.55, SEAT_Z + 0.15), look: new THREE.Vector3(0, 0.7, -0.2), fov: 62, mouse: 'pick' },
+      // seat view: a steep look-down over the rail keeps the whole 2.88 x 1.24 m layout between the HUD top strip and the control bar
+      // at 16:9 and 4:3 (the Hook stays above the far rail, out of the felt). The camera drifts only 6 % of the seat offset.
+      pose: { pos: new THREE.Vector3(sx * 0.06, 2.75, 1.05), look: new THREE.Vector3(sx * 0.06, 0.64, 0.12), fov: 60, mouse: 'pick' },
       stand: new THREE.Vector3(sx, 0, SEAT_Z + 0.03), avatar: 'stand',
     });
   });
@@ -230,11 +261,11 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CrapsParts> {
   root.add(kit.blobShadow(3.4, 1.8));
   const light = new THREE.Object3D();
   light.position.set(-0.8, 2.1, 0);
-  light.userData = { color: 0xff6a00, intensity: 1.2, range: 4.0, flicker: 'BUZZ' };
+  light.userData = { color: 0xffb060, intensity: 2.0, range: 4.5, flicker: 'BUZZ' };
   root.add(light);
   const light2 = new THREE.Object3D();
   light2.position.set(0.8, 2.1, 0);
-  light2.userData = { color: 0xff6a00, intensity: 1.2, range: 4.0, flicker: 'BUZZ' };
+  light2.userData = { color: 0xffb060, intensity: 2.0, range: 4.5, flicker: 'BUZZ' };
   root.add(light2);
   const prompt = new THREE.Object3D(); prompt.position.set(0, 1.25, 0.9); root.add(prompt);
   const speaker = new THREE.Object3D(); speaker.position.set(0, RAIL, 0.2); root.add(speaker);
@@ -259,7 +290,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CrapsParts> {
     root, parts, seats, playPose: seats[3].pose,
     colliders: [
       { min: [-HX, 0, -HZ], max: [HX, RAIL, HZ] },
-      { min: [-0.3, 0, -1.2], max: [0.3, 1.8, -0.88] },
+      { min: [-1.3, 0, -1.2], max: [-0.7, 1.8, -0.88] },
     ],
     interact: { min: [-1.7, 0.2, -1.3], max: [1.7, 1.6, 1.3] },
     anchors: {

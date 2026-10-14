@@ -35,13 +35,12 @@
 .hud .phase { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 .hud .night { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 /* THE CIRCUIT: Hot / Cold Lamps line under the night line (walk mode) */
-/* Pinned to the band: a FIXED two-line box (hot | cold side by side). Each part wraps to at most two lines and is clamped,
-   so machine names are never cut to "…" and the box never grows down into the machine marquees under the top band. */
+/* WAVE 20: ONE line (hot | cold side by side, short names from hud.ts). It sits below the Night / Watch line in the top-centre
+   column, in flow, so it can never overlap it; anything too long is ellipsed rather than wrapped down into the marquees. */
 .hud .lamps { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: calc(6 * var(--u));
-  height: calc(18 * var(--u)); max-width: min(56vw, calc(240 * var(--u))); overflow: hidden;
-  font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1.1; white-space: normal; text-align: center; }
-.hud .lamps span { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; overflow-wrap: anywhere;
-  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+  max-width: min(56vw, calc(240 * var(--u))); overflow: hidden;
+  font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1.2; white-space: nowrap; text-align: center; }
+.hud .lamps span { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hud .lamps .hot { color: #ff5a3a; }
 .hud .lamps .cold { color: #5aa0ff; }
 .hud .lamps span:empty { display: none; }
@@ -91,7 +90,10 @@
 
 /* feed, phone, dread */
 /* news feed: under the tutorial box (upper-left), which sits under the top band (--hud-top-h) */
-.hud .feed { position: absolute; left: calc(4 * var(--u)); top: calc(var(--hud-top-h, calc(52 * var(--u))) + 96 * var(--u)); display: flex; flex-direction: column; gap: calc(2 * var(--u)); width: 45%; }
+/* WAVE 20: never under the tutorial box (tutorial.ts sets --tut-b to its bottom edge while it is up), so its hint line is clear */
+.hud .feed { position: absolute; left: calc(4 * var(--u));
+  top: max(calc(var(--hud-top-h, calc(52 * var(--u))) + 96 * var(--u)), calc(var(--tut-b, 0px) + 6 * var(--u)));
+  display: flex; flex-direction: column; gap: calc(2 * var(--u)); width: 45%; }
 .hud .feed .ln { font-size: calc(16 * var(--u)); color: var(--bone); transition: opacity .6s linear; }
 .hud .feed .ln.old { opacity: 0; }
 .hud .feed .ln.gold { color: var(--shine); }

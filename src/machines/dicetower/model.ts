@@ -129,6 +129,10 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<DicetowerParts>
 
   // ── round table (kit felt table, seats placed by us below) ──
   const ft = kit.feltTable({ shape: 'round', w: 1.3, d: 1.3, h: TOP, felt, rail: pal.woodDark, seats: SEATS, stools: false, dealer: false });
+  // the kit's red casino chairs stand on the rail between the seated camera and the felt: our own stools are the seats
+  const kitChairs: THREE.Object3D[] = [];
+  ft.root.traverse((o) => { if (o.name === 'chair') kitChairs.push(o); });
+  for (const c of kitChairs) c.parent?.remove(c);
   ft.root.position.set(0, 0, TZ);
   root.add(ft.root);
 
@@ -224,9 +228,11 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<DicetowerParts>
     root.add(meter.mesh);
     railMeters.push(meter);
     const stand = new THREE.Vector3(sx * SEAT_R, 0, TZ + sz * SEAT_R);
-    const pose = { pos: new THREE.Vector3(sx * 0.9, 1.45, TZ + sz * 0.9), look: new THREE.Vector3(0, 0.95, TZ), fov: 60, mouse: 'pick' as const };
+    // seat standard: the whole tower, the felt and the dice tray in frame from every seat (the seats share one view)
+    // high and back: the red seat pads of the near stools drop below the frame, the tower top stays inside the HUD band
+    const pose = { pos: new THREE.Vector3(0, 2.2, 1.75), look: new THREE.Vector3(0, 1.2, -0.3), fov: 60, mouse: 'pick' as const };
     seats.push({ pose, stand, avatar: 'sit', standY: 0.68 });
-    const stool = kit.stool({ h: 0.68, seat: pal.red });
+    const stool = kit.stool({ h: 0.68, seat: 0x3a2418 });   // dark leather: the near stools stay out of the play read
     stool.position.copy(stand);
     root.add(stool);
   });

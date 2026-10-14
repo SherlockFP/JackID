@@ -24,7 +24,7 @@ export const CELL = 0.07;
 /** Grid base y (bottom of row 0) and the frame. */
 export const GRID_Y0 = 0.75;
 export const FRONT_Z = 0.2;
-export const OFF = 0x2a0505, LIT = 0xff2a2a, AMBER = 0xffb020, GOLD = 0xffd040;
+export const OFF = 0x4a1414, LIT = 0xff3c3c, AMBER = 0xffb020, GOLD = 0xffd040;   // OFF lifted from near-black: the unlit rows read as a column
 
 /** Cell centre in model-local metres. */
 export function cellPos(col: number, row: number): { x: number; y: number } {
@@ -136,8 +136,8 @@ export function buildModel(kit: Kit, _o: ModelOpts): MachineModel<StackerParts> 
 
   // ── light hint, anchors ────────────────────────────────────────────────────────────────────────
   const light = new THREE.Object3D();
-  light.position.set(0, 1.4, 0.5);
-  light.userData = { color: LIT, intensity: 0.5, range: 2, flicker: 'STEADY' };
+  light.position.set(0, 1.5, 0.75);   // in front of the column: lights the grid face and the deck, not just the cabinet
+  light.userData = { color: LIT, intensity: 0.9, range: 2.2, flicker: 'STEADY' };
   root.add(light);
   const anchor = (x: number, y: number, z: number): THREE.Object3D => {
     const a = new THREE.Object3D(); a.position.set(x, y, z); root.add(a); return a;
@@ -161,7 +161,8 @@ export function buildModel(kit: Kit, _o: ModelOpts): MachineModel<StackerParts> 
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.55, 1.05), look: new THREE.Vector3(0, 1.35, 0), fov: 62, mouse: 'primary' },
+    // seat standard: the whole stack grid, the STOP dome and the panel in frame, clear of both HUD strips
+    playPose: { pos: new THREE.Vector3(0, 1.45, 1.95), look: new THREE.Vector3(0, 1.38, 0), fov: 62, mouse: 'primary' },
     colliders: [{ min: [-W / 2, 0, -0.4], max: [W / 2, H, FRONT_Z] }],
     interact: { min: [-W / 2, 0.3, -0.4], max: [W / 2, H, 0.6] },
     anchors: { speaker, prompt, label, marqueeTop, servicePlate, stand, coinOut, light },

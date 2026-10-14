@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import type { BulbChain, ChipPool, Kit, LampPart, LeverPart, ScreenSurface, WheelPart } from '@/kit/types';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 import type { SeatDef, LocalAABB } from '@/core/types';
 import { SEGMENTS, BET_SYMS, type Sym } from './rules';
 
@@ -159,7 +160,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BigSixParts> {
     root.add(l.root);
     seatLamps.push(l);
     seats.push({
-      pose: { pos: new THREE.Vector3(sx, 1.45, 1.60), look: new THREE.Vector3(0, 1.60, -0.85), fov: 58, mouse: 'pick' },
+      // seat view: backed off to 2.3 m with a wide FOV so the wheel (to 3.11, under the top band) and the counter spots fit
+      pose: { pos: new THREE.Vector3(sx * 0.5, 1.75, 2.30), look: new THREE.Vector3(0, 1.53, -0.80), fov: 76, mouse: 'pick' },
       stand: new THREE.Vector3(sx, 0, 1.10),
       avatar: 'stand',
     });
@@ -193,6 +195,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BigSixParts> {
   const parts: BigSixParts = {
     wheel, eyeLid, pupil, hubHalves, flapper, flapper2, multiplierPeg, rim, handle, spots, last12, chips, seatLamps, phaseLamp, layout,
   };
+  crispTexture(last12.tex, 4);                                 // on-machine text: linear + mips, not nearest
   kit.finalize(root, {
     keep: [wheel.root, eyeLid, pupil, hubHalves[0], hubHalves[1], flapper, flapper2, multiplierPeg, rim.root, handle.root,
       ...spots, last12.mesh, chips.root, ...seatLamps, phaseLamp, light, layout],

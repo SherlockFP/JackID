@@ -233,7 +233,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ClawParts> {
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.55, 0.75), look: new THREE.Vector3(0, 1.20, 0), fov: 60, mouse: 'pick' },
+    // seat standard: the glass play box, prize pit, chute, control panel and the marquee top in frame
+    playPose: { pos: new THREE.Vector3(0, 1.75, 2.0), look: new THREE.Vector3(0, 1.30, 0), fov: 62, mouse: 'pick' },
     colliders: [{ min: [-0.45, 0, -0.45], max: [0.45, 1.95, 0.45] }],
     interact: { min: [-0.45, 0.1, -0.45], max: [0.45, 1.95, 0.6] },
     anchors: {

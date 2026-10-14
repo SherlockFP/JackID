@@ -19,6 +19,7 @@ import type { ButtonPanelPart, ButtonPart, LampPart, ScreenSurface } from '@/kit
 import type { KitX } from '@/kit/index';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 /** Contract between modeler and coder. */
 export type MinesParts = {
@@ -83,7 +84,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<MinesParts> {
   kit.box(1.10, 0.14, 0.50, body, at(0, 0.97, -0.20));                // back riser under the tilted top
   kit.box(0.03, 0.82, 0.86, steel, at(-0.555, 0.49, 0));              // side panels
   kit.box(0.03, 0.82, 0.86, steel, at(0.555, 0.49, 0));
-  kit.cyl(0.025, 0.025, 0.12, steel, { pos: [0, 1.10, -0.12], parent: root, seg: 6 }); // CRT stalk
+  kit.cyl(0.025, 0.025, 0.4, steel, { pos: [0, 1.23, -0.12], parent: root, seg: 6 }); // CRT stalk (tall: the ladder floats above the grid, so the seat camera sees both)
 
   // ── tilted top: velvet plate, brass frame, flaps, socket, selector ──
   const tilt = kit.group('mines_top');
@@ -149,9 +150,15 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<MinesParts> {
   tilt.add(cashToggle.root);
 
   // ── CRT on a stalk, behind the grid (screen faces the player) ──
-  const crt = kit.crtMonitor({ w: 0.30, h: 0.23, px: [160, 120], scheme: 'green', glow: 0.6 });
-  crt.root.position.set(0, 1.30, -0.12);
-  root.add(crt.root);
+  // (own monitor: the kit CRT's scanline shader halves every other texel row, which wrecks 5 px digits; this one is flat glass,
+  // linear + mips, and 0.42 x 0.315 so the ladder reads from the seat camera)
+  const crt = { screen: kit.screen({ w: 0.42, h: 0.315, px: [160, 120], bezel: pal.black, glow: 0.6, scanlines: false }) };
+  crispTexture(crt.screen.tex, 4);
+  crt.screen.clear('#06140a');
+  crt.screen.mesh.position.set(0, 1.55, -0.12);
+  root.add(crt.screen.mesh);
+  kit.box(0.5, 0.395, 0.05, 0x1f2616, { bevel: 0.012, ...at(0, 1.55, -0.175) });             // casing (merged)
+  kit.box(0.33, 0.25, 0.2, 0x1f2616, { bevel: 0.01, ...at(0, 1.545, -0.3) });
 
   // ── lamp, LEDs, label, keyboard tray ──
   const lamp = kit.lamp({ r: 0.035, color: pal.neonYellow, shape: 'dome' });
@@ -193,19 +200,20 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<MinesParts> {
 
   const parts: MinesParts = {
     tiles, under, coin, trap, jawL, jawR, finger, selector,
-    screen: crt.screen, crt: crt.root, lamp, cashGuard, cashToggle, keys, leds,
+    screen: crt.screen, crt: crt.screen.mesh, lamp, cashGuard, cashToggle, keys, leds,
   };
   kit.finalize(root, {
     keep: [
       ...tiles, under, selector, cashGuard, cashToggle.root, keys.root, lamp.root, leds.credit.root, leds.bet.root,
-      leds.win.root, crt.root, light,
+      leds.win.root, crt.screen.mesh, light,
     ],
   });
 
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.6, 0.7), look: new THREE.Vector3(0, 1.0, 0), fov: 55, mouse: 'pick' },
+    // seat view: raised and pitched down so the CRT ladder (on its tall stalk), the whole 5 x 5 grid and the CASH OUT guard sit between the HUD strip and the bar
+    playPose: { pos: new THREE.Vector3(0, 2.2, 1.55), look: new THREE.Vector3(-0.03, 1.2, -0.02), fov: 58, mouse: 'pick' },
     colliders: [{ min: [-0.55, 0, -0.45], max: [0.55, 1.04, 0.47] }],
     interact: { min: [-0.55, 0.1, -0.45], max: [0.55, 1.1, 0.6] },
     anchors: { speaker, prompt, label: label.mesh, marqueeTop, servicePlate, stand, light, fxTwist },

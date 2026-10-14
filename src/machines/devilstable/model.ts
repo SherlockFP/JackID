@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import type { DealerPart, Kit, LampPart, ScreenSurface } from '@/kit/types';
 import type { MachineModel, SeatDef } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 export const TOP = 0.74;                          // table top, m
 const FELT = 0x4a193a;                            // felt_violet
@@ -73,8 +74,10 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<DevilParts> {
     if (back) kit.box(0.42, 0.55, 0.05, { color: leather }, { pos: [x + d.x * 0.22, 0.8, z + d.z * 0.22], parent: root });
     seats.push({
       pose: {
-        pos: new THREE.Vector3(d.x * (r + 0.08), 1.15, d.z * (r + 0.08)),
-        look: new THREE.Vector3(0, 0.8, 0),
+        // seat view: raised over the seat and pitched down so the whole felt disc (tray, defibs, gun, all four lanterns) sits
+        // between the HUD strip and the bar; the near lantern and the chair back fall below the frame instead of masking the centre
+        pos: new THREE.Vector3(d.x * 0.85, 2.4, d.z * 0.85),
+        look: new THREE.Vector3(d.x * 0.14, TOP + 0.04, d.z * 0.14),
         fov: 55,
         mouse: 'primary',
       },
@@ -182,7 +185,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<DevilParts> {
 
   // readout on a post at the left rail (faces the player's left), mode plaque on the right rail
   kit.cyl(0.012, 0.012, 0.36, pal.brass, { pos: [-0.62, TOP + 0.18, 0], seg: 6, parent: root });
-  const screen = kit.screen({ w: 0.24, h: 0.12, px: [96, 48], bezel: pal.black });
+  const screen = kit.screen({ w: 0.24, h: 0.12, px: [96, 48], bezel: pal.black, scanlines: false });
+  crispTexture(screen.tex, 4);
   screen.mesh.position.set(-0.62, TOP + 0.42, 0);
   screen.mesh.rotation.y = -Math.PI / 2;
   root.add(screen.mesh);

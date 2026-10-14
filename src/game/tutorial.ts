@@ -122,7 +122,16 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
   const hint = document.createElement('div');
   hint.className = 'hint';
   el.append(line, hint);
-  ((app.ui as UIOverlayX | undefined)?.hudLayer ?? document.body).appendChild(el);
+  const hudHost: HTMLElement = (app.ui as UIOverlayX | undefined)?.hudLayer ?? document.body;
+  hudHost.appendChild(el);
+  // The news feed sits under the box (ui/hud.css reads --tut-b): publish the box's bottom edge while it is on screen.
+  let shownB = '';
+  const placeFeed = (): void => {
+    const b = el.style.display === 'none' ? '' : `${el.offsetTop + el.offsetHeight}px`;
+    if (b === shownB) return;
+    shownB = b;
+    if (b) hudHost.style.setProperty('--tut-b', b); else hudHost.style.removeProperty('--tut-b');
+  };
 
   // ── floor glow and a bobbing arrow over the target ────────────────────────────────────────────────
   const ringGeo = new THREE.RingGeometry(0.42, 0.62, 40);
@@ -209,6 +218,7 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
     window.removeEventListener('keyup', onKeyUp);
     releaseClock('tutorial');
     el.remove();
+    hudHost.style.removeProperty('--tut-b');
     world.root.remove(ring, arrow);
     ringGeo.dispose(); ringMat.dispose(); arrowGeo.dispose(); arrowMat.dispose();
   }
@@ -248,6 +258,7 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
       line.textContent = text(s);
       hint.textContent = `${t('tut.step', { i: idx + 1, total: STEPS.length })}  ·  ${t('tut.skip')}`;
       el.style.display = '';
+      placeFeed();
 
       // The pawn window is only worth pointing at in the intermission.
       const wanted = s.target === 'charm_vendor' && run.shift.phase !== 'intermission' ? null

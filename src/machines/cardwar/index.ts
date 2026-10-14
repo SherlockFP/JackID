@@ -492,13 +492,14 @@ export default class CardWar extends TableBase<CardwarParts, Ev, Snap, Act> {
         if (hs.tieSeats.every((s) => hs.choices[s] !== null)) this.resolveTies();
       }
     }
-    if (local) { this.draft = new Array<number>(SPOTS).fill(0); this.paintDraftAll(); this.seatHud?.hide(); }
+    if (local) { this.draft = new Array<number>(SPOTS).fill(0); this.paintDraftAll(); this.seatHud?.hide(); this.model.parts.stools.visible = true; }
     this.paintLamps();
   }
 
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintLamps();
     if (local) {
+      this.model.parts.stools.visible = false;   // seat camera: the stools are the foreground, hidden while seated
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();

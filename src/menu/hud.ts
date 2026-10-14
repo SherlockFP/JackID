@@ -186,12 +186,27 @@ export function createHud(): Hud {
     window.setTimeout(() => el.remove(), 900);
   }
 
+  /**
+   * A lamp's short name for the HUD line (WAVE 20): the first word of the machine's name when that word is long enough to
+   * read ("Hi-Lo Ladder" → "Hi-Lo"), else the name cut to 9 characters and an ellipsis. Keeps the Hot / Cold line one line.
+   */
+  const shortName = (n: string): string => {
+    if (n.length <= 10) return n;
+    const first = n.split(/\s+/)[0];
+    return first.length >= 3 ? first : `${n.slice(0, 9)}…`;
+  };
   /** The machine's display name (`machine.<id>.name` via t()), never its internal id. */
-  const lampName = (e: LampEntry): string => lampLabel(machineName(e.machineId), e.dup);
+  const lampName = (e: LampEntry): string => lampLabel(shortName(machineName(e.machineId)), e.dup);
+  /** Up to two short names, then "+N" for the rest: a single line never grows into the Night / Watch line. */
+  const lampList = (list: LampEntry[]): string => {
+    const names = list.slice(0, 2).map(lampName);
+    if (list.length > 2) names.push(`+${list.length - 2}`);
+    return names.join(', ');
+  };
   function showLamps(v: LampView): void {
     lampsSeen = v;
-    const hot = v.hot.map(lampName).join(', ');
-    const cold = v.cold.map(lampName).join(', ');
+    const hot = lampList(v.hot);
+    const cold = lampList(v.cold);
     setText(lampHot, hot ? t('circuit.hud.hot', { name: hot }) : '');
     setText(lampCold, cold ? t('circuit.hud.cold', { name: cold }) : '');
     const none = !hot && !cold && !!v.pocketShort;

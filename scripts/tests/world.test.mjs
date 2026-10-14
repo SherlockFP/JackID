@@ -373,15 +373,28 @@ test('light pool: setLevel dims by zone, strobe/pulse are transient, reset resto
 const PIT_SUITS = ['REELS', 'CARDS', 'DICE', 'WHEELS', 'DROPS', 'CURIOS'];
 const PIT_VOL = ['STEADY', 'SWINGY', 'WILD'];
 const PIT_SIZES = ['S', 'M', 'L', 'XL'];
-/** A synthetic catalogue: 40 solo tier-1 machines spanning every size, suit and volatility class. */
+/**
+ * A synthetic catalogue on FLOOR_READY ids (the line-up draws only those): solo tier-1 entries spanning every size, suit
+ * and volatility class. The metadata is synthetic; the ids are real so the whitelist lets them through.
+ */
+const PIT_IDS = ['videopoker', 'scratch', 'cyclone', 'pachinko', 'pachislot', 'fortuneteller', 'hilo', 'bandit', 'tavla', 'threecard'];
 function pitCatalog() {
-  const out = [];
-  for (let i = 0; i < 40; i++) {
-    out.push({ id: `pit${i}`, slotSize: PIT_SIZES[i % 4], tier: 1, seats: 1, suit: PIT_SUITS[i % 6], volatility: PIT_VOL[i % 3] });
-  }
-  return out;
+  return PIT_IDS.map((id, i) => ({ id, slotSize: PIT_SIZES[i % 4], tier: 1, seats: 1, suit: PIT_SUITS[i % 6], volatility: PIT_VOL[i % 3] }));
 }
 const sizeRank = (s) => ['S', 'M', 'L', 'XL'].indexOf(s);
+
+test('pit deck: only FLOOR_READY machines are drawn, even from a wider catalogue', async () => {
+  const { rosterFor, FLOOR_READY } = await load('src/world/layout.ts');
+  const wide = [
+    ...pitCatalog(),
+    ...['claw', 'plinko', 'mines', 'lootbox', 'stacker', 'elevator'].map((id, i) => ({ id, slotSize: 'S', tier: 1, seats: 1, suit: 'REELS', volatility: i % 2 ? 'WILD' : 'STEADY' })),
+  ];
+  for (let seed = 1; seed <= 30; seed++) {
+    for (const id of Object.values(rosterFor(seed, wide))) {
+      assert.ok(FLOOR_READY.has(id), `seed ${seed}: ${id} is not floor-ready`);
+    }
+  }
+});
 
 test('pit deck: the same seed gives the same line-up, and other seeds change it', async () => {
   const { rosterFor } = await load('src/world/layout.ts');
@@ -449,4 +462,23 @@ test('pit deck: the guard keeps the GDD §8.6 devices when the catalogue cannot 
   assert.deepEqual(rosterFor(7, noVol), defaults, 'no STEADY or WILD');
   const modeOut = pitCatalog().map((c) => ({ ...c, modes: ['coop'] }));
   assert.deepEqual(rosterFor(7, modeOut, 'debt'), defaults, 'no machine in this mode');
+});
+
+test('pit deck: with the real FLOOR_READY machines the line-up passes the guard on most seeds (≥ 4 suits)', async () => {
+  const { rosterFor, FLOOR_READY, ROSTER_PADS, DEFAULT_ASSIGN } = await load('src/world/layout.ts');
+  // real ids with their real size, tier, suit and volatility class (game/suits.ts, data/machineProfiles.ts, def.slotSize)
+  const real = [
+    ['videopoker', 'M', 1, 'CARDS', 'SWINGY'], ['scratch', 'M', 1, 'REELS', 'SWINGY'], ['cyclone', 'M', 2, 'WHEELS', 'STEADY'],
+    ['pachinko', 'M', 2, 'DROPS', 'WILD'], ['pachislot', 'M', 2, 'REELS', 'WILD'], ['fortuneteller', 'M', 2, 'CURIOS', 'STEADY'],
+    ['hilo', 'M', 2, 'CARDS', 'WILD'], ['bandit', 'S', 1, 'REELS', 'WILD'],
+  ].map(([id, slotSize, tier, suit, volatility]) => ({ id, slotSize, tier, seats: 1, suit, volatility }));
+  assert.ok(real.every((c) => FLOOR_READY.has(c.id)), 'catalogue ids are floor-ready');
+  const defaults = Object.fromEntries(ROSTER_PADS.map((p) => [p, DEFAULT_ASSIGN[p]]));
+  let rolled = 0;
+  for (let seed = 1; seed <= 100; seed++) {
+    const r = rosterFor(seed, real);
+    if (JSON.stringify(r) !== JSON.stringify(defaults)) rolled++;
+    assert.ok(Object.values(r).every((id) => FLOOR_READY.has(id)), `seed ${seed}: not floor-ready`);
+  }
+  assert.ok(rolled >= 90, `only ${rolled}/100 seeds rolled a line-up`);
 });

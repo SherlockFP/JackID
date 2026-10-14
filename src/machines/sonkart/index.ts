@@ -751,7 +751,8 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
     cam.getWorldQuaternion(cq);
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cq);
     const down = new THREE.Vector3(0, -1, 0).applyQuaternion(cq);
-    const world = cp.clone().addScaledVector(fwd, 0.5).addScaledVector(down, 0.27);
+    // 0.55 m ahead, 0.115 m below the view axis: with the steep seat camera that lands the hand between the table and the control bar
+    const world = cp.clone().addScaledVector(fwd, 0.55).addScaledVector(down, 0.115);
     hr.position.copy(root.worldToLocal(world));
     const rq = new THREE.Quaternion();
     root.getWorldQuaternion(rq);

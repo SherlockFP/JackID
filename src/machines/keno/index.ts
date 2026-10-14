@@ -41,7 +41,7 @@ const STEP_SOLO_MS = 200;
 const GOLD = 0xffd040, GREEN = 0x7dff7a, CREAM = '#f3e7c4', DIM = '#3d6b4f';
 
 // CRT grid (160 × 120 canvas): 10 × 8 numbers under a header
-const GX0 = 4, GY0 = 14, CW = 15.6, CH = 12.5;
+const GX0 = 4, GY0 = 13, CW = 15.6, CH = 11.8;
 
 // ── contract types (aliases so they are assignable to `Json`) ──────────────────────────────────
 type Phase = 'idle' | 'open' | 'lock' | 'draw' | 'payout';
@@ -471,7 +471,7 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
           g.fillRect(x, y, CW - 1.5, CH - 1.5);
           sc.text(String(n), x + CW / 2, y + 2, { font: 'px5', color: on ? '#1a1206' : '#6f9f80', align: 'center' });
         }
-        sc.text(`${picks.length}/${this.spotTarget}  ${fmtCoins(stake)} x${draws}`, 4, 114, { font: 'px5', color: CREAM });
+        sc.text(`${picks.length}/${this.spotTarget}  ${fmtCoins(stake)} x${draws}`, 4, 110, { font: 'px5', color: CREAM });   // inside the 120 px canvas (the 7 px glyphs were cut at 114)
       });
     }
     this.paintLeds();

@@ -14,6 +14,7 @@ import type { LampPart, LedPanelPart, ScreenSurface } from '@/kit/types';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import type { SeatDef } from '@/core/types';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 export interface KenoDesk { screen: ScreenSurface; pen: THREE.Group; stool: THREE.Group }
 
@@ -88,6 +89,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
   }
   kit.box(2.6, 1.6, 0.04, walnut, at(0, 0.8, -0.7));                      // back wall panelling
   kit.box(2.6, 0.08, 0.04, pal.brass, at(0, 1.6, -0.7));                  // cornice
+  // carrel dividers between the desks (and at both ends): the seat camera frames ONE ticket writer, never a sliver of its neighbour
+  for (const dx of [-1, -0.5, 0, 0.5, 1]) kit.box(0.025, 0.52, 0.42, walnut, at(dx, DESK_TOP + 0.26, DESK_Z - 0.05));
   kit.box(0.04, 1.6, 1.4, walnut, at(-1.3, 0.8, 0));                      // left end panel
   kit.box(0.04, 1.6, 1.4, walnut, at(1.3, 0.8, 0));                       // right end panel
   kit.box(2.6, 0.04, 1.4, pal.feltDark, at(0, 1.6, 0));                   // ceiling
@@ -111,13 +114,17 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
 
   // ── desks: CRT ticket writer, light pen on a coiled cord, stool ──
   const desks: KenoDesk[] = [];
-  const crts: THREE.Group[] = [];
   const railMeters: LampPart[] = [];
   const seatLamps: LampPart[] = [];
   DESK_X.forEach((x, i) => {
-    const crt = kit.crtMonitor({ w: 0.3, h: 0.24, px: [160, 120], scheme: 'amber', glow: 0.8 });
-    crt.root.position.set(x, DESK_TOP + 0.12, DESK_Z - 0.1);
-    root.add(crt.root);
+    // own CRT (the kit monitor's scanline shader halves every other texel row, which wrecks 5 px digits): flat glass, linear + mips
+    const crt = { screen: kit.screen({ w: 0.3, h: 0.24, px: [160, 120], bezel: pal.black, glow: 0.4, scanlines: false }) };
+    crispTexture(crt.screen.tex, 4);                                  // linear + mips: the 80-number grid stays sharp when the desk fills the frame
+    crt.screen.clear('#0b1a12');
+    crt.screen.mesh.position.set(x, DESK_TOP + 0.145, DESK_Z - 0.1);   // glass bottom 1 cm above the desk top (the footer row lives there)
+    root.add(crt.screen.mesh);
+    kit.box(0.37, 0.31, 0.05, 0xd9d2bc, { bevel: 0.012, ...at(x, DESK_TOP + 0.145, DESK_Z - 0.155) });   // monitor casing (merged)
+    kit.box(0.234, 0.187, 0.24, 0xcfc8b2, { bevel: 0.01, ...at(x, DESK_TOP + 0.14, DESK_Z - 0.3) });
 
     const pen = new THREE.Group();
     pen.position.set(x + 0.2, DESK_TOP + 0.01, DESK_Z + 0.12);
@@ -140,7 +147,6 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
     seatLamps.push(seat);
 
     // screen: the CRT canvas is owned by the monitor, we draw the number grid on it
-    crts.push(crt.root);
     desks.push({ screen: crt.screen, pen, stool });
   });
 
@@ -195,16 +201,17 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
 
   const parts: KenoParts = { desks, relayLamps, leds: { drawNo, next }, board, boardScreen, railMeters, seatLamps, armchairs };
   const keep: Array<THREE.Object3D | { root: THREE.Object3D }> = [
-    ...desks.map((d) => d.pen), ...desks.map((d) => d.stool), ...crts, ...relayLamps, ...railMeters, ...seatLamps,
+    ...desks.map((d) => d.pen), ...desks.map((d) => d.stool), ...desks.map((d) => d.screen.mesh), ...relayLamps, ...railMeters, ...seatLamps,
     drawNo, next, board, boardScreen.mesh, light, light2, speaker, prompt, label, marqueeTop, servicePlate, boardCam,
   ];
   kit.finalize(root, { keep });
 
   const seats: SeatDef[] = DESK_X.map((x) => ({
     pose: {
-      pos: new THREE.Vector3(x, 1.15, SEAT_Z),
-      look: new THREE.Vector3(x, DESK_TOP + 0.2, DESK_Z - 0.1),
-      fov: 55,
+      // seat view: close over the desk, looking down at the CRT so the whole 80-number grid sits between the HUD strip and the bar
+      pos: new THREE.Vector3(x, 1.03, 0.36),
+      look: new THREE.Vector3(x, 0.89, -0.15),
+      fov: 40,
       mouse: 'primary',
     },
     stand: new THREE.Vector3(x, 0, SEAT_Z),

@@ -13,6 +13,7 @@ import type { KitX } from '@/kit';
 import type { BulbChain, ButtonPart, LampPart, LedPanelPart, MarqueePart, ReelPart, ScreenSurface } from '@/kit/types';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 import { STRIPS, type Sym } from './rules';
 
 /** Contract between modeler and coder. */
@@ -222,6 +223,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<FruitParts> {
     side,
     tray,
   };
+  crispTexture(glass.tex, 4);                                  // on-machine text: linear + mips, not nearest
+  for (const p of [nudges, hilo, win, credit, bet]) crispTexture(p.screen.tex, 4);
   kit.finalize(root, {
     keep: [
       ...reels.map((r) => r.root), glass.mesh, marquee.root, ...hold.map((b) => b.root),
@@ -233,7 +236,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<FruitParts> {
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.45, 0.50), look: new THREE.Vector3(0, 1.25, 0), fov: 55, mouse: 'primary' },
+    // seat view: level camera 0.9 m off the reel plane, so the glass ladder, reels, buttons and LEDs all sit in the band between the HUD strips
+    playPose: { pos: new THREE.Vector3(0, 1.09, 1.50), look: new THREE.Vector3(0, 1.09, 0), fov: 68, mouse: 'primary' },
     colliders: [{ min: [-0.36, 0, -0.31], max: [0.36, 1.82, 0.31] }],
     interact: { min: [-0.36, 0.3, -0.31], max: [0.36, 1.82, 0.36] },
     anchors: {

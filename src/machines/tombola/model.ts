@@ -231,7 +231,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TombolaParts> 
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0.25, 1.5, 0.7), look: new THREE.Vector3(0, 1.1, 0), fov: 55, mouse: 'pick' } satisfies PlayPose,
+    // seat standard: drum, counter, pull slot and the prize cubbies in frame; the awning top is cropped under the HUD
+    playPose: { pos: new THREE.Vector3(0, 1.9, 2.4), look: new THREE.Vector3(0, 1.55, -0.1), fov: 62, mouse: 'pick' } satisfies PlayPose,
     colliders: [
       { min: [-1.0, 0, -0.4], max: [1.0, COUNTER_Y, 0.4] },
       { min: [-1.04, 0, -0.66], max: [1.04, 2.3, -0.6] },
