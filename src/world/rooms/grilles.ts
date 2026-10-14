@@ -1,8 +1,9 @@
 /**
  * Brass grille plates for the sealed wings (WAVE 24 §2): the wing name with SEALED or KEY READY (amber padlock), gone
- * when the wing opens. Each sealed grille has two interactables: Spend KEY (n) and BUY 1.5× quota. Both send the tycoon
- * request `{op:'zone', zone, key}` through the rooms bridge. Behind the bars a marquee blinks (zone flicker lights);
- * a key that becomes ready plays the music-box cue, pulses the light and names the nearest key-ready grille.
+ * when the wing opens. With a key in hand, E spends it and F buys the wing (both named on the prompt); with no key, E
+ * buys it. Key-only wings (the Counting Room) offer no BUY. Both send the tycoon request `{op:'zone', zone, key}` through
+ * the rooms bridge. Behind the bars a marquee blinks (zone flicker lights); each new key plays the music-box cue once,
+ * pulses the light and names the nearest key-ready grille.
  */
 import * as THREE from 'three';
 import type { KitX } from '@/kit';
@@ -72,6 +73,8 @@ export function buildGrilles(ctx: GrilleCtx): GrilleBuild {
   const rng: Rng = createRng(`rooms:grille:${ctx.seed}`);
   const brass = kit.mat({ color: BRASS });
   let pollIn = 0;
+  /** Wing keys seen at the last poll (-1 = not read yet): a rise is a new key, and the cue fires once for it. */
+  let lastKeys = -1;
 
   const boxAt = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): THREE.Box3 =>
     new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1));
@@ -122,25 +125,33 @@ export function buildGrilles(ctx: GrilleCtx): GrilleBuild {
       const keyBox = doorBox();
       const buyBox = doorBox();
       const wingName = (): string => t(`wroom.wing.${spec.wing}`);
+      // BUY price in coins; null where the wing is key-only (the Counting Room) or no price is wired
+      const price = (): number | null => roomsBridge().buyPrice?.(spec.wing) ?? null;
+      // With a key in hand E spends it, and BUY moves to F (the prompt's sub line names both). With no key, E is BUY.
       const keyAct: Interactable = {
         id: `rooms:key:${spec.wing}`,
         box: keyBox,
         maxDist: 2.8,
         priority: 2,
-        enabled: () => p.view !== null && p.view !== 'gone' && roomsBridge().keys() > 0,
+        enabled: () => p.view === 'keyReady',
         label: () => t('wroom.act.key', { n: String(roomsBridge().keys()) }),
-        sub: () => t('wroom.sub.opens', { wing: wingName() }),
-        onInteract: () => { if (p.view !== null && p.view !== 'gone') roomsBridge().sendZone(spec.wing, true); },
+        sub: () => {
+          const c = price();
+          return c === null
+            ? t('wroom.sub.opens', { wing: wingName() })
+            : t('wroom.sub.keyBuy', { wing: wingName(), p: String(c) });
+        },
+        onInteract: () => { if (p.view === 'keyReady') roomsBridge().sendZone(spec.wing, true); },
       };
       const buyAct: Interactable = {
         id: `rooms:buy:${spec.wing}`,
         box: buyBox,
         maxDist: 2.8,
         priority: 1,
-        enabled: () => p.view !== null && p.view !== 'gone' && roomsBridge().keys() <= 0,
-        label: () => t('wroom.act.buy'),
+        enabled: () => p.view === 'sealed' && price() !== null,
+        label: () => t('wroom.act.buy', { p: String(price() ?? 0) }),
         sub: () => t('wroom.sub.opens', { wing: wingName() }),
-        onInteract: () => { if (p.view !== null && p.view !== 'gone') roomsBridge().sendZone(spec.wing, false); },
+        onInteract: () => { if (p.view === 'sealed') roomsBridge().sendZone(spec.wing, false); },
       };
       unsubs.push(ctx.interact.add(keyAct), ctx.interact.add(buyAct));
     }
@@ -187,6 +198,10 @@ export function buildGrilles(ctx: GrilleCtx): GrilleBuild {
     const bridge = roomsBridge();
     const states: Partial<Record<WingId, WingState>> = {};
     for (const p of plates) states[p.spec.wing] = bridge.wingState(p.spec.wing);
+    const keys = bridge.keys();
+    const newKey = lastKeys >= 0 && keys > lastKeys;
+    lastKeys = keys;
+    let cueAt: Plate | null = null;
     for (const p of plates) {
       const state = states[p.spec.wing] ?? 'sealed';
       const edge = shouldCue(p.state, state);
@@ -194,8 +209,12 @@ export function buildGrilles(ctx: GrilleCtx): GrilleBuild {
       const view = plateView(state, isOpen(p.zone));
       if (view !== p.view) applyView(p, view, state);
       if (view !== 'gone') setPlateText(p);
-      if (edge && view !== 'gone') cue(p, states);
+      if (edge && view !== 'gone' && !cueAt) cueAt = p;
     }
+    // one cue per new key, however many wings it lights: the first key turns every sealed grille key-ready at once, and a
+    // second key on a wing already waiting raises no edge, so it is caught by the rise in the key count
+    if (!cueAt && newKey) cueAt = plates.find((p) => p.view === 'keyReady') ?? null;
+    if (cueAt) cue(cueAt, states);
   }
 
   return {
@@ -223,10 +242,15 @@ export function buildGrilles(ctx: GrilleCtx): GrilleBuild {
             p.pulseIn = 2.0;
             ctx.lights?.pulse(p.zone, { color: AMBER, mul: 1.2, dur: 0.5 });
           }
+          // F = BUY while a key is in hand: the focused grille is this wing's key prompt, and the wing has a BUY price
+          if (ctx.interact?.focused?.id === `rooms:key:${p.spec.wing}` && app.input.pressed('use')
+            && roomsBridge().buyPrice?.(p.spec.wing) != null) {
+            roomsBridge().sendZone(p.spec.wing, false);
+          }
         }
       }
     },
-    refresh(): void { pollIn = 0; },
+    refresh(): void { pollIn = 0; lastKeys = -1; },
     dispose(): void {
       for (const u of unsubs.splice(0)) u();
     },

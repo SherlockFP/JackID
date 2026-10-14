@@ -21,6 +21,7 @@ import * as THREE from 'three';
 import type { PsxPostState, PsxRenderer, PsxSettings, PsxUniforms } from './types';
 import { psxUniforms } from './psxMaterial';
 import { createPostPass } from './postShader';
+import { farCull } from './farCull';
 import { fxLayer } from '../fx/layer';
 import { app } from '../app';
 import { log } from '../log';
@@ -216,6 +217,7 @@ export function createPsxRenderer(canvas: HTMLCanvasElement, initial: PsxSetting
 
       syncAspect(camera);
       if (overlay) syncAspect(overlay.camera);
+      farCull.tick(real, scene, camera);
 
       three.info.reset();
       fxLayer.beginFrame(scene, camera);

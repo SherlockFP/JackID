@@ -21,7 +21,8 @@ const CHARGES = 6;
 export const SLOTS = 8;
 /** Seat unit directions (seat 0 = +Z, 1 = −Z, 2 = −X, 3 = +X). */
 export const SEAT_DIR: ReadonlyArray<readonly [number, number]> = [[0, 1], [0, -1], [-1, 0], [1, 0]];
-const CHAIR_R = [0.70, 0.70, 0.95, 0.95];
+/** Chair distance from the centre. Front/back chairs at 0.66 keep their backs (0.66 + 0.22 + 0.025) inside the L footprint's z ±0.93. */
+const CHAIR_R = [0.66, 0.66, 0.95, 0.95];
 const LANTERN_R = 0.58;
 const LANTERN_Y = 0.98;
 
@@ -217,7 +218,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<DevilParts> {
   mothBurst.position.set(0, 1.4, -1.0);
   root.add(mothBurst);
 
-  root.add(kit.blobShadow(1.4, 2.0));
+  root.add(kit.blobShadow(1.4, 1.8));         // inside the L footprint (z ±0.9)
 
   const parts: DevilParts = {
     devil, turntable, gun, barrels, hammers, shells, shellLive, shellBlank, flap, defibs, itemSlots,

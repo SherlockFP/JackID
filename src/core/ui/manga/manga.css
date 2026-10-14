@@ -408,3 +408,9 @@ body.mb-body { margin: 0; background: #0c0b0e; color: #eee; font: 14px/1.3 "Sego
 .mb-row { display: grid; grid-template-columns: 96px repeat(5, 1fr); gap: 8px; align-items: center; margin-bottom: 10px; }
 .mb-row img { width: 100%; height: auto; display: block; cursor: pointer; border: 1px solid #333; }
 .mb-id { font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+.mb-row.one { display: inline-grid; grid-template-columns: 1fr; width: 250px; margin: 0 6px 10px 0; vertical-align: top; }
+
+/* ── standard subtitle bar ─────────────────────────────────────────────────────────────────── */
+/* While a cut-in or dialogue box shows its own line, the bottom subtitle bar (core/ui `.px-subtitle`) must not repeat the
+   same words behind the panel. mangaPanel toggles `body.mg-say` for exactly as long as the line is on screen. */
+body.mg-say .px-subtitle { opacity: 0 !important; visibility: hidden; pointer-events: none; }

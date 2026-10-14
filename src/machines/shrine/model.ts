@@ -22,9 +22,10 @@ export type ShrineParts = {
   price: LabelPart;
 };
 
-export const W = 0.8, D = 0.8, H = 2.0;
+/** Niche depth D = 0.76 and back board at z = -0.37: the front lip ends at z = +0.39, inside the ±0.4 footprint and stand strip. */
+export const W = 0.8, D = 0.76, H = 2.0;
 export const CANDLES = 8;
-const WALL_Z = -0.36;
+const WALL_Z = -0.37;
 const SHELF_Y = 1.02;
 /** Candle colour (tallow) and flame colour (the Parlour's warm bulb). */
 const TALLOW = 0xe8dcc0;

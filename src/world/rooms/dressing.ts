@@ -229,6 +229,17 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
   marker(ROOM_ANCHOR_IDS.collectorChair, 29.5, 1.0, 19.0);
   marker(noteAnchorId(22), 16.5, 1.0, 18.0);
   marker(noteAnchorId(23), 25.0, 1.0, 19.5);
+  // the Collector's question: one per Night, on Nights 3–7 with the Parlour open (the host runs the exchange)
+  addInteract({
+    id: 'rooms:collector',
+    box: boxAt(28.2, 0, 17.8, 30.8, 2.2, 20.2),
+    maxDist: 2.8,
+    priority: 1,
+    enabled: () => (roomsBridge().collectorStatus?.() ?? 'off') !== 'off',
+    label: () => t('wroom.collector.label'),
+    sub: () => t((roomsBridge().collectorStatus?.() ?? 'off') === 'done' ? 'wroom.collector.done' : 'wroom.collector.sub'),
+    onInteract: () => roomsBridge().askCollector?.(),
+  });
 
   // ── The Counting Room (counting): ledgers, Ledger Wall, abacus ───────────────────────────────
   const wood = kit.mat({ color: 0x523119 });

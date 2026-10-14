@@ -1,7 +1,7 @@
 /**
  * Tally Bench strings (STORY lane, Wave 25): speakers, rival names and lines, the Rival's Terms, and the duel outro narration.
  * Keys are `story.duel.<...>` (the prefix is joined in by the `*.strings.ts` glob). The 14 `line.*` entries are the spec's
- * dialogue, verbatim (docs/WAVE25_TALLY.md, Dialogue 1-14); the `rival.*.taunt|called|loss` lines are extra.
+ * dialogue, verbatim (docs/WAVE25_TALLY.md, Dialogue 1-14); the `rival.*.taunt|called|loss` lines (all six rivals) and `outro.vell.release` are extra.
  */
 export default {
   prefix: 'story.duel.',
@@ -13,6 +13,7 @@ export default {
     'terms.intro': 'Rival\'s Terms: {name}. {desc}',
     'outro.won': 'The Bench releases the guest to the lift. Take the Pledge.',
     'outro.lost': 'The Bench keeps the stake. The guest sits straight again.',
+    'outro.vell.release': 'The Bench rules the count void against Vell. His lift is already open.',
 
     'rival.tamsin.name': 'Tamsin Veil',
     'rival.tamsin.title': 'The Quiet Hand',
@@ -42,16 +43,25 @@ export default {
     'rival.mimosa.title': 'Lost & Found',
     'rival.mimosa.accessory': 'Oversized coat, one shoe.',
     'rival.mimosa.catch': 'Everything is lost until somebody looks.',
+    'rival.mimosa.taunt': 'Sit, sit. I only keep what nobody comes back for.',
+    'rival.mimosa.called': 'Oh. You looked. Nobody looks.',
+    'rival.mimosa.loss': 'Found, then. Take it before somebody loses it again.',
 
     'rival.orrin.name': 'Orrin Pale',
     'rival.orrin.title': 'The Collector',
     'rival.orrin.accessory': 'Grey tailcoat, the Manager\'s Key on a chain.',
     'rival.orrin.catch': 'A debt is someone who waits.',
+    'rival.orrin.taunt': 'Be quick. I have waited for longer men than you.',
+    'rival.orrin.called': 'You read the deck. Good. It is tiring to be the only one who does.',
+    'rival.orrin.loss': 'The lift was empty. Perhaps it will not be, for you.',
 
     'rival.vell.name': 'Vell',
     'rival.vell.title': 'The Counter',
     'rival.vell.accessory': 'Rain coat, tape reels.',
     'rival.vell.catch': 'I counted every coin. One is yours.',
+    'rival.vell.taunt': 'Count with me. It helps.',
+    'rival.vell.called': 'There. Now it is true.',
+    'rival.vell.loss': 'The count stands. One of them is yours. Keep it.',
 
     'line.notary.seal': 'Sealed is sealed. The Bench does not care who is afraid.',
     'line.mark.intro': 'They call me a mark. Marks are the ones who read the table.',
@@ -76,6 +86,7 @@ export default {
     'terms.intro': 'Rakibin Şartları: {name}. {desc}',
     'outro.won': 'Kürsü misafiri asansöre bırakır. Rehini alın.',
     'outro.lost': 'Kürsü bahsi alıkoyar. Misafir yeniden dikleşir.',
+    'outro.vell.release': 'Kürsü sayımı Vell aleyhine geçersiz sayar. Asansörü çoktan açık.',
 
     'rival.tamsin.name': 'Tamsin Veil',
     'rival.tamsin.title': 'Sessiz El',
@@ -105,16 +116,25 @@ export default {
     'rival.mimosa.title': 'Kayıp & Buluntu',
     'rival.mimosa.accessory': 'Büyük ceket, tek ayakkabı.',
     'rival.mimosa.catch': 'Her şey, biri bakana kadar kayıptır.',
+    'rival.mimosa.taunt': 'Otur, otur. Ben yalnızca kimsenin geri dönmediklerini tutarım.',
+    'rival.mimosa.called': 'Aa. Baktın. Kimse bakmaz.',
+    'rival.mimosa.loss': 'Bulundu o zaman. Biri yine kaybetmeden al.',
 
     'rival.orrin.name': 'Orrin Pale',
     'rival.orrin.title': 'Koleksiyoncu',
     'rival.orrin.accessory': 'Gri frak, zincirinde Müdür Anahtarı.',
     'rival.orrin.catch': 'Borç, seni bekleyen birisidir.',
+    'rival.orrin.taunt': 'Çabuk ol. Senden daha uzun adamları bekledim.',
+    'rival.orrin.called': 'Desteyi okudun. İyi. Bunu yapan tek kişi olmak yorucu.',
+    'rival.orrin.loss': 'Asansör boştu. Belki senin için olmaz.',
 
     'rival.vell.name': 'Vell',
     'rival.vell.title': 'Sayıcı',
     'rival.vell.accessory': 'Yağmurluk, bant makaraları.',
     'rival.vell.catch': 'Her parayı saydım. Biri senin.',
+    'rival.vell.taunt': 'Benimle say. Yardımı olur.',
+    'rival.vell.called': 'İşte. Şimdi doğru oldu.',
+    'rival.vell.loss': 'Sayım geçerli. Biri senin. Sende kalsın.',
 
     'line.notary.seal': 'Mühür mühürdür. Kürsü kimin korktuğuyla ilgilenmez.',
     'line.mark.intro': 'Bana kurban diyorlar. Kurban, masayı okuyandır.',

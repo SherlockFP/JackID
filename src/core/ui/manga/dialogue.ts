@@ -5,7 +5,7 @@
 import { t } from '@/core/i18n';
 import type { Expr } from './portrait';
 import { hasPortrait, portraitSrc } from './portrait';
-import { el, enqueue, show, skipButton, speakerName, stage, typewrite } from './mangaPanel';
+import { el, enqueue, sayLine, show, skipButton, speakerName, stage, typewrite } from './mangaPanel';
 
 export type PortraitSide = 'left' | 'right';
 
@@ -26,6 +26,7 @@ export function dialogue(speakerId: string, lineKey: string, portraitSide: Portr
     text.append(el('div', 'mg-plate', speakerName(speakerId)), line, next);
     box.append(text);
     host.append(box, skipButton(ctl));
+    sayLine(true);
     show(host);
 
     const tw = typewrite(ctl, line, t(lineKey), 40);

@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
 import type { Hex, V3 } from '@/core/types';
 import { log } from '@/core/log';
 import { disposeObject3D } from '@/core/dispose';
@@ -35,22 +36,53 @@ interface Source {
   scene: THREE.Object3D;
   clips: Map<string, THREE.AnimationClip>;
   height: number;
+  /** Decimated skinned geometry per skinned mesh (traversal order): tier 1 = mid, tier 2 = low (seated / far). */
+  mids: Array<THREE.BufferGeometry | null>;
+  lows: Array<THREE.BufferGeometry | null>;
 }
 let source: Source | null = null;
 let loading: Promise<Source | null> | null = null;
 
+/** Triangle budgets of the decimated bodies (a full bot is ~13.7k tris). */
+const MID_POLY_TRIS = 3200;
+const LOW_POLY_TRIS = 1100;
+/** Beyond these distances from the LOD camera an actor drops to the mid / low body (ART_BIBLE §1.10, L1 starts at 8 m). */
+const MID_POLY_M = 5;
+const LOW_POLY_M = 8;
+
+/** Decimate `geo` to about `tris` triangles. Skin weights, colours and UVs follow the surviving vertices. */
+async function decimate(geo: THREE.BufferGeometry, tris: number): Promise<THREE.BufferGeometry | null> {
+  const pos = geo.getAttribute('position');
+  const idx = geo.getIndex();
+  if (!pos || !idx) return null;
+  const keep = Math.min(1, tris / (idx.count / 3));
+  const removeVerts = Math.max(0, Math.floor(pos.count * (1 - keep)));
+  try {
+    const out = await new SimplifyModifier().modify(geo, removeVerts);
+    out.userData.shared = true;
+    return out;
+  } catch (e) {
+    log.warn('kit', 'mannequin LOD decimation failed: seated bots keep full detail', e);
+    return null;
+  }
+}
+
 /** Fetch + parse the GLB once. Resolves `null` (and logs) when the file cannot be loaded. */
 export function loadMannequinSource(): Promise<Source | null> {
   if (source) return Promise.resolve(source);
-  loading ??= new GLTFLoader().loadAsync(MANNEQUIN_GLB).then((gltf): Source => {
+  loading ??= new GLTFLoader().loadAsync(MANNEQUIN_GLB).then(async (gltf): Promise<Source> => {
     const scene = gltf.scene;
     scene.updateMatrixWorld(true);
     const box = new THREE.Box3();
+    const skins: THREE.SkinnedMesh[] = [];
+    let totalTris = 0;
     scene.traverse((o) => {
       const sm = o as THREE.SkinnedMesh;
       if (!sm.isSkinnedMesh) return;
+      skins.push(sm);
       sm.frustumCulled = true;
       const geo = sm.geometry;
+      totalTris += (geo.getIndex()?.count ?? 0) / 3;
       geo.computeBoundingBox();
       box.union(geo.boundingBox!);
       // very soft height gradient baked into vertex colours: grounds the feet, lifts the head (no normals: it animates)
@@ -63,9 +95,15 @@ export function loadMannequinSource(): Promise<Source | null> {
       geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
       geo.userData.shared = true;
     });
+    const mids: Array<THREE.BufferGeometry | null> = [], lows: Array<THREE.BufferGeometry | null> = [];
+    for (const sm of skins) {
+      const share = ((sm.geometry.getIndex()?.count ?? 0) / 3) / Math.max(1, totalTris);
+      mids.push(await decimate(sm.geometry, Math.max(60, MID_POLY_TRIS * share)));
+      lows.push(await decimate(sm.geometry, Math.max(60, LOW_POLY_TRIS * share)));
+    }
     const clips = new Map<string, THREE.AnimationClip>();
     for (const c of gltf.animations) clips.set(c.name, c);
-    source = { scene, clips, height: Math.max(0.5, box.max.y - Math.min(0, box.min.y)) };
+    source = { scene, clips, height: Math.max(0.5, box.max.y - Math.min(0, box.min.y)), mids, lows };
     return source;
   }).catch((e: unknown): null => {
     log.warn('kit', 'mannequin GLB failed to load — actors stay placeholders', e);
@@ -166,6 +204,10 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
     private readonly procAnim = new Map<string, THREE.Quaternion>();
     private readonly pre: Array<(dt: number) => void> = [];
     private readonly post: Array<(dt: number) => void> = [];
+    /** Skinned meshes of this clone with their full / mid / low geometry (shared across actors). */
+    private readonly skins: Array<{ sm: THREE.SkinnedMesh; full: THREE.BufferGeometry; mid: THREE.BufferGeometry | null; low: THREE.BufferGeometry | null }> = [];
+    /** Body tier: 0 full, 1 mid (standing, 5 m+), 2 low (seated or 8 m+). Set by `lodPass`. */
+    private tier: 0 | 1 | 2 = 0;
 
     constructor(o: MannequinOpts) {
       this.look = lookOf(o);
@@ -220,6 +262,7 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
         if (!sm.isSkinnedMesh) return;
         const matName = (sm.material as THREE.Material).name;
         const joint = matName ? /joint/i.test(matName) : skinned > 0;
+        this.skins.push({ sm, full: sm.geometry, mid: src.mids[skinned] ?? null, low: src.lows[skinned] ?? null });
         skinned++;
         const base = joint ? this.look.joints : this.look.main;
         const m = psx({
@@ -251,6 +294,7 @@ ${GLSL_CRACKS}`,
       }
       this.rig = rig;
       this.root.add(rig);
+      this.applyGeometry();
       rig.updateMatrixWorld(true);
       // face axis of the head bone in rest pose (root faces +Z)
       const head = this.bones.get('Head');
@@ -310,6 +354,20 @@ ${GLSL_CRACKS}`,
     private oneShotHold = false;
 
     get isFrozen(): boolean { return this.pinned || this.lod; }
+    /** Sitting or crouching clip: such actors are cheap enough to read at the low-poly body. */
+    get seated(): boolean { return !!this.clip && /^(Sitting|Crouch)/.test(this.clip); }
+    /** Swap between the full and the decimated bodies (PERF: same skeleton, same material, no re-skin). */
+    setTier(tier: 0 | 1 | 2): void {
+      if (this.tier === tier) return;
+      this.tier = tier;
+      this.applyGeometry();
+    }
+    private applyGeometry(): void {
+      for (const s of this.skins) {
+        const g = (this.tier === 2 && s.low) || (this.tier >= 1 && s.mid) || s.full;
+        if (s.sm.geometry !== g) s.sm.geometry = g;
+      }
+    }
     get disposedNow(): boolean { return this.disposed; }
 
     /** Jump the running one-shot to its last frame and resolve it (used when the actor freezes). */
@@ -543,6 +601,7 @@ ${GLSL_CRACKS}`,
       const far = !!lodCam && d > LOD_FAR;
       a.setLodHidden(far);
       if (far) { a.setLodState(true); continue; }
+      a.setTier(a.seated || (!!lodCam && d > LOW_POLY_M) ? 2 : (!!lodCam && d > MID_POLY_M) ? 1 : 0);
       near.push({ a, d });
     }
     near.sort((x, y) => x.d - y.d);

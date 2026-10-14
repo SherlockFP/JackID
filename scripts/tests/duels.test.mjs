@@ -1,5 +1,6 @@
-// Unit tests for the three Wave 25 TALLY duel games (lane B): Sealed Wall (Tamsin), Ghost Shell (Lucan) and Steam Count
-// (Kuro), src/game/duels/{sealedwall,ghostshell,steamcount}. Covers the DuelRules contract, determinism, the clue
+// Unit tests for the six Wave 25 TALLY duel games (lane B): Sealed Wall (Tamsin), Ghost Shell (Lucan) and Steam Count
+// (Kuro), plus the phase 2 games Locker Shuffle (Mimosa), The Question (Orrin) and The Last Count (Vell, who throws the
+// match: always a cheat, never punishes, EV bands do not apply), src/game/duels/<game>. Covers the DuelRules contract, determinism, the clue
 // channels, calls and settlement, the EV bands (naive and detective bots) and en/tr string parity.
 //
 // EV is a RETURN RATIO: 1 + playerNet / stake (playerNet is a net change: a lost duel is -S, a correct call +3 S).
@@ -13,8 +14,14 @@ const GAMES = [
   { id: 'sealedwall', rival: 'tamsin', exp: 'sealedWall', kind: 'k-sw', n: 10000 },
   { id: 'ghostshell', rival: 'lucan', exp: 'ghostShell', kind: 'k-gs', n: 20000 },
   { id: 'steamcount', rival: 'kuro', exp: 'steamCount', kind: 'k-sc', n: 20000 },
+  { id: 'lockershuffle', rival: 'mimosa', exp: 'lockerShuffle', kind: 'k-ls', n: 20000 },
+  { id: 'thequestion', rival: 'orrin', exp: 'theQuestion', kind: 'k-tq', n: 20000 },
+  { id: 'lastcount', rival: 'vell', exp: 'lastCount', kind: 'k-lc', n: 4000, always: true },
 ];
+/** The games whose rival cheats at a rate (Vell always throws: no fair duels, no EV band). */
+const RATED = GAMES.filter((g) => !g.always);
 const STAKE = 100;
+const TARGET = { ghostshell: 'GHOST', steamcount: 'LOADED DICE', lockershuffle: 'SPARE KEY', thequestion: 'MARKED DECK', lastcount: 'THROWN MATCH' };
 
 let registry, rngMod, kit, STR, engine, planMod;
 const mods = {};
@@ -51,7 +58,7 @@ function play(g, seed, { call = false } = {}) {
   return { R, plan, s, clues, pub, called, steps: pub.length };
 }
 
-test('the three games register with the duel registry under their rival', () => {
+test('the six games register with the duel registry under their rival', () => {
   for (const g of GAMES) {
     const R = registry.getDuel(g.id);
     assert.ok(R, `${g.id} registered`);
@@ -76,8 +83,9 @@ test('same seed, same plan, same duel; different seeds differ', () => {
   }
 });
 
-test('plans: cheat kinds are k-sw / k-gs / k-sc, the rest are fair; the cheat rate is 15-25%', () => {
-  for (const g of GAMES) {
+test('plans: cheat kinds are k-sw / k-gs / k-sc / k-ls / k-tq, the rest are fair; the cheat rate is 15-25%; Vell always throws', () => {
+  for (let i = 1; i <= 200; i++) assert.equal(rules(GAMES[5]).makePlan(i).kind, 'k-lc');
+  for (const g of RATED) {
     const R = rules(g);
     let cheats = 0;
     const N = 4000;
@@ -108,7 +116,8 @@ test('every cheat that happens gives all three clue channels before the duel is 
         assert.ok(channels.size <= 1, `${g.id} seed ${seed}: a fair duel showed ${[...channels]}`);
       }
     }
-    assert.ok(cheated > 100 && fair > 800, `${g.id}: ${cheated} cheats, ${fair} fair`);
+    if (g.always) assert.ok(cheated === 1500 && fair === 0, `${g.id}: ${cheated} cheats, ${fair} fair`);
+    else assert.ok(cheated > 100 && fair > 800, `${g.id}: ${cheated} cheats, ${fair} fair`);
   }
 });
 
@@ -145,7 +154,7 @@ test('calls: a call before the cheat, on a fair duel or at the wrong target is w
       let s = R.init(rngMod.hashSeed(seed, 'init'), plan, STAKE);
       for (let i = 0; !s.done && i < 800; i++) {
         const cheated = R.verdict(s, plan) === 'CHEAT';
-        const target = g.id === 'sealedwall' ? { tile: s.sleeve } : g.id === 'ghostshell' ? 'GHOST' : 'LOADED DICE';
+        const target = g.id === 'sealedwall' ? { tile: s.sleeve } : TARGET[g.id];
         assert.equal(R.call(s, plan, target).correct, cheated, `${g.id} seed ${seed} step ${i}`);
         if (cheated) sawRight++; else if (plan.kind === g.kind) sawEarly++; else sawFair++;
         if (cheated) {
@@ -157,15 +166,20 @@ test('calls: a call before the cheat, on a fair duel or at the wrong target is w
         s = (mine.length ? R.step(s, 'player', mods[g.id].pickMove(s, 'player'), plan) : R.step(s, 'rival', R.rivalAct(s, plan, i), plan)).state;
       }
     }
-    assert.ok(sawRight > 20 && sawEarly > 20 && sawFair > 100 && sawWrongTarget > 20, `${g.id}: ${sawRight}/${sawEarly}/${sawFair}`);
+    assert.ok(sawRight > 20 && sawEarly > 20 && sawWrongTarget > 20 && (g.always ? sawFair === 0 : sawFair > 100), `${g.id}: ${sawRight}/${sawEarly}/${sawFair}`);
     // settlement (net coins)
     const plan = R.makePlan(9);
     const s = R.init(9, plan, STAKE);
     assert.equal(R.settle(s, true, STAKE).playerNet, 3 * STAKE, 'a correct call pays 3 S, even mid-duel');
     assert.equal(R.settle({ ...s, done: true, pay: 1.9 }, null, STAKE).playerNet, 90);
     assert.equal(R.settle({ ...s, done: true, pay: 0 }, null, STAKE).playerNet, -STAKE);
-    assert.equal(R.settle({ ...s, done: true, pay: 0 }, false, STAKE).playerNet, -2 * STAKE, 'a wrong call fines one more stake');
-    assert.equal(R.settle({ ...s, done: true, pay: 1.9 }, false, STAKE).playerNet, -10);
+    if (g.always) {
+      assert.equal(R.settle({ ...s, done: true, pay: 1.9 }, false, STAKE).playerNet, 90, 'a wrong call on Vell is never fined');
+      assert.equal(R.settle({ ...s, done: true, pay: 0 }, false, STAKE).playerNet, -STAKE);
+    } else {
+      assert.equal(R.settle({ ...s, done: true, pay: 0 }, false, STAKE).playerNet, -2 * STAKE, 'a wrong call fines one more stake');
+      assert.equal(R.settle({ ...s, done: true, pay: 1.9 }, false, STAKE).playerNet, -10);
+    }
   }
 });
 
@@ -275,7 +289,7 @@ test('the engine runs each game end to end, never leaks the plan before the reve
 });
 
 test('EV bands over the seeds: naive bot returns 0.70-0.90, the detective 1.30-1.60, with every call correct and no false call', () => {
-  for (const g of GAMES) {
+  for (const g of RATED) {
     const R = rules(g);
     for (const policy of ['naive', 'detective']) {
       let net = 0, calls = 0, ok = 0;
@@ -296,4 +310,212 @@ test('EV bands over the seeds: naive bot returns 0.70-0.90, the detective 1.30-1
       }
     }
   }
+});
+
+// ── phase 2: Locker Shuffle (Mimosa), The Question (Orrin), The Last Count (Vell) ─────────────────────────────────
+const stepper = (g, seed) => {
+  const R = rules(g), m = mods[g.id];
+  const plan = R.makePlan(seed);
+  let s = R.init(rngMod.hashSeed(seed, 'init'), plan, STAKE);
+  let i = 0;
+  const next = () => {
+    const mine = s.turn === 'player' ? R.legal(s) : [];
+    const actor = mine.length ? 'player' : 'rival';
+    const out = mine.length ? R.step(s, 'player', m.pickMove(s, 'player'), plan) : R.step(s, 'rival', R.rivalAct(s, plan, rngMod.hashSeed(seed, 'rival', i++)), plan);
+    s = out.state;
+    return { ...out, actor };
+  };
+  return { R, plan, get s() { return s; }, next };
+};
+
+test('Locker Shuffle: she announces N swaps and makes N (N + 1 under the spare key); the prize is never under a picked locker once the key is in play', () => {
+  const g = GAMES[3];
+  let cheats = 0, fairRounds = 0;
+  for (let seed = 1; seed <= 1500; seed++) {
+    const t = stepper(g, seed);
+    let announced = 0, swaps = 0;
+    while (!t.s.done) {
+      const round = t.s.round;
+      const { publicEvents: ev, actor } = t.next();
+      for (const e of ev) {
+        if (e.k === 'announce') { announced = e.n; swaps = 0; }
+        if (e.k === 'swap') swaps++;
+      }
+      if (actor === 'rival') {
+        const armed = t.plan.kind === 'k-ls' && round >= t.plan.round;
+        assert.equal(swaps, announced + (armed ? 1 : 0), `seed ${seed} round ${round}: swaps ${swaps} vs announced ${announced}`);
+        if (armed) cheats++; else fairRounds++;
+      } else {
+        const open = ev.find((e) => e.k === 'open');
+        if (t.plan.kind === 'k-ls' && round >= t.plan.round) assert.equal(open.found, false, 'the prize is never under the locker you pick');
+      }
+    }
+  }
+  assert.ok(cheats > 200 && fairRounds > 3000, `${cheats} ${fairRounds}`);
+});
+
+test('Locker Shuffle: the clues arrive tell (the shuffle), then table and math (the pick) and name the numbers', () => {
+  const g = GAMES[3];
+  let seen = 0;
+  for (let seed = 1; seed <= 600 && seen < 60; seed++) {
+    const t = stepper(g, seed);
+    if (t.plan.kind !== 'k-ls') continue;
+    const order = [];
+    while (!t.s.done) for (const c of t.next().clues) { order.push(c.channel); if (c.channel === 'math') assert.equal(c.data.counted, c.data.announced + 1); }
+    assert.deepEqual(order, ['tell', 'table', 'math']);
+    seen++;
+  }
+  assert.ok(seen >= 60);
+});
+
+test('The Question: the deck holds 40 (stock + pile + 4 in hand) until the marked deck adds a card; Orrin only raises ahead when it is marked', () => {
+  const g = GAMES[4];
+  let cheats = 0, readsRight = 0, honestRaises = 0;
+  for (let seed = 1; seed <= 1200; seed++) {
+    const t = stepper(g, seed);
+    const marked = t.plan.kind === 'k-tq';
+    while (!t.s.done) {
+      const before = t.s, roundBefore = before.round;
+      const armed = marked && roundBefore >= t.plan.round;
+      const { publicEvents: ev, actor } = t.next();
+      for (const e of ev) if (e.k === 'deal') {
+        const total = e.stock + e.pile + 4;
+        assert.equal(total, marked && e.round >= t.plan.round ? 41 : 40, `seed ${seed} round ${e.round}`);
+      }
+      if (actor === 'rival' && ev.some((e) => e.k === 'raise')) {
+        if (armed) { assert.ok(before.stand.rival > before.stand.player, 'a marked raise is only made when ahead'); readsRight++; }
+        else honestRaises++;
+      }
+      if (actor === 'rival' && armed) cheats++;
+    }
+  }
+  assert.ok(cheats > 300 && readsRight > 50 && honestRaises > 200, `${cheats} ${readsRight} ${honestRaises}`);
+});
+
+test('The Question: points, folds and the push are scored right; a match ends at 5 points or after 7 rounds', () => {
+  const g = GAMES[4];
+  let ended5 = 0, endedRounds = 0, draws = 0;
+  for (let seed = 1; seed <= 2000; seed++) {
+    const t = stepper(g, seed);
+    while (!t.s.done) t.next();
+    const s = t.s;
+    assert.ok(s.round <= 7);
+    assert.ok(s.pts.player <= 6 && s.pts.rival <= 6);
+    if (s.pts.player >= 5 || s.pts.rival >= 5) ended5++; else { endedRounds++; assert.equal(s.round, 7); }
+    if (s.winner === undefined) { draws++; assert.equal(s.pay, kit.POT / 2); assert.equal(s.pts.player, s.pts.rival); }
+    else assert.equal(s.pay, s.winner === 'player' ? kit.POT : 0);
+  }
+  assert.ok(ended5 > 500 && endedRounds > 20 && draws >= 1, `${ended5} ${endedRounds} ${draws}`);
+});
+
+test('The Last Count: Vell guesses 3 of the 7 cards, misses every one, never wins; the guest takes the pot unless he calls it', () => {
+  const g = GAMES[5];
+  for (let seed = 1; seed <= 600; seed++) {
+    const t = stepper(g, seed);
+    assert.equal(t.s.tape.length, 8);
+    let throws = 0;
+    while (!t.s.done) {
+      const { publicEvents: ev, actor } = t.next();
+      if (actor === 'rival') { throws++; assert.ok(ev.some((e) => e.k === 'result' && e.hit === false), `seed ${seed}: Vell must miss`); }
+    }
+    assert.equal(throws, 3);
+    assert.equal(t.s.pts.rival, 0);
+    assert.equal(t.s.winner, 'player');
+    assert.equal(t.s.pay, kit.POT);
+    assert.equal(t.R.settle(t.s, null, STAKE).playerNet, 90);
+  }
+  const R = rules(g);
+  for (const policy of ['naive', 'detective']) {
+    let calls = 0, ok = 0;
+    for (let seed = 1; seed <= 500; seed++) {
+      const r = R.playHeadless(seed, policy);
+      calls += r.calls; ok += r.correctCalls;
+      assert.equal(r.playerNet, policy === 'naive' ? 90 : 3 * STAKE);
+    }
+    if (policy === 'naive') assert.equal(calls, 0);
+    else { assert.equal(ok, 500); assert.equal(calls, 500); }
+  }
+});
+
+test('The Last Count: onVellCalled fires once per duel, only on a correct call; a wrong or early call is never fined', () => {
+  const m = mods.lastcount, R = m.lastCount;
+  m.resetVellCalled();
+  const got = [];
+  const off = m.onVellCalled((i) => got.push(i.seed));
+  const plan = R.makePlan(5);
+  let s = R.init(rngMod.hashSeed(5, 'init'), plan, STAKE);
+  assert.equal(R.call(s, plan, 'THROWN MATCH').correct, false, 'nothing has been thrown yet');
+  assert.equal(R.call(s, plan, 'NOTHING').correct, false);
+  assert.deepEqual(got, []);
+  s = R.step(s, 'player', m.pickMove(s), plan).state;
+  s = R.step(s, 'rival', R.rivalAct(s, plan, 1), plan).state;
+  assert.equal(R.call(s, plan, 'NOTHING').correct, false);
+  assert.deepEqual(got, []);
+  assert.equal(R.call(s, plan, 'THROWN MATCH').correct, true);
+  assert.equal(R.call(s, plan, { call: 'THROWN MATCH' }).correct, true);
+  assert.deepEqual(got, [s.seed], 'one duel, one event');
+  assert.equal(R.settle(s, false, STAKE).playerNet, R.settle(s, null, STAKE).playerNet, 'a wrong call costs nothing');
+  off();
+  m.resetVellCalled();
+  R.call(s, plan, 'THROWN MATCH');
+  assert.deepEqual(got, [s.seed], 'unsubscribed');
+});
+
+test('The Last Count: through the engine a correct call ends the duel peacefully at once, and the hook fires', () => {
+  const m = mods.lastcount;
+  m.resetVellCalled();
+  let fired = 0;
+  const off = m.onVellCalled(() => { fired++; });
+  const sess = new engine.DuelSession({ rules: registry.getDuel('lastcount'), runSeed: 777, rivalId: 'vell', night: 8, boss: true, tier: 'soul', S: STAKE });
+  const ev = engine.playOut(sess, (actions, s) => (s.state.round >= 3 ? { act: 0, call: 0 } : { act: 0 }));
+  off();
+  assert.equal(sess.done, true);
+  assert.equal(sess.result.calledCorrect, true);
+  assert.equal(sess.result.net, 3 * STAKE);
+  assert.equal(sess.result.won, true);
+  assert.equal(fired, 1);
+  const ruling = ev.find((e) => e.k === 'ruling');
+  assert.equal(ruling.verdict, 'CHEAT');
+  assert.equal(ruling.byCall, true);
+});
+
+test('story data: every rival points at a registered duel, phase 2 is live, the scenes and strings exist', async () => {
+  const RIV = await load('src/game/story/duels/rivals.ts');
+  const SC = await load('src/game/story/duels/scenes.ts');
+  const ST = (await load('src/game/story/duels/rivals.strings.ts')).default;
+  const END = await load('src/game/story/duels/ending.ts');
+  for (const r of Object.values(RIV.RIVALS)) {
+    const d = registry.getDuel(r.duel);
+    assert.ok(d, `${r.id}: duel ${r.duel} is registered`);
+    assert.equal(d.rival, r.id);
+    assert.equal(registry.duelForRival(r.id).id, r.duel);
+    for (const k of ['catch', 'intro', 'taunt', 'called', 'loss']) assert.ok(r.lines[k], `${r.id}.${k}`);
+  }
+  assert.equal(RIV.bossRivalFor(6)?.id, 'orrin');
+  assert.equal(RIV.bossRivalFor(8)?.id, 'vell');
+  assert.equal(RIV.bossRivalFor(6, { phase2: false }), null);
+  assert.deepEqual(RIV.rivalsForNight(4).map((s) => s.rival.id), ['tamsin', 'mimosa']);
+  assert.deepEqual(RIV.rivalsForNight(4, { phase2: false }).map((s) => s.rival.id), ['tamsin']);
+  assert.equal(RIV.RIVALS.orrin.drops[0], 'manager_key');
+  // scenes: ids and subtitle keys
+  const en = Object.fromEntries(Object.entries(ST.en).map(([k, v]) => [ST.prefix + k, v]));
+  assert.deepEqual(Object.keys(ST.en).sort(), Object.keys(ST.tr).sort());
+  const ph = (x) => (x.match(/\{\w+\}/g) ?? []).sort().join();
+  for (const k of Object.keys(ST.en)) assert.equal(ph(ST.en[k]), ph(ST.tr[k]), k);
+  const scenes = [];
+  for (const id of SC.phase2SceneIds()) {
+    const mod = await load(`src/game/story/duels/cutscenes/${id}.cutscene.ts`);
+    assert.equal(mod.default.id, id);
+    scenes.push(mod.default);
+  }
+  assert.equal(scenes.length, 10);
+  for (const sc of scenes) for (const tr of sc.tracks) if (tr.kind === 'subtitle') for (const c of tr.cues) assert.ok(en[c.key], `${sc.id}: ${c.key}`);
+  const orrin = scenes.find((x) => x.id === 'duel_orrin_intro');
+  const keys = orrin.tracks.find((tr) => tr.kind === 'subtitle').cues.map((c) => c.key);
+  assert.ok(keys.includes('story.duel.terms.intro') && keys.includes('story.duel.line.clerk.ledger'), 'Orrin announces the Terms and the Clerk speaks');
+  // the ending hook
+  assert.equal(END.isVellRelease({ rivalId: 'vell', calledCorrect: true }), true);
+  assert.equal(END.isVellRelease({ rivalId: 'vell', calledCorrect: null }), false);
+  assert.equal(END.isVellRelease({ rivalId: 'orrin', calledCorrect: true }), false);
+  assert.equal(END.onVellCalled, mods.lastcount.onVellCalled, 'the story hook is the duel hook');
 });

@@ -59,14 +59,20 @@ export function mountBench(host: HTMLElement): void {
   );
   wrap.appendChild(bar);
 
+  // `?ids=lucan,tamsin` limits the rows and `?expr=calm` limits the columns (screenshot helpers).
+  const q = new URLSearchParams(location.search);
+  const only = q.get('ids')?.split(',').filter(Boolean);
+  const exprOnly = q.get('expr');
   for (const id of PORTRAIT_IDS) {
+    if (only && !only.includes(id)) continue;
     const row = document.createElement('div');
-    row.className = 'mb-row';
+    row.className = exprOnly ? 'mb-row one' : 'mb-row';
     const label = document.createElement('div');
     label.className = 'mb-id';
     label.textContent = id;
     row.appendChild(label);
     for (const e of EXPRESSIONS) {
+      if (exprOnly && exprOnly !== e) continue;
       const img = document.createElement('img');
       img.alt = `${id} ${e}`;
       img.src = portraitSrc(id, e as Expr);
@@ -80,3 +86,18 @@ export function mountBench(host: HTMLElement): void {
 
 const hostEl = typeof document !== 'undefined' ? document.getElementById('manga-bench') : null;
 if (hostEl) mountBench(hostEl);
+
+// `?demo=cutin&id=lucan&expr=smirk` plays one cut-in on load, with a stand-in standard subtitle bar behind it, so a
+// screenshot shows the bar stepping aside (`body.mg-say`).
+{
+  const q = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
+  if (hostEl && q.get('demo') === 'cutin') {
+    const bar = document.createElement('div');
+    bar.className = 'px-subtitle on';
+    bar.style.cssText = 'position:fixed;left:50%;bottom:12%;transform:translateX(-50%);z-index:5;background:rgba(8,8,8,.8);color:#fff;padding:10px 24px;font:20px sans-serif;';
+    bar.textContent = t('manga.bench.demo.line');
+    document.body.appendChild(bar);
+    const exprQ = q.get('expr') ?? 'smirk';
+    void cutin(q.get('id') ?? 'lucan', (EXPRESSIONS as readonly string[]).includes(exprQ) ? (exprQ as Expr) : 'smirk', 'manga.bench.demo.line', { side: 'right', hold: 600000 });
+  }
+}

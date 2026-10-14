@@ -238,6 +238,8 @@ export interface RunExt {
   markEscrow?: number;
   bossDuel?: number;
   pledged?: string[];
+  /** The ending path reached this run (wave 25 phase 2: `vell_release`), if any. */
+  endingPath?: string;
 }
 /** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
 interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
@@ -468,6 +470,10 @@ class Run implements DebtRun {
   private markEscrow = 0;
   private bossDuelNight = 0;
   private readonly pledged = new Set<string>();
+  /** The ending path reached this run (`vell_release` once Vell's thrown match is called out), or null. */
+  private endingPathId: string | null = null;
+  /** The ending path reached this run (`vell_release` once Vell's thrown match is called out), or null. */
+  get endingPath(): string | null { return this.endingPathId; }
   /** Duel follow-ups (reward, scene) that wait until the cut-ins and the reveal are off screen. Ticked by `tick`. */
   private duelAfter: Array<{ wait: number; left: number; fn: () => void }> = [];
   /** The Tally Bench's run-side counters and hooks (see `DuelRunHooks`): Soul Marks, the rival's Pledge, encounters, boss rewards. */
@@ -2054,11 +2060,19 @@ class Run implements DebtRun {
     this.persistSoon();
   }
 
-  /** Which rival a table seats: the Parlour's table is Lucan (the boss on Night 3), the Jade Room's Tamsin, the Boiler's Kuro. */
+  /** Which rival a table seats: the Parlour's table is Lucan (boss Night 3) or Orrin (boss Night 6), the Jade Room's Tamsin, the Boiler's Kuro, the Wash's Mimosa, the Counting Room's Vell (boss Night 8). */
   private duelEncounter(instanceId: string): { rivalId: string; night: number; boss: boolean } | null {
-    const zone = instanceId.startsWith('PAR') ? 'parlour' : instanceId.startsWith('CARD') ? 'cards' : instanceId.startsWith('BOI') ? 'boiler' : '';
+    const zone = instanceId.startsWith('PAR') ? 'parlour' : instanceId.startsWith('CARD') ? 'cards' : instanceId.startsWith('BOI') ? 'boiler'
+      : instanceId.startsWith('LAU') ? 'laundry' : instanceId.startsWith('CNT') ? 'counting' : '';
     const night = this.night();
-    if (zone === 'parlour') return { rivalId: 'lucan', night, boss: this.quotaMode && night === 3 && bossRivalFor(night) !== null };
+    if (zone === 'parlour') {
+      // N3 Lucan, N6 Orrin (boss duels); any other Night the Parlour table seats Lucan as a side duel
+      const bossRival = bossRivalFor(night);
+      const rivalId = night === 6 && bossRival?.id === 'orrin' ? 'orrin' : 'lucan';
+      return { rivalId, night, boss: this.quotaMode && bossRival?.id === rivalId };
+    }
+    if (zone === 'laundry') return { rivalId: 'mimosa', night, boss: false };
+    if (zone === 'counting') return { rivalId: 'vell', night, boss: this.quotaMode && bossRivalFor(night)?.id === 'vell' };
     if (zone === 'cards') return { rivalId: 'tamsin', night, boss: false };
     if (zone === 'boiler') return { rivalId: 'kuro', night, boss: false };
     return null;
@@ -2098,7 +2112,11 @@ class Run implements DebtRun {
       const tax = Math.min(Math.floor(r.net * AUDIT_TAX), Math.floor(this.coins));
       if (tax >= 1 && this.spend('coin', tax, 'duel.audit')) this.afterDuel(() => this.banner?.(t('duelrun.tax', { n: String(tax) }), { color: '#d0d0d0', hold: 5, size: 8 }));
     }
-    if (rival && !r.drew) {
+    if (r.rivalId === 'vell' && r.calledCorrect === true) {
+      // Vell's thrown match, called out: the Bench rules the count void and the lift opens for him (his 'won' scene is replaced)
+      this.endingPathId = 'vell_release';
+      this.afterDuel(() => { void import('./story/duels/ending').then((m) => m.playVellRelease()).then((): void => undefined, (): void => undefined); }, true);
+    } else if (rival && !r.drew) {
       const beat = r.won ? 'won' : 'lost';
       this.afterDuel(() => { void playDuelScene(r.rivalId as RivalId, beat, this.seed, r.night); }, true);
     }
@@ -2298,6 +2316,7 @@ class Run implements DebtRun {
       watchDep: this.watchDeposits,
       wingKeys: this.wingKeys, managerKey: this.managerKey, rooms: { ...this.rooms, lockers: [...this.rooms.lockers] }, bonusObols: this.currencies.get('obol') ?? 0,
       soulMarks: this.soulMarkCount, markEscrow: this.markEscrow, bossDuel: this.bossDuelNight, pledged: [...this.pledged],
+      ...(this.endingPathId ? { endingPath: this.endingPathId } : {}),
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -2560,6 +2579,7 @@ class Run implements DebtRun {
     this.soulMarkCount = Math.min(SOUL_MARKS_PER_RUN, Math.max(0, Math.floor(e.soulMarks ?? SOUL_MARKS_PER_RUN)));
     this.markEscrow = Math.min(SOUL_MARKS_PER_RUN, Math.max(0, Math.floor(e.markEscrow ?? 0)));
     this.bossDuelNight = Math.max(0, Math.floor(e.bossDuel ?? 0));
+    this.endingPathId = typeof e.endingPath === 'string' ? e.endingPath : null;
     this.pledged.clear();
     for (const id of e.pledged ?? []) if (typeof id === 'string') this.pledged.add(id);
     this.itemSys.totems.restore(e.totems);

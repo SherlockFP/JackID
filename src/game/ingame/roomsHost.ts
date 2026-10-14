@@ -10,7 +10,10 @@ import type { UIOverlayX } from '@/core/ui/ui';
 import type { DebtRun } from '@/game/run';
 import type { WorldHost } from '@/world/world';
 import { setRoomsBridge, type WingId } from '@/world/rooms';
-import { BOILER, LOCKER, buyPrice, wingState, bindWingSource } from '@/game/rooms';
+import { BOILER, LOCKER, buyPrice, isKeyringWing, wingState, bindWingSource } from '@/game/rooms';
+import { chairVisible } from '@/world/rooms/logic';
+import { createRng } from '@/core/rng';
+import { charmDef } from '@/game/charms/engine';
 import { NOTES, notesInZone } from '@/game/story/notes.data';
 import { openNote } from '@/game/story/notes';
 import { holdForStory } from '@/game/story';
@@ -25,6 +28,55 @@ const boilerMult = (p: number): number => Math.min(BOILER.maxPayoutMult, 1 + Mat
 export function startRoomsHost(run: DebtRun, world: WorldHost): () => void {
   const ui = app.ui as UIOverlayX;
   const offs: Array<() => void> = [];
+
+  // ── the Collector's question (Parlour, Nights 3–7): one answered question per Night ──────────────
+  let askedNight = -1;
+  let asking = false;
+  const collectorStatus = (): 'off' | 'ready' | 'done' => {
+    const n = run.night();
+    if (!chairVisible(n) || !run.tycoon.state().zones.includes('parlour')) return 'off';
+    return askedNight === n ? 'done' : 'ready';
+  };
+  /** Right answer: the Collector buys one of your charms at 2x its sell value (Obols). Wrong: one Ticket goes to him. */
+  const askCollector = async (): Promise<void> => {
+    if (asking || app.run !== run) return;
+    const status = collectorStatus();
+    if (status === 'off') return;
+    if (status === 'done') { ui.toast(t('roomsx.collector.done'), 'info'); return; }
+    asking = true;
+    try {
+      const night = run.night();
+      // the right answer's place is seeded per run and Night; the two wrong ones keep their order
+      const rng = createRng(`rooms:collector:${run.seed}:${night}`);
+      const correct = rng.int(0, 2);
+      const wrongs = ['roomsx.collector.a0', 'roomsx.collector.a2'];
+      const options = [0, 1, 2].map((i) => (i === correct ? 'roomsx.collector.a1' : wrongs.shift() as string));
+      const pick = await ui.choice(t('roomsx.collector.q'), options.map((k) => t(k)), { timeout: 25 });
+      if (app.run !== run) return;
+      if (pick < 0) { ui.toast(t('roomsx.collector.timeout'), 'info'); return; }   // no answer: the question is not spent
+      if (pick !== correct) {
+        askedNight = night;
+        if (run.spend('ticket', 1, 'collector:wrong')) ui.toast(t('roomsx.collector.wrong'), 'bad', 4);
+        else ui.toast(t('roomsx.collector.wrongNone'), 'warn', 4);
+        return;
+      }
+      const sellable = run.charms().filter((c) => charmDef(c.id)?.rarity !== 'cursed');
+      if (sellable.length === 0) { ui.toast(t('roomsx.collector.none'), 'warn', 4); return; }   // nothing to sell: not spent
+      askedNight = night;
+      const i = await ui.choice(t('roomsx.collector.offer'), sellable.map((c) => t(`charm.${c.id}.name`)), { timeout: 25 });
+      if (app.run !== run) return;
+      if (i < 0) { ui.toast(t('roomsx.collector.timeout'), 'info'); return; }
+      const sold = sellable[i];
+      const before = run.balance('obol');
+      if (run.collectorBuy(sold.id)) {
+        ui.toast(t('roomsx.collector.bought', { charm: t(`charm.${sold.id}.name`), obols: String(run.balance('obol') - before) }), 'good', 4);
+      } else {
+        ui.toast(t('roomsx.collector.refused'), 'warn', 4);
+      }
+    } finally {
+      asking = false;
+    }
+  };
 
   // ── the world's seam ───────────────────────────────────────────────────────────────────────────
   setRoomsBridge({
@@ -56,10 +108,14 @@ export function startRoomsHost(run: DebtRun, world: WorldHost): () => void {
       if (b.obols > 0) ui.toast(t('rooms.backOffice.paid', { obols: String(b.obols), tickets: String(b.tickets) }), 'good');
       else ui.toast(t('roomsx.office.none'), 'warn');
     },
+    buyPrice: (w) => (isKeyringWing(w) ? buyPrice(run.shift.quota().due) : null),
+    collectorStatus: () => collectorStatus(),
+    askCollector: () => { void askCollector(); },
   });
   offs.push(() => setRoomsBridge({
     wingState: () => 'sealed', keys: () => 0, night: () => 1, sendZone: () => undefined, openLocker: () => undefined,
     pressure: () => 0, vent: () => undefined, readLedger: undefined,
+    buyPrice: () => null, collectorStatus: () => 'off', askCollector: () => undefined,
   }));
   offs.push(() => bindWingSource(null));
 

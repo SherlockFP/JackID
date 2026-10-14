@@ -19,7 +19,8 @@ export const TOP = 0.74
 const FELT = 0x2a1a3a
 const LAMP_TELL = 0xff42a5, LAMP_TABLE = 0x63e6de, LAMP_MATH = 0xffce5a
 export const CHANNEL_COLOR = { tell: LAMP_TELL, table: LAMP_TABLE, math: LAMP_MATH } as const
-const RIVAL_Z = -0.56
+/** The rival's chair sits at z −0.5: a seated mannequin's bind bounds reach 0.39 m behind its origin, so −0.5 keeps them inside z −0.93. */
+const RIVAL_Z = -0.5
 const PLAYER_Z = 0.68
 
 export type TallyParts = {
@@ -76,15 +77,19 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<TallyParts> {
   // the rival: a seated mannequin; `index.ts` tints it and dresses it per rival
   const rival = kit.mannequin({ style: 'plain', color: 0x2a2a30, jointColor: 0x101014, height: 1.76, clip: 'Sitting_Idle_Loop' })
   rival.root.position.set(0, 0, RIVAL_Z)
+  rival.root.userData.lodDetail = true   // the world hides it beyond ~9.5 m (a full mannequin is ~3.7k tris x4 meshes)
   root.add(rival.root)
   const rivalHead = new THREE.Object3D()
   rivalHead.position.set(0, 1.35, RIVAL_Z + 0.12)
   root.add(rivalHead)
 
   // the Notary: a masked witness at the left rail with a wooden gavel and a wax seal on the rail
-  const notary = kit.mannequin({ style: 'porcelain', mask: 'mask_porcelain', color: 0x1a1a22, jointColor: 0x2b2b34, height: 1.86, clip: 'Idle_Loop' })
-  notary.root.position.set(-0.98, 0, -0.5)
+  // The notary's arms run along z (turned to face the felt), so his bounds span ~1.7 m in z: he stands at z +0.3, which keeps
+  // the whole-model lint box inside the L footprint (z ±0.93) once the rival sits at RIVAL_Z −0.5.
+  const notary = kit.mannequin({ style: 'porcelain', mask: 'mask_porcelain', color: 0x1a1a22, jointColor: 0x2b2b34, height: 1.7, clip: 'Idle_Loop' })
+  notary.root.position.set(-0.98, 0, 0.3)
   notary.root.rotation.y = Math.PI / 2
+  notary.root.userData.lodDetail = true
   root.add(notary.root)
   notary.attach(kit.prop('gavel'), 'hand_r')
 
@@ -99,10 +104,10 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<TallyParts> {
   needle.rotation.z = 0
 
   // three clue lamps on a brass bar across the rival's side of the felt
-  kit.box(0.5, 0.012, 0.04, pal.brass, { pos: [0, TOP + 0.006, -0.5], parent: root })
+  kit.box(0.5, 0.012, 0.04, pal.brass, { pos: [0, TOP + 0.006, -0.4], parent: root })
   const mk = (x: number, color: number): LampPart => {
     const l = kit.lamp({ r: 0.026, color, shape: 'dome' })
-    l.root.position.set(x, TOP + 0.03, -0.5)
+    l.root.position.set(x, TOP + 0.03, -0.4)
     root.add(l.root)
     l.setOn(false)
     return l
@@ -148,7 +153,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<TallyParts> {
   label.mesh.rotation.y = Math.PI / 2.6
   root.add(label.mesh)
 
-  root.add(kit.blobShadow(1.5, 2.0))
+  root.add(kit.blobShadow(1.5, 1.8))          // inside the L footprint (z ±0.9): the shadow disc is w × d across
 
   const parts: TallyParts = { rival, notary, board, lamps, needle, stamp, gavel, seal, cuff, cup, tray, rivalHead, servicePlate }
   kit.finalize(root, {

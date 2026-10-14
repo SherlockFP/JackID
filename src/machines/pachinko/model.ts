@@ -175,7 +175,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PachinkoParts> 
   root.add(ledStrips);
   kit.box(0.5, 0.005, 0.004, PINK, { parent: ledStrips });
   const stool = kit.stool({ h: 0.62 });
-  stool.position.set(0, 0, 0.35);
+  stool.position.set(0, 0, 0.26);      // spokes reach z 0.52: inside the M footprint's half-depth (+ lint eps)
   root.add(stool);
 
   // light hint + speaker and coin anchors

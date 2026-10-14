@@ -63,6 +63,7 @@ export function enqueue<T>(run: (ctl: Ctl) => Promise<T>): Promise<T> {
       return await run(ctl);
     } finally {
       active = null;
+      sayLine(false);
       for (const el of ctl.stages) el.remove();
       ctl.stages.length = 0;
     }
@@ -185,7 +186,7 @@ export function cutin(rivalId: string, expr: Expr, lineKey?: string, opts: Cutin
     const plate = el('div', 'mg-plate');
     plate.append(el('span', 'mg-name', speakerName(rivalId)), el('span', 'mg-title', speakerTitle(rivalId)));
     panel.append(halftone, speed, img, plate);
-    if (lineKey) panel.append(el('p', 'mg-line', t(lineKey)));
+    if (lineKey) { panel.append(el('p', 'mg-line', t(lineKey))); sayLine(true); }
     band.append(panel);
     host.append(band, skipButton(ctl));
     show(host);
@@ -193,4 +194,13 @@ export function cutin(rivalId: string, expr: Expr, lineKey?: string, opts: Cutin
     host.classList.remove('on');
     await pause(ctl, ctl.m.calm ? 120 : 230);
   });
+}
+
+/**
+ * Marks the presentation's own line as on screen, so the standard subtitle bar steps aside instead of rendering the
+ * same words behind the panel (CSS: `body.mg-say .px-subtitle`). Cleared when the presentation ends or is skipped.
+ */
+export function sayLine(on: boolean): void {
+  if (typeof document === 'undefined') return;
+  document.body?.classList.toggle('mg-say', on);
 }

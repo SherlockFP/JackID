@@ -115,6 +115,35 @@ test('each table seats its rival: Lucan in the Parlour (the boss on Night 3 only
   n4.dispose();
 });
 
+test('phase 2 tables: Orrin boss on Night 6 in the Parlour, Mimosa in the Wash, Vell boss on Night 8 in the Counting Room', () => {
+  const n6 = fresh(44, 6);
+  assert.deepEqual(n6.duel.encounter('PAR-05'), { rivalId: 'orrin', night: 6, boss: true });
+  n6.dispose();
+  const n4 = fresh(44, 4);
+  assert.deepEqual(n4.duel.encounter('LAU-10'), { rivalId: 'mimosa', night: 4, boss: false });
+  assert.equal(n4.duel.encounter('PAR-05').rivalId, 'lucan');
+  n4.dispose();
+  const n8 = fresh(44, 8);
+  assert.deepEqual(n8.duel.encounter('CNT-03'), { rivalId: 'vell', night: 8, boss: true });
+  n8.openFloor?.();
+  n8.prepareBoss();
+  assert.equal(n8.tycoon.state().zones.includes('counting'), true, 'the Counting Room opens for the Night 8 boss duel');
+  n8.dispose();
+  assert.equal(LAYOUT.DEFAULT_ASSIGN['LAU-10'], 'tallytable');
+  assert.equal(LAYOUT.DEFAULT_ASSIGN['CNT-03'], 'tallytable');
+  assert.equal(LAYOUT.SLOTS.find((x) => x.id === 'CNT-03').zone, 'counting');
+});
+
+test("Vell's thrown match, called out, sets the vell_release ending path (saved); an uncalled duel does not", () => {
+  const run = fresh(45, 8);
+  const rep = { rivalId: 'vell', gameId: 'lastcount', night: 8, boss: true, tier: 'coins', S: 30, won: true, drew: false, net: 30, calledCorrect: false };
+  run.duel.onDuelEnd(rep);
+  assert.equal(run.endingPath, null, 'uncalled: a normal win');
+  run.duel.onDuelEnd({ ...rep, calledCorrect: true });
+  assert.equal(run.endingPath, 'vell_release');
+  run.dispose();
+});
+
 test('beating the Night 3 boss at the table pays BOSS_REWARD and a Wing Key, once', () => {
   const run = fresh(40, 3);
   const t0 = run.balance('ticket');

@@ -2,7 +2,7 @@
  * Rivals of the Tally Bench (STORY lane, Wave 25 "TALLY"; spec docs/WAVE25_TALLY.md). Pure data and the spawn schedule.
  *
  * Phase 1 (playable): Tamsin (side duel, Jade, Nights 2+), Kuro (side duel, Boiler, Night 5), Lucan (Night 3 boss, Parlour).
- * Phase 2 (data and dialogue only, not spawned unless `phase2` is passed): Mimosa, Orrin, Vell.
+ * Phase 2 (live now: duel games lockershuffle, thequestion and lastcount exist): Mimosa (Night 4, Wash), Orrin (Night 6 boss, Parlour), Vell (Night 8 boss, Counting). Pass `{ phase2: false }` to hide them.
  *
  * Every text field is an i18n key (strings in `rivals.strings.ts`, prefix `story.duel.`). The portrait spec id belongs to the
  * manga lane, the duel id to the duel games lane, and the zone to the rooms lane. Nothing here imports the duel engine.
@@ -113,9 +113,12 @@ export const RIVALS: Readonly<Record<RivalId, RivalDef>> = {
     name: `${S}rival.mimosa.name`, title: `${S}rival.mimosa.title`, accessory: `${S}rival.mimosa.accessory`,
     accent: 0xe0c23a, body: 0x2c2a1c,
     look: { mask: 'mask_hare', props: [] },
-    portrait: 'mimosa', duel: 'shellgame', zone: 'laundry', venue: 'duel.laundry',
+    portrait: 'mimosa', duel: 'lockershuffle', zone: 'laundry', venue: 'duel.laundry',
     expr: { intro: 'smirk', won: 'shock', lost: 'smirk' },
-    lines: { catch: `${S}rival.mimosa.catch`, intro: `${S}line.mimosa.intro` },
+    lines: {
+      catch: `${S}rival.mimosa.catch`, intro: `${S}line.mimosa.intro`,
+      taunt: `${S}rival.mimosa.taunt`, called: `${S}rival.mimosa.called`, loss: `${S}rival.mimosa.loss`,
+    },
     pledge: { theme: 'yellow', obols: 2 },
   },
   orrin: {
@@ -123,9 +126,12 @@ export const RIVALS: Readonly<Record<RivalId, RivalDef>> = {
     name: `${S}rival.orrin.name`, title: `${S}rival.orrin.title`, accessory: `${S}rival.orrin.accessory`,
     accent: 0xc9a13a, body: 0x3a3c40,
     look: { mask: 'mask_collector', props: [{ prop: 'key', bone: 'hand_r' }] },
-    portrait: 'orrin', duel: 'question', zone: 'parlour', venue: 'duel.parlour',
+    portrait: 'orrin', duel: 'thequestion', zone: 'parlour', venue: 'duel.parlour',
     expr: { intro: 'hollow', won: 'rage', lost: 'calm' },
-    lines: { catch: `${S}rival.orrin.catch`, intro: `${S}line.orrin.intro` },
+    lines: {
+      catch: `${S}rival.orrin.catch`, intro: `${S}line.orrin.intro`,
+      taunt: `${S}rival.orrin.taunt`, called: `${S}rival.orrin.called`, loss: `${S}rival.orrin.loss`,
+    },
     pledge: { theme: 'gold', obols: 2 },
     drops: ['manager_key'],
     clerk: `${S}line.clerk.ledger`,
@@ -137,7 +143,10 @@ export const RIVALS: Readonly<Record<RivalId, RivalDef>> = {
     look: { mask: null, props: [{ prop: 'ledger', bone: 'hand_r' }] },
     portrait: 'vell', duel: 'lastcount', zone: 'counting', venue: 'duel.counting',
     expr: { intro: 'calm', won: 'hollow', lost: 'calm' },
-    lines: { catch: `${S}rival.vell.catch`, intro: `${S}line.vell.intro`, end: `${S}line.vell.end` },
+    lines: {
+      catch: `${S}rival.vell.catch`, intro: `${S}line.vell.intro`, end: `${S}line.vell.end`,
+      taunt: `${S}rival.vell.taunt`, called: `${S}rival.vell.called`, loss: `${S}rival.vell.loss`,
+    },
     pledge: { theme: 'grey', obols: 2 },
   },
 };
@@ -146,8 +155,15 @@ export const RIVALS: Readonly<Record<RivalId, RivalDef>> = {
 export const FINAL_NIGHT = 8;
 
 export interface SpawnOpts {
-  /** Include the phase 2 rivals (Mimosa, Orrin, Vell). Off by default. */
+  /** Include the phase 2 rivals (Mimosa, Orrin, Vell). On by default since the three duel games exist; pass false to hide them. */
   phase2?: boolean;
+}
+
+const phase2On = (opts: SpawnOpts): boolean => opts.phase2 ?? true;
+
+/** True for the three rivals who hold a boss Night (Lucan 3, Orrin 6, Vell 8): their intro announces the Rival's Terms. */
+export function isBossRival(id: RivalId): boolean {
+  return Object.values(BOSS_SLOTS).includes(id);
 }
 
 /** One side duel offered on a Night. The integrator also checks the venue zone is open before it is shown. */
@@ -178,7 +194,7 @@ export function rivalsForNight(night: number, opts: SpawnOpts = {}): RivalSpawn[
   for (const slot of SIDE_SLOTS) {
     if (night < slot.from || night > slot.to) continue;
     const rival = RIVALS[slot.rival];
-    if (rival.phase === 2 && !opts.phase2) continue;
+    if (rival.phase === 2 && !phase2On(opts)) continue;
     out.push({ rival, night, zone: rival.zone, optional: true });
   }
   return out;
@@ -189,7 +205,7 @@ export function bossRivalFor(night: number, opts: SpawnOpts = {}): RivalDef | nu
   const id = BOSS_SLOTS[night];
   if (!id) return null;
   const rival = RIVALS[id];
-  return rival.phase === 1 || opts.phase2 ? rival : null;
+  return rival.phase === 1 || phase2On(opts) ? rival : null;
 }
 
 export function rivalById(id: RivalId): RivalDef {

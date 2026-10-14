@@ -151,6 +151,8 @@ export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   'PAR-01': 'devilstable', 'PAR-02': 'pisti', 'PAR-03': 'sonkart', 'PAR-04': 'tavla', 'PAR-SHRINE': 'shrine',
   // Wave 25 Tally Bench: one duel table per rival venue (Lucan in the Parlour, Tamsin in the Jade Room, Kuro in the Boiler)
   'PAR-05': 'tallytable', 'CARD-08': 'tallytable', 'BOI-07': 'tallytable',
+  // Wave 25 phase 2: Mimosa's table in the Wash (side duel, Night 4) and Vell's in the Counting Room (Night 8 boss)
+  'LAU-10': 'tallytable', 'CNT-03': 'tallytable',
 };
 
 /** GDD §8.6 busy-floor override: pad → device (host option, default on with ≥ 4 players). */

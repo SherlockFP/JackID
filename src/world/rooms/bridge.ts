@@ -27,7 +27,15 @@ export interface RoomsBridge {
   vent(): void;
   /** Optional: the Counting Room tape replay (story lane). */
   readLedger?(): void;
+  /** Optional: BUY price in coins for a wing, or null when the wing is key-only (the Counting Room). Unset = no BUY offer. */
+  buyPrice?(wing: WingId): number | null;
+  /** Optional: the Parlour Collector's question. `off` = not on the floor (Nights 3–7, Parlour closed); `ready`; `done` = asked tonight. */
+  collectorStatus?(): CollectorStatus;
+  /** Optional: ask the Collector's question (one per Night). Resolves when the exchange is over. */
+  askCollector?(): void;
 }
+
+export type CollectorStatus = 'off' | 'ready' | 'done';
 
 const IDLE: RoomsBridge = {
   wingState: () => 'sealed',
