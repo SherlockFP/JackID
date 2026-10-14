@@ -210,12 +210,29 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       vMax = Math.max(vMax, Math.atan2(p[1] - cam[1], dz));
       hMax = Math.max(hMax, Math.atan2(Math.abs(p[0]), dz));
     }
-    const aspect = Math.max(0.4, window.innerWidth / Math.max(1, window.innerHeight));
+    const H = Math.max(1, window.innerHeight);
+    const aspect = Math.max(0.4, window.innerWidth / H);
+    // The visible band: between the seat stack's bottom edge (--seat-top-b) and the top of its STAKE / control stack
+    // (--seat-bot-t), both in px from the top of #ui (seatHud.ts). Without them the band is the whole window.
+    const cs = typeof document !== 'undefined' && document.getElementById('ui') ? getComputedStyle(document.getElementById('ui') as HTMLElement) : null;
+    const topPx = parseFloat(cs?.getPropertyValue('--seat-top-b') ?? '');
+    const botPx = parseFloat(cs?.getPropertyValue('--seat-bot-t') ?? '');
+    let f0 = 0, f1 = 1;
+    if (Number.isFinite(topPx) && Number.isFinite(botPx) && botPx - topPx > 0.2 * H) {
+      f0 = Math.min(0.5, Math.max(0, topPx / H));
+      f1 = Math.max(0.5, Math.min(1, botPx / H));
+    }
+    const k = f1 - f0;                                   // band height as a fraction of the window
     const centre = (vMin + vMax) / 2;
-    const vHalf = Math.max((vMax - vMin) / 2 + 4 * DEG, Math.atan(Math.tan(hMax + 3 * DEG) / aspect));
+    const span = (vMax - vMin) / 2 + 4 * DEG;
+    // The points must fit the band (NDC half-height k), and the width must fit the window.
+    const vHalf = Math.max(Math.atan(Math.tan(span) / k), Math.atan(Math.tan(hMax + 3 * DEG) / aspect));
+    // Aim the look so the points' centre sits on the band's centre (ndc 0 when the band is the whole window).
+    const ndcC = 1 - 2 * ((f0 + f1) / 2);
+    const look = centre - Math.atan(ndcC * Math.tan(vHalf));
     const pose = this.model.playPose;
     pose.pos.set(cam[0], cam[1], cam[2]);
-    pose.look.set(cam[0], cam[1] + Math.sin(centre), cam[2] - Math.cos(centre));
+    pose.look.set(cam[0], cam[1] + Math.sin(look), cam[2] - Math.cos(look));
     pose.fov = Math.min(80, Math.max(40, (2 * vHalf) / DEG));
   }
 
@@ -244,6 +261,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     if (local) {
       this.entry = ''; this.sfx('chime');
       this.seatHud?.show(); this.showHud();
+      this.fitPose();                // the seat stack's edges exist now: frame the console between them
       this.seatHud?.firstTip('debt_terminal', this.tipLines());
     }
   }

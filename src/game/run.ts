@@ -690,34 +690,40 @@ class Run implements DebtRun {
     return true;
   }
 
-  win(gross: number, src: EcoSource, meta: WinMeta): number {
-    this.openRounds.delete(src.mid);
+  /**
+   * What a paid play credits for this gross, after House Favour, modifiers, Tilt/Lamp factors and the House Limit. Pure: nothing is
+   * paid or fed. `win()` uses it; machines call `previewCredit` for the WIN callout so it shows the net amount, not the gross.
+   */
+  private creditOf(gross: number, src: EcoSource, meta: Pick<WinMeta, 'bet' | 'raw' | 'factorApplied'>): { credited: number; pr: PayoutResult | null } {
     // betFrac (bet / max bet) lets Gilded Chip read the stake; Capacitor scopes through `instance`.
     const maxBet = this.betLimits(src.machineId, src.mid).max;
     const q: ModQuery = { pid: this.selfId, instance: src.mid, ctx: { betFrac: Number.isFinite(maxBet) && maxBet > 0 ? meta.bet / maxBet : 0 } };
-    let credited: number;
-    let pr: PayoutResult | null = null;
-    if (meta.raw) {
-      credited = Math.max(0, Math.floor(gross));
-    } else if (gross <= 0) {
-      credited = Math.floor(meta.bet * this.mod('loss.refund', src.machineId, 0, q));
-    } else {
-      // Split the fold into A (additive bonuses, halved by the dampener) and M (the rest). `factorApplied` = the machine
-      // already scaled the gross (elevator), so no factor and no flat are applied again.
-      let A = 0;
-      let M = 1;
-      if (!meta.factorApplied) {
-        const br = this.mods.explain('payout.mult', src.machineId, 1, q);
-        for (const s of br.steps) if (s.op === 'inc') A += s.value;
-        M = br.result / (1 + A);
-      }
-      const flat = meta.factorApplied ? 0 : this.mod('payout.flat', src.machineId, 0, q);
-      const limitMult = this.mod('x.house.limitMult', src.machineId, 1, q);
-      const r = settlePayout({ gross, bet: meta.bet, A, M, flat, quota: this.quotaMode ? this.quota.due : 0, limitMult });
-      pr = r;
-      credited = r.credited;
-      if (r.excess > 0) this.feedJackpot('net', r.excess);
+    if (meta.raw) return { credited: Math.max(0, Math.floor(gross)), pr: null };
+    if (gross <= 0) return { credited: Math.floor(meta.bet * this.mod('loss.refund', src.machineId, 0, q)), pr: null };
+    // Split the fold into A (additive bonuses, halved by the dampener) and M (the rest). `factorApplied` = the machine
+    // already scaled the gross (elevator), so no factor and no flat are applied again.
+    let A = 0;
+    let M = 1;
+    if (!meta.factorApplied) {
+      const br = this.mods.explain('payout.mult', src.machineId, 1, q);
+      for (const s of br.steps) if (s.op === 'inc') A += s.value;
+      M = br.result / (1 + A);
     }
+    const flat = meta.factorApplied ? 0 : this.mod('payout.flat', src.machineId, 0, q);
+    const limitMult = this.mod('x.house.limitMult', src.machineId, 1, q);
+    const r = settlePayout({ gross, bet: meta.bet, A, M, flat, quota: this.quotaMode ? this.quota.due : 0, limitMult });
+    return { credited: r.credited, pr: r };
+  }
+
+  /** The amount `win()` would credit for this gross (WIN callouts show this, never the pre-favour gross). Pays nothing. */
+  previewCredit(gross: number, src: EcoSource, meta: Pick<WinMeta, 'bet' | 'raw' | 'factorApplied'>): number {
+    return this.creditOf(gross, src, meta).credited;
+  }
+
+  win(gross: number, src: EcoSource, meta: WinMeta): number {
+    this.openRounds.delete(src.mid);
+    const { credited, pr } = this.creditOf(gross, src, meta);
+    if (pr && pr.excess > 0) this.feedJackpot('net', pr.excess);
     this.coins += credited;
     this.maxWallet = Math.max(this.maxWallet, this.coins);
     this.stats.paid = (this.stats.paid ?? 0) + credited;
@@ -1102,7 +1108,7 @@ class Run implements DebtRun {
     this.persist();
   }
 
-  /** Dawn Collection: the quota is settled. Paid → overpay rewards, the surplus opens the next Night. Short → protections or the trapdoor. */
+  /** Dawn Collection: the quota is settled. Paid → overpay rewards, the surplus goes back to the pocket. Short → protections or the trapdoor. */
   private dawn(): void {
     this.expireContracts();
     const due = this.quota.due;
@@ -1134,7 +1140,10 @@ class Run implements DebtRun {
       }
     }
     this.finishBoss();
-    this.debtPaid = Math.max(0, this.debtPaid - due);
+    // Surplus above the quota (its interest is already in debtPaid, Settle) returns to the pocket: Night N+1 starts with cash for the Pawn.
+    const surplus = Math.max(0, this.debtPaid - due);
+    this.debtPaid = 0;
+    if (surplus > 0) this.earn('coin', surplus, 'dawn:surplus');
     this.stats.nightsPaid = (this.stats.nightsPaid ?? 0) + 1;
     this.syncQuota();
     this.nightDone = true;

@@ -205,6 +205,11 @@ export class BenchRun implements RunApi {
     return true;
   }
 
+  previewCredit(gross: number, src: EcoSource, meta: Pick<WinMeta, 'bet' | 'raw' | 'factorApplied'>): number {
+    if (gross <= 0) return Math.floor(meta.bet * this.mod('loss.refund', src.machineId, 0));
+    return Math.max(0, Math.floor(gross * this.mod('payout.mult', src.machineId, 1) + this.mod('payout.flat', src.machineId, 0)));
+  }
+
   win(gross: number, src: EcoSource, meta: WinMeta): number {
     let g = gross;
     this.openRounds.delete(src.mid);

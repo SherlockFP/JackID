@@ -20,7 +20,7 @@ import type { WorldHost } from '@/world/world';
 import type { DebtRun } from '@/game/run';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { holdClock, releaseClock } from '@/game/clockHold';
-import { nightDef } from '@/game/data/schedule';
+import { TILT_FREE_PULLS, nightDef } from '@/game/data/schedule';
 
 export interface TutorialHost {
   readonly world: WorldHost;
@@ -155,7 +155,7 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
   const complete = (s: Step): boolean => {
     switch (s.key) {
       case 'walk': return bigMid() !== null && seatMid === bigMid();
-      case 'spin': return spins - base.spins >= 3;
+      case 'spin': return spins - base.spins >= TILT_FREE_PULLS;   // four full-pay pulls, then rotate (TILT, GDD §3.4.3)
       case 'deposit': return deposits > base.deposits;
       case 'tilt': return others > base.others || age > 16;
       case 'hot': return age > 9;
@@ -166,8 +166,7 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
   const text = (s: Step): string => {
     switch (s.key) {
       case 'spin': {
-        const n = run.pulls();
-        return t('tut.spin', { key: keyLabel('m.primary'), n: Number.isFinite(n) ? String(n) : '∞' });
+        return t('tut.spin', { key: keyLabel('m.primary') });
       }
       case 'deposit': return t('tut.deposit', { pct: Math.round(nightDef(0).interest * 100) });
       default: return t(`tut.${s.key}`);

@@ -1,7 +1,10 @@
 /* The Sump receipt (GDD §9.9): thermal paper on the dark pit. Sizes in UI px (--u). */
-.rcp { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: calc(8 * var(--u)); padding: calc(8 * var(--u)) 16px; overflow: auto; font-family: var(--f-body); color: #191921; }
-.rcp-paper { position: relative; width: min(100%, calc(260 * var(--u))); max-height: 100%; box-sizing: border-box;
+/* Plain column that scrolls. `margin: auto` centres each block only while there is room; when the receipt is taller than the
+   window the auto margins collapse to 0 and it scrolls from the top, so the title is never clipped and the rows never run
+   under the buttons (the buttons sit in the flow after the paper, not over it). */
+.rcp { position: absolute; inset: 0; display: flex; flex-direction: column; gap: calc(6 * var(--u));
+  padding: calc(8 * var(--u)) 16px; overflow-x: hidden; overflow-y: auto; font-family: var(--f-body); color: #191921; }
+.rcp-paper { position: relative; flex: 0 0 auto; margin: auto auto 0; width: min(100%, calc(260 * var(--u))); box-sizing: border-box;
   background: #f7efde; padding: calc(10 * var(--u)) calc(12 * var(--u)); box-shadow: 0 calc(3 * var(--u)) 0 #000; }
 .rcp-title { font-family: var(--f-head); font-size: calc(8 * var(--u) * 1.4); line-height: 1.2; text-align: center; color: #5a1019; }
 .rcp-sub { text-align: center; font-size: calc(16 * var(--u)); color: #5a525a; }
@@ -16,10 +19,10 @@
   border: calc(2 * var(--u)) solid #c52129; color: #c52129; font-family: var(--f-head); font-size: calc(8 * var(--u)); letter-spacing: 1px; }
 .rcp-stamp.good { border-color: #2e7d46; color: #2e7d46; }
 .rcp-stamp.thud { animation: rcp-thud .25s cubic-bezier(.2, 1.6, .4, 1); }
-.rcp-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(8 * var(--u)); }
+.rcp-btns { flex: 0 0 auto; display: flex; flex-wrap: wrap; justify-content: center; gap: calc(8 * var(--u)); margin: calc(4 * var(--u)) auto 0; }
 .rcp-btn { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--shine); background: var(--coal);
   border: calc(1 * var(--u)) solid var(--brass); padding: calc(6 * var(--u)) calc(10 * var(--u)); cursor: pointer; }
 .rcp-btn:hover, .rcp-btn:focus-visible { background: var(--brass-dark); outline: none; color: #fff; }
-.rcp-hint { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); text-align: center; }
+.rcp-hint { flex: 0 0 auto; margin: 0 auto auto; font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); text-align: center; }
 @keyframes rcp-thud { 0% { transform: rotate(-12deg) scale(1.6); opacity: 0; } 100% { transform: rotate(-12deg) scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .rcp-stamp.thud { animation: none; } }

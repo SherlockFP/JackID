@@ -24,7 +24,8 @@ import type { BulbChain, LampPart, MarqueePart } from '@/kit/types';
 import { clamp, lerp, tmpV3a, tmpV3b } from '@/core/math';
 import { setPostLevel } from '@/core/fx';
 import type { WinTier } from '@/game/types';
-import { tierAtLeast, toWinTier, tierMin, type JuiceTier } from './tiers';
+import { fmtCoins } from '@/core/i18n';
+import { tierAtLeast, toWinTier, tierMin, winFeel, TIER_FLOOR_MULT, type JuiceTier, type WinFeel } from './tiers';
 import type { MachineContext, MachineModel } from './types';
 
 // Pit-wide juice events. The world layer may listen (floor lights, ceiling rain); juice never waits on them.
@@ -99,6 +100,10 @@ export interface CelebrateOpts {
   amount?: number;
   /** FX origin; default `anchors.coinOut` → `prompt` → `speaker` → root. */
   at?: THREE.Object3D;
+  /** Stake of the round: with `amount` it gives the win multiple that scales flash, pour, pop and pitch (else the tier's floor multiple is used). */
+  bet?: number;
+  /** The win multiple directly (overrides `amount / bet`). */
+  mult?: number;
   /** Machine parts that run the win pattern for the show's duration. */
   marquee?: MarqueePart;
   bulbs?: BulbChain;
@@ -134,11 +139,17 @@ export function celebrate(host: JuiceHost, tier: JuiceTier, o: CelebrateOpts = {
   if (tier === 'push') {
     ctx.audio.play('coin', { pos: speaker });
   } else {
+    // every win is felt: flash, pour and pop scale with the multiplier (spectators see their attenuated tier's weight)
+    const given = o.mult ?? (o.bet && o.bet > 0 && o.amount ? o.amount / o.bet : 0);
+    const feel = winFeel(shown !== tier ? TIER_FLOOR_MULT[shown] : Math.max(TIER_FLOOR_MULT[tier], given));
+    const own = !fast && o.amount !== undefined && o.amount > 0;      // the scaled pop below replaces winBurst's fixed one
     // core `winBurst` has no 'mega' branch: mega = the huge burst plus the mega layer in `escalate`
-    ctx.fx.winBurst(shown === 'mega' ? 'huge' : shown, at, { amount: o.amount, flyToWallet: host.isLocalOccupant && !fast });
-    ctx.audio.winJingle(toWinTier(tier), { pos: speaker });
-    if (show.sfx && !fast) ctx.audio.play(show.sfx, { pos: speaker, vol: 0.8 });
-    if (tier !== 'small') ctx.fx.lightPulse(at, { color: show.glow, mul: tier === 'medium' ? 1.3 : 1.7, dur: 0.5 });
+    if (!fast) winFeelLayer(host, shown, feel, at, dist, sp);
+    ctx.fx.winBurst(shown === 'mega' ? 'huge' : shown, at, { amount: own ? undefined : o.amount, flyToWallet: host.isLocalOccupant && !fast });
+    if (own) winPop(host, feel, at, o.amount as number);
+    ctx.audio.winJingle(toWinTier(tier), { pos: speaker, pitch: tier === 'jackpot' ? 0 : feel.pitch });
+    if (show.sfx && !fast) ctx.audio.play(show.sfx, { pos: speaker, vol: 0.8, pitch: tier === 'jackpot' ? 0 : feel.pitch });
+    ctx.fx.lightPulse(at, { color: show.glow, mul: tier === 'small' ? 1.15 : tier === 'medium' ? 1.3 : 1.7, dur: 0.5 });
     if (!fast) escalate(host, shown, at, speaker, sp);
   }
 
@@ -150,6 +161,34 @@ export function celebrate(host: JuiceHost, tier: JuiceTier, o: CelebrateOpts = {
   }
   if (!run) { o.restore?.(); return Promise.resolve(); }
   return ctx.timers.wait(show.show * sp).then(() => { if (!host.disposed) o.restore?.(); });
+}
+
+/**
+ * The multiplier-scaled half of a win (see {@link winFeel}): screen flash, coin pour, coin-pour sound. Tiers from `big` up
+ * already get a fountain, a flash and a shake from `winBurst` / {@link escalate}, so they only get the pitch and the pop.
+ * Screen-space parts only run for the player (or a spectator standing at the machine).
+ */
+function winFeelLayer(host: JuiceHost, shown: JuiceTier, feel: WinFeel, at: THREE.Object3D, dist: number, sp: number): void {
+  const { ctx } = host;
+  const near = host.isLocalOccupant || dist <= 3;
+  const tall = tierAtLeast(shown, 'big');
+  if (near && shown !== 'jackpot' && feel.flashAlpha > 0) ctx.fx.flash(feel.flashColor, feel.flashAlpha, feel.flashDur);
+  if (tall) return;
+  if (near && feel.shake > 0) ctx.fx.shake(feel.shake, 0.18 + 0.4 * feel.k, { roll: feel.shake * 40 });
+  if (near && feel.zoom > 0) ctx.fx.zoomPunch(feel.zoom, 0.3);
+  const speaker = anchorOf(host, 'speaker');
+  ctx.fx.coins(at, feel.coins, { spread: 0.12 + 0.1 * feel.k, up: 1.6 + 1.6 * feel.k, over: feel.pourDur * sp });
+  ctx.audio.coins(Math.min(40, feel.coins), { pos: speaker, pitch: feel.pitch });
+  if (feel.k > 0.25) ctx.audio.play('coinPour', { pos: speaker, vol: 0.5 + 0.6 * feel.k, pitch: feel.pitch });
+}
+
+/** The win pop: bigger and warmer with the multiplier, flying into the wallet counter for the player. */
+function winPop(host: JuiceHost, feel: WinFeel, at: THREE.Object3D, amount: number): void {
+  at.getWorldPosition(tmpV3a);
+  host.ctx.fx.popText([tmpV3a.x, tmpV3a.y + 0.25, tmpV3a.z], `+${fmtCoins(amount, true)}`, feel.popColor, {
+    dur: 1.1 + 0.5 * feel.k, rise: 0.4 + 0.3 * feel.k, scale: feel.popScale, shake: feel.mult >= 10,
+    flyTo: host.isLocalOccupant ? 'wallet' : undefined, sfx: host.isLocalOccupant ? 'numberTick' : undefined,
+  });
 }
 
 /** The extra layers that make each tier feel bigger than the one below (see {@link celebrate}). */

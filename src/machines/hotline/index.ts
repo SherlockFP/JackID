@@ -219,6 +219,7 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
   dispose(): void {
     this.offResult?.(); this.offResult = null;
     this.sheet?.dispose(); this.sheet = null;
+    this.ctx.ui.root.classList.remove('hl-sheet');
     this.seatHud?.dispose();
     super.dispose();
   }
@@ -302,12 +303,15 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
       act: (a) => { if (a.startsWith('pick')) this.takeOffer(Number(a.slice(4))); },
     });
     this.sheet = p;
-    if (!p.show()) { p.dispose(); this.sheet = null; }          // no overlay (menus, bench): the seat HUD buttons and keys remain
+    if (!p.show()) { p.dispose(); this.sheet = null; return; }   // no overlay (menus, bench): the seat HUD buttons and keys remain
+    // The deal board covers the centre of the screen: ui.css moves the Collector's subtitles to the lower-left corner meanwhile.
+    this.ctx.ui.root.classList.add('hl-sheet');
   }
 
   private closeSheet(): void {
     const p = this.sheet;
     this.sheet = null;
+    this.ctx.ui.root.classList.remove('hl-sheet');
     p?.hide();
   }
 

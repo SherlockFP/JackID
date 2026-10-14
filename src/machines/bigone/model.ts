@@ -456,7 +456,8 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.62, 1.5), look: new THREE.Vector3(0, 1.5, 0.45), fov: 58, mouse: 'primary' },
+    // framing: all 15 cells and the top tally screen inside the band between the HUD banner and the control bar, at 4:3 and 16:9
+    playPose: { pos: new THREE.Vector3(0, 1.7, 2.0), look: new THREE.Vector3(0, 1.64, 0.45), fov: 74, mouse: 'primary' },
     colliders: [{ min: [-W / 2, 0, -D / 2], max: [W / 2, H - 0.02, D / 2] }],
     interact: { min: [-W / 2, 0.2, -D / 2], max: [W / 2, H - 0.02, FRONT + 0.1] },
     anchors: {

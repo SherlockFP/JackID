@@ -8,6 +8,7 @@
  * Juice: wallet counter rolls 30 ticks/s; gains fly as numbers into the wallet anchor and bump it; spends flash red; big
  * results add hit-stop and a feed line; Last Call runs a banner and blinks the clock.
  */
+import * as THREE from 'three';
 import { app } from '@/core/app';
 import { bus, type GameEvents } from '@/core/events';
 import { fmtCoins, has, t } from '@/core/i18n';
@@ -146,6 +147,8 @@ export function createHud(): Hud {
   const phoneArc = h('div', 'arc', phone);
   h('div', 'bell', phone);
   h('span', 'lbl', phone, t('hud.phone.ring'));
+  // Direction and distance to the nearest hotline booth while it rings: "← 12m" (refreshed in updatePhone).
+  const phoneDir = h('span', 'dir', phone);
   let phoneLeft = 0;
   const dread = h('div', 'dread', root);
 
@@ -427,7 +430,31 @@ export function createHud(): Hud {
     if (phoneLeft <= 0) return;
     phoneLeft = Math.max(0, phoneLeft - dt);
     phoneArc.style.setProperty('--p', `${Math.round((phoneLeft / phoneTotal) * 360)}deg`);
+    setText(phoneDir, boothHint());
     if (phoneLeft <= 0) setCls(phone, 'hidden', true);
+  }
+
+  /** "← 12m" / "→ 4m" toward the nearest hotline booth from the local player's view; '' when the booth is not placed. */
+  const boothAt = new THREE.Vector3();
+  const boothFwd = new THREE.Vector3();
+  function boothHint(): string {
+    const w = app.world, p = app.player, cam = app.camera;
+    if (!w || !p || !cam) return '';
+    let best = Infinity, bx = 0, bz = 0;
+    for (const m of w.machines()) {
+      if (m.def.id !== 'hotline') continue;
+      const root = (m as unknown as { model?: { root?: THREE.Object3D } }).model?.root;
+      if (!root) continue;
+      root.getWorldPosition(boothAt);
+      const d = Math.hypot(boothAt.x - p.pos.x, boothAt.z - p.pos.z);
+      if (d < best) { best = d; bx = boothAt.x; bz = boothAt.z; }
+    }
+    if (!Number.isFinite(best)) return '';
+    // Lateral side: the booth's offset along the camera's right vector (right = forward x up, on the ground plane).
+    cam.getWorldDirection(boothFwd);
+    const dx = bx - p.pos.x, dz = bz - p.pos.z;
+    const lateral = -boothFwd.z * dx + boothFwd.x * dz;
+    return `${lateral >= 0 ? '→' : '←'} ${Math.round(best)}m`;
   }
 
   function updateFeed(dt: number): void {

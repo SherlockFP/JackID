@@ -17,7 +17,7 @@ export const MAW = 7;
 export const GHOST = 8;
 export const SYM_COUNT = 7;
 export const SYM_NAMES = ['MOTH', 'TOOTH', 'KEY', 'CANDLE', 'RING', 'CROWN', 'SUN'] as const;
-export const BASE_VALUE = [1, 1, 2, 2, 3, 4, 7];
+export const BASE_VALUE = [1, 1, 1, 1, 2, 3, 4];
 /** Base weights out of 100 for symbols 0..6 (MAW and GHOST are weight 0 unless a charm adds GHOST). */
 export const BASE_WEIGHT = [24, 24, 14, 14, 10, 8, 6];
 export const CELLS = 15;
@@ -26,7 +26,7 @@ export const MAX_STAKE = 100;
 /** Hard ceiling on a line payout (x stake, jackpot claims exempt). The best stacked tally sits far below it. */
 export const MAX_LINE_MULT = 500;
 export const FULL_MULT = 40;
-/** FULL pays ×40 × the symbol value (E[value] 2.28 → 2.3 % RTP), plus the meter. Odds 1 in 4 000 before `jackpot.mult`. */
+/** FULL pays ×40 × the symbol value (E[value] 1.44, about 1.4 % RTP), plus the meter. Odds 1 in 4 000 before `jackpot.mult`. */
 export const FULL_P = 1 / 4000;
 /** Meter seed = SEED_STAKES × the ladder cap. */
 export const SEED_STAKES = 50;
@@ -47,17 +47,17 @@ export type PatternId = (typeof PATTERN_IDS)[number];
 /** Patterns tested by cell-set instances (CLUSTER is a flood fill, FULL is the fill roll). */
 export type LinePattern = Exclude<PatternId, 'CLUSTER' | 'FULL'>;
 export const PATTERN_MULT: Record<PatternId, number> = {
-  TREY: 2, QUAD: 6, RAIL: 20, PILLAR: 2, SLASH: 2, VALLEY: 12, PEAK: 12, CROSS: 15, PENTACLE: 25, HALO: 30,
-  CLUSTER: 0, FULL: FULL_MULT, TWIN_RAILS: 25, CORNERSTONE: 8, EYE: 8,
+  TREY: 2, QUAD: 4, RAIL: 16, PILLAR: 2, SLASH: 2, VALLEY: 12, PEAK: 12, CROSS: 12, PENTACLE: 18, HALO: 30,
+  CLUSTER: 0, FULL: FULL_MULT, TWIN_RAILS: 25, CORNERSTONE: 8, EYE: 5,
 };
 /** Feel knobs (exported so the headless sim can sweep them; game code never mutates them). */
 export const TUNE = {
   /** Chance that a cell equal to a left / upper / upper-diagonal neighbour is drawn once more (fewer clumps = fewer cheap hits). */
-  clump: 0.56,
+  clump: 0.42,
   /** A row pair of this symbol value or more (or any run of 3+) makes the next reel anticipate. */
   teaseValue: 4,
   /** Stacking bonus per tally step: the n-th pattern of a spin (0-based) pays x(1 + combo n). */
-  combo: 0.5,
+  combo: 0.3,
 };
 const LINES = PATTERN_IDS.filter((p): p is LinePattern => p !== 'CLUSTER' && p !== 'FULL');
 

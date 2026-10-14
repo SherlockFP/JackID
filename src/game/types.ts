@@ -122,6 +122,8 @@ export interface RunApi {
   bet(amount: number, src: EcoSource, o?: BetOpts): boolean;
   /** Local player wins `gross` (pre-modifier). Applies payout.mult/flat or loss.refund. Shows personal toast/banner by tier. Returns coins credited. */
   win(gross: number, src: EcoSource, meta: WinMeta): number;
+  /** What `win()` would credit for this gross (net of House Favour, modifiers, factors, limit). Pays nothing; WIN callouts show it. */
+  previewCredit(gross: number, src: EcoSource, meta: Pick<WinMeta, 'bet' | 'raw' | 'factorApplied'>): number;
   deposit(amount: number): boolean;                         // Debt Terminal only
   give(to: PlayerId, amount: number): boolean;              // co-op transfer
   buyCharm(charmId: string, price: number): boolean;        // Charm vendor only

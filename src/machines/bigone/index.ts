@@ -413,15 +413,11 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     else for (const pay of ev.tally) this.lightPay(pay, false);
 
     if (ev.gross > 0) {
-      const tier = juiceTier(ev.gross, ev.stake, ev.tags);
-      if (tierAtLeast(tier, 'medium')) {
-        await this.celebrate(tier, {
-          amount: ev.gross, bulbs: this.parts.bulbs.window, lamps: this.parts.paylineLamps,
-          restore: () => this.bulbsIdle(), fast: pc.fast,
-        });
-      } else {
-        await this.pourCoins(ev.gross, { bet: ev.stake, fast: pc.fast });
-      }
+      // every win is felt: a x2 already flashes, pours coins and pops; the show scales with the multiplier
+      await this.celebrate(juiceTier(ev.gross, ev.stake, ev.tags), {
+        amount: ev.gross, bet: ev.stake, bulbs: this.parts.bulbs.window, lamps: this.parts.paylineLamps,
+        restore: () => this.bulbsIdle(), fast: pc.fast,
+      });
     } else {
       this.commiserate({ amount: ev.stake, at: this.parts.screens.top.mesh });
       if (!pc.fast) await this.wait(0.3);
@@ -624,7 +620,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       } else if (s.last10[0] === 2) {
         sc.text(this.t('eaten'), 80, 13, { font: 'px5', color: '#ff3040', align: 'center' });
       } else if (s.gross > 0) {
-        sc.text(this.t('win', { n: fmtCoins(s.gross) }), 80, 13, { font: 'px5', color: '#ffd040', align: 'center' });
+        sc.text(this.t('win', { n: fmtCoins(this.ctx.run.previewCredit(s.gross, this.src, { bet: this.roundOpen ? this.roundBet : this.bet })) }), 80, 13, { font: 'px5', color: '#ffd040', align: 'center' });
       } else {
         sc.text(`${this.t('bet')} ${fmtCoins(this.bet)}`, 80, 13, { font: 'px5', color: '#4a8a4a', align: 'center' });
       }

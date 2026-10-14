@@ -143,11 +143,11 @@ test('pick up, then choose: result event, call ends, bad choices are ignored', (
   phases('settle'); hl.dispose(); res.off(); end.off();
 });
 
-test('8 s after pick-up the call is declined; closing/settle cuts the line', () => {
+test('15 s after pick-up the call is declined; closing/settle cuts the line', () => {
   const res = capture('hotline:result');
   const hl = HL.createHotline(mockRun({ seed: 12, mods: { 'x.phone.callChance': () => 1 } }));
   ringOf(hl); hl.answer(-1);
-  hl.tick(7.5); assert.ok(hl.phone());
+  hl.tick(14.5); assert.ok(hl.phone());
   hl.tick(1); assert.equal(hl.phone(), null);
   assert.equal(res.got.at(-1).kind, 'declined');
   phases('settle');

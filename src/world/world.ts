@@ -311,7 +311,11 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
       const pid = m.seats.find((p): p is PlayerId => p !== null);
       return pid === undefined ? '' : t('common.occupied', { name: m.ctx.net.playerName(pid) });
     }
-    return m.def.maxBet > 0 ? t('world.betRange', { min: fmtCoins(m.def.minBet), max: fmtCoins(m.def.maxBet) }) : '';
+    if (m.def.maxBet <= 0) return '';
+    // The run's real limit (Night 1 stake cap, the Night's stake index), not the catalogue range.
+    const lim = runOf().betLimits(m.def.id, m.id);
+    const max = Number.isFinite(lim.max) ? lim.max : m.def.maxBet;
+    return t('world.betRange', { min: fmtCoins(lim.min), max: fmtCoins(max) });
   }
 
   /** Free seat for a press of E: the only one, or the one whose stand point is nearest to the player. */

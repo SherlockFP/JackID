@@ -8,7 +8,7 @@ import type { PlayerId } from '@/core/types';
 export const RING_ON_S = 1.0;
 export const RING_OFF_S = 0.7;
 export const RING_TOTAL_S = 10;
-export const ANSWER_S = 8;
+export const ANSWER_S = 15;
 export const MAX_CHOICES = 3;
 
 const CYCLE_S = RING_ON_S + RING_OFF_S;

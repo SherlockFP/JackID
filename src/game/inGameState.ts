@@ -57,6 +57,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   let wasPaid = false;
   let sumNight = -1;
   let sumDep = 0;
+  let sumCarry = 0;
   let sumInterest = 0;
   let storyOff: (() => void) | null = null;
   let offs: Array<() => void> = [];
@@ -199,13 +200,12 @@ export function createInGameState(): AppStateHandler<'ingame'> {
 
   /** The compact paid-Night summary: a toast, never a modal. */
   const showSummary = (s: DebtSession): void => {
-    const q = s.run.shift.quota();
-    const carry = Math.max(0, q.deposited);
+    const carry = Math.max(0, sumCarry);   // the Dawn surplus returned to the pocket (the quota's deposit state resets at Dawn)
     const text = t('interm.summary', {
       n: s.run.night(), dep: fmtCoins(sumDep), int: fmtCoins(sumInterest), carry: fmtCoins(carry), tickets: s.run.balance('ticket'),
     });
     (app.ui as UIOverlayX).toast(text, 'good', SUMMARY_TOAST_S);
-    sumNight = -1; sumDep = 0; sumInterest = 0;
+    sumNight = -1; sumDep = 0; sumInterest = 0; sumCarry = 0;
   };
 
   /**
@@ -296,8 +296,9 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       session = startDebtSession(params, scene);
       storyOff = startStory(session.world, params);
       interHint = createInterHint((app.ui as UIOverlayX).hudLayer);
-      wasPaid = false; sumNight = -1; sumDep = 0; sumInterest = 0;
+      wasPaid = false; sumNight = -1; sumDep = 0; sumInterest = 0; sumCarry = 0;
       offs.push(bus.on('run:deposit', ({ pid, amount }) => { if (session && pid === session.run.selfId) trackDeposit(amount); }));
+      offs.push(bus.on('eco:wallet', ({ pid, delta, reason }) => { if (session && pid === session.run.selfId && reason === 'dawn:surplus') sumCarry += delta; }));
     },
     exit() {
       left = true;

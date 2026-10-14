@@ -27,7 +27,7 @@
 //   src/machines/<id>/index.ts def.headless, minBet, maxBet, betSteps of each world machine
 //
 // Modelled as in run.ts: quota mode, Lamps from Night 2, Tilt after 4 pulls per instance per Watch, interest only on Watches
-// with 3+ pulls, House Limit, dawn payment with surplus carried, overpay charm rewards (1.5x / 2x), Night 1 stake cap, the
+// with 3+ pulls, House Limit, dawn payment with the surplus back in the pocket, overpay charm rewards (1.5x / 2x), Night 1 stake cap, the
 // rescue loan (pocket 0 -> +N coins now, quota +1.5N), a failed quota ends the run.
 // Charm effects modelled (payout.mult inc/mult by scope and suit scaling, Hot Coal, Lampwick, Capacitor, Suit Ladder, Pressure
 // Valve, Snowball Ledger, Last Gasp, Chain Link, Cuckoo Feather, Collector's Tag, Altimeter, Night Owl, interest/deposit/pull/
@@ -40,15 +40,16 @@
 //             pull, never banks, no charms; deposits as soon as the pocket covers the quota
 //   rotator   stake = largest ladder step <= BET_FRAC of the pocket; a Hot Lamp instance is always taken (Hot ignores Tilt),
 //             else the best non-Cold instance that has not Tilted yet (charm factor, then least played); shops at every
-//             intermission. Deposits what compounds to the gap by the last settle (x --dep-margin 1.3), at least --dep-frac 0.7 of
-//             the pocket above the float when the rate is 15 %+ (interest beats play). Float = --float 9 (3 activity pulls a Watch).
+//             intermission. Deposits what compounds to the gap by the last settle (x --dep-margin 1.3), and when the rate is 15 %+ (interest beats play)
+//             deposits --dep-frac 1 of the pocket above the float: "deposit early but keep a float", never below --float-pocket 0.3
+//             of the pocket (the last Watch pays the gap in full). Float = --float 9 (3 activity pulls a Watch).
 //             Once the quota is covered and the pick is not Hot it banks: the minimum stake for the 3 activity pulls of each Watch
 //   banker    the same play, but deposits --banker-frac 0.8 of the pocket above the float at every Bell
 // Also modelled: House Favour (x1.25 / 1.15 / 1.07 on Nights 1-3), the Witching Watch +5 %, the activity float (never bet into the
 // 3 pulls the next Watches need). --no-favour switches Favour off; --trace N prints the first N runs Night by Night.
 //
 // TARGET TABLE (director's decision, cumulative reach): rotator N1 >= 92, N2 >= 85, N3 ~75, N5 45-50, N8 10-15; banker within
-// 10 points; camper N3 <= 20. The shipped schedule.ts hits it: run node scripts/sim/run.mjs --runs 2000 to see the table.
+// 10 points (currently ~16 behind: it over-deposits and starves its play); camper N3 <= 20. The shipped schedule.ts hits it: run node scripts/sim/run.mjs --runs 2000 to see the table.
 import { writeFileSync } from 'node:fs';
 import { load, closeVite } from '../tests/_vite.mjs';
 
@@ -63,11 +64,13 @@ const CAMPER_FRAC = Number(argVal('--camper-frac', 0.5));
 const SPEND_FRAC = Number(argVal('--spend-frac', 0.7));
 const FLOAT = Number(argVal('--float', 9));
 const BANKER_FRAC = Number(argVal('--banker-frac', 0.8));
-const DEP_FRAC = Number(argVal('--dep-frac', 0.7));
+const DEP_FRAC = Number(argVal('--dep-frac', 1));
 const DEP_MARGIN = Number(argVal('--dep-margin', 1.3));
 const DEP_MODE = argVal("--dep-mode", "gap");
 const FRONT_MIN_RATE = Number(argVal("--front-min-rate", 0.3));
 const FLOAT_FRAC = Number(argVal("--float-frac", 0));
+// "deposit early but keep a float": never deposit below this share of the pocket (the last Watch still pays the gap in full).
+const FLOAT_POCKET = Number(argVal("--float-pocket", 0.3));
 const RESERVE_FRAC = Number(argVal('--reserve-frac', 0.35));
 const JSON_OUT = argVal('--json', '');
 const SEED = Number(argVal('--seed', 20261013)) | 0;
@@ -310,7 +313,7 @@ function playRun(bot, runIdx) {
         // the last Watch deposits the whole gap (no interest left to count on); earlier ones what compounds to it
         const front = DEP_MODE === 'front' && rate0 >= FRONT_MIN_RATE;
         const want = front || S.debt >= due && DEP_MODE !== 'gap' ? Math.max(0, 2 * due - S.debt) : bot === 'banker' || left === 1 ? rem : Math.ceil(DEP_MARGIN * rem / Math.pow(1 + Math.max(0, rate0), left));
-        const float = left === 1 && rem > 0 && S.pocket >= rem ? 0 : Math.min(S.pocket, Math.max(FLOAT, Math.round(FLOAT_FRAC * due)));
+        const float = left === 1 && rem > 0 && S.pocket >= rem ? 0 : Math.min(S.pocket, Math.max(FLOAT, Math.round(FLOAT_FRAC * due), Math.round((bot === 'rotator' ? FLOAT_POCKET : 0) * S.pocket)));
         let want2 = want;
         if (bot === 'banker') want2 = Math.max(0, Math.floor(BANKER_FRAC * (S.pocket - float)));
         if (bot === 'rotator' && DEP_FRAC > 0 && rate0 >= 0.15 && left > 1) want2 = Math.max(want, Math.min(Math.max(0, 2 * due - S.debt), Math.floor(DEP_FRAC * Math.max(0, S.pocket - float))));
@@ -425,7 +428,9 @@ function playRun(bot, runIdx) {
       offer.sort((a, b) => priority(b, S.held) - priority(a, S.held));
       if (offer[0] && (bot !== 'camper')) S.held.push(offer[0].id);
     }
-    S.debt -= due;
+    // Dawn settle (run.ts dawn()): the surplus above the quota (interest already in it) returns to the pocket.
+    S.pocket += Math.max(0, S.debt - due);
+    S.debt = 0;
     S.nightsPaid += 1;
     out.paid.push(nd.no);
     out.pocket.push(S.pocket);

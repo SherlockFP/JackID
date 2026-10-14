@@ -53,7 +53,7 @@ test('the tally is smallest first, combo grows by TUNE.combo per step, and the g
   assert.ok(multi > 500, `stacked spins happen (${multi})`);
 });
 
-test('headless RTP is about 0.94 and the hit rate is 18-30 % over 300k spins', () => {
+test('headless RTP is about 0.94 and the hit rate is 27-31 % over 300k spins (every win must be felt)', () => {
   const rng = rngMod.createRng(20261013);
   const h = { luck: 0, mod: (_k, b) => b };
   let sum = 0, hits = 0;
@@ -64,8 +64,8 @@ test('headless RTP is about 0.94 and the hit rate is 18-30 % over 300k spins', (
     if (g > 0) hits++;
   }
   const rtp = sum / N;
-  assert.ok(rtp > 0.9 && rtp < 0.99, `rtp ${rtp}`);
-  assert.ok(hits / N > 0.18 && hits / N < 0.3, `hit ${hits / N}`);
+  assert.ok(rtp > 0.92 && rtp < 0.97, `rtp ${rtp}`);
+  assert.ok(hits / N > 0.27 && hits / N < 0.31, `hit ${hits / N}`);
 });
 
 test('EYE: a diamond ring pays, and a CROSS of the same symbol absorbs it', () => {
@@ -130,4 +130,18 @@ test('EN and TR strings carry the same keys, including the tally and the EYE pat
   assert.deepEqual(en, tr);
   for (const k of ['pat_EYE', 'tCombo', 'tTotal', 'tMore', 'rule4', 'rule5']) assert.ok(STR.en[k] && STR.tr[k], k);
   for (const p of R.PATTERN_IDS) assert.ok(STR.en[`pat_${p}`] && STR.tr[`pat_${p}`], p);
+});
+
+test('win feel scales with the multiplier: a x2 is already felt, x5 punchier, x10+ shakes, a loss is silent', async () => {
+  const T = await load('src/machines/_base/tiers.ts');
+  const f0 = T.winFeel(0), f2 = T.winFeel(2), f5 = T.winFeel(5), f10 = T.winFeel(10), f50 = T.winFeel(80);
+  assert.equal(f0.flashAlpha, 0);
+  assert.equal(f0.coins, 0);
+  assert.ok(f2.flashAlpha >= 0.2 && f2.coins >= 10 && f2.popScale > 1.2, 'x2 flash + pour + pop');
+  assert.equal(f2.shake, 0);
+  assert.ok(f10.shake > 0.01, 'x10 shakes');
+  for (const k of ['flashAlpha', 'coins', 'popScale', 'pitch', 'shake']) {
+    assert.ok(f2[k] <= f5[k] && f5[k] <= f10[k] && f10[k] <= f50[k], `${k} is non-decreasing`);
+  }
+  assert.ok(f50.coins <= 60, 'one fx.coins call is capped at 60');
 });

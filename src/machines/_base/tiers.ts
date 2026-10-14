@@ -7,6 +7,7 @@
  *
  * 'mega' is a member of the frozen `WinTier` (Contracts v1.1), so `JuiceTier` and `WinTier` are one scale.
  */
+import type { Hex } from '@/core/types';
 import { WIN_TIERS, type WinTier } from '@/game/types';
 
 /** Presentation tiers (= `WinTier` since v1.1). */
@@ -61,3 +62,86 @@ export function tierMin(a: JuiceTier, b: JuiceTier): JuiceTier {
 
 /** Re-exported so callers comparing frozen tiers need only one import. */
 export { WIN_TIERS };
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// Win feel: every win is felt. A continuous curve over the multiplier (gross / stake) so a x2 is already a small
+// flash + a coin pour + a readable pop, a x5 is punchier, and a x10+ shakes the screen. Losing spins have no feel.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Presentation numbers for one win, scaled by its multiplier ({@link winFeel}). */
+export interface WinFeel {
+  /** Multiplier the numbers were derived from. */
+  mult: number;
+  /** 0..1 position on the x1 → x50 curve (log scale). */
+  k: number;
+  /** Screen flash colour / opacity / length (s). */
+  flashColor: Hex;
+  flashAlpha: number;
+  flashDur: number;
+  /** Sprite coins in the pour (≤ 60 per fx call) and how long it lasts (s). */
+  coins: number;
+  pourDur: number;
+  /** Win pop text: scale (1 = base glyph size), colour. */
+  popScale: number;
+  popColor: Hex;
+  /** Semitones added to the win jingle and the layered coin sound. */
+  pitch: number;
+  /** Camera shake amplitude in metres (0 = none) and FOV punch. */
+  shake: number;
+  zoom: number;
+}
+
+// keyframes at x1, x2, x5, x10, x25, x50 (interpolated on log2 of the multiplier)
+const FEEL_AT = [1, 2, 5, 10, 25, 50] as const;
+const FEEL_ALPHA = [0.1, 0.22, 0.34, 0.46, 0.56, 0.66] as const;
+const FEEL_FLASH_DUR = [0.1, 0.18, 0.22, 0.26, 0.3, 0.34] as const;
+const FEEL_COINS = [6, 12, 24, 38, 54, 60] as const;
+const FEEL_POUR = [0.4, 0.6, 0.9, 1.3, 1.8, 2.2] as const;
+const FEEL_POP = [1.1, 1.3, 1.6, 2, 2.4, 2.8] as const;
+const FEEL_PITCH = [-1, 0, 2, 4, 6, 8] as const;
+const FEEL_SHAKE = [0, 0, 0.005, 0.02, 0.035, 0.05] as const;
+const FEEL_ZOOM = [0, 0, 0.01, 0.03, 0.05, 0.07] as const;
+/** Flash / pop colour ramp: pale gold → gold → amber → hot orange → white-gold. */
+const FEEL_FLASH_COL = [0xfff0b0, 0xffe27a, 0xffc030, 0xff9a20, 0xff7030, 0xfff4d0] as const;
+const FEEL_POP_COL = [0xfff0a0, 0xffe060, 0xffc030, 0xff9a20, 0xff6a3c, 0xffffff] as const;
+
+function lerpHex(a: Hex, b: Hex, t: number): Hex {
+  const ch = (s: number): number => Math.round(((a >> s) & 255) * (1 - t) + ((b >> s) & 255) * t);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
+/** Lower bound of the multiplier a tier stands for, used when the caller does not know the stake. */
+export const TIER_FLOOR_MULT: Readonly<Record<JuiceTier, number>> = {
+  none: 0, push: 1, small: 2, medium: TIER_MULT.medium, big: TIER_MULT.big, huge: TIER_MULT.huge, mega: TIER_MULT.mega, jackpot: 100,
+};
+
+/** The feel of a win of `mult` x stake. `mult` <= 0 → all zero (a loss is quiet). Pure and cheap: safe on a hot path. */
+export function winFeel(mult: number): WinFeel {
+  const m = Number.isFinite(mult) ? Math.max(0, mult) : 0;
+  if (m <= 0) {
+    return { mult: 0, k: 0, flashColor: 0, flashAlpha: 0, flashDur: 0, coins: 0, pourDur: 0, popScale: 1, popColor: 0xffffff, pitch: 0, shake: 0, zoom: 0 };
+  }
+  const last = FEEL_AT.length - 1;
+  const x = Math.min(Math.max(m, FEEL_AT[0]), FEEL_AT[last]);
+  let i = 0;
+  while (i < last - 1 && x >= FEEL_AT[i + 1]) i++;
+  const t = Math.log(x / FEEL_AT[i]) / Math.log(FEEL_AT[i + 1] / FEEL_AT[i]);
+  const f = (arr: readonly number[]): number => arr[i] + (arr[i + 1] - arr[i]) * t;
+  const c = (arr: readonly Hex[]): Hex => lerpHex(arr[i], arr[i + 1], t);
+  // below x1 (a partial refund) the numbers fade down instead of holding the x1 floor
+  const lo = m < 1 ? m : 1;
+  return {
+    mult: m,
+    k: Math.log(x) / Math.log(FEEL_AT[last]),
+    flashColor: c(FEEL_FLASH_COL),
+    flashAlpha: f(FEEL_ALPHA) * lo,
+    flashDur: f(FEEL_FLASH_DUR),
+    coins: Math.max(3, Math.round(f(FEEL_COINS) * lo)),
+    pourDur: f(FEEL_POUR),
+    popScale: f(FEEL_POP),
+    popColor: c(FEEL_POP_COL),
+    pitch: f(FEEL_PITCH),
+    shake: f(FEEL_SHAKE),
+    zoom: f(FEEL_ZOOM),
+  };
+}
