@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import type { KitX } from '@/kit';
 import type { TexGen } from '@/core/texgen/types';
 import { app } from '@/core/app';
+import { bindHollowDoorLink } from '@/core/hollowDoorLink';
 import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
 import { createRng, type Rng } from '@/core/rng';
@@ -63,6 +64,15 @@ const toast = (key: string, kind: 'info' | 'warn' = 'warn'): void => {
   try { app.ui.toast(t(key), kind, 3.5); } catch { /* UI optional */ }
 };
 const approach = (v: number, to: number, step: number): number => (v < to ? Math.min(to, v + step) : Math.max(to, v - step));
+/** The ambience bed of a floor point: the Sump under the pit floor, the lift, the parlour, else the casino floor. */
+function ambienceAt(p: THREE.Vector3): string {
+  if (p.y < -5) return 'sump';
+  let zone: string | null = null;
+  try { zone = app.world?.zoneAt({ x: p.x, y: p.y, z: p.z }) ?? null; } catch { /* world optional */ }
+  if (zone === 'lift') return 'elevator';
+  if (zone === 'parlour') return 'parlour';
+  return 'pit';
+}
 
 /** World-space AABB of a door-local rectangle: lx ∈ [a, b], lz ∈ [c, d], height y0…y1, for a door at (x, y, z) facing `yaw`. */
 function localBox(x: number, y: number, z: number, yaw: number, a: number, b: number, c: number, d: number, y0: number, y1: number): THREE.Box3 {
@@ -372,9 +382,12 @@ export class HollowDoor {
     this.dropColliders();
     this.prevLz = NaN;
     const p = app.player;
-    if (wasInside && teleport && p && this.ret) p.teleport(this.ret.pos.clone(), this.ret.yaw);
+    // the void bed plays only down here: a player who climbs back gets the bed of the floor they return to. A taken run
+    // stays in the void (no teleport), so its bed is left alone; a seam that times out above never changed the bed.
+    const back = wasInside && teleport && p && this.ret ? this.ret : null;
+    if (back && p) p.teleport(back.pos.clone(), back.yaw);
     this.dismantle();
-    try { app.audio.ambience(null, 2); } catch { /* audio optional */ }
+    if (back) { try { app.audio.ambience(ambienceAt(back.pos), 2); } catch { /* audio optional */ } }
     if (via === 'missed') toast('hollow.toast.missed', 'info');
     if (via === 'left') toast('hollow.toast.left', 'info');
     if (via !== 'resolved') app.run?.hollowLeave();   // the duel's end is the run's own (`hollowFinish`, from the table)
@@ -467,3 +480,6 @@ export function revealHollow(reason: HollowReason): boolean {
 export function hollowDoor(): HollowDoor | null {
   return active;
 }
+
+// Machines (lordstable) read the door through core, not by importing this module (TECH_SPEC §1.1).
+bindHollowDoorLink(() => active);

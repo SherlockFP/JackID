@@ -495,6 +495,17 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
     await this.anim(pc.fast ? 0.01 : 0.2, (k) => { stick.rotation.x = -0.9 * (1 - k); }, 'outQuad');
     this.ctx.fx.shake(0.008, 0.18, { roll: 0.3 });
     this.ctx.fx.sparks(dice.dice[0], 6, RED);
+    // the dice stay in the lit frame after the throw: a gold glow on each die, the table lamps lift for a beat
+    this.ctx.fx.glow(dice.dice[0], GOLD, 0.35, 1.6);
+    this.ctx.fx.glow(dice.dice[1], GOLD, 0.35, 1.6);
+    if (!pc.fast) {
+      const { light, light2 } = this.parts;
+      await this.anim(0.5, (k) => {
+        const lift = 0.6 * Math.sin(k * Math.PI);
+        light.userData.intensity = 2.0 + lift;
+        light2.userData.intensity = 2.0 + lift;
+      }, 'outQuad');
+    }
     this.drawLast();
   }
 
@@ -509,6 +520,8 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
     else if (ev.hard) { text = tr('m.craps.callHard', { n: ev.total }); color = GOLD; }
     else { text = tr('m.craps.callEasy', { n: ev.total }); color = 0xffffff; }
     this.ctx.fx.popText(this.parts.puck, text, color, { dur: 1.2, rise: 0.35 });
+    // the total, big, over the dice that made it
+    this.ctx.fx.popText(this.parts.dice.dice[0], String(ev.total), color, { dur: 1.8, rise: 0.22, scale: 2.6 });
     this.drawLast();
     if (ev.sevenOut) {
       this.sfx('buzzer');

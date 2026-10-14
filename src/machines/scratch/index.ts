@@ -115,6 +115,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   private placing = false;           // a vend animation is placing the cards: refreshVisuals leaves their poses alone
   private strokeQ: number[] = [];
   private flushT = 0;
+  private buyQueued = false;        // BUY pressed while the previous batch was still settling: buy once the shelf is free
   /** Seat HUD overlay (readability standard, see _base/seatHud.ts). */
   private seatHud?: SeatHud;
 
@@ -165,7 +166,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
-    if (local) this.seatHud?.hide();
+    if (local) { this.seatHud?.hide(); this.buyQueued = false; }
     if (local && this.pend) {                 // forced release mid-batch: settle what was bought, never strand the stake
       const total = this.pend.total;
       this.pend = null;
@@ -209,7 +210,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
       case 'betDown': this.setQty(this.state.qty - 1); break;
       case 'betMax': this.setQty(MAX_QTY); break;
       case 'primary': case 'confirm':
-        if (!this.pend) this.vend();
+        if (!this.pend) { this.buyQueued = true; this.tryBuy(); }   // a press during the last card's show is kept, not dropped
         else if (this.spotActive()) this.pickSpot(this.cursor);
         else this.sweepActive();
         break;
@@ -250,6 +251,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
 
   tick(dt: number): void {
     this.easeCards(dt);
+    if (this.buyQueued && this.isLocalOccupant) this.tryBuy();
     if (!this.stroking || !this.pend) return;
     this.flushT += dt;
     if (this.flushT >= FLUSH_S && this.strokeQ.length >= 4) { this.flushT = 0; this.flushStroke(); }
@@ -276,6 +278,13 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   }
 
   // ── authority: vend, scratch, finish ─────────────────────────────────────────────────────────────
+  /** Buys the queued card as soon as the shelf is free (no batch on show, no round open, no card under scratch). */
+  private tryBuy(): void {
+    if (!this.buyQueued || this.pend || this.busy || this.roundOpen || this.state.batch) return;
+    this.buyQueued = false;
+    this.vend();
+  }
+
   private vend(): void {
     const s = this.state;
     if (this.busy || this.roundOpen || s.batch || this.pend) return;

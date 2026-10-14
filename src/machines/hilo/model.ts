@@ -88,7 +88,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<HiloParts> {
     r.name = `flap-${tag}`;
     r.position.set(cx, CARD_Y, 0);
     root.add(r);
-    const face = kit.screen({ w: CARD_W, h: CARD_H, px: [64, 96], bezel: DARK, glow: 0.5 });
+    // 240 x 336 px, no CRT scanlines: the rank and suit stay crisp at the play pose
+    const face = kit.screen({ w: CARD_W, h: CARD_H, px: [240, 336], bezel: DARK, glow: 0.5, scanlines: false });
     face.mesh.position.set(0, 0, FRONT + 0.008);
     r.add(face.mesh);
     const leaves: THREE.Object3D[] = [];
@@ -186,7 +187,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<HiloParts> {
     parts,
     // seat 1.25 m in front of the card plane (z 0.31): at fov 50 the view is ~1.17 m tall (y 0.82–1.98), so the
     // card (1.35–1.77), LED windows (1.10–1.15) and buttons (0.94–1.02) are all fully framed at 16:9
-    playPose: { pos: new THREE.Vector3(0, 1.4, 1.56), look: new THREE.Vector3(0, 1.4, 0), fov: 50, mouse: 'pick' },
+    playPose: { pos: new THREE.Vector3(0, 1.45, 1.2), look: new THREE.Vector3(0, 1.45, 0), fov: 44, mouse: 'pick' },
     colliders: [{ min: [-W / 2, 0, -D / 2], max: [W / 2, H - 0.02, D / 2] }],
     interact: { min: [-W / 2, 0.3, -D / 2], max: [W / 2, H - 0.02, D / 2 + 0.1] },
     anchors: { speaker, prompt: marquee.root, coinOut: tray.anchor, light, light2 },

@@ -20,6 +20,10 @@ npm run qa -- --machine bigone --script "Space:150,wait:3000" --rounds 3 --shots
 | `--seat <n>` | with `--sit`: the seat index (default: first free seat) |
 | `--settle <ms>` | with `--sit`: wait after sitting before the first round (default 4000) |
 | `--walk-view` | no sit. Press the script keys on foot, then screenshot the first-person view to `<machine>-walk.png` (needs `--shots`) |
+| `--frames "<ms,ms,...>"` | screenshots at exact offsets after the last key is released (`<machine>-f<ms>.png`, or `-round<N>-f<ms>.png`). Each shot waits for a rendered frame. Trailing `wait:` steps are part of this timeline. Needs `--shots` |
+| `--world` | a real debt run (`/?skipmenu=1&seed=N`) in the pit instead of a bench room. `--machine` is not needed |
+| `--js "<expr>"` | run once after the room settles, before the rounds. The JSON value goes to `before`. `await` is allowed (`await import('/src/...')`) |
+| `--probe "<expr>"` | read after every round (after the frame shots), recorded in `roundLog[].probe`. `await` is allowed |
 
 Script tokens:
 
@@ -61,7 +65,8 @@ while it is up. Keys that a script presses during a round are real key events (C
 2. Starts `C:\Program Files\Google\Chrome\Application\chrome.exe` headless (`--headless=new`) with a free
    `--remote-debugging-port`, a temp `--user-data-dir`, `--mute-audio` and `--window-size=1280,720`.
    Set `QA_CHROME` to use another binary.
-3. Opens the bench room, presses Enter on the boot veil, and waits for `window.jackid.state()` to be `ingame`.
+3. Opens the bench room (or the debt run with `--world`), clicks the centre of the boot veil with a real mouse press
+   (`CLICK TO ENTER THE PIT`) and waits for `window.jackid.state()` to be `ingame`.
    It then checks that rAF frames advance. If they do not, the run fails.
 4. Runs the script once per round and captures a PNG after each round.
 5. Collects `console.error`, uncaught exceptions and error log entries into `errors` / `consoleErrors`. The dev server has no
@@ -83,3 +88,21 @@ const r = await runBench({ machine: 'bigone', script: 'Space:150,wait:3000', rou
 - Keep the machine's own timing in mind: `wait:` must be longer than one round, or the next press will
   land while the machine is still busy.
 - Each run boots a fresh Vite server, so the first run takes a few seconds longer.
+- A page reload mid-run (the boot veil comes back, the screen goes black) fails the run with `the page reloaded during
+  round N`. `reloads` counts them, and `viteEvents` keeps any Vite optimiser or HMR line seen during the run.
+
+## Hollow Door (world mode)
+
+The Underneath is reached through the Hollow Door, which needs a debt run. The reveal is a devtools call (the run's own
+`revealHollow`, the same path as the triggers). Everything after it is real keys:
+
+```
+npm run qa -- --world --seed 7 --shots <dir> \
+  --js "(async () => (await import('/src/world/hollow/index.ts')).revealHollow('seam'))()" \
+  --script "wait:1500,Space:1000,wait:600,Space:1000,wait:600,Space:1000,wait:1500,KeyW:2500,wait:1500" \
+  --probe "({ phase: (await import('/src/world/hollow/index.ts')).hollowDoor()?.phase })" --frames "300"
+```
+
+Keys: `W` walks through the seam, `A/D/W/S` walk, `E` sits at a Lord station and at the table, `Space` pulls, `R` spins
+(one Ticket), `C` calls CHEAT. Digit9 closes the table's first-sit tip (it eats the next key). The intro tape is skipped
+with held Space. Seed 7 fires on the player's first pull (the run ends as a fall). Seed 1 is a Lord win.

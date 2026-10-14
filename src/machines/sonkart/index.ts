@@ -176,6 +176,11 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
       case 'primary': case 'confirm':
         if (e.repeat) break;
         if (this.pub.ph === 'bet') { if (!this.pub.inR[s]) this.act({ k: 'ante', amt: this.bet }); break; }
+        // keyboard draw: with nothing playable (or an owed draw) Space draws; with a drawn card out, a non-matching card passes
+        if (this.pub.ph === 'play' && this.pub.turn === s && this.spaceDraws(this.myHand[this.cursor])) {
+          this.act({ k: 'draw' });
+          break;
+        }
         this.playKey(this.myHand[this.cursor], false);
         break;
       case 'secondary':
@@ -251,6 +256,23 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
     const col = R.isColoured(id) ? '' : this.pickCol;
     this.act({ k: 'play', id, col, jump });
     this.pickCol = '';
+  }
+
+  /** Client-side mirror of R.canPlay for the local hand (the drawn card is unknown here, so it counts as playable). */
+  private looksPlayable(id: string | undefined): boolean {
+    const p = this.pub;
+    if (!id) return false;
+    if (p.pend > 0) return p.house[0] && (p.pk === 'd2' ? R.faceOf(id) === '+2' : p.pk === 'w4' ? id === 'W+4' : false);
+    if (id === 'W+4') return !this.myHand.some((c) => R.isColoured(c) && R.colourOf(c) === p.col);
+    if (R.isWild(id)) return true;
+    if (R.colourOf(id) === p.col) return true;
+    return R.isColoured(p.top) && R.faceOf(id) === R.faceOf(p.top);
+  }
+
+  /** True when the play key should draw (or pass after a drawn card) instead of playing `cursorId`. */
+  private spaceDraws(cursorId: string | undefined): boolean {
+    if (this.pub.dr) return !this.looksPlayable(cursorId);
+    return !this.myHand.some((c) => this.looksPlayable(c));
   }
 
   private jumpCard(): string | undefined {
@@ -910,8 +932,13 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
     if (pub.ph === 'bet') ctrl.push({ key: `${this.k('n5')}-${this.k('n9')}`, label: { k: 'm.sonkart.cHouse' }, action: 'n5' });
     if (pub.ph === 'bet' || pub.ph === 'end') ctrl.push({ key: this.k('auto'), label: { k: this.autoAnte ? 'm.sonkart.nAuto' : 'm.sonkart.cAuto' }, action: 'auto' });
     if (myTurn) {
-      ctrl.push({ key: this.k('primary'), label: { k: 'm.sonkart.cPlay' }, action: 'primary', primary: true });
-      ctrl.push({ key: this.k('secondary'), label: { k: pub.dr ? 'm.sonkart.cPass' : pub.pend > 0 ? 'm.sonkart.cDrawN' : 'm.sonkart.cDraw' }, action: 'secondary' });
+      if (!pub.dr && !this.myHand.some((c) => this.looksPlayable(c))) {
+        // nothing playable: the play key draws (Space or RMB, both shown)
+        ctrl.push({ key: `${this.k('primary')}/${this.k('secondary')}`, label: { k: pub.pend > 0 ? 'm.sonkart.cDrawN' : 'm.sonkart.cDraw' }, action: 'primary', primary: true });
+      } else {
+        ctrl.push({ key: this.k('primary'), label: { k: 'm.sonkart.cPlay' }, action: 'primary', primary: true });
+        ctrl.push({ key: this.k('secondary'), label: { k: pub.dr ? 'm.sonkart.cPass' : pub.pend > 0 ? 'm.sonkart.cDrawN' : 'm.sonkart.cDraw' }, action: 'secondary' });
+      }
       if (this.jumpCard() && pub.house[2]) ctrl.push({ key: this.k('alt'), label: { k: 'm.sonkart.cJump' }, action: 'alt' });
       if (this.myHand.some((c) => !R.isColoured(c))) ctrl.push({ key: `${this.k('n1')}-${this.k('n4')}`, label: { k: 'm.sonkart.cColour' }, action: 'n1' });
     }

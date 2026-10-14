@@ -5,7 +5,7 @@
  *
  * Rules: call heads, tails or the EDGE, stake S. A heads/tails win pays the first ladder step (Ã—1.9). After a win the
  * player may RIDE (re-stake the whole pot on the next flip, up the ladder Ã—1.9 â†’ Ã—3.6 â†’ Ã—7 â†’ Ã—13) or COLLECT at any
- * time. A loss ends the round. EDGE (1 in 60) stands the coin on its rim and pays Ã—30 of the flip's stake, then the
+ * time. A loss ends the round. EDGE (1 in 60) stands the coin on its rim and pays ×54 of the flip's stake, then the
  * round closes. Luck (GDD Â§3.8.1): L % chance a losing flip is rerolled once (a negative L rerolls a win instead).
  *
  * RTP: cashing out after the first heads/tails win returns `STEP_MULT[0] Ã— WIN_P` = 98 % (`playHeadless` is exactly

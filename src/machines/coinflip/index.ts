@@ -15,7 +15,7 @@
  *    feature flag `coinflip.extraRide`; attract mode (alternating lamps, an occasional hop of the coin);
  *  - `playHeadless` (shared rules) for staff auto-play and the bench "Sim" button.
  *
- * Controls: 1/2 or ←/→ call heads/tails · 3 calls the EDGE (1 in 60, pays ×30; E is Leave) · Space flip · after a win:
+ * Controls: 1/2 or ←/→ call heads/tails · 3 calls the EDGE (1 in 60, pays ×54; E is Leave) · Space flip · after a win:
  * R ride up the ladder · Space or Q collect · Z/X bet. Round life-cycle: `beginRound` (stake) → `emit(flip)` → loss:
  * `settle(0)` · win: pot pending (busy=false) → `emit(flip)` again for a ride, or `emit(collect)` + `settle(pot)`.
  */
@@ -97,7 +97,7 @@ export const def: MachineDef = {
       rule3: 'A lost flip takes the amount at risk. Collecting pays the pot you hold.',
       rule4: 'The ladder tops out at 13x, and the pot then pays out by itself.',
       rule5: 'Each heads or tails flip wins about {p} of the time.',
-      rule6: 'EDGE (3): 1 in 60 the coin stands on its rim and pays 30x the stake. Otherwise you lose.',
+      rule6: `EDGE (3): 1 in 60 the coin stands on its rim and pays ${EDGE_MULT}x the stake. Otherwise you lose.`,
     },
     tr: {
       name: 'Yazı-Tura Kabini',
@@ -122,7 +122,7 @@ export const def: MachineDef = {
       rule3: 'Kaybettiğin atışta o atışa koyduğun tutar gider. Kasayla ayrılırsan elindeki kasa ödenir.',
       rule4: 'Merdiven 13 katta biter ve kasa kendiliğinden ödenir.',
       rule5: 'Tura ya da yazı atışının her birinde kazanma şansı yaklaşık {p}.',
-      rule6: 'KENAR (3): 60 atıştan birinde para kenarında durur ve atılan tutarın 30 katını öder. Değilse kaybedersin.',
+      rule6: `KENAR (3): 60 atıştan birinde para kenarında durur ve atılan tutarın ${EDGE_MULT} katını öder. Değilse kaybedersin.`,
     },
   },
 };

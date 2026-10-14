@@ -18,8 +18,13 @@ export type HollowPhase = 'sealed' | 'open' | 'inside' | 'spent';
 /** How the run left the door: walked back up, the duel resolved (won), or the reveal timed out. */
 export type HollowExit = 'left' | 'resolved' | 'missed';
 
-const H: V3 = [120, -90, 120];
-/** THE UNDERNEATH origin: the floor of the void room sits at `HOLLOW_HOME[1]`. Far from the pit (the camera far plane is 60 m). */
+/**
+ * THE UNDERNEATH origin: the floor of the void room sits at `HOLLOW_HOME[1]`. It is far from the pit footprint (120 m out;
+ * the camera far plane is 60 m). The height must stay above the player's fall limit (FALL_LIMIT_Y = -12 in
+ * `src/player/controller.ts`): below it the player counts as lost and the screen fades out for good.
+ */
+const H: V3 = [120, -10, 120];
+/** THE UNDERNEATH origin (see above). */
 export const HOLLOW_HOME: V3 = H;
 /** Room half-extent (m) and ceiling height above its floor. */
 export const UNDER_HALF = 9;
@@ -65,4 +70,4 @@ export const SPLIT_S = 1.6;
 export const SPLIT_CALM_S = 0.7;
 
 /** Lord duel table slot (WORLD-ARCH): append to `layout.ts` SLOTS and give the zone a ZONES entry (`hollow`). */
-export const HOLLOW_TABLE_SLOT: SlotDef = { id: 'HOLLOW-TABLE', size: 'L', zone: 'hollow', pos: [H[0], 0, H[2] - 1.5], rotY: 0, y: TABLE_Y };
+export const HOLLOW_TABLE_SLOT: SlotDef = { id: 'HOLLOW-TABLE', size: 'L', zone: 'hollow', pos: [H[0], H[1], H[2] - 1.5], rotY: 0, y: TABLE_Y };

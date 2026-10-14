@@ -85,7 +85,7 @@ export default {
     'note.n27.t': 'Orientation card, the Mouth',
     'note.n27.b': 'You will feel lucky. This is the first symptom.',
     'note.n28.t': 'Rule for the Sump',
-    'note.n28.b': 'Throw one coin back. Wish for something you can afford. It is the only rule that works.',
+    'note.n28.b': 'Throw one coin back. Wish for something you can afford. It is the only rule that works. At last call the cracked plate in the wall sounds hollow. Knock on it three times, fast.',
   },
   tr: {
     'ui.read': 'OKU',
@@ -168,6 +168,6 @@ export default {
     'note.n27.t': 'Yönlendirme kartı, Ağız',
     'note.n27.b': 'Şanslı hissedeceksiniz. Bu ilk belirtidir.',
     'note.n28.t': 'Gider için kural',
-    'note.n28.b': 'Bir bozuk parayı geri atın. Karşılayabileceğiniz bir şey dileyin. İşe yarayan tek kural bu.',
+    'note.n28.b': 'Bir bozuk parayı geri atın. Karşılayabileceğiniz bir şey dileyin. İşe yarayan tek kural bu. Son çağrıda duvardaki çatlak plaka içi boş ses verir. Üç kez, hızlıca vurun.',
   },
 };

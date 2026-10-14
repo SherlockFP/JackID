@@ -539,8 +539,10 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
       g.fillStyle = CREAM; g.fillRect(0, 0, sc.w, sc.h);
       g.strokeStyle = '#6a5a3a'; g.lineWidth = 2; g.strokeRect(2, 2, sc.w - 4, sc.h - 4);
       const red = c.suit === 'H' || c.suit === 'D';
-      sc.text(rankText(c.rank), 32, 24, { font: 'px5', scale: 4, color: red ? '#b0202a' : '#1a1a1a', align: 'center' });
-      sc.text(c.suit, 32, 66, { font: 'px5', scale: 3, color: red ? '#b0202a' : '#1a1a1a', align: 'center' });
+      // sized from the canvas (the face is 240 x 336 px): big rank on top, suit below, both legible in the end-of-round frame
+      const cx = sc.w / 2, ink = red ? '#b0202a' : '#1a1a1a';
+      sc.text(rankText(c.rank), cx, sc.h * 0.2, { font: 'px5', scale: Math.round(sc.w / 16), color: ink, align: 'center' });
+      sc.text(c.suit, cx, sc.h * 0.7, { font: 'px5', scale: Math.round(sc.w / 22), color: ink, align: 'center' });
     });
   }
 

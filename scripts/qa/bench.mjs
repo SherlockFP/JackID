@@ -4,6 +4,9 @@
  * Zero dependencies: Node >= 22 (global WebSocket) and Node built-ins only. Usage: scripts/qa/README.md.
  *
  *   node scripts/qa/bench.mjs --machine bigone --script "Space:150,wait:3000" --rounds 3 --shots <dir>
+ *   node scripts/qa/bench.mjs --world --seed 7 --js "<expr>" --probe "<expr>" --frames "300,1200" --shots <dir>
+ *
+ * The boot veil is passed with a real mouse click (main.ts enters on a click, or on Enter/Space once the veil has focus).
  *
  * Starts its own Vite dev server and its own Chrome, each on a free port (Chrome also gets a temp profile), and
  * stops both on exit. It never touches processes it did not start.
@@ -86,6 +89,17 @@ export function parseScript(text) {
   return steps;
 }
 
+/** `--frames "300,1200"` → sorted, unique ms offsets after the last key. */
+export function parseFrames(text) {
+  if (text === undefined || text === null || String(text).trim() === '') return [];
+  const out = String(text).split(',').map((t) => t.trim()).filter(Boolean).map((t) => {
+    const n = Number(t);
+    if (!Number.isInteger(n) || n < 0) throw new Error(`bad --frames value "${t}" (ms, e.g. "300,1200")`);
+    return n;
+  });
+  return [...new Set(out)].sort((a, b) => a - b);
+}
+
 // ── process lifecycle ──────────────────────────────────────────────────────────────────────────────────────
 /** Kills a process we started, and on Windows its whole tree (Chrome spawns helpers). */
 function killTree(child) {
@@ -151,6 +165,22 @@ async function pressKey(cdp, code, ms) {
   await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...params });
 }
 
+/** A real left click at (x, y) in CSS pixels (the 1280x720 viewport). */
+async function clickAt(cdp, x, y) {
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+}
+
+/** Resolves on the next rendered frame, so a screenshot taken after it shows the frame the game just drew. */
+const nextFrame = (cdp) => evaluate(cdp, 'new Promise((r) => requestAnimationFrame(() => r(true)))');
+
+/** Evaluates `expr` (may use `await`) in the page; the value comes back as JSON (null when undefined). */
+async function evalJson(cdp, expr) {
+  const out = await evaluate(cdp, `(async () => JSON.stringify((await (\n${expr}\n))) ?? 'null')()`);
+  return JSON.parse(out);
+}
+
 /** Evaluates `expr` in the page and returns its JSON-able value. */
 async function evaluate(cdp, expr) {
   const r = await cdp.send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true });
@@ -166,12 +196,18 @@ async function evaluate(cdp, expr) {
  *   errors:string[], shots:string[], state:string, framesPerSec:number, cleanup:object}>}
  */
 export async function runBench(opts = {}) {
-  const machine = String(opts.machine ?? '');
-  if (!/^[a-z][a-z0-9_]*$/.test(machine)) throw new Error('machine id required, e.g. "bigone"');
+  const world = Boolean(opts.world);                 // a real debt run (`/?skipmenu=1`), not a bench room
+  const machine = String(opts.machine ?? (world ? 'run' : ''));
+  if (!/^[a-z][a-z0-9_]*$/.test(machine)) throw new Error('machine id required, e.g. "bigone" (or --world)');
+  if (world && opts.sit) throw new Error('--sit needs a bench room (drop --world)');
   const steps = parseScript(opts.script ?? (opts.walkView ? 'KeyW:400,wait:600' : 'wait:1000'));
   const rounds = Math.max(1, Math.floor(Number(opts.rounds ?? 1)));
   const seed = Math.floor(Number(opts.seed ?? 1));
   const shotsDir = opts.shots ? resolve(opts.shots) : null;
+  const frames = parseFrames(opts.frames);
+  if (frames.length && !shotsDir) throw new Error('--frames writes screenshots: pass --shots <dir>');
+  const probe = opts.probe ? String(opts.probe) : null;   // JS, read after every round (recorded as roundLog[].probe)
+  const before = opts.js ? String(opts.js) : null;        // JS, run once after the room settles, before the rounds
   const sit = Boolean(opts.sit);
   const walkView = Boolean(opts.walkView);
   const seat = opts.seat === undefined ? undefined : Math.floor(Number(opts.seat));
@@ -184,6 +220,7 @@ export async function runBench(opts = {}) {
   const res = {
     machine, seed, rounds: 0, roundLog: [], consoleErrors: 0, errors: [], shots: [], state: '', framesPerSec: 0,
     mode: sit ? 'sit' : walkView ? 'walk-view' : 'walk', seated: false, playerMode: '', walkShot: null,
+    reloads: 0, viteEvents: [],          // page loads after the first one (the veil comes back): the run is then invalid
     cleanup: { vite: 'not started', chrome: 'not started', profile: 'not created', ports: 'n/a' },
   };
   let vite = null, chrome = null, cdp = null, profile = null, vport = 0, dport = 0, stopping = false;
@@ -196,7 +233,13 @@ export async function runBench(opts = {}) {
       '--host', '127.0.0.1', '--port', String(vport), '--strictPort'],
     { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     const viteTail = [];
-    const keep = (d) => { viteTail.push(String(d)); if (viteTail.length > 100) viteTail.shift(); };
+    const keep = (d) => {
+      viteTail.push(String(d)); if (viteTail.length > 100) viteTail.shift();
+      // a dependency re-optimisation or an HMR full reload restarts the page mid-run: say so (see `reloads`)
+      for (const line of String(d).split(/\r?\n/)) {
+        if (/optimi[sz]ed|reload|hmr/i.test(line)) { res.viteEvents.push(line.trim()); log(`vite: ${line.trim()}`); }
+      }
+    };
     vite.stdout.on('data', keep);
     vite.stderr.on('data', keep);
     vite.on('exit', (code) => { if (code && !stopping) res.errors.push(`vite exited with code ${code}`); });
@@ -222,7 +265,9 @@ export async function runBench(opts = {}) {
     }, 30_000, 'chrome debugging endpoint');
     cdp = new Cdp(page.webSocketDebuggerUrl);
     await cdp.open();
+    let loads = 0;
     cdp.on((method, p) => {
+      if (method === 'Page.frameNavigated' && !p.frame?.parentId) { loads++; if (loads > 1) res.reloads = loads - 1; }
       let text = null;
       if (method === 'Runtime.consoleAPICalled' && p.type === 'error') text = p.args.map((a) => a.value ?? a.description ?? '').join(' ');
       else if (method === 'Runtime.exceptionThrown') text = p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text ?? 'exception';
@@ -238,7 +283,8 @@ export async function runBench(opts = {}) {
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
 
     // 3) Bench room: boot veil (Enter), then the game is on screen and rAF is advancing.
-    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${vport}/?bench=${machine}&seed=${seed}` });
+    const url = world ? `/?skipmenu=1&seed=${seed}` : `/?bench=${machine}&seed=${seed}`;
+    await cdp.send('Page.navigate', { url: `http://127.0.0.1:${vport}${url}` });
     await waitFor(() => evaluate(cdp, 'typeof window.jackid === "object"'), READY_TIMEOUT_MS, 'window.jackid');
     await evaluate(cdp, 'window.__qaFrames = 0; (function f() { window.__qaFrames++; requestAnimationFrame(f); })(); true');
     const stateOf = () => evaluate(cdp, 'String((() => { const s = window.jackid.state(); return typeof s === "string" ? s : (s && (s.name ?? s.id ?? s.kind)) ?? JSON.stringify(s); })())');
@@ -289,15 +335,28 @@ export async function runBench(opts = {}) {
       log(`seated (input mode ${inputMode})`);
     }
 
+    // 3c) --js: once, before the rounds (e.g. a devtools-only reveal). Its JSON value is `before`.
+    if (before !== null) {
+      res.before = await evalJson(cdp, before);
+      log(`before: ${JSON.stringify(res.before)}`);
+      await sleep(400);
+    }
+
     // 4) Rounds: one pass of the script per round, then a screenshot. With --sit, the wallet and wagered are read
     //    before and after each pass.
     for (let r = 1; r <= rounds; r++) {
       const before = await evaluate(cdp, 'window.__qaFrames');
       const m0 = sit ? await money() : null;
       const t0 = Date.now();
-      for (const s of steps) {
+      let lastKeyUp = t0;
+      // With --frames, the waits after the last key are the frame timeline (see below), so they are not slept here.
+      const lastKey = steps.reduce((acc, s, i) => (s.kind === 'key' ? i : acc), -1);
+      const trailing = frames.length ? steps.slice(lastKey + 1).reduce((a, s) => a + s.ms, 0) : 0;
+      for (const [i, s] of steps.entries()) {
+        if (frames.length && i > lastKey) break;
         if (s.kind === 'wait') { await sleep(s.ms); continue; }
         await pressKey(cdp, s.code, s.ms);
+        lastKeyUp = Date.now();
       }
       const entry = { round: r, ms: Date.now() - t0, frames: (await evaluate(cdp, 'window.__qaFrames')) - before };
       if (sit) {
@@ -305,6 +364,22 @@ export async function runBench(opts = {}) {
         entry.wallet = [m0.wallet, m1.wallet];
         entry.wagered = [m0.wagered, m1.wagered];
       }
+      // --frames: screenshots at exact offsets after the last key is released (each synced to a rendered frame)
+      if (frames.length) {
+        entry.frameShots = [];
+        for (const ms of frames) {
+          const due = lastKeyUp + ms;
+          if (due > Date.now()) await sleep(due - Date.now());
+          await nextFrame(cdp);
+          const at = Date.now() - lastKeyUp;
+          const name = rounds > 1 ? `${machine}-round${r}-f${ms}.png` : `${machine}-f${ms}.png`;
+          entry.frameShots.push({ ms, actualMs: at, shot: await shoot(name) });
+        }
+        const end = lastKeyUp + Math.max(trailing, frames[frames.length - 1]);
+        if (end > Date.now()) await sleep(end - Date.now());
+      }
+      if (probe) entry.probe = await evalJson(cdp, probe);
+      if (res.reloads) throw new Error(`the page reloaded during round ${r} (${res.reloads}x; the veil came back, see viteEvents)`);
       if (shotsDir) {
         entry.shot = await shoot(`${machine}-round${r}.png`);
       }
@@ -316,7 +391,7 @@ export async function runBench(opts = {}) {
     // 5) --walk-view: the player is on foot (no sit). Keys have been pressed; screenshot the first-person view.
     if (walkView) {
       await sleep(600);                                  // let the last key's motion and the camera settle
-      res.playerMode = await evaluate(cdp, 'window.jackid.bench.player.mode');
+      res.playerMode = await evaluate(cdp, '(window.jackid.bench?.player ?? window.jackid.app.player)?.mode ?? null');
       res.walkShot = await shoot(`${machine}-walk.png`);
       log(`walk view (player mode ${res.playerMode}) -> ${res.walkShot}`);
     }
@@ -345,13 +420,16 @@ export async function runBench(opts = {}) {
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────
-const USAGE = 'usage: node scripts/qa/bench.mjs --machine <id> [--script "Space:200,wait:1500,KeyX"] [--shots <dir>] '
-  + '[--rounds <n>] [--seed <n>] [--sit [--seat <n>]] [--walk-view]';
+const USAGE = 'usage: node scripts/qa/bench.mjs (--machine <id> | --world) [--script "Space:200,wait:1500,KeyX"] [--shots <dir>] '
+  + '[--frames "300,1200"] [--probe "<js>"] [--js "<js>"] [--rounds <n>] [--seed <n>] [--sit [--seat <n>]] [--walk-view]';
 
 function parseArgs(argv) {
   const o = {};
-  const flags = { '--machine': 'machine', '--script': 'script', '--shots': 'shots', '--rounds': 'rounds', '--seed': 'seed', '--seat': 'seat', '--settle': 'settle' };
-  const switches = { '--sit': 'sit', '--walk-view': 'walkView' };
+  const flags = {
+    '--machine': 'machine', '--script': 'script', '--shots': 'shots', '--rounds': 'rounds', '--seed': 'seed', '--seat': 'seat',
+    '--settle': 'settle', '--frames': 'frames', '--probe': 'probe', '--js': 'js',
+  };
+  const switches = { '--sit': 'sit', '--walk-view': 'walkView', '--world': 'world' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') { o.help = true; continue; }
@@ -369,7 +447,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     let code = 0;
     try {
       const o = parseArgs(process.argv.slice(2));
-      if (o.help || !o.machine) { process.stderr.write(USAGE + '\n'); process.exit(o.help ? 0 : 2); }
+      if (o.help || (!o.machine && !o.world)) { process.stderr.write(USAGE + '\n'); process.exit(o.help ? 0 : 2); }
       const result = await runBench(o);
       process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     } catch (e) {

@@ -25,6 +25,7 @@ import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/type
 import type { Kit } from '@/kit/types';
 import * as manga from '@/core/ui/manga';
 import type { LordId } from '@/game/hollow/rules';
+import { hollowDoorLink as hollowDoor } from '@/core/hollowDoorLink';
 import { buildModel, CHAMBER_STEP, LORD_X, type LordsParts } from './model';
 import * as R from './rules';
 import { STRINGS } from './strings';
@@ -96,6 +97,9 @@ const freshHost = (): Host => ({
   turnLeft: 0, lordLeft: 0, announced: false, after: 'play',
 });
 
+/** The Lord the player already sat down with at the Underneath (E on a Lord station), or null. One Lord per run. */
+const chosenLord = (): LordId | null => hollowDoor()?.lord ?? null;
+
 const RIVAL = (id: LordId): string => `lord_${id}`;
 const LINE_PICK: Record<LordId, string> = { ash: 'line_pickAsh', ledgers: 'line_pickLedgers', mirrors: 'line_pickMirrors' };
 
@@ -134,6 +138,8 @@ export default class LordsTable extends TableBase<LordsParts, Ev, Snap, Act> {
     const v = this.view;
     if (this.localSeat !== PLAYER_SEAT) return;
     if (v.picking) {
+      const set = chosenLord();                                  // the station already chose: the table only confirms it
+      if (set) { if (a === 'primary' || a === 'confirm') this.act({ k: 'pick', lord: set }); return; }
       if (a === 'left') { this.moveCursor(-1); return; }
       if (a === 'right') { this.moveCursor(1); return; }
       if (a === 'n1' || a === 'n2' || a === 'n3') { this.cursor = Number(a.slice(1)) - 1; this.act({ k: 'pick', lord: LORDS[this.cursor] }); return; }
@@ -169,7 +175,10 @@ export default class LordsTable extends TableBase<LordsParts, Ev, Snap, Act> {
       case 'pick': {
         if (h.phase !== 'pick') { this.nak(pid, rid, 'm.lordstable.busy'); return; }
         if (!LORDS.includes(a.lord)) { this.nak(pid, rid, 'm.lordstable.badPick'); return; }
+        const set = chosenLord();
+        if (set && set !== a.lord) { this.nak(pid, rid, 'm.lordstable.badPick'); return; }
         const tickets = Math.max(0, lordsHooks.tickets?.(pid) ?? this.ctx.run.balance('ticket', pid));
+        hollowDoor()?.choose(a.lord);                             // the run's door hears the same Lord (no-op when the station chose him)
         h.lord = a.lord;
         h.pid = pid;
         h.tickets = tickets;
@@ -273,6 +282,8 @@ export default class LordsTable extends TableBase<LordsParts, Ev, Snap, Act> {
       this.seatHud?.show();
       this.showHud();
       this.seatHud?.firstTip('lordstable', this.tipLines());
+      const set = chosenLord();
+      if (set) this.act({ k: 'pick', lord: set });             // sat down with the Lord already chosen: the duel starts
     }
   }
 
@@ -302,6 +313,8 @@ export default class LordsTable extends TableBase<LordsParts, Ev, Snap, Act> {
     if (h.after === 'done' || !g) { h.phase = 'done'; return; }
     if (g.over) { this.finish(g.over.outcome === 'won' ? 'won' : 'taken', g.over.by, g.over.calledCorrect); return; }
     if (g.turn === PLAYER_SEAT) {
+      // the first turn (and each owed pull) is announced here: `turn` is the only event that sets the view's turn
+      void this.emit({ k: 'turn', seat: PLAYER_SEAT, owed: g.owed });
       h.phase = 'play'; h.turnLeft = TURN_S;
       return;
     }
@@ -366,6 +379,7 @@ export default class LordsTable extends TableBase<LordsParts, Ev, Snap, Act> {
           v.announced = true; v.lordCall = true;
           this.showHud();
         } else {
+          v.tickets = Math.max(0, v.tickets - R.SPIN_TICKETS);   // the view's budget follows the host's (`start` set it)
           this.toast(this.t('spinWord'), 'info');
         }
         this.paintScreen();
