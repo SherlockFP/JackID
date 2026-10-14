@@ -18,7 +18,7 @@ import * as registry from '@/machines/_base/registry';
 import type { Bench } from '@/world/bench';
 import { startDebtSession, type DebtSession } from './ingame/session';
 import { t } from '@/core/i18n';
-import type { InputExt } from '@/core/input';
+import { SKIP_HOLD_S, skipTutorial, tutorialActive } from '@/game/tutorial';
 import { closeSettingsScreen, openSettingsScreen, settingsScreenOpen } from '@/core/ui/settingsScreen';
 import { startStory, holdForStory, openJournal } from '@/game/story';
 import { mountLedger } from '@/game/tycoon/ledger';
@@ -33,6 +33,8 @@ const PAUSE_DEBOUNCE_MS = 250;
 const SEAT_LEDGER_PANEL = 'ingame-ledger-seated';
 /** After the journal closes at a machine, pointer lock is refused for this long (the journal asks for it on its way out). */
 const LOCK_GUARD_S = 0.6;
+/** A seated J that arrives right after the journal closed (the same key press, one step late) must not reopen it. */
+const JOURNAL_SETTLE_MS = 250;
 
 export function createInGameState(): AppStateHandler<'ingame'> {
   const scene = new THREE.Scene();
@@ -54,8 +56,10 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   /** Which seated overlay (U ledger / J journal) is open, so closing it can hand the machine mode back. */
   let overlay: 'ledger' | 'journal' | null = null;
   let lockGuard = 0;
-  /** J pressed at a machine: opened on the next frame (the journal listens for J on window, so the same event would close it). */
-  let wantJournal = false;
+  /** When the seated journal last closed (performance.now), for JOURNAL_SETTLE_MS. */
+  let journalShutAt = -Infinity;
+  /** Esc pressed while the tutorial is up: the card opens on release, and only if the hold did not skip the tutorial. */
+  let escHoldAt: number | null = null;
 
   /** Dev tooling is split out of the production bundle: `?bench=` is honoured only in a DEV build (DECISIONS G). */
   const enterBench = async (requested: string, seed: number): Promise<void> => {
@@ -73,6 +77,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   /** The pause card. Built again after the Settings screen closes (the card is closed while Settings is up). */
   const showPauseCard = (): void => {
     const seated = app.player?.seat != null;
+    const tutorial = tutorialActive();
     app.ui.panel(PAUSE_PANEL, (el) => buildPause(el, {
       live: pauseLive,
       onResume: () => { app.ui.closePanel(PAUSE_PANEL); },
@@ -80,6 +85,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       onGone: () => { if (paused && !toSettings) setPaused(false); },
       // seated: STAND UP releases the seat (deferred while the round settles), then the pause closes
       onStandUp: seated ? () => { session?.world.standUp(); app.ui.closePanel(PAUSE_PANEL); } : undefined,
+      onSkipTutorial: tutorial ? () => { skipTutorial(); app.ui.closePanel(PAUSE_PANEL); } : undefined,
       onSettings: openSettingsFromPause,
     }));
   };
@@ -133,6 +139,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     }
   };
   const canOpenSeated = (): boolean => !!session && !paused && !ending && !left && !overlay && app.input.mode === 'machine';
+  const journalSettling = (): boolean => performance.now() - journalShutAt < JOURNAL_SETTLE_MS;
 
   const closeSeatedLedger = (): void => {
     if (overlay !== 'ledger') return;
@@ -152,24 +159,22 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       mountLedger(el, s.run.tycoon, mid, { onClose: closeSeatedLedger, toast: (text) => app.ui.toast(text, 'sys') });
     });
   };
+  /**
+   * J is a seated action (core/keymap SEATED_WALK_ACTIONS): the input layer hands it over in the step, after the journal's
+   * own window key handler has run, so opening here cannot be closed by the same press.
+   */
   const openSeatedJournal = (): void => {
-    if (!canOpenSeated()) return;
+    if (!canOpenSeated() || journalSettling()) return;
     overlay = 'journal';
     openJournal();   // takes the mouse and the keys (mode 'ui'); on its way out it asks for walk mode, `watchOverlay` corrects that
   };
   /** The journal closes itself and sets walk mode; at a machine that must become 'machine' again (and the lock must go). */
   const watchOverlay = (dt: number): void => {
-    if (wantJournal) { wantJournal = false; openSeatedJournal(); }
-    if (overlay === 'journal' && app.input.mode !== 'ui') { overlay = null; restoreSeatMode(); }
+    if (overlay === 'journal' && app.input.mode !== 'ui') { overlay = null; journalShutAt = performance.now(); restoreSeatMode(); }
     if (lockGuard > 0) {
       lockGuard -= dt;
       if (app.input.mode === 'machine' && app.input.locked) app.input.exitLock();
     }
-  };
-  // J is not a live action while seated (core/keymap SEATED_WALK_ACTIONS), so the raw key opens it at a machine
-  const onSeatedKey = (e: KeyboardEvent): void => {
-    if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
-    if ((app.input as InputExt).codesOf('journal').includes(e.code) && canOpenSeated()) wantJournal = true;
   };
 
   /** Intermission panel follows the run's phase: open while `intermission`, closed otherwise. */
@@ -215,11 +220,10 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       toSettings = false;
       overlay = null;
       lockGuard = 0;
-      wantJournal = false;
+      journalShutAt = -Infinity;
+      escHoldAt = null;
       app.canvas.addEventListener('click', onCanvasClick);
       offs.push(() => app.canvas.removeEventListener('click', onCanvasClick));
-      app.canvas.addEventListener('keydown', onSeatedKey);
-      offs.push(() => app.canvas.removeEventListener('keydown', onSeatedKey));
       offs.push(app.input.on('upgrade', (down) => { if (down && app.input.mode === 'machine') openSeatedLedger(); }));
       offs.push(app.input.on('journal', (down) => { if (down && app.input.mode === 'machine') openSeatedJournal(); }));
       // F1: the CONTROLS page (the key bindings), at a machine or on foot
@@ -230,8 +234,16 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       }));
       offs.push(bus.on('run:end', ({ summary }) => endRun(summary)));
       offs.push(app.input.on('pause', (down) => {
-        if (!down || !session || ending) return;
+        if (!session || ending) return;
+        if (!down) {
+          // a short press with the tutorial up opens the card now; a hold that skipped the tutorial does not
+          const held = escHoldAt === null ? Infinity : performance.now() - escHoldAt;
+          escHoldAt = null;
+          if (held < SKIP_HOLD_S * 1000 && !paused) setPaused(true);
+          return;
+        }
         if (!paused && performance.now() - resumedAt < PAUSE_DEBOUNCE_MS) return;
+        if (!paused && tutorialActive()) { escHoldAt = performance.now(); return; }
         setPaused(!paused);
       }));
       if (params.bench && import.meta.env.DEV) return enterBench(params.bench, params.seed);

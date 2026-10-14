@@ -226,7 +226,9 @@ export function createHud(): Hud {
     seated = sat;
     showLamps(lampsSeen);
   });
-  on('phone:ring', () => { phoneLeft = PHONE_SECONDS; setCls(phone, 'hidden', false); uiSfx('phoneRing', 0.8); });
+  let phoneTotal = PHONE_SECONDS;
+  on('phone:length', ({ seconds }) => { phoneTotal = seconds; phoneLeft = seconds; });
+  on('phone:ring', () => { phoneTotal = PHONE_SECONDS; phoneLeft = PHONE_SECONDS; setCls(phone, 'hidden', false); uiSfx('phoneRing', 0.8); });
   on('phone:end', () => { phoneLeft = 0; setCls(phone, 'hidden', true); });
 
   // ── per-frame update ───────────────────────────────────────────────────────────────────────────
@@ -374,7 +376,7 @@ export function createHud(): Hud {
   function updatePhone(dt: number): void {
     if (phoneLeft <= 0) return;
     phoneLeft = Math.max(0, phoneLeft - dt);
-    phoneArc.style.setProperty('--p', `${Math.round((phoneLeft / PHONE_SECONDS) * 360)}deg`);
+    phoneArc.style.setProperty('--p', `${Math.round((phoneLeft / phoneTotal) * 360)}deg`);
     if (phoneLeft <= 0) setCls(phone, 'hidden', true);
   }
 

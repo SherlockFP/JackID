@@ -10,6 +10,7 @@ export default {
     'pawn': 'Buy a charm at the Pawn Window in the intermission.',
     'step': 'Step {i} of {total}',
     'skip': 'Hold ESC to skip',
+    'skipCard': 'SKIP TUTORIAL',
   },
   tr: {
     'walk': 'THE BIG ONE\'a yürü ve otur.',
@@ -20,5 +21,6 @@ export default {
     'pawn': 'Ara bölümde Rehin Penceresi\'nden bir tılsım al.',
     'step': 'Adım {i} / {total}',
     'skip': 'Atlamak için ESC\'ye basılı tut',
+    'skipCard': 'EĞİTİMİ ATLA',
   },
 };

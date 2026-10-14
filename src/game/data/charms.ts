@@ -199,4 +199,9 @@ export const LAUNCH_CHARM_IDS: ReadonlySet<string> = new Set<string>([
   'wet_ledger', 'sand_hourglass', 'gluttons_bib', 'moth_swarm', 'gold_tooth',
   // Wave 8: ten engine charms (data/charmsEngines.ts)
   ...ENGINE_CHARM_IDS,
+  // Wave 9 (charms-balance): 12 Rares with live readers, so the shop under-the-counter slot and the overpay/boss
+  // "choose 1 of 3 Rare" always have choices. Unlocked Rares per tier: N1 3 (sun_dial, tote_ticket, long_shot),
+  // N2 4 (+ coiled_cord), N3 9 (+ brass_knuckles, cuckoo_feather, altimeter, suit_ladder, last_gasp), N4+ all 15.
+  'sun_dial', 'tote_ticket', 'long_shot', 'coiled_cord', 'brass_knuckles', 'cuckoo_feather', 'altimeter',
+  'mirror_shoe', 'golden_ratchet', 'glass_funnel', 'high_rollers_cufflink', 'collectors_tag',
 ]);

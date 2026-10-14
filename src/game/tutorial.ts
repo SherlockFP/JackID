@@ -31,9 +31,18 @@ export interface Tutorial {
 }
 
 const FLAG = 'tutorial.n1';
-/** Hold Esc this long (seconds) to skip. */
-const SKIP_HOLD_S = 1;
+/** Hold Esc this long (seconds) to skip. A shorter press is a pause (the pause card opens on its release). */
+export const SKIP_HOLD_S = 1;
 const GOLD = 0xffd36b;
+
+/** The tutorial currently on screen (one at a time). Lets the pause card and Esc see it without a handle on the session. */
+let active: { skip(): void } | null = null;
+
+/** True while the first-run tutorial is on screen (not done, not skipped, not finished). */
+export function tutorialActive(): boolean { return active !== null; }
+
+/** Skips the tutorial that is on screen, if any: sets the first-run flag and removes the prompt. */
+export function skipTutorial(): void { active?.skip(); }
 
 type Target = 'bigone' | 'debt_terminal' | 'charm_vendor';
 interface Step { key: 'walk' | 'spin' | 'deposit' | 'tilt' | 'hot' | 'pawn'; target: Target | null; }
@@ -172,6 +181,7 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
     setDone();
     dispose();
   };
+  active = { skip };
 
   const onKeyDown = (e: KeyboardEvent): void => {
     if (e.code === 'Escape' && !e.repeat && holdFrom === null) holdFrom = performance.now();
@@ -185,6 +195,7 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
   function dispose(): void {
     if (disposed) return;
     disposed = true;
+    if (active?.skip === skip) active = null;
     for (const off of offs.splice(0)) off();
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);

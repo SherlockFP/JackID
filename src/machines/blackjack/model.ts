@@ -99,18 +99,18 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BlackjackParts
 
   // body, rail, felt
   kit.cyl(FELT_R + 0.05, FELT_R + 0.05, TOP - 0.07, { color: woodDark, map: kit.tex.wood(woodDark) },
-    { pos: [0, (TOP - 0.07) / 2, CZ], rot: halfRot, seg: 24, thetaLen: half, parent: root });
-  kit.cyl(FELT_R + 0.06, FELT_R + 0.06, 0.06, { color: rail }, { pos: [0, TOP - 0.035, CZ], rot: halfRot, seg: 24, thetaLen: half, parent: root });
+    { pos: [0, (TOP - 0.07) / 2, CZ], rot: halfRot, seg: 12, thetaLen: half, parent: root });
+  kit.cyl(FELT_R + 0.06, FELT_R + 0.06, 0.06, { color: rail }, { pos: [0, TOP - 0.035, CZ], rot: halfRot, seg: 12, thetaLen: half, parent: root });
   kit.cyl(FELT_R, FELT_R, 0.02, { color: felt, map: kit.tex.felt(felt) },
-    { pos: [0, TOP - 0.01, CZ], rot: halfRot, seg: 24, thetaLen: half, parent: root });
+    { pos: [0, TOP - 0.01, CZ], rot: halfRot, seg: 12, thetaLen: half, parent: root });
   // brass edge along the curve and the flat edge
-  kit.torus(FELT_R + 0.06, 0.008, pal.brass, { pos: [0, TOP - 0.005, CZ], rot: [90, 0, 0], seg: 24, arc: half, parent: root });
+  kit.torus(FELT_R + 0.06, 0.008, pal.brass, { pos: [0, TOP - 0.005, CZ], rot: [90, 0, 0], seg: 12, arc: half, parent: root });
 
   // betting rings (main Ø0.11, Twin Souls Ø0.06 outside it) — static
   for (let i = 0; i < SPOTS; i++) {
     const phi = spotPhi(i);
     const main = arcAt(SPOT_R, phi);
-    kit.torus(0.055, 0.004, pal.gold, { pos: [main.x, TOP + 0.002, main.z], rot: [90, 0, 0], seg: 14, parent: root });
+    kit.torus(0.055, 0.004, pal.gold, { pos: [main.x, TOP + 0.002, main.z], rot: [90, 0, 0], seg: 10, parent: root });
     const twin = arcAt(SPOT_R + 0.11, phi);
     kit.torus(0.03, 0.003, pal.chrome, { pos: [twin.x, TOP + 0.002, twin.z], rot: [90, 0, 0], seg: 10, parent: root });
   }
@@ -208,7 +208,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BlackjackParts
   // card and chip pools (pools are dynamic, kept out of the merge)
   const cards = kit.cards({ max: 32 });
   root.add(cards.root);
-  const chips = kit.chips({ max: 300 });
+  // pool for the five spots' stacks and payout flights (48 tris per instance; a full pool drops the newest chip)
+  const chips = kit.chips({ max: 120 });
   root.add(chips.root);
 
   // beads (Counting Bead charm, hidden by default): two rods and eleven beads, left of the dealer

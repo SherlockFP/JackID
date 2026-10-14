@@ -202,7 +202,7 @@ function unlockedAt(def: CharmDef, nightIndex: number): boolean {
 }
 
 /** Turn a list of charm ids into the three-choice offer used by overpay rewards (GDD §2.6.5). */
-export function choiceOffer(rng: Rng, rarity: CharmDef['rarity'], n: number, owned: (id: string) => boolean): CharmDef[] {
-  const pool = [...DEFS.values()].filter((d) => d.rarity === rarity && !owned(d.id) && LAUNCH_CHARM_IDS.has(d.id));
+export function choiceOffer(rng: Rng, rarity: CharmDef['rarity'], n: number, owned: (id: string) => boolean, nightIndex = 99): CharmDef[] {
+  const pool = [...DEFS.values()].filter((d) => d.rarity === rarity && !owned(d.id) && LAUNCH_CHARM_IDS.has(d.id) && unlockedAt(d, nightIndex));
   return rng.shuffle(pool).slice(0, n);
 }

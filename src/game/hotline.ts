@@ -26,6 +26,7 @@ import type { PlayerId } from '@/core/types';
 import { allCharmDefs } from '@/game/charms/engine';
 import STR from '@/game/hotline.strings';
 import { charmPrice } from '@/game/economy';
+import { ringTotal } from '@/machines/hotline/rules';
 
 // ── tuning ───────────────────────────────────────────────────────────────────────────────────────────
 export const CALL_CHANCE = 0.45;
@@ -59,7 +60,13 @@ export interface HotlineOpts {
 }
 
 export interface Offer { id: string; v: DealVars }
-interface CallRec { id: number; script: string; ringingSince: number; answeredBy: number | null; offers: Offer[] }
+/** The ring length of the call on screen, sent right after `phone:ring` (the HUD arc divides by it). */
+declare module '@/core/events' {
+  interface GameEvents { 'phone:length': { callId: number; seconds: number } }
+}
+
+/** `ringSecs`: the ring length this call was given (base 10 s plus `x.phone.ringTime`), kept so a restore re-sends it. */
+interface CallRec { id: number; script: string; ringingSince: number; answeredBy: number | null; offers: Offer[]; ringSecs?: number }
 
 /** JSON-safe state, stored under `RunExt.hotline`. */
 export interface HotlineSave {
@@ -446,13 +453,15 @@ export function createHotline(run: RunApi, opts: HotlineOpts = {}): Hotline {
     const id = st.nextId++;
     const rng = createRng(hashSeed('hotline.offer', run.seed, st.night, st.watch, id));
     const script = `hotline.call.${rng.int(1, CALL_LINES)}`;
-    st.call = { id, script, ringingSince: now(), answeredBy: null, offers: rollOffers(rng) };
-    st.ringLeft = clamp(run.mod('x.phone.ringTime', MID, RING_SECONDS), 4, 40);
+    const ringSecs = ringTotal(run.mod('x.phone.ringTime', MID, RING_SECONDS));
+    st.call = { id, script, ringingSince: now(), answeredBy: null, offers: rollOffers(rng), ringSecs };
+    st.ringLeft = ringSecs;
     st.answerLeft = 0;
     st.rangThisNight += 1;
     st.ringAt = -1;
     rebuildView();
     bus.emit('phone:ring', { callId: id });
+    bus.emit('phone:length', { callId: id, seconds: ringSecs });
     return view;
   }
 
@@ -542,7 +551,10 @@ export function createHotline(run: RunApi, opts: HotlineOpts = {}): Hotline {
     st = s && s.v === 1 ? JSON.parse(JSON.stringify(s)) as HotlineSave : blank();
     viewKey = '#';
     rebuildView();
-    if (st.call && st.call.answeredBy === null) bus.emit('phone:ring', { callId: st.call.id });
+    if (st.call && st.call.answeredBy === null) {
+      bus.emit('phone:ring', { callId: st.call.id });
+      bus.emit('phone:length', { callId: st.call.id, seconds: st.call.ringSecs ?? RING_SECONDS });
+    }
   }
 
   return {

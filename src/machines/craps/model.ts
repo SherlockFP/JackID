@@ -149,7 +149,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CrapsParts> {
   kit.box(2.4, 0.02, 0.06, pal.bone, at(0, RAIL + 0.01, HZ - 0.02));                    // rail brass strip
   // ceiling pendant (red shade)
   kit.cyl(0.008, 0.008, 1.0, pal.chrome, { pos: [0, 2.7, 0], seg: 4, parent: root });
-  kit.cyl(0.12, 0.2, 0.16, { color: 0x7a1a1a }, { pos: [0, 2.2, 0], seg: 12, parent: root });
+  kit.cyl(0.12, 0.2, 0.16, { color: 0x7a1a1a }, { pos: [0, 2.2, 0], seg: 8, parent: root });
 
   // ── layout print (canvas texture, repainted on language change) ──
   const [layoutCanvas] = makeCanvas(LAYOUT_W, LAYOUT_H);
@@ -222,7 +222,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CrapsParts> {
   });
 
   // ── chips (instanced, public felt chips) ──
-  const chips = kit.chips({ max: 600 });
+  // felt chips for every seat's layout (48 tris per instance; a full pool drops the newest chip)
+  const chips = kit.chips({ max: 160 });
   root.add(chips.root);
 
   // ── light, prompt and anchors ──

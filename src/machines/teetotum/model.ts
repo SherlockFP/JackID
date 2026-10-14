@@ -41,7 +41,7 @@ export type TeetotumParts = {
   topFaces: THREE.Mesh;
   /** Pot bowl (brass lathe) in the centre of the felt. */
   potBowl: THREE.Object3D;
-  /** Chips heaped in the bowl (up to 300). */
+  /** Chips heaped in the bowl (pool of 120; the pile shows at most 60). */
   potChips: ChipPool;
   /** Per-seat chip anchors on the felt (where a seat's stake and winnings stack). */
   stacks: THREE.Object3D[];
@@ -158,9 +158,10 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TeetotumParts>
   }
 
   // bowl, top and pot chips
-  const bowl = kit.lathe([[0.001, 0], [0.10, 0.0], [0.15, 0.04], [0.16, 0.08], [0.155, 0.085]], 12, brass, { pos: [centre.x, feltY, centre.z] });
+  const bowl = kit.lathe([[0.001, 0], [0.10, 0.0], [0.15, 0.04], [0.16, 0.08], [0.155, 0.085]], 8, brass, { pos: [centre.x, feltY, centre.z] });
   root.add(bowl);
-  const potChips = kit.chips({ max: 300 });
+  // pool sized for the bowl pile (repaint caps it at 60) plus in-flight chips; each chip instance costs 48 tris
+  const potChips = kit.chips({ max: 120 });
   root.add(potChips.root);
 
   const top = new THREE.Group();

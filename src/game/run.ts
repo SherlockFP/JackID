@@ -1366,7 +1366,7 @@ class Run implements DebtRun {
       } else {
         // "Choose 1 of 3": roll the candidates now, queue them, and let the UI call pickOverpay (auto-pick on timeout).
         const rarity = Array.isArray(offer.rarity) ? offer.rarity[0] : offer.rarity;
-        const cands = choiceOffer(this.rng.fork(`overpay:${this.index}:${this.overpays.length}:${rarity}`), rarity, offer.of, (id) => this.charmBox.has(this.selfId, id));
+        const cands = choiceOffer(this.rng.fork(`overpay:${this.index}:${this.overpays.length}:${rarity}`), rarity, offer.of, (id) => this.charmBox.has(this.selfId, id), this.index);
         if (cands.length) this.overpays.push({ rarity, ids: cands.map((d) => d.id), left: OVERPAY_TIMEOUT_SEC });
       }
     }

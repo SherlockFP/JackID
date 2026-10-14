@@ -136,10 +136,10 @@ export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   'MOUTH-01': 'fortuneteller', 'MOUTH-TERM': 'debt_terminal', 'MOUTH-PHONE': 'hotline', 'MOUTH-BOUNTY': 'bounty_board',
   'WELL-01': 'bigone', 'WELL-02': 'roulette', 'WELL-03': 'blackjack', 'WELL-04': 'bandit', 'WELL-06': 'bandit', 'WELL-07': 'shellgame',
   'WELL-08': 'hilo', 'WELL-09': 'plinko', 'WELL-11': 'mines', 'WELL-13': 'coinflip',
-  'LOB-01': 'scratch', 'LOB-PAWN': 'charm_vendor', 'LOB-PHONE2': 'hotline', 'LOB-DESK': 'concession_desk',
-  'LOB-CASH': 'cashier', 'LOB-JUKE': 'jukebox', 'LOB-TAPE': 'tape_deck', 'LOB-TONIC': 'tonic_vendor',
+  'LOB-01': 'scratch', 'LOB-PAWN': 'charm_vendor', 'LOB-PHONE2': 'hotline', 'LOB-DESK': 'threecard',
+  'LOB-CASH': 'cashier', 'LOB-JUKE': 'jukebox', 'LOB-TONIC': 'tonic_vendor',
   'MID-01': 'elevator', 'MID-02': 'derby', 'MID-03': 'claw', 'MID-04': 'claw', 'MID-05': 'stacker', 'MID-06': 'cyclone',
-  'CARD-01': 'holdem', 'CARD-02': 'baccarat', 'CARD-03': 'cardwar', 'CARD-04': 'videopoker', 'CARD-05': 'videopoker',
+  'CARD-02': 'baccarat', 'CARD-03': 'cardwar', 'CARD-04': 'videopoker', 'CARD-05': 'videopoker',
   'LAU-01': 'bingo', 'LAU-02': 'keno', 'LAU-03': 'pachinko', 'LAU-04': 'pachinko', 'LAU-05': 'pachinko',
   'LAU-06': 'coinpusher', 'LAU-07': 'lottoblower', 'LAU-08': 'bingopin',
   'BOI-01': 'craps', 'BOI-02': 'sicbo', 'BOI-03': 'dicetower', 'BOI-04': 'teetotum', 'BOI-05': 'coinflip',
@@ -156,7 +156,11 @@ export const BUSY_FLOOR: Partial<Record<InstanceId, MachineId>> = {
   'LAU-09': 'pachinko', 'MID-07': 'mines', 'CARD-06': 'videopoker', 'BOI-06': 'dicetower', 'WH-04': 'roulette',
 };
 
-/** Pads with no default device (GDD §8.6 "PAD": 30 in total; the busy-floor override fills 13 of them). */
+/**
+ * Pads with no default device (GDD §8.6 "PAD": 30 in total; the busy-floor override fills 13 of them). CARD-01 (XL, was holdem)
+ * and LOB-TAPE (was tape_deck) are pads too: no registered machine fills them yet. The Concession Desk (LOB-DESK, was
+ * concession_desk, unregistered) now holds Three Card, which is L like the slot.
+ */
 export const DEFAULT_PADS: readonly InstanceId[] = SLOTS.filter((s) => !(s.id in DEFAULT_ASSIGN)).map((s) => s.id);
 
 /** Slot → device map for a mode. The busy floor merges `BUSY_FLOOR` on top of the default table. */
@@ -230,7 +234,7 @@ export const ROSTER_PADS: readonly InstanceId[] = ['WELL-04', 'WELL-06', 'WELL-0
 /** Machines that never move, whatever the line-up: the marquee and table games, plus the vendors and terminals. */
 export const ROSTER_FIXED: ReadonlySet<MachineId> = new Set<MachineId>([
   'bigone', 'roulette', 'blackjack', 'coinflip',
-  'charm_vendor', 'concession_desk', 'cashier', 'jukebox', 'tape_deck', 'tonic_vendor', 'bounty_board', 'hotline',
+  'charm_vendor', 'cashier', 'jukebox', 'tonic_vendor', 'bounty_board', 'hotline',
   'debt_terminal', 'shrine',
 ]);
 /** Volatility class (WAVE8 item 5). */

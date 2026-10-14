@@ -414,3 +414,13 @@ test('kits: a charm the run refuses is left out of the grant; an unknown kit giv
   assert.deepEqual(K.applyKit(run, 'banker').charms, ['piggy_tooth']);
   assert.equal(K.applyKit(run, 'nope'), null);
 });
+
+// ── wave 9: launch Rares per Night tier (charms-balance) ─────────────────────
+test('launch Rares: at least 3 unlocked on every Night (boss and under-the-counter offers always have three)', () => {
+  const rares = [...C.CHARM_DATA, ...D.CHARM_ENGINE_DATA].filter((d) => d.rarity === 'rare' && C.LAUNCH_CHARM_IDS.has(d.id));
+  assert.ok(rares.length >= 12, `launch Rares: ${rares.length}`);
+  for (let night = 1; night <= 8; night++) {
+    const open = rares.filter((d) => !d.unlock || (/^N(\d+)$/.exec(d.unlock) ? Number(RegExp.$1) <= night : false));
+    assert.ok(open.length >= 3, `Night ${night}: ${open.length} unlocked launch Rares`);
+  }
+});

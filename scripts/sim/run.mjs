@@ -25,8 +25,9 @@
 // assumed long enough for its pulls), Overdrawn Nights (the target stops at Night 8).
 //
 // Bots (all see the same Lamp rolls for a given run index, so the comparison is paired):
-//   camper    max bet on the first world machine (bigone) every pull, never banks; deposits as soon as the pocket covers
-//             the quota
+//   camper    half the pocket (--camper-frac 0.5, the ladder step at or below it) on the first world machine (bigone) every
+//             pull, never banks; deposits as soon as the pocket covers the quota. --camper-frac 1 is the all-in camper: with
+//             a 50-coin pocket one loss ends the run, so its Night 1 reach is the first-play hit rate (~38 %), whatever the quota
 //   rotator   stake = largest ladder step <= BET_FRAC of the pocket; a Hot Lamp instance is always taken (Hot ignores
 //             Tilt), else the least-played instance that is not Cold (respects Tilt); deposits the quota gap at the end of
 //             a Watch when the pocket covers it. Once the quota is covered and the pick is not Hot, it banks: the minimum
@@ -42,6 +43,7 @@ const RUNS = Math.max(1, Number(argVal('--runs', 2000)) | 0);
 const BOTS = argVal('--bots', 'camper,rotator,banker').split(',').map((s) => s.trim()).filter(Boolean);
 const BET_FRAC = Number(argVal('--bet-frac', 0.10));
 const SCALE_LADDER = args.includes('--scale-ladder');
+const CAMPER_FRAC = Number(argVal('--camper-frac', 0.5));
 const JSON_OUT = argVal('--json', '');
 const SEED = Number(argVal('--seed', 20261013)) | 0;
 
@@ -89,7 +91,7 @@ function limitsOf(def, si) {
 
 /** Largest ladder step not above the target and the pocket (at least the minimum when the pocket covers it). */
 function stakeFor(bot, lim, pocket) {
-  const target = bot === 'camper' ? Number.POSITIVE_INFINITY : Math.max(lim.min, BET_FRAC * pocket);
+  const target = bot === 'camper' ? (CAMPER_FRAC >= 1 ? Number.POSITIVE_INFINITY : CAMPER_FRAC * pocket) : Math.max(lim.min, BET_FRAC * pocket);
   const cap = Math.min(lim.max, target, pocket);
   let best = 0;
   for (const v of lim.ladder) if (v <= cap) best = v;

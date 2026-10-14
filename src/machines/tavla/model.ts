@@ -162,7 +162,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TavlaParts> {
   const pieces: THREE.Mesh[] = [];
   for (let i = 0; i < 30; i++) {
     const side = i < 15 ? 0 : 1;
-    const m = kit.cyl(PIECE_R, PIECE_R, PIECE_H, side === 0 ? PIECE_LIGHT : PIECE_DARK, { seg: 12, parent: piecesGroup });
+    const m = kit.cyl(PIECE_R, PIECE_R, PIECE_H, side === 0 ? PIECE_LIGHT : PIECE_DARK, { seg: 8, parent: piecesGroup });
     m.userData = { side, d: 0, piece: true };
     m.visible = false;
     pieces.push(m);
@@ -173,7 +173,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TavlaParts> {
   dice.dice.forEach((m, i) => { m.position.copy(DICE_REST[i]); root.add(m); });
   const cube = new THREE.Group();
   cube.name = 'cube';
-  const puck = kit.cyl(0.026, 0.026, 0.014, 0x9a1c24, { seg: 12, parent: cube });
+  const puck = kit.cyl(0.026, 0.026, 0.014, 0x9a1c24, { seg: 8, parent: cube });
   void puck;
   const cubeLabel = kit.label({ text: '1', w: 0.04, h: 0.04, bg: 0x9a1c24, color: 0xffe9a8, px: [64, 64] });
   cubeLabel.mesh.rotation.x = -Math.PI / 2;
@@ -185,7 +185,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TavlaParts> {
   // move-target markers
   const markers: THREE.Mesh[] = [];
   for (let i = 0; i < 12; i++) {
-    const mk = kit.torus(0.034, 0.004, pal.gold, { pos: [0, TOP + 0.01, 0], rot: [90, 0, 0], seg: 12, parent: root });
+    const mk = kit.torus(0.034, 0.004, pal.gold, { pos: [0, TOP + 0.01, 0], rot: [90, 0, 0], seg: 8, parent: root });
     mk.visible = false;
     markers.push(mk);
   }

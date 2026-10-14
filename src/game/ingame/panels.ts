@@ -20,6 +20,8 @@ export const INTER_PANEL = 'ingame-intermission';
 
 export interface PauseOpts {
   onResume(): void; onQuit(): void; onGone(): void; onStandUp?(): void; onSettings?(): void;
+  /** Given only while the first-run tutorial is on screen: a SKIP TUTORIAL line (the caller also closes the card). */
+  onSkipTutorial?(): void;
   /** Online session: the game does NOT stop behind the card. The card says so (GAME CONTINUES) and its title becomes MENU. */
   live?: boolean;
 }
@@ -47,6 +49,7 @@ export function buildPause(el: HTMLElement, o: PauseOpts): () => void {
   const rows: MenuRow[] = [
     { label: t('ingame.pause.resume'), danger: false, hold: false, act: o.onResume },
     ...(o.onStandUp ? [{ label: t('ingame.pause.standUp'), danger: false, hold: false, act: o.onStandUp }] : []),
+    ...(o.onSkipTutorial ? [{ label: t('tut.skipCard'), danger: false, hold: false, act: o.onSkipTutorial }] : []),
     ...(o.onSettings ? [{ label: t('ingame.pause.settings'), danger: false, hold: false, act: o.onSettings }] : []),
     { label: t('ingame.pause.quit'), danger: true, hold: true, act: o.onQuit },
   ];
