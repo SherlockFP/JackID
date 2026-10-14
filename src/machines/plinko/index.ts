@@ -26,6 +26,7 @@ import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { Kit } from '@/kit/types';
 import { fmtCoins, t, type I18nVars } from '@/core/i18n';
+import { bus } from '@/core/events';
 import { lerp, TAU } from '@/core/math';
 import { buildModel, pegX, pegY, slotX, FUNNEL_Y, LAND_Y, ROWS, DX, RISK_ANGLE, type PlinkoParts } from './model';
 import {
@@ -110,6 +111,8 @@ export const def: MachineDef = {
       golden: 'GOLD ×2', edge: 'EDGE', win: 'WIN {n}', last: 'LAST', bet: 'BET {n}', credit: 'CREDIT',
       extra: '+{n} FREE', multLabel: '×{n}', lost: 'Nothing this time',
       busy: 'Pucks are still falling', chaseEdge: 'EDGE!', potLabel: 'Bet',
+      confirm: 'PRESS DROP AGAIN TO CONFIRM {amount}', confirmSub: 'High stake: second press within {n} s',
+      stakeCut: 'Stake lowered to {n} so the pucks fit the pocket',
     },
     tr: {
       name: 'Plinko Çivi Tahtası',
@@ -119,6 +122,8 @@ export const def: MachineDef = {
       golden: 'ALTIN ×2', edge: 'KENAR', win: 'KAZANÇ {n}', last: 'SON', bet: 'BAHİS {n}', credit: 'KREDİ',
       extra: '+{n} BEDAVA', multLabel: '×{n}', lost: 'Bu sefer olmadı',
       busy: 'Toplar hâlâ düşüyor', chaseEdge: 'KENAR!', potLabel: 'Bahis',
+      confirm: 'ONAYLAMAK İÇİN BIRAK’A TEKRAR BAS: {amount}', confirmSub: 'Yüksek bahis: {n} sn içinde ikinci kez bas',
+      stakeCut: 'Bahis, toplar cebe sığsın diye {n} değerine indirildi',
     },
   },
 };
@@ -130,6 +135,9 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
   private readonly dummy = new THREE.Object3D();
   /** Seat HUD overlay (readability standard, see _base/seatHud.ts). */
   private seatHud?: SeatHud;
+  /** A high stake waiting for its second DROP press (the run's stake confirm, `run:stakeConfirm`), or null. */
+  private confirmArm: { amount: number; seconds: number } | null = null;
+  private offStake?: () => void;
 
   protected createModel(kit: Kit): MachineModel<PlinkoParts> {
     return buildModel(kit, this.modelOpts);
@@ -140,6 +148,11 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
     this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     const pegs = this.parts.pegs;
     if (!pegs.instanceColor) pegs.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(pegs.count * 3).fill(1), 3);
+    this.offStake = bus.on('run:stakeConfirm', (e) => {
+      if (e.mid !== this.id || e.pid !== this.ctx.run.selfId) return;
+      this.confirmArm = e.state === 'ask' ? { amount: e.amount, seconds: e.seconds } : null;
+      this.showHud();
+    });
     this.refresh();
     this.idleChase();
     this.attractor.every('sweep', 6, () => this.lampSweep(), { first: 3 });
@@ -161,12 +174,13 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
-    if (local) this.seatHud?.hide();
+    if (local) { this.seatHud?.hide(); this.confirmArm = null; }
     this.refresh();
     this.idleChase();
   }
 
   override dispose(): void {
+    this.offStake?.();
     this.seatHud?.dispose();
     super.dispose();
   }
@@ -209,6 +223,29 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
     void this.emit({ k: 'cfg', risk: clampRisk(r), pucks: this.state.pucks });
   }
 
+  /**
+   * WAVE 23: the stake ladder is clamped to the pocket for the pucks in play (stake × pucks × cost mult ≤ pocket), so a small
+   * pocket never offers a step the run would refuse. Never below the machine minimum.
+   */
+  protected override betLadder(): number[] {
+    const base = super.betLadder();
+    const cap = this.stakeCap();
+    const cut = base.filter((v) => v <= cap);
+    return cut.length ? cut : [this.def.minBet];
+  }
+  private stakeCap(): number {
+    const per = Math.max(1, this.state.pucks) * Math.max(1e-9, this.mod('bet.costMult', 1));
+    return Math.max(this.def.minBet, Math.floor(this.ctx.run.wallet() / per));
+  }
+  /** Steps the bet down onto the clamped ladder (toast when it moves). Idempotent when the stake already fits. */
+  private fitStake(): void {
+    const ok = this.betLadder();
+    const top = ok[ok.length - 1];
+    if (this.bet <= top) return;
+    this.bet = top;
+    this.toast(this.t('stakeCut', { n: fmtCoins(top) }), 'warn');
+  }
+
   private setPucks(n: number): void {
     const p = clampPucks(n);
     if (this.busy || this.roundOpen || p === this.state.pucks) return;
@@ -226,6 +263,8 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
 
   private async drop(): Promise<void> {
     if (this.busy || this.roundOpen) return;
+    this.confirmArm = null;
+    this.fitStake();
     const risk = this.state.risk, paid = this.state.pucks, stake = this.bet;
     if (!this.beginRound(stake * paid)) return;               // charges the wallet, busy = true, re-seeds this.rng
     this.showHud();
@@ -260,7 +299,7 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
     this.state.pucks = ev.pucks;
     this.sfx('ratchet');
     this.refresh();
-    if (this.isLocalOccupant) this.showHud();
+    if (this.isLocalOccupant) { this.fitStake(); this.showHud(); }
   }
 
   private async presentDrop(ev: { k: 'drop' } & DropEv, pc: PresentCtx): Promise<void> {
@@ -489,6 +528,7 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
     const risk = this.t(RISK_KEYS[clampRisk(s.risk)]);
     sh.goal(this.tx('goal'));
     if (live) sh.state(this.tx('stFall'), 'cyan');
+    else if (this.confirmArm) sh.state(this.tx('confirm', { amount: fmtCoins(this.confirmArm.amount) }), 'bad', this.tx('confirmSub', { n: Math.ceil(this.confirmArm.seconds) }));
     else sh.state(this.tx('stReady'), 'gold', this.tx('stReadySub', { risk }));
     sh.numbers([
       { label: this.tx('nBet'), value: fmtCoins(live ? this.roundBet : this.bet * s.pucks), tone: 'gold' },

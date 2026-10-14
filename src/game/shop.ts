@@ -15,6 +15,10 @@
  *    host reports the NEXT Night's key, so the shelf is redrawn once per Night instead of repeating the last Watch's stock.
  *  - Price (Wave 20): def.price × SI × `pawnPriceScale`. The scale only lowers prices, so on every Night the dearest Common
  *    costs at most 60 % of the Night's base quota (the cheapest charm then sits near 30 %); Rares / Legendaries may exceed it.
+ *  - Foundations / House hooks (read through `PawnHost.mod`): `x.pawn.freeRerolls` (Pawn Bell) adds free rerolls per visit,
+ *    `x.pawn.freeFirst` (Golden Ticket) makes the first reroll of each visit free, `x.pawn.slots` (Second Window) adds
+ *    regular shelves after the under-counter slot (indices >= SLOTS, up to SLOT_EXTRA_MAX), and `x.charm.sellValue`
+ *    (Pawnbroker's Friend) raises the sell share through `sellRefund`.
  *  - `snapshot()` / `restore()` carry the whole state into the save (plain JSON).
  *
  * The run supplies a `PawnHost`; this file never touches run.ts internals. Seeded rng only.
@@ -28,6 +32,7 @@ import { charmPrice, rollRarity, type ShopRarity } from '@/game/economy';
 import { pawnPriceScale } from '@/game/data/schedule';
 import { foldEffects, scopeMatches, stackedValue } from '@/game/types';
 import type { CharmDef, ModBreakdown } from '@/game/types';
+import type { ModHook } from '@/game/modifiers.types';
 import {
   LOCK_TICKETS, MAX_LOCKS, REMOVE_CURSE_TICKETS, SLOTS, UNDER_COUNTER_INDEX,
   type PawnApi, type PawnBuy, type PawnPreview, type PawnSlot, type SwapChoice,
@@ -38,6 +43,9 @@ export const BIAS_SLOT = 0;
 export const DISCOUNT_SLOT = 2;
 export const BIAS_WEIGHT = 3;
 const REGULAR = 3;
+/** Regular shelves the house can add (`x.pawn.slots`). They sit after the under-counter slot, so UNDER_COUNTER_INDEX stays put. */
+export const SLOT_EXTRA_MAX = 2;
+const MAX_SLOTS = SLOTS + SLOT_EXTRA_MAX;
 
 /** Dearest launch Common's base price: the anchor of the Pawn price scale (`pawnPriceScale`). Computed once. */
 let commonTopMemo: number | null = null;
@@ -92,6 +100,8 @@ export interface PawnHost {
   bias?(): boolean;
   /** Optional: is a meta unlock code (F3, W, A:...) earned? Default: never, so cursed charms (F3) stay off the shelf. */
   meta?(code: string): boolean;
+  /** Optional: a pit-wide mod fold for the Pawn hooks (`x.pawn.freeRerolls`, `x.pawn.freeFirst`, `x.pawn.slots`). Default: none. */
+  mod?(hook: ModHook, base: number): number;
   /** Optional: only v1.0 launch charms are offered (default true). */
   launchOnly?(): boolean;
   /** Optional: the machines on the floor (with suit tags), for the first-shop synergy guarantee. Empty or absent = any suit. */
@@ -112,6 +122,10 @@ export interface PawnSnapshot {
   rolls: number;
   /** Paid rerolls this intermission: the escalation. */
   paid: number;
+  /** Pawn Bell rerolls granted this visit and not yet used (optional: older saves have none). */
+  visitFree?: number;
+  /** The visit's free first reroll (Golden Ticket) is spent. */
+  firstUsed?: boolean;
 }
 
 // ── pure helpers (exported for the tests) ────────────────────────────────────────────────────────────────
@@ -164,6 +178,16 @@ export function previewPayout(bd: ModBreakdown, d: CharmDef, m: PawnMachine, sam
 }
 
 /**
+ * What a charm sells back for (`x.charm.sellValue`). The base share is 50 % (70 % with a Pawn Ticket) and a sell-value hook
+ * can raise it (Pawnbroker's Friend sets 60 %). Never below the base share, never above 90 %. Cursed charms pay 0 (the caller).
+ * The run's `sellValue` host callback and every swap refund use this one formula.
+ */
+export function sellRefund(price: number, frac: number, pawnTicket: boolean): number {
+  const share = Math.min(0.9, Math.max(pawnTicket ? 0.7 : 0.5, frac));
+  return Math.max(0, Math.floor(price * share));
+}
+
+/**
  * Unlock gate: '' = open, 'N<k>' = reached Night k. Any other code (F3, W, A:...) is meta progress the run owns: it is
  * offered only when `meta(code)` says so (no `meta` = never, the old behaviour).
  */
@@ -183,6 +207,9 @@ export class Pawn implements PawnApi {
   private slots: (SlotState | null)[] = new Array<SlotState | null>(SLOTS).fill(null);
   private rolls = 0;
   private paid = 0;
+  /** Pawn Bell rerolls left this visit (`x.pawn.freeRerolls`), and whether the Golden Ticket's first reroll is spent. */
+  private visitFree = 0;
+  private firstUsed = false;
   /** Bumped on every mutation, so a consumer can cache against it. */
   rev = 0;
 
@@ -195,7 +222,7 @@ export class Pawn implements PawnApi {
   sync(): void {
     if (!this.host.open()) return;
     const key = `${this.host.night()}:${this.host.watch()}`;
-    if (key === this.key) return;
+    if (key === this.key) { this.grow(); return; }
     this.newVisit(key);
   }
 
@@ -205,9 +232,11 @@ export class Pawn implements PawnApi {
     this.key = key;
     this.rolls = 0;
     this.paid = 0;
-    this.slots = new Array<SlotState | null>(SLOTS).fill(null);
+    this.visitFree = this.hookCount('x.pawn.freeRerolls');
+    this.firstUsed = false;
+    this.slots = new Array<SlotState | null>(this.slotCount()).fill(null);
     // Locked, unsold items stay on their shelf.
-    for (let i = 0; i < SLOTS; i++) {
+    for (let i = 0; i < Math.min(old.length, this.slots.length); i++) {
       const s = old[i];
       if (s && s.locked && !s.sold && charmDef(s.id) && this.host.canTake(s.id)) this.slots[i] = { id: s.id, locked: true, sold: false };
     }
@@ -239,7 +268,7 @@ export class Pawn implements PawnApi {
 
   private freeSlots(): number[] {
     const out: number[] = [];
-    for (let i = 0; i < SLOTS; i++) {
+    for (let i = 0; i < this.slots.length; i++) {
       const s = this.slots[i];
       if (i === UNDER_COUNTER_INDEX && this.host.night() < 1) continue;
       if (!s) out.push(i);
@@ -288,6 +317,28 @@ export class Pawn implements PawnApi {
     }
   }
 
+  // ── hook reads (pit-wide, through the host's fold) ──
+  /** Whole count from a Pawn hook (0 without a fold). */
+  private hookCount(hook: ModHook): number { return Math.max(0, Math.round(this.host.mod?.(hook, 0) ?? 0)); }
+  /** Regular shelves the house has added (`x.pawn.slots`, capped at SLOT_EXTRA_MAX). */
+  private extraSlots(): number { return Math.min(SLOT_EXTRA_MAX, this.hookCount('x.pawn.slots')); }
+  /** Shelves on this Pawn: the four launch slots plus the house's extras. */
+  slotCount(): number { return SLOTS + this.extraSlots(); }
+  /** The Golden Ticket: the visit's first reroll is free until it is spent. */
+  private firstFree(): boolean { return !this.firstUsed && this.hookCount('x.pawn.freeFirst') > 0; }
+
+  /** A shelf bought mid-visit appears at once. Its charms come from the visit's own stream, so they are the same on reload. */
+  private grow(): void {
+    const want = this.slotCount();
+    const from = this.slots.length;
+    if (from >= want) return;
+    while (this.slots.length < want) this.slots.push(null);
+    const idx: number[] = [];
+    for (let i = from; i < want; i++) idx.push(i);
+    this.fill(this.host.rng().fork(`pawn:${this.host.night()}:${this.host.watch()}`).fork(`x${from}`), idx);
+    this.rev += 1;
+  }
+
   // ── PawnApi: reads ──
   open(): boolean { return this.host.open(); }
 
@@ -322,13 +373,17 @@ export class Pawn implements PawnApi {
     return Math.max(1, Math.round(base * f));
   }
 
-  rerollCost(): number { return this.host.freeRerolls() > 0 ? 0 : 1 + this.paid; }
-  freeRerolls(): number { return this.host.freeRerolls(); }
+  /** Free rerolls left this visit: the run's own, the Pawn Bell's, and the Golden Ticket's first reroll. */
+  rerollCost(): number { return this.freeRerolls() > 0 ? 0 : 1 + this.paid; }
+  freeRerolls(): number {
+    this.sync();
+    return this.host.freeRerolls() + this.visitFree + (this.firstFree() ? 1 : 0);
+  }
 
   private rerollable(): number[] {
     this.sync();
     const out: number[] = [];
-    for (let i = 0; i < SLOTS; i++) {
+    for (let i = 0; i < this.slots.length; i++) {
       if (i === UNDER_COUNTER_INDEX && this.host.night() < 1) continue;
       const s = this.slots[i];
       if (!s || (!s.locked && !s.sold)) out.push(i);
@@ -358,8 +413,14 @@ export class Pawn implements PawnApi {
     if (!this.host.open()) return false;
     const idx = this.rerollable();
     if (!idx.length) return false;
-    const free = this.host.freeRerolls() > 0;
-    if (free) { if (!this.host.useFreeReroll()) return false; }
+    // Free sources, in order: the Golden Ticket's first reroll, the Pawn Bell, then the run's own free rerolls.
+    const first = this.firstFree();
+    const bell = !first && this.visitFree > 0;
+    const runFree = !first && !bell && this.host.freeRerolls() > 0;
+    const free = first || bell || runFree;
+    if (first) this.firstUsed = true;
+    else if (bell) this.visitFree -= 1;
+    else if (runFree) { if (!this.host.useFreeReroll()) return false; }
     else if (!this.host.spendTickets(1 + this.paid, 'pawn:reroll')) return false;
     const avoid = new Set<string>();
     for (const i of idx) { const s = this.slots[i]; if (s) avoid.add(s.id); this.slots[i] = null; }
@@ -447,7 +508,7 @@ export class Pawn implements PawnApi {
   // ── save ──
   snapshot(): PawnSnapshot {
     return {
-      v: 1, key: this.key, rolls: this.rolls, paid: this.paid,
+      v: 1, key: this.key, rolls: this.rolls, paid: this.paid, visitFree: this.visitFree, firstUsed: this.firstUsed,
       slots: this.slots.map((s) => (s ? { id: s.id, locked: s.locked, sold: s.sold } : null)),
     };
   }
@@ -457,8 +518,11 @@ export class Pawn implements PawnApi {
     this.key = typeof snap.key === 'string' ? snap.key : '';
     this.rolls = Math.max(0, Math.floor(snap.rolls) || 0);
     this.paid = Math.max(0, Math.floor(snap.paid) || 0);
-    this.slots = new Array<SlotState | null>(SLOTS).fill(null);
-    for (let i = 0; i < SLOTS; i++) {
+    this.visitFree = Math.max(0, Math.floor(snap.visitFree ?? 0) || 0);
+    this.firstUsed = !!snap.firstUsed;
+    const n = Math.min(MAX_SLOTS, snap.slots.length);
+    this.slots = new Array<SlotState | null>(n).fill(null);
+    for (let i = 0; i < n; i++) {
       const s = snap.slots[i];
       if (s && typeof s.id === 'string' && charmDef(s.id)) this.slots[i] = { id: s.id, locked: !!s.locked, sold: !!s.sold };
     }

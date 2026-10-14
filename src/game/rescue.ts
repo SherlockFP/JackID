@@ -13,11 +13,22 @@ import { bus } from '@/core/events';
 import type { PlayerId } from '@/core/types';
 import type { PhoneCallState } from '@/net/protocol';
 import { ANSWER_SECONDS, RING_SECONDS, dealKey, encodeOption } from '@/game/hotline';
-import type { RescueLoan } from '@/game/economy';
+import { RESCUE_LOAN_FRAC, RESCUE_MIN, type RescueLoan } from '@/game/economy';
 
 export const RESCUE_DEAL = 'rescue';
 export const RESCUE_SCRIPT = 'hotline.call.rescue';
 const ID_BASE = 1_000_000;
+
+/**
+ * The loan the Collector offers (wave 23, flow-fixes). `coins` now is the share of tonight's quota the economy grants (25 %, at
+ * least RESCUE_MIN). The quota penalty `quota` is capped at RESCUE_PENALTY_MAX x the cash given, so the player can plausibly
+ * repay it: 49 coins used to add +74 quota (1.5x), now +63. Use this instead of `economy.rescueLoan` (WIRING in the work report).
+ */
+export const RESCUE_PENALTY_MAX = 1.3;
+export function rescueTerms(due: number): RescueLoan {
+  const coins = Math.max(RESCUE_MIN, Math.round(Math.max(0, due) * RESCUE_LOAN_FRAC));
+  return { coins, quota: Math.floor(coins * RESCUE_PENALTY_MAX) };
+}
 
 export interface RescueHost {
   selfId: PlayerId;

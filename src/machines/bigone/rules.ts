@@ -182,8 +182,8 @@ export function buildMods(mod: Modify, feature: FeatureOf = () => false): Mods {
   const patAdd = Object.fromEntries(PATTERN_IDS.map((p) => [p, mod(`x.bigone.patternMult[${p}]` as ModHook, patAll)])) as Record<PatternId, number>;
   const extra = mod('x.bigone.extraPattern' as ModHook, 0) >= 1;
   const lines = LINES.filter((p) => {
-    if (p === 'TWIN_RAILS') return extra || feature('bigone.twinRails');
-    if (p === 'CORNERSTONE') return extra || feature('bigone.cornerstone');
+    if (p === 'TWIN_RAILS') return extra || feature('bigone.extraPattern.TWIN_RAILS');
+    if (p === 'CORNERSTONE') return extra || feature('bigone.extraPattern.CORNERSTONE');
     return true;
   });
   return {
@@ -191,10 +191,10 @@ export function buildMods(mod: Modify, feature: FeatureOf = () => false): Mods {
     weights,
     patAdd,
     lines,
-    wild: clamp(mod('x.bigone.wildChance' as ModHook, feature('bigone.wild50') ? 0.02 : 0), 0, WILD_CAP),
+    wild: clamp(mod('x.bigone.wildChance' as ModHook, feature('bigone.wildChance') ? 0.02 : 0), 0, WILD_CAP),
     curse: Math.max(0, mod('x.bigone.curseChanceMult' as ModHook, 1)),
     fill: Math.max(0, mod('jackpot.mult' as ModHook, 1)),
-    feed: Math.max(0, mod('x.bigone.jackpotFeed' as ModHook, feature('bigone.feed15') ? 0.015 : FEED_DEFAULT)),
+    feed: Math.max(0, mod('x.bigone.jackpotFeed' as ModHook, feature('bigone.jackpotFeed') ? 0.015 : FEED_DEFAULT)),
     holdOn: mod('x.bigone.holdReel' as ModHook, feature('bigone.holdReel') ? 1 : 0) >= 1,
     respin: clamp(mod('x.bigone.respin' as ModHook, 0), 0, 1),
     wardCharges: Math.max(0, Math.floor(mod('x.bigone.curseWard' as ModHook, 0))),

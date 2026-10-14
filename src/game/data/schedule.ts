@@ -40,12 +40,16 @@ export interface NightDef {
  * 2000 runs, seed 20261013): reach N1 90 %, N2 76 %, N3 51 %, N4 32 %, N5 26 %, N6 22 %, N7 20 %, N8 20 %. N8 ~5 % is not
  * reachable with a 2.1× cap while SI steps 3.3× a Night: a surviving player's pocket outruns the quota. SI's late steps are the
  * lever (1, 2, 4 … 128 gives N8 ~4 %), a design call left to the director.
+ *
+ * Wave 23 (flow-fixes): the N3 -> N4 step was a wall (115 -> 205 = 1.78x; playtest 110 -> 195 with 9 pulls against an 89 pocket).
+ * N4 is 140 (1.22x from N3, 1.79x to N5; every step <= 2.2x). Human bot (2000 runs, seeds 20261013, 1, 7, 99): N3 51 %, N4 36-37 % (was 31 %),
+ * N5 28-29 %. The pull count barely moves N4 reach (11 pulls: 32 %), so the quota is the lever.
  */
 export const BASE_NIGHTS: readonly NightDef[] = [
   { no: 1, floor: 'B7', name: 'first', base: 31, watches: 3, pulls: 7, clock: 150, interest: 0.90, favour: 1.25, si: 1, card: 0 },
   { no: 2, floor: 'B6', name: 'second', base: 58, watches: 3, pulls: 7, clock: 150, interest: 0.30, favour: 1.15, si: 3, card: 3 },
   { no: 3, floor: 'B5', name: 'third', base: 115, watches: 3, pulls: 8, clock: 165, interest: 0.28, favour: 1.07, si: 10, card: 3 },
-  { no: 4, floor: 'B4', name: 'fourth', base: 205, watches: 3, pulls: 9, clock: 165, interest: 0.26, favour: 1, si: 30, card: 4 },
+  { no: 4, floor: 'B4', name: 'fourth', base: 140, watches: 3, pulls: 9, clock: 165, interest: 0.26, favour: 1, si: 30, card: 4 },
   { no: 5, floor: 'B3', name: 'fifth', base: 250, watches: 4, pulls: 8, clock: 180, interest: 0.22, favour: 1, si: 100, card: 4 },
   { no: 6, floor: 'B2', name: 'sixth', base: 520, watches: 4, pulls: 9, clock: 180, interest: 0.20, favour: 1, si: 300, card: 4 },
   { no: 7, floor: 'B1', name: 'seventh', base: 1100, watches: 4, pulls: 9, clock: 195, interest: 0.16, favour: 1, si: 1000, card: 4 },

@@ -18,6 +18,7 @@ import {
   BRASS, CREAM, INK, INK_SOFT, PAPER, PAPER_DARK, Placard3D, button, fitPx5, paginate, put, rowsIn, rule, setPlacardHost,
   speckle, wrapPx5, type OverlayRig,
 } from '@/machines/_base/placard3d';
+import { setFlashPrefsHost } from '@/machines/_base/juice';
 import { NOTES, type NoteDef } from './notes.data';
 
 // The placards (notes, tape, journal, and the machines' almanac and rules cards) live in the first-person overlay.
@@ -26,6 +27,9 @@ setPlacardHost({
   overlay: (): OverlayRig | null => (app as unknown as { player?: { overlay?: OverlayRig } | null } | undefined)?.player?.overlay ?? null,
   canvas: (): HTMLCanvasElement | null => (app as unknown as { canvas?: HTMLCanvasElement } | undefined)?.canvas ?? null,
 });
+
+// the Big One's combo show reads the player's flash settings the same way
+setFlashPrefsHost(() => ({ reduced: !!app.save.data.settings.reduceFlashing, calm: !!app.save.data.settings.calm }));
 
 const PAPER_MAT = new THREE.MeshLambertMaterial({ color: 0xd9cfae });
 const TAPE_MAT = new THREE.MeshLambertMaterial({ color: 0x1b1d22 });

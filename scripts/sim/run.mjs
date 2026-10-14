@@ -17,6 +17,12 @@
 // engines bought at the Pawn. So this sim buys charms: at every intermission the bots shop from the REAL Pawn
 // (src/game/shop.ts, same stock rules, rarity odds, unlock gates, prices = base x SI, the first-shop synergy guarantee).
 //
+// SYMBOL STAMPS (src/game/stamps.ts, the Big One build economy), wave 7:
+//   node scripts/sim/run.mjs --bots stamper           camper (all stake on the Big One, no charms) that shops the Stamp board every Bell
+//   node scripts/sim/run.mjs --stamps                 the other bots shop stamps too (they play the Big One only part of the time)
+//   node scripts/sim/run.mjs --stamp-report [--spins 150000]   RTP table: every single stamp, the best builds under STAMP_CAP, leave-one-out
+//                                                    marginals, and the acceptance checks (max build <= 1.30, one stamp <= 4 points)
+//
 // Real code, reused through the Vite loader (scripts/tests/_vite.mjs, the same loader sim-profiles uses):
 //   src/game/data/schedule.ts  Night defs (base quota, SI, pulls, watches, interest), quotaFor, interestFor, hot Lamp count
 //   src/game/circuit.ts        Circuit (per-instance pulls, Hot/Cold lamps, rollLamps), tiltFactor, HOT_MULT, COLD_MULT
@@ -46,6 +52,8 @@
 //             of the pocket (the last Watch pays the gap in full). Float = --float 9 (3 activity pulls a Watch).
 //             Once the quota is covered and the pick is not Hot it banks: the minimum stake for the 3 activity pulls of each Watch
 //   banker    the same play, but deposits --banker-frac 0.8 of the pocket above the float at every Bell
+//   stamper   the camper (half the pocket on the Big One, no charms) that also shops the Stamp board at every Bell: points per coin,
+//             within the Pawn's budget rule. Opt-in (--bots stamper); the default table is unchanged.
 //   human     a casual player (wave 19): stakes a random 2-5 coins a pull (the ladder step at or below it), rotates machine every
 //             3-5 pulls, goes for the Hot Lamp ~60 % of the time it rotates (--human-hot-p 0.6), deposits a random 30-70 % slice of
 //             the pocket at ~80 % of the Bells and pays the gap only on the last Watch. Banks once the quota is covered.
@@ -93,7 +101,9 @@ const VERBOSE = args.includes('--verbose');
 const BRIEF = args.includes('--brief');
 const TRACE = Number(argVal('--trace', 0)) | 0;
 const NO_FAVOUR = args.includes('--no-favour');
-const NO_FLOAT = args.includes('--no-float');   // the House float (F(n) = 12 + 6n at each Night start) off, for comparison
+const NO_FLOAT = args.includes('--no-float');   // the House float (F(n) = 12 + 6n topped up at each Night start) off, for comparison
+const STAMPS_ALL = args.includes('--stamps');   // every non-camper bot also shops the Stamp board (the 'stamper' bot always does)
+const STAMP_RESERVE = Number(argVal('--stamp-reserve', 1.5));   // the stamp shopper keeps this share of the quota in the pocket after a buy
 
 /** The machines of the player's floor, one per family. Index 0 is the camper's machine (bigone). */
 const WORLD_IDS = ['bigone', 'blackjack', 'dicetower', 'roulette', 'plinko', 'elevator'];
@@ -111,9 +121,11 @@ const list = (name) => { const v = argVal(name, ''); return v ? v.split(',').map
 const SCH = await load('src/game/data/schedule.ts');
 const CIR = await load('src/game/circuit.ts');
 const ECO = await load('src/game/economy.ts');
+const RESC = await load('src/game/rescue.ts');
 const RNG = await load('src/core/rng.ts');
 const ENG = await load('src/game/charms/engine.ts');
 const SHOP = await load('src/game/shop.ts');
+const STAMPS = await load('src/game/stamps.ts');
 const SUITS = await load('src/game/suits.ts');
 const MT = await load('src/game/modifiers.types.ts');
 const CHD = await load('src/game/data/charms.ts');
@@ -164,7 +176,7 @@ function stakeAt(lim, want, pocket) {
 
 /** Largest ladder step not above the target and the pocket (at least the minimum when the pocket covers it). */
 function stakeFor(bot, lim, pocket) {
-  const target = bot === 'camper' ? (CAMPER_FRAC >= 1 ? Number.POSITIVE_INFINITY : CAMPER_FRAC * pocket) : Math.max(lim.min, BET_FRAC * pocket);
+  const target = isCamp(bot) ? (CAMPER_FRAC >= 1 ? Number.POSITIVE_INFINITY : CAMPER_FRAC * pocket) : Math.max(lim.min, BET_FRAC * pocket);
   const cap = Math.min(lim.max, target, pocket);
   let best = 0;
   for (const v of lim.ladder) if (v <= cap) best = v;
@@ -285,9 +297,68 @@ function makeHost(S, rng) {
   };
 }
 
+// ── symbol stamps ───────────────────────────────────────────────────────────────────────────────────────
+const isCamp = (bot) => bot === 'camper' || bot === 'stamper';
+const stampsOn = (bot) => bot === 'stamper' || (STAMPS_ALL && !isCamp(bot));
+/** Measured RTP points per level of a stamp (--stamp-report, 1M spins); the bots rank offers by points per coin. */
+const STAMP_POINTS = {
+  gild: { MOTH: 3.5, TOOTH: 3.5, KEY: 3.3, CANDLE: 3.3, RING: 3.6, CROWN: 2.6, SUN: 2.2 },
+  etch: { TREY: 3.1, PILLAR: 2.3, SLASH: 2.8, QUAD: 1.6, EYE: 0.9, CLUSTER: 0.5, RAIL: 0.2, CROSS: 0.2, PENTACLE: 0.2, VALLEY: 0.1, PEAK: 0.1, HALO: 0, TWIN_RAILS: 0, CORNERSTONE: 0 },
+};
+function stampHost(S, rng) {
+  return {
+    rng: () => rng,
+    night: () => S.shopNight,
+    watch: () => S.shopWatch,
+    open: () => true,
+    baseQuota: () => NIGHTS[Math.min(S.shopNight, NIGHTS.length - 1)].base,
+    wallet: () => S.pocket,
+    tickets: () => S.tickets,
+    spend: (c) => { if (S.pocket < c) return false; S.pocket -= c; return true; },
+    spendTickets: (n) => { if (S.tickets < n) return false; S.tickets -= n; return true; },
+    patternUnlocked: (id) => !STAMPS.ETCH_LOCKED_BY_DEFAULT.has(id),
+  };
+}
+/** Headless hooks for a play: the Big One folds the stamp book, everything else is plain. */
+function hooksFor(S, machineId) {
+  if (machineId !== 'bigone' || !S.book) return HOOKS;
+  if (S.hookRev !== S.book.rev) { S.hookRev = S.book.rev; S.hooks = { luck: 0, mod: STAMPS.stampHook(S.book.levels()) }; }
+  return S.hooks;
+}
+/** Intermission shopping on the Stamp board: best points per coin within the same budget rule as the Pawn (SPEND_FRAC, RESERVE_FRAC). */
+function shopStamps(S, bot, due) {
+  if (!S.book || !stampsOn(bot)) return;
+  S.book.sync();
+  for (let k = 0; k < 3; k++) {
+    const budget = Math.floor(Math.min(S.pocket * SPEND_FRAC, S.pocket - STAMP_RESERVE * due));
+    const lv = S.book.levels();
+    let best = -1, bestScore = 0;
+    S.book.offers().forEach((o, i) => {
+      if (!o || o.price > budget) return;
+      let pts = 0;
+      if (o.kind === 'gild') pts = STAMP_POINTS.gild[o.target];
+      else if (o.kind === 'etch') pts = STAMP_POINTS.etch[o.target] ?? 0;
+      else pts = lv.gild[o.target] >= 2 ? 1 : 0;      // a Shift only pays once its symbol is well gilded
+      if (pts < 1) return;
+      const score = pts / o.price;
+      if (score > bestScore) { best = i; bestScore = score; }
+    });
+    if (best < 0) {
+      // nothing worth buying: one Ticket reroll while the bot has Tickets to spare (the first reroll costs 1)
+      if (k === 0 && S.tickets >= S.book.rerollCost() && S.book.canReroll() && S.book.count() < S.book.cap() && S.pocket > 0.2 * due) { S.book.reroll(); continue; }
+      return;
+    }
+    const o = S.book.offers()[best];
+    if (!S.book.buy(best).ok) return;
+    const id = o.kind + ':' + o.target + ':' + (o.level + 1);
+    BOUGHT.set(id, (BOUGHT.get(id) ?? 0) + 1);
+  }
+}
+
 /** Intermission shopping: up to two purchases from the Pawn, best priority first, within SPEND_FRAC of the pocket. */
 function shop(S, bot, due, rng) {
-  if (NO_CHARMS || bot === 'camper') return;
+  shopStamps(S, bot, due);
+  if (NO_CHARMS || isCamp(bot)) return;
   // The casual player visits the Pawn at only some Bells (--human-shop-p): a careful stake is not a charm-every-Bell shopper.
   if (bot === 'human' && rng && rng.next() >= HUMAN_SHOP_P) return;
   // Keep play money: a charm never eats the stake pool (about a third of the Night's quota stays in the pocket).
@@ -322,6 +393,7 @@ function playRun(bot, runIdx) {
     pawn: null,
   };
   S.pawn = new SHOP.Pawn(makeHost(S, RNG.createRng(RNG.hashSeed('simpawn', SEED, runIdx))));
+  S.book = stampsOn(bot) ? new STAMPS.StampBook(stampHost(S, RNG.createRng(RNG.hashSeed('simstamps', SEED, runIdx)))) : null;
   let loanedRun = false;
   const hum = { rng: RNG.createRng(RNG.hashSeed('simhuman', SEED, runIdx)), cur: null, dwell: 0 };
 
@@ -342,7 +414,7 @@ function playRun(bot, runIdx) {
         let dep = nd.watches - w === 1 ? rem : hum.rng.next() < HUMAN_DEP_P ? Math.floor(S.pocket * (HUMAN_DEP_LO + (HUMAN_DEP_HI - HUMAN_DEP_LO) * hum.rng.next())) : 0;
         dep = Math.min(dep, S.pocket);
         if (dep > 0) { S.pocket -= dep; S.debt += Math.floor(dep * (1 + fx0.depositBonus)); }
-      } else if (bot !== 'camper') {
+      } else if (!isCamp(bot)) {
         const left = nd.watches - w;
         const rem = Math.max(0, due - S.debt);
         const rate0 = SCH.interestRate(nd.interest, fx0.interestAdd);
@@ -370,7 +442,7 @@ function playRun(bot, runIdx) {
 
       while (pulls > 0) {
         let pick;
-        if (bot === 'camper') {
+        if (isCamp(bot)) {
           pick = world[0];
         } else if (bot === 'human') {
           const openH = (x) => defs[x.machineId].minBet <= Math.max(1, S.pocket / 3);
@@ -406,13 +478,13 @@ function playRun(bot, runIdx) {
         const hotPick = circ.isHot(pick.mid);
         // Banked: the quota is covered and the pick is not Hot, so play has no edge (RTP below 1). Keep only the minimum
         // pulls the activity clause needs for interest (3 per Watch), each at the minimum stake, then stop.
-        const banked = bot !== 'camper' && S.debt >= due && !hotPick;
+        const banked = !isCamp(bot) && S.debt >= due && !hotPick;
         if (banked && watchPulls >= SCH.ACTIVITY_MIN_PULLS) break;
         // Rescue: pocket empty, quota unmet, Watches left -> the Collector's loan (+N coins now, quota +1.5N). The bots only take it
         // when the deposit's interest alone will not reach the quota.
         const projected = S.debt * Math.pow(1 + Math.max(0, rate), nd.watches - w);
-        if (S.pocket < lim.min && projected < due && S.debt < due && loans < (ECO.RESCUE_MAX_PER_NIGHT ?? 3) && ECO.rescueLoan) {
-          const loan = ECO.rescueLoan(due);
+        if (S.pocket < lim.min && projected < due && S.debt < due && loans < (ECO.RESCUE_MAX_PER_NIGHT ?? 3) && RESC.rescueTerms) {
+          const loan = RESC.rescueTerms(due);
           S.pocket += loan.coins; due += loan.quota; loans += 1; TOT.loans += 1; loanedRun = true;
         }
         const bet = banked ? (lim.min <= S.pocket ? lim.min : 0)
@@ -420,7 +492,7 @@ function playRun(bot, runIdx) {
           : stakeFor(bot, lim, S.pocket);
         if (bet <= 0) break;
         // Activity float: after the 3 pulls interest needs, never bet into the coins the next Watches' 3 pulls each need.
-        if (bot !== 'camper' && watchPulls >= SCH.ACTIVITY_MIN_PULLS && S.pocket - bet < (nd.watches - w - 1) * SCH.ACTIVITY_MIN_PULLS * defs[pick.machineId].minBet) break;
+        if (!isCamp(bot) && watchPulls >= SCH.ACTIVITY_MIN_PULLS && S.pocket - bet < (nd.watches - w - 1) * SCH.ACTIVITY_MIN_PULLS * defs[pick.machineId].minBet) break;
         S.pocket -= bet;
         const wasLast = pullsMax - pulls >= Math.floor(pullsMax * 0.87);
         pulls -= 1;
@@ -432,7 +504,7 @@ function playRun(bot, runIdx) {
         const tiltF = hot ? 1 : CIR.tiltFactor(circ.playsOf(pick.mid), Math.round(fx0.grace));
         const ctx = { hot, lastCall: wasLast, lastWatch: w === nd.watches - 1, unmet: S.debt < due };
         const cf = charmFactors(S, pick, ctx);
-        const gross = def.headless(rng, bet, HOOKS).gross;
+        const gross = def.headless(rng, bet, hooksFor(S, pick.machineId)).gross;
         const witch = SCH.isWitchingWatch(nd.watches, w) ? 0.05 : 0;
         const credited = ECO.settlePayout({ gross, bet, A: cf.A + witch, M: lampF * tiltF * cf.M * (NO_FAVOUR ? 1 : nd.favour), flat: 0, quota: due, limitMult: fx0.limitMult }).credited;
         S.pocket += credited;
@@ -450,13 +522,13 @@ function playRun(bot, runIdx) {
         if (hot) { if (win) cs.charge = 0; } else if (cold || tiltF < 1) cs.charge = Math.min(6, cs.charge + 1);
         if (hot && win && cs.wicks < 6) cs.wicks += 1;
 
-        if (bot === 'camper' || bot === 'banker') {
+        if (isCamp(bot) || bot === 'banker') {
           const need = due - S.debt;
           if (need > 0 && S.pocket >= need) { S.pocket -= need; S.debt += Math.floor(need * (1 + fx0.depositBonus)); }
         }
       }
 
-      if (bot !== 'camper' && (bot !== 'human' || w === nd.watches - 1)) {
+      if (!isCamp(bot) && (bot !== 'human' || w === nd.watches - 1)) {
         const need = due - S.debt;
         if (need > 0 && S.pocket >= need) { S.pocket -= need; S.debt += Math.floor(need * (1 + fx0.depositBonus)); }
       }
@@ -475,7 +547,7 @@ function playRun(bot, runIdx) {
       if (ratio < need || S.held.length >= 6) continue;
       const offer = ENG.choiceOffer(rng.fork(`overpay:${idx}:${rarity}`), rarity, 3, (id) => S.held.includes(id), idx);
       offer.sort((a, b) => priority(b, S.held) - priority(a, S.held));
-      if (offer[0] && (bot !== 'camper')) S.held.push(offer[0].id);
+      if (offer[0] && !isCamp(bot)) S.held.push(offer[0].id);
     }
     // Dawn settle (run.ts dawn()): the surplus above the quota (interest already in it) returns to the pocket.
     S.pocket += Math.max(0, S.debt - due);
@@ -533,6 +605,93 @@ if (args.includes('--calibrate')) {
   console.log(`--quotas ${NIGHTS.map((n) => n.base).join(',')}`);
 }
 
+// ── --stamp-report: the RTP table of the Stamp economy ──────────────────────────────────────────────────────────
+const SPINS = Math.max(20000, Number(argVal('--spins', 150000)) | 0);
+const LV0 = () => ({ gild: {}, shift: {}, etch: {} });
+const cloneLv = (lv) => ({ gild: { ...lv.gild }, shift: { ...lv.shift }, etch: { ...lv.etch } });
+const totalLv = (lv) => [lv.gild, lv.shift, lv.etch].reduce((a, t) => a + Object.values(t).reduce((x, y) => x + y, 0), 0);
+const SYMS = ['MOTH', 'TOOTH', 'KEY', 'CANDLE', 'RING', 'CROWN', 'SUN'];
+/** Big One RTP (gross / stake over the headless play, stake 10), common random numbers: the same seed for every build. */
+function bigoneRtp(lv, n = SPINS, seed = 20261013) {
+  const rng = RNG.createRng(seed);
+  const hooks = { luck: 0, mod: STAMPS.stampHook(lv) };
+  let g = 0;
+  for (let i = 0; i < n; i++) g += defs.bigone.headless(rng, 10, hooks).gross;
+  return g / (n * 10);
+}
+const lvName = (lv) => {
+  const bits = [];
+  for (const [k, t] of Object.entries(lv)) for (const [n, v] of Object.entries(t)) if (v > 0) bits.push(k.toUpperCase() + ' ' + n + (v > 1 ? ' x' + v : ''));
+  return bits.join(', ') || '(none)';
+};
+function additions(lv) {
+  const out = [];
+  if (totalLv(lv) >= STAMPS.STAMP_CAP) return out;
+  for (const n of SYMS) if ((lv.gild[n] ?? 0) < STAMPS.GILD_MAX) out.push(['gild', n]);
+  for (const n of STAMPS.SHIFT_TARGETS) if ((lv.shift[n] ?? 0) < STAMPS.SHIFT_MAX && (lv.gild[n] ?? 0) > 0) out.push(['shift', n]);
+  for (const p of STAMPS.ETCH_PATTERNS) if (!STAMPS.ETCH_LOCKED_BY_DEFAULT.has(p) && (lv.etch[p] ?? 0) < STAMPS.ETCH_MAX) out.push(['etch', p]);
+  return out;
+}
+function greedyFill(lv) {
+  lv = cloneLv(lv);
+  let cur = bigoneRtp(lv);
+  while (totalLv(lv) < STAMPS.STAMP_CAP) {
+    let best = null, bestV = -Infinity;
+    for (const [k, t] of additions(lv)) {
+      const c = cloneLv(lv); c[k][t] = (c[k][t] ?? 0) + 1;
+      const v = bigoneRtp(c);
+      if (v > bestV) { bestV = v; best = c; }
+    }
+    if (!best) break;
+    lv = best; cur = bestV;
+  }
+  return { lv, rtp: cur };
+}
+async function stampReport() {
+  const base = bigoneRtp(LV0());
+  console.log(`Big One RTP, headless, stake 10, ${SPINS} spins per row, common random numbers. base ${base.toFixed(4)}`);
+  console.log('\nSINGLE STAMPS (one level, from the empty book)   delta RTP points');
+  let worst = 0;
+  const row = (label, lv) => { const d = (bigoneRtp(lv) - base) * 100; worst = Math.max(worst, Math.abs(d)); console.log('  ' + label.padEnd(34) + (d >= 0 ? '+' : '') + d.toFixed(2)); return d; };
+  for (const n of SYMS) { const lv = LV0(); lv.gild[n] = 1; row('GILD ' + n + ' (+' + STAMPS.GILD_STEP[n] + ' value)', lv); }
+  for (const n of STAMPS.SHIFT_TARGETS) { const lv = LV0(); lv.shift[n] = 1; row('SHIFT ' + n + ' (+' + STAMPS.SHIFT_WEIGHT[n] + ' weight, no gild)', lv); }
+  for (const p of STAMPS.ETCH_PATTERNS) { const lv = LV0(); lv.etch[p] = 1; row('ETCH ' + p + ' (+' + STAMPS.ETCH_STEP[p] + ')', lv); }
+  console.log('  worst single stamp: ' + worst.toFixed(2) + ' points  (limit ' + STAMPS.MAX_SINGLE_POINTS + ')  ' + (worst <= STAMPS.MAX_SINGLE_POINTS ? 'OK' : 'FAIL'));
+
+  console.log('\nSHIFT on a gilded symbol: delta RTP of the shift levels alone, by Gild level (g) and Shift level (s)');
+  for (const n of STAMPS.SHIFT_TARGETS) {
+    const cells = [];
+    for (const g of [1, 3]) for (const sh of [1, 3]) {
+      const a = LV0(); a.gild[n] = g; const b = cloneLv(a); b.shift[n] = sh;
+      cells.push('g' + g + '/s' + sh + ' ' + ((bigoneRtp(b) - bigoneRtp(a)) * 100).toFixed(1));
+    }
+    console.log('  ' + n.padEnd(7) + cells.join('   '));
+  }
+
+  console.log('\nBEST BUILDS under STAMP_CAP = ' + STAMPS.STAMP_CAP + ' stamps (greedy fill, plus a gilded-and-shifted symbol template each)');
+  const builds = [{ name: 'greedy', ...greedyFill(LV0()) }];
+  for (const n of STAMPS.SHIFT_TARGETS) {
+    const t = LV0(); t.gild[n] = 3; t.shift[n] = 3;
+    builds.push({ name: 'template ' + n + ' g3 s3', ...greedyFill(t) });
+  }
+  builds.sort((a, b) => b.rtp - a.rtp);
+  const finalN = Math.max(SPINS * 8, 1500000);
+  for (const b of builds) b.final = bigoneRtp(b.lv, finalN, 9917);
+  for (const b of builds) console.log('  ' + b.name.padEnd(22) + 'search ' + b.rtp.toFixed(4) + '  re-run ' + b.final.toFixed(4) + '   ' + lvName(b.lv));
+  const top = builds.reduce((a, b) => (b.final > a.final ? b : a));
+  console.log('  MAX BUILD RTP ' + top.final.toFixed(4) + '  (limit ' + STAMPS.MAX_BUILD_RTP.toFixed(2) + ')  ' + (top.final <= STAMPS.MAX_BUILD_RTP ? 'OK' : 'FAIL'));
+
+  console.log('\nLEAVE-ONE-OUT in the best build (RTP points lost when that one stamp level is taken out)');
+  const full = bigoneRtp(top.lv, finalN, 9917);
+  for (const [k, t] of Object.entries(top.lv)) for (const [n, v] of Object.entries(t)) {
+    if (v <= 0) continue;
+    const c = cloneLv(top.lv); c[k][n] = v - 1;
+    console.log('  ' + (k.toUpperCase() + ' ' + n + ' level ' + v).padEnd(34) + ((full - bigoneRtp(c, finalN, 9917)) * 100).toFixed(2));
+  }
+  console.log('\nbest build as JSON: ' + JSON.stringify(top.lv));
+}
+if (args.includes('--stamp-report')) { await stampReport(); await closeVite(); process.exit(0); }
+
 const results = {};
 for (const bot of BOTS) {
   const t0 = Date.now();
@@ -557,7 +716,7 @@ for (const bot of BOTS) {
   results[bot] = rows;
   results[bot + '_rtp'] = TOT.wagered ? +(TOT.credited / TOT.wagered).toFixed(4) : 0;
   if (BRIEF) { console.log(`${bot.padEnd(8)} reach% ${rows.map((r) => String(Math.round(r.reachPct)).padStart(3)).join(' ')}  pocket ${rows.map((r) => fmtCoins(r.medianPocket)).join(' ')}  charms ${rows.map((r) => r.charms).join(' ')}  rtp ${results[bot + '_rtp']}`); continue; }
-  console.log(`\n${bot}  (${RUNS} runs, ${((Date.now() - t0) / 1000).toFixed(1)} s${SCALE_LADDER ? ', ladder scaled by SI' : ''}${NO_CHARMS ? ', no charms' : ''}${bot === 'camper' ? '' : `, stake ${BET_FRAC * 100} % of pocket`})`);
+  console.log(`\n${bot}  (${RUNS} runs, ${((Date.now() - t0) / 1000).toFixed(1)} s${SCALE_LADDER ? ', ladder scaled by SI' : ''}${NO_CHARMS ? ', no charms' : ''}${isCamp(bot) ? '' : `, stake ${BET_FRAC * 100} % of pocket`})`);
   console.log(`realized RTP ${results[bot + '_rtp']}  plays/run ${(TOT.plays / RUNS).toFixed(1)}  rescue loans/run ${(TOT.loans / RUNS).toFixed(2)}`);
   console.log(`house float per run (N2..N8): ${FLOAT_PAID.slice(1).map((v) => (v / RUNS).toFixed(1)).join(' ')}${NO_FLOAT ? '  (off)' : ''}`);
   console.log('Night  quota     reach%  cond%   median pocket (runs that paid)   realized RTP   charms held');

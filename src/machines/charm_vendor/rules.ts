@@ -10,8 +10,11 @@
  */
 import type { PlayerId } from '@/core/types';
 import type { CharmRarity, RunApi } from '@/game/types';
+import type { StampApi, StampOffer, StampBuy } from '@/game/stamps';
 
 export const SLOTS = 4;
+/** Regular shelves the house can add on top of SLOTS (Second Window): a back row on the counter. */
+export const SLOTS_MAX = 6;
 export const UNDER_COUNTER_INDEX = 3;
 
 export interface PawnSlot {
@@ -47,6 +50,8 @@ export interface PawnPreview { machineId: string; from: number; to: number }
 export interface PawnApi {
   /** True while the window is open (intermissions only). */
   open(): boolean;
+  /** Shelves in the window (SLOTS plus the Second Window's extras). Optional on older hosts. */
+  slotCount?(): number;
   /** Stock for `pid` (co-op: one shared stock). `null` = sold or empty slot. */
   stock(pid: PlayerId): readonly (PawnSlot | null)[];
   /** Tickets the next reroll costs (0 while a free reroll is left, then 1, +1 per further paid reroll). */
@@ -110,8 +115,8 @@ export function wrapIndex(i: number, dir: 1 | -1, n: number): number {
 export const BUY_CONFIRM_S = 3;
 
 /** Cursor step over the four slots, stopping at the ends (no wrap). Every slot is visited, empty ones included. */
-export function stepSlot(i: number, dir: 1 | -1): number {
-  return Math.min(SLOTS - 1, Math.max(0, i + dir));
+export function stepSlot(i: number, dir: 1 | -1, n: number = SLOTS): number {
+  return Math.min(Math.max(SLOTS, n) - 1, Math.max(0, i + dir));
 }
 
 /** Cursor step over `n` entries, stopping at the ends (the swap picker). */
@@ -144,3 +149,41 @@ export function buyJuice(rarity: CharmRarity, cursed: boolean): 'plain' | 'rare'
 export function stockKey(stock: readonly (PawnSlot | null)[]): string {
   return stock.map((s) => (s ? `${s.charmId}:${s.price}:${s.locked ? 1 : 0}:${s.fit}` : '-')).join('|');
 }
+
+// ── Symbol Stamps tab (game/stamps.ts `StampBook`, read from `run.stamps`) ───────────────────────────────
+/** The STAMPS tab shows this many offers (stamps.ts OFFER_COUNT). */
+export const STAMP_SLOTS = 3;
+/** The stamp service as the tab uses it (a structural subset of `StampApi`: types only, so no value import from game/). */
+export type { StampApi, StampOffer, StampBuy };
+
+const STAMP_NEEDED = ['open', 'offers', 'rerollCost', 'canReroll', 'reroll', 'lock', 'unlock', 'buy', 'count', 'cap', 'levels'] as const;
+
+/** Reads the stamp service off the run, or null while the game does not expose one (the tab then stays hidden). */
+export function stampsFrom(run: RunApi): StampApi | null {
+  const s: unknown = Reflect.get(run, 'stamps');
+  if (typeof s !== 'object' || s === null) return null;
+  return STAMP_NEEDED.every((k) => isFn(Reflect.get(s, k))) ? (s as StampApi) : null;
+}
+
+/** Step the stamp cursor over the offers, stopping at the ends. */
+export function stepStamp(i: number, dir: 1 | -1): number {
+  return Math.min(STAMP_SLOTS - 1, Math.max(0, i + dir));
+}
+
+/** Offer fingerprint, so the tags, icons and ledger repaint only when something changed. */
+export function stampKey(offers: readonly (StampOffer | null)[]): string {
+  return offers.map((o) => (o ? `${o.kind}:${o.target}:${o.level}:${o.price}:${o.locked ? 1 : 0}` : '-')).join('|');
+}
+
+/** Level pips for the card: one entry per level of the stamp, 'own' = owned, 'next' = what this buy adds, 'free' = still to come. */
+export function stampPips(level: number, max: number): Array<'own' | 'next' | 'free'> {
+  return Array.from({ length: max }, (_, i) => (i < level ? 'own' : i === level ? 'next' : 'free'));
+}
+
+/** Card colour of a stamp kind (0xRRGGBB). */
+export function stampColor(kind: StampOffer['kind']): number {
+  return kind === 'gild' ? 0xffd23c : kind === 'shift' ? 0x62a4ff : 0xe88a48;
+}
+
+/** At most this many stamp offers may be locked at once (stamps.ts MAX_STAMP_LOCKS). */
+export const STAMP_MAX_LOCKS = 1;

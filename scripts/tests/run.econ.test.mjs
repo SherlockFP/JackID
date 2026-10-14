@@ -55,6 +55,25 @@ test('rescueLoan: N coins now, 1.5 N more quota, at least 8 coins', () => {
   assert.equal(b.quota, 1500);
 });
 
+test('WAVE 23 rescueTerms: the quota penalty is at most 1.3 x the cash given, and at least the minimum loan', () => {
+  assert.equal(RES.RESCUE_PENALTY_MAX, 1.3);
+  for (const due of [0, 10, 31, 58, 115, 196, 400, 1100, 4000]) {
+    const l = RES.rescueTerms(due);
+    assert.ok(l.coins >= ECO.RESCUE_MIN, `coins >= RESCUE_MIN at due ${due}`);
+    assert.ok(l.quota <= Math.floor(l.coins * 1.3), `penalty ${l.quota} <= 1.3 x ${l.coins} at due ${due}`);
+    assert.ok(l.quota > 0, 'a loan always adds some quota');
+  }
+  // the playtest case: 49 coins used to add +74 (1.5x); now +63
+  assert.deepEqual(RES.rescueTerms(196), { coins: 49, quota: 63 });
+});
+
+// ── WAVE 23 quota ladder smoothing (flow-fixes) ──────────────────────────────────────────────────────
+test('WAVE 23 ladder: no Night steps up more than 2.2x, and N3 -> N4 is at most 1.6x (was 1.78x, the wall)', () => {
+  const q = SCH.BASE_NIGHTS.map((n) => n.base);
+  for (let i = 1; i < q.length; i++) assert.ok(q[i] / q[i - 1] <= 2.2, `N${i + 1} / N${i} = ${(q[i] / q[i - 1]).toFixed(2)} <= 2.2`);
+  assert.ok(SCH.BASE_NIGHTS[3].base / SCH.BASE_NIGHTS[2].base <= 1.6, 'N3 -> N4 <= 1.6x');
+});
+
 // ── the Watch clock hold ─────────────────────────────────────────────────────────────────────────────
 test('clock hold: holds for its time, release lets go, a forgotten hold expires', () => {
   HOLD.clearClockHolds();
@@ -147,7 +166,7 @@ test('the second press must repeat the same stake, and the arm lapses after 6 s'
 });
 
 // ── the rescue call ──────────────────────────────────────────────────────────────────────────────────
-test('rescue: pocket 0 with the quota unmet rings the Collector loan; taking it pays N now and adds 1.5 N to the quota', () => {
+test('rescue: pocket 0 with the quota unmet rings the Collector loan; taking it pays N now and adds 1.3 N to the quota', () => {
   const run = playing(11);
   const rings = [];
   const off = EV.bus.on('phone:ring', (e) => rings.push(e.callId));
@@ -159,13 +178,13 @@ test('rescue: pocket 0 with the quota unmet rings the Collector loan; taking it 
   assert.ok(call.id >= 1_000_000, 'rescue ids never collide with the hotline');
   assert.equal(call.script, 'hotline.call.rescue');
   assert.equal(call.options.length, 1);
-  assert.match(call.options[0], /^hotline\.deal\.rescue\|c=8\|q=12$/);
+  assert.match(call.options[0], /^hotline\.deal\.rescue\|c=8|q=10$\|q=12$/);
   assert.equal(rings.length, 1);
   run.answerPhone(-1);
   run.answerPhone(0);
   assert.equal(run.phone(), null);
   assert.equal(run.wallet(), 8);
-  assert.equal(run.shift.quota().due, due0 + 12);
+  assert.equal(run.shift.quota().due, due0 + 10);
   off();
   run.dispose();
 });

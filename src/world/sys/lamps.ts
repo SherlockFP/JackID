@@ -11,6 +11,7 @@ import * as THREE from 'three';
 import { bus } from '@/core/events';
 import type { Hex, InstanceId, Unsub } from '@/core/types';
 import type { LightPool } from './lightPool';
+import { app } from '@/core/app';
 
 const HOT_COLOR: Hex = 0xffa040;
 const COLD_COLOR: Hex = 0x4a7dff;
@@ -22,6 +23,7 @@ const COLD_RANGE = 4.5;
 const MOUNT_Y = 2.1;
 const BREATH_HZ = 0.4;
 const BEAM_H = 3.2;
+const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 
 export interface LampGlowOpts {
   pool: Pick<LightPool, 'add' | 'api' | 'lights'>;
@@ -38,8 +40,8 @@ export interface LampGlow {
   dispose(): void;
 }
 
-interface Glow { sprite: THREE.Sprite; sm: THREE.SpriteMaterial; beam: THREE.Mesh; bm: THREE.MeshBasicMaterial }
-interface Live { owner: string; hot: boolean; off: () => void; phase: number; glow: Glow | null }
+interface Glow { sprite: THREE.Sprite; sm: THREE.SpriteMaterial; beam: THREE.Mesh; bm: THREE.MeshBasicMaterial; size: number }
+interface Live { owner: string; hot: boolean; off: () => void; phase: number; glow: Glow | null; at: THREE.Vector3 }
 
 /** Shared textures and column geometry, made on first use (needs a DOM canvas; absent in node, the glow is then light only). */
 interface Shared { halo: THREE.CanvasTexture; beam: THREE.CanvasTexture; hotCol: THREE.CylinderGeometry; coldCol: THREE.CylinderGeometry }
@@ -107,7 +109,7 @@ export function createLampGlow(o: LampGlowOpts): LampGlow {
     beam.position.set(x, y + MOUNT_Y + (hot ? BEAM_H : BEAM_H * 0.6) / 2, z);
     beam.raycast = () => undefined;
     host.add(sprite, beam);
-    return { sprite, sm, beam, bm };
+    return { sprite, sm, beam, bm, size };
   };
 
   const dropGlow = (g: Glow | null): void => {
@@ -138,7 +140,7 @@ export function createLampGlow(o: LampGlowOpts): LampGlow {
     // the scene root the pool's lights hang from (the halo and beam go there too)
     const host = o.pool.lights[0]?.parent ?? null;
     const glow = host ? makeGlow(host, p.x, p.y, p.z, hot) : null;
-    live.push({ owner, hot, off: offLight, phase: (serial++ * 0.618) % 1, glow });
+    live.push({ owner, hot, off: offLight, phase: (serial++ * 0.618) % 1, glow, at: new THREE.Vector3(p.x, p.y + MOUNT_Y, p.z) });
   };
 
   const unsub: Unsub = bus.on('circuit:lamps', (e) => {
@@ -152,17 +154,25 @@ export function createLampGlow(o: LampGlowOpts): LampGlow {
       if (live.length === 0) return;
       clock += dt;
       const amp = o.reduced() ? 0.25 : 1;
+      const cam = app.camera as THREE.Object3D | undefined;
+      const cp = cam?.position;
       for (const l of live) {
+        // WAVE 23: the beacon reads from across the pit. Its distance from the camera (0 close, 1 from ~30 m) lifts the light, the
+        // halo and the beam, so a Hot Lamp seen from far away is the brightest thing in its row.
+        const far = cp ? clamp01((l.at.distanceTo(cp) - 5) / 25) : 0;
         const s = 0.5 + 0.5 * Math.sin(clock * Math.PI * 2 * BREATH_HZ + l.phase * Math.PI * 2);
-        const level = l.hot ? 1 + amp * (0.9 * s - 0.45) : 1 - amp * 0.1 * s;
+        const level = (l.hot ? 1 + amp * (0.9 * s - 0.45) : 1 - amp * 0.1 * s) * (1 + (l.hot ? 0.6 : 0.3) * far);
         o.pool.api.setLevel(l.owner, level, 0);
         if (l.glow) {
+          const g = l.glow;
           if (l.hot) {
-            l.glow.sm.opacity = 0.55 + amp * 0.4 * s;
-            l.glow.bm.opacity = 0.22 + amp * 0.2 * s;
+            g.sm.opacity = Math.min(1, 0.55 + amp * 0.4 * s + 0.4 * far);
+            g.bm.opacity = Math.min(1, 0.22 + amp * 0.2 * s + 0.35 * far);
+            g.sprite.scale.setScalar(g.size * (1 + 1.2 * far));
           } else {
-            l.glow.sm.opacity = 0.35;
-            l.glow.bm.opacity = 0.12;
+            g.sm.opacity = Math.min(1, 0.35 + 0.25 * far);
+            g.bm.opacity = Math.min(1, 0.12 + 0.18 * far);
+            g.sprite.scale.setScalar(g.size * (1 + 0.8 * far));
           }
         }
       }

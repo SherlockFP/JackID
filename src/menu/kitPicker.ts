@@ -4,11 +4,14 @@
  * unlocked is greyed out with its Obol cost. The chosen id goes to `onPick`, and the run carries it as `RunConfig.kit`.
  *
  * Keys: arrows or WASD move, Enter or Space starts. Mouse: click selects, a second click or START starts.
+ * FOUNDATIONS (the button in the foot) opens the meta tree over the picker; the picker's keys wait until it closes.
  * Unlock state: a kit with `obols` > 0 is open when `meta.unlocked` holds `kit:<id>` (see `kitUnlockKey`).
  */
 import { app } from '@/core/app';
 import { has, t } from '@/core/i18n';
 import './kitPicker.css';
+import { openFoundations } from './foundations';
+import { createMetaPrestige } from './foundations.logic';
 
 export interface KitRow { id: string; obols: number }
 interface KitsModule { KITS?: ReadonlyArray<{ id: string; obols?: number; cost?: number; unlockCost?: number }> }
@@ -47,6 +50,8 @@ export function openKitPicker(onPick: (kit: string) => void): void {
   const rows = kitRows();
   let sel = Math.max(0, rows.findIndex((r) => r.id === DEFAULT_KIT));
   let closed = false;
+  /** The Foundations tree is open above the picker: its keys belong to it. */
+  let sub = false;
   const cards: HTMLButtonElement[] = [];
   const statuses: HTMLElement[] = [];
   let startBtn: HTMLButtonElement | null = null;
@@ -102,9 +107,18 @@ export function openKitPicker(onPick: (kit: string) => void): void {
     }
   };
 
+  const openMeta = (): void => {
+    if (closed || sub) return;
+    sub = true;
+    openFoundations({
+      prestige: createMetaPrestige(app.save),
+      onClose: () => { sub = false; if (!closed) render(); },
+    });
+  };
+
   // Capture phase, so the die menu's own key handler never sees these keys while the picker is up.
   const onKey = (e: KeyboardEvent): void => {
-    if (closed) return;
+    if (closed || sub) return;
     const k = e.key;
     let handled = true;
     if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'a' || k === 'A' || k === 'w' || k === 'W') select(sel - 1);
@@ -139,6 +153,9 @@ export function openKitPicker(onPick: (kit: string) => void): void {
     startBtn = el('button', 'kp-start-btn', t('kitpick.start'), foot);
     startBtn.type = 'button';
     startBtn.addEventListener('click', () => commit(sel));
+    const metaBtn = el('button', 'fd-btn alt', t('found.title'), foot);
+    metaBtn.type = 'button';
+    metaBtn.addEventListener('click', () => openMeta());
     render();
     cards[sel]?.focus({ preventScroll: true });
     return () => { window.removeEventListener('keydown', onKey, true); };

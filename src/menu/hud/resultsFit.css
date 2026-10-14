@@ -1,0 +1,23 @@
+/* The Sump receipt, fitted to one window (WAVE 7 foundations): CLIMB AGAIN stays on screen without scrolling. The screen is
+   270 UI px tall (--u), and the receipt used to need about 380 of them at 16 u per row. Here the rows drop to 10 u, the
+   stat rows run two to a line, and the rules and the post-mortem / multi-player lines span both columns. Phone widths
+   (narrow windows) fall back to one column. Loads after results.css, so these rules win. */
+.rcp { gap: calc(4 * var(--u)); padding: calc(6 * var(--u)) 12px; }
+.rcp-paper { margin: auto auto 0; padding: calc(8 * var(--u)) calc(10 * var(--u)); }
+.rcp-sub { font-size: calc(10 * var(--u)); }
+.rcp-title { font-size: calc(8 * var(--u) * 1.3); }
+.rcp-rule { margin: calc(3 * var(--u)) 0; }
+.rcp-body { display: grid; grid-template-columns: 1fr 1fr; column-gap: calc(12 * var(--u)); row-gap: calc(1 * var(--u)); }
+.rcp-body > .rcp-rule { grid-column: 1 / -1; }
+.rcp-line { font-size: calc(10 * var(--u)); line-height: 1.15; gap: calc(6 * var(--u)); }
+.rcp-line.wide { grid-column: 1 / -1; }
+.rcp-stamp { font-size: calc(7 * var(--u)); }
+.rcp-btns { margin: calc(2 * var(--u)) auto 0; gap: calc(6 * var(--u)); }
+.rcp-btn { font-size: calc(7 * var(--u)); padding: calc(5 * var(--u)) calc(8 * var(--u)); }
+.rcp-hint { font-size: calc(7 * var(--u)); }
+@media (max-width: 560px) {
+  .rcp-body { grid-template-columns: 1fr; }
+  .rcp-line { font-size: calc(8 * var(--u)); line-height: 1.1; }
+  .rcp-paper { padding: calc(6 * var(--u)) calc(8 * var(--u)); }
+  .rcp-rule { margin: calc(2 * var(--u)) 0; }
+}

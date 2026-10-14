@@ -18,7 +18,7 @@ import { claimAnnounce, type UIOverlayX } from '@/core/ui/ui';
 import { COLORS, h, uiSfx } from '@/core/ui/widgets';
 import { circuitView, lampLabel, type LampEntry, type LampView } from '@/game/circuit';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
-import type { PlayerId } from '@/core/types';
+import type { InstanceId, PlayerId } from '@/core/types';
 import { initial, mmss, Roller, signed, wallClock } from './hud/fmt';
 import { createProcPops, goldBurst, pegBadge, playProcTick } from './hud/charmProc';
 import './hud/hud.css';
@@ -29,6 +29,8 @@ const PHONE_SECONDS = 10;
 const FEED_LIFE = 6;
 const FEED_MAX = 4;
 const BUFF_REFRESH_S = 0.25;
+/** The Hot Lamp's distance and arrow refresh this often while a Lamp is lit (the text itself is written on change only). */
+const CHASE_S = 0.2;
 
 export interface HudPrompt { action: Action; label: string; sub?: string }
 
@@ -187,31 +189,56 @@ export function createHud(): Hud {
   }
 
   /**
-   * A lamp's short name for the HUD line (WAVE 20): the first word of the machine's name when that word is long enough to
-   * read ("Hi-Lo Ladder" → "Hi-Lo"), else the name cut to 9 characters and an ellipsis. Keeps the Hot / Cold line one line.
+   * WAVE 23 (flow-fixes): the Hot / Cold lines are never cut short. HOT is its own line with the nearest Hot Lamp's name, its
+   * distance and an 8-way arrow from the camera's view ("HOT · Bandit · 14m ↗"); COLD stacks on a second line. Full machine names.
    */
-  const shortName = (n: string): string => {
-    if (n.length <= 10) return n;
-    const first = n.split(/\s+/)[0];
-    return first.length >= 3 ? first : `${n.slice(0, 9)}…`;
-  };
-  /** The machine's display name (`machine.<id>.name` via t()), never its internal id. */
-  const lampName = (e: LampEntry): string => lampLabel(shortName(machineName(e.machineId)), e.dup);
-  /** Up to two short names, then "+N" for the rest: a single line never grows into the Night / Watch line. */
+  const lampName = (e: LampEntry): string => lampLabel(machineName(e.machineId), e.dup);
+  /** Up to two names, then "+N" for the rest. */
   const lampList = (list: LampEntry[]): string => {
     const names = list.slice(0, 2).map(lampName);
     if (list.length > 2) names.push(`+${list.length - 2}`);
     return names.join(', ');
   };
-  function showLamps(v: LampView): void {
-    lampsSeen = v;
-    const hot = lampList(v.hot);
-    const cold = lampList(v.cold);
-    setText(lampHot, hot ? t('circuit.hud.hot', { name: hot }) : '');
-    setText(lampCold, cold ? t('circuit.hud.cold', { name: cold }) : '');
+  const ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
+  const fwdDir = new THREE.Vector3();
+  /** Distance (whole metres) and the 8-way arrow from the player's view to a Lamp's slot; null without a world. */
+  const lampBearing = (mid: InstanceId): { d: number; arrow: string } | null => {
+    const w = app.world, p = app.player, cam = app.camera;
+    const s = w?.slot(mid);
+    if (!w || !p || !cam || !s) return null;
+    const dx = s.pos[0] - p.pos.x, dz = s.pos[2] - p.pos.z;
+    cam.getWorldDirection(fwdDir);
+    const ahead = fwdDir.x * dx + fwdDir.z * dz;
+    const lateral = -fwdDir.z * dx + fwdDir.x * dz;            // right-hand side, as the phone chip
+    const k = ((Math.round(Math.atan2(lateral, ahead) / (Math.PI / 4)) % 8) + 8) % 8;
+    return { d: Math.round(Math.hypot(dx, dz)), arrow: ARROWS[k] };
+  };
+  /** The HOT line: nearest Hot Lamp with its distance and arrow, "+N" for the other Hot Lamps. '' when none. */
+  const hotLine = (list: LampEntry[]): string => {
+    if (list.length === 0) return '';
+    let best: { e: LampEntry; d: number; arrow: string } | null = null;
+    for (const e of list) {
+      const b = lampBearing(e.mid);
+      if (b && (!best || b.d < best.d)) best = { e, ...b };
+    }
+    const parts = [t('hud.lampChase.hot', { name: lampName(best?.e ?? list[0]) })];
+    if (best) parts.push(t('hud.lampChase.dist', { d: best.d, a: best.arrow }));
+    if (list.length > 1) parts.push(`+${list.length - 1}`);
+    return parts.join(' · ');
+  };
+  function renderLamps(): void {
+    const v = lampsSeen;
+    const hot = hotLine(v.hot);
+    const cold = v.cold.length ? t('circuit.hud.cold', { name: lampList(v.cold) }) : '';
+    setText(lampHot, hot);
+    setText(lampCold, cold);
     const none = !hot && !cold && !!v.pocketShort;
     if (none) setText(lampHot, t('lamps.none'));
     setCls(lampsEl, 'hidden', seated || (!hot && !cold && !none));
+  }
+  function showLamps(v: LampView): void {
+    lampsSeen = v;
+    renderLamps();
   }
   const circuit0 = circuitView(app.run);
   if (circuit0) showLamps(circuit0.lamps());
@@ -480,6 +507,15 @@ export function createHud(): Hud {
     while (feedLines.length && feedLines[0].age > FEED_LIFE) feedLines.shift()?.el.remove();
   }
 
+  /** The Hot line follows the player: its distance and arrow are re-read a few times a second while a Hot Lamp is lit. */
+  let chaseLeft = 0;
+  function updateLamps(dt: number): void {
+    chaseLeft -= dt;
+    if (chaseLeft > 0 || lampsSeen.hot.length === 0 || seated) return;
+    chaseLeft = CHASE_S;
+    renderLamps();
+  }
+
   function updateDread(): void {
     const d = app.run ? Math.max(0, Math.min(1, app.run.dread())) : 0;
     dread.style.opacity = String(Math.min(1, 0.35 * d));
@@ -495,6 +531,7 @@ export function createHud(): Hud {
       updatePulls();
       updateCharms();
       updatePhone(dt);
+      updateLamps(dt);
       updateFeed(dt);
       updateDread();
     },

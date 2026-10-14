@@ -17,7 +17,7 @@ import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { psxMaterial } from '@/core/renderer/psxMaterial';
 import { finishTexture } from '@/core/texgen/pixel';
 import type { CharmRarity } from '@/game/types';
-import { ICON_PX, charmIconPix, rarityColor } from './icons';
+import { ICON_PX, charmIconPix, rarityColor, stampIconPix, stampRim, type StampIconSpec } from './icons';
 
 /**
  * One lit charm icon on a cushion: a big unlit badge that floats over the pedestal plus an additive glow pad under it.
@@ -26,6 +26,8 @@ import { ICON_PX, charmIconPix, rarityColor } from './icons';
 export interface CharmIcon {
   readonly root: THREE.Group;
   set(charm: { id: string; rarity: CharmRarity; cursed: boolean; tag?: string } | null, selected: boolean): void;
+  /** The STAMPS tab: a stamp badge on the cushion instead of a charm. */
+  setStamp(stamp: StampIconSpec | null, selected: boolean): void;
   animate(t: number, dt: number): void;
   dispose(): void;
 }
@@ -67,6 +69,17 @@ function buildIcon(i: number): CharmIcon {
       tex.needsUpdate = true;
       glowMat.color.setHex(rarityColor(charm.cursed ? 'cursed' : charm.rarity));
     },
+    setStamp(stamp, selected) {
+      sel = selected;
+      const k = stamp ? `s|${stamp.kind}|${stamp.sym}|${stamp.cells.join(',')}|${selected ? 1 : 0}` : '';
+      if (k === key) return;
+      key = k;
+      root.visible = stamp !== null;
+      if (!stamp) return;
+      stampIconPix(stamp, selected).paintInto(cv);
+      tex.needsUpdate = true;
+      glowMat.color.setHex(stampRim(stamp.kind));
+    },
     animate(t, dt) {
       if (!root.visible) return;
       grow += ((sel ? 1.3 : 1) - grow) * Math.min(1, dt * 10);
@@ -104,7 +117,9 @@ export const COUNTER_H = 1.0;
 export const SHUTTER_DROP = 1.05;
 const WALL_Z = -0.78;
 const COUNTER_Z = 0.25;
-const SLOT_X = [-0.75, -0.25, 0.25, 0.75];
+const SLOT_X = [-0.75, -0.25, 0.25, 0.75, 0, 0.5];
+/** Back row (Second Window shelves, index >= 4): set further back on the counter and tagged on a second line. */
+const BACK_Z = 0.22;
 
 export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CharmVendorParts> {
   const { pal } = kit;
@@ -159,19 +174,22 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CharmVendorPar
   const tags: LabelPart[] = [];
   const icons: CharmIcon[] = [];
   SLOT_X.forEach((x, i) => {
-    kit.cyl(0.08, 0.09, 0.05, pal.felt, at(x, COUNTER_H + 0.025, COUNTER_Z - 0.05, { seg: 10 }));
+    const back = i >= 4;
+    const sz = back ? COUNTER_Z - BACK_Z : COUNTER_Z - 0.05;
+    kit.cyl(0.08, 0.09, 0.05, pal.felt, at(x, COUNTER_H + 0.025, sz, { seg: 10 }));
     const slot = new THREE.Object3D();
-    slot.position.set(x, COUNTER_H + 0.06, COUNTER_Z - 0.05);
+    slot.position.set(x, COUNTER_H + 0.06, sz);
     root.add(slot);
     itemSlots.push(slot);
     const icon = buildIcon(i);
-    icon.root.position.set(x, COUNTER_H + 0.05, COUNTER_Z - 0.05);
+    icon.root.position.set(x, COUNTER_H + 0.05, sz);
     root.add(icon.root);
     icons.push(icon);
     // price plate: directly under its charm. px5 (chunky 5×7 pixel digits) at integer scale, 384 × 112 texels
     // (≈ 835 px/m, nearest-sampled, no mips) so every digit is whole texels and the figure reads from the seat.
     const tag = kit.label({ text: '--', w: 0.46, h: 0.16, px: [384, 112], color: pal.gold, bg: pal.black, font: 'px5' });
-    tag.mesh.position.set(x, COUNTER_H - 0.2, COUNTER_Z + D / 2 + 0.04);
+    tag.mesh.position.set(x, COUNTER_H - (back ? 0.4 : 0.2), COUNTER_Z + D / 2 + 0.04);
+    if (back) tag.mesh.visible = false;
     root.add(tag.mesh);
     tags.push(tag);
     if (i === 3) {

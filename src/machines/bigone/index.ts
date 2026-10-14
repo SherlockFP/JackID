@@ -17,7 +17,7 @@ import type * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
-import { countUp, blinkOn } from '@/machines/_base/juice';
+import { countUp, blinkOn, emitComboShow, flashPrefs } from '@/machines/_base/juice';
 import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { KitX } from '@/kit';
 import { fmtCoins, t as tr } from '@/core/i18n';
@@ -31,8 +31,16 @@ import {
 } from './rules';
 import { STRINGS } from './strings';
 import { SYMBOL_BG, paintSymbol } from './symbols';
+import { COMBO_MIN, IDLE_HZ, LIVE_HZ, comboPlan, hzCap, symFrame, type FlashOpts } from './show';
+import { gildLevels } from './stamps';
 
 export { playHeadless };
+
+/** Player flash settings (reduceFlashing / Calm). Missing save data reads as both off. */
+function flashOpts(): FlashOpts { return flashPrefs(); }
+
+/** Visible facet of each row (row 0 top, 1 middle, 2 bottom): facet 1 = top, 0 = middle, 15 = bottom (see paintReel). */
+const FACET_OF_ROW = [1, 0, 15] as const;
 
 /** Event payloads (type aliases so they stay JSON-compatible). */
 type PayEv = { pat: string; sym: number; cells: number[]; amount: number; raw: number; combo: number };
@@ -127,6 +135,11 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   private inRound = false;
   /** The stake of the last settled spin: the WIN line on the top screen shows its net against this. */
   private lastStake = 0;
+  /** Last painted key per cell (-1 = repaint) for the render-rate symbol frames. */
+  private symKey = new Int16Array(CELLS).fill(-1);
+  /** Combo show: a new show bumps `comboSeq` so an older show's timers do nothing; `comboOn` keeps the celebrate from taking the bulbs. */
+  private comboSeq = 0;
+  private comboOn = false;
 
   protected createModel(kit: KitX): MachineModel<BigOneParts> {
     return buildModel(kit, this.modelOpts);
@@ -422,6 +435,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     if (ev.fill) { s.tally = []; return this.presentJackpot(ev, pc); }
 
     s.tally = ev.tally.map((t) => ({ ...t }));
+    // three or more patterns start the combo light show (it runs through the tally and the celebration)
+    if (!pc.fast && ev.tally.length >= COMBO_MIN) this.startCombo(ev.tally.length);
     // the tally: one pattern at a time, smallest first. Each one lights, rings a higher note, and counts the total up
     if (!pc.fast && ev.tally.length) { await this.tallyShow(ev.tally, pc.local); if (pc.local) this.callout(this.netOf(ev.gross, ev.stake, pc.local)); }
     else for (const pay of ev.tally) this.lightPay(pay, false);
@@ -431,7 +446,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       // The pop shows the same net as the WIN callout; the multiplier (gross / stake) still sets the feel.
       await this.celebrate(juiceTier(ev.gross, ev.stake, ev.tags), {
         amount: Math.max(0, this.netOf(ev.gross, ev.stake, pc.local)), mult: ev.gross / Math.max(1, ev.stake),
-        bet: ev.stake, bulbs: this.parts.bulbs.window, lamps: this.parts.paylineLamps, restore: () => this.bulbsIdle(), fast: pc.fast,
+        bet: ev.stake, bulbs: this.comboOn ? undefined : this.parts.bulbs.window, lamps: this.parts.paylineLamps,
+        restore: () => { if (!this.comboOn) this.bulbsIdle(); }, fast: pc.fast,
       });
     } else {
       this.commiserate({ amount: ev.stake, at: this.parts.screens.top.mesh });
@@ -439,6 +455,69 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     }
     this.clearHighlights();
     this.drawScreen();
+  }
+
+  /**
+   * The combo light show, started by a tally of COMBO_MIN patterns or more: the crown comets, then runs its rainbow
+   * (or a chase under Calm / reduceFlashing), the window bulbs march, and `show:combo` tells the world and the nearby
+   * machines. Each new show bumps `comboSeq`, so a finished show never resets the bulbs of a newer one.
+   */
+  private startCombo(n: number): void {
+    const plan = comboPlan(n, flashOpts());
+    const seq = ++this.comboSeq;
+    const b = this.parts.bulbs;
+    this.comboOn = true;
+    b.crown.setPattern('comet', plan.cometHz);
+    b.window.setPattern('march', plan.marchHz);
+    this.sfx('chime', { vol: 0.5 });
+    emitComboShow(this.ctx, b.window.root, n, plan.totalS);
+    void this.wait(plan.cometS).then(() => {
+      if (seq === this.comboSeq && !this.disposed) b.crown.setPattern(plan.crown, plan.crownHz);
+    });
+    void this.wait(plan.totalS).then(() => {
+      if (seq !== this.comboSeq || this.disposed) return;
+      this.comboOn = false;
+      this.bulbsIdle();
+    });
+  }
+
+  /**
+   * Render-rate symbol animation (runs only while the machine is visible). Winning cells (lit) cycle their symbol
+   * frames at LIVE_HZ, the rest idle slowly, and every stamped symbol carries its gold paint. Only the three visible
+   * facets of a cell are repainted, and only when its frame key changes, so the strip uploads stay rare.
+   */
+  override frame(_dt: number, t: number): void {
+    if (this.disposed || this.state.grid.length !== CELLS) return;
+    const o = flashOpts();
+    const gild = gildLevels();
+    const liveHz = hzCap(LIVE_HZ, o);
+    const dirty = [false, false, false, false, false];
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 5; c++) {
+        const cell = r * 5 + c;
+        const sym = this.state.grid[cell];
+        if (!(sym >= 0) || sym === MAW) continue;
+        const live = this.cellLvl[cell] > 0;
+        const f = symFrame(t, live ? liveHz : IDLE_HZ, live ? 0 : cell * 0.61);
+        const gilt = gild[sym] ?? 0;
+        const key = (sym * 4 + f) * 4 + gilt;
+        if (this.symKey[cell] === key) continue;
+        this.symKey[cell] = key;
+        this.paintFacet(c, FACET_OF_ROW[r], sym, f, gilt);
+        dirty[c] = true;
+      }
+    }
+    for (let c = 0; c < 5; c++) if (dirty[c]) this.parts.reels[c].strip.needsUpdate = true;
+  }
+
+  /** Repaint one symbol facet of reel `reel` (32 px high, `facet` · 32 down the strip). */
+  private paintFacet(reel: number, facet: number, sym: number, f: number, gilt: number): void {
+    const g = this.parts.reels[reel].canvas.getContext('2d');
+    if (!g) return;
+    const y = facet * 32;
+    g.fillStyle = SYMBOL_BG;
+    g.fillRect(0, y, 32, 32);
+    paintSymbol(g, sym, 0, y, f, gilt);
   }
 
   /** The count-up, pattern by pattern (MACHINES §2 juice): the screen lists what has paid and the running total. */
@@ -545,6 +624,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     const reel = this.parts.reels[i];
     const g = reel.canvas.getContext('2d');
     if (!g) return;
+    const gild = gildLevels();
     for (let f = 0; f < 16; f++) {
       const y = f * 32;
       g.fillStyle = SYMBOL_BG;
@@ -554,9 +634,11 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       else if (f === 1) sym = grid[i];
       else if (f === 15) sym = grid[10 + i];
       else sym = this.cosmetic.int(0, SYM_COUNT - 1);
-      paintSymbol(g, sym, 0, y);
+      paintSymbol(g, sym, 0, y, 0, gild[sym] ?? 0);
     }
     reel.strip.needsUpdate = true;
+    // the visible facets now hold resting frames: the render-rate animation repaints them on its next pass
+    for (let r = 0; r < 3; r++) this.symKey[r * 5 + i] = -1;
   }
 
   /** Cell frame glow: 0 dark, 1 lined up (soft), 2 the pattern being tallied (strong). */

@@ -38,14 +38,15 @@ import {
   type CircuitSave, type CircuitView, type LampCandidate, type LampView, type TiltView,
 } from './circuit';
 import {
-  PAYOUT_GUARD, RESCUE_MAX_PER_NIGHT, STAKE_CONFIRM_SEC, bettingLadder, charmPrice, houseFloatTopUp, night1StakeCap, rescueLoan, settlePayout, snapDown,
+  PAYOUT_GUARD, RESCUE_MAX_PER_NIGHT, STAKE_CONFIRM_SEC, bettingLadder, charmPrice, houseFloatTopUp, night1StakeCap, settlePayout, snapDown,
   stakeNeedsConfirm, type PayoutResult, type RescueLoan,
 } from './economy';
 import { clearClockHolds, clockHeld, holdClock, releaseClock, tickClockHold } from './clockHold';
-import { createRescue, type RescueLine } from './rescue';
+import { createRescue, rescueTerms, type RescueLine } from './rescue';
 import { bestBetFloor, depositRoom, floorFor, pocketDead } from './float';
 import { Charms, PEG_CAP_RUN, allCharmDefs, choiceOffer, charmDef } from './charms/engine';
-import { Pawn, type PawnSnapshot } from './shop';
+import { Pawn, sellRefund, type PawnSnapshot } from './shop';
+import { StampBook, setActiveStampBook, type StampSnapshot } from './stamps';
 import { scopeTags } from './suits';
 import { paceOf, oddsLine, type OddsLine } from './pace';
 import { profileOf } from './data/machineProfiles';
@@ -164,6 +165,8 @@ export interface RunExt {
   freeRerolls: number; skipRest: number;
   /** Pawn Window stock (wave 8). Optional: older saves have none. */
   pawn?: PawnSnapshot;
+  /** Symbol Stamps owned and the board (Pawn STAMPS tab). Optional: older saves have none. */
+  stamps?: StampSnapshot;
   /** Rounds opened per machine id (the Pawn's most-played machine). Optional. */
   plays?: Record<string, number>;
   /** Legacy (pre-wave 8 reroll counter), ignored. */
@@ -248,6 +251,8 @@ export interface DebtRun extends RunApi {
   buyPull(): boolean;
   /** Pawn Window stock keeper (wave 8): stock, locks, rerolls, swap. The charm vendor reads it. */
   readonly pawn: Pawn;
+  /** Symbol Stamps (Big One upgrades bought at the Pawn). */
+  readonly stamps: StampBook;
   /** Sell a charm for 50 % (70 % with Pawn Ticket). Cursed charms cannot be sold. */
   sellCharm(id: string): boolean;
   /** Topside: STAY UP ends the run as a win. */
@@ -372,6 +377,7 @@ class Run implements DebtRun {
   readonly buffs: BuffsApi;
   readonly totems: TotemsApi;
   readonly pawn: Pawn;
+  readonly stamps: StampBook;
   readonly collateral: CollateralApi;
   readonly nightEvents: NightEventsApi;
   readonly contracts: ContractsApi;
@@ -435,6 +441,7 @@ class Run implements DebtRun {
   private boughtThisWatch = 0;
   private freeRerolls = 0;
   private pawnRev = 0;
+  private stampRev = 0;
   private readonly lastBet = new Map<string, number>();
   private oddsKey = '';
   private baseEventChance = 0.35;
@@ -610,6 +617,9 @@ class Run implements DebtRun {
     this.totems = this.itemSys.totems;
 
     this.pawn = this.makePawn();
+    this.stamps = this.makeStamps();
+    this.modsImpl.register(this.stamps);
+    setActiveStampBook(this.stamps);
     this.collateral = inert<CollateralApi>('collateral', {});
     this.contracts = this.makeContractsApi();
     this.unsubs.push(
@@ -635,6 +645,7 @@ class Run implements DebtRun {
       this.recomputeQuota();
       this.enter(this.rules.timed ? 'intermission' : 'play', 0);
       this.applyStartKit();
+      this.applyMetaStart();
     }
     this.prepareBoss();
   }
@@ -832,13 +843,19 @@ class Run implements DebtRun {
     return true;
   }
 
+  /** What a charm sells for: 50 % (70 % with a Pawn Ticket), raised by `x.charm.sellValue` (Foundations V6). Cursed charms: 0. */
+  private sellValue(id: string): number {
+    const def = charmDef(id);
+    if (!def || def.rarity === 'cursed') return 0;
+    return sellRefund(charmPrice(def, this.shiftState.stake), this.mod('x.charm.sellValue', RUN_MACHINE, 0.5), this.charmBox.has(this.selfId, 'pawn_ticket'));
+  }
+
   sellCharm(id: string): boolean {
     const def = charmDef(id);
     if (!def || def.rarity === 'cursed') return false;
     if (this.quotaMode && this.phase !== 'intermission') return false;
-    const pawnTicket = this.charmBox.has(this.selfId, 'pawn_ticket');
+    const got = this.sellValue(id);
     if (!this.charmBox.remove(this.selfId, id)) return false;
-    const got = Math.floor(charmPrice(def, this.shiftState.stake) * (pawnTicket ? 0.7 : 0.5));
     this.coins += got;
     this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: got, reason: `sell:${id}` });
     this.notify();
@@ -939,6 +956,7 @@ class Run implements DebtRun {
       if (this.sinceFlush >= SAVE_SOON_SEC) this.persist();
     }
     if (this.pawn.rev !== this.pawnRev) { this.pawnRev = this.pawn.rev; this.persistSoon(); }
+    if (this.stamps.rev !== this.stampRev) { this.stampRev = this.stamps.rev; this.persistSoon(); }
     const head = this.overpays[0];
     if (head) {
       head.left -= dt;
@@ -1104,6 +1122,7 @@ class Run implements DebtRun {
   takeIdleReport(): IdleReport | null { return this.tycoonSys.takeIdleReport(); }
   dispose(): void {
     this.unsubs.splice(0).forEach((u) => u());
+    setActiveStampBook(null);
     this.hotline.dispose();
     this.rescue.dispose();
     clearClockHolds();
@@ -1262,6 +1281,7 @@ class Run implements DebtRun {
     this.rescue.hangUp();
     this.clock.stop();
     this.enter('over', 0);
+    if (this.quotaMode && (result === 'escaped' || (result as string) === 'won')) this.tycoonSys.recordWin(this.index + 1);
     const obols = this.quotaMode ? this.runObols(result, ending) : undefined;
     const summary: RunSummary = {
       mode: this.mode, seed: this.seed, result, floor: this.index + 1, deadlines: this.index + 1, maxWallet: this.maxWallet,
@@ -1614,7 +1634,7 @@ class Run implements DebtRun {
     // Later Watches cannot be counted on either: the pocket stays empty, so they would forfeit as well.
     if (this.watchPulls >= ACTIVITY_MIN_PULLS) d += interestFor(d, due, rate);
     if (d >= due) return;
-    const loan = rescueLoan(due);
+    const loan = rescueTerms(due);
     if (this.rescue.ring(loan)) this.emit('run:rescue', { pid: this.selfId, state: 'ring', coins: loan.coins, quota: loan.quota, due });
   }
 
@@ -1738,6 +1758,7 @@ class Run implements DebtRun {
         this.persistSoon();
         return true;
       },
+      mod: (hook, base) => this.mod(hook, RUN_MACHINE, base),
       freeRerolls: () => this.freeRerolls,
       useFreeReroll: () => {
         if (this.freeRerolls <= 0) return false;
@@ -1747,11 +1768,7 @@ class Run implements DebtRun {
       },
       buyCharm: (id, price) => this.buyCharm(id, price),
       sellCharm: (id) => this.sellCharm(id),
-      sellValue: (id) => {
-        const def = charmDef(id);
-        if (!def || def.rarity === 'cursed') return 0;
-        return Math.floor(charmPrice(def, this.shiftState.stake) * (this.charmBox.has(this.selfId, 'pawn_ticket') ? 0.7 : 0.5));
-      },
+      sellValue: (id) => this.sellValue(id),
       removeCurse: (id) => {
         const ok = this.charmBox.remove(this.selfId, id);
         if (ok) { this.notify(); this.persist(); }
@@ -1775,6 +1792,51 @@ class Run implements DebtRun {
       },
       explain: (machineId) => this.explain('payout.mult', machineId, 1, { pid: this.selfId }),
     });
+  }
+
+  /** Symbol Stamps (Pawn STAMPS tab): the same Night / Watch offset as the Pawn, priced off the Night's base quota. */
+  private makeStamps(): StampBook {
+    return new StampBook({
+      rng: () => this.rng,
+      night: () => (this.nightDone && !this.topside ? this.index + 1 : this.index),
+      watch: () => (this.nightDone && !this.topside ? 0 : this.watch),
+      open: () => this.phase === 'intermission' && !this.ended,
+      baseQuota: () => nightDef(this.nightDone && !this.topside ? this.index + 1 : this.index).base,
+      wallet: () => this.coins,
+      tickets: () => this.tickets,
+      spend: (c, reason) => {
+        if (c < 0 || this.coins < c) return false;
+        this.coins -= c;
+        this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: -c, reason });
+        this.notify();
+        this.persistSoon();
+        return true;
+      },
+      spendTickets: (n) => {
+        if (n < 0 || this.tickets < n) return false;
+        this.tickets -= n;
+        this.notify();
+        this.persistSoon();
+        return true;
+      },
+      touch: () => this.modsImpl.touch(),
+      patternUnlocked: (id) => {
+        if (id !== 'TWIN_RAILS' && id !== 'CORNERSTONE') return true;
+        return this.mod('x.bigone.extraPattern', 'bigone', 0) >= 1 || this.tycoonSys.hasFeature('bigone', 'bigone.extraPattern.' + id);
+      },
+    });
+  }
+
+  /** Foundations V1 / V2: start pocket and start Tickets, added on top of the base or the kit. Debt run only. */
+  private applyMetaStart(): void {
+    if (!this.quotaMode) return;
+    const pocket = Math.max(0, Math.round(this.mod('x.start.pocket', RUN_MACHINE, START.pocket)) - START.pocket);
+    const tickets = Math.max(0, Math.round(this.mod('x.start.tickets', RUN_MACHINE, START.tickets)) - START.tickets);
+    if (pocket <= 0 && tickets <= 0) return;
+    this.coins += pocket;
+    this.maxWallet = Math.max(this.maxWallet, this.coins);
+    this.tickets = Math.min(TICKET_CAP, this.tickets + tickets);
+    this.persist();
   }
 
   /** Kit from `RunConfig.kit` (debt run start): wallet, Tickets, charms and the pre-deposit toward the first quota. */
@@ -1869,7 +1931,7 @@ class Run implements DebtRun {
       pulls: this.pullCount, pullsMax: this.pullsMax, watchPulls: this.watchPulls, boughtThisWatch: this.boughtThisWatch,
       tickets: this.tickets, debtPaid: this.debtPaid, released: this.released, ledger: { ...this.ledger }, dreadPts: this.dreadPts,
       freeRerolls: this.freeRerolls, skipRest: this.skipRest,
-      pawn: this.pawn.snapshot(), plays: Object.fromEntries(this.plays),
+      pawn: this.pawn.snapshot(), stamps: this.stamps.snapshot(), plays: Object.fromEntries(this.plays),
       discount: this.discount, nextDiscount: this.nextDiscount, elapsed: this.elapsed,
       maxWallet: this.maxWallet, biggest: this.biggest, rounds: this.rounds,
       rng: this.rng.getState(),
@@ -2117,6 +2179,7 @@ class Run implements DebtRun {
     if (e.ledger) this.ledger = { ...e.ledger };
     this.freeRerolls = e.freeRerolls; this.skipRest = e.skipRest;
     if (e.pawn) this.pawn.restore(e.pawn);
+    if (e.stamps) this.stamps.restore(e.stamps);
     this.plays.clear();
     for (const [id, n] of Object.entries(e.plays ?? {})) this.plays.set(id, n);
     this.discount = e.discount; this.nextDiscount = e.nextDiscount; this.elapsed = e.elapsed;

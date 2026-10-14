@@ -35,12 +35,12 @@
 .hud .phase { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 .hud .night { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 /* THE CIRCUIT: Hot / Cold Lamps line under the night line (walk mode) */
-/* WAVE 20: ONE line (hot | cold side by side, short names from hud.ts). It sits below the Night / Watch line in the top-centre
-   column, in flow, so it can never overlap it; anything too long is ellipsed rather than wrapped down into the marquees. */
-.hud .lamps { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: calc(6 * var(--u));
-  max-width: min(56vw, calc(240 * var(--u))); overflow: hidden;
+/* WAVE 23: two stacked lines (HOT above COLD) in flow under the Night / Watch line, so nothing overlaps it and nothing is cut. */
+.hud .lamps { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(2 * var(--u));
+  max-width: min(60vw, calc(300 * var(--u)));
   font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1.2; white-space: nowrap; text-align: center; }
-.hud .lamps span { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* WAVE 23: HOT and COLD stack on their own lines and are never cut with an ellipsis; a long name wraps instead. */
+.hud .lamps span { display: block; max-width: 100%; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 .hud .lamps .hot { color: #ff5a3a; }
 .hud .lamps .cold { color: #5aa0ff; }
 .hud .lamps span:empty { display: none; }

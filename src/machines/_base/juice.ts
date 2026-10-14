@@ -35,7 +35,29 @@ declare module '@/core/events' {
     'juice:pitWave': { x: number; y: number; z: number; radius: number; dur: number };
     /** Floor lights strobe for the length of a mega win or jackpot show. */
     'juice:floorStrobe': { tier: WinTier; hz: number; dur: number; color: Hex };
+    /** A machine's combo light show (Big One, 3+ patterns): the world flicks at x,y,z; nearby machines twinkle (see comboTwinkle). */
+    'show:combo': ComboShowEv;
   }
+}
+
+/** Combo light show broadcast.  = the emitting instance; positions are world space. */
+/** Player flash settings. Machines may not import the app core, so the story layer registers the reader (`setFlashPrefsHost`). */
+export interface FlashPrefs { reduced: boolean; calm: boolean }
+let flashHost: (() => FlashPrefs) | null = null;
+export function setFlashPrefsHost(fn: (() => FlashPrefs) | null): void { flashHost = fn; }
+export function flashPrefs(): FlashPrefs {
+  try { return flashHost?.() ?? { reduced: false, calm: false }; } catch { return { reduced: false, calm: false }; }
+}
+
+export interface ComboShowEv {
+  mid: string;
+  x: number; y: number; z: number;
+  /** Patterns in the tally that started the show. */
+  n: number;
+  /** Reach of the twinkle, metres. */
+  radius: number;
+  /** Show length, seconds. */
+  dur: number;
 }
 
 /** What juice needs from a machine; `MachineBase` satisfies it. */
@@ -349,6 +371,28 @@ export function pourCoins(host: JuiceHost, amount: number, o: PourOpts = {}): Pr
 /** Eased integer count-up on the sim clock (LED windows, "WIN 1,250"). Resolves at the end. */
 export function countUp(ctx: MachineContext, from: number, to: number, dur: number, onValue: (v: number) => void): Promise<void> {
   return ctx.tweens.run(dur, (k) => onValue(Math.round(lerp(from, to, k))), { ease: 'outCubic' }).promise;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// Combo light show (Big One and any machine that wants to answer it)
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+/** Broadcast a combo show from `root` (the machine's world position). Other machines answer with comboTwinkle. */
+export function emitComboShow(ctx: MachineContext, root: THREE.Object3D, n: number, dur: number, radius = 9): void {
+  root.getWorldPosition(tmpV3a);
+  ctx.events.emit('show:combo', { mid: String(ctx.instanceId), x: tmpV3a.x, y: tmpV3a.y, z: tmpV3a.z, n, radius, dur });
+}
+
+/**
+ * A nearby machine's answer to `show:combo`: one soft gold pulse on its own lamps, scaled by distance (none past
+ * `radius`). Wire it in `init()` with `bus.on('show:combo', (e) => comboTwinkle(this.ctx, this.model.root, e))` and
+ * keep the unsubscribe for `dispose()`. One pulse per show, so it stays inside the flash caps.
+ */
+export function comboTwinkle(ctx: MachineContext, root: THREE.Object3D, ev: ComboShowEv): void {
+  if (String(ctx.instanceId) === ev.mid) return;
+  root.getWorldPosition(tmpV3a);
+  const d = Math.hypot(tmpV3a.x - ev.x, tmpV3a.y - ev.y, tmpV3a.z - ev.z);
+  if (!(d <= ev.radius)) return;
+  ctx.fx.lightPulse(root, { color: GOLD_WAVE, mul: 1 + 0.5 * (1 - d / ev.radius), dur: Math.min(1, ev.dur) });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────

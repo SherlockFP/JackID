@@ -28,11 +28,12 @@ import type { KitX } from '@/kit';
 import { fmtNum, t as tr } from '@/core/i18n';
 import { lerp } from '@/core/math';
 import { buildModel, SHUTTER_DROP, type CharmVendorParts } from './model';
-import { charmIconPix, rarityColor } from './icons';
+import { charmIconPix, rarityColor, stampIconPix } from './icons';
 import './pawnCard.css';
 import {
-  BUY_CONFIRM_S, LOCK_TICKETS, MAX_LOCKS, REMOVE_CURSE_TICKETS, SLOTS, buyJuice, multText, pawnFrom, priceText, stepIndex, stepSlot,
-  stockKey, type PawnApi, type PawnSlot, type SwapChoice,
+  BUY_CONFIRM_S, LOCK_TICKETS, MAX_LOCKS, REMOVE_CURSE_TICKETS, SLOTS, SLOTS_MAX, buyJuice, multText, pawnFrom, priceText, stepIndex, stepSlot,
+  stockKey, STAMP_MAX_LOCKS, STAMP_SLOTS, stampColor, stampKey, stampPips, stampsFrom, stepStamp,
+  type PawnApi, type PawnSlot, type StampApi, type StampOffer, type SwapChoice,
 } from './rules';
 
 type Juice = 'plain' | 'rare' | 'legend' | 'cursed';
@@ -41,7 +42,14 @@ type Ev =
   | { k: 'buy'; i: number; charmId: string; price: number; juice: Juice; ok: boolean; why: string }
   | { k: 'reroll'; ok: boolean; why: string }
   | { k: 'lock'; i: number; ok: boolean; why: string; off?: boolean }
-  | { k: 'curse'; charmId: string; ok: boolean; why: string };
+  | { k: 'curse'; charmId: string; ok: boolean; why: string }
+  /** The STAMPS tab: a stamp purchase, a reroll of the board, a lock. */
+  | { k: 'sbuy'; i: number; kind: StampOffer['kind']; target: string; ok: boolean; why: string }
+  | { k: 'sreroll'; ok: boolean; why: string }
+  | { k: 'slock'; i: number; ok: boolean; why: string; off?: boolean };
+
+/** The selected card's DOM parts. */
+interface PawnCard { el: HTMLElement; icon: HTMLCanvasElement; name: HTMLElement; meta: HTMLElement; price: HTMLElement; desc: HTMLElement; note: HTMLElement; pips: HTMLElement }
 
 const GOLD = 0xffd040;
 const BLUE = 0x60a0ff;
@@ -162,7 +170,12 @@ export const playHeadless: HeadlessPlay = () => ({ gross: 0, tags: [] });
 
 export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null> {
   private cursor = 0;
+  /** Shelves shown (SLOTS plus Second Window extras). */
+  private slotN = SLOTS;
   private stockCache: readonly (PawnSlot | null)[] = [];
+  /** 0 = CHARMS, 1 = STAMPS (local to the seated player; the shelf shows charms for everyone else). */
+  private tab: 0 | 1 = 0;
+  private stampCache: readonly (StampOffer | null)[] = [];
   private repaintKey = '';
   private hudKey = '';
   /** Seat HUD overlay (created in init, shown while seated). */
@@ -174,7 +187,9 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   /** First Space on a buyable slot: the price shows and a second Space on the same slot buys, within BUY_CONFIRM_S. */
   private armed: { i: number; left: number } | null = null;
   /** The selected charm's card (DOM, crisp text): name, rarity, effect. */
-  private card?: { el: HTMLElement; icon: HTMLCanvasElement; name: HTMLElement; meta: HTMLElement; price: HTMLElement; desc: HTMLElement; note: HTMLElement };
+  private card?: PawnCard;
+  /** The CHARMS | STAMPS tab strip above the card. */
+  private tabs?: { el: HTMLElement; charms: HTMLElement; stamps: HTMLElement };
   private cardKey = '';
   private uiBlocked = false;
   private offBlock: (() => void) | null = null;
@@ -198,6 +213,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
 
   // ── run state (every peer) ──────────────────────────────────────────────────────────────────────
   private pawn(): PawnApi | null { return pawnFrom(this.ctx.run); }
+  private stamps(): StampApi | null { return stampsFrom(this.ctx.run); }
   private open(): boolean { const p = this.pawn(); return p !== null && p.open(); }
   private wallet(): number { return this.ctx.run.wallet(this.selfId); }
   private tickets(): number { return this.ctx.run.balance('ticket', this.selfId); }
@@ -229,12 +245,14 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     this.offHint?.(); this.offHint = null;
     window.removeEventListener('resize', this.onResize);
     this.card?.el.remove(); this.card = undefined;
+    this.tabs?.el.remove(); this.tabs = undefined;
     this.seatHud?.dispose();
     super.dispose();
   }
 
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.cursor = 0;
+    this.tab = 0;
     this.idle = 0;
     this.armed = null;
     if (local) {
@@ -248,6 +266,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
     this.swap = null;
+    this.tab = 0;
     this.armed = null;
     if (local) {
       this.seatHud?.hide(); this.hudKey = '';
@@ -271,6 +290,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     if (e.repeat) return;
     this.idle = 0;
     if (this.swap) { this.onSwapInput(e); return; }
+    if (e.action === 'secondary') { this.toggleTab(); return; }
+    if (this.tab === 1) { this.onStampInput(e); return; }
     switch (e.action) {
       case 'left': this.stepCursor(-1); return;
       case 'right': this.stepCursor(1); return;
@@ -291,7 +312,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
 
   /** A/D (or ←/→) step one slot. The ends stop the cursor (no wrap) and say so; every slot, empty ones too, is landed on. */
   private stepCursor(dir: 1 | -1): void {
-    const next = stepSlot(this.cursor, dir);
+    const next = stepSlot(this.cursor, dir, this.slotN);
     if (next === this.cursor) { this.sfx('buzzer', { vol: 0.4 }); return; }
     this.moveCursor(next);
   }
@@ -359,6 +380,91 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     }
   }
 
+  // ── STAMPS tab (game/stamps.ts, read from run.stamps) ─────────────────────────────────────────────
+  private toggleTab(): void {
+    if (!this.stamps()) { this.sfx('buzzer', { vol: 0.4 }); return; }
+    this.tab = this.tab === 1 ? 0 : 1;
+    this.cursor = 0;
+    this.armed = null;
+    this.cardKey = '';
+    this.sfx('click');
+    this.refresh(true);
+  }
+
+  private onStampInput(e: MachineInputEvent): void {
+    switch (e.action) {
+      case 'left': this.stepStampCursor(-1); return;
+      case 'right': this.stepStampCursor(1); return;
+      case 'n1': case 'n2': case 'n3': this.moveCursor(Number(e.action.slice(1)) - 1); return;
+      case 'primary': case 'confirm': this.buyStamp(this.cursor); return;
+      case 'alt': this.rerollStamps(); return;
+      case 'double': this.lockStamp(this.cursor); return;
+    }
+  }
+
+  private stepStampCursor(dir: 1 | -1): void {
+    const next = stepStamp(this.cursor, dir);
+    if (next === this.cursor) { this.sfx('buzzer', { vol: 0.4 }); return; }
+    this.moveCursor(next);
+  }
+
+  /** Two presses like a charm: the first arms the offer (the price shows), the second inside BUY_CONFIRM_S buys. */
+  private buyStamp(i: number): void {
+    const st = this.stamps();
+    const fail = (why: string, o?: StampOffer | null): void => { this.armed = null; void this.emit({ k: 'sbuy', i, kind: o?.kind ?? 'gild', target: o?.target ?? '', ok: false, why }); };
+    if (!st || !st.open()) { fail('stamp.why.closed'); return; }
+    const o = st.offers()[i] ?? null;
+    if (!o) { fail('stamp.why.none'); return; }
+    if (st.count() >= st.cap()) { fail('stamp.why.full', o); return; }
+    if (!this.ctx.run.canAfford(o.price, this.selfId)) { fail('stamp.why.funds', o); return; }
+    if (this.armed?.i !== i) {
+      this.armed = { i, left: BUY_CONFIRM_S };
+      this.sfx('hover');
+      this.refresh(true);
+      return;
+    }
+    this.armed = null;
+    void this.emit(
+      { k: 'sbuy', i, kind: o.kind, target: o.target, ok: true, why: '' },
+      () => { const r = st.buy(i); if (!r.ok) this.ctx.ui.toast(tr(r.why === 'funds' ? 'stamp.why.funds' : r.why === 'full' ? 'stamp.why.full' : 'stamp.why.fail'), 'bad'); },
+    );
+  }
+
+  private rerollStamps(): void {
+    const st = this.stamps();
+    if (!st || !st.open()) { void this.emit({ k: 'sreroll', ok: false, why: 'stamp.why.closed' }); return; }
+    if (!st.canReroll()) { void this.emit({ k: 'sreroll', ok: false, why: 'stamp.why.noReroll' }); return; }
+    const ok = this.tickets() >= st.rerollCost();
+    void this.emit({ k: 'sreroll', ok, why: ok ? '' : 'stamp.why.tickets' }, ok ? () => { st.reroll(); } : undefined);
+  }
+
+  private lockStamp(i: number): void {
+    const st = this.stamps();
+    if (!st || !st.open()) { void this.emit({ k: 'slock', i, ok: false, why: 'stamp.why.closed' }); return; }
+    const offers = st.offers();
+    const o = offers[i] ?? null;
+    if (!o) { void this.emit({ k: 'slock', i, ok: false, why: 'stamp.why.none' }); return; }
+    if (o.locked) { void this.emit({ k: 'slock', i, ok: true, why: '', off: true }, () => { st.unlock(i); }); return; }
+    const locks = offers.filter((x) => x?.locked).length;
+    const ok = this.tickets() >= LOCK_TICKETS && locks < STAMP_MAX_LOCKS;
+    void this.emit({ k: 'slock', i, ok, why: ok ? '' : locks >= STAMP_MAX_LOCKS ? 'stamp.why.lockFull' : 'stamp.why.tickets' }, ok ? () => { st.lock(i); } : undefined);
+  }
+
+  /** "GILD: Sun", "ETCH: Trey" (the card title and the pop-up). */
+  private stampTitle(kind: StampOffer['kind'], target: string): string {
+    return tr('stamp.title', { kind: tr(`stamp.kind.${kind}`), name: tr(kind === 'etch' ? `stamp.pat.${target}` : `stamp.sym.${target}`) });
+  }
+
+  /** The effect of an offer in plain words, one sentence per line. */
+  private stampDesc(o: StampOffer): string {
+    const f = (n: number): string => String(Math.round(n * 100) / 100);
+    const name = tr(o.kind === 'etch' ? `stamp.pat.${o.target}` : `stamp.sym.${o.target}`);
+    const vars = { name, from: f(o.from), to: f(o.to) };
+    if (o.kind === 'gild') return tr('stamp.eff.gild', vars);
+    if (o.kind === 'shift') return `${tr('stamp.eff.shift', vars)}\n${tr('stamp.eff.shiftDonor', { n: f(o.donor) })}`;
+    return tr('stamp.eff.etch', vars);
+  }
+
   private reroll(): void {
     const pawn = this.pawn();
     if (!pawn || !pawn.open()) { void this.emit({ k: 'reroll', ok: false, why: 'closed' }); return; }
@@ -395,6 +501,9 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       case 'reroll': return this.presentReroll(ev);
       case 'lock': return this.presentLock(ev);
       case 'curse': return this.presentCurse(ev);
+      case 'sbuy': return this.presentStampBuy(ev, pc);
+      case 'sreroll': return this.presentStampReroll(ev);
+      case 'slock': return this.presentStampLock(ev);
     }
   }
 
@@ -403,7 +512,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const sh = this.parts.shutter;
     const y0 = sh.position.y;
     void this.anim(0.2, (k) => { sh.position.y = y0 + Math.sin(k * Math.PI * 6) * 0.01; });
-    if (this.isLocalOccupant && why) this.toast(why.startsWith('shop.') ? tr(why) : this.t(why), 'warn');
+    if (this.isLocalOccupant && why) this.toast(why.startsWith('shop.') || why.startsWith('stamp.') ? tr(why) : this.t(why), 'warn');
   }
 
   private async presentBuy(ev: Extract<Ev, { k: 'buy' }>, pc: PresentCtx): Promise<void> {
@@ -455,6 +564,45 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     this.refresh(true);
   }
 
+  private async presentStampBuy(ev: Extract<Ev, { k: 'sbuy' }>, pc: PresentCtx): Promise<void> {
+    if (!ev.ok) { this.denied(ev.why); return; }
+    if (pc.fast) { this.refresh(true); return; }
+    const col = stampColor(ev.kind);
+    const fx = this.ctx.fx;
+    const at = this.parts.itemSlots[ev.i] ?? this.model.anchors.coinOut;
+    this.sfx('button');
+    this.sfx('cashRegister');
+    fx.coins(this.model.anchors.coinOut, 8, { spread: 0.1, up: 0.2 });
+    this.parts.lamp.blink(6, 0.4);
+    const tag = this.parts.tags[ev.i];
+    if (tag) fx.squash(tag.mesh, 0.2, 0.25);
+    await this.anim(0.18, () => undefined);
+    this.sfx('stamp');
+    fx.flash(col, 0.22, 0.35);
+    fx.popText(at, `${tr('stamp.stamped')}: ${this.stampTitle(ev.kind, ev.target)}`, col, { scale: 0.85, dur: 0.9, rise: 0.1 });
+    this.refresh(true);
+  }
+
+  private async presentStampReroll(ev: Extract<Ev, { k: 'sreroll' }>): Promise<void> {
+    if (!ev.ok) { this.denied(ev.why); return; }
+    this.sfx('shuffle');
+    const hands = this.parts.hands;
+    this.parts.lamp.blink(8, 0.4);
+    await this.anim(0.4, (k) => { hands.rotation.y = Math.sin(k * Math.PI * 2) * 0.4; });
+    hands.rotation.y = 0;
+    this.ctx.fx.popText(this.model.anchors.prompt, tr('stamp.rerolled'), GOLD, { scale: 1.1 });
+    this.refresh(true);
+  }
+
+  private async presentStampLock(ev: Extract<Ev, { k: 'slock' }>): Promise<void> {
+    if (!ev.ok) { this.denied(ev.why); return; }
+    this.sfx(ev.off ? 'hover' : 'click');
+    const tag = this.parts.tags[ev.i];
+    if (tag) this.ctx.fx.squash(tag.mesh, 0.15, 0.2);
+    this.ctx.fx.popText(this.parts.itemSlots[ev.i] ?? this.model.anchors.prompt, ev.off ? tr('shop.unlocked') : this.t('locked'), GOLD, { scale: 1.1 });
+    this.refresh(true);
+  }
+
   private async presentReroll(ev: Extract<Ev, { k: 'reroll' }>): Promise<void> {
     if (!ev.ok) { this.denied(ev.why); return; }
     this.sfx('shuffle');
@@ -487,26 +635,46 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   // ── screens, tags and HUD ───────────────────────────────────────────────────────────────────────
   private refresh(force: boolean): void {
     const pawn = this.pawn();
-    const open = pawn !== null && pawn.open();
-    const stock = pawn && open ? pawn.stock(this.selfId) : [];
+    const st = this.stamps();
+    if (this.tab === 1 && !st) this.tab = 0;
+    const sm = this.tab === 1 && st !== null;
+    const open = sm ? st.open() : pawn !== null && pawn.open();
+    const stock = pawn && open && !sm ? pawn.stock(this.selfId) : [];
     this.stockCache = stock;
-    const key = [stockKey(stock), open ? 1 : 0, this.wallet(), this.tickets(), this.cursor, this.swap ? `s${this.swap.i}.${this.swap.idx}` : '', this.armed?.i ?? -1].join('|');
+    const offers = st && sm && open ? st.offers() : [];
+    this.stampCache = offers;
+    const n = sm ? STAMP_SLOTS : Math.min(SLOTS_MAX, Math.max(SLOTS, pawn?.slotCount?.() ?? stock.length));
+    if (n !== this.slotN) { this.slotN = n; this.fitPose(); }
+    for (let i = SLOTS; i < SLOTS_MAX; i++) { const t = this.parts.tags[i]; if (t) t.mesh.visible = i < n; }
+    const key = [sm && st ? `S${stampKey(offers)}.${st.count()}` : stockKey(stock), st ? 1 : 0, open ? 1 : 0, this.wallet(), this.tickets(), this.cursor, this.swap ? `s${this.swap.i}.${this.swap.idx}` : '', this.armed?.i ?? -1].join('|');
     if (!force && key === this.repaintKey) { if (this.isLocalOccupant) this.showHud(); this.syncCard(); return; }
     this.repaintKey = key;
 
     // every tag carries its price, locked ones in brackets (the lock shows on the shelf and in the ledger)
-    for (let i = 0; i < SLOTS; i++) {
-      const s = stock[i] ?? null;
-      const price = priceText(s, fmtNum, this.t('free'));
-      const txt = !open ? '--' : s?.locked ? `[${price}]` : price;
+    for (let i = 0; i < SLOTS_MAX; i++) {
+      let txt: string;
+      if (sm) {
+        const o = offers[i] ?? null;
+        txt = !open || !o ? '--' : o.locked ? `[${fmtNum(o.price)}]` : String(fmtNum(o.price));
+      } else {
+        const s = stock[i] ?? null;
+        const price = priceText(s, fmtNum, this.t('free'));
+        txt = !open ? '--' : s?.locked ? `[${price}]` : price;
+      }
       this.parts.tags[i]?.setText(txt);
     }
     this.parts.ticketLed.set(String(fmtNum(this.tickets())).padStart(4, ' '));
-    for (let i = 0; i < SLOTS; i++) {
+    for (let i = 0; i < SLOTS_MAX; i++) {
+      const sel = this.isLocalOccupant && i === this.cursor;
+      if (sm) {
+        const o = open ? offers[i] ?? null : null;
+        this.parts.icons[i]?.setStamp(o ? { kind: o.kind, sym: o.sym, cells: o.cells, level: o.level } : null, sel);
+        continue;
+      }
       const s = open ? stock[i] ?? null : null;
-      this.parts.icons[i]?.set(s ? { id: s.charmId, rarity: s.rarity, cursed: s.cursed, tag: s.tag } : null, this.isLocalOccupant && i === this.cursor);
+      this.parts.icons[i]?.set(s ? { id: s.charmId, rarity: s.rarity, cursed: s.cursed, tag: s.tag } : null, sel);
     }
-    this.drawLedger(stock, open);
+    if (sm && st) this.drawStampLedger(offers, open, st); else this.drawLedger(stock, open);
     if (this.isLocalOccupant) this.showHud();
     this.syncCard();
   }
@@ -530,15 +698,35 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       s.text(`${this.t('ledgerTickets')} ${fmtNum(this.tickets())}`, 4, 72, { font: 'px5', color: '#a07020' });
       return;
     }
-    for (let i = 0; i < SLOTS; i++) {
+    const rowH = stock.length > SLOTS ? 8 : 11;
+    for (let i = 0; i < Math.max(SLOTS, stock.length); i++) {
       const sl = stock[i] ?? null;
-      const y = 26 + i * 11;
+      const y = 26 + i * rowH;
       const mark = i === this.cursor ? '>' : ' ';
       const name = sl ? tr(`charm.${sl.charmId}.name`).slice(0, 12) : this.t('sold');
       s.text(`${mark}${i + 1} ${name}`, 4, y, { font: 'px5', color: sl?.cursed ? '#c0a0ff' : '#ffe0a0' });
       if (sl && sl.fit > 0) s.text(tr('shop.fit', { n: sl.fit }), 78, y, { font: 'px5', color: '#80d0ff' });
       s.text(sl ? priceText(sl, fmtNum, this.t('free')) : '--', 124, y, { font: 'px5', color: sl?.locked ? '#ffffff' : '#ffd060', align: 'right' });
     }
+    s.text(`${this.t('ledgerTickets')} ${fmtNum(this.tickets())}`, 4, 72, { font: 'px5', color: '#a07020' });
+  }
+
+  private drawStampLedger(offers: readonly (StampOffer | null)[], open: boolean, st: StampApi): void {
+    const s = this.parts.ledger;
+    s.clear('#140e08');
+    s.text(tr('stamp.ledger'), 64, 12, { font: 'px5', color: '#ffd060', align: 'center' });
+    if (!open) {
+      s.text(this.t('ledgerClosed'), 64, 40, { font: 'px5', color: '#a07020', align: 'center' });
+      return;
+    }
+    for (let i = 0; i < STAMP_SLOTS; i++) {
+      const o = offers[i] ?? null;
+      const y = 26 + i * 11;
+      const name = o ? this.stampTitle(o.kind, o.target).slice(0, 15) : tr('stamp.ledgerEmpty');
+      s.text(`${i === this.cursor ? '>' : ' '}${i + 1} ${name}`, 4, y, { font: 'px5', color: '#ffe0a0' });
+      s.text(o ? `${o.locked ? '[' : ''}${fmtNum(o.price)}${o.locked ? ']' : ''}` : '--', 124, y, { font: 'px5', color: o?.locked ? '#ffffff' : '#ffd060', align: 'right' });
+    }
+    s.text(tr('stamp.ledgerBook', { n: st.count(), cap: st.cap() }), 4, 60, { font: 'px5', color: '#80d0ff' });
     s.text(`${this.t('ledgerTickets')} ${fmtNum(this.tickets())}`, 4, 72, { font: 'px5', color: '#a07020' });
   }
 
@@ -553,7 +741,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const DEG = Math.PI / 180;
     const cam = [0, 1.25, 1.8];
     const pts: Array<[number, number, number]> = [];
-    for (const x of [-0.98, 0.98]) for (const y of [0.72, 0.88]) pts.push([x, y, 0.64]);   // price plates (0.46 m wide)
+    for (const x of [-0.98, 0.98]) for (const y of [0.72, 0.88]) pts.push([x, y, 0.64]);
+    if (this.slotN > SLOTS) for (const x of [0, 0.5]) pts.push([x, 0.5, 0.64]);               // second tag line (Second Window)   // price plates (0.46 m wide)
     for (const x of [-0.75, 0.75]) for (const y of [1.0, 1.3]) pts.push([x, y, 0.2]);      // pedestals and charms
     for (const x of [-0.28, 0.28]) for (const y of [2.03, 2.37]) pts.push([x, y, -0.62]);  // ledger
     let vMin = Infinity, vMax = -Infinity, hMax = 0;
@@ -588,10 +777,18 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     head.append(name, meta, price);
     top.append(icon, head);
     const desc = document.createElement('div'); desc.className = 'pc-desc';
+    const pips = document.createElement('div'); pips.className = 'pc-pips'; pips.style.display = 'none';
     const note = document.createElement('div'); note.className = 'pc-note';
-    el.append(top, desc, note);
+    el.append(top, desc, pips, note);
     this.ctx.ui.root.appendChild(el);
-    this.card = { el, icon, name, meta, price, desc, note };
+    this.card = { el, icon, name, meta, price, desc, note, pips };
+    // CHARMS | STAMPS: the tab strip over the card (the secondary key switches)
+    const tabsEl = document.createElement('div'); tabsEl.className = 'pawn-tabs';
+    const charms = document.createElement('span'); charms.className = 'pt';
+    const stamps = document.createElement('span'); stamps.className = 'pt';
+    tabsEl.append(charms, stamps);
+    this.ctx.ui.root.appendChild(tabsEl);
+    this.tabs = { el: tabsEl, charms, stamps };
   }
 
   private rarityName(r: CharmRarity, cursed: boolean): string {
@@ -605,10 +802,57 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     }
   }
 
+  /** The CHARMS | STAMPS strip: visible while seated and the stamp service exists. */
+  private syncTabs(): void {
+    const t = this.tabs;
+    if (!t) return;
+    const st = this.stamps();
+    const show = this.isLocalOccupant && !this.uiBlocked && !this.seatHud?.blocking && st !== null && st.open();
+    t.el.classList.toggle('on', show);
+    if (!show) return;
+    const a = tr('stamp.tab.charms'), b = tr('stamp.tab.stamps');
+    if (t.charms.textContent !== a) t.charms.textContent = a;
+    if (t.stamps.textContent !== b) t.stamps.textContent = b;
+    t.charms.classList.toggle('act', this.tab === 0);
+    t.stamps.classList.toggle('act', this.tab === 1);
+  }
+
+  /** The card of the cursor's stamp: kind and symbol, price, level pips, and the effect in numbers. */
+  private syncStampCard(c: PawnCard): void {
+    const st = this.stamps();
+    const o = this.stampCache[this.cursor] ?? null;
+    const show = this.isLocalOccupant && !this.uiBlocked && !this.seatHud?.blocking && st !== null && st.open() && o !== null;
+    c.el.classList.toggle('on', show);
+    if (!show || !st || !o) return;
+    const full = st.count() >= st.cap();
+    const key = `S|${o.kind}|${o.target}|${o.level}|${o.price}|${o.locked ? 1 : 0}|${st.count()}`;
+    if (key === this.cardKey) return;
+    this.cardKey = key;
+    c.el.style.setProperty('--rc', `#${stampColor(o.kind).toString(16).padStart(6, '0')}`);
+    c.name.textContent = this.stampTitle(o.kind, o.target);
+    c.desc.textContent = this.stampDesc(o);
+    const g = c.icon.getContext('2d');
+    if (g) { g.clearRect(0, 0, 24, 24); stampIconPix({ kind: o.kind, sym: o.sym, cells: o.cells, level: o.level }, true).drawTo(g); }
+    c.price.textContent = String(fmtNum(o.price));
+    c.price.style.display = '';
+    const bits = [tr('stamp.level', { n: o.level + 1, max: o.max }), tr('stamp.book', { n: st.count(), cap: st.cap() })];
+    if (o.locked) bits.push(this.t('tagLocked'));
+    c.meta.textContent = bits.join('  ·  ');
+    c.pips.style.display = '';
+    c.pips.textContent = '';
+    for (const k of stampPips(o.level, o.max)) { const p = document.createElement('span'); p.className = `p ${k}`; c.pips.appendChild(p); }
+    c.note.textContent = full ? tr('stamp.bookFull') : tr(`stamp.note.${o.kind}`);
+    c.note.style.display = '';
+  }
+
   /** Shows the card for the cursor's charm (or the charm a swap would replace) while the local player is seated. */
   private syncCard(): void {
     const c = this.card;
     if (!c) return;
+    this.syncTabs();
+    c.el.classList.toggle('stamp', this.tab === 1);
+    if (this.tab === 1) { this.syncStampCard(c); return; }
+    c.pips.style.display = 'none';
     const pawn = this.pawn();
     const sel = this.stockCache[this.cursor] ?? null;
     const sw = this.swap;
@@ -660,7 +904,9 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   }
 
   private rulesLines(): Txt[] {
-    return [...[1, 2, 3, 4].map((i) => ({ k: `m.charm_vendor.rule${i}` })), { k: 'shop.rule5' }];
+    const st = this.stamps();
+    const stampRules: Txt[] = st ? [1, 2, 3].map((i) => ({ k: `stamp.rule${i}`, v: { cap: st.cap() } })) : [];
+    return [...[1, 2, 3, 4].map((i) => ({ k: `m.charm_vendor.rule${i}` })), { k: 'shop.rule5' }, ...stampRules];
   }
 
   /** Banner, coins / tickets / price numbers and the valid controls only. Only while the local player stands here. */
@@ -668,8 +914,10 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const sh = this.seatHud;
     if (!sh || !this.isLocalOccupant) return;
     const cur = this.stockCache[this.cursor] ?? null;
+    const stq = this.stamps();
     const key = [this.cursor, this.wallet(), this.tickets(), this.open() ? 1 : 0, cur?.charmId ?? '', cur?.locked ? 1 : 0, cur?.fit ?? 0,
-      this.pawn()?.rerollCost() ?? 0, this.swap ? `s${this.swap.idx}` : '', this.armed?.i ?? -1].join('|');
+      this.pawn()?.rerollCost() ?? 0, this.swap ? `s${this.swap.idx}` : '', this.armed?.i ?? -1, this.tab, stq ? 1 : 0,
+      this.tab === 1 && stq ? `${stampKey(this.stampCache)}.${stq.count()}.${stq.rerollCost()}` : ''].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
     const open = this.open(), wallet = this.wallet(), tix = this.tickets();
@@ -679,6 +927,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const canBuy = sel !== null && (sel.price <= 0 || wallet >= sel.price || (full && pawn !== null && pawn.swapChoices(this.selfId, this.cursor).some((c) => wallet + c.refund >= sel.price)));
     const ctrl: HudControl[] = [];
     sh.goal({ k: 'm.charm_vendor.goal' });
+    if (this.tab === 1 && stq) { this.showStampHud(sh, stq, open, wallet, tix); return; }
 
     // SWAP PICKER (pegs full): the HUD shows only the picker
     const sw = this.swap;
@@ -735,6 +984,40 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       if (pawn && pawn.cursedOwned(this.selfId).length > 0 && tix >= REMOVE_CURSE_TICKETS) {
         ctrl.push({ key: this.k('collect'), label: { k: 'm.charm_vendor.cCurse', v: { n: REMOVE_CURSE_TICKETS } }, action: 'collect' });
       }
+    }
+    if (open && stq) ctrl.push({ key: this.k('secondary'), label: { k: 'stamp.cTab' }, action: 'secondary' });
+    ctrl.push({ key: this.k('help'), label: { k: 'm.charm_vendor.cRules' }, action: 'help' });
+    ctrl.push({ key: this.k('exit'), label: { k: 'm.charm_vendor.cLeave' }, action: 'exit' });
+    sh.controls(ctrl);
+  }
+
+  /** The STAMPS tab's HUD: banner, price / coins / tickets / reroll / book numbers, and only the controls that work now. */
+  private showStampHud(sh: SeatHud, st: StampApi, open: boolean, wallet: number, tix: number): void {
+    const sel = this.stampCache[this.cursor] ?? null;
+    const full = st.count() >= st.cap();
+    const canBuy = open && sel !== null && !full && wallet >= sel.price;
+    const armedHere = canBuy && this.armed !== null && this.armed.i === this.cursor;
+    if (!open) sh.state({ k: 'm.charm_vendor.stShut' }, 'neutral', { k: 'm.charm_vendor.stShutSub' });
+    else if (full) sh.state({ k: 'stamp.bookFull' }, 'neutral', { k: 'stamp.bookFullSub' });
+    else if (!sel) sh.state({ k: 'stamp.stEmpty' }, 'neutral', { k: 'stamp.stEmptySub' });
+    else if (!canBuy) sh.state({ k: 'stamp.stFunds' }, 'warn', { k: 'stamp.stFundsSub', v: { n: fmtNum(sel.price - wallet) } });
+    else if (armedHere) sh.state({ k: 'stamp.stArm', v: { key: this.k('primary'), price: fmtNum(sel?.price ?? 0) } }, 'gold', { k: 'stamp.stArmSub', v: { s: BUY_CONFIRM_S } });
+    else sh.state({ k: 'stamp.stChoose' }, 'gold', { k: 'stamp.stChooseSub' });
+    sh.numbers([
+      { label: { k: 'm.charm_vendor.nPrice' }, value: sel ? fmtNum(sel.price) : '--', tone: 'gold' },
+      { label: { k: 'm.charm_vendor.nCoins' }, value: fmtNum(wallet), tone: 'gold' },
+      { label: { k: 'm.charm_vendor.nTickets' }, value: fmtNum(tix), tone: 'cyan' },
+      { label: { k: 'm.charm_vendor.nReroll' }, value: fmtNum(st.rerollCost()), tone: 'neutral' },
+      { label: { k: 'stamp.nStamps' }, value: `${st.count()}/${st.cap()}`, tone: full ? 'warn' : 'neutral' },
+    ]);
+    const ctrl: HudControl[] = [];
+    if (open) {
+      ctrl.push({ key: `${this.k('left')}/${this.k('right')}`, label: { k: 'm.charm_vendor.cPick' }, action: 'left' });
+      if (canBuy) ctrl.push({ key: this.k('primary'), label: { k: this.armed?.i === this.cursor ? 'm.charm_vendor.cConfirm' : 'stamp.cStamp' }, action: 'primary', primary: true });
+      if (st.canReroll()) ctrl.push({ key: this.k('alt'), label: { k: 'stamp.cReroll', v: { n: st.rerollCost() } }, action: 'alt' });
+      if (sel?.locked) ctrl.push({ key: this.k('double'), label: { k: 'shop.cUnlock' }, action: 'double' });
+      else if (sel && tix >= LOCK_TICKETS) ctrl.push({ key: this.k('double'), label: { k: 'm.charm_vendor.cLock', v: { n: LOCK_TICKETS } }, action: 'double' });
+      ctrl.push({ key: this.k('secondary'), label: { k: 'stamp.cTabBack' }, action: 'secondary' });
     }
     ctrl.push({ key: this.k('help'), label: { k: 'm.charm_vendor.cRules' }, action: 'help' });
     ctrl.push({ key: this.k('exit'), label: { k: 'm.charm_vendor.cLeave' }, action: 'exit' });

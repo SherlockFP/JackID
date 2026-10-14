@@ -22,7 +22,7 @@ import {
 } from '@/game/tycoon.types';
 import type { ModHook, ModProvider } from '@/game/modifiers.types';
 import { foldEffects } from '@/game/modifiers.types';
-import { META_NODES, ORDER_PRICING, PATRON_RATE, STAFF_DEFS, STAFF_TRACK, WING_DEFS } from '@/game/data/upgrades';
+import { META_NODES, ORDER_PRICING, PATRON_RATE, STAFF_DEFS, STAFF_TRACK, WING_DEFS, metaReqMissing } from '@/game/data/upgrades';
 import { createCatalog, machineDefOf, sizeFits, type Catalog, type TycoonDef } from './catalog';
 import { TycoonMods } from './provider';
 
@@ -76,6 +76,8 @@ export interface Tycoon extends TycoonApi {
   restore(s: Partial<TycoonState> | null | undefined): void;
   /** New run: clear per-run state, keep the meta tree. */
   reset(): void;
+  /** Host: banks a win on Night `night` (1-based) for the Foundations gates (`won:N`). False when already banked. */
+  recordWin(night: number): boolean;
 }
 
 const SHILL_STAKE_FRAC = 0.01;
@@ -602,11 +604,17 @@ class TycoonImpl implements Tycoon {
     this.deps.save?.update((d) => { d.meta = snap; });
   }
 
+  /** Requirement tokens (node ids, `bestShift:N`, `won:N`) are read by `metaReqMissing`, shared with the menu screen. */
   private nodeReqOk(n: MetaNode): boolean {
-    for (const r of n.requires ?? []) {
-      if (r.startsWith('descend:')) { if (this.meta.descents < Number(r.slice(8))) return false; }
-      else if (this.metaLevel(r) <= 0) return false;
-    }
+    return metaReqMissing(this.meta, n) === null;
+  }
+
+  recordWin(night: number): boolean {
+    const tok = `won:${Math.floor(night)}`;
+    if (this.meta.unlocked.includes(tok)) return false;
+    this.meta.unlocked.push(tok);
+    this.persistMeta();
+    this.notify();
     return true;
   }
 

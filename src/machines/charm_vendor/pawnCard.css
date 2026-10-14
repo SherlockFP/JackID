@@ -20,3 +20,24 @@
 .pawn-card .pc-desc { margin-top: calc(var(--su) * 3); font-size: calc(var(--su) * 10); line-height: 1.12; color: #f4f0dc; }
 .pawn-card .pc-note { margin-top: calc(var(--su) * 2); font-size: calc(var(--su) * 8); line-height: 1.1; color: #c8a4ff; }
 @media (max-width: 760px) { .pawn-card { top: 24%; width: 52%; } }
+
+/* STAMPS tab: the CHARMS | STAMPS strip over the card, the effect lines and the level pips. */
+.pawn-tabs {
+  --su: var(--u, 4px);
+  position: absolute; right: calc(var(--su) * 3); top: 21%; transform: translateY(-100%); width: min(calc(var(--su) * 104), 46%);
+  display: none; pointer-events: none; box-sizing: border-box; gap: calc(var(--su) * 1.5);
+  font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 4.5); line-height: 1;
+}
+.pawn-tabs.on { display: flex; }
+.pawn-tabs .pt {
+  flex: 1; text-align: center; padding: calc(var(--su) * 2) 0; color: #9a9680; background: rgba(6, 9, 6, 0.8);
+  border: calc(var(--su) * 1) solid #3a3a2c; text-shadow: 0 calc(var(--su) * 0.5) 0 #000;
+}
+.pawn-tabs .pt.act { color: #140e08; background: #ffd060; border-color: #ffd060; text-shadow: none; }
+.pawn-card.stamp .pc-desc { white-space: pre-line; }
+.pawn-card .pc-pips { display: flex; gap: calc(var(--su) * 1.5); margin-top: calc(var(--su) * 3); }
+.pawn-card .pc-pips .p { width: calc(var(--su) * 6); height: calc(var(--su) * 6); box-sizing: border-box; border: calc(var(--su) * 1) solid var(--rc); background: transparent; }
+.pawn-card .pc-pips .p.own { background: var(--rc); }
+.pawn-card .pc-pips .p.next { background: repeating-linear-gradient(45deg, var(--rc) 0 calc(var(--su) * 1.5), transparent calc(var(--su) * 1.5) calc(var(--su) * 3)); }
+.pawn-card .pc-pips .p.free { opacity: 0.45; }
+@media (max-width: 760px) { .pawn-tabs { top: 24%; width: 52%; } }

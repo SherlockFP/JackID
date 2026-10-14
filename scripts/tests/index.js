@@ -19,3 +19,5 @@ import './hotline.test.mjs';
 import './run.money.test.mjs';
 import './lootbox.test.mjs';
 import './world.test.mjs';
+import './stamps.test.mjs';
+import './foundations.test.mjs';

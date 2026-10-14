@@ -138,3 +138,45 @@ export function charmIconPix(id: string, rarity: CharmRarity, cursed: boolean, l
   p.outline(0x0a0604);
   return p;
 }
+
+// ── Symbol Stamps (the STAMPS tab) ─────────────────────────────────────────────────────────────────────────
+/** The part of a stamp offer the icon needs (a structural subset of `StampOffer`). */
+export interface StampIconSpec { kind: 'gild' | 'shift' | 'etch'; sym: number; cells: readonly number[]; level: number }
+
+const STAMP_RIM: Record<StampIconSpec['kind'], number> = { gild: 0xffd23c, shift: 0x62a4ff, etch: 0xe88a48 };
+/** The colour a stamp kind glows in (icon rim, floor glow, card title). */
+export const stampRim = (k: StampIconSpec['kind']): number => STAMP_RIM[k] ?? STAMP_RIM.gild;
+
+/** The seven Big One symbols, 24 px: MOTH TOOTH KEY CANDLE RING CROWN SUN (own pixels, the machine's painters are off limits). */
+const SYM_GLYPHS: ReadonlyArray<(p: Pix) => void> = [
+  (p) => { p.ellipse(12, 12, 1.8, 6, 0xb8b0a0); p.ellipse(8, 10, 4, 3.4, 0xb8b0a0); p.ellipse(16, 10, 4, 3.4, 0xb8b0a0); p.px(8, 10, 0x3a2a20); p.px(16, 10, 0x3a2a20); },
+  (p) => { p.rect(8, 6, 8, 7, 0xf2ead0); p.rect(8, 13, 3, 5, 0x9a8570); p.rect(13, 13, 3, 5, 0x9a8570); p.rect(11, 13, 2, 2, 0xf2ead0); p.px(9, 7, 0xffffff); },
+  (p) => { p.ring(8.5, 12, 1.4, 3.8, 0xc0683d); p.rect(11, 11, 8, 2, 0xc0683d); p.rect(15, 13, 2, 3, 0xc0683d); p.rect(18, 13, 2, 4, 0xc0683d); p.px(7, 10, 0xe8a070); },
+  (p) => { p.rect(10, 10, 4, 9, 0xe8d8b0); p.ellipse(12, 7, 1.6, 2.6, 0xffb000); p.px(12, 7, 0xfff2b0); p.px(12, 8, 0xfff2b0); },
+  (p) => { p.ring(12, 14, 3.2, 5.2, 0xe8b830); p.disc(12, 7.5, 2.2, 0xc0182a); p.px(11, 6, 0xff8090); },
+  (p) => { p.poly([[5, 17], [5, 8], [9, 12], [12, 5], [15, 12], [19, 8], [19, 17]], 0xffd040); p.rect(5, 16, 14, 2, 0xc09020); p.px(12, 13, 0x20b0a0); p.px(8, 15, 0x20b0a0); p.px(16, 15, 0x20b0a0); },
+  (p) => { for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4; p.line(12 + Math.cos(a) * 6.2, 12 + Math.sin(a) * 6.2, 12 + Math.cos(a) * 8.6, 12 + Math.sin(a) * 8.6, 0xffc000); } p.disc(12, 12, 5, 0xff7a00); p.disc(12, 12, 3.2, 0xffc000); },
+];
+
+/**
+ * One stamp's badge: a kind-coloured rim, then the symbol it stamps (GILD, SHIFT, with a sparkle or an arrow in the corner)
+ * or the pattern drawn on a 5 x 3 grid (ETCH). `lit` brightens the selected one.
+ */
+export function stampIconPix(s: StampIconSpec, lit: boolean): Pix {
+  const p = new Pix(ICON_PX, ICON_PX);
+  const rim = stampRim(s.kind);
+  const hi = lighten(rim, 0.7);
+  p.disc(12, 12, 11, darken(rim, 0.75));
+  p.disc(12, 12, 10, lit ? lighten(rim, 0.2) : rim);
+  p.disc(12, 12, 8.6, PLATE);
+  if (s.kind === 'etch') {
+    const on = new Set(s.cells);
+    for (let r = 0; r < 3; r++) for (let c = 0; c < 5; c++) p.rect(5 + c * 3, 8 + r * 3, 2, 2, on.has(r * 5 + c) ? (lit ? lighten(rim, 0.3) : rim) : darken(rim, 0.7));
+  } else {
+    SYM_GLYPHS[s.sym]?.(p);
+    if (s.kind === 'gild') { p.px(18, 5, hi); p.px(17, 6, hi); p.px(19, 6, hi); p.px(18, 7, hi); p.px(18, 6, 0xffffff); }
+    else { p.line(15, 18, 20, 18, hi); p.line(18, 16, 20, 18, hi); p.line(18, 20, 20, 18, hi); }
+  }
+  p.outline(0x0a0604);
+  return p;
+}

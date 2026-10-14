@@ -11,8 +11,11 @@ import type { SlotSize } from '@/core/types';
 import type { SymbolId } from '@/core/texgen/types';
 import type { ModEffect, ModHook } from '@/game/modifiers.types';
 import type {
-  CostCurve, EffectCurve, MachineFilter, MetaNode, MilestoneDef, OrderPricing, StaffDef, UpgradeTemplate, WingDef,
+  CostCurve, EffectCurve, MachineFilter, MetaNode, MetaState, MilestoneDef, OrderPricing, StaffDef, TycoonNoReason,
+  UpgradeTemplate, WingDef,
 } from '@/game/tycoon.types';
+import { costAt, valueAt } from '@/game/tycoon.types';
+import { foldEffects } from '@/game/modifiers.types';
 
 const tx = (key: string): { en: { name: string; desc: string }; tr: { name: string; desc: string } } => ({
   en: { name: `tyc.${key}.name`, desc: `tyc.${key}.desc` },
@@ -296,26 +299,92 @@ export const META_NODES: MetaNode[] = [
   META('F5', 'moon', [120], 1, [4, 1], [lin('x.tycoon.assessRate', 'add', -0.01)]),
   META('F6', 'key', [200], 1, [5, 1], undefined, { unlocks: ['counting_room'] }),
   // The Hand (after the first Descend)
-  META('H1', 'horseshoe', [40, 120, 360], 3, [0, 3], [lin('luck', 'add', 1)], { requires: ['descend:1'] }),
-  META('H2', 'moon', [50], 1, [1, 3], [lin('x.run.pullsAdd', 'add', 1)], { requires: ['descend:1'] }),
-  META('H3', 'eye', [80], 1, [2, 3], [lin('x.tilt.grace', 'add', 1)], { requires: ['descend:1'] }),
-  META('H4', 'candle', [100], 1, [3, 3], [{ hook: 'x.lamp.hot', op: 'mult', value: { kind: 'const', v: 1.0667 } }], { requires: ['descend:1'] }),
-  META('H5', 'spade', [120], 1, [4, 3], [cst('x.charm.lineBounty', 'set', 0.12)], { requires: ['descend:1'] }),
-  META('H6', 'heart', [250], 1, [5, 3], [lin('x.pegs.add', 'add', 1)], { requires: ['descend:1'] }),
+  META('H1', 'horseshoe', [40, 120, 360], 3, [0, 3], [lin('luck', 'add', 1)], { requires: ['bestShift:2'] }),
+  META('H2', 'moon', [50], 1, [1, 3], [lin('x.run.pullsAdd', 'add', 1)], { requires: ['bestShift:2'] }),
+  META('H3', 'eye', [80], 1, [2, 3], [lin('x.tilt.grace', 'add', 1)], { requires: ['bestShift:2'] }),
+  META('H4', 'candle', [100], 1, [3, 3], [{ hook: 'x.lamp.hot', op: 'mult', value: { kind: 'const', v: 1.0667 } }], { requires: ['bestShift:2'] }),
+  META('H5', 'spade', [120], 1, [4, 3], [cst('x.charm.lineBounty', 'set', 0.12)], { requires: ['bestShift:2'] }),
+  META('H6', 'heart', [250], 1, [5, 3], [lin('x.pegs.add', 'add', 1)], { requires: ['bestShift:2'] }),
   // The Lamp (after the second Descend)
-  META('L1', 'candle', [20, 40, 60], 3, [0, 5], [lin('dread.add', 'add', -5)], { requires: ['descend:2'] }),
-  META('L2', 'eye', [60], 1, [1, 5], [{ hook: 'x.visitation.penaltyMult', op: 'mult', value: { kind: 'const', v: 0.5 } }], { requires: ['descend:2'] }),
-  META('L3', 'bell', [30], 1, [2, 5], [lin('x.phone.ringAdd', 'add', 4)], { requires: ['descend:2'] }),
-  META('L4', 'bolt', [150], 1, [3, 5], undefined, { requires: ['descend:2'], unlocks: ['second_wind'] }),
-  META('L5', 'bar', [60], 1, [4, 5], undefined, { requires: ['descend:2'], unlocks: ['bright_start'] }),
-  META('L6', 'skull', [90], 1, [5, 5], undefined, { requires: ['descend:2'], unlocks: ['courtesy'] }),
+  META('L1', 'candle', [20, 40, 60], 3, [0, 5], [lin('dread.add', 'add', -5)], { requires: ['bestShift:4'] }),
+  META('L2', 'eye', [60], 1, [1, 5], [{ hook: 'x.visitation.penaltyMult', op: 'mult', value: { kind: 'const', v: 0.5 } }], { requires: ['bestShift:4'] }),
+  META('L3', 'bell', [30], 1, [2, 5], [lin('x.phone.ringAdd', 'add', 4)], { requires: ['bestShift:4'] }),
+  META('L4', 'bolt', [150], 1, [3, 5], undefined, { requires: ['bestShift:4'], unlocks: ['second_wind'] }),
+  META('L5', 'bar', [60], 1, [4, 5], undefined, { requires: ['bestShift:4'], unlocks: ['bright_start'] }),
+  META('L6', 'skull', [90], 1, [5, 5], undefined, { requires: ['bestShift:4'], unlocks: ['courtesy'] }),
   // The Lift (after the third Descend)
-  META('T1', 'key', [30], 1, [0, 7], [lin('x.kit.commonCharm', 'add', 1)], { requires: ['descend:3'] }),
-  META('T2', 'crown', [120], 1, [1, 7], undefined, { requires: ['descend:3'], unlocks: ['wing_choice'] }),
-  META('T3', 'coin', [40], 1, [2, 7], [{ hook: 'x.daily.obolMult', op: 'mult', value: { kind: 'const', v: 1.5 } }], { requires: ['descend:3'] }),
-  META('T4', 'crown', [100], 1, [3, 7], [lin('x.kit.uncommonCharm', 'add', 1)], { requires: ['descend:3'] }),
-  META('T5', 'bell', [70], 1, [4, 7], [lin('x.pawn.freeFirst', 'add', 1)], { requires: ['descend:3'] }),
-  META('T6', 'heart', [50], 1, [5, 7], [{ hook: 'x.cassette.chanceMult', op: 'mult', value: { kind: 'const', v: 2 } }], { requires: ['descend:3'] }),
+  META('T1', 'key', [30], 1, [0, 7], [lin('x.kit.commonCharm', 'add', 1)], { requires: ['bestShift:6'] }),
+  META('T2', 'crown', [120], 1, [1, 7], undefined, { requires: ['bestShift:6'], unlocks: ['wing_choice'] }),
+  META('T3', 'coin', [40], 1, [2, 7], [{ hook: 'x.daily.obolMult', op: 'mult', value: { kind: 'const', v: 1.5 } }], { requires: ['bestShift:6'] }),
+  META('T4', 'crown', [100], 1, [3, 7], [lin('x.kit.uncommonCharm', 'add', 1)], { requires: ['bestShift:6'] }),
+  META('T5', 'bell', [70], 1, [4, 7], [lin('x.pawn.freeFirst', 'add', 1)], { requires: ['bestShift:6'] }),
+  META('T6', 'heart', [50], 1, [5, 7], [{ hook: 'x.cassette.chanceMult', op: 'mult', value: { kind: 'const', v: 2 } }], { requires: ['bestShift:6'] }),
   // The Root (capstone)
-  META('R1', 'crown', [1000], 1, [2, 9], [cst('payout.mult', 'inc', 0.05)], { requires: ['V1', 'F1', 'H1', 'L1', 'T1'] }),
+  META('R1', 'crown', [1000], 1, [2, 9], [cst('payout.mult', 'inc', 0.05)], { requires: ['V1', 'F1', 'H1', 'L1', 'T1', 'won:8'] }),
 ];
+
+// ── Foundations rules (one source for the tycoon, the menu screen and the tests) ────────────────────────────────
+/** The meta fields the tree reads. A save's `meta` and the live tycoon's state both fit. */
+export type MetaRead = Pick<MetaState, 'nodes' | 'bestShift' | 'descents' | 'unlocked'>;
+
+/** Level of one node (0 = not bought). */
+export const metaLevel = (meta: Pick<MetaState, 'nodes'>, id: string): number => meta.nodes[id] ?? 0;
+
+/** Price of the next level of a node, in Obols. */
+export const metaCost = (n: MetaNode, lv: number): number => costAt(n.cost, lv, 'M');
+
+/**
+ * First requirement token a node still misses, or null when its requirements hold. Tokens:
+ *  - a node id: that node is at level ≥ 1;
+ *  - `bestShift:N`: the deepest 0-based shift index reached is ≥ N (2 = Night 3, 4 = Night 5, 6 = Night 7);
+ *  - `won:N`: a win on Night N was recorded (`won:N` in meta.unlocked, written by Tycoon.recordWin);
+ *  - `descend:N`: legacy, at least N Descends.
+ */
+export function metaReqMissing(meta: MetaRead, n: MetaNode): string | null {
+  for (const r of n.requires ?? []) {
+    if (r.startsWith('bestShift:')) { if (meta.bestShift < Number(r.slice(10))) return r; }
+    else if (r.startsWith('won:')) { if (!meta.unlocked.includes(r)) return r; }
+    else if (r.startsWith('descend:')) { if (meta.descents < Number(r.slice(8))) return r; }
+    else if (metaLevel(meta, r) <= 0) return r;
+  }
+  return null;
+}
+
+/** Why a buy is refused (maxed, requires, funds), or null when it may go ahead. */
+export function metaBuyBlock(meta: MetaRead & Pick<MetaState, 'nodes' | 'obols'>, n: MetaNode): TycoonNoReason | null {
+  const lv = metaLevel(meta, n.id);
+  if (lv >= n.maxLevel) return 'maxed';
+  if (metaReqMissing(meta, n)) return 'requires';
+  if (meta.obols < metaCost(n, lv)) return 'funds';
+  return null;
+}
+
+/** Buys the next level in place. The caller checks `metaBuyBlock` first. Obols never go below zero. Returns the price. */
+export function applyMetaBuy(meta: MetaState, n: MetaNode): number {
+  const lv = metaLevel(meta, n.id);
+  const cost = metaCost(n, lv);
+  meta.obols = Math.max(0, meta.obols - cost);
+  meta.spent += cost;
+  meta.nodes[n.id] = lv + 1;
+  for (const u of n.unlocks ?? []) if (!meta.unlocked.includes(u)) meta.unlocked.push(u);
+  return cost;
+}
+
+/** Folds `base` through the Foundations levels for one hook: the same numbers the tycoon provider emits for pit-wide nodes. */
+export function foldMeta(meta: Pick<MetaState, 'nodes'>, hook: ModHook, base: number): number {
+  return foldCurves(META_NODES.map((n) => ({ effects: n.effects, level: metaLevel(meta, n.id) })), hook, base);
+}
+
+/** Folds `base` through the pit-wide House Improvement levels (keyed `upg.global.<id>`) for one hook. */
+export function foldHouse(levels: Readonly<Record<string, number>>, hook: ModHook, base: number): number {
+  return foldCurves(IMPROVEMENT_TEMPLATES.map((t) => ({ effects: t.effects, level: levels[`upg.global.${t.id}`] ?? 0 })), hook, base);
+}
+
+function foldCurves(items: ReadonlyArray<{ effects?: EffectCurve[]; level: number }>, hook: ModHook, base: number): number {
+  const effs: Array<{ op: EffectCurve['op']; value: number }> = [];
+  for (const it of items) {
+    if (it.level <= 0) continue;
+    for (const e of it.effects ?? []) if (e.hook === hook) effs.push({ op: e.op, value: valueAt(e.value, it.level) });
+  }
+  return foldEffects(hook, base, effs);
+}

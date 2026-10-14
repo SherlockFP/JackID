@@ -12,6 +12,8 @@ import { app } from '@/core/app';
 import type { UIOverlayX } from '@/core/ui/ui';
 import type { RunSummary } from '@/net/protocol';
 import { buildReceipt, type Receipt } from './hud/results';
+import { openFoundations, type FoundationsHandle } from './foundations';
+import { createMetaPrestige } from './foundations.logic';
 
 export function createResultsState(): AppStateHandler<'results'> {
   const scene = new THREE.Scene();
@@ -21,6 +23,9 @@ export function createResultsState(): AppStateHandler<'results'> {
   let summary: RunSummary | null = null;
   let leaving = false;
   let printing = false;
+  /** The Foundations tree is open over the receipt: its keys belong to it. */
+  let sub = false;
+  let tree: FoundationsHandle | null = null;
 
   const again = (): void => {
     if (leaving || !summary) return;
@@ -33,8 +38,20 @@ export function createResultsState(): AppStateHandler<'results'> {
     void app.go('menu', undefined);
   };
 
+  /** The Foundations tree, drawn inside the overlay (the overlay covers the UI panel layer, so a panel would hide under it). */
+  const foundations = (): void => {
+    const host = overlay;
+    if (leaving || sub || !host) return;
+    sub = true;
+    tree = openFoundations({
+      prestige: createMetaPrestige(app.save),
+      mount: host,
+      onClose: () => { sub = false; tree = null; host.focus({ preventScroll: true }); },
+    });
+  };
+
   const onKey = (e: KeyboardEvent): void => {
-    if (leaving) return;
+    if (leaving || sub) return;
     if (e.code === 'Escape') { e.preventDefault(); menu(); return; }
     if (e.code === 'Enter' || e.code === 'NumpadEnter') {
       e.preventDefault();
@@ -53,7 +70,7 @@ export function createResultsState(): AppStateHandler<'results'> {
       overlay.className = 'hud-results';
       overlay.style.cssText = 'position:absolute;inset:0;z-index:50;pointer-events:auto;';
       host.appendChild(overlay);
-      receipt = buildReceipt(params.summary, { onAgain: again, onMenu: menu });
+      receipt = buildReceipt(params.summary, { onAgain: again, onMenu: menu, onFoundations: foundations });
       overlay.appendChild(receipt.el);
       app.input.setMode('ui');
       overlay.tabIndex = -1;
@@ -63,6 +80,9 @@ export function createResultsState(): AppStateHandler<'results'> {
       void receipt.print().finally(() => { printing = false; });
     },
     exit() {
+      tree?.close();
+      tree = null;
+      sub = false;
       overlay?.removeEventListener('keydown', onKey);
       receipt?.dispose();
       receipt = null;

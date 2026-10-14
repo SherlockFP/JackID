@@ -23,6 +23,7 @@ import type { V3 } from '@/core/types';
 import type { ButtonPanelPart, PanelButton, LampPart, BulbChain, ScreenSurface, LabelPart } from '@/kit/types';
 import type { KitX } from '@/kit/index';
 import type { MachineModel } from '@/machines/_base/types';
+import type { BulbChainImpl } from '@/kit/lights';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { PATTERN_IDS } from './rules';
 
@@ -55,7 +56,7 @@ export type BigOneParts = {
   last10: LampPart[];
   screens: { top: ScreenSurface };
   /** 48 crown bulbs (sunburst arc) and 40 window bulbs (chrome frame perimeter). */
-  bulbs: { crown: BulbChain; window: BulbChain };
+  bulbs: { crown: BulbChainImpl; window: BulbChainImpl };
   /** Thirteen sunburst rays. */
   crownRays: THREE.Mesh[];
   /** Holder that spins about Y; `coin` (JackID medallion, r 0.22) is its only child. */
@@ -283,9 +284,9 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
     count: CROWN_BULBS,
     colors: [gold, pal.red],
     r: 0.012,
-  });
+  }) as BulbChainImpl;
   root.add(crownBulbs.root);
-  const windowBulbs = kit.bulbChain({ path: { rect: [WIN_W + 0.06, WIN_TOP - WIN_BOT + 0.06] }, count: WINDOW_BULBS, colors: [gold, pal.neonPink], r: 0.012 });
+  const windowBulbs = kit.bulbChain({ path: { rect: [WIN_W + 0.06, WIN_TOP - WIN_BOT + 0.06] }, count: WINDOW_BULBS, colors: [gold, pal.neonPink], r: 0.012 }) as BulbChainImpl;
   windowBulbs.root.position.set(0, REEL_Y, 0.69);
   root.add(windowBulbs.root);
 

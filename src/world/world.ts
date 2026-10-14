@@ -169,6 +169,13 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
   offs.push(bus.on('phone:end', () => { ringing = false; }));
   offs.push(bus.on('dread:change', ({ value }) => pool.api.setDread(value)));
   const juiceFx = createJuiceFx(pool.api);
+  // Big One combo show (3+ patterns): one light flick at the machine. Nearby machines answer on their own (comboTwinkle).
+  const comboAt = new THREE.Object3D();
+  offs.push(bus.on('show:combo', ({ x, y, z, dur }) => {
+    comboAt.position.set(x, y, z);
+    pool.api.flicker(comboAt, 0.4, 0.5);
+    pool.api.pulse(comboAt, { mul: 1.5, dur: Math.min(dur, 0.8), color: 0xffe27a });
+  }));
   // Circuit Lamps: a warm breathing light over the Hot cabinet, a dim blue one over each Cold (sys/lamps.ts).
   const lampGlow = createLampGlow({
     pool,

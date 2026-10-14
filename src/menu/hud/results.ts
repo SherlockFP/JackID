@@ -6,10 +6,13 @@ import { fmtCoins, fmtNum, fmtTime, has, t } from '@/core/i18n';
 import { uiSfx, h } from '@/core/ui/widgets';
 import type { RunSummary } from '@/net/protocol';
 import './results.css';
+import './resultsFit.css';
 
 export interface ReceiptOpts {
   onAgain(): void;
   onMenu(): void;
+  /** Opens the Foundations tree over the receipt (the results state draws it in the overlay). */
+  onFoundations(): void;
 }
 export interface Receipt {
   readonly el: HTMLElement;
@@ -97,7 +100,7 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
   });
   const post = postLine((s as RunSummary & { post?: ResultsPost }).post);
   if (post) {
-    const row = h('div', 'rcp-line', body);
+    const row = h('div', 'rcp-line wide', body);
     h('span', 'k', row, post);
     h('span', 'v', row);
     lines.push(row);
@@ -107,7 +110,7 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
     h('div', 'rcp-rule', body);
     const ranked = [...s.players].sort((a, b) => a.placement - b.placement);
     for (const p of ranked) {
-      const row = h('div', 'rcp-line', body);
+      const row = h('div', 'rcp-line wide', body);
       h('span', 'k', row, `${t('hud.results.place')} ${p.placement}  ${p.name}`);
       h('span', 'v', row, fmtCoins(p.wallet, true));
       lines.push(row);
@@ -118,8 +121,10 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
   stamp.hidden = true;
   const btns = h('div', 'rcp-btns', root);
   const again = h('button', 'rcp-btn', btns, t('hud.results.again'));
+  const foundations = h('button', 'rcp-btn', btns, t('found.title'));
   const menu = h('button', 'rcp-btn', btns, t('hud.results.menu'));
   again.addEventListener('click', () => o.onAgain());
+  foundations.addEventListener('click', () => o.onFoundations());
   menu.addEventListener('click', () => o.onMenu());
   h('div', 'rcp-hint', root, t('hud.results.hint'));
 
