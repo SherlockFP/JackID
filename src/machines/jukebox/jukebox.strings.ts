@@ -37,7 +37,7 @@ const en: Record<string, string> = {
 
 const tr: Record<string, string> = {
   h_pick: 'SEÇ', h_play: 'ÇAL', h_stop: 'DURDUR', h_leave: 'AYRIL',
-  goal: "Bir bilete bir şarkı seç. Watch'ın kalanında çalar, aynı anda tek şarkı.",
+  goal: "Bir bilete bir şarkı seç. Vardiya'nın kalanında çalar, aynı anda tek şarkı.",
   stPlaying: "ŞU AN ÇALIYOR",
   stPick: "BİR ŞARKI SEÇ",
   stPickSub: "Şarkı başına bir bilet",
@@ -55,7 +55,7 @@ const tr: Record<string, string> = {
   cStop: "DURDUR",
   cRules: "KURALLAR",
   cLeave: "AYRIL",
-  rule1: "Her şarkı bir bilet tutar. Watch'ın kalanında çalar, yeni şarkı eskisinin yerini alır.",
+  rule1: "Her şarkı bir bilet tutar. Vardiya'nın kalanında çalar, yeni şarkı eskisinin yerini alır.",
   rule2: "Kilitli şarkılar koşu ilerledikçe açılır. Çalan şarkıya tekrar basmak DURDUR ile aynıdır.",
   rule3: "Tuşlar: oklar imleci gezdirir, 1-9 bir şarkıya atlar, BİRİNCİL çalar, İKİNCİL müziği durdurur.",
   tip1: "Bir şarkı seç ve bir bilete çal. Aynı anda tek şarkı çalar.",

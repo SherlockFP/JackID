@@ -27,7 +27,7 @@ export default {
     'clutch.name': 'Kritik An',
     'clutch.desc': '30¢, Son Nefes ve Gece Baykuşu.',
     'banker.name': 'Bankacı',
-    'banker.desc': '20¢ ve peşinen yatırılmış 40¢. Kumbara Dişi ve Mum Mühür.',
+    'banker.desc': '20¢ ve önceden yatırılmış 40¢. Kumbara Dişi ve Mum Mühür.',
     'heir.name': 'Varis',
     'heir.desc': '200¢ ve Cam Kalp (lanetli).',
     'cost': 'Kilit açma: {n} Obol',

@@ -21,7 +21,7 @@ export interface KitDef {
 }
 
 export const KITS: readonly KitDef[] = [
-  // Playtest 5.5/10: Pauper's 50 coins trivialised Night 1 (quota 14). Kits are scaled (about x0.6) and Night 1 re-verified with scripts/sim/run.mjs (rotator >= 90 %, camper >= 70 %).
+  // Playtest 5.5/10: Pauper's 50 coins trivialised Night 1 (quota 14). Kits are scaled (about x0.6) and Night 1 re-verified with scripts/sim/run.mjs (rotator >= 95 %, camper >= 75 %; Night 1 quota 19 in schedule.ts).
   { id: 'pauper', unlockCost: 0, coins: 30, tickets: 2, predeposit: 0, charms: [] },
   { id: 'rotator', unlockCost: 30, coins: 25, tickets: 0, predeposit: 0, charms: ['suit_ladder'] },
   { id: 'hot_hand', unlockCost: 60, coins: 25, tickets: 0, predeposit: 0, charms: ['lampwick', 'cold_hands'] },

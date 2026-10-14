@@ -39,7 +39,7 @@ const strings = {
     'seat.ghost': 'Hayaletler oynayamaz',
     'seat.seated': 'Zaten oturuyorsun',
     'seat.noseat': 'Böyle bir koltuk yok',
-    'seat.timeout': 'Ev sahibi yanıt vermedi',
+    'seat.timeout': 'Oda sahibi yanıt vermedi',
   },
 };
 

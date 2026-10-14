@@ -31,7 +31,7 @@ const en: Record<string, string> = {
 const tr: Record<string, string> = {
   name: 'Oni Ziyafeti',
   desc: 'Beceri durdurmalı slot. Fenerleri durdur, oni\'yi yakala, ayarı besle.',
-  lever: 'Kol', stop: 'Dur {n}', medal: 'Madeni para', max: 'Maks', roles: 'Roller', hint: 'İpucu',
+  lever: 'Kol', stop: 'Dur {n}', medal: 'Madalya', max: 'Maks', roles: 'Roller', hint: 'İpucu',
   game: 'OYUN {n}', pay: 'ÖDEME {n}', set: 'AYAR {n}', feast: 'ZİYAFET {n}/{of}', parade: 'GEÇİT {n}/{of}',
   holdBig: 'ONI TUTULUYOR', holdReg: 'FENER TUTULUYOR', replayFree: 'TEKRAR BEDAVA', ready: 'HAZIR',
   rBig: 'ONI ZİYAFETİ', rReg: 'FENER GEÇİDİ', rLantern: 'FENER', rKoi: 'KOİ', rReplay: 'TEKRAR', rFan: 'YELPAZE',
@@ -45,7 +45,7 @@ const tr: Record<string, string> = {
   stLever: 'KOLU ÇEK', stLeverSub: 'BAHİS {n}', stFree: 'TEKRAR · BEDAVA OYUN', stFreeSub: 'Kolu çek, bahis yok',
   stHoldOni: 'ONI TUTULUYOR', stHoldLantern: 'FENER TUTULUYOR', stHoldSub: 'Taşınan bonus hizalanmayı bekler',
   stStop: 'MAKARALARI DURDUR', stStopSub: 'Her basışı ödeme hattında zamanla', stBusy: 'ÖDEME YAPILIYOR', stBonus: 'BONUS {n}/{of}',
-  nBet: 'BAHSİN', nFree: 'BEDAVA', nGame: 'OYUN', nLast: 'SON ÖDEME', nBonus: 'BONUS', nBalance: 'BAKİYE', medalsN: '{n} MADENİ',
+  nBet: 'BAHSİN', nFree: 'BEDAVA', nGame: 'OYUN', nLast: 'SON ÖDEME', nBonus: 'BONUS', nBalance: 'BAKİYE', medalsN: '{n} MADALYA',
   cLever: 'KOL', cStop: 'DUR {n}', cBet: 'BAHİS', cMax: 'MAKS', cRoles: 'ROLLER', cLeave: 'ÇIK',
   tip1: 'Oyunu başlatmak için {lever} ile kolu çek. Makaralar döner.',
   tip2: 'Her makarayı {l}, {c} ya da {r} ile durdur (sol, orta, sağ). Ödeme hattında zamanla.',

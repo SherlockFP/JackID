@@ -11,8 +11,8 @@ export default {
     'summary': 'NIGHT {n} PAID — deposited {dep}, interest {int}, carried over {carry}, tickets {tickets}',
   },
   tr: {
-    'hintFloor': 'ARA — Rehinci Penceresi’nden alışveriş yap, sonra Borç Terminali’nde KATI AÇ kolunu çek',
-    'hintBell': 'WATCH ARASI — Rehinci Penceresi’nden alışveriş yap, sonra zili çalmak için Borç Terminali’nin kolunu çek',
+    'hintFloor': 'MOLA — Rehin Penceresi’nden alışveriş yap, sonra Borç Terminali’nde SALONU AÇ kolunu çek',
+    'hintBell': 'VARDİYA ARASI — Rehin Penceresi’nden alışveriş yap, sonra Zil’i çalmak için Borç Terminali’ndeki kolu çek',
     'paidShort': '{n}. GECE ÖDENDİ',
     'summary': '{n}. GECE ÖDENDİ — yatırılan {dep}, faiz {int}, devreden {carry}, bilet {tickets}',
   },

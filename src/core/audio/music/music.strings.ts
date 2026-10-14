@@ -52,7 +52,7 @@ export default {
     'genre.hardbop': 'Hard bop',
     'genre.tango': 'Tango',
     'genre.music-box': 'Müzik kutusu',
-    'genre.noir': 'Hüzünlü şarkı',
+    'genre.noir': 'Kederli aşk şarkısı',
     'genre.hymn': 'Org ve koro',
     'genre.lofi': 'Lo-fi',
   },

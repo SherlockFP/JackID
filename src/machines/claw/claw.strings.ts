@@ -35,7 +35,7 @@ const tr: Record<string, string> = {
   help: 'Pençeyi bir ödülün üstüne getir ve bırak. Ödülü kavrarsa kalkabilir, sonra kutuya kadar taşıması gerekir. Güçlü kavrama nadiren kaçırır. Her 15 saniyede pençeyi hareket ettirebilirsin, acele etme.',
   sSack: '×{n} KESE', sCap: 'TILSIM', sEgg: 'ALTIN',
   won: 'KAZANÇ {n}', lost: 'Bu sefer bir şey yok', tumble: 'KENDİLİĞİNDEN DÜŞTÜ', grip: 'KAVRAMA GÜÇLÜ', grip2: 'KAVRAMA ZAYIF',
-  charmCommon: 'Sıradan tılsım', charmRare: 'Nadir tılsım', egg: 'Altın yumurta', sack: 'Kese ×{n}',
+  charmCommon: 'Yaygın tılsım', charmRare: 'Nadir tılsım', egg: 'Altın yumurta', sack: 'Kese ×{n}',
   eggWin: 'ALTIN YUMURTA', xrayOn: 'Güçlü kavrama', xrayOff: 'Zayıf kavrama',
   noFunds: 'Bu bahis için yeterli jeton yok', empty: 'Yığın boş. Bir sonraki Gece yenilenir.',
   busy: 'Pençe hâlâ hareket ediyor', low: '{n} eylem gerekli', moved: 'Bahis {n}', timeUp: 'Süre doldu',

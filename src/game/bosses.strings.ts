@@ -12,7 +12,7 @@ export default {
     'banner.title': 'PATRON GECESİ: {name}',
     'dawn.next': 'Sonraki Gece: {name}',
     'dawn.noEvents': 'Bu gece rastgele olay yok.',
-    'reward.title': 'PATRON ÖDÜLÜ: bir Nadir tılsım al',
+    'reward.title': 'PATRON ÖDÜLÜ: bir Nadir tılsım seç',
     'reward.tickets': '+{n} Bilet',
   },
 };

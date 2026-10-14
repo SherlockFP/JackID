@@ -86,12 +86,12 @@ export function placeNotes(world: World): () => void {
     mesh.position.copy(world.root.worldToLocal(p.clone()));
     world.root.add(mesh);
 
-    const box = new THREE.Box3().setFromCenterAndSize(p.clone().setY(p.y + 0.5), new THREE.Vector3(1.1, 1.1, 1.1));
+    const box = new THREE.Box3().setFromCenterAndSize(p.clone().setY(p.y + 0.5), new THREE.Vector3(0.5, 0.5, 0.5));
     const off = world.interact.add({
       id: `story.note.${def.id}`,
       box,
       maxDist: 2.0,
-      priority: 1,
+      priority: -1,                       // below machines: a note lying on a machine must never steal its prompt
       enabled: () => stage === null,
       label: () => t('story.ui.label', { title: t(`story.note.${def.id}.t`) }),
       sub: () => found.has(def.id) ? t('story.ui.subFound') : t('story.ui.sub', { i: i + 1, total: NOTES.length }),

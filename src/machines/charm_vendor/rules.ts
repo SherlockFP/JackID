@@ -20,6 +20,8 @@ export interface PawnSlot {
   price: number;
   rarity: CharmRarity;
   cursed: boolean;
+  /** The charm's family tag (picks the Pawn icon glyph). */
+  tag?: string;
   underCounter: boolean;
   /** Locked: the item stays on the shelf across rerolls and intermissions until it is bought or unlocked (1 Ticket). */
   locked: boolean;

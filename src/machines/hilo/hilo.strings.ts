@@ -36,7 +36,7 @@ const STRINGS: MachineStrings = {
   },
   tr: {
     name: 'Yüksek-Alçak Merdiveni',
-    desc: 'Her kartta yükseği ya da alçağı tahmin et. Merdiveni tırman, ya da kart seni yakmadan kasayı al.',
+    desc: 'Her kartta yükseği ya da alçağı tahmin et. Merdiveni tırman, ya da kart seni yakmadan kazancı al.',
     marquee: 'YÜKSEK-ALÇAK',
     higher: 'Yüksek', lower: 'Alçak', skip: 'Atla', collect: 'Al', deal: 'Dağıt',
     runLabel: 'Çarpan', stepsLabel: 'Adım',
@@ -45,7 +45,7 @@ const STRINGS: MachineStrings = {
     needStep: 'Almadan önce bir doğru tahmin yap.',
 
     // ── seat HUD (readability standard) ──
-    goal: 'Sıradaki kartı tahmin et: yüksek mi alçak mı. Batmadan kasayı al.',
+    goal: 'Sıradaki kartı tahmin et: yüksek mi alçak mı. Batmadan kazancı al.',
     tip1: 'Kart dağıtmak için [{deal}] tuşuna bas. Bahsi [{bet}] ile değiştir.',
     tip2: 'YÜKSEK [{up}] ya da ALÇAK [{down}] tahmin et. Her doğru tahmin merdiveni çıkarır.',
     tip3: 'Doğru tahminden sonra [{collect}] AL  ·  [{help}] TAM KURALLAR',

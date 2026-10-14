@@ -41,7 +41,7 @@ const en: Record<string, string> = {
 
 const tr: Record<string, string> = {
   name: 'Üç Kart Poker',
-  desc: 'Üç kartla Dağıtıcı\'yı yen. Ante koy, sonra Oyna ya da Katla. Krupiye en az Kız yüksekliğinde olmalı. Çift Artı yalnızca kendi elinde öder.',
+  desc: 'Üç kartla Krupiye’yi yen. Ante koy, sonra Oyna ya da Katla. Krupiye en az Kız yüksekliğinde olmalı. Çift Artı yalnızca kendi elinde öder.',
   ante: 'Ante', play: 'Oyna', fold: 'Katla', pairPlus: 'Çift Artı', bonus: 'Ante Bonusu',
   ready: 'Hazır', deal: 'Dağıt', bet: 'Bahis', bot: 'Karıştırıcı',
   sBet: 'Antenini koy', sWait: 'Diğerleri bekleniyor', sDeal: 'Dağıtılıyor', sDecide: 'Oyna mı, katla mı?',

@@ -52,7 +52,7 @@ const en: Record<string, string> = {
 
 const tr: Record<string, string> = {
   name: 'Savaş Masası (Kart Savaşı / Ejder-Kaplan)',
-  desc: 'Lake masasında Casino War, ya da iki oyulmuş kafa arasında Ejder-Kaplan. Bahsini koy, kartların dönmesini izle; beraberlikte savaşa gir ya da teslim ol. Dealer hiç göz kırpmaz.',
+  desc: 'Lake masasında Casino War, ya da iki oyulmuş kafa arasında Ejder-Kaplan. Bahsini koy, kartların dönmesini izle; beraberlikte savaşa gir ya da teslim ol. Krupiye hiç göz kırpmaz.',
   plaque: 'SAVAŞ · EJDER-KAPLAN', variantWar: 'SAVAŞ', variantDt: 'EJDER-KAPLAN',
   dragon: 'EJDER', tiger: 'KAPLAN', tie: 'BERABERE', suited: 'AYNI KART', big: 'BÜYÜK', small: 'KÜÇÜK', odd: 'TEK', even: 'ÇİFT',
   main: 'SAVAŞ', tieSide: 'BERABERE 10:1', war: 'SAVAŞ', burn: 'YAK 3', twin: 'İKİZ',
@@ -63,11 +63,11 @@ const tr: Record<string, string> = {
   rWin: 'KAZANÇ {n}', rLose: 'Kaybettin', rPush: 'Berabere, bahis iade', rSurr: 'Teslim, yarısı iade',
   rWarWon: 'Savaş kazanıldı', rWarLost: 'Savaş kaybedildi', rDragon: 'EJDER KAZANDI', rTiger: 'KAPLAN KAZANDI', rTie: 'BERABERE',
   rSuited: 'AYNI KART', rComm: 'Beraberlik {n}',
-  hLock: 'Bahisi kilitle', hWar: 'Savaşa gir', hSurrender: 'Teslim ol', hDragon: 'Ejder', hTiger: 'Kaplan', hTieBet: 'Beraberlik',
+  hLock: 'Bahsi kilitle', hWar: 'Savaşa gir', hSurrender: 'Teslim ol', hDragon: 'Ejder', hTiger: 'Kaplan', hTieBet: 'Beraberlik',
   hMain: 'Savaşa bahis', hClear: 'Temizle', hReady: 'Hazır', hSkip: 'Aç',
   potLabel: 'Bahis', roadLabel: 'YOL', raiseLabel: 'Artış {n}', timerLabel: 'Karar: {s}s',
-  peek: 'Dealer savaş kartı: {card}', peekRed: 'Ejder kartı {c}', red: 'kırmızı', black: 'siyah',
-  warBonusLine: 'Savaş öncekini de öder', tieHint: 'Kartın dealerinkiyle berabere',
+  peek: 'Krupiye savaş kartı: {card}', peekRed: 'Ejder kartı {c}', red: 'kırmızı', black: 'siyah',
+  warBonusLine: 'Savaş öncekini de öder', tieHint: 'Kartın krupiyeninkiyle berabere',
   badBet: 'Bu bahis geçerli değil', limit: 'Bu noktada limit {n}', busy: 'Masa meşgul',
   noBets: 'Önce bir bahis koy', notSeated: 'Önce otur', badSeat: 'Savaşta 7. ve 8. koltuklar kapalı',
   noRaise: 'Savaşa girmek için yeterli jeton yok', notYourTie: 'Bu karar senin değil', noDecision: 'Karar bekleyen yok',

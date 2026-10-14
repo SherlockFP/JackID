@@ -11,12 +11,12 @@ export default {
     'feed.hot': 'SOMETHING IS RUNNING WARM: {name}',
   },
   tr: {
-    'tilt': 'EĞİM',
-    'tiltFactor': 'EĞİM ×{x}',
+    'tilt': 'TİLT',
+    'tiltFactor': 'TİLT ×{x}',
     'hot': 'SICAK ×{x}',
     'cold': 'SOĞUK',
     'hud.hot': 'SICAK: {name}',
     'hud.cold': 'SOĞUK: {name}',
-    'feed.hot': 'BİR ŞEYLER ISINIYOR: {name}',
+    'feed.hot': 'BİR MAKİNE ISINIYOR: {name}',
   },
 };

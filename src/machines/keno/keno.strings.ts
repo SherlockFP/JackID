@@ -65,7 +65,7 @@ const tr: Record<string, string> = {
   sOpen: 'Biletler açık', sOpenShared: 'Satış {n} sn sonra kapanır', sLock: 'Satış kapandı', sDraw: 'Röleler çekiliyor',
   sTally: 'Biletler kontrol ediliyor', sPay: 'Ödeme yapılıyor', sWait: 'Oyuncular bekleniyor',
   next: 'SONRAKİ {n}', lock: 'KİLİT', hit: 'İSABET', hits: 'İSABET {n}',
-  win: 'KAZANÇ {n}', lose: 'Kayıp {n}', jackpot: 'BÜYÜK İKRAMİYE', nearMiss: 'Çok az kaldı...', zeroPay: 'Sıfır ödemesi {n}',
+  win: 'KAZANÇ {n}', lose: 'Kayıp {n}', jackpot: 'JACKPOT', nearMiss: 'Çok az kaldı...', zeroPay: 'Sıfır ödemesi {n}',
   luck: 'Şanslı yeniden çekim', spare: 'Yedek sayı {n}', hot: 'SICAK {n}', cold: 'SOĞUK {n}',
   noPicks: 'En az bir sayı seç', badPicks: '1 ile 80 arasından 1 ile 10 farklı sayı seç',
   badStake: 'Çekiliş başına 1 ile 100 arasında bahis', badDraws: '1, 5, 10 veya 20 çekiliş seç', badSlot: 'Bu yuva biletinde yok',

@@ -262,7 +262,7 @@ export class Pawn implements PawnApi {
       if (!d) return null;
       const price = this.priceOf(d, i);
       return {
-        charmId: s.id, price, rarity: d.rarity, cursed: d.rarity === 'cursed', underCounter: i === UNDER_COUNTER_INDEX,
+        charmId: s.id, price, rarity: d.rarity, cursed: d.rarity === 'cursed', tag: d.tag, underCounter: i === UNDER_COUNTER_INDEX,
         locked: s.locked, fit: fitOf(d, held, m), bias: i === BIAS_SLOT, discounted: price > 0 && price < charmPrice(d, this.host.si()),
       };
     });

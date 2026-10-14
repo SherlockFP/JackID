@@ -25,7 +25,7 @@ import { ICON_PX, charmIconPix, rarityColor } from './icons';
  */
 export interface CharmIcon {
   readonly root: THREE.Group;
-  set(charm: { id: string; rarity: CharmRarity; cursed: boolean } | null, selected: boolean): void;
+  set(charm: { id: string; rarity: CharmRarity; cursed: boolean; tag?: string } | null, selected: boolean): void;
   animate(t: number, dt: number): void;
   dispose(): void;
 }
@@ -58,12 +58,12 @@ function buildIcon(i: number): CharmIcon {
     root,
     set(charm, selected) {
       sel = selected;
-      const k = charm ? `${charm.id}|${charm.rarity}|${charm.cursed ? 1 : 0}|${selected ? 1 : 0}` : '';
+      const k = charm ? `${charm.id}|${charm.rarity}|${charm.cursed ? 1 : 0}|${charm.tag ?? ''}|${selected ? 1 : 0}` : '';
       if (k === key) return;
       key = k;
       root.visible = charm !== null;
       if (!charm) return;
-      charmIconPix(charm.id, charm.rarity, charm.cursed, selected).paintInto(cv);
+      charmIconPix(charm.id, charm.rarity, charm.cursed, selected, charm.tag).paintInto(cv);
       tex.needsUpdate = true;
       glowMat.color.setHex(rarityColor(charm.cursed ? 'cursed' : charm.rarity));
     },

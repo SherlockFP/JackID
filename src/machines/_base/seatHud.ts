@@ -140,6 +140,7 @@ export class SeatHud {
   setUiBlocked(on: boolean): void {
     this.uiBlocked = on;
     this.root.style.display = on ? 'none' : '';
+    this.placeToasts();
   }
 
   /**
@@ -179,7 +180,7 @@ export class SeatHud {
   get rulesOpen(): boolean { return this.card === 'rules'; }
 
   /** Seated: show the overlay. */
-  show(): void { this.shown = true; this.root.classList.add('on'); this.refreshTilt(); }
+  show(): void { this.shown = true; this.root.classList.add('on'); this.refreshTilt(); this.placeToasts(); }
   /** Stood up: hide everything, drop the result and any open card (an unseen tip stays unseen). */
   /** Label of the help key; the in-game session points this at the live binding (default key H). */
   static helpKeyLabel: () => string = () => 'H';
@@ -191,17 +192,31 @@ export class SeatHud {
     this.clearResult();
     this.closeCard();
     this.refreshTilt();
+    this.placeToasts();
   }
   dispose(): void { this.offHint?.(); this.offHint = null; for (const off of this.offs.splice(0)) off(); this.clearResult(); this.cardP?.dispose(); this.cardP = null; this.root.remove(); }
 
   // ── standard slots ────────────────────────────────────────────────────────────────────────────
-  goal(text: Txt): void { this.goalEl.textContent = txt(text); }
+  goal(text: Txt): void { this.goalEl.textContent = txt(text); this.placeToasts(); }
 
   state(text: Txt, tone: HudTone = 'gold', sub?: Txt): void {
     this.stateEl.className = `shud-state shud-panel tone-${tone}`;
     this.stateT.textContent = txt(text);
     this.stateS.textContent = sub === undefined ? '' : txt(sub);
     this.stateS.style.display = this.stateS.textContent === '' ? 'none' : '';
+    this.placeToasts();
+  }
+
+  /**
+   * The toast stack (`.px-toasts`, the Night summary and other news) is pushed down to sit under this HUD's header while
+   * the HUD is up; it used to cover the goal and the state banner. Restored when the HUD hides or the UI blocks.
+   */
+  private placeToasts(): void {
+    const stack = this.root.parentElement?.querySelector<HTMLElement>('.px-toasts');
+    if (!stack) return;
+    if (!this.shown || this.uiBlocked) { stack.style.top = ''; return; }
+    const head = this.root.querySelector<HTMLElement>('.shud-top');
+    stack.style.top = head ? `${head.offsetTop + head.offsetHeight + 6}px` : '';
   }
 
   numbers(items: HudNumber[]): void {

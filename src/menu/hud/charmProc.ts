@@ -39,9 +39,59 @@ export function pegBadge(id: string, data: Json | undefined): string {
   return max !== undefined ? `${v}/${max}` : String(v);
 }
 
+/**
+ * How big a pop is: 0 small, 1 medium, 2 big. Big = a proc tier of 3 or more, a multiplier of 2× or more, or a +25 % or
+ * more. Read from the tier and the label text, so a plain "+8%" stays small.
+ */
+export function popSize(text: string, tier = 0): 0 | 1 | 2 {
+  const n = Number.parseFloat(text.replace(/[^0-9.]/g, ''));
+  const v = Number.isFinite(n) ? n : 0;
+  const mult = text.includes('×');
+  const pct = text.includes('%');
+  if (tier >= 3 || (mult && v >= 2) || (pct && v >= 25)) return 2;
+  if (tier >= 1 || (mult && v >= 1.5) || (pct && v >= 12)) return 1;
+  return 0;
+}
+
+/** Gold burst behind a pop: a ring and a spray of sparks from the pop's spot. Removes itself; never over the odds line. */
+function burst(root: HTMLElement, i: number, size: 0 | 1 | 2): void {
+  const wrap = h('div', 'charm-burst', root);
+  wrap.style.cssText = `position:absolute;left:50%;top:calc(30% + 12 * ${i} * var(--u));width:0;height:0;pointer-events:none;`;
+  const ring = h('div', '', wrap);
+  ring.style.cssText = 'position:absolute;left:0;top:0;width:calc(var(--u) * 10);height:calc(var(--u) * 10);'
+    + 'transform:translate(-50%,-50%) scale(0.2);border-radius:50%;border:calc(var(--u) * 2) solid #ffd23c;box-shadow:0 0 calc(var(--u) * 4) #ffd23c;';
+  const n = 6 + size * 4;
+  const reach = (size === 2 ? 15 : size === 1 ? 10 : 7);
+  const life = size === 2 ? 900 : 650;
+  const ease = 'cubic-bezier(.2,.8,.3,1)';
+  // Web Animations: the ring grows and fades, the sparks fly out (offsets in --u units, rounded to keep the CSS plain)
+  const u = (x: number): string => `calc(var(--u) * ${(Math.round(x * 100) / 100).toFixed(2)})`;
+  ring.animate(
+    [{ transform: 'translate(-50%,-50%) scale(0.2)', opacity: 1 },
+      { transform: `translate(-50%,-50%) scale(${size === 2 ? 4 : 2.6})`, opacity: 0 }],
+    { duration: life, easing: ease, fill: 'forwards' },
+  );
+  for (let k = 0; k < n; k++) {
+    const sp = h('div', '', wrap);
+    const a = (k / n) * Math.PI * 2;
+    sp.style.cssText = 'position:absolute;left:0;top:0;width:calc(var(--u) * 2);height:calc(var(--u) * 2);'
+      + 'margin:calc(var(--u) * -1) 0 0 calc(var(--u) * -1);background:#ffd23c;box-shadow:0 0 calc(var(--u)) #fff1b8;';
+    sp.animate(
+      [{ transform: 'translate(0,0)', opacity: 1 },
+        { transform: `translate(${u(Math.cos(a) * reach)}, ${u(Math.sin(a) * reach)})`, opacity: 0 }],
+      { duration: life, easing: ease, fill: 'forwards' },
+    );
+  }
+  window.setTimeout(() => wrap.remove(), life + 60);
+}
+
 export interface ProcPops {
-  /** Shows gold pop text for one proc; empty text is ignored. At most MAX_POPS live at once (oldest dropped). */
-  show(text: string): void;
+  /**
+   * Shows gold pop text for one proc; empty text is ignored. At most MAX_POPS live at once (oldest dropped). `tier` (the
+   * proc tier, optional) and the label size the pop: medium and big pops add a gold burst, a big one also scales up and
+   * gives the camera a short shake (`app.fx`, which honours the shake setting).
+   */
+  show(text: string, tier?: number): void;
   dispose(): void;
 }
 
@@ -49,12 +99,21 @@ export interface ProcPops {
 export function createProcPops(root: HTMLElement): ProcPops {
   let live: HTMLElement[] = [];
   return {
-    show(text: string): void {
+    show(text: string, tier = 0): void {
       if (!text) return;
       while (live.length >= MAX_POPS) live.shift()?.remove();
       const el = h('div', 'charm-pop', root, text);
-      el.style.setProperty('--i', String(live.length));
+      const size = popSize(text, tier);
+      const i = live.length;
+      el.style.setProperty('--i', String(i));
+      if (size === 2) el.style.fontSize = 'calc(26 * var(--u))';
+      else if (size === 1) el.style.fontSize = 'calc(21 * var(--u))';
+      el.style.textShadow = 'calc(var(--u) * 2) calc(var(--u) * 2) 0 #000';
       live.push(el);
+      if (size > 0) burst(root, i, size);
+      if (size === 2) {
+        try { app.fx.shake(0.018, 0.3, { roll: 0.4 }); } catch { /* the shake is optional */ }
+      }
       window.setTimeout(() => {
         el.remove();
         live = live.filter((p) => p !== el);
@@ -63,6 +122,7 @@ export function createProcPops(root: HTMLElement): ProcPops {
     dispose(): void {
       for (const el of live) el.remove();
       live = [];
+      for (const b of root.querySelectorAll('.charm-burst')) b.remove();
     },
   };
 }

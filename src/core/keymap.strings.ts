@@ -43,7 +43,7 @@ const strings = {
     'action.sprint': 'Koş', 'action.crouch': 'Çömel', 'action.interact': 'Etkileş / otur / kalk',
     'action.pause': 'Duraklat', 'action.scoreboard': 'Skor tablosu (basılı tut)', 'action.chat': 'Sohbet',
     'action.give': 'Jeton ver', 'action.help': 'Kontrol kartı', 'action.debug': 'Hata ayıklama',
-    'action.debugColliders': 'Çarpışmaları göster', 'action.upgrade': 'Geliştirme Defteri',
+    'action.debugColliders': 'Çarpışmaları göster', 'action.upgrade': 'Yükseltme Defteri',
     'action.use': 'Eldeki eşyayı kullan', 'action.place': 'Totem koy / al', 'action.emote': 'İfade',
     'action.ping': 'İşaret koy', 'action.talk': 'Bas-konuş (basılı tut)', 'action.journal': 'JackID kartı (basılı tut)',
     'action.skip': 'Ara sahneyi atla (basılı tut)', 'action.jump': 'Zıpla', 'action.punch': 'Delik kartı (basılı tut)',
@@ -61,7 +61,7 @@ const strings = {
     'action.m.n9': 'Düğme 9',
     // controls lane
     'ctl.capture': 'FAREYİ YAKALAMAK İÇİN TIKLA',
-    'ctl.standAfterRound': 'Bu turdan sonra kalkılıyor',
+    'ctl.standAfterRound': 'Bu turdan sonra kalkacaksın',
   },
 };
 

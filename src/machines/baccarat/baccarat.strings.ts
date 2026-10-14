@@ -58,7 +58,7 @@ const tr: Record<string, string> = {
   sShuffle: 'Sabot karıştırılıyor', sIdle: 'Sabot sessiz',
   rPlayer: 'OYUNCU KAZANDI', rBanker: 'BANKER KAZANDI', rTie: 'BERABERE', rNat: 'DOĞAL {n}', rPair: 'ÇİFT',
   rWin: 'KAZANÇ {n}', rLose: 'Banker aldı', rPush: 'Berabere, bahis iade', rComm: 'Komisyon {n}',
-  hLock: 'Bahisi kilitle', hReveal: 'Aç', hSkip: 'Hepsini aç', hDrag: 'Aşağı çek', hClear: 'Temizle',
+  hLock: 'Bahsi kilitle', hReveal: 'Aç', hSkip: 'Hepsini aç', hDrag: 'Aşağı çek', hClear: 'Temizle',
   hPlayer: 'Oyuncu', hBanker: 'Banker', hTie: 'Beraberlik', hBet: 'Bahis', hShoe: 'SABOT {n}',
   totalP: 'O {n}', totalB: 'B {n}', potLabel: 'Bahis', roadLabel: 'YOL',
   peek: 'Sıradaki kart: {card}', mirrorFigure: 'Arkanda biri duruyor',

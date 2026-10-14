@@ -465,7 +465,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     this.parts.ticketLed.set(String(fmtNum(this.tickets())).padStart(4, ' '));
     for (let i = 0; i < SLOTS; i++) {
       const s = open ? stock[i] ?? null : null;
-      this.parts.icons[i]?.set(s ? { id: s.charmId, rarity: s.rarity, cursed: s.cursed } : null, this.isLocalOccupant && i === this.cursor);
+      this.parts.icons[i]?.set(s ? { id: s.charmId, rarity: s.rarity, cursed: s.cursed, tag: s.tag } : null, this.isLocalOccupant && i === this.cursor);
     }
     this.drawLedger(stock, open);
     if (this.isLocalOccupant) this.showHud();
@@ -556,7 +556,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const d = tr(descKey);
     c.desc.textContent = d === descKey ? this.t('noDesc') : d;
     const g = c.icon.getContext('2d');
-    if (g) { g.clearRect(0, 0, 24, 24); charmIconPix(id, rarity, cursed, true).drawTo(g); }
+    if (g) { g.clearRect(0, 0, 24, 24); charmIconPix(id, rarity, cursed, true, sw ? undefined : sel?.tag).drawTo(g); }
     if (sw && out) {
       c.meta.textContent = this.t('swapOut', { n: fmtNum(out.refund) });
       c.note.textContent = '';

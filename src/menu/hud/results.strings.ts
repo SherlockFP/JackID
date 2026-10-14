@@ -12,8 +12,8 @@ export default {
   tr: {
     'post.short': 'Kotaya {x} eksik kaldın',
     'post.met': 'Kota tutuldu',
-    'post.pulls': '{n} hamle kullanılmadı',
-    'post.pull1': '1 hamle kullanılmadı',
+    'post.pulls': '{n} çekiş kullanılmadı',
+    'post.pull1': '1 çekiş kullanılmadı',
     'post.best': 'en iyi makine {name}',
     'post.top': 'en çok işleyen tılsım {name}',
   },

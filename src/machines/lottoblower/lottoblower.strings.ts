@@ -62,14 +62,14 @@ const en: Record<string, string> = {
 
 const tr: Record<string, string> = {
   name: 'Loto Küresi',
-  desc: 'Otuz sayıdan beş sayı ve sekizden bir Ay seç. Küre beş top ile bir Ay topu üfler. Hepsini tutturursan büyük ikramiye senin.',
+  desc: 'Otuz sayıdan beş sayı ve sekizden bir Ay seç. Küre beş top ile bir Ay topu üfler. Hepsini tutturursan jackpot senin.',
   draw: 'Çek', quick: 'Hızlı Seçim', add: 'Satır ekle', batch: 'Toplu x{n}', clear: 'Temizle', cam: 'Küre kamerası',
   line: 'SATIR {n}', lines: 'SATIR {n}/{m}', pick: 'SEÇİM {n}/5', moon: 'AY {n}', noMoon: 'AY -',
-  ticket: 'BİLET', live: 'CANLI', empty: 'BOŞ', drawNo: 'ÇEKİLİŞ #{n}', jackpotLbl: 'BÜYÜK İKRAMİYE {n}',
+  ticket: 'BİLET', live: 'CANLI', empty: 'BOŞ', drawNo: 'ÇEKİLİŞ #{n}', jackpotLbl: 'JACKPOT {n}',
   sOpen: 'Satış açık', sOpenShared: 'Satış {n} sn sonra kapanır', sLock: 'Satış kapandı', sBlow: 'Nefes yükseliyor',
   sDraw: 'Top {n} / 5', sMoon: 'Ay topu', sPay: 'Ödeme yapılıyor', sIdle: 'Satır bekleniyor',
   lastDraw: 'SON {nums}', winners: 'KAZANANLAR', peek: 'AY GÖZETLEME {n}', closing: 'KAPANIŞ',
-  jackpot: 'BÜYÜK İKRAMİYE', win: 'KAZANÇ {n}', lose: 'Kayıp {n}', refund: 'İade {n}', nearMiss: 'Çok az kaldı...',
+  jackpot: 'JACKPOT', win: 'KAZANÇ {n}', lose: 'Kayıp {n}', refund: 'İade {n}', nearMiss: 'Çok az kaldı...',
   zeroPay: 'İsabet yok', hit: 'İSABET', hits: 'İSABET {n}', luck: 'Şanslı iade', lucky: 'Şanslı yeniden çekim',
   noPicks: '1 ile 30 arasından beş farklı sayı seç', noMoonPick: '1 ile 8 arasından bir Ay seç', noLines: 'En az bir satır ekle',
   badLine: 'Her satır 1 ile 30 arası beş sayı ve 1 ile 8 arası bir Aydan oluşur', badBet: 'Satır bedeli 5 ile 100 jeton arası',
@@ -80,7 +80,7 @@ const tr: Record<string, string> = {
   boardLabel: 'SAYILAR 1-30 / AY 1-8', winnersLabel: 'KAZANANLAR', lineLabel: 'SATIRLAR',
   pullLabel: 'ÇEK', lineFull: 'Satır dolu',
   // ── seat HUD
-  goal: 'Beş sayının hepsini ve Ayı tutturup büyük ikramiyeyi kazan',
+  goal: 'Beş sayının hepsini ve Ayı tutturup jackpot’u kazan',
   stLive: 'BİLET CANLI · ÜFLEYİCİYİ BEKLE',
   stBuy: 'SATIRLAR HAZIR · AL',
   stPick: '5 SAYI VE BİR AY SEÇ',
@@ -94,7 +94,7 @@ const tr: Record<string, string> = {
   nLines: 'SATIR',
   nPick: 'SEÇİM + AY',
   nStake: 'SATIR BAŞI',
-  nJackpot: 'BÜYÜK İKRAMİYE',
+  nJackpot: 'JACKPOT',
   nPeek: 'AY GÖZETLEME',
   nBalance: 'BAKİYE',
   cPull: 'KOLU ÇEK',
@@ -113,8 +113,8 @@ const tr: Record<string, string> = {
   rule1: 'Bir satır, 1 ile 30 arasında beş farklı sayı ve 1 ile 8 arasında bir Aydan oluşur.',
   rule2: 'Her satır satır bedeli kadar tutar. Çekiliş başına en fazla 20 satır. Satır bedeli çekiliş kilitlenince alınır.',
   rule3: 'Üfleyici beş top ve bir Ay topu bırakır. Tutturduğun sayılar satırlarında yanar.',
-  rule4: 'Ödemeler kiosk ödeme tablosuna göre yapılır. Büyük ikramiye için beş sayı ve Ay birlikte tutmalı.',
-  rule5: 'Ödenen her satırın yüzde 8\'i büyük ikramiyeye eklenir. Kazanan satırlar arasında bölünür.',
+  rule4: 'Ödemeler kiosk ödeme tablosuna göre yapılır. Jackpot için beş sayı ve Ay birlikte tutmalı.',
+  rule5: 'Ödenen her satırın yüzde 8\'i jackpot havuzuna eklenir. Kazanan satırlar arasında bölünür.',
   rule6: 'Yalnızsan kol çekimi başlatır. Başkalarıyla oynarken çekiliş zamanlayıcıyla yürür, satış kapanmadan al.',
 };
 
