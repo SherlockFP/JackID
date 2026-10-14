@@ -41,6 +41,8 @@ export const DEFAULT_BINDINGS: Record<BindingKey, string[]> = {
 /** §11.6 walk-side actions not yet in the frozen `Action` union. Keys are binding keys, same syntax as above. */
 export const EXTRA_BINDINGS: Record<string, string[]> = {
   jump: ['Space'], punch: ['KeyQ'], cheer: ['Digit7'], shrug: ['Digit8'], dance: ['Digit9'],
+  // the phone from anywhere (walking or seated): KeyP picks up a ringing line; 1 / 2 / 3 choose a deal while the sheet is up
+  answerPhone: ['KeyP'], phoneOpt1: ['Digit1'], phoneOpt2: ['Digit2'], phoneOpt3: ['Digit3'],
 };
 
 /** Every binding key the service knows (frozen + extra) with its default codes. */
@@ -51,7 +53,7 @@ export const layerOf = (key: string): Layer => (key.startsWith('m.') ? 'machine'
 
 /** Walk-layer actions that stay live while seated (everything else is suppressed at a machine). */
 export const SEATED_WALK_ACTIONS: ReadonlySet<string> = new Set([
-  'pause', 'scoreboard', 'chat', 'debug', 'debugColliders', 'help', 'upgrade', 'journal',
+  'pause', 'scoreboard', 'chat', 'debug', 'debugColliders', 'help', 'upgrade', 'journal', 'answerPhone',
 ]);
 /** During a cutscene these codes act as `skip` in addition to the user's binding. */
 export const CUTSCENE_SKIP_CODES: readonly string[] = ['Space', 'Enter', 'NumpadEnter', 'Escape'];

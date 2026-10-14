@@ -4,7 +4,7 @@
  *   • Once per Watch the phone may ring: a seeded ~45 % chance (`x.phone.callChance`; Coiled Cord = 100 %, Blank JackID's
  *     `x.phone.mute` = never). From Night 2 the FIRST Watch of every Night always rings; a Night still silent at its last Watch
  *     gets a call there too.
- *   • It rings for 10 s (`x.phone.ringTime` adds), then the caller offers THREE deals. Pick one (1 / 2 / 3), within 15 s.
+ *   • It rings for 20 s (`x.phone.ringTime` adds), then the caller offers THREE deals. Pick one (1 / 2 / 3), within 15 s.
  *   • A deal is a boon with a price. Everything is expressed through the existing pipeline: buffs (`run.buffs`, which fold into
  *     `run.mod()`), `earn` / `spend`, `grantCharm`, `addDread`, `shift.extend`, `jackpotAdd`. Three run-private actions have no
  *     RunApi member yet and come in through the optional `HotlineHost` (see the WIRING list in the work report).
@@ -31,7 +31,7 @@ import { ringTotal } from '@/machines/hotline/rules';
 
 // ── tuning ───────────────────────────────────────────────────────────────────────────────────────────
 export const CALL_CHANCE = 0.45;
-export const RING_SECONDS = 10;
+export const RING_SECONDS = 20;
 export const ANSWER_SECONDS = 15;
 /** The call lands between these fractions of the Watch clock (clear of the Bell and of Last Call). */
 export const RING_FROM = 0.2;
@@ -66,7 +66,7 @@ declare module '@/core/events' {
   interface GameEvents { 'phone:length': { callId: number; seconds: number } }
 }
 
-/** `ringSecs`: the ring length this call was given (base 10 s plus `x.phone.ringTime`), kept so a restore re-sends it. */
+/** `ringSecs`: the ring length this call was given (base 20 s plus `x.phone.ringTime`), kept so a restore re-sends it. */
 interface CallRec { id: number; script: string; ringingSince: number; answeredBy: number | null; offers: Offer[]; ringSecs?: number }
 
 /** JSON-safe state, stored under `RunExt.hotline`. */

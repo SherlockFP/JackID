@@ -30,7 +30,7 @@ import * as registry from '@/machines/_base/registry';
 import { WatchClock, type ClockSnapshot } from './clock';
 import {
   ACTIVITY_MIN_PULLS, BASE_RUN_NIGHTS, LAMP_FIRST_NIGHT, NETWORK_FEED, OVERSHOOT_TIERS, START, TICKET_CAP,
-  assessmentFor, closingSeconds, hotLampCount, interestFor, interestRate, isWitchingWatch, lastCallSeconds, nightDef, obolsFor, quotaFor,
+  assessmentFor, closingSeconds, coldLampCount, hotLampCount, interestFor, interestRate, isWitchingWatch, lastCallSeconds, nightDef, obolsFor, quotaFor,
   type ObolOutcome,
 } from './data/schedule';
 import {
@@ -1428,7 +1428,7 @@ class Run implements DebtRun {
     this.circ.startWatch(rng, cands, {
       lamps: this.night() >= LAMP_FIRST_NIGHT,
       hot: Math.max(0, hotLampCount(this.night()) + Math.round(this.mod('x.lamp.hotCount', RUN_MACHINE, 0))),
-      cold: Math.max(0, 1 + Math.round(this.mod('x.lamp.coldCount', RUN_MACHINE, 0))),
+      cold: coldLampCount(this.night(), Math.round(this.mod('x.lamp.coldCount', RUN_MACHINE, 0))),
       newIsHot: this.mod('x.lamp.hot', RUN_MACHINE, 0) > 0,                // Grand Opening Ribbon: machines new this Watch are Hot
     });
     this.emitLamps();

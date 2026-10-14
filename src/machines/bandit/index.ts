@@ -24,6 +24,7 @@ import { countUp, breathe } from '@/machines/_base/juice';
 import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import type { Kit, ScreenSurface } from '@/kit/types';
 import { fmtCoins } from '@/core/i18n';
+import { px5Width } from '@/core/texgen/font';
 import { clamp, lerp } from '@/core/math';
 import { buildModel, LEVER_MAX, LEVER_TRIP, MAW_COINS, type BanditParts } from './model';
 import {
@@ -52,6 +53,11 @@ const SPIN_RPS = 6;                // reel revolutions per second while spinning
 const STOP_AT = [1.2, 1.6, 2.0];   // seconds after the lever trips, per reel (the mechanical stop order)
 const GOLD = 0xffd040, RED = 0xff3020;
 const SHOE_TEXT = 'SHOE';
+/** Largest integer px5 scale (≤ maxS) at which `text` fits the box; never below 1. */
+const fitScale = (text: string, maxW: number, maxH: number, maxS: number): number => {
+  for (let s = maxS; s > 1; s--) if (px5Width(text, s) <= maxW && 7 * s <= maxH) return s;
+  return 1;
+};
 
 export const def: MachineDef = {
   id: 'bandit',
@@ -392,8 +398,9 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
 
   private drawLed(s: ScreenSurface, text: string): void {
     s.draw((g, sc) => {
-      g.fillStyle = '#200404'; g.fillRect(0, 0, sc.w, 16);
-      sc.text(text, sc.w / 2, 3, { font: 'px5', color: '#FF3020', align: 'center' });
+      g.fillStyle = '#200404'; g.fillRect(0, 0, sc.w, sc.h);
+      const k = fitScale(text, sc.w - 8, sc.h - 4, 4);
+      sc.text(text, sc.w / 2, Math.floor((sc.h - 7 * k) / 2), { font: 'px5', scale: k, color: '#FF3020', align: 'center' });
     });
   }
 
@@ -402,13 +409,21 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
     const names = (s: Sym): string => this.t(`sym_${s}`);
     this.parts.award.draw((g, sc) => {
       g.fillStyle = '#0c0c14'; g.fillRect(0, 0, sc.w, sc.h);
-      g.fillStyle = '#1E4D7A'; g.fillRect(0, 0, sc.w, 12);
-      sc.text(this.t('paytable'), sc.w / 2, 2, { font: 'px5', color: '#F0E6CC', align: 'center' });
+      g.fillStyle = '#1E4D7A'; g.fillRect(0, 0, sc.w, 24);
+      sc.text(this.t('paytable'), sc.w / 2, 5, { font: 'px5', scale: 2, color: '#F0E6CC', align: 'center' });
+      // two columns, each: name (scale 2 when it fits, else 1) then the payout as a big scale-2 numeral, right-aligned
       const left: Array<[string, string]> = [[names('STAR'), '1000'], [names('3BAR'), '200'], [names('2BAR'), '100'], [names('BAR'), '50']];
       const right: Array<[string, string]> = [[names('MELON'), '100'], [names('ORANGE'), '30'], [names('PLUM'), '20'], [names('SHOE'), '50']];
-      left.forEach(([n, v], i) => { sc.text(`${n} ${v}`, 6, 16 + i * 9, { font: 'px5', color: i === 0 ? '#FF4040' : '#F0E6CC' }); });
-      right.forEach(([n, v], i) => { sc.text(`${n} ${v}`, 68, 16 + i * 9, { font: 'px5', color: '#F0E6CC' }); });
-      sc.text(`${this.t('anyBar')} 15  ${SHOE_TEXT} 2/6`, sc.w / 2, 54, { font: 'px5', color: '#D02020', align: 'center' });
+      const row = (n: string, v: string, x0: number, y: number, color: string): void => {
+        const colW = 108, vW = px5Width(v, 2);
+        const ns = fitScale(n, colW - vW - 6, 14, 2);
+        sc.text(n, x0, y + Math.floor((14 - 7 * ns) / 2), { font: 'px5', scale: ns, color });
+        sc.text(v, x0 + colW, y, { font: 'px5', scale: 2, color: '#F0E6CC', align: 'right' });
+      };
+      left.forEach(([n, v], i) => row(n, v, 12, 30 + i * 22, i === 0 ? '#FF4040' : '#F0E6CC'));
+      right.forEach(([n, v], i) => row(n, v, 132, 30 + i * 22, '#F0E6CC'));
+      const foot = `${this.t('anyBar')} 15  ${SHOE_TEXT} 2/6`, fs = fitScale(foot, sc.w - 8, 14, 2);
+      sc.text(foot, sc.w / 2, 111 + Math.floor((14 - 7 * fs) / 2), { font: 'px5', scale: fs, color: '#D02020', align: 'center' });
     });
   }
 

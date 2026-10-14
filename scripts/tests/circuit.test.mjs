@@ -116,9 +116,19 @@ test('circuit: no lamps before the first Lamp Night, and snapshot/restore round-
   assert.equal(d.playsOf('m01'), 3);
 });
 
-test('schedule: Hot Lamp count is 0 on Night 1, 1 on Nights 2-4, 2 from Night 5', () => {
-  assert.deepEqual([1, 2, 4, 5, 8].map(S.hotLampCount), [0, 1, 1, 2, 2]);
-  assert.equal(S.LAMP_FIRST_NIGHT, 2);
+test('schedule: Hot Lamp count is 1 from Night 1 (2 from Night 5); Cold from Night 2 only', () => {
+  assert.deepEqual([1, 2, 4, 5, 8].map(S.hotLampCount), [1, 1, 1, 2, 2]);
+  assert.equal(S.LAMP_FIRST_NIGHT, 1);
+  assert.equal(S.COLD_FIRST_NIGHT, 2);
+  assert.deepEqual([1, 2, 3].map((n) => S.coldLampCount(n)), [0, 1, 1]);
+  assert.equal(S.coldLampCount(2, 2), 3, 'x.lamp.coldCount adds on top of the one Cold Lamp');
+  assert.equal(S.coldLampCount(1, 5), 0, 'no Cold Lamp on Night 1 whatever the charms');
+  assert.equal(S.coldLampCount(3, -5), 0, 'never below zero');
+});
+
+test('schedule: the quota ladder is strictly increasing and Night 1 sits above the start pocket', () => {
+  assert.ok(S.BASE_NIGHTS[0].base > S.START.pocket, 'Night 1 quota above the starting pocket');
+  assert.ok(S.BASE_NIGHTS.every((n, i, a) => i === 0 || n.base > a[i - 1].base), 'quota ladder strictly increasing');
 });
 
 test('obols: GDD §11.2 examples and the outcome multipliers', () => {

@@ -159,13 +159,13 @@ test('rescue: pocket 0 with the quota unmet rings the Collector loan; taking it 
   assert.ok(call.id >= 1_000_000, 'rescue ids never collide with the hotline');
   assert.equal(call.script, 'hotline.call.rescue');
   assert.equal(call.options.length, 1);
-  assert.match(call.options[0], /^hotline\.deal\.rescue\|c=10\|q=15$/);
+  assert.match(call.options[0], /^hotline\.deal\.rescue\|c=8\|q=12$/);
   assert.equal(rings.length, 1);
   run.answerPhone(-1);
   run.answerPhone(0);
   assert.equal(run.phone(), null);
-  assert.equal(run.wallet(), 10);
-  assert.equal(run.shift.quota().due, due0 + 15);
+  assert.equal(run.wallet(), 8);
+  assert.equal(run.shift.quota().due, due0 + 12);
   off();
   run.dispose();
 });

@@ -1,7 +1,7 @@
 /**
  * Night 1 guided onboarding (first run only). A small top-centre prompt and a floor glow with a bobbing arrow point at the
  * next thing to do: walk to The Big One → spin it → deposit at the Debt Terminal → rotate off a Tilted machine → HOT lamp
- * (text only: lamps start at Night 2) → buy a charm at the Pawn Window in the intermission.
+ * (text only: lamps start at Night 1) → buy a charm at the Pawn Window in the intermission.
  *
  * Steps 1-3 (walk, spin, deposit) hold the Watch clock (`clockHold`), so the first Watch never runs out while the player is still
  * being shown how to play. Nothing here takes input or changes the input mode. The first-run flag is `save.stats['tutorial.n1']`; it is set when the

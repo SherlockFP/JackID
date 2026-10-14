@@ -158,10 +158,15 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<HiloParts> {
   tray.root.position.set(0, 0.6, FRONT + 0.05);
   root.add(tray.root);
 
+  // two pooled-light hints (world registers `light` and `light2`): a cool key over the card, a warm fill over the controls
   const light = new THREE.Object3D();
-  light.position.set(0, 2.0, FRONT + 0.2);
-  light.userData = { color: LAMP, intensity: 0.8, range: 1.6, flicker: 'STEADY' };
+  light.position.set(0, 1.95, FRONT + 0.45);
+  light.userData = { color: 0xfff0d0, intensity: 1.1, range: 2.4, flicker: 'STEADY' };
   root.add(light);
+  const light2 = new THREE.Object3D();
+  light2.position.set(0, 1.05, FRONT + 0.5);
+  light2.userData = { color: LAMP, intensity: 0.8, range: 1.8, flicker: 'STEADY' };
+  root.add(light2);
 
   const speaker = new THREE.Object3D();
   speaker.position.set(0, 1.0, 0);
@@ -170,7 +175,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<HiloParts> {
   const parts: HiloParts = { flapCur, flapNext, rungs, buttons, leds, thermo, thermoLiquid, marquee };
   kit.finalize(root, {
     keep: [
-      flapCur.root, flapNext.root, rungs.root, thermo, marquee.root, light,
+      flapCur.root, flapNext.root, rungs.root, thermo, marquee.root, light, light2,
       buttons.higher.root, buttons.lower.root, buttons.skip.root, buttons.collect.root,
       leds.higher.root, leds.lower.root, leds.skips.root, leds.win.root,
     ],
@@ -179,10 +184,12 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<HiloParts> {
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.4, 0.55), look: new THREE.Vector3(0, 1.35, 0), fov: 55, mouse: 'pick' },
+    // seat 1.25 m in front of the card plane (z 0.31): at fov 50 the view is ~1.17 m tall (y 0.82–1.98), so the
+    // card (1.35–1.77), LED windows (1.10–1.15) and buttons (0.94–1.02) are all fully framed at 16:9
+    playPose: { pos: new THREE.Vector3(0, 1.4, 1.56), look: new THREE.Vector3(0, 1.4, 0), fov: 50, mouse: 'pick' },
     colliders: [{ min: [-W / 2, 0, -D / 2], max: [W / 2, H - 0.02, D / 2] }],
     interact: { min: [-W / 2, 0.3, -D / 2], max: [W / 2, H - 0.02, D / 2 + 0.1] },
-    anchors: { speaker, prompt: marquee.root, coinOut: tray.anchor, light },
+    anchors: { speaker, prompt: marquee.root, coinOut: tray.anchor, light, light2 },
     dispose: () => {
       flapCur.face.dispose();
       flapNext.face.dispose();

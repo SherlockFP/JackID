@@ -27,7 +27,7 @@
 //   src/core/rng.ts            seeded rng (Math.random is forbidden)
 //   src/machines/<id>/index.ts def.headless, minBet, maxBet, betSteps of each world machine
 //
-// Modelled as in run.ts: quota mode, Lamps from Night 2, Tilt after 4 pulls per instance per Watch, interest only on Watches
+// Modelled as in run.ts: quota mode, Hot Lamps from Night 1 and Cold Lamps from Night 2, Tilt after 4 pulls per instance per Watch, interest only on Watches
 // with 3+ pulls, House Limit, dawn payment with the surplus back in the pocket, overpay charm rewards (1.5x / 2x), Night 1 stake cap, the
 // rescue loan (pocket 0 -> +N coins now, quota +1.5N), a failed quota ends the run.
 // Charm effects modelled (payout.mult inc/mult by scope and suit scaling, Hot Coal, Lampwick, Capacitor, Suit Ladder, Pressure
@@ -46,6 +46,9 @@
 //             of the pocket (the last Watch pays the gap in full). Float = --float 9 (3 activity pulls a Watch).
 //             Once the quota is covered and the pick is not Hot it banks: the minimum stake for the 3 activity pulls of each Watch
 //   banker    the same play, but deposits --banker-frac 0.8 of the pocket above the float at every Bell
+//   human     a casual player (--human-stake 2): stakes 2 coins on ~85 % of pulls (6 on the rest), rotates machine about every 4 pulls,
+//             goes for the Hot Lamp half the time it rotates, deposits a random 20-60 % slice of the pocket at about half the Bells
+//             and pays the gap only on the last Watch (if the pocket covers it). Banks like the others once the quota is covered.
 // Also modelled: House Favour (x1.25 / 1.15 / 1.07 on Nights 1-3), the Witching Watch +5 %, the activity float (never bet into the
 // 3 pulls the next Watches need). --no-favour switches Favour off; --trace N prints the first N runs Night by Night.
 //
@@ -57,7 +60,7 @@ import { load, closeVite } from '../tests/_vite.mjs';
 const args = process.argv.slice(2);
 const argVal = (name, def) => { const i = args.indexOf(name); return i >= 0 && args[i + 1] !== undefined ? args[i + 1] : def; };
 const RUNS = Math.max(1, Number(argVal('--runs', 2000)) | 0);
-const BOTS = argVal('--bots', 'camper,rotator,banker').split(',').map((s) => s.trim()).filter(Boolean);
+const BOTS = argVal('--bots', 'camper,rotator,banker,human').split(',').map((s) => s.trim()).filter(Boolean);
 const BET_FRAC = Number(argVal('--bet-frac', 0.10));
 const SCALE_LADDER = args.includes('--scale-ladder');
 const NO_CHARMS = args.includes('--no-charms');
@@ -70,6 +73,12 @@ const DEP_MARGIN = Number(argVal('--dep-margin', 1.3));
 const DEP_MODE = argVal("--dep-mode", "gap");
 const FRONT_MIN_RATE = Number(argVal("--front-min-rate", 0.3));
 const FLOAT_FRAC = Number(argVal("--float-frac", 0));
+// human: the casual player. Stake HUMAN_STAKE on most pulls (3x on the rest), rotates machine about every 4 pulls, goes for the Hot
+// Lamp half the time it rotates, deposits a random slice of the pocket at about half the Bells (the gap on the last Watch only).
+const HUMAN_STAKE = Number(argVal('--human-stake', 2));
+const HUMAN_DEP_P = Number(argVal('--human-dep-p', 0.8));          // chance the human deposits at a Bell (not the last Watch)
+const HUMAN_DEP_LO = Number(argVal('--human-dep-lo', 0.3));        // ... and then this range of the pocket
+const HUMAN_DEP_HI = Number(argVal('--human-dep-hi', 0.7));
 // "deposit early but keep a float": never deposit below this share of the pocket (the last Watch still pays the gap in full).
 const FLOAT_POCKET = Number(argVal("--float-pocket", 0.3));
 const RESERVE_FRAC = Number(argVal('--reserve-frac', 0.35));
@@ -136,6 +145,15 @@ function limitsOf(def, si, idx) {
   const ladder = (SCALE_LADDER ? steps.map((v) => v * si) : steps).filter((v) => v >= def.minBet && v <= ceiling);
   const max = ECO.snapDown(ceiling, ladder) || def.minBet;
   return { min: def.minBet, max, ladder };
+}
+
+/** Largest ladder step not above `want`, the ceiling and the pocket (the minimum when the pocket covers it). */
+function stakeAt(lim, want, pocket) {
+  const cap = Math.min(lim.max, want, pocket);
+  let best = 0;
+  for (const v of lim.ladder) if (v <= cap) best = v;
+  if (best === 0 && lim.min <= pocket) best = lim.min;
+  return best;
 }
 
 /** Largest ladder step not above the target and the pocket (at least the minimum when the pocket covers it). */
@@ -297,6 +315,7 @@ function playRun(bot, runIdx) {
   };
   S.pawn = new SHOP.Pawn(makeHost(S, RNG.createRng(RNG.hashSeed('simpawn', SEED, runIdx))));
   let loanedRun = false;
+  const hum = { rng: RNG.createRng(RNG.hashSeed('simhuman', SEED, runIdx)), cur: null, dwell: 0 };
 
   for (let idx = 0; idx < SCH.BASE_RUN_NIGHTS; idx++) {
     S.idx = idx;
@@ -310,7 +329,12 @@ function playRun(bot, runIdx) {
       // Deposits at the Bell: interest only works on what is already in the Debt Terminal. The rotator deposits what compounds
       // to the gap by the last settle (the HUD shows the pace); the banker deposits as much as it can. Shopping comes after.
       let fx0 = runFx(S);
-      if (bot !== 'camper') {
+      if (bot === 'human') {
+        const rem = Math.max(0, due - S.debt);
+        let dep = nd.watches - w === 1 ? rem : hum.rng.next() < HUMAN_DEP_P ? Math.floor(S.pocket * (HUMAN_DEP_LO + (HUMAN_DEP_HI - HUMAN_DEP_LO) * hum.rng.next())) : 0;
+        dep = Math.min(dep, S.pocket);
+        if (dep > 0) { S.pocket -= dep; S.debt += Math.floor(dep * (1 + fx0.depositBonus)); }
+      } else if (bot !== 'camper') {
         const left = nd.watches - w;
         const rem = Math.max(0, due - S.debt);
         const rate0 = SCH.interestRate(nd.interest, fx0.interestAdd);
@@ -327,7 +351,7 @@ function playRun(bot, runIdx) {
       shop(S, bot, due);
       fx0 = runFx(S);
       const lampRng = RNG.createRng((SEED * 31 + runIdx * 1009 + idx * 37 + w * 3 + 1) >>> 0);
-      circ.startWatch(lampRng, lampCands, { lamps: nd.no >= SCH.LAMP_FIRST_NIGHT, hot: SCH.hotLampCount(nd.no) + fx0.hotCount, cold: 1, newIsHot: false });
+      circ.startWatch(lampRng, lampCands, { lamps: nd.no >= SCH.LAMP_FIRST_NIGHT, hot: SCH.hotLampCount(nd.no) + fx0.hotCount, cold: SCH.coldLampCount(nd.no), newIsHot: false });
       const rate = SCH.interestRate(nd.interest, fx0.interestAdd);
       let pulls = nd.pulls + fx0.pullsAdd;
       const pullsMax = pulls;
@@ -340,6 +364,17 @@ function playRun(bot, runIdx) {
         let pick;
         if (bot === 'camper') {
           pick = world[0];
+        } else if (bot === 'human') {
+          const openH = (x) => defs[x.machineId].minBet <= Math.max(1, S.pocket / 3);
+          if (hum.dwell <= 0 || !hum.cur || !openH(hum.cur)) {
+            const hot = world.find((x) => circ.isHot(x.mid) && openH(x));
+            const pool = world.filter(openH);
+            const cands = pool.length ? pool : world;
+            hum.cur = hot && hum.rng.next() < 0.5 ? hot : cands[hum.rng.int(0, cands.length - 1)];
+            hum.dwell = 3 + hum.rng.int(0, 2);
+          }
+          hum.dwell -= 1;
+          pick = hum.cur;
         } else {
           // a machine the pocket cannot open (stake minimum above the pocket) is not a candidate; Hot first
           // a sane player does not sit at a table whose minimum is a third of the pocket when a 1-coin machine is free
@@ -372,7 +407,9 @@ function playRun(bot, runIdx) {
           const loan = ECO.rescueLoan(due);
           S.pocket += loan.coins; due += loan.quota; loans += 1; TOT.loans += 1; loanedRun = true;
         }
-        const bet = banked ? (lim.min <= S.pocket ? lim.min : 0) : stakeFor(bot, lim, S.pocket);
+        const bet = banked ? (lim.min <= S.pocket ? lim.min : 0)
+          : bot === 'human' ? stakeAt(lim, hum.rng.next() < 0.85 ? HUMAN_STAKE : 3 * HUMAN_STAKE, S.pocket)
+          : stakeFor(bot, lim, S.pocket);
         if (bet <= 0) break;
         // Activity float: after the 3 pulls interest needs, never bet into the coins the next Watches' 3 pulls each need.
         if (bot !== 'camper' && watchPulls >= SCH.ACTIVITY_MIN_PULLS && S.pocket - bet < (nd.watches - w - 1) * SCH.ACTIVITY_MIN_PULLS * defs[pick.machineId].minBet) break;
@@ -411,7 +448,7 @@ function playRun(bot, runIdx) {
         }
       }
 
-      if (bot !== 'camper') {
+      if (bot !== 'camper' && (bot !== 'human' || w === nd.watches - 1)) {
         const need = due - S.debt;
         if (need > 0 && S.pocket >= need) { S.pocket -= need; S.debt += Math.floor(need * (1 + fx0.depositBonus)); }
       }

@@ -639,7 +639,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     if (!paid) {
       ctrl.push({ key: `${this.g('left')}/${this.g('right')}`, label: { k: 'm.debt_terminal.cMove' }, action: 'left' });
       ctrl.push({ key: this.k('confirm'), label: { k: 'm.debt_terminal.cPress' }, action: 'confirm', primary: !inter });
-      ctrl.push({ key: `${this.k('n1')}-${this.k('n9')}`, label: { k: 'm.debt_terminal.cAmount' }, action: 'n1' });
+      // digits 1-9 and the real key for 0 (BET UP types a 0; its binding, not a fixed "0")
+      ctrl.push({ key: `${this.k('n1')}-${this.k('n9')}/${this.k('betUp')}`, label: { k: 'm.debt_terminal.cAmount' }, action: 'n1' });
       if (this.entry !== '') ctrl.push({ key: this.k('clear'), label: { k: 'm.debt_terminal.cBack' }, action: 'clear' });
     }
     if (q.met && !inter) ctrl.push({ key: this.k('double'), label: { k: 'm.debt_terminal.cSettle' }, action: 'double', primary: true });

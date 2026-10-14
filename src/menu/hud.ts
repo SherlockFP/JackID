@@ -47,7 +47,8 @@ const ui = (): UIOverlayX => app.ui as UIOverlayX;
 const coinSym = (): string => t('common.coinSuffix').trim();
 const money = (n: number): string => fmtCoins(n);
 const hexCss = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
-const machineName = (id: string): string => (has(`machine.${id}.name`) ? t(`machine.${id}.name`) : id);
+/** Machine strings register under `m.<id>.` (registry.ts), so the display name is `m.<id>.name`. */
+const machineName = (id: string): string => (has(`m.${id}.name`) ? t(`m.${id}.name`) : id);
 const tierIndex = (tier: WinTier): number => WIN_TIERS.indexOf(tier);
 const SMALL = WIN_TIERS.indexOf('small');
 const BIG = WIN_TIERS.indexOf('big');

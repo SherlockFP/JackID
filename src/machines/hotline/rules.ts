@@ -1,5 +1,5 @@
 /**
- * Hotline booth — pure rules (devices-core). No three, kit or DOM. GDD §5.1: ring 10 s as 1.0 s on / 0.7 s off,
+ * Hotline booth — pure rules (devices-core). No three, kit or DOM. GDD §5.1 (ring 20 s): 1.0 s on / 0.7 s off,
  * answer with the handset, choose 1 / 2 / 3 within 8 s, otherwise the call is declined. Whether a call exists, what
  * it says and what each choice does are the game's (game-hotline). This file only times the booth.
  */
@@ -7,7 +7,7 @@ import type { PlayerId } from '@/core/types';
 
 export const RING_ON_S = 1.0;
 export const RING_OFF_S = 0.7;
-export const RING_TOTAL_S = 10;
+export const RING_TOTAL_S = 20;
 /** The Collector rescue call (empty pocket) rings this long: mirrors `RESCUE_RING_MIN` in `game/rescue.ts` (a machine may not import game code). */
 export const RESCUE_RING_S = 30;
 export const ANSWER_S = 15;
@@ -15,7 +15,7 @@ export const MAX_CHOICES = 3;
 
 const CYCLE_S = RING_ON_S + RING_OFF_S;
 
-/** Seconds the phone rings: the 10 s base plus `x.phone.ringTime` (Tin Whistle, Bell upgrades), kept sane. */
+/** Seconds the phone rings: the 20 s base plus `x.phone.ringTime` (Tin Whistle, Bell upgrades), kept sane. */
 export function ringTotal(folded: number): number {
   return Number.isFinite(folded) ? Math.min(40, Math.max(4, folded)) : RING_TOTAL_S;
 }

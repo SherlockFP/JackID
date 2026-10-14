@@ -32,7 +32,7 @@ const won = (r: RunSummary['result']): boolean => r === 'escaped' || r === 'won'
  */
 export interface ResultsPost { short: number; pullsLeft: number; bestMachine?: string | null; topCharm?: string | null }
 
-const machineLabel = (id: string): string => (has(`machine.${id}.name`) ? t(`machine.${id}.name`) : id);
+const machineLabel = (id: string): string => (has(`m.${id}.name`) ? t(`m.${id}.name`) : id);
 const charmLabel = (id: string): string => (has(`charm.${id}.name`) ? t(`charm.${id}.name`) : id);
 
 /** "You were 120 short · 3 pulls unused · best machine Bandit · top charm Lucky Coin" (segments with no data are dropped). */

@@ -749,6 +749,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     if (this.autoLeft > 0) sh.state({ k: 'm.bigone.stAuto', v: { n: this.autoLeft } }, 'cyan', { k: 'm.bigone.stAutoSub' });
     else if (busy) sh.state({ k: 'm.bigone.stSpinning' }, 'cyan');
     else if (s.hold >= 0) sh.state({ k: 'm.bigone.stHold', v: { n: s.hold + 1 } }, 'good', { k: 'm.bigone.stHoldSub' });
+    else if (!SeatHud.floorOpen()) sh.floorClosed();
     else sh.state({ k: 'm.bigone.stReady' }, 'gold', { k: 'm.bigone.stReadySub', v: { n: fmtCoins(this.bet) } });
 
     // KEY NUMBERS: stake, last win, jackpot meter, hunger, balance
@@ -767,7 +768,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     if (this.autoLeft > 0) {
       ctrl.push({ key: this.k('auto'), label: { k: 'm.bigone.cStopAuto' }, action: 'auto', primary: true });
     } else {
-      if (!busy) {
+      if (!busy && SeatHud.floorOpen()) {
         ctrl.push({ key: this.k('primary'), label: { k: 'm.bigone.cSpin' }, action: 'primary', primary: true });
         ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.bigone.cStake' }, action: 'betUp' });
         ctrl.push({ key: this.k('betMax'), label: { k: 'm.bigone.cMax' }, action: 'betMax' });

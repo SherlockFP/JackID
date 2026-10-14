@@ -168,8 +168,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CharmVendorPar
     icon.root.position.set(x, COUNTER_H + 0.05, COUNTER_Z - 0.05);
     root.add(icon.root);
     icons.push(icon);
-    // price plate: directly under its charm, twice the old size so the figure reads from the seat
-    const tag = kit.label({ text: '--', w: 0.46, h: 0.16, px: [192, 56], color: pal.gold, bg: pal.black, font: 'vt' });
+    // price plate: directly under its charm. px5 (chunky 5×7 pixel digits) at integer scale, 384 × 112 texels
+    // (≈ 835 px/m, nearest-sampled, no mips) so every digit is whole texels and the figure reads from the seat.
+    const tag = kit.label({ text: '--', w: 0.46, h: 0.16, px: [384, 112], color: pal.gold, bg: pal.black, font: 'px5' });
     tag.mesh.position.set(x, COUNTER_H - 0.2, COUNTER_Z + D / 2 + 0.04);
     root.add(tag.mesh);
     tags.push(tag);

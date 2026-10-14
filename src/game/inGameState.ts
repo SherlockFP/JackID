@@ -25,6 +25,9 @@ import { closeSettingsScreen, openSettingsScreen, settingsScreenOpen } from '@/c
 import { startStory, holdForStory, openJournal } from '@/game/story';
 import { mountLedger } from '@/game/tycoon/ledger';
 import { buildIntermission, buildPause, createInterHint, INTER_PANEL, PAUSE_PANEL, type InterHint } from './ingame/panels';
+import { SeatHud } from '@/machines/_base/seatHud';
+import { phoneWalkKeys } from '@/machines/hotline';
+import type { Action } from '@/core/input/types';
 
 /** How long the Night summary toast stays up (it never blocks; the toast times out by itself). */
 const SUMMARY_TOAST_S = 10;
@@ -189,13 +192,30 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     }
   };
 
+  /** A new Night starts every summary book from zero, so one Night's carry can never leak into the next toast. */
+  const rollNight = (s: DebtSession): void => {
+    if (s.run.night() === sumNight) return;
+    sumNight = s.run.night(); sumDep = 0; sumInterest = 0; sumCarry = 0;
+  };
+
   /** Deposits and interest of the Night in progress (interest lands during `settle`), for the summary toast. */
   const trackDeposit = (amount: number): void => {
     const s = session;
     if (!s) return;
-    if (s.run.night() !== sumNight) { sumNight = s.run.night(); sumDep = 0; sumInterest = 0; }
+    rollNight(s);
     if (s.run.shift.phase === 'settle') sumInterest += amount;
     else sumDep += amount;
+  };
+
+  /**
+   * A Dawn surplus credit (`eco:wallet`, reason `dawn:surplus`): the pocket delta is already the whole integer that was
+   * credited (`run.earn` floors it), so the carry adds exactly that and the toast prints the same figure.
+   */
+  const trackCarry = (credited: number): void => {
+    const s = session;
+    if (!s || credited <= 0) return;
+    rollNight(s);
+    sumCarry += credited;
   };
 
   /** The compact paid-Night summary: a toast, never a modal. */
@@ -218,7 +238,8 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     const paid = timed && nightPaid(s.run);
     if (paid && !wasPaid) showSummary(s);
     wasPaid = paid;
-    const seated = app.player?.seat != null;
+    // seated (or walking up to a seat, or in machine mode): the hint never sits over the Pawn or terminal view
+    const seated = app.player?.seat != null || s.world.seat != null || app.input.mode === 'machine';
     interHint?.set(inter && !s.run.topsideOpen && !seated && !paused && !ending ? t(paid ? 'interm.hintFloor' : 'interm.hintBell') : null);
   };
 
@@ -294,6 +315,13 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       }));
       if (params.bench && import.meta.env.DEV) return enterBench(params.bench, params.seed);
       session = startDebtSession(params, scene);
+      // seat HUDs ask the run whether the floor is open (a closed floor says FLOOR CLOSED, not PRESS SPIN)
+      SeatHud.floorOpen = () => {
+        const s = session;
+        if (!s) return true;
+        const p = s.run.shift.phase;
+        return p === 'play' || p === 'lastCall';
+      };
       storyOff = startStory(session.world, params);
       interHint = createInterHint((app.ui as UIOverlayX).hudLayer);
       wasPaid = false; sumNight = -1; sumDep = 0; sumInterest = 0; sumCarry = 0;
@@ -301,7 +329,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       offs.push(bus.on('run:rescue', ({ pid, state }) => { if (session && pid === session.run.selfId && state === 'ring') app.ui.toast(t('hotline.toast.pocketEmpty'), 'warn'); }));
       offs.push(bus.on('eco:wallet', ({ pid, delta, reason }) => {
         if (!session || pid !== session.run.selfId) return;
-        if (reason === 'dawn:surplus') sumCarry += delta;                                  // only what was released to the pocket
+        if (reason === 'dawn:surplus') trackCarry(delta);                                  // only what was released to the pocket
         else if (reason === 'house:float' && delta > 0) app.ui.toast(t('house.float.toast', { x: fmtCoins(delta) }), 'good');
       }));
     },
@@ -310,6 +338,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       for (const off of offs) off();
       offs = [];
       app.simPaused = false;
+      SeatHud.floorOpen = () => true;
       paused = false;
       pauseLive = false;
       overlay = null;
@@ -334,7 +363,10 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       app.world = null; app.player = null; app.run = null;
     },
     fixedUpdate(dt) {
-      if (session) { if (!paused || pauseLive) session.fixedUpdate(dt); return; }
+      if (session) {
+        if (!paused || pauseLive) { phoneWalkKeys((a) => app.input.pressed(a as Action)); session.fixedUpdate(dt); }
+        return;
+      }
       app.world?.fixedUpdate(dt);
     },
     frame(dt, alpha) {

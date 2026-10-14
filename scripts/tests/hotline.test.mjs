@@ -98,7 +98,7 @@ test('from Night 2 the first Watch always rings; Night 1 has no guarantee; mute 
 });
 
 // ── the call ─────────────────────────────────────────────────────────────────────────────────────────
-test('a call has 3 distinct deals, rings 10 s (+ringTime) and then goes dead', () => {
+test('a call has 3 distinct deals, rings 20 s (+ringTime) and then goes dead', () => {
   const ev = capture('phone:ring'), end = capture('phone:end'), res = capture('hotline:result');
   const hl = HL.createHotline(mockRun({ seed: 5, night: 3, mods: { 'x.phone.callChance': () => 1 } }), { now: () => 1234 });
   const call = ringOf(hl);
@@ -109,7 +109,7 @@ test('a call has 3 distinct deals, rings 10 s (+ringTime) and then goes dead', (
   assert.equal(call.options.length, 3);
   assert.equal(new Set(call.options.map((o) => HL.decodeOption(o).id)).size, 3);
   assert.equal(ev.got.length, 1);
-  hl.tick(9.5); assert.ok(hl.phone(), 'still ringing at 9.5 s');
+  hl.tick(19.5); assert.ok(hl.phone(), 'still ringing at 19.5 s');
   hl.tick(1); assert.equal(hl.phone(), null);
   assert.equal(end.got.length, 1);
   assert.equal(res.got[0].kind, 'missed');
@@ -117,8 +117,8 @@ test('a call has 3 distinct deals, rings 10 s (+ringTime) and then goes dead', (
 
   const tin = HL.createHotline(mockRun({ seed: 5, mods: { 'x.phone.callChance': () => 1, 'x.phone.ringTime': (b) => b + 6 } }));
   assert.ok(ringOf(tin));
-  tin.tick(12); assert.ok(tin.phone(), 'Tin Whistle: still ringing at 12 s');
-  tin.tick(5); assert.equal(tin.phone(), null);
+  tin.tick(24); assert.ok(tin.phone(), 'Tin Whistle: still ringing at 24 s (20 + 6)');
+  tin.tick(2); assert.equal(tin.phone(), null);
   phases('settle'); tin.dispose();
 });
 
@@ -225,7 +225,7 @@ test('snapshot is JSON-safe; restore resumes the same call and the same deal', (
   ringOf(c); c.tick(6);
   const d = HL.createHotline(mockRun({ seed: 41, mods: { 'x.phone.callChance': () => 1 } }));
   d.restore(c.snapshot());
-  d.tick(3.9); assert.ok(d.phone());
+  d.tick(13.9); assert.ok(d.phone());
   d.tick(0.2); assert.equal(d.phone(), null);
   d.restore(null); assert.equal(d.phone(), null);
   phases('settle'); a.dispose(); b.dispose(); c.dispose(); d.dispose(); resA.off();
@@ -468,4 +468,17 @@ test('real Watch: with the Coiled Cord the phone rings, the deal is struck, the 
   for (let i = 0; i < 1200 && run.shift.phase !== 'settle'; i++) { run.tick(1); hl.tick(1); }
   assert.equal(hl.phone(), null);
   ring.off(); res.off(); end.off(); hl.dispose(); run.dispose();
+});
+
+test('answer phone: KeyP from anywhere (walk layer, also seated), 1 / 2 / 3 for the deal sheet, no clashes, rebindable', async () => {
+  const K = await load('src/core/keymap.ts');
+  const KS = (await load('src/core/keymap.strings.ts')).default;
+  assert.deepEqual(K.ALL_DEFAULTS.answerPhone, ['KeyP']);
+  assert.ok(K.SEATED_WALK_ACTIONS.has('answerPhone'), 'answering works while seated too');
+  assert.deepEqual(K.conflictsFor(K.ALL_DEFAULTS, 'answerPhone', 'KeyP'), []);
+  for (const i of [1, 2, 3]) assert.deepEqual(K.conflictsFor(K.ALL_DEFAULTS, `phoneOpt${i}`, `Digit${i}`), []);
+  for (const lang of ['en', 'tr']) {
+    assert.ok(KS[lang]['action.answerPhone'], `${lang} label for answerPhone`);
+    assert.ok(KS[lang]['action.phoneOpt3'], `${lang} label for phoneOpt3`);
+  }
 });

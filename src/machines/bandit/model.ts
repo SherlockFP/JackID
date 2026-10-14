@@ -120,7 +120,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BanditParts> {
   const latch = kit.box(0.03, 0.03, 0.045, pal.brass, { pos: [0, 0, 0.03], parent: lever });
 
   // ── screens and lamps ──
-  const award = kit.screen({ w: 0.30, h: 0.10, px: [128, 64], bezel: pal.black });
+  // 256 × 128 texels (2× the old density): the numerals are drawn at integer scale 2, so each glyph pixel is 2 texels
+  const award = kit.screen({ w: 0.30, h: 0.10, px: [256, 128], bezel: pal.black });
   award.mesh.position.set(0, (winTop + HEAD_TOP) / 2, D / 2 + 0.002);
   root.add(award.mesh);
 
@@ -140,7 +141,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BanditParts> {
 
   const ledW = 0.09, ledH = 0.03;
   const led = (x: number): ScreenSurface => {
-    const s = kit.screen({ w: ledW, h: ledH, px: [64, 16], bezel: pal.black });
+    const s = kit.screen({ w: ledW, h: ledH, px: [128, 32], bezel: pal.black });
     s.mesh.position.set(x, 0.66, PED_W / 2 + 0.002);
     root.add(s.mesh);
     return s;

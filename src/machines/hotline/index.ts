@@ -9,7 +9,9 @@
  * 0.7 s off, for 10 s from `ringingSince`). `present()` plays the juice for the two local choices: the handset lift
  * with a wobble, and the dial spin with a pop of the number chosen.
  *
- * Controls (seated): Space/Enter pick up · 1 / 2 / 3 choose an option (within 8 s of the pick-up) · E stands up.
+ * Controls (seated): Space/Enter pick up · 1 / 2 / 3 choose an option (within 15 s of the pick-up) · E stands up.
+ * From anywhere (walking or seated): P (`answerPhone`) picks a ringing line up, 1 / 2 / 3 (`phoneOpt1..3`) choose while the board
+ * is up. The board stays up when the player stands and walks on. `phoneWalkKeys` is the walk-layer hook (WIRING in the work report).
  * Hang-up is not in RunApi yet, so leaving only stands you up; the game resolves an unanswered call on its own clock.
  *
  * Subtitles and the caller's voice belong to game-hotline (its own overlay); the booth only plays the bell, the lamp
@@ -18,7 +20,7 @@
 import * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
-import type { MachineAction, MachineInputEvent } from '@/core/input/types';
+import type { BindingKey, MachineAction, MachineInputEvent } from '@/core/input/types';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import type { PhoneCallState } from '@/net/protocol';
@@ -49,6 +51,12 @@ type Ev =
 
 const GOLD = 0xffd040;
 const LIFT_RAISE = 0.14, LIFT_FORWARD = 0.18;
+/** Every booth in the world. The phone is one line, so the walking keys go through the first booth (`phoneWalkKeys`). */
+const booths = new Set<Hotline>();
+/** The one deal board on screen (whichever booth opened it): a call's board opens once, never twice. */
+let sheetOwner: Hotline | null = null;
+/** The call whose board was shown and closed (or could not be shown); it does not reopen for that call. */
+let sheetDone = -1;
 
 export const def: MachineDef = {
   id: 'hotline',
@@ -88,12 +96,15 @@ export const def: MachineDef = {
       cRules: "RULES",
       cLeave: "LEAVE",
       rule1: "When the phone rings, pick up. Only the player the call is for can answer it.",
-      rule2: "After you pick up, the caller offers three deals, each a boon with a price. Press 1, 2 or 3 (or click one) within 8 seconds.",
+      rule2: "After you pick up, the caller offers three deals, each a boon with a price. Press 1, 2 or 3 (or click one) within 15 seconds.",
       rule3: "If nobody answers in time, the game resolves the call on its own clock.",
-      rule4: "E stands up from the booth. Hanging up is not possible yet, so leaving only stands you up.",
+      rule4: "E stands up from the booth. Hanging up is not possible yet; standing up keeps the call and its deal board.",
+      rule5: "Answering works from anywhere, walking or seated: the answer key picks up, and the board stays up while you walk.",
       tip1: "Answer the phone when it rings. Only the call's player can pick up.",
-      tip2: "[{pick}] PICK UP, then choose a reply within 8 seconds",
+      tip2: "[{pick}] PICK UP, then choose a reply within 15 seconds",
       tip3: "On the line: [{choose}] CHOOSE A REPLY  ·  [{help}] RULES",
+      tip4: "[{phone}] ANSWER FROM ANYWHERE, WALKING TOO",
+      ringHint: "RING RING: [{phone}] ANSWERS FROM ANYWHERE",
       sheetTitle: "THE HOUSE CALLS", sheetHint: "Press 1 / 2 / 3 or click a deal", sheetGet: "GET", sheetPay: "PAY",
       speaker: "THE HOUSE",
     },
@@ -121,12 +132,15 @@ export const def: MachineDef = {
       cRules: "KURALLAR",
       cLeave: "AYRIL",
       rule1: "Telefon çaldığında aç. Çağrı kime aitse yalnız o oyuncu açabilir.",
-      rule2: "Açtıktan sonra arayan üç teklif sunar; her biri bedeli olan bir kazanç. 8 saniye içinde 1, 2 ya da 3 tuşla (ya da tıkla).",
+      rule2: "Açtıktan sonra arayan üç teklif sunar; her biri bedeli olan bir kazanç. 15 saniye içinde 1, 2 ya da 3 tuşla (ya da tıkla).",
       rule3: "Kimse zamanında açmazsa oyun çağrıyı kendi saatiyle çözer.",
-      rule4: "E tuşu kabinden kalkar. Henüz kapatma yok, bu yüzden ayrılmak yalnızca kalkmaktır.",
+      rule4: "E tuşu kabinden kalkar. Henüz kapatma yok; kalkmak çağrıyı ve teklif panosunu açık tutar.",
+      rule5: "Açmak her yerden olur, yürürken ya da otururken: açma tuşu telefonu kaldırır, pano sen yürürken de açık kalır.",
       tip1: "Telefon çalınca aç. Yalnızca çağrının sahibi açabilir.",
-      tip2: "[{pick}] AÇ, sonra 8 saniye içinde bir yanıt seç",
+      tip2: "[{pick}] AÇ, sonra 15 saniye içinde bir yanıt seç",
       tip3: "Hatta: [{choose}] YANIT SEÇ  ·  [{help}] KURALLAR",
+      tip4: "[{phone}] HER YERDEN AÇ, YÜRÜRKEN DE",
+      ringHint: "TRIN TRIN: [{phone}] HER YERDEN AÇILIR",
       sheetTitle: "EV ARIYOR", sheetHint: "1 / 2 / 3 tuşla ya da bir teklife tıkla", sheetGet: "KAZAN", sheetPay: "BEDEL",
       speaker: "EV",
     },
@@ -135,6 +149,19 @@ export const def: MachineDef = {
 
 /** System devices never wager: staff do not play them (TECH_SPEC §11.5 export; no-op). */
 export const playHeadless: HeadlessPlay = () => ({ gross: 0, tags: [] });
+
+/**
+ * The phone from anywhere (WIRING: call once per input poll, in any mode, with the walk-layer `pressed`). `answerPhone`
+ * (KeyP) picks a ringing line up; `phoneOpt1..3` (1 / 2 / 3) choose a deal while the board is up. Seated or walking, the
+ * same calls and the same board; the player keeps their position. Does nothing while no booth exists.
+ */
+export function phoneWalkKeys(pressed: (action: string) => boolean): void {
+  let booth: Hotline | null = null;
+  for (const b of booths) { booth = b; break; }
+  if (!booth) return;
+  if (pressed('answerPhone')) booth.answerPhoneKey();
+  for (let i = 0; i < 3; i++) if (pressed(`phoneOpt${i + 1}`)) booth.chooseKey(i);
+}
 
 export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
   private callId = -1;             // id of the call the booth last saw (-1 = none)
@@ -152,6 +179,8 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
   private sheetUntil = 0;
   private sheetSecs = -1;
   private offResult: (() => void) | null = null;
+  /** Ring cue for the walker: the first booth tells the player once per call that the phone rings for them. */
+  private cueCall = -1;
 
   protected createModel(kit: KitX): MachineModel<HotlineParts> {
     return buildModel(kit, this.modelOpts);
@@ -166,18 +195,19 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
     this.parts.target.set('--');
     this.attractor.every('tick', 6, () => this.ctx.fx.glow(this.parts.lamp.root, 0xffd34a, 0.3, 0.5), { first: 3 });
     this.offResult = bus.on('hotline:result', (e) => this.onResult(e));
+    booths.add(this);
   }
 
   /** What the call came to (deal struck, deal off, line dead): one toast for the seated player. */
   private onResult(e: HotlineResultEvent): void {
-    this.closeSheet();
+    this.closeSheet(e.callId);
     if (!this.isLocalOccupant) return;
     const text = tr(e.note, resolveVars(e.vars, (k) => tr(k)));
     this.toast(text, e.kind === 'deal' ? (e.ok ? 'good' : 'warn') : 'info');
     if (e.kind === 'deal' && e.ok) this.ctx.fx.shake(0.01, 0.15);
   }
 
-  /** Ring length in seconds for this run (base 10 s, plus `x.phone.ringTime`). */
+  /** Ring length in seconds for this run (base 20 s, plus `x.phone.ringTime`). */
   private ringSeconds(call?: { script: string } | null): number {
     const base = ringTotal(this.mod('x.phone.ringTime', RING_TOTAL_S));
     return call?.script === 'hotline.call.rescue' ? Math.max(base, RESCUE_RING_S) : base;
@@ -198,6 +228,10 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
       this.callId = nowId;
       this.lastRing = -1;
       if (ended && this.handsetUp) void this.liftHandset(false);   // the line went dead: hang the handset up
+      // the walker is not at a booth: one cue for the call, from the first booth only (the phone is one line)
+      if (call && call.answeredBy === null && !this.isLocalOccupant && canAnswer(call.target, this.selfId) && this.isFirstBooth()) {
+        this.ctx.ui.toast(this.t('ringHint', { phone: this.k('answerPhone') }), 'info');
+      }
     }
 
     if (call && call.answeredBy === null) {
@@ -213,19 +247,43 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
     const target = call ? targetLabel(call.target, this.t('all')) : '--';
     if (target !== this.shownTarget) { this.shownTarget = target; this.parts.target.set(target.padStart(2)); }
 
-    if (this.isLocalOccupant) {
-      this.showHud(call);
-      this.syncSheet(call);
-    }
+    if (this.isLocalOccupant) this.showHud(call);
+    this.syncSheet(call);                  // the board follows the handset, seated or walking
   }
 
   dispose(): void {
     this.offResult?.(); this.offResult = null;
+    booths.delete(this);
+    if (sheetOwner === this) this.closeSheet();
     this.sheet?.dispose(); this.sheet = null;
     this.ctx.ui.root.classList.remove('hl-sheet');
     this.seatHud?.dispose();
     super.dispose();
   }
+
+  private isFirstBooth(): boolean {
+    for (const b of booths) return b === this;
+    return false;
+  }
+
+  /** Seated: the outcome goes to every peer. Walking: `emit` is the seat's, so the booth shows the beat here only (the run holds the state). */
+  private send(ev: Ev): void {
+    if (this.isLocalOccupant) { void this.emit(ev); return; }
+    void (ev.k === 'pick' ? this.presentPick(ev) : this.presentChoose(ev));
+  }
+
+  /** Answer key (seated or walking): picks the ringing line up. The handset lift is the same as the seated pick-up. */
+  answerPhoneKey(): void {
+    const call = this.ctx.run.phone();
+    if (!call || call.answeredBy !== null) return;
+    if (!canAnswer(call.target, this.selfId)) { this.ctx.ui.toast(this.t('notYou'), 'warn'); this.sfx('error'); return; }
+    this.ctx.run.answerPhone(-1);
+    this.send({ k: 'pick', until: this.now() + ANSWER_S * 1000 });
+    if (call.script) this.ctx.ui.subtitle(tr(call.script), this.t('speaker'), 6);
+  }
+
+  /** Deal keys 1 / 2 / 3 while walking (the board stays up; the player keeps their position). */
+  chooseKey(i: number): void { this.takeOffer(i); }
 
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     if (local) {
@@ -236,7 +294,8 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
-    if (local) { this.seatHud?.hide(); this.hudKey = ''; this.closeSheet(); }
+    // standing up keeps the call and its board: the player walks on and still answers with the keys
+    if (local) { this.seatHud?.hide(); this.hudKey = ''; }
   }
 
   onLang(): void {
@@ -252,36 +311,28 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
     if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (e.repeat) return;
-    const call = this.ctx.run.phone();
-    if (e.action === 'primary' || e.action === 'confirm') {
-      if (!call || call.answeredBy !== null) return;
-      if (!canAnswer(call.target, this.selfId)) { this.toast(this.t('notYou'), 'warn'); this.sfx('error'); return; }
-      this.ctx.run.answerPhone(-1);
-      void this.emit({ k: 'pick', until: this.now() + ANSWER_S * 1000 });
-      if (call.script) this.ctx.ui.subtitle(tr(call.script), this.t('speaker'), 6);
-      return;
-    }
+    if (e.action === 'primary' || e.action === 'confirm') { this.answerPhoneKey(); return; }
     const idx = choiceFromAction(e.action);
     if (idx >= 0) this.takeOffer(idx);
   }
 
-  /** Takes offer `idx` (key 1 / 2 / 3 or a click on the deal sheet). */
+  /** Takes offer `idx` (key 1 / 2 / 3, a click on the deal sheet, or the walking deal keys). */
   private takeOffer(idx: number): void {
     const call = this.ctx.run.phone();
     if (!call || call.answeredBy !== this.selfId || idx >= choiceCount(call.options)) { this.sfx('error'); return; }
     const o = parseOption(call.options[idx] ?? '');
     const label = tr(offerKeys(o.key).name, resolveVars(o.vars, (k) => tr(k)));
-    this.closeSheet();
+    this.closeSheet(call.id);
     this.ctx.run.answerPhone(idx);
-    void this.emit({ k: 'choose', i: idx, label });
+    this.send({ k: 'choose', i: idx, label });
   }
 
   // ── the deal sheet: the three offers on a board in front of the eye ─────────────────────────────
   /** Opens the sheet when the local player has the handset and the call has offers; closes it when the call is gone. */
   private syncSheet(call: PhoneCallState | null): void {
     const mine = call !== null && call.answeredBy === this.selfId && choiceCount(call.options) > 0;
-    if (!mine) { if (this.sheet) this.closeSheet(); return; }
-    if (this.sheet || this.sheetCall === call.id) return;       // already open, or closed by a choice for this call
+    if (!mine) { if (sheetOwner === this) this.closeSheet(); return; }
+    if (sheetOwner !== null || sheetDone === call.id) return;   // one board at a time; closed (or taken) for this call
     this.openSheet(call);
   }
 
@@ -306,14 +357,22 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
       act: (a) => { if (a.startsWith('pick')) this.takeOffer(Number(a.slice(4))); },
     });
     this.sheet = p;
-    if (!p.show()) { p.dispose(); this.sheet = null; return; }   // no overlay (menus, bench): the seat HUD buttons and keys remain
+    sheetOwner = this;
+    if (!p.show()) {      // no overlay (menus, bench): the seat HUD buttons and keys remain
+      p.dispose(); this.sheet = null; sheetOwner = null; sheetDone = call.id; return;
+    }
     // The deal board covers the centre of the screen: ui.css moves the Collector's subtitles to the lower-left corner meanwhile.
     this.ctx.ui.root.classList.add('hl-sheet');
   }
 
-  private closeSheet(): void {
-    const p = this.sheet;
-    this.sheet = null;
+  /** Hides the one board on screen (whichever booth opened it). `done` = the call it is closed for (it will not reopen). */
+  private closeSheet(done?: number): void {
+    if (done !== undefined) sheetDone = done;
+    const owner = sheetOwner;
+    if (!owner) return;
+    const p = owner.sheet;
+    owner.sheet = null;
+    sheetOwner = null;
     this.ctx.ui.root.classList.remove('hl-sheet');
     p?.hide();
   }
@@ -396,19 +455,22 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
   }
 
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
-  /** The key bound to a machine action, as the player sees it. */
-  private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
+  /** The key bound to a machine action, as the player sees it. `answerPhone` is a walk-layer action (see keymap.ts). */
+  private k(a: MachineAction | 'answerPhone'): string {
+    return a === 'answerPhone' ? this.ctx.input.keyLabel('answerPhone' as BindingKey) : this.ctx.input.keyLabel(`m.${a}` as BindingKey);
+  }
 
   private tipLines(): Txt[] {
     return [
       { k: 'm.hotline.tip1' },
       { k: 'm.hotline.tip2', v: { pick: this.k('primary') } },
       { k: 'm.hotline.tip3', v: { choose: `${this.k('n1')}-${this.k('n3')}`, help: this.k('help') } },
+      { k: 'm.hotline.tip4', v: { phone: this.k('answerPhone') } },
     ];
   }
 
   private rulesLines(): Txt[] {
-    return [1, 2, 3, 4].map((i) => ({ k: `m.hotline.rule${i}` }));
+    return [1, 2, 3, 4, 5].map((i) => ({ k: `m.hotline.rule${i}` }));
   }
 
   /** Banner, caller and timer numbers, and the valid controls only. Only while the local player stands here. */

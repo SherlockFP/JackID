@@ -18,6 +18,7 @@ const strings = {
     'action.emote': 'Emote', 'action.ping': 'Ping marker', 'action.talk': 'Push to talk (hold)',
     'action.journal': 'JackID card (hold)', 'action.skip': 'Skip cutscene (hold)', 'action.jump': 'Hop',
     'action.punch': 'Punch card (hold)', 'action.cheer': 'Cheer', 'action.shrug': 'Shrug', 'action.dance': 'Dance',
+    'action.answerPhone': 'Answer the phone (from anywhere)', 'action.phoneOpt1': 'Phone deal 1', 'action.phoneOpt2': 'Phone deal 2', 'action.phoneOpt3': 'Phone deal 3',
     // machine
     'action.m.primary': 'Primary (spin / deal)', 'action.m.secondary': 'Secondary (tap RMB)',
     'action.m.up': 'Up', 'action.m.down': 'Down', 'action.m.left': 'Left', 'action.m.right': 'Right',
@@ -48,6 +49,7 @@ const strings = {
     'action.ping': 'İşaret koy', 'action.talk': 'Bas-konuş (basılı tut)', 'action.journal': 'JackID kartı (basılı tut)',
     'action.skip': 'Ara sahneyi atla (basılı tut)', 'action.jump': 'Zıpla', 'action.punch': 'Delik kartı (basılı tut)',
     'action.cheer': 'Alkışla', 'action.shrug': 'Omuz silk', 'action.dance': 'Dans et',
+    'action.answerPhone': 'Telefonu aç (her yerden)', 'action.phoneOpt1': 'Telefon teklifi 1', 'action.phoneOpt2': 'Telefon teklifi 2', 'action.phoneOpt3': 'Telefon teklifi 3',
     // machine
     'action.m.primary': 'Ana eylem (çevir / dağıt)', 'action.m.secondary': 'İkincil (sağ tık)',
     'action.m.up': 'Yukarı', 'action.m.down': 'Aşağı', 'action.m.left': 'Sol', 'action.m.right': 'Sağ',

@@ -38,11 +38,11 @@ export interface NightDef {
  * quota returns to the pocket at Dawn, so the Nights are tuned with that cash flow (N3 and N4 rose, N8 eased).
  */
 export const BASE_NIGHTS: readonly NightDef[] = [
-  { no: 1, floor: 'B7', name: 'first', base: 40, watches: 3, pulls: 7, clock: 150, interest: 0.75, favour: 1.25, si: 1, card: 0 },
-  { no: 2, floor: 'B6', name: 'second', base: 48, watches: 3, pulls: 7, clock: 150, interest: 0.30, favour: 1.15, si: 3, card: 3 },
-  { no: 3, floor: 'B5', name: 'third', base: 110, watches: 3, pulls: 8, clock: 165, interest: 0.28, favour: 1.07, si: 10, card: 3 },
-  { no: 4, floor: 'B4', name: 'fourth', base: 120, watches: 3, pulls: 9, clock: 165, interest: 0.26, favour: 1, si: 30, card: 4 },
-  { no: 5, floor: 'B3', name: 'fifth', base: 260, watches: 4, pulls: 8, clock: 180, interest: 0.22, favour: 1, si: 100, card: 4 },
+  { no: 1, floor: 'B7', name: 'first', base: 31, watches: 3, pulls: 7, clock: 150, interest: 0.90, favour: 1.25, si: 1, card: 0 },
+  { no: 2, floor: 'B6', name: 'second', base: 40, watches: 3, pulls: 7, clock: 150, interest: 0.30, favour: 1.15, si: 3, card: 3 },
+  { no: 3, floor: 'B5', name: 'third', base: 198, watches: 3, pulls: 8, clock: 165, interest: 0.28, favour: 1.07, si: 10, card: 3 },
+  { no: 4, floor: 'B4', name: 'fourth', base: 202, watches: 3, pulls: 9, clock: 165, interest: 0.26, favour: 1, si: 30, card: 4 },
+  { no: 5, floor: 'B3', name: 'fifth', base: 208, watches: 4, pulls: 8, clock: 180, interest: 0.22, favour: 1, si: 100, card: 4 },
   { no: 6, floor: 'B2', name: 'sixth', base: 1000, watches: 4, pulls: 9, clock: 180, interest: 0.20, favour: 1, si: 300, card: 4 },
   { no: 7, floor: 'B1', name: 'seventh', base: 14000, watches: 4, pulls: 9, clock: 195, interest: 0.16, favour: 1, si: 1000, card: 4 },
   { no: 8, floor: 'G', name: 'final', base: 115000, watches: 4, pulls: 10, clock: 210, interest: 0.12, favour: 1, si: 3000, card: 5 },
@@ -151,12 +151,19 @@ export function indexConventionProblems(): string[] {
 // ── THE CIRCUIT (GDD §3.4): Tilt and Lamps ────────────────────────────────────────────────────────
 /** Pulls on one instance per Watch that still pay in full (GDD §3.4.3: pulls 1–4 are ×1.00). */
 export const TILT_FREE_PULLS = 4;
-/** Lamps and the punch card come with B6 (GDD §1 tiers): Night 2. */
-export const LAMP_FIRST_NIGHT = 2;
-/** Hot Lamps per Watch (GDD §3.4.4): none on Night 1, 1 on Nights 2–4, 2 from Night 5. Co-op adds +1 per 3 players elsewhere. */
+/** Hot Lamps come with Night 1 (playtest 6/10: the first Night needs a way out of a dry Watch). */
+export const LAMP_FIRST_NIGHT = 1;
+/** Cold Lamps and the punch card still come with B6 (GDD §1 tiers): Night 2. */
+export const COLD_FIRST_NIGHT = 2;
+/** Hot Lamps per Watch (GDD §3.4.4): 1 on Nights 1–4, 2 from Night 5. Co-op adds +1 per 3 players elsewhere. */
 export function hotLampCount(nightNo: number): number {
   if (nightNo < LAMP_FIRST_NIGHT) return 0;
   return nightNo >= 5 ? 2 : 1;
+}
+/** Cold Lamps per Watch: none before Night 2, then 1 (+ `extra`, the `x.lamp.coldCount` charms), never below 0. */
+export function coldLampCount(nightNo: number, extra = 0): number {
+  if (nightNo < COLD_FIRST_NIGHT) return 0;
+  return Math.max(0, 1 + Math.round(extra));
 }
 
 // ── Obols (GDD §11.2) ─────────────────────────────────────────────────────────────────────────────

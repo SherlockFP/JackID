@@ -245,6 +245,11 @@ export class SeatHud {
    * Night is on; the default reads nothing (zero pocket, no own events).
    */
   static stakeSource: () => { self: number; pocket: number } = () => ({ self: -1, pocket: 0 });
+  /**
+   * Whether the floor is open for play (a Night's play window or last call). The in-game session points this at the run;
+   * the default says open, so a standalone bench keeps its prompts.
+   */
+  static floorOpen: () => boolean = () => true;
   private offHint: (() => void) | null = null;
   hide(): void {
     this.offHint?.(); this.offHint = null;
@@ -273,6 +278,14 @@ export class SeatHud {
     this.stateS.textContent = sub === undefined ? '' : txt(sub);
     this.stateS.style.display = this.stateS.textContent === '' ? 'none' : '';
     this.placeToasts();
+  }
+
+  /**
+   * The floor is closed (between Watches, or Dawn): the banner says FLOOR CLOSED instead of an action prompt such as
+   * PRESS SPIN. Machines call this in place of their ready state when `SeatHud.floorOpen()` is false.
+   */
+  floorClosed(): void {
+    this.state({ k: 'hud.floorClosed' }, 'neutral', { k: 'hud.floorClosedSub' });
   }
 
   /**

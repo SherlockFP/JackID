@@ -74,7 +74,7 @@ const COMMON: CharmDef[] = [
   charm('felt_square', 'common', 8, 'CARDS', '', ['Felt Square', 'Losing CARDS plays refund 10% of the stake'], ['Keçe Kare', 'Kaybeden KART oyunları bahsin %10\'unu iade eder'], [fx('loss.refund', 'add', 0.1, tag('cards'))]),
   charm('rusty_key', 'common', 10, null, '', ['Rusty Key', '1 free Pawn reroll per intermission'], ['Paslı Anahtar', 'Her ara evrede 1 bedava rehin yenileme'], [fx('x.shop.freeRerolls', 'add', 1)]),
   charm('chipped_die', 'common', 8, 'DICE', '', ['Chipped Die', 'Losing Coin-Flip and Dice Tower plays refund 15%'], ['Çatlak Zar', 'Kaybeden Yazı-Tura ve Zar Kulesi oyunları %15 iade'], [fx('loss.refund', 'add', 0.15, tag('dice'))]),
-  charm('tin_whistle', 'common', 8, null, '', ['Tin Whistle', 'Phone rings 16 s instead of 10 s'], ['Teneke Düdük', 'Telefon 10 sn yerine 16 sn çalar'], [fx('x.phone.ringTime', 'add', 6)]),
+  charm('tin_whistle', 'common', 8, null, '', ['Tin Whistle', 'Phone rings 26 s instead of 20 s'], ['Teneke Düdük', 'Telefon 20 sn yerine 26 sn çalar'], [fx('x.phone.ringTime', 'add', 6)]),
   charm('consolation_ribbon', 'common', 8, null, '', ['Consolation Ribbon', 'Near-miss plays refund 50% of the stake'], ['Teselli Kurdelesi', 'Ucu kaçan oyunlar bahsin %50\'sini iade eder'], [fx('x.nearMissRefund', 'add', 0.5)]),
   charm('lucky_receipt', 'common', 8, 'LEDGER', '', ['Lucky Receipt', 'Wins of ×10 or more print +1 Ticket (max 3 per Watch)'], ['Şanslı Fiş', '×10 ve üstü kazanç +1 Bilet (Vardiya başına en fazla 3)'], [fx('x.onTag.bigwin', 'add', 1)]),
   charm('night_light', 'common', 6, null, '', ['Night-Light', 'Dread −10 while held'], ['Gece Lambası', 'Tutarken Korku −10'], [fx('dread.add', 'add', -10)]),

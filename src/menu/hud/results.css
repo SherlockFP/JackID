@@ -15,7 +15,9 @@
 .rcp-line.on { opacity: 1; transform: none; }
 .rcp-line .k { color: #5a525a; }
 .rcp-line .v { text-align: right; font-variant-numeric: tabular-nums; }
-.rcp-stamp { position: absolute; right: calc(10 * var(--u)); top: 40%; transform: rotate(-12deg); padding: calc(2 * var(--u)) calc(6 * var(--u));
+/* The stamp sits in the paper's top-right corner, clear of the title block and of the ROUNDS / stat rows (it used to land
+   at 40%, over the ROUNDS line). It hangs a little past the corner, like a real rubber stamp. */
+.rcp-stamp { position: absolute; right: calc(6 * var(--u)); top: calc(-4 * var(--u)); transform: rotate(-12deg); padding: calc(2 * var(--u)) calc(6 * var(--u));
   border: calc(2 * var(--u)) solid #c52129; color: #c52129; font-family: var(--f-head); font-size: calc(8 * var(--u)); letter-spacing: 1px; }
 .rcp-stamp.good { border-color: #2e7d46; color: #2e7d46; }
 .rcp-stamp.thud { animation: rcp-thud .25s cubic-bezier(.2, 1.6, .4, 1); }

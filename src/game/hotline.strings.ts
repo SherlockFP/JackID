@@ -10,7 +10,7 @@ export default {
     'call.3': 'A friend of the pit would like a word. Pick one.',
     'call.4': 'You sound short on time. Let us fix that. For a fee.',
     'call.5': 'The Collector is listening. So are we. Choose.',
-    'call.6': 'One favour, three terms. The line is yours for eight seconds.',
+    'call.6': 'One favour, three terms. The line is yours for fifteen seconds.',
 
     'deal.overtime.name': 'OVERTIME',
     'deal.overtime.boon': '+{n} pulls this Watch',
@@ -98,7 +98,7 @@ export default {
     'call.3': 'Çukurun bir dostu seninle konuşmak istiyor. Birini seç.',
     'call.4': 'Vaktin dar gibi. Düzeltelim. Bir bedel karşılığında.',
     'call.5': 'Tahsildar dinliyor. Biz de. Seç.',
-    'call.6': 'Bir iyilik, üç şart. Hat sekiz saniye boyunca senin.',
+    'call.6': 'Bir iyilik, üç şart. Hat on beş saniye boyunca senin.',
 
     'deal.overtime.name': 'FAZLA MESAİ',
     'deal.overtime.boon': 'Bu Vardiya +{n} çekiş',
