@@ -58,6 +58,14 @@ export function applyAudio(c: AudioCue, seek: boolean, ctx: EffectCtx): void {
   }
 }
 
+/**
+ * The HUD root while a letterboxed scene runs: `.cut-lb` (ui.css) hides the seat HUD and the machine bar under the bars.
+ * Set by the letterbox cue and by the player at scene start / end; a missing HUD is ignored.
+ */
+export function cutLetterbox(on: boolean): void {
+  try { document.querySelector('.px-root')?.classList.toggle('cut-lb', on); } catch { /* no HUD yet */ }
+}
+
 /** Screen FX cue. Fades and letterbox are state; shakes, flashes, tints, zooms, slow-mo and hit-stop are transient. */
 export function applyFx(c: FxCue, seek: boolean): void {
   switch (c.do) {
@@ -66,6 +74,7 @@ export function applyFx(c: FxCue, seek: boolean): void {
       return;
     case 'letterbox':
       void app.ui.letterbox(c.amount, seek ? 0 : c.dur);
+      cutLetterbox(c.amount > 0);
       return;
     case 'shake':
       if (!seek) app.fx.shake(c.amp, c.dur, { roll: c.roll });

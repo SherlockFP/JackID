@@ -31,10 +31,10 @@ import { WatchClock, type ClockSnapshot } from './clock';
 import {
   ACTIVITY_MIN_PULLS, BASE_RUN_NIGHTS, LAMP_FIRST_NIGHT, NETWORK_FEED, OVERSHOOT_TIERS, START, TICKET_CAP,
   assessmentFor, closingSeconds, coldLampCount, hotLampCount, interestFor, interestRate, isWitchingWatch, lastCallSeconds, nightDef, obolsFor, quotaFor,
-  type ObolOutcome,
+  ratePercent, type ObolOutcome,
 } from './data/schedule';
 import {
-  COLD_MULT, Circuit, HOT_MULT, lampEligible, rollLamps, tiltBulbs, tiltFactor, tiltStep,
+  COLD_MULT, Circuit, HOT_MULT, lampEligible, lampView as lampViewOf, rollLamps, tiltBulbs, tiltFactor, tiltStep,
   type CircuitSave, type CircuitView, type LampCandidate, type LampView, type TiltView,
 } from './circuit';
 import {
@@ -226,6 +226,8 @@ export interface DebtRun extends RunApi {
   readonly nightPaid: boolean;
   /** The Night summary's books (float, interest, tickets) for the Night in progress. */
   nightLedger(): Readonly<NightLedger>;
+  /** The live interest rate of this Night in whole percent (schedule + bonuses): the Terminal and the tutorial show it. */
+  interestPct(): number;
   /** Advance the run by `dt` sim seconds. Call from the fixed step. */
   tick(dt: number): void;
   /** Write any coalesced save now. Call on page hide / unload (`tick` also flushes within SAVE_SOON_SEC). */
@@ -879,6 +881,12 @@ class Run implements DebtRun {
   /** The Night summary's books for the Night in progress (float, interest, tickets). A copy: the caller cannot change them. */
   nightLedger(): Readonly<NightLedger> { return { ...this.ledger }; }
 
+  /** The live interest rate of this Night, whole percent: the schedule rate plus `x.econ.interestAdd` (what Settle pays). */
+  interestPct(): number { return ratePercent(this.liveRate()); }
+
+  /** Settle's rate: schedule rate + `x.econ.interestAdd` bonuses, floored at 0. One source for Settle, the rescue and the text. */
+  private liveRate(): number { return interestRate(nightDef(this.index).interest, this.mod('x.econ.interestAdd', RUN_MACHINE, 0)); }
+
   balance(cur: CurrencyId, _pid?: PlayerId): number {
     if (cur === 'coin') return this.coins;
     if (cur === 'ticket') return this.tickets;
@@ -1137,7 +1145,7 @@ class Run implements DebtRun {
     this.enter('settle', SETTLE_SEC);
     this.settleCircuit();
     if (this.quotaMode) {
-      const rate = interestRate(nd.interest, this.mod('x.econ.interestAdd', RUN_MACHINE, 0));
+      const rate = this.liveRate();
       const active = !overtime && this.watchPulls >= ACTIVITY_MIN_PULLS;
       if (active && rate > 0) {
         let interest = interestFor(this.debtPaid, this.quota.due, rate);
@@ -1385,8 +1393,7 @@ class Run implements DebtRun {
   }
 
   private lampView(): LampView {
-    const entry = (mid: InstanceId): { mid: InstanceId; machineId: MachineId } => ({ mid, machineId: this.circ.machineOf(mid) });
-    return { hot: this.circ.hot().map(entry), cold: this.circ.cold().map(entry) };
+    return lampViewOf(this.circ.hot(), this.circ.cold(), (mid) => this.circ.machineOf(mid), this.circ.pocketShort());
   }
 
   private emitLamps(): void {
@@ -1430,7 +1437,7 @@ class Run implements DebtRun {
   }
 
   /** Machines that may take a Lamp at the current pocket (readable, minimum stake within `LAMP_MAX_MIN_BET_SHARE` of it). */
-  private lampCandidates(): LampCandidate[] {
+  private lampCandidates(pocket: number = this.coins): LampCandidate[] {
     const cands: LampCandidate[] = [];
     for (const m of this.worldLink?.machines() ?? []) {
       if (this.worldLink?.locked?.(m.instance)) continue;
@@ -1439,7 +1446,7 @@ class Run implements DebtRun {
       if (cat === undefined || cat === 'system' || cat === 'party') continue;
       if (this.tycoonSys.staffAt(m.instance).length > 0) continue;        // staffed machines never take a Lamp
       const c: LampCandidate = { mid: m.instance, machineId: m.machineId, minBet: def?.minBet ?? 0 };
-      if (lampEligible(c, this.coins)) cands.push(c);
+      if (lampEligible(c, pocket)) cands.push(c);
     }
     return cands;
   }
@@ -1448,11 +1455,15 @@ class Run implements DebtRun {
     if (!this.quotaMode) return;
     const cands = this.lampCandidates();
     const rng = createRng(hashSeed('lamps', this.seed, this.index, this.watch));
+    const lamps = this.night() >= LAMP_FIRST_NIGHT;
+    const hot = Math.max(0, hotLampCount(this.night()) + Math.round(this.mod('x.lamp.hotCount', RUN_MACHINE, 0)));
+    const cold = coldLampCount(this.night(), Math.round(this.mod('x.lamp.coldCount', RUN_MACHINE, 0)));
+    // No candidate can take a Lamp at this pocket, though some readable machine would: the banner says the pocket is too low.
+    const pocketShort = lamps && hot + cold > 0 && cands.length === 0 && this.lampCandidates(Number.POSITIVE_INFINITY).length > 0;
     this.circ.startWatch(rng, cands, {
-      lamps: this.night() >= LAMP_FIRST_NIGHT,
-      hot: Math.max(0, hotLampCount(this.night()) + Math.round(this.mod('x.lamp.hotCount', RUN_MACHINE, 0))),
-      cold: coldLampCount(this.night(), Math.round(this.mod('x.lamp.coldCount', RUN_MACHINE, 0))),
+      lamps, hot, cold,
       newIsHot: this.mod('x.lamp.hot', RUN_MACHINE, 0) > 0,                // Grand Opening Ribbon: machines new this Watch are Hot
+      pocketShort,
     });
     this.emitLamps();
   }
@@ -1597,8 +1608,7 @@ class Run implements DebtRun {
     const due = this.quota.due;
     if (due <= 0 || this.debtPaid >= due) return;
     if (this.isLastWatch() && (this.phase === 'lastCall' || this.clock.remaining <= this.lastCallSec)) return;
-    const nd = nightDef(this.index);
-    const rate = interestRate(nd.interest, this.mod('x.econ.interestAdd', RUN_MACHINE, 0));
+    const rate = this.liveRate();
     let d = this.debtPaid;
     // An empty pocket cannot make the pulls the activity clause asks for, so only a Watch that already has them still pays interest.
     // Later Watches cannot be counted on either: the pocket stays empty, so they would forfeit as well.

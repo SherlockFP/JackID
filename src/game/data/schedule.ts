@@ -94,6 +94,19 @@ export function closingSeconds(isLastWatch: boolean): number { return isLastWatc
 /** Base quota before modifiers, Discount and Assessment ("BaseQuota(n)"). */
 export function baseQuota(index: number): number { return nightDef(index).base; }
 
+/**
+ * Pawn price scale f(night) (Wave 20). A charm costs `def.price × SI × f`. f never raises a price: it is 1 until the dearest
+ * Common (`commonTop` base price × SI) would cost more than PAWN_COMMON_QUOTA_SHARE of the Night's base quota, then it brings
+ * that Common down to the share. The cheapest charm (a Common) is then at most ~30 % of the quota, and Rares / Legendaries
+ * may still exceed it. `si` is the Night's live stake index.
+ */
+export const PAWN_COMMON_QUOTA_SHARE = 0.6;
+export function pawnPriceScale(index: number, si: number, commonTop: number): number {
+  const top = Math.max(0, commonTop) * Math.max(1, si);
+  if (top <= 0) return 1;
+  return Math.min(1, (PAWN_COMMON_QUOTA_SHARE * nightDef(index).base) / top);
+}
+
 /** Assessment applies from Night 3 (index 2): round(rate × Holdings). Rate 8 % (charm `property_deed` → 4 %). */
 export function assessmentFor(index: number, holdings: number, rate = 0.08): number {
   return index >= 2 ? Math.round(rate * holdings) : 0;
@@ -127,6 +140,19 @@ export function interestFor(deposit: number, quota: number, rate: number): numbe
   if (deposit <= 0 || rate <= 0) return 0;
   return Math.floor(Math.min(deposit, 2 * quota) * rate);
 }
+
+/**
+ * Live interest for one Settle (Wave 20): the schedule rate plus the `x.econ.interestAdd` bonuses (charms, buffs), floored at 0,
+ * on the deposit capped at 2 × the Night's due. `due` is the LOAN-INFLATED due (`quota.due`: Assessment, quota mods and rescue
+ * loans included), the same number Settle and the rescue check read. The Terminal's "+N% per Watch" text reads `rate` too.
+ */
+export function liveInterest(index: number, bonus: number, deposit: number, due: number): { rate: number; amount: number; cap: number } {
+  const rate = interestRate(nightDef(index).interest, bonus);
+  return { rate, amount: interestFor(deposit, due, rate), cap: Math.max(0, 2 * due) };
+}
+
+/** A rate as the whole percent the player reads ("+90 %"). */
+export function ratePercent(rate: number): number { return Math.round(rate * 100); }
 
 /** Pulls used in a Watch below this count forfeit that Watch's interest (activity clause). */
 export const ACTIVITY_MIN_PULLS = 3;

@@ -54,7 +54,7 @@ type Ev =
   | { k: 'collect'; amount: number; bet: number };
 
 const HOLDS: readonly VpButton[] = ['hold0', 'hold1', 'hold2', 'hold3', 'hold4'];
-const CARD_W = 30, CARD_H = 46;
+const CARD_W = 28, CARD_H = 46;
 const CRT_BLUE = '#0B1E8C', CRT_YELLOW = '#FFE45C', CARD_WHITE = '#F4F4F0', CARD_RED = '#D01818', CARD_INK = '#101010';
 const GAMES: readonly Game[] = ['jacks', 'deuces'];
 
@@ -521,14 +521,14 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
       g.fillStyle = CRT_BLUE; g.fillRect(0, 0, sc.w, sc.h);
       // paytable: 5 rows per column, 10 px apart
       rows.forEach((r, i) => {
-        const x = i < 5 ? 4 : 84, y = 3 + (i % 5) * 10;
+        const x = i < 5 ? 3 : 84, y = 3 + (i % 5) * 10;
         const lit = r.cat === blinkRow;
-        if (lit) { g.fillStyle = CRT_YELLOW; g.fillRect(x - 2, y - 1, 78, 9); }
+        if (lit) { g.fillStyle = CRT_YELLOW; g.fillRect(x - 2, y - 1, 77, 9); }
         const col = lit ? CRT_BLUE : CRT_YELLOW;
         sc.text(this.t(`cat_${r.cat}`), x, y, { font: 'px5', color: col });
-        sc.text(String(r.ppc), x + 66, y, { font: 'px5', color: col });
+        sc.text(String(r.ppc), x + 72, y, { font: 'px5', color: col, align: 'right' });   // right-aligned: 'FULL HOUSE ... 250' no longer runs into the next column
       });
-      const x0 = (i: number): number => 2 + i * 32;
+      const x0 = (i: number): number => 3 + i * 31;
       if (this.dbl || s.phase === 'pick') {
         // double-up: dealer card face up, four face-down cards (the picked one is revealed)
         const d = this.dbl;

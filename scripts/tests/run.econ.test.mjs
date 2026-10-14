@@ -272,3 +272,66 @@ test('in a real run the Dawn shelf is already the next Night shelf and OPEN THE 
   assert.deepEqual(ids(), dawn, 'opening the floor does not reshuffle it');
   run.dispose();
 });
+
+// ── Wave 20: live interest, the pocket-short lamp banner, distinct names for two lamps on one machine ────────
+let CIRC, STR_TUT, STR_LAMPS;
+before(async () => {
+  CIRC = await load('src/game/circuit.ts');
+  STR_TUT = (await load('src/game/tutorial.strings.ts')).default;
+  STR_LAMPS = (await load('src/game/lamps.strings.ts')).default;
+});
+
+test('live interest: the schedule rate plus bonuses, floored at 0; the deposit is capped at 2 × the loan-inflated due', () => {
+  assert.equal(SCH.ratePercent(SCH.interestRate(0.9, -0.03)), 87, 'Night 1 with a -3 % bonus');
+  assert.equal(SCH.ratePercent(SCH.interestRate(0.3, -0.01)), 29, 'Night 2 with the Skipped Interest buff');
+  assert.equal(SCH.interestRate(0.1, -0.5), 0, 'never negative');
+  const live = SCH.liveInterest(0, 0, 50, 40);
+  assert.deepEqual([live.rate, live.amount, live.cap], [0.9, 45, 80], 'floor(min(deposit, 2 × due) × rate)');
+  assert.equal(SCH.liveInterest(0, 0, 500, 40).amount, 72, 'a huge deposit still earns on at most 2 × due');
+  assert.equal(SCH.liveInterest(0, 0, 500, 40).cap, 80);
+});
+
+test('the Terminal rate is the live rate of the current Night (what Settle pays), not the schedule rate alone', () => {
+  const run = RUN.createRun({ seed: 41, mode: 'debt' });
+  assert.equal(run.interestPct(), 90, 'Night 1 schedule rate');
+  run.index = 1;
+  assert.equal(run.interestPct(), 30, 'Night 2 schedule rate');
+  run.index = 2;
+  assert.equal(run.interestPct(), 28, 'Night 3 schedule rate');
+  run.dispose();
+});
+
+test('the tutorial deposit line reads {rate} and names the Watch in both languages', () => {
+  assert.ok(STR_TUT.en['deposit'].includes('{rate}% per Watch tonight'));
+  assert.ok(STR_TUT.tr['deposit'].includes('%{rate} faiz'));
+  assert.ok(!STR_TUT.en['deposit'].includes('{pct}') && !STR_TUT.tr['deposit'].includes('{pct}'));
+  assert.ok(STR_LAMPS.en['none'] === 'No lamps tonight — pocket too low' && STR_LAMPS.tr['none']);
+});
+
+test('lampView: two Lamps on one machine get ordinals (Bandit (L1), Bandit (L2)); other machines and single Lamps stay bare', () => {
+  const machine = { 'GAL-07': 'bandit', 'WELL-04': 'bandit', 'WELL-10': 'roulette', 'WELL-01': 'bigone' };
+  const v = CIRC.lampView(['WELL-04'], ['GAL-07', 'WELL-10'], (mid) => machine[mid] ?? '');
+  assert.deepEqual(v.hot, [{ mid: 'WELL-04', machineId: 'bandit', dup: 2 }], 'the later instance id is L2 (sorted by instance)');
+  assert.deepEqual(v.cold[0], { mid: 'GAL-07', machineId: 'bandit', dup: 1 });
+  assert.deepEqual(v.cold[1], { mid: 'WELL-10', machineId: 'roulette' }, 'a single Lamp carries no ordinal');
+  assert.equal(CIRC.lampLabel('Bandit', v.hot[0].dup), 'Bandit (L2)');
+  assert.equal(CIRC.lampLabel('Roulette'), 'Roulette');
+  assert.equal(v.pocketShort, false);
+  assert.equal(CIRC.lampView([], [], () => '', true).pocketShort, true, 'the pocket-short flag reaches the view');
+});
+
+test('pocket short: a Bell with no candidate at this pocket sets pocketShort; a Bell with a Lamp does not', () => {
+  const rng = R.createRng(7);
+  const c = new CIRC.Circuit();
+  c.startWatch(rng, [], { lamps: true, hot: 1, cold: 1, newIsHot: false, pocketShort: true });
+  assert.equal(c.pocketShort(), true);
+  assert.deepEqual({ hot: c.hot(), cold: c.cold() }, { hot: [], cold: [] }, 'no candidate, no Lamp');
+  c.startWatch(rng, [{ mid: 'WELL-01', machineId: 'bigone', minBet: 1 }], { lamps: true, hot: 1, cold: 0, newIsHot: false, pocketShort: false });
+  assert.equal(c.pocketShort(), false);
+  assert.deepEqual(c.hot(), ['WELL-01']);
+  c.settle();
+  assert.equal(c.pocketShort(), false, 'Settle clears the banner');
+  const back = new CIRC.Circuit();
+  back.restore({ ...c.snapshot(), short: true });
+  assert.equal(back.pocketShort(), true, 'the flag survives a save');
+});

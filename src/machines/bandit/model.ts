@@ -15,6 +15,7 @@ import type { Kit, LampPart, Palette, ReelPart, ScreenSurface } from '@/kit/type
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { facetSymbol, STOPS, type Sym } from './rules';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 /** Contract between modeller and coder. */
 export type BanditParts = {
@@ -123,8 +124,11 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BanditParts> {
 
   // ── screens and lamps ──
   // 256 × 128 texels (2× the old density): the numerals are drawn at integer scale 2, so each glyph pixel is 2 texels
-  const award = kit.screen({ w: 0.34, h: 0.17, px: [256, 128], bezel: pal.black });
+  const award = kit.screen({ w: 0.34, h: 0.17, px: [256, 128], bezel: pal.black, scanlines: false });   // no scanline dimming: it striped the 2-texel strokes
   award.mesh.position.set(0, (winTop + HEAD_TOP) / 2, D / 2 + 0.002);
+  crispTexture(award.tex, 4);                       // linear: nearest minification of 2-texel strokes is what garbled 'PAYTABLE'
+  award.tex.minFilter = THREE.LinearFilter;         // the glass is only ~1.4x minified: plain bilinear stays sharper than mip blending
+  award.tex.generateMipmaps = false;
   root.add(award.mesh);
 
   const eyes: [LampPart, LampPart] = [
@@ -193,7 +197,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BanditParts> {
     root,
     parts,
     // framing: award glass (top) + reel window (bottom) inside the band between the HUD banner and the control bar, 4:3 and 16:9
-    playPose: { pos: new THREE.Vector3(0, 1.29, 0.80), look: new THREE.Vector3(0, 1.18, 0), fov: 50, mouse: 'pick' },
+    playPose: { pos: new THREE.Vector3(0, 1.25, 0.80), look: new THREE.Vector3(0, 1.14, 0), fov: 50, mouse: 'pick' },
     colliders: [
       { min: [-PED_W / 2, 0, -PED_W / 2], max: [PED_W / 2, PED_H, PED_W / 2] },
       { min: [-W / 2, PED_H, -D / 2], max: [W / 2, HEAD_TOP, D / 2] },

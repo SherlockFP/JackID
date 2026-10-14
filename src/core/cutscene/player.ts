@@ -38,7 +38,7 @@ import { log } from '../log';
 import { fxLayer } from '../fx/layer';
 import { CutActors } from './actors';
 import { CutCamera, newCameraPose } from './camera';
-import { applyAudio, applyFx, applyLight, showSubtitle, type EffectCtx, type TrackedVoice } from './effects';
+import { applyAudio, applyFx, applyLight, cutLetterbox, showSubtitle, type EffectCtx, type TrackedVoice } from './effects';
 import { resolveTarget } from './targets';
 
 declare module '@/core/events' {
@@ -154,7 +154,7 @@ class Run {
     }
     if (this.skippable && this.locked) this.skipOff = a.input.on('skip', (down) => this.onSkipKey(down));
     if (def.hideHud !== false) { a.ui.setHudVisible(false); this.hidHud = true; }
-    if (def.letterbox !== false) void a.ui.letterbox(1, 0.5);
+    if (def.letterbox !== false) { void a.ui.letterbox(1, 0.5); cutLetterbox(true); }
     if ((def.fadeIn ?? 0.4) > 0) void a.ui.fade(1, 0);              // black until t = 0, then fades in
     if (Object.keys(def.actors ?? {}).length > 0) {
       try { void a.kit.loadMannequin().catch((): void => { /* placeholders stay */ }); } catch { /* kit not ready */ }
@@ -409,7 +409,7 @@ class Run {
     fxLayer.setCameraPose(null);
     a.ui.skipHint(null);
     a.ui.subtitle(null);
-    if (this.def.letterbox !== false) void a.ui.letterbox(0, 0.4);
+    if (this.def.letterbox !== false) { void a.ui.letterbox(0, 0.4); cutLetterbox(false); }
     if (this.locked) {
       // a state change already set its own mode: only undo what is still ours
       if (a.input.mode === 'cutscene') a.input.setMode(this.prevMode === 'cutscene' ? 'walk' : this.prevMode);

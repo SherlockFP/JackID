@@ -20,7 +20,7 @@ import type { WorldHost } from '@/world/world';
 import type { DebtRun } from '@/game/run';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { holdClock, releaseClock } from '@/game/clockHold';
-import { TILT_FREE_PULLS, nightDef } from '@/game/data/schedule';
+import { TILT_FREE_PULLS } from '@/game/data/schedule';
 
 export interface TutorialHost {
   readonly world: WorldHost;
@@ -173,7 +173,7 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
       case 'spin': {
         return t('econ.spinAny', { key: keyLabel('m.primary') });
       }
-      case 'deposit': return t('tut.deposit', { pct: Math.round(nightDef(0).interest * 100) });
+      case 'deposit': return t('tut.deposit', { rate: run.interestPct() });
       default: return t(`tut.${s.key}`);
     }
   };

@@ -356,8 +356,9 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
       void this.anim(0.4, (k) => { thermo.scale.y = Math.max(0.0001, lerp(from, to, k)); });
       fx.sparks(flapCur.root, 8 + 2 * ev.steps, GOLD);
       fx.glow(flapCur.root, GOLD, 0.25 + 0.03 * ev.steps, 0.4);
-      fx.popText(flapCur.root, `×${ev.run.toFixed(2)}`, GOLD, { dur: 1.1, rise: 0.35, scale: 1.1 + 0.1 * Math.min(ev.steps, 5), shake: ev.run >= 10 });
-      if (ev.same) fx.popText(flapNext.root, this.t('same'), GOLD, { dur: 0.9, rise: 0.25, scale: 1.1 });
+      // low rise, near-1x scale: the multiplier stays on its flap and never climbs into the Night banner above the board
+      fx.popText(flapCur.root, `×${ev.run.toFixed(2)}`, GOLD, { dur: 1.1, rise: 0.12, scale: 1.0 + 0.04 * Math.min(ev.steps, 5), shake: ev.run >= 10 });
+      if (ev.same) fx.popText(flapNext.root, this.t('same'), GOLD, { dur: 0.9, rise: 0.08, scale: 1.0 });
       if (ev.lucky && pc.local) this.sfx('sparkle', { vol: 0.5, pitch: 7 });
       this.sfx(ev.steps >= 3 ? 'win3' : ev.steps === 2 ? 'win2' : 'win1');
       marquee.chase('win', 6 + ev.steps);

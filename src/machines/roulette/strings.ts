@@ -23,6 +23,7 @@ export const STRINGS: MachineStrings = {
     // seat HUD (readability standard)
     hGoal: 'Bet on the pocket the ball will land in',
     hWait: 'WAITING FOR PLAYERS', hBet: 'PLACE YOUR BETS', hSecs: 'BETS CLOSE IN {n}S',
+    hSubPlace: 'Click the felt to place a chip', hSubSpin: 'Press {key} to SPIN the wheel', hSubReady: 'Press {key} when you are READY',
     hReady: 'READY · WAITING FOR OTHERS', hLock: 'NO MORE BETS', hSpin: 'THE BALL IS LAUNCHED',
     hPay: 'PAYING OUT', hClear: 'CLEARING THE LAYOUT',
     hNBet: 'YOUR CHIP', hNLayout: 'YOUR LAYOUT', hNLast: 'LAST', hNBalance: 'BALANCE',
@@ -57,6 +58,7 @@ export const STRINGS: MachineStrings = {
     // seat HUD (readability standard)
     hGoal: 'Topun düşeceği gözü tahmin et',
     hWait: 'OYUNCULAR BEKLENİYOR', hBet: 'BAHİSLERİNİ KOY', hSecs: 'BAHİSLER {n} SN SONRA KAPANIR',
+    hSubPlace: 'Fiş koymak için kumaşa tıkla', hSubSpin: 'Çarkı ÇEVİRMEK için {key} tuşuna bas', hSubReady: 'HAZIR olunca {key} tuşuna bas',
     hReady: 'HAZIR · DİĞERLERİ BEKLENİYOR', hLock: 'ARTIK BAHİS YOK', hSpin: 'TOP FIRLATILDI',
     hPay: 'ÖDEME YAPILIYOR', hClear: 'MASA TEMİZLENİYOR',
     hNBet: 'FİŞİN', hNLayout: 'DİZİLİMİN', hNLast: 'SON', hNBalance: 'BAKİYE',

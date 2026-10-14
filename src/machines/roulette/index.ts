@@ -19,7 +19,7 @@ import { TableBase } from '@/machines/_base/TableBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { juiceTier } from '@/machines/_base/tiers';
-import { buildModel, numberXZ, pocketAngle, spotXZ, TOP, type RouletteParts } from './model';
+import { buildModel, CHIP_Y, LAYOUT_CX, LAYOUT_CZ, numberXZ, paintLayout, pocketAngle, spotXZ, type RouletteParts } from './model';
 import {
   BASE_WEIGHT, POCKETS, callPlan, colorOf, defaultMods, limitsFor, parseSpot, playHeadless, spin, wheelAt,
   type Bet, type CallId, type Mods,
@@ -137,7 +137,7 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     const hit = this.pick([this.parts.layout]);
     if (!hit) return;
     const local = this.parts.layout.worldToLocal(hit.point.clone());
-    const spot = nearestSpot(local.x + 0.4, -local.y);
+    const spot = nearestSpot(local.x + LAYOUT_CX, LAYOUT_CZ - local.y);
     if (!spot) return;
     if (e.button === 2) this.nudge(spot, -1); else this.nudge(spot, 1);
   }
@@ -156,6 +156,7 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     if (dir < 0) next = Math.max(0, next);
     const total = this.myBets().reduce((s, b) => s + (b.s === spot ? 0 : b.a), 0) + next;
     if (total > TABLE_MAX) { this.toast(tr('m.roulette.limit', { n: fmtCoins(TABLE_MAX) }), 'warn'); return; }
+    if (dir > 0 && total > this.ctx.run.wallet()) { this.toast(tr('m.roulette.noFunds'), 'warn'); return; }   // the host would refuse the whole layout at LOCK and wipe it
     if (next === cur) return;
     this.sfx('chip');
     this.act({ k: 'set', spot, a: next });
@@ -166,6 +167,10 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     if (!this.canBet()) return;
     const counts = new Map<string, number>();
     for (const s of callPlan(call)) counts.set(s, (counts.get(s) ?? 0) + 1);
+    const add = [...counts.values()].reduce((a, n) => a + n * this.bet, 0);
+    const layout = this.myBets().reduce((s, b) => s + b.a, 0);
+    if (layout + add > this.ctx.run.wallet()) { this.toast(tr('m.roulette.noFunds'), 'warn'); return; }
+    if (layout + add > TABLE_MAX) { this.toast(tr('m.roulette.limit', { n: fmtCoins(TABLE_MAX) }), 'warn'); return; }
     for (const [spot, n] of counts) this.act({ k: 'set', spot, a: this.myAmount(spot) + n * this.bet });
     this.sfx('chipStack');
   }
@@ -366,6 +371,9 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     ballPivot.rotation.y = bEnd;
     dolly.position.set(Math.sin(a) * 0.275, 0.05, Math.cos(a) * 0.275);
     dolly.visible = true;
+    const pz = numberXZ(ev.pocket);
+    this.parts.puck.position.set(pz[0], this.parts.puck.position.y, pz[1]);   // the puck on the layout: the player's view has no wheel in it
+    this.parts.puck.visible = true;
     this.ctx.fx.sparks(ball, 10, colorOf(ev.pocket) === 'red' ? 0xff4040 : GOLD);
     this.ctx.fx.shake(0.012, 0.25, { roll: 0.4 });
     this.sfx('cardSlap', { vol: 0.8 });
@@ -439,7 +447,7 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     if (local) { this.lastMine = []; this.seatHud?.hide(); this.hud(null); }
     this.paintLamps();
   }
-  override onLang(): void { this.drawHistory(); this.paintChips(); if (this.isLocalOccupant) this.showHud(); }
+  override onLang(): void { paintLayout(this.parts.layoutTex, this.ctx.kit.tex as Parameters<typeof paintLayout>[1]); this.drawHistory(); this.paintChips(); if (this.isLocalOccupant) this.showHud(); }
 
   // ── visuals ───────────────────────────────────────────────────────────────────────────────────
   private paintLamps(): void {
@@ -451,11 +459,11 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
   private paintChips(): void {
     const { chips } = this.parts;
     chips.clear();
-    for (const seat of this.st.layouts) {
-      for (const b of seat) {
+    for (let si = 0; si < this.st.layouts.length; si++) {
+      for (const b of this.st.layouts[si]) {
         const at = spotXZ(b.s);
         if (!at) continue;
-        const v = new THREE.Vector3(at[0], TOP + 0.012, at[1]);
+        const v = new THREE.Vector3(at[0] + (si - 2.5) * 0.009, CHIP_Y, at[1] + (si % 2 ? 0.012 : -0.012));   // a little apart per seat so two players' stacks on one spot both show
         for (const c of chipsFor(b.a)) {
           if (chips.count >= CHIP_CAP) return;
           chips.add(c, v);
@@ -469,6 +477,7 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     this.paintChips();
     this.drawHistory();
     this.parts.dolly.visible = false;
+    this.parts.puck.visible = false;
   }
 
   private drawHistory(): void {
@@ -492,9 +501,10 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
   }
   private async lowerRake(fast: boolean): Promise<void> {
     const rake = this.parts.rake;
-    if (fast) { rake.rotation.x = 0; this.parts.dolly.visible = false; return; }
+    if (fast) { rake.rotation.x = 0; this.parts.dolly.visible = false; this.parts.puck.visible = false; return; }
     await this.anim(0.5, (k) => { rake.rotation.x = -0.5 * (1 - k); }, 'outQuad');
     this.parts.dolly.visible = false;
+    this.parts.puck.visible = false;
   }
 
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
@@ -537,7 +547,12 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     else if (open && ready) sh.state({ k: 'm.roulette.hReady' }, 'cyan');
     else if (open) {
       const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
-      sh.state({ k: 'm.roulette.hBet' }, 'gold', left > 0 ? { k: 'm.roulette.hSecs', v: { n: left } } : undefined);
+      // seat-views: the banner says how to start the spin (alone: no timer, so nothing else tells the player the wheel is waiting for them)
+      const go = this.k('confirm');
+      const sub: Txt | undefined = left > 0 ? { k: 'm.roulette.hSecs', v: { n: left } }
+        : layout > 0 ? { k: this.humans().length >= 2 ? 'm.roulette.hSubReady' : 'm.roulette.hSubSpin', v: { key: go } }
+          : { k: 'm.roulette.hSubPlace' };
+      sh.state({ k: 'm.roulette.hBet' }, 'gold', sub);
     }
     else if (st.phase === 'lock') sh.state({ k: 'm.roulette.hLock' }, 'warn');
     else if (st.phase === 'spin') sh.state({ k: 'm.roulette.hSpin' }, 'cyan');

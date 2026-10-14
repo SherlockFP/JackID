@@ -20,7 +20,7 @@ import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/co
 import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import { fmtCoins, type I18nVars } from '@/core/i18n';
-import { buildModel, CARD_Y, FRONT_Z, SLOT_X, SLOT_Z, type ScratchParts } from './model';
+import { buildModel, cardPose, FRONT_Z, type ScratchParts } from './model';
 import {
   CARD_COUNT, HOOK_CHARM, HOOK_DISCOUNT, HOOK_SECOND, HOOK_TOP, MAX_QTY, PRIZE_MULTS, PRIZE_WEIGHTS,
   RARITY_RARE, RARITY_UNCOMMON, SECOND_CHANCE_EVERY, WEIGHT_TOTAL, ZONE_REVEAL, playHeadless, priceOf, rollCard,
@@ -99,6 +99,8 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   private pend: Pend | null = null;
   private views: View[] = [];
   private stroking = false;
+  private posed = false;            // the batch's cards stand in their poses (set after the vend / a snapshot restore)
+  private placing = false;           // a vend animation is placing the cards: refreshVisuals leaves their poses alone
   private strokeQ: number[] = [];
   private flushT = 0;
   /** Seat HUD overlay (readability standard, see _base/seatHud.ts). */
@@ -216,6 +218,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   }
 
   tick(dt: number): void {
+    this.easeCards(dt);
     if (!this.stroking || !this.pend) return;
     this.flushT += dt;
     if (this.flushT >= FLUSH_S && this.strokeQ.length >= 4) { this.flushT = 0; this.flushStroke(); }
@@ -366,13 +369,18 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     P.chainPivot.rotation.x = 0.12;                       // the coin clunks on the shelf
     if (!pc.fast) await this.wait(0.3);
     P.chainPivot.rotation.x = 0;
-    for (let i = 0; i < ev.cards.length; i++) {
+    const n = ev.cards.length;
+    this.placing = true;
+    this.posed = false;
+    for (let i = 0; i < n; i++) {
       const plane = P.cardPlanes[i];
       plane.visible = true;
       if (pc.fast) { this.placeCard(i, 1); continue; }
       this.sfx('whoosh', { vol: 0.4 });
       await this.anim(0.8, (k) => this.placeCard(i, k));
     }
+    this.placing = false;
+    this.posed = true;
     this.refreshVisuals();
     if (this.isLocalOccupant) this.showHud();
   }
@@ -380,11 +388,29 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   /** A card leaves the mouth (vertical), arcs over the lip and lies flat on its shelf slot. */
   private placeCard(i: number, k: number): void {
     const plane = this.parts.cardPlanes[i];
-    const sx = SLOT_X(i);
+    const b = this.state.batch;
+    if (!b) return;
+    const pose = cardPose(i, b.done);
     const kk = Math.min(1, Math.max(0, k));
-    const y = 0.93 + (CARD_Y - 0.93) * kk + 0.1 * Math.sin(Math.PI * kk);
-    plane.position.set(sx * kk, y, FRONT_Z + 0.02 + (SLOT_Z - FRONT_Z - 0.02) * kk);
-    plane.rotation.x = -(Math.PI / 2) * kk;
+    const y = 0.93 + (pose.y - 0.93) * kk + 0.1 * Math.sin(Math.PI * kk);
+    plane.position.set(pose.x * kk, y, FRONT_Z + 0.02 + (pose.z - FRONT_Z - 0.02) * kk);
+    plane.rotation.x = pose.rx * kk;
+    plane.scale.setScalar(0.7 + (pose.s - 0.7) * kk);
+  }
+
+  /** Glide every card of the batch towards its pose (the next card stands up, the finished one steps aside). */
+  private easeCards(dt: number): void {
+    const b = this.state.batch;
+    if (!b || this.placing || !this.posed) return;
+    const f = 1 - Math.exp(-dt * 9);
+    b.cards.forEach((_, i) => {
+      const p = this.parts.cardPlanes[i], pose = cardPose(i, b.done);
+      p.position.x += (pose.x - p.position.x) * f;
+      p.position.y += (pose.y - p.position.y) * f;
+      p.position.z += (pose.z - p.position.z) * f;
+      p.rotation.x += (pose.rx - p.rotation.x) * f;
+      p.scale.setScalar(p.scale.x + (pose.s - p.scale.x) * f);
+    });
   }
 
   private presentStroke(ev: Extract<Ev, { k: 'stroke' }>, pc: PresentCtx): void {
@@ -471,8 +497,8 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   private textAdapter(): Text {
     const tex = this.ctx.kit.tex;
     return {
-      draw: (g, s, x, y, color) => tex.drawText(g, s, x, y, { font: 'px5', color }),
-      width: (s) => tex.measure(s, { font: 'px5' }),
+      draw: (g, s, x, y, color, scale = 1) => tex.drawText(g, s, x, y, { font: 'px5', color, scale }),
+      width: (s, scale = 1) => tex.measure(s, { font: 'px5', scale }),
     };
   }
 
@@ -526,6 +552,8 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     const s = this.state, P = this.parts, b = s.batch;
     P.buttons.list.forEach((btn, i) => btn.setLit(i === s.sel));
     P.cardPlanes.forEach((p, i) => { p.visible = !!b && i < b.cards.length; });
+    if (!b) this.posed = false;
+    else if (!this.placing && !this.posed) { b.cards.forEach((_, i) => this.placeCard(i, 1)); this.posed = true; }   // resting pose (a snapshot joiner never saw the vend)
     P.deskLamp.setOn(!!b || this.isLocalOccupant);
     P.leds.setBulb(0, this.isLocalOccupant ? LED_CREDIT : null);
     P.leds.setBulb(1, b || this.roundOpen ? LED_BET : null);

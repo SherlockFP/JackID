@@ -22,6 +22,7 @@ import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { DESIGN_H, DESIGN_W, paintDesign, type Text } from './faces';
 import { CARD_COUNT } from './rules';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 /** Contract between modeler and coder. */
 export type ScratchParts = {
@@ -52,11 +53,30 @@ export type ScratchParts = {
 export const W = 0.9, D = 0.8, H = 1.85;
 export const BODY_W = 0.8, BODY_D = 0.6, BODY_Z = -0.1;   // body spans z -0.4 .. +0.2
 export const FRONT_Z = 0.2;
-export const SHELF_Y = 1.0, SHELF_D = 0.2;                 // shelf top y, depth (z 0.2 .. 0.4)
-export const CARD_W = 0.1, CARD_H = 0.15;
+export const SHELF_Y = 1.0, SHELF_D = 0.28;                // shelf top y, depth (z 0.2 .. 0.48; seat-views: 8 cm deeper so a card drawn bigger for a small batch still lies on felt)
+export const CARD_W = 0.12, CARD_H = 0.18;                // a card at scale 1 (five in a row); smaller batches are drawn bigger, see cardLayout
 export const CARD_Y = SHELF_Y + 0.008;
-export const SLOT_X = (i: number): number => -0.24 + i * 0.12;
-export const SLOT_Z = 0.3;
+export const SLOT_Z = 0.34;
+/**
+ * seat-views: the scene renders at ~300 x 224 px, so a 128-texel card face is unreadable at its natural 12 cm. The card being scratched
+ * (the first one not done) therefore stands up against the machine front, 2.15x bigger and tilted to face the player; the cards already
+ * scratched wait flat and small on the left of the shelf, the ones still to do on the right.
+ */
+export interface CardPose { x: number; y: number; z: number; rx: number; s: number }
+const ACTIVE_S = 2.15, ACTIVE_TILT = 62 * Math.PI / 180, ACTIVE_FRONT_Z = 0.44, MINI_S = 0.7;
+/** Index of the card being scratched: the first one not done (the last one once all are). */
+export const activeCard = (done: readonly boolean[]): number => { const a = done.indexOf(false); return a < 0 ? done.length - 1 : a; };
+export function cardPose(i: number, done: readonly boolean[]): CardPose {
+  const a = activeCard(done);
+  if (i === a) {
+    const hh = CARD_H * ACTIVE_S / 2;
+    return { x: 0, y: CARD_Y + hh * Math.sin(ACTIVE_TILT), z: ACTIVE_FRONT_Z - hh * Math.cos(ACTIVE_TILT), rx: -Math.PI / 2 + ACTIVE_TILT, s: ACTIVE_S };
+  }
+  const left: number[] = [], right: number[] = [];
+  done.forEach((d, j) => { if (j !== a) (d ? left : right).push(j); });
+  const k = (done[i] ? left : right).indexOf(i);
+  return { x: (done[i] ? -1 : 1) * (0.215 + (k % 2) * 0.09), y: CARD_Y, z: 0.28 + Math.floor(k / 2) * 0.12, rx: -Math.PI / 2, s: MINI_S };
+}
 export const HOOK = { x: 0.33, y: 1.13, z: FRONT_Z + 0.005 };
 
 const COLORWAYS: ReadonlyArray<{ body: number; stripe: number; trim: number }> = [
@@ -80,7 +100,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ScratchParts> 
   for (const y of [0.7, 0.76]) kit.box(BODY_W, 0.02, 0.006, cw.stripe, at(0, y, FRONT_Z + 0.003)); // front stripes
   for (const sx of [-1, 1]) kit.box(0.008, 0.9, BODY_D + 0.004, cw.stripe, at(sx * (BODY_W / 2 + 0.002), 0.45, BODY_Z));
   kit.box(0.66, 0.52, 0.02, cw.trim, at(0, 1.45, FRONT_Z + 0.01));                               // glass bezel (behind the designs)
-  kit.box(BODY_W - 0.04, 0.03, 0.2, cw.body, at(0, SHELF_Y - 0.015, FRONT_Z + SHELF_D / 2));    // scratch shelf
+  kit.box(BODY_W - 0.04, 0.03, SHELF_D, cw.body, at(0, SHELF_Y - 0.015, FRONT_Z + SHELF_D / 2));    // scratch shelf
   kit.box(0.16, 0.05, 0.012, pal.black, at(0, 0.935, FRONT_Z + 0.006));                          // card mouth slot
 
   // ── felt shelf top (its own texture: a separate draw) ──
@@ -114,7 +134,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ScratchParts> 
   // ── selector panel: five caps on one plate (one dynamic mesh), rotated to face the player ──
   const buttons = kit.buttonPanel({
     w: 0.62, d: 0.05, slope: 0, plate: pal.black, capH: 0.02,
-    buttons: [0, 1, 2, 3, 4].map((i) => ({ id: `card${i}`, color: [pal.gold, pal.neonCyan, pal.red, pal.neonPink, pal.green][i], x: SLOT_X(i), z: 0, w: 0.07, h: 0.05 })),
+    buttons: [0, 1, 2, 3, 4].map((i) => ({ id: `card${i}`, color: [pal.gold, pal.neonCyan, pal.red, pal.neonPink, pal.green][i], x: -0.24 + i * 0.12, z: 0, w: 0.07, h: 0.05 })),
   });
   buttons.root.position.set(0, 1.12, FRONT_Z + 0.006);
   buttons.root.rotation.x = Math.PI / 2;
@@ -139,14 +159,14 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ScratchParts> 
   for (let i = 0; i < CARD_COUNT; i++) {
     const tex = kit.tex.canvas(128, 192, () => {}, { wrap: 'clamp' });
     tex.colorSpace = THREE.NoColorSpace;
-    tex.magFilter = THREE.NearestFilter;
+    crispTexture(tex, 4);                                // linear + mips: the card text stays sharp however large the card is drawn
     cardTex.push(tex);
     const plane = kit.plane(CARD_W, CARD_H, kit.mat({ map: tex, lit: false, side: 'double', snap: false, affine: false }),
-      { pos: [SLOT_X(i), CARD_Y, SLOT_Z], rot: [-90, 0, 0], parent: root, name: `card${i}` });
+      { pos: [0, CARD_Y, SLOT_Z], rot: [-90, 0, 0], parent: root, name: `card${i}` });
     plane.visible = false;
     cardPlanes.push(plane);
     const slot = new THREE.Object3D();
-    slot.position.set(SLOT_X(i), CARD_Y, SLOT_Z);
+    slot.position.set(-0.24 + i * 0.12, CARD_Y, SLOT_Z);
     root.add(slot);
     cardSlots.push(slot);
   }
@@ -198,7 +218,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ScratchParts> 
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.28, 0.44), look: new THREE.Vector3(0, 1.0, 0.3), fov: 50, mouse: 'pick' },
+    // framing: the active card (tall, centre) and the two mini stacks beside it, between the HUD banner and the control bar, 4:3 and 16:9
+    playPose: { pos: new THREE.Vector3(0, 1.62, 0.9), look: new THREE.Vector3(0, 1.17, 0.33), fov: 50, mouse: 'pick' },
     colliders: [{ min: [-BODY_W / 2, 0, BODY_Z - BODY_D / 2], max: [BODY_W / 2, H, FRONT_Z] }],
     interact: { min: [-W / 2, 0, -D / 2], max: [W / 2, H, D / 2 + 0.02] },
     anchors: { speaker, prompt: marquee.root, label, marqueeTop, servicePlate, stand, flakes, light, fxTwist, coinOut },

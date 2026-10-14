@@ -17,6 +17,7 @@ import type { ScreenSurface, MarqueePart, PanelButton } from '@/kit/types';
 import type { KitX } from '@/kit/index';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 export type VpButton = 'hold0' | 'hold1' | 'hold2' | 'hold3' | 'hold4' | 'deal' | 'betOne' | 'betMax' | 'double' | 'collect' | 'game';
 
@@ -39,7 +40,7 @@ const COLORWAYS: ReadonlyArray<{ body: 'blue' | 'black' | 'cream' | 'red'; trim:
   { body: 'red', trim: 'chrome' },
 ];
 
-export const CRT_TILT_DEG = 25;
+export const CRT_TILT_DEG = 49;   // the face of the slant cabinet (kit/cabinet.ts)
 
 export function buildModel(kit: KitX, o: ModelOpts): MachineModel<VideoPokerParts> {
   const { pal } = kit;
@@ -50,14 +51,17 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<VideoPokerPart
   const cab = kit.cabinet({
     style: 'slant', w: 0.62, h: 1.4, d: 0.7,
     body: pal[cw.body], trim: pal[cw.trim], accent: pal.neonCyan,
-    screen: { w: 0.48, h: 0.36, y: 1.02, tilt: CRT_TILT_DEG },
+    // seat-views: no tilt override, so the glass lies in the slanted face (49 deg). The old 25 deg tilt sank its lower half into the
+    // body, so only the paytable and the tops of the cards were ever visible.
+    screen: { w: 0.48, h: 0.36, y: 1.06 },
     topper: { h: 0.2 },
     panel: { y: 0.86, depth: 0.22, tilt: 12 },
     kick: 0.08,
   });
   root.add(cab.root);
 
-  const screen = kit.screen({ w: 0.46, h: 0.34, px: [160, 120], bezel: pal.black, scanlines: true });
+  const screen = kit.screen({ w: 0.46, h: 0.34, px: [160, 120], bezel: pal.black, scanlines: false });
+  crispTexture(screen.tex, 4);                      // linear + mips: the 160 x 120 face stays sharp when it fills the frame
   (cab.anchors.screen ?? cab.root).add(screen.mesh);
 
   // ── button deck (one caps mesh for all eleven buttons) ──
@@ -81,7 +85,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<VideoPokerPart
 
   // ── marquee on the top box ──
   const marquee = kit.marquee({ w: 0.56, h: 0.13, text: { key: 'm.videopoker.marquee' }, color: pal.neonCyan, bg: pal.black, bulbs: 14 });
-  marquee.root.position.set(0, 1.3, 0.36);
+  marquee.root.position.set(0, 1.5, 0.035);   // seat-views: on the front of the top box (it used to float at y 1.3 / z 0.36, right in front of the glass)
   root.add(marquee.root);
 
   // ── bar stool at z +0.40 ──
@@ -118,7 +122,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<VideoPokerPart
       screen, marquee, deck: deck.root, stool,
       buttons: deck.buttons as Record<VpButton, PanelButton>,
     },
-    playPose: { pos: new THREE.Vector3(0, 1.18, 0.62), look: new THREE.Vector3(0, 0.98, 0.08), fov: 50, mouse: 'primary' },
+    playPose: { pos: new THREE.Vector3(0, 1.45, 0.68), look: new THREE.Vector3(0, 1.06, 0.2), fov: 50, mouse: 'primary' },
     colliders: cab.colliders,
     interact: { min: [-0.31, 0, -0.35], max: [0.31, 1.42, 0.45] },
     anchors: {

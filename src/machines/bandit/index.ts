@@ -410,7 +410,8 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
     this.parts.award.draw((g, sc) => {
       g.fillStyle = '#0c0c14'; g.fillRect(0, 0, sc.w, sc.h);
       g.fillStyle = '#1E4D7A'; g.fillRect(0, 0, sc.w, 24);
-      sc.text(this.t('paytable'), sc.w / 2, 5, { font: 'px5', scale: 2, color: '#F0E6CC', align: 'center' });
+      const title = this.t('paytable'), ts = fitScale(title, sc.w - 8, 22, 3);
+      sc.text(title, sc.w / 2, 1 + Math.floor((22 - 7 * ts) / 2), { font: 'px5', scale: ts, color: '#F0E6CC', align: 'center' });
       // two columns, each: name (scale 2 when it fits, else 1) then the payout as a big scale-2 numeral, right-aligned
       const left: Array<[string, string]> = [[names('STAR'), '1000'], [names('3BAR'), '200'], [names('2BAR'), '100'], [names('BAR'), '50']];
       const right: Array<[string, string]> = [[names('MELON'), '100'], [names('ORANGE'), '30'], [names('PLUM'), '20'], [names('SHOE'), '50']];

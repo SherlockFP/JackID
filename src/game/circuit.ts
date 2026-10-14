@@ -93,6 +93,8 @@ export interface CircuitSave {
   known: string[];
   /** Machine id of every lamp instance (the HUD names them). */
   names: Record<string, string>;
+  /** The Bell lit no Lamp because the pocket is too low for every candidate (optional: older saves have none). */
+  short?: boolean;
 }
 
 export class Circuit {
@@ -103,6 +105,7 @@ export class Circuit {
   private prevHot: InstanceId[] = [];
   private known = new Set<InstanceId>();
   private names = new Map<InstanceId, MachineId>();
+  private short = false;
 
   /** Pulls spent on the instance this Watch. */
   playsOf(mid: InstanceId): number { return this.plays.get(mid) ?? 0; }
@@ -129,6 +132,8 @@ export class Circuit {
   hot(): readonly InstanceId[] { return this.hotIds; }
   cold(): readonly InstanceId[] { return this.coldIds; }
   machineOf(mid: InstanceId): MachineId { return this.names.get(mid) ?? ''; }
+  /** True when this Watch's Bell lit no Lamp because the pocket is too low for every candidate. */
+  pocketShort(): boolean { return this.short; }
   /** Remembers which machine an instance is (the bet source knows it even when the world link does not list it). */
   note(mid: InstanceId, machineId: MachineId): void { this.names.set(mid, machineId); }
 
@@ -136,7 +141,7 @@ export class Circuit {
    * Bell: rolls the Lamps. `bonusHot` machines are Hot on top of the roll (Grand Opening Ribbon: machines new this Watch).
    * `lamps` false (before Night 2) clears them. Returns the new lamps.
    */
-  startWatch(rng: Rng, cands: readonly LampCandidate[], o: { lamps: boolean; hot: number; cold: number; newIsHot: boolean }): LampRoll {
+  startWatch(rng: Rng, cands: readonly LampCandidate[], o: { lamps: boolean; hot: number; cold: number; newIsHot: boolean; pocketShort?: boolean }): LampRoll {
     const current = new Set(cands.map((c) => c.mid));
     const fresh = this.known.size === 0 ? [] : cands.filter((c) => !this.known.has(c.mid)).map((c) => c.mid);
     this.plays.clear();
@@ -151,6 +156,7 @@ export class Circuit {
     roll.cold = roll.cold.filter((mid) => !roll.hot.includes(mid));   // Hot and Cold never share an instance
     this.hotIds = roll.hot;
     this.coldIds = roll.cold;
+    this.short = !!o.pocketShort && roll.hot.length + roll.cold.length === 0;
     this.prevHot = [...roll.hot];
     this.known = current;
     return roll;
@@ -162,12 +168,13 @@ export class Circuit {
     this.first = null;
     this.hotIds = [];
     this.coldIds = [];
+    this.short = false;
   }
 
   snapshot(): CircuitSave {
     return {
       plays: Object.fromEntries(this.plays), first: this.first, hot: [...this.hotIds], cold: [...this.coldIds],
-      prevHot: [...this.prevHot], known: [...this.known], names: Object.fromEntries(this.names),
+      prevHot: [...this.prevHot], known: [...this.known], names: Object.fromEntries(this.names), short: this.short,
     };
   }
 
@@ -180,6 +187,7 @@ export class Circuit {
     this.prevHot = [...(s.prevHot ?? [])];
     this.known = new Set(s.known ?? []);
     this.names = new Map(Object.entries(s.names ?? {}));
+    this.short = !!s.short;
   }
 }
 
@@ -198,8 +206,31 @@ export interface TiltView {
   /** Lamp factor alone: Hot ×1.5 (charms may change it), Cold ×0.75, otherwise 1. */
   lamp: number;
 }
-export interface LampEntry { mid: InstanceId; machineId: MachineId }
-export interface LampView { hot: LampEntry[]; cold: LampEntry[] }
+/** `dup` is set (1, 2, …) only when the same machine has more than one lit Lamp this Watch: see `lampLabel`. */
+export interface LampEntry { mid: InstanceId; machineId: MachineId; dup?: number }
+/** `pocketShort`: no Lamp was lit because the pocket is too low for every candidate (the banner says so, not an empty line). */
+export interface LampView { hot: LampEntry[]; cold: LampEntry[]; pocketShort?: boolean }
+
+/**
+ * The Lamp view of a Watch. When one machine holds several lit Lamps (Hot and Cold alike), each gets its 1-based ordinal in
+ * instance-id order, so the banner can name them apart: "Bandit (L1)" and "Bandit (L2)".
+ */
+export function lampView(hot: readonly InstanceId[], cold: readonly InstanceId[], machineOf: (mid: InstanceId) => MachineId, pocketShort = false): LampView {
+  const all = [...hot, ...cold];
+  const perMachine = new Map<MachineId, number>();
+  for (const mid of all) { const m = machineOf(mid); perMachine.set(m, (perMachine.get(m) ?? 0) + 1); }
+  const order = new Map<MachineId, InstanceId[]>();
+  for (const mid of [...all].sort()) { const m = machineOf(mid); order.set(m, [...(order.get(m) ?? []), mid]); }
+  const entry = (mid: InstanceId): LampEntry => {
+    const machineId = machineOf(mid);
+    if ((perMachine.get(machineId) ?? 0) < 2) return { mid, machineId };
+    return { mid, machineId, dup: order.get(machineId)!.indexOf(mid) + 1 };
+  };
+  return { hot: hot.map(entry), cold: cold.map(entry), pocketShort };
+}
+
+/** The banner name of a Lamp: the machine's name, plus its ordinal when the machine holds several Lamps ("Bandit (L2)"). */
+export function lampLabel(name: string, dup?: number): string { return dup ? `${name} (L${dup})` : name; }
 export interface CircuitView {
   /** True while the Circuit applies (a timed quota Watch). */
   active(): boolean;

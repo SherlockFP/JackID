@@ -179,6 +179,35 @@ export interface PlacardSpec {
   /** Seconds it stays open before it slides away by itself (a first-sit tip must not sit over the HUD). Any action still
    *  works while it is up. */
   autoHide?: number;
+  /** Seated: lift the face into the clear band between the seat HUD's top band and its control stack (see
+   *  `seatClearRest`). Seat cards (`seat-*`) always do; a caller sets it for its own board. */
+  clearSeat?: boolean;
+}
+
+// ── seated clearance: the face sits between the seat HUD's top band and its control stack ─────────────
+/**
+ * Rest position (overlay space) that puts the face's bottom edge just above the seat stack (`--seat-bot-t`) and keeps
+ * it under the top band (`--seat-top-b`) when both are known. Null when not seated (no stack published) or no
+ * perspective camera; the spec's own rest then stands.
+ */
+function seatClearRest(cam: THREE.Camera, spec: PlacardSpec): THREE.Vector3 | null {
+  const el = document.querySelector<HTMLElement>('.px-root.seated');   // seatHud.ts marks the HUD root while seated
+  if (!el || !(cam instanceof THREE.PerspectiveCamera)) return null;
+  const bot = parseFloat(el.style.getPropertyValue('--seat-bot-t'));
+  if (!Number.isFinite(bot)) return null;
+  const top = parseFloat(el.style.getPropertyValue('--seat-top-b'));
+  const H = Math.max(1, el.getBoundingClientRect().height);
+  const r = spec.rest ?? [0, -0.02, -0.5];
+  const d = Math.abs(r[2]);
+  const hh = d * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);   // half the visible height at the face's depth
+  const pxToWorld = (2 * hh) / H;
+  const facePx = spec.h / pxToWorld;
+  const bottomPx = bot - 6;                                         // a small gap over the stack
+  const topBand = Number.isFinite(top) ? top + 4 : 0;
+  let centrePx = bottomPx - facePx / 2;
+  if (centrePx - facePx / 2 < topBand) centrePx = (topBand + bottomPx) / 2;   // cannot fit: centre in the band
+  const y = hh - centrePx * pxToWorld;                              // screen px (down) → world y (up); eye on the axis
+  return new THREE.Vector3(r[0], y, r[2]);
 }
 
 const IN_S = 0.42, OUT_S = 0.2, FLIP_S = 0.26;
@@ -209,8 +238,8 @@ export class Placard3D {
   private readonly lh: number;
   private readonly mats: THREE.Material[] = [];
   private readonly geos: THREE.BufferGeometry[] = [];
-  private readonly rest: THREE.Vector3;
-  private readonly from: THREE.Vector3;
+  private rest: THREE.Vector3;
+  private from: THREE.Vector3;
   private cam: THREE.Camera | null = null;
   private phase: 'idle' | 'in' | 'open' | 'out' = 'idle';
   private t = 0;
@@ -265,6 +294,10 @@ export class Placard3D {
     const rig = overlayRig();
     if (!rig) { log.warn('placard', `${this.spec.name}: no overlay scene`); return false; }
     this.cam = rig.camera;
+    if (this.spec.clearSeat || this.spec.name.startsWith(ANY_KEY_PREFIX)) {
+      const lifted = seatClearRest(rig.camera, this.spec);
+      if (lifted) { this.rest = lifted; this.from = lifted.clone().add(new THREE.Vector3(0, -0.34, 0.06)); }
+    }
     rig.scene.add(this.root);
     markCrisp(this.root);                             // meshes the caller added after construction
     ensureCrispPass();

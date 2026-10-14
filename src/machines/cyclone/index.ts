@@ -52,9 +52,9 @@ type State = { hist: number[] };
 
 const HIST = 12;
 const GOLD = LAMP_HEX.jpOn, RED = 0xff2020, AMBER = LAMP_HEX.x1, GREEN = LAMP_HEX.x3;
-const DIM = 0.45;                           // resting lamp intensity
+const DIM = 0.6;                            // resting lamp intensity
 const HOT_ZERO = 0xff3a3a;                  // a lit 'zero' lamp (its resting colour is almost black)
-const TRAIL = [1, 0.7, 0.55];               // head, then the two lamps behind it
+const TRAIL = [1, 0.9, 0.75];               // head, then the two lamps behind it
 
 /** Colour of a multiplier on lamps, plates and LEDs. */
 export function colourOf(value: number, jp: boolean): number {
@@ -505,7 +505,7 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
       const on = lit[i] > DIM;
       c.setHex(on && valueHex(i) === LAMP_HEX.zero ? HOT_ZERO : valueHex(i)).multiplyScalar(on ? lit[i] * 1.15 : lit[i]);
       ringLamps.setColorAt(i, c);
-      const sc = lit[i] >= 1 ? 1.8 : lit[i] >= 0.5 ? 1.35 : 1;
+      const sc = lit[i] >= 1 ? 1.8 : lit[i] >= 0.7 ? 1.35 : 1;
       if (this.lampScale[i] !== sc) {
         this.lampScale[i] = sc;
         const [x, y] = lampXY(i);

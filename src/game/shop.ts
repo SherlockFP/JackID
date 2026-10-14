@@ -13,6 +13,8 @@
  *  - First shop of a run (Night 1, first Watch): at least one synergy charm (an engine, or a suit charm whose suit is on the floor)
  *    is on a regular shelf, so a new run always has a build to start. The Pawn also restocks on a Night rollover: after Dawn the
  *    host reports the NEXT Night's key, so the shelf is redrawn once per Night instead of repeating the last Watch's stock.
+ *  - Price (Wave 20): def.price × SI × `pawnPriceScale`. The scale only lowers prices, so on every Night the dearest Common
+ *    costs at most 60 % of the Night's base quota (the cheapest charm then sits near 30 %); Rares / Legendaries may exceed it.
  *  - `snapshot()` / `restore()` carry the whole state into the save (plain JSON).
  *
  * The run supplies a `PawnHost`; this file never touches run.ts internals. Seeded rng only.
@@ -23,6 +25,7 @@ import { allCharmDefs, charmDef } from '@/game/charms/engine';
 import { LAUNCH_CHARM_IDS, SUIT_SCALED_CHARMS } from '@/game/data/charms';
 import { ENGINE_CHARM_IDS } from '@/game/data/charmsEngines';
 import { charmPrice, rollRarity, type ShopRarity } from '@/game/economy';
+import { pawnPriceScale } from '@/game/data/schedule';
 import { foldEffects, scopeMatches, stackedValue } from '@/game/types';
 import type { CharmDef, ModBreakdown } from '@/game/types';
 import {
@@ -35,6 +38,15 @@ export const BIAS_SLOT = 0;
 export const DISCOUNT_SLOT = 2;
 export const BIAS_WEIGHT = 3;
 const REGULAR = 3;
+
+/** Dearest launch Common's base price: the anchor of the Pawn price scale (`pawnPriceScale`). Computed once. */
+let commonTopMemo: number | null = null;
+function commonTop(): number {
+  if (commonTopMemo === null) {
+    commonTopMemo = Math.max(0, ...allCharmDefs().filter((d) => d.rarity === 'common' && LAUNCH_CHARM_IDS.has(d.id)).map((d) => d.price));
+  }
+  return commonTopMemo;
+}
 
 /** The machine the player used most, with the tags `scopeMatches` needs. */
 export interface PawnMachine { machineId: string; tags: readonly string[]; category?: string }
@@ -291,13 +303,19 @@ export class Pawn implements PawnApi {
       const price = this.priceOf(d, i);
       return {
         charmId: s.id, price, rarity: d.rarity, cursed: d.rarity === 'cursed', tag: d.tag, underCounter: i === UNDER_COUNTER_INDEX,
-        locked: s.locked, fit: fitOf(d, held, m), bias: i === BIAS_SLOT, discounted: price > 0 && price < charmPrice(d, this.host.si()),
+        locked: s.locked, fit: fitOf(d, held, m), bias: i === BIAS_SLOT, discounted: price > 0 && price < this.basePrice(d),
       };
     });
   }
 
+  /** Price before discounts: def.price × SI × the Night's Pawn scale (Wave 20: the shelf stays within the quota's reach). */
+  private basePrice(d: CharmDef): number {
+    const si = this.host.si();
+    return charmPrice(d, si * pawnPriceScale(this.host.night(), si, commonTop()));
+  }
+
   private priceOf(d: CharmDef, i: number): number {
-    const base = charmPrice(d, this.host.si());
+    const base = this.basePrice(d);
     if (base <= 0) return base;
     let f = 1 - clamp01(this.host.discount?.() ?? 0);
     if (i === DISCOUNT_SLOT) f *= 1 - clamp01(this.host.discountSlot?.() ?? 0);

@@ -16,7 +16,7 @@ import type { Action } from '@/core/input/types';
 import type { HudAnchorId } from '@/core/ui/types';
 import { claimAnnounce, type UIOverlayX } from '@/core/ui/ui';
 import { COLORS, h, uiSfx } from '@/core/ui/widgets';
-import { circuitView, type LampEntry, type LampView } from '@/game/circuit';
+import { circuitView, lampLabel, type LampEntry, type LampView } from '@/game/circuit';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { PlayerId } from '@/core/types';
 import { initial, mmss, Roller, signed, wallClock } from './hud/fmt';
@@ -187,14 +187,16 @@ export function createHud(): Hud {
   }
 
   /** The machine's display name (`machine.<id>.name` via t()), never its internal id. */
-  const lampName = (e: LampEntry): string => machineName(e.machineId);
+  const lampName = (e: LampEntry): string => lampLabel(machineName(e.machineId), e.dup);
   function showLamps(v: LampView): void {
     lampsSeen = v;
     const hot = v.hot.map(lampName).join(', ');
     const cold = v.cold.map(lampName).join(', ');
     setText(lampHot, hot ? t('circuit.hud.hot', { name: hot }) : '');
     setText(lampCold, cold ? t('circuit.hud.cold', { name: cold }) : '');
-    setCls(lampsEl, 'hidden', seated || (!hot && !cold));
+    const none = !hot && !cold && !!v.pocketShort;
+    if (none) setText(lampHot, t('lamps.none'));
+    setCls(lampsEl, 'hidden', seated || (!hot && !cold && !none));
   }
   const circuit0 = circuitView(app.run);
   if (circuit0) showLamps(circuit0.lamps());

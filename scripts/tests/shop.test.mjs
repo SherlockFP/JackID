@@ -378,3 +378,44 @@ test('canReroll is false when every slot is locked or sold', () => {
   assert.equal(p.canReroll(), false);
   assert.equal(p.reroll(), false);
 });
+
+// ── Wave 20: Pawn prices scale to the run (price = def.price × SI × pawnPriceScale(night)) ─────────────────
+let SCH;
+before(async () => { SCH = await load('src/game/data/schedule.ts'); });
+
+test('pawn prices scale to the quota: the cheapest charm is ~35 % of it, the dearest Common ~60 %, on every Night', () => {
+  const rows = [];
+  for (let night = 0; night < SCH.BASE_RUN_NIGHTS; night++) {
+    const nd = SCH.nightDef(night);
+    let cheapest = Infinity, commonTop = 0, rareTop = 0;
+    for (let seed = 1; seed <= 120; seed++) {
+      const { p } = pawnOf({ seed, night, si: nd.si, meta: true, held: [] });
+      for (const s of p.stock(1)) {
+        if (!s || s.cursed || s.price <= 0) continue;
+        cheapest = Math.min(cheapest, s.price);
+        if (s.rarity === 'common') commonTop = Math.max(commonTop, s.price);
+        if (s.rarity === 'rare' || s.rarity === 'legendary') rareTop = Math.max(rareTop, s.price);
+      }
+    }
+    rows.push({ night: night + 1, quota: nd.base, cheapest, commonTop, rareTop });
+    // charmPrice rounds to two significant digits (up to +5 %), so the shares carry that much slack.
+    assert.ok(cheapest <= 0.35 * nd.base * 1.05, `N${night + 1}: cheapest ${cheapest} vs quota ${nd.base}`);
+    assert.ok(commonTop <= 0.6 * nd.base * 1.05, `N${night + 1}: dearest Common ${commonTop} vs quota ${nd.base}`);
+  }
+  console.log(JSON.stringify(rows));
+});
+
+test('pawn prices never rise above the stake price: the scale only lowers them', () => {
+  for (let night = 0; night < SCH.BASE_RUN_NIGHTS; night++) {
+    const si = SCH.nightDef(night).si;
+    const { p } = pawnOf({ seed: 9, night, si, meta: true });
+    for (const s of p.stock(1)) if (s && s.price > 0) assert.ok(s.price <= Math.round(E.charmDef(s.charmId).price * si) + 1, `${s.charmId} at N${night + 1}`);
+  }
+});
+
+test('pawnPriceScale is 1 while the stake is low, and falls as the quota outgrows the stake', () => {
+  assert.equal(SCH.pawnPriceScale(0, 1, 12), 1);
+  assert.ok(SCH.pawnPriceScale(1, 3, 12) < 1, 'N2 at SI 3: the dearest Common would cost 36 of a 58 quota, so it is scaled');
+  assert.ok(SCH.pawnPriceScale(3, 30, 12) < SCH.pawnPriceScale(2, 10, 12), 'later Nights cost less of their stake');
+  assert.ok(SCH.pawnPriceScale(3, 30, 12) <= 1);
+});

@@ -266,12 +266,9 @@
   background: rgba(8, 8, 8, 0.72); text-align: center; opacity: 0; transition: opacity 0.12s steps(2, end);
 }
 .px-subtitle.on { opacity: 1; }
-/* Hotline deal board open (hotline/index.ts sets .hl-sheet): the board is a 3D placard in the centre of the view, which
-   spans roughly the middle 30-70% of the width. Subtitles move to the lower-left corner, clear of it. */
-.px-root.hl-sheet .px-subtitle {
-  left: calc(4 * var(--u)); transform: none; bottom: calc(var(--lb) * var(--bar-h) + 10 * var(--u));
-  max-width: min(24vw, calc(100% - 16 * var(--u))); text-align: left;
-}
+/* Hotline deal board open (hotline/index.ts sets .hl-sheet): the three offers are read on the board, so the House /
+   Collector speech bubbles step aside (hidden, not moved: they would still cross the board's lower edge). */
+.px-root.hl-sheet .px-subtitle { opacity: 0; pointer-events: none; }
 /* Phone ringing: direction and distance to the booth (menu/hud.ts boothHint), e.g. "← 12m". */
 .hud .phone .dir { margin-left: calc(4 * var(--u)); font-family: var(--f-head); font-size: var(--fh); line-height: 1; color: var(--shine); white-space: nowrap; }
 .px-subtitle .who { display: block; margin-bottom: calc(3 * var(--u)); font-family: var(--f-head); font-size: var(--fh); line-height: 1; color: var(--amber); }
@@ -468,7 +465,11 @@
 }
 
 /* ── letterbox, skip ring, flashes, veil ──────────────────────────────────────────────────── */
-.px-lbar { position: absolute; left: 0; right: 0; z-index: 8; height: calc(var(--lb) * var(--bar-h)); background: var(--void); }
+/* Letterbox bars are paint only: they never take a press, so a bottom control under them stays usable. */
+.px-lbar { position: absolute; left: 0; right: 0; z-index: 8; height: calc(var(--lb) * var(--bar-h)); background: var(--void); pointer-events: none; }
+/* A cutscene with letterbox (cutscene/player.ts sets .cut-lb for the scene) hides the seat HUD and the machine bar, so the
+   settle controls are not half-covered by the bars; they come back when the class is removed at the end of the scene. */
+.px-root.cut-lb > .seat-hud, .px-root.cut-lb .px-mhud { visibility: hidden; }
 .px-lbar.top { top: 0; }
 .px-lbar.bot { bottom: 0; }
 .px-skip {

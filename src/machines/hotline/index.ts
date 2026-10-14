@@ -353,6 +353,7 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
       bg: CREAM,
       frame: { color: 0x6b4f1d, pad: 0.012, depth: 0.008 },
       rest: [0, -0.03, -0.5],
+      clearSeat: true,                             // seated: lifted above the seat stack so option 3 is not covered
       paint: (c) => this.paintSheet(c),
       tick: () => {
         const s = choiceSecondsLeft(this.sheetUntil, this.now());
@@ -368,7 +369,7 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
       p.dispose(); this.sheet = null; sheetOwner = null; sheetDone = call.id; return;
     }
     this.inputExt().setModal('hotline-deals');   // the board owns 1 / 2 / 3 and Esc until it closes
-    // The deal board covers the centre of the screen: ui.css moves the Collector's subtitles to the lower-left corner meanwhile.
+    // The deal board is up: ui.css hides the House / Collector speech bubbles meanwhile (they do not talk over the offers).
     this.ctx.ui.root.classList.add('hl-sheet');
   }
 

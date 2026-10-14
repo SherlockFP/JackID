@@ -18,16 +18,17 @@ import * as THREE from 'three';
 import type { ButtonPart, Kit, LampPart, MarqueePart, ScreenSurface } from '@/kit/types';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 export const W = 1.0, D = 0.85, H = 2.1;
 export const BODY_D = 0.7;                   // body front sits behind the lamps; the base and top are full depth
 export const FRONT_Z = BODY_D / 2;           // 0.35: plate face
 export const LAMPS = 48;
 export const RING_Y = 1.3, RING_R = 0.42;
-export const LAMP_R = 0.0225;                // Ø0.045 lens discs
+export const LAMP_R = 0.022;                 // Ø0.044 lens discs
 export const LAMP_Z = FRONT_Z + 0.012;
 export const STOP_X = 0.39, STOP_TILT = 55;                  // STOP mushroom: lower-right corner of the plate, clear of the ring and of the seat HUD
-export const PLATE_R = 0.47;                 // value numbers sit just outside the lamps
+export const PLATE_R = 0.4725;               // value numerals sit just outside the lamps (the plate's edge is at 0.5)
 
 /** Clockwise angle of lamp `i` from 12 o'clock (radians). */
 export const lampAngle = (i: number): number => (i * 2 * Math.PI) / LAMPS;
@@ -56,7 +57,7 @@ export type CyclonParts = {
 };
 
 /** Lamp colours (MACHINES §11): dim red 0 · amber ×1 · green ×3 · JP dark grey / gold. */
-export const LAMP_HEX = { zero: 0x401010, x1: 0xffa020, x3: 0x30e060, jpOff: 0x303030, jpOn: 0xffd040 } as const;
+export const LAMP_HEX = { zero: 0x8a2424, x1: 0xffa020, x3: 0x30e060, jpOff: 0x303030, jpOn: 0xffd040 } as const;
 
 export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CyclonParts> {
   const { pal } = kit;
@@ -81,7 +82,14 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CyclonParts> {
   kit.box(0.22, 0.02, 0.22, 0x2c3458, { pos: [STOP_X, 0.765, FRONT_Z + 0.075], rot: [STOP_TILT, 0, 0], parent: root });   // pedestal deck
 
   // ── value plate: one canvas behind the lamp ring ──────────────────────────────────────────────────
-  const valuePlate = kit.screen({ w: 1.0, h: 1.0, px: [256, 256], bezel: black });
+  // 512 x 512 + linear/mip filtering, no scanlines: the numerals are the only way to read the ring (seat-views)
+  const valuePlate = kit.screen({ w: 1.0, h: 1.0, px: [512, 512], bezel: black, scanlines: false });
+  crispTexture(valuePlate.tex, 4);
+  {                                                   // flat glass: kit.screen bulges 7 cm at the centre, which swallowed half of every lamp (they sit 1-2 cm proud of the plate)
+    const pg = valuePlate.mesh.geometry, pp = pg.attributes.position;
+    for (let i = 0; i < pp.count; i++) pp.setZ(i, 0);
+    pp.needsUpdate = true; pg.computeVertexNormals();
+  }
   valuePlate.mesh.position.set(0, RING_Y, FRONT_Z + 0.002);
   root.add(valuePlate.mesh);
   paintPlate(valuePlate);
@@ -117,6 +125,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CyclonParts> {
   const stop = kit.button({ shape: 'mushroom', r: 0.085, color: pal.red, lit: true });
   stop.root.position.set(STOP_X, 0.775, FRONT_Z + 0.083);
   stop.root.rotation.x = STOP_TILT * Math.PI / 180;
+  (stop.cap.material as THREE.Material).side = THREE.DoubleSide;   // the mushroom's lathe faces point inward: its crown was culled and the chrome base showed as a white disc
   root.add(stop.root);
 
   // ── siren card on the deco top (rotates; red when armed) ──────────────────────────────────────────
@@ -166,7 +175,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CyclonParts> {
     root,
     parts,
     // framing: the whole 1 m ring (top lamp under the banner, bottom lamp just above the stake plate) and the STOP mushroom, 4:3 and 16:9
-    playPose: { pos: new THREE.Vector3(0, 1.32, 1.5), look: new THREE.Vector3(0, 1.26, 0.35), fov: 58, mouse: 'pick' },
+    playPose: { pos: new THREE.Vector3(0, 1.32, 1.68), look: new THREE.Vector3(0, 1.2, 0.35), fov: 58, mouse: 'pick' },
     colliders: [{ min: [-W / 2, 0, -D / 2], max: [W / 2, H, BODY_D / 2] }],
     interact: { min: [-W / 2, 0.3, -D / 2], max: [W / 2, H, D / 2 + 0.3] },
     anchors: { speaker, prompt: stop.root, label, marqueeTop, servicePlate, stand, coinOut, light, light2 },
@@ -181,25 +190,34 @@ export function valueHex(i: number): number {
   return v === 1 ? LAMP_HEX.x1 : v === 3 ? LAMP_HEX.x3 : LAMP_HEX.zero;
 }
 
-/** Paint the value plate: the ring of multipliers and the painted eye at lamp 24 (cosmetic). */
+/**
+ * Paint the value plate: a lit slate band with a socket under every lamp and the multiplier numeral of each lamp just outside it
+ * (amber 1, green 3, a dim red 0), the JP label and the painted eye at lamp 24 (cosmetic). seat-views: the numerals used to be 1x
+ * 5x7 'x1' / 'x3' marks on a near-black plate and dead lamps had none, so the ring could not be read from the seat.
+ */
 function paintPlate(s: ScreenSurface): void {
   s.draw((g, sc) => {
-    const cx = sc.w / 2, cy = sc.h / 2;
-    g.fillStyle = '#0a0f22'; g.fillRect(0, 0, sc.w, sc.h);
-    g.beginPath(); g.arc(cx, cy, (RING_R + 0.06) * sc.w, 0, Math.PI * 2); g.fillStyle = '#0d1530'; g.fill();
-    g.strokeStyle = '#c0c8d8'; g.lineWidth = 2; g.beginPath(); g.arc(cx, cy, (RING_R + 0.03) * sc.w, 0, Math.PI * 2); g.stroke();
+    const cx = sc.w / 2, cy = sc.h / 2, k = sc.w / 256;
+    g.fillStyle = '#101a3a'; g.fillRect(0, 0, sc.w, sc.h);
+    g.beginPath(); g.arc(cx, cy, 0.5 * sc.w, 0, Math.PI * 2); g.fillStyle = '#1e2f66'; g.fill();                 // the lit band
+    g.beginPath(); g.arc(cx, cy, (RING_R - 0.045) * sc.w, 0, Math.PI * 2); g.fillStyle = '#0f1838'; g.fill();    // the dark field inside the ring
+    g.strokeStyle = '#c0c8d8'; g.lineWidth = 2 * k; g.beginPath(); g.arc(cx, cy, (RING_R - 0.045) * sc.w, 0, Math.PI * 2); g.stroke();
+    g.strokeStyle = '#8fa3d8'; g.lineWidth = 1.5 * k; g.beginPath(); g.arc(cx, cy, 0.497 * sc.w, 0, Math.PI * 2); g.stroke();
     for (let i = 1; i < LAMPS; i++) {
-      const a = lampAngle(i);
-      const x = cx + PLATE_R * sc.w * Math.sin(a), y = cy - PLATE_R * sc.w * Math.cos(a);
-      const v = [0, 1, 0, 3, 0, 1][i % 6];
+      const a = lampAngle(i), sn = Math.sin(a), cs = Math.cos(a);
+      const lx = cx + RING_R * sc.w * sn, ly = cy - RING_R * sc.w * cs;
+      g.beginPath(); g.arc(lx, ly, (LAMP_R + 0.006) * sc.w, 0, Math.PI * 2);                                      // lamp socket
+      g.fillStyle = '#05081a'; g.fill(); g.strokeStyle = '#7f93cc'; g.lineWidth = 1.2 * k; g.stroke();
+      const x = cx + PLATE_R * sc.w * sn, y = cy - PLATE_R * sc.w * cs;
       if (i === 24) {                                                                  // the eye (cosmetic)
-        g.fillStyle = '#e8e0c0'; g.beginPath(); g.ellipse(x, y, 7, 4, 0, 0, Math.PI * 2); g.fill();
-        g.fillStyle = '#101010'; g.beginPath(); g.arc(x, y, 2.2, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#e8e0c0'; g.beginPath(); g.ellipse(x, y, 9 * k, 5 * k, 0, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#101010'; g.beginPath(); g.arc(x, y, 2.8 * k, 0, Math.PI * 2); g.fill();
         continue;
       }
-      if (v === 0) continue;                                                           // dim lamps keep the plate clean
-      sc.text(`x${v}`, x, y - 4, { font: 'px5', color: v === 3 ? '#30e060' : '#ffa020', align: 'center', scale: 1 });
+      const v = [0, 1, 0, 3, 0, 1][i % 6];
+      const sz = v === 0 ? 3 : 4;
+      sc.text(String(v), x, y - Math.floor(3.5 * sz), { font: 'px5', scale: sz, align: 'center', color: v === 3 ? '#50ff80' : v === 1 ? '#ffb030' : '#b05a5a', outline: '#05081a' });
     }
-    sc.text('JP', cx, cy - PLATE_R * sc.w - 4, { font: 'px5', color: '#ffd040', align: 'center' });
+    sc.text('JP', cx, cy - PLATE_R * sc.w - 10, { font: 'px5', color: '#ffd040', align: 'center', scale: 3, outline: '#05081a' });
   });
 }

@@ -10,9 +10,20 @@ export const DESIGN_W = 32, DESIGN_H = 48;
 
 export interface Rect { x: number; y: number; w: number; h: number }
 export interface Text {
-  draw(g: CanvasRenderingContext2D, s: string, x: number, y: number, color: string): number;
-  width(s: string): number;
+  draw(g: CanvasRenderingContext2D, s: string, x: number, y: number, color: string, scale?: number): number;
+  width(s: string, scale?: number): number;
 }
+
+/** Largest integer text scale (1..max) at which `s` fits `maxW` texels (seat-views: a card is ~130 px of the frame, 1x glyphs were unreadable). */
+const fit = (tx: Text, s: string, maxW: number, max = 2): number => {
+  for (let k = max; k > 1; k--) if (tx.width(s, k) <= maxW) return k;
+  return 1;
+};
+/** Draw `s` centred in a rect at the largest scale that fits (vertically centred on the glyph box 7 * scale). */
+const centred = (g: CanvasRenderingContext2D, tx: Text, s: string, r: Rect, color: string, max = 2, pad = 3): void => {
+  const k = Math.min(fit(tx, s, r.w - pad * 2, max), Math.max(1, Math.floor((r.h - 2) / 7)));
+  tx.draw(g, s, r.x + Math.round((r.w - tx.width(s, k)) / 2), r.y + Math.round((r.h - 7 * k) / 2), color, k);
+};
 
 const BG = ['#e6dec5', '#16452c', '#5a1019', '#0c0206', '#0c2a3d'];
 const INK = ['#1f3a8a', '#f5e6a8', '#f7efde', '#c8102e', '#63e6de'];
@@ -49,10 +60,11 @@ export function paintFace(g: CanvasRenderingContext2D, card: Card, title: string
   const t = card.t;
   g.fillStyle = BG[t]; g.fillRect(0, 0, FACE_W, FACE_H);
   g.fillStyle = INK[t]; g.fillRect(0, 22, FACE_W, 1);
-  tx.draw(g, title, 6, 8, INK[t]);
+  const tk = fit(tx, title, FACE_W - 24);                    // charm badge sits at the right
+  tx.draw(g, title, 6, 4 + Math.floor((14 - 7 * tk) / 2) + (tk === 1 ? 2 : 0), INK[t], tk);
   g.fillStyle = BG[t]; g.fillRect(0, 176, FACE_W, 16);
   g.fillStyle = INK[t]; g.fillRect(0, 175, FACE_W, 1);
-  tx.draw(g, `${card.price}`, 6, 182, ACCENT[t]);
+  tx.draw(g, `${card.price}`, 6, 177, ACCENT[t], 2);
   if (card.charm) {
     g.fillStyle = RARE_COL[card.charm];
     g.fillRect(FACE_W - 14, 4, 10, 10);
@@ -63,8 +75,7 @@ export function paintFace(g: CanvasRenderingContext2D, card: Card, title: string
     zoneRects(0).forEach((r, i) => {
       g.fillStyle = '#fbf7ea'; g.fillRect(r.x, r.y, r.w, r.h);
       g.strokeStyle = INK[0]; g.strokeRect(r.x + 0.5, r.y + 0.5, r.w - 1, r.h - 1);
-      const s = `${c[i]}`;
-      tx.draw(g, s, r.x + (r.w - tx.width(s)) / 2, r.y + 14, INK[0]);
+      centred(g, tx, `${c[i]}`, r, INK[0], 3, 2);
     });
   } else if (t === 1) {
     const r = c[0];
@@ -73,20 +84,22 @@ export function paintFace(g: CanvasRenderingContext2D, card: Card, title: string
       const climbed = rung <= r;
       g.fillStyle = climbed ? ACCENT[1] : '#0f2b1b'; g.fillRect(z.x, z.y, z.w, z.h);
       const m = rung >= 2 ? [1, 2, 4, 10, 50, 250][rung - 2] : 0;   // rung 2 → ×1 … rung 7 → ×250
-      tx.draw(g, `${rung}`, 8, z.y + 5, INK[1]);
-      if (m) tx.draw(g, `x${m}`, z.x + z.w - 4 - tx.width(`x${m}`), z.y + 5, climbed ? BG[1] : INK[1]);
-      if (rung === r + 1 && r < 7) tx.draw(g, prize('snap'), 40, z.y + 5, ACCENT[3]);
+      tx.draw(g, `${rung}`, 6, z.y + 1, INK[1], 2);
+      if (m) tx.draw(g, `x${m}`, z.x + z.w - 4 - tx.width(`x${m}`, 2), z.y + 1, climbed ? BG[1] : INK[1], 2);
+      if (rung === r + 1 && r < 7) tx.draw(g, prize('snap'), 30, z.y + 5, ACCENT[3]);
     });
   } else if (t === 2) {
     const H = c[0];
     g.fillStyle = '#2a0a10'; g.fillRect(8, 30, 112, 34);
-    tx.draw(g, `${prize('house')} ${H}`, 14, 42, INK[2]);
+    tx.draw(g, prize('house'), 14, 34, INK[2]);
+    { const hs = `${H}`, hk = fit(tx, hs, 100, 3); tx.draw(g, hs, 14, 64 - 5 - 7 * hk, INK[2], hk); }
     for (let i = 0; i < 5; i++) {
       const Y = c[1 + 2 * i], L = c[2 + 2 * i];
       const z = zoneRects(2)[i + 1];
       g.fillStyle = Y > H ? '#7a1424' : '#2a0a10'; g.fillRect(z.x, z.y, z.w, z.h);
-      tx.draw(g, `${prize('yours')} ${Y}`, z.x + 4, z.y + 5, INK[2]);
-      tx.draw(g, `x${L}`, z.x + z.w - 4 - tx.width(`x${L}`), z.y + 5, ACCENT[2]);
+      tx.draw(g, prize('yours'), z.x + 3, z.y + 6, INK[2]);
+      tx.draw(g, `${Y}`, z.x + 38, z.y + 2, INK[2], 2);
+      tx.draw(g, `x${L}`, z.x + z.w - 4 - tx.width(`x${L}`, 2), z.y + 2, ACCENT[2], 2);
     }
   } else if (t === 3) {
     const sym = ['sym_bat', 'sym_owl', 'sym_skull'];
@@ -95,25 +108,23 @@ export function paintFace(g: CanvasRenderingContext2D, card: Card, title: string
       g.fillStyle = '#1b0508'; g.fillRect(z.x, z.y, z.w, z.h);
       const s = c[i];
       if (s === 0) { g.fillStyle = ACCENT[3]; g.beginPath(); g.arc(z.x + 12, z.y + 12, 8, 0, Math.PI * 2); g.fill(); }
-      else if (s === 4) { g.fillStyle = '#c8102e'; g.beginPath(); g.arc(z.x + 12, z.y + 12, 9, 0, Math.PI * 2); g.fill(); tx.draw(g, prize('sym_blood').slice(0, 1), z.x + 9, z.y + 9, '#fbf7ea'); }
-      else tx.draw(g, prize(sym[s - 1]).slice(0, 1), z.x + 9, z.y + 9, INK[3]);
+      else if (s === 4) { g.fillStyle = '#c8102e'; g.beginPath(); g.arc(z.x + 12, z.y + 12, 10, 0, Math.PI * 2); g.fill(); tx.draw(g, prize('sym_blood').slice(0, 1), z.x + 6, z.y + 5, '#fbf7ea', 2); }
+      else tx.draw(g, prize(sym[s - 1]).slice(0, 1), z.x + 6, z.y + 5, INK[3], 2);
     }
     const box = zoneRects(3)[12];
     g.fillStyle = '#1b0508'; g.fillRect(box.x, box.y, box.w, box.h);
     g.strokeStyle = ACCENT[3]; g.strokeRect(box.x + 0.5, box.y + 0.5, box.w - 1, box.h - 1);
     const mult = c[12];
-    const s = mult > 0 ? `x${mult}` : '--';
-    tx.draw(g, s, box.x + (box.w - tx.width(s)) / 2, box.y + 18, mult > 0 ? ACCENT[3] : INK[3]);
+    centred(g, tx, mult > 0 ? `x${mult}` : '--', box, mult > 0 ? ACCENT[3] : INK[3], 4, 4);
   } else {
     const [p, d] = c;
     const [pz, dz] = zoneRects(4);
     g.fillStyle = '#06202e'; g.fillRect(pz.x, pz.y, pz.w, pz.h); g.fillRect(dz.x, dz.y, dz.w, dz.h);
     const ps = p > 0 ? `x${p}` : prize('sunk');
-    tx.draw(g, prize('prize'), pz.x + 6, pz.y + 6, INK[4]);
-    tx.draw(g, ps, pz.x + (pz.w - tx.width(ps)) / 2, pz.y + 30, p > 0 ? ACCENT[4] : INK[4]);
-    tx.draw(g, prize('depth'), dz.x + 6, dz.y + 6, INK[4]);
-    const ds = `x${d}`;
-    tx.draw(g, ds, dz.x + (dz.w - tx.width(ds)) / 2, dz.y + 30, ACCENT[4]);
+    tx.draw(g, prize('prize'), pz.x + 6, pz.y + 5, INK[4], 2);
+    centred(g, tx, ps, { x: pz.x, y: pz.y + 20, w: pz.w, h: pz.h - 20 }, p > 0 ? ACCENT[4] : INK[4], 4, 4);
+    tx.draw(g, prize('depth'), dz.x + 6, dz.y + 5, INK[4], 2);
+    centred(g, tx, `x${d}`, { x: dz.x, y: dz.y + 20, w: dz.w, h: dz.h - 20 }, ACCENT[4], 4, 4);
   }
 }
 
