@@ -24,6 +24,8 @@ export interface PauseOpts {
   onSkipTutorial?(): void;
   /** Online session: the game does NOT stop behind the card. The card says so (GAME CONTINUES) and its title becomes MENU. */
   live?: boolean;
+  /** Wave 25: Soul Marks left on the JackID card (seals under the title). At 0 the card reads BLANK. Absent: no seals row. */
+  marks?: { left: number; max: number };
 }
 
 // ── pause card ───────────────────────────────────────────────────────────────────────────────────
@@ -32,6 +34,17 @@ const CARD_W = 96, CARD_H = 144;
 const CARD_HOLD_S = 0.8;
 const CARD_INK = 0xf2e8c9, CARD_BRASS = 0xc9a24a, CARD_DANGER = 0xe0584a, CARD_HILITE = 0x3a2c18, CARD_FELT = 0x1a1410, CARD_LIVE = 0xe69431;
 const ROW0 = 42, ROW_H = 18;
+
+/** The Soul Marks as wax seals on the card (wave 25): a lit seal per Mark left, an empty ring per Mark lost, BLANK at 0. */
+function paintSeals(p: Pix, left: number, max: number): void {
+  if (left <= 0) { txt(p, fit(t('duelrun.blank'), 80, { micro: true }), CARD_W / 2, 19, 0x9a9a9a, { micro: true, align: 'center' }); return; }
+  const x0 = Math.round(CARD_W / 2 - (max * 10 - 4) / 2);
+  for (let i = 0; i < max; i++) {
+    const x = x0 + i * 10;
+    if (i < left) { p.rect(x, 18, 7, 7, 0x8c1f1a); p.rect(x + 1, 19, 5, 5, 0xd2483a); p.rect(x + 2, 20, 1, 1, 0xf0a090); }
+    else p.frame(x, 18, 7, 7, 0x5a4220);
+  }
+}
 
 interface MenuRow { label: string; danger: boolean; hold: boolean; act(): void }
 
@@ -74,6 +87,7 @@ export function buildPause(el: HTMLElement, o: PauseOpts): () => void {
     p.frame(2, 2, CARD_W - 4, CARD_H - 4, 0x5a4220);
     txt(p, fit(t(o.live ? 'pauselive.title' : 'ingame.pause.title'), 84), CARD_W / 2, 10, CARD_INK, { align: 'center' });
     p.rect(8, 28, CARD_W - 16, 1, 0x8a6a30);
+    if (o.marks) paintSeals(p, o.marks.left, o.marks.max);
     rows.forEach((r, i) => {
       const y = ROW0 + i * ROW_H;
       if (i === sel) {

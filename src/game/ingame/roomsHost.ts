@@ -84,8 +84,17 @@ export function startRoomsHost(run: DebtRun, world: WorldHost): () => void {
       if (def) void holdForStory().then(() => { if (app.run === run) openNote(def); });
     }
   }));
+  // each locker past the third adds Dread, but the warning shows once per Night (it used to stack five times)
+  let dreadToastNight = -1;
   offs.push(bus.on('room:locker', () => {
-    if (run.rooms.lockers.length > LOCKER.dreadAfter) ui.toast(t('rooms.locker.dread'), 'warn', 3.5);
+    if (run.rooms.lockers.length <= LOCKER.dreadAfter || dreadToastNight === run.night()) return;
+    dreadToastNight = run.night();
+    ui.toast(t('rooms.locker.dread'), 'warn', 3.5);
+  }));
+  // Soul Marks (wave 25): a lost Mark and the BLANK card
+  offs.push(bus.on('duel:marks', ({ left, lost, blank }) => {
+    if (!lost) return;
+    ui.toast(t(blank ? 'duelrun.marks.blank' : 'duelrun.marks.lost', { n: String(left) }), 'bad', 4);
   }));
 
   // ── Mira's wrong-number call: her lines play as subtitles over the pickup ──────────────────────────

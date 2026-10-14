@@ -195,7 +195,9 @@ function checkImport(u, imp) {
     else if (u.top === 'net') ok = c.layer === 'core' || c.layer === 'net' || isGameTypes(c);
     else if (own !== null) {
       ok = c.layer === 'core' || c.layer === 'kit' || c.layer === 'i18n' || isGameTypes(c)
-        || (c.layer === 'machines' && (c.sub === '_base' || c.sub === own));
+        || (c.layer === 'machines' && (c.sub === '_base' || c.sub === own))
+        // Wave 25: the duel table is the one machine that runs the shared duel engine in game/duels (its rules, stakes and registry)
+        || (own === 'tallytable' && c.layer === 'game' && c.sub === 'duels');
       if (c.rel === 'core/app' || c.rel === 'game/inGameState') err(u.f, `${at}: machine must use this.ctx, not "${spec}"`);
     }
     if (!ok) err(u.f, `${at}: ${u.top}${own !== null ? '/' + u.sub : ''} must not import "${spec}" as a value (TECH_SPEC §1.1)`);

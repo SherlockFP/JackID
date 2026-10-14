@@ -17,6 +17,7 @@ import type { GameEvents } from '@/core/events';
 import type { SymbolId } from '@/core/texgen/types';
 import type { CutscenePlayOpts, CutsceneResult } from '@/core/cutscene/types';
 import type { PhoneCallState, RunConfig } from '@/net/protocol';
+import type { DuelRunHooks } from './duels/stakes';
 import type { ModEffect, ModHook, ModBreakdown, ModQuery, ModifierApi } from './modifiers.types';
 import type { ShiftApi, NightEventsApi } from './shift.types';
 import type { TycoonApi } from './tycoon.types';
@@ -103,6 +104,8 @@ export interface CharmCtx { pid: PlayerId; stacks: number; run: RunApi; rng: Rng
  */
 export interface RunApi {
   readonly mode: GameMode; readonly seed: number; readonly selfId: PlayerId;
+  /** The Tally Bench's run-side hooks (Soul Marks, Pledge, boss rewards). Absent on bench runs: the duel table then offers Coins and Pledge only. */
+  readonly duel?: DuelRunHooks;
   readonly config: Readonly<RunConfig>;
   /** Current Night (= `shift.quota.index`) and Watch/Dawn window (TECH §11.5, C17). */
   night(): number;

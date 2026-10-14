@@ -1,0 +1,410 @@
+/*
+ * Anime presentation (manga layer). DOM over the canvas, owned by core/ui/manga.
+ * Motion rules: [data-calm] keeps fades only (no slide, shake, scale slam, hitstop or spin);
+ * [data-noflash] freezes the speed lines and rings and never pulses. Every stage has a Skip button.
+ */
+
+.manga-root {
+  --ink: #14110f;
+  --paper: #f5efe2;
+  --acc: #c8283a;
+  --bad: #b3262e;
+  position: fixed;
+  inset: 0;
+  z-index: 880;
+  pointer-events: none;
+  overflow: hidden;
+  font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mg-stage {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease-out;
+}
+.mg-stage.on { opacity: 1; }
+
+.mg-skip,
+.mg-continue,
+.mg-dialogue,
+.mg-dialogue * { pointer-events: auto; }
+
+.mg-skip {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 3;
+  font: 700 13px/1 "Arial Black", "Trebuchet MS", sans-serif;
+  letter-spacing: 0.12em;
+  color: var(--ink);
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  padding: 7px 12px;
+  cursor: pointer;
+  transform: skewX(-8deg);
+}
+.mg-skip:hover,
+.mg-skip:focus-visible { background: #fff; outline: none; }
+
+/* ── cut-in ─────────────────────────────────────────────────────────────────────────────────── */
+.mg-cutin .mg-band {
+  position: absolute;
+  top: 50%;
+  left: 6%;
+  width: min(46vw, 560px);
+  transform: translateY(-50%) skewX(-8deg) translateX(-14%);
+  opacity: 0;
+  transition: transform 0.25s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.2s ease-out;
+  filter: drop-shadow(3px 0 0 var(--ink)) drop-shadow(-3px 0 0 var(--ink))
+          drop-shadow(0 3px 0 var(--ink)) drop-shadow(0 -3px 0 var(--ink));
+}
+.mg-cutin.side-right .mg-band { left: auto; right: 6%; transform: translateY(-50%) skewX(8deg) translateX(14%); }
+.mg-cutin.on .mg-band { opacity: 1; transform: translateY(-50%) skewX(-8deg); }
+.mg-cutin.side-right.on .mg-band { transform: translateY(-50%) skewX(8deg); }
+
+.mg-cutin .mg-panel {
+  position: relative;
+  height: min(72vh, 520px);
+  background: var(--acc);
+  clip-path: polygon(5% 0, 100% 0, 95% 100%, 0 100%);
+  overflow: hidden;
+}
+.mg-cutin.side-right .mg-panel { clip-path: polygon(0 0, 95% 0, 100% 100%, 5% 100%); }
+
+.mg-halftone {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, var(--ink) 1.3px, transparent 1.8px) 0 0 / 6px 6px;
+  opacity: 0.4;
+  mix-blend-mode: multiply;
+  -webkit-mask-image: radial-gradient(ellipse at 72% 30%, transparent 28%, #000 85%);
+          mask-image: radial-gradient(ellipse at 72% 30%, transparent 28%, #000 85%);
+}
+
+.mg-speed {
+  position: absolute;
+  inset: -20%;
+  background: repeating-conic-gradient(from 0deg at 64% 42%, rgba(20, 17, 15, 0.55) 0deg 0.7deg, transparent 0.7deg 7deg);
+  -webkit-mask-image: radial-gradient(circle at 64% 42%, transparent 20%, #000 68%);
+          mask-image: radial-gradient(circle at 64% 42%, transparent 20%, #000 68%);
+  mix-blend-mode: multiply;
+  opacity: 0.8;
+  animation: mg-spin 9s linear infinite;
+}
+
+.mg-cutin .mg-portrait {
+  position: absolute;
+  right: -2%;
+  bottom: 0;
+  height: 100%;
+  width: auto;
+  filter: drop-shadow(0 0 0 var(--ink));
+  animation: mg-slide-in 0.25s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+.mg-cutin.side-left .mg-portrait { left: -2%; right: auto; --slide: -34%; }
+
+.mg-cutin .mg-plate {
+  position: absolute;
+  left: 6%;
+  bottom: 5%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 8px 14px 9px;
+  border-left: 6px solid var(--paper);
+  max-width: 64%;
+}
+.mg-cutin.side-right .mg-plate { left: auto; right: 6%; border-left: 0; border-right: 6px solid var(--paper); text-align: right; }
+.mg-name { font: 900 clamp(18px, 2.6vw, 30px)/1.05 "Arial Black", "Trebuchet MS", sans-serif; letter-spacing: 0.02em; text-transform: uppercase; }
+.mg-title { font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.85; }
+
+.mg-cutin .mg-line {
+  position: absolute;
+  top: 9%;
+  left: 6%;
+  max-width: 58%;
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  padding: 8px 12px;
+  font: 700 clamp(14px, 1.7vw, 19px)/1.3 "Trebuchet MS", "Segoe UI", sans-serif;
+  transform: skewX(8deg);
+}
+.mg-cutin.side-right .mg-line { left: auto; right: 6%; }
+
+/* ── menace glyph ───────────────────────────────────────────────────────────────────────────── */
+.mg-glyph-stage { display: flex; align-items: center; justify-content: center; }
+.mg-glyph {
+  font-family: "Yu Gothic UI", "Yu Gothic", "Hiragino Sans", "Noto Sans JP", "Meiryo", "MS PGothic", sans-serif;
+  font-weight: 900;
+  font-size: min(20vw, 24vh);
+  line-height: 1;
+  white-space: nowrap;
+  color: #fff;
+  -webkit-text-stroke: 0.05em var(--ink);
+  paint-order: stroke fill;
+  text-shadow: 0.06em 0.06em 0 var(--ink);
+  transform: rotate(-8deg);
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+  animation: mg-glyph-in 0.18s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.mg-glyph-stage.on .mg-glyph { opacity: 1; }
+.mg-glyph-stage.on .mg-glyph { animation: mg-glyph-in 0.18s cubic-bezier(0.2, 1.4, 0.4, 1) both, mg-gentle 1.6s ease-in-out 0.18s infinite; }
+
+/* ── dialogue ───────────────────────────────────────────────────────────────────────────────── */
+.mg-dialogue { pointer-events: auto; }
+.mg-dialogue .mg-box {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 34vh;
+  min-height: 190px;
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 0 4vw 3vh;
+  background: linear-gradient(to bottom, transparent, rgba(14, 12, 18, 0.9) 42%);
+  transform: translateY(18px);
+  opacity: 0;
+  transition: transform 0.25s ease-out, opacity 0.2s ease-out;
+}
+.mg-dialogue.on .mg-box { transform: none; opacity: 1; }
+.mg-dialogue .mg-box.side-right { flex-direction: row-reverse; }
+.mg-dportrait {
+  height: 100%;
+  max-height: 34vh;
+  width: auto;
+  flex: 0 0 auto;
+  border: 3px solid var(--paper);
+  background: #000;
+}
+.mg-dialogue .mg-text {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  background: var(--paper);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  padding: 22px 18px 14px;
+  margin-top: auto;
+  box-shadow: 6px 6px 0 var(--ink);
+}
+.mg-dialogue .mg-plate {
+  position: absolute;
+  top: -15px;
+  left: 14px;
+  background: var(--ink);
+  color: var(--paper);
+  font: 900 15px/1 "Arial Black", "Trebuchet MS", sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 6px 12px;
+  transform: skewX(-8deg);
+}
+.mg-dialogue .mg-line {
+  margin: 0;
+  min-height: 3.9em;
+  font: 700 clamp(15px, 2vw, 21px)/1.4 "Trebuchet MS", "Segoe UI", sans-serif;
+}
+.mg-next {
+  position: absolute;
+  right: 14px;
+  bottom: 6px;
+  color: var(--ink);
+  font-size: 14px;
+  opacity: 0;
+}
+.mg-next.ready { opacity: 1; }
+.mg-next::after { content: '\25BC'; }
+.mg-stage:not([data-calm]) .mg-next.ready { animation: mg-blink 1s steps(2, start) infinite; }
+
+/* ── reveal ─────────────────────────────────────────────────────────────────────────────────── */
+.mg-freeze {
+  position: absolute;
+  inset: 0;
+  background: rgba(14, 12, 18, 0.35);
+  -webkit-backdrop-filter: grayscale(1) brightness(0.8);
+          backdrop-filter: grayscale(1) brightness(0.8);
+  opacity: 0;
+  transition: opacity 0.35s ease-out;
+}
+.mg-freeze.on { opacity: 1; }
+
+.mg-sheet {
+  position: absolute;
+  left: 6vw;
+  top: 14vh;
+  width: min(360px, 60vw);
+  background: var(--paper);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  padding: 14px 16px 16px;
+  box-shadow: 8px 8px 0 var(--ink);
+  opacity: 0;
+  transform: translateX(-18px) rotate(-1deg);
+  transition: opacity 0.25s ease-out, transform 0.3s ease-out;
+}
+.mg-sheet.on { opacity: 1; transform: rotate(-1deg); }
+.mg-sheet-title { margin: 0 0 10px; font: 900 15px/1 "Arial Black", "Trebuchet MS", sans-serif; letter-spacing: 0.16em; }
+
+.mg-clue {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 6px;
+  margin: 6px 0;
+  border-bottom: 1px dashed rgba(20, 17, 15, 0.4);
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+}
+.mg-clue.lit { opacity: 1; }
+.mg-clue.ring::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border: 3px solid var(--acc);
+  border-radius: 6px;
+  animation: mg-ring 0.34s ease-out both;
+}
+.mg-chip { font: 900 11px/1 "Arial Black", "Trebuchet MS", sans-serif; letter-spacing: 0.08em; color: var(--paper); background: var(--ink); padding: 5px 6px; }
+.mg-ch-tell .mg-chip { background: #2a7a5f; }
+.mg-ch-table .mg-chip { background: #9a6a1f; }
+.mg-ch-math .mg-chip { background: #2f4f7a; }
+.mg-round { font-size: 12px; opacity: 0.7; }
+.mg-ctext { font-size: 14px; line-height: 1.3; }
+
+.mg-strip {
+  position: absolute;
+  left: 4vw;
+  right: 4vw;
+  bottom: 18vh;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+}
+.mg-strip.on { opacity: 1; }
+.mg-panel-box {
+  background: var(--paper);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  padding: 10px 12px 12px;
+  transform: translateY(14px);
+  opacity: 0;
+  transition: transform 0.3s ease-out, opacity 0.3s ease-out;
+}
+.mg-strip.on .mg-panel-box { transform: none; opacity: 1; }
+.mg-strip.on .mg-panel-box:nth-child(2) { transition-delay: 0.14s; }
+.mg-strip.on .mg-panel-box:nth-child(3) { transition-delay: 0.28s; }
+.mg-ph { margin: 0 0 6px; font: 900 11px/1.2 "Arial Black", "Trebuchet MS", sans-serif; letter-spacing: 0.12em; color: var(--acc); }
+.mg-pb { margin: 0; font: 700 clamp(13px, 1.5vw, 16px)/1.35 "Trebuchet MS", "Segoe UI", sans-serif; }
+
+.mg-stamp {
+  position: absolute;
+  right: 7vw;
+  top: 24vh;
+  font: 900 clamp(34px, 7vw, 76px)/1 "Arial Black", "Trebuchet MS", sans-serif;
+  letter-spacing: 0.04em;
+  color: var(--bad);
+  border: 7px solid currentColor;
+  padding: 0.12em 0.22em;
+  background: rgba(245, 239, 226, 0.08);
+  transform: rotate(-12deg) scale(1.8);
+  opacity: 0;
+  transition: transform 0.18s cubic-bezier(0.2, 1.6, 0.4, 1), opacity 0.1s ease-out;
+}
+.mg-reveal.is-fair .mg-stamp { color: var(--ink); }
+.mg-stamp.on { opacity: 1; transform: rotate(-12deg) scale(1); }
+
+.mg-continue {
+  position: absolute;
+  right: 6vw;
+  bottom: 4vh;
+  font: 900 14px/1 "Arial Black", "Trebuchet MS", sans-serif;
+  letter-spacing: 0.12em;
+  color: var(--paper);
+  background: var(--ink);
+  border: 3px solid var(--paper);
+  padding: 10px 16px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+}
+.mg-continue.on { opacity: 1; }
+
+/* ── comfort settings ───────────────────────────────────────────────────────────────────────── */
+[data-calm] .mg-portrait,
+[data-calm] .mg-sheet,
+[data-calm] .mg-stamp,
+[data-calm] .mg-panel-box,
+[data-calm] .mg-box,
+[data-calm] .mg-glyph {
+  transform: none !important;
+  animation: none !important;
+  transition-delay: 0s !important;
+}
+[data-calm] .mg-speed { animation: none !important; }
+[data-calm] .mg-cutin .mg-band,
+[data-calm] .mg-cutin.on .mg-band { transform: translateY(-50%) skewX(-8deg) !important; transition: opacity 0.2s ease-out; }
+[data-calm] .mg-cutin.side-right .mg-band,
+[data-calm] .mg-cutin.side-right.on .mg-band { transform: translateY(-50%) skewX(8deg) !important; }
+[data-calm] .mg-stamp { transform: rotate(-12deg) !important; }
+[data-calm] .mg-glyph { transform: rotate(-8deg); }
+[data-calm] .mg-glyph-stage.on .mg-glyph { transform: rotate(-8deg); }
+[data-calm] .mg-sheet.on { transform: rotate(-1deg) !important; }
+
+[data-noflash] .mg-speed { animation: none !important; }
+[data-noflash] .mg-glyph,
+[data-noflash] .mg-clue.ring::after,
+[data-noflash] .mg-next.ready { animation: none !important; }
+[data-noflash] .mg-freeze { transition: none; }
+
+@keyframes mg-slide-in {
+  from { transform: translateX(var(--slide, 34%)); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes mg-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes mg-glyph-in {
+  from { transform: rotate(-8deg) scale(1.5); }
+  to { transform: rotate(-8deg) scale(1); }
+}
+@keyframes mg-gentle {
+  0%, 100% { transform: rotate(-8deg) translate(0, 0); }
+  50% { transform: rotate(-8deg) translate(2px, -2px); }
+}
+@keyframes mg-ring {
+  from { transform: scale(1.12); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes mg-blink {
+  to { visibility: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mg-speed,
+  .mg-glyph,
+  .mg-clue.ring::after { animation: none !important; }
+}
+
+/* ── bench page (bench.html only) ───────────────────────────────────────────────────────────── */
+body.mb-body { margin: 0; background: #0c0b0e; color: #eee; font: 14px/1.3 "Segoe UI", sans-serif; }
+.mb-wrap { padding: 16px; }
+.mb-bar { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.mb-btn { background: #f1ebdc; color: #14110f; border: 2px solid #14110f; padding: 6px 10px; font: 700 13px "Segoe UI", sans-serif; cursor: pointer; }
+.mb-btn.on { background: #c8283a; color: #fff; }
+.mb-row { display: grid; grid-template-columns: 96px repeat(5, 1fr); gap: 8px; align-items: center; margin-bottom: 10px; }
+.mb-row img { width: 100%; height: auto; display: block; cursor: pointer; border: 1px solid #333; }
+.mb-id { font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }

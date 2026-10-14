@@ -452,6 +452,13 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   anchors['parlour.curtain'] = curtain.root;
   anchors['mgmt.door'] = mgmt.root;
   anchors.hotline = marker(4, 1.2, -29.0);
+  // Wave 25: where the Tally Bench duel scenes look (story/duels/rivals.ts venue): the three duel tables, and the Wash and Counting Room for phase 2
+  anchors['duel.parlour'] = marker(26.3, 1.1, 18.6);
+  anchors['duel.cards'] = marker(-16, 1.1, -9);
+  anchors['duel.boiler'] = marker(22, 1.1, -17.05);
+  anchors['duel.laundry'] = marker(-24.5, 1.1, 5);
+  anchors['duel.counting'] = marker(-20, 1.1, 18.95);
+  anchors['duel.bench'] = anchors['duel.parlour'];
 
   // ── props map (PropId lookups) ─────────────────────────────────────────────────────────────
   const props: Record<string, WorldProp> = {

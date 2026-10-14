@@ -26,3 +26,6 @@ import './rooms.test.mjs';
 import './rooms.world.test.mjs';
 import './story.test.mjs';
 import './rooms.run.test.mjs';
+import './duelengine.test.mjs';
+import './duels.test.mjs';
+import './duelrun.test.mjs';

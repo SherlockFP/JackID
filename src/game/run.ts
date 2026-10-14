@@ -18,7 +18,7 @@ import type {
 import type { MetaState } from '@/game/types';
 import type { BuffSave } from './buffs/engine';
 import { foldEffects, modHookMeta, scopeMatches, stackedValue, WIN_TIERS } from '@/game/types';
-import type { GameMode, InstanceId, MachineId, PlayerId, SlotSize, Unsub, V3 } from '@/core/types';
+import type { GameMode, InstanceId, MachineId, PlayerId, SlotSize, Unsub, V3, ZoneId } from '@/core/types';
 import type { PhoneCallState, RunConfig, RunSnapshot, RunSummary } from '@/net/protocol';
 import type { CutscenePlayOpts, CutsceneResult } from '@/core/cutscene/types';
 import type { GameEvents } from '@/core/events';
@@ -53,6 +53,10 @@ import { profileOf } from './data/machineProfiles';
 import { bossFor, type BossNight } from './bosses';
 import { applyKit, kitById } from './data/kits';
 import { BOSS_REWARD, BOSS_TEMPLATES } from './data/bosses';
+import { SOUL_MARKS_PER_RUN, type DuelEndReport, type DuelRunHooks } from './duels/stakes';
+import { bossRivalFor, rivalById, type RivalId } from './story/duels/rivals';
+import { rivalTermsFor, termsVars } from './story/duels/terms';
+import { presentationIdle } from './duels/runlink';
 import { registerStrings, t } from '@/core/i18n';
 import { playableMode, rulesFor, type ModeRules } from './modes';
 import { createTycoon, type Tycoon } from './tycoon';
@@ -121,6 +125,19 @@ const OVERTIME_SEC = 90;
 /** Buy-a-pull: 3 Tickets for +1 pull, at most +2 per Watch (GDD §3.1). */
 const PULL_PRICE_TICKETS = 3;
 const PULLS_BOUGHT_MAX = 2;
+/** Plays a rival's scene through the story player. Loaded on demand: the story layer imports the run's world, not the other way round. */
+function playDuelScene(rival: RivalId, beat: 'intro' | 'won' | 'lost', seed: number, night: number): Promise<void> {
+  return import('./story/duels/play').then(
+    (m): Promise<unknown> => m.playRivalScene(rival, beat, { seed, night }),
+  ).then((): void => undefined, (): void => undefined);
+}
+/** The rival's themed Rare charm (the Pledge): jade Tamsin, brass Kuro, red Lucan, then the phase 2 rivals. */
+const DUEL_PLEDGE: Readonly<Record<string, string>> = {
+  tamsin: 'mirror_shoe', kuro: 'brass_knuckles', lucan: 'ringmasters_whistle', mimosa: 'cuckoo_feather', orrin: 'seven_floor_key', vell: 'collectors_tag',
+};
+/** Night 7, The Audit: the Clerk takes this share of a coin prize won at a duel. */
+const AUDIT_NIGHT = 7;
+const AUDIT_TAX = 0.2;
 /** Machine id used for run-level modifier queries (no machine). */
 const RUN_MACHINE = 'run';
 
@@ -130,6 +147,8 @@ declare module '@/core/events' {
     'room:keys': { n: number; why: 'dawn' | 'boss' | 'manager' };
     /** The Boiler blew at P 100 and is shut until the next Watch. */
     'room:blown': { zone: string };
+    /** Soul Marks changed (wave 25 duels): `left` on the card, `lost` when one was just taken, `blank` at 0. */
+    'duel:marks': { left: number; lost: boolean; blank: boolean };
     /** Back Office exchange done: Tickets in, Obols out. */
     'room:backoffice': { tickets: number; obols: number };
   }
@@ -214,6 +233,11 @@ export interface RunExt {
   managerKey?: boolean;
   rooms?: RoomsState;
   bonusObols?: number;
+  /** Wave 25 duels: Soul Marks on the card, the one in play, the Night whose boss duel was won, rivals whose Pledge charm is taken. Optional: older saves have none. */
+  soulMarks?: number;
+  markEscrow?: number;
+  bossDuel?: number;
+  pledged?: string[];
 }
 /** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
 interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
@@ -439,6 +463,25 @@ class Run implements DebtRun {
   private readonly currencies = new Map<string, number>();
   wingKeys = 0;
   managerKey = false;
+  /** Soul Marks on the JackID card (3 per run), the one on the table, the Night of a won boss duel, rivals whose Pledge charm is taken. */
+  private soulMarkCount = SOUL_MARKS_PER_RUN;
+  private markEscrow = 0;
+  private bossDuelNight = 0;
+  private readonly pledged = new Set<string>();
+  /** Duel follow-ups (reward, scene) that wait until the cut-ins and the reveal are off screen. Ticked by `tick`. */
+  private duelAfter: Array<{ wait: number; left: number; fn: () => void }> = [];
+  /** The Tally Bench's run-side counters and hooks (see `DuelRunHooks`): Soul Marks, the rival's Pledge, encounters, boss rewards. */
+  readonly duel: DuelRunHooks = {
+    soulMarks: () => this.soulMarkCount,
+    stakeSoulMark: () => this.stakeMark(),
+    returnSoulMark: () => this.returnMark(),
+    loseSoulMark: () => this.loseMark(),
+    grantPledge: (rivalId) => this.takePledge(rivalId),
+    coinsOnly: () => this.mode === 'free' || this.save?.data.settings.calm === true,
+    encounter: (instanceId) => this.duelEncounter(instanceId),
+    onDuelStart: (e) => this.duelStarting(e),
+    onDuelEnd: (r) => this.duelEnded(r),
+  };
   rooms: RoomsState = roomsStart();
   private readonly ruleDefs = new Map<string, ShiftRuleDef>();
   private readonly openRounds = new Set<string>();
@@ -1026,6 +1069,7 @@ class Run implements DebtRun {
     this.tickSafety(dt);
     tickClockHold(dt);
     this.itemSys.tick(dt);
+    if (this.duelAfter.length) this.tickDuelAfter(dt);
     if (this.phase === 'play' || this.phase === 'lastCall') this.tycoonSys.tick(dt);
     if (!this.rules.timed) return;
     switch (this.phase) {
@@ -1295,6 +1339,7 @@ class Run implements DebtRun {
     }
     this.finishBoss();
     this.grantKeys();
+    this.releaseMarkEscrow();
     // Whatever surplus is still held (interest booked after the release, or a Night paid exactly) returns now. The rest went
     // back at the deposit that met the quota (`releaseSurplus`), so Night N+1 starts with the cash either way.
     const surplus = Math.max(0, this.debtPaid - due - this.released);
@@ -1926,6 +1971,7 @@ class Run implements DebtRun {
     registerBossStrings();
     this.buffSys.nightEvents.register(boss);
     if (this.inWatch()) this.ensureBoss();
+    this.openBossVenue();
   }
 
   /** Boss active for this Watch. Must run before `startWatch` reads the clock and pull mods. */
@@ -1956,6 +2002,126 @@ class Run implements DebtRun {
     }
     this.tycoonSys.onNightPaid(night);
     this.modsImpl.touch();
+  }
+
+  // ── wave 25: the Tally Bench (docs/WAVE25_TALLY.md) ────────────────────────────────────────────────
+  private marksChanged(lost: boolean): void {
+    const left = this.soulMarkCount;
+    bus.emit('duel:marks', { left, lost, blank: left === 0 && this.markEscrow === 0 });
+    this.persist();
+    this.notify();
+  }
+
+  /** One Mark goes on the table. False when the card has none left. */
+  private stakeMark(): boolean {
+    if (this.soulMarkCount <= 0) return false;
+    this.soulMarkCount -= 1;
+    this.markEscrow += 1;
+    this.marksChanged(false);
+    return true;
+  }
+
+  /** The Mark on the table comes back (the duel was won or drawn). */
+  private returnMark(): void {
+    if (this.markEscrow <= 0) return;
+    this.markEscrow -= 1;
+    this.soulMarkCount = Math.min(SOUL_MARKS_PER_RUN, this.soulMarkCount + 1);
+    this.marksChanged(false);
+  }
+
+  /** The Mark on the table is gone. At 0 the JackID reads BLANK: the cursed `blank_jackid` charm, a road to the void ending. */
+  private loseMark(): void {
+    if (this.markEscrow > 0) this.markEscrow -= 1;
+    if (this.soulMarkCount === 0 && this.markEscrow === 0) {
+      // a full peg board does not stop the BLANK card: the cursed charm takes one extra peg
+      if (!this.charmBox.has(this.selfId, 'blank_jackid')) this.charmBox.add(this.selfId, 'blank_jackid', this.pegs() + 1);
+    }
+    this.marksChanged(true);
+  }
+
+  /** A Mark that is still on the table at Dawn (the duel never finished) goes back to the card. */
+  private releaseMarkEscrow(): void {
+    while (this.markEscrow > 0) this.returnMark();
+  }
+
+  /** The rival's themed Rare charm, once per rival per run; a second win (or a full board) pays an Obol instead. */
+  private takePledge(rivalId: string): void {
+    const theme = DUEL_PLEDGE[rivalId];
+    if (theme && !this.pledged.has(rivalId) && !this.charmBox.has(this.selfId, theme) && this.grantCharm(theme)) {
+      this.pledged.add(rivalId);
+      this.banner?.(t('duelrun.pledge', { charm: t(`charm.${theme}.name`) }), { color: '#ffd060', hold: 4, size: 8 });
+    } else this.earn('obol', 1, 'duel.pledge');
+    this.persistSoon();
+  }
+
+  /** Which rival a table seats: the Parlour's table is Lucan (the boss on Night 3), the Jade Room's Tamsin, the Boiler's Kuro. */
+  private duelEncounter(instanceId: string): { rivalId: string; night: number; boss: boolean } | null {
+    const zone = instanceId.startsWith('PAR') ? 'parlour' : instanceId.startsWith('CARD') ? 'cards' : instanceId.startsWith('BOI') ? 'boiler' : '';
+    const night = this.night();
+    if (zone === 'parlour') return { rivalId: 'lucan', night, boss: this.quotaMode && night === 3 && bossRivalFor(night) !== null };
+    if (zone === 'cards') return { rivalId: 'tamsin', night, boss: false };
+    if (zone === 'boiler') return { rivalId: 'kuro', night, boss: false };
+    return null;
+  }
+
+  /** The Parlour opens when its boss rival arrives (Night 3), so the boss duel is never behind a closed grille. */
+  private openBossVenue(): void {
+    if (!this.quotaMode) return;
+    const rival = bossRivalFor(this.night());
+    if (rival && !this.tycoonSys.state().zones.includes(rival.zone as ZoneId)) this.tycoonSys.grantZone(rival.zone as ZoneId);
+  }
+
+  /** A duel opens (first sitting of the Night): the rival's intro scene, with the Rival's Terms on a boss Night. */
+  private duelStarting(e: { rivalId: string; night: number; boss: boolean }): Promise<void> | void {
+    if (!rivalById(e.rivalId as RivalId)) return;
+    return playDuelScene(e.rivalId as RivalId, 'intro', this.seed, e.night);
+  }
+
+  /** A duel is settled: boss rewards, the Audit tax, then the rival's closing scene once the reveal is off screen. */
+  private duelEnded(r: DuelEndReport): void {
+    const rival = rivalById(r.rivalId as RivalId);
+    if (r.boss && r.won && this.bossDuelNight !== r.night) {
+      this.bossDuelNight = r.night;
+      this.wingKeys += 1;
+      bus.emit('room:keys', { n: 1, why: 'boss' });
+      this.afterDuel(() => this.grant({
+        currencies: { coin: 0, obol: 0, ticket: BOSS_REWARD.tickets },
+        charm: { choose: 1, of: BOSS_REWARD.charmChoices, rarity: BOSS_REWARD.charmRarity }, text: 'boss',
+      }));
+      if (rival?.drops?.includes('manager_key') && !this.managerKey) {
+        this.managerKey = true;
+        bus.emit('room:keys', { n: 1, why: 'manager' });
+      }
+    }
+    // N7 The Audit: the Clerk taxes a coin prize
+    if (r.won && r.tier === 'coins' && r.net > 0 && this.night() === AUDIT_NIGHT) {
+      const tax = Math.min(Math.floor(r.net * AUDIT_TAX), Math.floor(this.coins));
+      if (tax >= 1 && this.spend('coin', tax, 'duel.audit')) this.afterDuel(() => this.banner?.(t('duelrun.tax', { n: String(tax) }), { color: '#d0d0d0', hold: 5, size: 8 }));
+    }
+    if (rival && !r.drew) {
+      const beat = r.won ? 'won' : 'lost';
+      this.afterDuel(() => { void playDuelScene(r.rivalId as RivalId, beat, this.seed, r.night); }, true);
+    }
+    this.persist();
+    this.notify();
+  }
+
+  /** Runs `fn` once the duel presentation is off screen (a short beat after the settle, then idle). */
+  private afterDuel(fn: () => void, scene = false): void {
+    this.duelAfter.push({ wait: scene ? 1.5 : 1, left: 90, fn });
+  }
+
+  private tickDuelAfter(dt: number): void {
+    const q = this.duelAfter;
+    for (const it of q.slice()) {
+      it.wait -= dt;
+      it.left -= dt;
+      if ((it.wait <= 0 && presentationIdle()) || it.left <= 0) {
+        q.splice(q.indexOf(it), 1);
+        try { it.fn(); } catch { /* a follow-up never stops the run */ }
+        break;                                  // one at a time, so a scene never overlaps the next reward
+      }
+    }
   }
 
   private isBoiler(machineId: MachineId): boolean { return registry.get(machineId)?.def.zone === 'boiler'; }
@@ -2076,7 +2242,10 @@ class Run implements DebtRun {
     registerBossStrings();
     const p = { suit: (next.suit ?? '').toUpperCase(), name: t(`event.${next.id}.name`) };
     this.banner(t('boss.dawn.next', p), { color: '#ff7a5a', hold: 5, size: 16 });
-    this.banner(t(`event.${next.id}.announce`, p), { color: '#ffd060', hold: 5, size: 8 });
+    const terms = bossRivalFor(this.night() + 1) ? rivalTermsFor(this.seed, this.night() + 1) : null;
+    // a rival's boss Night: the modifier is announced as the Rival's Terms, in the rival's name
+    if (terms) this.banner(t('story.duel.terms.intro', termsVars(terms)), { color: '#ffd060', hold: 5, size: 8 });
+    else this.banner(t(`event.${next.id}.announce`, p), { color: '#ffd060', hold: 5, size: 8 });
   }
 
   /** Tell Sheet: sends the seat HUD the odds line of the seat the player is in (only when it changed). */
@@ -2128,6 +2297,7 @@ class Run implements DebtRun {
       rescue: { quota: this.loanQuota, used: this.rescuesUsed },
       watchDep: this.watchDeposits,
       wingKeys: this.wingKeys, managerKey: this.managerKey, rooms: { ...this.rooms, lockers: [...this.rooms.lockers] }, bonusObols: this.currencies.get('obol') ?? 0,
+      soulMarks: this.soulMarkCount, markEscrow: this.markEscrow, bossDuel: this.bossDuelNight, pledged: [...this.pledged],
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -2387,6 +2557,11 @@ class Run implements DebtRun {
     this.wingKeys = Math.max(0, Math.floor(e.wingKeys ?? 0)); this.managerKey = e.managerKey === true;
     this.rooms = restoreRooms(e.rooms);
     if ((e.bonusObols ?? 0) > 0) this.currencies.set('obol', e.bonusObols ?? 0);
+    this.soulMarkCount = Math.min(SOUL_MARKS_PER_RUN, Math.max(0, Math.floor(e.soulMarks ?? SOUL_MARKS_PER_RUN)));
+    this.markEscrow = Math.min(SOUL_MARKS_PER_RUN, Math.max(0, Math.floor(e.markEscrow ?? 0)));
+    this.bossDuelNight = Math.max(0, Math.floor(e.bossDuel ?? 0));
+    this.pledged.clear();
+    for (const id of e.pledged ?? []) if (typeof id === 'string') this.pledged.add(id);
     this.itemSys.totems.restore(e.totems);
     if (e.contracts) {
       this.contractNight = e.contracts.night;

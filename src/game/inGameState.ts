@@ -26,6 +26,7 @@ import { startStory, holdForStory, openJournal, storyNight } from '@/game/story'
 import { mountLedger } from '@/game/tycoon/ledger';
 import { buildIntermission, buildPause, createInterHint, INTER_PANEL, PAUSE_PANEL, type InterHint } from './ingame/panels';
 import { SeatHud } from '@/machines/_base/seatHud';
+import { SOUL_MARKS_PER_RUN } from '@/game/duels/stakes';
 import { phoneWalkKeys } from '@/machines/hotline';
 import type { Action } from '@/core/input/types';
 
@@ -91,6 +92,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     const tutorial = tutorialActive();
     app.ui.panel(PAUSE_PANEL, (el) => buildPause(el, {
       live: pauseLive,
+      marks: app.run?.duel ? { left: app.run.duel.soulMarks(), max: SOUL_MARKS_PER_RUN } : undefined,
       onResume: () => { app.ui.closePanel(PAUSE_PANEL); },
       onQuit: () => { session?.run.quit(); },
       onGone: () => { if (paused && !toSettings) setPaused(false); },

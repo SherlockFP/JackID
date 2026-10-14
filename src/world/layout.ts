@@ -125,6 +125,8 @@ export const SLOTS: SlotDef[] = [
   S('PAR-03', 'parlour', 'L', 14.0, 13.8, 0),     // sonkart
   S('PAR-04', 'parlour', 'L', 19.0, 13.8, 0),     // tavla
   S('PAR-SHRINE', 'parlour', 'S', 28.0, 12.55, 0),
+  // Wave 25: Lucan's table (the Night 3 boss duel), beside the Collector's chair
+  S('PAR-05', 'parlour', 'L', 26.3, 18.6, 180),
   // The Counting Room (meta-unlocked pads only)
   S('CNT-01', 'counting', 'M', -28.0, 12.65, 0),
   S('CNT-02', 'counting', 'M', -25.0, 12.65, 0),
@@ -147,6 +149,8 @@ export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   'GAL-06': 'lootbox', 'GAL-07': 'bandit', 'GAL-08': 'bandit',
   'WH-01': 'bigsix', 'WH-02': 'tombola', 'WH-03': 'fantan',
   'PAR-01': 'devilstable', 'PAR-02': 'pisti', 'PAR-03': 'sonkart', 'PAR-04': 'tavla', 'PAR-SHRINE': 'shrine',
+  // Wave 25 Tally Bench: one duel table per rival venue (Lucan in the Parlour, Tamsin in the Jade Room, Kuro in the Boiler)
+  'PAR-05': 'tallytable', 'CARD-08': 'tallytable', 'BOI-07': 'tallytable',
 };
 
 /** GDD §8.6 busy-floor override: pad → device (host option, default on with ≥ 4 players). */

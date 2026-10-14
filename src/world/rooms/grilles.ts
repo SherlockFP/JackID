@@ -22,6 +22,8 @@ const PLATE_W = 1.5;
 const PLATE_H = 0.5;
 const PLATE_Y = 2.3;
 const POLL_S = 0.25;
+/** Half the doorway width (m): the grille gaps are 4 m wide (level.ts). */
+const GRILLE_HALF_W = 2;
 const SIGN_FLASH_S = 0.12;
 const AMBER = 0xffb020;
 const BRASS = 0x8c6b29;
@@ -114,15 +116,17 @@ export function buildGrilles(ctx: GrilleCtx): GrilleBuild {
     plates.push(p);
 
     if (ctx.interact) {
-      // the plate's two halves: upper z-half = Spend KEY, lower z-half = BUY
-      const keyBox = boxAt(px - 0.4, PLATE_Y - 0.3, spec.z - 0.8, px + 0.4, PLATE_Y + 0.3, spec.z);
-      const buyBox = boxAt(px - 0.4, PLATE_Y - 0.3, spec.z, px + 0.4, PLATE_Y + 0.3, spec.z + 0.8);
+      // The whole doorway answers (4 m wide, floor to lintel), not just half the plate. Both actions cover it: with a Key in hand
+      // the Key spend wins; with none the BUY line shows. (Before, the upper z-half was the Key and the lower z-half was BUY.)
+      const doorBox = (): THREE.Box3 => boxAt(Math.min(px, spec.x) - 0.4, 0, spec.z - GRILLE_HALF_W, Math.max(px, spec.x) + 0.4, 3.2, spec.z + GRILLE_HALF_W);
+      const keyBox = doorBox();
+      const buyBox = doorBox();
       const wingName = (): string => t(`wroom.wing.${spec.wing}`);
       const keyAct: Interactable = {
         id: `rooms:key:${spec.wing}`,
         box: keyBox,
-        maxDist: 2.4,
-        priority: 1,
+        maxDist: 2.8,
+        priority: 2,
         enabled: () => p.view !== null && p.view !== 'gone' && roomsBridge().keys() > 0,
         label: () => t('wroom.act.key', { n: String(roomsBridge().keys()) }),
         sub: () => t('wroom.sub.opens', { wing: wingName() }),
@@ -131,9 +135,9 @@ export function buildGrilles(ctx: GrilleCtx): GrilleBuild {
       const buyAct: Interactable = {
         id: `rooms:buy:${spec.wing}`,
         box: buyBox,
-        maxDist: 2.4,
+        maxDist: 2.8,
         priority: 1,
-        enabled: () => p.view !== null && p.view !== 'gone',
+        enabled: () => p.view !== null && p.view !== 'gone' && roomsBridge().keys() <= 0,
         label: () => t('wroom.act.buy'),
         sub: () => t('wroom.sub.opens', { wing: wingName() }),
         onInteract: () => { if (p.view !== null && p.view !== 'gone') roomsBridge().sendZone(spec.wing, false); },

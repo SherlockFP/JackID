@@ -41,6 +41,8 @@ import { createMenuState } from '@/menu/menuState';
 import { createLobbyState } from '@/menu/lobbyState';
 import { createResultsState } from '@/menu/resultsState';
 import { createInGameState } from '@/game/inGameState';
+import { installManga, mangaBusy } from '@/core/ui/manga';
+import { setPresentationProbe } from '@/game/duels/runlink';
 import en from '@/i18n/en';
 import tr from '@/i18n/tr';
 
@@ -137,6 +139,9 @@ async function boot(): Promise<void> {
   a.register('ingame', createInGameState());
   a.register('results', createResultsState());
   installDebug(a);
+  // Wave 25 TALLY: the manga cut-in, glyph and reveal hooks for cutscenes; the run waits for the presentation before rewards and scenes
+  installManga(a);
+  setPresentationProbe(() => !mangaBusy());
 
   // 7 — fonts (Turkish glyph coverage), never blocking longer than 3 s
   const glyphs = 'ÇĞİÖŞÜçğıöşü';

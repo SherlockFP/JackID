@@ -44,7 +44,7 @@ export const SUIT_OF: Readonly<Record<string, Suit>> = {
 };
 
 /** Registered machines that GDD §3.4.1 deliberately leaves without a suit (see the header). */
-export const NO_SUIT: ReadonlySet<string> = new Set(['sonkart', 'pisti', 'tavla', 'bounty_board', 'cashier', 'charm_vendor',
+export const NO_SUIT: ReadonlySet<string> = new Set(['tallytable', 'sonkart', 'pisti', 'tavla', 'bounty_board', 'cashier', 'charm_vendor',
   'debt_terminal', 'hotline', 'jukebox', 'shrine', 'tonic_vendor']);
 
 /** The suit of a machine id, or null (non-gambling fixtures, party games). */
