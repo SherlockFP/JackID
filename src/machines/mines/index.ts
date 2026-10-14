@@ -620,7 +620,10 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
     this.drawScreen();
   }
 
-  /** The CRT: multiplier ladder for the chosen mine count, the current multiplier, stake and fair hash. */
+  /**
+   * The CRT (128 x 64 texels, text at scale 2 to 4 so it survives the ~224 p picture): mines on top, the multiplier you hold BIG,
+   * and the next rung of the ladder. Stake, fair hash and the cash-out value live in the seat HUD.
+   */
   private drawScreen(winShown?: number): void {
     const s = this.st;
     const m = s.open ? s.rm : s.m;
@@ -628,37 +631,28 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
     this.parts.screen.draw((g, sc) => {
       g.fillStyle = SCREEN_BG;
       g.fillRect(0, 0, sc.w, sc.h);
+      /** Text at the largest scale (`top` down to 1) that fits 124 texels. */
+      const fitText = (str: string, y: number, color: string, top: number, align: 'left' | 'center' = 'center'): void => {
+        let k2 = top;
+        while (k2 > 1 && str.length * 6 * k2 - k2 > 124) k2--;
+        sc.text(str, align === 'center' ? 64 : 3, y, { font: 'px5', color, align, scale: k2 });
+      };
       if (this.burnt) {                                              // burn-in ghost after a mine
         g.fillStyle = '#0a2a10';
         g.fillRect(0, 0, sc.w, sc.h);
-        sc.text(this.t('burnt'), 80, 52, { font: 'px5', color: DIM, align: 'center' });
+        fitText(this.t('burnt'), 26, DIM, 2);
         return;
       }
-      sc.text(`${this.t('sMines')} ${m}`, 4, 3, { font: 'px5', color: PHOSPHOR });
-      sc.text(s.open ? this.t('armed') : this.t('ready'), 156, 3, { font: 'px5', color: s.open ? '#ffd040' : DIM, align: 'right' });
-      // ladder: the next seven safe reveals, the current one highlighted
-      for (let k = 1; k <= 7; k++) {
-        const y = 16 + (k - 1) * 11;
-        const cur = s.open && k === s.k;
-        if (cur) { g.fillStyle = '#1f5a2a'; g.fillRect(2, y - 1, 156, 10); }
-        const mult = multAt(k, 0, m, o);
-        const col = cur ? '#ffd040' : k <= s.k ? PHOSPHOR : DIM;
-        sc.text(`${k}`, 6, y, { font: 'px5', color: col });
-        sc.text(`x${fmtMult(mult)}`, 30, y, { font: 'px5', color: col });
-        if (mult > 0 && mult < 1e9) sc.text(fmtCoins(Math.floor(s.stake * mult)), 152, y, { font: 'px5', color: col, align: 'right' });
-      }
-      if (winShown !== undefined) {
-        sc.text(`+${fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(winShown, this.src, { bet: this.roundBet }) : winShown)}`, 80, 92, { font: 'px5', color: '#ffd040', align: 'center' });
-      } else if (s.open) {
-        sc.text(`${this.t('stake')} ${fmtCoins(s.stake)}  ${this.t('left', { n: s.rm - (s.defused ? 1 : 0) })}`, 4, 96, { font: 'px5', color: PHOSPHOR });
-        sc.text(`x${fmtMult(s.mult)}`, 4, 106, { font: 'px5', color: '#ffd040' });
-        sc.text(`${this.t('fair', { n: s.fair })}`, 156, 106, { font: 'px5', color: DIM, align: 'right' });
-      } else if (s.lastRes) {
-        const label = s.lastRes === 'cashed' ? this.t('cashed') : s.lastRes === 'void' ? this.t('void') : this.t('boom');
-        sc.text(label, 80, 96, { font: 'px5', color: s.lastRes === 'cashed' ? '#ffd040' : PHOSPHOR, align: 'center' });
-      } else {
-        sc.text(`${this.t('stake')} ${fmtCoins(this.bet)}`, 80, 96, { font: 'px5', color: DIM, align: 'center' });
-      }
+      fitText(`${this.t('sMines')} ${m}`, 2, PHOSPHOR, 2, 'left');
+      g.fillStyle = '#1f5a2a'; g.fillRect(2, 18, 124, 2);
+      // the big number: the multiplier you hold now (or the win while it is being paid)
+      const big = winShown !== undefined
+        ? `+${fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(winShown, this.src, { bet: this.roundBet }) : winShown)}`
+        : `x${fmtMult(s.open && s.k > 0 ? s.mult : 1)}`;
+      fitText(big, 21, '#ffd040', 4);
+      // the next safe reveal, as "n: xM"
+      const k = (s.open ? s.k : 0) + 1;
+      fitText(`${k}: x${fmtMult(multAt(k, 0, m, o))}`, 51, PHOSPHOR, 2);
     });
   }
 

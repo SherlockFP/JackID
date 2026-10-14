@@ -21,6 +21,7 @@ import type { HudHint } from '@/core/ui/types';
 import type { KitX } from '@/kit';
 import { t } from '@/core/i18n';
 import { clamp } from '@/core/math';
+import { createRng } from '@/core/rng';
 import {
   buildModel, dressPrize, pileSpot, type ClawParts, HEAD_DOWN, HEAD_TOP, PRONG_OPEN, PRONG_STRONG, PRONG_WEAK, RAIL_Y,
 } from './model';
@@ -92,6 +93,11 @@ export default class Claw extends MachineBase<ClawParts, Ev, Snap> {
   }
 
   init(): void {
+    // idle display pile: the real pile is restocked by the first play of a Night, but the pit must not sit empty in the meantime
+    if (this.st.pile.length === 0) {
+      this.st.pile = buildPile(createRng(this.modelOpts.seed ^ 0x51ac));
+      for (const p of this.st.pile) dressPrize(this.parts, p.id, p.kind);
+    }
     this.setDepth(HEAD_TOP);
     this.setProngs(PRONG_OPEN);
     this.parts.marquee.chase('chase', 6);

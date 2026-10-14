@@ -110,7 +110,13 @@ export default class BingoHall extends TableBase<BingoParts, Ev, Snap, Act> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) {
+      // any key closes a tip or rules card. The first-sit tip is a how-to, so its Enter also buys (the HUD says ENTER BUY);
+      // a rules card only closes, so reading the rules can never spend the stake.
+      const tip = !this.seatHud.rulesOpen;
+      this.seatHud.dismiss();
+      if (!(tip && a === 'confirm')) return;
+    }
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;

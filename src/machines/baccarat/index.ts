@@ -34,7 +34,7 @@ import { baccaratValue, cardText } from '@/machines/_base/cards';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { STRINGS } from './baccarat.strings';
 import {
-  buildModel, setFaceUV, spotPos, slotPos, shoeMouth, SEATS, CARD_H, type BaccaratParts,
+  buildModel, drawFelt, setFaceUV, spotPos, slotPos, shoeMouth, SEATS, CARD_H, type BaccaratParts,
 } from './model';
 import * as R from './rules';
 
@@ -683,10 +683,11 @@ export default class Baccarat extends TableBase<BaccaratParts, Ev, Snap, Act> {
   }
 
   // ── visuals ────────────────────────────────────────────────────────────────────────────────────
-  override onLang(): void { this.paintRoad(); this.paintTotals(); this.showHud(); }
+  override onLang(): void { this.paintFelt(); this.paintRoad(); this.paintTotals(); this.showHud(); }
 
   /** Resting pose of every visual for `this.st` (idempotent). */
   private paintAll(): void {
+    this.paintFelt();
     this.paintLamps();
     this.paintBets();
     this.paintRoad();
@@ -700,6 +701,16 @@ export default class Baccarat extends TableBase<BaccaratParts, Ev, Snap, Act> {
         this.cardIds[side][idx] = p.cards.add(card ? (card as CardId) : null, slotPos(sideKey(side), idx), 0);
       });
     }
+  }
+
+  /** The printed felt: card-box captions and every seat's spot labels, in the current language. */
+  private paintFelt(): void {
+    const p = this.model.parts;
+    drawFelt(p.feltCanvas, {
+      banker: this.t('capB'), player: this.t('capP'), tie: this.t('capT'), ppair: this.t('capPP'), bpair: this.t('capBP'),
+      boxP: this.t('boxP'), boxB: this.t('boxB'),
+    });
+    p.feltTex.needsUpdate = true;
   }
 
   private paintLamps(): void { this.model.parts.seatLamps.forEach((l, s) => l.setOn(this.seats[s] !== null)); }
@@ -741,6 +752,8 @@ export default class Baccarat extends TableBase<BaccaratParts, Ev, Snap, Act> {
     this.model.parts.roadmap.draw((g, w) => {
       g.fillStyle = '#06100a';
       g.fillRect(0, 0, w.w, w.h);
+      g.fillStyle = '#16301f';                                        // empty cells: the board reads as a board before the first coup
+      for (let c = 0; c < 12; c++) for (let r = 0; r < 6; r++) { g.fillRect(2 + c * 4, 4 + r * 7, 3, 6); g.fillRect(50 + c * 4, 4 + r * 7, 3, 6); }
       const colour = (b: number): string => (b === 1 ? '#2c4c9c' : b === 2 ? '#c8102e' : '#3aa655');
       // bead plate: 6 rows, column-major, newest last
       beads.forEach((b, i) => {

@@ -16,14 +16,14 @@ import type { MachineModel, SeatDef } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { FACES, SEATS, type Face } from './rules';
 
-const FELT = 0x2a7050;   // lifted from 0x1d5a3c: the felt reads as a playfield in the seat view
+const FELT = 0x1f6040;   // baize green: the playfield the top and the bowl sit on, read from the seat
 const TABLE_D = 1.2;
 /** Table centre (machine-local z): the table is pushed back to fit the L slot. */
-export const CENTRE_Z = -0.15;
+export const CENTRE_Z = -0.25;
 const TOP_R = 0.09;
 const TOP_H = 0.12;
 const STOOL_H = 0.68;
-const STOOL_R = 0.95;
+const STOOL_R = 0.85;
 const LAMP_OFF = 0x2a2a2a;
 const LAMP_ON = 0xffd040;
 const FACE_PX = 32;
@@ -120,6 +120,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TeetotumParts>
   const centre = new THREE.Vector3(0, 0, CENTRE_Z);
 
   // round felt table (kit), pushed back to the L slot's centre; its colliders are moved to match
+  const centre0 = new THREE.Vector3(0, 0, CENTRE_Z);
   const ft = kit.feltTable({ shape: 'round', w: 1.2, d: TABLE_D, felt: FELT, rail: pal.woodDark, seats: SEATS, stools: false, dealer: false });
   ft.root.position.z = CENTRE_Z;
   // the kit's red casino chairs sit on the rail, between the seated camera and the bowl: drop them (our stools and seated bots are the seats)
@@ -128,6 +129,10 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TeetotumParts>
   for (const c of kitChairs) c.parent?.remove(c);
   root.add(ft.root);
   const feltY = ft.feltY;
+  // the playfield: the kit's felt ring is sized for seats outside the rail (w − 2 × 0.64 m), which leaves a 1.2 m table a
+  // stub. The baize is laid here as a disc, so the surface the spinning top lands on is the one in the seat view.
+  const playfield = kit.cyl(0.58, 0.58, 0.012, FELT, { pos: [centre0.x, feltY - 0.004, centre0.z], seg: 40, parent: root, name: 'playfield' });
+  void playfield;
   const colliders = ft.colliders.map((b) => ({ min: [b.min[0], b.min[1], b.min[2] + CENTRE_Z] as [number, number, number], max: [b.max[0], b.max[1], b.max[2] + CENTRE_Z] as [number, number, number], tag: b.tag }));
   const c3 = (x: number, y: number, z: number): THREE.Vector3 => new THREE.Vector3(centre.x + x, feltY + y, centre.z + z);
 
@@ -153,7 +158,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TeetotumParts>
       pose: {
         // seat standard: felt, spinning top and the status screen in frame; the seat stools and red seat pads sit below the frame
         pos: new THREE.Vector3(0, 1.8, 1.5),
-        look: new THREE.Vector3(centre.x, 1.0, -0.35),
+        look: new THREE.Vector3(centre.x, 0.85, CENTRE_Z),
         fov: 60,
         mouse: 'pick',
       },
@@ -269,7 +274,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TeetotumParts>
   // light, anchors
   const light = new THREE.Object3D();
   light.position.set(0, 1.6, centre.z);   // lower and stronger: the felt and the bowl need to read from the seat
-  light.userData = { color: 0xffe2a0, intensity: 1.5, range: 2.6, flicker: 'STEADY' };
+  light.userData = { color: 0xffe2a0, intensity: 2.2, range: 2.6, flicker: 'STEADY' };
   root.add(light);
   const prompt = new THREE.Object3D();
   prompt.position.set(0, 1.25, 0.6);

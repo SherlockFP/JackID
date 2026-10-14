@@ -14,6 +14,7 @@ import type { LampPart, LedPanelPart, ScreenSurface } from '@/kit/types';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import type { PlayPose } from '@/core/types';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 export interface CubbyPart { lamp: LampPart; icon: ScreenSurface; cell: THREE.Mesh }
 
@@ -44,12 +45,13 @@ export type TombolaParts = {
 
 // ── layout constants (metres, machine-local) ────────────────────────────────────────────────────
 export const COUNTER_Y = 1.0, COUNTER_Z = 0.0;
-export const DRUM_POS: [number, number, number] = [-0.55, 1.36, 0.3];
-export const DRUM_R = 0.3, DRUM_LEN = 0.6;
+// seat standard: the drum sits on the counter, its top (1.42) under the lowest cubby row so the prize shelf reads clear
+export const DRUM_POS: [number, number, number] = [-0.55, 1.22, 0.3];
+export const DRUM_R = 0.2, DRUM_LEN = 0.5;
 export const CUBBY_X = [-0.8, -0.4, 0.0, 0.4, 0.8];
-export const CUBBY_Y = [1.25, 1.5, 1.75, 2.0];
+export const CUBBY_Y = [1.5, 1.72, 1.94, 2.16];
 export const CUBBY_Z = -0.5;
-export const CUBBY_SIZE = 0.18;
+export const CUBBY_SIZE = 0.16;
 export const WIDOW_POS: [number, number, number] = [0.0, 0.0, -0.22];
 /** Widow root height when hidden (her head is below the counter top) and when popped up (head clears the counter). */
 export const WIDOW_DOWN_Y = 0.0, WIDOW_UP_Y = COUNTER_Y - 0.36;
@@ -143,6 +145,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TombolaParts> 
   kit.box(0.2, 0.06, 0.1, pal.black, at(0.78, COUNTER_Y + 0.04, 0.2));
 
   const pulled = kit.screen({ w: 0.12, h: 0.09, px: [64, 48], bezel: pal.black, glow: 0.2 });
+  crispTexture(pulled.tex, 4);                                 // on-machine text: linear + mips, not nearest
   pulled.mesh.position.set(PULL_POS[0], PULL_POS[1], PULL_POS[2]);
   pulled.mesh.rotation.x = -Math.PI / 2;
   pulled.mesh.visible = false;
@@ -151,13 +154,14 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TombolaParts> 
   // ── prize shelf: 20 cubbies (4 rows × 5) ──
   const cubbies: CubbyPart[] = [];
   const cubGeo = new THREE.BoxGeometry(CUBBY_SIZE, CUBBY_SIZE, 0.2);
-  const cubMat = kit.mat(pal.black);
+  const cubMat = kit.mat(0x6a4a2c);                          // lighter warm wood: the cells read against the dark board
   for (let i = 0; i < 20; i++) {
     const [x, y, z] = cubbyXYZ(i);
     const cell = new THREE.Mesh(cubGeo, cubMat);
     cell.position.set(x, y, z);
     root.add(cell);
-    const icon = kit.screen({ w: CUBBY_SIZE * 0.78, h: CUBBY_SIZE * 0.78, px: [32, 32], bezel: pal.black, glow: 0.5 });
+    const icon = kit.screen({ w: CUBBY_SIZE * 0.78, h: CUBBY_SIZE * 0.78, px: [32, 32], bezel: pal.black, glow: 0.8 });
+    crispTexture(icon.tex, 4);
     icon.mesh.position.set(x, y, z + 0.101);
     root.add(icon.mesh);
     const lamp = kit.lamp({ r: 0.02, color: 0x2a2018, shape: 'dome' });

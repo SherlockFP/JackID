@@ -41,7 +41,7 @@ const PRIZE_S = 1.5;
 // Hex for lamps and pop texts (fx), CSS for the canvas screens.
 const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.tombola.' + k }));
 const GOLD = 0xffd040, GREEN = 0x7dff7a, RED = 0xff6a5a;
-const GOLD_CSS = '#ffd040', GREEN_CSS = '#7dff7a', RED_CSS = '#ff6a5a', CREAM = '#f3e7c4', DIM = '#6f5a3a';
+const GOLD_CSS = '#ffd040', GREEN_CSS = '#7dff7a', RED_CSS = '#ff6a5a', CREAM = '#f3e7c4', DIM = '#a88a5a';
 const LAMP_OFF = 0x2a2018;
 
 // ── contract types ──────────────────────────────────────────────────────────────────────────────
@@ -476,7 +476,7 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
     cub.lamp.setColor(p ? GOLD : LAMP_OFF);
     cub.lamp.setOn(!!p);
     cub.icon.draw((g, sc) => {
-      g.fillStyle = p ? '#2a1d0c' : '#0b0806';
+      g.fillStyle = p ? '#6b4c1c' : '#3a2a1a';                 // lit cell: lighter than the cubby frame so every slot reads
       g.fillRect(0, 0, sc.w, sc.h);
       sc.text(String(numberOf(i)).padStart(2, '0'), sc.w / 2, 3, { font: 'px5', color: p ? CREAM : DIM, align: 'center' });
       if (p) sc.text(tr('m.tombola.prizeShort', { n: PRIZE_MULT[p] }), sc.w / 2, 16, { font: 'px5', color: GOLD_CSS, align: 'center' });

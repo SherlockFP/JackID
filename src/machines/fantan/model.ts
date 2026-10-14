@@ -12,6 +12,7 @@ import type { ChipPool, DealerPart, Kit, LampPart, ScreenSurface } from '@/kit/t
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import type { LocalAABB, SeatDef } from '@/core/types';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 export type FantanParts = {
   /** The painted square. Lies flat; canvas top = back (side 3), canvas right = +X. */
@@ -67,7 +68,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<FantanParts> {
   // no floor cushions: the stand strip must stay clear of model geometry (seat pads are a T2 visual)
 
   // ── the painted square (canvas 128 × 128) ─────────────────────────────────────────────────
-  const square = kit.screen({ w: SQ * 2, h: SQ * 2, px: [128, 128], bezel: pal.black });
+  const square = kit.screen({ w: SQ * 2, h: SQ * 2, px: [256, 256], bezel: pal.black });
+  crispTexture(square.tex, 4);                  // side numbers: linear + mips, not nearest
   square.mesh.rotation.x = -Math.PI / 2;
   square.mesh.position.set(0, TOP + 0.012, TC);
   root.add(square.mesh);
@@ -75,7 +77,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<FantanParts> {
   const sideLamps: LampPart[] = [];
   SIDE_XZ.forEach(([x, z], i) => {
     const lamp = kit.lamp({ r: 0.016, color: SIDE_HEX[i], shape: 'dome' });
-    lamp.root.position.set(x * 1.65, TOP + 0.01, TC + (z - TC) * 1.65);   // just outside the painted edge
+    lamp.root.position.set(x * 1.95, TOP + 0.01, TC + (z - TC) * 1.95);   // outside the painted edge, clear of the side numerals
     root.add(lamp.root);
     sideLamps.push(lamp);
   });
@@ -141,8 +143,9 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<FantanParts> {
     root.add(l.root);
     seatLamps.push(l);
     seats.push({
-      // seat standard: the painted square is the play surface, large and centred for every seat (one shared view)
-      pose: { pos: new THREE.Vector3(0, 1.75, TC + 0.98), look: new THREE.Vector3(0, TOP + 0.01, TC), fov: 62, mouse: 'pick' },
+      // seat standard: the painted square is the play surface, large and centred for every seat (one shared view).
+      // Pulled in close (1.3 m from the square, was 1.4 m at a shallower angle) so the four side numbers fill the frame.
+      pose: { pos: new THREE.Vector3(0, 1.5, TC + 0.84), look: new THREE.Vector3(0, TOP + 0.01, TC), fov: 62, mouse: 'pick' },
       stand: new THREE.Vector3(sx, 0, sz),
       avatar: 'stand',
     });

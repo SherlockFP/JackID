@@ -20,6 +20,7 @@ import type { KitX } from '@/kit/index';
 import type { MachineModel, SeatDef } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { crispTexture } from '@/core/ui/textOverlay';
+import { makeCanvas } from '@/core/texgen/pixel';
 
 export const TOP = 0.78;                 // felt height, m
 export const SEATS = 7;
@@ -32,18 +33,73 @@ export const MIRROR_Y = 2.05, MIRROR_Z = -0.80, MIRROR_TILT = 35;
 /** Stool x for seat `i` (0..6, left to right as the player sees the table). */
 export const seatX = (i: number): number => (i - 3) * 0.3;
 /** Spot x offset from the seat centre, in `rules.SP` order: Banker, Player, Tie, Player pair, Banker pair. */
-const SPOT_DX = [0.065, -0.065, 0, -0.13, 0.13];
-const SPOT_COLOR = [0xc8102e, 0x2c4c9c, 0x3aa655, 0xc9a227, 0xc9a227];
+const SPOT_DX = [0.1, -0.1, 0, -0.075, 0.075];
+/** Spot z: Banker / Player / Tie in the near row, the two pairs one hand further out (both inside the felt edge). */
+const SPOT_DZ = [0, 0, 0, -0.125, -0.125];
+/** Spot print size (w, d) in metres: the near row is 0.085 wide so seven seats (0.3 m apart) never touch. */
+const SPOT_SIZE: ReadonlyArray<readonly [number, number]> = [[0.085, 0.1], [0.085, 0.1], [0.085, 0.1], [0.14, 0.085], [0.14, 0.085]];
+const SPOT_COLOR_CSS = ['#c8102e', '#2c4c9c', '#3aa655', '#c9a227', '#c9a227'];
+/** Height of the printed felt layer. The felt top is at TOP; the print floats 1.2 cm over it (the low-res depth buffer z-fights below ~1 cm). */
+export const PRINT_Y = TOP + 0.012;
 /** Where chips and hit targets of spot `s` at seat `i` sit. */
 export const spotPos = (seat: number, spot: number): THREE.Vector3 =>
-  new THREE.Vector3(seatX(seat) + SPOT_DX[spot], TOP + 0.006, SPOT_Z);
+  new THREE.Vector3(seatX(seat) + SPOT_DX[spot], PRINT_Y + 0.002, SPOT_Z + SPOT_DZ[spot]);
+
+/** The felt print: one canvas over the 2.4 x 1.2 m felt, 640 px per metre. */
+const FONT = (px: number): string => `bold ${px}px Arial, Helvetica, sans-serif`   // i18n-ok: CSS font stack
+export const FELT_W = 1536, FELT_H = 768;
+/** Short spot captions (1 to 2 letters: the near rows are 8.5 cm wide and the picture is ~224 px tall). */
+export interface FeltLabels { banker: string; player: string; tie: string; ppair: string; bpair: string; boxP: string; boxB: string }
+
+/** Paints the printed layout (card boxes and every seat's five spots with their labels). Pure 2D; repainted on language change. */
+export function drawFelt(c: HTMLCanvasElement, L: FeltLabels): void {
+  const g = c.getContext('2d');
+  if (!g) return;
+  g.clearRect(0, 0, FELT_W, FELT_H);
+  const px = (x: number): number => ((x + 1.2) / 2.4) * FELT_W;
+  const pz = (z: number): number => ((z + 0.6) / 1.2) * FELT_H;
+  const m = FELT_W / 2.4;
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
+  const fit = (s: string, w: number, cap: number): number => {
+    g.font = FONT(100);
+    return Math.min(cap, (100 * w) / Math.max(1, g.measureText(s).width));
+  };
+  /** Centred caption: as wide as `w` allows, stretched up to 1.35x tall to fill cap height `h` (tall letters survive the low-res pass). */
+  const word = (s: string, cx: number, cy: number, w: number, h: number, ink: string): void => {
+    const szW = fit(s, w, 1e9), sz = Math.floor(Math.min(szW, h / 0.72));
+    const sy = Math.max(1, Math.min(1.35, h / (0.72 * sz)));
+    g.save(); g.translate(cx, cy); g.scale(1, sy);
+    g.font = FONT(sz);
+    g.lineWidth = Math.max(3, sz * 0.16); g.strokeStyle = 'rgba(6,10,6,0.9)'; g.strokeText(s, 0, sz * 0.04);   // dark halo
+    g.lineWidth = Math.max(2, sz * 0.045); g.strokeStyle = ink; g.strokeText(s, 0, sz * 0.04);                 // faux-bold: thin strokes die in the low-res pass
+    g.fillStyle = ink; g.fillText(s, 0, sz * 0.04);
+    g.restore();
+  };
+  // the two card boxes
+  for (const [x, label] of [[-0.30, L.boxP], [0.34, L.boxB]] as const) {
+    const bx = px(x) - 0.23 * m, by = pz(-0.06) - 0.13 * m;
+    g.fillStyle = '#0b0b0d'; g.fillRect(bx, by, 0.46 * m, 0.26 * m);
+    g.strokeStyle = '#d6ad4f'; g.lineWidth = 5; g.strokeRect(bx + 3, by + 3, 0.46 * m - 6, 0.26 * m - 6);
+    word(label, px(x), pz(-0.152), 0.40 * m, 0.07 * m, '#f6f0d8');   // top strip of the box: the dealt cards cover the middle
+  }
+  // every seat's spots
+  const names = [L.banker, L.player, L.tie, L.ppair, L.bpair];
+  for (let seat = 0; seat < SEATS; seat++) for (let s = 0; s < 5; s++) {
+    const p = spotPos(seat, s);
+    const [w, d] = SPOT_SIZE[s];
+    const cx = px(p.x), cy = pz(p.z), bw = w * m, bh = d * m;
+    g.fillStyle = 'rgba(8,12,8,0.55)'; g.fillRect(cx - bw / 2, cy - bh / 2, bw, bh);
+    g.strokeStyle = SPOT_COLOR_CSS[s]; g.lineWidth = 6; g.strokeRect(cx - bw / 2 + 3, cy - bh / 2 + 3, bw - 6, bh - 6);
+    word(names[s], cx, cy, bw * 0.72, bh * 0.66, '#f6f0d8');
+  }
+}
 
 export const SHOE_POS = new THREE.Vector3(-0.92, TOP, -0.30);
 export const DISCARD_POS = new THREE.Vector3(0.92, TOP, -0.30);
 export const COMMISSION_POS = new THREE.Vector3(0, TOP, -0.38);
 /** Card slots: Player side on the left, Banker on the right, cards fan out to the right of each box. */
-export const playerSlot = (idx: number): THREE.Vector3 => new THREE.Vector3(-0.44 + idx * 0.08, TOP + 0.004 + idx * 0.002, -0.06);
-export const bankerSlot = (idx: number): THREE.Vector3 => new THREE.Vector3(0.20 + idx * 0.08, TOP + 0.004 + idx * 0.002, -0.06);
+export const playerSlot = (idx: number): THREE.Vector3 => new THREE.Vector3(-0.44 + idx * 0.08, PRINT_Y + 0.008 + idx * 0.002, -0.06);
+export const bankerSlot = (idx: number): THREE.Vector3 => new THREE.Vector3(0.20 + idx * 0.08, PRINT_Y + 0.008 + idx * 0.002, -0.06);
 export const slotPos = (side: 'P' | 'B', idx: number): THREE.Vector3 => (side === 'P' ? playerSlot(idx) : bankerSlot(idx));
 /** Where new cards leave the shoe mouth. */
 export const shoeMouth = (): THREE.Vector3 => new THREE.Vector3(SHOE_POS.x + 0.09, TOP + 0.08, SHOE_POS.z);
@@ -72,6 +128,9 @@ export type BaccaratParts = {
   lamps: { player: LampPart; banker: LampPart };
   seatLamps: LampPart[];
   chandelier: BulbChain;
+  /** The printed felt layout (card boxes + spot labels): repaint with `drawFelt`, then `feltTex.needsUpdate = true`. */
+  feltCanvas: HTMLCanvasElement;
+  feltTex: THREE.CanvasTexture;
   commissionBox: THREE.Object3D;
   /** Counting Bead (hidden by default). */
   beadCounter: THREE.Group;
@@ -98,17 +157,19 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BaccaratParts>
 
   // kidney table: an ellipse with a dent on the player side (outline in shape space: y < 0 is +Z)
   const outline: Array<[number, number]> = [];
-  for (let k = 0; k < 40; k++) {
-    const t = (k / 40) * Math.PI * 2;
-    const x = 1.2 * Math.cos(t);
-    let y = 0.6 * Math.sin(t);
+  for (let k = 0; k < 64; k++) {
+    const t = (k / 64) * Math.PI * 2;
+    // squared ellipse (exponent 2.8): the felt is full right out to the end seats, so every bet spot is on it
+    const c = Math.cos(t), sn = Math.sin(t);
+    const x = 1.2 * Math.sign(c) * Math.abs(c) ** (2 / 2.8);
+    let y = 0.6 * Math.sign(sn) * Math.abs(sn) ** (2 / 2.8);
     if (y < 0) y += 0.16 * Math.exp(-(x * x) / 0.14);      // the dent pulls the player edge in (+Z)
     outline.push([x, y]);
   }
   const kidneyRot: [number, number, number] = [-90, 0, 0];
   kit.extrude(outline, TOP - 0.07, { color: woodDark, map: kit.tex.wood(woodDark) }, { pos: [0, 0, 0], rot: kidneyRot, parent: root });
   kit.extrude(outline.map(([x, y]) => [x * 1.005, y * 1.005] as [number, number]), 0.06, rail, { pos: [0, TOP - 0.07, 0], rot: kidneyRot, parent: root });
-  kit.extrude(outline.map(([x, y]) => [x * 0.97, y * 0.97] as [number, number]), 0.02, { color: felt, map: kit.tex.felt(felt) }, { pos: [0, TOP - 0.01, 0], rot: kidneyRot, parent: root });
+  kit.extrude(outline.map(([x, y]) => [x * 0.97, y * 0.97] as [number, number]), 0.02, { color: felt, map: kit.tex.felt(felt) }, { pos: [0, TOP - 0.02, 0], rot: kidneyRot, parent: root });
 
   // spot hit targets and the flat outlines (chips sit on them)
   const spotHits: THREE.Mesh[][] = [];
@@ -119,8 +180,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BaccaratParts>
     const anchors: THREE.Object3D[] = [];
     for (let s = 0; s < 5; s++) {
       const p = spotPos(i, s);
-      kit.plane(0.056, 0.07, SPOT_COLOR[s], { pos: [p.x, TOP + 0.002, p.z], rot: [-90, 0, 0], shade: false, parent: root });
-      const hit = kit.plane(0.064, 0.08, hitMat, { pos: [p.x, TOP + 0.008, p.z], rot: [-90, 0, 0], name: `spot${i}_${s}`, parent: root });
+      const hit = kit.plane(SPOT_SIZE[s][0], SPOT_SIZE[s][1], hitMat, { pos: [p.x, PRINT_Y + 0.006, p.z], rot: [-90, 0, 0], name: `spot${i}_${s}`, parent: root });
       hits.push(hit as THREE.Mesh);
       const at = new THREE.Object3D();
       at.position.copy(p).add(new THREE.Vector3(0, 0.02, 0));
@@ -131,15 +191,14 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BaccaratParts>
     spots.push(anchors);
   }
 
-  // big card boxes "PLAYER" and "BANKER" with a label each
-  kit.plane(0.46, 0.26, pal.black, { pos: [-0.30, TOP + 0.003, -0.06], rot: [-90, 0, 0], shade: false, parent: root });
-  kit.plane(0.46, 0.26, pal.black, { pos: [0.34, TOP + 0.003, -0.06], rot: [-90, 0, 0], shade: false, parent: root });
-  for (const [x, key] of [[-0.30, 'm.baccarat.boxP'], [0.34, 'm.baccarat.boxB']] as const) {
-    const lab = kit.label({ text: { key }, w: 0.4, h: 0.07, bg: null, color: pal.cream });
-    lab.mesh.position.set(x, TOP + 0.006, -0.17);
-    lab.mesh.rotation.x = -Math.PI / 2;
-    root.add(lab.mesh);
-  }
+  // the felt print: card boxes "PLAYER" / "BANKER" and every seat's spots, one linear + mipmapped canvas (repainted by index.ts)
+  const [feltCanvas] = makeCanvas(FELT_W, FELT_H);
+  drawFelt(feltCanvas, { banker: 'B', player: 'P', tie: 'T', ppair: 'PP', bpair: 'BP', boxP: 'PLAYER', boxB: 'BANKER' });   // i18n-ok: first paint, index.ts repaints in the language
+  const feltTex = new THREE.CanvasTexture(feltCanvas);
+  feltTex.colorSpace = THREE.NoColorSpace;
+  crispTexture(feltTex, 4);
+  const feltMat = kit.mat({ map: feltTex, lit: false, transparent: true, alphaTest: 0.01, side: 'double', snap: false, affine: false });
+  kit.plane(2.4, 1.2, feltMat, { pos: [0, PRINT_Y, 0], rot: [-90, 0, 0], shade: false, name: 'feltPrint', parent: root });
 
   // table rim: a brass strip on the dealer side of the felt
   kit.box(0.92, 0.012, 0.012, pal.brass, { pos: [0, TOP + 0.001, -0.6], parent: root });
@@ -153,10 +212,10 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BaccaratParts>
     root.add(stool);
     seats.push({
       // seat view: high over the stool, steep look-down, so the whole 2.4 x 1.2 m felt, the card boxes and every bet spot sit
-      // between the HUD top strip and the control bar at 16:9 and 4:3. The camera drifts only 12 % of the seat offset.
+      // between the HUD top strip and the control bar at 16:9 and 4:3. The camera drifts only 5 % of the seat offset.
       pose: {
-        pos: new THREE.Vector3(x * 0.12, 2.25, 1.1),
-        look: new THREE.Vector3(x * 0.12, TOP, -0.05),
+        pos: new THREE.Vector3(x * 0.05, 2.0, 0.78),
+        look: new THREE.Vector3(x * 0.05, TOP, 0.12),
         fov: 60, mouse: 'pick',
       },
       stand: new THREE.Vector3(x, 0, SEAT_Z + 0.12),
@@ -245,12 +304,13 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BaccaratParts>
   totalB.mesh.rotation.x = -0.2;
   root.add(totalP.mesh, totalB.mesh);
 
-  // roadmap on a chrome pole at the +X end, screen facing the seats
-  kit.cyl(0.02, 0.02, 1.6, pal.chrome, { pos: [1.4, 0.8, 0], seg: 8, parent: root });
+  // roadmap: a brass-footed board leaning back on the far felt right of the Banker box, so the seat camera sees it with the table
+  // (it used to stand on a chrome pole beyond the +X end, outside every seat view)
+  kit.box(0.5, 0.03, 0.1, pal.brass, { pos: [0.74, TOP + 0.015, -0.43], parent: root });
   const roadmap = kit.screen({ w: 0.5, h: 0.25, px: [96, 48], bezel: pal.black, glow: 0.6, scanlines: false });
   crispTexture(roadmap.tex, 4);
-  roadmap.mesh.position.set(1.4, 1.36, 0);
-  roadmap.mesh.rotation.y = -Math.PI / 2;
+  roadmap.mesh.position.set(0.74, TOP + 0.15, -0.45);
+  roadmap.mesh.rotation.x = -0.75;
   root.add(roadmap.mesh);
 
   // Counting Bead (hidden by default): two rods and eleven beads, left of the shoe
@@ -296,7 +356,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BaccaratParts>
   const parts: BaccaratParts = {
     dealer, paddle, shoe: shoePart.root, shoeLevel, discardStack: discard, squeezeCards, cards, chips,
     mirror, mirrorFigure, mirrorGrin, roadmap, totals: { P: totalP, B: totalB }, lamps, seatLamps, chandelier,
-    commissionBox, beadCounter, spotHits, spots,
+    commissionBox, beadCounter, spotHits, spots, feltCanvas, feltTex,
   };
   kit.finalize(root, {
     keep: [

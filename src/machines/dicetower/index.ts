@@ -389,6 +389,7 @@ export default class Dicetower extends TableBase<DicetowerParts, Ev, Snap, Act> 
     if (this.isHost && this.hs.phase === 'idle' && !isBot(pid)) this.startBetting();
     this.paintLamps();
     if (local) {
+      this.parts.stools.forEach((s) => { s.visible = false; });   // seat standard: the chrome stool bases stay out of the seat view
       this.sfx('chime', { vol: 0.5 });
       this.seatHud?.show();
       this.showHud();
@@ -397,6 +398,7 @@ export default class Dicetower extends TableBase<DicetowerParts, Ev, Snap, Act> 
   }
 
   onRelease(_pid: PlayerId, seat: number, local: boolean): void {
+    if (local) this.parts.stools.forEach((s) => { s.visible = true; });
     if (this.isHost) {
       const hs = this.hs;
       if (hs.phase === 'betting') {

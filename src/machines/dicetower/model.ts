@@ -13,6 +13,7 @@ import type { ChipPool, DicePool, Kit, LampPart, ScreenSurface } from '@/kit/typ
 import type { MachineModel, SeatDef } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { makeCanvas } from '@/core/texgen/pixel';
+import { crispTexture } from '@/core/ui/textOverlay';
 import { PAY_TEXT, SPOTS, exactOf } from './rules';
 
 export type DicetowerParts = {
@@ -52,6 +53,8 @@ export type DicetowerParts = {
   diceRest: THREE.Vector3[];
   /** Desk light over the table (pooled-light anchor). */
   light: THREE.Object3D;
+  /** The four stools (chrome spokes cross the seat view; the index hides them while a player is seated). */
+  stools: THREE.Object3D[];
 };
 
 export const TZ = -0.15;             // table centre z
@@ -65,7 +68,7 @@ export const DICE_FROM: readonly [number, number, number] = [0, 1.7, TOW_Z];
 
 // ── bet print: 16 spots (felt-plane x, root z) in four rows, far to near ──────────────────────
 const ROW_Z = [0.40, 0.26, 0.12, -0.02];
-const LAYOUT_W = 512, LAYOUT_H = 338;
+const LAYOUT_W = 1024, LAYOUT_H = 676;     // 2× the first bake: the spot names stay sharp at seat distance
 export const LAYOUT_CX = 0, LAYOUT_CZ = TZ + 0.12, LAYOUT_WM = 1.0, LAYOUT_DM = 0.66;
 
 const ROWS: ReadonlyArray<ReadonlyArray<[string, number]>> = [
@@ -104,7 +107,7 @@ export function drawLayout(c: HTMLCanvasElement, label: (key: string, n?: number
   g.fillRect(0, 0, LAYOUT_W, LAYOUT_H);
   g.strokeStyle = '#e8c060';
   g.fillStyle = '#e8c060';
-  g.lineWidth = 2;
+  g.lineWidth = 4;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   for (const s of SPOTS) {
@@ -113,18 +116,18 @@ export function drawLayout(c: HTMLCanvasElement, label: (key: string, n?: number
     const ex = exactOf(s);
     const bx = px(cx), by = pz(cz), bw = (w / LAYOUT_WM) * LAYOUT_W, bh = (h / LAYOUT_DM) * LAYOUT_H;
     g.strokeRect(bx - bw / 2, by - bh / 2, bw, bh);
-    g.font = ex !== null ? 'bold 22px monospace' : 'bold 20px monospace';
+    g.font = ex !== null ? 'bold 84px monospace' : 'bold 80px monospace';   // big enough to survive the PSX pass at seat distance
     const name = ex !== null ? label('lay.exact', ex) : label(`lay.${s}`);
     g.fillText(name, bx, by - bh * 0.16);
-    g.font = '18px monospace';
-    g.fillText(PAY_TEXT[s] ?? '', bx, by + bh * 0.26);
+    g.font = 'bold 40px monospace';
+    g.fillText(PAY_TEXT[s] ?? '', bx, by + bh * 0.3);
   }
 }
 
 export function buildModel(kit: Kit, o: ModelOpts): MachineModel<DicetowerParts> {
   const { pal } = kit;
   const root = kit.group('dicetower');
-  const felt = 0x3b1e54, brass = 0xb08830, red = 0xd0102a;
+  const felt = 0x5e3484, brass = 0xb08830, red = 0xd0102a;   // lifted from 3b1e54: the felt reads at seat distance
   const walnut = o.variant % 2 ? pal.wood : 0x3e2414;
 
   // ── round table (kit felt table, seats placed by us below) ──
@@ -141,6 +144,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<DicetowerParts>
   drawLayout(layoutCanvas, (k) => k);
   const layoutTex = new THREE.CanvasTexture(layoutCanvas);
   layoutTex.colorSpace = THREE.NoColorSpace;
+  crispTexture(layoutTex, 4);                  // on-machine text: linear + mips, not nearest
   const layoutMat = kit.mat({ map: layoutTex, lit: false, side: 'double', snap: false, affine: false });
   const layout = kit.plane(LAYOUT_WM, LAYOUT_DM, layoutMat, { pos: [LAYOUT_CX, TOP + 0.004, LAYOUT_CZ], rot: [-90, 0, 0], shade: false, name: 'layout' });
   root.add(layout);
@@ -215,6 +219,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<DicetowerParts>
   const seatLamps: LampPart[] = [];
   const railMeters: ScreenSurface[] = [];
   const seats: SeatDef[] = [];
+  const stools: THREE.Object3D[] = [];
   SEAT_ANGLE_DEG.forEach((deg) => {
     const a = (deg * Math.PI) / 180;
     const sx = Math.sin(a), sz = Math.cos(a);
@@ -230,18 +235,19 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<DicetowerParts>
     const stand = new THREE.Vector3(sx * SEAT_R, 0, TZ + sz * SEAT_R);
     // seat standard: the whole tower, the felt and the dice tray in frame from every seat (the seats share one view)
     // high and back: the red seat pads of the near stools drop below the frame, the tower top stays inside the HUD band
-    const pose = { pos: new THREE.Vector3(0, 2.2, 1.75), look: new THREE.Vector3(0, 1.2, -0.3), fov: 60, mouse: 'pick' as const };
+    const pose = { pos: new THREE.Vector3(0, 1.9, 1.28), look: new THREE.Vector3(0, 0.98, -0.25), fov: 70, mouse: 'pick' as const };
     seats.push({ pose, stand, avatar: 'sit', standY: 0.68 });
     const stool = kit.stool({ h: 0.68, seat: 0x3a2418 });   // dark leather: the near stools stay out of the play read
     stool.position.copy(stand);
     root.add(stool);
+    stools.push(stool);
   });
 
   // ── light, prompt and anchors ──
   root.add(kit.blobShadow(2.0, 1.6));
   const light = new THREE.Object3D();
-  light.position.set(0, 1.95, TOW_Z + 0.25);
-  light.userData = { color: 0xffe2a0, intensity: 0.8, range: 2.6, flicker: 'STEADY' };
+  light.position.set(0, 1.75, TZ + 0.05);                      // over the felt: the bet print and the dice tray read
+  light.userData = { color: 0xffe2a0, intensity: 1.4, range: 2.6, flicker: 'STEADY' };
   root.add(light);
   const speaker = new THREE.Object3D(); speaker.position.set(0, TOP, TZ + 0.45); root.add(speaker);
   const prompt = new THREE.Object3D(); prompt.position.set(0, 1.25, 0.75); root.add(prompt);
@@ -254,12 +260,12 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<DicetowerParts>
   const parts: DicetowerParts = {
     tower, towerFloors, slits, baffles, dice, tray, chips, resultBoard, historyPegs, skullCuckoo, phaseLamp, fairLamp,
     railMeters, seatLamps, layout, layoutCanvas, layoutTex, diceFrom,
-    diceRest: DICE_REST.map((p) => new THREE.Vector3(...p)), light,
+    diceRest: DICE_REST.map((p) => new THREE.Vector3(...p)), light, stools,
   };
   kit.finalize(root, {
     keep: [
       tower, skullCuckoo, chips.root, layout, light, tray, ...dice.dice, ...towerFloors, ...slits, ...historyPegs.map((p) => p.root),
-      phaseLamp.root, fairLamp.root, ...seatLamps.map((l) => l.root), ...railMeters.map((s) => s.mesh), resultBoard.mesh,
+      phaseLamp.root, fairLamp.root, ...seatLamps.map((l) => l.root), ...railMeters.map((s) => s.mesh), resultBoard.mesh, ...stools,
     ],
   });
 

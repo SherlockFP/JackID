@@ -19,14 +19,20 @@ import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { createRng, type Rng } from '@/core/rng';
 import { crispTexture } from '@/core/ui/textOverlay';
+import { makeCanvas } from '@/core/texgen/pixel';
 
 export const W = 1.2, D = 0.35, H = 2.4, FOOT_D = 1.0;
 export const ROWS = 12;
-export const DX = 0.08, DY = 0.09;
-export const FUNNEL_Y = 2.12;                 // puck start height (top funnel mouth)
+export const DX = 0.08, DY = 0.075;          // DY 0.09 -> 0.075: a shorter board, so the seat camera can come closer and the slot labels grow
+export const FUNNEL_Y = 1.95;                 // puck start height (top funnel mouth)
 export const ROW1_Y = FUNNEL_Y - 0.3;         // row 1 sits 0.30 m below the funnel
 export const LAND_Y = 0.5;                    // resting height of a puck in its slot
-export const SLOT_PLATE_Y = 0.47, LAMP_Y = 0.6;
+/**
+ * Slot plate: one 416 x 160 canvas (1 texel = 2.5 mm) over y 0.42..0.82. A slot is only ~7 low-res pixels wide from the seat, so
+ * the labels sit in THREE staggered rows (slot % 3), 3 slots wide each, in 11 cm tall bold figures; the lamp band runs along the bottom.
+ */
+export const PLATE_H = 0.4, SLOT_PLATE_Y = 0.42 + PLATE_H / 2, LAMP_Y = 0.44;
+export const PLATE_PX: [number, number] = [416, 160];
 export const PUCK_R = 0.035, PUCK_T = 0.012;
 export const PEG_R = 0.008;
 export const BOARD_Z = 0.12;                  // front-to-back of pegs (z = 0)
@@ -53,8 +59,8 @@ export type PlinkoParts = {
   fingerSpots: Array<[row: number, j: number]>;
   /** 5 translucent pucks (instanced). */
   pucks: THREE.InstancedMesh;
-  /** 13 painted multiplier plates as one 208 × 16 canvas, repainted per risk. */
-  slotPlates: ScreenSurface;
+  /** 13 painted multiplier plates as one 208 × 80 canvas (labels in three staggered rows, slot % 3), repainted per risk. */
+  slotPlates: FlatPlate;
   /** 13 slot lamps (instanced); instance s = slot s. */
   slotLamps: THREE.InstancedMesh;
   /** Physical LOW / MID / HIGH lever on the base. */
@@ -65,6 +71,13 @@ export type PlinkoParts = {
   /** Cosmetic insert chute sliding on the top rail. */
   chute: THREE.Object3D;
 };
+
+/** A flat painted canvas (no bezel, no bulge: the kit screen's curved glass warps small figures). `draw` paints and uploads. */
+export interface FlatPlate {
+  mesh: THREE.Mesh; canvas: HTMLCanvasElement; tex: THREE.CanvasTexture; w: number; h: number;
+  draw(fn: (g: CanvasRenderingContext2D, p: { w: number; h: number }) => void): void;
+  dispose(): void;
+}
 
 export const RISK_ANGLE = [-0.38, 0, 0.38];   // lever rotation.x for LOW / MID / HIGH
 
@@ -110,8 +123,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PlinkoParts> {
     pegSlot[k * 16 + j] = pegList.length;
     pegList.push([k, j]);
   }
-  const pegGeo = new THREE.TetrahedronGeometry(PEG_R * 1.4, 0);
-  const pegs = new THREE.InstancedMesh(pegGeo, kit.mat(pal.chrome), pegList.length);
+  const pegGeo = new THREE.TetrahedronGeometry(PEG_R * 2.2, 0);
+  const pegs = new THREE.InstancedMesh(pegGeo, kit.mat({ color: 0xdfe6ee, lit: false }), pegList.length);   // unlit: lit chrome is near-black on the dark backboard from the seat
   const m4 = new THREE.Matrix4();
   pegList.forEach(([k, j], i) => { m4.makeTranslation(pegX(k, j), pegY(k), 0); pegs.setMatrixAt(i, m4); });
   pegs.instanceMatrix.needsUpdate = true;
@@ -123,7 +136,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PlinkoParts> {
       new THREE.Vector2(0.011, 0.0), new THREE.Vector2(0.014, 0.012), new THREE.Vector2(0.011, 0.024), new THREE.Vector2(0.0, 0.03)],
     4,
   );
-  const fingers = new THREE.InstancedMesh(fingerGeo, kit.mat({ color: pal.bone, lit: true }), 6);
+  const fingers = new THREE.InstancedMesh(fingerGeo, kit.mat({ color: pal.bone, lit: false }), 6);
   fingerSpots.forEach(([k, j], i) => { m4.makeTranslation(pegX(k, j), pegY(k), 0); fingers.setMatrixAt(i, m4); });
   fingers.instanceMatrix.needsUpdate = true;
   root.add(fingers);
@@ -137,16 +150,24 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PlinkoParts> {
   root.add(pucks);
 
   // ── slot plate: one canvas, 13 painted multipliers (repainted per risk by index.ts) ─────────────
-  const slotPlates = kit.screen({ w: 13 * DX, h: 0.07, px: [208, 16], bezel: black, scanlines: false });   // no scanline shader: it halves every other row of the 16 px plates
-  crispTexture(slotPlates.tex, 4);                                                                       // linear + mips: the multipliers stay sharp from the seat camera
-  slotPlates.mesh.position.set(0, SLOT_PLATE_Y, BACK_Z + 0.012);
+  const [plateCanvas, plateG] = makeCanvas(PLATE_PX[0], PLATE_PX[1]);
+  plateG.fillStyle = '#120a04'; plateG.fillRect(0, 0, PLATE_PX[0], PLATE_PX[1]);
+  const plateTex = new THREE.CanvasTexture(plateCanvas);
+  plateTex.colorSpace = THREE.NoColorSpace;
+  crispTexture(plateTex, 4);                                                                             // linear + mips: the multipliers stay sharp from the seat camera
+  const plateMesh = kit.plane(13 * DX, PLATE_H, kit.mat({ map: plateTex, lit: false, snap: false, affine: false }), { pos: [0, SLOT_PLATE_Y, BACK_Z + 0.022], shade: false, name: 'slotPlate' }) as THREE.Mesh;   // in front of the gold border strip (front face BACK_Z + 0.02)
+  const slotPlates: FlatPlate = {
+    mesh: plateMesh, canvas: plateCanvas, tex: plateTex, w: PLATE_PX[0], h: PLATE_PX[1],
+    draw(fn) { fn(plateG, { w: PLATE_PX[0], h: PLATE_PX[1] }); plateTex.needsUpdate = true; },
+    dispose() { plateTex.dispose(); },
+  };
   root.add(slotPlates.mesh);
 
   // ── slot lamps (instanced quads on the backboard, instance s = slot s) ──────────────────────────
   const lampGeo = new THREE.PlaneGeometry(0.05, 0.022);
   const slotLamps = new THREE.InstancedMesh(lampGeo, kit.mat({ color: 0xffffff, lit: false }), 13);
   slotLamps.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(13 * 3).fill(0.25), 3);
-  for (let s = 0; s < 13; s++) { m4.makeTranslation(slotX(s), LAMP_Y, BACK_Z + 0.013); slotLamps.setMatrixAt(s, m4); }
+  for (let s = 0; s < 13; s++) { m4.makeTranslation(slotX(s), LAMP_Y, BACK_Z + 0.03); slotLamps.setMatrixAt(s, m4); }
   slotLamps.instanceMatrix.needsUpdate = true;
   root.add(slotLamps);
 
@@ -206,8 +227,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PlinkoParts> {
   return {
     root,
     parts,
-    // seat view: the whole board (funnel to slot plate, 1.8 m) between the HUD top strip and the control bar, 2.7 m back
-    playPose: { pos: new THREE.Vector3(0, 1.3, 2.7), look: new THREE.Vector3(0, 1.2, 0), fov: 58, mouse: 'primary' },
+    // seat view: the whole board (funnel to slot plate, 1.8 m) between the HUD top strip and the control bar, 2.0 m back
+    playPose: { pos: new THREE.Vector3(0, 1.12, 2.0), look: new THREE.Vector3(0, 1.12, 0), fov: 58, mouse: 'primary' },
     colliders: [{ min: [-W / 2, 0, -D / 2], max: [W / 2, H, D / 2] }],
     interact: { min: [-W / 2, 0.3, -D / 2], max: [W / 2, H, D / 2 + 0.3] },
     anchors: { speaker, prompt, label, marqueeTop, servicePlate, stand, coinOut, light },

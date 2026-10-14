@@ -56,7 +56,7 @@ export const TOP_Y = 1.0;
 export const TILT = (15 * Math.PI) / 180;
 export const GRID_X = -0.10;
 export const PITCH = 0.17;
-export const FLAP = 0.15;
+export const FLAP = 0.14;
 export const CASH = { x: 0.40, z: 0.20 } as const;
 export const FLIP_OPEN = -1.9;
 const KEYS = 6;
@@ -79,12 +79,12 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<MinesParts> {
   const at = (x: number, y: number, z: number): { pos: [number, number, number]; parent: THREE.Object3D } => ({ pos: [x, y, z], parent: root });
 
   // ── static cabinet shell (flat colours: merged by kit.finalize) ──
-  kit.box(1.10, 0.82, 0.90, body, at(0, 0.49, 0));                    // body, top at 0.90
+  kit.box(1.10, 0.78, 0.90, body, at(0, 0.47, 0));                    // body, top at 0.86: under the 15 deg bed everywhere (it used to poke through the front lip)
   kit.box(1.06, 0.08, 0.86, steel, at(0, 0.04, 0));                   // plinth
-  kit.box(1.10, 0.14, 0.50, body, at(0, 0.97, -0.20));                // back riser under the tilted top
+  kit.box(1.10, 0.26, 0.04, body, at(0, 1.0, -0.46));                 // back panel closing the wedge under the tilted top (the old 0.5 m riser poked through the middle of the grid)
   kit.box(0.03, 0.82, 0.86, steel, at(-0.555, 0.49, 0));              // side panels
   kit.box(0.03, 0.82, 0.86, steel, at(0.555, 0.49, 0));
-  kit.cyl(0.025, 0.025, 0.4, steel, { pos: [0, 1.23, -0.12], parent: root, seg: 6 }); // CRT stalk (tall: the ladder floats above the grid, so the seat camera sees both)
+  kit.cyl(0.03, 0.03, 0.4, steel, { pos: [0, 1.15, -0.47], parent: root, seg: 6 }); // CRT stalk: stands at the BACK edge of the grid so it never crosses the tiles from the seat
 
   // ── tilted top: velvet plate, brass frame, flaps, socket, selector ──
   const tilt = kit.group('mines_top');
@@ -103,7 +103,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<MinesParts> {
     const pivot = kit.group(`tile_${i}`);
     pivot.position.set(x, 0, z - FLAP / 2);                             // hinge on the back edge
     tilt.add(pivot);
-    kit.box(FLAP, 0.02, FLAP, brass, { pos: [0, 0.01, FLAP / 2], parent: pivot });
+    // checkerboard flaps: bright / dark brass over the dark velvet, so the 5 x 5 grid reads from the seat camera
+    kit.box(FLAP, 0.02, FLAP, ((i % 5) + Math.floor(i / 5)) % 2 === 0 ? 0xe0b84a : 0x9a7428, { pos: [0, 0.01, FLAP / 2], parent: pivot });
     tiles.push(pivot);
   }
 
@@ -149,16 +150,18 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<MinesParts> {
   cashToggle.root.position.set(CASH.x, 0.02, CASH.z);
   tilt.add(cashToggle.root);
 
-  // ── CRT on a stalk, behind the grid (screen faces the player) ──
-  // (own monitor: the kit CRT's scanline shader halves every other texel row, which wrecks 5 px digits; this one is flat glass,
-  // linear + mips, and 0.42 x 0.315 so the ladder reads from the seat camera)
-  const crt = { screen: kit.screen({ w: 0.42, h: 0.315, px: [160, 120], bezel: pal.black, glow: 0.6, scanlines: false }) };
+  // ── CRT on a stalk, behind the grid (screen faces the player, leaning back like a monitor) ──
+  // Own monitor: flat glass (the kit CRT's scanline shader halves every other texel row, which wrecks 5 px digits), linear + mips,
+  // 0.8 x 0.4 m with a 128 x 64 canvas; the text is drawn at scale 2 to 4 (a 10 x 14 texel glyph is ~7 x 9 low-res pixels from the seat).
+  const CRT_TILT = -0.55;                                             // rad about X: the face looks up at the seat
+  const crt = { screen: kit.screen({ w: 0.8, h: 0.4, px: [128, 64], bezel: pal.black, glow: 0.6, scanlines: false }) };
   crispTexture(crt.screen.tex, 4);
   crt.screen.clear('#06140a');
-  crt.screen.mesh.position.set(0, 1.55, -0.12);
+  crt.screen.mesh.position.set(0, 1.5, -0.42);
+  crt.screen.mesh.rotation.x = CRT_TILT;
   root.add(crt.screen.mesh);
-  kit.box(0.5, 0.395, 0.05, 0x1f2616, { bevel: 0.012, ...at(0, 1.55, -0.175) });             // casing (merged)
-  kit.box(0.33, 0.25, 0.2, 0x1f2616, { bevel: 0.01, ...at(0, 1.545, -0.3) });
+  kit.box(0.9, 0.5, 0.05, 0x1f2616, { bevel: 0.012, pos: [0, 1.49, -0.45], rot: [CRT_TILT * 180 / Math.PI, 0, 0], parent: root });   // casing (merged)
+  kit.box(0.5, 0.3, 0.14, 0x1f2616, { bevel: 0.01, ...at(0, 1.42, -0.55) });
 
   // ── lamp, LEDs, label, keyboard tray ──
   const lamp = kit.lamp({ r: 0.035, color: pal.neonYellow, shape: 'dome' });
@@ -213,7 +216,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<MinesParts> {
     root,
     parts,
     // seat view: raised and pitched down so the CRT ladder (on its tall stalk), the whole 5 x 5 grid and the CASH OUT guard sit between the HUD strip and the bar
-    playPose: { pos: new THREE.Vector3(0, 2.2, 1.55), look: new THREE.Vector3(-0.03, 1.2, -0.02), fov: 58, mouse: 'pick' },
+    playPose: { pos: new THREE.Vector3(0, 2.1, 1.55), look: new THREE.Vector3(-0.03, 1.14, -0.1), fov: 58, mouse: 'pick' },
     colliders: [{ min: [-0.55, 0, -0.45], max: [0.55, 1.04, 0.47] }],
     interact: { min: [-0.55, 0.1, -0.45], max: [0.55, 1.1, 0.6] },
     anchors: { speaker, prompt, label: label.mesh, marqueeTop, servicePlate, stand, light, fxTwist },

@@ -230,9 +230,10 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BingoParts> {
     desks.push({ cards, cardCanvas, cardTex, dauber, oneToGo, rail });
     seats.push({
       pose: {
-        pos: new THREE.Vector3(x, 1.12, bz),
-        // seat view: the look point sits above the desk so the card grid lands mid-frame, clear of the top banner and the bottom bar
-        look: new THREE.Vector3(x, DESK_TOP + 0.12, dz),
+        // seat view: backed off and raised (was 0.34 m from the card grid, which filled the frame) so the card grid, its daubs
+        // and the desk edge sit mid-frame, clear of the top banner and the bottom bar. Row 2 stops at the room's front edge.
+        pos: new THREE.Vector3(x, 1.22, Math.min(bz + 0.1, HALF_D - 0.05)),
+        look: new THREE.Vector3(x, DESK_TOP + 0.1, dz),
         fov: 55,
         mouse: 'primary',
       },

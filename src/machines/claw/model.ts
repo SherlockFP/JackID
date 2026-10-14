@@ -18,6 +18,7 @@ import type { KitX } from '@/kit/index';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { CHUTE, type Kind } from './rules';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 export type ClawParts = {
   gantry: THREE.Group;          // X/Z carriage inside the box
@@ -40,7 +41,7 @@ export const FLOOR_Y = 0.97;       // box floor, top face
 export const BOX_TOP_Y = 1.75;
 export const RAIL_Y = 1.72;        // gantry rail height
 export const HEAD_TOP = 0.58;      // claw head height below the rail, open
-export const HEAD_DOWN = 0.90;     // claw head height below the rail, at the floor
+export const HEAD_DOWN = 0.68;     // claw head height below the rail, at the pile (0.90 sank the head and prongs 0.28 m under the box floor)
 export const PRONG_R = 0.035;
 export const PRONG_OPEN = 0.15;    // rad
 export const PRONG_STRONG = 0.9;   // rad, close angle for a strong grip
@@ -89,8 +90,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ClawParts> {
   const { pal } = kit;
   const body = BODY[o.variant] ?? BODY[0];
   const trim = TRIM[o.variant] ?? TRIM[0];
-  const steel = 0x3a2a34;
-  const chrome = pal.chrome;
+  const steel = 0x6a5a66;            // lifted from 0x3a2a34: the gantry and cable were near-black against the dark room
+  const chrome = 0xe4eaf4;           // bright silver (lit chrome renders near-black from the seat)
   const root = kit.group('claw');
   const at = (x: number, y: number, z: number): { pos: [number, number, number]; parent: THREE.Object3D } => ({ pos: [x, y, z], parent: root });
 
@@ -103,7 +104,13 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ClawParts> {
   kit.box(0.92, 0.02, 0.92, trim, at(0, 1.76, 0));                     // mint lip over the box
 
   // the play box: a floor, four glass walls (the glass is a single transparent mesh)
-  kit.box(BOX, 0.02, BOX, INTERIOR, at(0, FLOOR_Y - 0.01, 0));
+  kit.box(BOX, 0.02, BOX, kit.mat({ color: 0x8fe0c8, lit: false }), at(0, FLOOR_Y + 0.005, 0));      // (raised 1.5 cm: the mint lip under the box is coplanar with the old floor top and won the z-fight) unlit mint floor: the pit must read from the seat, and the brown / cream prizes stand out on it
+  // backdrop: back and side walls inside the glass (it used to be open to the dark room, so the pile and the claw had nothing to read against)
+  const wallMat = kit.mat({ color: 0xffb3d9, lit: false });
+  const wallMat2 = kit.mat({ color: 0xffc6e3, lit: false });
+  kit.box(BOX, BOX - 0.02, 0.02, wallMat, at(0, (0.95 + BOX_TOP_Y) / 2, -BOX / 2 + 0.01));
+  for (const sx of [-1, 1]) kit.box(0.02, BOX - 0.02, BOX, wallMat2, at(sx * (BOX / 2 - 0.01), (0.95 + BOX_TOP_Y) / 2, 0));
+  for (let k = 0; k < 4; k++) kit.box(BOX, 0.012, 0.004, 0xff7fbf, at(0, 1.10 + k * 0.17, -BOX / 2 + 0.024));   // stripes on the back wall
   const glass = kit.glass({ w: BOX, h: BOX - 0.02, d: BOX, tint: pal.glass, opacity: 0.18 });
   glass.position.set(0, (0.95 + BOX_TOP_Y) / 2, 0);
   root.add(glass);
@@ -125,13 +132,14 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ClawParts> {
   kit.box(BOX, 0.02, 0.02, chrome, { parent: gantry });                                                       // X bar (rides the Z rails)
   kit.box(0.10, 0.06, 0.10, steel, { pos: [0, -0.02, 0], parent: gantry });                                   // carriage block
 
-  const cable = kit.cyl(0.004, 0.004, 1, steel, { parent: gantry, seg: 5 });
+  const cable = kit.cyl(0.018, 0.018, 1, 0xd8d0dc, { parent: gantry, seg: 6 });   // 3.6 cm: a thinner cylinder falls between low-res pixels (vertex snap) and vanishes in stretches
   cable.scale.set(1, HEAD_TOP, 1);
   cable.position.y = -HEAD_TOP / 2;
   const clawHead = kit.group('claw_head');
   clawHead.position.set(0, -HEAD_TOP, 0);
+  clawHead.scale.setScalar(1.35);                       // chunkier claw: it is the thing to watch from the seat
   gantry.add(clawHead);
-  kit.cyl(0.03, 0.03, 0.02, steel, { pos: [0, 0.01, 0], parent: clawHead, seg: 8 });   // hub
+  kit.cyl(0.045, 0.045, 0.04, 0xffd040, { pos: [0, 0.02, 0], parent: clawHead, seg: 8 });   // hub (gold, chunky: the claw is the thing to watch)
 
   const prongs: THREE.Group[] = [];
   for (let i = 0; i < 3; i++) {
@@ -141,12 +149,12 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ClawParts> {
     pivot.rotation.y = -th;
     pivot.rotation.z = -PRONG_OPEN;
     clawHead.add(pivot);
-    kit.box(0.008, 0.07, 0.008, chrome, { pos: [0.012, -0.035, 0], parent: pivot });   // segment 1
+    kit.box(0.018, 0.07, 0.018, chrome, { pos: [0.012, -0.035, 0], parent: pivot });   // segment 1
     const elbow = kit.group(`prong_${i}_elbow`);
     elbow.position.set(0.012, -0.07, 0);
     elbow.rotation.z = 0.35;
     pivot.add(elbow);
-    kit.box(0.008, 0.06, 0.008, chrome, { pos: [0.005, -0.03, 0], parent: elbow });   // segment 2
+    kit.box(0.016, 0.06, 0.016, chrome, { pos: [0.005, -0.03, 0], parent: elbow });   // segment 2
     prongs.push(pivot);
   }
 
@@ -202,6 +210,10 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ClawParts> {
   const marquee = kit.marquee({ w: 0.8, h: 0.2, text: { key: 'm.claw.marquee' }, color: pal.neonYellow, bg: pal.black, bulbs: 16 });
   marquee.root.position.set(0, 1.85, 0.46);
   root.add(marquee.root);
+  marquee.root.traverse((o) => {                                  // linear + mips on the marquee text sheet so the title stays readable
+    const mat = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined;
+    if (mat && !Array.isArray(mat) && mat.map && mat.map.image) crispTexture(mat.map, 4);
+  });
 
   // interior lamps (light hints for the world's pooled lights)
   const anchor = (x: number, y: number, z: number): THREE.Object3D => { const o3 = new THREE.Object3D(); o3.position.set(x, y, z); root.add(o3); return o3; };
@@ -234,7 +246,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ClawParts> {
     root,
     parts,
     // seat standard: the glass play box, prize pit, chute, control panel and the marquee top in frame
-    playPose: { pos: new THREE.Vector3(0, 1.75, 2.0), look: new THREE.Vector3(0, 1.30, 0), fov: 62, mouse: 'pick' },
+    playPose: { pos: new THREE.Vector3(0, 1.95, 1.55), look: new THREE.Vector3(0, 1.4, 0), fov: 58, mouse: 'pick' },
     colliders: [{ min: [-0.45, 0, -0.45], max: [0.45, 1.95, 0.45] }],
     interact: { min: [-0.45, 0.1, -0.45], max: [0.45, 1.95, 0.6] },
     anchors: {

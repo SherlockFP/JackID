@@ -242,6 +242,10 @@ export const FLOOR_READY: ReadonlySet<MachineId> = new Set<MachineId>([
   // WAVE 20 integrator pass (1280x720 bench screenshots): whole play surface in frame, clear of the HUD strips, readable.
   'craps', 'keno', 'devilstable', 'pisti', 'sonkart', 'fruitmachine', 'lootbox', 'coinpusher', 'bigsix', 'bingopin',
   'cardwar', 'derby', 'reddog', 'shellgame', 'stacker', 'lottoblower',
+  // WAVE 21 views-e (1280x720 bench screenshots): play surface and labels in frame, clear of the HUD strips and occluders.
+  'tombola', 'dicetower', 'fantan', 'teetotum', 'bingo',
+  // WAVE 22 views-d (1280x720 bench screenshots): whole surface + labels in frame, clear of the HUD strips, figures legible.
+  'baccarat', 'mines', 'plinko', 'sicbo', 'claw',
 ]);
 /** Machines that never move, whatever the line-up: the marquee and table games, plus the vendors and terminals. */
 export const ROSTER_FIXED: ReadonlySet<MachineId> = new Set<MachineId>([

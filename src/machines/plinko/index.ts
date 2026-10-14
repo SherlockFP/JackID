@@ -438,16 +438,28 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
     this.hidePucks();
   }
 
-  /** The 13 multiplier plates, one 208 × 16 canvas (base table for the risk; charms are not shown). */
+  /**
+   * The 13 multiplier plates, one 416 × 160 canvas (base table for the risk; charms are not shown). A slot is only ~7 low-res
+   * pixels wide from the seat, so the labels sit in three staggered rows (slot % 3), 3 slots wide each, as 11 cm tall bold
+   * figures (the 5 x 7 bitmap face is too small at this distance); the lamp band runs along the bottom.
+   */
   private paintPlates(risk: number): void {
     const r = clampRisk(risk) as Risk;
     this.parts.slotPlates.draw((g, sc) => {
       g.fillStyle = '#120a04'; g.fillRect(0, 0, sc.w, sc.h);
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineJoin = 'round';
       for (let s = 0; s < SLOTS; s++) {
         const m = baseMult(r, s);
-        g.fillStyle = '#' + colourFor(m).toString(16).padStart(6, '0');
-        g.fillRect(s * 16 + 1, 1, 14, 14);
-        sc.text(String(m), s * 16 + 8, 4, { font: 'px5', color: '#000000', align: 'center' });
+        const x = s * 32 + 16, y0 = 2 + (s % 3) * 46;
+        const col = '#' + (m < 1 ? 0xd0d0d0 : colourFor(m)).toString(16).padStart(6, '0');
+        g.fillStyle = '#000000';
+        g.fillRect(x - 48, y0, 96, 44);
+        g.fillStyle = col;                                          // light figures on a dark cell: thin strokes survive the dither far better than dark on bright
+        g.fillRect(x - 48, y0, 96, 3); g.fillRect(x - 48, y0 + 41, 96, 3);
+        g.save(); g.translate(x, y0 + 24); g.scale(0.85, 1);
+        g.font = 'bold 58px Arial, Helvetica, sans-serif';   // i18n-ok: CSS font
+        g.lineWidth = 4; g.strokeStyle = col; g.strokeText(String(m), 0, 0); g.fillText(String(m), 0, 0);
+        g.restore();
       }
     });
   }

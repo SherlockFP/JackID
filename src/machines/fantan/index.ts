@@ -659,11 +659,13 @@ export default class FanTan extends TableBase<FantanParts, Ev, Snap, Act> {
       g.moveTo(w.w * 0.2, w.h * 0.2); g.lineTo(w.w * 0.8, w.h * 0.8);
       g.moveTo(w.w * 0.8, w.h * 0.2); g.lineTo(w.w * 0.2, w.h * 0.8);
       g.stroke();
-      // canvas top = back (side 3), bottom = front (side 1), right = side 2, left = side 4
-      w.text('3', w.w / 2, 6, { font: 'px5', color: '#f2e8c8', align: 'center' });
-      w.text('1', w.w / 2, w.h - 16, { font: 'px5', color: '#f2e8c8', align: 'center' });
-      w.text('2', w.w - 14, w.h / 2 - 4, { font: 'px5', color: '#f2e8c8', align: 'center' });
-      w.text('4', 10, w.h / 2 - 4, { font: 'px5', color: '#f2e8c8', align: 'center' });
+      // canvas top = back (side 3), bottom = front (side 1), right = side 2, left = side 4. Large outlined numerals:
+      // the 5x7 face was too small to read from the seat.
+      const num = { font: 'ps2p' as const, size: 40, color: '#f2e8c8', outline: '#000000', align: 'center' as const };
+      w.text('3', w.w / 2, 16, num);
+      w.text('1', w.w / 2, w.h - 58, num);
+      w.text('2', w.w - 34, w.h / 2 - 20, num);
+      w.text('4', 34, w.h / 2 - 20, num);
     });
   }
 

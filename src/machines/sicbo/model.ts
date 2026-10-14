@@ -87,20 +87,38 @@ export function spotAt(x: number, z: number): string | null {
 /** Label text per spot, filled by the caller (i18n). */
 export type SpotLabel = (spot: string) => string;
 
-/** Draws the layout labels onto a canvas of any size (pure 2D, no DOM lookups). */
+/** Draws the layout labels onto a canvas of any size (pure 2D, no DOM lookups). Bold figures with a dark halo: thin strokes die in the low-res pass. */
 export function drawLayoutLabels(g: CanvasRenderingContext2D, w: number, h: number, label: SpotLabel): void {
   g.clearRect(0, 0, w, h);
   const sx = w / (LAYOUT.x1 - LAYOUT.x0), sz = h / (LAYOUT.z1 - LAYOUT.z0);
   g.textAlign = 'center';
   g.textBaseline = 'middle';
+  g.lineJoin = 'round';
+  const font = (px: number): string => `bold ${px}px Arial, Helvetica, sans-serif`;   // i18n-ok: CSS font stack
   for (const c of CELLS) {
     const cx = (c.x0 + c.x1 - 2 * LAYOUT.x0) / 2 * sx, cy = (c.z0 + c.z1 - 2 * LAYOUT.z0) / 2 * sz;
     const cw = (c.x1 - c.x0) * sx, ch = (c.z1 - c.z0) * sz;
     g.fillStyle = 'rgba(20,14,8,0.55)';
-    g.fillRect(cx - cw / 2 + 1, cy - ch / 2 + 1, cw - 2, ch - 2);
-    g.fillStyle = '#fff3d6';
-    g.font = `bold ${Math.max(10, Math.floor(ch * 0.42))}px monospace`;
-    g.fillText(label(c.spot), cx, cy + 1);
+    g.fillRect(cx - cw / 2 + 2, cy - ch / 2 + 2, cw - 4, ch - 4);
+    const str = label(c.spot);
+    // too long for one line at a readable height (e.g. "ANY TRIPLE" in a 15 cm cell): two lines
+    g.font = font(100);
+    const oneLine = (100 * cw * 0.84) / Math.max(1, g.measureText(str).width);
+    const words = str.split(' ');
+    const lines = oneLine * 0.72 < ch * 0.34 && words.length > 1 ? [words.slice(0, Math.ceil(words.length / 2)).join(' '), words.slice(Math.ceil(words.length / 2)).join(' ')] : [str];
+    const lh = ch * (lines.length > 1 ? 0.4 : 0.74);                              // cap height available per line
+    const wide = Math.min(...lines.map((ln) => (100 * cw * 0.84) / Math.max(1, g.measureText(ln).width)));
+    const px = Math.floor(Math.min(wide, lh / 0.72));
+    const sy = Math.max(1, Math.min(1.4, lh / (0.72 * px)));
+    lines.forEach((ln, li) => {
+      const dy = lines.length > 1 ? (li - 0.5) * ch * 0.4 : 0;
+      g.save(); g.translate(cx, cy + dy); g.scale(1, sy);
+      g.font = font(px);
+      g.lineWidth = Math.max(3, px * 0.16); g.strokeStyle = 'rgba(8,5,2,0.95)'; g.strokeText(ln, 0, px * 0.04);
+      g.lineWidth = Math.max(2, px * 0.045); g.strokeStyle = '#fff3d6'; g.strokeText(ln, 0, px * 0.04);
+      g.fillStyle = '#fff3d6'; g.fillText(ln, 0, px * 0.04);
+      g.restore();
+    });
   }
 }
 
@@ -168,8 +186,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<SicBoParts> {
   root.add(panels);
 
   // label overlay (canvas texture, language-dependent; repainted by index.ts)
-  // sheet sized to the PSX pixels it covers (psxMaterial forces nearest, no mips): ~1 texel per screen pixel
-  const LW = 512, LH = Math.round((LW * (LAYOUT.z1 - LAYOUT.z0)) / (LAYOUT.x1 - LAYOUT.x0));
+  // 1536 texels over 2.28 m (0.66 mm), linear + mips (index.ts calls crispTexture): the figures stay sharp from the seat camera
+  const LW = 1536, LH = Math.round((LW * (LAYOUT.z1 - LAYOUT.z0)) / (LAYOUT.x1 - LAYOUT.x0));
   const labelTex = kit.tex.canvas(LW, LH, () => undefined);
   labelTex.colorSpace = THREE.NoColorSpace;
   const labelCanvas = labelTex.image as HTMLCanvasElement;
@@ -195,7 +213,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<SicBoParts> {
     seatLamps.push(l);
     seats.push({
       // seat standard (1024x768 and 1280x720): whole layout, dice and cage in frame, clear of the HUD strips
-      pose: { pos: new THREE.Vector3(sx * 0.25, 1.85, 2.05), look: new THREE.Vector3(0, 0.78, -0.2), fov: 64, mouse: 'pick' },
+      pose: { pos: new THREE.Vector3(sx * 0.05, 2.62, 1.3), look: new THREE.Vector3(sx * 0.05, 0.85, 0.19), fov: 46, mouse: 'pick' },
       stand: new THREE.Vector3(sx, 0, 0.92),
       avatar: 'stand',
     });

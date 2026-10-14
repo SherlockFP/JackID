@@ -718,16 +718,16 @@ export default class Teetotum extends TableBase<TeetotumParts, Ev, Snap, Act> {
   }
 
   /**
-   * Seat view standard: the seated bots on the near side of the felt stand between the seated player's camera and the
-   * bowl and fill the frame. For the local seated player only, those bots are clipped (this client's picture only).
+   * Seat view standard: the seated bots and the stools stand between the seated player's camera and the felt and fill the
+   * frame. For the local seated player only they are clipped (this client's picture only); the felt, bowl and top stay.
    */
   private clipSeatView(): void {
     const seated = this.isLocalOccupant;
     this.parts.bots.forEach((bot, s) => {
       const occ = this.seats[s];
-      const near = (this.parts.botSeats[s]?.position.z ?? 0) > 0.05;
-      bot.setVisible(occ !== null && isBot(occ) && !(seated && near));
+      bot.setVisible(occ !== null && isBot(occ) && !seated);
     });
+    this.parts.stools.forEach((st) => { st.visible = !seated; });   // the chrome stool bases stay out of the seat view
   }
 
   private statusText(): string {
