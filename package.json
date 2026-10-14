@@ -11,6 +11,7 @@
     "server": "node server/index.js",
     "start": "node server/index.js",
     "check": "node scripts/check.mjs",
+    "qa": "node scripts/qa/bench.mjs",
     "test": "node scripts/tests/index.js"
   },
   "dependencies": {

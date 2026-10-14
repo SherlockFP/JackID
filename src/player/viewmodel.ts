@@ -5,9 +5,10 @@
  * sleeve in the player's jacket colour. Materials are unlit with baked vertex shading (the scene has no lights);
  * `setLightLevel` dims them in dark rooms.
  *
- * Holds (`hold`): coin (default; flips up every 6 s idle), card, tonic, phone, ticket, ledger, gun (two-handed),
+ * Holds (`hold`): coin (default), card, tonic, phone, ticket, ledger, gun (two-handed),
  * totem, or any `Object3D` the caller supplies (card fan, totem, scratch coin…). One-shot animations (`play`):
- * flip · drink · throw · point · punchCard · recoil · give. `setHandLook` shows the unsettling finger-tax and
+ * flip · drink · throw · point · punchCard · recoil · give. With a coin in hand and the player standing still, Q plays
+ * a coin trick (`./viewmodel/fidget.ts`); after ~8 s of standing still a short knuckle walk plays on its own. `setHandLook` shows the unsettling finger-tax and
  * porcelain collateral looks. The facade feeds head-bob and look deltas through `drive()` once per frame.
  */
 import * as THREE from 'three';
@@ -15,6 +16,7 @@ import { psxMaterial } from '@/core/renderer/psxMaterial';
 import { clamp, damp, lerp } from '@/core/math';
 import type { Hex } from '@/core/types';
 import type { HeldItem, Viewmodel } from './types';
+import { createFidget } from './viewmodel/fidget';
 
 export interface ViewmodelDrive {
   /** Camera head-bob offsets (m); the hands move 1.5× (ART_BIBLE §8.5). */
@@ -279,7 +281,6 @@ const RIGHT_HOME = new THREE.Vector3(0.19, -0.165, -0.33);
 const RIGHT_ROT = new THREE.Euler(0.42, -0.12, -0.08);
 const LEFT_HOME = new THREE.Vector3(-0.2, -0.19, -0.35);
 const LEFT_ROT = new THREE.Euler(0.5, 0.14, 0.1);
-const FLIP_EVERY_S = 6;
 const GUN_HOME = new THREE.Vector3(0.135, -0.135, -0.3);
 
 export function createViewmodel(sleeveColor: Hex = 0x7a1a20): ViewmodelHost {
@@ -296,13 +297,17 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20): ViewmodelHost {
   const base = { r: newPose(), l: newPose() };       // grip for the held item
   const live = { r: newPose(), l: newPose() };       // smoothed toward `base`
   const fx: AnimFx = { coinY: 0, coinSpin: 0, coinHide: false, itemTilt: 0 };
+  const trickCoin = buildItem('coin', ownMat)!;     // the held coin's own mesh, reused for the Q tricks
+  trickCoin.visible = false;
+  scene.add(trickCoin);
+  const fidget = createFidget(right, left, trickCoin);
   let item: HeldItem = 'none';
   let held: THREE.Object3D | null = null;
   let heldOwned = false;
   let gun: THREE.Group | null = null;
   let anim: { name: string; t: number; def: Anim; resolve: () => void } | null = null;
   let visible = true;
-  let idleT = 0, clock = 0;
+  let clock = 0;
   let porcelain = false;
   let porcelainMap: THREE.Texture | null = null;
   let lightLevel = 1;
@@ -336,8 +341,9 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20): ViewmodelHost {
   const vm: ViewmodelHost = {
     scene, camera,
     get item() { return item; },
-    setVisible(on) { visible = on; rig.visible = on; if (gun) gun.visible = on; },
+    setVisible(on) { visible = on; rig.visible = on; if (gun) gun.visible = on; if (!on) fidget.reset(); },
     hold(next, obj) {
+      fidget.reset();
       releaseItem();
       item = next;
       if (obj) { right.holder.add(obj); held = obj; }
@@ -355,6 +361,7 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20): ViewmodelHost {
     play(name) {
       const def = ANIMS[name];
       if (!def) return Promise.resolve();
+      fidget.stop();
       anim?.resolve();
       return new Promise<void>((resolve) => { anim = { name, t: 0, def, resolve }; });
     },
@@ -404,16 +411,14 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20): ViewmodelHost {
       if (anim) {
         anim.t += dt;
         anim.def.run(clamp(anim.t / anim.def.dur, 0, 1), right.pose, left.pose, fx);
-        if (anim.t >= anim.def.dur) { const done = anim; anim = null; idleT = 0; done.resolve(); }
-      } else if (item === 'coin' && (idleT += dt) >= FLIP_EVERY_S) {
-        idleT = 0;
-        void vm.play('flip');
+        if (anim.t >= anim.def.dur) { const done = anim; anim = null; done.resolve(); }
       }
+      fidget.tick(dt, right, left, item === 'coin');
       if (held) {
         if (item === 'coin') {
           held.position.set(0, fx.coinY, 0);
           held.rotation.set(fx.coinSpin, 0, 0);
-          held.visible = !fx.coinHide;
+          held.visible = !fx.coinHide && !fidget.busy;
         } else held.rotation.z = fx.itemTilt;
       }
       rig.position.set(swayX + bobX, swayY + bobY, 0);
@@ -423,9 +428,13 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20): ViewmodelHost {
         gun.rotation.set(0.12 + 0.3 * recoil, 0.04, 0);
       }
       right.apply(); left.apply();
+      scene.updateMatrixWorld(true);
+      fidget.place();
     },
     dispose() {
       anim?.resolve(); anim = null;
+      fidget.reset();
+      disposeGeometries(trickCoin);
       releaseItem();
       right.dispose(); left.dispose();
       for (const m of own) m.dispose();

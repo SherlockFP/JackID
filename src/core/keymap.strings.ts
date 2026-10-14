@@ -17,7 +17,7 @@ const strings = {
     'action.upgrade': 'Upgrade Ledger', 'action.use': 'Use held item', 'action.place': 'Place / pick up Totem',
     'action.emote': 'Emote', 'action.ping': 'Ping marker', 'action.talk': 'Push to talk (hold)',
     'action.journal': 'JackID card (hold)', 'action.skip': 'Skip cutscene (hold)', 'action.jump': 'Hop',
-    'action.punch': 'Punch card (hold)', 'action.cheer': 'Cheer', 'action.shrug': 'Shrug', 'action.dance': 'Dance',
+    'action.fidget': 'Coin trick (walking)', 'action.cheer': 'Cheer', 'action.shrug': 'Shrug', 'action.dance': 'Dance',
     'action.answerPhone': 'Answer the phone (from anywhere)', 'action.phoneOpt1': 'Phone deal 1', 'action.phoneOpt2': 'Phone deal 2', 'action.phoneOpt3': 'Phone deal 3',
     // machine
     'action.m.primary': 'Primary (spin / deal)', 'action.m.secondary': 'Secondary (tap RMB)',
@@ -47,7 +47,7 @@ const strings = {
     'action.debugColliders': 'Çarpışmaları göster', 'action.upgrade': 'Yükseltme Defteri',
     'action.use': 'Eldeki eşyayı kullan', 'action.place': 'Totem koy / al', 'action.emote': 'İfade',
     'action.ping': 'İşaret koy', 'action.talk': 'Bas-konuş (basılı tut)', 'action.journal': 'JackID kartı (basılı tut)',
-    'action.skip': 'Ara sahneyi atla (basılı tut)', 'action.jump': 'Zıpla', 'action.punch': 'Delik kartı (basılı tut)',
+    'action.skip': 'Ara sahneyi atla (basılı tut)', 'action.jump': 'Zıpla', 'action.fidget': 'Jeton hilesi (yürürken)',
     'action.cheer': 'Alkışla', 'action.shrug': 'Omuz silk', 'action.dance': 'Dans et',
     'action.answerPhone': 'Telefonu aç (her yerden)', 'action.phoneOpt1': 'Telefon teklifi 1', 'action.phoneOpt2': 'Telefon teklifi 2', 'action.phoneOpt3': 'Telefon teklifi 3',
     // machine

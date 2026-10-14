@@ -951,6 +951,11 @@ const LONG = ['win2', 'win3', 'winHuge', 'winRise', 'winMega', 'jackpot', 'jackp
 for (const n of LONG) { const d = SFX_DEFS.get(n); if (d) d.meta.long = true; }
 for (const n of ['gambleOpen', 'allinDrum', 'allinHit', 'allinMiss']) { const d = SFX_DEFS.get(n); if (d) d.meta.long = true; }
 
+// ── coin fidget (viewmodel Q tricks): quiet, short ticks ──────────────────────────────────────────
+def('coinTrickFlick', (k) => { snap(k, 0, 0.35, 4200, 0.008, 2); return 0.03; }, { pri: 3, max: 8 });
+def('coinTrickClink', (k) => { clink(k, 0, 0.3, 2900, 0.07, 0); return 0.12; }, { pri: 3, max: 8 });
+def('coinTrickCatch', (k) => { snap(k, 0, 0.3, 900, 0.02, 1); thump(k, 0, 220, 110, 0.05, 0.12); return 0.08; }, { pri: 3, max: 8 });
+
 // ── composites used by the engine ─────────────────────────────────────────────────────────────────
 /** `n` rapid coin clinks (n ≤ 40) as a single voice. */
 export function coinCascade(n: number): KitRecipe {

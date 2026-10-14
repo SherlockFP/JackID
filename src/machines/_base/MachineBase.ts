@@ -63,7 +63,7 @@ import { createRng, hashSeed, randomSeed, type Rng } from '@/core/rng';
 import { disposeObject3D } from '@/core/dispose';
 import { log } from '@/core/log';
 import { clamp } from '@/core/math';
-import { t as tr, fmtCoins, type I18nVars } from '@/core/i18n';
+import { t as tr, fmtCoins, registerStrings, type I18nVars } from '@/core/i18n';
 import { SLOT_DIMS, type MachineContext, type MachineDef, type MachineEnvelope, type MachineEvent, type MachineModel, type PresentCtx } from './types';
 import { juiceTier, tierTags, toWinTier, type JuiceTier } from './tiers';
 import * as juice from './juice';
@@ -81,6 +81,15 @@ const CONFIRM_ONLY = new Set([
   'roulette', 'craps', 'keno', 'sicbo', 'bigsix', 'bingo', 'lottoblower', 'derby', 'dicetower', 'fantan', 'tombola',
 ]);
 const PRIMARY_ONLY = new Set(['bingopin', 'coinpusher', 'pachinko', 'shellgame', 'stacker']);
+
+/** Machines that already queue their own primary presses while busy (plinko `queueDrop`): the base must not queue too. */
+const QUEUES_OWN = new Set(['plinko']);
+
+/** Cue strings for the press queue (`ui.ctl.*`, same prefix as the controls lane). */
+registerStrings('ui.', {
+  en: { 'ctl.queued': 'Press queued', 'ctl.queueFull': 'Already queued' },
+  tr: { 'ctl.queued': 'Basış sıraya alındı', 'ctl.queueFull': 'Zaten sırada' },
+});
 
 /** Argument of `buildModel(kit, o)` (TECH §11.5): deterministic per-instance variation. */
 export interface ModelOpts { seed: number; variant: 0 | 1 | 2 | 3; lod?: 0 | 1 }
@@ -258,6 +267,9 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   }
   /** primary ↔ confirm held sources per folded press, so Space + Enter together fire the machine once. */
   private _aliasHeld = new Set<MachineAction>();
+  /** The one queued main-action press (see `_queuePress`), and whether its key is still down. */
+  private _pend: MachineInputEvent | null = null;
+  private _pendHeld = false;
   /** Sink → machine: fold the primary / confirm alias, then `onInput`. */
   private _route(e: MachineInputEvent): void {
     if (this._riskL?.route(e as MachineInputEvent & { code?: string; mods?: { shift?: boolean } })) return;   // risk layer keys (G / Shift+H / K / ladder)
@@ -273,8 +285,46 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       held.delete(src);
       pass = held.size === 0;
     }
-    if (pass) this.onInput(src === to ? e : { ...e, action: to });
+    if (!pass) return;
+    const ev = src === to ? e : { ...e, action: to };
+    if (this._queuePress(ev)) return;
+    this.onInput(ev);
   }
+  /**
+   * Press queue (QA/UX): a press of the machine's main action while a round is still animating (`busy`) is kept as
+   * ONE pending press and replayed when the machine is ready again. Extra presses during the wait are dropped
+   * (toast cue). Machines that queue their own presses (`QUEUES_OWN`) or override `queuesPrimary` skip this.
+   * Returns true when the event was swallowed (queued, dropped, or the up of a queued press).
+   */
+  private _queuePress(ev: MachineInputEvent): boolean {
+    const main = this.inputAlias ?? 'primary';
+    if (ev.action !== main) return false;
+    if (!ev.down) {
+      if (this._pend === null) return false;
+      this._pendHeld = false;                  // released while queued: the replay will send the up too
+      return true;
+    }
+    if (ev.repeat) return this._pend !== null;   // auto-repeat never queues (the sink already filters it)
+    if (!this.busy && this._pend === null) return false;
+    if (!this.queuesPrimary) return false;
+    if (this._pend !== null) { this.toast(tr('ui.ctl.queueFull'), 'info'); return true; }   // one pending press only
+    this._pend = { ...ev, repeat: false };
+    this._pendHeld = true;
+    this.toast(tr('ui.ctl.queued'), 'info');
+    return true;
+  }
+  /** Replays the queued press once the machine is no longer busy (called at the start of `_step`). */
+  private _firePending(): void {
+    const p = this._pend;
+    if (p === null || this.busy) return;
+    this._pend = null;
+    if (!this.isLocalOccupant || this._releaseRequested) { this._pendHeld = false; return; }
+    this.onInput({ ...p, down: true });
+    if (!this._pendHeld) this.onInput({ ...p, down: false });   // already released: send the matching up
+    this._pendHeld = false;
+  }
+  /** Opt-out per machine: return false where a primary press during a round must NOT be queued. */
+  protected get queuesPrimary(): boolean { return !QUEUES_OWN.has(this.def.id); }
   /**
    * Public "STAND UP" (pause menu, world.standUp): same as pressing E — deferred while busy.
    * Runs `onStandUpRequest` first, so autoplay is cancelled at once even when the release waits for the round.
@@ -623,6 +673,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       else if ((this._releaseWait += dt) > FORCE_RELEASE_S) { log.warn('machine', `${this.id} forced release while busy`); this.busy = false; this.standUp(); }
     }
     this._riskL?.step(dt);
+    this._firePending();                                    // a press queued during a round goes now that it is idle
     this.tick(dt);
     if (this.isHost) this.hostTick(dt);
   }
@@ -637,6 +688,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     this.seats[seat] = pid;
     if (local) {
       this._aliasHeld.clear();
+      this._pend = null; this._pendHeld = false;
       this.rng = createRng(seed);
       this._releaseRequested = false;
       this.bet = clamp(this.bet, this.def.minBet, this.def.maxBet);
@@ -653,6 +705,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     if (local) {
       this._riskL?.onRelease();
       this._hsMult = 1;
+      this._pend = null; this._pendHeld = false;
       this.ctx.ui.machineHud(null);
       this._releaseRequested = false;
       if (this._roundOpen) {            // a machine must settle in onRelease; never strand a stake silently
