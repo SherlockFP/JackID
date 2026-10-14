@@ -23,6 +23,35 @@ export const CARD_PRICE = [2, 5, 10, 20, 50] as const;
 /** Scratch zones per card (the painter lays them out; a zone is revealed at ≥ ZONE_REVEAL cleared). */
 export const CARD_ZONES = [9, 7, 6, 13, 2] as const;
 export const ZONE_REVEAL = 0.55;
+/**
+ * PIT PENNY (9 spots): the player scratches spots of their own choice. Three picks; a pair among them earns one bonus pick
+ * ("2 matched, one more!"). A triple ends the card, and so does running out of picks (the rest of the card is then swept).
+ * The picks only choose WHICH spots show. The outcome is rolled up front, so the payout and RTP do not depend on them.
+ */
+export const SPOT_PICKS = 3;
+export const SPOT_BONUS = 1;
+/** The most times one amount shows among the revealed spots (3 = a triple). */
+export function spotBest(cells: readonly number[], revealed: readonly number[]): number {
+  const seen = new Map<number, number>();
+  let best = 0;
+  for (const z of revealed) {
+    const n = (seen.get(cells[z]) ?? 0) + 1;
+    seen.set(cells[z], n);
+    if (n > best) best = n;
+  }
+  return best;
+}
+/** May the player still pick a spot on this card? Closed once a triple shows or the picks are spent. */
+export function spotOpen(cells: readonly number[], revealed: readonly number[]): boolean {
+  const picks = revealed.length, best = spotBest(cells, revealed);
+  return best < 3 && (picks < SPOT_PICKS || (best === 2 && picks < SPOT_PICKS + SPOT_BONUS));
+}
+/** Picks left on this card (0 once it is closed). */
+export function spotLeft(cells: readonly number[], revealed: readonly number[]): number {
+  if (!spotOpen(cells, revealed)) return 0;
+  const picks = revealed.length, best = spotBest(cells, revealed);
+  return Math.max(0, (picks >= SPOT_PICKS && best === 2 ? SPOT_PICKS + SPOT_BONUS : SPOT_PICKS) - picks);
+}
 export const MAX_QTY = 5;
 export const WEIGHT_TOTAL = 1_000_000;
 export const SECOND_CHANCE_EVERY = 10;

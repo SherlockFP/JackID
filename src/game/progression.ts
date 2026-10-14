@@ -65,7 +65,7 @@ export const FINAL_NIGHT = 8;
  */
 export const ALWAYS_OPEN: ReadonlySet<MachineId> = new Set<MachineId>([
   'debt_terminal', 'hotline', 'bounty_board', 'charm_vendor', 'cashier', 'jukebox', 'tonic_vendor', 'shrine',
-  'tallytable', 'devilstable',
+  'tallytable', 'devilstable', 'lordstable',
 ]);
 
 /** Machines that exist only in the Free Casino: every registered machine that is neither core nor always-open. */

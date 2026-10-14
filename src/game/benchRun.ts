@@ -265,6 +265,19 @@ export class BenchRun implements RunApi {
   stat(key: string, add = 0): number { const v = (this.counters.get(key) ?? 0) + add; if (add) this.counters.set(key, v); return v; }
   phone(): PhoneCallState | null { return null; }
   answerPhone(_choice: number): void {}
+  // The Hollow Door is off on the bench (no floor below the pit to open it on).
+  hollowTrigger(): boolean { return false; }
+  hollowCanRing(): boolean { return false; }
+  hollowRing(): boolean { return false; }
+  hollowAnswer(): boolean { return false; }
+  hollowEnter(): void {}
+  hollowPick(): void {}
+  hollowLeave(): void {}
+  hollowFinish(): void {}
+  forgiveQuota(): void {}
+  takeRun(): void {}
+  restoreSoulMark(): void {}
+  hollowBankObols(): void {}
 
   balance(cur: CurrencyId, _pid?: PlayerId): number { return cur === 'coin' ? this.coins : this.currencies.get(cur) ?? 0; }
   earn(cur: CurrencyId, amount: number, reason: string, _pid?: PlayerId): void {

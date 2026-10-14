@@ -24,6 +24,7 @@ import type { TycoonApi } from './tycoon.types';
 import type { BuffsApi } from './buffs.types';
 import type { TotemsApi, CollateralApi } from './items.types';
 import type { ContractsApi, CurrencyId, JackpotsApi } from './economy.types';
+import type { DoorTrigger, DuelEnd, LordId } from './hollow/rules';
 
 export * from './modifiers.types';
 export * from './shift.types';
@@ -158,6 +159,33 @@ export interface RunApi {
   // hotline (system machine 'hotline' only)
   phone(): PhoneCallState | null;
   answerPhone(choice: number): void;                        // −1 = pick up; host resolves
+
+  // ── the Hollow Door (src/game/hollow): once per run, saved in the run. The world and the Lords' table call these. ──
+  /** Opens the door for a trigger when the rules allow it (once per run). The world shows the doorway on `hollow:open`. */
+  hollowTrigger(trigger: DoorTrigger): boolean;
+  /** The 3:33 call may ring this Watch (Night 2+, door unused, phone not spent). */
+  hollowCanRing(): boolean;
+  /** The 3:33 call starts ringing. */
+  hollowRing(): boolean;
+  /** The 3:33 call: 'godown' opens the door, 'hangup' spends the phone for the run. */
+  hollowAnswer(choice: 'godown' | 'hangup'): boolean;
+  /** The player walked into THE UNDERNEATH. */
+  hollowEnter(): void;
+  /** The player sat with a Lord. */
+  hollowPick(lord: LordId): void;
+  /** The player climbed back out, or the open doorway timed out: the door closes for the run. */
+  hollowLeave(): void;
+  /** The Lords' duel ended ('won' | 'taken' | 'left'): the door seals for the run. */
+  hollowFinish(ended: DuelEnd): void;
+  // Run effects of a Lord's duel (`applyEffects` in src/game/hollow/rules.ts)
+  /** Quota relief: the Nights from the current one for `nights` Nights owe nothing. */
+  forgiveQuota(nights: number): void;
+  /** The Lord takes the run: it ends here ('taken'; Obols still bank). */
+  takeRun(): void;
+  /** One Soul Mark goes back on the card (a caught Mirror cheat). */
+  restoreSoulMark(): void;
+  /** Multiplies the Obols this run banks at its end (a taken run: ×1.5). */
+  hollowBankObols(mult: number): void;
 
   // ── subsystems (BRIEF ADDENDA 1, 3, 5, 8) ──
   readonly shift: ShiftApi;

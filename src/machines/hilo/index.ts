@@ -28,7 +28,7 @@ import { clamp, lerp } from '@/core/math';
 import { buildModel, FLAP_REST, type FlapCard, type HiloParts } from './model';
 import {
   AUTO_COLLECT, BET_STEPS, BASE_RTP, HOOK_RTP, HOOK_SAFETY, HOOK_SAME, HOOK_SKIP, HOOK_START, MAX_BET, MAX_RUN, MIN_BET,
-  RUNGS, RUNG_AT, SKIPS_MAX, advance, clampRtp, drawCard, guessable, payoutOf, playHeadless, resolveGuess, rankText, stepMult,
+  RUNGS, RUNG_AT, SKIPS_MAX, advance, clampRtp, drawCard, guessable, payoutOf, playHeadless, resolveGuess, rankText, stepMult, winProb,
   type Card, type Dir, type GuessOpts,
 } from './rules';
 import STRINGS from './hilo.strings';
@@ -318,6 +318,7 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
     const fx = this.ctx.fx;
     const s = this.state;
     const prevRun = s.run;
+    const winFrom = s.steps > 0 ? Math.floor(s.bet * prevRun) : 0;     // the collect window counts up from here
     const btn = ev.dir === 'hi' ? buttons.higher : buttons.lower;
 
     // 1. data first (snapshots stay consistent), pixels later
@@ -341,7 +342,10 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
     if (this.disposed) return;
 
     // 3. near miss: a held breath before the card that was one rank away
-    if (!ev.ok && ev.near) await this.nearMiss({ dur: 0.7, at: flapNext.root });
+    if (!ev.ok && ev.near) {
+      fx.popText(flapNext.root, this.t('nearMiss'), 0xff8a5c, { dur: 0.9, rise: 0.1, scale: 1.0 });
+      await this.nearMiss({ dur: 0.7, at: flapNext.root });
+    }
 
     // 4. reveal the NEXT card
     await this.flapTo(flapNext, ev.next, 0.5, pc);
@@ -363,8 +367,13 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
       this.sfx(ev.steps >= 3 ? 'win3' : ev.steps === 2 ? 'win2' : 'win1');
       marquee.chase('win', 6 + ev.steps);
       if (ev.run >= 50) this.sfx('heartbeat', { vol: 0.7 });
+      if (ev.run >= 100) fx.confetti(flapCur.root, 12);
       this.refreshButtons();
       this.refreshLeds();
+      // juice: the collect window counts up from the last payout to the new one, never a jump
+      const winTo = Math.min(LED_CAP, Math.floor(ev.bet * ev.run));
+      this.drawWin(winFrom);
+      void countUp(this.ctx, winFrom, winTo, 0.45 * this.speed, (v) => this.drawWin(v));
       await this.wait(0.3);
     } else {
       // BUST: power-down, the ladder drains, the flaps go blank
@@ -587,14 +596,23 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
         ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.hilo.cBet' }, action: 'betUp' });
       }
     } else if (!busy && card) {
-      if (guessable(card.rank, 'hi')) ctrl.push({ key: this.k('up'), label: { k: 'm.hilo.cHigher' }, action: 'up' });
-      if (guessable(card.rank, 'lo')) ctrl.push({ key: this.k('down'), label: { k: 'm.hilo.cLower' }, action: 'down' });
+      if (guessable(card.rank, 'hi')) ctrl.push({ key: this.k('up'), label: this.oddsTxt(card, 'hi', bet, s.run), action: 'up' });
+      if (guessable(card.rank, 'lo')) ctrl.push({ key: this.k('down'), label: this.oddsTxt(card, 'lo', bet, s.run), action: 'down' });
       if (s.skips < this.skipCap()) ctrl.push({ key: this.k('n3'), label: { k: 'm.hilo.cSkip' }, action: 'n3' });
       if (s.steps > 0 && paysProfit(this.roundBet, s.run)) ctrl.push({ key: this.k('collect'), label: { k: 'm.hilo.cCollect' }, action: 'collect', primary: true });
     }
     ctrl.push({ key: this.k('help'), label: { k: 'm.hilo.cRules' }, action: 'help' });
     ctrl.push({ key: this.k('exit'), label: { k: 'm.hilo.cLeave' }, action: 'exit' });
     sh.controls(ctrl);
+  }
+
+  /** "HIGHER 62% · x1.61 = 80": the chance of a guess, its step multiplier, and the coins it pays if it lands now. */
+  private oddsTxt(c: Card, dir: Dir, bet: number, run: number): Txt {
+    const m = stepMult(c.rank, dir, this.rtpNow());
+    return {
+      k: dir === 'hi' ? 'm.hilo.cHigherOdds' : 'm.hilo.cLowerOdds',
+      v: { p: Math.round(winProb(c.rank, dir) * 100), m: m.toFixed(2), c: fmtCoins(Math.floor(bet * advance(run, m))) },
+    };
   }
 
   private rtpNow(): number { return clampRtp(BASE_RTP + this.mod(HOOK_RTP, 0)); }

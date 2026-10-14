@@ -3,7 +3,7 @@
  * and the headless play contract (`playHeadless`: staff auto-play, balance sims), so the simulated RTP IS the live RTP.
  *
  * Rules: infinite deck, rank uniform A=1 … K=13 (suit cosmetic). Guess HIGHER-OR-SAME or LOWER-OR-SAME, or SKIP
- * (free, a new current card, max 3 per round). A guess with probability 1 is disabled (Higher on A, Lower on K).
+ * (free, a new current card, max 1 per round). A guess with probability 1 is disabled (Higher on A, Lower on K).
  * Correct → running multiplier ×= step multiplier m = floor(rtp / p, 2 decimals). Wrong → bust.
  * Luck (L %): a busting card is redrawn once with probability L/100 (tag `lucky`).
  * Every function consumes a FIXED number of draws, so a seed replays identically whatever the charms.
@@ -19,7 +19,7 @@ export const RANKS = 13;
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'];
 export const BASE_RTP = 0.99;          // per-step target (table §11.3)
 export const RTP_CAP = 1.02;           // hard ceiling with every charm stacked
-export const SKIPS_MAX = 3;            // free skips per round (base)
+export const SKIPS_MAX = 1;            // free skips per round (base): one skip, so spending it is a real choice
 export const AUTO_COLLECT = 1000;      // running multiplier that cashes out automatically
 export const MAX_RUN = 13000;          // hard ceiling on the running multiplier (= def.maxPayoutMult)
 export const MIN_BET = 5, MAX_BET = 200;

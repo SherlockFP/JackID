@@ -13,7 +13,7 @@ const en: Record<string, string> = {
   second: 'SECOND ×{n}', jp: 'JP',
   // seat HUD (readability standard)
   hGoal: 'Stop the light on the best lamp. Pays stake × lamp value',
-  hBet: 'PLACE YOUR STAKE, THEN START', hTurn: 'LIGHT TURNING · PRESS STOP', hAuto: 'AUTO-STOP IN {n}S',
+  hBet: 'PLACE YOUR STAKE, THEN START', hTurn: 'LIGHT TURNING', hAuto: 'AUTO-STOP IN {n}S',
   hReveal: 'THE EYE IS OPENING', hCoast: 'LIGHT SLOWING DOWN', hNudge: 'RATCHET WINDOW · NUDGE OR TAKE IT',
   hSecs: 'CLOSES IN {n}S', hPay: 'PAYING OUT', hEyeOpen: 'EYE OPEN',
   hNStake: 'STAKE', hNJackpot: 'JACKPOT', hNLast: 'LAST LAMP', hNBalance: 'BALANCE',
@@ -40,7 +40,7 @@ const tr: Record<string, string> = {
   second: 'İKİNCİ ×{n}', jp: 'JP',
   // seat HUD (readability standard)
   hGoal: 'Işığı en değerli lambada durdur. Bahis × lamba değeri öder',
-  hBet: 'BAHSİNİ KOY, SONRA BAŞLAT', hTurn: 'IŞIK DÖNÜYOR · DUR\'A BAS', hAuto: 'OTOMATİK DURUR: {n} SN',
+  hBet: 'BAHSİNİ KOY, SONRA BAŞLAT', hTurn: 'IŞIK DÖNÜYOR', hAuto: 'OTOMATİK DURUR: {n} SN',
   hReveal: 'GÖZ AÇILIYOR', hCoast: 'IŞIK YAVAŞLIYOR', hNudge: 'CIRCIR PENCERESİ · DÜRT YA DA BIRAK',
   hSecs: '{n} SN SONRA KAPANIR', hPay: 'ÖDEME YAPILIYOR', hEyeOpen: 'GÖZ AÇIK',
   hNStake: 'BAHİS', hNJackpot: 'JACKPOT', hNLast: 'SON LAMBA', hNBalance: 'BAKİYE',

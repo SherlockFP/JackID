@@ -34,3 +34,5 @@ import './blip.test.mjs';
 import './sonkart.test.mjs';
 import './juice.test.mjs';
 import './gamble.test.mjs';
+import './hollow.test.mjs';
+import './run.hollow.test.mjs';

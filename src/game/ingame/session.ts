@@ -46,6 +46,9 @@ import { SeatHud } from '@/machines/_base/seatHud';
 import { startTutorial, type Tutorial } from '@/game/tutorial';
 import { holdClockFor } from '@/game/clockHold';
 import { startRoomsHost } from './roomsHost';
+import { applyEffects, effectsOf } from '@/game/hollow/rules';
+import { lordsHooks } from '@/machines/lordstable';
+import { hollowDoor } from '@/world/hollow';
 
 export interface DebtSession {
   readonly world: WorldHost;
@@ -91,6 +94,20 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     });
   app.run = run;
   const self = run.selfId;
+  // The Lords' table (the Hollow Door): the duel's end becomes run effects, its spent Tickets come off the run, and the door seals.
+  lordsHooks.apply = (end) => {
+    const r = app.run;
+    if (!r) return;
+    if ((end.spent ?? 0) > 0) r.spend('ticket', end.spent ?? 0, 'lordstable');
+    applyEffects(effectsOf(end.ended, end.lord, end.calledCorrect), {
+      forgiveQuota: (n) => r.forgiveQuota(n),
+      takeRun: () => r.takeRun(),
+      restoreSoulMark: () => r.restoreSoulMark(),
+      bankObols: (m) => r.hollowBankObols(m),
+    });
+    r.hollowFinish(end.ended);
+    if (end.ended !== 'left') hollowDoor()?.resolve(end.ended === 'won' ? 'won' : 'taken');
+  };
 
   scene.background = new THREE.Color(LOBBY_FOG);
   scene.fog = makeFog(LOBBY_FOG, LOBBY_NEAR, app.save.data.settings.psx.drawDistance);

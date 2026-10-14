@@ -67,6 +67,11 @@ import { createBuffSystem, type BuffSystem } from './buffs';
 import { createItemSystem, type ItemSystem } from './items';
 import { createHotline, type Hotline, type HotlineSave } from './hotline';
 import {
+  DOOR_FIRST_NIGHT, PHONE_HOUR, PHONE_MINUTE, initDoor, reveal as doorReveal, ring as doorRing, answer as doorAnswer, enter as doorEnter,
+  pickLord, leave as doorLeave, finish as doorFinish, dawn as doorDawn, type DoorState, type DoorTrigger, type DuelEnd, type DoorStatus,
+} from './hollow/rules';
+import type { LordId } from './hollow/rules';
+import {
   LOCKER, announcePressure, announceLocker, backOffice, bindWingSource, boilerNextWatch, boilerPull, boilerVent, bossKeys,
   collectorPrice, dawnKeys, managerKeyDrop, openLocker as rollLocker, restoreRooms, roomsProvider, roomsStart,
   type LockerOpen, type LockerResult, type RoomsState,
@@ -130,6 +135,8 @@ declare module '@/core/events' {
     'run:wintier': RunWinTierEvent;
     'run:stakeConfirm': RunStakeConfirmEvent;
     'run:rescue': RunRescueEvent;
+    /** The Hollow Door opened for this run (the world shows the doorway). */
+    'hollow:open': { reason: 'crack' | 'phone333' | 'seam' };
   }
 }
 
@@ -137,6 +144,17 @@ declare module '@/core/events' {
 const OVERPAY_TIMEOUT_SEC = 30;
 /** Hot-path saves (every win) are coalesced: at most one serialise per this many sim seconds. */
 const SAVE_SOON_SEC = 2;
+
+/**
+ * The Hollow Door restored from a save. A reload cannot resume a doorway, the Underneath or a duel (the world starts sealed),
+ * so those statuses close; a ringing call stays ringing (the hotline restores the call itself).
+ */
+function restoredDoor(h: DoorState | undefined): DoorState {
+  if (!h || typeof h !== 'object') return initDoor();
+  const keep: readonly DoorStatus[] = ['hidden', 'ringing', 'used', 'closed'];
+  const status: DoorStatus = keep.includes(h.status) ? h.status : 'closed';
+  return { ...initDoor(), status, trigger: h.trigger ?? null, phoneSpent: h.phoneSpent === true, lord: h.lord ?? null, ended: h.ended ?? null };
+}
 
 /** A pending overpay choice (GDD §2.6.5): take one of `candidates`, or it auto-picks when `left` reaches 0. */
 export interface OverpayOffer { rarity: CharmDef['rarity']; candidates: CharmDef[]; left: number }
@@ -276,6 +294,11 @@ export interface RunExt {
   pledged?: string[];
   /** The ending path reached this run (wave 25 phase 2: `vell_release`), if any. */
   endingPath?: string;
+  /** The Hollow Door (once per run), the quota forgiven through this Night index (exclusive), the Obols multiplier, and the House refusal. Optional: older saves have none. */
+  hollow?: DoorState;
+  forgiveUntil?: number;
+  obolMult?: number;
+  hollowRefused?: boolean;
 }
 /** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
 interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
@@ -604,6 +627,14 @@ class Run implements DebtRun {
   /** A stake above half the pocket waits here for its second press. */
   private stakeArm: { mid: string; machineId: string; amount: number; left: number } | null = null;
   private dreadPts = 0;
+  /** The Hollow Door's state for this run (src/game/hollow/rules.ts). Saved in `ext.hollow`. */
+  private hollow: DoorState = initDoor();
+  /** Quota forgiven by a Lord's writ: Nights with an index below this owe nothing (-1 = none). */
+  private forgiveUntil = -1;
+  /** Multiplies the Obols this run banks at its end (a taken run: ×1.5). */
+  private obolMult = 1;
+  /** The House refused the loan tonight or earlier (a rescue call lapsed unanswered): the red seam can open with an empty pocket. */
+  private hollowRefused = false;
 
   // status
   private living = true;
@@ -768,6 +799,9 @@ class Run implements DebtRun {
           this.emit('quota:update', { quota: this.quota });
           this.persist();
         },
+        hollowCanRing: () => this.hollowCanRing(),
+        hollowRing: () => this.hollowRing(),
+        hollowAnswer: (c) => this.hollowAnswer(c),
         previewNextHot: () => {
           if (!this.quotaMode) return null;
           const last = this.watch + 1 >= this.watches;
@@ -1424,6 +1458,8 @@ class Run implements DebtRun {
     this.emit('shift:phase', { phase, index: this.index });
     const after = this.window();
     if (before !== after) this.emit('run:window', { window: after, night: this.night() });
+    // Dawn closes an unentered Hollow Door (and a ringing 3:33 call): the door is spent for the run.
+    if (after === 'dawn' && before !== 'dawn') this.hollow = doorDawn(this.hollow);
     this.notify();
   }
 
@@ -1606,7 +1642,7 @@ class Run implements DebtRun {
     this.enter('over', 0);
     if (this.quotaMode && (result === 'escaped' || (result as string) === 'won')) this.tycoonSys.recordWin(this.index + 1);
     const bonus = this.currencies.get('obol') ?? 0;   // Obols from Wash lockers and the Back Office (wave 24)
-    const obols = this.quotaMode ? this.runObols(result, ending) + (ending === 'descend' ? 0 : bonus) : undefined;
+    const obols = this.quotaMode ? Math.round(this.runObols(result, ending) * this.obolMult) + (ending === 'descend' ? 0 : bonus) : undefined;
     const summary: RunSummary = {
       mode: this.mode, seed: this.seed, result, floor: this.index + 1, deadlines: this.index + 1, maxWallet: this.maxWallet,
       rounds: this.rounds, biggestWin: this.biggest, durationSec: Math.round(this.elapsed),
@@ -1828,6 +1864,7 @@ class Run implements DebtRun {
     due = Math.round(due * this.mod('quota.mult', RUN_MACHINE, 1));
     due = Math.max(0, Math.round(due + this.mod('quota.add', RUN_MACHINE, 0) + this.loanQuota));
     if (this.index === BASE_RUN_NIGHTS - 1) due = Math.round(due * this.mod('x.quota.night8', RUN_MACHINE, 1));
+    if (this.index < this.forgiveUntil) due = 0;   // a Lord's writ forgave this Night (Hollow Door)
     this.quota.base = nd.base;
     this.quota.assessment = assessmentFor(this.index, holdings, rate);
     this.quota.due = due;
@@ -1937,12 +1974,21 @@ class Run implements DebtRun {
     if (this.rescueCool > 0) this.rescueCool -= dt;
     if (this.rescue.active() && !this.canPlay()) this.rescue.hangUp();
     if (this.rescueWasLive && !this.rescue.active()) {
-      if (!this.rescueTook) { this.rescueCool = 20; this.emit('run:rescue', { pid: this.selfId, state: 'lapsed', coins: 0, quota: 0, due: this.quota.due }); }
+      if (!this.rescueTook) { this.rescueCool = 20; this.hollowRefused = true; this.emit('run:rescue', { pid: this.selfId, state: 'lapsed', coins: 0, quota: 0, due: this.quota.due }); }
       this.rescueTook = false;
     }
     this.rescueWasLive = this.rescue.active();
     this.rescueScan += dt;
-    if (this.rescueScan >= 0.5) { this.rescueScan = 0; this.checkRescue(); }
+    if (this.rescueScan >= 0.5) { this.rescueScan = 0; this.checkRescue(); this.checkHollowLoan(); }
+  }
+
+  /** The red seam: the pocket is empty and the House refuses the loan (the loans are used up, or the call went unanswered). */
+  private checkHollowLoan(): void {
+    if (!this.quotaMode || this.ended || !this.canPlay() || this.openRounds.size > 0 || this.hollow.status !== 'hidden') return;
+    if (!this.hollowRefused && this.rescuesUsed < RESCUE_MAX_PER_NIGHT) return;
+    if (!pocketDead(this.coins, this.cheapestBet()) || this.rescue.active()) return;
+    if (this.quota.due <= 0 || this.debtPaid >= this.quota.due) return;
+    this.hollowTrigger('loan');
   }
 
   /** Pocket at 0, Watches left, quota unmet and interest alone will not cover it: the phone rings with the Collector's loan. */
@@ -1982,6 +2028,68 @@ class Run implements DebtRun {
   }
 
   private notify(): void { this.listeners.forEach((fn) => fn()); }
+
+  // ── the Hollow Door (src/game/hollow/rules.ts): the rules decide, the world shows it (`hollow:open`) ──────────────────
+  /** Opens the door for a trigger when the rules allow it. Returns true when the door changed. */
+  hollowTrigger(trigger: DoorTrigger): boolean {
+    if (this.ended || !this.quotaMode) return false;
+    return this.setDoor(doorReveal(this.hollow, trigger));
+  }
+  hollowCanRing(): boolean {
+    return !this.ended && this.quotaMode && this.night() >= DOOR_FIRST_NIGHT && this.hollow.status === 'hidden' && !this.hollow.phoneSpent;
+  }
+  hollowRing(): boolean { return !this.ended && this.setDoor(doorRing(this.hollow, { hour: PHONE_HOUR, minute: PHONE_MINUTE }, false)); }
+  hollowAnswer(choice: 'godown' | 'hangup'): boolean { return this.setDoor(doorAnswer(this.hollow, choice)); }
+  hollowEnter(): void { this.setDoor(doorEnter(this.hollow)); }
+  hollowPick(lord: LordId): void { this.setDoor(pickLord(this.hollow, lord)); }
+  hollowLeave(): void {
+    let next = this.hollow.status === 'duel' ? doorFinish(this.hollow, 'left') : doorLeave(this.hollow);
+    if (next.status === 'open' || next.status === 'ringing') next = doorDawn(next);   // an unused doorway that timed out
+    this.setDoor(next);
+  }
+  hollowFinish(ended: DuelEnd): void { if (this.hollow.status === 'duel') this.setDoor(doorFinish(this.hollow, ended)); }
+
+  /** Stores the door's next state. A new doorway emits `hollow:open` (the world builds it) and counts as seen. */
+  private setDoor(next: DoorState): boolean {
+    if (next === this.hollow) return false;
+    const opened = next.status === 'open' && this.hollow.status !== 'open';
+    this.hollow = next;
+    if (opened) {
+      this.emit('hollow:open', { reason: next.trigger === 'knock' ? 'crack' : next.trigger === 'phone' ? 'phone333' : 'seam' });
+      this.save?.update((d) => { d.hollowSeen = (d.hollowSeen ?? 0) + 1; });
+    }
+    this.persist();
+    return true;
+  }
+
+  // Run effects of a Lord's duel (applyEffects in src/game/hollow/rules.ts)
+  forgiveQuota(nights: number): void {
+    if (!this.quotaMode || this.ended) return;
+    this.forgiveUntil = Math.max(this.forgiveUntil, this.index + Math.max(1, Math.floor(nights)));
+    this.recomputeQuota();
+    this.checkMet();
+    this.emit('quota:update', { quota: this.quota });
+    this.toast(nights > 1 ? 'hollowrun.forgiven.2' : 'hollowrun.forgiven.1');
+    this.persist();
+  }
+  takeRun(): void {
+    if (this.ended) return;
+    this.toast('hollowrun.taken');
+    this.living = false;
+    this.endRun('fell', 'taken');   // a taken run ends below; its Obols are banked ×obolMult
+  }
+  restoreSoulMark(): void {
+    if (this.ended) return;
+    this.soulMarkCount = Math.min(SOUL_MARKS_PER_RUN, this.soulMarkCount + 1);
+    this.marksChanged(false);
+    this.toast('hollowrun.soulRestored');
+  }
+  hollowBankObols(mult: number): void {
+    this.obolMult *= Math.max(0, mult);
+    this.toast('hollowrun.banked');
+    this.persist();
+  }
+  private toast(key: string): void { this.banner?.(t(key), { color: '#c9a0ff', hold: 3, size: 8 }); }
 
   /** Emit on the bus, then let owned charms react to the same event. */
   private emit<K extends keyof GameEvents>(key: K, payload: GameEvents[K]): void {
@@ -2535,6 +2643,7 @@ class Run implements DebtRun {
       wingKeys: this.wingKeys, managerKey: this.managerKey, rooms: { ...this.rooms, lockers: [...this.rooms.lockers] }, bonusObols: this.currencies.get('obol') ?? 0,
       soulMarks: this.soulMarkCount, markEscrow: this.markEscrow, bossDuel: this.bossDuelNight, pledged: [...this.pledged],
       ...(this.endingPathId ? { endingPath: this.endingPathId } : {}),
+      hollow: { ...this.hollow }, forgiveUntil: this.forgiveUntil, obolMult: this.obolMult, hollowRefused: this.hollowRefused,
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -2791,6 +2900,10 @@ class Run implements DebtRun {
     if (e.tycoon) this.tycoonSys.restore(e.tycoon);
     this.buffSys.buffs.restore(e.buffs);
     this.hotline.restore(e.hotline);
+    this.hollow = restoredDoor(e.hollow);
+    this.forgiveUntil = typeof e.forgiveUntil === 'number' ? e.forgiveUntil : -1;
+    this.obolMult = typeof e.obolMult === 'number' && e.obolMult > 0 ? e.obolMult : 1;
+    this.hollowRefused = e.hollowRefused === true;
     this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);
     this.watchDeposits = Math.max(0, e.watchDep ?? 0);
     this.bankGranted = Math.max(0, Math.floor(e.bank?.granted ?? 0));

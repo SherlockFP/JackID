@@ -10,8 +10,11 @@
  *    (red flash, chroma glitch), jackpot (lid, medallion, gold count-up).
  *  - autoplay (G) with a size cycled by Backspace; it stops on big wins, curses, jackpots, no funds and no pulls.
  *
+ * LUCKY 7: three Suns (the seven) on one spin pay three free spins at half value; they run as one round.
+ * HOLD: after a spin that did not pay, 1–5 keeps one reel for the next spin at HOLD_COST (+50 %) the stake.
+ *
  * Controls: Space / LMB / Enter spin · Z / X / wheel stake · B max · G autoplay (again = stop) · Backspace auto size
- * · 1–5 hold a reel (charm / milestone) · H pattern card · F fast · E stand.
+ * · 1–5 hold a reel (after a losing spin, +50 % stake) · H pattern card · F fast · E stand.
  */
 import type * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
@@ -26,8 +29,8 @@ import { TAU } from '@/core/math';
 import { px5Width } from '@/core/texgen/font';
 import { buildModel, type BigOneParts } from './model';
 import {
-  BASE_VALUE, CELLS, MAW, MAX_LINE_MULT, MAX_STAKE, PATTERN_IDS, PATTERN_MULT, SEED_STAKES, SYM_COUNT, SYM_NAMES, buildMods, curseChance,
-  play, playHeadless, type Mods, type Outcome, type PatternId,
+  BASE_VALUE, CELLS, HOLD_COST, LUCKY_SPINS, MAW, MAX_LINE_MULT, MAX_STAKE, PATTERN_IDS, PATTERN_MULT, SEED_STAKES, SYM_COUNT, SYM_NAMES,
+  buildMods, curseChance, playHeadless, playRound, type Mods, type Outcome, type PatternId, type Round,
 } from './rules';
 import { STRINGS } from './strings';
 import { SYMBOL_BG, paintSymbol } from './symbols';
@@ -50,11 +53,21 @@ type SpinEv = {
   /** Near-miss tell: the reel that crawls, its row and the run length lined up (-1 when none). */
   tReel: number; tRow: number; tLen: number;
   hold: number; meter: number; since: number; night: number;
+  /** 0 for the staked spin, n for LUCKY 7 free spin n. */
+  free: number;
 };
 type EvalEv = {
   k: 'eval'; stake: number; gross: number; jackpot: number; curse: boolean; fill: boolean; tease: boolean;
   /** Every paying pattern in tally order (smallest first). */
   tally: PayEv[]; tags: string[]; meter: number;
+  /** LUCKY 7 round: the round's spins are called out together on the last one. */
+  lucky: boolean;
+  /** The three sevens of the staked spin (empty on the free spins). */
+  sevens: number[];
+  /** Free spin index (0 for the staked spin), and whether this is the round's last spin (it settles the round). */
+  free: number; last: boolean;
+  /** The round's gross (all its spins) and the round's settle tags, valid on the last spin. */
+  round: number;
 };
 type HoldEv = { k: 'hold'; reel: number };
 type Ev = SpinEv | EvalEv | HoldEv;
@@ -64,15 +77,19 @@ type State = {
   tally: PayEv[];
 };
 
-/** Reel n stops at 1.00 + 0.25 n s (MACHINES §2.3 spin order, juice timing). */
-const STOP_T = [1.0, 1.25, 1.5, 1.75, 2.0];
+/** Reel n stops at 0.75 + 0.2 n s: a round is felt in under four seconds (MACHINES §2.3 spin order, juice timing). */
+const STOP_T = [0.75, 0.95, 1.15, 1.35, 1.55];
+/** Free spins run their reels at this share of the staked spin's time. */
+const FREE_SPEED = 0.6;
 /** Extra crawl of the anticipating reel by the run length lined up (index = length: 2 = two of three). */
-const TEASE_D = [0, 0, 0.7, 1.1, 1.6];
+const TEASE_D = [0, 0, 0.4, 0.55, 0.7];
 const BOUNCE = 0.12;
 /** Tally: each pattern gets a step of STEP_MAX down to STEP_MIN so the whole count stays under TALLY_CAP seconds. */
-const STEP_MAX = 0.62;
-const STEP_MIN = 0.32;
-const TALLY_CAP = 3.8;
+const STEP_MAX = 0.4;
+const STEP_MIN = 0.2;
+const TALLY_CAP = 1.6;
+/** Free spins tally quicker: a fixed step per pattern. */
+const QUICK_STEP = 0.14;
 /** Semitone ladder of the tally chimes: each pattern rings a note higher. */
 const TALLY_NOTES = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16];
 /** Tally text colours, escalating from pale to hot. */
@@ -115,7 +132,7 @@ export const def: MachineDef = {
     'x.bigone.curseWard': 'Curse ward charges: an EATEN spin becomes a normal spin, consuming one.',
     'x.bigone.jackpotFeed': 'Meter feed as a fraction of every stake (default 0.01).',
     'x.bigone.respin': 'Chance after a losing spin to respin reels 4 and 5 for free.',
-    'x.bigone.holdReel': 'Allows holding one reel between spins (keys 1 to 5).',
+    'x.bigone.holdReel': 'Allows holding one reel after a spin that did not pay (keys 1 to 5). On by default, costs HOLD_COST x the stake.',
     'jackpot.mult': 'Multiplies the FULL (jackpot) odds.',
     luck: 'Luck: coalesce chance +1 % per point (cap 30 %), plus the pre-coalesce grid for a visible jump.',
   },
@@ -266,9 +283,20 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     this.showHud();
   }
 
+  /** HOLD: arms one reel for the next spin (the same key again releases it). Opens only after a spin that did not pay. */
   private toggleHold(reel: number): void {
     if (this.inRound || this.busy || this.roundOpen || this.autoLeft > 0 || !this.currentMods().holdOn) return;
-    void this.emit({ k: 'hold', reel: this.state.hold === reel ? -1 : reel });
+    if (this.state.hold === reel) { void this.emit({ k: 'hold', reel: -1 }); return; }
+    if (!this.holdOpen()) { this.sfx('buzzer'); this.toast(this.t('holdWin'), 'warn'); return; }
+    void this.emit({ k: 'hold', reel });
+  }
+
+  /** The last spin did not pay (a curse counts), and the held stake (HOLD_COST x the bet) is affordable within the cap. */
+  private holdOpen(): boolean {
+    const last = this.state.last10[0];
+    if (last !== 0 && last !== 2) return false;
+    const cost = Math.ceil(this.bet * HOLD_COST);
+    return this.costOf(cost) <= this.ctx.run.wallet() && cost <= this.ctx.run.betLimits(this.def.id, this.id).max;
   }
 
   // ── authority-side logic: runs only on the local occupant ───────────────────────────────────────
@@ -276,21 +304,32 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     if (this.inRound || this.busy || this.roundOpen || this.disposed || !this.isLocalOccupant) return;
     this.inRound = true;   // held until the eval presentation ends, so the next roll sees the final meter
     try {
-      const stake = this.bet;
+      // an armed HOLD charges HOLD_COST x the bet for this spin; the round (and its free spins) pays at that stake
+      const stake = this.state.hold >= 0 ? Math.ceil(this.bet * HOLD_COST) : this.bet;
       if (!this.beginRound(stake)) { this.autoStop(); return; }
       this.showHud();
-      let res: Outcome | null = null;
+      let res: Round | null = null;
       try {
-        const out = this.roll(stake);
-        res = out;
-        await this.emit(spinEvent(out, stake, this.sinceCurse(), this.ctx.run.night()));
-        await this.emit(evalEvent(out, stake), () => this.settle({ gross: out.gross, tags: out.tags }));
+        const round = this.roll(stake);
+        res = round;
+        const since0 = this.sinceCurse();
+        const night = this.ctx.run.night();
+        const n = round.spins.length;
+        for (let i = 0; i < n; i++) {
+          const o = round.spins[i];
+          const last = i === n - 1;
+          const tags = last ? round.tags : o.tags;
+          await this.emit(spinEvent(o, stake, since0 + i, night, i));
+          const ev = evalEvent(o, stake, { free: i, lucky: round.lucky, sevens: i === 0 ? o.sevens : [], last, round: round.gross, tags });
+          // the round settles once, on its last spin (settle-before-present, DECISIONS G)
+          await this.emit(ev, last ? () => this.settle({ gross: round.gross, tags: round.tags }) : undefined);
+        }
       } finally {
         if (this.roundOpen) this.settle({ gross: 0 });   // never strand a stake (rule 7)
       }
       if (res && this.autoLeft > 0 && !this.disposed) {
         const big = tierAtLeast(juiceTier(res.gross, stake, res.tags), 'big');
-        this.autoLeft = big || res.curse || res.fill ? 0 : this.autoLeft - 1;
+        this.autoLeft = big || res.curse || res.fill || res.lucky ? 0 : this.autoLeft - 1;
         if (this.autoLeft > 0) void this.wait(0.6).then(() => this.autoTick());
       }
     } finally {
@@ -306,11 +345,11 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   }
 
   /** The authority's roll: pure rules over the round rng and the current state. */
-  private roll(stake: number): Outcome {
+  private roll(stake: number): Round {
     const s = this.state;
     const mods = this.currentMods();
     const maxStake = this.maxStake();
-    return play(this.rng, stake, {
+    return playRound(this.rng, stake, {
       mods, luck: this.luck(), sinceCurse: this.sinceCurse(), wardOn: mods.wardCharges - s.wardUsed > 0,
       meter: s.meter, maxStake, prev: s.grid, hold: s.hold,
     });
@@ -364,21 +403,27 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       return;
     }
 
-    // anticipation: lever pull and spin button, reels paint a random strip under the stop faces
-    this.sfx('coinInsert');
-    this.sfx('lever');
-    void this.parts.buttons.spin.press(0.15);
-    void this.anim(0.15, (k) => { p.lever.rotation.x = LEVER_PULL * k; }, 'outQuad')
-      .then(() => this.anim(0.5, (k) => { p.lever.rotation.x = LEVER_PULL * (1 - k); }, 'outBounce'));
+    const free = ev.free > 0;
+    // anticipation: lever pull and spin button (a free spin skips the lever), reels paint a random strip under the stop faces
+    if (!free) {
+      this.sfx('coinInsert');
+      this.sfx('lever');
+      void this.parts.buttons.spin.press(0.15);
+      void this.anim(0.15, (k) => { p.lever.rotation.x = LEVER_PULL * k; }, 'outQuad')
+        .then(() => this.anim(0.5, (k) => { p.lever.rotation.x = LEVER_PULL * (1 - k); }, 'outBounce'));
+    }
     for (let i = 0; i < 5; i++) this.paintReel(i, ev.grid);
     this.sfx('reelStart');
     const spinLoop = this.ctx.audio.play('reelLoop', { loop: true, param: 0.6, vol: 0.7 });   // the reels hum until the last one stops
     this.drawScreen();
+    if (free) this.drawText(this.t('freeN', { n: ev.free, of: LUCKY_SPINS }));
 
     // near-miss tell: the reel that would complete a lined-up run crawls; every later reel waits behind it
-    const tReel = ev.tease && ev.tReel >= 1 && ev.tReel <= 4 && ev.tReel !== ev.hold ? ev.tReel : -1;
+    const tReel = !free && ev.tease && ev.tReel >= 1 && ev.tReel <= 4 && ev.tReel !== ev.hold ? ev.tReel : -1;
     const crawl = tReel >= 0 ? TEASE_D[Math.min(4, Math.max(2, ev.tLen))] : 0;
-    const stopOf = (i: number): number => STOP_T[i] + (ev.respin && i >= 3 ? 0.8 : 0) + (tReel >= 0 && i >= tReel ? crawl : 0);
+    const stopOf = (i: number): number => (free
+      ? STOP_T[i] * FREE_SPEED
+      : STOP_T[i] + (ev.respin && i >= 3 ? 0.8 : 0) + (tReel >= 0 && i >= tReel ? crawl : 0));
     const runs: Promise<void>[] = [];
     for (let i = 0; i < 5; i++) {
       if (i === ev.hold) { runs.push(Promise.resolve()); continue; }   // held reel stays put
@@ -429,7 +474,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     this.lastStake = ev.stake;
     if (pc.local) {
       if (ev.curse) this.seatHud?.result('bust', -ev.stake);
-      else if (pc.fast || !ev.tally.length) this.callout(this.netOf(ev.gross, ev.stake, pc.local));   // a counted win is called out pattern by pattern below
+      // a counted win is called out pattern by pattern below; a LUCKY 7 round is called out once, for its total
+      else if (!ev.lucky && (pc.fast || !ev.tally.length)) this.callout(this.netOf(ev.gross, ev.stake, pc.local));
     }
     const code = ev.curse ? 2 : ev.fill ? 3 : ev.gross > 0 ? 1 : 0;
     s.last10 = [code, ...s.last10].slice(0, LAST10);
@@ -438,17 +484,26 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     if (ev.fill) { s.tally = []; return this.presentJackpot(ev, pc); }
 
     s.tally = ev.tally.map((t) => ({ ...t }));
+    if (ev.sevens.length) await this.luckyShow(ev, pc);
     // three or more patterns start the combo light show (it runs through the tally and the celebration)
-    if (!pc.fast && ev.tally.length >= COMBO_MIN) this.startCombo(ev.tally.length);
+    if (!pc.fast && ev.tally.length >= COMBO_MIN && !ev.free) this.startCombo(ev.tally.length);
     // the tally: one pattern at a time, smallest first. Each one lights, rings a higher note, and counts the total up
-    if (!pc.fast && ev.tally.length) { await this.tallyShow(ev.tally, pc.local); if (pc.local) this.callout(this.netOf(ev.gross, ev.stake, pc.local)); }
-    else for (const pay of ev.tally) this.lightPay(pay, false);
+    if (!pc.fast && ev.tally.length) {
+      await this.tallyShow(ev.tally, pc.local, ev.free > 0);
+      if (pc.local && !ev.lucky) this.callout(this.netOf(ev.gross, ev.stake, pc.local));
+    } else for (const pay of ev.tally) this.lightPay(pay, false);
 
-    if (ev.gross > 0) {
-      // every win is felt: a x2 already flashes, pours coins and pops; the show scales with the multiplier.
-      // The pop shows the same net as the WIN callout; the multiplier (gross / stake) still sets the feel.
-      await this.celebrate(juiceTier(ev.gross, ev.stake, ev.tags), {
-        amount: Math.max(0, this.netOf(ev.gross, ev.stake, pc.local)), mult: ev.gross / Math.max(1, ev.stake),
+    // a LUCKY 7 round: the staked spin and the free spins show their patterns; the round's total is felt on the last spin
+    if (ev.lucky && !ev.last) {
+      if (!pc.fast) await this.wait(0.12);
+      return;
+    }
+    const total = ev.round;
+    if (ev.lucky && pc.local) this.callout(this.netOf(total, ev.stake, pc.local));
+    if (total > 0) {
+      // the round's total: a x2 already flashes, pours coins and pops; the show scales with the multiplier
+      await this.celebrate(juiceTier(total, ev.stake, ev.tags), {
+        amount: Math.max(0, this.netOf(total, ev.stake, pc.local)), mult: total / Math.max(1, ev.stake),
         bet: ev.stake, bulbs: this.comboOn ? undefined : this.parts.bulbs.window, lamps: this.parts.paylineLamps,
         restore: () => { if (!this.comboOn) this.bulbsIdle(); }, fast: pc.fast,
       });
@@ -458,6 +513,17 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     }
     this.clearHighlights();
     this.drawScreen();
+  }
+
+  /** LUCKY 7 lands: the three sevens light, the top screen names the bonus, and the room jumps. */
+  private async luckyShow(ev: EvalEv, pc: PresentCtx): Promise<void> {
+    this.lightCells(ev.sevens, 2);
+    this.drawText(this.t('lucky', { n: LUCKY_SPINS }));
+    this.sfx('jackpot', { vol: 0.8 });
+    this.ctx.fx.flash(GOLD, 0.5, 0.3);
+    this.ctx.fx.glow(this.parts.screens.top.mesh, GOLD, 0.9, 0.5);
+    if (pc.local) this.ctx.fx.shake(0.02, 0.45);
+    if (!pc.fast) await this.wait(0.7);
   }
 
   /**
@@ -524,8 +590,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   }
 
   /** The count-up, pattern by pattern (MACHINES §2 juice): the screen lists what has paid and the running total. */
-  private async tallyShow(tally: readonly PayEv[], local = false): Promise<void> {
-    const step = Math.min(STEP_MAX, Math.max(STEP_MIN, TALLY_CAP / tally.length));
+  private async tallyShow(tally: readonly PayEv[], local = false, quick = false): Promise<void> {
+    const step = quick ? QUICK_STEP : Math.min(STEP_MAX, Math.max(STEP_MIN, TALLY_CAP / tally.length));
     let total = 0;
     for (let i = 0; i < tally.length; i++) {
       const pay = tally[i];
@@ -799,7 +865,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
 
   /** The rules card: five rules, the symbol values, then every pattern with its multiplier, three to a line. */
   private rulesLines(): Txt[] {
-    const lines: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5'].map((k) => ({ k: 'm.bigone.' + k }));
+    const lines: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6', 'rule7'].map((k) => ({ k: 'm.bigone.' + k }));
     const vals = this.currentMods().values;
     lines.push(SYM_NAMES.map((n, s) => `${this.t(`sym_${n}`)} ${vals[s] ?? BASE_VALUE[s]}`).join('   '));
     for (let i = 0; i < PATTERN_IDS.length; i += 3) {
@@ -837,7 +903,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     // STATE: auto, spinning, a held reel, or ready for the next spin
     if (this.autoLeft > 0) sh.state({ k: 'm.bigone.stAuto', v: { n: this.autoLeft } }, 'cyan', { k: 'm.bigone.stAutoSub' });
     else if (busy) sh.state({ k: 'm.bigone.stSpinning' }, 'cyan');
-    else if (s.hold >= 0) sh.state({ k: 'm.bigone.stHold', v: { n: s.hold + 1 } }, 'good', { k: 'm.bigone.stHoldSub' });
+    else if (s.hold >= 0) sh.state({ k: 'm.bigone.stHold', v: { n: s.hold + 1 } }, 'good', { k: 'm.bigone.stHoldSub', v: { c: fmtCoins(Math.ceil(this.bet * HOLD_COST)) } });
     else if (!SeatHud.floorOpen()) sh.floorClosed();
     else sh.state({ k: 'm.bigone.stReady' }, 'gold', { k: 'm.bigone.stReadySub', v: { n: fmtCoins(this.bet) } });
 
@@ -889,22 +955,25 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   }
 }
 
-/** Build the `spin` presentation event from the authority's outcome. */
-function spinEvent(o: Outcome, stake: number, since: number, night: number): SpinEv {
+/** Build the `spin` presentation event from the authority's outcome (`free` = 0 for the staked spin, n for free spin n). */
+function spinEvent(o: Outcome, stake: number, since: number, night: number, free: number): SpinEv {
   return {
     k: 'spin', stake, grid: o.grid, pre: o.pre, coalesced: o.coalesced, teaser: o.teaser, curse: o.curse,
     curseCol: o.curseCol, ward: o.ward, fill: o.fill, fillSym: o.fillSym, respin: o.respin, tease: o.tease,
     tReel: o.teaseAt?.reel ?? -1, tRow: o.teaseAt?.row ?? -1, tLen: o.teaseAt?.len ?? 0,
-    hold: o.hold, meter: o.meterFed, since, night,
+    hold: o.hold, meter: o.meterFed, since, night, free,
   };
 }
 
 /** Build the `eval` event: the tally (every paying pattern, smallest first), the gross and the settle tags. */
-function evalEvent(o: Outcome, stake: number): EvalEv {
+function evalEvent(
+  o: Outcome, stake: number,
+  c: { free: number; lucky: boolean; sevens: number[]; last: boolean; round: number; tags: string[] },
+): EvalEv {
   return {
     k: 'eval', stake, gross: o.gross, jackpot: o.jackpot, curse: o.curse, fill: o.fill, tease: o.tease,
     tally: o.tally.map((t) => ({ pat: t.pat, sym: t.sym, cells: t.cells, amount: t.amount, raw: t.raw, combo: t.combo })),
-    tags: o.tags, meter: o.meter,
+    tags: c.tags, meter: o.meter, lucky: c.lucky, sevens: c.sevens, free: c.free, last: c.last, round: c.round,
   };
 }
 

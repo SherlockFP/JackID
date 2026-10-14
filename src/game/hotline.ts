@@ -31,6 +31,7 @@ import { ringTotal } from '@/machines/hotline/rules';
 import { STOKER_WING } from '@/game/data/rooms';
 import { locksmithZone } from '@/game/rooms';
 import { storyCallFor } from '@/game/story/calls';
+import { PHONE_HOUR, PHONE_MINUTE } from '@/game/hollow/rules';
 
 declare module '@/core/events' {
   interface GameEvents {
@@ -66,6 +67,12 @@ export interface HotlineHost {
   creditQuota?(coins: number): void;
   /** The Hot Lamp the next Bell will roll (same seeded roll as `rollLamps`), or null when it has none. */
   previewNextHot?(): { mid: string; machineId: string } | null;
+  /** The Hollow Door: the 3:33 call with no caller may ring this Watch (run rules: Night 2+, door unused, phone not spent). */
+  hollowCanRing?(): boolean;
+  /** The 3:33 call starts ringing (the door goes to `ringing`). False = it does not ring after all. */
+  hollowRing?(): boolean;
+  /** The 3:33 call was answered ('godown' opens the door) or spent ('hangup': missed, declined or hung up). */
+  hollowAnswer?(choice: 'godown' | 'hangup'): boolean;
 }
 
 export interface HotlineOpts {
@@ -81,7 +88,13 @@ declare module '@/core/events' {
 }
 
 /** `ringSecs`: the ring length this call was given (base 20 s plus `x.phone.ringTime`), kept so a restore re-sends it. */
-interface CallRec { id: number; script: string; ringingSince: number; answeredBy: number | null; offers: Offer[]; ringSecs?: number }
+interface CallRec { id: number; script: string; ringingSince: number; answeredBy: number | null; offers: Offer[]; ringSecs?: number; hollow?: boolean }
+
+/** The Hollow Door's 3:33 call: the Watch dial reads 12 hours, so 3:33 is 3h33m of the 12 (the Watch is the Night clock). */
+export const HOLLOW_CALL_CHANCE = 0.25;   // per Watch from Night 2, while the door is unused and the phone not spent
+const NIGHT_CLOCK_FRAC = (PHONE_HOUR + PHONE_MINUTE / 60) / 12;
+const HOLLOW_SCRIPT = 'hotline.call.hollow';
+const HOLLOW_OFFERS: readonly Offer[] = [{ id: 'hollow.godown', v: {} }, { id: 'hollow.hangup', v: {} }];
 
 /** JSON-safe state, stored under `RunExt.hotline`. */
 export interface HotlineSave {
@@ -99,6 +112,8 @@ export interface HotlineSave {
   answerLeft: number;
   /** Nights whose Mira call (story lane) already played. Optional: older saves have none. */
   story?: number[];
+  /** The next scheduled call (`ringAt`) is the Hollow Door's 3:33 call. Optional: older saves have none. */
+  hollowAt?: boolean;
 }
 
 export interface Outcome { ok: boolean; note: string; vars: DealVars }
@@ -491,14 +506,18 @@ export function createHotline(run: RunApi, opts: HotlineOpts = {}): Hotline {
 
   function startCall(): PhoneCallState | null {
     if (st.call) return null;
+    const hollow = st.hollowAt === true;
+    st.hollowAt = false;
+    if (hollow && !(host.hollowRing?.() ?? false)) { st.ringAt = -1; return null; }
     const id = st.nextId++;
     const rng = createRng(hashSeed('hotline.offer', run.seed, st.night, st.watch, id));
-    const script = `hotline.call.${rng.int(1, CALL_LINES)}`;
+    const script = hollow ? HOLLOW_SCRIPT : `hotline.call.${rng.int(1, CALL_LINES)}`;
     const ringSecs = ringTotal(run.mod('x.phone.ringTime', MID, RING_SECONDS));
-    st.call = { id, script, ringingSince: now(), answeredBy: null, offers: rollOffers(rng), ringSecs };
+    const offers = hollow ? HOLLOW_OFFERS.map((o) => ({ id: o.id, v: { ...o.v } })) : rollOffers(rng);
+    st.call = { id, script, ringingSince: now(), answeredBy: null, offers, ringSecs, ...(hollow ? { hollow: true } : {}) };
     st.ringLeft = ringSecs;
     st.answerLeft = 0;
-    st.rangThisNight += 1;
+    if (!hollow) st.rangThisNight += 1;
     st.ringAt = -1;
     rebuildView();
     bus.emit('phone:ring', { callId: id });
@@ -511,6 +530,8 @@ export function createHotline(run: RunApi, opts: HotlineOpts = {}): Hotline {
     if (!c) return;
     st.call = null; st.ringLeft = 0; st.answerLeft = 0;
     rebuildView();
+    // the 3:33 call not taken to "go down" spends the phone for the run
+    if (c.hollow && kind !== 'deal') host.hollowAnswer?.('hangup');
     bus.emit('hotline:result', { callId: c.id, kind, deal, ok: out.ok, note: out.note, vars: out.vars });
     bus.emit('phone:end', { callId: c.id });
   }
@@ -525,6 +546,13 @@ export function createHotline(run: RunApi, opts: HotlineOpts = {}): Hotline {
     st.live = true;
     st.ringAt = -1;
     if (st.call) endCall('missed', '', { ok: false, note: 'hotline.note.missed', vars: {} });
+    // The Hollow Door's 3:33 call (no caller) takes this Watch's ring when it rolls: from Night 2, once the door is unused.
+    const hollowRng = createRng(hashSeed('hollow.phone', run.seed, night, w.index));
+    if (host.hollowCanRing?.() && hollowRng.next() < HOLLOW_CALL_CHANCE) {
+      st.hollowAt = true;
+      st.ringAt = w.seconds * NIGHT_CLOCK_FRAC;
+      return;
+    }
     const rng = createRng(hashSeed('hotline.ring', run.seed, night, w.index));
     const roll = rng.next();
     const at = w.seconds * (RING_FROM + (RING_TO - RING_FROM) * rng.next());
@@ -559,7 +587,7 @@ export function createHotline(run: RunApi, opts: HotlineOpts = {}): Hotline {
       st.answerLeft = ANSWER_SECONDS;
       rebuildView();
       // the first Watch of a Night with a Mira call: her lines play over the pickup (the deals still follow)
-      const sc = st.watch === 0 ? storyCallFor(run.night()) : null;
+      const sc = st.watch === 0 && !c.hollow ? storyCallFor(run.night()) : null;
       if (sc && !(st.story ?? []).includes(sc.night)) {
         (st.story ??= []).push(sc.night);
         bus.emit('phone:story', { callId: c.id, id: sc.id, speaker: sc.speaker, lines: [...sc.lines] });
@@ -567,6 +595,14 @@ export function createHotline(run: RunApi, opts: HotlineOpts = {}): Hotline {
       return;
     }
     if (c.answeredBy === null || !Number.isInteger(choice) || choice < 0 || choice >= c.offers.length) return;
+    if (c.hollow) {
+      const godown = choice === 0;
+      host.hollowAnswer?.(godown ? 'godown' : 'hangup');
+      endCall('deal', godown ? 'hollow.godown' : 'hollow.hangup', godown
+        ? { ok: true, note: 'hotline.note.hollow.godown', vars: {} }
+        : { ok: false, note: 'hotline.note.hollow.hangup', vars: {} });
+      return;
+    }
     const offer = c.offers[choice];
     const def = DEAL_BY_ID.get(offer.id);
     let out: Outcome = { ok: true, note: 'hotline.note.struck', vars: { name: `@${dealKey(offer.id)}.name` } };

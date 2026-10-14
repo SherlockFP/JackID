@@ -34,6 +34,10 @@ export const BLIP_VOICES: Readonly<Record<string, BlipVoice>> = {
   bartender: VOICE({ wave: 'triangle', f0: 300, span: 5, dur: 0.04, vol: 0.26, lp: 3000, noise: 0.05, cps: 28 }),
   mira: VOICE({ wave: 'sine', f0: 880, span: 7, dur: 0.035, vol: 0.24, lp: 7000, noise: 0.06, cps: 34 }),                              // bright
   oracle: VOICE({ wave: 'sine', f0: 440, span: 5, dur: 0.07, vol: 0.22, lp: 4000, noise: 0.12, cps: 20, glide: 1 }),                      // long, breathy
+  // The Dark Lords (THE HOLLOW DOOR): deep, slow, almost no inflection
+  lord_ash: VOICE({ wave: 'triangle', f0: 96, span: 2, dur: 0.11, vol: 0.4, lp: 520, noise: 0.05, cps: 10 }),
+  lord_ledgers: VOICE({ wave: 'sine', f0: 118, span: 2, dur: 0.1, vol: 0.4, lp: 640, noise: 0.07, cps: 10 }),
+  lord_mirrors: VOICE({ wave: 'triangle', f0: 132, span: 3, dur: 0.09, vol: 0.36, lp: 900, noise: 0.14, cps: 11 }),
   dealer: VOICE({ wave: 'square', f0: 660, span: 4, dur: 0.022, vol: 0.1, lp: 5000, noise: 0.3, bp: 2400, q: 2, cps: 38 }),               // crisp clicks
   mannequin: VOICE({ wave: 'sine', f0: 240, span: 2, dur: 0.06, vol: 0.085, lp: 1800, noise: 0.85, bp: 2600, q: 3, cps: 16 }),              // breath ticks
 };

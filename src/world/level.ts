@@ -21,6 +21,7 @@ import { createElevator, type Elevator } from './props/elevator';
 import { createQuotaBoard, type QuotaBoard } from './props/quotaBoard';
 import { buildSignposts } from './props/signposts';
 import { buildRooms, type RoomsBuild } from './rooms';
+import { buildHollow } from './hollow';
 
 // ── constants ───────────────────────────────────────────────────────────────────────────────────
 const T = 0.3;            // wall thickness (GDD §8.1)
@@ -420,6 +421,15 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   statics.push(...rooms.statics);
   updates.push({ update: (dt, time) => rooms.update(dt, time) });
   disposables.push(rooms);
+
+  // ── THE HOLLOW DOOR (world/hollow): the cracked plate in the Sump, THE UNDERNEATH far below, the Lords' table ──
+  const hollow = buildHollow({ kit, tex, seed: ctx.seed, interact: ctx.interact, collision: ctx.collision });
+  root.add(hollow.root);
+  lights.push(...hollow.lights);
+  statics.push(...hollow.statics);
+  Object.assign(anchors, hollow.anchors);
+  updates.push({ update: (dt, time) => hollow.update(dt, time) });
+  disposables.push(hollow);
 
   // ── plaques and signage (zones, shops, doors) ────────────────────────────────────────────────
   const plaque = (key: string, w: number, h: number, x: number, y: number, z: number, rot: 0 | 90 | 180 | 270, color: number) => {

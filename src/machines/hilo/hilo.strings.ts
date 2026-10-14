@@ -23,7 +23,7 @@ const STRINGS: MachineStrings = {
     rule1: 'A card is face up. Guess whether the next card is higher or lower. A tie is a win.',
     rule2: 'Each right guess multiplies the run. The rung lamps show how high you climbed.',
     rule3: 'A guess that cannot lose is not offered.',
-    rule4: 'SKIP swaps the card for a new one. You get only a few skips per round.',
+    rule4: 'SKIP swaps the card for a new one. You get one skip per round, so pick your moment.',
     rule5: 'COLLECT pays the bet times the run, after at least one right guess. A bust loses the bet.',
     rule6: 'Leaving the seat collects a live ladder, or refunds the bet when no guess was made.',
     stBet: 'PLACE YOUR BET', stBetSub: 'Press [{deal}] to deal', stBusy: 'CARD IN PLAY…',
@@ -33,6 +33,8 @@ const STRINGS: MachineStrings = {
     nSkips: 'SKIPS LEFT', nBalance: 'BALANCE',
     cDeal: 'DEAL', cBet: 'BET', cHigher: 'HIGHER', cLower: 'LOWER', cSkip: 'SKIP', cCollect: 'COLLECT',
     cRules: 'RULES', cLeave: 'LEAVE',
+    cHigherOdds: 'HIGHER {p}% · x{m} = {c}', cLowerOdds: 'LOWER {p}% · x{m} = {c}',
+    nearMiss: 'ONE RANK OFF!',
   },
   tr: {
     name: 'Yüksek-Alçak Merdiveni',
@@ -52,7 +54,7 @@ const STRINGS: MachineStrings = {
     rule1: 'Kart açık gelir. Sıradaki kartın yüksek mi alçak mı olacağını tahmin et. Eşitlik kazandırır.',
     rule2: 'Her doğru tahmin çarpanı büyütür. Merdiven lambaları ne kadar tırmandığını gösterir.',
     rule3: 'Kaybetme ihtimali olmayan bir tahmin sunulmaz.',
-    rule4: 'ATLA kartı yenisiyle değiştirir. Turda sınırlı sayıda atlama hakkın var.',
+    rule4: 'ATLA kartı yenisiyle değiştirir. Turda bir atlama hakkın var, zamanını iyi seç.',
     rule5: 'AL, bahsi çarpanla çarpıp öder. En az bir doğru tahmin şarttır. Batarsan bahis kaybolur.',
     rule6: 'Masadan kalkarsan canlı merdiven alınır; hiç tahmin yapılmadıysa bahis iade edilir.',
     stBet: 'BAHSİNİ YAP', stBetSub: '[{deal}] ile kartı dağıt', stBusy: 'KART ÇEVRİLİYOR…',
@@ -62,6 +64,8 @@ const STRINGS: MachineStrings = {
     nSkips: 'KALAN ATLAMA', nBalance: 'BAKİYE',
     cDeal: 'DAĞIT', cBet: 'BAHİS', cHigher: 'YÜKSEK', cLower: 'ALÇAK', cSkip: 'ATLA', cCollect: 'AL',
     cRules: 'KURALLAR', cLeave: 'ÇIK',
+    cHigherOdds: 'YÜKSEK {p}% · x{m} = {c}', cLowerOdds: 'ALÇAK {p}% · x{m} = {c}',
+    nearMiss: 'BİR KADEM FARK!',
   },
 };
 

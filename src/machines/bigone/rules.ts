@@ -1,12 +1,13 @@
-/**
- * The Big One — pure rules (MACHINES §2). Shared by the live machine (`index.ts`) and the headless play contract
+﻿/**
+ * The Big One â€” pure rules (MACHINES Â§2). Shared by the live machine (`index.ts`) and the headless play contract
  * (`playHeadless`: staff auto-play, balance sims), so the simulated RTP IS the live RTP.
  *
- * No three, kit, DOM or Math.random: every draw comes from the Rng passed in. Grid = 15 int cells, index r·5 + c
+ * No three, kit, DOM or Math.random: every draw comes from the Rng passed in. Grid = 15 int cells, index rÂ·5 + c
  * (r0 top, c0 left). Symbols 0..6 = MOTH TOOTH KEY CANDLE RING CROWN SUN, MAW = 7 (dead cell), GHOST = 8 (wild).
  *
- * Spin order (§2.3, RNG draws in this order): curse roll → fill roll → base grid → GHOST injection → coalesce (luck)
- * → teaser MAWs → (EATEN: curse trio) → hold → evaluate → respin (losing spins only) → payout.
+ * Spin order (Â§2.3, RNG draws in this order): curse roll â†’ fill roll â†’ LUCKY 7 roll â†’ base grid (a held reel is laid down
+ * first) â†’ GHOST injection â†’ coalesce (luck) â†’ teaser MAWs â†’ (EATEN: curse trio) â†’ hold â†’ LUCKY 7 sevens â†’ evaluate â†’
+ * respin (losing spins only) â†’ payout. A LUCKY 7 round (`playRound`) then plays its free spins.
  * Charm hooks use the `x.bigone.*` names the charm data already references (see `buildMods`).
  */
 import type { Rng } from '@/core/rng';
@@ -26,9 +27,9 @@ export const MAX_STAKE = 100;
 /** Hard ceiling on a line payout (x stake, jackpot claims exempt). The best stacked tally sits far below it. */
 export const MAX_LINE_MULT = 500;
 export const FULL_MULT = 40;
-/** FULL pays ×40 × the symbol value (E[value] 1.44, about 1.4 % RTP), plus the meter. Odds 1 in 4 000 before `jackpot.mult`. */
+/** FULL pays Ã—40 Ã— the symbol value (E[value] 1.44, about 1.4 % RTP), plus the meter. Odds 1 in 4 000 before `jackpot.mult`. */
 export const FULL_P = 1 / 4000;
-/** Meter seed = SEED_STAKES × the ladder cap. */
+/** Meter seed = SEED_STAKES Ã— the ladder cap. */
 export const SEED_STAKES = 50;
 export const FEED_DEFAULT = 0.01;
 export const WILD_CAP = 0.2;
@@ -38,6 +39,14 @@ const TEASER_P = 0.06;
 const TEASER2_P = 0.35;
 const COALESCE_CAP = 0.3;
 const RESPIN_COLS = [3, 4];
+/** HOLD: the reel kept after a spin that did not pay costs this multiple of the stake on the next spin. */
+export const HOLD_COST = 1.65; // 1.5 made always-holding +EV (~1.05 RTP)
+/** LUCKY 7: the chance a spin lands three sevens (SUN, the top symbol). Natural three-SUN grids are ~6 %, so the seven is a roll. */
+export const LUCKY_P = 1 / 300;
+/** Free spins won by LUCKY 7: no curse, no hold, no retrigger, and each pays LUCKY_PAY of its spin's value (keeps the RTP share small). */
+export const LUCKY_SPINS = 3;
+export const LUCKY_PAY = 0.5;
+const LUCKY_SEVEN = SUN;
 
 export const PATTERN_IDS = [
   'TREY', 'QUAD', 'RAIL', 'PILLAR', 'SLASH', 'VALLEY', 'PEAK', 'CROSS', 'PENTACLE', 'HALO',
@@ -64,7 +73,7 @@ const LINES = PATTERN_IDS.filter((p): p is LinePattern => p !== 'CLUSTER' && p !
 const at = (r: number, c: number): number => r * 5 + c;
 const rowCells = (r: number): number[] => [0, 1, 2, 3, 4].map((c) => at(r, c));
 
-/** Every instance of a line pattern as cell indices. Counts: TREY 9, QUAD 6, RAIL 3, PILLAR 5, SLASH 6, VALLEY 1 … */
+/** Every instance of a line pattern as cell indices. Counts: TREY 9, QUAD 6, RAIL 3, PILLAR 5, SLASH 6, VALLEY 1 â€¦ */
 function instancesOf(p: LinePattern): number[][] {
   const out: number[][] = [];
   switch (p) {
@@ -136,6 +145,15 @@ function touches(g: readonly number[], i: number, v: number): boolean {
   return (c > 0 && g[i - 1] === v) || (i >= 5 && (g[i - 5] === v || (c > 0 && g[i - 6] === v) || (c < 4 && g[i - 4] === v)));
 }
 
+/**
+ * True when a cell already laid down further on (a held reel, set before the draw) would touch cell `i` with `v`. The
+ * mirror of `touches`: keeps the anti-clump the same for held cells as for drawn ones, so a hold cannot buy extra pairs.
+ */
+function touchesAhead(g: readonly number[], i: number, v: number): boolean {
+  const r = Math.floor(i / 5), c = i % 5;
+  return (c < 4 && g[i + 1] === v) || (r < 2 && (g[i + 5] === v || (c > 0 && g[i + 4] === v) || (c < 4 && g[i + 6] === v)));
+}
+
 /** Chance that the next spin is EATEN, from spins since the last curse (k). Capped before the charm multiplier. */
 export function curseChance(k: number, mult: number): number {
   return Math.min(CURSE_CAP, 0.015 + 0.0025 * Math.max(0, k)) * mult;
@@ -147,7 +165,7 @@ export type FeatureOf = (name: string) => boolean;
 
 /** Every charm / milestone input, folded once per spin. */
 export interface Mods {
-  /** Payout value per symbol 0..6 (base + add, × mult). */
+  /** Payout value per symbol 0..6 (base + add, Ã— mult). */
   values: number[];
   /** Draw weights, indexes 0..8 (MAW 7 is always 0). */
   weights: number[];
@@ -195,7 +213,7 @@ export function buildMods(mod: Modify, feature: FeatureOf = () => false): Mods {
     curse: Math.max(0, mod('x.bigone.curseChanceMult' as ModHook, 1)),
     fill: Math.max(0, mod('jackpot.mult' as ModHook, 1)),
     feed: Math.max(0, mod('x.bigone.jackpotFeed' as ModHook, feature('bigone.jackpotFeed') ? 0.015 : FEED_DEFAULT)),
-    holdOn: mod('x.bigone.holdReel' as ModHook, feature('bigone.holdReel') ? 1 : 0) >= 1,
+    holdOn: mod('x.bigone.holdReel' as ModHook, 1) >= 1,   // HOLD is on for everyone; a hold costs HOLD_COST x the stake
     respin: clamp(mod('x.bigone.respin' as ModHook, 0), 0, 1),
     wardCharges: Math.max(0, Math.floor(mod('x.bigone.curseWard' as ModHook, 0))),
   };
@@ -230,13 +248,13 @@ function matchSym(g: readonly number[], cells: readonly number[]): number {
   return s < 0 ? SUN : s;
 }
 
-const isStrictSubset = (a: readonly number[], b: readonly number[]): boolean =>
+const isStrictSubset =(a: readonly number[], b: readonly number[]): boolean =>
   a.length < b.length && a.every((x) => b.includes(x));
 
 export interface Pay { pat: PatternId; sym: number; cells: number[]; raw: number }
 export interface Cluster { sym: number; cells: number[]; raw: number }
 
-/** Lines (absorbed as in §2.2), then CLUSTER flood fills (≥ 7, never absorbed). `raw` = value × mult (before stake). */
+/** Lines (absorbed as in Â§2.2), then CLUSTER flood fills (â‰¥ 7, never absorbed). `raw` = value Ã— mult (before stake). */
 export function evaluate(g: readonly number[], m: Mods): { pays: Pay[]; clusters: Cluster[]; raw: number } {
   const hits: Array<{ pat: LinePattern; sym: number; cells: number[] }> = [];
   for (const p of m.lines) {
@@ -342,12 +360,14 @@ export interface PlayIn {
   wardOn: boolean;
   /** Jackpot meter before this stake. */
   meter: number;
-  /** Ladder cap (meter seed = SEED_STAKES × maxStake). */
+  /** Ladder cap (meter seed = SEED_STAKES Ã— maxStake). */
   maxStake: number;
   /** Previous grid (used by a held reel). */
   prev: readonly number[];
   /** Reel to hold (0..4) or -1. */
   hold: number;
+  /** A LUCKY 7 free spin: no curse, no hold, no retrigger. */
+  free?: boolean;
 }
 
 /** One tallied pattern: `raw` = symbol value x pattern multiplier, `combo` = the stacking factor of its place in the tally, `amount` in coins. */
@@ -384,6 +404,21 @@ export interface Outcome {
   /** Meter after the round. */
   meter: number;
   tags: string[];
+  /** LUCKY 7 landed on this spin (the three sevens are in `sevens`). Free spins follow it in the same round. */
+  lucky: boolean;
+  sevens: number[];
+  /** This spin is one of the LUCKY 7 free spins. */
+  free: boolean;
+}
+
+/** One round: the staked spin, then (on LUCKY 7) its free spins. `gross` is the round total, settled once. */
+export interface Round {
+  spins: Outcome[];
+  gross: number;
+  lucky: boolean;
+  curse: boolean;
+  fill: boolean;
+  tags: string[];
 }
 
 /** Paying patterns in tally order (smallest raw first, ties keep evaluation order) with the stacking combo applied. */
@@ -401,12 +436,13 @@ export function tallyOf(stake: number, pays: readonly Pay[], clusters: readonly 
 /** One spin. Always consumes the same leading draws (curse + fill) so a seed replays identically. */
 export function play(rng: Rng, stake: number, s: PlayIn): Outcome {
   const m = s.mods;
-  const pCurse = curseChance(s.sinceCurse, m.curse);
+  const pCurse = s.free ? 0 : curseChance(s.sinceCurse, m.curse);
   const curseRoll = rng.next();
   const ward = curseRoll < pCurse && s.wardOn;
   const eaten = curseRoll < pCurse && !ward;
   const fillRoll = rng.next();
   const fill = !eaten && fillRoll < FULL_P * m.fill;
+  const luckyRoll = rng.next();
 
   let grid: number[];
   let fillSym = -1;
@@ -418,11 +454,17 @@ export function play(rng: Rng, stake: number, s: PlayIn): Outcome {
     fillSym = pickW(rng, m.weights);
     grid = new Array<number>(CELLS).fill(fillSym);
   } else {
-    grid = [];
+    // a held reel is laid down first, so the fresh cells around it keep the same anti-clump as any other grid
+    const held = !eaten && m.holdOn && !s.free && s.hold >= 0 && s.hold < 5 && s.prev.length === CELLS ? s.hold : -1;
+    grid = new Array<number>(CELLS).fill(-1);
+    if (held >= 0) for (let r = 0; r < 3; r++) grid[at(r, held)] = s.prev[at(r, held)];
     for (let i = 0; i < CELLS; i++) {
+      if (grid[i] >= 0) continue;   // laid down already (held)
       let v = pickW(rng, m.weights);
-      for (let k = 0; k < 2 && TUNE.clump > 0 && touches(grid, i, v) && rng.next() < TUNE.clump; k++) v = pickW(rng, m.weights);
-      grid.push(v);
+      for (let k = 0; k < 2 && TUNE.clump > 0 && (touches(grid, i, v) || touchesAhead(grid, i, v)) && rng.next() < TUNE.clump; k++) {
+        v = pickW(rng, m.weights);
+      }
+      grid[i] = v;
     }
     for (let i = 0; i < CELLS; i++) if (rng.next() < m.wild) grid[i] = GHOST;
     if (s.luck > 0) pre = grid.slice();
@@ -452,6 +494,18 @@ export function play(rng: Rng, stake: number, s: PlayIn): Outcome {
 
   const hold = !eaten && !fill && m.holdOn && s.hold >= 0 && s.hold < 5 ? s.hold : -1;
   if (hold >= 0) for (let r = 0; r < 3; r++) grid[at(r, hold)] = s.prev[at(r, hold)] ?? grid[at(r, hold)];
+
+  // LUCKY 7: three sevens land on cells outside the held reel (a held reel never changes under the player)
+  const lucky = !s.free && !eaten && !fill && luckyRoll < LUCKY_P;
+  const sevens: number[] = [];
+  if (lucky) {
+    while (sevens.length < 3) {
+      const c = rng.int(0, CELLS - 1);
+      if (sevens.includes(c) || (hold >= 0 && c % 5 === hold)) continue;
+      sevens.push(c);
+      grid[c] = LUCKY_SEVEN;
+    }
+  }
 
   let pays: Pay[] = [];
   let clusters: Cluster[] = [];
@@ -503,18 +557,48 @@ export function play(rng: Rng, stake: number, s: PlayIn): Outcome {
   for (const _c of clusterOut) tags.push('bigone:pattern:CLUSTER');
   if (eaten) tags.push('curse');
   if (tease && gross === 0) tags.push('nearmiss');
+  if (lucky) tags.push('bigone:lucky');
   return {
     grid, pre, coalesced, teaser, curse: eaten, curseCol, ward, fill, fillSym, respin, tease, teaseAt: teaseI, hold,
-    pays: payOut, clusters: clusterOut, tally, gross, jackpot, meterFed, meter, tags,
+    pays: payOut, clusters: clusterOut, tally, gross, jackpot, meterFed, meter, tags, lucky, sevens, free: !!s.free,
   };
+}
+
+/** A free spin's payouts at `k` of their value (the grid, the meter and the flags stay as they fell). */
+function scaleOutcome(o: Outcome, k: number): Outcome {
+  const sc = <T extends { amount: number }>(t: T): T => ({ ...t, amount: Math.floor(t.amount * k) });
+  return { ...o, gross: Math.floor(o.gross * k), pays: o.pays.map(sc), clusters: o.clusters.map(sc), tally: o.tally.map(sc) };
+}
+
+/**
+ * One round: the staked spin, then LUCKY_SPINS free spins when it lands LUCKY 7. Free spins chain the grid (HOLD is
+ * only ever the staked spin's) and the jackpot meter, and pay at the same stake. The round total is settled once.
+ */
+export function playRound(rng: Rng, stake: number, s: PlayIn): Round {
+  const first = play(rng, stake, s);
+  const spins: Outcome[] = [first];
+  let gross = first.gross;
+  const tags = [...first.tags];
+  if (first.lucky) {
+    let prev = first;
+    for (let i = 0; i < LUCKY_SPINS; i++) {
+      const raw = play(rng, stake, { ...s, free: true, hold: -1, prev: prev.grid, meter: prev.meter, wardOn: false });
+      const o = scaleOutcome(raw, LUCKY_PAY);
+      spins.push(o);
+      gross += o.gross;
+      tags.push(...o.tags);
+      prev = raw;
+    }
+  }
+  return { spins, gross, lucky: first.lucky, curse: first.curse, fill: first.fill, tags: [...new Set(tags)] };
 }
 
 /** Headless single spin for staff auto-play and sims (no hunger state: k is drawn uniformly 0..9, the deadline average). */
 export const playHeadless: HeadlessPlay = (rng, bet, h) => {
   const mods = buildMods(h.mod);
-  const out = play(rng, bet, {
+  const round = playRound(rng, bet, {
     mods, luck: h.luck, sinceCurse: rng.int(0, 9), wardOn: false, meter: SEED_STAKES * MAX_STAKE,
     maxStake: MAX_STAKE, prev: [], hold: -1,
   });
-  return { gross: out.gross, tags: out.tags };
+  return { gross: round.gross, tags: round.tags };
 };

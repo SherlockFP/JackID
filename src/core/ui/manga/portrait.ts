@@ -125,12 +125,36 @@ const SPECS: Record<string, PortraitSpec> = {
     brow: { kind: 'arch', w: 4.2 }, bg: 'burst', outfit: 'suit',
     palette: { ink: '#15120e', paper: '#f1ead9', accent: '#7b5a3a', coat: '#4d4740' },
   },
+  // The Lords (Hollow Door, `lordstable`): ash-grey, long and hollow-eyed, a wax seal over the heart; steam behind.
+  lord_ash: {
+    hair: 'combed', hairColor: '#9a958e', skin: '#8e8a85', eyes: 'hollow', mouth: 'thin',
+    accessories: ['bags', 'hollowcheeks', 'seal'],
+    jaw: 'long', nose: 'sharp', head: [0.96, 1.06], tilt: 0.02, shoulders: 1.08, neck: 0.9, line: 1.15, lash: 0,
+    brow: { kind: 'droop', w: 3.6 }, bg: 'steam', outfit: 'preacher',
+    palette: { ink: '#070707', paper: '#cfccc6', accent: '#b5b0a8', coat: '#2b2a29' },
+  },
+  // The ledger keeper: slicked hair, gold-rimmed spectacles, a ledger held open, the red of a signed debt.
+  lord_ledgers: {
+    hair: 'slick', hairColor: '#1d1b22', skin: '#dcc7b0', eyes: 'tired', mouth: 'flat',
+    accessories: ['spectacles', 'ledger', 'sideburns'],
+    jaw: 'square', nose: 'big', head: [1, 1], tilt: -0.02, shoulders: 1.15, neck: 1, line: 1.1, lash: 0.1,
+    brow: { kind: 'flat', w: 4 }, bg: 'ledger', outfit: 'tailcoat',
+    palette: { ink: '#0b0a10', paper: '#efe8d8', accent: '#7a1f1f', coat: '#2a2a33' },
+  },
+  // Porcelain mask and white gloves: the reflection that is never there. Blank eyes; tiled floor behind.
+  lord_mirrors: {
+    hair: 'slick', hairColor: '#0c0c10', skin: '#efeae6', eyes: 'blank', mouth: 'thin',
+    accessories: ['mask', 'gloves'],
+    jaw: 'oval', nose: 'small', head: [1, 1], tilt: 0, shoulders: 1, neck: 0.95, line: 1.2, lash: 0,
+    brow: { kind: 'none', w: 0 }, bg: 'tiles', outfit: 'robe',
+    palette: { ink: '#050508', paper: '#e9eef2', accent: '#9fd3e6', coat: '#1a1d28' },
+  },
 };
 
 const PLAIN: PortraitSpec = SPECS.you;
 
 /** Spec ids the bench and the dialogue use. Unknown ids fall back to the plain Mark. */
-export const PORTRAIT_IDS: readonly string[] = ['tamsin', 'kuro', 'lucan', 'mimosa', 'orrin', 'vell', 'notary', 'clerk', 'you'];
+export const PORTRAIT_IDS: readonly string[] = ['tamsin', 'kuro', 'lucan', 'mimosa', 'orrin', 'vell', 'notary', 'clerk', 'you', 'lord_ash', 'lord_ledgers', 'lord_mirrors'];
 export function portraitSpec(id: string): PortraitSpec { return SPECS[id] ?? PLAIN; }
 
 export const PW = 256;

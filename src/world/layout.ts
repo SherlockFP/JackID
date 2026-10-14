@@ -16,6 +16,7 @@ import { SLOT_SIZES } from '@/core/types';
 import { createRng, hashSeed, type Rng } from '@/core/rng';
 import type { SlotDef } from './types';
 import type { ZoneDef } from './sys/arch';
+import { HOLLOW_TABLE_SLOT } from './hollow/config';
 
 type Rot = 0 | 90 | 180 | 270;
 const S = (id: InstanceId, zone: ZoneId, size: SlotSize, x: number, z: number, rotY: Rot, y?: number): SlotDef =>
@@ -140,6 +141,8 @@ export const SLOTS: SlotDef[] = [
   S('CNT-01', 'counting', 'M', -28.0, 12.65, 0),
   S('CNT-02', 'counting', 'M', -25.0, 12.65, 0),
   S('CNT-03', 'counting', 'L', -20.0, 18.95, 180),
+  // THE UNDERNEATH: the Lords' table (the Hollow Door, once per run; world/hollow/config.ts)
+  HOLLOW_TABLE_SLOT,
 ];
 
 /**
@@ -156,6 +159,8 @@ export const SLOTS: SlotDef[] = [
  *   N6  WELL-02 roulette · FLR-06 sonkart                N7  WELL-09 mahjong · FLR-05 craps
  */
 export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
+  // The Hollow Door's Lords' table (far below the pit; the door opens it, see world/hollow)
+  [HOLLOW_TABLE_SLOT.id]: 'lordstable',
   // The Mouth: terminal, phone and bounty board only (the Fortune Teller moved to the Free Casino)
   'MOUTH-TERM': 'debt_terminal', 'MOUTH-PHONE': 'hotline', 'MOUTH-BOUNTY': 'bounty_board',
   // The Well: the dais, the high tables and the two wall banks
@@ -206,6 +211,7 @@ export const FREE_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   ...LEGACY_ASSIGN,
   'FLR-01': 'hilo', 'FLR-02': 'coinflip', 'FLR-03': 'scratch', 'FLR-04': 'bandit',
   'FLR-05': 'craps', 'FLR-06': 'sonkart', 'FLR-07': 'keno',
+  [HOLLOW_TABLE_SLOT.id]: 'lordstable',
 };
 
 /** GDD §8.6 busy-floor override: pad → device (host option, default on with ≥ 4 players). Core machines only. */
@@ -270,6 +276,8 @@ export const ZONES: ZoneDef[] = [
   { id: 'counting', rect: [-31, 12, -11, 20], gated: true, ...look(0x050302, 2, 12, 0x080504) },
   // Lift car niche (opens at the lobby, Dawn and endings).
   { id: 'lift', rect: [-5.1, -32.2, -2.9, -30], gated: true, ...look(0x2a2418, 20, 60, 0x2a2418) },
+  // THE UNDERNEATH (world/hollow): far below the pit; the look is HOLLOW_LOOK (fog 2–14 m, a dark red ambient)
+  { id: 'hollow', rect: [108, 108, 132, 132], ...look(0x030103, 2, 14, 0x140a0a) },
 ];
 
 /**

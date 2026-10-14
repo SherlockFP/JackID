@@ -94,6 +94,8 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
   private almanac: Placard3D | null = null;
   /** Seat HUD overlay (readability standard, see _base/seatHud.ts). */
   private seatHud?: SeatHud;
+  /** A READ pressed while the last result was still on show: dealt as soon as the phase is idle again. */
+  private queuedRead = false;
 
   protected createModel(kit: Kit): MachineModel<FortunetellerParts> {
     return buildModel(kit, this.modelOpts);
@@ -141,6 +143,7 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
     if (local && this.roundOpen) this.settle({ gross: 0, tags: ['abandoned'] });   // safety net: never strand a stake
     this.busy = false;
     this.phase = 'idle';
+    this.queuedRead = false;
     this.dealt = []; this.undealt = []; this.finalSlot = -1; this.voided = -1; this.swapped = false;
     this.token++;
     this.almanac?.hide(); this.almanac = null;
@@ -207,6 +210,7 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
   // ── authority-side logic: runs only on the local occupant ────────────────────────────────────────
   /** Stake and deal three face-down cards. */
   private async read(): Promise<void> {
+    if (this.phase === 'apply') { this.queuedRead = true; return; }   // the settled result is on show: deal after it
     if (this.busy || this.roundOpen || this.phase !== 'idle') return;
     if (!this.beginRound(this.bet)) return;                 // charges the wallet, busy = true, re-seeds this.rng
     this.busy = true;
@@ -325,7 +329,15 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
       this.phase = 'idle';
       this.finalSlot = -1;
       this.showHud();
+      this.readQueued();
     }
+  }
+
+  /** Deals the READ that was pressed during the last result (one press, only while the local player still sits here). */
+  private readQueued(): void {
+    if (!this.queuedRead) return;
+    this.queuedRead = false;
+    if (!this.disposed && this.isLocalOccupant) void this.read();
   }
 
   // ── presentation: every peer, including the emitter ─────────────────────────────────────────────

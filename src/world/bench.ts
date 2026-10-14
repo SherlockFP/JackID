@@ -508,11 +508,19 @@ export class Bench {
   }
 
   // ── seating ──
-  async sit(): Promise<void> {
+  /**
+   * Seats the local player (the same path as the E key). `seat` picks a free seat; omitted = the first free one.
+   * Resolves true when seated, so a debug caller (`window.jackid.bench.sit(2)`) can wait on the result.
+   */
+  async sit(seat?: number): Promise<boolean> {
     const p = this.main;
-    if (!p || this.seatState !== 'free') return;
-    const seat = p.m.seats.indexOf(null);
-    if (seat < 0) { app.ui.toast(t('common.occupied', { name: '—' }), 'warn'); return; }
+    if (!p || this.seatState !== 'free') return false;
+    const free = p.m.seats.indexOf(null);
+    if (seat === undefined) seat = free;
+    if (seat < 0 || seat >= p.m.seats.length || p.m.seats[seat] !== null) {
+      app.ui.toast(t('common.occupied', { name: '—' }), 'warn');
+      return false;
+    }
     this.seatState = 'gliding';
     const seed = hashSeed(this.seed, p.m.id, ++this.occ);
     p.m._occupy(app.net.selfId, seat, seed, true);
@@ -529,6 +537,7 @@ export class Bench {
       app.input.setMode('machine');
       this.seatState = 'seated';
     }
+    return this.seatState === 'seated';
   }
 
   /** `MachineNet.requestRelease` target: the host grants immediately (single player). */

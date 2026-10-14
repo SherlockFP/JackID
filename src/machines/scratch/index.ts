@@ -2,7 +2,8 @@
  * Scratch-Card Vendor (`scratch`) — Tier 1, solo. Pattern: `coinflip/index.ts`.
  *
  * Flow. VEND (1–5 cards of one type, paid up front as one round) → the cards slide out, one by one → SCRATCH (drag
- * the coin over the active card: strokes, zones reveal at ≥ 55 % cleared; Space = sweep the active card) → REVEAL
+ * the coin over the active card: strokes, zones reveal at ≥ 55 % cleared; PIT PENNY is different: the player picks 3 spots
+ * of 9, with one bonus pick after a pair, and the rest sweeps open once the picks are spent) → REVEAL
  * (a card is done when every zone is open) → SETTLE (the whole batch pays once, credited BEFORE the last reveal is
  * presented). Leaving with cards left auto-sweeps them and settles.
  *
@@ -10,23 +11,24 @@
  * `stroke` (cosmetic), `zone` (reliable, a zone opened) and `done` (a card finished). Every peer presents them.
  *
  * Controls: 1–5 card type · ← / → cycle type · wheel / Z / X quantity 1–5 · Space / Enter vend, or sweep the active
- * card when one is scratching · LMB drag scratch · H prize tables · Leave (exit) auto-sweeps and settles.
+ * card when one is scratching · PIT PENNY: arrows move the spot cursor, Space / click scratches the spot · LMB drag
+ * scratch · H prize tables · Leave (exit) auto-sweeps and settles.
  */
 import type * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
 import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
-import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
+import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import { fmtCoins, type I18nVars } from '@/core/i18n';
 import { buildModel, cardPose, FRONT_Z, type ScratchParts } from './model';
 import {
   CARD_COUNT, HOOK_CHARM, HOOK_DISCOUNT, HOOK_SECOND, HOOK_TOP, MAX_QTY, PRIZE_MULTS, PRIZE_WEIGHTS,
   RARITY_RARE, RARITY_UNCOMMON, SECOND_CHANCE_EVERY, WEIGHT_TOTAL, ZONE_REVEAL, playHeadless, priceOf, rollCard,
-  type Card, type CardOpts,
+  spotBest, spotLeft, spotOpen, type Card, type CardOpts,
 } from './rules';
-import { FACE_H, FACE_W, brush, clearedFraction, paintFace, paintFoil, zoneRects, type Text } from './faces';
+import { FACE_H, FACE_W, brush, clearedFraction, paintFace, paintFoil, zoneRects, type Rect, type Text } from './faces';
 import { STRINGS } from './strings';
 
 export { playHeadless };
@@ -68,6 +70,15 @@ const zoneIds = (mask: number, count: number): number[] => {
   return out;
 };
 
+/** The zone under a face pixel (-1 for none). */
+const zoneAt = (t: number, x: number, y: number): number =>
+  zoneRects(t).findIndex((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
+
+/** The spot the cursor starts on (the centre of the 3 × 3 PIT PENNY grid). */
+const SPOT_START = 4;
+/** PIT PENNY spot grid: 3 columns, so up / down move three spots. */
+const SPOT_COLS = 3;
+
 export const def: MachineDef = {
   id: 'scratch',
   category: 'lottery',
@@ -99,6 +110,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   private pend: Pend | null = null;
   private views: View[] = [];
   private stroking = false;
+  private cursor = SPOT_START;      // PIT PENNY: the spot under the player's cursor (local only)
   private posed = false;            // the batch's cards stand in their poses (set after the vend / a snapshot restore)
   private placing = false;           // a vend animation is placing the cards: refreshVisuals leaves their poses alone
   private strokeQ: number[] = [];
@@ -188,13 +200,21 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     if (e.repeat && !isQty) return;
     switch (a) {
       case 'n1': case 'n2': case 'n3': case 'n4': case 'n5': this.select(Number(a.slice(1)) - 1); break;
-      case 'left': this.select(this.state.sel - 1); break;
-      case 'right': this.select(this.state.sel + 1); break;
+      // while a PIT PENNY spot is being picked the arrows move the cursor (the card select is locked anyway)
+      case 'left': if (this.spotActive()) this.moveCursor(-1); else this.select(this.state.sel - 1); break;
+      case 'right': if (this.spotActive()) this.moveCursor(1); else this.select(this.state.sel + 1); break;
+      case 'up': if (this.spotActive()) this.moveCursor(-SPOT_COLS); break;
+      case 'down': if (this.spotActive()) this.moveCursor(SPOT_COLS); break;
       case 'betUp': this.setQty(this.state.qty + 1); break;
       case 'betDown': this.setQty(this.state.qty - 1); break;
       case 'betMax': this.setQty(MAX_QTY); break;
-      case 'primary': case 'confirm': if (this.pend) this.sweepActive(); else this.vend(); break;
-      case 'collect': case 'secondary': if (this.pend) this.autoFinish(); break;
+      case 'primary': case 'confirm':
+        if (!this.pend) this.vend();
+        else if (this.spotActive()) this.pickSpot(this.cursor);
+        else this.sweepActive();
+        break;
+      // a PIT PENNY spot is the player's own decision: the sweep keys leave it alone until its picks are spent
+      case 'collect': case 'secondary': if (this.pend && !this.spotActive()) this.autoFinish(); break;
       case 'help': this.sfx('click'); this.seatHud?.rules(this.rulesLines()); break;
     }
   }
@@ -202,6 +222,17 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   onPointer(e: MachinePointerEvent): void {
     const p = this.pend;
     if (!p || p.next >= p.n || !this.state.batch || !this.isLocalOccupant) return;
+    if (this.spotActive()) {                                  // PIT PENNY: a click picks the spot under the pointer
+      if (e.type !== 'down' || e.button !== 0) return;
+      const hit = this.pick([this.parts.cardPlanes[p.next]]);
+      if (!hit?.uv) return;
+      const [x, y] = this.uvPx(hit.uv);
+      const z = zoneAt(0, x, y);
+      if (z < 0) return;
+      this.cursor = z;
+      this.pickSpot(z);
+      return;
+    }
     if (e.type === 'down' && e.button === 0) {
       const hit = this.pick([this.parts.cardPlanes[p.next]]);
       if (!hit?.uv) return;
@@ -249,6 +280,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     const s = this.state;
     if (this.busy || this.roundOpen || s.batch || this.pend) return;
     const type = s.sel, q = s.qty;
+    this.cursor = SPOT_START;
     const disc = this.discount();
     const price = priceOf(type, disc);
     // Receipt Roll vouchers cover PIT PENNY cards first; the rest of the batch is paid
@@ -296,6 +328,37 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   private sweepActive(): void {
     if (this.busy || !this.pend) return;
     this.finishCard(1);
+  }
+
+  /** The card being scratched is a PIT PENNY: the player picks its spots (no drag, no sweep). */
+  private spotActive(): boolean {
+    const p = this.pend, b = this.state.batch;
+    return !!p && !!b && p.next < p.n && b.cards[p.next]?.t === 0;
+  }
+
+  private moveCursor(d: number): void {
+    const p = this.pend;
+    if (!p || !this.spotActive()) return;
+    const c = Math.min(zoneRects(0).length - 1, Math.max(0, this.cursor + d));
+    if (c === this.cursor) return;
+    this.cursor = c;
+    this.sfx('click', { vol: 0.3 });
+    this.refreshCard(p.next);
+    this.showHud();
+  }
+
+  /**
+   * PIT PENNY pick: scratch spot `z` of the active card. The outcome is already rolled, so a pick only chooses what shows.
+   * A triple ends the card; so does running out of picks. Then the rest of the card sweeps open and the card is paid.
+   */
+  private pickSpot(z: number): void {
+    const p = this.pend, b = this.state.batch;
+    if (!p || !b || !this.spotActive()) return;
+    const i = p.next;
+    if (p.zoneSent[i].has(z)) { this.sfx('buzzer', { vol: 0.4 }); return; }
+    p.zoneSent[i].add(z);
+    void this.emit({ k: 'zone', i, z });
+    if (!spotOpen(b.cards[i].cells, [...p.zoneSent[i]])) this.finishCard(1);
   }
 
   /** Auto-sweep every card still open (leaving, or the collect key). The last one settles the batch. */
@@ -351,7 +414,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     switch (ev.k) {
       case 'vend': return this.presentVend(ev, pc);
       case 'stroke': return this.presentStroke(ev, pc);
-      case 'zone': return this.presentZone(ev);
+      case 'zone': return this.presentZone(ev, pc);
       case 'done': return this.presentDone(ev, pc);
     }
   }
@@ -422,16 +485,45 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     if (pc.local && ev.pts.length >= 6) this.sfx('card', { vol: 0.05 });
   }
 
-  private presentZone(ev: Extract<Ev, { k: 'zone' }>): void {
+  private presentZone(ev: Extract<Ev, { k: 'zone' }>, pc: PresentCtx): void {
     const b = this.state.batch;
     const v = this.views[ev.i];
     if (!b || !v) return;
-    const z = zoneRects(b.cards[ev.i].t)[ev.z];
+    const c = b.cards[ev.i];
+    const zs = zoneRects(c.t);
+    const z = zs[ev.z];
+    const before = zoneIds(b.rev[ev.i], zs.length);
     b.rev[ev.i] |= 1 << ev.z;
     v.foil.clearRect(z.x, z.y, z.w, z.h);
     this.refreshCard(ev.i);
     this.sfx('click', { vol: 0.6 });
     this.ctx.fx.sparks(this.parts.cardPlanes[ev.i], 3, GOLD);
+    if (pc.fast) return;
+    this.shimmer(ev.i, z);
+    if (c.t === 0) {                                          // PIT PENNY: a pair among the picks, the card still open
+      const now = zoneIds(b.rev[ev.i], zs.length);
+      if (spotBest(c.cells, now) === 2 && spotBest(c.cells, before) < 2 && spotOpen(c.cells, now)) {
+        this.ctx.fx.popText(this.parts.cardPlanes[ev.i], this.t('pairOne'), GOLD, { dur: 1.2, rise: 0.2, scale: 1.0, shake: true });
+        this.sfx('chime', { vol: 0.8, pitch: 4 });
+      }
+    }
+  }
+
+  /** Reveal shimmer: a light band crosses the window that just opened, then the card goes back to its plain composite. */
+  private shimmer(i: number, z: Rect): void {
+    const v = this.views[i];
+    const tex = this.parts.cardTex[i];
+    void this.anim(0.5, (k) => {
+      this.composeCard(i);
+      const x = z.x - 8 + (z.w + 16) * k;
+      const g = v.out.createLinearGradient(x - 8, 0, x + 8, 0);
+      g.addColorStop(0, 'rgba(255,250,215,0)');
+      g.addColorStop(0.5, 'rgba(255,250,215,0.9)');
+      g.addColorStop(1, 'rgba(255,250,215,0)');
+      v.out.fillStyle = g;
+      v.out.fillRect(z.x, z.y, z.w, z.h);
+      tex.needsUpdate = true;
+    });
   }
 
   private async presentDone(ev: Extract<Ev, { k: 'done' }>, pc: PresentCtx): Promise<void> {
@@ -527,6 +619,14 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     v.out.clearRect(0, 0, FACE_W, FACE_H);
     v.out.drawImage(v.face.canvas, 0, 0);
     v.out.drawImage(v.foil.canvas, 0, 0);
+    // the spot cursor: a frame on the spot the seated player is about to pick (their own view only)
+    const p = this.pend;
+    if (p && p.next === i && this.isLocalOccupant && this.spotActive()) {
+      const z = zoneRects(0)[this.cursor];
+      v.out.strokeStyle = '#63e6de';
+      v.out.lineWidth = 3;
+      v.out.strokeRect(z.x + 1.5, z.y + 1.5, z.w - 3, z.h - 3);
+    }
   }
 
   private refreshCard(i: number): void {
@@ -568,19 +668,27 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     const s = this.state, p = this.pend;
     const price = priceOf(s.sel, this.discount());
     const open = !!p && p.next < p.n;
+    const spot = open && this.spotActive();
+    const picksLeft = spot && p && s.batch ? spotLeft(s.batch.cards[p.next].cells, [...p.zoneSent[p.next]]) : 0;
     sh.goal(this.tx('goal'));
-    if (open && p) sh.state(this.tx('stScratch', { n: p.next + 1, of: p.n }), 'cyan', this.tx('stScratchSub'));
+    if (spot && p) sh.state(this.tx('stPick', { n: p.next + 1, of: p.n }), 'cyan', this.tx('stPickSub', { pick: this.k('primary') }));
+    else if (open && p) sh.state(this.tx('stScratch', { n: p.next + 1, of: p.n }), 'cyan', this.tx('stScratchSub'));
     else if (p || this.busy || this.roundOpen) sh.state(this.tx('stPay'), 'neutral');
     else sh.state(this.tx('stReady'), 'gold', this.tx('stReadySub', { card: this.t(`c${s.sel}`) }));
-    sh.numbers([
+    const nums: HudNumber[] = [
       { label: this.tx('nBet'), value: fmtCoins(s.batch ? s.bet : price * s.qty), tone: 'gold' },
       { label: this.tx('nCards'), value: s.batch && p ? `${p.n - p.next}/${p.n}` : `×${s.qty}`, tone: 'cyan' },
       { label: this.tx('nPrice'), value: fmtCoins(price), tone: 'neutral' },
       { label: this.tx('nLast'), value: s.hist.length ? `×${s.hist[0]}` : '-', tone: 'good' },
       { label: this.tx('nBalance'), value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
-    ]);
+    ];
+    if (spot) nums.splice(2, 0, { label: this.tx('nPicks'), value: String(picksLeft), tone: 'cyan' });
+    sh.numbers(nums);
     const ctrl: HudControl[] = [];
-    if (open) {
+    if (spot) {
+      ctrl.push({ key: this.k('primary'), label: this.tx('cPick'), action: 'primary', primary: true });
+      ctrl.push({ key: `${this.k('left')}/${this.k('right')}`, label: this.tx('cMove'), action: 'left' });
+    } else if (open) {
       ctrl.push({ key: this.k('primary'), label: this.tx('cSweep'), action: 'primary', primary: true });
       ctrl.push({ key: this.k('collect'), label: this.tx('cSweepAll'), action: 'collect' });
     } else if (!this.busy && !p && !s.batch && !this.roundOpen) {
@@ -600,7 +708,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   private tipLines(): Txt[] {
     return [
       this.tx('tip1', { pick: `${this.k('n1')}-${this.k('n5')}`, vend: this.k('primary') }),
-      this.tx('tip2'),
+      this.tx('tip2', { pick: this.k('primary') }),
       this.tx('tip3', { sweep: this.k('primary'), help: this.k('help') }),
     ];
   }
@@ -613,6 +721,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
       this.tx('rule1'),
       this.tx('rule2'),
       this.tx('rule3'),
+      this.tx('rule4'),
       this.tx('topOdds', { m: PRIZE_MULTS[sel][last], p: odds, card: this.t(`c${sel}`) }),
     ];
   }

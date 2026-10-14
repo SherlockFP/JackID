@@ -142,6 +142,15 @@ class Cdp {
   close() { try { this.ws?.close(); } catch { /* ignore */ } }
 }
 
+/** Presses one key (KeyboardEvent.code) and holds it `ms`, as a real keyboard would. */
+async function pressKey(cdp, code, ms) {
+  const k = keyInfo(code);
+  const params = { code: k.code, key: k.key, windowsVirtualKeyCode: k.vk, nativeVirtualKeyCode: k.vk };
+  await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...params });
+  await sleep(ms);
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...params });
+}
+
 /** Evaluates `expr` in the page and returns its JSON-able value. */
 async function evaluate(cdp, expr) {
   const r = await cdp.send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true });
@@ -159,14 +168,22 @@ async function evaluate(cdp, expr) {
 export async function runBench(opts = {}) {
   const machine = String(opts.machine ?? '');
   if (!/^[a-z][a-z0-9_]*$/.test(machine)) throw new Error('machine id required, e.g. "bigone"');
-  const steps = parseScript(opts.script ?? 'wait:1000');
+  const steps = parseScript(opts.script ?? (opts.walkView ? 'KeyW:400,wait:600' : 'wait:1000'));
   const rounds = Math.max(1, Math.floor(Number(opts.rounds ?? 1)));
   const seed = Math.floor(Number(opts.seed ?? 1));
   const shotsDir = opts.shots ? resolve(opts.shots) : null;
+  const sit = Boolean(opts.sit);
+  const walkView = Boolean(opts.walkView);
+  const seat = opts.seat === undefined ? undefined : Math.floor(Number(opts.seat));
+  const settle = opts.settle === undefined ? 4000 : Math.max(0, Math.floor(Number(opts.settle)));   // ms after sitting
+  if (sit && walkView) throw new Error('--sit and --walk-view are different modes; pick one');
+  if (walkView && !shotsDir) throw new Error('--walk-view writes its screenshot: pass --shots <dir>');
+  if (seat !== undefined && !(seat >= 0)) throw new Error('--seat needs a seat index, e.g. 2');
   if (shotsDir) mkdirSync(shotsDir, { recursive: true });
 
   const res = {
     machine, seed, rounds: 0, roundLog: [], consoleErrors: 0, errors: [], shots: [], state: '', framesPerSec: 0,
+    mode: sit ? 'sit' : walkView ? 'walk-view' : 'walk', seated: false, playerMode: '', walkShot: null,
     cleanup: { vite: 'not started', chrome: 'not started', profile: 'not created', ports: 'n/a' },
   };
   let vite = null, chrome = null, cdp = null, profile = null, vport = 0, dport = 0, stopping = false;
@@ -209,8 +226,9 @@ export async function runBench(opts = {}) {
       let text = null;
       if (method === 'Runtime.consoleAPICalled' && p.type === 'error') text = p.args.map((a) => a.value ?? a.description ?? '').join(' ');
       else if (method === 'Runtime.exceptionThrown') text = p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text ?? 'exception';
-      else if (method === 'Log.entryAdded' && p.entry?.level === 'error') text = p.entry.text;
+      else if (method === 'Log.entryAdded' && p.entry?.level === 'error') text = p.entry.url ? `${p.entry.text} ${p.entry.url}` : p.entry.text;
       if (text === null) return;
+      if (/favicon\.ico/.test(text) && /404/.test(text)) return;   // the dev server has no favicon: not a game error
       res.consoleErrors++;
       if (res.errors.length < 50) res.errors.push(text);
     });
@@ -240,29 +258,67 @@ export async function runBench(opts = {}) {
     res.state = await stateOf();
     log(`in game (${res.state}), ${res.framesPerSec} fps`);
 
-    // 4) Rounds: one pass of the script per round, then a screenshot.
+    const shoot = async (name) => {
+      const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
+      const path = join(shotsDir, name);
+      writeFileSync(path, Buffer.from(data, 'base64'));
+      res.shots.push(path);
+      return path;
+    };
+    // Debug bench hook (DEV only, src/world/bench.ts): wallet and wagered come from the bench run.
+    const money = async () => JSON.parse(await evaluate(cdp, 'JSON.stringify({ wallet: window.jackid.bench.run.wallet(), '
+      + 'wagered: window.jackid.bench.run.stats.wagered, rounds: window.jackid.bench.run.stats.rounds })'));
+
+    // 3b) --sit: seat the player through the bench hook (the E key path needs a walk to the machine; this does not),
+    //     then the script's keys go to the machine. Proof of the seat: sat + input mode "machine".
+    if (sit) {
+      await waitFor(() => evaluate(cdp, 'Boolean(window.jackid.bench && window.jackid.bench.main)'), 30_000, 'bench hook');
+      const ok = await evaluate(cdp, `window.jackid.bench.sit(${seat === undefined ? '' : seat})`);
+      if (ok !== true) throw new Error('sit(): the player did not sit down (no free seat, or the seat is taken)');
+      await sleep(1200 + settle);                        // glide to the seat, then the table reaches its OPEN phase
+      res.seated = await evaluate(cdp, 'window.jackid.bench.seated === true');
+      const inputMode = await evaluate(cdp, 'window.jackid.app.input.mode');
+      if (!res.seated || inputMode !== 'machine') throw new Error(`seated=${res.seated}, input mode "${inputMode}" (want "machine")`);
+      // The FIRST-SIT tip is a placard: the next machine action only closes it (seatHud.blocking), so it would eat
+      // the script's first key. Digit9 is the neutral press that closes it; it is sent only while the placard is up.
+      if (await evaluate(cdp, 'Boolean(window.jackid.bench.main?.m?.seatHud?.blocking)')) {
+        await pressKey(cdp, 'Digit9', DEFAULT_HOLD_MS);
+        await sleep(600);
+        log('first-sit tip closed (Digit9)');
+      }
+      log(`seated (input mode ${inputMode})`);
+    }
+
+    // 4) Rounds: one pass of the script per round, then a screenshot. With --sit, the wallet and wagered are read
+    //    before and after each pass.
     for (let r = 1; r <= rounds; r++) {
       const before = await evaluate(cdp, 'window.__qaFrames');
+      const m0 = sit ? await money() : null;
       const t0 = Date.now();
       for (const s of steps) {
         if (s.kind === 'wait') { await sleep(s.ms); continue; }
-        const k = keyInfo(s.code);
-        const params = { code: k.code, key: k.key, windowsVirtualKeyCode: k.vk, nativeVirtualKeyCode: k.vk };
-        await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...params });
-        await sleep(s.ms);
-        await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...params });
+        await pressKey(cdp, s.code, s.ms);
       }
       const entry = { round: r, ms: Date.now() - t0, frames: (await evaluate(cdp, 'window.__qaFrames')) - before };
+      if (sit) {
+        const m1 = await money();
+        entry.wallet = [m0.wallet, m1.wallet];
+        entry.wagered = [m0.wagered, m1.wagered];
+      }
       if (shotsDir) {
-        const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
-        const path = join(shotsDir, `${machine}-round${r}.png`);
-        writeFileSync(path, Buffer.from(data, 'base64'));
-        res.shots.push(path);
-        entry.shot = path;
+        entry.shot = await shoot(`${machine}-round${r}.png`);
       }
       res.roundLog.push(entry);
       res.rounds = r;
       log(`round ${r}/${rounds}: ${entry.ms} ms, ${entry.frames} frames`);
+    }
+
+    // 5) --walk-view: the player is on foot (no sit). Keys have been pressed; screenshot the first-person view.
+    if (walkView) {
+      await sleep(600);                                  // let the last key's motion and the camera settle
+      res.playerMode = await evaluate(cdp, 'window.jackid.bench.player.mode');
+      res.walkShot = await shoot(`${machine}-walk.png`);
+      log(`walk view (player mode ${res.playerMode}) -> ${res.walkShot}`);
     }
   } finally {
     // 5) Cleanup: everything we started, nothing else.
@@ -289,14 +345,17 @@ export async function runBench(opts = {}) {
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────
-const USAGE = 'usage: node scripts/qa/bench.mjs --machine <id> [--script "Space:200,wait:1500,KeyX"] [--shots <dir>] [--rounds <n>] [--seed <n>]';
+const USAGE = 'usage: node scripts/qa/bench.mjs --machine <id> [--script "Space:200,wait:1500,KeyX"] [--shots <dir>] '
+  + '[--rounds <n>] [--seed <n>] [--sit [--seat <n>]] [--walk-view]';
 
 function parseArgs(argv) {
   const o = {};
-  const flags = { '--machine': 'machine', '--script': 'script', '--shots': 'shots', '--rounds': 'rounds', '--seed': 'seed' };
+  const flags = { '--machine': 'machine', '--script': 'script', '--shots': 'shots', '--rounds': 'rounds', '--seed': 'seed', '--seat': 'seat', '--settle': 'settle' };
+  const switches = { '--sit': 'sit', '--walk-view': 'walkView' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') { o.help = true; continue; }
+    if (a in switches) { o[switches[a]] = true; continue; }
     if (!(a in flags)) throw new Error(`unknown argument ${a}`);
     const v = argv[++i];
     if (v === undefined) throw new Error(`${a} needs a value`);

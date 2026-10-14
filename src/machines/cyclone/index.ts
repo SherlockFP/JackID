@@ -162,6 +162,8 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
   private seatHud?: SeatHud;
   /** The banner's countdown key, so the HUD refreshes only when the state or the displayed second changes. */
   private hudKeyShown = '';
+  /** A START pressed while the last result was still on show (busy): played as soon as the machine is ready. */
+  private queuedStart = false;
 
   init(): void {
     this.seatHud = new SeatHud(this.ctx.ui.root);
@@ -192,7 +194,7 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
     this.refresh();
-    if (local) { this.seatHud?.hide(); this.hud(null); }
+    if (local) { this.seatHud?.hide(); this.hud(null); this.queuedStart = false; }
   }
 
   onLang(): void {
@@ -250,7 +252,16 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
       this.press(false);
       return;
     }
-    if (!this.busy && !this.roundOpen) void this.play();
+    if (this.busy || this.roundOpen) { this.queuedStart = true; return; }   // the result is still on show: start after it
+    void this.play();
+  }
+
+  /** Plays the START that was pressed during the last result, once the machine is ready (one press, never stale). */
+  private playQueued(): void {
+    if (!this.queuedStart) return;
+    this.queuedStart = false;
+    if (this.disposed || !this.isLocalOccupant || this.rnd || this.busy || this.roundOpen) return;
+    void this.play();
   }
 
   private changeBet(fn: () => void): void {
@@ -338,6 +349,7 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
     } finally {
       this.busy = false;
       this.showHud();
+      this.playQueued();
     }
   }
 

@@ -33,6 +33,8 @@ export interface SaveData {
   codex: Record<string, number>;     // discovered ids ('machine:roulette', 'charm:…', 'buff:…', 'note:…', 'boss:…') → times seen
   achievements: string[];
   recent: RecentPlayer[];            // last 30 co-players
+  /** Lifetime count of Hollow Doors opened (the secret portal, once per run). Optional: older saves have none. */
+  hollowSeen?: number;
 }
 
 export interface SaveStore {
@@ -97,6 +99,7 @@ export function migrateSave(raw: unknown): SaveData {
   d.codex = numRecord(r.codex);
   d.achievements = strArr(r.achievements, 500);
   if (Array.isArray(r.recent)) d.recent = (r.recent as RecentPlayer[]).filter((x) => x && typeof x.cid === 'string').slice(-30);
+  if (typeof r.hollowSeen === 'number' && isFinite(r.hollowSeen) && r.hollowSeen >= 0) d.hollowSeen = Math.floor(r.hollowSeen);
   return d;
 }
 
