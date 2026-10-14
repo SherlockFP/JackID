@@ -19,7 +19,7 @@ import {
   speckle, wrapPx5, type OverlayRig,
 } from '@/machines/_base/placard3d';
 import { setFlashPrefsHost } from '@/machines/_base/juice';
-import { NOTES, type NoteDef } from './notes.data';
+import { NOTES, noteOpen, type NoteDef, type NoteGate } from './notes.data';
 
 // The placards (notes, tape, journal, and the machines' almanac and rules cards) live in the first-person overlay.
 // Machines may not import the app core, so the story layer, which may, hands them the overlay and the canvas.
@@ -68,12 +68,21 @@ export function resetNotes(): void {
 
 const indexOf = (id: string): number => NOTES.findIndex((n) => n.id === id);
 
-/** Build every note whose anchor exists. Returns the disposer (world dispose / state exit). */
-export function placeNotes(world: World): () => void {
+/** The ids of the notes a gate places right now, in table order (a refresh compares these to skip needless rebuilds). */
+export function placedNoteIds(gate: NoteGate | null): string[] {
+  return NOTES.filter((d) => noteOpen(d, gate)).map((d) => d.id);
+}
+
+/**
+ * Build every note whose gate is open and whose anchor exists. Notes in closed wings or before their Night are skipped
+ * (no mesh, no interactable, no warning). Returns the disposer (world dispose / state exit / a refresh).
+ */
+export function placeNotes(world: World, gate: NoteGate | null = null): () => void {
   const disposers: Array<() => void> = [];
   const up = new THREE.Vector3();
   const at = new THREE.Vector3();
   NOTES.forEach((def, i) => {
+    if (!noteOpen(def, gate)) return;
     const anchor = world.anchor(def.anchor);
     if (!anchor) { log.warn('story', `note ${def.id}: anchor "${def.anchor}" missing`); return; }
     anchor.getWorldPosition(at);

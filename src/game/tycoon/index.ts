@@ -25,6 +25,7 @@ import { foldEffects } from '@/game/modifiers.types';
 import { META_NODES, ORDER_PRICING, PATRON_RATE, STAFF_DEFS, STAFF_TRACK, WING_DEFS, metaReqMissing } from '@/game/data/upgrades';
 import { createCatalog, machineDefOf, sizeFits, type Catalog, type TycoonDef } from './catalog';
 import { TycoonMods } from './provider';
+import { KEYRING, parlourAutoOpens } from '@/game/rooms';
 
 /** Host-side dependencies supplied by the run / world. Everything optional has a safe single-player default. */
 export interface TycoonDeps {
@@ -56,6 +57,16 @@ export interface TycoonDeps {
   onDescend?(): void | Promise<void>;
   /** Host ms clock (stamps purchases; must be the run clock, never wall time). Default 0. */
   now?(): number;
+  /** Wing Keys and the Manager's Key (`run.wingKeys`, run-private). `doZone(key:true)` spends them. Default: none held. */
+  keys?: WingKeyHost;
+}
+
+/** The keys a grille can spend. The integrator backs it with `run.wingKeys` and the Manager's Key flag. */
+export interface WingKeyHost {
+  /** Takes `n` Wing Keys; false (and nothing taken) when short. */
+  takeKeys(n: number): boolean;
+  /** Takes the Manager's Key; false when not held. */
+  takeManagerKey(): boolean;
 }
 
 export interface Tycoon extends TycoonApi {
@@ -78,6 +89,10 @@ export interface Tycoon extends TycoonApi {
   reset(): void;
   /** Host: banks a win on Night `night` (1-based) for the Foundations gates (`won:N`). False when already banked. */
   recordWin(night: number): boolean;
+  /** Host: a room opens for free (the Locksmith and Stoker hotline deals). False when it is already open. */
+  grantZone(zone: ZoneId): boolean;
+  /** Host: Night `night` was paid. Opens the Parlour once Night 3 is paid. True when it opened now. */
+  onNightPaid(night: number): boolean;
 }
 
 const SHILL_STAKE_FRAC = 0.01;
@@ -353,7 +368,8 @@ class TycoonImpl implements Tycoon {
 
   // ── wings / zones ───────────────────────────────────────────────────────────────────────────────
   wings(): readonly WingDef[] { return WING_DEFS; }
-  unlockZone(zone: ZoneId): boolean { return this.act({ op: 'zone', zone }); }
+  /** `key`: spend a Wing Key (or, for the Counting Room, the Manager's Key) instead of paying the quota price. */
+  unlockZone(zone: ZoneId, key = false): boolean { return this.act({ op: 'zone', zone, key } as TycoonRequest); }
 
   // ── staff ───────────────────────────────────────────────────────────────────────────────────────
   staffDefs(): readonly StaffDef[] { return STAFF_DEFS; }
@@ -374,7 +390,7 @@ class TycoonImpl implements Tycoon {
       case 'fire': return this.doFire(req.uid);
       case 'staffUp': return this.doStaffUp(req.uid, pid);
       case 'stake': return this.doStake(req.uid, req.stake);
-      case 'zone': return this.doZone(req.zone, pid);
+      case 'zone': return this.doZone(req.zone, pid, (req as { key?: boolean }).key === true);
       case 'name': return this.doName(req.instance, req.name) ? null : 'invalid';
       case 'prestige': void this.prestige.descend(); return null;
       case 'meta': return this.buyNodeReason(req.node, pid);
@@ -464,17 +480,50 @@ class TycoonImpl implements Tycoon {
     return null;
   }
 
-  private doZone(zone: ZoneId, pid: PlayerId): TycoonNoReason | null {
+  /** A grille: `key` spends one Wing Key instead of the BUY price (quota × priceQuotaMult). */
+  private doZone(zone: ZoneId, pid: PlayerId, key = false): TycoonNoReason | null {
     if (!this.tradeOpenNow()) return 'phase';
+    if (this.st.zones.includes(zone)) return 'invalid';
+    if (zone === 'counting') return this.doCounting(key);
     const w = WING_DEFS.find((x) => x.zone === zone);
-    if (!w || this.st.zones.includes(zone)) return 'invalid';
+    if (!w) return 'invalid';
     if (w.requires?.shift !== undefined && this.run().night() < w.requires.shift) return 'requires';
+    if (key) {
+      if (!this.deps.keys?.takeKeys(KEYRING.keyCost)) return 'locked';
+      this.openZone(zone);
+      return null;
+    }
     const price = Math.round(w.priceQuotaMult * (this.deps.quotaDue?.() ?? 0));
     if (!this.run().spend('coin', price, 'wing', pid)) return 'funds';
-    this.st.zones.push(zone);
     this.st.holdings += price;
-    this.changed();
+    this.openZone(zone);
     return null;
+  }
+
+  /** The Counting Room: Foundations F6 opens it for free; otherwise the Manager's Key (by key only, never bought). */
+  private doCounting(key: boolean): TycoonNoReason | null {
+    if (this.metaLevel('F6') > 0) { this.openZone('counting'); return null; }
+    if (!key || !this.deps.keys?.takeManagerKey()) return 'locked';
+    this.openZone('counting');
+    return null;
+  }
+
+  private openZone(zone: ZoneId): void {
+    this.st.zones.push(zone);
+    bus.emit('room:opened', { zone });
+    this.changed();
+  }
+
+  grantZone(zone: ZoneId): boolean {
+    if (!this.deps.isHost() || this.st.zones.includes(zone)) return false;
+    this.openZone(zone);
+    return true;
+  }
+
+  onNightPaid(night: number): boolean {
+    if (!parlourAutoOpens(night, this.st.zones)) return false;
+    this.openZone('parlour');
+    return true;
   }
 
   private doName(instance: InstanceId, name: string): boolean {

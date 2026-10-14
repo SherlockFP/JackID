@@ -30,7 +30,7 @@ export const SUIT_OF: Readonly<Record<string, Suit>> = {
   bigone: 'REELS', bandit: 'REELS', pachislot: 'REELS', fruitmachine: 'REELS', scratch: 'REELS', lootbox: 'REELS',
   // CARDS
   videopoker: 'CARDS', blackjack: 'CARDS', baccarat: 'CARDS', cardwar: 'CARDS', hilo: 'CARDS', threecard: 'CARDS',
-  reddog: 'CARDS',
+  reddog: 'CARDS', mahjong: 'CARDS',
   // DICE
   craps: 'DICE', sicbo: 'DICE', dicetower: 'DICE', coinflip: 'DICE', teetotum: 'DICE',
   // WHEELS

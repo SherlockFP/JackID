@@ -197,6 +197,7 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
 
   const level: LevelBuild | null = arch.buildLevel({
     mode, seed: opts.seed, slots: slotDefs, kit, tex: app.tex, collision, bench: !!benchDef,
+    interact, lights: pool.api as WorldLights, isZoneOpen: (z) => zoneOpen.get(z) ?? true,
   });
   if (level) {
     root.add(level.root);

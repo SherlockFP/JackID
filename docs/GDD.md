@@ -754,7 +754,7 @@ machine without an instance is still orderable, so all 39 matter as tycoon stock
   - Co-op: the team votes (20 s). With N ≥ 4 players one wing is open from Night 1; with N ≥ 6, two (host picks).
 - **Buy a wing early** at the Concession Desk: `1.5 × current quota` (counts toward Holdings).
 - **The Parlour** opens automatically after Night 3 is paid (C10 stinger).
-- **The Counting Room** (MANAGEMENT) opens only through the meta node *The Back Office* and the secret ending (§6.7, §11.3).
+- **The Counting Room** (MANAGEMENT) opens with the Manager's Key (dropped by the Night 6 boss) or Foundations F6 (WAVE24 §3). The secret ending still unlocks the meta node *The Back Office* (§6.7, §11.3).
 
 #### 3.7.8 House Improvements (pit-wide; Concession Desk)
 | id | Name | Effect per level | Max | Price for level k (k = 1…) |
@@ -1325,7 +1325,13 @@ nightBase  : N1 0 · N2 5 · N3 12 · N4 20 · N5 30 · N6 40 · N7 50 · N8 60 
   Attendant you employ one of them. "They work for the House now. So could you."
 - **Vell.** A guest who reached G and chose to Descend instead of leaving, to find out where the coins go. His tapes and
   notes are the lore spine.
-- **The Counting Room** (MANAGEMENT). Where luck is counted and JackIDs are burned in the Furnace. Locked until you earn it.
+- **The Counting Room** (MANAGEMENT). Where luck is counted and JackIDs are burned in the Furnace. Opened by the Manager's Key or Foundations F6 (§3.7.7).
+- **Wave 24 lore** (WAVE24 §3; one line each):
+  - The Well collects: coins thrown in kept the wishes, and the House is how the Well collects.
+  - Your JackID is the receipt for the wish the Well granted, and the debt is that wish's price.
+  - The Clerk is the first card ever printed: a blank-faced mannequin that audits. It is not a guest.
+  - The Sump lies under the Pit, and the counting happens there.
+  - The mannequins are guests whose names became currency. Mira is a guest who is now still.
 
 ### 6.7 Endings
 | id | Ending | Requirement | Content |
@@ -1478,10 +1484,16 @@ deliveries, `lootbox` Rare+ 1 / 8, `tombola` Grand prize.
 | CC0 layer | Kenney casino SFX (chips, cards, dice) layered with synth clicks, pitch ±8 % (`docs/ASSETS.md`) |
 
 ### 6.11 Notes, tapes and cassettes (collectibles; Addendum 3 "things to do between spins")
-- **24 Notes** (paper, 128×96 canvas, VT323 typed, ≤ 40 words).
-  - 3 spawn per Night (seed stream `world`) among 40 spawn points behind machines, on counters and in corners. Read with
-    E; kept in the Ledger.
-  - Sets: 6 House Rules · 6 staff memos · 8 guest notes (3 by Vell) · 4 pages of the Collector's ledger.
+- **28 Notes** (paper, 128×96 canvas, VT323 typed, ≤ 40 words). n01–n14 as before, n15–n28 from WAVE24 §3. n13 and n14
+  are pit tapes and count in the 28. The eight lobby cassettes below are a separate set.
+  - Fixed anchors, not random spawns. Each note sits next to a world anchor. Read with E; kept in the Ledger.
+  - Gating (`zone?` / `night?` in `story/notes.data.ts`): a room note is placed only while its wing is open, and only from its
+    Night on. A note with neither gate is always placed (n01–n14, n27, n28). Anchors for room notes are named `<zone>.<noteId>`.
+  - Room split: Jade (`cards`) n15–n16 · Wash (`laundry`) n17–n19, also the locker pool · Boiler n20–n21 · Parlour n22–n23 ·
+    Counting (`counting`) n24–n26 · Mouth n27 · Sump n28.
+  - Night gates: n27 from Night 1, n15 from Night 2, n19 from Night 4, n16 and n21 from Night 5, n24 from Night 6, n25 from
+    Night 7, n26 from Night 8.
+  - The old 24-note split (6 House Rules · 6 staff memos · 8 guest notes · 4 ledger pages) is retired with the old count.
   - Samples (EN):
     - "HOUSE RULE 4. Guests may not leave with luck they did not earn."
     - "MEMO: Do not seat new guests at the cold machine. It has been told."
@@ -2274,7 +2286,7 @@ tree.
 | `centurion` | Centurion | Bring any instance to Payout L100 |
 | `empire` | Empire | Reach Holdings ≥ 1B |
 | `not_seen` | Not Seen | Survive a Visitation unseen |
-| `archivist` | Archivist | Read all 24 notes |
+| `archivist` | Archivist | Read all 28 notes |
 | `all_tapes` | Tapes in the Dark | Hear all 8 tapes |
 | `mixtape` | Mixtape | Collect all 6 cassettes |
 | `descender` | All the Way Down | Reach Descend layer S4 |
@@ -2283,7 +2295,7 @@ tree.
 | `daily_bread` | Daily Bread | Finish 7 Daily Runs |
 
 ### 11.8 Collectibles, unlocks and cosmetics
-- **Persistent collectibles**: 24 notes, 8 tapes, 6 cassettes (§6.11). The **Charm Book** (100 silhouettes, filled on
+- **Persistent collectibles**: 28 notes (incl. the 2 pit tapes), 8 lobby tapes, 6 cassettes (§6.11). The **Charm Book** (100 silhouettes, filled on
   first purchase). **Machine Plaques**: 100 plays on a device engrave its brass plaque in the Ledger (rules card, realised
   RTP, a cosmetic trim for that device).
 - **Charm unlock batches** by the codes in §4.2 (N2–N6, W, F3, A:, D). A charm unlocked mid-run enters the pool

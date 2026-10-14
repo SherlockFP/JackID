@@ -21,3 +21,8 @@ import './lootbox.test.mjs';
 import './world.test.mjs';
 import './stamps.test.mjs';
 import './foundations.test.mjs';
+import './mahjong.test.mjs';
+import './rooms.test.mjs';
+import './rooms.world.test.mjs';
+import './story.test.mjs';
+import './rooms.run.test.mjs';

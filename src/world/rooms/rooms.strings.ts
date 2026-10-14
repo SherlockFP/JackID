@@ -1,0 +1,55 @@
+/**
+ * Copy for the room dressing (grille plates, marquees, lockers, the boiler vent, the ledger wall). Keys are `wroom.*`.
+ * Plate and prompt text is composed with `t()` and re-read when the language changes.
+ */
+const strings = {
+  prefix: 'wroom.',
+  en: {
+    'wing.midway': 'The Midway',
+    'wing.cards': 'Jade Room',
+    'wing.laundry': 'The Wash',
+    'wing.boiler': 'The Boiler',
+    'wing.gallery': 'Slot Gallery',
+    'wing.wheels': 'Wheel House',
+    'wing.counting': 'Counting Room',
+    'status.sealed': 'SEALED',
+    'status.keyReady': 'KEY READY',
+    'plate.line': '{wing} · {status}',
+    'act.key': 'Spend KEY ({n})',
+    'act.buy': 'BUY 1.5× quota',
+    'sub.opens': 'Opens {wing}',
+    'toast.keyDist': 'KEY READY: {wing}, {m} m away',
+    'toast.key': 'KEY READY: {wing}',
+    'locker.label': 'Open locker {n}',
+    'locker.sub': '1 Ticket',
+    'vent.label': 'Vent pressure',
+    'vent.sub': 'P {p} · 1 pull',
+    'ledger.label': 'Back Office',
+    'ledger.sub': '3 Tickets for 1 Obol',
+  },
+  tr: {
+    'wing.midway': 'Orta Geçit',
+    'wing.cards': 'Yeşim Oda',
+    'wing.laundry': 'Çamaşırhane',
+    'wing.boiler': 'Kazan Dairesi',
+    'wing.gallery': 'Slot Galerisi',
+    'wing.wheels': 'Çark Evi',
+    'wing.counting': 'Sayım Odası',
+    'status.sealed': 'MÜHÜRLÜ',
+    'status.keyReady': 'ANAHTAR HAZIR',
+    'plate.line': '{wing} · {status}',
+    'act.key': 'Anahtar harca ({n})',
+    'act.buy': 'SATIN AL · 1.5× kota',
+    'sub.opens': '{wing} açılır',
+    'toast.keyDist': 'ANAHTAR HAZIR: {wing}, {m} m uzakta',
+    'toast.key': 'ANAHTAR HAZIR: {wing}',
+    'locker.label': 'Dolap {n} aç',
+    'locker.sub': '1 Bilet',
+    'vent.label': 'Basıncı boşalt',
+    'vent.sub': 'P {p} · 1 çekiş',
+    'ledger.label': 'Arka Büro',
+    'ledger.sub': '3 Bilet 1 Obol eder',
+  },
+};
+
+export default strings;

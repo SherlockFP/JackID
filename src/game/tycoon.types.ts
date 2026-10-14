@@ -301,7 +301,7 @@ export type TycoonRequest =
   | { op: 'fire'; uid: string }
   | { op: 'staffUp'; uid: string }
   | { op: 'stake'; uid: string; stake: number }
-  | { op: 'zone'; zone: ZoneId }
+  | { op: 'zone'; zone: ZoneId; key?: boolean }
   | { op: 'name'; instance: InstanceId; name: string }
   | { op: 'prestige' }
   | { op: 'meta'; node: string };
@@ -328,7 +328,8 @@ export interface TycoonApi {
   orderPrice(machineId: MachineId): number;
   order(instance: InstanceId, machineId: MachineId): boolean;
   sell(instance: InstanceId): boolean;
-  unlockZone(zone: ZoneId): boolean;
+  /** `key` true: spend a Wing Key (the Manager's Key for the Counting Room) instead of paying the BUY price. */
+  unlockZone(zone: ZoneId, key?: boolean): boolean;
   wings(): readonly WingDef[];
   // staff & idle income
   staffAt(instance: InstanceId): readonly StaffState[];

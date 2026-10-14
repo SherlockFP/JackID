@@ -139,7 +139,7 @@ export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   'LOB-01': 'scratch', 'LOB-PAWN': 'charm_vendor', 'LOB-PHONE2': 'hotline', 'LOB-DESK': 'threecard',
   'LOB-CASH': 'cashier', 'LOB-JUKE': 'jukebox', 'LOB-TONIC': 'tonic_vendor',
   'MID-01': 'elevator', 'MID-02': 'derby', 'MID-03': 'claw', 'MID-04': 'claw', 'MID-05': 'stacker', 'MID-06': 'cyclone',
-  'CARD-02': 'baccarat', 'CARD-03': 'cardwar', 'CARD-04': 'videopoker', 'CARD-05': 'videopoker',
+  'CARD-01': 'mahjong', 'CARD-06': 'mahjong', 'CARD-02': 'baccarat', 'CARD-03': 'cardwar', 'CARD-04': 'videopoker', 'CARD-05': 'videopoker',
   'LAU-01': 'bingo', 'LAU-02': 'keno', 'LAU-03': 'pachinko', 'LAU-04': 'pachinko', 'LAU-05': 'pachinko',
   'LAU-06': 'coinpusher', 'LAU-07': 'lottoblower', 'LAU-08': 'bingopin',
   'BOI-01': 'craps', 'BOI-02': 'sicbo', 'BOI-03': 'dicetower', 'BOI-04': 'teetotum', 'BOI-05': 'coinflip',
@@ -153,7 +153,7 @@ export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
 export const BUSY_FLOOR: Partial<Record<InstanceId, MachineId>> = {
   'WELL-05': 'videopoker', 'WELL-10': 'bandit', 'WELL-12': 'coinflip', 'LOB-02': 'scratch',
   'GAL-09': 'bandit', 'GAL-10': 'pachislot', 'GAL-13': 'pachislot', 'GAL-14': 'bandit',
-  'LAU-09': 'pachinko', 'MID-07': 'mines', 'CARD-06': 'videopoker', 'BOI-06': 'dicetower', 'WH-04': 'roulette',
+  'LAU-09': 'pachinko', 'MID-07': 'mines', 'BOI-06': 'dicetower', 'WH-04': 'roulette',
 };
 
 /**
@@ -246,6 +246,8 @@ export const FLOOR_READY: ReadonlySet<MachineId> = new Set<MachineId>([
   'tombola', 'dicetower', 'fantan', 'teetotum', 'bingo',
   // WAVE 22 views-d (1280x720 bench screenshots): whole surface + labels in frame, clear of the HUD strips, figures legible.
   'baccarat', 'mines', 'plinko', 'sicbo', 'claw',
+  // WAVE 24 (Little Wall): bench seat view passed at 1280x720; placed at CARD-01 and CARD-06 in the Jade Room.
+  'mahjong',
 ]);
 /** Machines that never move, whatever the line-up: the marquee and table games, plus the vendors and terminals. */
 export const ROSTER_FIXED: ReadonlySet<MachineId> = new Set<MachineId>([

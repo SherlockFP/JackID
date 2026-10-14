@@ -22,7 +22,7 @@ import type { UIOverlayX } from '@/core/ui/ui';
 import { nightPaid } from '@/machines/debt_terminal/night';
 import { SKIP_HOLD_S, skipTutorial, tutorialActive } from '@/game/tutorial';
 import { closeSettingsScreen, openSettingsScreen, settingsScreenOpen } from '@/core/ui/settingsScreen';
-import { startStory, holdForStory, openJournal } from '@/game/story';
+import { startStory, holdForStory, openJournal, storyNight } from '@/game/story';
 import { mountLedger } from '@/game/tycoon/ledger';
 import { buildIntermission, buildPause, createInterHint, INTER_PANEL, PAUSE_PANEL, type InterHint } from './ingame/panels';
 import { SeatHud } from '@/machines/_base/seatHud';
@@ -293,6 +293,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
         return p === 'play' || p === 'lastCall';
       };
       storyOff = startStory(session.world, params);
+      storyNight(session.run.night());   // a resumed run has no Night event yet: the room notes gate on it
       interHint = createInterHint((app.ui as UIOverlayX).hudLayer);
       wasPaid = false;
       offs.push(bus.on('run:rescue', ({ pid, state }) => { if (session && pid === session.run.selfId && state === 'ring') app.ui.toast(t('hotline.toast.pocketEmpty'), 'warn'); }));

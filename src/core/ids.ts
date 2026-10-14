@@ -11,7 +11,7 @@ export const MACHINE_IDS = [
   'cyclone', 'mines', 'dicetower', 'lootbox', 'claw', 'stacker', 'fruitmachine', 'bingopin', 'roulette',
   'blackjack', 'holdem', 'devilstable', 'baccarat', 'craps', 'sicbo', 'bigsix', 'cardwar', 'hilo', 'keno',
   'derby', 'fortuneteller', 'coinflip', 'threecard', 'reddog', 'bingo', 'lottoblower', 'tombola', 'shellgame',
-  'fantan', 'teetotum',
+  'fantan', 'teetotum', 'mahjong',
 ] as const;
 export type MachineIdLit = (typeof MACHINE_IDS)[number];
 

@@ -173,7 +173,7 @@ test('every deal shows up eventually and the pool has 12+ deals', () => {
   assert.ok(HL.DEALS.length >= 12);
   const seen = new Set();
   for (let s = 1; s <= 300 && seen.size < HL.DEALS.length; s++) {
-    const hl = HL.createHotline(mockRun({ seed: s, night: 5, mods: { 'x.phone.callChance': () => 1 }, dread: 0.5 }), { host: { previewNextHot: () => null, creditQuota: noop, addPulls: noop } });
+    const hl = HL.createHotline(mockRun({ seed: s, night: 5, mods: { 'x.phone.callChance': () => 1 }, dread: 0.5 }), { host: { previewNextHot: () => null, creditQuota: noop, addPulls: noop, wingClosed: () => true, openWing: () => true } });
     const c = ringOf(hl); phases('settle'); hl.dispose();
     for (const o of c.options) seen.add(HL.decodeOption(o).id);
   }

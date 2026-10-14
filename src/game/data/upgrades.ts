@@ -16,6 +16,7 @@ import type {
 } from '@/game/tycoon.types';
 import { costAt, valueAt } from '@/game/tycoon.types';
 import { foldEffects } from '@/game/modifiers.types';
+import { KEYRING, wingStrings } from '@/game/data/rooms';
 
 const tx = (key: string): { en: { name: string; desc: string }; tr: { name: string; desc: string } } => ({
   en: { name: `tyc.${key}.name`, desc: `tyc.${key}.desc` },
@@ -262,12 +263,18 @@ export const ORDER_PRICING: OrderPricing = {
   sellBack: 0.3,
 };
 
+/**
+ * The buyable wings (the Keyring rooms, WAVE 24 §2). A grille also takes a Wing Key; `priceQuotaMult` is the BUY price.
+ * The Parlour opens by itself after Night 3 (`tycoon.onNightPaid`), and the Counting Room takes the Manager's Key (or F6):
+ * neither is listed here.
+ */
 export const WING_DEFS: WingDef[] = [
-  { zone: 'tables', priceQuotaMult: 1.5, strings: tx('wing.tables') },
-  { zone: 'arcade', priceQuotaMult: 1.5, requires: { shift: 1 }, strings: tx('wing.arcade') },
-  { zone: 'lottery', priceQuotaMult: 2, requires: { shift: 2 }, strings: tx('wing.lottery') },
-  { zone: 'parlour', priceQuotaMult: 2.5, requires: { shift: 3 }, strings: tx('wing.parlour') },
-  { zone: 'services', priceQuotaMult: 1.5, strings: tx('wing.services') },
+  { zone: 'midway', priceQuotaMult: KEYRING.buyQuotaMult, strings: wingStrings('midway') },
+  { zone: 'cards', priceQuotaMult: KEYRING.buyQuotaMult, strings: wingStrings('cards') },
+  { zone: 'laundry', priceQuotaMult: KEYRING.buyQuotaMult, strings: wingStrings('laundry') },
+  { zone: 'boiler', priceQuotaMult: KEYRING.buyQuotaMult, strings: wingStrings('boiler') },
+  { zone: 'gallery', priceQuotaMult: KEYRING.buyQuotaMult, strings: wingStrings('gallery') },
+  { zone: 'wheels', priceQuotaMult: KEYRING.buyQuotaMult, strings: wingStrings('wheels') },
 ];
 
 // ── Foundations (meta tree, GDD §11.3). Costs in Obols, `fixed` = explicit level prices. ─────────────

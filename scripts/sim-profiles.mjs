@@ -128,7 +128,7 @@ async function main() {
     try {
       const p = await profileOne(id, createRng);
       if (p) profiles.push(p);
-      if (p) console.log(`${id.padEnd(14)} hit ${p.hit}  x2 ${p.p2}  x5 ${p.p5}  x10 ${p.p10}  x100 ${p.p100}  sigma ${p.sigma}  rtp ${p.rtp}  ${p.cls}  (${Date.now() - s} ms)`);
+      if (p) console.log(`${id.padEnd(14)} hit ${p.hit}  x2 ${p.p2}  x5 ${p.p5}  x10 ${p.p10}  x25 ${p.p25}  x100 ${p.p100}  sigma ${p.sigma}  rtp ${p.rtp}  ${p.cls}  (${Date.now() - s} ms)`);
       else console.log(`${id.padEnd(14)} no headless play, skipped`);
     } catch (e) {
       console.error(`${id}: FAILED ${e && e.message ? e.message : e}`);

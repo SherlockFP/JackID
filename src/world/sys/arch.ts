@@ -20,7 +20,7 @@ import { SLOT_DIMS } from '@/core/types';
 import type { Kit } from '@/kit/types';
 import type { TexGen } from '@/core/texgen/types';
 import { log } from '@/core/log';
-import type { CollisionWorld, SlotDef, WorldProp } from '../types';
+import type { CollisionWorld, InteractionSystem, SlotDef, WorldLights, WorldProp } from '../types';
 
 // ── seam types ────────────────────────────────────────────────────────────────────────────────────
 export interface ZoneDef {
@@ -82,6 +82,12 @@ export interface LevelCtx {
   /** Levels may register their colliders directly instead of returning `statics`. */
   collision: CollisionWorld;
   bench: boolean;
+  /** Interaction ray (rooms: grille plates, lockers, the vent). Optional so the level builds headless. */
+  interact?: InteractionSystem;
+  /** Light-pool facade (marquee flicker, key-ready pulses). Optional. */
+  lights?: WorldLights;
+  /** Wing open state (grille plates hide when open). Defaults to open. */
+  isZoneOpen?: (zone: ZoneId) => boolean;
 }
 
 export interface ArchProvider {

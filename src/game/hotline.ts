@@ -28,6 +28,16 @@ import { allCharmDefs } from '@/game/charms/engine';
 import STR from '@/game/hotline.strings';
 import { charmPrice } from '@/game/economy';
 import { ringTotal } from '@/machines/hotline/rules';
+import { STOKER_WING } from '@/game/data/rooms';
+import { locksmithZone } from '@/game/rooms';
+import { storyCallFor } from '@/game/story/calls';
+
+declare module '@/core/events' {
+  interface GameEvents {
+    /** Mira's wrong-number call (lore lane): picked up on the first Watch of its Night; the host plays the subtitles. */
+    'phone:story': { callId: number; id: string; speaker: string; lines: string[] };
+  }
+}
 
 // ── tuning ───────────────────────────────────────────────────────────────────────────────────────────
 export const CALL_CHANCE = 0.45;
@@ -46,6 +56,10 @@ export type DealVars = Record<string, number | string>;
 
 /** Run-private actions with no RunApi member. All optional; a missing one makes its deal fall back or step aside. */
 export interface HotlineHost {
+  /** Special rooms: whether a wing is still closed (sealed or key ready). Missing = the Locksmith and Stoker deals are off. */
+  wingClosed?(zone: string): boolean;
+  /** Special rooms: opens a wing now, for free (the tycoon's `grantZone`). False = refused. Missing = the Locksmith and Stoker deals are off. */
+  openWing?(zone: string): boolean;
   /** +n pulls now (negative takes pulls away). Fallback: three Tickets per pull. */
   addPulls?(n: number): void;
   /** Pays `coins` of the current quota without touching the wallet (the Tickets-to-quota deal). */
@@ -83,6 +97,8 @@ export interface HotlineSave {
   call: CallRec | null;
   ringLeft: number;
   answerLeft: number;
+  /** Nights whose Mira call (story lane) already played. Optional: older saves have none. */
+  story?: number[];
 }
 
 export interface Outcome { ok: boolean; note: string; vars: DealVars }
@@ -361,7 +377,31 @@ export const DEALS: readonly DealDef[] = [
     offer: (c) => ({ d: c.cost(25), p: c.cost(20) }),
     apply: (c, v) => { loseShare(c.run, num(v, 'p')); c.run.addDread(num(v, 'd'), 'phone'); addBuff(c.run, 'hotline.x3'); },
   },
+  {
+    // Locksmith: +15 Dread and the first closed wing (LOCKSMITH_ORDER) opens now, no key.
+    id: 'locksmith', weight: 6, minNight: 2,
+    eligible: (c) => !!c.host.openWing && locksmithZone((z) => !c.host.wingClosed?.(z)) !== null,
+    offer: (c) => {
+      const z = locksmithZone((x) => !c.host.wingClosed?.(x)) ?? 'midway';
+      return { d: c.cost(15), z, zn: `@rooms.wing.${z}.name` };
+    },
+    apply: (c, v) => openRoomDeal(c, v),
+  },
+  {
+    // Stoker: the Boiler opens now for +10 Dread.
+    id: 'stoker', weight: 5, minNight: 2,
+    eligible: (c) => !!c.host.openWing && !!c.host.wingClosed?.(STOKER_WING),
+    offer: (c) => ({ d: c.cost(10), z: STOKER_WING, zn: `@rooms.wing.${STOKER_WING}.name` }),
+    apply: (c, v) => openRoomDeal(c, v),
+  },
 ];
+
+/** Locksmith and Stoker: open the wing named in the offer (`z`), then take the Dread. A refused open costs nothing. */
+function openRoomDeal(c: Omit<DealCtx, 'rng'>, v: DealVars): Outcome {
+  if (!c.host.openWing?.(String(v.z))) return { ok: false, note: 'hotline.note.noWing', vars: {} };
+  c.run.addDread(num(v, 'd'), 'phone');
+  return { ok: true, note: 'hotline.note.opened', vars: { zone: String(v.zn ?? '') } };
+}
 
 const DEAL_BY_ID = new Map(DEALS.map((d) => [d.id, d]));
 
@@ -518,6 +558,12 @@ export function createHotline(run: RunApi, opts: HotlineOpts = {}): Hotline {
       c.answeredBy = run.selfId as PlayerId;
       st.answerLeft = ANSWER_SECONDS;
       rebuildView();
+      // the first Watch of a Night with a Mira call: her lines play over the pickup (the deals still follow)
+      const sc = st.watch === 0 ? storyCallFor(run.night()) : null;
+      if (sc && !(st.story ?? []).includes(sc.night)) {
+        (st.story ??= []).push(sc.night);
+        bus.emit('phone:story', { callId: c.id, id: sc.id, speaker: sc.speaker, lines: [...sc.lines] });
+      }
       return;
     }
     if (c.answeredBy === null || !Number.isInteger(choice) || choice < 0 || choice >= c.offers.length) return;

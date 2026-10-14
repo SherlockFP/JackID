@@ -40,6 +40,7 @@ import { nightPaid } from '@/machines/debt_terminal/night';
 import { SeatHud } from '@/machines/_base/seatHud';
 import { startTutorial, type Tutorial } from '@/game/tutorial';
 import { holdClockFor } from '@/game/clockHold';
+import { startRoomsHost } from './roomsHost';
 
 export interface DebtSession {
   readonly world: WorldHost;
@@ -257,6 +258,9 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     const p: HudPrompt | null = f ? { action: 'interact', label: f.label(), sub: f.sub?.() } : null;
     hud.setPrompt(p);
   };
+
+  // special rooms: the world's grille / locker / vent seam, toasts, the Boiler chip, Mira's call
+  offs.push(startRoomsHost(run, world));
 
   const flush = (): void => run.flush();
   window.addEventListener('pagehide', flush);

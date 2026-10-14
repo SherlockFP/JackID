@@ -59,6 +59,11 @@ import { createTycoon, type Tycoon } from './tycoon';
 import { createBuffSystem, type BuffSystem } from './buffs';
 import { createItemSystem, type ItemSystem } from './items';
 import { createHotline, type Hotline, type HotlineSave } from './hotline';
+import {
+  LOCKER, announcePressure, announceLocker, backOffice, bindWingSource, boilerNextWatch, boilerPull, boilerVent, bossKeys,
+  collectorPrice, dawnKeys, managerKeyDrop, openLocker as rollLocker, restoreRooms, roomsProvider, roomsStart,
+  type LockerOpen, type LockerResult, type RoomsState,
+} from './rooms';
 import type { EventBannerShow } from './buffs/banner';
 import type { IdleReport, TycoonState } from '@/game/types';
 
@@ -118,6 +123,17 @@ const PULL_PRICE_TICKETS = 3;
 const PULLS_BOUGHT_MAX = 2;
 /** Machine id used for run-level modifier queries (no machine). */
 const RUN_MACHINE = 'run';
+
+declare module '@/core/events' {
+  interface GameEvents {
+    /** Wing Keys granted (Dawn, a boss, the Manager's Key): the host shows a toast. */
+    'room:keys': { n: number; why: 'dawn' | 'boss' | 'manager' };
+    /** The Boiler blew at P 100 and is shut until the next Watch. */
+    'room:blown': { zone: string };
+    /** Back Office exchange done: Tickets in, Obols out. */
+    'room:backoffice': { tickets: number; obols: number };
+  }
+}
 /** `lastRefusal()` after a first press on a stake above half the pocket (see `RunStakeConfirmEvent`). Not in `RefusalReason` yet. */
 export const STAKE_CONFIRM_REASON: RefusalReason = 'confirm';
 
@@ -193,6 +209,11 @@ export interface RunExt {
   rescue?: { quota: number; used: number };
   /** Deposits made this Watch (the first one keeps the float). Optional: older saves have none. */
   watchDep?: number;
+  /** Special rooms (wave 24): Wing Keys, the Manager's Key, the Boiler / locker state and the run's bonus Obols. Optional: older saves have none. */
+  wingKeys?: number;
+  managerKey?: boolean;
+  rooms?: RoomsState;
+  bonusObols?: number;
 }
 /** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
 interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
@@ -270,6 +291,21 @@ export interface DebtRun extends RunApi {
   readonly over: boolean;
   readonly topsideOpen: boolean;
   readonly rules: ModeRules;
+  // ── special rooms (wave 24) ──
+  /** Wing Keys in hand (a grille spends one). Replicated to clients in the run snapshot. */
+  readonly wingKeys: number;
+  /** The Manager's Key (opens the Counting Room only). */
+  readonly managerKey: boolean;
+  /** Boiler pressure and the locker tally. */
+  readonly rooms: Readonly<RoomsState>;
+  /** The Vent lever: P back to 0 for 1 pull (3 Tickets when no pull is left to give). False when refused. */
+  ventBoiler(): boolean;
+  /** Opens Wash locker `n` (1–12): 1 Ticket, a seeded result. Null when refused (the refusal is on `lastRefusal` / the return). */
+  openLocker(n: number): LockerOpen | null;
+  /** Back Office: every 3 Tickets become 1 Obol. Returns what was exchanged. */
+  backOffice(): { tickets: number; obols: number };
+  /** The Collector buys a charm for Obols at 2x its sell value. False when it is not held, cursed or the run is not in a Watch gap. */
+  collectorBuy(charmId: string): boolean;
 }
 
 /** A fresh run. */
@@ -401,6 +437,9 @@ class Run implements DebtRun {
   private readonly poolListeners = new Set<(p: JackpotPool) => void>();
   private readonly counters = new Map<string, number>();
   private readonly currencies = new Map<string, number>();
+  wingKeys = 0;
+  managerKey = false;
+  rooms: RoomsState = roomsStart();
   private readonly ruleDefs = new Map<string, ShiftRuleDef>();
   private readonly openRounds = new Set<string>();
   private readonly listeners = new Set<() => void>();
@@ -543,8 +582,19 @@ class Run implements DebtRun {
       save: opts.save,
       onDescend: () => { this.endRun('escaped', 'descend'); },
       now: () => Math.round(this.elapsed * 1000),
+      keys: {
+        takeKeys: (n) => { if (this.wingKeys < n) return false; this.wingKeys -= n; this.persistSoon(); return true; },
+        takeManagerKey: () => { if (!this.managerKey) return false; this.managerKey = false; this.persistSoon(); return true; },
+      },
     });
     this.modsImpl.register(this.tycoonSys.provider);
+    // special rooms: the open rooms' rules and the Boiler's pressure payout are one zone-scoped provider; the wing state reads the run
+    this.modsImpl.register(roomsProvider({ opened: () => this.tycoonSys.state().zones, rooms: () => this.rooms }));
+    bindWingSource({
+      opened: () => this.tycoonSys.state().zones,
+      keys: () => this.wingKeys,
+      managerKey: () => this.managerKey || ((this.tycoonSys.prestige.state().nodes?.F6 ?? 0) > 0),
+    });
     this.tycoon = this.tycoonSys;
     this.tycoonSys.onChange(() => { this.persistSoon(); this.notify(); });
 
@@ -562,6 +612,8 @@ class Run implements DebtRun {
     this.hotline = createHotline(this, {
       now: () => performance.now(),   // = net.hostTime() offline and on the host (the run only lives on the host)
       host: {
+        wingClosed: (z) => !this.tycoonSys.state().zones.includes(z),
+        openWing: (z) => this.tycoonSys.grantZone(z),
         addPulls: (n) => {
           if (!Number.isFinite(this.pullCount)) return;
           this.pullCount = Math.max(0, this.pullCount + n);
@@ -630,7 +682,8 @@ class Run implements DebtRun {
         if (p.on) { this.emitTilt(p.mid); this.refreshOdds(true); }
       }),
       bus.on('machine:result', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:result', p); }),
-      bus.on('machine:round', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:round', p); }),
+      bus.on('machine:round', (p) => { if (p.pid === this.selfId) { this.advanceContracts('machine:round', p); this.boilerRound(p.machineId); } }),
+      bus.on('room:opened', () => { this.modsImpl.touch(); this.persistSoon(); this.notify(); }),
       bus.on('run:deposit', (p) => { if (p.pid === this.selfId) this.advanceContracts('run:deposit', { machineId: '', amount: p.amount }); }),
       bus.on('jackpot:win', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:jackpot', p); }),
       // a cutscene (the Collector speaks in them) holds the Watch clock
@@ -689,6 +742,7 @@ class Run implements DebtRun {
 
   bet(amount: number, src: EcoSource, o?: BetOpts): boolean {
     if (!this.canPlay()) return this.refuse('phase');
+    if (this.boilerShut(src.machineId)) return this.refuse('locked');
     const q: ModQuery = { pid: this.selfId, instance: src.mid };
     const lim = this.betLimits(src.machineId, src.mid);
     if (amount < lim.min || amount > lim.max) return this.refuse('limit');
@@ -1007,6 +1061,7 @@ class Run implements DebtRun {
     const nd = nightDef(this.index);
     const isOvertime = this.watch === this.overtimeIdx;
     this.ensureBoss(); // before the clock and pull mods are read below
+    this.coolBoiler();
     this.boughtThisWatch = 0;
     this.clockLen = isOvertime ? OVERTIME_SEC : Math.max(10, Math.round(this.mod('x.run.clockAdd', RUN_MACHINE, nd.clock)));
     this.lastCallSec = lastCallSeconds(this.isLastWatch());
@@ -1123,6 +1178,7 @@ class Run implements DebtRun {
   dispose(): void {
     this.unsubs.splice(0).forEach((u) => u());
     setActiveStampBook(null);
+    bindWingSource(null);
     this.hotline.dispose();
     this.rescue.dispose();
     clearClockHolds();
@@ -1238,6 +1294,7 @@ class Run implements DebtRun {
       }
     }
     this.finishBoss();
+    this.grantKeys();
     // Whatever surplus is still held (interest booked after the release, or a Night paid exactly) returns now. The rest went
     // back at the deposit that met the quota (`releaseSurplus`), so Night N+1 starts with the cash either way.
     const surplus = Math.max(0, this.debtPaid - due - this.released);
@@ -1282,7 +1339,8 @@ class Run implements DebtRun {
     this.clock.stop();
     this.enter('over', 0);
     if (this.quotaMode && (result === 'escaped' || (result as string) === 'won')) this.tycoonSys.recordWin(this.index + 1);
-    const obols = this.quotaMode ? this.runObols(result, ending) : undefined;
+    const bonus = this.currencies.get('obol') ?? 0;   // Obols from Wash lockers and the Back Office (wave 24)
+    const obols = this.quotaMode ? this.runObols(result, ending) + (ending === 'descend' ? 0 : bonus) : undefined;
     const summary: RunSummary = {
       mode: this.mode, seed: this.seed, result, floor: this.index + 1, deadlines: this.index + 1, maxWallet: this.maxWallet,
       rounds: this.rounds, biggestWin: this.biggest, durationSec: Math.round(this.elapsed),
@@ -1295,7 +1353,7 @@ class Run implements DebtRun {
     this.emit('run:end', { summary });
     if (this.save) {
       // Descend banked its Obols (and the descent count) in the tycoon's prestige; every other ending banks them here.
-      const banked = ending === 'descend' ? null : this.bankObols(obols ?? 0);
+      const banked = ending === 'descend' ? (bonus > 0 ? this.bankObols(bonus) : null) : this.bankObols(obols ?? 0);
       this.save.update((d) => {
         d.resume = null;
         d.history = [...d.history, summary].slice(-20);
@@ -1881,6 +1939,127 @@ class Run implements DebtRun {
     if (!ne.isActive(boss.id)) ne.trigger(boss.id);
   }
 
+  // ── special rooms (wave 24, docs/WAVE24_PLAN.md section 2) ─────────────────────────────────────────
+  /** Dawn after a paid Night: Wing Keys (Nights 1-6, bosses 3/6/8), the Manager's Key (Night 6 boss), and the Parlour after Night 3. */
+  private grantKeys(): void {
+    const night = this.night();
+    const beaten = this.bossToday() !== null;
+    const dawn = dawnKeys(night);
+    const boss = bossKeys(night, beaten);
+    if (dawn + boss > 0) {
+      this.wingKeys += dawn + boss;
+      bus.emit('room:keys', { n: dawn + boss, why: boss > 0 ? 'boss' : 'dawn' });
+    }
+    if (managerKeyDrop(night, beaten) && !this.managerKey) {
+      this.managerKey = true;
+      bus.emit('room:keys', { n: 1, why: 'manager' });
+    }
+    this.tycoonSys.onNightPaid(night);
+    this.modsImpl.touch();
+  }
+
+  private isBoiler(machineId: MachineId): boolean { return registry.get(machineId)?.def.zone === 'boiler'; }
+  /** The Boiler blew: its machines take no bets until the next Watch. */
+  private boilerShut(machineId: MachineId): boolean { return this.rooms.blown && this.quotaMode && this.isBoiler(machineId); }
+
+  /** A round opened at a Boiler machine: pressure +5; at 100 the room blows. */
+  private boilerRound(machineId: MachineId): void {
+    if (!this.quotaMode || !this.isBoiler(machineId) || !this.tycoonSys.state().zones.includes('boiler')) return;
+    const r = boilerPull(this.rooms);
+    if (!r.ok) return;
+    this.rooms = r.state;
+    this.modsImpl.touch();
+    announcePressure(this.rooms.p);
+    if (r.blew) bus.emit('room:blown', { zone: 'boiler' });
+    this.persistSoon();
+    this.notify();
+  }
+
+  /** A new Watch: the Boiler cools and unlocks. */
+  private coolBoiler(): void {
+    if (this.rooms.p === 0 && !this.rooms.blown) return;
+    this.rooms = boilerNextWatch(this.rooms);
+    this.modsImpl.touch();
+    announcePressure(0);
+  }
+
+  ventBoiler(): boolean {
+    if (!this.tycoonSys.state().zones.includes('boiler') || !this.canPlay()) return false;
+    const v = boilerVent(this.rooms);
+    if (!v.ok) return false;
+    if (!this.rules.unlimitedPulls) {
+      if (this.pullCount >= v.pulls) {
+        this.pullCount -= v.pulls;
+        this.watchPulls += v.pulls;
+        this.emit('pulls:change', { pid: this.selfId, pulls: this.pullCount });
+        if (this.pullCount <= 0) this.enter('closing', closingSeconds(this.isLastWatch()));
+      } else if (this.tickets >= PULL_PRICE_TICKETS) {
+        this.tickets -= PULL_PRICE_TICKETS;
+      } else return this.refuse('pulls');
+    }
+    this.rooms = v.state;
+    this.modsImpl.touch();
+    announcePressure(0);
+    this.persistSoon();
+    this.notify();
+    return true;
+  }
+
+  /** Charms a Wash locker may hold: common and uncommon, unlocked by the Night, not held. */
+  private lockerCharms(): string[] {
+    const held = new Set(this.charmBox.list(this.selfId).map((c) => c.id));
+    const night = this.night();
+    const reached = (unlock: string | undefined): boolean => {
+      if (!unlock) return true;
+      const m = /^N(\d+)$/.exec(unlock);
+      return m ? night >= Number(m[1]) : false;
+    };
+    return allCharmDefs()
+      .filter((d) => (d.rarity === 'common' || d.rarity === 'uncommon') && d.price >= 0 && !held.has(d.id) && reached(d.unlock))
+      .map((d) => d.id);
+  }
+
+  openLocker(n: number): LockerOpen {
+    const fail = (reason: NonNullable<LockerOpen['reason']>): LockerOpen => ({ ok: false, reason, state: this.rooms, tickets: this.tickets, dread: 0 });
+    if (this.ended || !this.tycoonSys.state().zones.includes('laundry')) return fail('range');
+    const o = rollLocker(this.rooms, n, { seed: this.seed, night: this.night(), tickets: this.tickets, charms: this.lockerCharms() });
+    this.rooms = o.state;
+    if (!o.ok || !o.result) return o;
+    this.tickets = o.tickets;
+    let result: LockerResult = o.result;
+    if (result.k === 'coins') this.earn('coin', result.n, 'locker');
+    else if (result.k === 'blank') this.earn('obol', result.obols, 'locker');
+    else if (result.k === 'charm' && !this.grantCharm(result.id)) {
+      // a full peg board turns the charm into coins rather than losing the Ticket
+      result = { k: 'coins', n: LOCKER.coinBase + LOCKER.coinPerNight * this.night() };
+      this.earn('coin', result.n, 'locker');
+    }
+    if (o.dread > 0) this.addDread(o.dread, 'locker');
+    announceLocker(n, result);
+    this.persistSoon();
+    this.notify();
+    return { ...o, result };
+  }
+
+  backOffice(): { tickets: number; obols: number } {
+    const b = backOffice(this.tickets);
+    const spent = this.tickets - b.tickets;
+    if (b.obols <= 0 || spent <= 0 || !this.spend('ticket', spent, 'backoffice')) return { tickets: 0, obols: 0 };
+    this.earn('obol', b.obols, 'backoffice');
+    bus.emit('room:backoffice', { tickets: spent, obols: b.obols });
+    this.persistSoon();
+    return { tickets: spent, obols: b.obols };
+  }
+
+  collectorBuy(charmId: string): boolean {
+    if (this.ended || !this.tycoonSys.state().zones.includes('parlour') || this.night() < 3 || this.night() > 7) return false;
+    if (!this.charmBox.has(this.selfId, charmId) || charmDef(charmId)?.rarity === 'cursed') return false;
+    const price = collectorPrice(this.sellValue(charmId));
+    if (!this.sellCharm(charmId)) return false;
+    this.earn('obol', price, 'collector');
+    return true;
+  }
+
   /** Night paid on a boss Night: the boss ends; reward = choose 1 of 3 Rare charms + 3 Tickets. */
   private finishBoss(): void {
     const boss = this.bossToday();
@@ -1948,6 +2127,7 @@ class Run implements DebtRun {
       hotline: this.hotline.snapshot(),
       rescue: { quota: this.loanQuota, used: this.rescuesUsed },
       watchDep: this.watchDeposits,
+      wingKeys: this.wingKeys, managerKey: this.managerKey, rooms: { ...this.rooms, lockers: [...this.rooms.lockers] }, bonusObols: this.currencies.get('obol') ?? 0,
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -1957,6 +2137,7 @@ class Run implements DebtRun {
       cfg: { ...this.config }, shift: { ...this.shiftState, rules: [...this.activeRules] },
       quota: { ...this.quota, perPlayer: { ...this.quota.perPlayer }, claimed: [...this.quota.claimed] },
       currencies: { ticket: { [pid]: this.tickets } }, dread: this.dread(),
+      wingKeys: this.wingKeys, managerKey: this.managerKey, boiler: { p: this.rooms.p, blown: this.rooms.blown },
       ext,
     };
   }
@@ -2203,6 +2384,9 @@ class Run implements DebtRun {
     this.hotline.restore(e.hotline);
     this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);
     this.watchDeposits = Math.max(0, e.watchDep ?? 0);
+    this.wingKeys = Math.max(0, Math.floor(e.wingKeys ?? 0)); this.managerKey = e.managerKey === true;
+    this.rooms = restoreRooms(e.rooms);
+    if ((e.bonusObols ?? 0) > 0) this.currencies.set('obol', e.bonusObols ?? 0);
     this.itemSys.totems.restore(e.totems);
     if (e.contracts) {
       this.contractNight = e.contracts.night;

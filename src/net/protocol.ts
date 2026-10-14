@@ -88,6 +88,10 @@ export interface RunSnapshot {
   contracts?: ContractState[];
   /** Dread meter 0..1. */
   dread?: number;
+  /** Special rooms (wave 24): Wing Keys held, the Manager's Key and the Boiler's pressure (grille plates and the gauge read them). */
+  wingKeys?: number;
+  managerKey?: boolean;
+  boiler?: { p: number; blown: boolean };
 }
 export interface RunSummary {
   mode: GameMode; seed: number;

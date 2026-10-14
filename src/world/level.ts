@@ -19,6 +19,7 @@ import { createClock, type WallClock } from './props/clock';
 import { createTrapdoor, type Trapdoor } from './props/trapdoor';
 import { createElevator, type Elevator } from './props/elevator';
 import { createQuotaBoard, type QuotaBoard } from './props/quotaBoard';
+import { buildRooms, type RoomsBuild } from './rooms';
 
 // ── constants ───────────────────────────────────────────────────────────────────────────────────
 const T = 0.3;            // wall thickness (GDD §8.1)
@@ -402,6 +403,19 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   jack.root.rotation.y = Math.PI;
   root.add(jack.root);
   anchors.jack = jack.root;
+
+  // ── rooms (WAVE 24 §2): grille plates and marquees, Jade / Wash / Boiler / Counting dressing, note anchors ──
+  const rooms: RoomsBuild = buildRooms({
+    kit, tex, seed: ctx.seed, chair, sumpPos: SUMP_POS,
+    isOpen: (z) => ctx.isZoneOpen?.(z) ?? true,
+    interact: ctx.interact, lights: ctx.lights,
+  });
+  root.add(rooms.root);
+  lights.push(...rooms.lights);
+  Object.assign(anchors, rooms.anchors);
+  statics.push(...rooms.statics);
+  updates.push({ update: (dt, time) => rooms.update(dt, time) });
+  disposables.push(rooms);
 
   // ── plaques and signage (zones, shops, doors) ────────────────────────────────────────────────
   const plaque = (key: string, w: number, h: number, x: number, y: number, z: number, rot: 0 | 90 | 180 | 270, color: number) => {

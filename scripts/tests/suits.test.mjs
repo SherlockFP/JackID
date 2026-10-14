@@ -17,8 +17,8 @@ before(async () => {
 const folders = () => readdirSync(join(ROOT, 'src', 'machines'))
   .filter((f) => !f.startsWith('_') && statSync(join(ROOT, 'src', 'machines', f)).isDirectory()).sort();
 
-test('the table has the 38 cabinets of GDD §3.4.1 (holdem has no folder yet)', () => {
-  assert.equal(Object.keys(S.SUIT_OF).length, 38);
+test('the table has the 39 cabinets of GDD §3.4.1 plus Mahjong (holdem has no folder yet)', () => {
+  assert.equal(Object.keys(S.SUIT_OF).length, 39);
 });
 
 test('every suit-table id is a machine folder', () => {

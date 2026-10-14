@@ -33,10 +33,14 @@ import { pawnPriceScale } from '@/game/data/schedule';
 import { foldEffects, scopeMatches, stackedValue } from '@/game/types';
 import type { CharmDef, ModBreakdown } from '@/game/types';
 import type { ModHook } from '@/game/modifiers.types';
+import { linPoolAccepts } from '@/game/data/rooms';
 import {
   LOCK_TICKETS, MAX_LOCKS, REMOVE_CURSE_TICKETS, SLOTS, UNDER_COUNTER_INDEX,
   type PawnApi, type PawnBuy, type PawnPreview, type PawnSlot, type SwapChoice,
 } from '@/machines/charm_vendor/rules';
+
+/** Old Lin the Tile Reader's shelf: CARDS / MAHJONG charms only. Pass as `PawnHost.poolFilter` while the Jade Room vendor is in use. */
+export const oldLinPoolFilter = (d: CharmDef): boolean => linPoolAccepts(d);
 
 /** Slot that gets the shelf bias, and the slot the `x.shop.discountSlot` charm discounts. */
 export const BIAS_SLOT = 0;
@@ -102,6 +106,8 @@ export interface PawnHost {
   meta?(code: string): boolean;
   /** Optional: a pit-wide mod fold for the Pawn hooks (`x.pawn.freeRerolls`, `x.pawn.freeFirst`, `x.pawn.slots`). Default: none. */
   mod?(hook: ModHook, base: number): number;
+  /** Optional: a pool filter for this shelf. Old Lin (the Jade Room vendor) stocks CARDS / MAHJONG charms only (`data/rooms.ts`). */
+  poolFilter?(): ((d: CharmDef) => boolean) | null;
   /** Optional: only v1.0 launch charms are offered (default true). */
   launchOnly?(): boolean;
   /** Optional: the machines on the floor (with suit tags), for the first-shop synergy guarantee. Empty or absent = any suit. */
@@ -278,7 +284,9 @@ export class Pawn implements PawnApi {
 
   private eligible(d: CharmDef, exclude: ReadonlySet<string>): boolean {
     const launch = this.host.launchOnly?.() ?? true;
-    return !exclude.has(d.id) && this.host.canTake(d.id) && (!launch || LAUNCH_CHARM_IDS.has(d.id)) && unlockedAt(d, this.host.night(), (c) => this.host.meta?.(c) ?? false);
+    const filter = this.host.poolFilter?.() ?? null;
+    return !exclude.has(d.id) && this.host.canTake(d.id) && (!launch || LAUNCH_CHARM_IDS.has(d.id)) && (!filter || filter(d))
+      && unlockedAt(d, this.host.night(), (c) => this.host.meta?.(c) ?? false);
   }
 
   private heldDefs(): CharmDef[] {
