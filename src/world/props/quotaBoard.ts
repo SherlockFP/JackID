@@ -143,7 +143,7 @@ export class QuotaBoard implements QuotaBoardProp {
         // NEED line (pace): coins per pull still to find, and the pulls they are spread over
         if (s.pace) {
           const p = s.pace;
-          const line = p.state === 'met' ? t('pace.quota.met')
+          const line = p.state === 'met' ? t(p.pocket ? 'pace.quota.pocket' : 'pace.quota.met')
             : p.state === 'dead' ? t('pace.quota.dead')
               : p.pullsLeft === 1 ? t('pace.quota.need.one', { x: fmtNeed(p.perPull) })
                 : t('pace.quota.need', { x: fmtNeed(p.perPull), n: p.pullsLeft });

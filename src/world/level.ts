@@ -28,7 +28,7 @@ const HERO_PLATE = { x: 0, z: 12 };   // hero trapdoor (Lobby centre); the Sump 
 const SUMP_POS: V3 = [0, -30, 12];
 const WELL_DAIS = { x: 0, z: -4 };    // WELL-01 dais 4 × 4 × 0.15
 /** Playtest lift (director): the pit read as too dark. Every fixture hint gets this intensity and reach gain. */
-const FIXTURE_GAIN = 1.5;
+const FIXTURE_GAIN = 1.8;
 const FIXTURE_RANGE = 1.2;
 
 const CEILING: Record<string, number> = {
@@ -418,7 +418,9 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
 
   // ── spawns (GDD §8.8): SP-0 first, then the burst arc; mouth rows; lift car; trapdoor ghost ──
   const spawns: Partial<Record<'solo' | 'mouth' | 'lift' | 'ghost', SpawnPoint[]>> = {
-    solo: [{ pos: [0, 0, -7.8], yaw: 0 }, ...[[0.5, -7.77], [-0.5, -7.77], [1.45, -7.51], [-1.45, -7.51], [2.31, -7.01], [-2.31, -7.01], [3.01, -6.31], [-3.01, -6.31]].map(([x, z]) => ({ pos: [x, 0, z] as V3, yaw: 0 }))],
+    // Solo spawns face THE BIG ONE (WELL-01 dais), so a new player sees the marquee first. Forward is (-sin yaw, -cos yaw).
+    solo: [[0, -7.8], [0.5, -7.77], [-0.5, -7.77], [1.45, -7.51], [-1.45, -7.51], [2.31, -7.01], [-2.31, -7.01], [3.01, -6.31], [-3.01, -6.31]]
+      .map(([x, z]) => ({ pos: [x, 0, z] as V3, yaw: Math.atan2(-(WELL_DAIS.x - x), -(WELL_DAIS.z - z)) })),
     mouth: [-27.5, -26.3].flatMap((z) => [-6.25, -4.75, -3.25, -1.75].map((x) => ({ pos: [x, 0, z] as V3, yaw: Math.PI }))),
     lift: [-31.8, -30.9].flatMap((z) => [-4.75, -4.25, -3.75, -3.25].map((x) => ({ pos: [x, 0, z] as V3, yaw: Math.PI }))),
     ghost: [{ pos: [HERO_PLATE.x, 1.0, HERO_PLATE.z], yaw: 0 }],

@@ -126,7 +126,7 @@ export const NETWORK_FEED = 0.01;
 /** Ticket cap. */
 export const TICKET_CAP = 99;
 /** Starting values (GDD §2.5, kit Pauper). */
-export const START: { pocket: number; tickets: number; pegs: number; pegCap: number; jackpotSeed: number } = { pocket: 50, tickets: 2, pegs: 6, pegCap: 9, jackpotSeed: 50 };
+export const START: { pocket: number; tickets: number; pegs: number; pegCap: number; jackpotSeed: number } = { pocket: 30, tickets: 2, pegs: 6, pegCap: 9, jackpotSeed: 50 };
 
 /**
  * Index convention self-check. `nightDef(index)` takes the 0-based Night index (`shift.index`, `debt.index`) and returns

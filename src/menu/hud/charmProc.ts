@@ -23,11 +23,20 @@ export function playProcTick(tier: number): void {
   try { app.audio.play('charmTick', { bus: 'ui', vol: 0.8, pitch: procTickSemitones(tier) }); } catch { /* audio is optional */ }
 }
 
-/** Live peg text from the charm's `badge(data)`; '' when the charm shows none. */
+/** Counter charms: the cap of their raw count, shown as "3/6". */
+const COUNTER_MAX: Readonly<Record<string, number>> = { suit_ladder: 6, pressure_valve: 8, capacitor: 6, snowball_ledger: 3 };
+/** Lampwick counts wicks; each wick is +8 % on the payout. */
+const WICK_PCT = 8;
+
+/** Live peg text from the charm's `badge(data)`, readable: "3/6", "+16%". '' when the charm shows none. */
 export function pegBadge(id: string, data: Json | undefined): string {
   const bag = data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, Json>) : {};
   const v = charmDef(id)?.badge?.(bag);
-  return v === null || v === undefined ? '' : String(v);
+  if (v === null || v === undefined || v === '' || v === 0) return '';
+  if (typeof v !== 'number') return String(v);
+  if (id === 'lampwick') return `+${WICK_PCT * v}%`;
+  const max = COUNTER_MAX[id];
+  return max !== undefined ? `${v}/${max}` : String(v);
 }
 
 export interface ProcPops {

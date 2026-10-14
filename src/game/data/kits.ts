@@ -21,12 +21,13 @@ export interface KitDef {
 }
 
 export const KITS: readonly KitDef[] = [
-  { id: 'pauper', unlockCost: 0, coins: 50, tickets: 2, predeposit: 0, charms: [] },
-  { id: 'rotator', unlockCost: 30, coins: 35, tickets: 0, predeposit: 0, charms: ['suit_ladder'] },
-  { id: 'hot_hand', unlockCost: 60, coins: 40, tickets: 0, predeposit: 0, charms: ['lampwick', 'cold_hands'] },
-  { id: 'clutch', unlockCost: 60, coins: 30, tickets: 0, predeposit: 0, charms: ['last_gasp', 'night_owl'] },
-  { id: 'banker', unlockCost: 90, coins: 20, tickets: 0, predeposit: 40, charms: ['piggy_tooth', 'wax_seal'] },
-  { id: 'heir', unlockCost: 120, coins: 200, tickets: 0, predeposit: 0, charms: ['glass_heart'] },
+  // Playtest 5.5/10: Pauper's 50 coins trivialised Night 1 (quota 14). Kits are scaled (about x0.6) and Night 1 re-verified with scripts/sim/run.mjs (rotator >= 90 %, camper >= 70 %).
+  { id: 'pauper', unlockCost: 0, coins: 30, tickets: 2, predeposit: 0, charms: [] },
+  { id: 'rotator', unlockCost: 30, coins: 25, tickets: 0, predeposit: 0, charms: ['suit_ladder'] },
+  { id: 'hot_hand', unlockCost: 60, coins: 25, tickets: 0, predeposit: 0, charms: ['lampwick', 'cold_hands'] },
+  { id: 'clutch', unlockCost: 60, coins: 22, tickets: 0, predeposit: 0, charms: ['last_gasp', 'night_owl'] },
+  { id: 'banker', unlockCost: 90, coins: 12, tickets: 0, predeposit: 25, charms: ['piggy_tooth', 'wax_seal'] },
+  { id: 'heir', unlockCost: 120, coins: 120, tickets: 0, predeposit: 0, charms: ['glass_heart'] },
 ];
 
 export const kitById = (id: string): KitDef | undefined => KITS.find((k) => k.id === id);

@@ -15,19 +15,19 @@ before(async () => {
 
 const mk = (cfg, seed = 7) => RUN.createRun({ seed, mode: 'debt', cfg });
 
-test('kit: Banker starts with 20 coins, no Tickets, its charms and 40 pre-deposited', () => {
+test('kit: Banker starts with 12 coins, no Tickets, its charms and 25 pre-deposited', () => {
   const run = mk({ kit: 'banker' });
-  assert.equal(run.wallet(), 20);
+  assert.equal(run.wallet(), 12);
   assert.equal(run.balance('ticket'), 0);
   assert.deepEqual(run.charms().map((c) => c.id).sort(), ['piggy_tooth', 'wax_seal']);
-  assert.equal(run.shift.quota().deposited, 40);
+  assert.equal(run.shift.quota().deposited, 25);
   run.dispose();
 });
 
-test('kit: Pauper (and no kit) is 50 coins and 2 Tickets', () => {
+test('kit: Pauper (and no kit) is 30 coins and 2 Tickets', () => {
   for (const cfg of [{ kit: 'pauper' }, undefined]) {
     const run = mk(cfg);
-    assert.equal(run.wallet(), 50);
+    assert.equal(run.wallet(), 30);
     assert.equal(run.balance('ticket'), 2);
     assert.equal(run.charms().length, 0);
     run.dispose();

@@ -22,7 +22,8 @@ import { bus } from '@/core/events';
 import { t as tr, fmtCoins, type I18nVars } from '@/core/i18n';
 import type { TiltView } from '@/game/circuit';
 import type { OddsLine } from '@/game/pace';
-import { BRASS, CREAM, INK, INK_SOFT, Placard3D, button, paginate, put, rowsIn, wrapPx5 } from './placard3d';
+import { BRASS, CREAM, INK, INK_SOFT, Placard3D, button, paginate, put, rowsIn, rulesFirstEver, rulesMarkShown, wrapPx5 } from './placard3d';
+import { showRulesHint } from './rulesHint';
 import './seatHud.css';
 
 export type HudTone = 'neutral' | 'gold' | 'good' | 'bad' | 'cyan' | 'warn';
@@ -49,7 +50,7 @@ function oddsText(l: OddsLine): string[] {
   ];
   const need = l.need;
   if (need) {
-    if (need.kind === 'met') out.push(tr('pace.odds.met'));
+    if (need.kind === 'met') out.push(tr(need.pocket ? 'pace.odds.pocket' : 'pace.odds.met'));
     else if (need.kind === 'dead') out.push(tr('pace.odds.dead'));
     else out.push(need.odds === null
       ? tr('pace.odds.needRare', { k: need.k, n: l.plays })
@@ -123,6 +124,7 @@ export class SeatHud {
     this.tiltLamp = make('span', 'shud-tilt-lamp', this.tiltEl);
     this.tiltEl.style.display = 'none';
     this.oddsEl = make('div', 'shud-odds shud-panel', bottom);
+    this.oddsEl.style.maxWidth = '70vw'; this.oddsEl.style.whiteSpace = 'normal'; this.oddsEl.style.overflowWrap = 'anywhere';
     this.oddsEl.style.display = 'none';
     this.numsEl = make('div', 'shud-nums', bottom);
     this.ctrlEl = make('div', 'shud-ctrl shud-panel', bottom);
@@ -179,14 +181,18 @@ export class SeatHud {
   /** Seated: show the overlay. */
   show(): void { this.shown = true; this.root.classList.add('on'); this.refreshTilt(); }
   /** Stood up: hide everything, drop the result and any open card (an unseen tip stays unseen). */
+  /** Label of the help key; the in-game session points this at the live binding (default key H). */
+  static helpKeyLabel: () => string = () => 'H';
+  private offHint: (() => void) | null = null;
   hide(): void {
+    this.offHint?.(); this.offHint = null;
     this.shown = false;
     this.root.classList.remove('on');
     this.clearResult();
     this.closeCard();
     this.refreshTilt();
   }
-  dispose(): void { for (const off of this.offs.splice(0)) off(); this.clearResult(); this.cardP?.dispose(); this.cardP = null; this.root.remove(); }
+  dispose(): void { this.offHint?.(); this.offHint = null; for (const off of this.offs.splice(0)) off(); this.clearResult(); this.cardP?.dispose(); this.cardP = null; this.root.remove(); }
 
   // ── standard slots ────────────────────────────────────────────────────────────────────────────
   goal(text: Txt): void { this.goalEl.textContent = txt(text); }
@@ -248,9 +254,12 @@ export class SeatHud {
   // ── cards ─────────────────────────────────────────────────────────────────────────────────────
   /** First time at this machine: opens the how-to card and returns true. Remembered per machine (try/catch). */
   firstTip(machineId: string, lines: Txt[]): boolean {
-    let seen = false;
-    try { seen = window.localStorage.getItem(seenKey(machineId)) === '1'; } catch { seen = false; }
-    if (seen) return false;
+    this.offHint?.(); this.offHint = null;
+    if (!rulesFirstEver()) {
+      this.offHint = showRulesHint(this.root, tr('hud.seat.rHelpHint', { help: SeatHud.helpKeyLabel() }));
+      return false;
+    }
+    rulesMarkShown();
     this.tipId = machineId;
     this.openCard('tip', tr('hud.seat.firstSit'), lines);
     return true;

@@ -161,6 +161,34 @@ export function buildPause(el: HTMLElement, o: PauseOpts): () => void {
   return () => { stage.dispose(); o.onGone(); };
 }
 
+// ── intermission HUD hint ────────────────────────────────────────────────────────────────────────
+/** The free-roam Intermission: one small, non-blocking line on the HUD layer (no modal, the mouse and keys stay free). */
+export interface InterHint { set(text: string | null): void; dispose(): void }
+
+export function createInterHint(parent: HTMLElement): InterHint {
+  const el = document.createElement('div');
+  el.setAttribute('role', 'status');
+  el.setAttribute('aria-live', 'polite');
+  Object.assign(el.style, {
+    position: 'absolute', left: '50%', bottom: '30%', transform: 'translateX(-50%)', maxWidth: 'min(62%, 560px)', boxSizing: 'border-box',
+    padding: 'calc(3 * var(--u, 3px)) calc(6 * var(--u, 3px))', background: 'rgba(8, 6, 4, 0.74)',
+    border: 'calc(1 * var(--u, 3px)) solid var(--amber, #e69431)', color: 'var(--ivory, #e6dec5)',
+    fontFamily: 'var(--f-head, monospace)', fontSize: 'calc(6 * var(--u, 3px))', lineHeight: '1.4', textAlign: 'center',
+    pointerEvents: 'none', display: 'none', zIndex: '4',
+  } satisfies Partial<CSSStyleDeclaration>);
+  parent.appendChild(el);
+  let shown: string | null = null;
+  return {
+    set(text) {
+      if (text === shown) return;
+      shown = text;
+      el.textContent = text ?? '';
+      el.style.display = text ? 'block' : 'none';
+    },
+    dispose() { el.remove(); },
+  };
+}
+
 // ── intermission terminal ────────────────────────────────────────────────────────────────────────
 export interface InterOpts { redraw(): void }
 
@@ -168,9 +196,9 @@ const SCR_W = 128, SCR_H = 96;
 const SCR_BG = 0x06161b, SCR_CYAN = 0x7ff0ff, SCR_DIM = 0x2f7f8c, SCR_HI = 0xffffff;
 
 /**
- * Intermission: CONTINUE opens the floor when the Night is paid (`openFloor`), otherwise rings the Bell for the next
- * Watch (`startWatch`). Both refuse without side effects when the phase does not match, so one button serves both.
- * Topside (after the 8th Night paid) offers STAY UP (win) or GO BACK DOWN (Overdrawn).
+ * Topside choice (after the 8th Night paid): STAY UP (win) or GO BACK DOWN (Overdrawn). This is the only modal left:
+ * the ordinary Intermission is free-roam (Pawn Window, phone, Debt Terminal levers; see `createInterHint`). The CONTINUE
+ * line stays as a fallback that opens the floor or rings the Bell, but `inGameState` only mounts this panel on Topside.
  * The terminal boots open from its centre line; ENTER (or a click) picks the highlighted line.
  */
 export function buildIntermission(el: HTMLElement, run: DebtRun, o: InterOpts): () => void {

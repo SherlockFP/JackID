@@ -36,6 +36,8 @@ import { profileOf } from '@/game/data/machineProfiles';
 import { paceOf } from '@/game/pace';
 import type { QuotaBoardProp } from '@/world/types';
 import { startOnlineHooks } from './mp';
+import { nightPaid } from '@/machines/debt_terminal/night';
+import { SeatHud } from '@/machines/_base/seatHud';
 import { startTutorial, type Tutorial } from '@/game/tutorial';
 
 export interface DebtSession {
@@ -91,9 +93,11 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   const world = createWorld({ mode: run.mode, seed: run.seed, assign: lineup }, app.camera);
   scene.add(world.root);
   app.world = world;
+  SeatHud.helpKeyLabel = () => app.input.keyLabel('m.help');
   run.attachWorld({
     machines: () => world.machines().map((m) => ({ instance: m.id, machineId: m.def.id, size: world.slot(m.id)?.size })),
     instancePos: (mid) => world.slot(mid)?.pos,
+    locked: (mid) => world.isLocked(mid),
   });
 
   const player = createLocalPlayer(app.camera);
@@ -272,8 +276,10 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   const syncBoard = (): void => {
     const board = world.prop<QuotaBoardProp>('quotaBoard');
     if (!board) return;
-    const q = run.shift.quota();
-    const pace = run.rules.quota
+    const q0 = run.shift.quota();
+    const paid = nightPaid(run);
+    const q = paid ? { ...q0, due: 0, deposited: 0, ratio: 1, met: true } : q0;
+    const pace = run.rules.quota && !paid
       ? paceOf({ due: q.due, deposited: q.deposited, pocket: run.wallet(), pullsLeft: Number.isFinite(run.pulls()) ? run.pulls() : 0 })
       : null;
     const timeLeft = Math.max(0, Math.ceil(run.shift.timeLeft()));

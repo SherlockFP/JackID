@@ -67,8 +67,10 @@
 .hud .tok.spent { background: #3a3020; box-shadow: none; }
 .hud .charms { left: calc(4 * var(--u)); bottom: calc(10 * var(--u)); flex-direction: column; align-items: flex-start; gap: calc(3 * var(--u)); }
 .hud .charm-row { display: flex; gap: calc(2 * var(--u)); }
-.hud .charm { width: calc(16 * var(--u)); height: calc(16 * var(--u)); background: var(--coal); box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass);
-  display: inline-flex; align-items: center; justify-content: center; font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--shine); }
+.hud .charm { min-width: calc(16 * var(--u)); height: calc(16 * var(--u)); padding: 0 calc(3 * var(--u)); background: var(--coal);
+  box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass); display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--f-body); font-size: calc(12 * var(--u)); line-height: 1; color: var(--shine); white-space: nowrap; }
+.hud .charm .face { display: block; }
 .hud .charm.proc { background: #fff; color: #000; }
 .hud .charm.hop { animation: hud-hop .25s ease-out; }
 .hud .card { right: calc(4 * var(--u)); bottom: calc(10 * var(--u)); display: grid; gap: calc(1 * var(--u));
@@ -91,21 +93,29 @@
 .hud .hint { left: 50%; top: 50%; transform: translate(-50%, calc(14 * var(--u))); font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 .hud .hidden { display: none; }
 
-/* wave 8 juice: live counter on a charm peg, gold proc pop stacked near the top centre */
-.hud .charm { position: relative; }
-.hud .charm .badge { position: absolute; right: calc(-3 * var(--u)); bottom: calc(-4 * var(--u)); padding: 0 calc(1 * var(--u));
-  font-family: var(--f-body); font-size: calc(8 * var(--u)); line-height: 1.2; color: var(--shine); background: var(--coal);
-  box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass); white-space: nowrap; }
-.hud .charm .badge.hidden { display: none; }
+/* charm proc pop: gold "×1.48" stacked near the top centre */
 .hud .charm-pop { position: absolute; left: 50%; top: calc(30% + 12 * var(--i, 0) * var(--u)); transform: translateX(-50%);
   font-family: var(--f-head); font-size: calc(18 * var(--u)); line-height: 1; color: var(--shine); white-space: nowrap;
   animation: charm-pop .9s ease-out forwards; }
+
+/* win pop: the gain at the centre, a big gold figure scaled by tier (--k, 1 = small win, 2 = jackpot) */
+.hud .win-pop { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 4; white-space: nowrap;
+  font-family: var(--f-head); font-size: calc(14 * var(--u) * var(--k, 1)); line-height: 1; color: var(--shine);
+  text-shadow: calc(2 * var(--u)) calc(2 * var(--u)) 0 #000; animation: win-pop .9s ease-out forwards; }
+.hud .win-pop.huge { color: #fff1b8; }
 
 @keyframes charm-pop {
   0% { transform: translate(-50%, 0) scale(.6); opacity: 0; }
   15% { transform: translate(-50%, calc(-4 * var(--u))) scale(1.15); opacity: 1; }
   70% { transform: translate(-50%, calc(-8 * var(--u))) scale(1); opacity: 1; }
   100% { transform: translate(-50%, calc(-14 * var(--u))); opacity: 0; }
+}
+@keyframes win-pop {
+  0% { transform: translate(-50%, -50%) scale(.4); opacity: 0; }
+  12% { transform: translate(-50%, -50%) scale(1.25); opacity: 1; }
+  22% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  70% { transform: translate(-50%, calc(-50% - 4 * var(--u))); opacity: 1; }
+  100% { transform: translate(-50%, calc(-50% - 14 * var(--u))); opacity: 0; }
 }
 @keyframes hud-blink { 50% { opacity: .15; } }
 @keyframes hud-hop { 0% { transform: translateY(0); } 40% { transform: translateY(calc(-2 * var(--u))); } 100% { transform: translateY(0); } }

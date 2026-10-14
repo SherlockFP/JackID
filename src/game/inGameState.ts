@@ -17,12 +17,17 @@ import type { RunSummary } from '@/net/protocol';
 import * as registry from '@/machines/_base/registry';
 import type { Bench } from '@/world/bench';
 import { startDebtSession, type DebtSession } from './ingame/session';
-import { t } from '@/core/i18n';
+import { fmtCoins, t } from '@/core/i18n';
+import type { UIOverlayX } from '@/core/ui/ui';
+import { nightPaid } from '@/machines/debt_terminal/night';
 import { SKIP_HOLD_S, skipTutorial, tutorialActive } from '@/game/tutorial';
 import { closeSettingsScreen, openSettingsScreen, settingsScreenOpen } from '@/core/ui/settingsScreen';
 import { startStory, holdForStory, openJournal } from '@/game/story';
 import { mountLedger } from '@/game/tycoon/ledger';
-import { buildIntermission, buildPause, INTER_PANEL, PAUSE_PANEL } from './ingame/panels';
+import { buildIntermission, buildPause, createInterHint, INTER_PANEL, PAUSE_PANEL, type InterHint } from './ingame/panels';
+
+/** How long the Night summary toast stays up (it never blocks; the toast times out by itself). */
+const SUMMARY_TOAST_S = 10;
 
 /** A fall shows its fade before the Results state takes over; other endings hand off at once. */
 const FALL_HOLD_S = 1.6;
@@ -47,6 +52,12 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   let resumedAt = -Infinity;
   let interOpen = false;
   let interKey = '';
+  /** Free-roam Intermission: the HUD hint line and the paid-Night bookkeeping for the summary toast. */
+  let interHint: InterHint | null = null;
+  let wasPaid = false;
+  let sumNight = -1;
+  let sumDep = 0;
+  let sumInterest = 0;
   let storyOff: (() => void) | null = null;
   let offs: Array<() => void> = [];
   /** Online: Esc opens the card but the sim keeps running (no `app.simPaused`). */
@@ -177,12 +188,47 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     }
   };
 
-  /** Intermission panel follows the run's phase: open while `intermission`, closed otherwise. */
+  /** Deposits and interest of the Night in progress (interest lands during `settle`), for the summary toast. */
+  const trackDeposit = (amount: number): void => {
+    const s = session;
+    if (!s) return;
+    if (s.run.night() !== sumNight) { sumNight = s.run.night(); sumDep = 0; sumInterest = 0; }
+    if (s.run.shift.phase === 'settle') sumInterest += amount;
+    else sumDep += amount;
+  };
+
+  /** The compact paid-Night summary: a toast, never a modal. */
+  const showSummary = (s: DebtSession): void => {
+    const q = s.run.shift.quota();
+    const carry = Math.max(0, q.deposited);
+    const text = t('interm.summary', {
+      n: s.run.night(), dep: fmtCoins(sumDep), int: fmtCoins(sumInterest), carry: fmtCoins(carry), tickets: s.run.balance('ticket'),
+    });
+    (app.ui as UIOverlayX).toast(text, 'good', SUMMARY_TOAST_S);
+    sumNight = -1; sumDep = 0; sumInterest = 0;
+  };
+
+  /**
+   * The Intermission is free-roam: a HUD hint instead of a modal, so the Pawn Window, the phone and the Debt Terminal
+   * levers (OPEN THE FLOOR / the Bell) stay reachable. Only the Topside choice (STAY UP / GO BACK DOWN) is a modal.
+   */
+  const syncHint = (s: DebtSession): void => {
+    const timed = s.run.rules.timed && !s.run.over;
+    const inter = timed && s.run.shift.phase === 'intermission';
+    const paid = timed && nightPaid(s.run);
+    if (paid && !wasPaid) showSummary(s);
+    wasPaid = paid;
+    const seated = app.player?.seat != null;
+    interHint?.set(inter && !s.run.topsideOpen && !seated && !paused && !ending ? t(paid ? 'interm.hintFloor' : 'interm.hintBell') : null);
+  };
+
+  /** Topside panel follows the run: open while the Topside choice is up, closed otherwise. */
   const syncIntermission = (): void => {
     const s = session;
-    if (!s || !s.ready() || ending || paused) return;
+    if (!s || !s.ready() || ending || paused) { interHint?.set(null); return; }
+    syncHint(s);
     const phase = s.run.shift.phase;
-    const want = phase === 'intermission' && s.run.rules.timed && !s.run.over;
+    const want = phase === 'intermission' && s.run.rules.timed && !s.run.over && s.run.topsideOpen;
     if (!want) {
       if (interOpen) { app.ui.closePanel(INTER_PANEL); interOpen = false; interKey = ''; }
       return;
@@ -249,6 +295,9 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       if (params.bench && import.meta.env.DEV) return enterBench(params.bench, params.seed);
       session = startDebtSession(params, scene);
       storyOff = startStory(session.world, params);
+      interHint = createInterHint((app.ui as UIOverlayX).hudLayer);
+      wasPaid = false; sumNight = -1; sumDep = 0; sumInterest = 0;
+      offs.push(bus.on('run:deposit', ({ pid, amount }) => { if (session && pid === session.run.selfId) trackDeposit(amount); }));
     },
     exit() {
       left = true;
@@ -263,6 +312,8 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       app.ui.closePanel(PAUSE_PANEL);
       app.ui.closePanel(INTER_PANEL);
       interOpen = false;
+      interHint?.dispose();
+      interHint = null;
       if (bench) {
         bench.dispose();
         bench = null;

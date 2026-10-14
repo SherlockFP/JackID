@@ -45,7 +45,11 @@ export interface LampRoll { hot: InstanceId[]; cold: InstanceId[] }
 export function rollLamps(
   rng: Rng, cands: readonly LampCandidate[], o: { hot: number; cold: number; prevHot?: readonly InstanceId[]; fresh?: readonly InstanceId[] },
 ): LampRoll {
-  const sorted = [...cands].sort((a, b) => (a.mid < b.mid ? -1 : a.mid > b.mid ? 1 : 0));
+  // One entry per instance: a machine listed twice must never be both Hot and Cold.
+  const seen = new Set<InstanceId>();
+  const sorted = [...cands]
+    .sort((a, b) => (a.mid < b.mid ? -1 : a.mid > b.mid ? 1 : 0))
+    .filter((c) => { if (seen.has(c.mid)) return false; seen.add(c.mid); return true; });
   const prev = new Set(o.prevHot ?? []);
   const fresh = new Set(o.fresh ?? []);
   const draw = (pool: LampCandidate[], n: number): InstanceId[] => {
@@ -130,6 +134,7 @@ export class Circuit {
       roll = rollLamps(rng, cands, { hot: o.hot, cold: o.cold, prevHot: this.prevHot, fresh });
       if (o.newIsHot) for (const mid of fresh) if (!roll.hot.includes(mid) && !roll.cold.includes(mid)) roll.hot.push(mid);
     }
+    roll.cold = roll.cold.filter((mid) => !roll.hot.includes(mid));   // Hot and Cold never share an instance
     this.hotIds = roll.hot;
     this.coldIds = roll.cold;
     this.prevHot = [...roll.hot];

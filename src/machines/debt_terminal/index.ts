@@ -8,7 +8,13 @@
  *
  * Controls (seated, play pose is `mouse: 'pick'`): arrows move the keypad cursor · Space/Enter press the cell ·
  * LMB presses a cell · 1–9 type a custom amount · Backspace removes a digit · BET UP (X) types a 0 (the machine
- * keymap has no digit 0) · R pulls SETTLE (only when the quota is met) · F pulls OPEN THE FLOOR (not wired yet).
+ * keymap has no digit 0) · R pulls SETTLE (only when the quota is met) · F pulls the floor lever: OPEN THE FLOOR once the
+ * Night is paid, RING THE BELL between Watches (both are run calls; the lever refuses at any other time).
+ *
+ * Deposit rules: PRESS with digits typed commits the typed amount (not the highlighted cell). 10/25/50 %/REST never pass
+ * what is still due; once the quota is met they refuse (no spam-depositing). ALL and a typed amount are the explicit
+ * overpay ladder (a typed amount still works after the quota is met). After Dawn the screen reads NIGHT N PAID and no
+ * stale quota numbers (see `night.ts`); deposits are refused until the floor opens.
  *
  * Presentation pattern: state is read from run on every peer (`tick` keeps the LEDs/CRT in step); `present()` only
  * animates. Credit first, present after: the deposit is applied inside `emit`'s credit step.
@@ -21,7 +27,8 @@ import type { BindingKey, MachineAction, MachineInputEvent, MachinePointerEvent 
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import { fmtCoins, fmtNum } from '@/core/i18n';
-import type { OvershootTier, QuotaState } from '@/game/types';
+import type { OvershootTier, QuotaState, RunApi } from '@/game/types';
+import { nightPaid } from './night';
 
 const EMPTY_QUOTA: QuotaState = { due: 0, base: 0, assessment: 0, deposited: 0, perPlayer: {}, met: false, overshoot: 0, ratio: 0, claimed: [] };
 import { lerp, clamp } from '@/core/math';
@@ -34,7 +41,10 @@ import {
 type Ev =
   /** One keypad action. `ok:false` = refused (no funds / nothing to pay): a red flash, no money moved. */
   | { k: 'dep'; key: string; amount: number; ok: boolean; dep: number }
-  | { k: 'lever'; id: 'settle' | 'floor'; ok: boolean };
+  | { k: 'lever'; id: 'settle' | 'floor'; ok: boolean; bell?: boolean };
+
+/** `DebtRun` controls the terminal reaches through the run (absent on the bench stub). */
+type FloorCtl = { openFloor?(): boolean; startWatch?(): boolean };
 
 const GOLD = 0xffd040;
 const RED = 0xff3030;
@@ -67,9 +77,18 @@ export const def: MachineDef = {
       goal: "Pay tonight's quota in coins. Once it is met, settle the terminal.",
       rule1: "The house sets a quota for tonight. Deposit coins towards it until it is covered.",
       rule2: "Keypad: 10%, 25% or 50% of your wallet, ALL, or REST (what is still due). Or type an amount and press ENTER.",
-      rule3: "Deposits never exceed your wallet. Once the quota is met, SETTLE closes the terminal early.",
+      rule3: "10/25/50% and REST never pass what is due. ALL, or a typed amount, overpays on purpose. Once the quota is met, SETTLE closes the terminal early.",
       rule4: "Keys: arrows move the keypad cursor, PRESS hits a key, 1-9 type an amount, BACK removes a digit.",
+      crt_paid: 'NIGHT {n} PAID', crt_carry: 'CARRIED', crt_floor: 'PULL: OPEN THE FLOOR', crt_bell: 'PULL: RING THE BELL',
+      floorOpen: 'FLOOR OPEN', belled: 'BELL', nightN: 'NIGHT {n}',
+      nightPaidNote: 'NIGHT PAID: OPEN THE FLOOR', metNote: 'QUOTA MET: TYPE AN AMOUNT TO OVERPAY', typeAmount: 'TYPE AN AMOUNT FIRST',
       stNone: "NO QUOTA DUE",
+      stPaid: "NIGHT PAID",
+      stPaidSub: "Pull the lever to open the floor",
+      stBell: "BETWEEN WATCHES",
+      stBellSub: "Shop, then pull the lever to ring the Bell",
+      cFloor: "OPEN FLOOR",
+      cBell: "RING BELL",
       stMet: "QUOTA MET",
       stMetSub: "Press SETTLE to close the terminal",
       stDeposit: "DEPOSIT TO MEET THE QUOTA",
@@ -104,9 +123,18 @@ export const def: MachineDef = {
       goal: "Bu gecenin kotasını jetonla öde. Kota tamamlanınca terminali kapat.",
       rule1: "Ev bu gece için bir kota koyar. Kota kapanana kadar jeton yatır.",
       rule2: "Tuş takımı: cüzdanının %10, %25 ya da %50'si, HEPSİ, ya da KALAN (hâlâ borçlu olduğun). Ya da bir tutar yaz ve ONAY'a bas.",
-      rule3: "Yatırım cüzdanını aşamaz. Kota tamamlanınca KAPAT terminali erken kapatır.",
+      rule3: "%10/%25/%50 ve KALAN borcu aşmaz. HEPSİ ya da yazdığın tutar bilerek fazla öder. Kota tamamlanınca KAPAT terminali erken kapatır.",
       rule4: "Tuşlar: oklar tuş takımında gezer, BAS tuşa basar, 1-9 tutar yazar, GERİ bir rakam siler.",
+      crt_paid: '{n}. GECE ÖDENDİ', crt_carry: 'DEVİR', crt_floor: 'ÇEK: KATI AÇ', crt_bell: 'ÇEK: ZİLİ ÇAL',
+      floorOpen: 'KAT AÇIK', belled: 'ZİL', nightN: '{n}. GECE',
+      nightPaidNote: 'GECE ÖDENDİ: KATI AÇ', metNote: 'KOTA TAMAM: FAZLASI İÇİN TUTAR YAZ', typeAmount: 'ÖNCE TUTAR YAZ',
       stNone: "ÖDENECEK KOTA YOK",
+      stPaid: "GECE ÖDENDİ",
+      stPaidSub: "Katı açmak için kolu çek",
+      stBell: "WATCH ARASI",
+      stBellSub: "Alışveriş yap, sonra zili çalmak için kolu çek",
+      cFloor: "KATI AÇ",
+      cBell: "ZİLİ ÇAL",
       stMet: "KOTA TAMAM",
       stMetSub: "Terminali kapatmak için KAPAT'a bas",
       stDeposit: "KOTAYI TAMAMLAMAK İÇİN YATIR",
@@ -142,6 +170,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private shownDep = 0;
   private lastKey = '';
   private lastDue = -1;
+  private lastPaid = false;
+  private lastNight = -1;
   /** Seat HUD overlay (created in init, shown while seated). */
   private seatHud?: SeatHud;
 
@@ -206,7 +236,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       case 'left': this.moveCursor(row * KEY_COLS + ((col + KEY_COLS - 1) % KEY_COLS)); return;
       case 'right': this.moveCursor(row * KEY_COLS + ((col + 1) % KEY_COLS)); return;
       case 'up': case 'down': this.moveCursor((1 - row) * KEY_COLS + col); return;
-      case 'primary': case 'confirm': if (!e.repeat) this.pressKey(KEYS[this.cursor]); return;
+      // digits typed: PRESS commits the typed amount, never the highlighted preset cell
+      case 'primary': case 'confirm': if (!e.repeat) this.pressKey(this.entry !== '' ? 'enter' : KEYS[this.cursor]); return;
       case 'n1': case 'n2': case 'n3': case 'n4': case 'n5': case 'n6': case 'n7': case 'n8': case 'n9':
         this.typeDigit(Number(e.action.slice(1))); return;
       case 'betUp': {                                        // no digit 0 in the machine keymap (see header)
@@ -249,10 +280,17 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private pressKey(key: KeyId): void {
     const q = this.quota();
     const wallet = this.wallet();
-    const amount = key === 'enter'
-      ? clampDeposit(customAmount(this.entry), wallet)
-      : clampDeposit(amountFor(key, wallet, quotaLeft(q.due, q.deposited)), wallet);
-    if (key === 'enter') this.entry = '';
+    const left = quotaLeft(q.due, q.deposited);
+    if (nightPaid(this.ctx.run)) { this.refuse('nightPaidNote'); return; }     // Dawn paid it: the next Night has no quota yet
+    let amount: number;
+    if (key === 'enter') {
+      if (this.entry === '') { this.refuse('typeAmount'); return; }
+      amount = clampDeposit(customAmount(this.entry), wallet);                 // a typed amount is explicit: it may overpay
+      this.entry = '';
+    } else {
+      if (left <= 0) { this.refuse('metNote'); return; }                       // quota met: a held PRESS must not keep depositing
+      amount = key === 'all' ? clampDeposit(wallet, wallet) : clampDeposit(Math.min(amountFor(key, wallet, left), left), wallet);
+    }
     const ok = amount > 0 && this.ctx.run.canAfford(amount, this.selfId);
     const dep = q.deposited + (ok ? amount : 0);
     void this.emit(
@@ -270,9 +308,26 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       if (!ok) this.ctx.ui.toast(this.t('notYet'), 'warn');
       return;
     }
-    // OPEN THE FLOOR needs a run-level start call that RunApi does not expose yet: the lever only refuses for now.
-    void this.emit({ k: 'lever', id, ok: false });
-    this.ctx.ui.toast(this.t('floorNo'), 'warn');
+    // The floor lever: OPEN THE FLOOR when the Night is paid, else RING THE BELL for the next Watch. Each call refuses
+    // without side effects when the phase does not match, so trying both in order is safe.
+    const run = this.ctx.run as RunApi & FloorCtl;
+    let how: 'floor' | 'bell' | null = null;
+    if (run.shift.phase === 'intermission') {
+      if (run.openFloor?.()) how = 'floor';
+      else if (run.startWatch?.()) how = 'bell';
+    }
+    void this.emit({ k: 'lever', id, ok: how !== null, bell: how === 'bell' });
+    if (how === null) { this.ctx.ui.toast(this.t('floorNo'), 'warn'); return; }
+    if (how === 'floor') {
+      const ui = this.ctx.ui as { banner?(text: string): Promise<void> };
+      void ui.banner?.(this.t('nightN', { n: run.night() }));
+    }
+  }
+
+  /** A refused press: one sound and one line, no coins moved, nothing emitted. */
+  private refuse(key: string): void {
+    this.sfx('error');
+    this.ctx.ui.toast(this.t(key), 'warn');
   }
 
   // ── presentation (every peer) ───────────────────────────────────────────────────────────────────
@@ -349,30 +404,36 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private async presentLever(ev: Extract<Ev, { k: 'lever' }>, _pc: PresentCtx): Promise<void> {
     const lever = ev.id === 'settle' ? this.parts.settleLever : this.parts.floorLever;
     if (ev.id === 'settle' && ev.ok && this.isLocalOccupant) this.seatHud?.result('win');
+    const doneText = ev.id === 'settle' ? this.t('settled') : ev.bell ? this.t('belled') : this.t('floorOpen');
     this.sfx('lever');
     await lever.pull(0.55);
     if (!ev.ok) { this.sfx('error'); return; }
     this.sfx('stamp');
     this.ctx.fx.flash(GOLD, 0.25, 0.4);
-    this.ctx.fx.popText(this.model.anchors.prompt, this.t('settled'), GOLD, { scale: 1.5 });
+    this.ctx.fx.popText(this.model.anchors.prompt, doneText, GOLD, { scale: 1.5 });
   }
 
   // ── screens and lamps ───────────────────────────────────────────────────────────────────────────
   private refresh(force: boolean): void {
     const q = this.quota();
+    const paid = nightPaid(this.ctx.run);
+    const phase = this.ctx.run.shift.phase;
+    const night = this.ctx.run.night();
+    // a new Night or the paid screen must not keep a stale count-up value
+    if (paid !== this.lastPaid || night !== this.lastNight) { this.lastPaid = paid; this.lastNight = night; this.shownDep = q.deposited; }
     const left = quotaLeft(q.due, this.shownDep);
-    const key = [q.due, this.shownDep, q.base, q.assessment, this.entry, this.cursor, this.wallet(), q.met ? 1 : 0].join('|');
+    const key = [q.due, this.shownDep, q.base, q.assessment, this.entry, this.cursor, this.wallet(), q.met ? 1 : 0, paid ? 1 : 0, phase, night].join('|');
     if (!force && key === this.lastKey) return;
     this.lastKey = key;
 
-    this.parts.leds.quota.set(String(fmtNum(q.due)).padStart(10, ' '));
+    this.parts.leds.quota.set(String(fmtNum(paid ? 0 : q.due)).padStart(10, ' '));
     this.parts.leds.deposit.set(String(fmtNum(this.shownDep)).padStart(10, ' '));
-    this.parts.readyLamp.setOn(q.met);
-    this.drawCrt(q, left);
+    this.parts.readyLamp.setOn(q.met || paid);
+    this.drawCrt(q, left, paid, phase === 'intermission');
     if (this.isLocalOccupant) this.showHud();
   }
 
-  private drawCrt(q: Readonly<QuotaState>, left: number): void {
+  private drawCrt(q: Readonly<QuotaState>, left: number, paid: boolean, inter: boolean): void {
     const s = this.parts.crt;
     const ratio = ratioOf(this.shownDep, q.due);
     const next = nextTier(this.tiers(), ratio);
@@ -381,14 +442,23 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       s.text(str, align === 'center' ? 128 : x, y, { font: 'vt', size: 17, color: col, align });
     };
     c(this.t('crt_title'), 18, '#ffd060', 'center');
+    if (paid) {                                   // Dawn paid the Night: no stale quota, just the carry-over and the lever
+      c(this.t('crt_paid', { n: this.ctx.run.night() }), 62, '#ffd040', 'center');
+      if (q.deposited > 0) c(`${this.t('crt_carry')}  ${fmtNum(q.deposited)}`, 100);
+      c(this.t('crt_floor'), 150, '#ffe0a0', 'center');
+      return;
+    }
     c(`${this.t('crt_base')}  ${fmtNum(q.base)}`, 44);
     c(`${this.t('crt_assess')}  ${fmtNum(q.assessment)}`, 62);
     c(`${this.t('crt_quota')}  ${fmtNum(q.due)}`, 84, '#ffd060');
     c(`${this.t('crt_dep')}  ${fmtNum(this.shownDep)}`, 110);
     c(`${this.t('crt_left')}  ${fmtNum(left)}`, 128);
     c(`${pct(ratio)} ${this.t('crt_ratio')}`, 146, '#ffb000', 'right', 246);
-    if (next !== null) c(`${this.t('crt_next')} ${pct(next.ratio)}`, 164, '#a07020');
-    if (q.met) c(this.t('crt_met'), 164, '#ffd040', 'center');
+    if (inter) c(this.t('crt_bell'), 164, '#ffd040', 'center');
+    else {
+      if (next !== null) c(`${this.t('crt_next')} ${pct(next.ratio)}`, 164, '#a07020');
+      if (q.met) c(this.t('crt_met'), 164, '#ffd040', 'center');
+    }
     c(`${this.t('crt_entry')} > ${this.entry === '' ? '_' : fmtNum(customAmount(this.entry))}`, 184, '#ffe0a0');
   }
 
@@ -431,26 +501,39 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     const ctrl: HudControl[] = [];
     sh.goal({ k: 'm.debt_terminal.goal' });
 
+    const paid = nightPaid(this.ctx.run);
+    const inter = this.ctx.run.shift.phase === 'intermission';
+
     // STATE: is the quota paid yet
-    if (q.due <= 0) sh.state({ k: 'm.debt_terminal.stNone' }, 'neutral');
+    if (paid) sh.state({ k: 'm.debt_terminal.stPaid' }, 'good', { k: 'm.debt_terminal.stPaidSub' });
+    else if (inter) sh.state({ k: 'm.debt_terminal.stBell' }, 'gold', { k: 'm.debt_terminal.stBellSub' });
+    else if (q.due <= 0) sh.state({ k: 'm.debt_terminal.stNone' }, 'neutral');
     else if (q.met) sh.state({ k: 'm.debt_terminal.stMet' }, 'good', { k: 'm.debt_terminal.stMetSub' });
     else sh.state({ k: 'm.debt_terminal.stDeposit' }, 'gold', { k: 'm.debt_terminal.stDepositSub', v: { n: fmtCoins(left) } });
 
     // KEY NUMBERS
-    sh.numbers([
-      { label: { k: 'm.debt_terminal.nDue' }, value: fmtCoins(q.due), tone: 'gold' },
-      { label: { k: 'm.debt_terminal.nDeposited' }, value: fmtCoins(q.deposited), tone: 'cyan' },
-      { label: { k: 'm.debt_terminal.nLeft' }, value: fmtCoins(left), tone: left > 0 ? 'warn' : 'good' },
-      { label: { k: 'm.debt_terminal.nAmount' }, value: this.entry === '' ? '-' : fmtCoins(customAmount(this.entry)), tone: 'gold' },
-      { label: { k: 'm.debt_terminal.nWallet' }, value: fmtCoins(wallet), tone: 'neutral' },
-    ]);
+    sh.numbers(paid
+      ? [   // no stale DUE / LEFT after Dawn: the carry-over and the wallet only
+        { label: { k: 'm.debt_terminal.nDeposited' }, value: fmtCoins(q.deposited), tone: 'cyan' },
+        { label: { k: 'm.debt_terminal.nWallet' }, value: fmtCoins(wallet), tone: 'neutral' },
+      ]
+      : [
+        { label: { k: 'm.debt_terminal.nDue' }, value: fmtCoins(q.due), tone: 'gold' },
+        { label: { k: 'm.debt_terminal.nDeposited' }, value: fmtCoins(q.deposited), tone: 'cyan' },
+        { label: { k: 'm.debt_terminal.nLeft' }, value: fmtCoins(left), tone: left > 0 ? 'warn' : 'good' },
+        { label: { k: 'm.debt_terminal.nAmount' }, value: this.entry === '' ? '-' : fmtCoins(customAmount(this.entry)), tone: 'gold' },
+        { label: { k: 'm.debt_terminal.nWallet' }, value: fmtCoins(wallet), tone: 'neutral' },
+      ]);
 
     // CONTROL BAR: the keypad, then SETTLE only once the quota is met
-    ctrl.push({ key: `${this.g('left')}/${this.g('right')}`, label: { k: 'm.debt_terminal.cMove' }, action: 'left' });
-    ctrl.push({ key: this.k('confirm'), label: { k: 'm.debt_terminal.cPress' }, action: 'confirm', primary: true });
-    ctrl.push({ key: `${this.k('n1')}-${this.k('n9')}`, label: { k: 'm.debt_terminal.cAmount' }, action: 'n1' });
-    if (this.entry !== '') ctrl.push({ key: this.k('clear'), label: { k: 'm.debt_terminal.cBack' }, action: 'clear' });
-    if (q.met) ctrl.push({ key: this.k('double'), label: { k: 'm.debt_terminal.cSettle' }, action: 'double', primary: true });
+    if (inter) ctrl.push({ key: this.k('fast'), label: { k: paid ? 'm.debt_terminal.cFloor' : 'm.debt_terminal.cBell' }, action: 'fast', primary: true });
+    if (!paid) {
+      ctrl.push({ key: `${this.g('left')}/${this.g('right')}`, label: { k: 'm.debt_terminal.cMove' }, action: 'left' });
+      ctrl.push({ key: this.k('confirm'), label: { k: 'm.debt_terminal.cPress' }, action: 'confirm', primary: !inter });
+      ctrl.push({ key: `${this.k('n1')}-${this.k('n9')}`, label: { k: 'm.debt_terminal.cAmount' }, action: 'n1' });
+      if (this.entry !== '') ctrl.push({ key: this.k('clear'), label: { k: 'm.debt_terminal.cBack' }, action: 'clear' });
+    }
+    if (q.met && !inter) ctrl.push({ key: this.k('double'), label: { k: 'm.debt_terminal.cSettle' }, action: 'double', primary: true });
     ctrl.push({ key: this.g('help'), label: { k: 'm.debt_terminal.cRules' }, action: 'help' });
     ctrl.push({ key: this.k('exit'), label: { k: 'm.debt_terminal.cLeave' }, action: 'exit' });
     sh.controls(ctrl);

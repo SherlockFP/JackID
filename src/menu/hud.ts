@@ -13,14 +13,15 @@ import { bus, type GameEvents } from '@/core/events';
 import { fmtCoins, has, t } from '@/core/i18n';
 import type { Action } from '@/core/input/types';
 import type { HudAnchorId } from '@/core/ui/types';
-import type { UIOverlayX } from '@/core/ui/ui';
+import { claimAnnounce, type UIOverlayX } from '@/core/ui/ui';
 import { COLORS, h, uiSfx } from '@/core/ui/widgets';
 import { circuitView, type LampEntry, type LampView } from '@/game/circuit';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { PlayerId } from '@/core/types';
-import { mmss, Roller, signed, wallClock } from './hud/fmt';
+import { initial, mmss, Roller, signed, wallClock } from './hud/fmt';
 import { createProcPops, pegBadge, playProcTick } from './hud/charmProc';
 import './hud/hud.css';
+import { nightPaid } from '@/machines/debt_terminal/night';
 
 const PHONE_SECONDS = 10;
 const FEED_LIFE = 6;
@@ -46,8 +47,11 @@ const money = (n: number): string => fmtCoins(n);
 const hexCss = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
 const machineName = (id: string): string => (has(`machine.${id}.name`) ? t(`machine.${id}.name`) : id);
 const tierIndex = (tier: WinTier): number => WIN_TIERS.indexOf(tier);
+const SMALL = WIN_TIERS.indexOf('small');
 const BIG = WIN_TIERS.indexOf('big');
 const HUGE = WIN_TIERS.indexOf('huge');
+/** A tier's win pop is scaled by this many ms after its machine:result (the payout follows it in the same tick). */
+const WIN_LINK_MS = 600;
 
 function setText(el: HTMLElement, s: string): void { if (el.textContent !== s) el.textContent = s; }
 function setCls(el: HTMLElement, cls: string, on: boolean): void { el.classList.toggle(cls, on); }
@@ -119,7 +123,8 @@ export function createHud(): Hud {
   const charms = h('div', 'hb charms', root);
   const charmRow = h('div', 'charm-row', charms);
   let charmKey = '';
-  let pegs: Array<{ badge: HTMLElement; text: string }> = [];
+  let pegs: Array<{ face: HTMLElement; base: string; text: string }> = [];
+  let lastWin = { idx: 0, at: Number.NEGATIVE_INFINITY };
   const procPops = createProcPops(root);
 
   // ── feed, phone, prompt, dread ──────────────────────────────────────────────────────────────────
@@ -146,6 +151,20 @@ export function createHud(): Hud {
     feedLines.push({ el, age: 0 });
     while (feedLines.length > FEED_MAX) feedLines.shift()?.el.remove();
   }
+  /**
+   * A feed line for news that may also get a banner or toast (event start / end, Last Call). It runs one tick later so a
+   * banner announced in the same tick claims the news first; the line is then dropped (one news item, one display).
+   */
+  function feedNews(text: string, cls = ''): void {
+    window.setTimeout(() => { if (claimAnnounce(text)) addFeed(text, cls); }, 0);
+  }
+
+  /** The gain at the centre of the screen for a win: big gold figure, scaled by tier (small 1× up to jackpot 2×). */
+  function winPop(text: string, idx: number): void {
+    const el = h('div', idx >= HUGE ? 'win-pop huge' : 'win-pop', root, text);
+    el.style.setProperty('--k', String(Math.min(2, 1 + 0.2 * (idx - SMALL))));
+    window.setTimeout(() => el.remove(), 900);
+  }
 
   const lampName = (e: LampEntry): string => {
     const custom = app.run?.tycoon.owned(e.mid)?.name;
@@ -166,8 +185,12 @@ export function createHud(): Hud {
   on('eco:wallet', ({ pid, delta }) => {
     if (pid !== self() || delta === 0) return;
     if (delta > 0) {
+      // machine:result is emitted just before the payout, so a win that tier-scales the gain is still the last one seen.
+      const idx = performance.now() - lastWin.at < WIN_LINK_MS ? lastWin.idx : 0;
+      const win = idx >= SMALL;
+      if (win) winPop(signed(delta, money), idx);
       ui().fly({
-        from: popOrigin(), to: 'wallet', text: signed(delta, money), color: COLORS.shine,
+        from: popOrigin(), to: 'wallet', text: win ? '' : signed(delta, money), color: COLORS.shine,
         onArrive: () => { ui().bump('wallet', 1 + Math.min(1, delta / 2000)); uiSfx('numberTick', 0.7); },
       });
     } else {
@@ -180,6 +203,7 @@ export function createHud(): Hud {
   on('machine:result', ({ pid, machineId, tier, bet, gross }) => {
     if (pid !== self()) return;
     const idx = tierIndex(tier);
+    lastWin = { idx, at: performance.now() };
     if (idx < BIG) return;
     const mult = bet > 0 ? Math.round(gross / bet) : 0;
     addFeed(t('hud.feed.win', { who: t('hud.feed.you'), x: mult, machine: machineName(machineId) }), idx >= HUGE ? 'gold' : '');
@@ -213,8 +237,8 @@ export function createHud(): Hud {
 
   on('quota:met', () => { addFeed(t('hud.feed.quotaMet'), 'gold'); uiSfx('quotaTick', 1); });
   on('quota:failed', () => { addFeed(t('hud.feed.quotaFailed'), 'red'); });
-  on('event:start', ({ id }) => { addFeed(t('hud.feed.event', { name: t(`event.${id}.name`) }), 'gold'); });
-  on('event:end', ({ id }) => { addFeed(t('hud.feed.eventEnd', { name: t(`event.${id}.name`) }), ''); });
+  on('event:start', ({ id }) => { feedNews(t('hud.feed.event', { name: t(`event.${id}.name`) }), 'gold'); });
+  on('event:end', ({ id }) => { feedNews(t('hud.feed.eventEnd', { name: t(`event.${id}.name`) }), ''); });
   on('tycoon:milestone', ({ upgrade, level }) => { addFeed(t('hud.feed.milestone', { name: upgrade, n: level }), 'gold'); });
   on('charm:add', ({ pid, charmId }) => { if (pid === self()) addFeed(t('hud.feed.charm', { name: t(`charm.${charmId}.name`) })); });
   on('circuit:lamps', (v) => {
@@ -263,9 +287,9 @@ export function createHud(): Hud {
     if (phase !== lastPhase) {
       if (lastCall && !clockAlarmed) {
         clockAlarmed = true;
-        addFeed(t('hud.feed.lastCall'), 'red');
-        uiSfx('clockAlarm', 1);
         void ui().banner(t('hud.clock.lastCall'), { hold: 1.2, size: 16, color: COLORS.signal });
+        feedNews(t('hud.feed.lastCall'), 'red');
+        uiSfx('clockAlarm', 1);
       }
       lastPhase = phase;
     }
@@ -282,15 +306,17 @@ export function createHud(): Hud {
     const q = r.shift.quota();
     const due = Math.max(0, q.due);
     const dep = Math.max(0, q.deposited);
-    const frac = due > 0 ? Math.min(1, dep / due) : 1;
+    const frac = due > 0 && !nightPaid(r) ? Math.min(1, dep / due) : 1;
     setText(quotaNum, `${money(dep)} / ${money(due)}`);
     quotaFill.style.width = `${Math.round(frac * 100)}%`;
-    const met = q.met || (due > 0 && dep >= due);
+    const paid = nightPaid(r);
+    const met = paid || q.met || (due > 0 && dep >= due);
+    if (paid) setText(quotaNum, t('interm.paidShort', { n: r.night() }));
     setCls(quota, 'met', met);
     setCls(quota, 'short', !met);
     const late = r.shift.phase === 'lastCall' || r.shift.timeLeft() < 30;
     setCls(quota, 'late', !met && late);
-    setText(quotaShort, met ? '' : t('hud.quota.short', { n: money(Math.max(0, due - dep)) }));
+    setText(quotaShort, met || paid ? '' : t('hud.quota.short', { n: money(Math.max(0, due - dep)) }));
   }
 
   function updateBuffs(dt: number): void {
@@ -314,7 +340,7 @@ export function createHud(): Hud {
           el.title = name;
           const timer = h('i', 'timer', el);
           timer.style.setProperty('--c', color);
-          h('span', '', el, name.slice(0, 2).toUpperCase());
+          h('span', '', el, initial(name));
           if (b.stacks > 1) h('span', 'stk', el, String(b.stacks));
           buffTimers.push({ el: timer, b, color });
         }
@@ -356,20 +382,19 @@ export function createHud(): Hud {
       pegs = [];
       for (const c of list) {
         const name = has(`charm.${c.id}.name`) ? t(`charm.${c.id}.name`) : c.id;
-        const el = h('div', 'charm', charmRow, name.slice(0, 2).toUpperCase());
+        const el = h('div', 'charm', charmRow);
         el.dataset.id = c.id;
         el.title = name;
-        pegs.push({ badge: h('b', 'badge hidden', el), text: '' });
+        pegs.push({ face: h('span', 'face', el, initial(name)), base: initial(name), text: '' });
       }
     }
-    // Live counters: the list order matches `pegs` until the key changes; badge text is written only on change.
+    // Live counters: the face shows the charm's counter (3/6, +16%) when it has one, else its initial. Written on change only.
     for (let i = 0; i < pegs.length && i < list.length; i++) {
       const peg = pegs[i];
-      const text = pegBadge(list[i].id, list[i].data);
+      const text = pegBadge(list[i].id, list[i].data) || peg.base;
       if (text === peg.text) continue;
       peg.text = text;
-      setText(peg.badge, text);
-      setCls(peg.badge, 'hidden', text === '');
+      setText(peg.face, text);
     }
   }
 

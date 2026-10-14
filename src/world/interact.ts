@@ -11,7 +11,7 @@
  * focusable — `onInteract` then explains why ("Occupied", "Locked").
  */
 import type * as THREE from 'three';
-import { Vector3 } from 'three';
+import { Box3, Vector3 } from 'three';
 import type { Action } from '@/core/input/types';
 import type { CollisionWorld, Interactable, InteractionSystem } from './types';
 import { app } from '@/core/app';
@@ -21,6 +21,12 @@ export const DEFAULT_REACH = 2.2;
 /** A solid collider must be at least this much nearer than the target to occlude it. */
 const OCCLUDE_MARGIN = 0.02;
 const COOLDOWN_S = 0.2;
+/**
+ * Vertical slack on every interactable box (playtest: tables needed a hard look down). The ray is tested against the box
+ * grown by this much above and below, so a table top ~1 m below the eye is reached with a gentle pitch.
+ */
+export const INTERACT_SLACK_DOWN_M = 0.5;
+export const INTERACT_SLACK_UP_M = 0.3;
 
 export interface InteractableX extends Interactable {
   /** Prompt is drawn disabled (still focusable; `onInteract` should toast the reason). */
@@ -75,6 +81,7 @@ export function createInteraction(camera: THREE.Camera, collision: CollisionWorl
   const candItem: InteractableX[] = [];
   const candDist: number[] = [];
   const candScore: number[] = [];
+  const slackBox = new Box3();
   let focused: InteractableX | null = null;
   let active = true;
   let cooldown = 0;
@@ -100,7 +107,10 @@ export function createInteraction(camera: THREE.Camera, collision: CollisionWorl
     let n = 0;
     for (const i of items) {
       if (!i.enabled()) continue;
-      const d = rayBoxEntry(i.box, origin, dir);
+      slackBox.copy(i.box);
+      slackBox.min.y -= INTERACT_SLACK_DOWN_M;
+      slackBox.max.y += INTERACT_SLACK_UP_M;
+      const d = rayBoxEntry(slackBox, origin, dir);
       if (d < 0 || d > (i.maxDist ?? DEFAULT_REACH)) continue;
       candItem[n] = i; candDist[n] = d; candScore[n] = (i.priority ?? 0) * 1000 - d;
       n++;

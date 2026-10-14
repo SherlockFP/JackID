@@ -2,6 +2,12 @@
 export const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 export const pad2 = (n: number): string => String(Math.max(0, Math.floor(n))).padStart(2, '0');
 
+/** The face letter of a charm or buff icon: the name's first character, upper-cased ("Snowball" → "S"). */
+export function initial(name: string): string {
+  const ch = Array.from(name.trim())[0] ?? '';
+  return ch.toLocaleUpperCase('en');
+}
+
 /** "02:31" for 151 s (the Watch clock, GDD §10.1). */
 export function mmss(sec: number): string {
   const s = Math.max(0, Math.ceil(sec));

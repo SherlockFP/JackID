@@ -384,12 +384,12 @@ test('kits: Pauper is free and the rest cost 30 / 60 / 60 / 90 / 120 Obols', () 
 
 test('kits: starting values match the plan', () => {
   const k = (id) => K.kitById(id);
-  assert.deepEqual([k('pauper').coins, k('pauper').tickets, k('pauper').charms], [50, 2, []]);
-  assert.deepEqual([k('rotator').coins, k('rotator').charms], [35, ['suit_ladder']]);
-  assert.deepEqual([k('hot_hand').coins, k('hot_hand').charms], [40, ['lampwick', 'cold_hands']]);
-  assert.deepEqual([k('clutch').coins, k('clutch').charms], [30, ['last_gasp', 'night_owl']]);
-  assert.deepEqual([k('banker').coins, k('banker').predeposit, k('banker').charms], [20, 40, ['piggy_tooth', 'wax_seal']]);
-  assert.deepEqual([k('heir').coins, k('heir').charms], [200, ['glass_heart']]);
+  assert.deepEqual([k('pauper').coins, k('pauper').tickets, k('pauper').charms], [30, 2, []]);
+  assert.deepEqual([k('rotator').coins, k('rotator').charms], [25, ['suit_ladder']]);
+  assert.deepEqual([k('hot_hand').coins, k('hot_hand').charms], [25, ['lampwick', 'cold_hands']]);
+  assert.deepEqual([k('clutch').coins, k('clutch').charms], [22, ['last_gasp', 'night_owl']]);
+  assert.deepEqual([k('banker').coins, k('banker').predeposit, k('banker').charms], [12, 25, ['piggy_tooth', 'wax_seal']]);
+  assert.deepEqual([k('heir').coins, k('heir').charms], [120, ['glass_heart']]);
 });
 
 test('kits: every charm a kit names exists in the catalogue', () => {
@@ -402,7 +402,7 @@ test('kits: applyKit grants tickets and charms through the run and returns coins
   const granted = [];
   const run = { earn: (cur, n, reason, pid) => earned.push([cur, n, reason, pid]), grantCharm: (id) => { granted.push(id); return true; } };
   const g = K.applyKit(run, 'banker', 0);
-  assert.deepEqual(g, { coins: 20, predeposit: 40, charms: ['piggy_tooth', 'wax_seal'] });
+  assert.deepEqual(g, { coins: 12, predeposit: 25, charms: ['piggy_tooth', 'wax_seal'] });
   assert.deepEqual(earned, []);
   K.applyKit(run, 'pauper', 0);
   assert.deepEqual(earned, [['ticket', 2, 'kit:pauper', 0]]);

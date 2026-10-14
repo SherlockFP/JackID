@@ -14,6 +14,70 @@ import type { LampPart, LabelPart, LedPanelPart, ScreenSurface } from '@/kit/typ
 import type { KitX } from '@/kit';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { psxMaterial } from '@/core/renderer/psxMaterial';
+import { finishTexture } from '@/core/texgen/pixel';
+import type { CharmRarity } from '@/game/types';
+import { ICON_PX, charmIconPix, rarityColor } from './icons';
+
+/**
+ * One lit charm icon on a cushion: a big unlit badge that floats over the pedestal plus an additive glow pad under it.
+ * `set` repaints only when the charm / selection changes; `animate` bobs it and swells the selected one.
+ */
+export interface CharmIcon {
+  readonly root: THREE.Group;
+  set(charm: { id: string; rarity: CharmRarity; cursed: boolean } | null, selected: boolean): void;
+  animate(t: number, dt: number): void;
+  dispose(): void;
+}
+const ICON_SIZE = 0.26;           // metres: ~35 px tall at 224p from the seat
+const ICON_FLOAT = 0.2;           // centre height above the cushion top
+
+function buildIcon(i: number): CharmIcon {
+  const root = new THREE.Group();
+  const cv = document.createElement('canvas');
+  cv.width = ICON_PX; cv.height = ICON_PX;
+  const tex = finishTexture(cv, { wrap: 'clamp' }, false);
+  const mat = psxMaterial({ map: tex, lit: false, transparent: true, alphaTest: 0.4, side: 'double', fog: false, snap: false, unique: true });
+  const geo = new THREE.PlaneGeometry(ICON_SIZE, ICON_SIZE);
+  const badge = new THREE.Mesh(geo, mat);
+  badge.position.y = ICON_FLOAT;
+  badge.rotation.x = -0.35;                                   // tipped up to face the seat
+  badge.name = `pawn.icon${i}`;
+  const glowMat = psxMaterial({ color: 0xffd040, additive: true, lit: false, fog: false, opacity: 0.55, side: 'double', unique: true });
+  const glowGeo = new THREE.CircleGeometry(0.16, 18);
+  const glow = new THREE.Mesh(glowGeo, glowMat);
+  glow.rotation.x = -Math.PI / 2;
+  glow.position.y = 0.012;
+  glow.name = `pawn.glow${i}`;
+  root.add(glow, badge);
+  root.visible = false;
+
+  let key = '';
+  let sel = false, grow = 1;
+  return {
+    root,
+    set(charm, selected) {
+      sel = selected;
+      const k = charm ? `${charm.id}|${charm.rarity}|${charm.cursed ? 1 : 0}|${selected ? 1 : 0}` : '';
+      if (k === key) return;
+      key = k;
+      root.visible = charm !== null;
+      if (!charm) return;
+      charmIconPix(charm.id, charm.rarity, charm.cursed, selected).paintInto(cv);
+      tex.needsUpdate = true;
+      glowMat.color.setHex(rarityColor(charm.cursed ? 'cursed' : charm.rarity));
+    },
+    animate(t, dt) {
+      if (!root.visible) return;
+      grow += ((sel ? 1.3 : 1) - grow) * Math.min(1, dt * 10);
+      badge.scale.setScalar(grow);
+      badge.position.y = ICON_FLOAT + Math.sin(t * 2.2 + i * 1.7) * 0.012 + (sel ? 0.03 : 0);
+      badge.rotation.y = Math.sin(t * 1.3 + i) * (sel ? 0.28 : 0.12);
+      glowMat.opacity = (sel ? 0.8 : 0.45) + Math.sin(t * 3 + i) * 0.1;
+    },
+    dispose() { tex.dispose(); mat.dispose(); geo.dispose(); glowMat.dispose(); glowGeo.dispose(); },
+  };
+}
 
 export type CharmVendorParts = {
   /** Brass tray; slides towards the customer on every sale. */
@@ -31,6 +95,8 @@ export type CharmVendorParts = {
   ledger: ScreenSurface;
   /** 4-digit ticket count. */
   ticketLed: LedPanelPart;
+  /** Lit charm icons floating over the four cushions (hidden for sold / empty slots and while the window is shut). */
+  icons: CharmIcon[];
 };
 
 export const W = 2.0, D = 0.7, H = 2.4;
@@ -91,12 +157,17 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CharmVendorPar
   // ── pedestals (static) and item slots (anchors) ──
   const itemSlots: THREE.Object3D[] = [];
   const tags: LabelPart[] = [];
+  const icons: CharmIcon[] = [];
   SLOT_X.forEach((x, i) => {
     kit.cyl(0.08, 0.09, 0.05, pal.felt, at(x, COUNTER_H + 0.025, COUNTER_Z - 0.05, { seg: 10 }));
     const slot = new THREE.Object3D();
     slot.position.set(x, COUNTER_H + 0.06, COUNTER_Z - 0.05);
     root.add(slot);
     itemSlots.push(slot);
+    const icon = buildIcon(i);
+    icon.root.position.set(x, COUNTER_H + 0.05, COUNTER_Z - 0.05);
+    root.add(icon.root);
+    icons.push(icon);
     const tag = kit.label({ text: '--', w: 0.26, h: 0.08, px: [96, 28], color: pal.gold, bg: pal.black, font: 'vt' });
     tag.mesh.position.set(x, COUNTER_H - 0.2, COUNTER_Z + D / 2 + 0.04);
     root.add(tag.mesh);
@@ -130,8 +201,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CharmVendorPar
   light.userData = { color: 0xffd060, intensity: 0.6, range: 2.0, flicker: 'STEADY' };
   root.add(light);
 
-  const parts: CharmVendorParts = { tray, shutter, hands, itemSlots, tags, lamp, ledger, ticketLed };
-  kit.finalize(root, { keep: [tray, shutter, hands, lamp.root, ledger.mesh, ticketLed.root, light, ...itemSlots, ...tags.map((t) => t.mesh)] });
+  const parts: CharmVendorParts = { tray, shutter, hands, itemSlots, tags, lamp, ledger, ticketLed, icons };
+  kit.finalize(root, { keep: [tray, shutter, hands, lamp.root, ledger.mesh, ticketLed.root, light, ...itemSlots, ...tags.map((t) => t.mesh), ...icons.map((c) => c.root)] });
 
   return {
     root,
@@ -143,6 +214,6 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CharmVendorPar
     ],
     interact: { min: [-1.1, 0.3, WALL_Z], max: [1.1, H, COUNTER_Z + D / 2 + 0.2] },
     anchors: { speaker, prompt, light, coinOut, insideGlass: ledger.mesh },
-    dispose: () => { ledger.dispose(); },
+    dispose: () => { ledger.dispose(); for (const c of icons) c.dispose(); },
   };
 }

@@ -183,10 +183,14 @@ export interface RunOpts {
 export interface RunWorldLink {
   machines(): ReadonlyArray<{ instance: InstanceId; machineId: MachineId; size?: SlotSize }>;
   instancePos(mid: InstanceId): V3 | undefined;
+  /** True for machines in closed wings / locked tiers (no Lamps there). */
+  locked?(instance: InstanceId): boolean;
 }
 
 /** Run control surface on top of `RunApi` (HUD, intermission UI, frame loop). */
 export interface DebtRun extends RunApi {
+  /** True from Dawn paying the Night until OPEN THE FLOOR. */
+  readonly nightPaid: boolean;
   /** Advance the run by `dt` sim seconds. Call from the fixed step. */
   tick(dt: number): void;
   /** Write any coalesced save now. Call on page hide / unload (`tick` also flushes within SAVE_SOON_SEC). */
@@ -366,6 +370,7 @@ class Run implements DebtRun {
   private phase: ShiftPhase = 'intermission';
   private phaseLeft = 0;
   private nightDone = false;
+  get nightPaid(): boolean { return this.nightDone; }
   private topside = false;
   private metFired = false;
   private skipRest = 0;
@@ -1025,7 +1030,7 @@ class Run implements DebtRun {
       }
     }
     if (!this.rules.unlimitedPulls && this.pullCount > 0) {
-      this.earn('ticket', this.pullCount, 'settle:unused-pulls');
+      if (this.watchPulls >= ACTIVITY_MIN_PULLS) this.earn('ticket', this.pullCount, 'settle:unused-pulls');
       this.pullCount = 0;
       this.emit('pulls:change', { pid, pulls: 0 });
     }
@@ -1284,6 +1289,7 @@ class Run implements DebtRun {
   private lampCandidates(): LampCandidate[] {
     const cands: LampCandidate[] = [];
     for (const m of this.worldLink?.machines() ?? []) {
+      if (this.worldLink?.locked?.(m.instance)) continue;
       const cat = registry.get(m.machineId)?.def.category;
       if (cat === undefined || cat === 'system' || cat === 'party') continue;
       if (this.tycoonSys.staffAt(m.instance).length > 0) continue;        // staffed machines never take a Lamp

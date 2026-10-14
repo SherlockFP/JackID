@@ -17,6 +17,7 @@ import { DEFAULT_BINDINGS, codeLabels } from '@/core/keymap';
 import type { InstanceId, Unsub } from '@/core/types';
 import type { WorldHost } from '@/world/world';
 import type { DebtRun } from '@/game/run';
+import type { UIOverlayX } from '@/core/ui/ui';
 
 export interface TutorialHost {
   readonly world: WorldHost;
@@ -105,19 +106,16 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
   const bigMid = (): InstanceId | null => targetMid('bigone');
 
   // ── prompt (DOM, top centre, pointer-events none) ──────────────────────────────────────────────────
+  // Bottom-left anchor inside the HUD layer (`.px-tut` in ui.css), above the charm row and clear of PULLS and the top band.
   const el = document.createElement('div');
+  el.className = 'px-tut';
   el.setAttribute('role', 'status');
-  el.style.cssText = [
-    'position:fixed', 'top:14px', 'left:50%', 'transform:translateX(-50%)', 'z-index:60', 'pointer-events:none',
-    'max-width:min(560px,calc(100vw - 32px))', 'padding:6px 12px', 'box-sizing:border-box',
-    'background:rgba(14,11,8,.8)', 'border:1px solid #c9a24a', 'color:#f1e6cc',
-    'font:13px/1.4 inherit', 'text-align:center', 'display:none',
-  ].join(';');
+  el.style.display = 'none';
   const line = document.createElement('div');
   const hint = document.createElement('div');
-  hint.style.cssText = 'font-size:10px;opacity:.7;margin-top:3px';
+  hint.className = 'hint';
   el.append(line, hint);
-  document.body.appendChild(el);
+  ((app.ui as UIOverlayX | undefined)?.hudLayer ?? document.body).appendChild(el);
 
   // ── floor glow and a bobbing arrow over the target ────────────────────────────────────────────────
   const ringGeo = new THREE.RingGeometry(0.42, 0.62, 40);

@@ -11,6 +11,7 @@ import { psxMaterial } from '@/core/renderer/psxMaterial';
 import { finishTexture, Pix } from '@/core/texgen/pixel';
 import { microPix, microWidth, px5Pix, px5Width } from '@/core/texgen/font';
 import type { Hex } from '@/core/types';
+import { crispRaycaster, crispTexture, ensureCrispPass, markCrisp, releaseCrisp } from '@/core/ui/textOverlay';
 
 export const ease = {
   outCubic: (k: number): number => 1 - Math.pow(1 - clamp(k, 0, 1), 3),
@@ -88,22 +89,42 @@ export function wrap(s: string, maxW: number, o: TxtOpts = { micro: true }): str
 }
 
 // ── painted surfaces ─────────────────────────────────────────────────────────────────────────────
-/** A low-res `Pix` buffer mirrored to a canvas and a nearest-filtered texture. */
+/** Texel multiplier of a surface's GPU texture: painted pixels are blown up K× (nearest) so the native pass stays sharp. */
+const CRISP_K = 4;
+/** Surfaces by texture: a Stage3D uses it to switch a painted mesh to linear + mipmapped sampling for the native pass. */
+const surfaceOf = new WeakMap<THREE.Texture, PixSurface>();
+
+/**
+ * A low-res `Pix` buffer mirrored to a canvas and a texture. The painted size stays small (layout code works in those
+ * pixels); the GPU copy is K× larger, drawn with nearest so every painted pixel is a crisp K×K block. Stage3D draws its
+ * meshes in the native-resolution pass (core/ui/textOverlay.ts) where that texture is sampled linear + mipmapped.
+ */
 export class PixSurface {
   readonly pix: Pix;
   readonly tex: THREE.CanvasTexture;
   private readonly cv: HTMLCanvasElement;
+  private readonly hi: HTMLCanvasElement;
+  private readonly hiG: CanvasRenderingContext2D | null;
   constructor(readonly w: number, readonly h: number) {
     this.pix = new Pix(w, h);
     this.cv = document.createElement('canvas');
     this.cv.width = w; this.cv.height = h;
-    this.tex = finishTexture(this.cv, { wrap: 'clamp' }, false);
+    this.hi = document.createElement('canvas');
+    this.hi.width = w * CRISP_K; this.hi.height = h * CRISP_K;
+    this.hiG = this.hi.getContext('2d');
+    if (this.hiG) this.hiG.imageSmoothingEnabled = false;
+    this.tex = finishTexture(this.hi, { wrap: 'clamp' }, false);
+    surfaceOf.set(this.tex, this);
   }
   /** Repaint: `fn` draws into the pixel buffer, then the canvas and GPU texture follow. */
   paint(fn: (p: Pix) => void): void { fn(this.pix); this.flush(); }
   /** Copy another buffer of the same size (page turns keep a frozen copy of the old page). */
   copyFrom(src: Pix): void { this.pix.d.set(src.d); this.flush(); }
-  private flush(): void { this.pix.paintInto(this.cv); this.tex.needsUpdate = true; }
+  private flush(): void {
+    this.pix.paintInto(this.cv);
+    if (this.hiG) { this.hiG.clearRect(0, 0, this.hi.width, this.hi.height); this.hiG.drawImage(this.cv, 0, 0, this.hi.width, this.hi.height); }
+    this.tex.needsUpdate = true;
+  }
   dispose(): void { this.tex.dispose(); }
 }
 
@@ -119,7 +140,7 @@ interface Tween { t: number; dur: number; step: (k: number) => void; done?: () =
 export class Stage3D {
   readonly root = new THREE.Group();
   private readonly ov: { scene: THREE.Scene; camera: THREE.Camera } | null;
-  private readonly ray = new THREE.Raycaster();
+  private readonly ray = crispRaycaster(new THREE.Raycaster());
   private readonly ndc = new THREE.Vector2();
   private readonly tweens: Tween[] = [];
   private readonly tickers: Array<(dt: number) => void> = [];
@@ -134,6 +155,7 @@ export class Stage3D {
     const p = (app.player as unknown as { overlay?: { scene: THREE.Scene; camera: THREE.Camera } } | null)?.overlay;
     this.ov = p ? { scene: p.scene, camera: p.camera } : null;
     this.ov?.scene.add(this.root);
+    if (this.ov) ensureCrispPass();
     const loop = (now: number): void => {
       if (!this.alive) return;
       const dt = this.last ? Math.min(0.1, (now - this.last) / 1000) : 0;
@@ -145,7 +167,21 @@ export class Stage3D {
   }
 
   get isAlive(): boolean { return this.alive; }
-  add(o: THREE.Object3D): void { this.root.add(o); }
+  add(o: THREE.Object3D): void { this.root.add(o); this.crisp(); }
+
+  /** Draw everything under the stage in the native-resolution pass; painted surfaces get linear + mipmapped sampling. */
+  private crisp(): void {
+    if (!this.ov) return;
+    markCrisp(this.root);
+    this.root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      for (const mt of Array.isArray(m.material) ? m.material : [m.material]) {
+        const map = (mt as THREE.MeshBasicMaterial).map;
+        if (map && surfaceOf.has(map)) crispTexture(map, 4);
+      }
+    });
+  }
   /** Register something to run on dispose (textures, DOM hooks). */
   own(fn: () => void): void { this.disposers.push(fn); }
   onTick(fn: (dt: number) => void): void { this.tickers.push(fn); }
@@ -182,6 +218,7 @@ export class Stage3D {
     this.alive = false;
     cancelAnimationFrame(this.raf);
     for (const off of this.offs.splice(0)) off();
+    releaseCrisp(this.root);
     this.ov?.scene.remove(this.root);
     this.root.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -212,6 +249,8 @@ export class Stage3D {
     }
     if (!this.alive) return;
     for (const fn of this.tickers) fn(dt);
+    this.crisp();                                   // children added after `add` (page meshes, buttons) join the native pass
+    ensureCrispPass();
   }
 }
 

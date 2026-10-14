@@ -19,10 +19,16 @@ import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/type
 import type { HeadlessPlay } from '@/game/types';
 import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
+import { rulesFirstEver, rulesMarkShown } from '@/machines/_base/placard3d';
+import { showRulesHint } from '@/machines/_base/rulesHint';
+import { bus } from '@/core/events';
+import type { CharmRarity } from '@/game/types';
 import type { KitX } from '@/kit';
 import { fmtNum, t as tr } from '@/core/i18n';
 import { lerp } from '@/core/math';
 import { buildModel, SHUTTER_DROP, type CharmVendorParts } from './model';
+import { charmIconPix, rarityColor } from './icons';
+import './pawnCard.css';
 import {
   LOCK_TICKETS, MAX_LOCKS, REMOVE_CURSE_TICKETS, SLOTS, buyJuice, multText, pawnFrom, priceText, stockKey, wrapIndex, wrapSlot,
   type PawnApi, type PawnSlot, type SwapChoice,
@@ -92,6 +98,11 @@ export const def: MachineDef = {
       tip1: "The pawn window is open only between shifts. Pick a charm, then buy it.",
       tip2: "[{move}] PICK A CHARM  ·  [{buy}] BUY WITH COINS",
       tip3: "Tickets: [{reroll}] REROLL  ·  [{lock}] LOCK  ·  [{help}] RULES",
+      rarCommon: 'COMMON', rarUncommon: 'UNCOMMON', rarRare: 'RARE', rarLegendary: 'LEGENDARY', rarCursed: 'CURSED',
+      tagLocked: 'LOCKED', tagSale: 'SALE', tagSecret: 'UNDER THE COUNTER',
+      curseNote: 'Cursed: the house pays you to take it. It cannot be sold back.',
+      swapOut: 'THIS ONE LEAVES  ·  SELL BACK {n}',
+      noDesc: 'No description.',
     },
     tr: {
       name: 'Rehin Penceresi',
@@ -130,6 +141,11 @@ export const def: MachineDef = {
       tip1: "Rehin penceresi yalnızca ara dönemlerde açık. Bir tılsım seç, sonra al.",
       tip2: "[{move}] TILSIM SEÇ  ·  [{buy}] PARAYLA AL",
       tip3: "Biletler: [{reroll}] YENİLE  ·  [{lock}] KİLİTLE  ·  [{help}] KURALLAR",
+      rarCommon: 'SIRADAN', rarUncommon: 'YARI NADİR', rarRare: 'NADİR', rarLegendary: 'EFSANEVİ', rarCursed: 'LANETLİ',
+      tagLocked: 'KİLİTLİ', tagSale: 'İNDİRİM', tagSecret: 'TEZGAH ALTI',
+      curseNote: 'Lanetli: ev seni almaya para öder. Geri satılamaz.',
+      swapOut: 'BU ÇIKAR  ·  GERİ SATIŞ {n}',
+      noDesc: 'Açıklama yok.',
     },
   },
 };
@@ -148,6 +164,12 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   private drumming = false;
   /** Swap picker (pegs full): which slot is being bought and which charm would be replaced. */
   private swap: { i: number; choices: readonly SwapChoice[]; idx: number } | null = null;
+  /** The selected charm's card (DOM, crisp text): name, rarity, effect. */
+  private card?: { el: HTMLElement; icon: HTMLCanvasElement; name: HTMLElement; meta: HTMLElement; desc: HTMLElement; note: HTMLElement };
+  private cardKey = '';
+  private uiBlocked = false;
+  private offBlock: (() => void) | null = null;
+  private offHint: (() => void) | null = null;
 
   protected createModel(kit: KitX): MachineModel<CharmVendorParts> {
     return buildModel(kit, this.modelOpts);
@@ -156,6 +178,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   init(): void {
     this.seatHud = new SeatHud(this.ctx.ui.root);
     this.ctx.ui.machineHud(null);                          // the seat HUD replaces the generic bottom bar
+    this.buildCard();
+    this.offBlock = bus.on('ui:blocking', ({ blocking }) => { this.uiBlocked = blocking; this.syncCard(); });
     this.refresh(true);
     this.attractor.every('glint', 11, () => this.ctx.fx.glow(this.model.anchors.light, GOLD, 0.25, 0.5), { first: 6 });
   }
@@ -175,7 +199,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     this.refresh(false);
   }
 
-  frame(_dt: number, t: number): void {
+  frame(dt: number, t: number): void {
+    for (const ic of this.parts.icons) ic.animate(t, dt);
     // idle: the Pawnbroker drums ringed fingers on the counter
     const drum = this.idle > IDLE_DRUM_S && !this.busy;
     if (drum !== this.drumming) { this.drumming = drum; if (!drum) this.parts.hands.rotation.x = 0; }
@@ -187,6 +212,9 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   }
 
   dispose(): void {
+    this.offBlock?.(); this.offBlock = null;
+    this.offHint?.(); this.offHint = null;
+    this.card?.el.remove(); this.card = undefined;
     this.seatHud?.dispose();
     super.dispose();
   }
@@ -197,16 +225,23 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     if (local) {
       this.sfx('chime');
       this.seatHud?.show(); this.refresh(true);
+      this.cardKey = '';
+      // HOW TO PLAY opens only on the first sit in the whole save; after that a small hint names the rules key
       this.seatHud?.firstTip('charm_vendor', this.tipLines());
     }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
     this.swap = null;
-    if (local) { this.seatHud?.hide(); this.hudKey = ''; }
+    if (local) {
+      this.seatHud?.hide(); this.hudKey = '';
+      this.offHint?.(); this.offHint = null;
+      this.syncCard();
+    }
   }
 
   onLang(): void {
+    this.cardKey = '';
     this.repaintKey = '';
     this.hudKey = '';
     this.refresh(true);
@@ -419,7 +454,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const stock = pawn && open ? pawn.stock(this.selfId) : [];
     this.stockCache = stock;
     const key = [stockKey(stock), open ? 1 : 0, this.wallet(), this.tickets(), this.cursor, this.swap ? `s${this.swap.i}.${this.swap.idx}` : ''].join('|');
-    if (!force && key === this.repaintKey) { if (this.isLocalOccupant) this.showHud(); return; }
+    if (!force && key === this.repaintKey) { if (this.isLocalOccupant) this.showHud(); this.syncCard(); return; }
     this.repaintKey = key;
 
     for (let i = 0; i < SLOTS; i++) {
@@ -428,8 +463,13 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       this.parts.tags[i]?.setText(txt);
     }
     this.parts.ticketLed.set(String(fmtNum(this.tickets())).padStart(4, ' '));
+    for (let i = 0; i < SLOTS; i++) {
+      const s = open ? stock[i] ?? null : null;
+      this.parts.icons[i]?.set(s ? { id: s.charmId, rarity: s.rarity, cursed: s.cursed } : null, this.isLocalOccupant && i === this.cursor);
+    }
     this.drawLedger(stock, open);
     if (this.isLocalOccupant) this.showHud();
+    this.syncCard();
   }
 
   private drawLedger(stock: readonly (PawnSlot | null)[], open: boolean): void {
@@ -461,6 +501,75 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       s.text(sl ? priceText(sl, fmtNum, this.t('free')) : '--', 124, y, { font: 'px5', color: sl?.locked ? '#ffffff' : '#ffd060', align: 'right' });
     }
     s.text(`${this.t('ledgerTickets')} ${fmtNum(this.tickets())}`, 4, 72, { font: 'px5', color: '#a07020' });
+  }
+
+  // ── selected-charm card (DOM, so the text is crisp) ───────────────────────────────────────────
+  private buildCard(): void {
+    const el = document.createElement('div');
+    el.className = 'pawn-card';
+    const top = document.createElement('div'); top.className = 'pc-top';
+    const icon = document.createElement('canvas'); icon.className = 'pc-icon'; icon.width = 24; icon.height = 24;
+    const head = document.createElement('div');
+    const name = document.createElement('div'); name.className = 'pc-name';
+    const meta = document.createElement('div'); meta.className = 'pc-meta';
+    head.append(name, meta);
+    top.append(icon, head);
+    const desc = document.createElement('div'); desc.className = 'pc-desc';
+    const note = document.createElement('div'); note.className = 'pc-note';
+    el.append(top, desc, note);
+    this.ctx.ui.root.appendChild(el);
+    this.card = { el, icon, name, meta, desc, note };
+  }
+
+  private rarityName(r: CharmRarity, cursed: boolean): string {
+    if (cursed) return this.t('rarCursed');
+    switch (r) {
+      case 'uncommon': return this.t('rarUncommon');
+      case 'rare': return this.t('rarRare');
+      case 'legendary': return this.t('rarLegendary');
+      case 'cursed': return this.t('rarCursed');
+      default: return this.t('rarCommon');
+    }
+  }
+
+  /** Shows the card for the cursor's charm (or the charm a swap would replace) while the local player is seated. */
+  private syncCard(): void {
+    const c = this.card;
+    if (!c) return;
+    const pawn = this.pawn();
+    const sel = this.stockCache[this.cursor] ?? null;
+    const sw = this.swap;
+    const out = sw ? sw.choices[sw.idx] ?? null : null;
+    const show = this.isLocalOccupant && !this.uiBlocked && !this.seatHud?.blocking && pawn !== null && pawn.open() && (sw ? out !== null : sel !== null);
+    c.el.classList.toggle('on', show);
+    if (!show) return;
+    const id = sw && out ? out.id : sel?.charmId ?? '';
+    const rarity: CharmRarity = sw ? 'common' : sel?.rarity ?? 'common';
+    const cursed = !sw && !!sel?.cursed;
+    const state = sw ? `o${out?.refund ?? 0}` : `${sel?.price ?? 0}.${sel?.fit ?? 0}.${sel?.locked ? 1 : 0}.${sel?.discounted ? 1 : 0}.${sel?.underCounter ? 1 : 0}`;
+    const key = `${id}|${state}`;
+    if (key === this.cardKey) return;
+    this.cardKey = key;
+    c.el.style.setProperty('--rc', `#${rarityColor(cursed ? 'cursed' : rarity).toString(16).padStart(6, '0')}`);
+    c.name.textContent = tr(`charm.${id}.name`);
+    const descKey = `charm.${id}.desc`;
+    const d = tr(descKey);
+    c.desc.textContent = d === descKey ? this.t('noDesc') : d;
+    const g = c.icon.getContext('2d');
+    if (g) { g.clearRect(0, 0, 24, 24); charmIconPix(id, rarity, cursed, true).drawTo(g); }
+    if (sw && out) {
+      c.meta.textContent = this.t('swapOut', { n: fmtNum(out.refund) });
+      c.note.textContent = '';
+    } else if (sel) {
+      const bits = [this.rarityName(rarity, cursed)];
+      if (sel.fit > 0) bits.push(tr('shop.fit', { n: sel.fit }));
+      if (sel.locked) bits.push(this.t('tagLocked'));
+      if (sel.discounted) bits.push(this.t('tagSale'));
+      if (sel.underCounter) bits.push(this.t('tagSecret'));
+      c.meta.textContent = bits.join('  ·  ');
+      c.note.textContent = cursed ? this.t('curseNote') : '';
+    }
+    c.note.style.display = c.note.textContent ? '' : 'none';
   }
 
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────

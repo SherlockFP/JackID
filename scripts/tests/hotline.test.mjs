@@ -287,7 +287,7 @@ test('deal overtime: +2 pulls through the host (or 6 Tickets without one), +15 D
 
 test('deal double: lose 10 % of the pocket, the next win pays x2 and only that one', () => {
   const { run, ctx } = realCtx();
-  run.earn('coin', 50, 't');                            // 100 in the pocket
+  run.earn('coin', 100 - run.wallet(), 't');                            // 100 in the pocket
   take('double', ctx);
   assert.equal(run.wallet(), 90);
   approx(mult(run), 2);
@@ -381,7 +381,7 @@ test('deal time: 3 Tickets for +30 s on the Watch clock', () => {
 
 test('deal refund: losses refund 25 % this Watch for 5 % of the pocket', () => {
   const { run, ctx } = realCtx();
-  run.earn('coin', 50, 't');
+  run.earn('coin', 100 - run.wallet(), 't');
   take('refund', ctx);
   assert.equal(run.wallet(), 95);
   approx(run.mod('loss.refund', 'bigone', 0), 0.25);
@@ -390,7 +390,7 @@ test('deal refund: losses refund 25 % this Watch for 5 % of the pocket', () => {
 
 test('deal calm: Dread -25 for 12 % of the pocket', () => {
   const { run, ctx } = realCtx();
-  run.earn('coin', 50, 't');
+  run.earn('coin', 100 - run.wallet(), 't');
   run.addDread(60, 't');
   const d0 = run.dread();
   take('calm', ctx);
@@ -437,7 +437,7 @@ test('deal hothands: the next 3 wins pay x1.5 (not a 4th); bets cost 15 % more t
 
 test('deal devil: the next win pays x3 for +25 Dread and 20 % of the pocket', () => {
   const { run, ctx } = realCtx();
-  run.earn('coin', 50, 't');
+  run.earn('coin', 100 - run.wallet(), 't');
   const d0 = run.dread();
   take('devil', ctx);
   assert.equal(run.wallet(), 80);

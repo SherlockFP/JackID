@@ -58,7 +58,10 @@ export interface UIOverlayX extends UIOverlay {
 const TOAST_ICON: Record<string, IconName> = {
   info: 'info', good: 'check', bad: 'cross', warn: 'warn', sys: 'net', money: 'coin', curse: 'curse', phone: 'bell',
 };
-const MAX_TOASTS = 4;
+/** Toasts on screen at once; the rest wait in line. */
+const TOAST_VISIBLE = 2;
+/** A toast or banner with the same news as one shown in the last this-many ms merges into it (or is dropped). */
+const ANNOUNCE_MERGE_MS = 3000;
 const MAX_FLY = 48;
 const HINT_IDLE_S = 4;
 
@@ -84,7 +87,47 @@ const isTextTarget = (el: EventTarget | null): boolean =>
 interface PanelRec { el: HTMLElement; cleanup?: () => void; backdrop: HTMLElement | null; nav?: () => void }
 interface ModalRec { el: HTMLElement; cancel(): void; primary(): void }
 interface ChoiceJob { title: string; options: string[]; timeout?: number; resolve(i: number): void }
-interface ToastRec { el: HTMLElement; key: string; count: number; timer: number; cnt: HTMLElement }
+interface ToastRec { text: string; kind: string; dur: number; words: string[]; count: number; timer: number; shown: boolean; el?: HTMLElement; cnt?: HTMLElement }
+
+/**
+ * Words that identify a piece of news: upper-cased letter/number runs, 2+ characters (any digit run counts).
+ * "EVENT OVER: Lucky Moon" and "ENDED: LUCKY MOON" both give LUCKY and MOON.
+ */
+export function announceWords(text: string): string[] {
+  const out = new Set<string>();
+  for (const w of text.toLocaleUpperCase('en').split(/[^\p{L}\p{N}]+/u)) if (w.length >= 2 || /\d/.test(w)) out.add(w);
+  return [...out];
+}
+
+/** Same news when they share at least 60 % of the shorter message's words (and at least one). */
+function sameNews(a: string[], b: string[]): boolean {
+  if (a.length === 0 || b.length === 0) return false;
+  const inB = new Set(b);
+  let shared = 0;
+  for (const w of a) if (inB.has(w)) shared++;
+  return shared >= 1 && shared / Math.min(a.length, b.length) >= 0.6;
+}
+
+/** Everything announced (toast or banner or feed line) in the last ANNOUNCE_MERGE_MS. `rec` is set for toasts. */
+interface Announce { words: string[]; at: number; rec?: ToastRec }
+const announced: Announce[] = [];
+
+function recentNews(words: string[]): Announce | undefined {
+  const now = performance.now();
+  for (let i = announced.length - 1; i >= 0; i--) if (now - announced[i].at > ANNOUNCE_MERGE_MS) announced.splice(i, 1);
+  return announced.find((a) => sameNews(a.words, words));
+}
+
+/**
+ * Claims a banner / feed line for its news. True = new, now recorded (show it). False = the same news was announced in
+ * the last 3 s, so the caller drops it. Toasts and banners share this record, so one news item never shows twice.
+ */
+export function claimAnnounce(text: string): boolean {
+  const words = announceWords(text);
+  if (recentNews(words)) return false;
+  announced.push({ words, at: performance.now() });
+  return true;
+}
 
 export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
   root.classList.add('px-root');
@@ -198,16 +241,46 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
   let promptOn = false;
 
   // ── toasts ──────────────────────────────────────────────────────────────────────────────────────
-  const toastList: ToastRec[] = [];
+  const toastShown: ToastRec[] = [];      // on screen, newest first (at most TOAST_VISIBLE)
+  const toastWaiting: ToastRec[] = [];    // queued behind them, first come first shown
+  function showToast(rec: ToastRec): void {
+    const el = h('div', `px-toast k-${rec.kind}`);
+    h('i', 'bar', el);
+    const ico = h('span', 'ico', el); ico.appendChild(pixelIcon(TOAST_ICON[rec.kind] ?? 'info'));
+    h('span', 'txt', el, rec.text);
+    rec.cnt = h('span', 'cnt', el, rec.count > 1 ? `×${rec.count}` : '');
+    rec.el = el;
+    rec.shown = true;
+    toastsEl.prepend(el);
+    toastShown.unshift(rec);
+    el.animate([{ transform: `translateX(${40 * px}px)`, opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }],
+      { duration: 180, easing: 'cubic-bezier(.2,.8,.3,1)' });
+    rec.timer = window.setTimeout(() => dismissToast(rec), rec.dur * 1000);
+  }
   function dismissToast(rec: ToastRec, quick = false): void {
-    const i = toastList.indexOf(rec);
-    if (i < 0) return;
-    toastList.splice(i, 1);
+    const w = toastWaiting.indexOf(rec);
+    if (w >= 0) { toastWaiting.splice(w, 1); return; }
+    const i = toastShown.indexOf(rec);
+    if (i < 0 || !rec.el) return;
+    toastShown.splice(i, 1);
+    rec.shown = false;
     clearTimeout(rec.timer);
-    const a = rec.el.animate([{ transform: 'translateX(0)', opacity: 1 }, { transform: `translateX(${40 * px}px)`, opacity: 0 }],
+    const el = rec.el;
+    const a = el.animate([{ transform: 'translateX(0)', opacity: 1 }, { transform: `translateX(${40 * px}px)`, opacity: 0 }],
       { duration: quick ? 90 : 220, easing: 'ease-in', fill: 'forwards' });
-    a.onfinish = () => rec.el.remove();
-    setTimeout(() => rec.el.remove(), 400);
+    a.onfinish = () => el.remove();
+    setTimeout(() => el.remove(), 400);
+    while (toastShown.length < TOAST_VISIBLE && toastWaiting.length) showToast(toastWaiting.shift()!);
+  }
+  /** Same news while the toast is on screen or queued: count it on that toast and restart its timer. */
+  function mergeToast(rec: ToastRec, dur: number): void {
+    rec.count++;
+    if (!rec.shown) return;
+    if (rec.cnt) rec.cnt.textContent = `×${rec.count}`;
+    rec.el?.animate([{ scale: '1.12' }, { scale: '1' }], { duration: 140 });
+    clearTimeout(rec.timer);
+    rec.dur = Math.max(rec.dur, dur);
+    rec.timer = window.setTimeout(() => dismissToast(rec), rec.dur * 1000);
   }
 
   // ── machine HUD ─────────────────────────────────────────────────────────────────────────────────
@@ -501,33 +574,22 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     },
 
     toast(text, kind: ToastKind | ExtraToastKind = 'info', dur = 2.5) {
-      const key = `${kind}|${text}`;
-      const dup = toastList.find((r) => r.key === key);
-      if (dup) {                                              // identical toast: count it instead of stacking
-        dup.count++; dup.cnt.textContent = `×${dup.count}`;
-        dup.el.animate([{ scale: '1.12' }, { scale: '1' }], { duration: 140 });
-        clearTimeout(dup.timer);
-        dup.timer = window.setTimeout(() => dismissToast(dup), dur * 1000);
-        return;
-      }
-      const el = h('div', `px-toast k-${kind}`);
-      h('i', 'bar', el);
-      const ico = h('span', 'ico', el); ico.appendChild(pixelIcon(TOAST_ICON[kind] ?? 'info'));
-      h('span', 'txt', el, text);
-      const cnt = h('span', 'cnt', el);
-      const rec: ToastRec = { el, key, count: 1, timer: 0, cnt };
-      toastsEl.prepend(el);
-      toastList.unshift(rec);
-      el.animate([{ transform: `translateX(${40 * px}px)`, opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }],
-        { duration: 180, easing: 'cubic-bezier(.2,.8,.3,1)' });
-      while (toastList.length > MAX_TOASTS) dismissToast(toastList[toastList.length - 1], true);
-      rec.timer = window.setTimeout(() => dismissToast(rec), dur * 1000);
+      // One queue: the same or similar news within 3 s merges into the toast already showing (or waiting), and a
+      // banner / feed line for it that came first is enough. At most TOAST_VISIBLE on screen; the rest wait.
+      const words = announceWords(text);
+      const hit = recentNews(words);
+      if (hit) { if (hit.rec) mergeToast(hit.rec, dur); return; }
+      const rec: ToastRec = { text, kind, dur, words, count: 1, timer: 0, shown: false };
+      announced.push({ words, at: performance.now(), rec });
+      if (toastShown.length < TOAST_VISIBLE) showToast(rec);
+      else toastWaiting.push(rec);
     },
 
     bigWin(amount: number, tier: WinTier, title: string) {
       return enqueueBw(() => runBigWin(amount, tier, title));
     },
     banner(text, o = {}) {
+      if (!claimAnnounce(text)) return Promise.resolve();     // same news just announced: drop the repeat
       return enqueueBw(() => runBanner(text, o));
     },
 

@@ -41,6 +41,7 @@ import type {
 } from './types';
 import { benchSlot, fallbackZones, loadArch, type FlickerId, type GateDef, type LevelBuild, type SpawnKind, type SpawnPoint } from './sys/arch';
 import { LightPool, type LightSourceInit } from './sys/lightPool';
+import { createLampGlow } from './sys/lamps';
 import { createJuiceFx } from './sys/juiceFx';
 import { ItemManager } from './sys/items';
 import { buildBroken, buildPad, playDelivery, playRemoval, type PadServices } from './sys/pads';
@@ -58,8 +59,9 @@ declare module '@/core/events' {
 
 // ── tuning ────────────────────────────────────────────────────────────────────────────────────────
 const BUILD_BUDGET_MS = 7;
-const AMBIENT_SKY_GAIN = 4.8;
-const AMBIENT_GROUND_GAIN = 2.6;
+// Playtest: the pit read too dark to find things. Raised about a third; fog (horror mood) is unchanged.
+const AMBIENT_SKY_GAIN = 6.4;
+const AMBIENT_GROUND_GAIN = 3.5;
 const ATMOSPHERE_RATE = 6;
 const TELEPORT_JUMP_M = 8;
 const DEFAULT_ATTRACT_M = 14;
@@ -161,6 +163,13 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
   offs.push(bus.on('phone:end', () => { ringing = false; }));
   offs.push(bus.on('dread:change', ({ value }) => pool.api.setDread(value)));
   const juiceFx = createJuiceFx(pool.api);
+  // Circuit Lamps: a warm breathing light over the Hot cabinet, a dim blue one over each Cold (sys/lamps.ts).
+  const lampGlow = createLampGlow({
+    pool,
+    at: (mid) => { const r = recs.get(mid); return r ? { x: r.def.pos[0], y: r.def.pos[1], z: r.def.pos[2] } : null; },
+    reduced: () => app.save.data.settings.reduceFlashing,
+  });
+  offs.push(() => lampGlow.dispose());
 
   // ── level (WORLD-ARCH) ────────────────────────────────────────────────────────────────────────
   const anchors = new Map<string, THREE.Object3D>();
@@ -711,6 +720,7 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
       }
       juiceFx.update(dt);
       pool.update(dt, camera.position);
+      lampGlow.update(dt);
       atmosphere(dt);
       items.update(dt);
     },

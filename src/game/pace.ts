@@ -35,15 +35,17 @@ export interface Pace {
   /** Pulls left, floored at 0. */
   pullsLeft: number;
   state: PaceState;
+  /** True when the wallet alone covers the rest of the quota but nothing is deposited yet (the player must DEPOSIT). */
+  pocket: boolean;
 }
 
 /** The quota pace from the run's numbers. */
 export function paceOf(i: PaceInput): Pace {
   const need = Math.max(0, i.due - i.deposited - i.pocket);
   const pullsLeft = Math.max(0, Math.floor(i.pullsLeft));
-  if (need <= 0) return { need: 0, perPull: 0, pullsLeft, state: 'met' };
-  if (pullsLeft <= 0) return { need, perPull: Number.POSITIVE_INFINITY, pullsLeft: 0, state: 'dead' };
-  return { need, perPull: need / pullsLeft, pullsLeft, state: 'open' };
+  if (need <= 0) return { need: 0, perPull: 0, pullsLeft, state: 'met', pocket: i.due > i.deposited };
+  if (pullsLeft <= 0) return { need, perPull: Number.POSITIVE_INFINITY, pullsLeft: 0, state: 'dead', pocket: false };
+  return { need, perPull: need / pullsLeft, pullsLeft, state: 'open', pocket: false };
 }
 
 /**
@@ -116,7 +118,7 @@ export function fmtMult(k: number): string {
 
 /** The NEED part of the odds line: met / dead, or the multiple this play must return and its formatted 1-in-N. */
 export type NeedOdds =
-  | { kind: 'met' }
+  | { kind: 'met'; pocket: boolean }
   | { kind: 'dead' }
   | { kind: 'open'; k: string; odds: string | null };
 
@@ -141,7 +143,7 @@ export function oddsLine(profile: MachineProfile | null, pace: Pace | null, pull
   const one = (c: number): string | null => { const n = oneIn(c); return n === null ? null : fmtOddsN(n); };
   let need: NeedOdds | null = null;
   if (pace) {
-    if (pace.state === 'met') need = { kind: 'met' };
+    if (pace.state === 'met') need = { kind: 'met', pocket: pace.pocket };
     else if (pace.state === 'dead') need = { kind: 'dead' };
     else {
       const k = requiredMultiplier(pace, pullsPerPlay, bet);

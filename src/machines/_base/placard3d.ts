@@ -20,6 +20,7 @@ import { ease } from '@/core/tween';
 import { addTicker, uiSfx } from '@/core/ui/widgets';
 import { finishTexture, makeCanvas } from '@/core/texgen/pixel';
 import { drawText, measureText, PX5_LINE_H } from '@/core/texgen/font';
+import { crispRaycaster, crispTexture, ensureCrispPass, markCrisp, releaseCrisp } from '@/core/ui/textOverlay';
 import type { Hex } from '@/core/types';
 
 // ── palette (canvas CSS colours; the bitmap font draws in these) ────────────────────────────────────
@@ -34,10 +35,25 @@ export const RED = '#c0392b';
 /**
  * Texel supersampling of every placard face: the canvas is RES× the logical size (`spec.px`), shapes are drawn through
  * a RES scale, and text is drawn straight at device resolution (see `put`). Layout code keeps working in logical px.
- * Kept at 1: the game renders at ~224p with NearestFilter and no mipmaps, so a 2x face is minified ~2.5x on a seat card and
- * the 5x7 glyph strokes drop out (checked in the browser). Raise it only together with mipmapped/linear sampling.
+ * Placards are drawn by the native-resolution pass (`core/ui/textOverlay.ts`, layer CRISP): no ~224p target, no jitter,
+ * no affine, no dither, and the face texture is linear + mipmapped, so 3x texels keep the 5x7 strokes sharp at any size.
  */
-export const RES = 1;
+export const RES = 3;
+
+// ── rules card policy: the automatic how-to opens once per save ───────────────────────────────────────
+const RULES_KEY = 'jackid.rulesAutoShown';
+/**
+ * True until the first how-to card has been shown anywhere in this save. Machines used to open HOW TO PLAY on the first
+ * sit at EVERY machine; now only the very first sit in the save does, and the seat HUD shows a small "[key] RULES" hint
+ * afterwards. Storage can throw (private window): then the card counts as already shown.
+ */
+export function rulesFirstEver(): boolean {
+  try { return window.localStorage.getItem(RULES_KEY) !== '1'; } catch { return false; }
+}
+/** Remember that the one automatic how-to card has been shown. */
+export function rulesMarkShown(): void {
+  try { window.localStorage.setItem(RULES_KEY, '1'); } catch { /* private window: nothing to remember */ }
+}
 
 // ── host: the first-person overlay and the game canvas ─────────────────────────────────────────────
 export interface OverlayRig { readonly scene: THREE.Scene; readonly camera: THREE.Camera }
@@ -166,7 +182,7 @@ const IN_S = 0.42, OUT_S = 0.2, FLIP_S = 0.26;
 const live = new Set<Placard3D>();
 const stack: Placard3D[] = [];
 let hooked = false;
-const raycaster = new THREE.Raycaster();
+const raycaster = crispRaycaster(new THREE.Raycaster());
 const ndcVec = new THREE.Vector2();
 
 export class Placard3D {
@@ -201,8 +217,9 @@ export class Placard3D {
     this.tex = finishTexture(this.cv, { wrap: 'clamp' }, false);
     this.geos.push(new THREE.PlaneGeometry(spec.w, spec.h));
     const mat = psxMaterial({ map: this.tex, lit: false, side: 'double', unique: true });
+    crispTexture(this.tex, 4);                       // after psxMaterial (it forces nearest): linear + mipmaps for native size
     this.mats.push(mat);
-    this.face = new THREE.Mesh(this.geos[0], mat);
+    this.face =new THREE.Mesh(this.geos[0], mat);
     this.face.name = `placard.${spec.name}`;
     this.root.add(this.face);
     if (spec.frame) {
@@ -216,7 +233,8 @@ export class Placard3D {
       this.root.add(board);
     }
     spec.build?.(this.root);
-    const r = spec.rest ?? [0, -0.02, -0.5];
+    markCrisp(this.root);                             // drawn by the native-resolution pass (text stays crisp)
+    const r =spec.rest ?? [0, -0.02, -0.5];
     this.rest = new THREE.Vector3(r[0], r[1], r[2]);
     this.from = this.rest.clone().add(new THREE.Vector3(0, -0.34, 0.06));
     this.root.position.copy(this.from);
@@ -235,6 +253,8 @@ export class Placard3D {
     if (!rig) { log.warn('placard', `${this.spec.name}: no overlay scene`); return false; }
     this.cam = rig.camera;
     rig.scene.add(this.root);
+    markCrisp(this.root);                             // meshes the caller added after construction
+    ensureCrispPass();
     const i = stack.indexOf(this);
     if (i >= 0) stack.splice(i, 1);
     stack.push(this);
@@ -264,6 +284,7 @@ export class Placard3D {
     const i = stack.indexOf(this);
     if (i >= 0) stack.splice(i, 1);
     live.delete(this);
+    releaseCrisp(this.root);
     this.root.removeFromParent();
     for (const g of this.geos) g.dispose();
     for (const m of this.mats) m.dispose();
@@ -386,6 +407,7 @@ function hook(): void {
   hooked = true;
   addTicker((dt) => {
     const step = Math.min(dt, 0.1);
+    if (live.size) ensureCrispPass();
     for (const p of [...live]) p.update(step);
     return true;
   });
