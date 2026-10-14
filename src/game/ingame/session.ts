@@ -19,7 +19,7 @@ import type { UIOverlayX } from '@/core/ui/ui';
 import type { KitX } from '@/kit';
 import { createCover, type CoverProp } from '@/world/props/cover';
 import { createNewMarquee, type NewMarqueeProp } from '@/world/props/cover';
-import { unlockNightOf, isNew, effectiveNight, newOnFloorText, machineName } from '@/game/progression';
+import { unlockNightOf, isNew, effectiveNight, newOnFloorText, machineName, opensText } from '@/game/progression';
 import type { InteractableX } from '@/world/interact';
 import { createWorld, type WorldHost } from '@/world/world';
 import { rosterFor, type RosterCandidate } from '@/world/layout';
@@ -312,17 +312,22 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     const mid = machineId as Parameters<typeof run.buyPriceOf>[0];
     const x: InteractableX = {
       id: `buy:${instance}`, box, priority: 10, maxDist: 3,
-      enabled: () => run.buyPriceOf(mid) > 0 && world.seat == null,
-      label: () => t('prog.buy', { name: machineName(mid), price: fmtCoins(run.buyPriceOf(mid)) }),
+      // the tarp always answers E: "BUY <name> · <price>" when buyable, otherwise the greyed "OPENS NIGHT n" plate line
+      enabled: () => world.seat == null,
+      label: () => {
+        const price = run.buyPriceOf(mid);
+        return price > 0 ? t('cover.buy', { name: machineName(mid), price: fmtCoins(price) }) : opensText(mid, run.seed);
+      },
       sub: () => {
         const price = run.buyPriceOf(mid);
+        if (price <= 0) return '';
         const have = run.wallet(self);
         return have >= price ? t('prog.buy.sub', { n: unlockNightOf(mid, run.seed) }) : t('prog.buy.short', { need: fmtCoins(price - have), name: machineName(mid) });
       },
-      disabled: () => run.wallet(self) < run.buyPriceOf(mid),
+      disabled: () => { const price = run.buyPriceOf(mid); return price <= 0 || run.wallet(self) < price; },
       onInteract: () => {
         const price = run.buyPriceOf(mid);
-        if (price <= 0) { app.ui.toast(t('prog.refused'), 'warn'); return; }
+        if (price <= 0) { app.ui.toast(opensText(mid, run.seed), 'warn'); return; }
         if (!run.buyMachine(mid)) { app.ui.toast(t('prog.buy.short', { need: fmtCoins(Math.max(1, price - run.wallet(self))), name: machineName(mid) }), 'warn'); app.audio.play('buzzer', { vol: 0.4 }); return; }
         app.audio.play('purchase');
         coverAcc = 1;   // lift the sheet on the next frame

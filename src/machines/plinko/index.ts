@@ -137,6 +137,8 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
   private seatHud?: SeatHud;
   /** A high stake waiting for its second DROP press (the run's stake confirm, `run:stakeConfirm`), or null. */
   private confirmArm: { amount: number; seconds: number } | null = null;
+  /** Drops pressed while pucks are still falling; each one fires as soon as the round before it clears. */
+  private queued = 0;
   private offStake?: () => void;
 
   protected createModel(kit: Kit): MachineModel<PlinkoParts> {
@@ -174,7 +176,7 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
-    if (local) { this.seatHud?.hide(); this.confirmArm = null; }
+    if (local) { this.seatHud?.hide(); this.confirmArm = null; this.queued = 0; }
     this.refresh();
     this.idleChase();
   }
@@ -202,7 +204,9 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
       case 'n1': this.setRisk(0); break;
       case 'n2': this.setRisk(1); break;
       case 'n3': this.setRisk(2); break;
-      case 'primary': case 'confirm': void this.drop(); break;
+      case 'primary': case 'confirm':
+        if (this.roundOpen || this.busy) this.queueDrop(); else void this.drop();
+        break;
       case 'up': this.setPucks(this.state.pucks + 1); break;
       case 'down': this.setPucks(this.state.pucks - 1); break;
       case 'betUp': this.changeBet(() => this.stepBet(1)); break;
@@ -261,12 +265,20 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
     };
   }
 
+  /** A press during a live round is kept (up to 5) instead of lost; the HUD shows the count. */
+  private queueDrop(): void {
+    if (this.queued >= 5) { this.toast(this.t('busy'), 'info'); return; }
+    this.queued++;
+    this.sfx('click');
+    this.showHud();
+  }
+
   private async drop(): Promise<void> {
     if (this.busy || this.roundOpen) return;
     this.confirmArm = null;
     this.fitStake();
     const risk = this.state.risk, paid = this.state.pucks, stake = this.bet;
-    if (!this.beginRound(stake * paid)) return;               // charges the wallet, busy = true, re-seeds this.rng
+    if (!this.beginRound(stake * paid)) { this.queued = 0; return; }   // charges the wallet, busy = true, re-seeds this.rng
     this.showHud();
     const roll = rollDrop(this.rng, this.opts(risk, stake, paid));
     const { gross, carry } = roundPayout(roll.exact, this.dust);
@@ -285,6 +297,10 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
     } finally {
       this.busy = false;
       this.showHud();
+      if (this.queued > 0 && !this.disposed) {                 // the next queued drop goes now
+        this.queued--;
+        void this.drop();
+      }
     }
   }
 
@@ -527,7 +543,7 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
     const live = this.roundOpen || this.busy;
     const risk = this.t(RISK_KEYS[clampRisk(s.risk)]);
     sh.goal(this.tx('goal'));
-    if (live) sh.state(this.tx('stFall'), 'cyan');
+    if (live) sh.state(this.tx('stFall'), 'cyan', this.queued > 0 ? this.tx('stQueued', { n: this.queued }) : undefined);
     else if (this.confirmArm) sh.state(this.tx('confirm', { amount: fmtCoins(this.confirmArm.amount) }), 'bad', this.tx('confirmSub', { n: Math.ceil(this.confirmArm.seconds) }));
     else sh.state(this.tx('stReady'), 'gold', this.tx('stReadySub', { risk }));
     sh.numbers([

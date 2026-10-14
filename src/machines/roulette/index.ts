@@ -30,11 +30,11 @@ import { WheelInset } from './wheelInset';
 // ── timing (seconds, ×1 speed) ──────────────────────────────────────────────────────────────────
 const OPEN_S = 20;          // shared betting window
 const LOCK_S = 0.8;         // bell, Rake hand up
-const LAUNCH_S = 0.6;
+const LAUNCH_S = 0.4;
 const SETTLE_S = 0.6;
-const ANNOUNCE_S = 1.5;
-const PAYOUT_S = 1.2;
-const CLEAR_S = 0.8;
+const ANNOUNCE_S = 1.0;
+const PAYOUT_S = 0.9;
+const CLEAR_S = 0.6;
 const TABLE_MAX = 2000;     // per player per spin
 const CHIP_CAP = 590;       // InstancedMesh budget (600 chips)
 const GOLD = 0xffd040, GREEN = 0x7dff7a;
@@ -128,7 +128,11 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
         if (a === 'betMax') this.maxBet(); else this.stepBet(a === 'betUp' ? 1 : -1);
         this.sfx('click'); this.showHud();
         break;
-      case 'confirm': if (this.st.phase === 'open') this.act({ k: 'ready' }); break;   // Space: spin (solo) / Ready (shared)
+      case 'confirm':                                                                  // Space: spin (solo) / Ready (shared)
+        if (this.st.phase !== 'open') { this.toast(tr('m.roulette.busy'), 'info'); break; }
+        if (this.localSeat >= 0 && !this.myBets().length) { this.sfx('click'); this.toast(tr('m.roulette.noChips'), 'warn'); break; }
+        this.act({ k: 'ready' });
+        break;
       case 'clear': if (this.canBet()) this.act({ k: 'clear' }); break;
       case 'double': this.rebet(); break;                                              // R
       case 'n2': this.callBet('neighboursZero'); break;

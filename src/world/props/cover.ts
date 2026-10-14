@@ -64,7 +64,7 @@ export function createCover(kit: KitX, o: { size: SlotSize; night: number; id?: 
   label.mesh.position.z = 0.03;
   plate.add(label.mesh);
   // price tag (tycoon BUY): a small gold-on-black line under the plate, hidden until the session sets a price
-  const tagW = plateW * 0.8, tagH = plateH * 0.62;
+  const tagW = plateW * 0.9, tagH = plateH * 0.8;   // large enough to read from the floor at the BUY distance
   const tag = kit.label({ text: { key: 'prog.tag', vars: { price: '' } }, w: tagW, h: tagH, bg: 0x1a120c, color: 0x7dffb0, px: [112, 28] });
   tag.mesh.position.set(0, -(plateH / 2 + tagH / 2 + 0.07), 0.03);
   tag.mesh.visible = false;

@@ -31,6 +31,7 @@ import {
   SAMPLE_URLS, SFX_DEFS, buildAmbience, coinCascade, winSfx, type AmbBed, type SfxDef,
 } from './sfx';
 import { blipVoiceFor, charEvent, planBlips, renderBlips, scheduleBlip } from './blip';
+import { wireGambleFx } from './gambleFx';
 
 const MAX_VOICES = 32;
 const BUSES: readonly Bus[] = ['sfx', 'ui', 'music', 'amb', 'voice'];
@@ -526,6 +527,8 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
   ctx.onstatechange = (): void => { if (ctx.state === 'running') onRunning(); };
   if (ctx.state === 'running') onRunning();
   void loadSamples(SAMPLE_URLS);
+  const offGamble = wireGambleFx(engine);
+  import.meta.hot?.dispose(offGamble);
   return engine;
 }
 

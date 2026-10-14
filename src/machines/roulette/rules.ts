@@ -160,8 +160,8 @@ export interface SpinOutcome {
   first: number;             // the pocket as first drawn (differs only after a luck reroll)
   rerolled: boolean;
   seats: SeatSettle[];
-  orbitMs: number;           // cosmetic: ORBIT 5.5–7.5 s
-  dropMs: number;            // cosmetic: DROP 1.2–2.4 s
+  orbitMs: number;           // cosmetic: ORBIT 3.2–4.0 s
+  dropMs: number;            // cosmetic: DROP 0.8–1.2 s
   bounces: number;           // cosmetic: 2–5 deflector bounces
 }
 
@@ -173,8 +173,8 @@ export function spin(rng: Rng, layouts: readonly (readonly Bet[])[], m: Mods, lu
   const first = drawPocket(rng, m.weights);
   const second = drawPocket(rng, m.weights);
   const gate = rng.next();
-  const orbitMs = Math.round(rng.float(5500, 7500));
-  const dropMs = Math.round(rng.float(1200, 2400));
+  const orbitMs = Math.round(rng.float(3200, 4000));
+  const dropMs = Math.round(rng.float(800, 1200));
   const bounces = rng.int(2, 5);
   const netOf = (p: number): number => layouts.reduce((acc, l) => { const s = settleBets(l, p, m); return acc + s.gross - s.stake; }, 0);
   const rerolled = luck > 0 && netOf(first) < 0 && gate < luck / 100;

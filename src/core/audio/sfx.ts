@@ -55,6 +55,7 @@ const TRIM: Record<string, number> = {
   typewriter: 1.81, tileClack: 1.42, door: 0.83, doorCreak: 3, doorSlam: 0.53, footstep: 1.52,
   footstepCarpet: 1.61, footstepConcrete: 1.23, footstepMetal: 1.35, footstepWood: 1.07, footstepWet: 1.1, boom: 0.44,
   coinInsert: 0.78, coinRain: 1.75, tensionRise: 0.83, tallyTick: 2.8,
+  gambleOpen: 0.8, gambleStep: 0.9, gambleBust: 0.6, allinDrum: 0.8, allinHit: 0.75, allinMiss: 0.5,
 };
 
 function def(names: string | string[], run: KitRecipe, meta: SfxMeta = {}): void {
@@ -893,11 +894,62 @@ def('tallyTick', (k) => {
   return 0.04;
 }, { bus: 'ui', pri: 4, max: 12 });
 
+// ── gamble risk layer (gamble:fx → gambleFx.ts) ───────────────────────────────────────────────────
+/** Ladder opens: a riser into a bright bell arpeggio (≈1.4 s). */
+def('gambleOpen', (k) => {
+  riser(k, 0, 1.0, 0.22, 220, 6000);
+  ['C5', 'E5', 'G5', 'C6'].forEach((n, i) => bellNote(k, 0.5 + i * 0.1, hz(n), 0.26 - i * 0.02, 0.7));
+  thump(k, 0.95, 120, 50, 0.3, 0.6); snap(k, 0.95, 0.35, 1800, 0.02, 1);
+  sparkle(k, 0.9, 0.4, 6, 0.05);
+  return 1.4;
+}, { pri: 8, max: 2 });
+/** Ladder rung won. The pitch climbs one step per rung through PlayOpts.pitch (set by gambleFx.ts). */
+def('gambleStep', (k) => {
+  bellNote(k, 0, hz('C5'), 0.3, 0.55); snap(k, 0, 0.25, 3000, 0.01, 1.5); clink(k, 0.01, 0.25);
+  return 0.6;
+}, { pri: 7, max: 10 });
+/** Bust: a dead thud that drops into a falling growl (the house takes the pot). */
+def('gambleBust', (k) => {
+  thump(k, 0, 130, 34, 0.5, 0.9); snap(k, 0, 0.45, 450, 0.03, 1);
+  k.osc('sawtooth', 240, 0.7, { vol: 0.12, to: 60, lp: 900, lpTo: 180, env: { a: 0.01, d: 0.6, s: 0, r: 0.1 } });
+  k.noise(0.25, { vol: 0.2, filter: 'lowpass', freq: 400, env: { a: 0.01, d: 0.24, s: 0, r: 0.02 } });
+  return 0.9;
+}, { pri: 8 });
+/** All-In Shot drum roll (≈1.6 s): snare hits accelerating into a crash. */
+def('allinDrum', (k) => {
+  const L = 1.6;
+  for (let t = 0; t < L;) {
+    const u = t / L;
+    snap(k, t, 0.18 + 0.3 * u, 2200, 0.02, 1.2, 'bandpass', rnd(-0.2, 0.2));
+    k.noise(0.05, { at: t, vol: 0.06 + 0.2 * u, filter: 'bandpass', freq: 1800, q: 0.9, env: TICK_ENV(0.05) });
+    t += 0.085 * (1 - 0.7 * u) * rnd(0.9, 1.1);
+  }
+  k.noise(0.6, { at: L, vol: 0.35, filter: 'highpass', freq: 3000, env: { a: 0.005, d: 0.6, s: 0, r: 0.05 } });
+  thump(k, L, 90, 36, 0.6, 0.9); snap(k, L, 0.5, 1300, 0.03, 1);
+  return L + 0.65;
+}, { pri: 9, max: 2 });
+/** All-In hit (≈1.6 s): a brass stab, a bell cascade and a coin tail. */
+def('allinHit', (k) => {
+  thump(k, 0, 90, 40, 0.35, 0.8); snap(k, 0, 0.45, 1500, 0.03, 1);
+  brass(k, 0, [hz('C4'), hz('E4'), hz('G4')], 0.3, 0.28);
+  brass(k, 0.08, [hz('F4'), hz('A4'), hz('C5')], 0.5, 0.3);
+  ['C5', 'G5', 'C6'].forEach((n, i) => bellNote(k, 0.12 + i * 0.07, hz(n), 0.28, 0.9));
+  cascade(k, 0.2, 0.8, 12, 0.3);
+  return 1.6;
+}, { pri: 9, max: 2 });
+/** All-In miss (≈1.3 s): the roll dies on a low brass slide and a dull knock. */
+def('allinMiss', (k) => {
+  for (const f of [hz('Eb3'), hz('G3')]) k.osc('sawtooth', f, 0.9, { vol: 0.12, to: f * 0.5, lp: 1200, lpTo: 200, env: { a: 0.02, d: 0.8, s: 0, r: 0.1 } });
+  thump(k, 0.85, 110, 40, 0.4, 0.8); snap(k, 0.85, 0.35, 700, 0.03, 1);
+  return 1.3;
+}, { pri: 8, max: 2 });
+
 /** Sounds longer than ~0.8 s: their voices are wired into slow-motion (`setTimeScale`) so a big win drags with the screen. */
 const LONG = ['win2', 'win3', 'winHuge', 'winRise', 'winMega', 'jackpot', 'jackpotBells', 'quotaMet', 'quotaFail', 'stinger', 'tensionRise', 'trapdoor', 'powerDown', 'powerUp', 'tapeStop',
   'tinnitus', 'defib', 'totemPlace', 'lose', 'bell', 'upgrade', 'unlock', 'coinShower', 'glassBreak', 'shuffle', 'dice', 'printer', 'whisper', 'creak',
   'phoneRing', 'clockAlarm', 'cashRegister', 'elevatorDing', 'gunShot', 'door', 'doorCreak', 'heartbeat'];
 for (const n of LONG) { const d = SFX_DEFS.get(n); if (d) d.meta.long = true; }
+for (const n of ['gambleOpen', 'allinDrum', 'allinHit', 'allinMiss']) { const d = SFX_DEFS.get(n); if (d) d.meta.long = true; }
 
 // ── composites used by the engine ─────────────────────────────────────────────────────────────────
 /** `n` rapid coin clinks (n ≤ 40) as a single voice. */
