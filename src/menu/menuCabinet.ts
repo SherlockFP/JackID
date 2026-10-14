@@ -14,7 +14,7 @@ const ENAMEL = 0x6a0c1c;
 const GLASS_Z = 1.16;
 export const DIE_CENTER = new THREE.Vector3(0, 0.05, 0.2);
 /** Cabinet-local X of the two reels. */
-const REEL_X = 1.85;
+const REEL_X = 2.05;
 
 class Reel {
   readonly mesh: THREE.Mesh;
@@ -96,10 +96,13 @@ export function buildCabinet(): Cabinet {
   root.add(back);
 
   // Marquee box on top.
-  wood(5.4, 0.72, 0.3, 0, 2.75, 0.62, ENAMEL);
+  // (the JACKID logo is now a DOM overlay: the marquee box stays built but hidden so the texture API holds)
+  const marqueeBox = wood(5.4, 0.72, 0.3, 0, 2.75, 0.62, ENAMEL);
+  marqueeBox.visible = false;
   const marquee = makeCanvasTex(512, 96);
   const marqueeMesh = new THREE.Mesh(new THREE.PlaneGeometry(5.0, 0.66), psxMaterial({ map: marquee.tex, color: 0xffffff, lit: false }));
   marqueeMesh.position.set(0, 2.75, 0.78);
+  marqueeMesh.visible = false;
   root.add(marqueeMesh);
 
   // Gold bezel around the glass.
@@ -177,6 +180,7 @@ export function buildCabinet(): Cabinet {
   const context = makeCanvasTex(640, 200);
   const contextMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 1.4), psxMaterial({ map: context.tex, color: 0xffffff, lit: false }));
   contextMesh.position.set(0, -2.25, GLASS_Z + 0.15);   // in front of the bottom bezel
+  contextMesh.visible = false;                          // the DOM list under the logo carries the descriptions now
   root.add(contextMesh);
   const info = makeCanvasTex(640, 360);
   const infoMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.0, 2.25), psxMaterial({ map: info.tex, color: 0xffffff, lit: false, depthWrite: false, transparent: true }));

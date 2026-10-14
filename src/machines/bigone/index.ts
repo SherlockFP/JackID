@@ -365,12 +365,14 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     }
 
     // anticipation: lever pull and spin button, reels paint a random strip under the stop faces
+    this.sfx('coinInsert');
     this.sfx('lever');
     void this.parts.buttons.spin.press(0.15);
     void this.anim(0.15, (k) => { p.lever.rotation.x = LEVER_PULL * k; }, 'outQuad')
       .then(() => this.anim(0.5, (k) => { p.lever.rotation.x = LEVER_PULL * (1 - k); }, 'outBounce'));
     for (let i = 0; i < 5; i++) this.paintReel(i, ev.grid);
     this.sfx('reelStart');
+    const spinLoop = this.ctx.audio.play('reelLoop', { loop: true, param: 0.6, vol: 0.7 });   // the reels hum until the last one stops
     this.drawScreen();
 
     // near-miss tell: the reel that would complete a lined-up run crawls; every later reel waits behind it
@@ -384,6 +386,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     }
     if (tReel >= 0) void this.teaseShow(ev, tReel, stopOf(tReel - 1), crawl);
     await Promise.all(runs);
+    spinLoop?.stop(0.06);
     for (const c of ev.coalesced) this.flashCell(c);
     this.drawScreen();
   }
@@ -396,7 +399,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     for (let c = reel - ev.tLen; c < reel; c++) cells.push(ev.tRow * 5 + c);
     this.lightCells(cells, 1);
     this.drawText(this.t('tease'));
-    this.sfx('stinger', { vol: 0.5 });
+    this.sfx('tensionRise', { vol: 0.8, param: Math.min(1, (crawl + 0.35) / 1.6) });   // the riser climbs through the held breath
     await this.nearMiss({ dur: crawl + 0.35, at: this.parts.screens.top.mesh, lamps: this.parts.paylineLamps });
   }
 
@@ -541,7 +544,12 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       if (i >= 1) this.sfx('coin', { vol: 0.5, pitch: note });
       this.ctx.fx.glow(this.parts.screens.top.mesh, i >= 3 ? PINK : GOLD, 0.25 + 0.08 * i, 0.3);
       if (i >= 3 && this.isLocalOccupant) this.ctx.fx.shake(0.004 * Math.min(6, i), 0.18);
-      await this.anim(step * 0.8, (k) => this.drawTally(shown, Math.round(from + (total - from) * k)), 'outQuad');
+      let ticked = -1;
+      await this.anim(step * 0.8, (k) => {
+        this.drawTally(shown, Math.round(from + (total - from) * k));
+        const n = Math.floor(k * 6);   // six count-up ticks per pattern, climbing with the pattern's note
+        if (n > ticked) { ticked = n; this.sfx('tallyTick', { vol: 0.55, pitch: note + n * 0.8 }); }
+      }, 'outQuad');
       this.drawTally(shown, total);
       await this.wait(step * 0.2);
     }
@@ -572,9 +580,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
 
   private async presentJackpot(ev: EvalEv, pc: PresentCtx): Promise<void> {
     const p = this.parts;
-    this.sfx('jackpot');
     this.drawScreen();
-    if (pc.fast) return;
+    if (pc.fast) { this.sfx('jackpot'); return; }   // the celebrate() below plays the jackpot jingle itself
     const fx = this.ctx.fx;
     fx.flash(GOLD, 0.8, 0.4);
     fx.hitstop(0.12);

@@ -124,3 +124,33 @@ export function createRescue(host: RescueHost): RescueLine {
     dispose: () => { call = null; rebuild(); },
   };
 }
+
+// ── the broke-start help (wave 27, bank-econ): what to do when the pocket cannot cover the cheapest bet ───────────────
+export type BrokeId = 'bank' | 'phone' | 'cashier' | 'loan';
+/** One way out. `coins` is what it puts in the pocket (0 for the phone itself); `quota` is the loan's price. */
+export interface BrokeStep { id: BrokeId; coins: number; quota?: number }
+export interface BrokeHelp { pocket: number; minBet: number; pullsLeft: number; steps: BrokeStep[] }
+export interface BrokeInput {
+  /** Coins a WITHDRAW can take now (0 = none, or the window is shut). */
+  bank: number;
+  tickets: number;
+  /** Coins one Ticket sells for at the cashier. */
+  ticketCoins: number;
+  /** A phone line is ringing (rescue or hotline). */
+  phoneRinging: boolean;
+  loan?: RescueLoan;
+}
+
+/**
+ * The ordered ways out of an empty pocket, only the ones that exist: 1 withdraw from the bank, 2 answer the phone (P), 3 the
+ * cashier (sell Tickets), 4 take the House loan (the Collector's rescue call, answered on the phone). The prompt prints them in
+ * this order, so the cheapest to the player (their own coins first, the quota-raising loan last) comes first.
+ */
+export function brokeSteps(i: BrokeInput): BrokeStep[] {
+  const out: BrokeStep[] = [];
+  if (i.bank > 0) out.push({ id: 'bank', coins: Math.floor(i.bank) });
+  if (i.phoneRinging) out.push({ id: 'phone', coins: 0 });
+  if (i.tickets > 0 && i.ticketCoins > 0) out.push({ id: 'cashier', coins: Math.floor(i.tickets) * Math.floor(i.ticketCoins) });
+  if (i.loan) out.push({ id: 'loan', coins: i.loan.coins, quota: i.loan.quota });
+  return out;
+}

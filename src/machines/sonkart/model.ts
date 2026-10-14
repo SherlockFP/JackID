@@ -123,7 +123,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<SonKartParts> 
   anchors.forEach((p, s) => {
     const m = kit.mannequin({ style: 'plain', color: [0x2a1a14, 0x3a2a1e, 0x1e2a33, 0x2d1f2f][s % 4], jointColor: 0x3a3a3a, height: 1.7, clip: 'Sitting_Idle_Loop' });
     const c = ft.chairs[s];
-    m.root.position.set(c.x, 0.42, c.z);
+    m.root.position.set(c.x * 0.76, 0.42, c.z * 0.76);   // leaning in over the rail keeps the model inside the L footprint
     m.root.rotation.y = Math.atan2(-p.x, -p.z);
     m.setVisible(false);
     root.add(m.root);

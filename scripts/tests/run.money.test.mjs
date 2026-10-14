@@ -284,3 +284,195 @@ test('phone: from Night 2 the first Watch of every Night always rings; Night 1 a
   assert.equal(muted.scheduledAt(), -1, 'mute wins over the guarantee');
   phase('settle'); muted.dispose();
 });
+
+// ── THE BANK (wave 27, bank-econ): WITHDRAW, the churn rule, the broke-start help, the cashier's way out ───────────
+test('bank math: the withdrawable part leaves out quota credit that never was cash, churn is min(out, back in)', async () => {
+  const BK = await load('src/game/bank.ts');
+  const i = { debtPaid: 50, released: 19, granted: 6, due: 31, rate: 0.9, watchPulls: 3, churn: 0 };
+  assert.equal(BK.bankBalance(i), 31, 'the surplus that went back to the pocket is not in the bank');
+  assert.equal(BK.withdrawable(i), 25, 'granted quota credit (deposit bonus, phone credit) stays in the bank');
+  assert.equal(BK.churnOf(20, 12), 12);
+  assert.equal(BK.churnOf(5, 12), 5);
+  assert.equal(BK.interestBase(30, 12), 18);
+  assert.equal(BK.interestNext({ ...i, debtPaid: 20, released: 0, granted: 0 }), 18, '20 x 90 %');
+  assert.equal(BK.interestNext({ ...i, debtPaid: 20, released: 0, granted: 0, churn: 20 }), 0, 'coins that went out and back this Watch earn nothing');
+  const pv = BK.previewWithdraw({ debtPaid: 40, released: 0, granted: 0, due: 31, rate: 0.9, watchPulls: 3, churn: 0 }, 15);
+  assert.equal(pv.coins, 15);
+  assert.equal(pv.bankAfter, 25);
+  assert.equal(pv.leftAfter, 6);
+  assert.equal(pv.metLost, true, 'the quota was met and would not be');
+  assert.equal(pv.interestLost, 62 * 0 + Math.floor(Math.min(40, 62) * 0.9) - Math.floor(Math.min(25, 62) * 0.9), 'the interest the 15 coins would have earned at the next Bell');
+  assert.equal(BK.previewWithdraw({ debtPaid: 5, released: 0, granted: 5, due: 31, rate: 0.9, watchPulls: 0, churn: 0 }, 99).coins, 0, 'nothing but granted credit: nothing to take');
+});
+
+test('Bank: DEPOSIT then WITHDRAW returns the coins, clamps to the bank and the quota drops with them', () => {
+  const run = RUN.createRun({ seed: 61, mode: 'debt' });
+  run.coins = 40;
+  assert.ok(run.deposit(20, true));
+  assert.equal(run.bank().balance, 20);
+  assert.equal(run.bank().withdrawable, 20);
+  assert.equal(run.coins, 20);
+  assert.equal(run.withdraw(15), 15, 'takes what was asked');
+  assert.equal(run.coins, 35);
+  assert.equal(run.quota.deposited, 5, 'withdrawn coins stop counting toward the quota');
+  assert.equal(run.withdraw(100), 5, 'a bigger ask is clamped to what the bank holds');
+  assert.equal(run.withdraw(1), 0, 'an empty bank gives nothing');
+  assert.equal(run.coins, 40, 'every coin is back: nothing was created or lost');
+  run.dispose();
+});
+
+test('Bank: an overpay is forgotten on withdraw (the surplus already went back), the quota-met flag follows', () => {
+  const run = RUN.createRun({ seed: 62, mode: 'debt' });
+  const due = run.quota.due;
+  run.coins = 100;
+  assert.ok(run.deposit(50, true));
+  assert.equal(run.coins, 100 - 50 + (50 - due), 'the 50 - due above the quota came straight back');
+  assert.equal(run.bank().balance, due, 'the bank holds exactly the quota');
+  assert.equal(run.quota.met, true);
+  const pv = run.withdrawPreview(10);
+  assert.equal(pv.metLost, true);
+  assert.equal(run.withdraw(10), 10);
+  assert.equal(run.quota.met, false, 'the quota is no longer met');
+  assert.equal(run.quota.deposited, due - 10);
+  const surplus = [];
+  const off = EV.bus.on('eco:wallet', (e) => { if (e.reason === 'dawn:surplus') surplus.push(e.delta); });
+  assert.ok(run.deposit(10, true));
+  assert.equal(surplus.length, 0, 'putting the 10 back pays no surplus twice');
+  off();
+  run.dispose();
+});
+
+test('Bank: quota credit that never was cash cannot be withdrawn (no deposit-bonus loop)', () => {
+  const run = RUN.createRun({ seed: 63, mode: 'debt' });
+  run.coins = 50;
+  assert.ok(run.deposit(20, true));
+  run.bankGranted = 8;                       // as a deposit.bonus of +8 or a phone credit would book
+  run.debtPaid += 8;
+  run.syncQuota();
+  assert.equal(run.bank().balance, 28);
+  assert.equal(run.bank().withdrawable, 20);
+  assert.equal(run.withdraw(999), 20);
+  assert.equal(run.bank().balance, 8, 'the granted 8 stays counted toward the quota');
+  run.dispose();
+});
+
+test('Bank: WITHDRAW is open before the Watch is settled and shut in Closing, Settle, Dawn and once the Night is paid', () => {
+  const run = RUN.createRun({ seed: 64, mode: 'debt' });
+  run.coins = 40;
+  assert.ok(run.deposit(20, true));
+  for (const ph of ['closing', 'settle', 'collection']) {
+    run.phase = ph;
+    assert.equal(run.bank().open, false, `${ph}: closed`);
+    assert.equal(run.withdraw(5), 0);
+  }
+  for (const ph of ['intermission', 'play', 'lastCall']) {
+    run.phase = ph;
+    assert.equal(run.bank().open, true, `${ph}: open`);
+  }
+  run.phase = 'intermission';
+  run.nightDone = true;
+  assert.equal(run.withdraw(5), 0, 'a paid Night has nothing to take back');
+  run.dispose();
+});
+
+test('Bank: coins that go out and back in the same Watch earn no interest at the Settle (the churn rule)', () => {
+  const settleInterest = (churn) => {
+    const run = RUN.createRun({ seed: 65, mode: 'debt' });
+    run.coins = 60;
+    assert.ok(run.deposit(20, true));
+    if (churn) { assert.equal(run.withdraw(20), 20); assert.ok(run.deposit(20, true)); }
+    run.watchPulls = 3;
+    run.settleWatch();
+    const got = run.stats.interest ?? 0;
+    run.dispose();
+    return got;
+  };
+  assert.equal(settleInterest(false), 18, 'a plain deposit earns 90 % on Night 1');
+  assert.equal(settleInterest(true), 0, 'the same coins that left and came back this Watch earn nothing');
+});
+
+test('Bank: the broke-start help lists the ways out in order: bank, phone, cashier, House loan', () => {
+  const run = RUN.createRun({ seed: 66, mode: 'debt' });
+  assert.equal(run.brokeHelp(), null, 'a pocket that can play is not broke');
+  run.coins = 40;
+  assert.ok(run.deposit(20, true));
+  run.coins = 0;
+  run.phase = 'play';
+  run.pullCount = 5;
+  run.tickets = 2;
+  let ids = run.brokeHelp().steps.map((s) => s.id);
+  assert.deepEqual(ids, ['bank', 'cashier', 'loan'], 'phone not ringing yet');
+  run.checkRescue();
+  const help = run.brokeHelp();
+  ids = help.steps.map((s) => s.id);
+  assert.deepEqual(ids, ['bank', 'phone', 'cashier', 'loan'], 'the order the prompt prints');
+  assert.equal(help.steps[0].coins, 20, 'the bank step says how many coins can come back');
+  assert.equal(help.steps[2].coins, 10, 'two Tickets sell for 10 coins on Night 1');
+  assert.ok(help.steps[3].quota > 0, 'the loan names its quota price');
+  // withdrawing takes the player out of the broke state and hangs up the Collector
+  run.withdraw(10);
+  assert.equal(run.brokeHelp(), null);
+  assert.equal(run.phone(), null, 'the Collector hangs up once the pocket can play');
+  run.dispose();
+});
+
+test('Bank: with an empty bank and no Tickets the only way out is the loan, and a nothing-left player gets no steps', async () => {
+  const RESC = await load('src/game/rescue.ts');
+  assert.deepEqual(RESC.brokeSteps({ bank: 0, tickets: 0, ticketCoins: 5, phoneRinging: false }), []);
+  const only = RESC.brokeSteps({ bank: 0, tickets: 0, ticketCoins: 5, phoneRinging: false, loan: { coins: 8, quota: 10 } });
+  assert.deepEqual(only.map((s) => s.id), ['loan']);
+});
+
+test('Cashier: SELL ALL turns every Ticket into coins, BUY +1 PULL costs 3 Tickets, the offers list is five rows', async () => {
+  const CR = await load('src/machines/cashier/rules.ts');
+  assert.equal(CR.OFFERS.length, 5);
+  assert.equal(CR.offersFor('free')[4].op, 'loan', 'the Free Casino keeps its House Credit row');
+  assert.equal(CR.offersFor('debt')[4].op, 'buy', 'the Debt run swaps the always-blocked loan for BUY 5');
+  assert.equal(CR.OFFERS[0].op, 'sellAll', 'row 1 is the way out of an empty pocket');
+  assert.deepEqual(CR.quote(CR.OFFERS[0], 1, 7), { coins: 35, tickets: -7 });
+  assert.deepEqual(CR.quote(CR.OFFERS[0], 3, 2), { coins: 30, tickets: -2 }, 'x stake index');
+  assert.deepEqual(CR.quote(CR.OFFERS[2], 1, 9), { coins: 0, tickets: -3 });
+  const bank = { coin: 4, ticket: 6 };
+  const run = {
+    mode: 'debt', shift: { phase: 'play', state: () => ({ stake: 1 }) },
+    balance: (c) => bank[c], stat() {},
+    spend: (c, n) => { if (bank[c] < n) return false; bank[c] -= n; return true; },
+    earn: (c, n) => { bank[c] += n; },
+    buyPull: () => { bank.ticket -= 3; return true; },
+  };
+  assert.equal(CR.check(CR.OFFERS[0], run, 1), 'ok');
+  assert.ok(CR.apply(CR.OFFERS[0], run, 1, 1));
+  assert.deepEqual(bank, { coin: 34, ticket: 0 });
+  assert.equal(CR.check(CR.OFFERS[0], run, 1), 'tickets', 'no Tickets left: nothing to sell');
+  run.shift.phase = 'intermission';
+  bank.ticket = 5;
+  assert.equal(CR.check(CR.OFFERS[2], run, 1), 'phase', 'a Pull can only be bought while a Watch runs');
+});
+
+test('Debt Terminal keypad: 3 x 3, the top row picks the action, REST turns into PLAY', async () => {
+  const R = await load('src/machines/debt_terminal/rules.ts');
+  assert.deepEqual([...R.KEYS].slice(0, 3), ['dep', 'wd', 'quota']);
+  assert.equal(R.KEYS.length, R.KEY_COLS * R.KEY_ROWS);
+  assert.equal(R.modeOfKey('wd'), 'wd');
+  assert.equal(R.modeOfKey('p25'), null);
+  assert.equal(R.cycleMode('dep'), 'wd');
+  assert.equal(R.cycleMode('quota'), 'dep');
+  assert.equal(R.cycleMode('dep', -1), 'quota');
+  assert.equal(R.playNeed(7, 1, 0), 14, 'seven pulls at two cheapest bets');
+  assert.equal(R.playNeed(7, 1, 20), 0, 'a pocket that already covers it needs nothing');
+  assert.equal(R.amountFor('dep', 100, 50), 0, 'a top-row key moves no coins');
+});
+
+test('Night 1 deposit float: the first deposit of a Watch keeps up to 9 coins (never above half the pocket), later Nights keep the plain float', () => {
+  assert.equal(ECO.depositFloatFor(0, 30, 1), 9, 'the 30-coin start keeps 9, not 2');
+  assert.equal(ECO.depositFloatFor(0, 12, 1), 6, 'never above half the pocket');
+  assert.equal(ECO.depositFloatFor(0, 0, 1), 0);
+  assert.equal(ECO.depositFloatFor(1, 30, 1), 2, 'Night 2 on: the plain float (2 cheapest bets)');
+  const run = RUN.createRun({ seed: 67, mode: 'debt' });
+  assert.equal(run.depositFloor(), 9, 'the run reads it on the first deposit of the Watch');
+  run.coins = 30;
+  assert.equal(run.deposit(25), false, 'depositing past the float is refused without the confirmed ALL');
+  assert.ok(run.deposit(21));
+  assert.equal(run.depositFloor(), 0, 'only the first deposit of a Watch keeps a float');
+  run.dispose();
+});

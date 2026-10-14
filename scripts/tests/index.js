@@ -29,3 +29,6 @@ import './rooms.run.test.mjs';
 import './duelengine.test.mjs';
 import './duels.test.mjs';
 import './duelrun.test.mjs';
+import './progression.test.mjs';
+import './blip.test.mjs';
+import './sonkart.test.mjs';

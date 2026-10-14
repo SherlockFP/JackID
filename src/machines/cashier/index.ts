@@ -15,7 +15,7 @@ import type { KitX } from '@/kit';
 import { fmtNum, t as tr } from '@/core/i18n';
 import { lerp } from '@/core/math';
 import { buildModel, CAP_SINK, TRAY_SLIDE, LAMP, type CashierParts } from './model';
-import { BUY_PER_SI, OFFERS, SELL_PER_SI, apply, check, quote, stakeOf, wrapOffer, type Offer, type OfferOp } from './rules';
+import { BUY_PER_SI, SELL_PER_SI, apply, check, offersFor, pocketBroke, quote, stakeOf, wrapOffer, type Offer, type OfferOp } from './rules';
 
 type Ev =
   /** An exchange. `coins` / `tickets` are the signed amounts for the emitter; `why` names the refusal when `ok` is false. */
@@ -40,11 +40,11 @@ export const def: MachineDef = {
   strings: {
     en: {
       name: 'Cashier',
-      desc: 'Trade coins for Tickets and back. The cage pays less than it takes. In the Free Casino it lends House Credit.',
+      desc: 'Out of coins? Sell your Tickets here. Also buys Tickets, sells you an extra Pull, and in the Free Casino lends House Credit.',
     },
     tr: {
       name: 'Kasa',
-      desc: 'Paranı bilete, biletini paraya çevir. Kasa aldığından az öder. Serbest Kumarhane’de ev kredisi verir.',
+      desc: 'Paran mı bitti? Biletlerini burada sat. Ayrıca bilet alır, fazladan bir çekiş satar, Serbest Kumarhane’de ev kredisi verir.',
     },
   },
 };
@@ -95,6 +95,7 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
 
   // ── run state (every peer) ──────────────────────────────────────────────────────────────────────
   private coins(): number { return this.ctx.run.balance('coin', this.selfId); }
+  private offers(): readonly Offer[] { return offersFor(this.ctx.run.mode); }
   private tickets(): number { return this.ctx.run.balance('ticket', this.selfId); }
 
   tick(): void { this.refresh(false); }
@@ -150,11 +151,11 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
 
   /** Refusals are checked here; the coins and Tickets move in the credit step. */
   private exchange(i: number): void {
-    const offer: Offer | undefined = OFFERS[i];
+    const offer: Offer | undefined = this.offers()[i];
     if (!offer) return;
     const run = this.ctx.run;
     const si = stakeOf(run);
-    const q = quote(offer, si);
+    const q = quote(offer, si, this.tickets());
     const verdict = check(offer, run, this.selfId);
     const ok = verdict === 'ok';
     const coins = offer.op === 'buy' ? -q.coins : q.coins;
@@ -198,7 +199,11 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
     }, 'outQuad');
 
     // action: the money changes hands
-    if (ev.op === 'loan') {
+    if (ev.op === 'pull') {
+      this.sfx('chime');
+      fx.flash(GOLD, 0.1, 0.2);
+      fx.popText(out, this.t('pulled'), GOLD, { scale: 1.3 });
+    } else if (ev.op === 'loan') {
       this.sfx('win2');
       fx.flash(GOLD, 0.12, 0.25);
       fx.popText(out, this.t('lent', { n: fmtNum(ev.coins) }), GOLD, { scale: 1.3 });
@@ -211,10 +216,11 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
       this.sfx('cashRegister');
       fx.popText(out, this.t('sold', { n: String(-ev.tickets) }), GREEN, { scale: 1.0 });
       await this.pourCoins(Math.abs(ev.coins));
+      if (ev.op === 'sellAll') fx.popText(out, `+${fmtNum(ev.coins)}`, GOLD, { scale: 1.4 });
     }
 
     // impact: a loan rings the bell, a big exchange gets a flash
-    if (ev.op !== 'loan' && Math.abs(ev.tickets) >= 5) { this.sfx('stamp'); fx.flash(GREEN, 0.06, 0.2); }
+    if (ev.op !== 'loan' && (Math.abs(ev.tickets) >= 5 || ev.op === 'sellAll')) { this.sfx('stamp'); fx.flash(GREEN, 0.06, 0.2); }
 
     // follow-through: cap springs back, tray returns, ledger repaints
     await this.anim(0.25, (k) => {
@@ -226,7 +232,7 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
 
   // ── screen and HUD ──────────────────────────────────────────────────────────────────────────────
   private refresh(force: boolean): void {
-    const key = [this.cursor, this.coins(), this.tickets(), this.ctx.run.mode, stakeOf(this.ctx.run)].join('|');
+    const key = [this.cursor, this.coins(), this.tickets(), this.ctx.run.mode, stakeOf(this.ctx.run), pocketBroke(this.ctx.run) ? 1 : 0, this.ctx.run.shift.phase].join('|');
     if (!force && key === this.repaintKey) { if (this.isLocalOccupant) this.showHud(); return; }
     this.repaintKey = key;
     this.drawLedger();
@@ -243,29 +249,36 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
   private drawLedger(): void {
     const s = this.parts.ledger;
     const si = stakeOf(this.ctx.run);
+    const offers = this.offers();
+    const broke = pocketBroke(this.ctx.run) && this.tickets() > 0;
     s.clear('#081410');
     s.text(this.t('ledger'), 256, 10, { font: 'px5', scale: 4, color: '#80ffb0', align: 'center' });
     s.text(`${this.t('s_coins')} ${fmtNum(this.coins())}`, 16, 50, { font: 'px5', scale: 3, color: '#ffd060' });
     s.text(`${this.t('s_tickets')} ${this.tickets()}`, 496, 50, { font: 'px5', scale: 3, color: '#ff8a8a', align: 'right' });
     s.draw((g) => { g.fillStyle = '#0c2a1c'; g.fillRect(8, 84, 496, 2); });
     const rowY = (i: number): number => 100 + i * 34;
-    OFFERS.forEach((_o, i) => {
+    offers.forEach((o, i) => {
       const y = rowY(i), on = i === this.cursor;
+      const hot = broke && o.op === 'sellAll';                // out of coins: the way out is lit
       s.draw((g) => {
         if (on) { g.fillStyle = '#1f5a3a'; g.fillRect(8, y - 7, 496, 28); }
-        g.fillStyle = on ? '#ffd060' : '#16402a';
+        else if (hot) { g.fillStyle = '#3a3010'; g.fillRect(8, y - 7, 496, 28); }
+        g.fillStyle = on || hot ? '#ffd060' : '#16402a';
         g.fillRect(14, y - 5, 28, 22);                       // the key chip
       });
     });
-    OFFERS.forEach((o, i) => {
+    offers.forEach((o, i) => {
       const y = rowY(i), on = i === this.cursor;
-      const q = quote(o, si);
-      const price = o.op === 'buy' ? `-${fmtNum(q.coins)}` : `+${fmtNum(q.coins)}`;
-      s.text(`${i + 1}`, 28, y, { font: 'px5', scale: 3, color: on ? '#081410' : '#80c090', align: 'center' });
-      s.text(this.label(o), 58, y, { font: 'px5', scale: 3, color: on ? '#f4fff8' : '#80c090' });
-      s.text(price, 496, y, { font: 'px5', scale: 3, color: on ? '#ffffff' : o.op === 'buy' ? '#ff9a80' : '#ffd060', align: 'right' });
+      const hot = broke && o.op === 'sellAll';
+      const q = quote(o, si, this.tickets());
+      const price = o.op === 'pull' ? this.t('pullCost', { n: o.tickets })
+        : o.op === 'buy' ? `-${fmtNum(q.coins)}` : `+${fmtNum(q.coins)}`;
+      s.text(`${i + 1}`, 28, y, { font: 'px5', scale: 3, color: on || hot ? '#081410' : '#80c090', align: 'center' });
+      s.text(this.label(o), 58, y, { font: 'px5', scale: 3, color: on ? '#f4fff8' : hot ? '#ffe9a0' : '#80c090' });
+      s.text(price, 496, y, { font: 'px5', scale: 3, color: on ? '#ffffff' : o.op === 'buy' ? '#ff9a80' : o.op === 'pull' ? '#ff8a8a' : '#ffd060', align: 'right' });
     });
-    s.text(this.t('ledgerHint'), 256, 266, { font: 'px5', scale: 2, color: '#50a070', align: 'center' });
+    if (broke) s.text(this.t('brokeLine', { n: fmtNum(this.tickets() * SELL_PER_SI * si) }), 256, 268, { font: 'px5', scale: 2, color: '#ffd060', align: 'center' });
+    else s.text(this.t('ledgerHint'), 256, 268, { font: 'px5', scale: 2, color: '#50a070', align: 'center' });
   }
 
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
@@ -283,15 +296,15 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
   }
 
   private rulesLines(): Txt[] {
-    return [1, 2, 3].map((i) => ({ k: `m.cashier.rule${i}` }));
+    return [1, 2, 3, 4].map((i) => ({ k: `m.cashier.rule${i}` }));
   }
 
   /** Banner, coins / tickets / price and the valid controls only. Only while the local player stands here. */
   private showHud(): void {
     const sh = this.seatHud;
     if (!sh || !this.isLocalOccupant) return;
-    const sel = OFFERS[this.cursor] ?? null;
-    const key = [this.cursor, this.coins(), this.tickets()].join('|');
+    const sel = this.offers()[this.cursor] ?? null;
+    const key = [this.cursor, this.coins(), this.tickets(), pocketBroke(this.ctx.run) ? 1 : 0, this.ctx.run.shift.phase].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
     const ctrl: HudControl[] = [];
@@ -300,16 +313,17 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
 
     // STATE: can the selected exchange go through
     const verdict = sel ? check(sel, this.ctx.run, this.selfId) : 'ok';
-    if (!sel) sh.state({ k: 'm.cashier.stNone' }, 'neutral');
+    if (pocketBroke(this.ctx.run) && sel && sel.op !== 'sellAll' && this.tickets() > 0) sh.state({ k: 'm.cashier.stBroke' }, 'warn', { k: 'm.cashier.stBrokeSub', v: { n: fmtNum(this.tickets() * SELL_PER_SI * si) } });
+    else if (!sel) sh.state({ k: 'm.cashier.stNone' }, 'neutral');
     else if (verdict === 'ok') sh.state({ k: 'm.cashier.stReady' }, 'gold', this.label(sel));
     else sh.state({ k: `m.cashier.${verdict}` }, 'warn', { k: 'm.cashier.stBlocked' });
 
     // KEY NUMBERS
-    const q = sel ? quote(sel, si) : null;
+    const q = sel ? quote(sel, si, this.tickets()) : null;
     sh.numbers([
       { label: { k: 'm.cashier.nCoins' }, value: fmtNum(this.coins()), tone: 'gold' },
       { label: { k: 'm.cashier.nTickets' }, value: fmtNum(this.tickets()), tone: 'cyan' },
-      { label: { k: 'm.cashier.nPrice' }, value: q ? `${fmtNum(q.coins)}` : '--', tone: verdict === 'ok' ? 'good' : 'bad' },
+      { label: { k: 'm.cashier.nPrice' }, value: q ? (sel?.op === 'pull' ? { k: 'm.cashier.pullCost', v: { n: sel.tickets } } : `${fmtNum(q.coins)}`) : '--', tone: verdict === 'ok' ? 'good' : 'bad' },
       { label: { k: 'm.cashier.nRate' }, value: { k: 'm.cashier.rate', v: { b: fmtNum(BUY_PER_SI * si), s: fmtNum(SELL_PER_SI * si) } }, tone: 'neutral' },
     ]);
 

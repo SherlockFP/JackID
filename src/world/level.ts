@@ -19,6 +19,7 @@ import { createClock, type WallClock } from './props/clock';
 import { createTrapdoor, type Trapdoor } from './props/trapdoor';
 import { createElevator, type Elevator } from './props/elevator';
 import { createQuotaBoard, type QuotaBoard } from './props/quotaBoard';
+import { buildSignposts } from './props/signposts';
 import { buildRooms, type RoomsBuild } from './rooms';
 
 // ── constants ───────────────────────────────────────────────────────────────────────────────────
@@ -289,6 +290,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     updates.push(g);
     gates[zone] = { prop: g as GateProp, colliders: cols.map(([a, b, c, d]) => box3(a, 0, b, c, LINTEL_Y, d)) };
   }
+  { const sp = buildSignposts(kit, { ceilingAt: (_x: number, z: number) => (z < -18 ? CEILING.mouth : z < 2 ? CEILING.well : CEILING.lobby) }); root.add(sp.root); disposables.push(sp); }
   const curtain = buildVelvetCurtain(kit, tex, { pos: [11, 0, 16], rotY: 90 });
   root.add(curtain.root);
   disposables.push(curtain);

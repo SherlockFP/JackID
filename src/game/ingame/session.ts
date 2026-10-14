@@ -16,6 +16,10 @@ import type { InstanceId, Unsub } from '@/core/types';
 import { createRng, hashSeed } from '@/core/rng';
 import { makeFog } from '@/core/renderer/fog';
 import type { UIOverlayX } from '@/core/ui/ui';
+import type { KitX } from '@/kit';
+import { createCover, type CoverProp } from '@/world/props/cover';
+import { createNewMarquee, type NewMarqueeProp } from '@/world/props/cover';
+import { unlockNightOf, isNew, effectiveNight, newOnFloorText } from '@/game/progression';
 import { createWorld, type WorldHost } from '@/world/world';
 import { rosterFor, type RosterCandidate } from '@/world/layout';
 import type { SlotChange } from '@/world/world';
@@ -295,6 +299,37 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     board.set({ due: q.due, deposited: q.deposited, ratio: q.ratio, timeLeft, lastCall, pace });
   };
 
+  // progressive floor: tarps over locked machines, NEW signs on today's openings
+  const covers = new Map<string, CoverProp>();
+  const marquees = new Map<string, NewMarqueeProp>();
+  let coverAcc = 0, lastNight = 0;
+  const syncCovers = (): void => {
+    const night = effectiveNight(run.night(), run.nightPaid, false);
+    if (night !== lastNight) {
+      const txt = newOnFloorText(night, run.seed);
+      if (txt) app.ui.toast(txt, 'sys', 4);
+      lastNight = night;
+    }
+    for (const m of world.machines()) {
+      const g = world.slotGroup(m.id), size = world.slot(m.id)?.size;
+      if (!g || !size) continue;
+      const mid = m.def.id;
+      const locked = world.isLocked(m.id);
+      const cov = covers.get(m.id);
+      if (locked && !cov) {
+        const c = createCover(app.kit as KitX, { size, night: unlockNightOf(mid, run.seed), id: m.id });
+        g.add(c.root); covers.set(m.id, c);
+      } else if (!locked && cov) {
+        covers.delete(m.id);
+        void cov.setCovered(false, 1.2).then(() => { g.remove(cov.root); cov.dispose(); });
+      }
+      const wantNew = !locked && run.mode !== 'free' && isNew(mid, night, run.seed);
+      const mq = marquees.get(m.id);
+      if (wantNew && !mq) { const n = createNewMarquee(app.kit as KitX, { size, id: m.id }); g.add(n.root); marquees.set(m.id, n); }
+      else if (!wantNew && mq) { g.remove(mq.root); mq.dispose(); marquees.delete(m.id); }
+    }
+  };
+
   return {
     world, player, run, hud,
     ready: () => ready,
@@ -307,6 +342,10 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     },
     frame(dt, alpha) {
       boardAcc += dt;
+      coverAcc += dt;
+      if (ready && coverAcc >= 0.5) { coverAcc = 0; syncCovers(); }
+      for (const c of covers.values()) c.update?.(dt);
+      for (const n of marquees.values()) n.update?.(dt);
       if (ready && boardAcc >= 0.25) { boardAcc = 0; syncBoard(); }
       if (openingWatch && ready) {
         openingWatch = false;

@@ -29,6 +29,7 @@ import { juiceTier } from '@/machines/_base/tiers';
 import type { KitX } from '@/kit/index';
 import { buildModel, COLOUR_HEX, HAND_MAX, type SonKartParts } from './model';
 import * as R from './rules';
+import { KartHud, type PlateView } from './kartHud';
 import { STRINGS } from './sonkart.strings';
 
 // ── contract types (aliases, Json-safe) ─────────────────────────────────────────────────────────
@@ -81,9 +82,9 @@ const freshPub = (): Pub => ({
   dr: false, house: [true, true, false, true, true],
 });
 
-const BET_S = 15, TURN_S = 20, START_S = 1.5, END_S = 3.4, FILL_LEVEL: Array<1 | 2 | 3> = [1, 2, 2, 3];
+const BET_S = 12, TURN_S = 20, START_S = 1.0, END_S = 3.0;
 /** Bot think time per level, seconds (plus up to 0.4 s jitter). Level 1 is slow and clumsy. */
-const THINK = [1.6, 1.0, 0.6];
+const THINK = [1.1, 0.75, 0.5];
 const HOUSE_KEYS = ['hsStack', 'hsSwap', 'hsJump', 'hsMatch', 'hsLast'] as const;
 const COLOUR_NAMES: Readonly<Record<string, string>> = { R: 'cR', Y: 'cY', G: 'cG', B: 'cB' };
 const COLOURS: readonly string[] = ['R', 'Y', 'G', 'B'];
@@ -120,6 +121,9 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
   private pickCol = '';
   /** Seat HUD overlay (created in init, shown while seated). */
   private seatHud?: SeatHud;
+  /** Table overlay: opponent plates, the big top card, the wild-card colour picker. */
+  private kart?: KartHud;
+  private autoAnte = false;
   private backs: number[][] = [[], [], [], []];
   private deckIds: number[] = [];
   private topId = -1;
@@ -129,6 +133,7 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
 
   init(): void {
     this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.kart = new KartHud(this.ctx.ui.root);
     this.hud(null);                                        // the seat HUD replaces the generic bottom bar
     this.relayout();
     this.setHandView([]);
@@ -138,6 +143,7 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
 
   dispose(): void {
     this.seatHud?.dispose();
+    this.kart?.dispose();
     super.dispose();
   }
 
@@ -146,6 +152,16 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
     if (!e.down) return;
     if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
+    const kh = this.kart;
+    if (kh?.picking) {
+      switch (e.action) {
+        case 'n1': case 'n2': case 'n3': case 'n4': kh.choose(COLOURS[Number(e.action.slice(1)) - 1]); break;
+        case 'primary': case 'confirm': if (!e.repeat) kh.choose(this.mostColour()); break;
+        case 'secondary': case 'clear': kh.closePicker(); this.showHud(); break;
+        default: break;
+      }
+      return;
+    }
     const s = this.localSeat;
     if (s < 0) return;
     const a = e.action;
@@ -174,6 +190,14 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
         break;
       case 'alt':
         if (!e.repeat) this.playKey(this.jumpCard(), true);
+        break;
+      case 'auto':
+        if (e.repeat) break;
+        this.autoAnte = !this.autoAnte;
+        this.sfx('click');
+        this.toast(this.t(this.autoAnte ? 'pAutoOn' : 'pAutoOff'), 'sys');
+        if (this.autoAnte) this.maybeAutoAnte();
+        this.showHud();
         break;
       case 'n1': case 'n2': case 'n3': case 'n4':
         this.pickCol = COLOURS[Number(a.slice(1)) - 1];
@@ -211,8 +235,20 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
     const s = this.localSeat;
     if (this.pub.ph !== 'play') return;
     if (!jump && this.pub.turn !== s) { this.toast(this.t('eNotTurn'), 'warn'); return; }
-    let col = '';
-    if (!R.isColoured(id)) col = this.pickCol || this.mostColour();
+    if (!R.isColoured(id) && !this.pickCol) {
+      // a wild card: ask for the colour (1-4 or a click); Enter keeps the colour the hand holds most of
+      const best = this.mostColour();
+      this.kart?.picker({
+        title: this.t('hPick'),
+        sub: this.t('hPickSub', { play: this.k('primary'), c: this.colourName(best), cancel: this.k('secondary') }),
+        best,
+        names: { R: this.t('cR'), Y: this.t('cY'), G: this.t('cG'), B: this.t('cB') },
+        keys: { R: this.k('n1'), Y: this.k('n2'), G: this.k('n3'), B: this.k('n4') },
+      }, (col) => { this.act({ k: 'play', id, col, jump }); this.pickCol = ''; this.sfx('click', { vol: 0.6 }); this.showHud(); });
+      this.sfx('hover');
+      return;
+    }
+    const col = R.isColoured(id) ? '' : this.pickCol;
     this.act({ k: 'play', id, col, jump });
     this.pickCol = '';
   }
@@ -313,6 +349,9 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
     else this.countdown(TURN_S, 'turn');
   }
 
+  /** The seat of the (first) human at the table, the grudge bot's favourite target; -1 with none. */
+  private humanSeat(): number { return this.humans()[0]?.seat ?? -1; }
+
   private levelOf(seat: number): 1 | 2 | 3 {
     return (this.bots.find((b) => b.seat === seat)?.level ?? 2) as 1 | 2 | 3;
   }
@@ -355,7 +394,7 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
       h.catchSeat = -2;
       for (const b of this.bots) {
         if (b.seat === win || !g.play[b.seat]) continue;
-        const d = R.botDecide(g, b.seat, b.level, b.rng, -1);
+        const d = R.botDecide(g, b.seat, b.level, b.rng, -1, R.personaOf(b.seat), this.humanSeat());
         if (d.k === 'catch') { const r = R.applyCatch(g, this.hostRng, b.seat); if (!r.err) this.afterAction(r.fx); return; }
       }
     }
@@ -378,10 +417,11 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
     if (!g || !bot) return;
     const rng = bot.rng;
     const du = this.debtUnit(), rich = this.wealthFor(seat);
-    const d = R.botDecide(g, seat, bot.level, rng, rich);
+    const per = R.personaOf(seat);
+    const d = R.botDecide(g, seat, bot.level, rng, rich, per, this.humanSeat());
     let res: R.Result;
     switch (d.k) {
-      case 'play': res = R.applyPlay(g, rng, seat, d.id, { col: d.col || undefined, debtUnit: du, wealthiest: rich, callOn: rng.chance(R.botCallChance(bot.level)) }); break;
+      case 'play': res = R.applyPlay(g, rng, seat, d.id, { col: d.col || undefined, debtUnit: du, wealthiest: rich, callOn: rng.chance(per.call) }); break;
       case 'pass': res = R.applyPass(g, seat); break;
       case 'call': res = R.applyCall(g, seat); break;
       case 'catch': res = R.applyCatch(g, rng, seat); break;
@@ -408,8 +448,7 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
     // empty seats are filled with house mannequins that ante the table stake from the house
     for (let s = 0; s < this.def.seats; s++) {
       if (this.seats[s] !== null) continue;
-      const lv = FILL_LEVEL[this.hostRng.int(0, FILL_LEVEL.length - 1)];
-      this.addBot(s, t(`m.sonkart.bot${s + 1}`), lv);
+      this.addBot(s, t(`m.sonkart.bot${s + 1}`), R.personaOf(s).level);
       h.antes[s] = true; h.stake[s] = amt; h.pot += amt;
       this.chargeSeat(s, amt);
     }
@@ -453,17 +492,46 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
   }
 
   // ── seats ────────────────────────────────────────────────────────────────────────────────────
+  /**
+   * Router hook (wiring): may a human take this seat from the bot sitting in it? Between rounds always; mid-round only
+   * with the coins for the table stake (the human takes over the bot's cards, and pays the ante the house paid).
+   */
+  canTakeBotSeat(seat: number, pid: PlayerId): boolean {
+    if (!this.isHost) return false;
+    const cur = this.seats[seat];
+    if (cur === null || !isBot(cur)) return false;
+    const h = this.h;
+    if (h.ph !== 'play' || !h.g || !h.g.play[seat] || h.g.over) return true;
+    return this.ctx.run.wallet(pid) >= (h.stake[seat] || this.def.minBet);
+  }
+
   onOccupy(pid: PlayerId, seat: number, local: boolean): void {
     if (isBot(pid)) { this.placeBot(seat, true); return; }
+    if (this.isHost) this.takeOverMidRound(pid, seat);
     if (local) {
+      this.parts.bots.forEach((b) => b.setVisible(false));
       this.cursor = 0; this.sfx('chime');
       this.seatHud?.show(); this.showHud(); this.paintScreen();
       this.seatHud?.firstTip('sonkart', this.tipLines());
     }
   }
 
+  /** HOST: a human sat where a bot was playing. They inherit its cards and pay the table stake. */
+  private takeOverMidRound(pid: PlayerId, seat: number): void {
+    const h = this.h, g = h.g;
+    if (h.ph !== 'play' || !g || !g.play[seat] || g.over) return;
+    const stake = h.stake[seat] || this.def.minBet;
+    if (!this.chargeSeat(seat, stake, pid)) { this.nak(pid, 0, 'm.sonkart.eNoFunds'); return; }
+    h.stake[seat] = stake;
+    this.sendHands(false);
+    if (g.turn === seat) this.beginTurn();
+  }
+
   onRelease(pid: PlayerId, seat: number, local: boolean): void {
-    if (local) this.seatHud?.hide();
+    if (local) {
+      this.seatHud?.hide(); this.kart?.hide(); this.autoAnte = false;
+      this.parts.bots.forEach((b, i) => { const q = this.seats[i]; b.setVisible(q !== null && q !== undefined && isBot(q)); });
+    }
     if (isBot(pid)) { this.placeBot(seat, false); return; }
     if (this.isHost) {
       const h = this.h, g = h.g;
@@ -474,8 +542,7 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
         void this.emit({ k: 'ph', v: this.pubNow() });
       }
       if (h.ph === 'play' && g && g.play[seat] && !g.over) {
-        const lv = FILL_LEVEL[this.hostRng.int(0, FILL_LEVEL.length - 1)];
-        this.addBot(seat, t(`m.sonkart.bot${seat + 1}`), lv);
+        this.addBot(seat, t(`m.sonkart.bot${seat + 1}`), R.personaOf(seat).level);
         if (g.turn === seat) this.beginTurn();
       }
       this.sendHands(false);
@@ -486,7 +553,8 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
   private placeBot(seat: number, on: boolean): void {
     const m = this.parts.bots[seat];
     if (!m) return;
-    m.setVisible(on);
+    // seen from the steep seat camera a sitting mannequin is a pile of arms across the felt; the plates carry the bots instead
+    m.setVisible(on && this.localSeat < 0);
     if (on) m.play('Sitting_Idle_Loop', { loop: true });
   }
 
@@ -499,6 +567,7 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
       case 'ph':
         this.refreshLamps(); this.paintScreen(); this.relayout();
         if (this.isLocalOccupant) this.showHud();
+        this.maybeAutoAnte();
         return;
       case 'ante': {
         const p = this.parts;
@@ -514,6 +583,29 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
       case 'end':
         return this.animEnd(ev, pc);
     }
+  }
+
+  /** AUTO ANTE: in every betting window the seated player antes the stake they last chose, while they can afford it. */
+  private maybeAutoAnte(): void {
+    const s = this.localSeat;
+    if (!this.autoAnte || s < 0 || this.pub.ph !== 'bet' || this.pub.inR[s]) return;
+    if (this.ctx.run.wallet() < this.bet) { this.autoAnte = false; this.toast(this.t('eNoFunds'), 'warn'); this.showHud(); return; }
+    this.ctx.timers.after(0.6, () => { if (this.autoAnte && this.pub.ph === 'bet' && !this.pub.inR[this.localSeat] && this.localSeat >= 0) this.act({ k: 'ante', amt: this.bet }); });
+  }
+
+  /**
+   * A house mannequin's reaction: a short text bubble with a few typewriter ticks. The mannequins never speak.
+   * Gated by a hash of public facts so every peer shows (or skips) the same line.
+   */
+  private quip(seat: number, kind: 'atk' | 'caught' | 'win', always = false): void {
+    const pid = this.seats[seat];
+    if (pid === null || !isBot(pid)) return;
+    const gate = ((this.pub.rnd * 31 + seat * 17 + this.pub.deck * 7 + this.pub.cnt[seat]) >>> 0) % 100;
+    if (!always && gate >= 45) return;
+    const per = R.personaOf(seat);
+    const text = this.t(`q_${per.id}_${kind}`);
+    this.ctx.fx.popText(this.parts.seatLamps[seat].root, text, 0xf2d9a0, { dur: 1.4 });
+    for (let i = 0; i < Math.min(5, text.length); i++) this.ctx.timers.after(0.07 * i, () => this.sfx('hover', { vol: 0.28, pitch: 4 + (i % 3) * 2 + seat }));
   }
 
   private async animDeal(fast: boolean): Promise<void> {
@@ -552,6 +644,7 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
         this.tagPop(f);
         if (f.fx === 'skip' || f.fx === 'rev' || f.fx === 'd2' || f.fx === 'w4' || f.fx === 'debt' || f.fx === 'curse' || f.fx === 'jp') this.ctx.fx.shake(f.fx === 'w4' ? 0.035 : 0.018, 0.25);
         if (f.j) this.ctx.fx.popText(p.discardAnchor, this.t('pJump'), 0x40ffb0, 0.9);
+        if (f.fx === 'd2' || f.fx === 'w4' || f.fx === 'skip' || f.fx === 'debt' || f.fx === 'curse') this.quip(f.seat, 'atk');
         break;
       }
       case 'draw': {
@@ -573,6 +666,7 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
         this.sfx('buzzer'); this.ctx.fx.hitstop(0.05); this.ctx.fx.shake(0.04, 0.35);
         this.ctx.fx.popText(p.seatLamps[f.seat].root, this.t('pCaught'), 0xff3a3a, { dur: 1.3, shake: true });
         for (let k = 0; k < 2; k++) void this.flyFromDeck(f.seat, fast ? 0.01 : 0.2);
+        this.quip(f.seat, 'caught', true);
         await this.wait(fast ? 0 : 0.2);
         break;
       case 'coll': {
@@ -628,6 +722,7 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
       const bot = isBot(this.seats[w] ?? 0);
       const at = p.seatLamps[w].root;
       if (bot || ev.gross <= 0) this.ctx.fx.popText(at, this.t('pWin'), 0xffd040, 1.2);
+      if (bot) this.quip(w, 'win', true);
       else this.ctx.fx.popText(at, fmtCoins(ev.gross), 0xffd040, 1.4);
     }
     if (w === this.localSeat && w >= 0) {
@@ -767,7 +862,7 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
   private tipLines(): Txt[] {
     return [
       { k: 'm.sonkart.tip1' },
-      { k: 'm.sonkart.tip2', v: { ante: this.k('primary'), bet: `${this.k('betDown')}/${this.k('betUp')}` } },
+      { k: 'm.sonkart.tip2', v: { ante: this.k('primary'), bet: `${this.k('betDown')}/${this.k('betUp')}`, auto: this.k('auto') } },
       { k: 'm.sonkart.tip3', v: { play: this.k('primary'), draw: this.k('secondary'), help: this.k('help') } },
     ];
   }
@@ -813,6 +908,7 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
       ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.sonkart.cBet' }, action: 'betUp' });
     }
     if (pub.ph === 'bet') ctrl.push({ key: `${this.k('n5')}-${this.k('n9')}`, label: { k: 'm.sonkart.cHouse' }, action: 'n5' });
+    if (pub.ph === 'bet' || pub.ph === 'end') ctrl.push({ key: this.k('auto'), label: { k: this.autoAnte ? 'm.sonkart.nAuto' : 'm.sonkart.cAuto' }, action: 'auto' });
     if (myTurn) {
       ctrl.push({ key: this.k('primary'), label: { k: 'm.sonkart.cPlay' }, action: 'primary', primary: true });
       ctrl.push({ key: this.k('secondary'), label: { k: pub.dr ? 'm.sonkart.cPass' : pub.pend > 0 ? 'm.sonkart.cDrawN' : 'm.sonkart.cDraw' }, action: 'secondary' });
@@ -824,6 +920,45 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
     ctrl.push({ key: this.k('help'), label: { k: 'm.sonkart.cRules' }, action: 'help' });
     ctrl.push({ key: this.k('exit'), label: { k: 'm.sonkart.cLeave' }, action: 'exit' });
     sh.controls(ctrl);
+    this.refreshKart();
+  }
+
+  /** The DOM overlay: opponent plates and the top card, rebuilt from the public view. */
+  private refreshKart(): void {
+    const kh = this.kart;
+    if (!kh || !this.isLocalOccupant) return;
+    const pub = this.pub, me = this.localSeat;
+    kh.show();
+    if (kh.picking && !(pub.ph === 'play' && pub.turn === me)) kh.closePicker();
+    const plates: PlateView[] = [];
+    for (let s = 0; s < this.def.seats; s++) {
+      const pid = this.seats[s];
+      if (s === me || pid === null) continue;
+      const bot = isBot(pid);
+      plates.push({
+        name: this.seatName(s), tag: bot ? this.t(`pr_${R.personaOf(s).id}`) : '', cnt: pub.cnt[s] ?? 0,
+        inRound: pub.ph === 'bet' ? true : pub.inR[s] === true, turn: pub.ph === 'play' && pub.turn === s, me: false,
+        last: pub.ph === 'play' && pub.call === s && !pub.callOn && (pub.cnt[s] ?? 0) === 1,
+        turnLabel: this.t('hTurn'), lastLabel: this.t('hLast'),
+      });
+    }
+    kh.plateList(plates);
+    const id = pub.top;
+    const label = this.faceLabel(id);
+    kh.top({
+      id, label, small: label.length > 2, colour: pub.col, colourName: this.colourName(pub.col), topLabel: this.t('hTop'),
+      owed: pub.pend > 0 ? this.t('hOwed', { n: pub.pend }) : '', dir: id ? this.t(pub.dir >= 0 ? 'hOrderF' : 'hOrderB') : '',
+    });
+  }
+
+  /** What a card shows on the big top-card chip: its number, or a short word. */
+  private faceLabel(id: string): string {
+    if (!id) return '';
+    if (R.isNumber(id)) return R.faceOf(id);
+    const f = R.faceOf(id);
+    const key: Record<string, string> = { S: 'kS', V: 'kV', '+2': '+2', W: 'kW', 'W+4': 'kW4', DEBT: 'kDebt', COLLECTOR: 'kColl', CURSE: 'kCurse', JACKPOT: 'kJack' };
+    const k = key[f];
+    return !k ? f : k.startsWith('k') ? this.t(k) : k;
   }
 
   private colourName(c: string): string { return c ? this.t(COLOUR_NAMES[c] ?? 'cR') : '-'; }

@@ -57,7 +57,7 @@ export const MACHINE_PROFILES: Readonly<Record<string, MachineProfile>> = {
   scratch: { plays: 200000, bet: 2, hit: 0.4254, p2: 0.1783, p5: 0.0293, p10: 0.0041, p25: 0.0002, p100: 0.0002, sigma: 3.08, rtp: 0.8028, cls: 'SWINGY' },
   shellgame: { plays: 200000, bet: 5, hit: 0.2827, p2: 0.2827, p5: 0, p10: 0, p25: 0, p100: 0, sigma: 0.9, rtp: 0.5653, cls: 'STEADY' },
   sicbo: { plays: 200000, bet: 1, hit: 0.4866, p2: 0.4866, p5: 0, p10: 0, p25: 0, p100: 0, sigma: 1, rtp: 0.9731, cls: 'STEADY' },
-  sonkart: { plays: 200000, bet: 20, hit: 0.267, p2: 0.267, p5: 0.0006, p10: 0, p25: 0, p100: 0, sigma: 1.69, rtp: 1.0169, cls: 'SWINGY' },
+  sonkart: { plays: 200000, bet: 20, hit: 0.25, p2: 0.25, p5: 0.0006, p10: 0, p25: 0, p100: 0, sigma: 1.69, rtp: 0.952, cls: 'SWINGY' },
   stacker: { plays: 200000, bet: 1, hit: 0.5716, p2: 0.0473, p5: 0.0001, p10: 0.0001, p25: 0.0001, p100: 0, sigma: 0.61, rtp: 0.6203, cls: 'STEADY' },
   teetotum: { plays: 200000, bet: 5, hit: 0.6747, p2: 0.1688, p5: 0.0178, p10: 0.0002, p25: 0, p100: 0, sigma: 1.24, rtp: 0.9836, cls: 'STEADY' },
   threecard: { plays: 200000, bet: 5, hit: 0.4508, p2: 0.2497, p5: 0.0014, p10: 0, p25: 0, p100: 0, sigma: 1.12, rtp: 0.98, cls: 'STEADY' },

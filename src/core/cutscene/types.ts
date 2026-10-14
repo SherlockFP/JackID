@@ -87,7 +87,7 @@ export interface SubtitleCue {
   key: string;                            // i18n key, translated with `vars` at display time
   vars?: Record<string, string | number>;
   speaker?: string;                       // i18n key of the speaker label, or null for narration
-  voice?: VoiceSpeaker;                   // also plays formant babble for this speaker
+  voice?: VoiceSpeaker;                   // also plays typewriter blips in this speaker's voice
   mood?: 'calm' | 'cheery' | 'angry' | 'sad' | 'whisper';
 }
 export interface SubtitleTrack { kind: 'subtitle'; cues: SubtitleCue[] }

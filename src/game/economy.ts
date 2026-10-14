@@ -6,6 +6,7 @@ import type { CharmDef, CharmRarity } from '@/game/types';
 import { roundSig } from '@/game/types';
 import type { Rng } from '@/core/rng';
 import { HOUSE_LIMIT_QUOTA_MULT } from './data/schedule';
+import { floorFor } from './float';
 
 /** Hook-stack guard: the combined factor `(1 + A) × M` never exceeds this (GDD §3.3). */
 export const PAYOUT_GUARD = 1000;
@@ -119,6 +120,20 @@ export function houseFloat(index: number): number {
 /** Coins the House advances at the start of Night index `index`: the top-up to F(n) when the pocket is below it, else 0. */
 export function houseFloatTopUp(pocket: number, index: number): number {
   return Math.max(0, houseFloat(index) - Math.max(0, Math.floor(pocket)));
+}
+
+// ── the deposit float on Night 1 (wave 27, bank-econ) ───────────────────────────────────────────────────────
+/** Coins a new player keeps in the pocket on the first deposit of a Night 1 Watch: three pulls at about 3 coins (the activity clause needs 3 pulls). */
+export const NIGHT1_FLOAT = 9;
+/**
+ * Coins the first Debt Terminal deposit of a Watch must leave in the pocket. From Night 2 it is the plain float (`float.ts`: the smaller of
+ * 30 % of the pocket and 2 cheapest bets). Night 1 keeps more, up to NIGHT1_FLOAT and never above half the pocket: the "I deposited everything and
+ * cannot play" start was the first thing new players hit (2 coins left of 30). ALL, confirmed, and a deposit that pays the quota exactly still go below it.
+ */
+export function depositFloatFor(index: number, pocket: number, minBet: number): number {
+  const base = floorFor(pocket, minBet);
+  if (index > 0) return base;
+  return Math.max(base, Math.min(NIGHT1_FLOAT, Math.floor(Math.max(0, pocket) * 0.5)));
 }
 
 // ── stake safety (Night 1 cap, confirm on a big stake) and the rescue loan ─────────────────────────────────────

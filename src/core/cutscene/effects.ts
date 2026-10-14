@@ -128,7 +128,7 @@ function lightTarget(tg: LightCue['target']): WorldLightTarget | null {
 }
 
 /**
- * Subtitle cue: translated text and speaker, plus formant voice babble when the cue names a voice. A seeking peer
+ * Subtitle cue: translated text and speaker, plus typewriter blips in the cue's voice when it names one. A seeking peer
  * (`since` s after the cue was due) only shows what is still left of a line, silently.
  */
 export function showSubtitle(c: SubtitleCue, vars: I18nVars, seek: boolean, since = 0): void {

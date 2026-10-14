@@ -19,17 +19,30 @@ import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
 import type { Hex, V3 } from '@/core/types';
 import { log } from '@/core/log';
 import { disposeObject3D } from '@/core/dispose';
-import { GLSL_CRACKS, patchShader, psx } from './materials';
+import { psx } from './materials';
 import { mixHex, scaleHex, PAL } from './palette';
 import { VENDOR_PATHS } from './presets';
 import type { KitCtx } from './ctx';
 import { MANNEQUIN_CLIPS, MANNEQUIN_GLB, type Kit, type MannequinActor, type MannequinBone, type MannequinClip, type MannequinOpts, type MannequinPlayOpts } from './types';
+import { headBoxOf, idleRefPose, patchLook, seeded, type HeadBox } from './mannequinLook';
 
 const D2R = Math.PI / 180;
 const DEFAULT_HEIGHT = 1.75;
 const DEFAULT_STEP_FPS = 15;
 const FACE_DEFAULT = 0xd9c7a3;                  // unpainted wood-doll
+const RIM_LIGHT = 0x8c9cd0;                     // dim cold rim (scaled down in patchLook)
 const smooth = (e0: number, e1: number, x: number): number => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+
+// ── scary posture (scary-models pass) ───────────────────────────────────────────────────────────
+/** Arms and spine held towards their idle-clip pose: a stiff, automaton carriage. 0 = free, 1 = frozen to the pose. */
+const STIFF_BONES = ['clavicle_l', 'clavicle_r', 'upperarm_l', 'upperarm_r', 'lowerarm_l', 'lowerarm_r', 'spine_02'] as const;
+const STIFF_K = 0.5;
+const STIFF_CLIP = /^(Idle_Loop|Sitting_Idle_Loop|Crouch_Idle_Loop)$/;
+/** Slightly too-long limbs: upper arms and thighs run 6 % long along their bone (applied after the clip each frame). */
+const LIMB_BONES = ['upperarm_l', 'upperarm_r', 'thigh_l', 'thigh_r'] as const;
+const LIMB_STRETCH = new THREE.Vector3(1, 1.06, 1);
+/** Head / neck / spine jitter and jerks, plus the watch-the-player turn. */
+const WATCH_NEAR = 3.5, WATCH_FAR = 9;      // m: full attention inside WATCH_NEAR, none beyond WATCH_FAR
 
 // ── shared source ───────────────────────────────────────────────────────────────────────────────
 interface Source {
@@ -39,7 +52,11 @@ interface Source {
   /** Decimated skinned geometry per skinned mesh (traversal order): tier 1 = mid, tier 2 = low (seated / far). */
   mids: Array<THREE.BufferGeometry | null>;
   lows: Array<THREE.BufferGeometry | null>;
+  /** Head bounds for the painted face (null when the head joint cannot be found). */
+  head: HeadBox | null;
 }
+/** Stiff-pose references per idle clip name (first-frame rotations of the held bones). */
+const stiffRefs = new Map<string, Map<string, THREE.Quaternion>>();
 let source: Source | null = null;
 let loading: Promise<Source | null> | null = null;
 
@@ -103,7 +120,7 @@ export function loadMannequinSource(): Promise<Source | null> {
     }
     const clips = new Map<string, THREE.AnimationClip>();
     for (const c of gltf.animations) clips.set(c.name, c);
-    source = { scene, clips, height: Math.max(0.5, box.max.y - Math.min(0, box.min.y)), mids, lows };
+    source = { scene, clips, height: Math.max(0.5, box.max.y - Math.min(0, box.min.y)), mids, lows, head: headBoxOf(skins) };
     return source;
   }).catch((e: unknown): null => {
     log.warn('kit', 'mannequin GLB failed to load — actors stay placeholders', e);
@@ -128,6 +145,17 @@ function lookOf(o: MannequinOpts): Look {
       const main = c ?? FACE_DEFAULT;
       return { main, joints: o.jointColor ?? scaleHex(main, 0.55), lit: true, opacity: 1 };
     }
+  }
+}
+
+/** Painted face per style: dark sockets everywhere but the ghost; a painted smile on porcelain and a coin-flip on plain. */
+function faceOf(o: MannequinOpts, rnd: () => number): { sockets: number; smile: number } {
+  switch (o.style) {
+    case 'porcelain': return { sockets: 1, smile: 1 };
+    case 'ghost': return { sockets: 0, smile: 0 };
+    case 'shadow': return { sockets: 0, smile: 0 };
+    case 'collector': return { sockets: 1, smile: 0 };
+    default: return { sockets: 1, smile: rnd() < 0.55 ? 1 : 0 };   // plain: some grin, some stare blank
   }
 }
 
@@ -200,14 +228,27 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
     private readonly lookTarget = new THREE.Vector3();
     private readonly faceLocal = new THREE.Vector3(0, 0, 1);
     /** Bones whose animated pose is captured after every mixer step and restored before procedural layers run. */
-    private readonly procNames: string[] = ['neck_01', 'Head'];
+    private readonly procNames: string[] = ['neck_01', 'Head', ...STIFF_BONES];
     private readonly procAnim = new Map<string, THREE.Quaternion>();
+    /** Captured scale of the limb bones (the mixer writes scale tracks too). */
+    private readonly procScale = new Map<string, THREE.Vector3>();
     private readonly pre: Array<(dt: number) => void> = [];
     private readonly post: Array<(dt: number) => void> = [];
     /** Skinned meshes of this clone with their full / mid / low geometry (shared across actors). */
     private readonly skins: Array<{ sm: THREE.SkinnedMesh; full: THREE.BufferGeometry; mid: THREE.BufferGeometry | null; low: THREE.BufferGeometry | null }> = [];
     /** Body tier: 0 full, 1 mid (standing, 5 m+), 2 low (seated or 8 m+). Set by `lodPass`. */
     private tier: 0 | 1 | 2 = 0;
+    // scary behaviour: seeded per actor, so two identical bots never move in step
+    private readonly rnd: () => number;
+    private readonly face: { sockets: number; smile: number };
+    private readonly phase: number;
+    private jt = 0;
+    private twitchIn: number;
+    private twitchAge = -1;
+    private twitchAmp = 0;
+    private twitchSide = 1;
+    /** An owner aimed the head (`lookAt(target)`); the watch-the-player turn stands down until `lookAt(null)`. */
+    private ownerLook = false;
 
     constructor(o: MannequinOpts) {
       this.look = lookOf(o);
@@ -226,7 +267,12 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
         get: () => this.ownVis && !this.lodHidden,
         set: (v: boolean) => { this.ownVis = v; },
       });
-      this.acc = ((serial++ * 0.6180339887) % 1) / (this.stepFps ?? DEFAULT_STEP_FPS);   // de-synchronise the 15 fps ticks
+      const id = serial++;
+      this.rnd = seeded(0x5ca1 + id * 7919);
+      this.phase = this.rnd() * Math.PI * 2;
+      this.twitchIn = 1 + this.rnd() * 5;
+      this.face = faceOf(o, this.rnd);
+      this.acc = ((id * 0.6180339887) % 1) / (this.stepFps ?? DEFAULT_STEP_FPS);   // de-synchronise the 15 fps ticks
       this.buildPlaceholder();
       this.selfRef = new WeakRef(this);
       actors.add(this.selfRef);
@@ -270,15 +316,8 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
           transparent: this.look.opacity < 1, opacity: this.look.opacity, depthWrite: this.look.opacity >= 1,
           emissive: this.look.emissive ?? 0, unique: true,
         }) as THREE.MeshLambertMaterial;
-        if (this.look.cracks) {
-          patchShader(m, 'cracks', {
-            vertexDecl: 'varying vec3 vPsxObj;',
-            vertexAfterBegin: 'vPsxObj = transformed;',
-            fragDecl: `varying vec3 vPsxObj;
-${GLSL_CRACKS}`,
-            fragAfterColor: 'diffuseColor.rgb *= mix(vec3(0.22, 0.17, 0.2), vec3(1.0), psxCrack(vPsxObj * 6.0));',
-          });
-        }
+        // painted face + dim rim light (lit looks only; the ghost stays a flat translucent figure)
+        if (this.look.lit) patchLook(m, { cracks: !!this.look.cracks, sockets: this.face.sockets, smile: this.face.smile, head: src.head, rim: RIM_LIGHT });
         this.mats.push(m);
         this.baseColors.push(base);
         sm.material = m;
@@ -462,6 +501,7 @@ ${GLSL_CRACKS}`,
 
     lookAt(target: THREE.Vector3 | null, dur = 0.25): void {
       this.lookRate = 1 / Math.max(0.01, dur);
+      this.ownerLook = !!target;
       if (target) { this.lookTarget.copy(target); this.lookGoal = 1; } else this.lookGoal = 0;
     }
 
@@ -499,13 +539,74 @@ ${GLSL_CRACKS}`,
         if (!q) { q = new THREE.Quaternion(); this.procAnim.set(n, q); }
         q.copy(b.quaternion);
       }
+      for (const n of LIMB_BONES) {
+        const b = this.bones.get(n);
+        if (!b) continue;
+        let s = this.procScale.get(n);
+        if (!s) { s = new THREE.Vector3(); this.procScale.set(n, s); }
+        s.copy(b.scale);
+      }
     }
 
     private postPose(dt: number): void {
       for (const [n, q] of this.procAnim) this.bones.get(n)?.quaternion.copy(q);
+      for (const [n, s] of this.procScale) this.bones.get(n)?.scale.copy(s).multiply(LIMB_STRETCH);
+      this.stiffen();
+      this.motion(dt);
       for (const f of this.pre) f(dt);
+      this.watch();
       this.applyLook(dt);
       for (const f of this.post) f(dt);
+    }
+
+    /** Stiff carriage: while idle, arms and spine are held part-way back to the clip's first pose. */
+    private stiffen(): void {
+      const clip = this.clip;
+      if (!clip || !STIFF_CLIP.test(clip)) return;
+      let ref = stiffRefs.get(clip);
+      if (!ref) {
+        const c = source?.clips.get(clip);
+        if (!c) return;
+        ref = idleRefPose(c, STIFF_BONES);
+        stiffRefs.set(clip, ref);
+      }
+      for (const [n, r] of ref) this.bones.get(n)?.quaternion.slerp(r, STIFF_K);
+    }
+
+    /** Idle sway (never still, never regular) and the occasional head jerk: the automaton tell. */
+    private motion(dt: number): void {
+      this.jt += dt;
+      const t = this.jt, ph = this.phase;
+      const pitch = Math.sin(t * 0.9 + ph) * 0.011 + Math.sin(t * 2.7 + ph * 2) * 0.004;
+      const yaw = Math.sin(t * 0.6 + ph * 3) * 0.009;
+      this.twitchIn -= dt;
+      if (this.twitchAge < 0 && this.twitchIn <= 0) {
+        this.twitchAge = 0;
+        this.twitchAmp = 0.1 + this.rnd() * 0.12;                 // 6–13 degrees
+        this.twitchSide = this.rnd() < 0.5 ? -1 : 1;
+        this.twitchIn = 3 + this.rnd() * 6;
+      }
+      let jerk = 0;
+      if (this.twitchAge >= 0) {
+        this.twitchAge += dt;
+        const a = this.twitchAge;
+        jerk = a < 0.06 ? a / 0.06 : Math.exp(-(a - 0.06) * 12);   // snap in, ease out
+        if (a > 0.06 && jerk < 0.01) { this.twitchAge = -1; jerk = 0; }
+        jerk *= this.twitchAmp * this.twitchSide;
+      }
+      const head = this.bones.get('Head'), neck = this.bones.get('neck_01'), spine = this.bones.get('spine_02');
+      if (head) head.quaternion.premultiply(Actor.qj.setFromEuler(Actor.eu.set(pitch + jerk * 0.3, yaw + jerk, 0, 'XYZ')));
+      if (neck) neck.quaternion.premultiply(Actor.qj.setFromEuler(Actor.eu.set(pitch * 0.5 + jerk * 0.15, yaw * 0.5 + jerk * 0.4, 0, 'XYZ')));
+      if (spine) spine.quaternion.premultiply(Actor.qj.setFromEuler(Actor.eu.set(pitch * 0.4, yaw * 0.3, 0, 'XYZ')));
+    }
+
+    /** Turn the head to the player's camera when they are near (skipped while an owner aims the head). */
+    private watch(): void {
+      if (this.ownerLook || !lodCam) return;
+      const d = this.root.getWorldPosition(Actor.v1).distanceTo(lodPos);
+      this.lookTarget.copy(lodPos);
+      this.lookRate = 1.5;
+      this.lookGoal = 1 - smooth(WATCH_NEAR, WATCH_FAR, d);
     }
 
     private static readonly q1 = new THREE.Quaternion();
@@ -515,6 +616,8 @@ ${GLSL_CRACKS}`,
     private static readonly v2 = new THREE.Vector3();
     private static readonly v3 = new THREE.Vector3();
     private static readonly ID = new THREE.Quaternion();
+    private static readonly qj = new THREE.Quaternion();
+    private static readonly eu = new THREE.Euler();
 
     private applyLook(dt: number): void {
       const neck = this.bones.get('neck_01'), head = this.bones.get('Head');

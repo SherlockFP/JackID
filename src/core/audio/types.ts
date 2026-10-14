@@ -26,7 +26,9 @@ export type SfxName =
   | 'stamp' | 'printer' | 'cashRegister' | 'coinPour' | 'coinMagnet' | 'sparkle' | 'popUp' | 'numberTick'
   | 'whisper' | 'heartbeat' | 'stinger' | 'lightFlicker' | 'powerDown' | 'powerUp' | 'neonBuzz' | 'paClick'
   | 'tapeStop' | 'tinnitus' | 'defib' | 'gunBlank' | 'gunLoad' | 'shellEject' | 'tileClack' | 'cardSlap'
-  | 'totemPlace' | 'totemPulse' | 'porcelainCrack' | 'jackpotSiren' | 'jackpotBells' | 'creak' | 'drip' | 'footstepWet';
+  | 'totemPlace' | 'totemPulse' | 'porcelainCrack' | 'jackpotSiren' | 'jackpotBells' | 'creak' | 'drip' | 'footstepWet'
+  // wave 27 audio: coin insert, coin rain loop (jackpot), near-miss riser, per-pattern tally tick
+  | 'coinInsert' | 'coinRain' | 'tensionRise' | 'tallyTick';
 
 /** Defaults a registered recipe plays with (same meaning as the built-in table). All optional. */
 export interface SfxRegisterMeta {
@@ -105,11 +107,11 @@ export interface MusicApi {
   catalog(): readonly JukeboxTrack[];              // full metadata for the jukebox UI
 }
 
-// ── House / NPC voice (formant-ish babble, subtitles carry the real text) ───────────────────────
+// ── characters: typewriter blips (no speech; subtitles carry the words) ─────────────────────────
 export type VoiceSpeaker = 'house' | 'collector' | 'bartender' | 'mira' | 'oracle' | 'dealer' | 'mannequin' | (string & {});
 export interface SpeakOpts {
   speaker?: VoiceSpeaker;            // default 'house'
-  /** Text drives babble length/rhythm only; callers show subtitles separately via `ui.subtitle`. */
+  /** Text drives the blip count and rhythm only; callers show subtitles separately via `ui.subtitle`. */
   text: string;
   mood?: 'calm' | 'cheery' | 'angry' | 'sad' | 'whisper';
   pitch?: number;                    // semitones
@@ -141,6 +143,11 @@ export interface AudioEngine {
   readonly voice: VoiceApi;
   setListener(cam: THREE.Camera): void;               // called each frame by InGame/menu
   readonly voices: number;
+  /**
+   * One typewriter blip for a typed character, in the speaker's own voice (dialogue box, subtitles). Non-letters are
+   * silent. Rate-limited so a fast typewriter never floods the voices. Uses the 'voice' bus (its slider applies).
+   */
+  blip(speaker: VoiceSpeaker, ch: string, o?: { pos?: THREE.Object3D; vol?: number }): void;
   // ── vendor samples (Kenney casino SFX; ASSETS.md) ──
   /** Fetch + decode OGGs once; later `SynthKit.sample(url)` plays them. Resolves when all are ready. */
   loadSamples(urls: string[]): Promise<void>;

@@ -10,7 +10,7 @@
  * mouse target (play pose `mouse: 'pick'`). Digits come from the keyboard (n1…n9, Backspace, Enter).
  */
 import * as THREE from 'three';
-import type { ButtonPanelPart, LedPanelPart, LampPart, LeverPart, ScreenSurface } from '@/kit/types';
+import type { ButtonPanelPart, LabelPart, LedPanelPart, LampPart, LeverPart, ScreenSurface } from '@/kit/types';
 import type { KitX } from '@/kit';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
@@ -25,6 +25,8 @@ export type DebtParts = {
   leds: { quota: LedPanelPart; deposit: LedPanelPart };
   /** Keypad, one dynamic mesh. Cells follow `rules.KEYS`. */
   keys: ButtonPanelPart;
+  /** Cap labels by key id (the amount keys change their words with the action: REST / PLAY). */
+  keyLabels: Record<string, LabelPart>;
   /** Gold frame that marks the keypad cursor cell (moved by `index.ts`, child of `keys.root`). */
   keyCursor: THREE.Object3D;
   /** Receipt paper, 64 × 80 px, slides up from the printer on every deposit. */
@@ -47,12 +49,13 @@ export const W = 1.2, D = 0.9, H = 2.4;
 const COUNTER_TOP = 1.07;
 const KEYPAD_Z = 0.18;
 
-/** Keypad layout: 3 columns × 2 rows, cells named by `rules.KEYS`. Caps are KEY_W × KEY_H on a 0.22 × 0.17 pitch. */
+/** Keypad layout: 3 columns × 3 rows, cells named by `rules.KEYS`. Caps are KEY_W × KEY_H on a 0.22 × 0.12 pitch. */
 export const KEY_POS: Record<(typeof KEYS)[number], { x: number; z: number }> = {
-  p10: { x: -0.22, z: -0.085 }, p25: { x: 0, z: -0.085 }, p50: { x: 0.22, z: -0.085 },
-  all: { x: -0.22, z: 0.085 }, rest: { x: 0, z: 0.085 }, enter: { x: 0.22, z: 0.085 },
+  dep: { x: -0.22, z: -0.12 }, wd: { x: 0, z: -0.12 }, quota: { x: 0.22, z: -0.12 },
+  p10: { x: -0.22, z: 0 }, p25: { x: 0, z: 0 }, p50: { x: 0.22, z: 0 },
+  all: { x: -0.22, z: 0.12 }, rest: { x: 0, z: 0.12 }, enter: { x: 0.22, z: 0.12 },
 };
-export const KEY_W = 0.2, KEY_H = 0.14;
+export const KEY_W = 0.2, KEY_H = 0.1;
 /** Top of a keypad cap in panel space (`kit.buttonPanel`: plate 0.012 + cap 0.03). */
 const CAP_TOP = 0.042;
 
@@ -73,7 +76,6 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   kit.box(0.14, 0.06, 0.1, pal.black, at(0.38, COUNTER_TOP + 0.03, 0.2));                     // swipe slot block
   kit.box(0.22, 0.12, 0.04, pal.black, at(0, 0.7, 0.42));                                    // deposit mouth recess
   kit.box(0.5, 0.2, 0.04, pal.brass, at(0, 0.73, 0.43));                                     // mouth plate
-  kit.box(0.3, 0.02, 0.06, pal.black, at(0, 1.5, 0.28));                                     // CRT shelf shadow
   kit.box(0.48, 0.04, 0.12, pal.gold, at(0, 1.9, -0.02));                                    // quota LED bezel
   kit.box(0.46, 0.04, 0.12, pal.gold, at(0, 1.22, -0.02));                                   // deposit LED bezel
 
@@ -97,22 +99,24 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   // separate high-density quads lying on the caps, and a gold frame marks the cursor cell.
   const specs: PanelButtonSpec[] = KEYS.map((id) => ({
     id,
-    color: id === 'enter' ? pal.red : id === 'all' ? pal.gold : pal.cream,
+    color: id === 'enter' ? pal.red : id === 'dep' ? pal.green : id === 'wd' ? pal.neonPink : id === 'quota' ? pal.gold : id === 'all' ? pal.brass : pal.cream,
     x: KEY_POS[id].x,
     z: KEY_POS[id].z,
     w: KEY_W,
     h: KEY_H,
   }));
-  const keys = kit.buttonPanel({ buttons: specs, w: 0.72, d: 0.36, slope: 12, plate: pal.steel, capH: 0.03 });
+  const keys = kit.buttonPanel({ buttons: specs, w: 0.72, d: 0.4, slope: 12, plate: pal.steel, capH: 0.03 });
   keys.root.position.set(0, COUNTER_TOP, KEYPAD_Z);
   root.add(keys.root);
   const keyLabels = new THREE.Group();
+  const labelParts: Record<string, LabelPart> = {};
   keyLabels.userData.kitKeep = true;                       // dynamic-looking labels: never merged into the model
   for (const id of KEYS) {
     const lb = kit.label({
-      text: { key: `m.debt_terminal.k_${id}` }, w: KEY_W * 0.9, h: KEY_H * 0.72, px: [320, 224],
-      color: id === 'enter' ? 0xffffff : 0x1a1206, bg: null, font: 'ps2p',
+      text: { key: `m.debt_terminal.k_${id}` }, w: KEY_W * 0.92, h: KEY_H * 0.7, px: [352, 160],
+      color: id === 'enter' || id === 'wd' ? 0xffffff : 0x1a1206, bg: null, font: 'ps2p',
     });
+    labelParts[id] = lb;
     lb.mesh.rotation.x = -Math.PI / 2;
     lb.mesh.position.set(KEY_POS[id].x, CAP_TOP + 0.002, KEY_POS[id].z);
     keyLabels.add(lb.mesh);
@@ -181,7 +185,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   root.add(light);
 
   const parts: DebtParts = {
-    crt: crtScreen, leds: { quota, deposit }, keys, keyCursor, receipt, receiptPivot, mouthLips, emblemLid,
+    crt: crtScreen, leds: { quota, deposit }, keys, keyLabels: labelParts, keyCursor, receipt, receiptPivot, mouthLips, emblemLid,
     settleLever, floorLever, bellRope, swipe, readyLamp,
   };
   kit.finalize(root, {

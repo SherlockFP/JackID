@@ -1,0 +1,54 @@
+/* Son Kart table overlay: opponent plates, the top-card chip and the wild-card colour picker (sonkart/kartHud.ts). */
+.kart-hud { --ku: calc(var(--u, 4px) * 1.5); position: absolute; inset: 0; pointer-events: none; display: none; image-rendering: pixelated;
+  font-family: var(--f-body, 'VT323', monospace); color: #f4f0dc; text-shadow: 0 calc(var(--ku) * .5) 0 #000; }
+.kart-hud.on { display: block; }
+
+/* opponents: a column at the left edge */
+.kh-seats { position: absolute; left: calc(var(--ku) * 3); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: calc(var(--ku) * 2); }
+.kh-plate { display: flex; flex-direction: column; gap: calc(var(--ku) * .5); min-width: calc(var(--ku) * 46); padding: calc(var(--ku) * 2) calc(var(--ku) * 3);
+  background: rgba(6, 9, 6, .88); border: calc(var(--ku) * 1) solid #2c3a2c; transition: border-color .12s, background .12s; }
+.kh-plate.turn { border-color: #ffd040; background: rgba(54, 40, 6, .92); box-shadow: 0 0 calc(var(--ku) * 4) rgba(255, 208, 64, .45); animation: kh-pulse 1s steps(2) infinite; }
+.kh-plate.out { opacity: .45; }
+.kh-plate.me { border-color: #7dff7a; }
+.kh-row1 { display: flex; align-items: baseline; gap: calc(var(--ku) * 2); }
+.kh-name { font-size: calc(var(--ku) * 7); line-height: 1; color: #fff; }
+.kh-tag { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 2.6); color: #ff9a6a; letter-spacing: 0; }
+.kh-row2 { display: flex; align-items: center; gap: calc(var(--ku) * 2); }
+.kh-fan { display: flex; }
+.kh-fan i { display: block; width: calc(var(--ku) * 3.2); height: calc(var(--ku) * 4.6); margin-right: calc(var(--ku) * -1.6); background: #7a1226; border: calc(var(--ku) * .6) solid #f2d9a0; box-sizing: border-box; }
+.kh-cnt { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 4.2); color: #ffd040; margin-left: calc(var(--ku) * 3); }
+.kh-last { margin-left: auto; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 3); color: #fff; background: #d6263c; padding: calc(var(--ku) * 1) calc(var(--ku) * 1.6); animation: kh-pulse .4s steps(2) infinite; }
+.kh-turn { margin-left: auto; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 3); color: #ffd040; }
+@keyframes kh-pulse { 50% { filter: brightness(1.35); } }
+
+/* the top card and the colour in force: a big card on the right edge */
+.kh-top { position: absolute; right: calc(var(--ku) * 4); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: calc(var(--ku) * 2); }
+.kh-topl { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 3); color: #b8c0a8; }
+.kh-card { position: relative; width: calc(var(--ku) * 30); height: calc(var(--ku) * 42); border: calc(var(--ku) * 1.4) solid #f4f0dc; box-shadow: 0 0 0 calc(var(--ku) * .8) #000, 0 calc(var(--ku) * 1.5) calc(var(--ku) * 4) rgba(0, 0, 0, .7);
+  display: flex; align-items: center; justify-content: center; color: #fff; background: #333; text-shadow: calc(var(--ku) * .8) calc(var(--ku) * .8) 0 rgba(0, 0, 0, .7); }
+.kh-card.R { background: #cf2c3a; } .kh-card.Y { background: #e6b820; color: #2a1c00; text-shadow: none; } .kh-card.G { background: #2b9b4a; } .kh-card.B { background: #2b69cf; }
+.kh-card.W { background: conic-gradient(#cf2c3a 0 25%, #e6b820 0 50%, #2b9b4a 0 75%, #2b69cf 0); }
+.kh-face { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 9); text-align: center; line-height: 1.2; padding: 0 calc(var(--ku) * 1); overflow-wrap: anywhere; }
+.kh-face.sm { font-size: calc(var(--ku) * 5); }
+.kh-corner { position: absolute; left: calc(var(--ku) * 1.5); top: calc(var(--ku) * 1); font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 3.4); }
+.kh-corner.br { left: auto; top: auto; right: calc(var(--ku) * 1.5); bottom: calc(var(--ku) * 1); transform: rotate(180deg); }
+.kh-col { display: flex; align-items: center; gap: calc(var(--ku) * 2); font-size: calc(var(--ku) * 7); }
+.kh-col b { display: block; width: calc(var(--ku) * 6); height: calc(var(--ku) * 6); border: calc(var(--ku) * 1) solid #fff; box-sizing: border-box; }
+.kh-owed { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 4.4); color: #fff; background: #d6263c; padding: calc(var(--ku) * 1.4) calc(var(--ku) * 3); animation: kh-pulse .5s steps(2) infinite; }
+.kh-dir { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 4); color: #8fd9ff; }
+
+/* wild-card colour picker: four big squares above the hand */
+.kh-pick { position: absolute; left: 50%; top: calc(var(--ku) * 30); transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: calc(var(--ku) * 2);
+  padding: calc(var(--ku) * 3) calc(var(--ku) * 4); background: rgba(6, 9, 6, .95); border: calc(var(--ku) * 1.4) solid #ffd040; pointer-events: auto; }
+.kh-pick.on { display: flex; }
+.kh-pick-t { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 4.4); color: #ffd040; }
+.kh-pick-row { display: flex; gap: calc(var(--ku) * 3); }
+.kh-sw { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(var(--ku) * 1); width: calc(var(--ku) * 22); height: calc(var(--ku) * 18); cursor: pointer; color: #fff; font: inherit;
+  border: calc(var(--ku) * 1.2) solid #000; box-shadow: 0 0 0 calc(var(--ku) * .8) #f4f0dc; text-shadow: calc(var(--ku) * .6) calc(var(--ku) * .6) 0 #000; }
+.kh-sw.R { background: #cf2c3a; } .kh-sw.Y { background: #e6b820; color: #2a1c00; text-shadow: none; } .kh-sw.G { background: #2b9b4a; } .kh-sw.B { background: #2b69cf; }
+.kh-sw.best { box-shadow: 0 0 0 calc(var(--ku) * 1.4) #ffd040, 0 0 calc(var(--ku) * 5) rgba(255, 208, 64, .8); }
+.kh-sw:hover { filter: brightness(1.2); }
+.kh-sw-k { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 5); }
+.kh-sw-n { font-size: calc(var(--ku) * 6); line-height: 1; }
+.kh-pick-s { font-size: calc(var(--ku) * 5.4); color: #b8c0a8; }
+@media (max-width: 760px) { .kh-seats { top: 22%; transform: none; } .kh-top { top: 22%; transform: none; right: calc(var(--ku) * 2); } .kh-card { width: calc(var(--ku) * 20); height: calc(var(--ku) * 28); } }

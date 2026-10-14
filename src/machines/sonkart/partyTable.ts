@@ -4,7 +4,8 @@
  * This table is built to the size the layout code assumes: a 0.46 m felt radius, a rail, and four chairs OUTSIDE the rail.
  *
  *  - `anchors`   LOGICAL seat anchors (0.51 m from the centre, y = felt): hands, piles and lamps are placed from these
- *  - `chairs`    where the chairs / house mannequins actually sit (0.80 m)
+ *  - `chairs`    where the stools / house mannequins actually sit (0.66 m: a stool is 0.19 m wide, so the whole model stays inside
+ *                the 2.6 x 1.8 m footprint and clear of the stand strip; the old 0.80 m chairs stuck out to 1.17 m)
  *  - `seats`     seat defs; the pose is a steep look-down from a little behind the seat, so the whole felt, the cards and the
  *                local hand sit between the HUD strip and the control bar at 16:9 and 4:3, and no chair back is in frame
  *
@@ -19,7 +20,7 @@ import type { LocalAABB } from '@/core/types';
 export const FELT_Y = 0.76;
 export const FELT_R = 0.46;
 export const ANCHOR_R = 0.51;
-const CHAIR_R = 0.80;
+const CHAIR_R = 0.66;
 const CHAIR_H = 0.46;
 const SEAT_DIR: ReadonlyArray<readonly [number, number]> = [[0, 1], [-1, 0], [0, -1], [1, 0]];
 
@@ -51,11 +52,10 @@ export function buildPartyTable(kit: KitX, root: THREE.Object3D, feltCol: number
     out.anchors.push(new THREE.Vector3(dx * ANCHOR_R, FELT_Y, dz * ANCHOR_R));
     const cx = dx * CHAIR_R, cz = dz * CHAIR_R;
     out.chairs.push(new THREE.Vector3(cx, 0, cz));
-    const chair = kit.chair({ h: CHAIR_H, seat: s % 2 ? pal.redDark : pal.red });
-    chair.position.set(cx, 0, cz);
-    chair.rotation.y = Math.atan2(-dx, -dz);                      // faces the table
-    root.add(chair);
-    out.colliders.push({ min: [cx - 0.24, 0, cz - 0.24], max: [cx + 0.24, CHAIR_H + 0.5, cz + 0.24], tag: 'solid' });
+    const stool = kit.stool({ h: CHAIR_H, seat: s % 2 ? pal.redDark : pal.red });   // no backrest: nothing between the camera and the felt
+    stool.position.set(cx, 0, cz);
+    root.add(stool);
+    out.colliders.push({ min: [cx - 0.2, 0, cz - 0.2], max: [cx + 0.2, CHAIR_H + 0.5, cz + 0.2], tag: 'solid' });
     out.seats.push({
       pose: {
         pos: new THREE.Vector3(dx * 0.35, 2.3, dz * 0.35),

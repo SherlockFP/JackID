@@ -17,7 +17,8 @@ export type Colour = 'R' | 'Y' | 'G' | 'B';
 export const COLOURS: readonly Colour[] = ['R', 'Y', 'G', 'B'];
 export const FACES_TWICE: readonly string[] = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'S', 'V', '+2'];
 export const SPECIAL_IDS: readonly string[] = ['W', 'W+4', 'DEBT', 'COLLECTOR', 'CURSE', 'JACKPOT']; // i18n-ok: card ids
-export const HAND0 = 7;
+/** Opening hand: five cards keeps a round near a minute (it was seven). */
+export const HAND0 = 5;
 /** House rake on the pot (share kept by the house before the winner is paid). */
 export const RAKE = 0.05;
 export const MAX_SEATS = 4;
@@ -418,14 +419,32 @@ const CATCH_P = [0.3, 0.7, 0.95];
 export const botCallChance = (level: number): number => CALL_P[Math.max(0, Math.min(2, level - 1))];
 
 /**
+ * The four house mannequins, each with a habit the player can read and exploit. `id` keys the strings (`pr_<id>` tag,
+ * `q_<id>_*` quips); the seat a bot sits in picks the persona (seat 0 Rattle ... seat 3 Madame Wick).
+ *  - rash   Rattle: level 1. Throws wilds and specials early, forgets LAST CARD, slow to catch.
+ *  - hoard  Mrs Gloom: level 2. Sits on her wilds until she is stuck or nearly out, then drops them.
+ *  - grudge Tin Tom: level 2. Aims +2 / +4 / Skip / Debt at the human whenever he can.
+ *  - shark  Madame Wick: level 3. Counts the table: attacks whoever is close to going out, never forgets LAST CARD.
+ */
+export interface Persona { id: 'rash' | 'hoard' | 'grudge' | 'shark'; level: 1 | 2 | 3; wild: number; atk: number; call: number; catchP: number }
+export const PERSONAS: readonly Persona[] = [
+  { id: 'rash', level: 1, wild: 1.9, atk: 0.4, call: 0.45, catchP: 0.3 },
+  { id: 'hoard', level: 2, wild: 0.12, atk: 0.3, call: 0.8, catchP: 0.7 },
+  { id: 'grudge', level: 2, wild: 0.9, atk: 1, call: 0.75, catchP: 0.75 },
+  { id: 'shark', level: 3, wild: 0.6, atk: 0.7, call: 1, catchP: 0.95 },
+];
+export const personaOf = (seat: number): Persona => PERSONAS[((seat % 4) + 4) % 4];
+const isAttack = (id: string): boolean => faceOf(id) === '+2' || faceOf(id) === 'S' || id === 'W+4' || id === 'DEBT' || id === 'CURSE';
+
+/**
  * Bot brain (host only). Level 1 plays at random and forgets to catch often. Level 2 sheds high points and
  * keeps its dominant colour. Level 3 also attacks the player closest to winning and spends Curse / Debt on the
  * wealthiest or the leader.
  */
-export function botDecide(g: Game, seat: number, level: number, rng: Rng, wealthiest: number): Act {
+export function botDecide(g: Game, seat: number, level: number, rng: Rng, wealthiest: number, persona?: Persona, human = -1): Act {
   const lv = Math.max(1, Math.min(3, level));
   if (g.house.lastCard && g.call && !g.call.on && g.call.seat !== seat && !g.over
-    && rng.chance(CATCH_P[lv - 1])) return { k: 'catch' };
+    && rng.chance(persona ? persona.catchP : CATCH_P[lv - 1])) return { k: 'catch' };
   if (g.drawn) {
     if (canPlay(g, seat, g.drawnId) && (lv === 1 ? rng.chance(0.6) : true)) {
       return { k: 'play', id: g.drawnId, col: isWild(g.drawnId) ? bestColour(g, seat, rng) : '' };
@@ -435,7 +454,7 @@ export function botDecide(g: Game, seat: number, level: number, rng: Rng, wealth
   const opts = legal(g, seat);
   if (opts.length === 0) return { k: 'draw' };
   let pick = opts[0];
-  if (lv === 1) pick = rng.pick(opts);
+  if (lv === 1 && !persona) pick = rng.pick(opts);
   else {
     const next = nextIn(g, seat, g.dir, 1);
     const nextLow = g.hands[next].length <= 2;
@@ -453,6 +472,18 @@ export function botDecide(g: Game, seat: number, level: number, rng: Rng, wealth
       else if (id === 'CURSE') s = lv === 3 && wealthiest >= 0 && wealthiest !== seat && g.hands[seat].length > g.hands[wealthiest].length ? 26 : 4;
       else if (id === 'JACKPOT') s = lv === 3 ? 9 : 11;
       if (g.hands[seat].length <= 2 && (isWild(id) || faceOf(id) === '+2' || faceOf(id) === 'S')) s += 6;
+      if (persona) {
+        // habits: wild appetite, and attack cards aimed at the human (Tin Tom), the leader (Madame Wick) or at random (Rattle)
+        if (isWild(id) && g.hands[seat].length > 2) s *= persona.wild;
+        if (isAttack(id)) {
+          const aimedAtHuman = human >= 0 && next === human;
+          if (persona.id === 'grudge') s += aimedAtHuman ? 16 : 3;
+          else if (persona.id === 'shark') s += nextLow ? 14 : g.hands[next].length <= 3 ? 7 : 0;
+          else if (persona.id === 'rash') s += rng.float(0, 8) * persona.atk;
+          else s += persona.atk * 3;
+        }
+        if (persona.id === 'rash' && lv === 1) s += rng.float(0, 10);   // erratic
+      }
       s += rng.float(0, 1.5);
       if (s > bestScore) { bestScore = s; pick = id; }
     }
@@ -467,19 +498,20 @@ export function botDecide(g: Game, seat: number, level: number, rng: Rng, wealth
 export const playHeadless: HeadlessPlay = (rng, bet) => {
   const g = startRound([true, true, true, true], rng, HOUSE_DEFAULT);
   settleTurn(g, rng);
-  const lv = [2, 1, 2, 3];
+  const lv = [2, ...PERSONAS.slice(1).map((p) => p.level)];   // seat 0 is the player (level-2 brain), seats 1-3 the house personas
+  const per = (b: number): Persona | undefined => (b === 0 ? undefined : personaOf(b));
   for (let steps = 0; !g.over && steps < 800; steps++) {
     const win = g.call && !g.call.on ? g.call.seat : -1;
     let acted = false;
     for (let b = 0; win >= 0 && b < 4 && !acted; b++) {
       if (b === win) continue;
-      if (botDecide(g, b, lv[b], rng, -1).k === 'catch') acted = !applyCatch(g, rng, b).err;
+      if (botDecide(g, b, lv[b], rng, -1, per(b)).k === 'catch') acted = !applyCatch(g, rng, b).err;
     }
     if (!acted) {
       const s = g.turn;
-      const d = botDecide(g, s, lv[s], rng, -1);
+      const d = botDecide(g, s, lv[s], rng, -1, per(s), 0);
       let res: Result;
-      if (d.k === 'play') res = applyPlay(g, rng, s, d.id, { col: d.col || undefined, debtUnit: bet, wealthiest: -1, callOn: rng.chance(botCallChance(lv[s])) });
+      if (d.k === 'play') res = applyPlay(g, rng, s, d.id, { col: d.col || undefined, debtUnit: bet, wealthiest: -1, callOn: rng.chance(per(s)?.call ?? botCallChance(lv[s])) });
       else if (d.k === 'pass') res = applyPass(g, s);
       else if (d.k === 'call') res = applyCall(g, s);
       else res = applyDraw(g, rng, s);

@@ -20,7 +20,7 @@ const WORLD_UP = new THREE.Vector3(0, 1, 0);
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
 
-export const FACE_PX = 256;
+export const FACE_PX = 288;
 
 /** Overshoot easing: 0 → 1 with a small lap past 1 that settles back. */
 export function easeOutBack(k: number, s = 1.15): number {

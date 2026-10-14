@@ -124,7 +124,13 @@ export class Router {
     if (slot.locked || m.locked || this.host.isClosed(slot)) return { ok: false, reason: 'locked', seed: 0, occ: 0 };
     if (this.seatOf.has(pid)) return { ok: false, reason: 'seated', seed: 0, occ: 0 };
     if (app.run && !app.run.alive(pid)) return { ok: false, reason: 'ghost', seed: 0, occ: 0 };
-    if (m.seats[seat] !== null) return { ok: false, reason: 'busy', seed: 0, occ: 0 };
+    const cur = m.seats[seat];
+    if (cur !== null) {
+      const ok = isBot(cur) && this.net.isHost && m instanceof TableBase
+        && (m as { canTakeBotSeat?: (s: number, p: PlayerId) => boolean }).canTakeBotSeat?.(seat, pid) === true;
+      if (!ok) return { ok: false, reason: 'busy', seed: 0, occ: 0 };
+      (m as TableBase<any, any, any, any>).removeBot(seat);
+    }
     const occ = (this.occCount.get(mid) ?? 0) + 1;
     this.occCount.set(mid, occ);
     return { ok: true, seed: hashSeed(this.host.runSeed, mid, occ), occ };

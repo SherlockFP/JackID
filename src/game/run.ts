@@ -9,6 +9,7 @@
  * Time: `tick(dt)` advances everything in SIM seconds; call it from the fixed step. Nothing here reads wall time.
  * Indices: `shift.index` / `debt.index` are 0-based; `night()` is the printed 1-based Night number.
  */
+import { isLockedFor, effectiveNight } from './progression';
 import type {
   ActiveRule, BetLimits, BetOpts, BuffsApi, CharmDef, CharmState, CollateralApi, ContractDef, ContractGoal, ContractsApi, ContractState, CurrencyId,
   DebtState, EcoSource, JackpotPool, JackpotsApi, ModBreakdown, ModBreakdownStep, ModEffect, ModHook, ModProvider, ModQuery,
@@ -38,12 +39,13 @@ import {
   type CircuitSave, type CircuitView, type LampCandidate, type LampView, type TiltView,
 } from './circuit';
 import {
-  PAYOUT_GUARD, RESCUE_MAX_PER_NIGHT, STAKE_CONFIRM_SEC, bettingLadder, charmPrice, houseFloatTopUp, night1StakeCap, settlePayout, snapDown,
+  PAYOUT_GUARD, RESCUE_MAX_PER_NIGHT, STAKE_CONFIRM_SEC, bettingLadder, charmPrice, depositFloatFor, houseFloatTopUp, night1StakeCap, settlePayout, snapDown,
   stakeNeedsConfirm, type PayoutResult, type RescueLoan,
 } from './economy';
 import { clearClockHolds, clockHeld, holdClock, releaseClock, tickClockHold } from './clockHold';
-import { createRescue, rescueTerms, type RescueLine } from './rescue';
-import { bestBetFloor, depositRoom, floorFor, pocketDead } from './float';
+import { createRescue, rescueTerms, brokeSteps, type BrokeHelp, type RescueLine } from './rescue';
+import { bankBalance, churnOf, interestBase, interestNext, previewWithdraw, pullsToQualify, withdrawable, type BankInput, type WithdrawPreview } from './bank';
+import { bestBetFloor, depositRoom, pocketDead } from './float';
 import { Charms, PEG_CAP_RUN, allCharmDefs, choiceOffer, charmDef } from './charms/engine';
 import { Pawn, sellRefund, type PawnSnapshot } from './shop';
 import { StampBook, setActiveStampBook, type StampSnapshot } from './stamps';
@@ -93,6 +95,33 @@ export interface RunStakeConfirmEvent {
  * the Night's start, `interest` the interest the Settles added to the deposit (not the deposits), `tickets` the Tickets it earned.
  */
 export interface NightLedger { night: number; float: number; interest: number; tickets: number }
+/** The bank as the Debt Terminal shows it (wave 27). */
+export interface BankView {
+  /** Coins counted toward tonight's quota. */
+  balance: number;
+  /** Part of the balance a WITHDRAW can take. */
+  withdrawable: number;
+  pocket: number;
+  due: number;
+  /** Quota still owed (0 = met). */
+  left: number;
+  /** Live interest per Settle, whole percent. */
+  ratePct: number;
+  /** Interest the next Settle pays on the balance (0 when churned or no rate). */
+  interestNext: number;
+  /** Interest a Settle would pay on a bank of `balance` coins (the terminal's "with this deposit" line). */
+  interestAt(balance: number): number;
+  /** Pulls still to make this Watch for that interest to count (0 = it counts). */
+  pullsToQualify: number;
+  /** Interest is capped at 2 x the quota: the most the bank can earn per Settle. */
+  interestCap: number;
+  /** True while a WITHDRAW is allowed (not in Closing, Settle or Dawn, and not once the Night is paid). */
+  open: boolean;
+  /** Pulls left in this Watch. */
+  pullsLeft: number;
+  /** The cheapest bet on the floor. */
+  minBet: number;
+}
 /** The Collector's rescue loan: the call rang (`'ring'`), the loan was taken (`'taken'`) or the call ended unanswered (`'lapsed'`). */
 export interface RunRescueEvent { pid: PlayerId; state: 'ring' | 'taken' | 'lapsed'; coins: number; quota: number; due: number }
 declare module '@/core/events' {
@@ -228,6 +257,8 @@ export interface RunExt {
   rescue?: { quota: number; used: number };
   /** Deposits made this Watch (the first one keeps the float). Optional: older saves have none. */
   watchDep?: number;
+  /** Bank (wave 27): non-cash quota credit, and this Watch's withdrawn / deposited coins (the churn rule). Optional: older saves have none. */
+  bank?: { granted: number; wd: number; dep: number };
   /** Special rooms (wave 24): Wing Keys, the Manager's Key, the Boiler / locker state and the run's bonus Obols. Optional: older saves have none. */
   wingKeys?: number;
   managerKey?: boolean;
@@ -294,6 +325,17 @@ export interface DebtRun extends RunApi {
   openFloor(): boolean;
   /** Pay the rest of the Night now (SETTLE lever). Needs `deposit ≥ quota`. */
   settleEarly(): boolean;
+  /** The bank in numbers (Debt Terminal DEPOSIT / WITHDRAW / QUOTA screens). */
+  bank(): BankView;
+  /** What `withdraw(amount)` would do, without doing it (what the player gives up). */
+  withdrawPreview(amount: number): WithdrawPreview;
+  /**
+   * WITHDRAW: take up to `amount` coins from the bank back to the pocket (any time before the Watch is settled). Returns the coins
+   * moved (0 = refused). Withdrawn coins stop counting toward the quota and stop earning interest.
+   */
+  withdraw(amount: number): number;
+  /** The broke-start help: the ordered ways out when the pocket cannot cover the cheapest bet (null while the pocket can play). */
+  brokeHelp(): BrokeHelp | null;
   /** Buy +1 pull for 3 Tickets (max +2 per Watch). */
   buyPull(): boolean;
   /** Pawn Window stock keeper (wave 8): stock, locks, rerolls, swap. The charm vendor reads it. */
@@ -526,6 +568,10 @@ class Run implements DebtRun {
   private watchPulls = 0;
   /** Debt Terminal deposits made this Watch: the first one leaves a float in the pocket (see `float.ts`). */
   private watchDeposits = 0;
+  /** Bank (wave 27): quota credit that never was pocket cash (cannot be withdrawn), and this Watch's coin flow for the churn rule. */
+  private bankGranted = 0;
+  private watchWd = 0;
+  private watchDepCoins = 0;
   private boughtThisWatch = 0;
   private freeRerolls = 0;
   private pawnRev = 0;
@@ -671,6 +717,7 @@ class Run implements DebtRun {
         },
         creditQuota: (c) => {
           if (!this.quotaMode || c <= 0) return;
+          this.bankGranted += c;
           this.debtPaid += c;
           this.stats.deposited = (this.stats.deposited ?? 0) + c;
           this.releaseSurplus();
@@ -902,7 +949,7 @@ class Run implements DebtRun {
 
   /** Coins the next Debt Terminal deposit must leave in the pocket: the float on the first deposit of a Watch, else 0. */
   depositFloor(): number {
-    return this.watchDeposits === 0 ? floorFor(this.coins, this.cheapestBet()) : 0;
+    return this.watchDeposits === 0 ? depositFloatFor(this.index, this.coins, this.cheapestBet()) : 0;
   }
 
   /**
@@ -915,8 +962,10 @@ class Run implements DebtRun {
     if (amt <= 0) return false;
     if (!confirmAll && amt > depositRoom(this.coins, this.depositFloor())) return false;
     this.watchDeposits += 1;
+    this.watchDepCoins += amt;
     this.coins -= amt;
     const credit = Math.floor(amt * (1 + this.mod('deposit.bonus', RUN_MACHINE, 0)));
+    this.bankGranted += Math.max(0, credit - amt);
     this.debtPaid += credit;
     this.stats.deposited = (this.stats.deposited ?? 0) + credit;
     this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: -amt, reason: 'deposit' });
@@ -985,7 +1034,7 @@ class Run implements DebtRun {
     return { index: this.index, due: this.quota.due, paid: this.debtPaid, deadlineAt: 0, floor: this.index + 1, total: BASE_RUN_NIGHTS };
   }
   timeLeft(): number { return this.canPlay() || this.phase === 'closing' ? this.clock.remaining : 0; }
-  isLocked(_machineId: MachineId): boolean { return false; }
+  isLocked(machineId: MachineId): boolean { return isLockedFor(machineId, effectiveNight(this.night(), this.nightPaid, this.topside), this.mode, this.seed); }
   alive(_pid?: PlayerId): boolean { return this.living; }
   stat(key: string, add = 0): number {
     const v = (this.counters.get(key) ?? 0) + add;
@@ -1119,6 +1168,7 @@ class Run implements DebtRun {
     this.pullCount = this.pullsMax;
     this.watchPulls = 0;
     this.watchDeposits = 0;
+    this.watchWd = 0; this.watchDepCoins = 0;
     this.shiftState.duration = this.clockLen;
     this.shiftState.lastCallSec = this.lastCallSec;
     this.shiftState.segment = { index: this.watch, count: this.watches };
@@ -1187,6 +1237,88 @@ class Run implements DebtRun {
     this.skipRest = skip;
     this.settleWatch();
     return true;
+  }
+
+  // ── the bank (wave 27): WITHDRAW and the numbers the Debt Terminal shows ─────────────────────────────
+  /** A withdraw is allowed before the Watch is settled: Intermission, Bell, play and Last Call (never Closing, Settle, Dawn, or a paid Night). */
+  private withdrawOpen(): boolean {
+    if (this.ended || !this.quotaMode || this.nightDone || this.topside) return false;
+    return this.phase === 'intermission' || this.phase === 'bell' || this.phase === 'play' || this.phase === 'lastCall';
+  }
+
+  private bankInput(): BankInput {
+    return {
+      debtPaid: this.debtPaid, released: this.released, granted: this.bankGranted, due: this.quota.due, rate: this.liveRate(),
+      watchPulls: this.watchPulls, churn: churnOf(this.watchWd, this.watchDepCoins),
+    };
+  }
+
+  bank(): BankView {
+    const i = this.bankInput();
+    const due = Math.max(0, Math.floor(this.quota.due));
+    return {
+      balance: bankBalance(i),
+      withdrawable: this.withdrawOpen() ? withdrawable(i) : 0,
+      pocket: Math.floor(this.coins),
+      due,
+      left: Math.max(0, due - Math.floor(this.debtPaid)),
+      ratePct: ratePercent(i.rate),
+      interestNext: interestNext(i),
+      interestAt: (balance: number) => interestFor(interestBase(balance, i.churn), due, i.rate),
+      pullsToQualify: this.phase === 'intermission' || this.phase === 'bell' ? pullsToQualify(0) : pullsToQualify(this.watchPulls),
+      interestCap: Math.floor(2 * due * Math.max(0, i.rate)),
+      open: this.withdrawOpen(),
+      pullsLeft: Number.isFinite(this.pullCount) ? this.pullCount : 0,
+      minBet: this.cheapestBet(),
+    };
+  }
+
+  withdrawPreview(amount: number): WithdrawPreview {
+    const i = this.bankInput();
+    return previewWithdraw(this.withdrawOpen() ? i : { ...i, granted: Number.MAX_SAFE_INTEGER }, amount);
+  }
+
+  withdraw(amount: number): number {
+    if (!this.withdrawOpen()) return 0;
+    const amt = Math.min(Math.floor(Number.isFinite(amount) ? amount : 0), withdrawable(this.bankInput()));
+    if (amt <= 0) return 0;
+    // the book is rebuilt from the held balance: the overpay that went back to the pocket is forgotten (see bank.ts)
+    this.debtPaid = bankBalance(this.bankInput()) - amt;
+    this.released = 0;
+    this.watchWd += amt;
+    this.stats.deposited = Math.max(0, (this.stats.deposited ?? 0) - amt);
+    this.coins += amt;
+    this.maxWallet = Math.max(this.maxWallet, this.coins);
+    this.metFired = this.quota.due > 0 && this.debtPaid >= this.quota.due;
+    this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: amt, reason: 'withdraw' });
+    this.syncQuota();
+    this.emit('quota:update', { quota: this.quota });
+    // the Collector's call is only for an empty pocket: once the player can play again, hang up
+    if (this.rescue.active() && !pocketDead(this.coins, this.cheapestBet())) this.rescue.hangUp();
+    this.notify();
+    this.persist();
+    return amt;
+  }
+
+  brokeHelp(): BrokeHelp | null {
+    if (!this.quotaMode || this.ended || this.nightDone) return null;
+    const playing = this.canPlay() && this.pullCount > 0;
+    const between = this.phase === 'intermission' || this.phase === 'bell';
+    if (!playing && !between) return null;
+    const minBet = this.cheapestBet();
+    if (!pocketDead(this.coins, minBet)) return null;
+    const si = Math.max(1, nightDef(this.index).si);
+    const due = this.quota.due;
+    const ringing = this.rescue.active() || this.hotline.phone() !== null;
+    const loan = this.rescuesUsed < RESCUE_MAX_PER_NIGHT && due > 0 ? rescueTerms(due) : null;
+    return {
+      pocket: Math.floor(this.coins), minBet, pullsLeft: between ? nightDef(this.index).pulls : this.pullCount,
+      steps: brokeSteps({
+        bank: this.withdrawOpen() ? withdrawable(this.bankInput()) : 0,
+        tickets: this.tickets, ticketCoins: 5 * si,
+        phoneRinging: ringing, loan: loan ?? undefined,
+      }),
+    };
   }
 
   buyPull(): boolean {
@@ -1273,8 +1405,10 @@ class Run implements DebtRun {
       const rate = this.liveRate();
       const active = !overtime && this.watchPulls >= ACTIVITY_MIN_PULLS;
       if (active && rate > 0) {
-        let interest = interestFor(this.debtPaid, this.quota.due, rate);
-        if (lastWatch && this.charmBox.has(pid, 'seven_floor_key')) interest += interestFor(this.debtPaid + interest, this.quota.due, rate);
+        // coins that left the bank and came back this same Watch earn nothing (the churn rule, bank.ts)
+        const base = interestBase(this.debtPaid, churnOf(this.watchWd, this.watchDepCoins));
+        let interest = interestFor(base, this.quota.due, rate);
+        if (lastWatch && this.charmBox.has(pid, 'seven_floor_key')) interest += interestFor(base + interest, this.quota.due, rate);
         if (interest > 0) {
           this.debtPaid += interest;
           this.stats.interest = (this.stats.interest ?? 0) + interest;
@@ -1351,6 +1485,7 @@ class Run implements DebtRun {
     const surplus = Math.max(0, this.debtPaid - due - this.released);
     this.debtPaid = 0;
     this.released = 0;
+    this.bankGranted = 0;
     if (surplus > 0) this.earn('coin', surplus, 'dawn:surplus');
     this.stats.nightsPaid = (this.stats.nightsPaid ?? 0) + 1;
     this.syncQuota();
@@ -1958,6 +2093,7 @@ class Run implements DebtRun {
     const got = applyKit(this, kit, this.selfId);
     if (got && got.predeposit > 0) {
       this.debtPaid += got.predeposit;
+      this.bankGranted += got.predeposit;
       this.stats.deposited = (this.stats.deposited ?? 0) + got.predeposit;
     }
     this.syncQuota();
@@ -2314,6 +2450,7 @@ class Run implements DebtRun {
       hotline: this.hotline.snapshot(),
       rescue: { quota: this.loanQuota, used: this.rescuesUsed },
       watchDep: this.watchDeposits,
+      bank: { granted: this.bankGranted, wd: this.watchWd, dep: this.watchDepCoins },
       wingKeys: this.wingKeys, managerKey: this.managerKey, rooms: { ...this.rooms, lockers: [...this.rooms.lockers] }, bonusObols: this.currencies.get('obol') ?? 0,
       soulMarks: this.soulMarkCount, markEscrow: this.markEscrow, bossDuel: this.bossDuelNight, pledged: [...this.pledged],
       ...(this.endingPathId ? { endingPath: this.endingPathId } : {}),
@@ -2573,6 +2710,8 @@ class Run implements DebtRun {
     this.hotline.restore(e.hotline);
     this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);
     this.watchDeposits = Math.max(0, e.watchDep ?? 0);
+    this.bankGranted = Math.max(0, Math.floor(e.bank?.granted ?? 0));
+    this.watchWd = Math.max(0, Math.floor(e.bank?.wd ?? 0)); this.watchDepCoins = Math.max(0, Math.floor(e.bank?.dep ?? 0));
     this.wingKeys = Math.max(0, Math.floor(e.wingKeys ?? 0)); this.managerKey = e.managerKey === true;
     this.rooms = restoreRooms(e.rooms);
     if ((e.bonusObols ?? 0) > 0) this.currencies.set('obol', e.bonusObols ?? 0);

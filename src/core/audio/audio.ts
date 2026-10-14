@@ -8,7 +8,7 @@
  * Pieces: voice pool (32, steal lowest priority then oldest) · recipes (`sfx.ts`) run on a per-voice {@link Kit} ·
  * loops are scheduled chunk-by-chunk with lookahead · pitch/slow-motion reach live voices through one
  * ConstantSource per voice wired into every `detune` · ducking is a set of holds per bus · ambience beds crossfade ·
- * `voice.speak` runs the formant babble through a voice (`synth.ts`) · Kenney samples are decoded once into
+ * `voice.speak` and `blip` play typewriter blips in each speaker's voice (`blip.ts`) · Kenney samples are decoded once into
  * `sampleStore` · the adaptive score is plugged in from `music.ts` when that file exists (see {@link MusicHost}).
  *
  * Extras for tooling: `renderSfx` / `renderSpeech` (OfflineAudioContext renders for loudness checks) and `sfxNames`.
@@ -16,7 +16,7 @@
 import type * as THREE from 'three';
 import type {
   AmbienceId, AudioEngine, BeatEvent, Bus, JukeboxTrack, MusicApi, MusicStateId, PlayOpts, SfxRecipe, SfxRegisterMeta, SpeakOpts,
-  Voice, VoiceApi,
+  Voice, VoiceApi, VoiceSpeaker,
 } from './types';
 import type { Unsub } from '../types';
 import type { WinTier } from '@/game/types';
@@ -24,12 +24,13 @@ import { log } from '../log';
 import { clamp, smoothstep } from '../math';
 import { createRng, randomSeed } from '../rng';
 import {
-  Kit, arng, createNoiseBank, makeImpulse, makeSpringImpulse, planBabble, profileFor, renderBabble, rnd, sampleStore,
+  Kit, arng, createNoiseBank, makeImpulse, makeSpringImpulse, rnd, sampleStore,
   type KitHost, type NoiseBank,
 } from './synth';
 import {
   SAMPLE_URLS, SFX_DEFS, buildAmbience, coinCascade, winSfx, type AmbBed, type SfxDef,
 } from './sfx';
+import { blipVoiceFor, charEvent, planBlips, renderBlips, scheduleBlip } from './blip';
 
 const MAX_VOICES = 32;
 const BUSES: readonly Bus[] = ['sfx', 'ui', 'music', 'amb', 'voice'];
@@ -79,7 +80,7 @@ function createSilentAudio(): AudioEngine {
   return {
     ctx: null as unknown as AudioContext, resume: () => Promise.resolve(), setVolume() {}, play: () => null, register() {},
     winJingle() {}, coins() {}, ambience() {}, music: createFallbackMusic(), voice: { speak: () => Promise.resolve(), stop() {}, speaking: false },
-    setListener() {}, voices: 0, loadSamples: () => Promise.resolve(), setMuffle() {}, setTimeScale() {}, duck() {},
+    setListener() {}, voices: 0, loadSamples: () => Promise.resolve(), setMuffle() {}, setTimeScale() {}, duck() {}, blip() {},
   };
 }
 
@@ -412,32 +413,39 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
     }
   }
 
-  // ── speech ──
+  // ── speech: typewriter blips in the speaker's own voice (no spoken words) ──
   function speak(o: SpeakOpts): Promise<void> {
-    const speaker = o.speaker ?? 'house', prof = profileFor(speaker), mood = o.mood ?? 'calm';
-    const plan = planBabble(o.text, prof, { mood, pitch: o.pitch, rng: createRng(o.seed ?? randomSeed()) });
-    if (ctx.state !== 'running') return new Promise((r) => window.setTimeout(r, plan.duration * 1000));   // keep pacing while muted
+    const speaker = o.speaker ?? 'house', bv = blipVoiceFor(speaker), mood = o.mood ?? 'calm';
+    const plan = planBlips(o.text, bv, { mood, pitch: o.pitch, rng: createRng(o.seed ?? randomSeed()) });
+    const pace = (): Promise<void> => new Promise((r) => window.setTimeout(r, plan.duration * 1000));
+    if (ctx.state !== 'running') return pace();                                   // keep pacing while muted
     const diegetic = !!o.pos;
-    if (!diegetic) for (const u of utterances) if (!u.panner) u.stop(0.08);                                  // one PA channel
+    if (!diegetic) for (const u of utterances) if (!u.panner) u.stop(0.08);      // one line at a time on the non-positional channel
     const v = openVoice(`speak:${speaker}`, 'voice', 9, 1, 1, { pos: o.pos }, true);
-    if (!v) return new Promise((r) => window.setTimeout(r, plan.duration * 1000));
+    if (!v) return pace();
     const t0 = ctx.currentTime + 0.02;
-    const ducking = o.duck !== false;                                                                       // opt-out: plays over the score
-    const hm = ducking ? addHold('music', mood === 'whisper' ? 0.25 : 0.5, Infinity) : null;
-    const ha = ducking ? addHold('amb', 0.3, Infinity) : null;
-    v.addSend(springIn, prof.spring * (diegetic ? 0.5 : 1));
-    renderBabble(v, v.gain, plan, prof, { t0, mood, distort: o.distort });
+    const ducking = o.duck !== false;                                              // opt-out: plays over the score
+    const hm = ducking ? addHold('music', mood === 'whisper' ? 0.2 : 0.35, Infinity) : null;
+    renderBlips(v, v.gain, plan, bv, t0);
     v.deadline = t0 + plan.duration + 3; v.seal();
     utterances.add(v);
-    if (speaker === 'house' && !diegetic) play('paClick');
     return new Promise<void>((resolve) => {
       v.onFinish = () => {
         utterances.delete(v);
         if (hm) releaseHold('music', hm);
-        if (ha) releaseHold('amb', ha);
         resolve();
       };
     });
+  }
+  /** One typewriter blip for a typed character (dialogue box). Silent for non-letters; at most 14 per 100 ms. */
+  function blip(speaker: VoiceSpeaker, ch: string, o: { pos?: THREE.Object3D; vol?: number } = {}): void {
+    if (ctx.state !== 'running') return;
+    const bv = blipVoiceFor(speaker), e = charEvent(bv, ch), now = ctx.currentTime;
+    if (!e || !allow('blip', 14, now)) return;
+    const v = openVoice(`blip:${speaker}`, 'voice', 4, 1, 1, o.pos ? { pos: o.pos } : {}, false);
+    if (!v) return;
+    scheduleBlip(v, v.gain, now + 0.005, bv, { semis: e.semis, vowel: e.vowel, vol: clamp(o.vol ?? 1, 0, 2) });
+    v.deadline = now + 1; v.seal();
   }
   const voice: VoiceApi = {
     speak,
@@ -494,6 +502,7 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
       tsCents = 1200 * Math.log2(clamp(k, 0.25, 2));
       for (const v of active) if (v.bus !== 'music') v.applyRate(ramp);
     },
+    blip,
     duck(bus, amount, dur) { if (holds[bus]) addHold(bus, amount, dur); },
   };
 
@@ -542,12 +551,12 @@ export async function renderSfx(name: string, o: PlayOpts & { seconds?: number; 
   return off.startRendering();
 }
 
-/** Render a babble utterance offline (deterministic for a given `seed`). */
+/** Render a line of blips offline (deterministic for a given `seed`). Used for loudness checks and the sound tests. */
 export async function renderSpeech(o: SpeakOpts & { sampleRate?: number }): Promise<AudioBuffer> {
-  const sr = o.sampleRate ?? 44100, prof = profileFor(o.speaker ?? 'house');
-  const plan = planBabble(o.text, prof, { mood: o.mood, pitch: o.pitch, rng: createRng(o.seed ?? 1) });
+  const sr = o.sampleRate ?? 44100, bv = blipVoiceFor(o.speaker ?? 'house');
+  const plan = planBlips(o.text, bv, { mood: o.mood, pitch: o.pitch, rng: createRng(o.seed ?? 1) });
   const off = new OfflineAudioContext(2, Math.ceil(sr * (plan.duration + 0.5)), sr);
   const host: KitHost = { ctx: off, noise: bankFor(sr), pitch: null, sample: () => null, track() {} };
-  renderBabble(host, off.destination, plan, prof, { t0: 0, mood: o.mood, distort: o.distort });
+  renderBlips(host, off.destination, plan, bv, 0);
   return off.startRendering();
 }

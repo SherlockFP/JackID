@@ -119,6 +119,14 @@ export function drawIcon(ctx: CanvasRenderingContext2D, kind: string, cx: number
       }
       break;
     }
+    case 'foundations': {
+      // three stacked slabs and a pillar: the tree's trunk
+      ctx.fillRect(cx - r * 0.95, cy + r * 0.55, r * 1.9, r * 0.38);
+      ctx.fillRect(cx - r * 0.65, cy + r * 0.08, r * 1.3, r * 0.38);
+      ctx.fillRect(cx - r * 0.35, cy - r * 0.38, r * 0.7, r * 0.38);
+      ctx.beginPath(); ctx.moveTo(cx, cy - r * 0.98); ctx.lineTo(cx + r * 0.3, cy - r * 0.5); ctx.lineTo(cx - r * 0.3, cy - r * 0.5); ctx.closePath(); ctx.fill();
+      break;
+    }
     case 'credits': {
       ctx.beginPath(); ctx.arc(cx, cy - r * 0.6, r * 0.2, 0, Math.PI * 2); ctx.fill();
       ctx.fillRect(cx - r * 0.2, cy - r * 0.2, r * 0.4, r * 1.2);
@@ -139,18 +147,39 @@ export function drawIcon(ctx: CanvasRenderingContext2D, kind: string, cx: number
   ctx.restore();
 }
 
-/** One die face: red enamel (or teal for the settings die), gold frame, icon and label. */
+/** One die face: red enamel (or teal for the settings die), gold frame, icon and a BIG label (two lines for two words). */
 export function paintDieFace(ctx: CanvasRenderingContext2D, w: number, h: number, o: { label: string; icon: string; lit: boolean; dark?: boolean }): void {
   const g = ctx.createLinearGradient(0, 0, 0, h);
   if (o.dark) { g.addColorStop(0, '#0d2a30'); g.addColorStop(1, '#04100f'); }
-  else { g.addColorStop(0, o.lit ? '#9c1a2c' : '#6a0c1c'); g.addColorStop(1, '#1c0609'); }
+  else { g.addColorStop(0, o.lit ? '#a81d30' : '#780e20'); g.addColorStop(1, '#1c0609'); }
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = 'rgba(255,220,140,0.06)';
-  for (let y = 10; y < h; y += 16) for (let x = (y / 16) % 2 ? 8 : 16; x < w; x += 16) ctx.fillRect(x, y, 2, 2);
+  for (let y = 10; y < h; y += 16) for (let x = (y / 16) % 2 ? 8 : 16; x < w; x += 16) ctx.fillRect(x, y, 3, 3);
   frame(ctx, w, h, o.lit ? GOLD_HI : GOLD, w / 16);
-  drawIcon(ctx, o.icon, w / 2, h * 0.38, w * 0.17, o.lit ? GOLD_HI : (o.dark ? '#5fd6c0' : CRIMSON));
-  fitText(ctx, o.label, w / 2, h * 0.78, w * 0.84, w * 0.085, o.lit ? GOLD_HI : '#f2d9a0');
+  const words = o.label.split(' ');
+  const two = words.length === 2 && o.label.length > 7;
+  drawIcon(ctx, o.icon, w / 2, h * (two ? 0.27 : 0.31), w * 0.12, o.lit ? GOLD_HI : (o.dark ? '#5fd6c0' : '#e8485c'));
+  const col = o.lit ? GOLD_HI : '#fff0c8';
+  if (two) { bigLabel(ctx, words[0], w / 2, h * 0.55, w * 0.62, w * 0.23, col); bigLabel(ctx, words[1], w / 2, h * 0.74, w * 0.62, w * 0.23, col); }
+  else bigLabel(ctx, o.label, w / 2, h * 0.7, w * 0.62, w * 0.3, col);
+}
+
+/** A die-face label in the tall pixel font, as large as fits `maxW`, with a drop shadow and a faux-bold double strike. */
+function bigLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, maxPx: number, color: string): void {
+  let px = Math.round(maxPx);
+  for (; px > 10; px -= 2) {
+    ctx.font = `${px}px ${BODY}`;
+    if (ctx.measureText(text).width <= maxW) break;
+  }
+  ctx.font = `${px}px ${BODY}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
+  ctx.fillText(text, x + 3, y + 3);
+  ctx.fillStyle = color;
+  ctx.fillText(text, x, y);
+  ctx.fillText(text, x + 1.5, y);
 }
 
 /** Settings face: category on top, live value in the middle, < > hint below. */

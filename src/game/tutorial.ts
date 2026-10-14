@@ -8,6 +8,9 @@
  * tutorial finishes, is skipped (hold Esc for about a second) or the run leaves Night 1. A run that ends or is quit mid-way
  * keeps the flag unset, so the next first run shows it again.
  *
+ * Wave 27: `startTutorial` also owns the BROKE PROMPT (`brokePrompt.ts`): on every fresh Night 1, tutorial done or not, a big centre card lists
+ * the ways out of an empty pocket (bank WITHDRAW, the phone, the cashier, the House loan). It rides this object so the session needs no change.
+ *
  * Started by `ingame/session.ts` (`startTutorial`), driven from its frame, disposed with the session. Seeded rng not used.
  */
 import * as THREE from 'three';
@@ -21,6 +24,7 @@ import type { DebtRun } from '@/game/run';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { holdClock, releaseClock } from '@/game/clockHold';
 import { TILT_FREE_PULLS } from '@/game/data/schedule';
+import { createBrokePrompt } from '@/game/brokePrompt';
 
 export interface TutorialHost {
   readonly world: WorldHost;
@@ -78,10 +82,22 @@ function keyLabel(key: string): string {
 }
 
 /**
- * Start the tutorial for a new Night 1 run. Returns null when it is not needed (already done, or not on Night 1).
- * Machines are looked up lazily, so this may be called before the world has finished building.
+ * Start the Night 1 helpers for a new run: the first-run tutorial (when it is not done yet) and the broke prompt (every run).
+ * Returns null only when the run is not on Night 1. Machines are looked up lazily, so this may be called before the world is built.
  */
 export function startTutorial(host: TutorialHost): Tutorial | null {
+  if (host.run.night() !== 1) return null;
+  const broke = createBrokePrompt(host.run);
+  const steps = startSteps(host);
+  if (!steps) return broke;
+  return {
+    update(dt: number): void { steps.update(dt); broke.update(dt); },
+    dispose(): void { steps.dispose(); broke.dispose(); },
+  };
+}
+
+/** The first-run tutorial steps. Null when already done, or not on Night 1. */
+function startSteps(host: TutorialHost): Tutorial | null {
   const { world, run } = host;
   if (tutorialDone() || run.night() !== 1) return null;
   const self = run.selfId;

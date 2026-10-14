@@ -54,6 +54,11 @@
 //   banker    the same play, but deposits --banker-frac 0.8 of the pocket above the float at every Bell
 //   stamper   the camper (half the pocket on the Big One, no charms) that also shops the Stamp board at every Bell: points per coin,
 //             within the Pawn's budget rule. Opt-in (--bots stamper); the default table is unchanged.
+//   careful   a NEW player who read the tutorial (wave 27, bank-econ): deposits --careful-dep 0.5 of the pocket at the first Bell, plays 2-3 coin
+//             stakes on the machines it can afford, pays the gap at the last Bell. When the pocket cannot cover the cheapest bet with pulls left it
+//             follows the broke prompt in order: WITHDRAW from the bank, sell Tickets at the cashier, the House loan. --no-withdraw / --no-tickets
+//             switch the first two off (the old game). Prints the NIGHT 1 BROKE-START REPORT (stuck rate, how it recovers, pocket at Mola).
+//   newbie    the same, but it deposits everything the float allows at the first Bell (--newbie-dep 1): the "money ran out" player.
 //   human     a casual player (wave 19): stakes a random 2-5 coins a pull (the ladder step at or below it), rotates machine every
 //             3-5 pulls, goes for the Hot Lamp ~60 % of the time it rotates (--human-hot-p 0.6), deposits a random 30-70 % slice of
 //             the pocket at ~80 % of the Bells and pays the gap only on the last Watch. Banks once the quota is covered.
@@ -77,6 +82,7 @@ const NO_CHARMS = args.includes('--no-charms');
 const CAMPER_FRAC = Number(argVal('--camper-frac', 0.5));
 const SPEND_FRAC = Number(argVal('--spend-frac', 0.7));
 const FLOAT = Number(argVal('--float', 9));
+const FLT = await load('src/game/float.ts');
 const BANKER_FRAC = Number(argVal('--banker-frac', 0.8));
 const DEP_FRAC = Number(argVal('--dep-frac', 1));
 const DEP_MARGIN = Number(argVal('--dep-margin', 1.3));
@@ -97,6 +103,16 @@ const FLOAT_POCKET = Number(argVal("--float-pocket", 0.3));
 const RESERVE_FRAC = Number(argVal('--reserve-frac', 0.35));
 const JSON_OUT = argVal('--json', '');
 const SEED = Number(argVal('--seed', 20261013)) | 0;
+const CAREFUL_DEP = Number(argVal('--careful-dep', 0.5));          // share of the pocket the careful new player deposits at the first Bell
+const NEWBIE_DEP = Number(argVal('--newbie-dep', 1));              // ... and the newbie (everything the float allows)
+const CAREFUL_STAKE_LO = Number(argVal('--careful-stake-lo', 2));  // a new player's stake: 2-3 coins
+const CAREFUL_STAKE_HI = Number(argVal('--careful-stake-hi', 3));
+const NO_WITHDRAW = args.includes('--no-withdraw');                // the old game: no bank WITHDRAW
+const NO_TICKETS = args.includes('--no-tickets');                  // the bot never sells Tickets at the cashier
+const humanLike = (bot) => bot === 'human' || bot === 'careful' || bot === 'newbie';
+const newbieLike = (bot) => bot === 'careful' || bot === 'newbie';
+/** Night 1 broke-start counters (careful / newbie only). */
+const N1 = { stuckRuns: 0, stuckEvents: 0, byWithdraw: 0, byTickets: 0, byLoan: 0, mola: [], molaAfford: 0, molaN: 0, dawn: [], paid: 0 };
 const VERBOSE = args.includes('--verbose');
 const BRIEF = args.includes('--brief');
 const TRACE = Number(argVal('--trace', 0)) | 0;
@@ -395,6 +411,8 @@ function playRun(bot, runIdx) {
   S.pawn = new SHOP.Pawn(makeHost(S, RNG.createRng(RNG.hashSeed('simpawn', SEED, runIdx))));
   S.book = stampsOn(bot) ? new STAMPS.StampBook(stampHost(S, RNG.createRng(RNG.hashSeed('simstamps', SEED, runIdx)))) : null;
   let loanedRun = false;
+  let stuckRun = false;
+  let stuckW = false;
   const hum = { rng: RNG.createRng(RNG.hashSeed('simhuman', SEED, runIdx)), cur: null, dwell: 0 };
 
   for (let idx = 0; idx < SCH.BASE_RUN_NIGHTS; idx++) {
@@ -405,11 +423,23 @@ function playRun(bot, runIdx) {
     S.cs.snow = 0; S.cs.wicks = 0;
 
     for (let w = 0; w < nd.watches; w++) {
+      stuckW = false;
       S.shopNight = idx; S.shopWatch = w;
       // Deposits at the Bell: interest only works on what is already in the Debt Terminal. The rotator deposits what compounds
       // to the gap by the last settle (the HUD shows the pace); the banker deposits as much as it can. Shopping comes after.
       let fx0 = runFx(S);
-      if (bot === 'human') {
+      if (newbieLike(bot)) {
+        const rem = Math.max(0, due - S.debt);
+        const last = nd.watches - w === 1;
+        let dep = 0;
+        if (last) dep = rem;
+        else if (w === 0 && idx === 0) dep = Math.floor(S.pocket * (bot === 'newbie' ? NEWBIE_DEP : CAREFUL_DEP));
+        else if (S.debt * Math.pow(1 + SCH.interestRate(nd.interest, fx0.interestAdd), nd.watches - w) < due) dep = Math.floor(S.pocket * 0.5);
+        // the first deposit of a Watch keeps the float (src/game/float.ts): the smaller of 30 % of the pocket and 2 cheapest bets
+        const floor = ECO.depositFloatFor ? ECO.depositFloatFor(idx, S.pocket, 1) : FLT.floorFor(S.pocket, 1);
+        dep = Math.min(dep, S.pocket - (last && rem <= S.pocket ? 0 : floor));
+        if (dep > 0) { S.pocket -= dep; S.debt += Math.floor(dep * (1 + fx0.depositBonus)); }
+      } else if (bot === 'human') {
         const rem = Math.max(0, due - S.debt);
         let dep = nd.watches - w === 1 ? rem : hum.rng.next() < HUMAN_DEP_P ? Math.floor(S.pocket * (HUMAN_DEP_LO + (HUMAN_DEP_HI - HUMAN_DEP_LO) * hum.rng.next())) : 0;
         dep = Math.min(dep, S.pocket);
@@ -444,7 +474,7 @@ function playRun(bot, runIdx) {
         let pick;
         if (isCamp(bot)) {
           pick = world[0];
-        } else if (bot === 'human') {
+        } else if (humanLike(bot)) {
           const openH = (x) => defs[x.machineId].minBet <= Math.max(1, S.pocket / 3);
           if (hum.dwell <= 0 || !hum.cur || !openH(hum.cur)) {
             const hot = world.find((x) => circ.isHot(x.mid) && openH(x));
@@ -482,13 +512,26 @@ function playRun(bot, runIdx) {
         if (banked && watchPulls >= SCH.ACTIVITY_MIN_PULLS) break;
         // Rescue: pocket empty, quota unmet, Watches left -> the Collector's loan (+N coins now, quota +1.5N). The bots only take it
         // when the deposit's interest alone will not reach the quota.
+        if (idx === 0 && newbieLike(bot) && S.pocket < lim.min) {
+          // the broke prompt, in its order: bank WITHDRAW, the cashier (sell Tickets), then the House loan below
+          if (!stuckW) { N1.stuckEvents += 1; stuckW = true; if (!stuckRun) { stuckRun = true; N1.stuckRuns += 1; } }
+          const need = Math.max(lim.min, pulls * 2 * lim.min);
+          if (!NO_WITHDRAW && S.debt > 0) {
+            const take = Math.min(S.debt, need);
+            S.debt -= take; S.pocket += take; N1.byWithdraw += 1;
+          } else if (!NO_TICKETS && S.tickets > 0) {
+            S.pocket += S.tickets * 5 * nd.si; S.tickets = 0; N1.byTickets += 1;
+          }
+        }
         const projected = S.debt * Math.pow(1 + Math.max(0, rate), nd.watches - w);
         if (S.pocket < lim.min && projected < due && S.debt < due && loans < (ECO.RESCUE_MAX_PER_NIGHT ?? 3) && RESC.rescueTerms) {
           const loan = RESC.rescueTerms(due);
           S.pocket += loan.coins; due += loan.quota; loans += 1; TOT.loans += 1; loanedRun = true;
+          if (idx === 0 && stuckW) N1.byLoan += 1;
         }
         const bet = banked ? (lim.min <= S.pocket ? lim.min : 0)
           : bot === 'human' ? stakeAt(lim, HUMAN_STAKE_LO + hum.rng.int(0, HUMAN_STAKE_HI - HUMAN_STAKE_LO), S.pocket)
+          : newbieLike(bot) ? stakeAt(lim, CAREFUL_STAKE_LO + hum.rng.int(0, CAREFUL_STAKE_HI - CAREFUL_STAKE_LO), S.pocket)
           : stakeFor(bot, lim, S.pocket);
         if (bet <= 0) break;
         // Activity float: after the 3 pulls interest needs, never bet into the coins the next Watches' 3 pulls each need.
@@ -528,13 +571,20 @@ function playRun(bot, runIdx) {
         }
       }
 
-      if (!isCamp(bot) && (bot !== 'human' || w === nd.watches - 1)) {
+      if (!isCamp(bot) && (!humanLike(bot) || w === nd.watches - 1)) {
         const need = due - S.debt;
         if (need > 0 && S.pocket >= need) { S.pocket -= need; S.debt += Math.floor(need * (1 + fx0.depositBonus)); }
       }
 
       if (watchPulls >= SCH.ACTIVITY_MIN_PULLS && rate > 0) S.debt += SCH.interestFor(S.debt, due, rate);
       if (TRACE && runIdx < TRACE && idx < 2) console.log(`   N${nd.no} W${w + 1} end: pulls ${watchPulls} debt ${S.debt} pocket ${S.pocket}`);
+      if (idx === 0 && w === 0 && newbieLike(bot)) {
+        // Mola after the first Watch: the surplus above the quota (if the interest met it) goes back to the pocket at once
+        const pocketNow = S.pocket + Math.max(0, S.debt - due);
+        N1.mola.push(pocketNow);
+        const prices = S.pawn.stock(1).filter((x) => x && x.price > 0).map((x) => x.price);
+        N1.molaN += 1; if (prices.length && Math.min(...prices) <= pocketNow) N1.molaAfford += 1;
+      }
       if (S.debt >= due * 0.25) S.cs.snow = Math.min(3, S.cs.snow + 1);
       S.cs.rungs = S.cs.rungs; // rungs persist across Watches (data bag), tilt does not
     }
@@ -555,6 +605,7 @@ function playRun(bot, runIdx) {
     S.nightsPaid += 1;
     out.paid.push(nd.no);
     out.pocket.push(S.pocket);
+    if (idx === 0 && newbieLike(bot)) { N1.paid += 1; N1.dawn.push(S.pocket); }
     CHARM_COUNT.sum[idx] += S.held.length; CHARM_COUNT.n[idx] += 1;
     // Start of the next Night (openFloor): the House float tops the pocket up to F(n), free and not in the quota.
     if (idx + 1 < SCH.BASE_RUN_NIGHTS && !NO_FLOAT) { const top = ECO.houseFloatTopUp(S.pocket, idx + 1); S.pocket += top; FLOAT_PAID[idx + 1] += top; }
@@ -573,6 +624,7 @@ const median = (xs) => {
   const m = s.length >> 1;
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 };
+const quant = (xs, q) => { if (!xs.length) return 0; const a = [...xs].sort((x, y) => x - y); return a[Math.min(a.length - 1, Math.floor(q * a.length))]; };
 const fmtCoins = (x) => (x >= 1e6 ? `${(x / 1e6).toPrecision(3)}M` : x >= 1e4 ? `${(x / 1e3).toPrecision(3)}k` : `${Math.round(x)}`);
 
 // --calibrate: sets each Night's base quota, in order, so that the first bot's conditional pay rate on that Night hits the
@@ -700,6 +752,7 @@ for (const bot of BOTS) {
   CHARM_COUNT.sum.fill(0); CHARM_COUNT.n.fill(0); BOUGHT.clear(); FLOAT_PAID.fill(0);
   const reached = new Array(SCH.BASE_RUN_NIGHTS).fill(0);
   const pockets = Array.from({ length: SCH.BASE_RUN_NIGHTS }, () => []);
+  Object.assign(N1, { stuckRuns: 0, stuckEvents: 0, byWithdraw: 0, byTickets: 0, byLoan: 0, molaAfford: 0, molaN: 0, paid: 0 }); N1.mola.length = 0; N1.dawn.length = 0;
   for (let r = 0; r < RUNS; r++) {
     const res = playRun(bot, r);
     res.paid.forEach((no, k) => { reached[no - 1]++; pockets[no - 1].push(res.pocket[k]); });
@@ -722,6 +775,14 @@ for (const bot of BOTS) {
   console.log('Night  quota     reach%  cond%   median pocket (runs that paid)   realized RTP   charms held');
   for (const row of rows) {
     console.log(`N${String(row.night).padEnd(4)} ${fmtCoins(row.quota).padEnd(9)} ${String(row.reachPct).padStart(6)}  ${String(row.condPct).padStart(6)}   ${fmtCoins(row.medianPocket).padEnd(30)} ${String(row.nightRtp).padEnd(14)} ${row.charms}`);
+  }
+  if (newbieLike(bot)) {
+    const pc = (x) => (100 * x / Math.max(1, RUNS)).toFixed(1);
+    console.log(`NIGHT 1 BROKE-START REPORT (${bot}, deposits ${bot === 'newbie' ? NEWBIE_DEP * 100 : CAREFUL_DEP * 100} % at the first Bell, withdraw ${NO_WITHDRAW ? 'OFF' : 'on'}, tickets ${NO_TICKETS ? 'OFF' : 'on'})`);
+    console.log(`  runs that hit an empty pocket on Night 1: ${pc(N1.stuckRuns)} %   stuck Watches/run ${(N1.stuckEvents / RUNS).toFixed(2)}`);
+    console.log(`  how they got out (events/run): bank withdraw ${(N1.byWithdraw / RUNS).toFixed(2)}  sell Tickets ${(N1.byTickets / RUNS).toFixed(2)}  House loan ${(N1.byLoan / RUNS).toFixed(2)}`);
+    console.log(`  pocket at Mola after Watch 1: p25 ${Math.round(quant(N1.mola, 0.25))} median ${Math.round(median(N1.mola))} p75 ${Math.round(quant(N1.mola, 0.75))} coins, can afford the cheapest Pawn charm ${(100 * N1.molaAfford / Math.max(1, N1.molaN)).toFixed(1)} %`);
+    console.log(`  Night 1 paid ${pc(N1.paid)} %, pocket at Dawn (paid runs): median ${Math.round(median(N1.dawn))}`);
   }
   if (VERBOSE && BOUGHT.size) console.log('bought:', [...BOUGHT.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${v}`).join(' '));
 }

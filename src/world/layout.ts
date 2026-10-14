@@ -11,7 +11,7 @@
  * Wall-mounted devices (bounty board, pawn window, desk, cashier) use `y` = mount height; `pos[1]` stays 0 (DECISIONS C25).
  * Wall-mounted items have no size class in GDD §8.5, so they take M or L by footprint (director to confirm).
  */
-import type { GameMode, Hex, InstanceId, MachineId, SlotSize, ZoneId } from '@/core/types';
+import type { GameMode, Hex, InstanceId, MachineId, SlotSize, V3, ZoneId } from '@/core/types';
 import { SLOT_SIZES } from '@/core/types';
 import { createRng, hashSeed, type Rng } from '@/core/rng';
 import type { SlotDef } from './types';
@@ -47,6 +47,11 @@ export const SLOTS: SlotDef[] = [
   S('WELL-11', 'well', 'M', 10.35, -5.0, 270),
   S('WELL-12', 'well', 'M', 10.35, -2.5, 270),
   S('WELL-13', 'well', 'S', 10.45, 0.5, 270),
+  // Wave 27 (progressive floor): the starter bank hugs the dais, a few steps from the spawn arc
+  S('FLR-01', 'well', 'M', -5.6, -6.0, 90),
+  S('FLR-02', 'well', 'S', -5.5, -3.3, 90),
+  S('FLR-03', 'well', 'M', 5.6, -6.0, 270),
+  S('FLR-04', 'well', 'S', 5.5, -3.3, 270),
   // The Lobby
   S('LOB-01', 'lobby', 'M', -10.35, 9.0, 90),
   S('LOB-02', 'lobby', 'M', -10.35, 11.5, 90),
@@ -58,6 +63,10 @@ export const SLOTS: SlotDef[] = [
   S('LOB-JUKE', 'lobby', 'M', 10.35, 9.0, 270),
   S('LOB-TAPE', 'lobby', 'S', 10.45, 10.7, 270),
   S('LOB-TONIC', 'lobby', 'M', 10.35, 12.5, 270),
+  // Wave 27: the three Lobby tables (craps, sonkart, keno), off the central aisle and clear of the doorway lanes
+  S('FLR-05', 'lobby', 'XL', -4.0, 9.0, 180),
+  S('FLR-06', 'lobby', 'L', 4.2, 9.0, 180),
+  S('FLR-07', 'lobby', 'L', 4.2, 15.5, 180),
   // The Midway
   S('MID-01', 'midway', 'XL', -26.0, -27.0, 0),
   S('MID-02', 'midway', 'XL', -17.5, -27.0, 0),
@@ -133,8 +142,47 @@ export const SLOTS: SlotDef[] = [
   S('CNT-03', 'counting', 'L', -20.0, 18.95, 180),
 ];
 
-/** Default device per slot (GDD §8.6). Instance id = slot id; duplicates are independent instances. */
+/**
+ * Wave 27, the progressive floor (director decision). A Debt / Co-op / Versus run is built from the 16 CORE machines of
+ * `game/progression.ts`: the four starters sit in the Well around the dais (five steps from the spawn arc), the rest are
+ * placed in the main pit (Well + Lobby) so nothing is hidden in a wing, and the gated rooms keep a few duplicates of core
+ * machines (zone rules still apply to them). Locked machines (not yet scheduled) are covered by the world; their night is
+ * `unlockNightOf(id)`. Every other registered machine lives in the Free Casino table (`FREE_ASSIGN`).
+ *
+ * Unlock Night of each pit instance (canonical order; a run seed reshuffles inside a tier, see progression.ts):
+ *   N1  WELL-01 bigone · FLR-01 hilo · FLR-02 WELL-13 coinflip · FLR-03 LOB-01 scratch
+ *   N2  FLR-04 LOB-03 bandit · WELL-06 plinko            N3  WELL-11 mines · WELL-07 WELL-04 videopoker
+ *   N4  WELL-12 cyclone · WELL-03 blackjack              N5  WELL-08 pachinko · FLR-07 keno
+ *   N6  WELL-02 roulette · FLR-06 sonkart                N7  WELL-09 mahjong · FLR-05 craps
+ */
 export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
+  // The Mouth: terminal, phone and bounty board only (the Fortune Teller moved to the Free Casino)
+  'MOUTH-TERM': 'debt_terminal', 'MOUTH-PHONE': 'hotline', 'MOUTH-BOUNTY': 'bounty_board',
+  // The Well: the dais, the high tables and the two wall banks
+  'WELL-01': 'bigone', 'WELL-02': 'roulette', 'WELL-03': 'blackjack',
+  'WELL-04': 'videopoker', 'WELL-06': 'plinko', 'WELL-07': 'videopoker', 'WELL-08': 'pachinko',
+  'WELL-09': 'mahjong', 'WELL-11': 'mines', 'WELL-12': 'cyclone', 'WELL-13': 'coinflip',
+  'FLR-01': 'hilo', 'FLR-02': 'coinflip', 'FLR-03': 'scratch', 'FLR-04': 'bandit',
+  // The Lobby: vendors on the south wall, tables on the floor
+  'LOB-01': 'scratch', 'LOB-03': 'bandit', 'LOB-PAWN': 'charm_vendor', 'LOB-PHONE2': 'hotline',
+  'LOB-CASH': 'cashier', 'LOB-JUKE': 'jukebox', 'LOB-TONIC': 'tonic_vendor',
+  'FLR-05': 'craps', 'FLR-06': 'sonkart', 'FLR-07': 'keno',
+  // Wings (behind grilles): core duplicates, themed to the room; non-core machines left as pads
+  'MID-06': 'cyclone',
+  'CARD-01': 'mahjong', 'CARD-06': 'mahjong', 'CARD-02': 'blackjack', 'CARD-03': 'blackjack', 'CARD-04': 'videopoker', 'CARD-05': 'videopoker',
+  'LAU-02': 'keno', 'LAU-03': 'pachinko', 'LAU-04': 'pachinko', 'LAU-05': 'pachinko', 'LAU-07': 'plinko',
+  'BOI-01': 'craps', 'BOI-05': 'coinflip',
+  'GAL-01': 'bandit', 'GAL-02': 'bandit', 'GAL-03': 'bandit', 'GAL-07': 'bandit', 'GAL-08': 'bandit',
+  'WH-01': 'cyclone',
+  'PAR-01': 'devilstable', 'PAR-03': 'sonkart', 'PAR-SHRINE': 'shrine',
+  // Wave 25 Tally Bench: one duel table per rival venue (Lucan in the Parlour, Tamsin in the Jade Room, Kuro in the Boiler)
+  'PAR-05': 'tallytable', 'CARD-08': 'tallytable', 'BOI-07': 'tallytable',
+  // Wave 25 phase 2: Mimosa's table in the Wash (side duel, Night 4) and Vell's in the Counting Room (Night 8 boss)
+  'LAU-10': 'tallytable', 'CNT-03': 'tallytable',
+};
+
+/** The Free Casino floor: the full GDD §8.6 table of every machine (sandbox mode: all open), plus the Wave 27 pit instances. */
+const LEGACY_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   'MOUTH-01': 'fortuneteller', 'MOUTH-TERM': 'debt_terminal', 'MOUTH-PHONE': 'hotline', 'MOUTH-BOUNTY': 'bounty_board',
   'WELL-01': 'bigone', 'WELL-02': 'roulette', 'WELL-03': 'blackjack', 'WELL-04': 'bandit', 'WELL-06': 'bandit', 'WELL-07': 'shellgame',
   'WELL-08': 'hilo', 'WELL-09': 'plinko', 'WELL-11': 'mines', 'WELL-13': 'coinflip',
@@ -154,32 +202,57 @@ export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   // Wave 25 phase 2: Mimosa's table in the Wash (side duel, Night 4) and Vell's in the Counting Room (Night 8 boss)
   'LAU-10': 'tallytable', 'CNT-03': 'tallytable',
 };
+export const FREE_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
+  ...LEGACY_ASSIGN,
+  'FLR-01': 'hilo', 'FLR-02': 'coinflip', 'FLR-03': 'scratch', 'FLR-04': 'bandit',
+  'FLR-05': 'craps', 'FLR-06': 'sonkart', 'FLR-07': 'keno',
+};
 
-/** GDD §8.6 busy-floor override: pad → device (host option, default on with ≥ 4 players). */
+/** GDD §8.6 busy-floor override: pad → device (host option, default on with ≥ 4 players). Core machines only. */
 export const BUSY_FLOOR: Partial<Record<InstanceId, MachineId>> = {
+  'WELL-05': 'videopoker', 'WELL-10': 'bandit', 'LOB-02': 'scratch', 'LOB-TAPE': 'coinflip',
+  'GAL-04': 'bandit', 'GAL-05': 'bandit', 'GAL-06': 'bandit',
+  'LAU-09': 'pachinko', 'MID-07': 'mines', 'BOI-06': 'plinko', 'WH-04': 'roulette',
+};
+/** The same override for the Free Casino (the original GDD table). */
+const LEGACY_BUSY_FLOOR: Partial<Record<InstanceId, MachineId>> = {
   'WELL-05': 'videopoker', 'WELL-10': 'bandit', 'WELL-12': 'coinflip', 'LOB-02': 'scratch',
   'GAL-09': 'bandit', 'GAL-10': 'pachislot', 'GAL-13': 'pachislot', 'GAL-14': 'bandit',
   'LAU-09': 'pachinko', 'MID-07': 'mines', 'BOI-06': 'dicetower', 'WH-04': 'roulette',
 };
 
 /**
- * Pads with no default device (GDD §8.6 "PAD": 30 in total; the busy-floor override fills 13 of them). CARD-01 (XL, was holdem)
- * and LOB-TAPE (was tape_deck) are pads too: no registered machine fills them yet. The Concession Desk (LOB-DESK, was
- * concession_desk, unregistered) now holds Three Card, which is L like the slot.
+ * Pads with no default device (GDD §8.6 "PAD"). In a Debt Run these are the tycoon's expansion pads: the order UI offers the
+ * machines open that Night (`run.isLocked`). The busy-floor override fills some of them with core machines.
  */
 export const DEFAULT_PADS: readonly InstanceId[] = SLOTS.filter((s) => !(s.id in DEFAULT_ASSIGN)).map((s) => s.id);
 
-/** Slot → device map for a mode. The busy floor merges `BUSY_FLOOR` on top of the default table. */
+/** Slot → device map for a mode. Free Casino = every machine; every other mode = the progressive core floor. */
 export function assignment(mode: GameMode, o: { busyFloor?: boolean } = {}): Partial<Record<InstanceId, MachineId | null>> {
-  // Modes change which devices a slot accepts (`def.modes`, checked by placement), not the table itself.
-  void mode;
-  return o.busyFloor ? { ...DEFAULT_ASSIGN, ...BUSY_FLOOR } : { ...DEFAULT_ASSIGN };
+  const free = mode === 'free';
+  const base = free ? FREE_ASSIGN : DEFAULT_ASSIGN;
+  return o.busyFloor ? { ...base, ...(free ? LEGACY_BUSY_FLOOR : BUSY_FLOOR) } : { ...base };
 }
 
 /** Shape read by WORLD-SYS: `ASSIGN.default` plus one entry per game mode. */
 export const ASSIGN: Record<'default' | GameMode, Partial<Record<InstanceId, MachineId | null>>> = {
-  default: DEFAULT_ASSIGN, debt: {}, coop: {}, versus: {}, free: {},
+  default: DEFAULT_ASSIGN, debt: {}, coop: {}, versus: {}, free: FREE_ASSIGN,
 };
+
+// ── signposts (Wave 27): hanging boards over the aisles; props/signposts.ts draws them ───────────────────
+/** One face of a sign. `face` is the side the board's normal points to: 'N' is read by someone walking south, 'S' by someone walking north. */
+export interface SignSide { face: 'N' | 'S'; key: string; arrow: 'left' | 'right' | 'up' | 'down' }
+/** A double-sided hanging board centred at `pos` (y = board centre), `w` metres wide. Text keys are `prop.go.*`. */
+export interface Signpost { id: string; pos: V3; w: number; sides: readonly SignSide[] }
+export const SIGNPOSTS: readonly Signpost[] = [
+  // Mouth: leaving the lift, the floor is straight ahead (south)
+  { id: 'sp.mouth', pos: [0, 3.9, -20.6], w: 3.4, sides: [{ face: 'S', key: 'go.floor', arrow: 'down' }, { face: 'N', key: 'go.terminal', arrow: 'up' }] },
+  // Well: from the spawn the terminal, phone and lift are behind (north); the vendors are ahead (south)
+  { id: 'sp.well', pos: [0, 3.8, -11.4], w: 3.4, sides: [{ face: 'N', key: 'go.terminalPhone', arrow: 'up' }, { face: 'S', key: 'go.vendors', arrow: 'down' }] },
+  // Lobby: pawn on the west end of the south wall, cashier on the east end
+  { id: 'sp.pawn', pos: [-4.0, 3.3, 17.4], w: 2.6, sides: [{ face: 'N', key: 'go.pawn', arrow: 'right' }, { face: 'S', key: 'go.floor', arrow: 'up' }] },
+  { id: 'sp.cash', pos: [4.0, 3.3, 17.4], w: 2.6, sides: [{ face: 'N', key: 'go.cashier', arrow: 'left' }, { face: 'S', key: 'go.floor', arrow: 'up' }] },
+];
 
 // ── zones (GDD §8.3 footprints, §8.7 look). Smaller rectangles win where zones overlap. ─────────────────
 const look = (color: Hex, near: number, far: number, ambient: Hex) => ({ fog: { color, near, far }, ambient });
@@ -317,7 +390,7 @@ function rosterOk(chosen: ReadonlyArray<RosterCandidate | null>): boolean {
  * suit and volatility rules after `ROSTER_TRIES` shuffles (or the catalogue is empty), every pad keeps its GDD §8.6
  * default, so the result is never worse than the fixed layout.
  */
-export function rosterFor(seed: number, candidates: readonly RosterCandidate[], mode: GameMode = 'debt'): Partial<Record<InstanceId, MachineId>> {
+export function rosterFor(seed: number, candidates: readonly RosterCandidate[], mode: GameMode = 'free'): Partial<Record<InstanceId, MachineId>> {
   const fallback = (): Partial<Record<InstanceId, MachineId>> => {
     const out: Partial<Record<InstanceId, MachineId>> = {};
     for (const pad of ROSTER_PADS) { const d = DEFAULT_ASSIGN[pad]; if (d) out[pad] = d; }
@@ -326,7 +399,8 @@ export function rosterFor(seed: number, candidates: readonly RosterCandidate[], 
   const pool = candidates.filter((c) => FLOOR_READY.has(c.id) && !ROSTER_FIXED.has(c.id) && c.tier !== undefined && c.tier >= 1 && c.tier <= ROSTER_MAX_TIER
     && c.seats === 1 && !c.shared
     && (!c.modes || c.modes.includes(mode)));
-  if (pool.length === 0) return fallback();
+  // Wave 27: the progressive floor is a fixed, readable layout (every pad has a scheduled machine). Only the Free Casino shuffles.
+  if (mode !== 'free' || pool.length === 0) return fallback();
   const rng = createRng(hashSeed('pitdeck', seed));
   for (let attempt = 0; attempt < ROSTER_TRIES; attempt++) {
     const order = shuffled(pool, rng);

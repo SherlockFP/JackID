@@ -85,7 +85,7 @@ export const TIER_SHOW: Readonly<Record<JuiceTier, TierShow>> = {
   none:    { show: 0,   hz: 0,  sfx: null,       glow: 0 },
   push:    { show: 0.4, hz: 2,  sfx: 'coin',     glow: 0xe8d35a },
   small:   { show: 1.2, hz: 6,  sfx: 'sparkle',  glow: 0xffce5a },
-  medium:  { show: 2,   hz: 8,  sfx: 'sparkle',  glow: 0xffce5a },
+  medium:  { show: 2,   hz: 8,  sfx: 'coinShower', glow: 0xffce5a },
   big:     { show: 3,   hz: 8,  sfx: 'chime',    glow: 0xffd040 },
   huge:    { show: 5,   hz: 10, sfx: 'chime',    glow: 0xffd040 },
   mega:    { show: 7,   hz: 12, sfx: 'bell',       glow: 0xffd040 },
@@ -238,6 +238,8 @@ function escalate(host: JuiceHost, shown: JuiceTier, at: THREE.Object3D, speaker
   if (shown === 'jackpot') {
     pitWave(host, at, sp);
     ctx.timers.wait(0.4 * sp).then(() => { if (!host.disposed) ctx.audio.play('jackpotBells', { pos: speaker, vol: 0.9 }); });
+    const rain = ctx.audio.play('coinRain', { pos: speaker, vol: 0.7, loop: true });   // coin rain loop under the waves
+    ctx.timers.wait(3.2 * sp).then(() => rain?.stop(0.6));
     // coin rain: six waves from ceiling height over the first 3 s
     at.getWorldPosition(tmpV3a);
     const bx = tmpV3a.x, by = tmpV3a.y + 3.2, bz = tmpV3a.z;

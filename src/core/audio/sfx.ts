@@ -44,8 +44,8 @@ const TRIM: Record<string, number> = {
   coinPour: 0.64, coinMagnet: 0.89, chip: 0.85, chipStack: 0.84, card: 0.77, cardFlip: 0.9,
   shuffle: 0.81, cardSlap: 0.77, dice: 0.68, diceRoll: 0.66, diceLand: 0.74, wheelTick: 2.45,
   ballRoll: 2.82, ballBounce: 1.8, ballDrop: 1.17, bell: 1.01, buzzer: 1.22, lose: 1.76,
-  whoosh: 1.2, thud: 0.6, glass: 1.08, glassBreak: 1.08, win1: 0.87, win2: 0.7,
-  win3: 0.8, winHuge: 0.5, winRise: 0.8, winMega: 0.6, winPush: 2.9, jackpot: 0.32, jackpotSiren: 1.77, jackpotBells: 1.76,
+  whoosh: 1.2, thud: 0.6, glass: 1.08, glassBreak: 1.08, win1: 0.87, win2: 0.61,
+  win3: 0.8, winHuge: 0.5, winRise: 0.8, winMega: 0.6, winPush: 0.85, jackpot: 0.32, jackpotSiren: 1.77, jackpotBells: 1.76,
   stinger: 0.57, quotaMet: 0.82, quotaFail: 0.46, upgrade: 1.05, purchase: 1.06, cashRegister: 0.89,
   unlock: 1.15, buffGain: 1.02, buffLose: 1.24, stamp: 0.64, printer: 1.82, sparkle: 3,
   whisper: 0.9, whispers: 0.98, heartbeat: 0.6, lightFlicker: 2.14, powerDown: 1.02, powerUp: 0.98,
@@ -54,6 +54,7 @@ const TRIM: Record<string, number> = {
   phonePickup: 1.46, clockTick: 2.71, clockAlarm: 2.65, trapdoor: 0.66, elevator: 2.03, elevatorDing: 1.69,
   typewriter: 1.81, tileClack: 1.42, door: 0.83, doorCreak: 3, doorSlam: 0.53, footstep: 1.52,
   footstepCarpet: 1.61, footstepConcrete: 1.23, footstepMetal: 1.35, footstepWood: 1.07, footstepWet: 1.1, boom: 0.44,
+  coinInsert: 0.78, coinRain: 1.75, tensionRise: 0.83, tallyTick: 2.8,
 };
 
 function def(names: string | string[], run: KitRecipe, meta: SfxMeta = {}): void {
@@ -456,7 +457,7 @@ def('win2', (k) => {
   thump(k, 0, 150, 60, 0.18, 0.7); snap(k, 0, 0.35, 2000, 0.02, 1);
   brass(k, 0, [hz('C4'), hz('E4'), hz('G4')], 0.28, 0.24);
   ['C5', 'E5', 'G5', 'C6', 'E6', 'G6'].forEach((n, i) => bellNote(k, 0.02 + i * 0.055, hz(n), 0.3, 0.8));
-  cascade(k, 0.12, 0.7, 10, 0.34); sparkle(k, 0.35, 0.6, 8, 0.07);
+  cascade(k, 0.12, 0.9, 18, 0.36); sparkle(k, 0.35, 0.6, 8, 0.07);
   bellNote(k, 0.42, hz('C7'), 0.2, 1.2);
   return 1.7;
 }, { pri: 8 });
@@ -486,7 +487,11 @@ def('winHuge', (k) => {
   bellNote(k, T + 2.4, hz('C7'), 0.3, 1.6);
   return 3.9;
 }, { pri: 9 });
-def('winPush', (k) => { for (let i = 0; i < 2; i++) k.osc('triangle', hz('G4'), 0.07, { at: i * 0.09, vol: 0.22, env: { a: 0.004, d: 0.06, s: 0, r: 0.02 } }); return 0.25; }, { pri: 6 });
+/** Push (part of the stake back): two clinks and a bell, so even a small return is heard. */
+def('winPush', (k) => {
+  clink(k, 0, 0.42); clink(k, 0.09, 0.3); bellNote(k, 0.03, hz('E5'), 0.2, 0.5);
+  return 0.45;
+}, { pri: 6 });
 /** Huge win rising chord: fast ascending arpeggio over a riser (≈1.1 s), layered on the huge-win slow-mo. */
 def('winRise', (k) => {
   riser(k, 0, 0.5, 0.22, 250, 5000);
@@ -858,8 +863,38 @@ def('footstepWet', (k) => {
 /** Game-friendly alias ('boom' = the light gunshot). */
 SFX_DEFS.set('boom', SFX_DEFS.get('gunShot')!);
 
+// ── wave 27: coin insert, coin rain (jackpot loop), near-miss riser, per-pattern tally tick ────────
+/** A coin dropped into the slot: a thunk, then two clinks as it rattles down the chute. */
+def('coinInsert', (k) => {
+  thump(k, 0, 620, 300, 0.03, 0.35, 'triangle'); snap(k, 0, 0.4, 1200, 0.01, 2);
+  clink(k, 0.025, 0.42, 3100, 0.07, 0); clink(k, 0.1, 0.22, 2600, 0.05, 0);
+  return 0.22;
+}, { pri: 6, max: 4 });
+/** Coin rain: a dense shower of clinks over a hiss. Loop-safe (chunks crossfade); one-shot is 1.8 s. */
+def('coinRain', (k, o) => {
+  const dur = o.loop ? 0.6 : 1.8, env = o.loop ? LOOP_ENV : { a: 0.02, d: 0.01, s: 1, r: 0.2 };
+  k.noise(dur, { vol: 0.05, filter: 'bandpass', freq: 6000, q: 1.2, env });
+  const n = Math.max(2, Math.round(dur * 16));
+  for (let i = 0; i < n; i++) clink(k, ((i + rnd(0.1, 0.9)) * dur) / n, rnd(0.1, 0.2), rnd(2900, 5200), rnd(0.05, 0.09));
+  return dur;
+}, { pri: 7, max: 2 });
+/** Near-miss anticipation: a riser with accelerating ticks that lands on a thud. param 0..1 scales the length (0.6–1.6 s). */
+def('tensionRise', (k, o) => {
+  const L = 0.6 + 1.0 * (o.param ?? 1);
+  riser(k, 0, L - 0.1, 0.2, 260, 4200);
+  for (let i = 0; i < 12; i++) { const t = L * Math.pow(i / 12, 1.8); k.osc('sine', 900 + i * 60, 0.04, { at: t, vol: 0.08 + 0.01 * i, env: { a: 0.002, d: 0.035, s: 0, r: 0.01 } }); }
+  thump(k, L - 0.12, 110, 50, 0.25, 0.7); snap(k, L - 0.12, 0.5, 1600, 0.02, 1);
+  return L;
+}, { pri: 8, max: 2 });
+/** One count-up step of the tally. Pitch comes from PlayOpts.pitch so the ticks climb through a pattern. */
+def('tallyTick', (k) => {
+  k.osc('triangle', 1400, 0.03, { vol: 0.2, env: { a: 0.001, d: 0.028, s: 0, r: 0.008 } });
+  snap(k, 0, 0.22, 3800, 0.005, 3);
+  return 0.04;
+}, { bus: 'ui', pri: 4, max: 12 });
+
 /** Sounds longer than ~0.8 s: their voices are wired into slow-motion (`setTimeScale`) so a big win drags with the screen. */
-const LONG = ['win2', 'win3', 'winHuge', 'winRise', 'winMega', 'jackpot', 'jackpotBells', 'quotaMet', 'quotaFail', 'stinger', 'trapdoor', 'powerDown', 'powerUp', 'tapeStop',
+const LONG = ['win2', 'win3', 'winHuge', 'winRise', 'winMega', 'jackpot', 'jackpotBells', 'quotaMet', 'quotaFail', 'stinger', 'tensionRise', 'trapdoor', 'powerDown', 'powerUp', 'tapeStop',
   'tinnitus', 'defib', 'totemPlace', 'lose', 'bell', 'upgrade', 'unlock', 'coinShower', 'glassBreak', 'shuffle', 'dice', 'printer', 'whisper', 'creak',
   'phoneRing', 'clockAlarm', 'cashRegister', 'elevatorDing', 'gunShot', 'door', 'doorCreak', 'heartbeat'];
 for (const n of LONG) { const d = SFX_DEFS.get(n); if (d) d.meta.long = true; }

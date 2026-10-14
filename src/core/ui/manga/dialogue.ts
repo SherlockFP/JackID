@@ -3,6 +3,7 @@
  * E / Space / Enter or a click finishes the line, and a second press dismisses it. Skip ends the box at once.
  */
 import { t } from '@/core/i18n';
+import { app } from '../../app';
 import type { Expr } from './portrait';
 import { hasPortrait, portraitSrc } from './portrait';
 import { el, enqueue, sayLine, show, skipButton, speakerName, stage, typewrite } from './mangaPanel';
@@ -29,6 +30,14 @@ export function dialogue(speakerId: string, lineKey: string, portraitSide: Portr
     sayLine(true);
     show(host);
 
+    // one typewriter blip per typed character, in the speaker's own voice; the skip and the finish stay silent
+    let shown = 0;
+    const blips = new MutationObserver(() => {
+      const chars = Array.from(line.textContent ?? '');
+      if (chars.length === shown + 1) { try { app?.audio?.blip(speakerId, chars[chars.length - 1]); } catch { /* audio is optional */ } }
+      shown = chars.length;
+    });
+    blips.observe(line, { childList: true, characterData: true, subtree: true });
     const tw = typewrite(ctl, line, t(lineKey), 40);
     let typed = false;
     void tw.done.then(() => { typed = true; next.classList.add('ready'); });
@@ -37,6 +46,7 @@ export function dialogue(speakerId: string, lineKey: string, portraitSide: Portr
       const dismiss = (): void => {
         ctl.wake.delete(dismiss);
         ctl.key = null;
+        blips.disconnect();
         host.removeEventListener('click', onClick);
         resolve();
       };

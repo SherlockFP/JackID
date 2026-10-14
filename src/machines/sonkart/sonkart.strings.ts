@@ -37,7 +37,7 @@ const en: Record<string, string> = {
   cRules: "RULES",
   cLeave: "LEAVE",
   tip1: "Get rid of all your cards first. Match the colour or the number.",
-  tip2: "[{ante}] ANTE TO JOIN  ·  [{bet}] CHANGE BET  ·  [1-5] HOUSE",
+  tip2: "[{ante}] ANTE TO JOIN  ·  [{bet}] CHANGE BET  ·  [{auto}] AUTO ANTE  ·  [1-5] HOUSE",
   tip3: "On your turn: [{play}] PLAY  ·  [{draw}] DRAW  ·  [{help}] RULES",
   name: 'Son Kart',
   desc: 'Shed your cards before the others. Match colour or number, stack the +2 and +4, and call LAST CARD or be caught.',
@@ -45,7 +45,7 @@ const en: Record<string, string> = {
   rules1: 'Match the colour or the number of the top card. Wild cards pick a colour.',
   rules2: 'Skip ends the next turn. Reverse flips the order. +2 and +4 make the next player draw unless they stack.',
   rules3: 'JackID cards: Debt owes coins to the next player. Collector: all discard a colour. Curse: swap hands with the wealthiest. Jackpot: go out with it and the pot pays double.',
-  rules4: 'Stake before the deal. The first player to empty their hand takes the pot.',
+  rules4: 'Stake before the deal; the table deals five cards each. The first player to empty their hand takes the pot. A wild card opens a colour picker: press 1-4 or click.',
   rules5: 'Hand: click a card to select, click again to play. Draw pile: click to draw. Keys: left/right move, primary plays, secondary draws.',
   rules6: 'House rules: stacking, 7-0 hand swap, jump-in, draw-to-match and LAST CARD (double key: call; collect key: catch).',
   rulesHint: 'Help key closes this sheet',
@@ -69,6 +69,17 @@ const en: Record<string, string> = {
   eNotSeated: 'Take a seat first', eBusy: 'A round is already running', eNeedAnte: 'Ante up first',
   eBadPhase: 'Wait for the next round', eMinPlayers: 'Need two players', sitOut: 'You sit this round out',
   bot1: 'Rattle', bot2: 'Mrs Gloom', bot3: 'Tin Tom', bot4: 'Madame Wick',
+  // table overlay (kartHud)
+  hTop: 'TOP CARD', hLast: 'LAST CARD!', hTurn: 'PLAYING', hOrderF: 'ORDER >>', hOrderB: 'ORDER <<', hOwed: 'DRAW {n}',
+  hPick: 'PICK A COLOUR', hPickSub: '1-4 or click  ·  {play} keeps {c}  ·  {cancel} cancels',
+  kS: 'SKIP', kV: 'REV', kW: 'WILD', kW4: '+4', kDebt: 'DEBT', kColl: 'COLL', kCurse: 'CURSE', kJack: 'JACK',
+  cAuto: 'AUTO ANTE', nAuto: 'AUTO', pAutoOn: 'Auto ante ON', pAutoOff: 'Auto ante OFF',
+  // house habits (shown on the plate) and typewriter quips (no voices: a few text blips)
+  pr_rash: 'RASH', pr_hoard: 'HOARDER', pr_grudge: 'GRUDGE', pr_shark: 'SHARK',
+  q_rash_atk: 'Boom!', q_rash_caught: 'Oops.', q_rash_win: 'Yay!',
+  q_hoard_atk: 'Tsk.', q_hoard_caught: 'Hmph.', q_hoard_win: 'Mine.',
+  q_grudge_atk: 'Take it.', q_grudge_caught: 'Hm.', q_grudge_win: 'Gotcha.',
+  q_shark_atk: 'Count it.', q_shark_caught: 'Noted.', q_shark_win: 'Pay up.',
 };
 
 const tr: Record<string, string> = {
@@ -103,7 +114,7 @@ const tr: Record<string, string> = {
   cRules: "KURALLAR",
   cLeave: "ÇIK",
   tip1: "Kartlarını önce bitir. Renk ya da sayı eşleştir.",
-  tip2: "[{ante}] BAHİS KOY  ·  [{bet}] BAHSİ DEĞİŞTİR  ·  [1-5] KASA KURALI",
+  tip2: "[{ante}] BAHİS KOY  ·  [{bet}] BAHSİ DEĞİŞTİR  ·  [{auto}] OTO BAHİS  ·  [1-5] KASA KURALI",
   tip3: "Sıran gelince: [{play}] OYNA  ·  [{draw}] ÇEK  ·  [{help}] KURALLAR",
   name: 'Son Kart',
   desc: 'Kartlarını diğerlerinden önce bitir. Renk ya da sayı eşleştir, +2 ve +4 üst üste koy ve SON KART de, yoksa yakalanırsın.',
@@ -111,7 +122,7 @@ const tr: Record<string, string> = {
   rules1: 'Üstteki kartın rengini ya da sayısını eşleştir. Joker kartlar bir renk seçer.',
   rules2: 'Atla, sıradakinin turunu geçirir. Ters çevir sırayı değiştirir. +2 ve +4, sıradaki oyuncu eşleştirmezse kart çektirir.',
   rules3: 'JackID kartları: Borç sıradakine jeton borçlandırır. Toplayıcı: herkes bir renk atar. Lanet: en zenginle el değiştirir. Jackpot: el ikiye katlanır.',
-  rules4: 'Dağıtımdan önce bahis koy. Elini ilk bitiren havuzu alır.',
+  rules4: 'Dağıtımdan önce bahis koy; herkese beş kart dağıtılır. Elini ilk bitiren havuzu alır. Joker kart renk seçici açar: 1-4 tuşları ya da tık.',
   rules5: 'El: seçmek için karta tıkla, oynamak için tekrar tıkla. Çekme destesi: çekmek için tıkla. Tuşlar: sol/sağ gezin, birincil oynar, ikincil çeker.',
   rules6: 'Kasa kuralları: üst üste koyma, 7-0 el değişimi, zıplama, eşleştirerek çekme ve SON KART (çift tuş: çağır; toplama tuşu: yakala).',
   rulesHint: 'Yardım tuşu bu sayfayı kapatır',
@@ -135,6 +146,16 @@ const tr: Record<string, string> = {
   eNotSeated: 'Önce bir koltuğa otur', eBusy: 'Bir el zaten oynanıyor', eNeedAnte: 'Önce bahis koy',
   eBadPhase: 'Sıradaki eli bekle', eMinPlayers: 'En az iki oyuncu gerekli', sitOut: 'Bu elde izliyorsun',
   bot1: 'Çıngırak', bot2: 'Bayan Gölge', bot3: 'Teneke Tom', bot4: 'Madam Fitil',
+  // masa katmanı (kartHud)
+  hTop: 'ÜSTTEKİ KART', hLast: 'SON KART!', hTurn: 'OYNUYOR', hOrderF: 'SIRA >>', hOrderB: 'SIRA <<', hOwed: '{n} ÇEK',
+  hPick: 'BİR RENK SEÇ', hPickSub: '1-4 ya da tıkla  ·  {play} {c} rengini tutar  ·  {cancel} iptal',
+  kS: 'ATLA', kV: 'TERS', kW: 'JOKER', kW4: '+4', kDebt: 'BORÇ', kColl: 'TOPLA', kCurse: 'LANET', kJack: 'JACK',
+  cAuto: 'OTO BAHİS', nAuto: 'OTO', pAutoOn: 'Oto bahis AÇIK', pAutoOff: 'Oto bahis KAPALI',
+  pr_rash: 'ATILGAN', pr_hoard: 'SAKLAYICI', pr_grudge: 'KİNCİ', pr_shark: 'KÖPEKBALIĞI',
+  q_rash_atk: 'Pat!', q_rash_caught: 'Eyvah.', q_rash_win: 'Yaşasın!',
+  q_hoard_atk: 'Tüh.', q_hoard_caught: 'Hmph.', q_hoard_win: 'Benim.',
+  q_grudge_atk: 'Al bakalım.', q_grudge_caught: 'Hm.', q_grudge_win: 'Yakaladım.',
+  q_shark_atk: 'Say bakalım.', q_shark_caught: 'Not aldım.', q_shark_win: 'Öde.',
 };
 
 export default { prefix: 'm.sonkart.', en, tr };
