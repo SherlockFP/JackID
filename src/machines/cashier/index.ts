@@ -58,6 +58,7 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
   private hudKey = '';
   /** Seat HUD overlay (created in init, shown while seated). */
   private seatHud?: SeatHud;
+  private readonly onResize = (): void => this.fitPose();
 
   protected createModel(kit: KitX): MachineModel<CashierParts> {
     return buildModel(kit, this.modelOpts);
@@ -66,8 +67,30 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
   init(): void {
     this.seatHud = new SeatHud(this.ctx.ui.root);
     this.ctx.ui.machineHud(null);                          // the seat HUD replaces the generic bottom bar
+    this.fitPose();
+    window.addEventListener('resize', this.onResize);
     this.refresh(true);
     this.attractor.every('blink', 7, () => this.ctx.fx.glow(this.model.anchors.light, LAMP, 0.25, 0.5), { first: 4 });
+  }
+
+  /** Seat framing: the ledger fills the view from the customer's place, fitted to its corners (narrow windows widen it). */
+  private fitPose(): void {
+    const DEG = Math.PI / 180;
+    const cam: [number, number, number] = [0, 1.8, 1.05];
+    const aspect = Math.max(0.4, window.innerWidth / Math.max(1, window.innerHeight));
+    let vMin = Infinity, vMax = -Infinity, hMax = 0;
+    for (const x of [-0.35, 0.35]) for (const y of [2.35, 2.75]) {
+      const dz = cam[2] + 0.32;                              // the ledger sits on the wall at z −0.32
+      const v = Math.atan2(y - cam[1], dz);
+      vMin = Math.min(vMin, v); vMax = Math.max(vMax, v);
+      hMax = Math.max(hMax, Math.atan2(Math.abs(x), dz));
+    }
+    const centre = (vMin + vMax) / 2;
+    const vHalf = Math.max((vMax - vMin) / 2 + 6 * DEG, Math.atan(Math.tan(hMax + 3 * DEG) / aspect));
+    const pose = this.model.playPose;
+    pose.pos.set(cam[0], cam[1], cam[2]);
+    pose.look.set(cam[0], cam[1] + Math.sin(centre), cam[2] - Math.cos(centre));
+    pose.fov = Math.min(80, Math.max(20, (2 * vHalf) / DEG));
   }
 
   // ── run state (every peer) ──────────────────────────────────────────────────────────────────────
@@ -79,6 +102,7 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
   attract(dt: number): void { this.attractor.update(dt); }
 
   dispose(): void {
+    window.removeEventListener('resize', this.onResize);
     this.seatHud?.dispose();
     super.dispose();
   }
@@ -211,22 +235,37 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
 
   private label(o: Offer): string { return this.t(o.id); }
 
+  /**
+   * The cage board, 512 × 288 (every size is 2× the old 256 × 144 layout): a header, the coin and ticket counts, then one
+   * row per offer: the key (1-5) in a chip, the name, the price in coins at the right. The selected row is a filled bar
+   * with a bright chip, so the list reads at a glance from the seat.
+   */
   private drawLedger(): void {
     const s = this.parts.ledger;
     const si = stakeOf(this.ctx.run);
     s.clear('#081410');
-    s.text(this.t('ledger'), 64, 4, { font: 'px5', color: '#80ffb0', align: 'center' });
-    s.text(`${this.t('s_coins')} ${fmtNum(this.coins())}`, 4, 14, { font: 'px5', color: '#ffd060' });
-    s.text(`${this.t('s_tickets')} ${this.tickets()}`, 124, 14, { font: 'px5', color: '#ff8a8a', align: 'right' });
+    s.text(this.t('ledger'), 256, 10, { font: 'px5', scale: 4, color: '#80ffb0', align: 'center' });
+    s.text(`${this.t('s_coins')} ${fmtNum(this.coins())}`, 16, 50, { font: 'px5', scale: 3, color: '#ffd060' });
+    s.text(`${this.t('s_tickets')} ${this.tickets()}`, 496, 50, { font: 'px5', scale: 3, color: '#ff8a8a', align: 'right' });
+    s.draw((g) => { g.fillStyle = '#0c2a1c'; g.fillRect(8, 84, 496, 2); });
+    const rowY = (i: number): number => 100 + i * 34;
+    OFFERS.forEach((_o, i) => {
+      const y = rowY(i), on = i === this.cursor;
+      s.draw((g) => {
+        if (on) { g.fillStyle = '#1f5a3a'; g.fillRect(8, y - 7, 496, 28); }
+        g.fillStyle = on ? '#ffd060' : '#16402a';
+        g.fillRect(14, y - 5, 28, 22);                       // the key chip
+      });
+    });
     OFFERS.forEach((o, i) => {
-      const y = 26 + i * 9;
-      const mark = i === this.cursor ? '>' : ' ';
+      const y = rowY(i), on = i === this.cursor;
       const q = quote(o, si);
       const price = o.op === 'buy' ? `-${fmtNum(q.coins)}` : `+${fmtNum(q.coins)}`;
-      s.text(`${mark}${i + 1} ${this.label(o)}`, 2, y, { font: 'px5', color: i === this.cursor ? '#e0ffe8' : '#80c090' });
-      s.text(price, 126, y, { font: 'px5', color: o.op === 'buy' ? '#ff9a80' : '#ffd060', align: 'right' });
+      s.text(`${i + 1}`, 28, y, { font: 'px5', scale: 3, color: on ? '#081410' : '#80c090', align: 'center' });
+      s.text(this.label(o), 58, y, { font: 'px5', scale: 3, color: on ? '#f4fff8' : '#80c090' });
+      s.text(price, 496, y, { font: 'px5', scale: 3, color: on ? '#ffffff' : o.op === 'buy' ? '#ff9a80' : '#ffd060', align: 'right' });
     });
-    s.text(this.t('ledgerHint'), 64, 66, { font: 'px5', color: '#50a070', align: 'center' });
+    s.text(this.t('ledgerHint'), 256, 266, { font: 'px5', scale: 2, color: '#50a070', align: 'center' });
   }
 
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────

@@ -32,7 +32,7 @@ import { nightPaid } from './night';
 
 const EMPTY_QUOTA: QuotaState = { due: 0, base: 0, assessment: 0, deposited: 0, perPlayer: {}, met: false, overshoot: 0, ratio: 0, claimed: [] };
 import { lerp, clamp } from '@/core/math';
-import { buildModel, type DebtParts } from './model';
+import { buildModel, KEY_POS, type DebtParts } from './model';
 import {
   KEYS, KEY_COLS, COIN_STREAM_S, amountFor, appendDigit, backspace, clampDeposit, customAmount, nextTier, pct,
   quotaLeft, ratioOf, rollSeconds, type KeyId,
@@ -131,7 +131,7 @@ export const def: MachineDef = {
       stNone: "ÖDENECEK KOTA YOK",
       stPaid: "GECE ÖDENDİ",
       stPaidSub: "Katı açmak için kolu çek",
-      stBell: "WATCH ARASI",
+      stBell: "MOLA",
       stBellSub: "Alışveriş yap, sonra zili çalmak için kolu çek",
       cFloor: "KATI AÇ",
       cBell: "ZİLİ ÇAL",
@@ -174,6 +174,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private lastNight = -1;
   /** Seat HUD overlay (created in init, shown while seated). */
   private seatHud?: SeatHud;
+  private readonly onResize = (): void => this.fitPose();
 
   protected createModel(kit: KitX): MachineModel<DebtParts> {
     return buildModel(kit, this.modelOpts);
@@ -182,10 +183,40 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   init(): void {
     this.seatHud = new SeatHud(this.ctx.ui.root);
     this.ctx.ui.machineHud(null);                          // the seat HUD replaces the generic bottom bar
+    this.fitPose();
+    window.addEventListener('resize', this.onResize);
     this.shownDep = this.quota().deposited;
     this.refresh(true);
     this.drawReceipt(this.quota().base, this.quota().assessment, this.quota().due, this.shownDep);
     this.attractor.every('eye', 8, () => this.ctx.fx.glow(this.parts.emblemLid, GOLD, 0.35, 0.7), { first: 4 });
+  }
+
+  /**
+   * Seat framing: the CRT is centred, and the whole console (LEDs, CRT, keypad) fits the vertical field. The field is
+   * fitted to the points' angles from the seat, so a narrow window widens the field instead of clipping the keypad.
+   */
+  private fitPose(): void {
+    const DEG = Math.PI / 180;
+    const cam: [number, number, number] = [0, 1.6, 1.1];
+    const pts: Array<[number, number, number]> = [
+      [-0.23, 1.38, 0.05], [0.23, 1.38, 0.05], [-0.23, 1.74, 0.05], [0.23, 1.74, 0.05],       // CRT
+      [-0.24, 1.94, -0.02], [0.24, 1.94, -0.02], [-0.24, 1.18, -0.02], [0.24, 1.18, -0.02],   // LEDs
+      [-0.37, 1.12, 0.0], [0.37, 1.12, 0.0], [-0.37, 1.12, 0.36], [0.37, 1.12, 0.36],         // keypad
+    ];
+    let vMin = Infinity, vMax = -Infinity, hMax = 0;
+    for (const p of pts) {
+      const dz = cam[2] - p[2];
+      vMin = Math.min(vMin, Math.atan2(p[1] - cam[1], dz));
+      vMax = Math.max(vMax, Math.atan2(p[1] - cam[1], dz));
+      hMax = Math.max(hMax, Math.atan2(Math.abs(p[0]), dz));
+    }
+    const aspect = Math.max(0.4, window.innerWidth / Math.max(1, window.innerHeight));
+    const centre = (vMin + vMax) / 2;
+    const vHalf = Math.max((vMax - vMin) / 2 + 4 * DEG, Math.atan(Math.tan(hMax + 3 * DEG) / aspect));
+    const pose = this.model.playPose;
+    pose.pos.set(cam[0], cam[1], cam[2]);
+    pose.look.set(cam[0], cam[1] + Math.sin(centre), cam[2] - Math.cos(centre));
+    pose.fov = Math.min(80, Math.max(40, (2 * vHalf) / DEG));
   }
 
   // ── run state (read on every peer) ──────────────────────────────────────────────────────────────
@@ -203,6 +234,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   }
 
   dispose(): void {
+    window.removeEventListener('resize', this.onResize);
     this.seatHud?.dispose();
     super.dispose();
   }
@@ -425,6 +457,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     const key = [q.due, this.shownDep, q.base, q.assessment, this.entry, this.cursor, this.wallet(), q.met ? 1 : 0, paid ? 1 : 0, phase, night].join('|');
     if (!force && key === this.lastKey) return;
     this.lastKey = key;
+    this.lightKeys();
 
     this.parts.leds.quota.set(String(fmtNum(paid ? 0 : q.due)).padStart(10, ' '));
     this.parts.leds.deposit.set(String(fmtNum(this.shownDep)).padStart(10, ' '));
@@ -433,33 +466,47 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     if (this.isLocalOccupant) this.showHud();
   }
 
+  /**
+   * The CRT is a 512 × 384 texture (2× the old layout, every size here is doubled): a label at the left and a big value
+   * at the right on each row (DUE / DEPOSITED / LEFT), a boxed AMOUNT field with the typed digits, one status line.
+   */
   private drawCrt(q: Readonly<QuotaState>, left: number, paid: boolean, inter: boolean): void {
     const s = this.parts.crt;
     const ratio = ratioOf(this.shownDep, q.due);
     const next = nextTier(this.tiers(), ratio);
     s.clear('#120a00');
-    const c = (str: string, y: number, col = '#ffb000', align: 'left' | 'center' | 'right' = 'left', x = 10): void => {
-      s.text(str, align === 'center' ? 128 : x, y, { font: 'vt', size: 17, color: col, align });
+    const amber = '#ffb000', hot = '#ffd060';
+    const row = (label: string, value: string, y: number, col = hot): void => {
+      s.text(label, 14, y + 6, { font: 'vt', size: 34, color: amber, align: 'left' });
+      s.text(value, 498, y + 6, { font: 'ps2p', size: 40, color: col, align: 'right' });   // a wide face: VT323 digits go thin at distance
     };
-    c(this.t('crt_title'), 18, '#ffd060', 'center');
+    s.text(this.t('crt_title'), 256, 4, { font: 'vt', size: 34, color: hot, align: 'center' });
     if (paid) {                                   // Dawn paid the Night: no stale quota, just the carry-over and the lever
-      c(this.t('crt_paid', { n: this.ctx.run.night() }), 62, '#ffd040', 'center');
-      if (q.deposited > 0) c(`${this.t('crt_carry')}  ${fmtNum(q.deposited)}`, 100);
-      c(this.t('crt_floor'), 150, '#ffe0a0', 'center');
+      s.text(this.t('crt_paid', { n: this.ctx.run.night() }), 256, 90, { font: 'vt', size: 60, color: '#ffd040', align: 'center' });
+      if (q.deposited > 0) row(this.t('crt_carry'), fmtNum(q.deposited), 180, '#ffe890');
+      s.text(this.t('crt_floor'), 256, 320, { font: 'vt', size: 40, color: '#ffe0a0', align: 'center' });
       return;
     }
-    c(`${this.t('crt_base')}  ${fmtNum(q.base)}`, 44);
-    c(`${this.t('crt_assess')}  ${fmtNum(q.assessment)}`, 62);
-    c(`${this.t('crt_quota')}  ${fmtNum(q.due)}`, 84, '#ffd060');
-    c(`${this.t('crt_dep')}  ${fmtNum(this.shownDep)}`, 110);
-    c(`${this.t('crt_left')}  ${fmtNum(left)}`, 128);
-    c(`${pct(ratio)} ${this.t('crt_ratio')}`, 146, '#ffb000', 'right', 246);
-    if (inter) c(this.t('crt_bell'), 164, '#ffd040', 'center');
-    else {
-      if (next !== null) c(`${this.t('crt_next')} ${pct(next.ratio)}`, 164, '#a07020');
-      if (q.met) c(this.t('crt_met'), 164, '#ffd040', 'center');
-    }
-    c(`${this.t('crt_entry')} > ${this.entry === '' ? '_' : fmtNum(customAmount(this.entry))}`, 184, '#ffe0a0');
+    row(this.t('nDue'), fmtNum(q.due), 46);
+    row(this.t('nDeposited'), fmtNum(this.shownDep), 126, '#ffe890');
+    row(this.t('nLeft'), fmtNum(left), 206, left > 0 ? '#ff8a60' : '#9fe8a0');
+    // the typed amount: a boxed input field, the digits as they are typed
+    s.draw((g) => { g.fillStyle = '#2a1c00'; g.fillRect(6, 284, 500, 56); g.strokeStyle = amber; g.lineWidth = 2; g.strokeRect(7, 285, 498, 54); });
+    s.text(this.t('nAmount'), 16, 296, { font: 'vt', size: 34, color: amber, align: 'left' });
+    const typed = this.entry === '' ? '_' : `${fmtNum(customAmount(this.entry))}_`;
+    s.text(typed, 498, 294, { font: 'ps2p', size: 30, color: '#ffe0a0', align: 'right' });
+    // status line: the share of the quota paid, then the next tier, or the bell / quota-met prompt
+    s.text(`${pct(ratio)} ${this.t('crt_ratio')}`, 14, 352, { font: 'vt', size: 30, color: amber, align: 'left' });
+    if (inter) s.text(this.t('crt_bell'), 498, 352, { font: 'vt', size: 30, color: hot, align: 'right' });
+    else if (q.met) s.text(this.t('crt_met'), 498, 352, { font: 'vt', size: 30, color: hot, align: 'right' });
+    else if (next !== null) s.text(`${this.t('crt_next')} ${pct(next.ratio)}`, 498, 352, { font: 'vt', size: 30, color: '#a07020', align: 'right' });
+  }
+
+  /** The keypad cursor is the one lit cap plus a gold frame on its cell, so the selection reads from the seat. */
+  private lightKeys(): void {
+    const cur = KEYS[this.cursor];
+    for (const id of KEYS) this.parts.keys.buttons[id]?.setLit(id === cur);
+    this.parts.keyCursor.position.set(KEY_POS[cur].x, 0, KEY_POS[cur].z);
   }
 
   private drawReceipt(base: number, assess: number, due: number, dep: number): void {

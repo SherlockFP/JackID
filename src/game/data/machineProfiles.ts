@@ -25,7 +25,7 @@ export interface MachineProfile {
 export const MACHINE_PROFILES: Readonly<Record<string, MachineProfile>> = {
   baccarat: { plays: 200000, bet: 1, hit: 0.554, p2: 0.4348, p5: 0, p10: 0, p25: 0, p100: 0, sigma: 0.94, rtp: 0.9887, cls: 'STEADY' },
   bandit: { plays: 200000, bet: 1, hit: 0.1943, p2: 0.1943, p5: 0.0303, p10: 0.0192, p25: 0.0052, p100: 0.0011, sigma: 7.01, rtp: 0.9214, cls: 'WILD' },
-  bigone: { plays: 200000, bet: 1, hit: 0.3805, p2: 0.2392, p5: 0.0302, p10: 0.0061, p25: 0.0005, p100: 0.0001, sigma: 2.88, rtp: 0.9312, cls: 'SWINGY' },
+  bigone: { plays: 200000, bet: 1, hit: 0.2275, p2: 0.2275, p5: 0.0516, p10: 0.0146, p25: 0.0034, p100: 0.0002, sigma: 3.65, rtp: 0.9518, cls: 'SWINGY' },
   bigsix: { plays: 200000, bet: 1, hit: 0.4795, p2: 0.4795, p5: 0, p10: 0, p25: 0, p100: 0, sigma: 1, rtp: 0.9589, cls: 'STEADY' },
   bingo: { plays: 200000, bet: 2, hit: 0.466, p2: 0.1257, p5: 0.0295, p10: 0.0295, p25: 0.0043, p100: 0, sigma: 2.6, rtp: 0.8409, cls: 'SWINGY' },
   bingopin: { plays: 200000, bet: 1, hit: 0.421, p2: 0.0546, p5: 0.0234, p10: 0.0234, p25: 0.0002, p100: 0.0002, sigma: 4.46, rtp: 0.9379, cls: 'WILD' },

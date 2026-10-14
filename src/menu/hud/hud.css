@@ -28,6 +28,9 @@
 .hud .sub { display: flex; align-items: center; gap: calc(6 * var(--u)); white-space: nowrap; }
 .hud .sub .wall { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 .hud .clock.lastcall .num, .hud .clock.lastcall .phase { color: var(--signal); animation: hud-blink .5s steps(2, start) infinite; }
+/* Intermission (MOLA): the top line is a call to action, in the shine colour, and may wrap rather than clip */
+.hud .clock.interm { max-width: 100%; }
+.hud .clock.interm .phase { color: var(--shine); white-space: normal; text-align: center; line-height: 1.2; }
 .hud .phase { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 .hud .night { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 /* THE CIRCUIT: Hot / Cold Lamps line under the night line (walk mode) */
@@ -80,12 +83,13 @@
 .hud .card i.line { background: var(--gold); }
 
 /* feed, phone, dread */
-.hud .feed { position: absolute; left: calc(4 * var(--u)); top: calc(80 * var(--u)); display: flex; flex-direction: column; gap: calc(2 * var(--u)); width: 45%; }
+/* news feed: under the tutorial box (upper-left), which sits under the top band (--hud-top-h) */
+.hud .feed { position: absolute; left: calc(4 * var(--u)); top: calc(var(--hud-top-h, calc(52 * var(--u))) + 96 * var(--u)); display: flex; flex-direction: column; gap: calc(2 * var(--u)); width: 45%; }
 .hud .feed .ln { font-size: calc(16 * var(--u)); color: var(--bone); transition: opacity .6s linear; }
 .hud .feed .ln.old { opacity: 0; }
 .hud .feed .ln.gold { color: var(--shine); }
 .hud .feed .ln.red { color: var(--coral); }
-.hud .phone { left: 50%; top: calc(52 * var(--u)); transform: translateX(-50%); }
+.hud .phone { left: 74%; top: calc(var(--hud-top-h, calc(52 * var(--u))) + 2 * var(--u)); transform: none; }
 .hud .phone .bell { width: calc(12 * var(--u)); height: calc(12 * var(--u)); background: var(--amber); animation: hud-blink .4s steps(2, start) infinite; }
 .hud .phone .arc { width: calc(14 * var(--u)); height: calc(14 * var(--u)); border-radius: 50%; background: conic-gradient(var(--amber) var(--p, 360deg), transparent 0); }
 .hud .dread { position: absolute; inset: 0; pointer-events: none; opacity: 0;
@@ -99,7 +103,7 @@
   animation: charm-pop .9s ease-out forwards; }
 
 /* win pop: the gain at the centre, a big gold figure scaled by tier (--k, 1 = small win, 2 = jackpot) */
-.hud .win-pop { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 4; white-space: nowrap;
+.hud .win-pop { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 4; max-width: 94vw; text-align: center; white-space: normal;
   font-family: var(--f-head); font-size: calc(14 * var(--u) * var(--k, 1)); line-height: 1; color: var(--shine);
   text-shadow: calc(2 * var(--u)) calc(2 * var(--u)) 0 #000; animation: win-pop .9s ease-out forwards; }
 .hud .win-pop.huge { color: #fff1b8; }

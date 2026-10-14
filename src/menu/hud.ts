@@ -19,9 +19,10 @@ import { circuitView, type LampEntry, type LampView } from '@/game/circuit';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { PlayerId } from '@/core/types';
 import { initial, mmss, Roller, signed, wallClock } from './hud/fmt';
-import { createProcPops, pegBadge, playProcTick } from './hud/charmProc';
+import { createProcPops, goldBurst, pegBadge, playProcTick } from './hud/charmProc';
 import './hud/hud.css';
 import { nightPaid } from '@/machines/debt_terminal/night';
+import { SeatHud } from '@/machines/_base/seatHud';
 
 const PHONE_SECONDS = 10;
 const FEED_LIFE = 6;
@@ -68,12 +69,23 @@ export function createHud(): Hud {
   const on = <K extends keyof GameEvents>(type: K, fn: (p: GameEvents[K]) => void): void => {
     disposers.push(bus.on(type, fn));
   };
+  // The seat HUD's STAKE / POCKET readout reads the local player and pocket from the run while this HUD is up.
+  SeatHud.stakeSource = () => {
+    const r = app.run;
+    return r ? { self: r.selfId, pocket: r.wallet(r.selfId) } : { self: -1, pocket: 0 };
+  };
 
   // The top band is a three-column grid (left | centre | right), so the centre clock never overlaps the corner blocks.
   const top = h('div', 'hud-top', root);
   const topL = h('div', 'hud-tl', top);
   const topC = h('div', 'hud-tc', top);
   const topR = h('div', 'hud-tr', top);
+  // The seat HUD's state banner and tooltip stack under this band: it reads `--hud-top-h` (seatHud.css) from the #ui root.
+  const host = ui().hudLayer.parentElement;
+  const setTopH = (): void => { host?.style.setProperty('--hud-top-h', `${top.offsetTop + top.offsetHeight}px`); };
+  const topRo = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(setTopH) : null;
+  topRo?.observe(top);
+  setTopH();
 
   // ── top-left: pocket, tickets, staff ────────────────────────────────────────────────────────────
   const wallet = h('div', 'hb wallet', topL);
@@ -163,13 +175,16 @@ export function createHud(): Hud {
   function winPop(text: string, idx: number): void {
     const el = h('div', idx >= HUGE ? 'win-pop huge' : 'win-pop', root, text);
     el.style.setProperty('--k', String(Math.min(2, 1 + 0.2 * (idx - SMALL))));
+    // Big and huge wins: a gold burst at the figure and a camera shake, stronger by tier (the shake setting scales it).
+    if (idx >= BIG) {
+      goldBurst(root, '42%', idx >= HUGE ? 2 : 1);
+      try { app.fx.shake(idx >= HUGE ? 0.02 : 0.012, idx >= HUGE ? 0.5 : 0.3, { roll: 0.6 }); } catch { /* the shake is optional */ }
+    }
     window.setTimeout(() => el.remove(), 900);
   }
 
-  const lampName = (e: LampEntry): string => {
-    const custom = app.run?.tycoon.owned(e.mid)?.name;
-    return custom && custom.length > 0 ? custom : machineName(e.machineId);
-  };
+  /** The machine's display name (`machine.<id>.name` via t()), never its internal id. */
+  const lampName = (e: LampEntry): string => machineName(e.machineId);
   function showLamps(v: LampView): void {
     lampsSeen = v;
     const hot = v.hot.map(lampName).join(', ');
@@ -232,14 +247,17 @@ export function createHud(): Hud {
       window.setTimeout(() => el.classList.remove('proc'), 100);
     }
     playProcTick(tier ?? 0);
-    if (label) procPops.show(label);
+    if (label) procPops.show(label, tier ?? 0);
   });
 
   on('quota:met', () => { addFeed(t('hud.feed.quotaMet'), 'gold'); uiSfx('quotaTick', 1); });
   on('quota:failed', () => { addFeed(t('hud.feed.quotaFailed'), 'red'); });
   on('event:start', ({ id }) => { feedNews(t('hud.feed.event', { name: t(`event.${id}.name`) }), 'gold'); });
   on('event:end', ({ id }) => { feedNews(t('hud.feed.eventEnd', { name: t(`event.${id}.name`) }), ''); });
-  on('tycoon:milestone', ({ upgrade, level }) => { addFeed(t('hud.feed.milestone', { name: upgrade, n: level }), 'gold'); });
+  on('tycoon:milestone', ({ upgrade, level }) => {
+    const name = has(`upg.${upgrade}.name`) ? t(`upg.${upgrade}.name`) : upgrade;
+    addFeed(t('hud.feed.milestone', { name, n: level }), 'gold');
+  });
   on('charm:add', ({ pid, charmId }) => { if (pid === self()) addFeed(t('hud.feed.charm', { name: t(`charm.${charmId}.name`) })); });
   on('circuit:lamps', (v) => {
     showLamps(v);
@@ -248,6 +266,9 @@ export function createHud(): Hud {
   on('player:seat', ({ pid, on: sat }) => {
     if (pid !== self()) return;
     seated = sat;
+    // Seated: the world interact prompt and the mouse-capture hint step aside (ui.css `.seated`). CSS, not a prompt
+    // clear: the interaction system sends a prompt only when its text changes, so a cleared prompt would stay hidden.
+    host?.classList.toggle('seated', sat);
     showLamps(lampsSeen);
   });
   let phoneTotal = PHONE_SECONDS;
@@ -280,10 +301,13 @@ export function createHud(): Hud {
     const phase = sh?.phase ?? 'idle';
     const left = r ? r.shift.timeLeft() : 0;
     const lastCall = phase === 'lastCall';
+    // Intermission (MOLA): the top line says what to do next, not the Watch clock.
+    const interm = phase === 'intermission';
     setCls(clock, 'lastcall', lastCall);
-    setText(clockNum, mmss(left));
-    setText(clockPhase, lastCall ? t('hud.clock.lastCall') : r?.window() === 'dawn' ? t('hud.clock.dawn') : t('hud.clock.watch'));
-    setText(clockWall, t('hud.clock.wall', { n: wallClock(sh?.clock ?? 0) }));
+    setCls(clock, 'interm', interm);
+    setText(clockNum, interm ? '' : mmss(left));
+    setText(clockPhase, interm ? t('interm.topBar') : lastCall ? t('hud.clock.lastCall') : r?.window() === 'dawn' ? t('hud.clock.dawn') : t('hud.clock.watch'));
+    setText(clockWall, interm ? '' : t('hud.clock.wall', { n: wallClock(sh?.clock ?? 0) }));
     if (phase !== lastPhase) {
       if (lastCall && !clockAlarmed) {
         clockAlarmed = true;
@@ -296,7 +320,8 @@ export function createHud(): Hud {
     if (r) {
       const n = r.night();
       const seg = sh?.segment;
-      setText(night, seg ? t('hud.night', { n, w: seg.index + 1, c: seg.count }) : t('hud.nightBare', { n }));
+      // Intermission: the night number only (the Watch segment belongs to the Watch clock, which is not running).
+      setText(night, seg && !interm ? t('hud.night', { n, w: seg.index + 1, c: seg.count }) : t('hud.nightBare', { n }));
     }
   }
 
@@ -440,6 +465,10 @@ export function createHud(): Hud {
       for (const off of disposers.splice(0)) off();
       for (const [id] of anchors) ui().setAnchor(id, null);
       procPops.dispose();
+      topRo?.disconnect();
+      SeatHud.stakeSource = () => ({ self: -1, pocket: 0 });
+      host?.style.removeProperty('--hud-top-h');
+      host?.classList.remove('seated');
       root.remove();
     },
   };

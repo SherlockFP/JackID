@@ -42,9 +42,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CashierParts> 
   kit.box(W + 0.06, 0.08, D, pal.steel, at(0, H - 0.04, WALL_Z + D / 2));                  // soffit
   for (const sx of [-1, 1]) kit.box(0.06, 1.7, 0.08, pal.steel, at(sx * (W / 2 - 0.03), 2.05, WALL_Z + 0.05)); // jambs
   kit.box(W - 0.1, 0.06, 0.08, pal.steel, at(0, 2.9, WALL_Z + 0.05));                      // grille head
-  for (let i = 0; i < 7; i++) {                                                             // bars
-    const x = -0.45 + i * 0.15;
-    kit.box(0.02, 1.7, 0.02, pal.steel, at(x, 2.05, WALL_Z + 0.08));
+  for (let i = 0; i < 7; i++) {                                                             // bars: they stop below the ledger
+    const x = -0.45 + i * 0.15;                                                              // (a bar across the screen hid the prices)
+    kit.box(0.02, 1.25, 0.02, pal.steel, at(x, 1.625, WALL_Z + 0.08));
   }
   kit.box(W, COUNTER_H - 0.06, D, wood, at(0, (COUNTER_H - 0.06) / 2, COUNTER_Z));          // counter body
   kit.box(W + 0.04, 0.06, D + 0.05, pal.brass, at(0, COUNTER_H - 0.03, COUNTER_Z));          // counter top, brass edge
@@ -71,7 +71,12 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CashierParts> 
   });
 
   // ── ledger and lamp ──
-  const ledger = kit.screen({ w: 0.6, h: 0.36, px: [128, 72], bezel: pal.black });
+  // 512 × 288 texels: the offer list (key, name, price) is read from the seat, so the text needs the density
+  const ledger = kit.screen({ w: 0.7, h: 0.39375, px: [512, 288], bezel: pal.black });
+  ledger.tex.magFilter = THREE.NearestFilter;                 // pixel-font edges stay sharp ...
+  ledger.tex.minFilter = THREE.LinearMipmapLinearFilter;      // ... and the minified text does not shimmer
+  ledger.tex.generateMipmaps = true;
+  ledger.tex.needsUpdate = true;
   ledger.mesh.position.set(0, 2.55, WALL_Z + 0.08);
   root.add(ledger.mesh);
   kit.cyl(0.05, 0.06, 0.08, pal.brass, at(0.5, COUNTER_H + 0.03, COUNTER_Z + 0.2, { seg: 10 }));
@@ -93,7 +98,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CashierParts> 
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.6, 1.0), look: new THREE.Vector3(0, 1.4, -0.2), fov: 60, mouse: 'primary' },
+    // seat framing: the ledger (y 2.37–2.73, over the counter) and the offer rows must be inside the view
+    playPose: { pos: new THREE.Vector3(0, 1.75, 1.2), look: new THREE.Vector3(0, 1.95, -0.25), fov: 60, mouse: 'primary' },
     colliders: [
       { min: [-W / 2, 0, COUNTER_Z - D / 2], max: [W / 2, COUNTER_H, COUNTER_Z + D / 2] },
       { min: [-W / 2, 0, WALL_Z - 0.06], max: [W / 2, H, WALL_Z + 0.06] },

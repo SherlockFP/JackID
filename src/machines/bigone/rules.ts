@@ -19,10 +19,12 @@ export const SYM_COUNT = 7;
 export const SYM_NAMES = ['MOTH', 'TOOTH', 'KEY', 'CANDLE', 'RING', 'CROWN', 'SUN'] as const;
 export const BASE_VALUE = [1, 1, 2, 2, 3, 4, 7];
 /** Base weights out of 100 for symbols 0..6 (MAW and GHOST are weight 0 unless a charm adds GHOST). */
-export const BASE_WEIGHT = [19, 19, 17, 17, 11, 10, 7];
+export const BASE_WEIGHT = [24, 24, 14, 14, 10, 8, 6];
 export const CELLS = 15;
 export const MIN_STAKE = 1;
 export const MAX_STAKE = 100;
+/** Hard ceiling on a line payout (x stake, jackpot claims exempt). The best stacked tally sits far below it. */
+export const MAX_LINE_MULT = 500;
 export const FULL_MULT = 40;
 /** FULL pays ×40 × the symbol value (E[value] 2.28 → 2.3 % RTP), plus the meter. Odds 1 in 4 000 before `jackpot.mult`. */
 export const FULL_P = 1 / 4000;
@@ -39,14 +41,23 @@ const RESPIN_COLS = [3, 4];
 
 export const PATTERN_IDS = [
   'TREY', 'QUAD', 'RAIL', 'PILLAR', 'SLASH', 'VALLEY', 'PEAK', 'CROSS', 'PENTACLE', 'HALO',
-  'CLUSTER', 'FULL', 'TWIN_RAILS', 'CORNERSTONE',
+  'CLUSTER', 'FULL', 'TWIN_RAILS', 'CORNERSTONE', 'EYE',
 ] as const;
 export type PatternId = (typeof PATTERN_IDS)[number];
 /** Patterns tested by cell-set instances (CLUSTER is a flood fill, FULL is the fill roll). */
 export type LinePattern = Exclude<PatternId, 'CLUSTER' | 'FULL'>;
 export const PATTERN_MULT: Record<PatternId, number> = {
-  TREY: 1, QUAD: 2, RAIL: 5, PILLAR: 1, SLASH: 1, VALLEY: 5, PEAK: 5, CROSS: 7, PENTACLE: 10, HALO: 15,
-  CLUSTER: 0, FULL: FULL_MULT, TWIN_RAILS: 12, CORNERSTONE: 3,
+  TREY: 2, QUAD: 6, RAIL: 20, PILLAR: 2, SLASH: 2, VALLEY: 12, PEAK: 12, CROSS: 15, PENTACLE: 25, HALO: 30,
+  CLUSTER: 0, FULL: FULL_MULT, TWIN_RAILS: 25, CORNERSTONE: 8, EYE: 8,
+};
+/** Feel knobs (exported so the headless sim can sweep them; game code never mutates them). */
+export const TUNE = {
+  /** Chance that a cell equal to a left / upper / upper-diagonal neighbour is drawn once more (fewer clumps = fewer cheap hits). */
+  clump: 0.56,
+  /** A row pair of this symbol value or more (or any run of 3+) makes the next reel anticipate. */
+  teaseValue: 4,
+  /** Stacking bonus per tally step: the n-th pattern of a spin (0-based) pays x(1 + combo n). */
+  combo: 0.5,
 };
 const LINES = PATTERN_IDS.filter((p): p is LinePattern => p !== 'CLUSTER' && p !== 'FULL');
 
@@ -98,6 +109,9 @@ function instancesOf(p: LinePattern): number[][] {
     case 'CORNERSTONE':
       out.push([at(0, 0), at(0, 4), at(2, 0), at(2, 4)]);
       break;
+    case 'EYE': // a diamond ring around an empty centre (the centre cell may be anything)
+      for (let c = 1; c <= 3; c++) out.push([at(0, c), at(2, c), at(1, c - 1), at(1, c + 1)]);
+      break;
   }
   return out;
 }
@@ -115,6 +129,12 @@ export function neighbours(i: number): number[] {
 }
 
 const clamp = (x: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, x));
+
+/** True when `v` equals an already-drawn neighbour of cell `i`: left, up, up-left or up-right (row-major draw order). */
+function touches(g: readonly number[], i: number, v: number): boolean {
+  const c = i % 5;
+  return (c > 0 && g[i - 1] === v) || (i >= 5 && (g[i - 5] === v || (c > 0 && g[i - 6] === v) || (c < 4 && g[i - 4] === v)));
+}
 
 /** Chance that the next spin is EATEN, from spins since the last curse (k). Capped before the charm multiplier. */
 export function curseChance(k: number, mult: number): number {
@@ -258,20 +278,60 @@ export function evaluate(g: readonly number[], m: Mods): { pays: Pay[]; clusters
   return { pays, clusters, raw };
 }
 
-/** Near-miss tease (cosmetic, drives the last-reel crawl): a line whose other cells match and whose reel-5 cell does not. */
-export function teaseOf(g: readonly number[], lines: readonly LinePattern[]): boolean {
-  for (const p of lines) {
-    for (const cells of INSTANCES[p]) {
-      const last = cells.filter((i) => i % 5 === 4);
-      const rest = cells.filter((i) => i % 5 !== 4);
-      if (last.length === 0 || rest.length < 2) continue;
-      const s = matchSym(g, rest);
-      if (s < 0) continue;
-      if (last.some((i) => g[i] !== GHOST && g[i] !== s)) return true;
+/** The near-miss tell: the reel that should crawl, and why. */
+export interface Tease {
+  /** Reel (1..4) that anticipates: the one that would complete the run. */
+  reel: number;
+  row: number;
+  /** Cells already lined up left of `reel` (2 = "two of three", 3 = a trey asking for a quad, 4 = one short of a rail). */
+  len: number;
+  sym: number;
+}
+
+/**
+ * Near-miss tell (cosmetic, drives the anticipation crawl): in a row, a run of 2+ equal cells that reads left to right
+ * and is cut off by a different cell on the next reel. Only runs that matter qualify: a pair of a valuable symbol
+ * (value >= TUNE.teaseValue, or a GHOST pair) or any run of 3+. The longest run wins, then the value, then the earlier
+ * reel. The reel that would complete it is the one that slows down, so reels stop left to right as ever.
+ */
+export function teaseInfo(g: readonly number[], values: readonly number[] = BASE_VALUE): Tease | null {
+  let best: Tease | null = null;
+  let bestScore = -1;
+  for (let r = 0; r < 3; r++) {
+    let c = 0;
+    while (c < 4) {
+      // maximal run of matching cells starting at column c
+      let sym = -1;
+      let e = c;
+      const first = g[at(r, c)];
+      if (first === MAW) { c++; continue; }
+      sym = first === GHOST ? -1 : first;
+      let ok = true;
+      while (e + 1 < 5 && ok) {
+        const v = g[at(r, e + 1)];
+        if (v === MAW) { ok = false; break; }
+        if (v === GHOST) { e++; continue; }
+        if (sym < 0) { sym = v; e++; continue; }
+        if (v === sym) { e++; continue; }
+        ok = false;
+      }
+      const len = e - c + 1;
+      const nextReel = e + 1;
+      if (len >= 2 && nextReel <= 4) {
+        const val = sym < 0 ? values[SUN] : values[sym] ?? 0;
+        if (len >= 3 || val >= TUNE.teaseValue) {
+          const score = len * 100 + val * 10 - nextReel;
+          if (score > bestScore) { bestScore = score; best = { reel: nextReel, row: r, len, sym: sym < 0 ? SUN : sym }; }
+        }
+      }
+      c = Math.max(c + 1, e);
     }
   }
-  return false;
+  return best;
 }
+
+/** True when a near-miss tell applies (kept for callers that only need the flag). */
+export const teaseOf = (g: readonly number[], values: readonly number[] = BASE_VALUE): boolean => teaseInfo(g, values) !== null;
 
 export interface PlayIn {
   mods: Mods;
@@ -290,8 +350,9 @@ export interface PlayIn {
   hold: number;
 }
 
-export interface PayOut { pat: PatternId; sym: number; cells: number[]; amount: number }
-export interface ClusterOut { sym: number; cells: number[]; amount: number }
+/** One tallied pattern: `raw` = symbol value x pattern multiplier, `combo` = the stacking factor of its place in the tally, `amount` in coins. */
+export interface PayOut { pat: PatternId; sym: number; cells: number[]; amount: number; raw: number; combo: number }
+export interface ClusterOut { sym: number; cells: number[]; amount: number; raw: number; combo: number }
 
 export interface Outcome {
   grid: number[];
@@ -306,10 +367,14 @@ export interface Outcome {
   fillSym: number;
   respin: boolean;
   tease: boolean;
+  /** The near-miss tell (reel to slow, its row, the run length lined up) or null. */
+  teaseAt: Tease | null;
   /** Reel actually held this spin, or -1. */
   hold: number;
   pays: PayOut[];
   clusters: ClusterOut[];
+  /** Every paying pattern (lines and clusters) in tally order: smallest first, so the show escalates. */
+  tally: PayOut[];
   /** Base gross in coins (before run payout mults). */
   gross: number;
   /** Meter coins paid by FULL. */
@@ -319,6 +384,18 @@ export interface Outcome {
   /** Meter after the round. */
   meter: number;
   tags: string[];
+}
+
+/** Paying patterns in tally order (smallest raw first, ties keep evaluation order) with the stacking combo applied. */
+export function tallyOf(stake: number, pays: readonly Pay[], clusters: readonly Cluster[]): PayOut[] {
+  const items = [
+    ...pays.map((p) => ({ pat: p.pat as PatternId, sym: p.sym, cells: p.cells, raw: p.raw })),
+    ...clusters.map((c) => ({ pat: 'CLUSTER' as PatternId, sym: c.sym, cells: c.cells, raw: c.raw })),
+  ].sort((a, b) => a.raw - b.raw);
+  return items.map((it, i) => {
+    const combo = 1 + TUNE.combo * i;
+    return { ...it, combo, amount: Math.floor(stake * it.raw * combo) };
+  });
 }
 
 /** One spin. Always consumes the same leading draws (curse + fill) so a seed replays identically. */
@@ -341,7 +418,12 @@ export function play(rng: Rng, stake: number, s: PlayIn): Outcome {
     fillSym = pickW(rng, m.weights);
     grid = new Array<number>(CELLS).fill(fillSym);
   } else {
-    grid = Array.from({ length: CELLS }, () => pickW(rng, m.weights));
+    grid = [];
+    for (let i = 0; i < CELLS; i++) {
+      let v = pickW(rng, m.weights);
+      for (let k = 0; k < 2 && TUNE.clump > 0 && touches(grid, i, v) && rng.next() < TUNE.clump; k++) v = pickW(rng, m.weights);
+      grid.push(v);
+    }
     for (let i = 0; i < CELLS; i++) if (rng.next() < m.wild) grid[i] = GHOST;
     if (s.luck > 0) pre = grid.slice();
     const pCo = Math.min(COALESCE_CAP, 0.01 * Math.max(0, s.luck));
@@ -386,7 +468,11 @@ export function play(rng: Rng, stake: number, s: PlayIn): Outcome {
       ({ pays, clusters, raw } = evaluate(grid, m));
     }
   }
-  const tease = !fill && !eaten && teaseOf(grid, m.lines);
+  const teaseI = !fill && !eaten ? teaseInfo(grid, m.values) : null;
+  const tease = teaseI !== null;
+
+  // tally: each pattern is one step of the count-up, smallest first; every later step stacks a combo bonus
+  const tally = fill || eaten ? [] : tallyOf(stake, pays, clusters);
 
   // money: the meter takes its feed on every stake; FULL pays the meter pro rata and reseeds on a full-ladder hit
   const meterFed = s.meter + stake * m.feed;
@@ -402,19 +488,24 @@ export function play(rng: Rng, stake: number, s: PlayIn): Outcome {
     meter = stake >= s.maxStake ? seed : meterFed - jackpot;
     tags.push('jackpot');
   } else if (!eaten) {
-    gross = Math.floor(stake * raw);
+    for (const t of tally) gross += t.amount;
+    gross = Math.min(gross, Math.floor(stake * MAX_LINE_MULT));
   }
-  const payOut: PayOut[] = pays.map((p) => ({ pat: p.pat, sym: p.sym, cells: p.cells, amount: Math.floor(stake * p.raw) }));
-  const clusterOut: ClusterOut[] = clusters.map((c) => ({ sym: c.sym, cells: c.cells, amount: Math.floor(stake * c.raw) }));
-  if (fill) payOut.push({ pat: 'FULL', sym: fillSym, cells: Array.from({ length: CELLS }, (_, i) => i), amount: gross });
+  const payOut: PayOut[] = tally.filter((t) => t.pat !== 'CLUSTER');
+  const clusterOut: ClusterOut[] = tally.filter((t) => t.pat === 'CLUSTER');
+  if (fill) {
+    const full = { pat: 'FULL' as PatternId, sym: fillSym, cells: Array.from({ length: CELLS }, (_, i) => i), amount: gross, raw: FULL_MULT * (m.values[fillSym === GHOST ? SUN : fillSym] ?? 0), combo: 1 };
+    payOut.push(full);
+    tally.push(full);
+  }
   if (gross > 0) tags.push('win');
   for (const p of payOut) tags.push(`bigone:pattern:${p.pat}`);
   for (const _c of clusterOut) tags.push('bigone:pattern:CLUSTER');
   if (eaten) tags.push('curse');
   if (tease && gross === 0) tags.push('nearmiss');
   return {
-    grid, pre, coalesced, teaser, curse: eaten, curseCol, ward, fill, fillSym, respin, tease, hold,
-    pays: payOut, clusters: clusterOut, gross, jackpot, meterFed, meter, tags,
+    grid, pre, coalesced, teaser, curse: eaten, curseCol, ward, fill, fillSym, respin, tease, teaseAt: teaseI, hold,
+    pays: payOut, clusters: clusterOut, tally, gross, jackpot, meterFed, meter, tags,
   };
 }
 

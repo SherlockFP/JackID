@@ -25,6 +25,14 @@ import type { OddsLine } from '@/game/pace';
 import { BRASS, CREAM, INK, INK_SOFT, Placard3D, button, paginate, put, rowsIn, rulesFirstEver, rulesMarkShown, wrapPx5 } from './placard3d';
 import { showRulesHint } from './rulesHint';
 import './seatHud.css';
+import './seatHudLayout.css';
+
+declare module '@/core/events' {
+  interface GameEvents {
+    /** The econ lane's high-stake flag: `need` true while the next bet wants a confirm press (the STAKE panel warns). */
+    'stake:confirm': { need: boolean };
+  }
+}
 
 export type HudTone = 'neutral' | 'gold' | 'good' | 'bad' | 'cyan' | 'warn';
 export type HudResultKind = 'win' | 'lose' | 'push' | 'blackjack' | 'bust' | 'surrender' | 'even';
@@ -79,6 +87,17 @@ export class SeatHud {
   private readonly stateEl: HTMLElement;
   private readonly stateT: HTMLElement;
   private readonly stateS: HTMLElement;
+  /** The big STAKE / POCKET readout (always shown while seated); warns above half the pocket. */
+  private readonly stakeEl: HTMLElement;
+  private readonly stakeL: HTMLElement;
+  private readonly stakeV: HTMLElement;
+  /** Re-places the stack edges (`--seat-top-b` / `--seat-bot-t`) when the goal, banner or stake stack changes size. */
+  private readonly stackRo: ResizeObserver | null;
+  private stakeBet = 0;
+  /** True once THIS machine reported a stake (a round or `stake()`); non-staking seats (terminal, cashier, vendor) never show the readout. */
+  private stakeKnown = false;
+  private stakeNeed = false;
+  private stakeKey = '';
   private readonly resultEl: HTMLElement;
   private readonly resultT: HTMLElement;
   private readonly resultA: HTMLElement;
@@ -107,11 +126,12 @@ export class SeatHud {
   /** `mount` is normally the machine's `ctx.ui.root` (`#ui`). */
   constructor(mount: HTMLElement) {
     this.root = make('div', 'seat-hud', mount);
+    // Top band order (fixed): the Night / Watch clock line (HUD band, above), then the state banner, then the machine tooltip.
     const top = make('div', 'shud-top', this.root);
-    this.goalEl = make('div', 'shud-goal shud-panel', top);
     this.stateEl = make('div', 'shud-state shud-panel', top);
     this.stateT = make('span', 'shud-state-t', this.stateEl);
     this.stateS = make('span', 'shud-state-s', this.stateEl);
+    this.goalEl = make('div', 'shud-goal shud-panel', top);
     this.resultEl = make('div', 'shud-result', this.root);
     this.resultT = make('span', 'shud-result-t', this.resultEl);
     this.resultA = make('span', 'shud-result-a', this.resultEl);
@@ -126,11 +146,43 @@ export class SeatHud {
     this.oddsEl = make('div', 'shud-odds shud-panel', bottom);
     this.oddsEl.style.maxWidth = '70vw'; this.oddsEl.style.whiteSpace = 'normal'; this.oddsEl.style.overflowWrap = 'anywhere';
     this.oddsEl.style.display = 'none';
+    this.stakeEl = make('div', 'shud-stake shud-panel tone-gold', bottom);
+    this.stakeL = make('span', 'shud-stake-l', this.stakeEl);
+    this.stakeV = make('span', 'shud-stake-v', this.stakeEl);
     this.numsEl = make('div', 'shud-nums', bottom);
     this.ctrlEl = make('div', 'shud-ctrl shud-panel', bottom);
+    this.stackRo = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => this.placeToasts()) : null;
+    this.stackRo?.observe(top);
+    this.stackRo?.observe(bottom);
     this.offs.push(bus.on('circuit:tilt', (e) => { this.tilt = e.tilt; this.refreshTilt(); }));
     this.offs.push(bus.on('seat:odds', (e) => this.odds(e.line)));
     this.offs.push(bus.on('ui:blocking', ({ blocking }) => this.setUiBlocked(blocking)));
+    // STAKE: the local player's bet (machine:round) and pocket (wallet) feed the readout; the econ lane may flag a high stake.
+    const mine = (pid: number): boolean => pid === SeatHud.stakeSource().self;
+    this.offs.push(bus.on('machine:round', (e) => { if (this.shown && mine(e.pid)) { this.stakeBet = e.bet; this.stakeKnown = true; this.refreshStake(); } }));
+    this.offs.push(bus.on('machine:result', (e) => { if (mine(e.pid)) this.refreshStake(); }));
+    this.offs.push(bus.on('eco:wallet', (e) => { if (mine(e.pid)) this.refreshStake(); }));
+    this.offs.push(bus.on('stake:confirm', ({ need }) => { this.stakeNeed = need; this.refreshStake(); }));
+    this.offs.push(bus.on('run:stakeConfirm', (e) => { if (mine(e.pid)) { this.stakeNeed = e.state === 'ask'; this.refreshStake(); } }));
+  }
+
+  /** A machine's own stake (e.g. set before the round event) for the STAKE readout; the pocket is read from the run. */
+  stake(bet: number): void { this.stakeBet = Number.isFinite(bet) && bet > 0 ? bet : 0; this.stakeKnown = true; this.refreshStake(); }
+
+  /** Repaints the STAKE / POCKET readout (cheap: DOM only on change). Warns when the stake is above half the pocket. */
+  private refreshStake(): void {
+    const pocket = SeatHud.stakeSource().pocket;
+    const bet = this.stakeBet;
+    const high = bet > pocket * 0.5;
+    const show = this.shown && this.stakeKnown;
+    const key = `${show ? 1 : 0}|${bet}|${pocket}|${high ? 1 : 0}|${this.stakeNeed ? 1 : 0}`;
+    if (key === this.stakeKey) return;
+    this.stakeKey = key;
+    this.stakeEl.style.display = show ? '' : 'none';
+    const tone = this.stakeNeed ? 'bad' : high ? 'warn' : 'gold';
+    this.stakeEl.className = `shud-stake shud-panel tone-${tone}${this.stakeNeed ? ' need' : ''}`;
+    this.stakeL.textContent = tr(this.stakeNeed ? 'hud.stake.confirm' : 'hud.stake.label');
+    this.stakeV.textContent = `${fmtCoins(bet)} / ${fmtCoins(pocket)}`;
   }
 
   /**
@@ -180,21 +232,37 @@ export class SeatHud {
   get rulesOpen(): boolean { return this.card === 'rules'; }
 
   /** Seated: show the overlay. */
-  show(): void { this.shown = true; this.root.classList.add('on'); this.refreshTilt(); this.placeToasts(); }
+  show(): void {
+    this.shown = true; this.root.classList.add('on'); this.root.parentElement?.classList.add('seated');
+    this.stakeKnown = false; this.stakeBet = 0;   // each seat reports its own stake; a seat that never does shows no STAKE readout
+    this.refreshTilt(); this.refreshStake(); this.placeToasts();
+  }
   /** Stood up: hide everything, drop the result and any open card (an unseen tip stays unseen). */
   /** Label of the help key; the in-game session points this at the live binding (default key H). */
   static helpKeyLabel: () => string = () => 'H';
+  /**
+   * The local player's id and pocket for the STAKE readout. The in-game HUD (`menu/hud.ts`) points this at the run while a
+   * Night is on; the default reads nothing (zero pocket, no own events).
+   */
+  static stakeSource: () => { self: number; pocket: number } = () => ({ self: -1, pocket: 0 });
   private offHint: (() => void) | null = null;
   hide(): void {
     this.offHint?.(); this.offHint = null;
     this.shown = false;
     this.root.classList.remove('on');
+    this.root.parentElement?.classList.remove('seated');
     this.clearResult();
     this.closeCard();
     this.refreshTilt();
     this.placeToasts();
   }
-  dispose(): void { this.offHint?.(); this.offHint = null; for (const off of this.offs.splice(0)) off(); this.clearResult(); this.cardP?.dispose(); this.cardP = null; this.root.remove(); }
+  dispose(): void {
+    this.offHint?.(); this.offHint = null; for (const off of this.offs.splice(0)) off(); this.clearResult(); this.cardP?.dispose(); this.cardP = null;
+    this.stackRo?.disconnect();
+    this.root.parentElement?.style.removeProperty('--seat-top-b');
+    this.root.parentElement?.style.removeProperty('--seat-bot-t');
+    this.root.remove();
+  }
 
   // ── standard slots ────────────────────────────────────────────────────────────────────────────
   goal(text: Txt): void { this.goalEl.textContent = txt(text); this.placeToasts(); }
@@ -212,11 +280,31 @@ export class SeatHud {
    * the HUD is up; it used to cover the goal and the state banner. Restored when the HUD hides or the UI blocks.
    */
   private placeToasts(): void {
+    this.placeStack();
     const stack = this.root.parentElement?.querySelector<HTMLElement>('.px-toasts');
     if (!stack) return;
     if (!this.shown || this.uiBlocked) { stack.style.top = ''; return; }
     const head = this.root.querySelector<HTMLElement>('.shud-top');
     stack.style.top = head ? `${head.offsetTop + head.offsetHeight + 6}px` : '';
+  }
+
+  /**
+   * Publishes the seat stack's edges on `#ui` as `--seat-top-b` (bottom of the goal / state stack) and `--seat-bot-t` (top of
+   * the STAKE / odds stack), in px from the top of `#ui`. The Night 1 tutorial box (`.px-tut`, ui.css) sits between them while
+   * seated. Removed when the HUD is down.
+   */
+  private placeStack(): void {
+    const host = this.root.parentElement;
+    if (!host) return;
+    if (!this.shown || this.uiBlocked) {
+      host.style.removeProperty('--seat-top-b');
+      host.style.removeProperty('--seat-bot-t');
+      return;
+    }
+    const top = this.root.querySelector<HTMLElement>('.shud-top');
+    const bot = this.root.querySelector<HTMLElement>('.shud-bottom');
+    if (top) host.style.setProperty('--seat-top-b', `${top.offsetTop + top.offsetHeight}px`);
+    if (bot) host.style.setProperty('--seat-bot-t', `${bot.offsetTop}px`);
   }
 
   numbers(items: HudNumber[]): void {
@@ -242,10 +330,10 @@ export class SeatHud {
   }
 
   /** Colour-coded callout held for `hold` seconds. `amount` = net coins (negative = lost). */
-  result(kind: HudResultKind, amount = 0, hold = 1.5): void {
+  result(kind: HudResultKind, amount = 0, hold = 1.5, label?: string): void {
     this.clearResult();
     this.resultEl.className = `shud-result r-${kind}`;
-    this.resultT.textContent = tr(RESULT_KEY[kind]);
+    this.resultT.textContent = label ?? tr(RESULT_KEY[kind]);
     this.resultA.textContent = amount > 0 ? `+${fmtCoins(amount)}` : amount < 0 ? `-${fmtCoins(-amount)}` : '';
     this.resultA.style.display = amount === 0 ? 'none' : '';
     void this.resultEl.offsetWidth;                       // restart the pop-in

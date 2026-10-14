@@ -39,6 +39,7 @@ import { startOnlineHooks } from './mp';
 import { nightPaid } from '@/machines/debt_terminal/night';
 import { SeatHud } from '@/machines/_base/seatHud';
 import { startTutorial, type Tutorial } from '@/game/tutorial';
+import { holdClockFor } from '@/game/clockHold';
 
 export interface DebtSession {
   readonly world: WorldHost;
@@ -205,7 +206,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   };
   const horror: HorrorDirector = createHorror({
     audio: app.audio,
-    subtitle: (text, speaker, dur) => app.ui.subtitle(text, speaker, dur),
+    subtitle: (text, speaker, dur) => { if (text && dur) holdClockFor('horror', dur); app.ui.subtitle(text, speaker, dur); },
     lights: () => world.lights,
     actors,
     rng: createRng(hashSeed('horror', run.seed)),

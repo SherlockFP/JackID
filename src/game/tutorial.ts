@@ -3,7 +3,8 @@
  * next thing to do: walk to The Big One → spin it → deposit at the Debt Terminal → rotate off a Tilted machine → HOT lamp
  * (text only: lamps start at Night 2) → buy a charm at the Pawn Window in the intermission.
  *
- * Nothing here takes input or changes the input mode. The first-run flag is `save.stats['tutorial.n1']`; it is set when the
+ * Steps 1-3 (walk, spin, deposit) hold the Watch clock (`clockHold`), so the first Watch never runs out while the player is still
+ * being shown how to play. Nothing here takes input or changes the input mode. The first-run flag is `save.stats['tutorial.n1']`; it is set when the
  * tutorial finishes, is skipped (hold Esc for about a second) or the run leaves Night 1. A run that ends or is quit mid-way
  * keeps the flag unset, so the next first run shows it again.
  *
@@ -18,6 +19,8 @@ import type { InstanceId, Unsub } from '@/core/types';
 import type { WorldHost } from '@/world/world';
 import type { DebtRun } from '@/game/run';
 import type { UIOverlayX } from '@/core/ui/ui';
+import { holdClock, releaseClock } from '@/game/clockHold';
+import { nightDef } from '@/game/data/schedule';
 
 export interface TutorialHost {
   readonly world: WorldHost;
@@ -35,6 +38,8 @@ const FLAG = 'tutorial.n1';
 /** Hold Esc this long (seconds) to skip. A shorter press is a pause (the pause card opens on its release). */
 export const SKIP_HOLD_S = 1;
 const GOLD = 0xffd36b;
+/** The first three steps (walk, spin, deposit) hold the Watch clock. */
+const HOLD_STEPS = 3;
 
 /** The tutorial currently on screen (one at a time). Lets the pause card and Esc see it without a handle on the session. */
 let active: { skip(): void } | null = null;
@@ -164,6 +169,7 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
         const n = run.pulls();
         return t('tut.spin', { key: keyLabel('m.primary'), n: Number.isFinite(n) ? String(n) : '∞' });
       }
+      case 'deposit': return t('tut.deposit', { pct: Math.round(nightDef(0).interest * 100) });
       default: return t(`tut.${s.key}`);
     }
   };
@@ -197,6 +203,7 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
     for (const off of offs.splice(0)) off();
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
+    releaseClock('tutorial');
     el.remove();
     world.root.remove(ring, arrow);
     ringGeo.dispose(); ringMat.dispose(); arrowGeo.dispose(); arrowMat.dispose();
@@ -233,6 +240,7 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
       if (idx >= STEPS.length) { finish(); return; }
 
       const s = STEPS[idx];
+      if (idx < HOLD_STEPS) holdClock('tutorial', 3); else releaseClock('tutorial');
       line.textContent = text(s);
       hint.textContent = `${t('tut.step', { i: idx + 1, total: STEPS.length })}  ·  ${t('tut.skip')}`;
       el.style.display = '';

@@ -106,7 +106,7 @@ export const def: MachineDef = {
     },
     tr: {
       name: 'Rehin Penceresi',
-      desc: 'Tezgahın altında tılsımlar, yalnızca aralarda. Her şeyin bir fiyatı var.',
+      desc: 'Tezgahın altında tılsımlar, yalnızca Molalarda. Her şeyin bir fiyatı var.',
       h_pick: 'SEÇ', h_buy: 'AL', h_reroll: 'YENİLE', h_lock: 'KİLİTLE', h_curse: 'LANET AÇ', h_leave: 'AYRIL',
       s_coins: 'PARA', s_tickets: 'BİLET', s_item: 'EŞYA',
       closed: 'PENCERE KAPALI', funds: 'PARA YETMİYOR', tickets: 'BİLET YOK', none: 'BURADA BİR ŞEY YOK',
@@ -115,7 +115,7 @@ export const def: MachineDef = {
       ledgerHint: '1-4 SEÇ  BOŞLUK AL', ledgerTickets: 'BİLET',
       goal: "Ödeyebildiğin bir tılsım al. Stoku biletlerle yenile ya da kilitle, lanetleri bedelini ödeyip aç.",
       stShut: "PENCERE KAPALI",
-      stShutSub: "Rehin penceresi ara dönemlerde açılır",
+      stShutSub: "Rehin penceresi Molalarda açılır",
       stEmpty: "BU YUVADA BİR ŞEY YOK",
       stEmptySub: "Başka bir yuva seç",
       stFunds: "PARA YETMİYOR",
@@ -134,11 +134,11 @@ export const def: MachineDef = {
       cCurse: "LANETİ AÇ {n} BİLET",
       cRules: "KURALLAR",
       cLeave: "AYRIL",
-      rule1: "Rehin penceresi yalnızca ara dönemlerde açık. Bir yuva seç ve tılsımı parayla al.",
-      rule2: "YENİLE stoku biletle yeniler. Aynı ara dönemde her ek yenileme bir bilet daha tutar.",
+      rule1: "Rehin penceresi yalnızca Molalarda açık. Bir yuva seç ve tılsımı parayla al.",
+      rule2: "YENİLE stoku biletle yeniler. Aynı Molada her ek yenileme bir bilet daha tutar.",
       rule3: "KİLİTLE bir tılsımı bir sonraki ziyaretine saklar. Lanetli tılsım alınca sana para öder; LANETİ AÇ laneti biletle kaldırır.",
       rule4: "Tuşlar: ok ya da 1-4 yuva seçer, BİRİNCİL satın alır, ALT yenilettirir, E ayrılır.",
-      tip1: "Rehin penceresi yalnızca ara dönemlerde açık. Bir tılsım seç, sonra al.",
+      tip1: "Rehin penceresi yalnızca Molalarda açık. Bir tılsım seç, sonra al.",
       tip2: "[{move}] TILSIM SEÇ  ·  [{buy}] PARAYLA AL",
       tip3: "Biletler: [{reroll}] YENİLE  ·  [{lock}] KİLİTLE  ·  [{help}] KURALLAR",
       rarCommon: 'SIRADAN', rarUncommon: 'YARI NADİR', rarRare: 'NADİR', rarLegendary: 'EFSANEVİ', rarCursed: 'LANETLİ',
@@ -170,6 +170,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   private uiBlocked = false;
   private offBlock: (() => void) | null = null;
   private offHint: (() => void) | null = null;
+  private readonly onResize = (): void => this.fitPose();
 
   protected createModel(kit: KitX): MachineModel<CharmVendorParts> {
     return buildModel(kit, this.modelOpts);
@@ -179,6 +180,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     this.seatHud = new SeatHud(this.ctx.ui.root);
     this.ctx.ui.machineHud(null);                          // the seat HUD replaces the generic bottom bar
     this.buildCard();
+    this.fitPose();
+    window.addEventListener('resize', this.onResize);
     this.offBlock = bus.on('ui:blocking', ({ blocking }) => { this.uiBlocked = blocking; this.syncCard(); });
     this.refresh(true);
     this.attractor.every('glint', 11, () => this.ctx.fx.glow(this.model.anchors.light, GOLD, 0.25, 0.5), { first: 6 });
@@ -214,6 +217,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   dispose(): void {
     this.offBlock?.(); this.offBlock = null;
     this.offHint?.(); this.offHint = null;
+    window.removeEventListener('resize', this.onResize);
     this.card?.el.remove(); this.card = undefined;
     this.seatHud?.dispose();
     super.dispose();
@@ -504,6 +508,35 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   }
 
   // ── selected-charm card (DOM, so the text is crisp) ───────────────────────────────────────────
+  /**
+   * Seat framing, fitted to the actual corners of what the customer must read: the price tags on the counter front
+   * (x ±0.88 at z 0.64, only ~0.7 m from the seat), the four pedestals and the ledger above them. The old fit assumed
+   * every slot sat 1.15 m away, which put the nearer tag (and the leftmost slot's tag) outside the field.
+   * The field is the smallest that holds all the corners, and widens for narrow windows instead of cropping.
+   */
+  private fitPose(): void {
+    const DEG = Math.PI / 180;
+    const cam = [0, 1.25, 1.8];
+    const pts: Array<[number, number, number]> = [];
+    for (const x of [-0.88, 0.88]) for (const y of [0.76, 0.84]) pts.push([x, y, 0.64]);   // price tags
+    for (const x of [-0.75, 0.75]) for (const y of [1.0, 1.3]) pts.push([x, y, 0.2]);      // pedestals and charms
+    for (const x of [-0.28, 0.28]) for (const y of [2.03, 2.37]) pts.push([x, y, -0.62]);  // ledger
+    let vMin = Infinity, vMax = -Infinity, hMax = 0;
+    for (const p of pts) {
+      const dz = cam[2] - p[2];
+      const v = Math.atan2(p[1] - cam[1], dz);
+      vMin = Math.min(vMin, v); vMax = Math.max(vMax, v);
+      hMax = Math.max(hMax, Math.atan2(Math.abs(p[0]), dz));
+    }
+    const aspect = Math.max(0.4, window.innerWidth / Math.max(1, window.innerHeight));
+    const centre = (vMin + vMax) / 2;
+    const vHalf = Math.max((vMax - vMin) / 2 + 4 * DEG, Math.atan(Math.tan(hMax + 3 * DEG) / aspect));
+    const pose = this.model.playPose;
+    pose.pos.set(cam[0], cam[1], cam[2]);
+    pose.look.set(cam[0], cam[1] + Math.sin(centre), cam[2] - Math.cos(centre));
+    pose.fov = Math.min(80, Math.max(40, (2 * vHalf) / DEG));
+  }
+
   private buildCard(): void {
     const el = document.createElement('div');
     el.className = 'pawn-card';

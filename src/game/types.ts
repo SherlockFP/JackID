@@ -45,7 +45,7 @@ export const WIN_TIERS: readonly WinTier[] = ['none', 'push', 'small', 'medium',
 export type RunWindow = 'watch' | 'dawn';
 
 /** Why `run.bet()` / a play was refused (`run.lastRefusal()`). */
-export type RefusalReason = 'funds' | 'pulls' | 'phase' | 'limit';
+export type RefusalReason = 'funds' | 'pulls' | 'phase' | 'limit' | 'confirm';
 
 /** Catalogue range × SI × Cap (TECH §11.5). `ladder` = the bet steps `stepBet()` walks. */
 export interface BetLimits { min: number; max: number; ladder: number[] }

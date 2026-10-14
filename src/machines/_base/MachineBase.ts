@@ -354,6 +354,14 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   }
 
   // ── economy ──
+  /** Why a bet failed: the stake-confirm prompt (first press on a big stake), the stake cap, or no funds. */
+  private toastRefusal(amount: number): void {
+    const run = this.ctx.run;
+    const why = run.lastRefusal();
+    if (why === 'confirm') this.toast(tr('stake.confirm', { amount, pocket: run.wallet() }), 'warn');
+    else if (why === 'limit') this.toast(tr('stake.cap', { max: run.betLimits(this.def.id, this.id).max }), 'warn');
+    else this.toast(tr('common.noFunds'), 'bad');
+  }
   /**
    * Solo: `!busy && !roundOpen`, `run.bet()`; toast + buzzer on failure; sets `busy`. Re-seeds `this.rng` from
    * (runSeed, instance, round#) — identical after a reload because the round counter is persisted.
@@ -361,7 +369,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   protected beginRound(bet: number = this.bet): boolean {
     if (this.busy || this._roundOpen) return false;
     if (!this.ctx.run.bet(bet, this.src)) {
-      this.toast(tr('common.noFunds'), 'bad');
+      this.toastRefusal(bet);
       this.sfx('buzzer');
       return false;
     }
@@ -378,7 +386,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   protected addStake(amount: number): boolean {
     if (!this._roundOpen) { log.warn('machine', `${this.id} addStake without an open round`); return false; }
     if (!this.ctx.run.bet(amount, this.src)) {
-      this.toast(tr('common.noFunds'), 'bad');
+      this.toastRefusal(amount);
       this.sfx('buzzer');
       return false;
     }
@@ -412,8 +420,12 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   /** Bet ladder: `def.betSteps` (or doubling min→max), extended in 1-2-5 steps up to `max × bet.maxMult`. */
   protected betLadder(): number[] {
     const d = this.def;
-    const base = d.betSteps ? [...d.betSteps] : (() => { const a: number[] = []; for (let b = d.minBet; b < d.maxBet; b *= 2) a.push(b); a.push(d.maxBet); return a; })();
-    const cap = Math.floor(d.maxBet * this.mod('bet.maxMult', 1));
+    let base = d.betSteps ? [...d.betSteps] : (() => { const a: number[] = []; for (let b = d.minBet; b < d.maxBet; b *= 2) a.push(b); a.push(d.maxBet); return a; })();
+    // the run's limit (Night 1 stake cap, SI) wins: never offer a stake the run would refuse
+    const lim = Math.max(d.minBet, this.ctx.run.betLimits(d.id, this.id).max);
+    base = base.filter((v) => v <= lim);
+    if (!base.length) base = [d.minBet];
+    const cap = Math.min(lim, Math.floor(d.maxBet * this.mod('bet.maxMult', 1)));
     let last = base[base.length - 1];
     for (let e = Math.pow(10, Math.floor(Math.log10(Math.max(1, last)))); last < cap && e < 1e15; e *= 10) {
       for (const m of [1, 2, 5]) { const v = m * e; if (v > last && v <= cap) { base.push(v); last = v; } }

@@ -1,7 +1,8 @@
 /**
  * The small "[key] RULES" reminder shown instead of the HOW TO PLAY card on every sit after the first one in the save
  * (see `rulesFirstEver` in placard3d.ts). A DOM chip mounted inside the seat HUD root (it inherits `--su` and the HUD
- * font from there), top-left under the notch, fades out by itself and goes away with `off()`.
+ * font from there), upper-left, fades out by itself and goes away with `off()`. It sits below the coin counter and the
+ * ticket / staff lines of the HUD top band (the wallet is at 4 units, the stack ends near 50), never on top of them.
  */
 const HINT_MS = 9000;
 
@@ -22,7 +23,8 @@ export function showRulesHint(mount: HTMLElement, text: string, ms = HINT_MS): (
   const su = 'var(--su, var(--u, 4px))';
   s.position = 'absolute';
   s.left = `calc(${su} * 3)`;
-  s.top = `calc(${su} * 16)`;
+  // under the HUD top band (`--hud-top-h`, set by hud.ts), so the coin counter and its stack are never covered
+  s.top = `calc(var(--hud-top-h, calc(${su} * 52)) + ${su} * 2)`;
   // a brass key cap: bitmap heading font, about 4.5 units tall, so it reads from the seat
   s.fontFamily = "var(--f-head, 'Press Start 2P', monospace)";
   s.fontSize = `calc(${su} * 4.5)`;

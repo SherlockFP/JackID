@@ -37,7 +37,12 @@ import {
   COLD_MULT, Circuit, HOT_MULT, rollLamps, tiltBulbs, tiltFactor, tiltStep,
   type CircuitSave, type CircuitView, type LampCandidate, type LampView, type TiltView,
 } from './circuit';
-import { PAYOUT_GUARD, bettingLadder, charmPrice, settlePayout, snapDown, type PayoutResult } from './economy';
+import {
+  PAYOUT_GUARD, RESCUE_MAX_PER_NIGHT, STAKE_CONFIRM_SEC, bettingLadder, charmPrice, night1StakeCap, rescueLoan, settlePayout, snapDown, stakeNeedsConfirm,
+  type PayoutResult, type RescueLoan,
+} from './economy';
+import { clearClockHolds, clockHeld, holdClock, releaseClock, tickClockHold } from './clockHold';
+import { createRescue, type RescueLine } from './rescue';
 import { Charms, PEG_CAP_RUN, allCharmDefs, choiceOffer, charmDef } from './charms/engine';
 import { Pawn, type PawnSnapshot } from './shop';
 import { scopeTags } from './suits';
@@ -64,9 +69,21 @@ export interface RunWinTierEvent {
   pid: PlayerId; mid: InstanceId; machineId: MachineId; tier: WinTier;
   bet: number; gross: number; credited: number; factor: number; dampened: boolean; capped: boolean; excess: number;
 }
+/**
+ * Stake safety (wave 13): a stake above half the pocket needs a second press. `state: 'ask'` is the first press (refused, armed for
+ * `seconds`); `'clear'` means the arm lapsed, was confirmed, or the player changed the stake. The seat HUD shows "PRESS AGAIN".
+ */
+export interface RunStakeConfirmEvent {
+  pid: PlayerId; mid: InstanceId; machineId: MachineId; state: 'ask' | 'clear';
+  amount: number; pocket: number; seconds: number;
+}
+/** The Collector's rescue loan: the call rang (`'ring'`), the loan was taken (`'taken'`) or the call ended unanswered (`'lapsed'`). */
+export interface RunRescueEvent { pid: PlayerId; state: 'ring' | 'taken' | 'lapsed'; coins: number; quota: number; due: number }
 declare module '@/core/events' {
   interface GameEvents {
     'run:wintier': RunWinTierEvent;
+    'run:stakeConfirm': RunStakeConfirmEvent;
+    'run:rescue': RunRescueEvent;
   }
 }
 
@@ -94,6 +111,8 @@ const PULL_PRICE_TICKETS = 3;
 const PULLS_BOUGHT_MAX = 2;
 /** Machine id used for run-level modifier queries (no machine). */
 const RUN_MACHINE = 'run';
+/** `lastRefusal()` after a first press on a stake above half the pocket (see `RunStakeConfirmEvent`). Not in `RefusalReason` yet. */
+export const STAKE_CONFIRM_REASON: RefusalReason = 'confirm';
 
 let bossStringsDone = false;
 /** Boss names and texts to `event.<id>.name|desc|announce` (the banner and HUD read them like any Night event). Once. */
@@ -157,6 +176,8 @@ export interface RunExt {
   circuit?: CircuitSave;
   /** The hotline: ring schedule and the live call. Optional: older saves have none. */
   hotline?: HotlineSave;
+  /** Rescue loans taken tonight: quota added and calls used. Optional: older saves have none. */
+  rescue?: { quota: number; used: number };
 }
 /** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
 interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
@@ -352,6 +373,7 @@ class Run implements DebtRun {
   private readonly buffSys: BuffSystem;
   private readonly itemSys: ItemSystem;
   private readonly hotline: Hotline;
+  private readonly rescue: RescueLine;
   private worldLink: RunWorldLink | null = null;
   private readonly pools = new Map<string, JackpotPool>();
   private readonly poolListeners = new Set<(p: JackpotPool) => void>();
@@ -398,6 +420,13 @@ class Run implements DebtRun {
   private readonly plays = new Map<string, number>();
   private readonly banner: EventBannerShow | undefined;
   private ropeUsed = false;
+  /** Rescue loans (wave 13): quota added tonight, calls used tonight, seconds until the line may ring again. */
+  private loanQuota = 0;
+  private rescuesUsed = 0;
+  private rescueCool = 0;
+  private rescueScan = 0;
+  /** A stake above half the pocket waits here for its second press. */
+  private stakeArm: { mid: string; machineId: string; amount: number; left: number } | null = null;
   private dreadPts = 0;
 
   // status
@@ -535,6 +564,12 @@ class Run implements DebtRun {
         },
       },
     });
+    this.rescue = createRescue({
+      selfId: this.selfId,
+      now: () => performance.now(),
+      ringSeconds: () => Math.max(20, Math.round(this.mod('x.phone.ringTime', 'hotline', 10))),   // a broke player has to stand up and walk to the booth
+      take: (loan) => this.takeRescue(loan),
+    });
     this.nightEvents = this.buffSys.nightEvents;
     this.baseEventChance = this.buffSys.nightEvents.chance();
 
@@ -564,6 +599,9 @@ class Run implements DebtRun {
       bus.on('machine:round', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:round', p); }),
       bus.on('run:deposit', (p) => { if (p.pid === this.selfId) this.advanceContracts('run:deposit', { machineId: '', amount: p.amount }); }),
       bus.on('jackpot:win', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:jackpot', p); }),
+      // a cutscene (the Collector speaks in them) holds the Watch clock
+      bus.on('cutscene:start', () => { holdClock('cutscene', 180); }),
+      bus.on('cutscene:end', () => { releaseClock('cutscene'); }),
     );
     this.jackpots = this.makeJackpotsApi();
 
@@ -601,7 +639,9 @@ class Run implements DebtRun {
     if (!def) return { min: 0, max: Number.POSITIVE_INFINITY, ladder: [] };
     const si = this.quotaMode ? nightDef(this.index).si : 1;
     const capMult = this.mod('bet.maxMult', machineId, 1, { instance: instanceId });
-    const ceiling = def.maxBet * si * capMult;
+    let ceiling = def.maxBet * si * capMult;
+    // Night 1 stake safety: one wrong press cannot end the run, so the top stake is a third of the starting pocket.
+    if (this.quotaMode && this.index === 0) ceiling = Math.min(ceiling, Math.max(def.minBet, night1StakeCap(START.pocket)));
     const ladder = (def.betSteps ?? bettingLadder(def.minBet, ceiling)).filter((v) => v >= def.minBet && v <= ceiling);
     const max = snapDown(ceiling, ladder) || def.minBet;
     return { min: def.minBet, max, ladder };
@@ -617,12 +657,14 @@ class Run implements DebtRun {
     const q: ModQuery = { pid: this.selfId, instance: src.mid };
     const lim = this.betLimits(src.machineId, src.mid);
     if (amount < lim.min || amount > lim.max) return this.refuse('limit');
+    if (!this.confirmStake(amount, src, lim.min)) return this.refuse(STAKE_CONFIRM_REASON);
     const cost = Math.ceil(amount * this.mod('bet.costMult', src.machineId, 1, q));
     const base = o?.pulls ?? registry.get(src.machineId)?.def.actionCost ?? 1;
     const pullCost = Math.max(0, Math.round(this.mod('x.actionCostDelta', src.machineId, base, q)));
     if (!this.rules.unlimitedPulls && this.pullCount < pullCost) return this.refuse('pulls');
-    if (cost > this.coins) return this.refuse('funds');
+    if (cost > this.coins) { this.clearStakeArm(); return this.refuse('funds'); }
     this.refusal = null;
+    this.clearStakeArm();
 
     if (!this.rules.unlimitedPulls) this.pullCount -= pullCost;
     this.watchPulls += pullCost;
@@ -696,6 +738,7 @@ class Run implements DebtRun {
     this.notify();
     this.persistSoon();
     this.refreshOdds();
+    this.checkRescue();
     return credited;
   }
 
@@ -775,8 +818,8 @@ class Run implements DebtRun {
     }
     return v;
   }
-  phone(): PhoneCallState | null { return this.hotline.phone(); }
-  answerPhone(choice: number): void { this.hotline.answer(choice); }
+  phone(): PhoneCallState | null { return this.rescue.phone() ?? this.hotline.phone(); }
+  answerPhone(choice: number): void { if (!this.rescue.answer(choice)) this.hotline.answer(choice); }
 
   balance(cur: CurrencyId, _pid?: PlayerId): number {
     if (cur === 'coin') return this.coins;
@@ -839,6 +882,9 @@ class Run implements DebtRun {
     }
     this.buffSys.tick(dt);
     this.hotline.tick(dt);
+    this.rescue.tick(dt);
+    this.tickSafety(dt);
+    tickClockHold(dt);
     this.itemSys.tick(dt);
     if (this.phase === 'play' || this.phase === 'lastCall') this.tycoonSys.tick(dt);
     if (!this.rules.timed) return;
@@ -849,7 +895,7 @@ class Run implements DebtRun {
         break;
       case 'play':
       case 'lastCall':
-        this.clock.tick(dt);
+        if (!clockHeld()) this.clock.tick(dt);   // tutorial steps 1-3, Collector lines and cutscenes hold the Watch clock
         if (this.clock.remaining <= 0) this.enter('closing', closingSeconds(this.isLastWatch()));
         else if (this.phase === 'play' && this.clock.remaining <= this.lastCallSec) this.enter('lastCall', 0);
         break;
@@ -912,6 +958,7 @@ class Run implements DebtRun {
     this.discount = this.nextDiscount;
     this.nextDiscount = 0;
     this.quota.claimed = [];
+    this.loanQuota = 0; this.rescuesUsed = 0; this.rescueCool = 0;
     this.shiftState.index = this.index;
     this.shiftState.floor = this.index + 1;
     this.shiftState.stake = nd.si;
@@ -975,6 +1022,8 @@ class Run implements DebtRun {
   dispose(): void {
     this.unsubs.splice(0).forEach((u) => u());
     this.hotline.dispose();
+    this.rescue.dispose();
+    clearClockHolds();
     this.buffSys.dispose();
     this.itemSys.dispose();
   }
@@ -1120,6 +1169,7 @@ class Run implements DebtRun {
 
   private endRun(result: RunSummary['result'], ending?: string): void {
     this.ended = true;
+    this.rescue.hangUp();
     this.clock.stop();
     this.enter('over', 0);
     const obols = this.quotaMode ? this.runObols(result, ending) : undefined;
@@ -1286,6 +1336,17 @@ class Run implements DebtRun {
   }
 
   /** Bell: seeded Lamp roll (stream `lamps`). Lamps start at Night 2; Night 1 only has Tilt. */
+  /** The machines on the floor with their suit tags, for the Pawn's first-shop synergy guarantee. */
+  private floorMachines(): { machineId: string; tags: readonly string[]; category?: string }[] {
+    const out: { machineId: string; tags: readonly string[]; category?: string }[] = [];
+    for (const m of this.worldLink?.machines() ?? []) {
+      const def = registry.get(m.machineId)?.def;
+      if (!def || def.category === 'system' || def.category === 'party') continue;
+      out.push({ machineId: m.machineId, tags: [...(scopeTags(m.machineId, def.tags) ?? [])], category: def.category });
+    }
+    return out;
+  }
+
   private lampCandidates(): LampCandidate[] {
     const cands: LampCandidate[] = [];
     for (const m of this.worldLink?.machines() ?? []) {
@@ -1325,7 +1386,7 @@ class Run implements DebtRun {
     const rate = this.mod('x.tycoon.assessRate', RUN_MACHINE, 0.08);
     let due = quotaFor(this.index, { discount: this.discount, holdings, assessRate: rate });
     due = Math.round(due * this.mod('quota.mult', RUN_MACHINE, 1));
-    due = Math.max(0, Math.round(due + this.mod('quota.add', RUN_MACHINE, 0)));
+    due = Math.max(0, Math.round(due + this.mod('quota.add', RUN_MACHINE, 0) + this.loanQuota));
     if (this.index === BASE_RUN_NIGHTS - 1) due = Math.round(due * this.mod('x.quota.night8', RUN_MACHINE, 1));
     this.quota.base = nd.base;
     this.quota.assessment = assessmentFor(this.index, holdings, rate);
@@ -1386,6 +1447,79 @@ class Run implements DebtRun {
   /** Tycoon trade is shut during Closing, Settle, Dawn Collection and after the run (GDD §3.7.1). */
   private tradeOpen(): boolean {
     return !(this.phase === 'closing' || this.phase === 'settle' || this.phase === 'collection' || this.phase === 'over');
+  }
+
+  // ── stake safety and the rescue call (wave 13) ─────────────────────────────────────────────────────
+  /** First press of a stake above half the pocket arms it and returns false; the same stake again within the window returns true. */
+  private confirmStake(amount: number, src: EcoSource, minBet: number): boolean {
+    if (!this.quotaMode || this.openRounds.has(src.mid)) return true;
+    const arm = this.stakeArm;
+    if (!stakeNeedsConfirm(amount, this.coins, minBet)) return true;
+    if (arm && arm.mid === src.mid && arm.amount === amount && arm.left > 0) return true;
+    this.clearStakeArm();
+    this.stakeArm = { mid: src.mid, machineId: src.machineId, amount, left: STAKE_CONFIRM_SEC };
+    this.emit('run:stakeConfirm', { pid: this.selfId, mid: src.mid, machineId: src.machineId, state: 'ask', amount, pocket: this.coins, seconds: STAKE_CONFIRM_SEC });
+    return false;
+  }
+  private clearStakeArm(): void {
+    const a = this.stakeArm;
+    if (!a) return;
+    this.stakeArm = null;
+    this.emit('run:stakeConfirm', { pid: this.selfId, mid: a.mid, machineId: a.machineId, state: 'clear', amount: a.amount, pocket: this.coins, seconds: 0 });
+  }
+  /** The stake waiting for its second press at `mid`, with the seconds left, or null. The seat HUD can poll this. */
+  pendingStake(mid: InstanceId): { amount: number; left: number } | null {
+    const a = this.stakeArm;
+    return a && a.mid === mid && a.left > 0 ? { amount: a.amount, left: a.left } : null;
+  }
+
+  private rescueWasLive = false;
+  private rescueTook = false;
+  /** Called from `tick`: arm timeout, rescue-call upkeep and the rescue scan (twice a second). */
+  private tickSafety(dt: number): void {
+    const a = this.stakeArm;
+    if (a) { a.left -= dt; if (a.left <= 0) this.clearStakeArm(); }
+    if (!this.quotaMode || this.ended) return;
+    if (this.rescueCool > 0) this.rescueCool -= dt;
+    if (this.rescue.active() && !this.canPlay()) this.rescue.hangUp();
+    if (this.rescueWasLive && !this.rescue.active()) {
+      if (!this.rescueTook) { this.rescueCool = 20; this.emit('run:rescue', { pid: this.selfId, state: 'lapsed', coins: 0, quota: 0, due: this.quota.due }); }
+      this.rescueTook = false;
+    }
+    this.rescueWasLive = this.rescue.active();
+    this.rescueScan += dt;
+    if (this.rescueScan >= 0.5) { this.rescueScan = 0; this.checkRescue(); }
+  }
+
+  /** Pocket at 0, Watches left, quota unmet and interest alone will not cover it: the phone rings with the Collector's loan. */
+  private checkRescue(): void {
+    if (!this.quotaMode || this.ended || !this.canPlay() || this.coins > 0 || this.openRounds.size > 0) return;
+    if (this.rescue.active() || this.hotline.phone() !== null || this.rescueCool > 0 || this.rescuesUsed >= RESCUE_MAX_PER_NIGHT) return;
+    const due = this.quota.due;
+    if (due <= 0 || this.debtPaid >= due) return;
+    if (this.isLastWatch() && (this.phase === 'lastCall' || this.clock.remaining <= this.lastCallSec)) return;
+    const nd = nightDef(this.index);
+    const rate = interestRate(nd.interest, this.mod('x.econ.interestAdd', RUN_MACHINE, 0));
+    let d = this.debtPaid;
+    // An empty pocket cannot make the pulls the activity clause asks for, so only a Watch that already has them still pays interest.
+    // Later Watches cannot be counted on either: the pocket stays empty, so they would forfeit as well.
+    if (this.watchPulls >= ACTIVITY_MIN_PULLS) d += interestFor(d, due, rate);
+    if (d >= due) return;
+    const loan = rescueLoan(due);
+    if (this.rescue.ring(loan)) this.emit('run:rescue', { pid: this.selfId, state: 'ring', coins: loan.coins, quota: loan.quota, due });
+  }
+
+  private takeRescue(loan: RescueLoan): void {
+    this.rescueTook = true;
+    this.rescuesUsed += 1;
+    this.rescueCool = 15;
+    this.loanQuota += loan.quota;
+    this.stats['rescue.loans'] = (this.stats['rescue.loans'] ?? 0) + 1;
+    this.earn('coin', loan.coins, 'rescue');
+    this.recomputeQuota();
+    this.emit('run:rescue', { pid: this.selfId, state: 'taken', coins: loan.coins, quota: loan.quota, due: this.quota.due });
+    this.emit('quota:update', { quota: this.quota });
+    this.persist();
   }
 
   private refuse(reason: RefusalReason): false {
@@ -1473,8 +1607,11 @@ class Run implements DebtRun {
     return new Pawn({
       selfId: this.selfId,
       rng: () => this.rng,
-      night: () => this.index,
-      watch: () => this.watch,
+      // After the Night is paid (Dawn, before OPEN THE FLOOR) the shelf already shows the NEXT Night's stock, priced at today's SI;
+      // opening the floor keeps it (same key), so the Pawn restocks on every Night rollover instead of repeating the last Watch's shelf.
+      night: () => (this.nightDone && !this.topside ? this.index + 1 : this.index),
+      watch: () => (this.nightDone && !this.topside ? 0 : this.watch),
+      floor: () => this.floorMachines(),
       open: () => this.phase === 'intermission' && !this.ended,
       si: () => nightDef(this.index).si,
       held: () => this.charmBox.list(this.selfId).map((s) => s.id),
@@ -1638,12 +1775,13 @@ class Run implements DebtRun {
       },
       circuit: this.circ.snapshot(),
       hotline: this.hotline.snapshot(),
+      rescue: { quota: this.loanQuota, used: this.rescuesUsed },
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
       debts: { [pid]: this.debt(pid) }, wallets: { [pid]: this.coins }, charms: this.charmBox.snapshot(),
       alive: { [pid]: this.living }, jackpots: { net: this.jackpot('net') },
-      tier: this.index + 1, phone: this.hotline.phone(), stats: { ...this.stats },
+      tier: this.index + 1, phone: this.phone(), stats: { ...this.stats },
       cfg: { ...this.config }, shift: { ...this.shiftState, rules: [...this.activeRules] },
       quota: { ...this.quota, perPlayer: { ...this.quota.perPlayer }, claimed: [...this.quota.claimed] },
       currencies: { ticket: { [pid]: this.tickets } }, dread: this.dread(),
@@ -1889,6 +2027,7 @@ class Run implements DebtRun {
     if (e.tycoon) this.tycoonSys.restore(e.tycoon);
     this.buffSys.buffs.restore(e.buffs);
     this.hotline.restore(e.hotline);
+    this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);
     this.itemSys.totems.restore(e.totems);
     if (e.contracts) {
       this.contractNight = e.contracts.night;

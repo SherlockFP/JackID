@@ -56,7 +56,7 @@ export const BOSS_TEMPLATES: Readonly<Record<BossId, BossTemplate>> = {
     effects: () => [fx('bet.maxMult', 'mult', 0.35), fx('x.run.pullsAdd', 'add', 3)],
     strings: {
       en: { name: 'Pennies Night', desc: 'Max bet ×0.35. +3 pulls every Watch.', announce: 'Pennies Night: small bets, longer hands.' },
-      tr: { name: 'Bozukluk Gecesi', desc: 'Maks bahis ×0,35. Her Watch +3 hamle.', announce: 'Bozukluk Gecesi: küçük bahisler, uzun eller.' },
+      tr: { name: 'Bozukluk Gecesi', desc: 'Maks bahis ×0,35. Her Vardiya +3 çekiş.', announce: 'Bozukluk Gecesi: küçük bahisler, uzun eller.' },
     },
   },
   frozen_ledger: {

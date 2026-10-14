@@ -23,9 +23,10 @@ import type { KitX } from '@/kit';
 import { fmtCoins } from '@/core/i18n';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { TAU } from '@/core/math';
+import { px5Width } from '@/core/texgen/font';
 import { buildModel, type BigOneParts } from './model';
 import {
-  CELLS, MAW, MAX_STAKE, PATTERN_IDS, PATTERN_MULT, SEED_STAKES, SYM_COUNT, buildMods, curseChance,
+  BASE_VALUE, CELLS, MAW, MAX_LINE_MULT, MAX_STAKE, PATTERN_IDS, PATTERN_MULT, SEED_STAKES, SYM_COUNT, SYM_NAMES, buildMods, curseChance,
   play, playHeadless, type Mods, type Outcome, type PatternId,
 } from './rules';
 import { STRINGS } from './strings';
@@ -34,28 +35,40 @@ import { SYMBOL_BG, paintSymbol } from './symbols';
 export { playHeadless };
 
 /** Event payloads (type aliases so they stay JSON-compatible). */
-type PayEv = { pat: string; sym: number; cells: number[]; amount: number };
+type PayEv = { pat: string; sym: number; cells: number[]; amount: number; raw: number; combo: number };
 type SpinEv = {
   k: 'spin'; stake: number; grid: number[]; pre: number[] | null; coalesced: number[]; teaser: number[];
   curse: boolean; curseCol: number; ward: boolean; fill: boolean; fillSym: number; respin: boolean; tease: boolean;
+  /** Near-miss tell: the reel that crawls, its row and the run length lined up (-1 when none). */
+  tReel: number; tRow: number; tLen: number;
   hold: number; meter: number; since: number; night: number;
 };
 type EvalEv = {
   k: 'eval'; stake: number; gross: number; jackpot: number; curse: boolean; fill: boolean; tease: boolean;
-  pays: PayEv[]; clusters: PayEv[]; tags: string[]; meter: number;
+  /** Every paying pattern in tally order (smallest first). */
+  tally: PayEv[]; tags: string[]; meter: number;
 };
 type HoldEv = { k: 'hold'; reel: number };
 type Ev = SpinEv | EvalEv | HoldEv;
 type State = {
   grid: number[]; meter: number; k: number; night: number; last10: number[]; hold: number; wardUsed: number; gross: number;
+  /** The last spin's pattern breakdown, kept on the top screen until the next spin. */
+  tally: PayEv[];
 };
 
 /** Reel n stops at 1.00 + 0.25 n s (MACHINES §2.3 spin order, juice timing). */
 const STOP_T = [1.0, 1.25, 1.5, 1.75, 2.0];
-const TEASE_T = 1.4;
+/** Extra crawl of the anticipating reel by the run length lined up (index = length: 2 = two of three). */
+const TEASE_D = [0, 0, 0.7, 1.1, 1.6];
 const BOUNCE = 0.12;
-const EVAL_STEP = 0.4;
-const EVAL_CAP = 3.3;
+/** Tally: each pattern gets a step of STEP_MAX down to STEP_MIN so the whole count stays under TALLY_CAP seconds. */
+const STEP_MAX = 0.62;
+const STEP_MIN = 0.32;
+const TALLY_CAP = 3.8;
+/** Semitone ladder of the tally chimes: each pattern rings a note higher. */
+const TALLY_NOTES = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16];
+/** Tally text colours, escalating from pale to hot. */
+const TALLY_INK = ['#c8e8ff', '#ffe27a', '#ffb000', '#ff7a1a', '#ff4fa0', '#ffffff'];
 const CURSE_SHOW = 3.2;
 const JACKPOT_COUNT = 2.0;
 const LAST10 = 10;
@@ -76,7 +89,7 @@ export const def: MachineDef = {
   seats: 1,
   shared: false,
   minBet: 1, maxBet: MAX_STAKE, betSteps: [1, 2, 5, 10, 20, 50, 100],
-  maxPayoutMult: 400,
+  maxPayoutMult: MAX_LINE_MULT,
   rtp: 0.947,
   tier: 1,
   actionCost: 1,
@@ -103,7 +116,7 @@ export const def: MachineDef = {
 
 export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   private state: State = {
-    grid: DEFAULT_GRID.slice(), meter: SEED_STAKES * MAX_STAKE, k: 0, night: -1, last10: [], hold: -1, wardUsed: 0, gross: 0,
+    grid: DEFAULT_GRID.slice(), meter: SEED_STAKES * MAX_STAKE, k: 0, night: -1, last10: [], hold: -1, wardUsed: 0, gross: 0, tally: [],
   };
   private autoLeft = 0;
   private autoSize = AUTO_SIZES[0];
@@ -316,6 +329,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     s.hold = -1;
     s.grid = ev.grid.slice();
     s.meter = ev.meter;
+    s.tally = [];
     this.clearHighlights();
     if (pc.fast) {
       for (let i = 0; i < 5; i++) this.paintReel(i, ev.grid);
@@ -331,27 +345,48 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       .then(() => this.anim(0.5, (k) => { p.lever.rotation.x = LEVER_PULL * (1 - k); }, 'outBounce'));
     for (let i = 0; i < 5; i++) this.paintReel(i, ev.grid);
     this.sfx('reelStart');
+    this.drawScreen();
 
+    // near-miss tell: the reel that would complete a lined-up run crawls; every later reel waits behind it
+    const tReel = ev.tease && ev.tReel >= 1 && ev.tReel <= 4 && ev.tReel !== ev.hold ? ev.tReel : -1;
+    const crawl = tReel >= 0 ? TEASE_D[Math.min(4, Math.max(2, ev.tLen))] : 0;
+    const stopOf = (i: number): number => STOP_T[i] + (ev.respin && i >= 3 ? 0.8 : 0) + (tReel >= 0 && i >= tReel ? crawl : 0);
     const runs: Promise<void>[] = [];
     for (let i = 0; i < 5; i++) {
       if (i === ev.hold) { runs.push(Promise.resolve()); continue; }   // held reel stays put
-      const extra = ev.respin && i >= 3 ? 0.8 : 0;
-      const stop = STOP_T[i] + extra + (ev.tease && i === 4 ? TEASE_T : 0);
-      runs.push(this.spinReel(i, stop));
+      runs.push(this.spinReel(i, stopOf(i), i === tReel));
     }
-    if (ev.tease) void this.nearMiss({ dur: TEASE_T, at: p.screens.top.mesh, lamps: p.paylineLamps });
-    if (ev.tease) this.drawText(this.t('tease'));
+    if (tReel >= 0) void this.teaseShow(ev, tReel, stopOf(tReel - 1), crawl);
     await Promise.all(runs);
     for (const c of ev.coalesced) this.flashCell(c);
     this.drawScreen();
   }
 
-  /** One reel: whole turns that end with facet 0 at the front, decelerating, then a bounce. */
-  private spinReel(i: number, dur: number): Promise<void> {
+  /** The held breath: once the run is lined up the cells glow, the screen asks, and the next reel ticks up in pitch. */
+  private async teaseShow(ev: SpinEv, reel: number, at: number, crawl: number): Promise<void> {
+    await this.wait(at);
+    if (this.disposed) return;
+    const cells: number[] = [];
+    for (let c = reel - ev.tLen; c < reel; c++) cells.push(ev.tRow * 5 + c);
+    this.lightCells(cells, 1);
+    this.drawText(this.t('tease'));
+    this.sfx('stinger', { vol: 0.5 });
+    await this.nearMiss({ dur: crawl + 0.35, at: this.parts.screens.top.mesh, lamps: this.parts.paylineLamps });
+  }
+
+  /** One reel: whole turns that end with facet 0 at the front, decelerating, then a bounce. `slow` = the anticipating reel (ticks rise). */
+  private spinReel(i: number, dur: number, slow = false): Promise<void> {
     const reel = this.parts.reels[i];
     const a0 = reel.root.rotation.x;
     const end = Math.ceil((a0 + (4 + i) * TAU) / TAU) * TAU;
-    return this.anim(dur, (k) => { reel.root.rotation.x = a0 + (end - a0) * k; }, 'outCubic').then(async () => {
+    let facet = Math.floor(((end - a0) * 0.8 + a0) / (TAU / 16));
+    return this.anim(dur, (k) => {
+      reel.root.rotation.x = a0 + (end - a0) * k;
+      if (slow && k > 0.8) {   // the last turn clacks facet by facet, slower and higher each time
+        const f = Math.floor(reel.root.rotation.x / (TAU / 16));
+        if (f !== facet) { facet = f; this.sfx('reelTick', { vol: 0.55, pitch: Math.min(14, (k - 0.8) * 70) }); }
+      }
+    }, slow ? 'outExpo' : 'outCubic').then(async () => {
       this.sfx('reelStop', { vol: 0.8 + 0.05 * i });
       await this.anim(BOUNCE, (k) => { reel.root.rotation.x = end + 0.08 * Math.sin(Math.PI * k); });
       reel.root.rotation.x = 0;
@@ -364,38 +399,28 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     s.gross = ev.gross;
     if (pc.local) {
       if (ev.curse) this.seatHud?.result('bust', -ev.stake);
-      else this.callout(ev.gross - ev.stake);
+      else if (pc.fast || !ev.tally.length) this.callout(ev.gross - ev.stake);   // a counted win is called out pattern by pattern below
     }
     const code = ev.curse ? 2 : ev.fill ? 3 : ev.gross > 0 ? 1 : 0;
     s.last10 = [code, ...s.last10].slice(0, LAST10);
     this.drawLast10();
     if (ev.curse) return this.presentCurse(pc);
-    if (ev.fill) return this.presentJackpot(ev, pc);
+    if (ev.fill) { s.tally = []; return this.presentJackpot(ev, pc); }
 
-    if (!pc.fast && ev.pays.length) {
-      const step = Math.min(EVAL_STEP, EVAL_CAP / ev.pays.length);
-      for (const pay of ev.pays) {
-        this.lightPay(pay);
-        this.sfx('sparkle', { vol: 0.6 });
-        await this.wait(step);
-      }
-    } else {
-      for (const pay of ev.pays) this.lightPay(pay);
-    }
-    for (const c of ev.clusters) this.lightCells(c.cells);
+    s.tally = ev.tally.map((t) => ({ ...t }));
+    // the tally: one pattern at a time, smallest first. Each one lights, rings a higher note, and counts the total up
+    if (!pc.fast && ev.tally.length) { await this.tallyShow(ev.tally, pc.local); if (pc.local) this.callout(ev.gross - ev.stake); }
+    else for (const pay of ev.tally) this.lightPay(pay, false);
 
     if (ev.gross > 0) {
       const tier = juiceTier(ev.gross, ev.stake, ev.tags);
       if (tierAtLeast(tier, 'medium')) {
-        await Promise.all([
-          this.celebrate(tier, {
-            amount: ev.gross, bulbs: this.parts.bulbs.window, lamps: this.parts.paylineLamps,
-            restore: () => this.bulbsIdle(), fast: pc.fast,
-          }),
-          countUp(this.ctx, 0, ev.gross, pc.fast ? 0.1 : 1.2 * this.speed, (v) => this.drawScreen(v)),
-        ]);
+        await this.celebrate(tier, {
+          amount: ev.gross, bulbs: this.parts.bulbs.window, lamps: this.parts.paylineLamps,
+          restore: () => this.bulbsIdle(), fast: pc.fast,
+        });
       } else {
-        await this.pourCoins(ev.gross, { bet: ev.stake, fast: pc.fast, onCount: (v) => this.drawScreen(v) });
+        await this.pourCoins(ev.gross, { bet: ev.stake, fast: pc.fast });
       }
     } else {
       this.commiserate({ amount: ev.stake, at: this.parts.screens.top.mesh });
@@ -403,6 +428,34 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     }
     this.clearHighlights();
     this.drawScreen();
+  }
+
+  /** The count-up, pattern by pattern (MACHINES §2 juice): the screen lists what has paid and the running total. */
+  private async tallyShow(tally: readonly PayEv[], local = false): Promise<void> {
+    const step = Math.min(STEP_MAX, Math.max(STEP_MIN, TALLY_CAP / tally.length));
+    let total = 0;
+    for (let i = 0; i < tally.length; i++) {
+      const pay = tally[i];
+      if (this.disposed) return;
+      const from = total;
+      total += pay.amount;
+      const shown = tally.slice(0, i + 1);
+      this.dimLit();
+      this.lightPay(pay, true);
+      if (local) {   // the top screen sits above the seat camera: say the same thing on the seat HUD, one pattern at a time
+        const pat = `${this.t(`pat_${pay.pat}`)} x${Number.isInteger(pay.raw) ? pay.raw : pay.raw.toFixed(1)}`;
+        this.seatHud?.result('win', total, step + 0.5, i > 0 ? `${pat} · ${this.t('tCombo', { n: Number.isInteger(pay.combo) ? String(pay.combo) : pay.combo.toFixed(1) })}` : pat);
+      }
+      const note = TALLY_NOTES[Math.min(i, TALLY_NOTES.length - 1)];
+      this.sfx(i === tally.length - 1 && tally.length > 1 ? 'bell' : 'sparkle', { vol: Math.min(1.4, 0.6 + 0.1 * i), pitch: note });
+      if (i >= 1) this.sfx('coin', { vol: 0.5, pitch: note });
+      this.ctx.fx.glow(this.parts.screens.top.mesh, i >= 3 ? PINK : GOLD, 0.25 + 0.08 * i, 0.3);
+      if (i >= 3 && this.isLocalOccupant) this.ctx.fx.shake(0.004 * Math.min(6, i), 0.18);
+      await this.anim(step * 0.8, (k) => this.drawTally(shown, Math.round(from + (total - from) * k)), 'outQuad');
+      this.drawTally(shown, total);
+      await this.wait(step * 0.2);
+    }
+    await this.wait(0.12);
   }
 
   private async presentCurse(pc: PresentCtx): Promise<void> {
@@ -494,9 +547,17 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     reel.strip.needsUpdate = true;
   }
 
-  private setCell(i: number, on: boolean): void {
+  /** Cell frame glow: 0 dark, 1 lined up (soft), 2 the pattern being tallied (strong). */
+  private cellLvl: number[] = new Array<number>(CELLS).fill(0);
+
+  private setLevel(i: number, lvl: 0 | 1 | 2): void {
+    this.cellLvl[i] = lvl;
     const m = this.parts.cellFrames[i]?.material as THREE.MeshStandardMaterial | undefined;
-    if (m && 'emissiveIntensity' in m) m.emissiveIntensity = on ? 1.6 : 0.26;
+    if (m && 'emissiveIntensity' in m) m.emissiveIntensity = lvl === 2 ? 1.8 : lvl === 1 ? 0.85 : 0.26;
+  }
+
+  private setCell(i: number, on: boolean): void {
+    this.setLevel(i, on ? 2 : 0);
   }
 
   private flashCell(i: number): void {
@@ -504,13 +565,18 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     void this.wait(0.25).then(() => this.setCell(i, false));
   }
 
-  private lightCells(cells: readonly number[]): void {
-    for (const c of cells) this.setCell(c, true);
+  private lightCells(cells: readonly number[], lvl: 1 | 2 = 2): void {
+    for (const c of cells) this.setLevel(c, lvl);
   }
 
-  /** A paying line: its cells glow, its pattern lamp lights, and the payline lamps of its rows. */
-  private lightPay(pay: PayEv): void {
-    this.lightCells(pay.cells);
+  /** The cells of earlier tally steps stay lit, softer, so the stack builds up on the grid. */
+  private dimLit(): void {
+    for (let i = 0; i < CELLS; i++) if (this.cellLvl[i] === 2) this.setLevel(i, 1);
+  }
+
+  /** A paying pattern: its cells glow, its pattern lamp lights, and the payline lamps of its rows. */
+  private lightPay(pay: PayEv, strong: boolean): void {
+    this.lightCells(pay.cells, strong ? 2 : 1);
     const idx = PATTERN_IDS.indexOf(pay.pat as PatternId);
     if (idx >= 0) this.parts.patternLamps[idx]?.setOn(true);
     for (const r of new Set(pay.cells.map((c) => Math.floor(c / 5)))) {
@@ -548,6 +614,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   private drawScreen(shown?: number): void {
     const s = this.state;
     this.setNeedle();
+    if (shown === undefined && s.tally.length && s.last10[0] === 1) { this.drawTally(s.tally, s.gross); return; }
     this.parts.screens.top.draw((g, sc) => {
       g.fillStyle = '#120406';
       g.fillRect(0, 0, sc.w, sc.h);
@@ -573,6 +640,41 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     });
   }
 
+  /**
+   * The breakdown on the top screen: header (combo), the last three patterns that paid (symbol, pattern, multiplier,
+   * coins; colour heats up with each step) and the running total. Stays up after the count until the next spin.
+   */
+  private drawTally(items: readonly PayEv[], total: number): void {
+    const n = items.length;
+    if (!n) { this.state.tally = []; this.drawScreen(); return; }
+    const s = this.state;
+    const hot = TALLY_INK[Math.min(n - 1, TALLY_INK.length - 1)];
+    const num = (x: number): string => (Number.isInteger(x) ? String(x) : x.toFixed(1));
+    this.setNeedle();
+    this.parts.screens.top.draw((g, sc) => {
+      g.fillStyle = '#120406';
+      g.fillRect(0, 0, sc.w, sc.h);
+      const head = n > 1 ? this.t('tCombo', { n: num(items[n - 1].combo) }) : `${this.t('jackpot')} ${fmtCoins(Math.floor(s.meter))}`;
+      sc.text(head, 80, 1, { font: 'px5', color: n > 1 ? hot : '#ffd040', align: 'center' });
+      const rows = items.slice(-3);
+      rows.forEach((p, r) => {
+        const idx = n - rows.length + r;
+        const y = 9 + r * 8;
+        const col = TALLY_INK[Math.min(idx, TALLY_INK.length - 1)];
+        const aw = sc.text(`+${fmtCoins(p.amount)}`, 157, y, { font: 'px5', color: col, align: 'right' });
+        const mult = `x${num(p.raw)}`;
+        const mw = sc.text(mult, 157 - aw - 5, y, { font: 'px5', color: '#a89878', align: 'right' });
+        const room = 157 - aw - 5 - mw - 6;
+        const pat = this.t(`pat_${p.pat}`);
+        const both = `${this.t(`sym_${SYM_NAMES[p.sym] ?? 'SUN'}`)} ${pat}`;
+        sc.text(px5Width(both) <= room ? both : pat, 3, y, { font: 'px5', color: col });
+      });
+      sc.text(this.t('tTotal'), 3, 37, { font: 'px5', color: '#7dffe0' });
+      if (n > 3) sc.text(this.t('tMore', { n: n - 3 }), 3, 1, { font: 'px5', color: '#a89878' });
+      sc.text(fmtCoins(total), 157, 34, { font: 'px5', scale: 2, color: hot, align: 'right' });
+    });
+  }
+
   /** A one-line caption on the top screen (tease, curse). Redrawn by `drawScreen` afterwards. */
   private drawText(line: string): void {
     this.parts.screens.top.draw((g, sc) => {
@@ -594,11 +696,13 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     ];
   }
 
-  /** The rules card: three rules, then every pattern with its multiplier, four to a line. */
+  /** The rules card: five rules, the symbol values, then every pattern with its multiplier, three to a line. */
   private rulesLines(): Txt[] {
-    const lines: Txt[] = ['rule1', 'rule2', 'rule3'].map((k) => ({ k: 'm.bigone.' + k }));
-    for (let i = 0; i < PATTERN_IDS.length; i += 4) {
-      lines.push(PATTERN_IDS.slice(i, i + 4)
+    const lines: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5'].map((k) => ({ k: 'm.bigone.' + k }));
+    const vals = this.currentMods().values;
+    lines.push(SYM_NAMES.map((n, s) => `${this.t(`sym_${n}`)} ${vals[s] ?? BASE_VALUE[s]}`).join('   '));
+    for (let i = 0; i < PATTERN_IDS.length; i += 3) {
+      lines.push(PATTERN_IDS.slice(i, i + 3)
         .map((pat) => `${this.t(`pat_${pat}`)} x${pat === 'CLUSTER' ? 'n-5' : PATTERN_MULT[pat]}`)
         .join('   '));
     }
@@ -617,6 +721,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     const s = this.state;
     const busy = this.inRound || this.busy || this.roundOpen;
     sh.goal({ k: 'm.bigone.goal' });
+    sh.stake(this.bet);
 
     // STATE: auto, spinning, a held reel, or ready for the next spin
     if (this.autoLeft > 0) sh.state({ k: 'm.bigone.stAuto', v: { n: this.autoLeft } }, 'cyan', { k: 'm.bigone.stAutoSub' });
@@ -664,10 +769,10 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
 
   // ── late join / save ────────────────────────────────────────────────────────────────────────────
   getSnapshot(): State {
-    return { ...this.state, grid: [...this.state.grid], last10: [...this.state.last10] };
+    return { ...this.state, grid: [...this.state.grid], last10: [...this.state.last10], tally: this.state.tally.map((t) => ({ ...t })) };
   }
   applySnapshot(s: State): void {
-    this.state = { ...s, grid: [...s.grid], last10: [...s.last10] };
+    this.state = { ...s, grid: [...s.grid], last10: [...s.last10], tally: (s.tally ?? []).map((t) => ({ ...t })) };
     this.refresh();
   }
 }
@@ -677,16 +782,16 @@ function spinEvent(o: Outcome, stake: number, since: number, night: number): Spi
   return {
     k: 'spin', stake, grid: o.grid, pre: o.pre, coalesced: o.coalesced, teaser: o.teaser, curse: o.curse,
     curseCol: o.curseCol, ward: o.ward, fill: o.fill, fillSym: o.fillSym, respin: o.respin, tease: o.tease,
+    tReel: o.teaseAt?.reel ?? -1, tRow: o.teaseAt?.row ?? -1, tLen: o.teaseAt?.len ?? 0,
     hold: o.hold, meter: o.meterFed, since, night,
   };
 }
 
-/** Build the `eval` event: pays, clusters, the gross and the settle tags. */
+/** Build the `eval` event: the tally (every paying pattern, smallest first), the gross and the settle tags. */
 function evalEvent(o: Outcome, stake: number): EvalEv {
   return {
     k: 'eval', stake, gross: o.gross, jackpot: o.jackpot, curse: o.curse, fill: o.fill, tease: o.tease,
-    pays: o.pays.map((p) => ({ pat: p.pat, sym: p.sym, cells: p.cells, amount: p.amount })),
-    clusters: o.clusters.map((c) => ({ pat: 'CLUSTER', sym: c.sym, cells: c.cells, amount: c.amount })),
+    tally: o.tally.map((t) => ({ pat: t.pat, sym: t.sym, cells: t.cells, amount: t.amount, raw: t.raw, combo: t.combo })),
     tags: o.tags, meter: o.meter,
   };
 }

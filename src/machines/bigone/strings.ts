@@ -7,7 +7,7 @@ import type { MachineStrings } from '@/machines/_base/types';
 export const STRINGS: MachineStrings = {
   en: {
     name: 'The Big One',
-    desc: 'Five reels, fourteen patterns. Feed the curse, chase the jackpot.',
+    desc: 'Five reels, fifteen patterns that stack. Feed the curse, chase the jackpot.',
     spin: 'Spin', auto: 'Auto', autoStop: 'Stop', autoOn: 'AUTO {n}', autoSize: 'SIZE {n}',
     card: 'Patterns', fast: 'Fast', fastOn: 'Fast on',
     hunger: 'HUNGER', jackpot: 'JACKPOT', bet: 'Bet', eaten: 'EATEN', win: 'WIN {n}',
@@ -17,7 +17,9 @@ export const STRINGS: MachineStrings = {
     sym_CROWN: 'Crown', sym_SUN: 'Sun', sym_MAW: 'Maw', sym_GHOST: 'Ghost',
     pat_TREY: 'Trey', pat_QUAD: 'Quad', pat_RAIL: 'Rail', pat_PILLAR: 'Pillar', pat_SLASH: 'Slash',
     pat_VALLEY: 'Valley', pat_PEAK: 'Peak', pat_CROSS: 'Cross', pat_PENTACLE: 'Pentacle', pat_HALO: 'Halo',
-    pat_CLUSTER: 'Cluster', pat_FULL: 'Full', pat_TWIN_RAILS: 'Twin Rails', pat_CORNERSTONE: 'Cornerstone',
+    pat_CLUSTER: 'Cluster', pat_FULL: 'Full', pat_TWIN_RAILS: 'Twin Rails', pat_CORNERSTONE: 'Cornerstone', pat_EYE: 'Eye',
+    // the tally on the top screen
+    tCombo: 'COMBO x{n}', tTotal: 'TOTAL', tMore: '+{n} MORE',
     // seat HUD (readability standard)
     goal: 'Land a pattern on the grid and dodge the curse',
     stAuto: 'AUTO · {n} LEFT', stAutoSub: 'Stops on big wins, curses and jackpots', stSpinning: 'REELS TURNING',
@@ -31,10 +33,12 @@ export const STRINGS: MachineStrings = {
     rule1: 'Land a pattern on the 5 x 3 grid. Pays are multiples of your stake.',
     rule2: 'Every stake feeds the jackpot meter. A full fill of the grid wins it.',
     rule3: 'The curse eats your stake. Its clock resets each Night.',
+    rule4: 'Every pattern pays at least twice its symbol value.',
+    rule5: 'Patterns stack and are tallied one by one, smallest first. Each later pattern adds a combo bonus. When two reels line up, the next one slows down.',
   },
   tr: {
     name: 'Büyük Vurgun',
-    desc: 'Beş makara, on dört desen. Laneti besle, jackpot\'un peşinde ol.',
+    desc: 'Beş makara, üst üste binen on beş desen. Laneti besle, jackpot\'un peşinde ol.',
     spin: 'Çevir', auto: 'Oto', autoStop: 'Dur', autoOn: 'OTO {n}', autoSize: 'BOY {n}',
     card: 'Desenler', fast: 'Hızlı', fastOn: 'Hızlı açık',
     hunger: 'AÇLIK', jackpot: 'JACKPOT', bet: 'Bahis', eaten: 'YENDİ', win: 'KAZANÇ {n}',
@@ -44,7 +48,9 @@ export const STRINGS: MachineStrings = {
     sym_CROWN: 'Taç', sym_SUN: 'Güneş', sym_MAW: 'Ağız', sym_GHOST: 'Hayalet',
     pat_TREY: 'Üçlü', pat_QUAD: 'Dörtlü', pat_RAIL: 'Ray', pat_PILLAR: 'Sütun', pat_SLASH: 'Eğik',
     pat_VALLEY: 'Vadi', pat_PEAK: 'Zirve', pat_CROSS: 'Haç', pat_PENTACLE: 'Pentakl', pat_HALO: 'Hale',
-    pat_CLUSTER: 'Küme', pat_FULL: 'Dolu', pat_TWIN_RAILS: 'İkiz Ray', pat_CORNERSTONE: 'Köşe Taşı',
+    pat_CLUSTER: 'Küme', pat_FULL: 'Dolu', pat_TWIN_RAILS: 'İkiz Ray', pat_CORNERSTONE: 'Köşe Taşı', pat_EYE: 'Göz',
+    // üst ekrandaki döküm
+    tCombo: 'KOMBO x{n}', tTotal: 'TOPLAM', tMore: '+{n} DAHA',
     // seat HUD (readability standard)
     goal: 'Izgarada desen yakala, laneti atlat',
     stAuto: 'OTO · {n} KALDI', stAutoSub: 'Büyük kazançta, lanette ya da jackpotta durur', stSpinning: 'MAKARALAR DÖNÜYOR',
@@ -58,5 +64,7 @@ export const STRINGS: MachineStrings = {
     rule1: '5 x 3 izgarada bir desen yakala. Ödemeler bahsinin katlarıdır.',
     rule2: 'Her bahis jackpot sayacını besler. Izgara tamamen dolunca sayaç senin olur.',
     rule3: 'Lanet bahsini yer. Lanet sayacı her Gece sıfırlanır.',
+    rule4: 'Her desen, sembol değerinin en az iki katını öder.',
+    rule5: 'Desenler üst üste biner ve küçükten büyüğe tek tek sayılır. Sonraki her desen kombo bonusu ekler. İki makara hizalanınca sıradaki yavaşlar.',
   },
 };

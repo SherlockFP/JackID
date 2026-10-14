@@ -7,7 +7,7 @@
  * Y bands: plinth 0–0.20 walnut + brass kick · belly 0.20–0.95 with the glass art (label + glass + crack/fog decals)
  * · deck 0.95–1.05 with the button panel (10° slope) and the LED strip · reel window 1.25–1.95 (five drums, r 0.55,
  * 16 facets, axis y 1.60) · top box 1.98–2.55 (amber top screen, last-10 lamps, hunger dial, hinged lid) ·
- * 13-ray sunburst crown 2.55–3.10 (medallion, crown chaser 48 bulbs). Left side: brass pattern plate with 14
+ * 13-ray sunburst crown 2.55–3.10 (medallion, crown chaser 48 bulbs). Left side: brass pattern plate with 15
  * lamps. Right side: chrome lever (pivot 0.95, 1.20, 0.10).
  *
  * Reel strips: each drum has a 32 × 512 canvas texture. Columns (x, 32 px) run ACROSS the reel axis, rows
@@ -24,6 +24,7 @@ import type { ButtonPanelPart, PanelButton, LampPart, BulbChain, ScreenSurface, 
 import type { KitX } from '@/kit/index';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { PATTERN_IDS } from './rules';
 
 /** One drum of the five-reel window. `root` pivots on its axle (rotate X to spin); `strip` is the 32×512 painted symbol strip. */
 export type BigOneReel = { root: THREE.Group; drum: THREE.Mesh; strip: THREE.Texture; canvas: HTMLCanvasElement };
@@ -36,7 +37,7 @@ export type BigOneParts = {
   cellFrames: THREE.Mesh[];
   /** Payline lamps: 0–2 left column (top→bottom), 3–5 right column. */
   paylineLamps: LampPart[];
-  /** Left brass pattern plate, 14 lamps (two columns of seven, bottom→top). */
+  /** Left brass pattern plate, one lamp per PATTERN_IDS entry (two columns of eight, bottom→top). */
   patternLamps: LampPart[];
   /** Lever pivot at (0.95, 1.20, 0.10). Pull = rotation.x → +1.05 rad. */
   lever: THREE.Object3D;
@@ -195,12 +196,13 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
     paylineLamps.push(lamp);
   }
 
-  // ── pattern lamps (14) on the left brass plate: two columns of seven ──
+  // ── pattern lamps (one per PATTERN_IDS entry, 15) on the left brass plate: two columns of eight ──
   const patternLamps: LampPart[] = [];
   for (let col = 0; col < 2; col++) {
-    for (let row = 0; row < 7; row++) {
+    for (let row = 0; row < 8; row++) {
+      if (patternLamps.length >= PATTERN_IDS.length) break;
       const lamp = kit.lamp({ r: 0.018, color: pal.neonCyan, shape: 'flat' });
-      lamp.root.position.set(-0.925, 1.05 + row * 0.12, col === 0 ? -0.12 : 0.12);
+      lamp.root.position.set(-0.925, 1.04 + row * 0.108, col === 0 ? -0.12 : 0.12);
       lamp.root.rotation.y = -Math.PI / 2;
       root.add(lamp.root);
       patternLamps.push(lamp);

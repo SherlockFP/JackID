@@ -110,3 +110,33 @@ export function snapDown(value: number, ladder: readonly number[]): number {
   for (const v of ladder) if (v <= value) best = v;
   return best;
 }
+
+// ── stake safety (Night 1 cap, confirm on a big stake) and the rescue loan ─────────────────────────────────────
+/** Night 1 caps the max stake at this share of the starting pocket, so one wrong press cannot end the run. */
+export const NIGHT1_STAKE_FRAC = 1 / 3;
+/** Night 1 stake cap in coins for a run that started with `startPocket` (at least 1). */
+export function night1StakeCap(startPocket: number): number {
+  return Math.max(1, Math.floor(Math.max(0, startPocket) * NIGHT1_STAKE_FRAC));
+}
+/** A stake above this share of the current pocket needs a second press. */
+export const STAKE_CONFIRM_FRAC = 0.5;
+/** Seconds the second press stays valid after the first. */
+export const STAKE_CONFIRM_SEC = 6;
+/** True when `amount` is more than half the pocket and above the machine's minimum stake (the minimum never asks). */
+export function stakeNeedsConfirm(amount: number, pocket: number, minBet: number): boolean {
+  return amount > minBet && amount > STAKE_CONFIRM_FRAC * Math.max(0, pocket);
+}
+
+/** Rescue loan: share of the current quota lent when the pocket hits 0 (at least RESCUE_MIN coins). */
+export const RESCUE_LOAN_FRAC = 0.25;
+export const RESCUE_MIN = 8;
+/** The quota grows by this multiple of the loan: borrow N, owe 1.5N more tonight. */
+export const RESCUE_QUOTA_MULT = 1.5;
+/** At most this many rescue calls per Night. */
+export const RESCUE_MAX_PER_NIGHT = 3;
+export interface RescueLoan { coins: number; quota: number }
+/** The Collector's loan for a Night whose quota is `due`: `coins` now, `quota` added to tonight's quota. */
+export function rescueLoan(due: number): RescueLoan {
+  const coins = Math.max(RESCUE_MIN, Math.round(Math.max(0, due) * RESCUE_LOAN_FRAC));
+  return { coins, quota: Math.ceil(coins * RESCUE_QUOTA_MULT) };
+}

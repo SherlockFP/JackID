@@ -10,6 +10,9 @@
  *  - Shelf bias: slot 0 weighs charms that share the suit / archetype key you hold most x3.
  *  - FIT n: held charms sharing a key with the candidate, +1 when it boosts the payout of your most-played machine.
  *  - Swap on full pegs: `buy(pid, i, replaceId)` sells the replaced charm back at the host's sell value, then buys.
+ *  - First shop of a run (Night 1, first Watch): at least one synergy charm (an engine, or a suit charm whose suit is on the floor)
+ *    is on a regular shelf, so a new run always has a build to start. The Pawn also restocks on a Night rollover: after Dawn the
+ *    host reports the NEXT Night's key, so the shelf is redrawn once per Night instead of repeating the last Watch's stock.
  *  - `snapshot()` / `restore()` carry the whole state into the save (plain JSON).
  *
  * The run supplies a `PawnHost`; this file never touches run.ts internals. Seeded rng only.
@@ -18,6 +21,7 @@ import type { PlayerId } from '@/core/types';
 import type { Rng } from '@/core/rng';
 import { allCharmDefs, charmDef } from '@/game/charms/engine';
 import { LAUNCH_CHARM_IDS, SUIT_SCALED_CHARMS } from '@/game/data/charms';
+import { ENGINE_CHARM_IDS } from '@/game/data/charmsEngines';
 import { charmPrice, rollRarity, type ShopRarity } from '@/game/economy';
 import { foldEffects, scopeMatches, stackedValue } from '@/game/types';
 import type { CharmDef, ModBreakdown } from '@/game/types';
@@ -78,6 +82,8 @@ export interface PawnHost {
   meta?(code: string): boolean;
   /** Optional: only v1.0 launch charms are offered (default true). */
   launchOnly?(): boolean;
+  /** Optional: the machines on the floor (with suit tags), for the first-shop synergy guarantee. Empty or absent = any suit. */
+  floor?(): readonly PawnMachine[];
   /** Optional: the most-played machine, for FIT and the payout preview. */
   mostPlayed?(): PawnMachine | null;
   /** Optional: `run.explain('payout.mult', machineId, 1)` for the payout preview. */
@@ -182,6 +188,7 @@ export class Pawn implements PawnApi {
   }
 
   private newVisit(key: string): void {
+    const first = this.key === '' && this.host.night() === 0 && this.host.watch() === 0;
     const old = this.slots;
     this.key = key;
     this.rolls = 0;
@@ -194,7 +201,28 @@ export class Pawn implements PawnApi {
     }
     const rng = this.host.rng().fork(`pawn:${this.host.night()}:${this.host.watch()}`);
     this.fill(rng, this.freeSlots());
+    if (first) this.guaranteeSynergy(rng.fork('synergy'));
     this.rev += 1;
+  }
+
+  /** Charm that starts a build: an engine, or a suit-scaled charm of a suit that is on the floor (any suit when the floor is unknown). */
+  private isSynergy(d: CharmDef, suits: ReadonlySet<string>): boolean {
+    if (d.rarity === 'cursed') return false;
+    if (ENGINE_CHARM_IDS.has(d.id)) return true;
+    return SUIT_SCALED_CHARMS.has(d.id) && !!d.tag && (suits.size === 0 || suits.has(d.tag.toLowerCase()));
+  }
+
+  /** First shop of a run: make sure a regular shelf holds a synergy charm (slot 1 is swapped when none does). */
+  private guaranteeSynergy(rng: Rng): void {
+    const suits = new Set<string>();
+    for (const m of this.host.floor?.() ?? []) for (const t of m.tags) suits.add(t.toLowerCase());
+    const shelf = this.slots.flatMap((s, i) => (s && i !== UNDER_COUNTER_INDEX ? [charmDef(s.id)] : []));
+    if (shelf.some((d) => d && this.isSynergy(d, suits))) return;
+    const exclude = new Set<string>(this.slots.flatMap((s) => (s ? [s.id] : [])));
+    const pool = allCharmDefs().filter((d) => this.isSynergy(d, suits) && this.eligible(d, exclude));
+    if (!pool.length) return;
+    const at = [1, 2, 0].find((i) => i !== UNDER_COUNTER_INDEX && !this.slots[i]?.locked) ?? 1;
+    this.slots[at] = { id: rng.pick(pool).id, locked: false, sold: false };
   }
 
   private freeSlots(): number[] {

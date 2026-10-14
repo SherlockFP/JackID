@@ -14,5 +14,6 @@ import './pace.test.mjs';
 import './shop.test.mjs';
 import './engines.test.mjs';
 import './run.wave8.test.mjs';
+import './run.econ.test.mjs';
 import './hotline.test.mjs';
 import './lootbox.test.mjs';

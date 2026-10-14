@@ -45,7 +45,7 @@ export const CHARM_ENGINE_DATA: readonly CharmDef[] = [
     ['Bilet Presi', '×5 ve üzeri bir kazanç +1 Bilet basar. Elindeki her 3 Bilet için kazançlara +%2 (en fazla +%20).']),
   engine('last_gasp', 'rare', 40, 'N3', 'clutch',
     ['Last Gasp', 'During the last Watch\'s Last Call, while the quota is unmet: payouts ×1.4.'],
-    ['Son Nefes', 'Son Watch\'ın Son Çağrısı sırasında, kota tutmadığı sürece: kazançlar ×1,4.']),
+    ['Son Nefes', 'Son Vardiya\'nın Son Çağrısı sırasında, kota tutmadığı sürece: kazançlar ×1,4.']),
   engine('understudy', 'legendary', 95, 'N5', 'copycat',
     ['The Understudy', 'Copies the effects of your most expensive charm that is not Legendary or Cursed. Does not copy triggers.'],
     ['Dublör', 'Legendary ya da Lanetli olmayan en pahalı tılsımının etkilerini kopyalar. Tetikleyicileri kopyalamaz.']),
@@ -58,7 +58,7 @@ export const CHARM_ENGINE_DATA: readonly CharmDef[] = [
     ['Yaldızlı Fiş', 'Maksimum bahiste: kazançlar ×1,25. Maksimum bahsin yarısının altında: kazançlar ×0,9.']),
   engine('snowball_ledger', 'uncommon', 20, 'N2', 'banker',
     ['Snowball Ledger', 'Each Watch settled with at least 25% of the quota deposited adds +1% interest (max +3%, resets at Dawn).'],
-    ['Kartopu Defteri', 'Kotanın en az %25\'i yatırılmış her Watch kapanışı +%1 faiz ekler (en fazla +%3, Şafakta sıfırlanır).']),
+    ['Kartopu Defteri', 'Kotanın en az %25\'i yatırılmış her Vardiya kapanışı +%1 faiz ekler (en fazla +%3, Şafakta sıfırlanır).']),
 ];
 
 /** Ids of the ten engine charms, for `LAUNCH_CHARM_IDS` (the integrator adds them there). */

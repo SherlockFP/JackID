@@ -24,6 +24,8 @@ export type DebtParts = {
   leds: { quota: LedPanelPart; deposit: LedPanelPart };
   /** Keypad, one dynamic mesh. Cells follow `rules.KEYS`. */
   keys: ButtonPanelPart;
+  /** Gold frame that marks the keypad cursor cell (moved by `index.ts`, child of `keys.root`). */
+  keyCursor: THREE.Object3D;
   /** Receipt paper, 64 × 80 px, slides up from the printer on every deposit. */
   receipt: ScreenSurface;
   receiptPivot: THREE.Object3D;
@@ -44,11 +46,25 @@ export const W = 1.2, D = 0.9, H = 2.4;
 const COUNTER_TOP = 1.07;
 const KEYPAD_Z = 0.18;
 
-/** Keypad layout: 3 columns × 2 rows, cells named by `rules.KEYS`. */
+/** Keypad layout: 3 columns × 2 rows, cells named by `rules.KEYS`. Caps are KEY_W × KEY_H on a 0.22 × 0.17 pitch. */
 export const KEY_POS: Record<(typeof KEYS)[number], { x: number; z: number }> = {
-  p10: { x: -0.2, z: -0.06 }, p25: { x: 0, z: -0.06 }, p50: { x: 0.2, z: -0.06 },
-  all: { x: -0.2, z: 0.07 }, rest: { x: 0, z: 0.07 }, enter: { x: 0.2, z: 0.07 },
+  p10: { x: -0.22, z: -0.085 }, p25: { x: 0, z: -0.085 }, p50: { x: 0.22, z: -0.085 },
+  all: { x: -0.22, z: 0.085 }, rest: { x: 0, z: 0.085 }, enter: { x: 0.22, z: 0.085 },
 };
+export const KEY_W = 0.2, KEY_H = 0.14;
+/** Top of a keypad cap in panel space (`kit.buttonPanel`: plate 0.012 + cap 0.03). */
+const CAP_TOP = 0.042;
+
+/**
+ * Text on a small screen: nearest magnification keeps the glyph edges, mip-maps keep the minified text readable.
+ * (The PSX pass samples at about 224 lines, so a 512 × 384 CRT is still minified; the mips stop the shimmer.)
+ */
+function mipText(t: THREE.Texture): void {
+  t.magFilter = THREE.NearestFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.needsUpdate = true;
+}
 
 export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   const { pal } = kit;
@@ -72,7 +88,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   kit.box(0.46, 0.04, 0.12, pal.gold, at(0, 1.22, -0.02));                                   // deposit LED bezel
 
   // ── animated parts (listed in `keep`) ──
-  const crt = kit.crtMonitor({ w: 0.46, h: 0.36, px: [256, 192], scheme: 'amber', glow: 0.6 });
+  // 512 × 384 texels (2× the old 256 × 192): the CRT is the readout, so its figures need the texels
+  const crt = kit.crtMonitor({ w: 0.46, h: 0.36, px: [512, 384], scheme: 'amber', glow: 0.6 });
+  mipText(crt.screen.tex);
   crt.root.position.set(0, 1.56, 0.03);
   root.add(crt.root);
 
@@ -82,18 +100,39 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   deposit.root.position.set(0, 1.22, 0.0);
   root.add(quota.root, deposit.root);
 
+  // The caps carry colour only. The panel's shared atlas gives each cap 32 texels, too few for a word, so the labels are
+  // separate high-density quads lying on the caps, and a gold frame marks the cursor cell.
   const specs: PanelButtonSpec[] = KEYS.map((id) => ({
     id,
-    label: { key: `m.debt_terminal.k_${id}` },
     color: id === 'enter' ? pal.red : id === 'all' ? pal.gold : pal.cream,
     x: KEY_POS[id].x,
     z: KEY_POS[id].z,
-    w: 0.14,
-    h: 0.1,
+    w: KEY_W,
+    h: KEY_H,
   }));
-  const keys = kit.buttonPanel({ buttons: specs, w: 0.62, d: 0.32, slope: 12, plate: pal.steel, capH: 0.03 });
+  const keys = kit.buttonPanel({ buttons: specs, w: 0.72, d: 0.36, slope: 12, plate: pal.steel, capH: 0.03 });
   keys.root.position.set(0, COUNTER_TOP, KEYPAD_Z);
   root.add(keys.root);
+  const keyLabels = new THREE.Group();
+  keyLabels.userData.kitKeep = true;                       // dynamic-looking labels: never merged into the model
+  for (const id of KEYS) {
+    const lb = kit.label({
+      text: { key: `m.debt_terminal.k_${id}` }, w: KEY_W * 0.9, h: KEY_H * 0.72, px: [320, 224],
+      color: id === 'enter' ? 0xffffff : 0x1a1206, bg: null, font: 'ps2p',
+    });
+    lb.mesh.rotation.x = -Math.PI / 2;
+    lb.mesh.position.set(KEY_POS[id].x, CAP_TOP + 0.002, KEY_POS[id].z);
+    keyLabels.add(lb.mesh);
+  }
+  keys.root.add(keyLabels);
+  const keyCursor = new THREE.Group();
+  keyCursor.userData.kitKeep = true;
+  const cw = KEY_W + 0.024, ch = KEY_H + 0.024, bar = 0.01, by = CAP_TOP + 0.004, bh = 0.008;
+  kit.box(cw, bh, bar, pal.gold, { pos: [0, by, -(ch - bar) / 2], parent: keyCursor });
+  kit.box(cw, bh, bar, pal.gold, { pos: [0, by, (ch - bar) / 2], parent: keyCursor });
+  kit.box(bar, bh, ch, pal.gold, { pos: [-(cw - bar) / 2, by, 0], parent: keyCursor });
+  kit.box(bar, bh, ch, pal.gold, { pos: [(cw - bar) / 2, by, 0], parent: keyCursor });
+  keys.root.add(keyCursor);
 
   const mouthLips = new THREE.Object3D();
   mouthLips.position.set(0, 0.7, 0.46);
@@ -149,7 +188,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   root.add(light);
 
   const parts: DebtParts = {
-    crt: crt.screen, leds: { quota, deposit }, keys, receipt, receiptPivot, mouthLips, emblemLid,
+    crt: crt.screen, leds: { quota, deposit }, keys, keyCursor, receipt, receiptPivot, mouthLips, emblemLid,
     settleLever, floorLever, bellRope, swipe, readyLamp,
   };
   kit.finalize(root, {
@@ -160,7 +199,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.55, 0.85), look: new THREE.Vector3(0, 1.2, 0.1), fov: 58, mouse: 'pick' },
+    // seat framing: the CRT (y 1.38–1.74), the quota LED (1.9) and the keypad (1.07) all sit inside the view
+    playPose: { pos: new THREE.Vector3(0, 1.5, 1.1), look: new THREE.Vector3(0, 1.4, 0.1), fov: 56, mouse: 'pick' },
     colliders: [
       { min: [-W / 2, 0, -D / 2], max: [W / 2, H, -D / 2 + 0.12] },   // alcove back
       { min: [-0.5, 0, -0.2], max: [0.5, COUNTER_TOP, 0.4] },          // counter

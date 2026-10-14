@@ -1,0 +1,23 @@
+/* Seat HUD layout (hud-layout lane): imported after seatHud.css, so these rules win at equal specificity.
+   Every size is in --su (= the UI pixel unit), as in seatHud.css. */
+
+/* top band order: the HUD's Night / Watch clock line (--hud-top-h = its bottom edge, set by menu/hud.ts), then the state
+   banner, then the machine tooltip (goal). Without the HUD the stack starts at 3 units. */
+.seat-hud .shud-top {
+  top: calc(var(--hud-top-h, calc(var(--su) * 3)) + var(--su) * 2);
+}
+
+/* STAKE / POCKET: the big readout, always up while seated; amber above half the pocket, red while a high stake needs confirm */
+.seat-hud .shud-stake {
+  display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 1);
+  padding: calc(var(--su) * 2) calc(var(--su) * 6); min-width: calc(var(--su) * 60);
+  border-top: calc(var(--su) * 2) solid currentColor; text-align: center;
+}
+.seat-hud .shud-stake-l { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3.5); line-height: 1; color: #b8c0a8; white-space: nowrap; }
+.seat-hud .shud-stake-v { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 7); line-height: 1.2; white-space: nowrap; color: currentColor; }
+.seat-hud .shud-stake.tone-gold { color: #ffd040; }
+.seat-hud .shud-stake.tone-warn { color: #ffb347; }
+.seat-hud .shud-stake.tone-bad { color: #ff5a4a; }
+.seat-hud .shud-stake.need .shud-stake-l { color: #ff5a4a; animation: shud-stake-blink 0.6s steps(2, start) infinite; }
+@keyframes shud-stake-blink { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .seat-hud .shud-stake.need .shud-stake-l { animation: none; } }

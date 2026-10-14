@@ -53,10 +53,13 @@ export function popSize(text: string, tier = 0): 0 | 1 | 2 {
   return 0;
 }
 
-/** Gold burst behind a pop: a ring and a spray of sparks from the pop's spot. Removes itself; never over the odds line. */
-function burst(root: HTMLElement, i: number, size: 0 | 1 | 2): void {
+/**
+ * Gold burst behind a pop or a win: a ring and a spray of sparks from the spot `top` (a CSS length in the root).
+ * Removes itself. size 0 small, 1 medium, 2 big (more sparks, reach and life).
+ */
+export function goldBurst(root: HTMLElement, top: string, size: 0 | 1 | 2): void {
   const wrap = h('div', 'charm-burst', root);
-  wrap.style.cssText = `position:absolute;left:50%;top:calc(30% + 12 * ${i} * var(--u));width:0;height:0;pointer-events:none;`;
+  wrap.style.cssText = `position:absolute;left:50%;top:${top};width:0;height:0;pointer-events:none;`;
   const ring = h('div', '', wrap);
   ring.style.cssText = 'position:absolute;left:0;top:0;width:calc(var(--u) * 10);height:calc(var(--u) * 10);'
     + 'transform:translate(-50%,-50%) scale(0.2);border-radius:50%;border:calc(var(--u) * 2) solid #ffd23c;box-shadow:0 0 calc(var(--u) * 4) #ffd23c;';
@@ -110,7 +113,7 @@ export function createProcPops(root: HTMLElement): ProcPops {
       else if (size === 1) el.style.fontSize = 'calc(21 * var(--u))';
       el.style.textShadow = 'calc(var(--u) * 2) calc(var(--u) * 2) 0 #000';
       live.push(el);
-      if (size > 0) burst(root, i, size);
+      if (size > 0) goldBurst(root, `calc(30% + 12 * ${i} * var(--u))`, size);
       if (size === 2) {
         try { app.fx.shake(0.018, 0.3, { roll: 0.4 }); } catch { /* the shake is optional */ }
       }
