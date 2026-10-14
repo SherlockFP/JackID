@@ -34,6 +34,8 @@ import { log } from '@/core/log';
 import { clamp, damp, lerp } from '@/core/math';
 import { fmtCoins, t } from '@/core/i18n';
 import { psxUniforms } from '@/core/renderer/psxMaterial';
+import type { LocalPlayer } from '@/player/types';
+import type { LocalPlayerHost } from '@/player/local';
 import { createCollisionWorld, type CollisionHost } from './collision';
 import { createInteraction, type InteractableX, type InteractionHost } from './interact';
 import type {
@@ -72,6 +74,10 @@ const ZONE_CULL_PERIOD_S = 0.1;
 const LOCK_PERIOD_S = 1;
 const TABLE_REACH_M = 2.8;
 const SOLO_REACH_M = 2.2;
+/** Extra reach on a machine: one E press walks the player up to the stand point and then sits (see `walkUpAndSit`). */
+const WALK_UP_EXTRA_M = 1.4;
+const SEAT_STAND_OFFSET_M = 0.55;     // same as the router's default stand point (in front of the machine's interact box)
+const WALK_UP_NEAR_M = 0.4;           // already at the stand point: sit without walking
 const NEAREST_DEFAULT_M = 6;
 
 export type { SpawnKind, SpawnPoint } from './sys/arch';
@@ -334,6 +340,38 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
     return best;
   }
 
+  /** Stand point (feet, world) of a seat: the seat's own `stand` anchor, else in front of the interact box. */
+  function standPoint(rec: SlotRec, m: AnyMachine, seat: number): THREE.Vector3 {
+    const sd = m.model.seats?.[seat];
+    const itz = m.model.interact.max[2];
+    const local = sd?.stand ?? new THREE.Vector3(0, 0, itz + SEAT_STAND_OFFSET_M);
+    return rec.toWorld(local).setY(rec.def.pos[1]);
+  }
+
+  /**
+   * One E press on a machine in reach: walk the body to the stand point (the prompt is held back meanwhile), then take the
+   * first free seat and sit. An E press during the walk is absorbed: the sit is already queued for its end. A walk that is
+   * interrupted (cutscene, fall, a closed wing, a denied seat) ends without sitting and the prompt returns.
+   */
+  let walkingTo: InstanceId | null = null;
+  async function walkUpAndSit(rec: SlotRec, m: AnyMachine, seat: number): Promise<void> {
+    const lp = app.player as (LocalPlayer & Partial<LocalPlayerHost>) | null;
+    const stand = standPoint(rec, m, seat);
+    const at = app.player?.pos ?? camera.position;
+    const near = Math.hypot(stand.x - at.x, stand.z - at.z) <= WALK_UP_NEAR_M;
+    if (!lp?.walkTo || near) { router.request(rec.id, seat); return; }
+    const look = rec.toWorld(new THREE.Vector3(0, 0, 0)).setY(stand.y);
+    walkingTo = rec.id;
+    app.ui.prompt(null);
+    let ok = false;
+    try { ok = await lp.walkTo(stand, look); }
+    finally { walkingTo = null; }
+    if (!ok || rec.machine !== m || rec.locked || m.locked || isClosed(rec)) return;
+    const now = pickSeat(rec, m);                              // the seat may have been taken during the walk
+    if (now < 0) { app.ui.toast(t('world.noSeat'), 'warn'); app.audio.play('buzzer', { vol: 0.4 }); return; }
+    router.request(rec.id, now);
+  }
+
   function buildMachineContent(rec: SlotRec, machineId: MachineId): boolean {
     const mod = registry.get(machineId);
     if (!mod) { buildBrokenContent(rec, `unregistered ${machineId}`); return false; }
@@ -360,17 +398,18 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
       const reach = m.def.seats > 1 ? TABLE_REACH_M : SOLO_REACH_M;
       const machine = m;
       const inter: InteractableX = {
-        id: rec.id, box: localBox(rec, model.interact), maxDist: reach,
+        id: rec.id, box: localBox(rec, model.interact), maxDist: reach + WALK_UP_EXTRA_M,
         enabled: () => rec.ready && !rec.busy && rec.machine === machine,
         label: () => machineLabel(rec, machine),
         sub: () => machineSub(rec, machine),
         disabled: () => isClosed(rec) || rec.locked || machine.locked || !machine.seats.includes(null),
         onInteract: () => {
+          if (walkingTo) return;                                   // already walking up: the sit is queued for its end
           if (isClosed(rec) || rec.locked || machine.locked) { app.ui.toast(machineSub(rec, machine), 'warn'); app.audio.play('buzzer', { vol: 0.4 }); return; }
           const seat = pickSeat(rec, machine);
           if (seat < 0) { app.ui.toast(t('world.noSeat'), 'warn'); app.audio.play('buzzer', { vol: 0.4 }); return; }
           if (!app.player) { app.ui.toast(t('world.unavailable'), 'warn'); return; }
-          router.request(rec.id, seat);
+          void walkUpAndSit(rec, machine, seat);
         },
       };
       rec.offInteract = interact.add(inter);
@@ -601,7 +640,7 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
   let runSeen = false;
   function interactActive(): boolean {
     const p = app.player;
-    if (!p || router.busy || app.simPaused) return false;
+    if (!p || router.busy || walkingTo || app.simPaused) return false;
     return (p.mode === 'walk' || p.mode === 'crawling') && app.input.mode === 'walk';
   }
 

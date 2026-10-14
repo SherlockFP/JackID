@@ -9,11 +9,13 @@ export default {
     'deal.rescue.name': 'THE LOAN',
     'deal.rescue.boon': 'Get {c} coins now',
     'deal.rescue.cost': 'Tonight\'s quota +{q}',
+    'toast.pocketEmpty': 'Pocket empty — the Collector is calling',
   },
   tr: {
     'call.rescue': 'Cepler şimdiden boş mu? Tahsildar borç verebilir. Aldığın, bu Gecenin kotasına eklenir, hem de fazlasıyla.',
     'deal.rescue.name': 'BORÇ',
     'deal.rescue.boon': 'Şimdi {c} jeton al',
     'deal.rescue.cost': 'Bu Gece kota +{q}',
+    'toast.pocketEmpty': 'Cep boş — Tahsildar arıyor',
   },
 };

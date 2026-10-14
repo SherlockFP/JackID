@@ -103,6 +103,8 @@
   max-height: calc(var(--seat-bot-t, 100%) - var(--seat-top-b, var(--hud-top-h, calc(52 * var(--u)))) - 8 * var(--u));
   overflow: hidden;
 }
+/* A placard (note, seat card, journal) is up (placard3d.ts sets .note-open): the tutorial box steps aside. */
+.px-root.note-open .px-tut { display: none !important; }
 
 /* ── crosshair ────────────────────────────────────────────────────────────────────────────── */
 .px-cross { position: absolute; left: 50%; top: 50%; width: 0; height: 0; z-index: 2; pointer-events: none; }
@@ -282,6 +284,13 @@
 /* --mh-h = measured height of the machine HUD (ui.ts), so subtitles / skip ring always sit above it, even when hints wrap */
 .px-root.mh-on .px-subtitle,
 .px-root.mh-on .px-skip { bottom: calc(var(--mh-h, 44px) + 4 * var(--u)); }
+/* Seated: subtitles sit ABOVE the seat's control stack (--seat-bot-t = its top edge, from seatHud.ts), never over the
+   controls, and take no pointer so they cannot block the seat's keys or buttons. */
+.px-root.seated .px-subtitle,
+.px-root.seated.mh-on .px-subtitle {
+  bottom: calc(100% - var(--seat-bot-t, calc(100% - 40 * var(--u))) + 6 * var(--u));
+  pointer-events: none;
+}
 
 /* ── phone choices / votes ────────────────────────────────────────────────────────────────── */
 .px-choices {

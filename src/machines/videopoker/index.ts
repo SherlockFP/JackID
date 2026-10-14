@@ -411,13 +411,13 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     if (!pc.fast) await this.wait(0.5);
     s.pot = ev.pay;
     s.phase = ev.pay > 0 ? 'win' : 'ready';
-    if (pc.local) this.callout(ev.pay - this.roundBet);
+    if (pc.local) this.callout(this.ctx.run.previewCredit(ev.pay, this.src, { bet: this.roundBet }) - this.roundBet);
     this.refresh();
     if (ev.pay > 0) {
       const tier = juiceTier(ev.pay, this.roundBet, isRoyalCat(ev.cat) ? ['jackpot'] : []);
       const royal = isRoyalCat(ev.cat);
       this.ctx.fx.sparks(screen.mesh, 8 + 4 * (tierRank(tier)), 0xffd040);
-      this.ctx.fx.popText(screen.mesh, this.t('win', { n: fmtCoins(ev.pay) }), 0xffd040, { dur: 1.1, rise: 0.3, scale: 1.1 + 0.1 * tierRank(tier), shake: royal });
+      this.ctx.fx.popText(screen.mesh, this.t('win', { n: fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(ev.pay, this.src, { bet: this.roundBet }) : ev.pay) }), 0xffd040, { dur: 1.1, rise: 0.3, scale: 1.1 + 0.1 * tierRank(tier), shake: royal });
       this.ctx.fx.glow(screen.mesh, 0xffd040, 0.3, 0.5);
       if (royal) {
         this.ctx.fx.shake(0.02, 0.4);
@@ -450,7 +450,7 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     s.pot = ev.pot;
     s.phase = ev.res === 'lose' ? 'ready' : 'win';
     if (pc.local) {
-      if (ev.res === 'win') this.callout(ev.pot - this.roundBet);
+      if (ev.res === 'win') this.callout(this.ctx.run.previewCredit(ev.pot, this.src, { bet: this.roundBet }) - this.roundBet);
       else if (ev.res === 'push') this.seatHud?.result('push', 0);
       else this.callout(-this.roundBet);
     }
@@ -541,7 +541,7 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
           else drawBack(g, x0(i + 1), 60);
         }
         if (d && d.res) {
-          const msg = d.res === 'win' ? this.t('win', { n: fmtCoins(s.pot) }) : this.t(d.res === 'push' ? 'push' : 'bust');
+          const msg = d.res === 'win' ? this.t('win', { n: fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(s.pot, this.src, { bet: this.roundBet }) : s.pot) }) : this.t(d.res === 'push' ? 'push' : 'bust');
           sc.text(msg, 4, 111, { font: 'px5', color: CRT_YELLOW });
         }
         else sc.text(this.t('pickCard'), 4, 111, { font: 'px5', color: CRT_YELLOW });
@@ -552,8 +552,8 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
           else drawFace(g, sc, s.hand[i], x, 60);
           if (s.phase === 'hold' && ((s.held >> i) & 1)) sc.text(this.t('held'), x + 1, 52, { font: 'px5', color: CRT_YELLOW });
         }
-        const status = winShown !== undefined ? this.t('win', { n: fmtCoins(winShown) })
-          : s.phase === 'win' ? this.t('win', { n: fmtCoins(s.pot) })
+        const status = winShown !== undefined ? this.t('win', { n: fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(winShown, this.src, { bet: this.roundBet }) : winShown) })
+          : s.phase === 'win' ? this.t('win', { n: fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(s.pot, this.src, { bet: this.roundBet }) : s.pot) })
           : s.phase === 'hold' ? this.t('hold')
           : `${this.t(s.game === 'jacks' ? 'gJacks' : 'gDeuces')} ${this.t('credits', { n: s.credits })} ${this.t('denom', { n: s.denom })}`;
         sc.text(status, 4, 111, { font: 'px5', color: CRT_YELLOW });

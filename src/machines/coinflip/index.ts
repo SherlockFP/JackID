@@ -476,7 +476,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
         sc.text(this.t(side === 'H' ? 'h' : 't'), 9 + i * 11, 17, { font: 'px5', color: '#071207', align: 'center' });
       });
       if (winShown !== undefined) {
-        sc.text(`+${fmtCoins(winShown)}`, 48, 30, { font: 'px5', color: '#ffd040', align: 'center' });
+        sc.text(`+${fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(winShown, this.src, { bet: this.roundBet }) : winShown)}`, 48, 30, { font: 'px5', color: '#ffd040', align: 'center' });
       } else if (s.pot > 0) {
         sc.text(this.t('pot', { n: fmtCoins(s.pot) }), 48, 29, { font: 'px5', color: '#ffd040', align: 'center' });
         for (let i = 0; i <= cap; i++) {              // ladder: one box per flip, filled = won

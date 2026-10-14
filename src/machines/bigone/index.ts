@@ -20,7 +20,7 @@ import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
 import { countUp, blinkOn } from '@/machines/_base/juice';
 import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { KitX } from '@/kit';
-import { fmtCoins } from '@/core/i18n';
+import { fmtCoins, t as tr } from '@/core/i18n';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { TAU } from '@/core/math';
 import { px5Width } from '@/core/texgen/font';
@@ -199,12 +199,23 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       case 'primary': case 'confirm': this.spinKey(); break;
       case 'betUp': this.changeBet(() => this.stepBet(1)); break;
       case 'betDown': this.changeBet(() => this.stepBet(-1)); break;
-      case 'betMax': this.changeBet(() => this.maxBet()); break;
+      case 'betMax': this.maxKey(); break;
       case 'auto': this.toggleAuto(); break;
       case 'clear': this.cycleAutoSize(); break;
       case 'fast': this.fastOn = !this.fastOn; this.sfx('click'); this.showHud(); break;
       case 'n1': case 'n2': case 'n3': case 'n4': case 'n5': this.toggleHold(HOLD_KEYS[a]); break;
     }
+  }
+
+  /** MAX key: the highest stake the pocket and the run's stake cap allow. When the cap is what stops it, a toast names the cap. */
+  private maxKey(): void {
+    if (this.inRound || this.roundOpen || this.autoLeft > 0) return;
+    const before = this.bet;
+    this.maxBet();
+    if (this.bet !== before) this.sfx('click');
+    this.showHud();
+    const cap = this.ctx.run.betLimits(this.def.id, this.id).max;
+    if (cap < this.ctx.run.wallet() && this.bet >= cap) this.toast(tr('stake.cap', { max: cap }), 'warn');
   }
 
   private changeBet(fn: () => void): void {

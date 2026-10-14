@@ -658,7 +658,7 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
         sc.text(String(d), 46 + i * 30, 44, { font: 'px5', color: s.reach ? '#ff8080' : '#e8f4ff', align: 'center' });
       });
       if (s.reach) sc.text(this.t(s.reach === 'PREMIUM' ? 'reachP' : s.reach === 'SUPER' ? 'reachS' : 'reachN'), 80, 78, { font: 'px5', color: '#ff8080', align: 'center' });
-      if (winShown !== undefined) sc.text(`+${fmtCoins(winShown)}`, 80, 98, { font: 'px5', color: '#ffd040', align: 'center' });
+      if (winShown !== undefined) sc.text(`+${fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(winShown, this.src, { bet: this.roundBet }) : winShown)}`, 80, 98, { font: 'px5', color: '#ffd040', align: 'center' });
       else sc.text(this.t('tray', { n: s.tray }), 80, 98, { font: 'px5', color: '#7dff7a', align: 'center' });
     });
   }

@@ -89,7 +89,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
 
   // ── animated parts (listed in `keep`) ──
   // 512 × 384 texels (2× the old 256 × 192): the CRT is the readout, so its figures need the texels
-  const crt = kit.crtMonitor({ w: 0.46, h: 0.36, px: [512, 384], scheme: 'amber', glow: 0.6 });
+  const crt = kit.crtMonitor({ w: 0.46, h: 0.36, px: [512, 384], scheme: 'amber', glow: 0.95 });
   mipText(crt.screen.tex);
   crt.root.position.set(0, 1.56, 0.03);
   root.add(crt.root);

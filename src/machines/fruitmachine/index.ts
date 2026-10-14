@@ -454,7 +454,7 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
       this.view.win = ev.line;
       leds.win.set(String(ev.line));
       this.sfx('chime', { vol: 0.8 });
-      this.ctx.fx.popText(reels[1].root, this.t('win', { n: fmtCoins(ev.line) }), 0xffd040, { dur: 1.1, rise: 0.3, scale: 1.1 });
+      this.ctx.fx.popText(reels[1].root, this.t('win', { n: fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(ev.line, this.src, { bet: ev.stake }) : ev.line) }), 0xffd040, { dur: 1.1, rise: 0.3, scale: 1.1 });
       this.refresh();
       return;
     }

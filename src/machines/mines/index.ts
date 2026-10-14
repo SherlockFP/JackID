@@ -648,7 +648,7 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
         if (mult > 0 && mult < 1e9) sc.text(fmtCoins(Math.floor(s.stake * mult)), 152, y, { font: 'px5', color: col, align: 'right' });
       }
       if (winShown !== undefined) {
-        sc.text(`+${fmtCoins(winShown)}`, 80, 92, { font: 'px5', color: '#ffd040', align: 'center' });
+        sc.text(`+${fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(winShown, this.src, { bet: this.roundBet }) : winShown)}`, 80, 92, { font: 'px5', color: '#ffd040', align: 'center' });
       } else if (s.open) {
         sc.text(`${this.t('stake')} ${fmtCoins(s.stake)}  ${this.t('left', { n: s.rm - (s.defused ? 1 : 0) })}`, 4, 96, { font: 'px5', color: PHOSPHOR });
         sc.text(`x${fmtMult(s.mult)}`, 4, 106, { font: 'px5', color: '#ffd040' });

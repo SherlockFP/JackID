@@ -424,7 +424,7 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
       g.fillStyle = '#080808'; g.fillRect(0, 0, sc.w, sc.h);
       sc.text(`${this.t('credit')} ${fmtCoins(this.ctx.run.wallet())}`, 4, 3, { font: 'px5', color: DIM_PANEL });
       sc.text(this.t('bet', { n: fmtCoins(bet) }), 4, 14, { font: 'px5', color: DIM_PANEL });
-      sc.text(winShown !== undefined && winShown > 0 ? this.t('win', { n: fmtCoins(winShown) }) : this.t('ready'), 4, 25, { font: 'px5', color: '#ffd040' });
+      sc.text(winShown !== undefined && winShown > 0 ? this.t('win', { n: fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(winShown, this.src, { bet }) : winShown) }) : this.t('ready'), 4, 25, { font: 'px5', color: '#ffd040' });
     });
   }
 

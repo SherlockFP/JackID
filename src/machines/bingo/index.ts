@@ -491,7 +491,8 @@ export default class BingoHall extends TableBase<BingoParts, Ev, Snap, Act> {
     }
     if (ev.total > 0) {
       const tier = juiceTier(ev.total, ev.stake, tags);
-      const text = frame ? this.t('jackpot', { n: fmtCoins(ev.total) }) : this.t('win', { n: fmtCoins(ev.total) });
+      const shown = mine ? this.ctx.run.previewCredit(ev.total, this.src, { bet: ev.stake }) : ev.total;
+      const text = frame ? this.t('jackpot', { n: fmtCoins(shown) }) : this.t('win', { n: fmtCoins(shown) });
       this.ctx.fx.popText(at, text, ev.total > ev.stake ? GOLD : GREEN, { dur: 1.2, rise: 0.3 });
       if (frame) {
         this.ctx.fx.shake(0.04, 0.5, { roll: 0.6 });

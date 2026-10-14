@@ -29,13 +29,14 @@ import type { KitX } from '@/kit';
 import { fmtCoins, fmtNum } from '@/core/i18n';
 import type { OvershootTier, QuotaState, RunApi } from '@/game/types';
 import { nightPaid } from './night';
+import { bandFromPx, frameConsole, type Vec3 } from './fit';
 
 const EMPTY_QUOTA: QuotaState = { due: 0, base: 0, assessment: 0, deposited: 0, perPlayer: {}, met: false, overshoot: 0, ratio: 0, claimed: [] };
 import { lerp, clamp } from '@/core/math';
 import { buildModel, KEY_POS, type DebtParts } from './model';
 import {
   KEYS, KEY_COLS, COIN_STREAM_S, amountFor, appendDigit, backspace, clampDeposit, customAmount, nextTier, pct,
-  quotaLeft, ratioOf, rollSeconds, type KeyId,
+  quotaLeft, ratioOf, rollSeconds, ALL_CONFIRM_SEC, type KeyId,
 } from './rules';
 
 type Ev =
@@ -108,6 +109,8 @@ export const def: MachineDef = {
       tip1: "Pay the quota in coins. Pick an amount on the keypad and press it.",
       tip2: "[{move}] MOVE  ·  [{press}] PRESS  ·  [{digits}] TYPE AN AMOUNT",
       tip3: "Quota met? [{settle}] SETTLE  ·  [{help}] RULES",
+      floorKept: "Float kept: {n} coins stay in your pocket",
+      allConfirm: "ALL empties your pocket. Press ALL again to confirm",
     },
     tr: {
       name: 'Borç Terminali',
@@ -154,6 +157,8 @@ export const def: MachineDef = {
       tip1: "Kotayı jetonla öde. Tuş takımından bir tutar seçip bas.",
       tip2: "[{move}] GEZ  ·  [{press}] BAS  ·  [{digits}] TUTAR YAZ",
       tip3: "Kota tamam mı? [{settle}] KAPAT  ·  [{help}] KURALLAR",
+      floorKept: "Yedek akçe: {n} jeton cepte kalır",
+      allConfirm: "HEPSİ cebini boşaltır. Onaylamak için HEPSİ'ye tekrar bas",
     },
   },
 };
@@ -174,6 +179,12 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private lastNight = -1;
   /** Seat HUD overlay (created in init, shown while seated). */
   private seatHud?: SeatHud;
+  /** Seconds an armed ALL stays armed (the second press confirms the float breach). */
+  private allArm = 0;
+  /** Phase last seen by `refresh`: a change clears the typed amount. */
+  private lastPhase = '';
+  /** Band the pose was last fitted to (the seat bar moves with its stack), so the framing follows it. */
+  private bandSig = '';
   private readonly onResize = (): void => this.fitPose();
 
   protected createModel(kit: KitX): MachineModel<DebtParts> {
@@ -192,48 +203,44 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   }
 
   /**
-   * Seat framing: the CRT is centred, and the whole console (LEDs, CRT, keypad) fits the vertical field. The field is
-   * fitted to the points' angles from the seat, so a narrow window widens the field instead of clipping the keypad.
+   * Seat framing: the console (LEDs, CRT, keypad) sits inside the band between the seat stack's top edge and the control bar
+   * (`--seat-bot-t`), at any window shape. The solver (`fit.ts`) picks the look pitch and the fov; the camera stays on the seat.
    */
   private fitPose(): void {
-    const DEG = Math.PI / 180;
-    const cam: [number, number, number] = [0, 1.6, 1.1];
-    const pts: Array<[number, number, number]> = [
-      [-0.23, 1.38, 0.05], [0.23, 1.38, 0.05], [-0.23, 1.74, 0.05], [0.23, 1.74, 0.05],       // CRT
-      [-0.24, 1.94, -0.02], [0.24, 1.94, -0.02], [-0.24, 1.18, -0.02], [0.24, 1.18, -0.02],   // LEDs
-      [-0.37, 1.12, 0.0], [0.37, 1.12, 0.0], [-0.37, 1.12, 0.36], [0.37, 1.12, 0.36],         // keypad
-    ];
-    let vMin = Infinity, vMax = -Infinity, hMax = 0;
-    for (const p of pts) {
-      const dz = cam[2] - p[2];
-      vMin = Math.min(vMin, Math.atan2(p[1] - cam[1], dz));
-      vMax = Math.max(vMax, Math.atan2(p[1] - cam[1], dz));
-      hMax = Math.max(hMax, Math.atan2(Math.abs(p[0]), dz));
-    }
+    const base: Vec3 = [0, 1.6, 1.1];
+    const crt: Vec3[] = [[-0.23, 1.38, 0.05], [0.23, 1.38, 0.05], [-0.23, 1.74, 0.05], [0.23, 1.74, 0.05]];
+    const keypad: Vec3[] = [[-0.37, 1.12, 0.0], [0.37, 1.12, 0.0], [-0.37, 1.12, 0.36], [0.37, 1.12, 0.36]];
+    const leds: Vec3[] = [[-0.24, 1.94, -0.02], [0.24, 1.94, -0.02], [-0.24, 1.18, -0.02], [0.24, 1.18, -0.02]];
     const H = Math.max(1, window.innerHeight);
     const aspect = Math.max(0.4, window.innerWidth / H);
-    // The visible band: between the seat stack's bottom edge (--seat-top-b) and the top of its STAKE / control stack
-    // (--seat-bot-t), both in px from the top of #ui (seatHud.ts). Without them the band is the whole window.
-    const cs = typeof document !== 'undefined' && document.getElementById('ui') ? getComputedStyle(document.getElementById('ui') as HTMLElement) : null;
-    const topPx = parseFloat(cs?.getPropertyValue('--seat-top-b') ?? '');
-    const botPx = parseFloat(cs?.getPropertyValue('--seat-bot-t') ?? '');
-    let f0 = 0, f1 = 1;
-    if (Number.isFinite(topPx) && Number.isFinite(botPx) && botPx - topPx > 0.2 * H) {
-      f0 = Math.min(0.5, Math.max(0, topPx / H));
-      f1 = Math.max(0.5, Math.min(1, botPx / H));
-    }
-    const k = f1 - f0;                                   // band height as a fraction of the window
-    const centre = (vMin + vMax) / 2;
-    const span = (vMax - vMin) / 2 + 4 * DEG;
-    // The points must fit the band (NDC half-height k), and the width must fit the window.
-    const vHalf = Math.max(Math.atan(Math.tan(span) / k), Math.atan(Math.tan(hMax + 3 * DEG) / aspect));
-    // Aim the look so the points' centre sits on the band's centre (ndc 0 when the band is the whole window).
-    const ndcC = 1 - 2 * ((f0 + f1) / 2);
-    const look = centre - Math.atan(ndcC * Math.tan(vHalf));
+    const { topPx, botPx } = this.bandPx();
+    // the keypad and the CRT must fit the band; the LEDs too when the camera can take them in (`frameConsole`)
+    const f = frameConsole(base, [...crt, ...leds, ...keypad], [...crt, ...keypad], bandFromPx(topPx, botPx, H), aspect);
+    const DEG = Math.PI / 180;
     const pose = this.model.playPose;
-    pose.pos.set(cam[0], cam[1], cam[2]);
-    pose.look.set(cam[0], cam[1] + Math.sin(look), cam[2] - Math.cos(look));
-    pose.fov = Math.min(80, Math.max(40, (2 * vHalf) / DEG));
+    pose.pos.set(f.cam[0], f.cam[1], f.cam[2]);
+    pose.look.set(f.cam[0], f.cam[1] + Math.sin(f.look), f.cam[2] - Math.cos(f.look));
+    pose.fov = (2 * f.vHalf) / DEG;
+    this.bandSig = this.sigOf(topPx, botPx, H);
+  }
+
+  private sigOf(topPx: number, botPx: number, H: number): string { return `${topPx}|${botPx}|${H}|${window.innerWidth}`; }
+
+  /** The seat stack edges in px from the top of `#ui` (NaN when the HUD is down). */
+  private bandPx(): { topPx: number; botPx: number } {
+    const ui = typeof document !== 'undefined' ? document.getElementById('ui') : null;
+    const cs = ui ? getComputedStyle(ui) : null;
+    return {
+      topPx: parseFloat(cs?.getPropertyValue('--seat-top-b') ?? ''),
+      botPx: parseFloat(cs?.getPropertyValue('--seat-bot-t') ?? ''),
+    };
+  }
+
+  /** Refit when the seat bar moved (its stack changes size with the controls and the tip). Two property reads per frame. */
+  private fitIfBandMoved(): void {
+    if (!this.isLocalOccupant) return;
+    const { topPx, botPx } = this.bandPx();
+    if (this.sigOf(topPx, botPx, Math.max(1, window.innerHeight)) !== this.bandSig) this.fitPose();
   }
 
   // ── run state (read on every peer) ──────────────────────────────────────────────────────────────
@@ -242,7 +249,9 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private tiers(): readonly OvershootTier[] { return this.ctx.run.shift.overshootTiers() ?? []; }
   private wallet(): number { return this.ctx.run.wallet(this.selfId); }
 
-  tick(_dt: number): void {
+  tick(dt: number): void {
+    if (this.allArm > 0) this.allArm = Math.max(0, this.allArm - dt);
+    this.fitIfBandMoved();
     this.refresh(false);
   }
 
@@ -258,8 +267,9 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
 
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.cursor = 0;
+    this.clearEntry();
     if (local) {
-      this.entry = ''; this.sfx('chime');
+      this.sfx('chime');
       this.seatHud?.show(); this.showHud();
       this.fitPose();                // the seat stack's edges exist now: frame the console between them
       this.seatHud?.firstTip('debt_terminal', this.tipLines());
@@ -267,7 +277,14 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
-    if (local) { this.entry = ''; this.seatHud?.hide(); }
+    this.clearEntry();
+    if (local) this.seatHud?.hide();
+  }
+
+  /** The typed amount and the armed ALL are per visit and per press: nothing typed earlier may commit later (the stale 44). */
+  private clearEntry(): void {
+    this.entry = '';
+    this.allArm = 0;
   }
 
   onLang(): void {
@@ -332,25 +349,48 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     const wallet = this.wallet();
     const left = quotaLeft(q.due, q.deposited);
     if (nightPaid(this.ctx.run)) { this.refuse('nightPaidNote'); return; }     // Dawn paid it: the next Night has no quota yet
+    const run = this.ctx.run;
+    // The first deposit of a Watch keeps a float in the pocket (`float.ts`); ALL goes below it only once confirmed.
+    const floor = run.depositFloor?.() ?? 0;
+    const room = Math.max(0, wallet - floor);
     let amount: number;
+    let confirmAll = false;
     if (key === 'enter') {
       if (this.entry === '') { this.refuse('typeAmount'); return; }
       amount = clampDeposit(customAmount(this.entry), wallet);                 // a typed amount is explicit: it may overpay
-      this.entry = '';
+      this.clearEntry();
     } else {
       if (left <= 0) { this.refuse('metNote'); return; }                       // quota met: a held PRESS must not keep depositing
-      amount = key === 'all' ? clampDeposit(wallet, wallet) : clampDeposit(Math.min(amountFor(key, wallet, left), left), wallet);
+      this.clearEntry();
+      if (key === 'all') {
+        if (floor > 0 && this.allArm <= 0) {                                   // the first press arms it, the second confirms
+          this.allArm = ALL_CONFIRM_SEC;
+          this.sfx('error');
+          this.ctx.ui.toast(this.t('allConfirm'), 'warn');
+          this.refresh(true);
+          return;
+        }
+        confirmAll = floor > 0;
+        amount = wallet;
+      } else {
+        amount = clampDeposit(Math.min(amountFor(key, wallet, left), left), wallet);
+      }
+    }
+    if (!confirmAll && amount > room) {                                        // the float stays in the pocket
+      amount = room;
+      if (amount <= 0) { this.refuse('floorKept'); return; }
+      this.ctx.ui.toast(this.t('floorKept', { n: fmtNum(floor) }), 'sys');
     }
     const ok = amount > 0 && this.ctx.run.canAfford(amount, this.selfId);
     const dep = q.deposited + (ok ? amount : 0);
     void this.emit(
       { k: 'dep', key, amount, ok, dep },
-      ok ? () => { if (!this.ctx.run.deposit(amount)) this.ctx.ui.toast(this.t('denied'), 'bad'); } : undefined,
+      ok ? () => { if (!run.deposit(amount, confirmAll)) this.ctx.ui.toast(this.t('denied'), 'bad'); } : undefined,
     );
     this.refresh(true);
   }
-
   private pullLever(id: 'settle' | 'floor'): void {
+    this.clearEntry();
     if (id === 'settle') {
       const q = this.quota();
       const ok = q.met && this.ctx.run.shift.settleEarly();
@@ -469,6 +509,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     const paid = nightPaid(this.ctx.run);
     const phase = this.ctx.run.shift.phase;
     const night = this.ctx.run.night();
+    // a new phase (Watch, Dawn, Night) starts with an empty amount: a typed one never carries over (the stale entry)
+    if (phase !== this.lastPhase) { this.lastPhase = phase; this.clearEntry(); }
     // a new Night or the paid screen must not keep a stale count-up value
     if (paid !== this.lastPaid || night !== this.lastNight) { this.lastPaid = paid; this.lastNight = night; this.shownDep = q.deposited; }
     const left = quotaLeft(q.due, this.shownDep);
@@ -492,32 +534,32 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     const s = this.parts.crt;
     const ratio = ratioOf(this.shownDep, q.due);
     const next = nextTier(this.tiers(), ratio);
-    s.clear('#120a00');
-    const amber = '#ffb000', hot = '#ffd060';
+    s.clear('#060300');
+    const amber = '#ffc02a', hot = '#fff0a0';
     const row = (label: string, value: string, y: number, col = hot): void => {
       s.text(label, 14, y + 6, { font: 'vt', size: 34, color: amber, align: 'left' });
       s.text(value, 498, y + 6, { font: 'ps2p', size: 40, color: col, align: 'right' });   // a wide face: VT323 digits go thin at distance
     };
     s.text(this.t('crt_title'), 256, 4, { font: 'vt', size: 34, color: hot, align: 'center' });
     if (paid) {                                   // Dawn paid the Night: no stale quota, just the carry-over and the lever
-      s.text(this.t('crt_paid', { n: this.ctx.run.night() }), 256, 90, { font: 'vt', size: 60, color: '#ffd040', align: 'center' });
-      if (q.deposited > 0) row(this.t('crt_carry'), fmtNum(q.deposited), 180, '#ffe890');
-      s.text(this.t('crt_floor'), 256, 320, { font: 'vt', size: 40, color: '#ffe0a0', align: 'center' });
+      s.text(this.t('crt_paid', { n: this.ctx.run.night() }), 256, 90, { font: 'vt', size: 60, color: '#fff070', align: 'center' });
+      if (q.deposited > 0) row(this.t('crt_carry'), fmtNum(q.deposited), 180, '#fff4b8');
+      s.text(this.t('crt_floor'), 256, 320, { font: 'vt', size: 40, color: '#fff0c0', align: 'center' });
       return;
     }
     row(this.t('nDue'), fmtNum(q.due), 46);
-    row(this.t('nDeposited'), fmtNum(this.shownDep), 126, '#ffe890');
-    row(this.t('nLeft'), fmtNum(left), 206, left > 0 ? '#ff8a60' : '#9fe8a0');
+    row(this.t('nDeposited'), fmtNum(this.shownDep), 126, '#fff4b8');
+    row(this.t('nLeft'), fmtNum(left), 206, left > 0 ? '#ff9a70' : '#b4ffb4');
     // the typed amount: a boxed input field, the digits as they are typed
-    s.draw((g) => { g.fillStyle = '#2a1c00'; g.fillRect(6, 284, 500, 56); g.strokeStyle = amber; g.lineWidth = 2; g.strokeRect(7, 285, 498, 54); });
+    s.draw((g) => { g.fillStyle = '#1e1400'; g.fillRect(6, 284, 500, 56); g.strokeStyle = amber; g.lineWidth = 2; g.strokeRect(7, 285, 498, 54); });
     s.text(this.t('nAmount'), 16, 296, { font: 'vt', size: 34, color: amber, align: 'left' });
     const typed = this.entry === '' ? '_' : `${fmtNum(customAmount(this.entry))}_`;
-    s.text(typed, 498, 294, { font: 'ps2p', size: 30, color: '#ffe0a0', align: 'right' });
+    s.text(typed, 498, 294, { font: 'ps2p', size: 30, color: '#fff0c0', align: 'right' });
     // status line: the share of the quota paid, then the next tier, or the bell / quota-met prompt
     s.text(`${pct(ratio)} ${this.t('crt_ratio')}`, 14, 352, { font: 'vt', size: 30, color: amber, align: 'left' });
     if (inter) s.text(this.t('crt_bell'), 498, 352, { font: 'vt', size: 30, color: hot, align: 'right' });
     else if (q.met) s.text(this.t('crt_met'), 498, 352, { font: 'vt', size: 30, color: hot, align: 'right' });
-    else if (next !== null) s.text(`${this.t('crt_next')} ${pct(next.ratio)}`, 498, 352, { font: 'vt', size: 30, color: '#a07020', align: 'right' });
+    else if (next !== null) s.text(`${this.t('crt_next')} ${pct(next.ratio)}`, 498, 352, { font: 'vt', size: 30, color: '#e0a040', align: 'right' });
   }
 
   /** The keypad cursor is the one lit cap plus a gold frame on its cell, so the selection reads from the seat. */

@@ -5,7 +5,8 @@
  * The purchase itself goes through `ctx.run.buyCharm(charmId, price)`. Coins are checked with `run.canAfford`, Tickets
  * with `run.balance('ticket')`. The machine never prices anything.
  *
- * Controls (seated): 1–4 or ←/→ pick a slot · Space/Enter buy · R (double) locks the slot (1 Ticket, it stays until bought;
+ * Controls (seated): 1–4 or ←/→ pick a slot (no wrap, every slot visited) · Space/Enter twice within 3 s buys (the first press shows
+ * the price) · R (double) locks the slot (1 Ticket, it stays until bought;
  * R again unlocks) · Q (collect) removes the curse from your first cursed charm (5 Tickets) · E stands up.
  * Reroll is the ALT key (free rerolls first, then 1 Ticket, +1 per further paid reroll). Only unlocked, unsold slots change.
  * Pegs full: buying opens the swap picker (←/→ choose the charm to replace, Space/Enter confirm, secondary cancels);
@@ -30,8 +31,8 @@ import { buildModel, SHUTTER_DROP, type CharmVendorParts } from './model';
 import { charmIconPix, rarityColor } from './icons';
 import './pawnCard.css';
 import {
-  LOCK_TICKETS, MAX_LOCKS, REMOVE_CURSE_TICKETS, SLOTS, buyJuice, multText, pawnFrom, priceText, stockKey, wrapIndex, wrapSlot,
-  type PawnApi, type PawnSlot, type SwapChoice,
+  BUY_CONFIRM_S, LOCK_TICKETS, MAX_LOCKS, REMOVE_CURSE_TICKETS, SLOTS, buyJuice, multText, pawnFrom, priceText, stepIndex, stepSlot,
+  stockKey, type PawnApi, type PawnSlot, type SwapChoice,
 } from './rules';
 
 type Juice = 'plain' | 'rare' | 'legend' | 'cursed';
@@ -103,6 +104,9 @@ export const def: MachineDef = {
       curseNote: 'Cursed: the house pays you to take it. It cannot be sold back.',
       swapOut: 'THIS ONE LEAVES  ·  SELL BACK {n}',
       noDesc: 'No description.',
+      stArm: '{key} again to buy · {price}',
+      stArmSub: 'Second press within {s} s',
+      cConfirm: 'CONFIRM',
     },
     tr: {
       name: 'Rehin Penceresi',
@@ -146,6 +150,9 @@ export const def: MachineDef = {
       curseNote: 'Lanetli: ev seni almaya para öder. Geri satılamaz.',
       swapOut: 'BU ÇIKAR  ·  GERİ SATIŞ {n}',
       noDesc: 'Açıklama yok.',
+      stArm: '{key} TEKRAR BAS · {price}',
+      stArmSub: '{s} sn içinde ikinci kez bas',
+      cConfirm: 'ONAYLA',
     },
   },
 };
@@ -164,6 +171,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   private drumming = false;
   /** Swap picker (pegs full): which slot is being bought and which charm would be replaced. */
   private swap: { i: number; choices: readonly SwapChoice[]; idx: number } | null = null;
+  /** First Space on a buyable slot: the price shows and a second Space on the same slot buys, within BUY_CONFIRM_S. */
+  private armed: { i: number; left: number } | null = null;
   /** The selected charm's card (DOM, crisp text): name, rarity, effect. */
   private card?: { el: HTMLElement; icon: HTMLCanvasElement; name: HTMLElement; meta: HTMLElement; desc: HTMLElement; note: HTMLElement };
   private cardKey = '';
@@ -199,6 +208,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const sh = this.parts.shutter;
     sh.position.y += (target - sh.position.y) * Math.min(1, dt * 6);
     this.idle += dt;
+    if (this.armed) { this.armed.left -= dt; if (this.armed.left <= 0) this.armed = null; }
     this.refresh(false);
   }
 
@@ -226,6 +236,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.cursor = 0;
     this.idle = 0;
+    this.armed = null;
     if (local) {
       this.sfx('chime');
       this.seatHud?.show(); this.refresh(true);
@@ -237,6 +248,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
     this.swap = null;
+    this.armed = null;
     if (local) {
       this.seatHud?.hide(); this.hudKey = '';
       this.offHint?.(); this.offHint = null;
@@ -260,8 +272,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     this.idle = 0;
     if (this.swap) { this.onSwapInput(e); return; }
     switch (e.action) {
-      case 'left': this.moveCursor(wrapSlot(this.cursor, -1)); return;
-      case 'right': this.moveCursor(wrapSlot(this.cursor, 1)); return;
+      case 'left': this.stepCursor(-1); return;
+      case 'right': this.stepCursor(1); return;
       case 'n1': case 'n2': case 'n3': case 'n4': this.moveCursor(Number(e.action.slice(1)) - 1); return;
       case 'primary': case 'confirm': this.buy(this.cursor); return;
       case 'alt': this.reroll(); return;
@@ -272,17 +284,29 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
 
   private moveCursor(i: number): void {
     this.cursor = i;
+    this.armed = null;
     this.sfx('hover');
     this.refresh(true);
   }
 
-  /** Purchase: refusal reasons are checked here; the coins move in the credit step; the stock is read again next tick. */
+  /** A/D (or ←/→) step one slot. The ends stop the cursor (no wrap) and say so; every slot, empty ones too, is landed on. */
+  private stepCursor(dir: 1 | -1): void {
+    const next = stepSlot(this.cursor, dir);
+    if (next === this.cursor) { this.sfx('buzzer', { vol: 0.4 }); return; }
+    this.moveCursor(next);
+  }
+
+  /**
+   * Purchase, two presses: the first Space arms the slot (its price shows in the banner), a second Space on the same slot
+   * inside BUY_CONFIRM_S buys it. Refusals (closed, empty, short of coins) answer at once. The coins move in the credit step.
+   */
   private buy(i: number): void {
     const pawn = this.pawn();
-    if (!pawn || !pawn.open()) { void this.emit({ k: 'buy', i, charmId: '', price: 0, juice: 'plain', ok: false, why: 'closed' }); return; }
+    if (!pawn || !pawn.open()) { this.armed = null; void this.emit({ k: 'buy', i, charmId: '', price: 0, juice: 'plain', ok: false, why: 'closed' }); return; }
     const slot = pawn.stock(this.selfId)[i] ?? null;
-    if (!slot) { void this.emit({ k: 'buy', i, charmId: '', price: 0, juice: 'plain', ok: false, why: 'none' }); return; }
+    if (!slot) { this.armed = null; void this.emit({ k: 'buy', i, charmId: '', price: 0, juice: 'plain', ok: false, why: 'none' }); return; }
     if (pawn.needsSwap(this.selfId, i)) {                       // pegs full: choose the charm to replace first
+      this.armed = null;
       const choices = pawn.swapChoices(this.selfId, i);
       if (!choices.length) { void this.emit({ k: 'buy', i, charmId: slot.charmId, price: slot.price, juice: 'plain', ok: false, why: 'shop.limit' }); return; }
       this.swap = { i, choices, idx: 0 };
@@ -291,7 +315,15 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       return;
     }
     const ok = slot.price <= 0 || this.ctx.run.canAfford(slot.price, this.selfId);
-    this.commitBuy(pawn, i, slot, ok, ok ? '' : 'funds');
+    if (!ok) { this.armed = null; this.commitBuy(pawn, i, slot, false, 'funds'); return; }
+    if (this.armed?.i !== i) {                                  // first press: arm and show the price
+      this.armed = { i, left: BUY_CONFIRM_S };
+      this.sfx('hover');
+      this.refresh(true);
+      return;
+    }
+    this.armed = null;                                          // second press in time
+    this.commitBuy(pawn, i, slot, true, '');
   }
 
   /** Emit the purchase; the wallet moves inside the credit step through `pawn.buy`, which also marks the slot sold. */
@@ -311,8 +343,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const pawn = this.pawn();
     if (!sw || !pawn) { this.swap = null; return; }
     switch (e.action) {
-      case 'left': case 'up': sw.idx = wrapIndex(sw.idx, -1, sw.choices.length); this.sfx('hover'); this.refresh(true); return;
-      case 'right': case 'down': sw.idx = wrapIndex(sw.idx, 1, sw.choices.length); this.sfx('hover'); this.refresh(true); return;
+      case 'left': case 'up': sw.idx = stepIndex(sw.idx, -1, sw.choices.length); this.sfx('hover'); this.refresh(true); return;
+      case 'right': case 'down': sw.idx = stepIndex(sw.idx, 1, sw.choices.length); this.sfx('hover'); this.refresh(true); return;
       case 'secondary': this.swap = null; this.sfx('click'); this.refresh(true); return;
       case 'primary': case 'confirm': {
         const slot = pawn.stock(this.selfId)[sw.i] ?? null;
@@ -402,18 +434,19 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     // impact: tier by rarity
     const slotObj = itemSlots[ev.i];
     const at = slotObj ?? anchor;
+    // the name pop stays small and low, over its own slot, so it never covers the shop
     switch (ev.juice) {
       case 'legend':
-        this.sfx('win3'); fx.flash(GOLD, 0.3, 0.4); fx.zoomPunch(0.04, 0.3); fx.popText(at, name, GOLD, { scale: 1.6, dur: 1.4 });
+        this.sfx('win3'); fx.flash(GOLD, 0.3, 0.4); fx.zoomPunch(0.04, 0.3); fx.popText(at, name, GOLD, { scale: 0.95, dur: 0.9, rise: 0.1 });
         break;
       case 'rare':
-        this.sfx('win2'); fx.flash(BLUE, 0.18, 0.3); fx.popText(at, name, BLUE, { scale: 1.3 });
+        this.sfx('win2'); fx.flash(BLUE, 0.18, 0.3); fx.popText(at, name, BLUE, { scale: 0.85, dur: 0.8, rise: 0.1 });
         break;
       case 'cursed':
-        this.sfx('porcelainCrack'); fx.tint(VIOLET, 0.25, 0.6); fx.popText(at, name, VIOLET, { scale: 1.2 });
+        this.sfx('porcelainCrack'); fx.tint(VIOLET, 0.25, 0.6); fx.popText(at, name, VIOLET, { scale: 0.85, dur: 0.8, rise: 0.1 });
         break;
       default:
-        this.sfx('stamp'); fx.popText(at, name, GOLD, { scale: 1.0 });
+        this.sfx('stamp'); fx.popText(at, name, GOLD, { scale: 0.75, dur: 0.7, rise: 0.08 });
     }
 
     // follow-through: the tray returns, the ledger stamps
@@ -457,13 +490,15 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const open = pawn !== null && pawn.open();
     const stock = pawn && open ? pawn.stock(this.selfId) : [];
     this.stockCache = stock;
-    const key = [stockKey(stock), open ? 1 : 0, this.wallet(), this.tickets(), this.cursor, this.swap ? `s${this.swap.i}.${this.swap.idx}` : ''].join('|');
+    const key = [stockKey(stock), open ? 1 : 0, this.wallet(), this.tickets(), this.cursor, this.swap ? `s${this.swap.i}.${this.swap.idx}` : '', this.armed?.i ?? -1].join('|');
     if (!force && key === this.repaintKey) { if (this.isLocalOccupant) this.showHud(); this.syncCard(); return; }
     this.repaintKey = key;
 
+    // every tag carries its price, locked ones in brackets (the lock shows on the shelf and in the ledger)
     for (let i = 0; i < SLOTS; i++) {
       const s = stock[i] ?? null;
-      const txt = !open ? '--' : s?.locked ? this.t('locked') : priceText(s, fmtNum, this.t('free'));
+      const price = priceText(s, fmtNum, this.t('free'));
+      const txt = !open ? '--' : s?.locked ? `[${price}]` : price;
       this.parts.tags[i]?.setText(txt);
     }
     this.parts.ticketLed.set(String(fmtNum(this.tickets())).padStart(4, ' '));
@@ -627,7 +662,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     if (!sh || !this.isLocalOccupant) return;
     const cur = this.stockCache[this.cursor] ?? null;
     const key = [this.cursor, this.wallet(), this.tickets(), this.open() ? 1 : 0, cur?.charmId ?? '', cur?.locked ? 1 : 0, cur?.fit ?? 0,
-      this.pawn()?.rerollCost() ?? 0, this.swap ? `s${this.swap.idx}` : ''].join('|');
+      this.pawn()?.rerollCost() ?? 0, this.swap ? `s${this.swap.idx}` : '', this.armed?.i ?? -1].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
     const open = this.open(), wallet = this.wallet(), tix = this.tickets();
@@ -657,9 +692,11 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     }
 
     // STATE
+    const armedHere = open && sel !== null && canBuy && this.armed !== null && this.armed.i === this.cursor;
     if (!open) sh.state({ k: 'm.charm_vendor.stShut' }, 'neutral', { k: 'm.charm_vendor.stShutSub' });
     else if (!sel) sh.state({ k: 'm.charm_vendor.stEmpty' }, 'neutral', { k: 'm.charm_vendor.stEmptySub' });
     else if (!canBuy) sh.state({ k: 'm.charm_vendor.stFunds' }, 'warn', { k: 'm.charm_vendor.stFundsSub', v: { n: fmtNum(sel.price - wallet) } });
+    else if (armedHere) sh.state({ k: 'm.charm_vendor.stArm', v: { key: this.k('primary'), price: priceText(sel, fmtNum, this.t('free')) } }, 'gold', { k: 'm.charm_vendor.stArmSub', v: { s: BUY_CONFIRM_S } });
     else sh.state({ k: 'm.charm_vendor.stChoose' }, 'gold', { k: 'm.charm_vendor.stChooseSub' });
 
     // KEY NUMBERS
@@ -678,7 +715,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     // CONTROL BAR: only what is valid right now
     if (open) {
       ctrl.push({ key: `${this.k('left')}/${this.k('right')}`, label: { k: 'm.charm_vendor.cPick' }, action: 'left' });
-      if (canBuy) ctrl.push({ key: this.k('primary'), label: { k: 'm.charm_vendor.cBuy' }, action: 'primary', primary: true });
+      if (canBuy) ctrl.push({ key: this.k('primary'), label: { k: this.armed?.i === this.cursor ? 'm.charm_vendor.cConfirm' : 'm.charm_vendor.cBuy' }, action: 'primary', primary: true });
       if (pawn && pawn.canReroll() && tix >= pawn.rerollCost()) {
         ctrl.push({
           key: this.k('alt'), action: 'alt',

@@ -83,3 +83,6 @@ export function rollSeconds(diff: number): number {
 
 /** Shows the coin-stream animation length for a deposit (GDD §2.6.1: 0.6 s). */
 export const COIN_STREAM_S = 0.6;
+
+/** Seconds an armed ALL stays armed: the second press within this window confirms the float breach (see `game/float.ts`). */
+export const ALL_CONFIRM_SEC = 6;

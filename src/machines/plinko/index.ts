@@ -460,7 +460,7 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
       g.fillStyle = '#080808'; g.fillRect(0, 0, sc.w, sc.h);
       sc.text(this.t('credit'), 4, 3, { font: 'px5', color: '#ff3020' });
       sc.text(this.t('bet', { n: fmtCoins(bet) }), 4, 12, { font: 'px5', color: '#ff3020' });
-      sc.text(winShown !== undefined ? this.t('win', { n: fmtCoins(winShown) }) : this.t('last'), 96, 12, { font: 'px5', color: '#ffd040' });
+      sc.text(winShown !== undefined ? this.t('win', { n: fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(winShown, this.src, { bet }) : winShown) }) : this.t('last'), 96, 12, { font: 'px5', color: '#ffd040' });
       s.hist.forEach((slot, i) => {
         g.fillStyle = '#' + colourFor(baseMult(s.risk as Risk, slot)).toString(16).padStart(6, '0');
         g.fillRect(4 + i * 12, 22, 8, 8);

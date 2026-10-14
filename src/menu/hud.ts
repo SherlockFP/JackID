@@ -339,7 +339,7 @@ export function createHud(): Hud {
     quotaFill.style.width = `${Math.round(frac * 100)}%`;
     const paid = nightPaid(r);
     const met = paid || q.met || (due > 0 && dep >= due);
-    if (paid) setText(quotaNum, t('interm.paidShort', { n: r.night() }));
+    if (paid) setText(quotaNum, t('hud.paidTag', { n: r.night() }));   // short tag: it must not clip the top banner
     setCls(quota, 'met', met);
     setCls(quota, 'short', !met);
     const late = r.shift.phase === 'lastCall' || r.shift.timeLeft() < 30;

@@ -43,6 +43,7 @@ import {
 } from './economy';
 import { clearClockHolds, clockHeld, holdClock, releaseClock, tickClockHold } from './clockHold';
 import { createRescue, type RescueLine } from './rescue';
+import { bestBetFloor, depositRoom, floorFor, pocketDead } from './float';
 import { Charms, PEG_CAP_RUN, allCharmDefs, choiceOffer, charmDef } from './charms/engine';
 import { Pawn, type PawnSnapshot } from './shop';
 import { scopeTags } from './suits';
@@ -178,6 +179,8 @@ export interface RunExt {
   hotline?: HotlineSave;
   /** Rescue loans taken tonight: quota added and calls used. Optional: older saves have none. */
   rescue?: { quota: number; used: number };
+  /** Deposits made this Watch (the first one keeps the float). Optional: older saves have none. */
+  watchDep?: number;
 }
 /** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
 interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
@@ -411,6 +414,8 @@ class Run implements DebtRun {
   private pullCount = 0;
   private pullsMax = 0;
   private watchPulls = 0;
+  /** Debt Terminal deposits made this Watch: the first one leaves a float in the pocket (see `float.ts`). */
+  private watchDeposits = 0;
   private boughtThisWatch = 0;
   private freeRerolls = 0;
   private pawnRev = 0;
@@ -748,10 +753,35 @@ class Run implements DebtRun {
     return credited;
   }
 
-  deposit(amount: number): boolean {
+  /** The cheapest bet on the floor (any machine that takes a stake); the pocket must cover it to keep playing. */
+  cheapestBet(): number {
+    if (this.minBetCache > 0) return this.minBetCache;
+    let min = Number.POSITIVE_INFINITY;
+    for (const m of registry.all()) {
+      const b = m.def.minBet;
+      if (b > 0 && b < min) min = b;
+    }
+    if (!Number.isFinite(min)) return 1;
+    this.minBetCache = min;
+    return bestBetFloor(min);
+  }
+  private minBetCache = 0;
+
+  /** Coins the next Debt Terminal deposit must leave in the pocket: the float on the first deposit of a Watch, else 0. */
+  depositFloor(): number {
+    return this.watchDeposits === 0 ? floorFor(this.coins, this.cheapestBet()) : 0;
+  }
+
+  /**
+   * Debt Terminal deposit. The first deposit of a Watch may not take the pocket below `depositFloor()` unless `confirmAll`
+   * (the player confirmed ALL). Refused (false) otherwise; the terminal clamps to the room before it asks.
+   */
+  deposit(amount: number, confirmAll = false): boolean {
     if (!this.quotaMode || this.ended || this.phase === 'collection') return false;
     const amt = Math.min(Math.floor(amount), this.coins);
     if (amt <= 0) return false;
+    if (!confirmAll && amt > depositRoom(this.coins, this.depositFloor())) return false;
+    this.watchDeposits += 1;
     this.coins -= amt;
     const credit = Math.floor(amt * (1 + this.mod('deposit.bonus', RUN_MACHINE, 0)));
     this.debtPaid += credit;
@@ -762,6 +792,7 @@ class Run implements DebtRun {
     this.checkMet();
     this.emit('quota:update', { quota: this.quota });
     this.persist();
+    this.checkRescue();
     return true;
   }
 
@@ -933,6 +964,7 @@ class Run implements DebtRun {
     this.pullsMax = isOvertime ? OVERTIME_PULLS : Math.max(1, Math.round(this.mod('x.run.pullsAdd', RUN_MACHINE, nd.pulls)));
     this.pullCount = this.pullsMax;
     this.watchPulls = 0;
+    this.watchDeposits = 0;
     this.shiftState.duration = this.clockLen;
     this.shiftState.lastCallSec = this.lastCallSec;
     this.shiftState.segment = { index: this.watch, count: this.watches };
@@ -1502,7 +1534,7 @@ class Run implements DebtRun {
 
   /** Pocket at 0, Watches left, quota unmet and interest alone will not cover it: the phone rings with the Collector's loan. */
   private checkRescue(): void {
-    if (!this.quotaMode || this.ended || !this.canPlay() || this.coins > 0 || this.openRounds.size > 0) return;
+    if (!this.quotaMode || this.ended || !this.canPlay() || !pocketDead(this.coins, this.cheapestBet()) || this.openRounds.size > 0) return;
     if (this.rescue.active() || this.hotline.phone() !== null || this.rescueCool > 0 || this.rescuesUsed >= RESCUE_MAX_PER_NIGHT) return;
     const due = this.quota.due;
     if (due <= 0 || this.debtPaid >= due) return;
@@ -1785,6 +1817,7 @@ class Run implements DebtRun {
       circuit: this.circ.snapshot(),
       hotline: this.hotline.snapshot(),
       rescue: { quota: this.loanQuota, used: this.rescuesUsed },
+      watchDep: this.watchDeposits,
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -2037,6 +2070,7 @@ class Run implements DebtRun {
     this.buffSys.buffs.restore(e.buffs);
     this.hotline.restore(e.hotline);
     this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);
+    this.watchDeposits = Math.max(0, e.watchDep ?? 0);
     this.itemSys.totems.restore(e.totems);
     if (e.contracts) {
       this.contractNight = e.contracts.night;

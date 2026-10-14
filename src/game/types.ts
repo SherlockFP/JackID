@@ -124,7 +124,9 @@ export interface RunApi {
   win(gross: number, src: EcoSource, meta: WinMeta): number;
   /** What `win()` would credit for this gross (net of House Favour, modifiers, factors, limit). Pays nothing; WIN callouts show it. */
   previewCredit(gross: number, src: EcoSource, meta: Pick<WinMeta, 'bet' | 'raw' | 'factorApplied'>): number;
-  deposit(amount: number): boolean;                         // Debt Terminal only
+  deposit(amount: number, confirmAll?: boolean): boolean;   // Debt Terminal only; the first deposit of a Watch keeps a float unless confirmAll
+  /** Pocket floor the first deposit of a Watch must leave (src/game/float.ts). */
+  depositFloor?(): number;
   give(to: PlayerId, amount: number): boolean;              // co-op transfer
   buyCharm(charmId: string, price: number): boolean;        // Charm vendor only
   /** Free charm from a prize (lootbox, claw, coin pusher, bounty). No phase gate. True when it was added. */

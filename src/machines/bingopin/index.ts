@@ -607,7 +607,7 @@ export default class Bingopin extends MachineBase<BingoParts, Ev, State> {
         const txt = k === CENTRE && fs ? this.t('freeSpace') : String(card[k]);
         sc.text(txt, x + 11, y + 5, { font: 'px5', color: lit || hot ? '#0e5e5e' : '#ffd040', align: 'center' });
       }
-      if (winShown !== undefined) sc.text(`+${fmtCoins(winShown)}`, 64, 113, { font: 'px5', color: '#fff6a0', align: 'center' });
+      if (winShown !== undefined) sc.text(`+${fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(winShown, this.src, { bet: this.roundBet }) : winShown)}`, 64, 113, { font: 'px5', color: '#fff6a0', align: 'center' });
     });
   }
 

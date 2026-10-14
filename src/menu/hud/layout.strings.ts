@@ -7,9 +7,11 @@ export default {
   en: {
     'stake.label': 'STAKE / POCKET',
     'stake.confirm': 'CONFIRM HIGH STAKE',
+    'paidTag': 'N{n} PAID',
   },
   tr: {
     'stake.label': 'BAHİS / CEP',
     'stake.confirm': 'YÜKSEK BAHİS: ONAYLA',
+    'paidTag': 'G{n} ÖDENDİ',
   },
 };

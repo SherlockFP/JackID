@@ -182,6 +182,16 @@ const IN_S = 0.42, OUT_S = 0.2, FLIP_S = 0.26;
 const live = new Set<Placard3D>();
 const stack: Placard3D[] = [];
 let hooked = false;
+
+/** Seat cards (`seatHud.ts`: `seat-tip`, `seat-rules`) close on ANY key, Space included; the key is consumed. */
+const ANY_KEY_PREFIX = 'seat-';
+const MODIFIER_CODES = new Set(['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'CapsLock']);
+/** Class on the HUD root while any placard is up: the Night 1 tutorial box (`.px-tut`) steps aside (ui.css). */
+const NOTE_OPEN_CLASS = 'note-open';
+function syncNoteClass(): void {
+  const root = document.getElementById('ui') ?? document.querySelector('.px-root');
+  root?.classList.toggle(NOTE_OPEN_CLASS, stack.length > 0);
+}
 const raycaster = crispRaycaster(new THREE.Raycaster());
 const ndcVec = new THREE.Vector2();
 
@@ -260,6 +270,7 @@ export class Placard3D {
     stack.push(this);
     live.add(this);
     hook();
+    syncNoteClass();
     this.phase = 'in'; this.t = 0;
     this.root.position.copy(this.from);
     this.repaint();
@@ -273,6 +284,7 @@ export class Placard3D {
     this.phase = 'out'; this.t = 0;
     const i = stack.indexOf(this);
     if (i >= 0) stack.splice(i, 1);
+    syncNoteClass();
     uiSfx('click', 0.5);
   }
 
@@ -283,6 +295,7 @@ export class Placard3D {
     this.phase = 'idle';
     const i = stack.indexOf(this);
     if (i >= 0) stack.splice(i, 1);
+    syncNoteClass();
     live.delete(this);
     releaseCrisp(this.root);
     this.root.removeFromParent();
@@ -361,6 +374,10 @@ export class Placard3D {
     return true;
   }
 
+  /** A seat card: any key closes it (see the capture listener in `hook`). */
+  get takesAnyKey(): boolean { return this.spec.keys === undefined && this.spec.name.startsWith(ANY_KEY_PREFIX); }
+  closeByAnyKey(): void { this.spec.act('close'); }
+
   update(dt: number): void {
     if (this.dead) return;
     this.t += dt; this.time += dt;
@@ -424,6 +441,18 @@ function hook(): void {
     if (e.target instanceof Element && e.target.closest('button,input,textarea,select,a')) return;   // real DOM controls keep their clicks
     const ndc = ndcOf(e);
     if (ndc && p.pointer(ndc[0], ndc[1], 'down')) e.stopPropagation();
+  }, { capture: true });
+  // Seat cards: any key closes the card. Capture phase + stopPropagation, so the seated machine does not also act on the
+  // key (the Space that closes a card must not spin the reels). The rest of the key handling below is unchanged.
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat || MODIFIER_CODES.has(e.code)) return;
+    const p = topOf();
+    if (!p || !p.takesAnyKey || !p.open) return;
+    const el = document.activeElement as HTMLElement | null;
+    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    p.closeByAnyKey();
   }, { capture: true });
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;

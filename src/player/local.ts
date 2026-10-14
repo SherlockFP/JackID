@@ -34,6 +34,7 @@ export type { ShakeOpts } from './camera';
 const PITCH_LIMIT = 85 * DEG2RAD;
 const GLIDE_IN_S = 0.6;
 const GLIDE_OUT_S = 0.45;
+const WALK_SPEED = 2.4, WALK_MIN_S = 0.25, WALK_MAX_S = 2.5;   // walk-up to a seat: m/s, clamped duration
 const LOOK_YAW_MAX = 12 * DEG2RAD;
 const LOOK_PITCH_MAX = 8 * DEG2RAD;
 const LOOK_RETURN_DELAY_S = 0.3;
@@ -82,6 +83,13 @@ export interface LocalPlayerHost extends LocalPlayer {
   /** Eye height above the feet right now (m). */
   readonly eyeHeight: number;
   enterMachine(mid: InstanceId, seat: number, pose: PlayPose, poseMatrix: THREE.Matrix4, o?: SeatOptions): Promise<void>;
+  /**
+   * Walk-up before a sit: the feet move in a straight line to `to` (no collision on the way; the stand point is in front
+   * of the machine), facing `lookAt`. Resolves true on arrival, false when interrupted (cutscene, fall, carried, glide).
+   */
+  walkTo(to: THREE.Vector3, lookAt: THREE.Vector3): Promise<boolean>;
+  /** A walk-up is in progress. */
+  readonly walking: boolean;
   shake(amp: number, dur: number, o?: ShakeOpts): void;
   fixedUpdate(dt: number): void;
   frame(dt: number, alpha: number): void;
@@ -123,6 +131,8 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
   let hasExit = false;
   let bodyGlide: { from: THREE.Vector3; to: THREE.Vector3; t: number; dur: number } | null = null;
   let bodyYawTarget: number | null = null;
+  interface Walk { from: THREE.Vector3; to: THREE.Vector3; yaw: number; t: number; dur: number; resolve: (ok: boolean) => void }
+  let walk: Walk | null = null;
 
   // cinematic
   interface Cin { keys: CinematicKey[]; i: number; t: number; fromPos: THREE.Vector3; fromLook: THREE.Vector3; resolve: () => void }
@@ -206,7 +216,27 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
   const seatInput = (on: boolean): void => { (app.input as Partial<InputExt> | null)?.seatTransition?.(on); };
 
   function walkBlocked(): boolean {
-    return phase !== 'free' || cutscene || cinematicActive || carriedBy !== null || fallT >= 0 || ctrl.lost;
+    return phase !== 'free' || cutscene || cinematicActive || carriedBy !== null || fallT >= 0 || ctrl.lost || walk !== null;
+  }
+
+  /** Ends the walk-up (resolves its promise). Safe to call when no walk is running. */
+  function finishWalk(ok: boolean): void {
+    const w = walk;
+    if (!w) return;
+    walk = null;
+    w.resolve(ok);
+  }
+
+  /** One fixed step of the walk-up: the body slides to the stand point, the view turns towards the machine. */
+  function stepWalk(dt: number): void {
+    const w = walk!;
+    w.t += dt;
+    const k = ease.inOutCubic(clamp(w.t / w.dur, 0, 1));
+    ctrl.prevPos.copy(ctrl.pos);
+    ctrl.pos.lerpVectors(w.from, w.to, k);
+    ctrl.yaw = dampAngle(ctrl.yaw, w.yaw, 12, dt);
+    ctrl.speed = 0;
+    if (w.t >= w.dur) { ctrl.pos.copy(w.to); finishWalk(true); }
   }
 
   const player: LocalPlayerHost = {
@@ -248,6 +278,7 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
 
     // ── machine seating ───────────────────────────────────────────────────────────────────────────
     async enterMachine(mid, seatIndex, pose, poseMatrix, o) {
+      finishWalk(false);
       const my = ++token;
       if (phase === 'free') {
         preSeat.pos.copy(ctrl.pos); preSeat.yaw = ctrl.yaw; preSeat.pitch = pitch; preSeat.valid = true;
@@ -296,7 +327,20 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
       phase = 'free';
     },
 
+    walkTo(to, lookAt) {
+      finishWalk(false);
+      if (phase !== 'free' || cutscene || cinematicActive || carriedBy !== null || fallT >= 0 || ctrl.lost || ghost) return Promise.resolve(false);
+      const from = ctrl.pos.clone();
+      const dist = Math.hypot(to.x - from.x, to.z - from.z);
+      const dur = clamp(dist / WALK_SPEED, WALK_MIN_S, WALK_MAX_S);
+      const yaw = forwardYaw(to, lookAt);
+      return new Promise<boolean>((resolve) => { walk = { from, to: to.clone(), yaw, t: 0, dur, resolve }; });
+    },
+
+    get walking() { return walk !== null; },
+
     teleport(p, yawRad) {
+      finishWalk(false);
       token++;
       seatInput(false);
       phase = 'free'; seat = null; seatSit = false; bodyGlide = null; bodyYawTarget = null;
@@ -396,6 +440,7 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
         ctrl.pos.lerpVectors(bodyGlide.from, bodyGlide.to, k);
         if (bodyGlide.t >= bodyGlide.dur) bodyGlide = null;
       }
+      if (walk && (phase !== 'free' || cutscene || cinematicActive || carriedBy !== null || fallT >= 0 || ctrl.lost || ghost)) finishWalk(false);
       if (phase !== 'free') { ctrl.prevPos.copy(ctrl.pos); ctrl.speed = 0; }
       else if (carriedBy !== null) {
         const c = deps.carrier?.(carriedBy);
@@ -404,6 +449,8 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
         ctrl.speed = 0;
       } else if (cutscene || cinematicActive) {
         ctrl.step(dt, { moveX: 0, moveZ: 0, sprint: false, crouchToggle: false, jump: false, frozen: true, pitch }, collision());
+      } else if (walk) {
+        stepWalk(dt);
       } else {
         const walking = input.mode === 'walk' && !ctrl.lost && fallT < 0;
         const m = walking ? input.move() : { x: 0, z: 0 };
@@ -495,6 +542,7 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
     },
 
     dispose() {
+      finishWalk(false);
       token++;
       seatInput(false);
       cin?.resolve(); cin = null;

@@ -298,6 +298,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       interHint = createInterHint((app.ui as UIOverlayX).hudLayer);
       wasPaid = false; sumNight = -1; sumDep = 0; sumInterest = 0; sumCarry = 0;
       offs.push(bus.on('run:deposit', ({ pid, amount }) => { if (session && pid === session.run.selfId) trackDeposit(amount); }));
+      offs.push(bus.on('run:rescue', ({ pid, state }) => { if (session && pid === session.run.selfId && state === 'ring') app.ui.toast(t('hotline.toast.pocketEmpty'), 'warn'); }));
       offs.push(bus.on('eco:wallet', ({ pid, delta, reason }) => { if (session && pid === session.run.selfId && reason === 'dawn:surplus') sumCarry += delta; }));
     },
     exit() {

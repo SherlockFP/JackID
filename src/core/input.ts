@@ -233,7 +233,7 @@ class InputImpl implements InputExt {
       // refused → drag-to-look takes over (no veil); a later successful lock switches back in onLockChange
       if (!ok && !this.dragLook) { this.dragLook = true; this.applyCursor(this.mode); }
       this.setVeil(false);
-      this.setCaptureHint(!ok && this.mode === 'walk' && !this.locked);   // refused: tell the player a click will capture
+      this.setCaptureHint(!ok && !this.seatGlide && this.mode === 'walk' && !this.locked);   // refused: tell the player a click will capture
       return ok;
     });
     this.lockPending = p;
@@ -288,6 +288,8 @@ class InputImpl implements InputExt {
 
   /** Small non-blocking centre hint (never a veil): shown when walk-mode pointer lock was refused, hidden on lock. */
   private setCaptureHint(show: boolean): void {
+    // never while seated or gliding into a seat (the seat HUD owns the screen; a refused lock during the glide is not a walk hint)
+    if (show && (this.seatGlide || this.mode !== 'walk' || this.locked)) show = false;
     if (!show && !this.hintEl) return;
     if (!this.hintEl) {
       const el = document.createElement('div');
@@ -454,7 +456,7 @@ class InputImpl implements InputExt {
 
   seatTransition(on: boolean): void {
     this.seatGlide = on;
-    if (on) { this.seatBuf = null; this.releaseWalk(); }   // walk actions end; the buffer starts empty
+    if (on) { this.seatBuf = null; this.releaseWalk(); this.setCaptureHint(false); }   // walk actions end; the buffer starts empty
   }
 
   // ── bindings ────────────────────────────────────────────────────────────────────────────────────

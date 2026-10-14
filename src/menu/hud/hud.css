@@ -34,7 +34,12 @@
 .hud .phase { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 .hud .night { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 /* THE CIRCUIT: Hot / Cold Lamps line under the night line (walk mode) */
-.hud .lamps { display: flex; flex-direction: column; align-items: center; gap: calc(1 * var(--u)); font-family: var(--f-head); font-size: calc(8 * var(--u)); white-space: nowrap; }
+/* Pinned to the band: ONE fixed-height line (hot | cold), each part ellipsised, so it never grows down into the machine
+   marquees under the top band. */
+.hud .lamps { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: calc(6 * var(--u));
+  height: calc(10 * var(--u)); max-width: min(46vw, calc(180 * var(--u))); overflow: hidden;
+  font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1; white-space: nowrap; }
+.hud .lamps span { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hud .lamps .hot { color: #ff5a3a; }
 .hud .lamps .cold { color: #5aa0ff; }
 .hud .lamps span:empty { display: none; }

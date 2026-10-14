@@ -106,6 +106,19 @@ export function wrapIndex(i: number, dir: 1 | -1, n: number): number {
   return n <= 0 ? 0 : (i + dir + n) % n;
 }
 
+/** Seconds the second Space stays armed after the first: a purchase takes two presses inside this window. */
+export const BUY_CONFIRM_S = 3;
+
+/** Cursor step over the four slots, stopping at the ends (no wrap). Every slot is visited, empty ones included. */
+export function stepSlot(i: number, dir: 1 | -1): number {
+  return Math.min(SLOTS - 1, Math.max(0, i + dir));
+}
+
+/** Cursor step over `n` entries, stopping at the ends (the swap picker). */
+export function stepIndex(i: number, dir: 1 | -1, n: number): number {
+  return n <= 0 ? 0 : Math.min(n - 1, Math.max(0, i + dir));
+}
+
 /** "×1.62" multiplier text. */
 export function multText(v: number): string {
   return `×${(Math.round(v * 100) / 100).toFixed(2)}`;
