@@ -68,11 +68,12 @@ export const DESK_X: readonly number[] = [-1.65, -0.55, 0.55, 1.65];
 export const DESK_ROW_Z: readonly number[] = [-0.2, 0.75];
 export const DESK_TOP = 0.75;
 export const CAGE_POS: readonly [number, number, number] = [-1.3, 1.22, -0.62];
-export const BOARD_POS: readonly [number, number, number] = [-1.3, 1.9, -1.19];
+// board: its screen bezel adds 0.13 m, so x −1.15 keeps the frame inside the left wall (x −2.28) and the bezel inside the XL edge
+export const BOARD_POS: readonly [number, number, number] = [-1.15, 1.9, -1.19];
 const BOARD_W = 2.0, BOARD_H = 1.0;
 const DAIS_POS: readonly [number, number, number] = [-1.3, 0.125, -0.9];
 const DAIS_SIZE: readonly [number, number, number] = [1.3, 0.25, 0.7];
-const CALLER_POS: readonly [number, number, number] = [-1.3, 0.25, -0.92];
+const CALLER_POS: readonly [number, number, number] = [-1.2, 0.25, -0.92];   // 0.1 m in from the old spot: the caller's arms reached x −2.43 (XL edge −2.4)
 const CARD_W = 0.2, CARD_H = 0.24;
 const CARD_TEX_W = 240, CARD_TEX_H = 288;   // 6 px per design unit of the 40 x 48 card layout (index.ts drawCard): crisp numerals at native size
 const CARD_OFFS: ReadonlyArray<readonly [number, number]> = [[-0.11, -0.11], [0.11, -0.11], [-0.11, 0.11], [0.11, 0.11]];
@@ -122,7 +123,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BingoParts> {
 
   // ── flash board frame (backdrop screen sits in front of it) ──
   kit.box(BOARD_W + 0.08, BOARD_H + 0.08, 0.04, pal.brass, at(BOARD_POS[0], BOARD_POS[1], BOARD_POS[2]));
-  const boardScreen = kit.screen({ w: BOARD_W, h: BOARD_H, px: [160, 80], bezel: pal.black, glow: 0.4 });
+  // no glow: the halo sprite is 1.7x the screen wide and pushed the board past the XL footprint
+  const boardScreen = kit.screen({ w: BOARD_W, h: BOARD_H, px: [160, 80], bezel: pal.black, glow: 0 });
   boardScreen.mesh.position.set(BOARD_POS[0], BOARD_POS[1], BOARD_POS[2] + 0.01);
   root.add(boardScreen.mesh);
   const boardGeo = new THREE.BoxGeometry(0.2, 0.045, 0.02);

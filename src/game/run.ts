@@ -9,7 +9,8 @@
  * Time: `tick(dt)` advances everything in SIM seconds; call it from the fixed step. Nothing here reads wall time.
  * Indices: `shift.index` / `debt.index` are 0-based; `night()` is the printed 1-based Night number.
  */
-import { isLockedFor, effectiveNight } from './progression';
+import type { GambleRunPort, GambleReason } from './gamble';
+import { isLockedFor, effectiveNight, isProgressive, tierOf, nightQuota, buyPrice, ghostWager, houseCut, expectedCut, machineName } from './progression';
 import type {
   ActiveRule, BetLimits, BetOpts, BuffsApi, CharmDef, CharmState, CollateralApi, ContractDef, ContractGoal, ContractsApi, ContractState, CurrencyId,
   DebtState, EcoSource, JackpotPool, JackpotsApi, ModBreakdown, ModBreakdownStep, ModEffect, ModHook, ModProvider, ModQuery,
@@ -94,7 +95,7 @@ export interface RunStakeConfirmEvent {
  * The Night summary's books (wave 19, the "QUOTA N PAID" toast): what the Night added up to. `float` is the House float granted at
  * the Night's start, `interest` the interest the Settles added to the deposit (not the deposits), `tickets` the Tickets it earned.
  */
-export interface NightLedger { night: number; float: number; interest: number; tickets: number }
+export interface NightLedger { night: number; float: number; interest: number; tickets: number; /** House cut from owned machines (Wave 28). */ cut: number }
 /** The bank as the Debt Terminal shows it (wave 27). */
 export interface BankView {
   /** Coins counted toward tonight's quota. */
@@ -253,6 +254,10 @@ export interface RunExt {
   circuit?: CircuitSave;
   /** The hotline: ring schedule and the live call. Optional: older saves have none. */
   hotline?: HotlineSave;
+  /** Machines bought with coins (tycoon). Optional: older saves have none. */
+  owned?: MachineId[];
+  /** Watch id of the last All-In Shot (risk layer). Optional: older saves have none. */
+  allIn?: number;
   /** Rescue loans taken tonight: quota added and calls used. Optional: older saves have none. */
   rescue?: { quota: number; used: number };
   /** Deposits made this Watch (the first one keeps the float). Optional: older saves have none. */
@@ -374,6 +379,15 @@ export interface DebtRun extends RunApi {
   backOffice(): { tickets: number; obols: number };
   /** The Collector buys a charm for Obols at 2x its sell value. False when it is not held, cursed or the run is not in a Watch gap. */
   collectorBuy(charmId: string): boolean;
+  // ── tycoon (wave 28): buy a covered machine, collect its house cut ──
+  /** Coins to buy this covered machine now (0 = not for sale: open, owned, free-only or not a progressive run). */
+  buyPriceOf(machineId: MachineId): number;
+  /** BUY a covered machine with coins: it opens for the rest of the run and pays a house cut each Watch. False when refused or short. */
+  buyMachine(machineId: MachineId): boolean;
+  /** True for a machine bought this run. */
+  owns(machineId: MachineId): boolean;
+  /** The EMPIRE chip: machines owned, the average cut per Watch at tonight's quota, and what the floor paid so far tonight. */
+  empire(): { count: number; perWatch: number; tonight: number; owned: readonly MachineId[] };
 }
 
 /** A fresh run. */
@@ -599,7 +613,34 @@ class Run implements DebtRun {
   private clockAcc = 0;
   private stats: Record<string, number> = { rounds: 0, wagered: 0, paid: 0, biggest: 0, wins: 0, nightsPaid: 0, interest: 0, deposited: 0 };
   /** The Night summary's books; reset when the Night opens (`openFloor`), booked by the float, the Settles and the Tickets. */
-  private ledger: NightLedger = { night: 1, float: 0, interest: 0, tickets: 0 };
+  /** Watch id the All-In Shot was last fired in (-1 = never): once per Watch, saved so a reload cannot give a second shot. */
+  private allInWatch = -1;
+  /**
+   * The risk layer's port (`gamblePortOf(run)`, src/game/gamble.ts): Double-or-Nothing ladder, High Stakes surcharge and the
+   * All-In Shot move coins raw: no pull cost, stake limit, confirm or modifiers. A debit counts as wagered, a credit as paid.
+   */
+  readonly gamble: GambleRunPort = {
+    watchId: () => this.index * 16 + this.watch,
+    allInUsed: () => this.allInWatch === this.index * 16 + this.watch,
+    markAllIn: () => { this.allInWatch = this.index * 16 + this.watch; this.persistSoon(); },
+    debit: (amount, _src, reason: GambleReason) => {
+      const a = Math.floor(amount);
+      if (!(a > 0) || this.ended || !this.spend('coin', a, `gamble:${reason}`)) return false;
+      this.stats.wagered = (this.stats.wagered ?? 0) + a;
+      return true;
+    },
+    credit: (amount, _src, reason: GambleReason) => {
+      const a = Math.floor(amount);
+      if (!(a > 0) || this.ended) return 0;
+      this.earn('coin', a, `gamble:${reason}`);
+      this.stats.paid = (this.stats.paid ?? 0) + a;
+      this.biggest = Math.max(this.biggest, a);
+      return a;
+    },
+  };
+  /** Machines bought with coins (tycoon): never covered again, paid a house cut at each Watch settle. */
+  private owned = new Set<MachineId>();
+  private ledger: NightLedger = { night: 1, float: 0, interest: 0, tickets: 0, cut: 0 };
   private maxWallet = START.pocket;
   private biggest = 0;
   private bestMachine: string | null = null;
@@ -947,13 +988,13 @@ class Run implements DebtRun {
   }
   private minBetCache = 0;
 
-  /** Coins the next Debt Terminal deposit must leave in the pocket: the float on the first deposit of a Watch, else 0. */
+  /** Coins the next Debt Terminal deposit must leave in the pocket: the float, on every deposit of a Watch (not just the first). */
   depositFloor(): number {
-    return this.watchDeposits === 0 ? depositFloatFor(this.index, this.coins, this.cheapestBet()) : 0;
+    return depositFloatFor(this.index, this.coins, this.cheapestBet());
   }
 
   /**
-   * Debt Terminal deposit. The first deposit of a Watch may not take the pocket below `depositFloor()` unless `confirmAll`
+   * Debt Terminal deposit. No deposit of a Watch may take the pocket below `depositFloor()` unless `confirmAll`
    * (the player confirmed ALL). Refused (false) otherwise; the terminal clamps to the room before it asks.
    */
   deposit(amount: number, confirmAll = false): boolean {
@@ -1034,7 +1075,7 @@ class Run implements DebtRun {
     return { index: this.index, due: this.quota.due, paid: this.debtPaid, deadlineAt: 0, floor: this.index + 1, total: BASE_RUN_NIGHTS };
   }
   timeLeft(): number { return this.canPlay() || this.phase === 'closing' ? this.clock.remaining : 0; }
-  isLocked(machineId: MachineId): boolean { return isLockedFor(machineId, effectiveNight(this.night(), this.nightPaid, this.topside), this.mode, this.seed); }
+  isLocked(machineId: MachineId): boolean { if (this.owned.has(machineId)) return false; return isLockedFor(machineId, effectiveNight(this.night(), this.nightPaid, this.topside), this.mode, this.seed); }
   alive(_pid?: PlayerId): boolean { return this.living; }
   stat(key: string, add = 0): number {
     const v = (this.counters.get(key) ?? 0) + add;
@@ -1190,7 +1231,7 @@ class Run implements DebtRun {
       if (gain > 0) this.earn('coin', gain, 'charm:elevator_token');
     }
     this.index += 1;
-    this.ledger = { night: this.index + 1, float: 0, interest: 0, tickets: 0 };   // a new Night's books start empty (before its float)
+    this.ledger = { night: this.index + 1, float: 0, interest: 0, tickets: 0, cut: 0 };   // a new Night's books start empty (before its float)
     const nd = nightDef(this.index);
     this.watches = nd.watches;
     this.watch = 0;
@@ -1421,6 +1462,7 @@ class Run implements DebtRun {
         if (pocket > 0) this.earn('coin', pocket, 'charm:perpetual_ledger');
       }
     }
+    this.payHouseCut(overtime);
     this.releaseSurplus();                                   // the interest just added may be surplus too
     if (!this.rules.unlimitedPulls && this.pullCount > 0) {
       if (this.watchPulls >= ACTIVITY_MIN_PULLS) this.earn('ticket', this.pullCount, 'settle:unused-pulls');
@@ -1431,6 +1473,44 @@ class Run implements DebtRun {
     this.checkMet();
     this.emit('quota:update', { quota: this.quota });
     this.persist();
+  }
+
+  // ── tycoon: owned machines (wave 28) ─────────────────────────────────────────────────────────────────
+  /** Base quota the prices and cuts scale with: tonight's, or the next Night's once tonight is paid. */
+  private priceQuota(): number { return nightQuota(this.index + (this.nightDone && !this.topside ? 1 : 0)); }
+
+  buyPriceOf(machineId: MachineId): number {
+    if (this.ended || !isProgressive(this.mode) || this.owned.has(machineId) || !tierOf(machineId)) return 0;
+    if (!isLockedFor(machineId, effectiveNight(this.night(), this.nightPaid, this.topside), this.mode, this.seed)) return 0;
+    return buyPrice(machineId, this.priceQuota());
+  }
+  buyMachine(machineId: MachineId): boolean {
+    const price = this.buyPriceOf(machineId);
+    if (price <= 0 || this.phase === 'collection' || !this.spend('coin', price, `buy:${machineId}`)) return false;
+    this.owned.add(machineId);
+    this.stat('tycoon.bought', 1);
+    this.banner?.(t('prog.bought', { name: machineName(machineId), cut: expectedCut(machineId, this.priceQuota()) }), { color: '#ffd34a', hold: 3, size: 8 });
+    this.persistSoon();
+    this.notify();
+    return true;
+  }
+  owns(machineId: MachineId): boolean { return this.owned.has(machineId); }
+  empire(): { count: number; perWatch: number; tonight: number; owned: readonly MachineId[] } {
+    const q = this.priceQuota();
+    let per = 0;
+    for (const id of this.owned) per += expectedCut(id, q);
+    return { count: this.owned.size, perWatch: per, tonight: this.ledger.cut, owned: [...this.owned] };
+  }
+  /** Watch settle: every owned machine pays its house cut (a share of what the ghost players wagered on it + the flat trickle). */
+  private payHouseCut(overtime: boolean): void {
+    if (!this.quotaMode || this.owned.size === 0 || overtime) return;
+    const q = nightQuota(this.index);
+    let total = 0;
+    for (const id of this.owned) total += houseCut(id, q, ghostWager(id, q, this.seed, this.index, this.watch));
+    if (total <= 0) return;
+    this.earn('coin', total, 'house:cut');
+    this.ledger.cut += total;
+    this.banner?.(t('prog.cut', { n: total, total: this.ledger.cut }), { color: '#ffd34a', hold: 3, size: 8 });
   }
 
   private afterSettle(): void {
@@ -2426,6 +2506,7 @@ class Run implements DebtRun {
   snapshot(): RunSave {
     const pid = this.selfId;
     const ext: RunExt = {
+      owned: [...this.owned], allIn: this.allInWatch,
       v: 1, index: this.index, watch: this.watch, watches: this.watches, overtimeIdx: this.overtimeIdx,
       phase: this.phase, phaseLeft: this.phaseLeft, nightDone: this.nightDone, topside: this.topside,
       metFired: this.metFired, ropeUsed: this.ropeUsed,
@@ -2683,7 +2764,9 @@ class Run implements DebtRun {
     this.pullCount = this.rules.unlimitedPulls ? Number.POSITIVE_INFINITY : e.pulls;
     this.pullsMax = e.pullsMax; this.watchPulls = e.watchPulls; this.boughtThisWatch = e.boughtThisWatch;
     this.tickets = e.tickets; this.debtPaid = e.debtPaid; this.released = Math.max(0, e.released ?? 0); this.dreadPts = e.dreadPts;
-    if (e.ledger) this.ledger = { ...e.ledger };
+    this.owned = new Set(e.owned ?? []);
+    this.allInWatch = e.allIn ?? -1;
+    if (e.ledger) this.ledger = { cut: 0, ...e.ledger };
     this.freeRerolls = e.freeRerolls; this.skipRest = e.skipRest;
     if (e.pawn) this.pawn.restore(e.pawn);
     if (e.stamps) this.stamps.restore(e.stamps);

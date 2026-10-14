@@ -309,7 +309,7 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
     const r = hs.riders[seat];
     if (r.st !== 'ride' || pid === null) return;
     const cm = roof ? mult : cashMult(mult, this.mod(HOOK_FLOOR, 0));
-    const tags = roof ? ['elevator:roof'] : mult >= 100 ? ['elevator:top'] : [];
+    const tags = roof ? ['elevator:roof', 'jackpot'] : mult >= 100 ? ['elevator:top'] : [];
     const payout = isBot(pid) ? 0 : this.pay(pid, r.stake, cm, tags);
     r.st = 'out'; r.mult = mult; r.payout = payout;
     hs.lastOut = Math.max(hs.lastOut, tc);
@@ -410,7 +410,7 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
           const net = ev.payout - ev.stake;
           this.seatHud?.result(net > 0 ? 'win' : 'even', net);
           this.showHud();
-          const tier = juiceTier(ev.payout, ev.stake, ev.roof ? ['elevator:roof'] : []);
+          const tier = juiceTier(ev.payout, ev.stake, ev.roof ? ['elevator:roof', 'jackpot'] : []);
           await this.celebrate(tier, { amount: ev.payout, at });
         } else {
           this.ctx.fx.sparks(at, 4, GREEN);

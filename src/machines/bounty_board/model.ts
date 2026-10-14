@@ -39,7 +39,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BountyBoardPar
   // ── board and frame (static) ──
   kit.box(W, H, 0.06, pal.black, at(0, H / 2, WALL_Z - 0.02));                              // wall backing
   kit.box(W - 0.1, 1.9, 0.03, cork, at(0, 1.9, front));                                    // cork sheet
-  for (const sx of [-1, 1]) kit.box(0.06, 2.0, 0.08, frame, at(sx * (W / 2 - 0.05), 1.9, front)); // frame sides
+  for (const sx of [-1, 1]) kit.box(0.06, 2.04, 0.08, frame, at(sx * (W / 2 - 0.05), 1.92, front)); // frame sides (meet the top rail, no corner gap)
   kit.box(W, 0.07, 0.1, frame, at(0, 2.97, front));                                         // frame top
   kit.box(W, 0.07, 0.1, frame, at(0, 0.88, front));                                         // frame bottom
   kit.box(W, 0.06, 0.12, pal.brass, at(0, 0.87, front + 0.04));                             // brass ledge
@@ -67,16 +67,17 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BountyBoardPar
   const screen = kit.screen({ w: 0.56, h: 0.42, px: [128, 96], bezel: pal.black });
   screen.mesh.position.set(0, 2.55, front + 0.02);
   root.add(screen.mesh);
-  kit.cyl(0.05, 0.06, 0.08, pal.brass, at(-0.5, 0.94, front + 0.2, { seg: 10 }));
+  // lamp at x -0.44: its glow sprite must stay inside the 1.2 m footprint
+  kit.cyl(0.05, 0.06, 0.08, pal.brass, at(-0.44, 0.94, front + 0.2, { seg: 10 }));
   const lamp = kit.lamp({ r: 0.05, color: 0xff8a50, shape: 'dome' });
-  lamp.root.position.set(-0.5, 1.1, front + 0.2);
+  lamp.root.position.set(-0.44, 1.1, front + 0.2);
   root.add(lamp.root);
 
   // ── anchors ──
   const prompt = new THREE.Object3D(); prompt.position.set(0, 1.9, front + 0.5); root.add(prompt);
   const coinOut = new THREE.Object3D(); coinOut.position.set(0.52, 0.95, front + 0.35); root.add(coinOut);
   const light = new THREE.Object3D();
-  light.position.set(-0.5, 1.4, front + 0.3);
+  light.position.set(-0.44, 1.4, front + 0.3);
   light.userData = { color: 0xff8a50, intensity: 0.5, range: 2.0, flicker: 'STEADY' };
   root.add(light);
 

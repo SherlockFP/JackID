@@ -67,6 +67,8 @@ import { t as tr, fmtCoins, type I18nVars } from '@/core/i18n';
 import { SLOT_DIMS, type MachineContext, type MachineDef, type MachineEnvelope, type MachineEvent, type MachineModel, type PresentCtx } from './types';
 import { juiceTier, tierTags, toWinTier, type JuiceTier } from './tiers';
 import * as juice from './juice';
+import { RiskLayer } from './riskLayer';
+import { GambleUi } from '@/game/gambleUi';
 
 const FORCE_RELEASE_S = 10;
 
@@ -120,6 +122,9 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   private _lockObj: THREE.Object3D | null = null;
   private _tracked: Array<{ dispose(): void }> = [];
   private _disposed = false;
+  private _riskL: RiskLayer | null = null;
+  /** Stake multiplier of the open round (HIGH STAKES = 5, else 1); the machine only ever sees its own nominal numbers. */
+  private _hsMult = 1;
   private _offLang: (() => void) | null = null;
   private _ray = new THREE.Raycaster();
   private _sink: MachineSink | null = null;
@@ -193,6 +198,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     if (this._disposed) return;
     this._disposed = true;
     this._offLang?.(); this._offLang = null;
+    this._riskL?.dispose(); this._riskL = null;
     try { this.model?.dispose?.(); } catch (e) { log.error('machine', this.id, e); }
     for (const d of this._tracked.splice(0)) { try { d.dispose(); } catch (e) { log.error('machine', this.id, e); } }
     if (this.model?.root) disposeObject3D(this.model.root, { skipShared: true });
@@ -234,7 +240,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     this._sink = {
       get mouse() { return self.mouse; },
       onInput(e) {
-        if (e.action === 'exit') { if (e.down && !e.repeat) { self.onStandUpRequest(); self.standUp(); } return; }
+        if (e.action === 'exit') { if (e.down && !e.repeat) { self._riskL?.onExit(); self.onStandUpRequest(); self.standUp(); } return; }
         if (e.down && e.repeat && !REPEATABLE_MACHINE_ACTIONS.has(e.action)) return;   // auto-repeat: bet ladder / cursor only
         self._route(e);
       },
@@ -254,6 +260,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   private _aliasHeld = new Set<MachineAction>();
   /** Sink → machine: fold the primary / confirm alias, then `onInput`. */
   private _route(e: MachineInputEvent): void {
+    if (this._riskL?.route(e as MachineInputEvent & { code?: string; mods?: { shift?: boolean } })) return;   // risk layer keys (G / Shift+H / K / ladder)
     const to = this.inputAlias;
     if (to === null || (e.action !== 'primary' && e.action !== 'confirm')) { this.onInput(e); return; }
     const src = e.action;
@@ -373,17 +380,20 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
    * (runSeed, instance, round#) — identical after a reload because the round counter is persisted.
    */
   protected beginRound(bet: number = this.bet): boolean {
-    if (this.busy || this._roundOpen) return false;
+    if (this.busy || this._roundOpen || this._riskL?.ladderOpen) return false;
     // the current bet outruns the pocket: step it down first (toasted); with no affordable stake there is no round
     if (bet === this.bet && this.costOf(bet) > this.ctx.run.wallet()) {
       if (!this.fitBet()) { this.sfx('buzzer'); return false; }
       bet = this.bet;
     }
-    if (!this.ctx.run.bet(bet, this.src)) {
-      this.toastRefusal(bet);
+    const hs = this._riskL ? this._riskL.hsBegin(bet, this.costOf(bet)) : 1;     // HIGH STAKES: takes the extra x4 first
+    if (hs === 0 || !this.ctx.run.bet(bet, this.src)) {
+      if (hs > 1) this._riskL?.hsUndo(bet);
+      if (hs !== 0) this.toastRefusal(bet);
       this.sfx('buzzer');
       return false;
     }
+    this._hsMult = hs;
     this.busy = true;
     this._roundOpen = true;
     this._roundBet = bet;
@@ -396,7 +406,11 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
    */
   protected addStake(amount: number): boolean {
     if (!this._roundOpen) { log.warn('machine', `${this.id} addStake without an open round`); return false; }
+    const extra = this._hsMult > 1 ? (this._hsMult - 1) * amount : 0;           // HIGH STAKES: the extra stake rides along
+    if (extra > 0 && this.ctx.run.wallet() < this.costOf(amount) + extra) { this.sfx('buzzer'); return false; }
+    if (extra > 0 && this._riskL && this._riskL.hsBegin(amount, this.costOf(amount)) === 0) { this.sfx('buzzer'); return false; }
     if (!this.ctx.run.bet(amount, this.src)) {
+      if (extra > 0) this._riskL?.hsUndo(amount);
       this.toastRefusal(amount);
       this.sfx('buzzer');
       return false;
@@ -406,13 +420,18 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   }
   /** `run.win()`; closes the round (`busy = false`); returns credited. Adds `bigwin/hugewin/megawin` tags by multiple. */
   protected settle(r: { gross: number; tier?: WinTier; tags?: string[]; silent?: boolean }): number {
-    const bet = this._roundBet;
-    const jt = juiceTier(r.gross, bet, r.tags);
-    const tags = [...new Set([...(r.tags ?? []), ...tierTags(jt)])];
+    const mult = this._hsMult;
+    const nominal = this._roundBet;
+    const gross = mult > 1 && this._riskL ? this._riskL.hsPay(r.gross, nominal, mult) : r.gross;   // HIGH STAKES: x5 and a fatter tail
+    const bet = nominal * mult;
+    const jt = juiceTier(gross, bet, r.tags);
+    const tags = [...new Set([...(r.tags ?? []), ...tierTags(jt), ...(mult > 1 ? ['highstakes'] : [])])];
     const meta: WinMeta = { bet, tier: r.tier ?? toWinTier(jt), tags, silent: r.silent };
     this._roundOpen = false;
-    const credited = this.ctx.run.win(r.gross, this.src, meta);
+    this._hsMult = 1;
+    const credited = this.ctx.run.win(gross, this.src, meta);
     this.busy = false;
+    this.offerGamble(credited);
     if (this.isLocalOccupant) this.fitBet();          // a lost round can leave the pocket under the current bet
     if (this._releaseRequested) this.standUp();
     return credited;
@@ -425,7 +444,8 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
    * Never call while a round is being resolved.
    */
   protected resumeRound(bet: number): void {
-    if (!this.isLocalOccupant) return;     // spectators / late joiners never own the stake (no phantom rounds)
+    if (!this.isLocalOccupant) return;
+    this._hsMult = 1;     // spectators / late joiners never own the stake (no phantom rounds)
     this._roundOpen = true; this._roundBet = bet; this.busy = false;
   }
 
@@ -522,6 +542,27 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     return this._ray.intersectObjects(targets, true)[0] ?? null;
   }
   /** Request release; deferred while `busy` (forced after 10 s). */
+  /** The local risk layer (DOUBLE OR NOTHING, HIGH STAKES, ALL-IN SHOT); created with the local seat. */
+  protected get risk(): RiskLayer {
+    if (this._riskL) return this._riskL;
+    const self = this;
+    return (this._riskL = new RiskLayer({
+      id: this.id, src: this.src, runSeed: this.ctx.runSeed, shared: !!this.def.shared,
+      get isLocalOccupant() { return self.isLocalOccupant; },
+      get roundOpen() { return self._roundOpen; },
+      get busy() { return self.busy; }, set busy(v: boolean) { self.busy = v; },
+      run: this.ctx.run,
+      wait: (s) => this.wait(s),
+      toast: (text, kind) => this.toast(text, kind),
+      sfx: (n) => this.sfx(n),
+      fx: (kind, step, pot) => this.ctx.events.emit('gamble:fx', { kind: kind as never, mid: this.id, step, pot }),
+      ui: () => new GambleUi(this.ctx.ui.root),
+    }, this.ctx.run));
+  }
+  /** A win was credited to the local player: offers DOUBLE OR NOTHING (tables call it from `paySeat`). */
+  protected offerGamble(credited: number): void {
+    if (this._riskL && credited > 0 && this.isLocalOccupant) this._riskL.offerWin(credited);
+  }
   protected standUp(): void {
     if (this.busy) {
       if (!this._releaseRequested) this.toast(tr('ui.ctl.standAfterRound'), 'info');   // once per request, not silently ignored
@@ -555,7 +596,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       };
       return;
     }
-    this._offLang = this.ctx.events.on('lang:changed', () => { if (!this._disposed) this.onLang(); });
+    this._offLang = this.ctx.events.on('lang:changed', () => { if (!this._disposed) { this._riskL?.onLang(); this.onLang(); } });
     if (import.meta.env.DEV) {
       try { this._validateModel(); } catch (e) { log.warn('machine', `${this.id}: model lint failed`, e); }
     }
@@ -581,12 +622,14 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       if (!this.busy) this.standUp();                       // a stand-up pressed mid-round is honoured once idle
       else if ((this._releaseWait += dt) > FORCE_RELEASE_S) { log.warn('machine', `${this.id} forced release while busy`); this.busy = false; this.standUp(); }
     }
+    this._riskL?.step(dt);
     this.tick(dt);
     if (this.isHost) this.hostTick(dt);
   }
   /** Render step (World calls it only for visible machines). */
   _frame(dt: number, t: number): void {
     this.frame(dt, t);
+    this._riskL?.frame();
     if (!this.busy && this.seats.every((s) => s === null)) this.attract(dt, t);
   }
   /** A seat was granted (`moccOk`). Local occupant gets the occupancy RNG stream. */
@@ -598,6 +641,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       this._releaseRequested = false;
       this.bet = clamp(this.bet, this.def.minBet, this.def.maxBet);
       this.fitBet();
+      void this.risk;                                       // the risk layer lives with the local seat
     }
     this.ctx.events.emit('player:seat', { pid, mid: this.id, seat, on: true });
     this.onOccupy(pid, seat, local);
@@ -607,6 +651,8 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     this.onRelease(pid, seat, local);
     if (!local && !this.def.shared && !this.isLocalOccupant) this._roundOpen = false;   // never leave a ghost round
     if (local) {
+      this._riskL?.onRelease();
+      this._hsMult = 1;
       this.ctx.ui.machineHud(null);
       this._releaseRequested = false;
       if (this._roundOpen) {            // a machine must settle in onRelease; never strand a stake silently

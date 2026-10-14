@@ -25,6 +25,8 @@ export interface CoverProp extends WorldProp {
   readonly covered: boolean;
   /** Re-print the plate ("OPENS NIGHT n"). */
   setNight(n: number): void;
+  /** Tycoon: the second plate line "E: BUY <price>" under "OPENS NIGHT n" (null hides it). */
+  setPrice(price: string | null): void;
   /** Lift the sheet (Dawn animation) or drop it back. `dur` 0 = instant. */
   setCovered(on: boolean, dur?: number): Promise<void>;
 }
@@ -61,16 +63,27 @@ export function createCover(kit: KitX, o: { size: SlotSize; night: number; id?: 
   const label = kit.label({ text: { key: 'prop.cover.opens', vars: { n: o.night } }, w: plateW, h: plateH, bg: 0x1a120c, color: 0xffd34a, px: [128, 36] });
   label.mesh.position.z = 0.03;
   plate.add(label.mesh);
+  // price tag (tycoon BUY): a small gold-on-black line under the plate, hidden until the session sets a price
+  const tagW = plateW * 0.8, tagH = plateH * 0.62;
+  const tag = kit.label({ text: { key: 'prog.tag', vars: { price: '' } }, w: tagW, h: tagH, bg: 0x1a120c, color: 0x7dffb0, px: [112, 28] });
+  tag.mesh.position.set(0, -(plateH / 2 + tagH / 2 + 0.07), 0.03);
+  tag.mesh.visible = false;
+  plate.add(tag.mesh);
   root.add(plate);
 
   let covered = true;
   let night = o.night;
+  let priceText = '';
   const sched = new Sched();
   const api: CoverProp = {
     id: `cover:${o.id ?? o.size}`,
     root,
     get covered() { return covered; },
     setNight(n: number) { if (n === night) return; night = n; label.setText({ key: 'prop.cover.opens', vars: { n } }); },
+    setPrice(price: string | null) {
+      tag.mesh.visible = price !== null;
+      if (price !== null && price !== priceText) { priceText = price; tag.setText({ key: 'prog.tag', vars: { price } }); }
+    },
     async setCovered(on: boolean, dur = 1.1) {
       if (on === covered) return;
       covered = on;

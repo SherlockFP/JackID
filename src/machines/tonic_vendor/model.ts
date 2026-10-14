@@ -47,10 +47,11 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TonicVendorPar
   kit.box(W + 0.04, 0.1, 0.03, pal.brass, at(0, 0.05, COUNTER_Z + D / 2 + 0.01));            // kick plate
 
   // jars on the shelves (static decoration, tinted like the stock)
-  const jars: Array<[number, number, number]> = [[-0.4, 1.6, 0], [-0.2, 1.6, 0], [0.05, 1.6, 0], [0.3, 1.6, 0], [-0.3, 2.2, 0], [0.2, 2.2, 0]];
+  // (base y = the top of the shelf below, so every jar stands on wood; no floating jars)
+  const jars: Array<[number, number]> = [[-0.4, 1.57], [-0.2, 1.57], [0.05, 1.57], [0.3, 1.57], [-0.3, 2.17], [0.2, 2.17]];
   jars.forEach(([x, y], i) => {
-    kit.cyl(0.07, 0.07, 0.3, LIQUID[i % LIQUID.length], at(x, y + 0.17, WALL_Z + 0.2, { seg: 8 }));
-    kit.cyl(0.075, 0.075, 0.03, pal.brass, at(x, y + 0.34, WALL_Z + 0.2, { seg: 8 }));
+    kit.cyl(0.07, 0.07, 0.3, LIQUID[i % LIQUID.length], at(x, y + 0.15, WALL_Z + 0.2, { seg: 8 }));
+    kit.cyl(0.075, 0.075, 0.03, pal.brass, at(x, y + 0.315, WALL_Z + 0.2, { seg: 8 }));
   });
 
   // ── drawer (animated) ──
@@ -65,7 +66,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TonicVendorPar
   const tags: LabelPart[] = [];
   BOTTLE_X.forEach((x, i) => {
     const b = new THREE.Object3D();
-    b.position.set(x, COUNTER_H + 0.02, COUNTER_Z - 0.05);
+    b.position.set(x, COUNTER_H, COUNTER_Z - 0.05);
     kit.cyl(0.07, 0.08, 0.22, LIQUID[i], { pos: [0, 0.11, 0], parent: b, seg: 10 });
     kit.cyl(0.03, 0.03, 0.05, pal.brass, { pos: [0, 0.245, 0], parent: b, seg: 8 });
     kit.cyl(0.02, 0.02, 0.05, pal.neonPink, { pos: [0, 0.3, 0], parent: b, seg: 6 });
@@ -78,9 +79,10 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TonicVendorPar
   });
 
   // ── lamp and ledger ──
-  kit.cyl(0.05, 0.06, 0.08, pal.brass, at(-0.5, COUNTER_H + 0.03, COUNTER_Z + 0.2, { seg: 10 }));
+  // lamp sits at x -0.45: its glow sprite (r*7 wide) must stay inside the 1.2 m footprint
+  kit.cyl(0.05, 0.06, 0.08, pal.brass, at(-0.45, COUNTER_H + 0.03, COUNTER_Z + 0.2, { seg: 10 }));
   const lamp = kit.lamp({ r: 0.05, color: 0x60ff90, shape: 'dome' });
-  lamp.root.position.set(-0.5, COUNTER_H + 0.18, COUNTER_Z + 0.2);
+  lamp.root.position.set(-0.45, COUNTER_H + 0.18, COUNTER_Z + 0.2);
   root.add(lamp.root);
 
   const ledger = kit.screen({ w: 0.6, h: 0.36, px: [128, 80], bezel: pal.black });
@@ -91,7 +93,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TonicVendorPar
   const prompt = new THREE.Object3D(); prompt.position.set(0, 2.5, WALL_Z + 0.4); root.add(prompt);
   const coinOut = new THREE.Object3D(); coinOut.position.set(0, COUNTER_H + 0.05, COUNTER_Z + 0.3); root.add(coinOut);
   const light = new THREE.Object3D();
-  light.position.set(-0.5, 1.3, COUNTER_Z + 0.2);
+  light.position.set(-0.45, 1.3, COUNTER_Z + 0.2);
   light.userData = { color: 0x60ff90, intensity: 0.5, range: 2.0, flicker: 'STEADY' };
   root.add(light);
 

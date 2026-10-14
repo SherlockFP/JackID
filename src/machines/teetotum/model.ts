@@ -19,11 +19,11 @@ import { FACES, SEATS, type Face } from './rules';
 const FELT = 0x1f6040;   // baize green: the playfield the top and the bowl sit on, read from the seat
 const TABLE_D = 1.2;
 /** Table centre (machine-local z): the table is pushed back to fit the L slot. */
-export const CENTRE_Z = -0.25;
+export const CENTRE_Z = -0.2;
 const TOP_R = 0.09;
 const TOP_H = 0.12;
 const STOOL_H = 0.68;
-const STOOL_R = 0.85;
+const STOOL_R = 0.66;
 const LAMP_OFF = 0x2a2a2a;
 const LAMP_ON = 0xffd040;
 const FACE_PX = 32;
@@ -240,13 +240,13 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TeetotumParts>
 
   // back wall: status screen, label, legend placard
   const screen = kit.screen({ w: 0.36, h: 0.14, px: [192, 72], bezel: pal.black, glow: 0.6 });
-  screen.mesh.position.set(0, 1.42, -0.86);
+  screen.mesh.position.set(0, 1.42, -0.8);
   root.add(screen.mesh);
   const label = kit.label({ text: { key: 'm.teetotum.name' }, w: 0.4, h: 0.08, px: [256, 48], color: pal.gold, bg: pal.black });
-  label.mesh.position.set(0, 1.62, -0.86);
+  label.mesh.position.set(0, 1.62, -0.8);
   root.add(label.mesh);
   const legend = kit.plaque({ text: { key: 'm.teetotum.legend' }, w: 0.42, h: 0.12, color: brass });
-  legend.position.set(0, 1.0, -0.86);
+  legend.position.set(0, 1.0, -0.8);
   root.add(legend);
 
   // pendant: three bare bulbs on cords over the table
@@ -280,16 +280,16 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TeetotumParts>
   prompt.position.set(0, 1.25, 0.6);
   root.add(prompt);
   const labelAnchor = new THREE.Object3D();
-  labelAnchor.position.set(0, 1.62, -0.86);
+  labelAnchor.position.set(0, 1.62, -0.8);
   root.add(labelAnchor);
   const marqueeTop = new THREE.Object3D();
-  marqueeTop.position.set(0, 1.78, -0.86);
+  marqueeTop.position.set(0, 1.78, -0.8);
   root.add(marqueeTop);
   const coinOut = new THREE.Object3D();
   coinOut.position.set(centre.x, feltY + 0.12, centre.z);
   root.add(coinOut);
   const servicePlate = new THREE.Object3D();
-  servicePlate.position.set(0.5, 0.9, -0.86);
+  servicePlate.position.set(0.5, 0.9, -0.8);
   root.add(servicePlate);
 
   // static geometry merges per material; the spinning top, pot bowl, stools, pot chips and raycast pick stay live

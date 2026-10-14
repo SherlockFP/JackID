@@ -178,6 +178,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BingoParts> {
   // stool in front of the cabinet (outside the collider, in the stand strip)
   const stool = kit.stool({ h: 0.62 });
   stool.position.set(0, 0, 0.98);
+  stool.scale.set(0.8, 1, 0.8); // base spokes stay inside the L slot depth
   root.add(stool);
 
   // anchors

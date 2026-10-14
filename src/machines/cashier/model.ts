@@ -64,7 +64,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CashierParts> 
   const caps: THREE.Object3D[] = [];
   CAP_X.forEach((x, i) => {
     const c = new THREE.Object3D();
-    c.position.set(x, COUNTER_H + 0.02, COUNTER_Z - 0.12);
+    c.position.set(x, COUNTER_H, COUNTER_Z - 0.12);
     kit.cyl(0.05, 0.055, 0.04, i === 4 ? pal.neonPink : pal.brass, { pos: [0, 0.02, 0], parent: c, seg: 10 });
     root.add(c);
     caps.push(c);
@@ -79,16 +79,17 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CashierParts> 
   ledger.tex.needsUpdate = true;
   ledger.mesh.position.set(0, 2.55, WALL_Z + 0.08);
   root.add(ledger.mesh);
-  kit.cyl(0.05, 0.06, 0.08, pal.brass, at(0.5, COUNTER_H + 0.03, COUNTER_Z + 0.2, { seg: 10 }));
+  // lamp at x 0.44: its glow sprite must stay inside the 1.2 m footprint
+  kit.cyl(0.05, 0.06, 0.08, pal.brass, at(0.44, COUNTER_H + 0.03, COUNTER_Z + 0.2, { seg: 10 }));
   const lamp = kit.lamp({ r: 0.05, color: LAMP, shape: 'dome' });
-  lamp.root.position.set(0.5, COUNTER_H + 0.18, COUNTER_Z + 0.2);
+  lamp.root.position.set(0.44, COUNTER_H + 0.18, COUNTER_Z + 0.2);
   root.add(lamp.root);
 
   // ── anchors ──
   const prompt = new THREE.Object3D(); prompt.position.set(0, 2.0, WALL_Z + 0.5); root.add(prompt);
   const coinOut = new THREE.Object3D(); coinOut.position.set(0, COUNTER_H + 0.05, COUNTER_Z + 0.25); root.add(coinOut);
   const light = new THREE.Object3D();
-  light.position.set(0.5, 1.4, COUNTER_Z + 0.2);
+  light.position.set(0.44, 1.4, COUNTER_Z + 0.2);
   light.userData = { color: LAMP, intensity: 0.5, range: 2.0, flicker: 'STEADY' };
   root.add(light);
 

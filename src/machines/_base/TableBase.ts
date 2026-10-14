@@ -93,7 +93,9 @@ export abstract class TableBase<P extends object, E extends MachineEvent, S exte
     if (pid === null || pid === undefined || isBot(pid)) return 0;
     const jt = juiceTier(gross, bet, meta?.tags);
     const tags = [...new Set([...(meta?.tags ?? []), ...tierTags(jt)])];
-    return this.ctx.run.hostWin(pid, gross, this.src, { bet, tier: meta?.tier ?? toWinTier(jt), tags, silent: meta?.silent });
+    const credited = this.ctx.run.hostWin(pid, gross, this.src, { bet, tier: meta?.tier ?? toWinTier(jt), tags, silent: meta?.silent });
+    if (pid === this.selfId) this.offerGamble(credited);       // DOUBLE OR NOTHING for the local player's table win
+    return credited;
   }
   /** Table-family hook (`x.table.<name>`: limitMult, freeChip, rakeDelta, peekCharges, timerMult, pushToWin, shoeInfo). */
   protected tableMod(name: string, base: number): number { return this.mod(`x.table.${name}` as ModHook, base); }

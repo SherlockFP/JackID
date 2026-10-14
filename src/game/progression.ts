@@ -24,6 +24,7 @@
 import type { GameMode, MachineId } from '@/core/types';
 import { createRng, hashSeed } from '@/core/rng';
 import { t } from '@/core/i18n';
+import { quotaFor } from './data/schedule';
 
 /** Complexity tiers, easiest first. The tier order is the unlock order; inside a tier the run seed decides. */
 export type Tier = 'SIMPLE' | 'CLASSIC' | 'TABLE' | 'HEAVY';
@@ -182,4 +183,51 @@ export function newOnFloorText(night: number, seed?: number, nameOf: (id: Machin
 export function opensText(id: MachineId, seed?: number): string {
   const n = unlockNightOf(id, seed);
   return Number.isFinite(n) ? t('prog.opens', { n }) : t('prog.freeOnly');
+}
+
+// ── tycoon: buy a covered machine, collect the house cut (Wave 28) ──────────────────────────────────
+/**
+ * Any covered core machine can be BOUGHT with coins and opens for the rest of the run. The price is a share of the Night's
+ * quota, harder tiers cost more; a bought machine ("owned") then pays a house cut at every Watch settle: a share of what the
+ * House's ghost players wagered on it plus a small flat trickle. All pure: the run seeds the ghosts, the sim reuses the maths.
+ *
+ *   price      BUY_FRAC[tier] x quota(night), rounded to 5 (min 10).   Simple 30 %, Classic 50 %, Table 75 %, Heavy 100 %
+ *   ghost bet  GHOST_K[tier] x quota x (0.8 .. 1.2) per Watch          (seeded per run, Night, Watch, machine)
+ *   house cut  CUT_RATE[tier] x ghost bet + CUT_FLAT x quota           Simple 5 % .. Heavy 10 %, flat 1 % of the quota
+ * Break-even is ~4 Nights for every tier (a late buy barely pays back: the early buy is the tycoon move).
+ */
+export const BUY_FRAC: Readonly<Record<Tier, number>> = { SIMPLE: 0.30, CLASSIC: 0.50, TABLE: 0.75, HEAVY: 1.0 };
+export const GHOST_K: Readonly<Record<Tier, number>> = { SIMPLE: 0.40, CLASSIC: 0.50, TABLE: 0.65, HEAVY: 0.80 };
+export const CUT_RATE: Readonly<Record<Tier, number>> = { SIMPLE: 0.05, CLASSIC: 0.065, TABLE: 0.08, HEAVY: 0.10 };
+export const CUT_FLAT = 0.01;
+
+/** Base quota of the Night with index `idx` (0 = Night 1), the figure every tycoon price and income scales with. */
+export function nightQuota(idx: number): number { return quotaFor(Math.max(0, Math.floor(idx))); }
+
+/** Coins to buy a covered machine at this quota. 0 when the machine is not a core machine (nothing to buy). */
+export function buyPrice(id: MachineId, quota: number): number {
+  const tier = tierOf(id);
+  if (!tier) return 0;
+  return Math.max(10, Math.round((BUY_FRAC[tier] * quota) / 5) * 5);
+}
+
+/** What the House's ghost players wagered on an owned machine this Watch (seeded, 0.8 to 1.2 of the tier's share of the quota). */
+export function ghostWager(id: MachineId, quota: number, seed: number, nightIdx: number, watch: number): number {
+  const tier = tierOf(id);
+  if (!tier) return 0;
+  const r = createRng(hashSeed('ghostcut', seed, nightIdx, watch, id));
+  return Math.round(GHOST_K[tier] * quota * (0.8 + 0.4 * r.next()));
+}
+
+/** The house cut on `wager` coins wagered: tier rate plus the flat trickle (at least 1 coin). */
+export function houseCut(id: MachineId, quota: number, wager: number): number {
+  const tier = tierOf(id);
+  if (!tier) return 0;
+  return Math.max(1, Math.round(wager * CUT_RATE[tier] + CUT_FLAT * quota));
+}
+
+/** The cut an owned machine pays in an average Watch (no ghost noise): what the EMPIRE chip shows. */
+export function expectedCut(id: MachineId, quota: number): number {
+  const tier = tierOf(id);
+  return tier ? houseCut(id, quota, GHOST_K[tier] * quota) : 0;
 }

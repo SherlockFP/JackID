@@ -45,7 +45,7 @@ const TRIM: Record<string, number> = {
   shuffle: 0.81, cardSlap: 0.77, dice: 0.68, diceRoll: 0.66, diceLand: 0.74, wheelTick: 2.45,
   ballRoll: 2.82, ballBounce: 1.8, ballDrop: 1.17, bell: 1.01, buzzer: 1.22, lose: 1.76,
   whoosh: 1.2, thud: 0.6, glass: 1.08, glassBreak: 1.08, win1: 0.87, win2: 0.61,
-  win3: 0.8, winHuge: 0.5, winRise: 0.8, winMega: 0.6, winPush: 0.85, jackpot: 0.32, jackpotSiren: 1.77, jackpotBells: 1.76,
+  win3: 0.8, winHuge: 0.5, winRise: 0.8, winMega: 0.6, winPush: 0.85, jackpot: 0.62, jackpotSiren: 1.77, jackpotBells: 1.76,
   stinger: 0.57, quotaMet: 0.82, quotaFail: 0.46, upgrade: 1.05, purchase: 1.06, cashRegister: 0.89,
   unlock: 1.15, buffGain: 1.02, buffLose: 1.24, stamp: 0.64, printer: 1.82, sparkle: 3,
   whisper: 0.9, whispers: 0.98, heartbeat: 0.6, lightFlicker: 2.14, powerDown: 1.02, powerUp: 0.98,

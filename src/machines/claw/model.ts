@@ -163,6 +163,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ClawParts> {
   for (let i = 0; i < 20; i++) {
     const p = prizeMesh(kit);
     p.visible = false;
+    p.position.set(0, FLOOR_Y + PROP_H, 0);   // parked on the pile height: a hidden sphere at the origin still counted 5 cm below the floor
     root.add(p);
     prizes.push(p);
   }
@@ -189,7 +190,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ClawParts> {
   kit.sphere(0.02, pal.red, { pos: [0, 0.10, 0], parent: joystick, wSeg: 8, hSeg: 6 });
   joystick.rotation.x = -0.1;
 
-  const drop = kit.button({ shape: 'round', r: 0.06, color: pal.red, lit: true });
+  const drop = kit.button({ shape: 'round', r: 0.05, color: pal.red, lit: true });   // r 0.05: its rim stays inside the 1.2 x 1.0 footprint
   drop.root.position.set(0.12, 1.00, 0.46);
   root.add(drop.root);
 
@@ -208,7 +209,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ClawParts> {
   root.add(timer.root);
 
   const marquee = kit.marquee({ w: 0.8, h: 0.2, text: { key: 'm.claw.marquee' }, color: pal.neonYellow, bg: pal.black, bulbs: 16 });
-  marquee.root.position.set(0, 1.85, 0.46);
+  marquee.root.position.set(0, 1.85, 0.455);
   root.add(marquee.root);
   marquee.root.traverse((o) => {                                  // linear + mips on the marquee text sheet so the title stays readable
     const mat = (o as THREE.Mesh).material as THREE.MeshBasicMaterial | undefined;

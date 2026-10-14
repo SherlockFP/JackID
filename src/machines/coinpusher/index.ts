@@ -47,7 +47,7 @@ type Act = { k: 'drop'; x: number } | { k: 'thump' };
 type FateTuple = [number, number, number];
 type Ev =
   | { k: 'drop'; st: number; x: number; lost: number; to: number; u: number; gold: number; gate: string; prize: string; wal: number; fates: FateTuple[] }
-  | { k: 'block'; st: number; n: number; pay: number; bet: number }
+  | { k: 'block'; st: number; n: number; pay: number; bet: number; tags: string[] }
   | { k: 'thump'; st: number }
   | { k: 'tilt'; st: number; until: number }
   | { k: 'scav'; st: number; coins: number };
@@ -96,6 +96,8 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
   private open: [boolean, boolean] = [false, false];
   private cnt: [number, number] = [0, 0];
   private units: [number, number] = [0, 0];
+  /** A 'J' (jackpot) drop landed in the open block: the block settles as the jackpot tier. */
+  private jack: [boolean, boolean] = [false, false];
   private lastDrop: [number, number] = [-1e9, -1e9];
   private lastThump: [number, number] = [-1e9, -1e9];
   // ── local presentation / input ──
@@ -175,6 +177,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     const streak = trackLane(this.hostState.lane, seat as StationIx);   // accepted drops only; same-station run length
     const r = rollDrop(this.hostRng, k, seat as StationIx, aim, streak);
     if (r.kind === 'W') this.hostState.wallsAt = now + Math.max(1, this.mod(HOOK_WALLS, WALLS_S)) * 1000;
+    if (r.kind === 'J') this.jack[seat as 0 | 1] = true;
 
     const credit = (f: Fate): void => {
       if (f.lost) return;
@@ -206,7 +209,9 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     this.hostState.tray[seat] = 0;
     this.open[seat] = false; this.cnt[seat] = 0; this.units[seat] = 0;
     const bet = BLOCK * this.D;
-    void this.emit({ k: 'block', st: seat, n, pay, bet }, () => {
+    const tags = this.jack[seat as 0 | 1] ? ['jackpot'] : [];
+    this.jack[seat as 0 | 1] = false;
+    void this.emit({ k: 'block', st: seat, n, pay, bet, tags }, () => {
       if (pay > 0 && pid !== null) this.paySeat(seat, pay, { bet }, pid);
       else this.forfeit(seat);
     });
@@ -412,7 +417,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     if (!pc.local) return;
     this.showHud();
     if (ev.pay <= 0) { this.commiserate(); return; }
-    const tier = juiceTier(ev.pay, ev.bet);
+    const tier = juiceTier(ev.pay, ev.bet, ev.tags);
     void this.pourCoins(Math.min(40, Math.round(ev.pay / Math.max(1, this.D))));
     if (tier !== 'none' && tier !== 'push' && !pc.fast) await this.celebrate(tier);
   }

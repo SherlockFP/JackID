@@ -101,6 +101,7 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
   const glassMat = kit.mat({ color: 0x203040 });
   for (const x of [-27.6, -26.0]) {
     const body = kit.box(0.9, 1.6, 0.8, enamel, { pos: [x, 0.8, -1.3], parent: root });
+    statics.push({ box: boxAt(x - 0.45, 0, -1.7, x + 0.45, 1.6, -0.9), tag: 'solid' });
     kit.torus(0.3, 0.04, chromeMat, { pos: [0, 0.1, 0.41], parent: body });
     kit.cyl(0.27, 0.27, 0.02, glassMat, { pos: [0, 0.1, 0.4], rot: [90, 0, 0], parent: body });
     const drum = new THREE.Group();
@@ -244,6 +245,7 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
   // ── The Counting Room (counting): ledgers, Ledger Wall, abacus ───────────────────────────────
   const wood = kit.mat({ color: 0x523119 });
   kit.box(1.4, 0.06, 0.8, wood, { pos: [-22.5, 0.75, 16.5], parent: root });
+  statics.push({ box: boxAt(-23.2, 0, 16.1, -21.8, 0.8, 16.9), tag: 'solid' });
   for (const [dx, dz] of [[-0.62, -0.32], [0.62, -0.32], [-0.62, 0.32], [0.62, 0.32]] as Array<[number, number]>) {
     kit.box(0.06, 0.72, 0.06, wood, { pos: [-22.5 + dx, 0.36, 16.5 + dz], parent: root });
   }

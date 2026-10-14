@@ -53,10 +53,19 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<SonKartParts> 
   const root = kit.group('sonkart');
 
   // the table: round felt (0.46 m), rail and four chairs OUTSIDE it (partyTable.ts); the layout anchors sit on the felt
-  const ft = buildPartyTable(kit, root, FELT, 4);
+  // the shared party table is shrunk 0.8× across x/z (heights kept) so its chairs stay inside the L footprint (z ±0.9)
+  // and out of the stand strip in front of the machine; anchors, stands and colliders follow the same scale
+  const TABLE_XZ = 0.75;
+  const tg = new THREE.Group();
+  tg.name = 'partyTable';
+  tg.scale.set(TABLE_XZ, 1, TABLE_XZ);
+  root.add(tg);
+  const ft = buildPartyTable(kit, tg, FELT, 4);
+  tg.updateMatrixWorld(true);
   const feltY = ft.feltY;
-  const seats: SeatDef[] = ft.seats;
-  const anchors = ft.anchors;
+  const seats: SeatDef[] = ft.seats.map((s) => ({ ...s, stand: new THREE.Vector3(s.stand.x * TABLE_XZ, s.stand.y, s.stand.z * TABLE_XZ) }));
+  const anchors = ft.anchors.map((p) => new THREE.Vector3(p.x * TABLE_XZ, p.y, p.z * TABLE_XZ));
+  const chairAt = ft.chairs.map((c) => new THREE.Vector3(c.x * TABLE_XZ, c.y, c.z * TABLE_XZ));
 
   const deckSpot = new THREE.Vector3(-0.2, feltY + 0.004, 0);
   const discSpot = new THREE.Vector3(0.12, feltY + 0.004, 0);
@@ -122,8 +131,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<SonKartParts> 
   const bots: MannequinActor[] = [];
   anchors.forEach((p, s) => {
     const m = kit.mannequin({ style: 'plain', color: [0x2a1a14, 0x3a2a1e, 0x1e2a33, 0x2d1f2f][s % 4], jointColor: 0x3a3a3a, height: 1.7, clip: 'Sitting_Idle_Loop' });
-    const c = ft.chairs[s];
-    m.root.position.set(c.x * 0.76, 0.42, c.z * 0.76);   // leaning in over the rail keeps the model inside the L footprint
+    const c = chairAt[s];
+    m.root.position.set(c.x, 0.42, c.z);
+    m.root.scale.setScalar(0.8);   // the seated figure (arms out) is ±0.4 m: scaled to keep the table inside z ±0.9
     m.root.rotation.y = Math.atan2(-p.x, -p.z);
     m.setVisible(false);
     root.add(m.root);
@@ -158,7 +168,10 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<SonKartParts> 
   return {
     root, parts, seats,
     playPose: seats[0].pose,
-    colliders: ft.colliders,
+    colliders: [
+      { min: [-0.45, 0, -0.45], max: [0.45, feltY + 0.06, 0.45] },
+      ...chairAt.map((c) => ({ min: [c.x - 0.2, 0, c.z - 0.2] as [number, number, number], max: [c.x + 0.2, 0.96, c.z + 0.2] as [number, number, number], tag: 'solid' as const })),
+    ],
     interact: { min: [-1.0, 0.2, -1.0], max: [1.0, 1.6, 1.0] },
     anchors: { speaker: prompt, prompt, label: labelAnchor, coinOut, light, servicePlate: coinOut },
     dispose: () => { screen.dispose(); },

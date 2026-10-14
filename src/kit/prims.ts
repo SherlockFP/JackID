@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import type { Kit, MatLike, PrimOpts } from './types';
 import { bakeShade, bevelBox, ensureColor, planarUV, scaleUV } from './geo';
-import { mapOf, resolveMat, usesVertexColors, withVertexColors } from './materials';
+import { mapOf, perspectiveVariant, resolveMat, usesVertexColors, withVertexColors } from './materials';
 import { tileOf } from './tiles';
 
 const D2R = Math.PI / 180;
@@ -31,7 +31,12 @@ export function buildMesh(geo: THREE.BufferGeometry, m: MatLike, o: PrimOpts | u
   if (tile) mapUV(geo, tile);
   if (shade) bakeShade(geo, { flat });
   else if (usesVertexColors(material)) ensureColor(geo);
-  const me = new THREE.Mesh(geo, material);
+  // Large textured faces warp visibly under PSX affine mapping: give them perspective-correct UVs (props stay PSX).
+  geo.computeBoundingBox();
+  const bb = geo.boundingBox;
+  const sz = bb ? [bb.max.x - bb.min.x, bb.max.y - bb.min.y, bb.max.z - bb.min.z].sort((a, b) => b - a) : [0, 0, 0];
+  const big = sz[0] >= 0.9 && sz[1] >= 0.6;       // two large dimensions = a big face
+  const me = new THREE.Mesh(geo, big ? perspectiveVariant(material) : material);
   applyOpts(me, o);
   return me;
 }

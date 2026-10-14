@@ -28,6 +28,13 @@ export function withVertexColors(m: THREE.Material): THREE.Material {
   return m;   // foreign material: caller owns it, leave untouched
 }
 
+/** Perspective-correct sibling of a textured shared material (large flat surfaces swim under affine mapping). */
+export function perspectiveVariant(m: THREE.Material): THREE.Material {
+  const o = optsOf.get(m);
+  if (!o || o.unique || !o.map || o.affine === false || o.scroll) return m;
+  return psx({ ...o, affine: false });
+}
+
 /** `MatLike` → material. `shade` = the geometry carries baked vertex colours. */
 export function resolveMat(m: MatLike, shade: boolean): THREE.Material {
   if (typeof m === 'number') return psx({ color: m as Hex, vertexColors: shade });

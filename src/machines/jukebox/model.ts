@@ -23,7 +23,7 @@ export type JukeboxParts = {
   lamp: LampPart;
 };
 
-export const W = 1.2, D = 0.9, H = 3.2;
+export const W = 1.2, D = 0.9, H = 2.9;
 const WALL_Z = -0.42;
 /** Neon colour of the cabinet (GDD Lobby light: jukebox glow #FF8A3D). */
 export const GLOW = 0xff8a3d;
@@ -40,15 +40,15 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<JukeboxParts> 
   kit.box(W, H, 0.06, wood, at(0, H / 2, WALL_Z));                                          // back board
   for (const sx of [-1, 1]) kit.box(0.06, H, D, wood, at(sx * (W / 2 - 0.03), H / 2, WALL_Z + D / 2)); // sides
   kit.box(W, 0.08, D, wood, at(0, H - 0.04, WALL_Z + D / 2));                               // top
-  kit.box(W + 0.05, 0.05, D + 0.04, pal.brass, at(0, H - 0.1, WALL_Z + D / 2));             // brass cornice
+  kit.box(W + 0.03, 0.05, D + 0.04, pal.brass, at(0, H - 0.1, WALL_Z + D / 2));             // brass cornice
   kit.box(W, 0.12, D, wood, at(0, 0.06, WALL_Z + D / 2));                                   // plinth
   kit.box(W - 0.16, 0.9, 0.04, wood, at(0, 1.55, front));                                   // lower panel
   kit.box(W + 0.02, 0.05, 0.05, pal.brass, at(0, 2.1, front + 0.02));                       // trim line
 
   // ── porthole + vinyl (animated) ──
-  kit.cyl(0.28, 0.28, 0.04, pal.black, at(0, 2.55, front + 0.01, { seg: 24 }));             // bezel disc
+  kit.cyl(0.28, 0.28, 0.04, pal.black, { pos: [0, 2.45, front + 0.01], rot: [90, 0, 0], parent: root, seg: 24 }); // bezel disc, axis to the customer
   const spinner = new THREE.Object3D();
-  spinner.position.set(0, 2.55, front + 0.04);
+  spinner.position.set(0, 2.45, front + 0.04);
   spinner.rotation.x = Math.PI / 2;                                                        // axis now faces the customer
   kit.cyl(0.25, 0.25, 0.012, 0x141418, { pos: [0, 0, 0], parent: spinner, seg: 28 });        // vinyl
   kit.cyl(0.07, 0.07, 0.014, 0xff8a3d, { pos: [0, 0, 0], parent: spinner, seg: 12 });        // label
@@ -58,7 +58,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<JukeboxParts> 
   const tubes: THREE.Object3D[] = [];
   for (const sx of [-1, 1]) {
     const t = new THREE.Object3D();
-    t.position.set(sx * (W / 2 - 0.1), 1.6, front + 0.02);
+    t.position.set(sx * (W / 2 - 0.1), 1.55, front + 0.02);
     kit.cyl(0.03, 0.03, 2.4, GLOW, { pos: [0, 0, 0], parent: t, seg: 8 });
     root.add(t);
     tubes.push(t);
@@ -85,7 +85,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<JukeboxParts> 
   // ── lamp on top ──
   kit.cyl(0.07, 0.08, 0.1, pal.brass, at(0, H + 0.05, WALL_Z + D / 2, { seg: 10 }));
   const lamp = kit.lamp({ r: 0.07, color: GLOW, shape: 'dome' });
-  lamp.root.position.set(0, H + 0.12, WALL_Z + D / 2);
+  lamp.root.position.set(0, H + 0.1, WALL_Z + D / 2);
+  // the glow sprite is r*7 across: shrink it so the lit lamp stays inside the 3.2 m height limit
+  lamp.root.traverse((n) => { if ((n as THREE.Sprite).isSprite) n.scale.multiplyScalar(0.6); });
   root.add(lamp.root);
 
   // ── anchors ──

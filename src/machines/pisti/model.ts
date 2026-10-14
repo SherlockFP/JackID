@@ -65,10 +65,19 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<PistiParts> {
   const root = kit.group('pisti');
 
   // the table: round felt (0.46 m), rail and four chairs OUTSIDE it (partyTable.ts); the layout anchors sit on the felt
-  const ft = buildPartyTable(kit, root, FELT, SEATS);
+  // the shared party table is shrunk 0.8× across x/z (heights kept): its chairs reach 0.64 m from the centre, so the chair
+  // backs and the seat-0 chair stay inside the L footprint (z ±0.9) and out of the stand strip
+  const TABLE_XZ = 0.75;
+  const tg = new THREE.Group();
+  tg.name = 'partyTable';
+  tg.scale.set(TABLE_XZ, 1, TABLE_XZ);
+  root.add(tg);
+  const ft = buildPartyTable(kit, tg, FELT, SEATS);
+  tg.updateMatrixWorld(true);
   const feltY = ft.feltY;
-  const seatPos = ft.anchors;
-  const seats: SeatDef[] = ft.seats;
+  const seatPos = ft.anchors.map((p) => new THREE.Vector3(p.x * TABLE_XZ, p.y, p.z * TABLE_XZ));
+  const seats: SeatDef[] = ft.seats.map((s) => ({ ...s, stand: new THREE.Vector3(s.stand.x * TABLE_XZ, s.stand.y, s.stand.z * TABLE_XZ) }));
+  const chairAt = ft.chairs.map((c) => new THREE.Vector3(c.x * TABLE_XZ, c.y, c.z * TABLE_XZ));
 
   const centre = new THREE.Vector3(0, feltY + 0.004, 0);
   const deckPos = new THREE.Vector3(-0.26, feltY + 0.004, 0);
@@ -85,17 +94,18 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<PistiParts> {
 
   // scoreboard behind the table
   const screen = kit.screen({ w: 0.56, h: 0.22, px: [256, 112], bezel: pal.black, glow: 0.6 });
-  screen.mesh.position.set(0, 1.45, -0.92);
+  screen.mesh.position.set(0, 1.45, -0.86);
   root.add(screen.mesh);
   const label = kit.label({ text: { key: 'm.pisti.name' }, w: 0.5, h: 0.09, px: [256, 48], color: pal.gold, bg: pal.black });
-  label.mesh.position.set(0, 1.65, -0.92);
+  label.mesh.position.set(0, 1.65, -0.86);
   root.add(label.mesh);
 
   // house mannequins: sitting, hidden until a bot takes the seat
   const bots: MannequinActor[] = seatPos.map((p, s) => {
     const m = kit.mannequin({ style: 'plain', color: [0x2a1a14, 0x3a2a1e, 0x1e2a33, 0x2d1f2f][s % 4], jointColor: 0x3a3a3a, height: 1.7, clip: 'Sitting_Idle_Loop' });
-    const c = ft.chairs[s];
+    const c = chairAt[s];
     m.root.position.set(c.x, 0.42, c.z);
+    m.root.scale.setScalar(0.8);   // the seated figure (arms out) is ±0.4 m: scaled to keep the table inside z ±0.9
     m.root.rotation.y = Math.atan2(-p.x, -p.z);
     m.setVisible(false);
     root.add(m.root);
@@ -128,7 +138,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<PistiParts> {
   prompt.position.set(0, 1.25, 0.6);
   root.add(prompt);
   const labelAnchor = new THREE.Object3D();
-  labelAnchor.position.set(0, 1.65, -0.92);
+  labelAnchor.position.set(0, 1.65, -0.86);
   root.add(labelAnchor);
   const light = new THREE.Object3D();
   light.position.set(0, 2.1, 0);
@@ -144,7 +154,10 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<PistiParts> {
     parts: parts as unknown as PistiParts,
     playPose: seats[0].pose,
     seats,
-    colliders: ft.colliders,
+    colliders: [
+      { min: [-0.45, 0, -0.45], max: [0.45, feltY + 0.06, 0.45] },
+      ...chairAt.map((c) => ({ min: [c.x - 0.2, 0, c.z - 0.2] as [number, number, number], max: [c.x + 0.2, 0.96, c.z + 0.2] as [number, number, number], tag: 'solid' as const })),
+    ],
     interact: { min: [-1.0, 0.2, -1.0], max: [1.0, 1.6, 1.0] },
     anchors: { speaker: prompt, prompt, label: labelAnchor, coinOut, light, servicePlate: coinOut },
     dispose: () => { screen.dispose(); pickMat.dispose(); },

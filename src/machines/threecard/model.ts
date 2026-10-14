@@ -18,13 +18,13 @@ import type { MachineModel, SeatDef } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 
 export const TOP = 0.78;                  // felt height, m
-export const CZ = -0.45;                  // centre of the half-moon (the flat edge runs along z = CZ)
-export const FELT_R = 0.9;
+export const CZ = -0.2;                   // centre of the half-moon (the flat edge runs along z = CZ); the Shuffler stands inside z ≥ −0.9
+export const FELT_R = 0.75;
 export const SEATS = 6;
 export const SEAT_SPAN = Math.PI * 5 / 6; // 150° fan: seats at −75 … +75
-export const DEALER_Z = CZ - 0.3;         // dealer pedestal centre, behind the flat edge (its top is the felt height)
+export const DEALER_Z = CZ - 0.25;        // dealer pedestal centre, behind the flat edge (its top is the felt height)
 export const SHUFFLER_POS = new THREE.Vector3(0, TOP, DEALER_Z - 0.03);
-export const STOOL_R = 1.02;              // stools / players
+export const STOOL_R = 0.84;              // stools / players (front stools reach z ≈ 0.9)
 export const CARD_R = 0.27;               // cards lie this far from the centre
 export const PLAY_R = 0.43, ANTE_R = 0.56, PAIR_R = 0.69;
 export const CARD_W = 0.062, CARD_H = 0.088;
@@ -115,7 +115,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ThreecardParts
   kit.box(0.66, 0.03, 0.32, pal.brass, { pos: [0, TOP - 0.015, DEALER_Z], parent: root });
   kit.box(0.2, 0.004, 0.09, pal.cream, { pos: [0, TOP + 0.002, DEALER_Z + 0.1], parent: root, bevel: 0.002 });
   const dealer = kit.mannequin({ style: 'plain', color: 0x1c1c1c, jointColor: 0x3a3a3a, height: 1.82, clip: 'Idle_Loop' });
-  dealer.root.position.set(0, 0, DEALER_Z - 0.3);
+  dealer.root.position.set(0, 0, DEALER_Z - 0.12);   // standing Shuffler: back edge inside the L footprint
   root.add(dealer.root);
 
   // status screen above the dealer, qualify and phase lamps
@@ -198,7 +198,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ThreecardParts
     root, parts, seats,
     playPose: seats[2].pose,
     colliders: [
-      { min: [-1.08, 0, -0.5], max: [1.08, 0.8, 0.5] },
+      { min: [-0.82, 0, -0.5], max: [0.82, 0.8, 0.62] },
       { min: [-0.36, 0, DEALER_Z - 0.2], max: [0.36, 0.8, DEALER_Z + 0.14] },
     ],
     interact: { min: [-1.2, 0.2, -1.0], max: [1.2, 1.5, 0.95] },

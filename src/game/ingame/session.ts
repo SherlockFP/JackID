@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { app } from '@/core/app';
 import { bus, type GameEvents } from '@/core/events';
 import { log } from '@/core/log';
-import { t } from '@/core/i18n';
+import { fmtCoins, t } from '@/core/i18n';
 import type { InGameParams } from '@/core/states';
 import type { InstanceId, Unsub } from '@/core/types';
 import { createRng, hashSeed } from '@/core/rng';
@@ -19,7 +19,8 @@ import type { UIOverlayX } from '@/core/ui/ui';
 import type { KitX } from '@/kit';
 import { createCover, type CoverProp } from '@/world/props/cover';
 import { createNewMarquee, type NewMarqueeProp } from '@/world/props/cover';
-import { unlockNightOf, isNew, effectiveNight, newOnFloorText } from '@/game/progression';
+import { unlockNightOf, isNew, effectiveNight, newOnFloorText, machineName } from '@/game/progression';
+import type { InteractableX } from '@/world/interact';
 import { createWorld, type WorldHost } from '@/world/world';
 import { rosterFor, type RosterCandidate } from '@/world/layout';
 import type { SlotChange } from '@/world/world';
@@ -95,7 +96,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   scene.fog = makeFog(LOBBY_FOG, LOBBY_NEAR, app.save.data.settings.psx.drawDistance);
 
   // Pit Deck: a seeded line-up for the flexible pads (WAVE8 item 8). `randomLineup: false` keeps the GDD §8.6 layout.
-  const lineup = run.config.randomLineup !== false ? rosterFor(run.seed, rosterCandidates(), run.mode) : undefined;
+  const lineup = run.mode === 'free' && run.config.randomLineup !== false ? rosterFor(run.seed, rosterCandidates(), run.mode) : undefined;
   const world = createWorld({ mode: run.mode, seed: run.seed, assign: lineup }, app.camera);
   scene.add(world.root);
   app.world = world;
@@ -302,7 +303,33 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   // progressive floor: tarps over locked machines, NEW signs on today's openings
   const covers = new Map<string, CoverProp>();
   const marquees = new Map<string, NewMarqueeProp>();
-  let coverAcc = 0, lastNight = 0;
+  const buyers = new Map<string, () => void>();
+  let coverAcc = 0, lastNight = 0, summaryShown = false;
+  /** E on a tarp: BUY the machine with coins (tycoon). The sheet itself lifts on the next lock refresh. */
+  const addBuyer = (instance: InstanceId, machineId: string, c: CoverProp, g: THREE.Object3D): void => {
+    g.updateWorldMatrix(true, true);
+    const box = new THREE.Box3().setFromObject(c.root);
+    const mid = machineId as Parameters<typeof run.buyPriceOf>[0];
+    const x: InteractableX = {
+      id: `buy:${instance}`, box, priority: 10, maxDist: 3,
+      enabled: () => run.buyPriceOf(mid) > 0 && world.seat == null,
+      label: () => t('prog.buy', { name: machineName(mid), price: fmtCoins(run.buyPriceOf(mid)) }),
+      sub: () => {
+        const price = run.buyPriceOf(mid);
+        const have = run.wallet(self);
+        return have >= price ? t('prog.buy.sub', { n: unlockNightOf(mid, run.seed) }) : t('prog.buy.short', { need: fmtCoins(price - have), name: machineName(mid) });
+      },
+      disabled: () => run.wallet(self) < run.buyPriceOf(mid),
+      onInteract: () => {
+        const price = run.buyPriceOf(mid);
+        if (price <= 0) { app.ui.toast(t('prog.refused'), 'warn'); return; }
+        if (!run.buyMachine(mid)) { app.ui.toast(t('prog.buy.short', { need: fmtCoins(Math.max(1, price - run.wallet(self))), name: machineName(mid) }), 'warn'); app.audio.play('buzzer', { vol: 0.4 }); return; }
+        app.audio.play('purchase');
+        coverAcc = 1;   // lift the sheet on the next frame
+      },
+    };
+    buyers.set(instance, world.interact.add(x));
+  };
   const syncCovers = (): void => {
     const night = effectiveNight(run.night(), run.nightPaid, false);
     if (night !== lastNight) {
@@ -310,17 +337,26 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       if (txt) app.ui.toast(txt, 'sys', 4);
       lastNight = night;
     }
+    // the Night summary line for the tycoon: what the owned machines paid tonight (once per paid Night)
+    if (run.nightPaid && !summaryShown) {
+      summaryShown = true;
+      const cut = run.nightLedger().cut;
+      if (cut > 0) app.ui.toast(t('prog.summary', { n: fmtCoins(cut) }), 'good', 5);
+    } else if (!run.nightPaid) summaryShown = false;
     for (const m of world.machines()) {
       const g = world.slotGroup(m.id), size = world.slot(m.id)?.size;
       if (!g || !size) continue;
       const mid = m.def.id;
       const locked = world.isLocked(m.id);
       const cov = covers.get(m.id);
+      if (cov && run.mode !== 'free') { const p = run.buyPriceOf(mid); cov.setPrice(p > 0 ? fmtCoins(p) : null); }
       if (locked && !cov) {
         const c = createCover(app.kit as KitX, { size, night: unlockNightOf(mid, run.seed), id: m.id });
         g.add(c.root); covers.set(m.id, c);
+        if (run.mode !== 'free') addBuyer(m.id, mid, c, g);
       } else if (!locked && cov) {
         covers.delete(m.id);
+        buyers.get(m.id)?.(); buyers.delete(m.id);
         void cov.setCovered(false, 1.2).then(() => { g.remove(cov.root); cov.dispose(); });
       }
       const wantNew = !locked && run.mode !== 'free' && isNew(mid, night, run.seed);
@@ -370,6 +406,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     dispose() {
       window.removeEventListener('pagehide', flush);
       for (const off of offs.splice(0)) off();
+      for (const off of buyers.values()) off();
+      buyers.clear();
       ledgerOpen = false;
       ledger = null;
       app.ui.closePanel(LEDGER_PANEL);

@@ -24,11 +24,11 @@ import { makeCanvas } from '@/core/texgen/pixel';
 
 export const TOP = 0.78;                 // felt height, m
 export const SEATS = 7;
-export const SEAT_Z = 0.92;              // stools (players)
-export const DEALER_Z = -0.95;           // the Banker's chair
+export const SEAT_Z = 0.64;              // stools (players): a stool reaches ±0.26 m, so z ≤ 0.9 needs SEAT_Z ≤ 0.64
+export const DEALER_Z = -0.53;           // the Banker chair (its back reaches ~0.38 m: z ≥ −0.9)
 export const CARD_W = 0.062, CARD_H = 0.088;
 export const SPOT_Z = 0.34;              // bet spots, a hand's reach from the stools, inside the kidney edge (z ≈ 0.40–0.44)
-export const MIRROR_Y = 2.05, MIRROR_Z = -0.80, MIRROR_TILT = 35;
+export const MIRROR_Y = 1.95, MIRROR_Z = -0.56, MIRROR_TILT = 35;   // the mirror and its frame top out at 2.4 m
 
 /** Stool x for seat `i` (0..6, left to right as the player sees the table). */
 export const seatX = (i: number): number => (i - 3) * 0.3;
@@ -262,7 +262,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BaccaratParts>
   const mirror = kit.plane(2.0, 1.0, mirrorMat, { pos: [0, MIRROR_Y, MIRROR_Z], rot: [MIRROR_TILT, 0, 0], shade: false, parent: root }) as THREE.Mesh;
   mirror.name = 'mirror';
   kit.box(2.08, 1.08, 0.03, pal.brass, { pos: [0, MIRROR_Y, MIRROR_Z - 0.02], rot: [MIRROR_TILT, 0, 0], parent: root });
-  const mirrorFigure = kit.cyl(0.13, 0.13, 1.5, pal.black, { pos: [0, 0.75, 1.3], seg: 8, parent: root });
+  const mirrorFigure = kit.cyl(0.13, 0.13, 1.5, pal.black, { pos: [0, 0.75, 0.75], seg: 8, parent: root });
   mirrorFigure.name = 'mirrorFigure';
   mirrorFigure.visible = false;
   const mirrorGrin = kit.plane(0.3, 0.18, pal.cream, { pos: [0, MIRROR_Y + 0.05, MIRROR_Z + 0.03], rot: [MIRROR_TILT, 0, 0], shade: false, parent: root });
@@ -289,7 +289,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BaccaratParts>
   const seatLamps: LampPart[] = [];
   for (let i = 0; i < SEATS; i++) {
     const l = kit.lamp({ r: 0.02, color: pal.gold, shape: 'dome' });
-    l.root.position.set(seatX(i), TOP + 0.01, 0.66);
+    l.root.position.set(seatX(i), TOP + 0.01, 0.64);
     seatLamps.push(l);
     root.add(l.root);
   }

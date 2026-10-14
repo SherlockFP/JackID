@@ -167,7 +167,9 @@ export function makeTables(ctx: KitCtx, seating: ReturnType<typeof makeSeating>)
     // ── felt ──
     const feltMat = M.felt(o.felt);
     const tile = tileOf(mapOf(feltMat)) ?? 0.5;
-    const feltGeo = ringFan(feltPath, h, Math.max(2, Math.ceil(Math.max(w, d) / 2 / 0.5)), (x, z) => [x / tile, z / tile]);
+    // the felt runs 2 cm under the rail so unsnapped felt vs snapped rail can never open a see-through crack
+    const feltRun = tableOutline(shape, w, d, SEAT_ZONE + RAIL_W - 0.02);
+    const feltGeo = ringFan(feltRun, h, Math.max(2, Math.ceil(Math.max(w, d) / 2 / 0.4)), (x, z) => [x / tile, z / tile]);
     bakeShade(feltGeo, { top: 1, bottom: 1 });
     const top = new THREE.Mesh(feltGeo, resolveMat(feltMat, true));
     top.name = 'felt_top';
@@ -180,7 +182,7 @@ export function makeTables(ctx: KitCtx, seating: ReturnType<typeof makeSeating>)
       for (const [x, z] of feltPath) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); }
       const geo = ringFan(feltPath, h + 0.002, 3, (x, z) => [(x - x0) / (x1 - x0), 1 - (z - z0) / (z1 - z0)]);
       bakeShade(geo, { top: 1, bottom: 1 });
-      const printMat = resolveMat({ map: o.print, color: 0xffffff, vertexColors: true, alphaTest: 0.5, unique: true }, true);
+      const printMat = resolveMat({ map: o.print, color: 0xffffff, vertexColors: true, alphaTest: 0.5, snap: false, affine: false, unique: true }, true);
       printMat.polygonOffset = true;
       printMat.polygonOffsetFactor = -2;
       printMat.polygonOffsetUnits = -2;

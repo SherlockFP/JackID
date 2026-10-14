@@ -38,10 +38,10 @@ export type KenoParts = {
 export const DESK_X = [-0.75, -0.25, 0.25, 0.75];
 const DESK_Z = -0.05;
 const DESK_TOP = 0.75;
-export const BOARD_Y = 2.8, BOARD_Z = -0.89;
-const BOARD_W = 3.0, BOARD_H = 1.8;
+export const BOARD_Y = 1.67, BOARD_Z = -0.66;   // board spans x ±1.2, y 1.17…2.17: inside the L footprint (2.6 × 1.8 × 2.4)
+const BOARD_W = 2.3, BOARD_H = 1.0;   // the screen bezel adds 0.13 m a side: 2.3 keeps the board inside x ±1.3
 const GRID_COLS = 10, GRID_ROWS = 8;
-const GRID_X0 = -1.3, GRID_Y0 = 2.25, GRID_Y1 = 3.5;
+const GRID_X0 = -1.15, GRID_Y0 = 1.17, GRID_Y1 = 2.17;
 export const RELAY_X = 1.1, RELAY_Z = -0.5;
 const SEAT_Z = 0.5;
 const LAMP_COUNT = 80;
@@ -59,7 +59,7 @@ export const seatX = (i: number): number => DESK_X[i];
 export function lampXY(n: number): [number, number] {
   const i = n - 1;
   const col = i % GRID_COLS, row = Math.floor(i / GRID_COLS);
-  const x = GRID_X0 + (col + 0.5) * (2.6 / GRID_COLS);
+  const x = GRID_X0 + (col + 0.5) * (BOARD_W / GRID_COLS);
   const y = GRID_Y1 - (row + 0.5) * ((GRID_Y1 - GRID_Y0) / GRID_ROWS);
   return [x, y];
 }
@@ -80,36 +80,36 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
   const at = (x: number, y: number, z: number): { pos: [number, number, number]; parent: THREE.Object3D } => ({ pos: [x, y, z], parent: root });
 
   // ── static shell (flat colours, merged) ──
-  kit.box(2.6, 0.04, 0.5, walnut, at(0, 0.02, 0.0));                      // sub-floor plinth
+  kit.box(2.56, 0.04, 0.5, walnut, at(0, 0.02, 0.0));                      // sub-floor plinth
   for (const x of DESK_X) {
     kit.box(0.56, 0.05, 0.45, walnut, at(x, DESK_TOP - 0.02, DESK_Z));     // desk top
     kit.box(0.58, 0.012, 0.47, pal.brass, at(x, DESK_TOP + 0.005, DESK_Z)); // brass edging
     kit.box(0.5, 0.7, 0.04, walnut, at(x, DESK_TOP / 2 - 0.02, DESK_Z - 0.2)); // desk back panel
     for (const sx of [-0.27, 0.27]) kit.box(0.04, DESK_TOP - 0.05, 0.4, walnut, at(x + sx, (DESK_TOP - 0.05) / 2, DESK_Z)); // legs
   }
-  kit.box(2.6, 1.6, 0.04, walnut, at(0, 0.8, -0.7));                      // back wall panelling
-  kit.box(2.6, 0.08, 0.04, pal.brass, at(0, 1.6, -0.7));                  // cornice
+  kit.box(2.56, 1.6, 0.04, walnut, at(0, 0.8, -0.7));                      // back wall panelling
+  kit.box(2.56, 0.08, 0.04, pal.brass, at(0, 1.6, -0.7));                  // cornice
   // carrel dividers between the desks (and at both ends): the seat camera frames ONE ticket writer, never a sliver of its neighbour
   for (const dx of [-1, -0.5, 0, 0.5, 1]) kit.box(0.025, 0.52, 0.42, walnut, at(dx, DESK_TOP + 0.26, DESK_Z - 0.05));
-  kit.box(0.04, 1.6, 1.4, walnut, at(-1.3, 0.8, 0));                      // left end panel
-  kit.box(0.04, 1.6, 1.4, walnut, at(1.3, 0.8, 0));                       // right end panel
-  kit.box(2.6, 0.04, 1.4, pal.feltDark, at(0, 1.6, 0));                   // ceiling
+  kit.box(0.04, 1.6, 1.4, walnut, at(-1.26, 0.8, 0));                      // left end panel
+  kit.box(0.04, 1.6, 1.4, walnut, at(1.26, 0.8, 0));                       // right end panel
+  kit.box(2.56, 0.04, 1.4, pal.feltDark, at(0, 1.6, 0));                   // ceiling
   // wall board mount + frame (the board itself hangs above the footprint)
   kit.box(BOARD_W + 0.08, BOARD_H + 0.08, 0.06, pal.brass, at(0, BOARD_Y, BOARD_Z - 0.03));
 
   // ── relay brain cabinet (back right) ──
-  kit.box(0.4, 1.6, 0.4, walnut, at(RELAY_X, 0.8, RELAY_Z));
-  kit.box(0.42, 0.03, 0.42, pal.brass, at(RELAY_X, 1.6, RELAY_Z));
+  kit.box(0.4, 1.1, 0.4, walnut, at(RELAY_X, 0.55, RELAY_Z));
+  kit.box(0.42, 0.03, 0.42, pal.brass, at(RELAY_X, 1.1, RELAY_Z));
   const relayLamps: LampPart[] = [];
   for (let i = 0; i < 20; i++) {
     const col = i % 5, row = Math.floor(i / 5);
     const lamp = kit.lamp({ r: 0.022, color: LAMP_OFF, shape: 'dome' });
-    lamp.root.position.set(RELAY_X - 0.15 + col * 0.075, 0.5 + row * 0.25, RELAY_Z + 0.205);
+    lamp.root.position.set(RELAY_X - 0.15 + col * 0.075, 0.45 + row * 0.15, RELAY_Z + 0.205);
     root.add(lamp.root);
     relayLamps.push(lamp);
   }
   const drawNo = kit.ledPanel({ digits: 3, color: '#ffb347', h: 0.07 });
-  drawNo.root.position.set(RELAY_X, 1.42, RELAY_Z + 0.205);
+  drawNo.root.position.set(RELAY_X, 1.02, RELAY_Z + 0.205);
   root.add(drawNo.root);
 
   // ── desks: CRT ticket writer, light pen on a coiled cord, stool ──
@@ -151,10 +151,10 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
   });
 
   // ── wall board: number backdrop + 80 instanced lamps ──
-  const boardScreen = kit.screen({ w: BOARD_W, h: BOARD_H, px: [160, 96], bezel: pal.black, glow: 0.4 });
+  const boardScreen = kit.screen({ w: BOARD_W, h: BOARD_H, px: [160, 96], bezel: pal.black, glow: 0 });   // no halo sprite: it would widen the board past the footprint
   boardScreen.mesh.position.set(0, BOARD_Y, BOARD_Z);
   root.add(boardScreen.mesh);
-  const lampGeo = new THREE.BoxGeometry(0.2, 0.1, 0.02);
+  const lampGeo = new THREE.BoxGeometry(0.18, 0.09, 0.02);
   const lampMat = kit.mat(0xffffff);
   const board = new THREE.InstancedMesh(lampGeo, lampMat, LAMP_COUNT);
   board.name = 'keno.board';
@@ -170,14 +170,14 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
   root.add(board);
 
   const next = kit.ledPanel({ digits: 4, color: '#ffb347', h: 0.12 });
-  next.root.position.set(1.1, 2.02, BOARD_Z + 0.04);
+  next.root.position.set(0, 1.1, BOARD_Z + 0.04);   // under the board, centred
   root.add(next.root);
 
   // ── lounge armchairs at the left end (decor, if space) ──
   const armchairs: THREE.Object3D[] = [];
   for (const z of [0.25, 0.6]) {
     const chair = kit.chair({ h: 0.5 });
-    chair.position.set(-1.05, 0, z);
+    chair.position.set(-0.92, 0, z);
     chair.rotation.y = Math.PI / 2;
     root.add(chair);
     armchairs.push(chair);
@@ -187,7 +187,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
   const speaker = new THREE.Object3D(); speaker.position.set(0, 1.45, -0.6); root.add(speaker);
   const prompt = new THREE.Object3D(); prompt.position.set(0, 1.9, 0.2); root.add(prompt);
   const label = new THREE.Object3D(); label.position.set(0, 1.7, -0.7); root.add(label);
-  const marqueeTop = new THREE.Object3D(); marqueeTop.position.set(RELAY_X, 1.65, RELAY_Z); root.add(marqueeTop);
+  const marqueeTop = new THREE.Object3D(); marqueeTop.position.set(RELAY_X, 1.3, RELAY_Z); root.add(marqueeTop);
   const servicePlate = new THREE.Object3D(); servicePlate.position.set(-1.27, 1.2, 0.3); root.add(servicePlate);
   const boardCam = new THREE.Object3D(); boardCam.position.set(0, 1.45, 0.9); root.add(boardCam);
   const light = new THREE.Object3D();
@@ -226,7 +226,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
     seats,
     colliders: [
       ...DESK_X.map((x) => ({ min: [x - 0.3, 0, DESK_Z - 0.25] as [number, number, number], max: [x + 0.3, DESK_TOP, DESK_Z + 0.25] as [number, number, number] })),
-      { min: [RELAY_X - 0.22, 0, RELAY_Z - 0.22], max: [RELAY_X + 0.22, 1.62, RELAY_Z + 0.22] },
+      { min: [RELAY_X - 0.22, 0, RELAY_Z - 0.22], max: [RELAY_X + 0.22, 1.12, RELAY_Z + 0.22] },
       { min: [-1.32, 0, -0.72], max: [1.32, 1.62, -0.66] },
     ],
     interact: { min: [-1.3, 0.2, -0.75], max: [1.3, 1.6, 0.7] },

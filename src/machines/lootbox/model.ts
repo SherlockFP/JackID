@@ -39,7 +39,7 @@ export const BADGE = [0x9aa0a6, 0xc9a227, 0xffd040] as const;
 export const CRANK_X = [-0.22, 0, 0.22] as const;
 const CRANK_Y = 0.90;
 const PLATE_Z = 0.375;
-const FRONT_Z = 0.40;
+const FRONT_Z = 0.37;   // cranks + reveal stay inside the 1.0 m footprint depth (z 0.53)
 const FLAP_Y = 0.55;
 
 export type CrankPart = ReturnType<KitX['crank']>;
@@ -202,7 +202,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<LootboxParts> 
 
   // ── vended capsule (both halves, hidden until a vend) ──
   const revealAnchor = new THREE.Object3D();
-  revealAnchor.position.set(0, 0.78, FRONT_Z + 0.12);
+  revealAnchor.position.set(0, 0.78, FRONT_Z + 0.10);
   root.add(revealAnchor);
   const capsuleTop = new THREE.Group();
   capsuleTop.add(kit.sphere(VEND_R, WHITE, { hemi: true, wSeg: 10, hSeg: 6 }));

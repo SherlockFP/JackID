@@ -91,6 +91,12 @@ const FRONT_MIN_RATE = Number(argVal("--front-min-rate", 0.3));
 const FLOAT_FRAC = Number(argVal("--float-frac", 0));
 // human: the casual player. Stakes 2-5 coins a pull, rotates machine every 3-5 pulls, goes for the Hot Lamp ~60 % of rotations,
 // deposits a random slice of the pocket at ~80 % of the Bells (the gap on the last Watch only).
+// tycoon (wave 28): the human bot BUYS a covered machine when the pocket stays at TYC_RESERVE x the quota gap after paying, and the
+// owned machines pay their house cut at each Watch settle (the real progression.ts maths, seeded ghosts). --no-tycoon turns it off.
+const NO_TYCOON = args.includes('--no-tycoon');
+const TYC_RESERVE = Number(argVal('--tycoon-reserve', 1.0));
+const TYC_FRAC = Number(argVal('--tycoon-frac', 0.3));   // the bot only buys when the price is at most this share of its pocket
+const TYC = { bought: new Array(8).fill(0), cut: new Array(8).fill(0), price: new Array(8).fill(0), runs: 0, ownedEnd: 0 };
 const HUMAN_STAKE_LO = Number(argVal('--human-stake-lo', 2));      // a casual stake: a random whole 2-5 coins a pull
 const HUMAN_STAKE_HI = Number(argVal('--human-stake-hi', 5));
 const HUMAN_HOT_P = Number(argVal('--human-hot-p', 0.6));          // share of rotations that go to the Hot Lamp
@@ -135,6 +141,7 @@ const BOUGHT = new Map();
 // Tuning overrides (comma lists of 8 values, one per Night). Without them the schedule.ts numbers are used.
 const list = (name) => { const v = argVal(name, ''); return v ? v.split(',').map(Number) : null; };
 const SCH = await load('src/game/data/schedule.ts');
+const PROG = await load('src/game/progression.ts');
 const CIR = await load('src/game/circuit.ts');
 const ECO = await load('src/game/economy.ts');
 const RESC = await load('src/game/rescue.ts');
@@ -410,6 +417,7 @@ function playRun(bot, runIdx) {
   };
   S.pawn = new SHOP.Pawn(makeHost(S, RNG.createRng(RNG.hashSeed('simpawn', SEED, runIdx))));
   S.book = stampsOn(bot) ? new STAMPS.StampBook(stampHost(S, RNG.createRng(RNG.hashSeed('simstamps', SEED, runIdx)))) : null;
+  const owned = new Set();
   let loanedRun = false;
   let stuckRun = false;
   let stuckW = false;
@@ -459,6 +467,15 @@ function playRun(bot, runIdx) {
         if (dep > 0) { S.pocket -= dep; S.debt += Math.floor(dep * (1 + fx0.depositBonus)); }
       }
       shop(S, bot, due, hum.rng);
+      if (bot === 'human' && !NO_TYCOON) {
+        // tycoon: buy the cheapest covered machine while the pocket still covers the quota gap afterwards (max one per Bell)
+        const q0 = dueOf(nd);
+        const cand = PROG.CORE_MACHINES.filter((id) => !owned.has(id) && PROG.unlockNightOf(id) > nd.no)
+          .map((id) => ({ id, price: PROG.buyPrice(id, q0) })).sort((a, b) => a.price - b.price)[0];
+        if (cand && cand.price <= TYC_FRAC * S.pocket && S.pocket - cand.price >= TYC_RESERVE * Math.max(0, due - S.debt)) {
+          S.pocket -= cand.price; owned.add(cand.id); TYC.bought[idx] += 1; TYC.price[idx] += cand.price;
+        }
+      }
       fx0 = runFx(S);
       const lampRng = RNG.createRng((SEED * 31 + runIdx * 1009 + idx * 37 + w * 3 + 1) >>> 0);
       circ.startWatch(lampRng, lampCands.filter((c) => CIR.lampEligible(c, S.pocket)), { lamps: nd.no >= SCH.LAMP_FIRST_NIGHT, hot: SCH.hotLampCount(nd.no) + fx0.hotCount, cold: SCH.coldLampCount(nd.no), newIsHot: false });
@@ -576,6 +593,12 @@ function playRun(bot, runIdx) {
         if (need > 0 && S.pocket >= need) { S.pocket -= need; S.debt += Math.floor(need * (1 + fx0.depositBonus)); }
       }
 
+      if (owned.size > 0) {
+        const q0 = dueOf(nd);
+        let cut = 0;
+        for (const id of owned) cut += PROG.houseCut(id, q0, PROG.ghostWager(id, q0, SEED + runIdx, idx, w));
+        S.pocket += cut; TYC.cut[idx] += cut;
+      }
       if (watchPulls >= SCH.ACTIVITY_MIN_PULLS && rate > 0) S.debt += SCH.interestFor(S.debt, due, rate);
       if (TRACE && runIdx < TRACE && idx < 2) console.log(`   N${nd.no} W${w + 1} end: pulls ${watchPulls} debt ${S.debt} pocket ${S.pocket}`);
       if (idx === 0 && w === 0 && newbieLike(bot)) {
@@ -613,6 +636,7 @@ function playRun(bot, runIdx) {
     if (idx + 1 < SCH.BASE_RUN_NIGHTS) { S.shopNight = idx + 1; S.shopWatch = 0; shop(S, bot, dueOf(NIGHTS[idx + 1]), hum.rng); }
   }
   out.charms = S.held.length;
+  if (owned.size > 0) { TYC.runs += 1; TYC.ownedEnd += owned.size; }
   if (loanedRun) TOT.runsWithLoan += 1;
   return out;
 }
@@ -770,6 +794,7 @@ for (const bot of BOTS) {
   results[bot + '_rtp'] = TOT.wagered ? +(TOT.credited / TOT.wagered).toFixed(4) : 0;
   if (BRIEF) { console.log(`${bot.padEnd(8)} reach% ${rows.map((r) => String(Math.round(r.reachPct)).padStart(3)).join(' ')}  pocket ${rows.map((r) => fmtCoins(r.medianPocket)).join(' ')}  charms ${rows.map((r) => r.charms).join(' ')}  rtp ${results[bot + '_rtp']}`); continue; }
   console.log(`\n${bot}  (${RUNS} runs, ${((Date.now() - t0) / 1000).toFixed(1)} s${SCALE_LADDER ? ', ladder scaled by SI' : ''}${NO_CHARMS ? ', no charms' : ''}${isCamp(bot) ? '' : `, stake ${BET_FRAC * 100} % of pocket`})`);
+  if (bot === 'human' && !NO_TYCOON) console.log(`tycoon: runs that owned a machine ${TYC.runs}/${RUNS} (avg owned ${(TYC.ownedEnd / Math.max(1, TYC.runs)).toFixed(1)}); per run N1..N8 bought [${TYC.bought.map((x) => (x / RUNS).toFixed(2)).join(' ')}], coins spent [${TYC.price.map((x) => Math.round(x / RUNS)).join(' ')}], house cut [${TYC.cut.map((x) => Math.round(x / RUNS)).join(' ')}]`);
   console.log(`realized RTP ${results[bot + '_rtp']}  plays/run ${(TOT.plays / RUNS).toFixed(1)}  rescue loans/run ${(TOT.loans / RUNS).toFixed(2)}`);
   console.log(`house float per run (N2..N8): ${FLOAT_PAID.slice(1).map((v) => (v / RUNS).toFixed(1)).join(' ')}${NO_FLOAT ? '  (off)' : ''}`);
   console.log('Night  quota     reach%  cond%   median pocket (runs that paid)   realized RTP   charms held');

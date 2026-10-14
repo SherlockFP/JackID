@@ -5,7 +5,7 @@
  *  - metres, origin = floor centre, +Z = front (the player side), Y up;
  *  - no physical cards: every card is drawn on the CRT canvas by `index.ts`.
  *
- * Slant-top cabinet 0.62 W × 0.70 D × 1.40 H (plus a 0.68 m bar stool in front, inside the M slot depth).
+ * Slant-top cabinet 0.62 W × 0.62 D × 1.40 H (plus a 0.68 m bar stool at z 0.34, inside the M slot depth).
  * CRT 0.48 × 0.36 tilted back 25° (`cabinet` screen anchor), marquee on top, a button deck under the glass:
  * five HOLD buttons (1–5), DEAL/DRAW, BET ONE, BET MAX, DOUBLE, COLLECT and GAME. Colourways 0–3.
  *
@@ -49,13 +49,13 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<VideoPokerPart
 
   // ── cabinet: slant top, CRT in the sloped face, control deck under the glass ──
   const cab = kit.cabinet({
-    style: 'slant', w: 0.62, h: 1.4, d: 0.7,
+    style: 'slant', w: 0.62, h: 1.4, d: 0.62,
     body: pal[cw.body], trim: pal[cw.trim], accent: pal.neonCyan,
     // seat-views: no tilt override, so the glass lies in the slanted face (49 deg). The old 25 deg tilt sank its lower half into the
     // body, so only the paytable and the tops of the cards were ever visible.
     screen: { w: 0.48, h: 0.36, y: 1.06 },
     topper: { h: 0.2 },
-    panel: { y: 0.86, depth: 0.22, tilt: 12 },
+    panel: { y: 0.86, depth: 0.12, tilt: 12 },   // lip 0.12: the deck stays inside the stand-strip limit (z 0.5)
     kick: 0.08,
   });
   root.add(cab.root);
@@ -66,7 +66,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<VideoPokerPart
 
   // ── button deck (one caps mesh for all eleven buttons) ──
   const deck = kit.buttonPanel({
-    w: 0.56, d: 0.26, slope: 12, plate: pal.black, capH: 0.02,
+    w: 0.56, d: 0.2, slope: 12, plate: pal.black, capH: 0.02,
     buttons: [
       { id: 'hold0', color: pal.bone, x: -0.23, z: 0.05, w: 0.06, h: 0.04 },
       { id: 'hold1', color: pal.bone, x: -0.165, z: 0.05, w: 0.06, h: 0.04 },
@@ -90,7 +90,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<VideoPokerPart
 
   // ── bar stool at z +0.40 ──
   const stool = kit.stool({ h: 0.68, seat: pal.leather, leg: pal.chrome });
-  stool.position.set(0, 0, 0.4);
+  stool.position.set(0, 0, 0.33);
+  stool.scale.set(0.72, 1, 0.72); // base spokes stay inside the M slot depth
   root.add(stool);
 
   // pooled-light hint for the CRT glow (no THREE.Light inside machines)

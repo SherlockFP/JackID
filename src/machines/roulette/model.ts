@@ -116,7 +116,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<RouletteParts> 
   kit.box(1.25, 0.03, 0.08, walnut, at(0.25, 0.4, -0.66));                                  // back apron
   kit.box(0.22, 0.4, 0.22, walnut, at(-1.38, 0.2, 0));                                      // history pillar base
   kit.box(0.06, 0.8, 0.06, pal.brass, at(-1.4, 1.2, -0.08));                               // rake rail post
-  kit.box(0.04, 0.04, 2.0, pal.brass, { pos: [WHEEL_X, 1.62, -0.85], parent: root });        // rake rail
+  kit.box(0.04, 0.04, 1.0, pal.brass, { pos: [WHEEL_X, 1.62, -0.8], parent: root });          // rake rail (z -1.3…-0.3: inside the XL footprint)
   // ceiling pendant (green glass shade, rod)
   kit.cyl(0.008, 0.008, 1.0, pal.chrome, { pos: [0, 2.7, 0], seg: 4, parent: root });
   kit.cyl(0.11, 0.2, 0.16, { color: 0x1f5a3a }, { pos: [0, 2.2, 0], seg: 12, parent: root });

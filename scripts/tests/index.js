@@ -32,3 +32,5 @@ import './duelrun.test.mjs';
 import './progression.test.mjs';
 import './blip.test.mjs';
 import './sonkart.test.mjs';
+import './juice.test.mjs';
+import './gamble.test.mjs';

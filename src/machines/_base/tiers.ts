@@ -17,10 +17,10 @@ export type JuiceTier = WinTier;
 export const TIER_MULT = { medium: 3, big: 10, huge: 25, mega: 50 } as const;
 const ORDER: readonly JuiceTier[] = ['none', 'push', 'small', 'medium', 'big', 'huge', 'mega', 'jackpot'];
 
-/** Presentation tier of a result. `tags` containing `'jackpot'` forces `'jackpot'`. */
+/** Presentation tier of a result. `tags` containing `'jackpot'` (or a namespaced `'<machine>:jackpot'`) forces `'jackpot'`. */
 export function juiceTier(gross: number, bet: number, tags?: readonly string[]): JuiceTier {
   if (!(gross > 0)) return 'none';
-  if (tags?.includes('jackpot')) return 'jackpot';
+  if (tags?.some((tag) => tag === 'jackpot' || tag.endsWith(':jackpot'))) return 'jackpot';
   const m = bet > 0 ? gross / bet : Infinity;
   if (m <= 1) return 'push';
   if (m < TIER_MULT.medium) return 'small';

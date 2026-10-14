@@ -275,3 +275,101 @@ test('pit lint: the starters sit within 8 m of the spawn, the whole core within 
     for (const side of sp.sides) assert.ok(['left', 'right', 'up', 'down'].includes(side.arrow), `${sp.id} arrow`);
   }
 });
+
+// ── Wave 28: tycoon (buy a tarped machine, collect the house cut) ──────────────────────────────────
+test('tycoon prices scale with tier and quota; free-only machines are not for sale', () => {
+  const q = 115;
+  const price = (id) => P.buyPrice(id, q);
+  assert.ok(price('bigone') >= q * 0.25 && price('bigone') <= q * 0.35, 'SIMPLE is about 30 % of the quota');
+  assert.ok(price('bandit') > price('bigone') && price('cyclone') > price('bandit') && price('craps') > price('cyclone'));
+  assert.ok(price('craps') >= q * 0.95, 'HEAVY costs a full quota');
+  assert.ok(P.buyPrice('bigone', 400) > P.buyPrice('bigone', 100), 'the price follows the Night');
+  assert.equal(P.buyPrice('slots_free_only_x', q), 0);
+  assert.equal(P.buyPrice('hotline', q), 0);
+  assert.equal(price('bigone') % 5, 0);
+});
+
+test('house cut: 5 to 10 percent of the ghost wager plus a flat trickle, seeded, and a buy pays back in about four Nights', () => {
+  const q = 250;
+  assert.equal(P.ghostWager('plinko', q, 9, 3, 1), P.ghostWager('plinko', q, 9, 3, 1), 'seeded: same inputs, same wager');
+  const seen = new Set();
+  for (let w = 0; w < 6; w++) seen.add(P.ghostWager('plinko', q, 9, 3, w));
+  assert.ok(seen.size > 1, 'the ghosts vary Watch to Watch');
+  for (const id of P.CORE_MACHINES) {
+    const w = P.ghostWager(id, q, 5, 2, 0);
+    assert.ok(w > 0);
+    const cut = P.houseCut(id, q, w);
+    const share = (cut - P.CUT_FLAT * q) / w;
+    assert.ok(share >= 0.045 && share <= 0.105, `${id} cut share ${share.toFixed(3)}`);
+    const watchesToPayBack = P.buyPrice(id, q) / P.expectedCut(id, q);
+    assert.ok(watchesToPayBack >= 6 && watchesToPayBack <= 16, `${id} pays back in ${watchesToPayBack.toFixed(1)} Watches`);
+  }
+});
+
+test('run: BUY opens a covered machine for the rest of the run, takes coins, refuses when short or already open', async () => {
+  const RUN = await load('src/game/run.ts');
+  const run = RUN.createRun({ seed: 77, mode: 'debt' });
+  assert.equal(run.isLocked('craps'), true);
+  assert.equal(run.buyPriceOf('bigone'), 0, 'a starter is open, not for sale');
+  const price = run.buyPriceOf('craps');
+  assert.ok(price > 0);
+  run.earn('coin', price + 3 - run.wallet(), 'test');            // top the pocket up to price + 3 (never below)
+  const before = run.wallet();
+  assert.ok(before >= price);
+  assert.equal(run.buyMachine('craps'), true);
+  assert.equal(run.wallet(), before - price);
+  assert.equal(run.isLocked('craps'), false);
+  assert.equal(run.owns('craps'), true);
+  assert.equal(run.buyPriceOf('craps'), 0);
+  assert.equal(run.buyMachine('craps'), false, 'cannot buy twice');
+  const poor = run.buyPriceOf('mahjong');
+  run.spend('coin', run.wallet(), 'test');
+  assert.equal(run.buyMachine('mahjong'), false, `cannot afford ${poor}`);
+  assert.equal(run.isLocked('mahjong'), true);
+  const e = run.empire();
+  assert.equal(e.count, 1);
+  assert.ok(e.perWatch > 0);
+  run.dispose();
+});
+
+test('run: the Free Casino sells nothing, and owned machines survive a save round trip', async () => {
+  const RUN = await load('src/game/run.ts');
+  const free = RUN.createRun({ seed: 78, mode: 'free' });
+  assert.equal(free.buyPriceOf('craps'), 0);
+  free.dispose();
+  const run = RUN.createRun({ seed: 79, mode: 'debt' });
+  run.earn('coin', 5000, 'test');
+  assert.equal(run.buyMachine('bandit'), true);
+  const snap = run.snapshot();
+  assert.deepEqual(snap.ext.owned, ['bandit']);
+  run.dispose();
+});
+
+test('tycoon copy exists in English and Turkish with the same keys and placeholders', async () => {
+  const S = (await load('src/game/progression.strings.ts')).default;
+  assert.deepEqual(Object.keys(S.tr).sort(), Object.keys(S.en).sort());
+  for (const k of ['buy', 'buy.sub', 'buy.short', 'bought', 'cut', 'empire', 'empire.income', 'summary', 'tag']) {
+    assert.ok(S.en[k] && S.tr[k], k);
+    const ph = (x) => (x.match(/{w+}/g) ?? []).sort().join();
+    assert.equal(ph(S.tr[k]), ph(S.en[k]), `placeholders of ${k}`);
+  }
+});
+
+test('run.gamble port: debit counts as wagered, credit pays raw, the All-In Shot is once per Watch and survives a save', async () => {
+  const RUN = await load('src/game/run.ts');
+  const run = RUN.createRun({ seed: 81, mode: 'debt' });
+  const g = run.gamble;
+  const src = { mid: 'm1', machineId: 'bigone' };
+  run.earn('coin', 100, 'test');
+  const w0 = run.wallet();
+  assert.equal(g.debit(w0 + 1, src, 'gamble'), false, 'cannot debit more than the pocket');
+  assert.equal(g.debit(10, src, 'gamble'), true);
+  assert.equal(run.wallet(), w0 - 10);
+  assert.equal(g.credit(20, src, 'gamble'), 20);
+  assert.equal(run.wallet(), w0 + 10);
+  assert.equal(g.allInUsed(), false);
+  g.markAllIn();
+  assert.equal(g.allInUsed(), true);
+  assert.equal(run.snapshot().ext.allIn, g.watchId());
+  run.dispose();
+});

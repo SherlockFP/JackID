@@ -1,4 +1,4 @@
-/** Progressive floor copy (`src/game/progression.ts`): the NEW toast and the "opens" lines. Keys are `prog.<key>`. */
+/** Progressive floor copy (`src/game/progression.ts`): the NEW toast, the "opens" lines and the tycoon BUY / EMPIRE copy. Keys are `prog.<key>`. */
 export default {
   prefix: 'prog.',
   en: {
@@ -8,6 +8,18 @@ export default {
     'sub.opens': 'Opens on Night {n}',
     'next': 'Next on the floor, Night {n}: {names}',
     'allOpen': 'The whole floor is open.',
+    'tag': 'E: BUY {price}',
+    'buy': 'BUY {name} for {price}',
+    'buy.sub': 'Opens now. It pays you a house cut every Watch. Opens free on Night {n}.',
+    'buy.subNow': 'Opens now and pays you a house cut every Watch. You have {have}.',
+    'buy.short': 'Need {need} more coins to buy {name}.',
+    'bought': 'BOUGHT: {name}. It is yours for the run (+{cut} per Watch).',
+    'refused': 'The House will not sell that.',
+    'cut': 'YOUR FLOOR EARNED +{n} this Watch ({total} tonight)',
+    'empire': 'EMPIRE {n}',
+    'empire.income': '+{n}/Watch',
+    'empire.tip': 'Machines you bought pay a house cut at every Watch settle.',
+    'summary': 'Your floor earned +{n}',
   },
   tr: {
     'toast.new': 'SALONDA YENİ: {names}',
@@ -16,5 +28,17 @@ export default {
     'sub.opens': 'Gece {n} açılır',
     'next': 'Salonda sıradaki, Gece {n}: {names}',
     'allOpen': 'Salonun tamamı açık.',
+    'tag': 'E: SATIN AL {price}',
+    'buy': '{name} SATIN AL: {price}',
+    'buy.sub': 'Hemen açılır. Her Nöbette sana kasa payı öder. Gece {n} bedava açılır.',
+    'buy.subNow': 'Hemen açılır ve her Nöbette sana kasa payı öder. Elinde {have} var.',
+    'buy.short': '{name} için {need} jeton daha lazım.',
+    'bought': 'SATIN ALINDI: {name}. Koşu boyunca senin (Nöbet başına +{cut}).',
+    'refused': 'Kasa bunu satmıyor.',
+    'cut': 'SALONUN KAZANDIRDI +{n} bu Nöbet (bu gece {total})',
+    'empire': 'İMPARATORLUK {n}',
+    'empire.income': '+{n}/Nöbet',
+    'empire.tip': 'Satın aldığın makineler her Nöbet kapanışında kasa payı öder.',
+    'summary': 'Salonun kazandırdı +{n}',
   },
 };

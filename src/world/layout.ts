@@ -88,9 +88,9 @@ export const SLOTS: SlotDef[] = [
   // The Laundry
   S('LAU-01', 'laundry', 'XL', -24.5, 5.0, 90),
   S('LAU-02', 'laundry', 'L', -20.0, -0.95, 0),
-  S('LAU-03', 'laundry', 'M', -28.0, 11.35, 180),
-  S('LAU-04', 'laundry', 'M', -26.7, 11.35, 180),
-  S('LAU-05', 'laundry', 'M', -25.4, 11.35, 180),
+  S('LAU-03', 'laundry', 'M', -28.1, 11.35, 180),
+  S('LAU-04', 'laundry', 'M', -26.65, 11.35, 180),
+  S('LAU-05', 'laundry', 'M', -25.2, 11.35, 180),
   S('LAU-06', 'laundry', 'L', -16.0, 9.0, 180),
   S('LAU-07', 'laundry', 'M', -13.0, 11.35, 180),
   S('LAU-08', 'laundry', 'L', -29.95, 0.0, 90),
@@ -288,7 +288,7 @@ export const NAV_NODES: NavNode[] = [
   { id: 'nave.nw', pos: [-10, -28], zone: 'mouth' }, { id: 'nave.ne', pos: [10, -28], zone: 'mouth' },
   { id: 'nave.sw', pos: [-10, 18], zone: 'lobby' }, { id: 'nave.se', pos: [10, 18], zone: 'lobby' },
   { id: 'd.midway', pos: [-11, -23], zone: 'mouth' }, { id: 'd.boiler', pos: [11, -23], zone: 'mouth' },
-  { id: 'd.cards', pos: [-11, -9], zone: 'well' }, { id: 'd.gallery', pos: [11, -9], zone: 'well' },
+  { id: 'd.cards', pos: [-11, -6.5], zone: 'well' }, { id: 'd.gallery', pos: [11, -6.5], zone: 'well' },   // off the z=-9 column line so patrols miss the (±7,-9) pillars
   { id: 'd.laundry', pos: [-11, 5], zone: 'lobby' }, { id: 'd.wheels', pos: [11, 5], zone: 'lobby' },
   { id: 'd.counting', pos: [-11, 16], zone: 'lobby' }, { id: 'd.parlour', pos: [11, 16], zone: 'lobby' },
   { id: 'd.lift', pos: [-4, -30], zone: 'mouth' },

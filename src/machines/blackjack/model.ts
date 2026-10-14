@@ -226,7 +226,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BlackjackParts
 
   // pit boss, standing behind the spot to the dealer's left
   const pitBoss = kit.mannequin({ style: 'plain', color: 0x1c1c1c, jointColor: 0x3a3a3a, height: 1.82, clip: 'Idle_Loop' });
-  pitBoss.root.position.set(-1.05, 0, -0.62);
+  // pulled in and scaled so the figure (with its arms) stays inside the L footprint (x ±1.3, z ≥ −0.9)
+  pitBoss.root.position.set(-0.86, 0, -0.48);
+  pitBoss.root.scale.setScalar(0.92);
   pitBoss.root.rotation.y = Math.atan2(1.05, 0.42);
   root.add(pitBoss.root);
 

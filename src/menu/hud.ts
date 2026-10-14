@@ -117,10 +117,17 @@ export function createHud(): Hud {
 
   // ── top-right: quota ────────────────────────────────────────────────────────────────────────────
   const quota = h('div', 'hb quota', topR);
+  h('span', 'lbl', quota, t('hud.quota.label'));
   const quotaNum = h('span', 'num', quota, '0 / 0');
   const quotaBar = h('div', 'bar', quota);
   const quotaFill = h('i', '', quotaBar);
   const quotaShort = h('span', 'short', quota, '');
+  // EMPIRE chip (tycoon): machines you bought and the house cut they pay per Watch. Hidden until the first purchase.
+  const empire = h('div', 'hb empire hidden', topR);
+  empire.style.cssText = 'margin-top:4px;padding:2px 8px;color:#ffd34a;font-size:12px;letter-spacing:.06em;white-space:nowrap';
+  empire.title = t('prog.empire.tip');
+  const empireNum = h('span', 'num', empire, '');
+  let empireKey = '';
 
   // ── right edge: buffs ───────────────────────────────────────────────────────────────────────────
   const buffs = h('div', 'hb buffs', root);
@@ -389,6 +396,16 @@ export function createHud(): Hud {
     setText(quotaShort, met || paid ? '' : t('hud.quota.short', { n: money(Math.max(0, due - dep)) }));
   }
 
+  function updateEmpire(): void {
+    const r = app.run as (typeof app.run & { empire?: () => { count: number; perWatch: number } }) | null;
+    const e = r?.empire?.();
+    const key = e ? `${e.count}|${e.perWatch}` : '';
+    if (key === empireKey) return;
+    empireKey = key;
+    setCls(empire, 'hidden', !e || e.count <= 0);
+    if (e && e.count > 0) setText(empireNum, `${t('prog.empire', { n: e.count })}  ${t('prog.empire.income', { n: money(e.perWatch) })}`);
+  }
+
   function updateBuffs(dt: number): void {
     const r = app.run;
     buffRefresh -= dt;
@@ -527,6 +544,7 @@ export function createHud(): Hud {
       updateWallet(dt);
       updateClock();
       updateQuota();
+      updateEmpire();
       updateBuffs(dt);
       updatePulls();
       updateCharms();

@@ -29,7 +29,7 @@ const OFF_X = 0.9;                              // bear-off trays
 const OFF_Z = 0.24;
 
 /** Stool / seat positions: 0 and 1 are the match players, 2 and 3 wait in the queue. */
-export const SEAT_XZ: Array<[number, number]> = [[0.5, 0.82], [-0.5, -0.82], [-0.5, 0.82], [0.5, -0.82]];
+export const SEAT_XZ: Array<[number, number]> = [[0.55, 0.56], [-0.55, -0.56], [-0.55, 0.56], [0.55, -0.56]];   // stools clear of the body edge (z 0.45) and inside z ±0.9
 
 /** Absolute board point 1..24 → floor position on the points (checker slot 0 at the base). */
 export function pointXZ(p: number): { x: number; z: number; front: boolean } {
@@ -219,6 +219,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TavlaParts> {
     });
     const bot = kit.mannequin({ style: 'plain', color: 0x8a6a4a, jointColor: 0x3a3a3a, height: 1.75, clip: 'Sitting_Idle_Loop' });
     bot.root.position.set(sx, 0, sz);
+    bot.root.scale.setScalar(0.75);     // the sitting figure (arms out) is ±0.4 m: scaled so the seats fit the L footprint
     bot.root.rotation.y = Math.atan2(-sx, -sz);      // face the board centre
     bot.setVisible(false);
     root.add(bot.root);

@@ -132,7 +132,7 @@ test('float: the first deposit of a Watch leaves min(30 % of the pocket, 2 cheap
   }
 });
 
-test('float: the run refuses a first deposit that empties the pocket, accepts the rest, and a confirmed ALL goes through', () => {
+test('float: the run refuses any deposit that empties the pocket, and a confirmed ALL goes through', () => {
   const run = RUN.createRun({ seed: 51, mode: 'debt' });
   run.quota.due = 1_000_000;                  // far above these deposits: the quota is not met, so no surplus comes back here
   run.syncQuota();
@@ -140,12 +140,13 @@ test('float: the run refuses a first deposit that empties the pocket, accepts th
   run.watchDeposits = 0;
   const floor = run.depositFloor();
   assert.ok(floor > 0 && floor < 100, `a float is kept (${floor})`);
-  assert.equal(run.deposit(100), false, 'the first deposit may not take the pocket below the float');
+  assert.equal(run.deposit(100), false, 'a deposit may not take the pocket below the float');
   assert.equal(run.coins, 100, 'a refused deposit moves no coins');
   assert.equal(run.deposit(100 - floor), true, 'the room above the float is deposited');
   assert.equal(run.coins, floor);
-  assert.equal(run.depositFloor(), 0, 'the float applies to the first deposit only');
-  assert.equal(run.deposit(floor), true, 'a later deposit may take the rest');
+  assert.ok(run.depositFloor() > 0, 'the float applies to every deposit, not just the first');
+  assert.equal(run.deposit(floor), false, 'a later deposit may not silently take the rest');
+  assert.equal(run.deposit(floor, true), true, 'a confirmed later deposit goes below the float');
   assert.equal(run.coins, 0);
   run.coins = 40;
   run.watchDeposits = 0;
@@ -473,6 +474,8 @@ test('Night 1 deposit float: the first deposit of a Watch keeps up to 9 coins (n
   run.coins = 30;
   assert.equal(run.deposit(25), false, 'depositing past the float is refused without the confirmed ALL');
   assert.ok(run.deposit(21));
-  assert.equal(run.depositFloor(), 0, 'only the first deposit of a Watch keeps a float');
+  assert.ok(run.depositFloor() > 0, 'later deposits of the Watch keep a float too');
+  assert.equal(run.deposit(run.coins), false, 'a later deposit may not silently empty the pocket');
+  assert.equal(run.deposit(run.coins, true), true, 'a confirmed later deposit goes below the float');
   run.dispose();
 });

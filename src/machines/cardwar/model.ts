@@ -21,15 +21,15 @@ import type { Variant } from './rules';
 export const TOP = 0.78;                 // felt height, m
 export const SEATS = 8;
 export const WAR_SEATS = 6;
-export const SEAT_Z = 0.92;              // stools (players)
-export const DEALER_Z = -0.95;           // the Twin and the head posts
+export const SEAT_Z = 0.64;              // stools (players): a stool reaches ±0.26 m, so z ≤ 0.9 needs SEAT_Z ≤ 0.64
+export const DEALER_Z = -0.58;           // the Twin and the head posts (the Twin stays inside z ≥ −0.9)
 export const HEAD_Y = 1.05;              // carved heads, centre height
 export const HEAD_X = 0.45;              // heads at x = ∓HEAD_X
 export const CARD_W = 0.062, CARD_H = 0.088;
 export const SHOE_POS = new THREE.Vector3(-1.02, TOP, -0.12);
 export const DISCARD_POS = new THREE.Vector3(1.02, TOP, -0.12);
 export const PLAQUE_POS = new THREE.Vector3(0, TOP, -0.44);
-export const FELT_W = 2.2, FELT_D = 0.9;
+export const FELT_W = 2.2, FELT_D = 0.84;
 export const LACQUER = 0x7a1418;
 export const CARD_SLOT_Y = TOP + 0.004;
 
@@ -146,14 +146,14 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CardwarParts> 
   const black = pal.black;
 
   // lacquer body 2.40 × 1.10 m, its top at the felt height; black felt panels laid on top
-  kit.box(2.4, TOP - 0.06, 1.1, LACQUER, { pos: [0, (TOP - 0.06) / 2, 0], parent: root, bevel: 0.01 });
-  kit.box(2.44, 0.03, 1.14, pal.gold, { pos: [0, TOP - 0.075, 0], parent: root });
-  const felt = kit.screen({ w: FELT_W, h: FELT_D, px: [460, 180], bezel: black, glow: 0 });
+  kit.box(2.4, TOP - 0.06, 1.0, LACQUER, { pos: [0, (TOP - 0.06) / 2, 0], parent: root, bevel: 0.01 });
+  kit.box(2.44, 0.03, 1.04, pal.gold, { pos: [0, TOP - 0.075, 0], parent: root });
+  const felt = kit.screen({ w: FELT_W, h: FELT_D, px: [460, 176], bezel: black, glow: 0 });
   felt.mesh.position.set(0, TOP + 0.003, 0);
   felt.mesh.rotation.x = -Math.PI / 2;
   root.add(felt.mesh);
   // brass rim on the dealer side
-  kit.box(2.4, 0.012, 0.012, pal.brass, { pos: [0, TOP + 0.001, -0.55], parent: root });
+  kit.box(2.4, 0.012, 0.012, pal.brass, { pos: [0, TOP + 0.001, -0.47], parent: root });
 
   // spot hit targets and chip anchors, 12 per seat (re-laid per variant by index.ts)
   const spotHits: THREE.Mesh[][] = [];
@@ -196,7 +196,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CardwarParts> 
       // seat view: one shared framing (camera offset by half the seat x) that takes in the whole felt, both bet rows,
       // the shoe and discard and the Twin's card zone, clear of the top and bottom HUD strips
       pose: { pos: new THREE.Vector3(x * 0.5, 2.00, 1.90), look: new THREE.Vector3(0, 0.95, -0.20), fov: 70, mouse: 'pick' },   // higher and back: the near stool cushions drop below the frame, the felt and Twin stay in it
-      stand: new THREE.Vector3(x, 0, SEAT_Z + 0.12),
+      stand: new THREE.Vector3(x, 0, SEAT_Z + 0.1),
       avatar: 'sit',
     });
   }
@@ -224,14 +224,14 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CardwarParts> 
   // rail meters on the near rail (cosmetic), one per seat
   const railMeters: THREE.Object3D[] = [];
   for (let i = 0; i < SEATS; i++) {
-    railMeters.push(kit.box(0.02, 0.05, 0.02, pal.brass, { pos: [seatX(i), TOP + 0.03, 0.6], parent: root }));
+    railMeters.push(kit.box(0.02, 0.05, 0.02, pal.brass, { pos: [seatX(i), TOP + 0.03, 0.5], parent: root }));
   }
 
   // seat lamps on the rail
   const seatLamps: LampPart[] = [];
   for (let i = 0; i < SEATS; i++) {
     const l = kit.lamp({ r: 0.02, color: pal.gold, shape: 'dome' });
-    l.root.position.set(seatX(i), TOP + 0.01, 0.66);
+    l.root.position.set(seatX(i), TOP + 0.01, 0.5);
     seatLamps.push(l);
     root.add(l.root);
   }
@@ -285,7 +285,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CardwarParts> 
     root, parts, seats,
     playPose: seats[3].pose,
     colliders: [
-      { min: [-1.22, 0, -0.57], max: [1.22, 0.8, 0.57] },
+      { min: [-1.22, 0, -0.52], max: [1.22, 0.8, 0.52] },
       { min: [-0.3, 0, DEALER_Z - 0.3], max: [0.3, 1.8, DEALER_Z + 0.3] },
     ],
     interact: { min: [-1.3, 0.2, -1.2], max: [1.3, 1.9, 1.05] },

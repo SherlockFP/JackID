@@ -286,6 +286,7 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
       P.latch.visible = true;
       P.reels.forEach((reel) => reel.startSpin(SPIN_RPS));
       this.sfx('reelStart');
+      const spinLoop = this.ctx.audio.play('reelLoop', { loop: true, param: 0.6, vol: 0.7 });   // the reels hum until the last one stops
       const spring = this.anim(0.5, (k) => this.setLever(top * (1 - k) * (1 + 0.12 * Math.sin(k * Math.PI * 3) * (1 - k))));
       this.sfx('ratchet');
       await spring;
@@ -295,11 +296,12 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
       for (let r = 0; r < 3; r++) {
         await this.wait(Math.max(0, STOP_AT[r] - last));
         last = STOP_AT[r];
-        if (this.disposed) return;
+        if (this.disposed) { spinLoop?.stop(0.03); return; }
         P.reels[r].stopAt(facetOf(r, base[r]), 0.32, 0.25);
         this.sfx('reelStop', { vol: 0.9 });
         if (r === 2) fx.shake(0.003, 0.12);
       }
+      spinLoop?.stop(0.06);
       await this.wait(0.35);
       P.latch.visible = false;
       // 4. Lucky Nudge: a solenoid clunk moves one reel one stop
@@ -322,7 +324,6 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
       const bet = ev.credits * ev.denom;
       const tier = juiceTier(ev.pay, bet, ev.tags);
       if (ev.kind === 'top' || ev.forced) fx.popText(P.reels[1].root, this.t('jackpot'), GOLD, { dur: 1.4, rise: 0.4, scale: 1.4, shake: true });
-      this.sfx(ev.pay >= bet * 10 ? 'jackpot' : ev.pay >= bet * 3 ? 'win2' : 'win1');
       const rings = Math.max(1, Math.min(8, Math.floor(ev.pay / (10 * ev.denom))));
       if (!fast) for (let i = 0; i < rings; i++) { this.sfx('bell', { vol: 0.7 }); await this.wait(0.2); }
       P.lampReel.blink(6, 1.2);
@@ -330,6 +331,7 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
         void this.celebrate(tier, { amount: ev.pay, lamps: [P.lampReel, P.lampCoin], restore: () => P.lampReel.setOn(true), fast });
         await countUp(this.ctx, 0, ev.pay, fast ? 0.1 : 1.2 * this.speed, (v) => this.drawLeds(v));
       } else {
+        this.sfx(ev.pay >= bet * 10 ? 'jackpot' : ev.pay >= bet * 3 ? 'win2' : 'win1');   // small wins: celebrate stays quiet, so the jingle plays here
         await this.pourCoins(ev.pay, { bet, fast, onCount: (v) => this.drawLeds(v) });
       }
     } else {

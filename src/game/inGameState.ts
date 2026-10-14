@@ -204,6 +204,27 @@ export function createInGameState(): AppStateHandler<'ingame'> {
    * The Intermission is free-roam: a HUD hint instead of a modal, so the Pawn Window, the phone and the Debt Terminal
    * levers (OPEN THE FLOOR / the Bell) stay reachable. Only the Topside choice (STAY UP / GO BACK DOWN) is a modal.
    */
+  const termAt = new THREE.Vector3();
+  const termFwd = new THREE.Vector3();
+  /** "◀ 12m" toward the Debt Terminal from the player's view; '' when it is not placed. */
+  const terminalBearing = (s: DebtSession): string => {
+    const p = app.player, cam = app.camera;
+    if (!p || !cam) return '';
+    let best = Infinity, bx = 0, bz = 0;
+    for (const m of s.world.machines()) {
+      if (m.def.id !== 'debt_terminal') continue;
+      const root = (m as unknown as { model?: { root?: THREE.Object3D } }).model?.root;
+      if (!root) continue;
+      root.getWorldPosition(termAt);
+      const d = Math.hypot(termAt.x - p.pos.x, termAt.z - p.pos.z);
+      if (d < best) { best = d; bx = termAt.x; bz = termAt.z; }
+    }
+    if (!Number.isFinite(best)) return '';
+    cam.getWorldDirection(termFwd);
+    const lateral = -termFwd.z * (bx - p.pos.x) + termFwd.x * (bz - p.pos.z);
+    return ` ${lateral >= 0 ? '▶' : '◀'} ${Math.round(best)}m`;
+  };
+
   const syncHint = (s: DebtSession): void => {
     const timed = s.run.rules.timed && !s.run.over;
     const inter = timed && s.run.shift.phase === 'intermission';
@@ -212,7 +233,8 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     wasPaid = paid;
     // seated (or walking up to a seat, or in machine mode): the hint never sits over the Pawn or terminal view
     const seated = app.player?.seat != null || s.world.seat != null || app.input.mode === 'machine';
-    interHint?.set(inter && !s.run.topsideOpen && !seated && !paused && !ending ? t(paid ? 'interm.hintFloor' : 'interm.hintBell') : null);
+    const show = inter && !s.run.topsideOpen && !seated && !paused && !ending;
+    interHint?.set(show ? t(paid ? 'interm.hintFloor' : 'interm.hintBell') + (paid ? '' : terminalBearing(s)) : null);
   };
 
   /** Topside panel follows the run: open while the Topside choice is up, closed otherwise. */

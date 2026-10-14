@@ -436,15 +436,15 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
     this.centreJp = ev.jp;
     this.drawLeds(ev.gross);
     if (ev.jp && ev.gross > 0) {
-      this.sfx('jackpot', { vol: 1 });
+      if (!tierAtLeast(tier, 'medium')) this.sfx('jackpot', { vol: 1 });   // medium+: celebrate plays the jackpot jingle
       this.sfx('jackpotSiren', { vol: 0.7 });
       this.ctx.fx.glow(this.model.anchors.label, GOLD, 1.2, 1.5);
       this.ctx.fx.popText(this.model.anchors.label, this.t('jackpot'), GOLD, { dur: 1.2, rise: 0.3, scale: 1.4 });
     } else if (ev.value >= 3) {
-      this.sfx('win2');
+      if (!tierAtLeast(tier, 'medium')) this.sfx('win2');   // medium+: celebrate plays the jingle
       this.ctx.fx.popText(this.model.anchors.label, this.t('multLabel', { n: ev.value }), GREEN, { dur: 0.9, rise: 0.25, scale: 1.2 });
     } else if (ev.value === 1) {
-      this.sfx('chime');
+      if (!tierAtLeast(tier, 'medium')) this.sfx('chime');
     } else {
       this.sfx('buzzer', { vol: 0.5, pitch: -4 });
     }

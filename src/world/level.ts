@@ -390,12 +390,14 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   }
   const furnace = buildFurnace(kit, tex, { pos: [-30, 0, 18.5], rotY: 90 });
   root.add(furnace.root);
+  statics.push({ box: box3(-30.6, 0, 17.7, -29.4, 2.4, 19.3), tag: 'solid' });   // rotY 90: the 1.6 m face lies along z
   lights.push({ id: 'counting:furnace', pos: [-29.1, 0.8, 18.5], color: 0xff5a1a, intensity: 1.0, range: 5, flicker: 'CANDLE', zone: 'counting' });
   anchors.furnace = furnace.root;
 
   // ── the Collector's chair, the brass X plate, JACK·ID ────────────────────────────────────────
   const chair = buildCollectorChair(kit, { pos: [29.5, 0, 19], rotY: 270 });
   root.add(chair);
+  statics.push({ box: box3(29.2, 0, 18.7, 29.8, 1.0, 19.3), tag: 'solid' });
   anchors.collector = chair;
   const xPlate = buildXPlate(kit, { pos: [0, 0, -27] });
   root.add(xPlate);
@@ -435,10 +437,10 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   // ── spawns (GDD §8.8): SP-0 first, then the burst arc; mouth rows; lift car; trapdoor ghost ──
   const spawns: Partial<Record<'solo' | 'mouth' | 'lift' | 'ghost', SpawnPoint[]>> = {
     // Solo spawns face THE BIG ONE (WELL-01 dais), so a new player sees the marquee first. Forward is (-sin yaw, -cos yaw).
-    solo: [[0, -7.8], [0.5, -7.77], [-0.5, -7.77], [1.45, -7.51], [-1.45, -7.51], [2.31, -7.01], [-2.31, -7.01], [3.01, -6.31], [-3.01, -6.31]]
+    solo: [[0, -7.8], [0.65, -7.77], [-0.65, -7.77], [1.45, -7.51], [-1.45, -7.51], [2.31, -7.01], [-2.31, -7.01], [3.01, -6.31], [-3.01, -6.31]]
       .map(([x, z]) => ({ pos: [x, 0, z] as V3, yaw: Math.atan2(-(WELL_DAIS.x - x), -(WELL_DAIS.z - z)) })),
     mouth: [-27.5, -26.3].flatMap((z) => [-6.25, -4.75, -3.25, -1.75].map((x) => ({ pos: [x, 0, z] as V3, yaw: Math.PI }))),
-    lift: [-31.8, -30.9].flatMap((z) => [-4.75, -4.25, -3.75, -3.25].map((x) => ({ pos: [x, 0, z] as V3, yaw: Math.PI }))),
+    lift: [-31.8, -30.9].flatMap((z) => [-4.75, -4.25, -3.75, -3.25].map((x) => ({ pos: [x, 0, z] as V3, yaw: Math.PI }))),   // 8 car spots (8-player rides); 0.1 m neighbour overlap resolves on the first step
     ghost: [{ pos: [HERO_PLATE.x, 1.0, HERO_PLATE.z], yaw: 0 }],
   };
 

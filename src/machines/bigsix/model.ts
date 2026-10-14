@@ -47,8 +47,8 @@ export type BigSixParts = {
   layout: THREE.Mesh;
 };
 
-export const WHEEL_R = 0.9;
-export const HUB = { x: 0, y: 2.15, z: -0.80 } as const;
+export const WHEEL_R = 0.82;
+export const HUB = { x: 0, y: 1.40, z: -0.80 } as const;   // wheel spans y 0.58…2.22: the frame tops out at 2.43 (L slot)
 export const TOP = 0.95;                    // counter top height
 export const SPOT_X = [-0.90, -0.54, -0.18, 0.18, 0.54, 0.90] as const;   // six symbol spots, left→right from the player
 export const SEAT_X = [-0.945, -0.675, -0.405, -0.135, 0.135, 0.405, 0.675, 0.945] as const;
@@ -66,10 +66,10 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BigSixParts> {
   const at = (x: number, y: number, z: number): { pos: [number, number, number]; parent: THREE.Object3D } => ({ pos: [x, y, z], parent: root });
 
   // ── static shell (flat colours, merged) ──────────────────────────────────────────────────────
-  kit.box(2.60, 3.10, 0.10, walnut, at(0, 1.55, -0.90));                  // north wall frame
-  kit.box(0.10, 3.10, 0.90, walnut, at(-1.25, 1.55, -0.45));               // frame pillars
-  kit.box(0.10, 3.10, 0.90, walnut, at(1.25, 1.55, -0.45));
-  kit.box(2.60, 0.10, 0.90, walnut, at(0, 3.10, -0.45));                  // top cornice
+  kit.box(2.60, 2.40, 0.06, walnut, at(0, 1.20, -0.87));               // north wall frame (2.43 m: inside the L slot height)
+  kit.box(0.10, 2.40, 0.90, walnut, at(-1.25, 1.20, -0.45));              // frame pillars
+  kit.box(0.10, 2.40, 0.90, walnut, at(1.25, 1.20, -0.45));
+  kit.box(2.60, 0.10, 0.90, walnut, at(0, 2.35, -0.45));                    // top cornice
   kit.box(2.40, 0.95, 0.60, walnut, at(0, TOP / 2, 0.30));                // betting counter body
   kit.box(2.44, 0.05, 0.64, pal.black, at(0, TOP - 0.025, 0.30));         // brass-edged counter lip
   kit.box(2.36, 0.02, 0.56, pal.felt, at(0, TOP + 0.01, 0.30));           // green felt inlay (under the layout)
@@ -124,7 +124,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BigSixParts> {
   kit.box(0.10, 0.10, 0.03, pal.leather, { pos: [0, -0.05, 0], parent: flapper2 });
 
   const multiplierPeg = kit.lamp({ r: 0.022, color: RIM_HEX, shape: 'dome' });
-  multiplierPeg.root.position.set(HUB.x + 0.30, HUB.y + WHEEL_R + 0.10, HUB.z + 0.06);
+  multiplierPeg.root.position.set(HUB.x + 0.30, HUB.y + WHEEL_R + 0.08, HUB.z + 0.06);
   root.add(multiplierPeg.root);
 
   // counter: six lit symbol spots with engraved plates
@@ -161,7 +161,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BigSixParts> {
     seatLamps.push(l);
     seats.push({
       // seat view: backed off to 2.3 m with a wide FOV so the wheel (to 3.11, under the top band) and the counter spots fit
-      pose: { pos: new THREE.Vector3(sx * 0.5, 1.75, 2.30), look: new THREE.Vector3(0, 1.53, -0.80), fov: 76, mouse: 'pick' },
+      pose: { pos: new THREE.Vector3(sx * 0.5, 1.75, 2.30), look: new THREE.Vector3(0, 1.45, -0.80), fov: 76, mouse: 'pick' },
       stand: new THREE.Vector3(sx, 0, 1.10),
       avatar: 'stand',
     });
@@ -183,7 +183,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BigSixParts> {
   // anchors
   const speaker = new THREE.Object3D(); speaker.position.set(0, 1.0, 0.62); root.add(speaker);
   const prompt = new THREE.Object3D(); prompt.position.set(0, 1.25, 0.9); root.add(prompt);
-  const marqueeTop = new THREE.Object3D(); marqueeTop.position.set(0, 3.2, -0.85); root.add(marqueeTop);
+  const marqueeTop = new THREE.Object3D(); marqueeTop.position.set(0, 2.42, -0.85); root.add(marqueeTop);
   const servicePlate = new THREE.Object3D(); servicePlate.position.set(1.36, 0.9, 0.3); root.add(servicePlate);
   const flapperCam = new THREE.Object3D(); flapperCam.position.set(0, 2.6, -0.2); root.add(flapperCam);
   const coinOut = new THREE.Object3D(); coinOut.position.set(0, TOP + 0.02, 0.45); root.add(coinOut);
@@ -202,12 +202,12 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BigSixParts> {
   });
 
   const colliders: LocalAABB[] = [
-    { min: [-1.30, 0, -0.90], max: [1.30, 3.12, -0.80] },   // wheel frame
+    { min: [-1.30, 0, -0.90], max: [1.30, 2.40, -0.80] },   // wheel frame
     { min: [-1.20, 0, 0.00], max: [1.20, 0.95, 0.60] },     // counter
   ];
   return {
     root, parts, seats, playPose: seats[3].pose, colliders,
-    interact: { min: [-1.30, 0.2, -0.95], max: [1.30, 3.20, 0.95] },
+    interact: { min: [-1.30, 0.2, -0.95], max: [1.30, 2.45, 0.95] },
     anchors: {
       speaker, prompt, label: prompt, marqueeTop, servicePlate, flapperCam, light, coinOut, dealer,
     },

@@ -160,6 +160,7 @@ export function celebrate(host: JuiceHost, tier: JuiceTier, o: CelebrateOpts = {
 
   if (tier === 'push') {
     ctx.audio.play('coin', { pos: speaker });
+    ctx.audio.winJingle('push', { pos: speaker });   // the stake-back tick, not silence
   } else {
     // every win is felt: flash, pour and pop scale with the multiplier (spectators see their attenuated tier's weight)
     const given = o.mult ?? (o.bet && o.bet > 0 && o.amount ? o.amount / o.bet : 0);

@@ -138,7 +138,7 @@ function build(tex: TexGen): Presets {
     leather: (c, tufted = true) => (tufted ? mat(tintFor('tufted', c), v('tufted')) : mat(c, tex.noise(0xffffff, { size: 16, amount: 0.07, seed: 3 }))),
     velvet: (c) => mat(tintFor('velvet', c), v('velvet')),
     /** The single felt source: texgen (softened, DECISIONS G). */
-    felt: (c) => mat(0xffffff, tag(tex.felt(c), 0.5)),
+    felt: (c) => psx({ color: 0xffffff, map: tag(tex.felt(c), 0.5), vertexColors: true, snap: false, affine: false }),   // big flat top: no vertex snap / affine warp (decals on it are unsnapped too)
     metal: (c) => mat(tintFor('brushed', c), v('brushed')),
     brass: () => mat(tintFor('brushed', mixHex(PAL.BRASS, PAL.GOLD, 0.3)), v('brushed')),
     gold: () => mat(tintFor('brushed', PAL.GOLD), v('brushed')),

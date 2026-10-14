@@ -1,0 +1,65 @@
+/* Risk layer overlay (game/gambleUi.ts): double or nothing ladder, high stakes frame, all-in warning. Mounted in #ui. */
+.gmb { --su: var(--u, 4px); position: absolute; inset: 0; pointer-events: none; font-family: var(--f-body, 'VT323', monospace); color: #f4f0dc; text-shadow: 0 calc(var(--su) * 0.5) 0 #000; image-rendering: pixelated; z-index: 6; }
+.gmb [hidden] { display: none !important; }
+.gmb-pan { background: rgba(6, 9, 6, 0.94); box-shadow: 0 0 0 calc(var(--su) * 0.5) #000 inset; }
+
+/* high stakes: gold frame + banner */
+.gmb-hs { position: absolute; inset: 0; border: calc(var(--su) * 1.5) solid #ffd040; box-shadow: 0 0 calc(var(--su) * 10) #ffb000 inset; animation: gmb-gold 1.6s steps(4) infinite; }
+.gmb-hs-t { position: absolute; top: calc(var(--su) * 1.5); right: calc(var(--su) * 3); padding: calc(var(--su) * 1) calc(var(--su) * 3); background: #ffd040; color: #1a1200; text-shadow: none; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 4); }
+.gmb-hs-w { position: absolute; bottom: calc(var(--su) * 2); left: 50%; transform: translateX(-50%); font-size: calc(var(--su) * 5.5); color: #ffd040; white-space: nowrap; }
+@keyframes gmb-gold { 50% { box-shadow: 0 0 calc(var(--su) * 16) #ffd040 inset; } }
+
+/* the offer chip after a win */
+.gmb-offer { position: absolute; left: 50%; bottom: calc(var(--su) * 62); transform: translateX(-50%); padding: calc(var(--su) * 2) calc(var(--su) * 5); border: calc(var(--su) * 1.5) solid #ffd040; text-align: center; white-space: nowrap; animation: gmb-pulse 0.6s steps(2) infinite; }
+.gmb-offer-a { display: block; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 5); color: #7dff7a; }
+.gmb-offer-k { display: block; font-size: calc(var(--su) * 8); color: #ffd040; margin-top: calc(var(--su) * 1); }
+.gmb-offer-bar { display: block; height: calc(var(--su) * 1.5); background: #ffd040; margin-top: calc(var(--su) * 1.5); transform-origin: left; }
+.gmb-offer-bar.run { animation: gmb-drain linear forwards; }
+@keyframes gmb-pulse { 50% { border-color: #fff6c0; } }
+@keyframes gmb-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* the ladder */
+.gmb-ladder { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: calc(var(--su) * 118); max-width: 96%; padding: calc(var(--su) * 4); border: calc(var(--su) * 2) solid #ffd040; text-align: center; }
+.gmb-title { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 5); color: #ffd040; }
+.gmb-rungs { display: flex; justify-content: center; gap: calc(var(--su) * 2); margin: calc(var(--su) * 3) 0; }
+.gmb-rung { min-width: calc(var(--su) * 18); padding: calc(var(--su) * 1.5) calc(var(--su) * 2); background: #1b261b; border: calc(var(--su) * 1) solid #2c3a2c; font-size: calc(var(--su) * 7); color: #6b786b; }
+.gmb-rung.done { color: #7dff7a; border-color: #7dff7a; }
+.gmb-rung.cur { color: #1a1200; background: #ffd040; border-color: #ffd040; }
+.gmb-card { position: relative; width: calc(var(--su) * 34); height: calc(var(--su) * 46); margin: 0 auto; perspective: calc(var(--su) * 200); }
+.gmb-card-in { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform 0.45s steps(6); }
+.gmb-card.up .gmb-card-in { transform: rotateY(180deg); }
+.gmb-face, .gmb-back { position: absolute; inset: 0; backface-visibility: hidden; display: flex; align-items: center; justify-content: center; flex-direction: column; border: calc(var(--su) * 1.5) solid #000; }
+.gmb-back { background: repeating-linear-gradient(45deg, #6a1020 0 calc(var(--su) * 2), #2a0610 calc(var(--su) * 2) calc(var(--su) * 4)); }
+.gmb-face { background: #f4f0dc; transform: rotateY(180deg); color: #111; text-shadow: none; }
+.gmb-face.red { color: #c01830; }
+.gmb-face-r { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 8); }
+.gmb-face-s { font-size: calc(var(--su) * 16); line-height: 1; }
+.gmb-card.tense .gmb-card-in { animation: gmb-shake 0.18s steps(2) infinite; }
+@keyframes gmb-shake { 0% { transform: translate(calc(var(--su) * -0.7), 0) rotate(-1.5deg); } 100% { transform: translate(calc(var(--su) * 0.7), calc(var(--su) * 0.5)) rotate(1.5deg); } }
+.gmb-card.win .gmb-face { box-shadow: 0 0 calc(var(--su) * 8) #7dff7a; }
+.gmb-card.lose .gmb-face { box-shadow: 0 0 calc(var(--su) * 8) #ff4040; }
+.gmb-pot { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 8); margin-top: calc(var(--su) * 3); color: #7dff7a; }
+.gmb-pot.pop { animation: gmb-pop 0.3s steps(3); }
+.gmb-pot.dead { color: #ff4040; }
+@keyframes gmb-pop { 50% { transform: scale(1.25); } }
+.gmb-next { font-size: calc(var(--su) * 6); color: #b8c0a8; }
+.gmb-btns { display: flex; justify-content: center; gap: calc(var(--su) * 4); margin-top: calc(var(--su) * 3); }
+.gmb-pick { padding: calc(var(--su) * 2) calc(var(--su) * 5); border: calc(var(--su) * 1.5) solid #000; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 5); }
+.gmb-pick.red { background: #c01830; color: #fff; }
+.gmb-pick.black { background: #111; color: #fff; border-color: #888; }
+.gmb-hint { font-size: calc(var(--su) * 5.5); color: #b8c0a8; margin-top: calc(var(--su) * 2); }
+.gmb-collect { font-size: calc(var(--su) * 7); color: #ffd040; margin-top: calc(var(--su) * 2); }
+.gmb-say { min-height: calc(var(--su) * 8); font-size: calc(var(--su) * 7); margin-top: calc(var(--su) * 2); }
+.gmb-say.good { color: #7dff7a; } .gmb-say.bad { color: #ff4040; }
+
+/* all-in warning */
+.gmb-allin { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); width: calc(var(--su) * 126); max-width: 96%; padding: calc(var(--su) * 4); border: calc(var(--su) * 2.5) solid #ff3030; text-align: center; animation: gmb-alarm 0.5s steps(2) infinite; }
+.gmb-allin-t { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 6); color: #ff4040; }
+.gmb-allin-w { font-size: calc(var(--su) * 7.5); margin: calc(var(--su) * 3) 0; line-height: 1.05; }
+.gmb-allin-c { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 5); color: #ffd040; }
+.gmb-allin-x { font-size: calc(var(--su) * 5.5); color: #b8c0a8; margin-top: calc(var(--su) * 2); }
+@keyframes gmb-alarm { 50% { border-color: #ffd040; } }
+
+/* floating result line */
+.gmb-flash { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); padding: calc(var(--su) * 2) calc(var(--su) * 5); border: calc(var(--su) * 1.5) solid currentColor; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 6); white-space: nowrap; }
+.gmb-flash.good { color: #7dff7a; } .gmb-flash.bad { color: #ff4040; } .gmb-flash.gold { color: #ffd040; }

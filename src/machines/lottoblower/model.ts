@@ -48,8 +48,8 @@ export const SPHERE_R = 0.32;
 export const MOON_C = new THREE.Vector3(0.12, BASE_H + 0.14, -0.2);
 export const MOON_R = 0.14;
 export const KIOSK_X = 0.44, KIOSK_TOP = 1.0;
-export const KIOSK_CRT = new THREE.Vector3(KIOSK_X, 1.12, 0.12);
-export const LEVER_POS = new THREE.Vector3(0.575, 0.62, 0.05);
+export const KIOSK_CRT = new THREE.Vector3(KIOSK_X, 1.154, 0.12);   // bottom sits on the pedestal top (CRT scaled 0.7 below)
+export const LEVER_POS = new THREE.Vector3(0.555, 0.62, 0.05);
 export const WINNERS_POS = new THREE.Vector3(BASE_X, 0.8, 0.46);
 export const JACKPOT_POS = new THREE.Vector3(BASE_X, 1.92, -0.25);
 /** Standing spots in front of the kiosk (x per seat). */
@@ -159,6 +159,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<LottoParts> {
   // ── ticket kiosk: CRT + DRAW lever ──
   const crt = kit.crtMonitor({ w: 0.3, h: 0.23, px: [160, 120], scheme: 'amber', glow: 0.8 });
   crt.root.position.set(KIOSK_CRT.x, KIOSK_CRT.y, KIOSK_CRT.z);
+  crt.root.scale.setScalar(0.7);   // housing + side brackets were 0.52 m wide: x 0.26..0.62 keeps the footprint
   root.add(crt.root);
   const lever = kit.lever({ length: 0.4, knob: pal.red, side: 'right' });
   lever.root.position.set(LEVER_POS.x, LEVER_POS.y, LEVER_POS.z);
