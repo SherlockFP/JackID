@@ -419,7 +419,11 @@ class Run {
   }
 }
 
-interface Pending { def: CutsceneDef; opts: CutscenePlayOpts; resolvers: Array<(r: CutsceneResult) => void> }
+interface Pending { def: CutsceneDef; opts: CutscenePlayOpts; resolvers: Array<(r: CutsceneResult) => void>; skipChain?: boolean }
+
+/** A scene with a choice gate cannot be skipped through: its branch has to be picked by the player. */
+const hasChoice = (def: CutsceneDef): boolean =>
+  def.tracks.some((tr) => tr.kind === 'gate' && tr.cues.some((c) => c.until === 'choice'));
 
 export function createCutscenePlayer(): CutscenePlayer {
   const defs = new Map<CutsceneId, CutsceneDef>();
@@ -436,7 +440,10 @@ export function createCutscenePlayer(): CutscenePlayer {
     cur = p;
     const r = new Run(p.def, p.opts, host);
     run = r;
-    try { r.start(); } catch (e) { log.error('cutscene', `${p.def.id} failed to start`, e); r.finish('aborted'); }
+    try {
+      r.start();
+      if (p.skipChain) r.finish('skipped');                      // the player skipped the scene before this one in the chain
+    } catch (e) { log.error('cutscene', `${p.def.id} failed to start`, e); r.finish('aborted'); }
   }
 
   const host: RunHost = {
@@ -450,7 +457,12 @@ export function createCutscenePlayer(): CutscenePlayer {
       for (const fn of [...endFns]) { try { fn(id, result); } catch (e) { log.error('cutscene', 'onEnd', e); } }
       const next = r.def.chain ? defs.get(r.def.chain) : undefined;
       if (r.def.chain && !next) log.warn('cutscene', `${id}: chain target "${r.def.chain}" is not registered`);
-      if (next && result !== 'aborted') queue.unshift({ def: next, opts: { vars: { ...r.vars }, seed: p.opts.seed }, resolvers: p.resolvers });
+      // One hold skips the whole chain (intro → quota talk): a skipped scene skips its follow-up too, unless the follow-up
+      // needs a branch pick (a choice gate) or opts out of applying its state on skip.
+      if (next && result !== 'aborted') {
+        const skipChain = result === 'skipped' && next.applyOnSkip !== false && !hasChoice(next);
+        queue.unshift({ def: next, opts: { vars: { ...r.vars }, seed: p.opts.seed }, resolvers: p.resolvers, skipChain });
+      }
       else for (const res of p.resolvers) res(result);
       pump();
       if (!run) void app.ui.fade(0, FADE_BACK);                  // last scene: black → world

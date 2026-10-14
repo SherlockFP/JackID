@@ -10,6 +10,7 @@
 //   node scripts/sim/run.mjs --quotas 40,56,80,115,165,240,350,520 --si 1,2,3,4,6,9,13,20 --interest 0.60,0.30,...
 //                                                    try a schedule without editing schedule.ts (8 values each; also --pulls, --start)
 //   node scripts/sim/run.mjs --calibrate --bots rotator   set each Night's quota to the --target survival curve, then print the tables
+//   node scripts/sim/run.mjs --no-float              the House float off (F(n) = 12 + 6n topped up at each Night start is ON by default)
 //
 // DESIGN (director's decision): base machines are slightly negative EV (RTP 0.90-0.96 before Lamps). The player turns
 // +EV only through decisions: Hot Lamp (x1.5), rotating off Tilt, interest on deposits, phone deals and the charms and
@@ -78,6 +79,7 @@ const VERBOSE = args.includes('--verbose');
 const BRIEF = args.includes('--brief');
 const TRACE = Number(argVal('--trace', 0)) | 0;
 const NO_FAVOUR = args.includes('--no-favour');
+const NO_FLOAT = args.includes('--no-float');   // the House float (F(n) = 12 + 6n at each Night start) off, for comparison
 
 /** The machines of the player's floor, one per family. Index 0 is the camper's machine (bigone). */
 const WORLD_IDS = ['bigone', 'blackjack', 'dicetower', 'roulette', 'plinko', 'elevator'];
@@ -86,6 +88,8 @@ const TOT = { wagered: 0, credited: 0, plays: 0, loans: 0, runsWithLoan: 0 };
 /** Realized value per Night (credited / wagered), so the table shows where the Lamp edge comes from. */
 const NIGHT_RTP = { wagered: new Array(8).fill(0), credited: new Array(8).fill(0) };
 const CHARM_COUNT = { sum: new Array(8).fill(0), n: new Array(8).fill(0) };
+/** House float coins advanced per Night (summed over runs; index = Night - 1). */
+const FLOAT_PAID = new Array(8).fill(0);
 const BOUGHT = new Map();
 
 // Tuning overrides (comma lists of 8 values, one per Night). Without them the schedule.ts numbers are used.
@@ -435,6 +439,8 @@ function playRun(bot, runIdx) {
     out.paid.push(nd.no);
     out.pocket.push(S.pocket);
     CHARM_COUNT.sum[idx] += S.held.length; CHARM_COUNT.n[idx] += 1;
+    // Start of the next Night (openFloor): the House float tops the pocket up to F(n), free and not in the quota.
+    if (idx + 1 < SCH.BASE_RUN_NIGHTS && !NO_FLOAT) { const top = ECO.houseFloatTopUp(S.pocket, idx + 1); S.pocket += top; FLOAT_PAID[idx + 1] += top; }
     // Dawn visit: the Pawn shows the next Night's stock (priced at this Night's SI).
     if (idx + 1 < SCH.BASE_RUN_NIGHTS) { S.shopNight = idx + 1; S.shopWatch = 0; shop(S, bot, dueOf(NIGHTS[idx + 1])); }
   }
@@ -487,7 +493,7 @@ for (const bot of BOTS) {
   const t0 = Date.now();
   TOT.wagered = 0; TOT.credited = 0; TOT.plays = 0; TOT.loans = 0; TOT.runsWithLoan = 0;
   NIGHT_RTP.wagered.fill(0); NIGHT_RTP.credited.fill(0);
-  CHARM_COUNT.sum.fill(0); CHARM_COUNT.n.fill(0); BOUGHT.clear();
+  CHARM_COUNT.sum.fill(0); CHARM_COUNT.n.fill(0); BOUGHT.clear(); FLOAT_PAID.fill(0);
   const reached = new Array(SCH.BASE_RUN_NIGHTS).fill(0);
   const pockets = Array.from({ length: SCH.BASE_RUN_NIGHTS }, () => []);
   for (let r = 0; r < RUNS; r++) {
@@ -508,6 +514,7 @@ for (const bot of BOTS) {
   if (BRIEF) { console.log(`${bot.padEnd(8)} reach% ${rows.map((r) => String(Math.round(r.reachPct)).padStart(3)).join(' ')}  pocket ${rows.map((r) => fmtCoins(r.medianPocket)).join(' ')}  charms ${rows.map((r) => r.charms).join(' ')}  rtp ${results[bot + '_rtp']}`); continue; }
   console.log(`\n${bot}  (${RUNS} runs, ${((Date.now() - t0) / 1000).toFixed(1)} s${SCALE_LADDER ? ', ladder scaled by SI' : ''}${NO_CHARMS ? ', no charms' : ''}${bot === 'camper' ? '' : `, stake ${BET_FRAC * 100} % of pocket`})`);
   console.log(`realized RTP ${results[bot + '_rtp']}  plays/run ${(TOT.plays / RUNS).toFixed(1)}  rescue loans/run ${(TOT.loans / RUNS).toFixed(2)}`);
+  console.log(`house float per run (N2..N8): ${FLOAT_PAID.slice(1).map((v) => (v / RUNS).toFixed(1)).join(' ')}${NO_FLOAT ? '  (off)' : ''}`);
   console.log('Night  quota     reach%  cond%   median pocket (runs that paid)   realized RTP   charms held');
   for (const row of rows) {
     console.log(`N${String(row.night).padEnd(4)} ${fmtCoins(row.quota).padEnd(9)} ${String(row.reachPct).padStart(6)}  ${String(row.condPct).padStart(6)}   ${fmtCoins(row.medianPocket).padEnd(30)} ${String(row.nightRtp).padEnd(14)} ${row.charms}`);

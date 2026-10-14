@@ -288,6 +288,7 @@ export function createHud(): Hud {
     setText(walletNum, `${coinSym()} ${money(roll.shown)}`);
     // red only while the pocket cannot cover the last thing asked for (the run refused it for funds)
     setCls(wallet, 'short', r.lastRefusal() === 'funds');
+    setCls(pulls, 'short', r.lastRefusal() === 'pulls');
     setText(tixNum, String(r.balance('ticket', self())));
     const perMin = r.tycoon.incomePerSec() * 60;
     setCls(staff, 'hidden', perMin <= 0);

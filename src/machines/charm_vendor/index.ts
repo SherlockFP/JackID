@@ -87,7 +87,7 @@ export const def: MachineDef = {
       nItem: "ITEM",
       cPick: "PICK",
       cBuy: "BUY",
-      cReroll: "REROLL {n} TIX",
+      cReroll: "REROLL · {n} TIX",
       cLock: "LOCK {n} TIX",
       cCurse: "UNCURSE {n} TIX",
       cRules: "RULES",
@@ -133,7 +133,7 @@ export const def: MachineDef = {
       nItem: "EŞYA",
       cPick: "SEÇ",
       cBuy: "AL",
-      cReroll: "YENİLE {n} BİLET",
+      cReroll: "YENİLE · {n} BİLET",
       cLock: "KİLİTLE {n} BİLET",
       cCurse: "LANETİ AÇ {n} BİLET",
       cRules: "KURALLAR",
@@ -719,7 +719,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     if (open) {
       ctrl.push({ key: `${this.k('left')}/${this.k('right')}`, label: { k: 'm.charm_vendor.cPick' }, action: 'left' });
       if (canBuy) ctrl.push({ key: this.k('primary'), label: { k: this.armed?.i === this.cursor ? 'm.charm_vendor.cConfirm' : 'm.charm_vendor.cBuy' }, action: 'primary', primary: true });
-      if (pawn && pawn.canReroll() && tix >= pawn.rerollCost()) {
+      // always listed while rerolling is possible, cost included, so the price is known before the press (an unaffordable press says NO TICKETS)
+      if (pawn && pawn.canReroll()) {
         ctrl.push({
           key: this.k('alt'), action: 'alt',
           label: pawn.rerollCost() === 0 ? { k: 'shop.rerollFree' } : { k: 'm.charm_vendor.cReroll', v: { n: pawn.rerollCost() } },

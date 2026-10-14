@@ -63,7 +63,7 @@ import { createRng, hashSeed, randomSeed, type Rng } from '@/core/rng';
 import { disposeObject3D } from '@/core/dispose';
 import { log } from '@/core/log';
 import { clamp } from '@/core/math';
-import { t as tr, type I18nVars } from '@/core/i18n';
+import { t as tr, fmtCoins, type I18nVars } from '@/core/i18n';
 import { SLOT_DIMS, type MachineContext, type MachineDef, type MachineEnvelope, type MachineEvent, type MachineModel, type PresentCtx } from './types';
 import { juiceTier, tierTags, toWinTier, type JuiceTier } from './tiers';
 import * as juice from './juice';
@@ -354,12 +354,18 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   }
 
   // ── economy ──
-  /** Why a bet failed: the stake-confirm prompt (first press on a big stake), the stake cap, or no funds. */
+  /**
+   * Why a bet failed (`run.lastRefusal()`): no pulls left this Vardiya, the stake-confirm prompt (first press on a big
+   * stake), the stake limit (above the cap, or below the minimum), the floor closed, or not enough coins.
+   */
   private toastRefusal(amount: number): void {
     const run = this.ctx.run;
     const why = run.lastRefusal();
     if (why === 'confirm') this.toast(tr('stake.confirm', { amount, pocket: run.wallet() }), 'warn');
-    else if (why === 'limit') this.toast(tr('stake.cap', { max: run.betLimits(this.def.id, this.id).max }), 'warn');
+    else if (why === 'pulls') this.toast(tr('stake.pulls'), 'warn');
+    else if (why === 'phase') this.toast(tr('stake.phase'), 'warn');
+    else if (why === 'limit' && amount < this.def.minBet) this.toast(tr('stake.minBet', { min: fmtCoins(this.def.minBet), pocket: fmtCoins(run.wallet()) }), 'warn');
+    else if (why === 'limit') this.toast(tr('stake.cap', { max: fmtCoins(run.betLimits(this.def.id, this.id).max) }), 'warn');
     else this.toast(tr('common.noFunds'), 'bad');
   }
   /**
@@ -368,6 +374,11 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
    */
   protected beginRound(bet: number = this.bet): boolean {
     if (this.busy || this._roundOpen) return false;
+    // the current bet outruns the pocket: step it down first (toasted); with no affordable stake there is no round
+    if (bet === this.bet && this.costOf(bet) > this.ctx.run.wallet()) {
+      if (!this.fitBet()) { this.sfx('buzzer'); return false; }
+      bet = this.bet;
+    }
     if (!this.ctx.run.bet(bet, this.src)) {
       this.toastRefusal(bet);
       this.sfx('buzzer');
@@ -402,6 +413,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     this._roundOpen = false;
     const credited = this.ctx.run.win(r.gross, this.src, meta);
     this.busy = false;
+    if (this.isLocalOccupant) this.fitBet();          // a lost round can leave the pocket under the current bet
     if (this._releaseRequested) this.standUp();
     return credited;
   }
@@ -445,6 +457,27 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     const w = this.ctx.run.wallet();
     const ok = this.betLadder().filter((v) => v <= w);
     this.bet = ok.length ? ok[ok.length - 1] : this.def.minBet;
+  }
+  /** Coins the run charges for a stake of `amount` (`bet.costMult`, the same fold `run.bet()` applies). */
+  protected costOf(amount: number): number { return Math.ceil(amount * this.mod('bet.costMult', 1)); }
+  /**
+   * The pocket cannot cover the current bet: step it down to the highest ladder step it pays for, and toast the new
+   * stake. When not even the minimum is affordable, the bet sits on the minimum and the toast reads "Min bet X — pocket Y".
+   * Returns true when the current bet is affordable (nothing to do, or it was just lowered).
+   */
+  protected fitBet(): boolean {
+    const w = this.ctx.run.wallet();
+    if (this.costOf(this.bet) <= w) return true;
+    const min = this.def.minBet;
+    const ok = this.betLadder().filter((v) => v >= min && this.costOf(v) <= w);
+    if (!ok.length) {
+      this.bet = min;
+      this.toast(tr('stake.minBet', { min: fmtCoins(min), pocket: fmtCoins(w) }), 'bad');
+      return false;
+    }
+    this.bet = ok[ok.length - 1];
+    this.toast(tr('stake.clamped', { bet: fmtCoins(this.bet), pocket: fmtCoins(w) }), 'warn');
+    return true;
   }
   /** Fold `base` through every modifier source (charms, upgrades, buffs, totems …) in the context of THIS instance. */
   protected mod(hook: ModHook, base: number): number {
@@ -564,7 +597,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       this.rng = createRng(seed);
       this._releaseRequested = false;
       this.bet = clamp(this.bet, this.def.minBet, this.def.maxBet);
-      if (this.bet > this.ctx.run.wallet()) this.maxBet();
+      this.fitBet();
     }
     this.ctx.events.emit('player:seat', { pid, mid: this.id, seat, on: true });
     this.onOccupy(pid, seat, local);

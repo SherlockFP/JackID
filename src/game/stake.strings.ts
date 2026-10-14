@@ -1,15 +1,23 @@
 /**
- * Stake safety lines (`run.ts` stake confirm and the Night 1 stake cap). The seat HUD / machine toast reads these when
- * `run:stakeConfirm` fires or `lastRefusal()` is 'confirm'. Loaded by the `*.strings.ts` glob.
+ * Stake safety lines (`run.ts` stake confirm, the stake limit, the pulls and funds refusals, the bet clamp). The seat
+ * HUD / machine toast reads these through `MachineBase.toastRefusal()` and `fitBet()`. Loaded by the `*.strings.ts` glob.
  */
 export default {
   prefix: 'stake.',
   en: {
     'confirm': 'PRESS AGAIN TO CONFIRM: {amount} of your {pocket} coins',
-    'cap': 'Night 1 stake limit: {max}',
+    'cap': 'Above the stake limit: max {max}',
+    'pulls': 'No pulls left this Vardiya — ring the bell or wait for Mola',
+    'phase': 'The floor is closed right now',
+    'clamped': 'Bet lowered to {bet} (pocket {pocket})',
+    'minBet': 'Min bet {min} — pocket {pocket}',
   },
   tr: {
     'confirm': 'ONAYLAMAK İÇİN TEKRAR BAS: {pocket} jetonun {amount} tanesi',
-    'cap': 'Gece 1 bahis sınırı: {max}',
+    'cap': 'Bahis sınırının üstü: en çok {max}',
+    'pulls': 'Bu Vardiya’da çekiş kalmadı — Zil’i çal ya da Mola’yı bekle',
+    'phase': 'Salon şu an kapalı',
+    'clamped': 'Bahis {bet} değerine indirildi (cep {pocket})',
+    'minBet': 'Min bahis {min} — cep {pocket}',
   },
 };

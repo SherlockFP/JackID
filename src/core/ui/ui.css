@@ -436,11 +436,13 @@
 .px-bw .stage { position: relative; display: flex; flex-direction: column; align-items: center; gap: calc(6 * var(--u)); }
 /* Long event banners wrap inside the screen and scale down on narrow widths instead of running off the edge. */
 .px-bw .title {
-  display: flex; flex-wrap: wrap; justify-content: center; max-width: 94vw; white-space: pre-wrap; text-align: center;
+  display: flex; flex-wrap: wrap; justify-content: center; column-gap: 0.6em; row-gap: 0.2em; max-width: 94vw; text-wrap: balance; text-align: center;
   font-family: var(--f-head); font-size: min(calc(var(--bw-s, 24) * var(--u)), 8vw);
   line-height: 1; color: var(--bw-c, var(--shine));
   text-shadow: var(--u) var(--u) 0 var(--bw-sh, var(--red));
 }
+.px-bw .Br { flex-basis: 100%; height: 0; }
+.px-bw .Wd { display: inline-flex; white-space: nowrap; }
 .px-bw .L { display: inline-block; }
 .px-bw .W { display: inline-block; white-space: pre; }
 .px-bw .W.wave { animation: px-wave 0.5s steps(4, end) infinite; animation-delay: calc(var(--i, 0) * -0.06s); }

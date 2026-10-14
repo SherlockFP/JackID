@@ -38,8 +38,8 @@ import {
   type CircuitSave, type CircuitView, type LampCandidate, type LampView, type TiltView,
 } from './circuit';
 import {
-  PAYOUT_GUARD, RESCUE_MAX_PER_NIGHT, STAKE_CONFIRM_SEC, bettingLadder, charmPrice, night1StakeCap, rescueLoan, settlePayout, snapDown, stakeNeedsConfirm,
-  type PayoutResult, type RescueLoan,
+  PAYOUT_GUARD, RESCUE_MAX_PER_NIGHT, STAKE_CONFIRM_SEC, bettingLadder, charmPrice, houseFloatTopUp, night1StakeCap, rescueLoan, settlePayout, snapDown,
+  stakeNeedsConfirm, type PayoutResult, type RescueLoan,
 } from './economy';
 import { clearClockHolds, clockHeld, holdClock, releaseClock, tickClockHold } from './clockHold';
 import { createRescue, type RescueLine } from './rescue';
@@ -1008,11 +1008,22 @@ class Run implements DebtRun {
     this.shiftState.floor = this.index + 1;
     this.shiftState.stake = nd.si;
     this.shiftState.segment = { index: 0, count: nd.watches };
+    this.houseFloat();
     this.recomputeQuota();
     this.prepareBoss();
     this.enter('intermission', 0);
     this.persist();
     return true;
+  }
+
+  /**
+   * The House float (director's decision): at the start of every Night the pocket is topped up to F(n) = 12 + 6n when it is
+   * below that. It is free and never part of the quota. Booked as `house:float`, so the Night summary's "carried over" (which
+   * counts only `dawn:surplus`) leaves it out; `inGameState.ts` shows the toast.
+   */
+  private houseFloat(): void {
+    const top = houseFloatTopUp(this.coins, this.index);
+    if (top > 0) this.earn('coin', top, 'house:float');
   }
 
   settleEarly(): boolean {

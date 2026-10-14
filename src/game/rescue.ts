@@ -43,6 +43,8 @@ export interface RescueLine {
   dispose(): void;
 }
 
+/** The rescue call rings at least this long (s): a broke player is usually seated far from the booth. */
+const RESCUE_RING_MIN = 30;
 interface Call { id: number; ringingSince: number; answeredBy: number | null; loan: RescueLoan; ringLeft: number; answerLeft: number }
 
 export function createRescue(host: RescueHost): RescueLine {
@@ -77,7 +79,7 @@ export function createRescue(host: RescueHost): RescueLine {
     active: () => call !== null,
     ring(loan) {
       if (call) return false;
-      const secs = Math.max(4, host.ringSeconds() || RING_SECONDS);
+      const secs = Math.max(RESCUE_RING_MIN, host.ringSeconds() || RING_SECONDS);   // the lifeline rings long: the player may be 25 m from the booth
       call = { id: ID_BASE + (++seq), ringingSince: host.now(), answeredBy: null, loan, ringLeft: secs, answerLeft: 0 };
       rebuild();
       bus.emit('phone:ring', { callId: call.id });

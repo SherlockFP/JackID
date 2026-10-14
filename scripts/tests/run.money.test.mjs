@@ -6,12 +6,15 @@ import { load, closeVite } from './_vite.mjs';
 
 after(closeVite);
 
-let RUN, REG, ECO, TUT;
+let RUN, REG, ECO, TUT, SCH, EV, HL;
 before(async () => {
   RUN = await load('src/game/run.ts');
   REG = await load('src/machines/_base/registry.ts');
   ECO = await load('src/game/economy.ts');
   TUT = await load('src/game/tutorial.strings.ts');
+  SCH = await load('src/game/data/schedule.ts');
+  EV = await load('src/core/events.ts');
+  HL = await load('src/game/hotline.ts');
   REG.load();
 });
 
@@ -202,4 +205,82 @@ test('Debt Terminal framing: a band of the whole window (no seat bar) and a narr
   const b = FIT.bandFromPx(0, 384, 768);
   assert.equal(b.top, 1);
   assert.ok(Math.abs(b.bot) < 1e-9, 'the bottom bar at mid-window is NDC 0');
+});
+
+// ── the House float, carried over, and the phone's first Watch (wave 17) ─────────────────────────────────
+test('House float: at each Night start the pocket is topped up to 12 + 6n, free and not added to the quota', () => {
+  assert.equal(ECO.houseFloat(0), 12);
+  assert.equal(ECO.houseFloat(1), 18);
+  assert.equal(ECO.houseFloatTopUp(3, 1), 15, 'the Night 2 start with 3 coins is topped up by 15');
+  assert.equal(ECO.houseFloatTopUp(30, 1), 0, 'a pocket above the float is left alone');
+  const run = RUN.createRun({ seed: 51, mode: 'debt' });
+  run.coins = 3;
+  run.nightDone = true;                       // Night 1 paid: the Dawn is over and OPEN THE FLOOR is pulled
+  const got = [];
+  const off = EV.bus.on('eco:wallet', (e) => { if (e.reason === 'house:float') got.push(e.delta); });
+  assert.ok(run.openFloor(), 'the next Night opens');
+  off();
+  assert.equal(run.index, 1);
+  assert.equal(run.coins, 18, 'topped up to F(1) = 18');
+  assert.deepEqual(got, [15], 'the float is booked once, as 15 coins');
+  assert.equal(run.quota.due, SCH.quotaFor(1), 'the quota is the schedule quota: the float is not part of it');
+  run.dispose();
+});
+
+test('House float: a pocket already at or above the float is not topped up', () => {
+  const run = RUN.createRun({ seed: 52, mode: 'debt' });
+  run.coins = 30;
+  run.nightDone = true;
+  assert.ok(run.openFloor());
+  assert.equal(run.coins, 30);
+  run.dispose();
+});
+
+test('carried over is the surplus released to the pocket: the House float is not counted in it', () => {
+  const run = RUN.createRun({ seed: 53, mode: 'debt' });
+  const due = run.quota.due;
+  const carried = [];
+  const off = EV.bus.on('eco:wallet', (e) => { if (e.reason === 'dawn:surplus') carried.push(e.delta); });
+  run.coins = 500;
+  run.debtPaid = due - 100;
+  run.syncQuota();
+  assert.ok(run.deposit(300, true));          // 200 above the quota goes back at once
+  run.dawn();                                 // nothing more is held back
+  off();
+  assert.equal(carried.reduce((a, b) => a + b, 0), 200, 'the summary carry is exactly what reached the pocket');
+  assert.equal(run.coins, 500 - 300 + 200);
+  run.dispose();
+});
+
+/** A RunApi just big enough for the Hotline's scheduling (no deals are applied here). */
+function phoneRun(night, watch, mods = {}) {
+  const defs = new Map();
+  return {
+    seed: 7, selfId: 1, night: () => night,
+    shift: { state: () => ({ segment: { index: watch, count: 3 }, duration: 150, stake: 1 }), quota: () => ({ due: 300 }), extend: () => {} },
+    mod: (hook, _m, base) => (mods[hook] ? mods[hook](base) : base),
+    buffs: { def: (id) => defs.get(id), register: (d) => { defs.set(d.id, d); }, add: () => {}, cleanse: () => {} },
+    charms: () => [], grantCharm: () => true, wallet: () => 100, balance: () => 100, spend: () => true, earn: () => {},
+    addDread: () => {}, dread: () => 0.3, jackpot: () => 100, jackpotAdd: () => {}, stat: () => 0,
+  };
+}
+const phase = (p) => EV.bus.emit('shift:phase', { phase: p, index: 0 });
+
+test('phone: from Night 2 the first Watch of every Night always rings; Night 1 and the middle Watches keep the seeded chance', () => {
+  const zero = { 'x.phone.callChance': () => 0 };
+  for (let seed = 1; seed <= 40; seed++) {
+    for (const [night, watch, want] of [[2, 0, true], [3, 0, true], [5, 0, true], [1, 0, false], [2, 1, false], [4, 1, false]]) {
+      const hl = HL.createHotline(phoneRun(night, watch, zero));
+      phase('play');
+      const at = hl.scheduledAt();
+      assert.equal(at >= 0, want, `seed ${seed} N${night} watch ${watch + 1}: scheduled ${at}`);
+      if (want) assert.ok(at >= 150 * 0.2 - 1e-9 && at <= 150 * 0.65 + 1e-9, 'the forced call lands in the usual window');
+      phase('settle'); hl.dispose();
+    }
+  }
+  // blank JackID (mute) still silences the phone, even on a first Watch
+  const muted = HL.createHotline(phoneRun(2, 0, { ...zero, 'x.phone.mute': () => 1 }));
+  phase('play');
+  assert.equal(muted.scheduledAt(), -1, 'mute wins over the guarantee');
+  phase('settle'); muted.dispose();
 });

@@ -107,7 +107,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<HotlineParts> 
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.62, 0.25), look: new THREE.Vector3(0, 1.45, -0.4), fov: 60, mouse: 'primary' },
+    // Seated framing: the deal sheet (overlay, centred, about -22..+15 degrees) sits over the middle of the view, so the
+    // lifted handset (about -24 degrees) and the resting cradle (about -28) are kept in the strip below it.
+    playPose: { pos: new THREE.Vector3(0, 1.6, 0.8), look: new THREE.Vector3(0, 1.65, -0.2), fov: 60, mouse: 'primary' },
     colliders: [
       { min: [-W / 2, 0, -D / 2], max: [W / 2, H, -D / 2 + 0.07] },   // back wall
       { min: [-W / 2, 0, -D / 2], max: [-W / 2 + 0.07, 1.0, D / 2] }, // left wall, low

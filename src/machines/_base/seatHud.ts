@@ -399,6 +399,12 @@ export class SeatHud {
       bg: CREAM,
       frame: { color: 0x6b4f1d, pad: 0.012, depth: 0.008 },
       rest: [0, -0.03, -0.5],
+      autoHide: kind === 'tip' ? 6 : undefined,                    // a first-sit tip fades by itself; rules stay until closed
+      onGone: () => {
+        if (this.cardP !== p) return;                              // dismissed by hand already (or replaced)
+        if (kind === 'tip' && this.tipId) { try { window.localStorage.setItem(seenKey(this.tipId), '1'); } catch { /* repeats */ } }
+        this.card = 'none'; this.cardP = null;
+      },
       paint: (c) => {
         const { g, w, h } = c;
         g.fillStyle = BRASS; g.fillRect(0, 0, w, CARD_HEAD);

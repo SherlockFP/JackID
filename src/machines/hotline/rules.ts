@@ -8,6 +8,8 @@ import type { PlayerId } from '@/core/types';
 export const RING_ON_S = 1.0;
 export const RING_OFF_S = 0.7;
 export const RING_TOTAL_S = 10;
+/** The Collector rescue call (empty pocket) rings this long: mirrors `RESCUE_RING_MIN` in `game/rescue.ts` (a machine may not import game code). */
+export const RESCUE_RING_S = 30;
 export const ANSWER_S = 15;
 export const MAX_CHOICES = 3;
 

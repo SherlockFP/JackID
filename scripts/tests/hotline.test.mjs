@@ -71,14 +71,14 @@ test('the call lands between 20 % and 65 % of the Watch clock', () => {
   }
 });
 
-test('from Night 2 the last Watch rings if nothing rang earlier; Night 1 has no guarantee; mute silences everything', () => {
+test('from Night 2 the first Watch always rings; Night 1 has no guarantee; mute silences everything', () => {
   const zero = { 'x.phone.callChance': () => 0 };
   for (let seed = 1; seed <= 40; seed++) {
     const n2 = HL.createHotline(mockRun({ seed, night: 2, watch: 2, count: 3, mods: zero }));
     assert.ok(startWatch(n2) >= 0, 'N2 last watch rings');
     phases('settle'); n2.dispose();
     const early = HL.createHotline(mockRun({ seed, night: 2, watch: 0, count: 3, mods: zero }));
-    assert.equal(startWatch(early), -1, 'N2 first watch has no guarantee');
+    assert.ok(startWatch(early) >= 0, 'N2 first watch rings');
     phases('settle'); early.dispose();
     const n1 = HL.createHotline(mockRun({ seed, night: 1, watch: 2, count: 3, mods: zero }));
     assert.equal(startWatch(n1), -1, 'N1 has no guarantee');

@@ -176,6 +176,9 @@ export interface PlacardSpec {
   rest?: readonly [number, number, number];
   /** Called once the hide animation has finished and the placard is disposed. */
   onGone?(): void;
+  /** Seconds it stays open before it slides away by itself (a first-sit tip must not sit over the HUD). Any action still
+   *  works while it is up. */
+  autoHide?: number;
 }
 
 const IN_S = 0.42, OUT_S = 0.2, FLIP_S = 0.26;
@@ -381,6 +384,7 @@ export class Placard3D {
   update(dt: number): void {
     if (this.dead) return;
     this.t += dt; this.time += dt;
+    if (this.phase === 'open' && this.spec.autoHide && this.t >= this.spec.autoHide) this.hide();
     let repaint = false;
     if (this.phase === 'in') {
       const f = Math.min(1, this.t / IN_S);

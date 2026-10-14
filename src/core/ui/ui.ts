@@ -391,18 +391,24 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
   }
   /** Letters drop in one by one (40 ms each, −12 px with a 2 px bounce). Returns the letter wrappers. */
   function dropLetters(parent: HTMLElement, text: string, wave: boolean): HTMLElement[] {
-    return Array.from(text).map((ch, i) => {
-      const outer = h('span', 'L', parent);
+    const out: HTMLElement[] = [];
+    let word: HTMLElement | null = null;                         // one nowrap box per word: a line break only falls between words
+    Array.from(text).forEach((ch, i) => {
+      if (ch === '\n') { word = null; h('span', 'Br', parent); return; }
+      if (ch === ' ') { word = null; return; }
+      if (!word) word = h('span', 'Wd', parent);
+      const outer = h('span', 'L', word);
       outer.style.opacity = '0';
       outer.style.setProperty('--i', String(i));
-      h('span', wave ? 'W wave' : 'W', outer, ch === ' ' ? ' ' : ch); // i18n-ok: CSS class names
+      h('span', wave ? 'W wave' : 'W', outer, ch);
       outer.animate([
         { transform: `translateY(${-12 * px}px)`, opacity: 0 },
         { transform: `translateY(${2 * px}px)`, opacity: 1, offset: 0.65 },
         { transform: 'translateY(0)', opacity: 1 },
       ], { duration: 240, delay: i * 40, easing: 'steps(6)', fill: 'forwards' });
-      return outer;
+      out.push(outer);
     });
+    return out;
   }
   const dissolve = (el: HTMLElement): Promise<void> => new Promise<void>((res) => {
     const a = el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: DISSOLVE_MS, easing: 'steps(8)', fill: 'forwards' });

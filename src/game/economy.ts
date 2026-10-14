@@ -111,6 +111,16 @@ export function snapDown(value: number, ladder: readonly number[]): number {
   return best;
 }
 
+// ── the House float (director's decision, wave 17): a free top-up at the start of every Night ─────────────────
+/** Pocket the House tops up to at the start of Night index `index` (0-based): F(n) = 12 + 6 n. Not added to the quota. */
+export function houseFloat(index: number): number {
+  return 12 + 6 * Math.max(0, Math.floor(index));
+}
+/** Coins the House advances at the start of Night index `index`: the top-up to F(n) when the pocket is below it, else 0. */
+export function houseFloatTopUp(pocket: number, index: number): number {
+  return Math.max(0, houseFloat(index) - Math.max(0, Math.floor(pocket)));
+}
+
 // ── stake safety (Night 1 cap, confirm on a big stake) and the rescue loan ─────────────────────────────────────
 /** Night 1 caps the max stake at this share of the starting pocket, so one wrong press cannot end the run. */
 export const NIGHT1_STAKE_FRAC = 1 / 3;

@@ -31,7 +31,7 @@ import { BRASS, CREAM, INK, INK_SOFT, PAPER_DARK, RED, Placard3D, put, wrapPx5, 
 import type { HotlineResultEvent } from '@/game/hotline';
 import { buildModel, type HotlineParts } from './model';
 import {
-  ANSWER_S, RING_TOTAL_S, canAnswer, choiceCount, choiceFromAction, choiceSecondsLeft, offerKeys, parseOption, resolveVars, ringIndex,
+  ANSWER_S, RESCUE_RING_S, RING_TOTAL_S, canAnswer, choiceCount, choiceFromAction, choiceSecondsLeft, offerKeys, parseOption, resolveVars, ringIndex,
   ringState, ringTotal, targetLabel,
 } from './rules';
 
@@ -178,7 +178,10 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
   }
 
   /** Ring length in seconds for this run (base 10 s, plus `x.phone.ringTime`). */
-  private ringSeconds(): number { return ringTotal(this.mod('x.phone.ringTime', RING_TOTAL_S)); }
+  private ringSeconds(call?: { script: string } | null): number {
+    const base = ringTotal(this.mod('x.phone.ringTime', RING_TOTAL_S));
+    return call?.script === 'hotline.call.rescue' ? Math.max(base, RESCUE_RING_S) : base;
+  }
 
   private now(): number { return this.ctx.net.hostTime(); }
 
@@ -199,7 +202,7 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
 
     if (call && call.answeredBy === null) {
       const el = (this.now() - call.ringingSince) / 1000;
-      const r = ringState(el, this.ringSeconds());
+      const r = ringState(el, this.ringSeconds(call));
       this.parts.lamp.setOn(r.on);
       const idx = ringIndex(el);
       if (r.on && idx !== this.lastRing) { this.lastRing = idx; this.sfx('phoneRing'); }
@@ -423,7 +426,7 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
       sh.state({ k: 'm.hotline.stQuiet' }, 'neutral', { k: 'm.hotline.stQuietSub' });
       key = 'idle';
     } else if (call.answeredBy === null) {
-      const left = Math.max(0, Math.ceil(this.ringSeconds() - (now - call.ringingSince) / 1000));
+      const left = Math.max(0, Math.ceil(this.ringSeconds(call) - (now - call.ringingSince) / 1000));
       if (mine) sh.state({ k: 'm.hotline.stRing' }, 'warn', { k: 'm.hotline.stRingSub', v: { n: left } });
       else sh.state({ k: 'm.hotline.stRingOther' }, 'neutral', { k: 'm.hotline.stRingOtherSub' });
       nums.push({ label: { k: 'm.hotline.nCaller' }, value: targetLabel(call.target, this.t('all')), tone: 'cyan' });

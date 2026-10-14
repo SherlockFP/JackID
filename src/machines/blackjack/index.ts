@@ -191,7 +191,8 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
     const b = seat >= 0 ? st.boxes[seat] : undefined;
     switch (a) {
       case 'primary': case 'confirm':
-        if (st.phase === 'bet' && b && !b.ready) this.act({ k: 'bet', main: this.bet, side: this.sideBet, ready: true });
+        // the stake outruns the pocket: fitBet() steps it down (toasted); no affordable stake, no ready
+        if (st.phase === 'bet' && b && !b.ready && this.fitBet()) this.act({ k: 'bet', main: this.bet, side: this.sideBet, ready: true });
         break;
       case 'betUp': case 'betDown': case 'betMax':
         if (st.phase !== 'bet' || (b && b.ready)) break;
@@ -773,18 +774,19 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
     const at = p.spots[ev.box];
     const bj = ev.results.includes('bj');
     const tier = juiceTier(ev.ret, ev.stake, bj ? ['blackjack'] : []);
-    if (this.isLocalOccupant && ev.box === this.localSeat && ev.stake > 0) {
-      this.seatHud?.result(resultKind(ev.results, ev.ret - ev.stake), ev.ret - ev.stake);
-    }
+    // callouts show the NET the run credits (previewCredit: House Favour, modifiers, limit) less the stake, never the gross
+    const mine = this.isLocalOccupant && ev.box === this.localSeat && ev.stake > 0;
+    const net = mine ? this.ctx.run.previewCredit(ev.ret, this.src, { bet: ev.stake }) - ev.stake : ev.ret - ev.stake;
+    if (mine) this.seatHud?.result(resultKind(ev.results, net), net);
     this.drawTotals();
-    if (ev.ret > ev.stake && ev.stake > 0) {
-      const win = ev.ret - ev.stake;
+    if (net > 0 && ev.stake > 0) {
+      const win = net;
       if (bj) { this.ctx.fx.sparks(at, 14, GOLD); this.sfx('win3'); }
       else this.sfx(tier === 'small' ? 'win1' : tier === 'medium' ? 'win2' : 'win3');
       this.ctx.fx.popText(at, `+${fmtCoins(win)}`, GOLD, { dur: 1.1, rise: 0.3, scale: 1.1 });
       if (bj) this.ctx.fx.popText(at, this.t('rBj'), GOLD, { dur: 1.1, rise: 0.4 });
       if (tier !== 'small') void this.celebrate(tier, { amount: win, at, fast });
-    } else if (ev.ret > 0 && ev.ret === ev.stake) {
+    } else if (net === 0 && ev.stake > 0) {
       this.sfx('coin', { vol: 0.6 });
       this.ctx.fx.popText(at, this.t('rPush'), 0xffffff, { dur: 0.9, rise: 0.2 });
     } else if (ev.stake > 0) {

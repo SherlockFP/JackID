@@ -188,7 +188,7 @@ test('rescue: an unanswered call lapses (the line goes dead) and does not ring a
   const off = EV.bus.on('hotline:result', (e) => res.push(e));
   for (let k = 0; k < 3; k++) { burn(run, 10); }
   assert.ok(run.phone());
-  for (let i = 0; i < 24; i++) run.tick(1);
+  for (let i = 0; i < 34; i++) run.tick(1);   // the rescue call rings 30 s
   assert.equal(run.phone(), null);
   assert.equal(res.at(-1)?.kind, 'missed');
   run.tick(1); run.tick(1);
