@@ -52,9 +52,11 @@ export type FortunetellerParts = {
 
 export const W = 1.0, D = 0.8, H = 2.25;
 export const SHELF_Y = 1.02;
-export const SHELF_Z = 0.1;
-export const CARD_W = 0.07, CARD_H = 0.12;
-export const CARD_X = [-0.16, 0, 0.16] as const;
+export const SHELF_Z = 0.16;
+// seat-views: cards are big enough to read from the seat (0.13 x 0.21 m, tilted back to face the player's eye)
+export const CARD_W = 0.13, CARD_H = 0.21;
+export const CARD_X = [-0.2, 0, 0.2] as const;
+export const CARD_Y = SHELF_Y + CARD_H / 2, CARD_TILT = 0.2;
 export const FOLD = 1.25, SPREAD = 0.2;
 const FRONT_Z = D / 2 - 0.015;          // front-face elements sit just inside the footprint (bounds rule)
 const COLOURWAYS: ReadonlyArray<{ body: keyof Palette; trim: keyof Palette }> = [
@@ -93,8 +95,8 @@ function paintFace(id: number): HTMLCanvasElement {
   const kind: OmenKind = OMENS[id]?.kind ?? 'neutral', tone = TONE[kind];
   g.fillStyle = '#1a0f0a'; g.fillRect(0, 0, 64, 96);
   g.strokeStyle = tone; g.lineWidth = 3; g.strokeRect(4, 4, 56, 88);
-  g.fillStyle = tone; g.textAlign = 'center'; g.font = 'bold 14px monospace';
-  g.fillText(roman(id), 32, 24);
+  g.fillStyle = tone; g.textAlign = 'center'; g.font = 'bold 20px monospace';
+  g.fillText(roman(id), 32, 28);
   g.strokeStyle = tone; g.fillStyle = tone; g.lineWidth = 4;
   if (kind === 'blessing') { g.beginPath(); g.arc(32, 56, 14, 0, Math.PI * 2); g.fill(); }
   else if (kind === 'curse') { g.beginPath(); g.moveTo(20, 42); g.lineTo(44, 70); g.moveTo(44, 42); g.lineTo(20, 70); g.stroke(); }
@@ -152,8 +154,10 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<FortunetellerPa
   kit.box(0.04, 0.06, 0.02, pal.black, at(0.36, 0.93, FRONT_Z));                            // coin slot
 
   // ── oracle and wings (animated) ──
-  const oracle = kit.dealer({ style: 'oracle', height: 1.2, suit: pal.feltDark, skin: pal.cream, feltY: SHELF_Y });
-  oracle.root.position.set(0, SHELF_Y, -0.12);
+  // the rig stands on the floor and lifts its reach targets by feltY - 0.76 (kit/dealer.ts); the old root at y = SHELF_Y put its feet ON the
+  // shelf, so a 2.2 m giant filled the view from the waist up
+  const oracle = kit.dealer({ style: 'oracle', height: 1.7, suit: pal.feltDark, skin: pal.cream, feltY: SHELF_Y });
+  oracle.root.position.set(0, 0, -0.12);
   root.add(oracle.root);
   const mothTex = new THREE.CanvasTexture(paintWing());
   mothTex.colorSpace = THREE.NoColorSpace;
@@ -166,7 +170,9 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<FortunetellerPa
 
   // ── crystal ball on the shelf ──
   const crystalMat = new THREE.MeshBasicMaterial({ color: CRYSTAL.neutral, transparent: true, opacity: 0.8 });
-  const crystal = kit.sphere(0.08, crystalMat, { pos: [0, SHELF_Y + 0.13, 0.22], wSeg: 8, hSeg: 6, parent: root });
+  // (moved to the right-hand end of the shelf so it no longer hides the middle card from the seat)
+  const crystal = kit.sphere(0.065, crystalMat, { pos: [0.34, SHELF_Y + 0.085, 0.2], wSeg: 12, hSeg: 8, parent: root });
+  kit.sphere(0.014, 0xffffff, { pos: [-0.025, 0.03, 0.045], wSeg: 6, hSeg: 4, parent: crystal });          // glint: reads as glass, not a grey blob
 
   // ── omen cards (animated) ──
   const omenFaces: THREE.CanvasTexture[] = [];
@@ -181,11 +187,11 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<FortunetellerPa
   const omenCards: THREE.Mesh[] = [];
   CARD_X.forEach((x, i) => {
     const slot = new THREE.Object3D();
-    slot.position.set(x, SHELF_Y + CARD_H / 2, SHELF_Z);
+    slot.position.set(x, CARD_Y, SHELF_Z);
     root.add(slot);
     cardSlots.push(slot);
     const m = new THREE.MeshBasicMaterial({ map: omenBack, side: THREE.DoubleSide });
-    const card = kit.plane(CARD_W, CARD_H, m, { parent: root, pos: [x, SHELF_Y + CARD_H / 2, SHELF_Z] });
+    const card = kit.plane(CARD_W, CARD_H, m, { parent: root, pos: [x, CARD_Y, SHELF_Z], rot: [-CARD_TILT * 180 / Math.PI, 0, 0] });
     card.userData.slot = i;
     omenCards.push(card);
   });
@@ -228,8 +234,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<FortunetellerPa
 
   // ── crystal light hint for the pooled lights (no THREE.Light inside machines) ──
   const light = new THREE.Object3D();
-  light.position.set(0, SHELF_Y + 0.2, 0.25);
-  light.userData = { color: 0xffc83d, intensity: 0.6, range: 1.5, flicker: 'STEADY' };
+  light.position.set(0, 1.55, 0.55);   // seat-views: a warm key over the shelf, between the player and the cards
+  light.userData = { color: 0xffd890, intensity: 1.1, range: 2.2, flicker: 'STEADY' };
   root.add(light);
 
   // ── anchors ──
@@ -264,7 +270,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<FortunetellerPa
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.4, 0.6), look: new THREE.Vector3(0, 1.05, 0.1), fov: 55, mouse: 'pick' },
+    // framing: the three cards (y 1.02-1.23) and the oracle's hands inside the band between the HUD banner and the control bar
+    playPose: { pos: new THREE.Vector3(0, 1.64, 1.4), look: new THREE.Vector3(0, 1.36, 0.1), fov: 50, mouse: 'pick' },
     colliders: cab.colliders,
     interact: { min: [-W / 2, 0, -D / 2], max: [W / 2, H - 0.02, D / 2 + 0.1] },
     anchors: { speaker, prompt: marquee.root, marqueeTop, servicePlate, stand, light, coinOut: dispenser, coinSlot },

@@ -34,8 +34,22 @@ export function tiltBulbs(plays: number, grace = 0): number {
 }
 
 // ── lamps ───────────────────────────────────────────────────────────────────────────────────────────
-export interface LampCandidate { mid: InstanceId; machineId: MachineId; weight?: number }
+export interface LampCandidate { mid: InstanceId; machineId: MachineId; weight?: number; minBet?: number }
 export interface LampRoll { hot: InstanceId[]; cold: InstanceId[] }
+
+/**
+ * Machines a Lamp never names (wave 19): their screens are not readable at a glance yet (playtest 6.5/10), so a lit Lamp there
+ * is a dead hint. A hardcoded short list until their views are fixed; remove an id once it reads.
+ */
+export const LAMP_UNREADABLE: ReadonlySet<string> = new Set(['pachinko', 'pachislot', 'fortuneteller']);
+/** A Lamp only lands on a machine the pocket can really play: its minimum stake at most this share of the pocket (wave 19). */
+export const LAMP_MAX_MIN_BET_SHARE = 0.25;
+
+/** True when a candidate may take a Lamp at this pocket (readable machine, minimum stake within the pocket share). */
+export function lampEligible(c: LampCandidate, pocket: number): boolean {
+  if (LAMP_UNREADABLE.has(c.machineId)) return false;
+  return (c.minBet ?? 0) <= LAMP_MAX_MIN_BET_SHARE * Math.max(0, pocket);
+}
 
 /**
  * Seeded Lamp roll. Candidates are sorted by instance id first, so the result depends only on the rng stream and the set

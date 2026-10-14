@@ -58,10 +58,6 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   /** Free-roam Intermission: the HUD hint line and the paid-Night bookkeeping for the summary toast. */
   let interHint: InterHint | null = null;
   let wasPaid = false;
-  let sumNight = -1;
-  let sumDep = 0;
-  let sumCarry = 0;
-  let sumInterest = 0;
   let storyOff: (() => void) | null = null;
   let offs: Array<() => void> = [];
   /** Online: Esc opens the card but the sim keeps running (no `app.simPaused`). */
@@ -192,40 +188,14 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     }
   };
 
-  /** A new Night starts every summary book from zero, so one Night's carry can never leak into the next toast. */
-  const rollNight = (s: DebtSession): void => {
-    if (s.run.night() === sumNight) return;
-    sumNight = s.run.night(); sumDep = 0; sumInterest = 0; sumCarry = 0;
-  };
-
-  /** Deposits and interest of the Night in progress (interest lands during `settle`), for the summary toast. */
-  const trackDeposit = (amount: number): void => {
-    const s = session;
-    if (!s) return;
-    rollNight(s);
-    if (s.run.shift.phase === 'settle') sumInterest += amount;
-    else sumDep += amount;
-  };
-
   /**
-   * A Dawn surplus credit (`eco:wallet`, reason `dawn:surplus`): the pocket delta is already the whole integer that was
-   * credited (`run.earn` floors it), so the carry adds exactly that and the toast prints the same figure.
+   * The compact paid-Night summary: a toast, never a modal. "QUOTA N PAID · float +F · interest +I · tickets +T", read from the
+   * run's Night ledger (`run.nightLedger()`): the same integers the run booked, so the figures add up to what the player got.
    */
-  const trackCarry = (credited: number): void => {
-    const s = session;
-    if (!s || credited <= 0) return;
-    rollNight(s);
-    sumCarry += credited;
-  };
-
-  /** The compact paid-Night summary: a toast, never a modal. */
   const showSummary = (s: DebtSession): void => {
-    const carry = Math.max(0, sumCarry);   // the Dawn surplus returned to the pocket (the quota's deposit state resets at Dawn)
-    const text = t('interm.summary', {
-      n: s.run.night(), dep: fmtCoins(sumDep), int: fmtCoins(sumInterest), carry: fmtCoins(carry), tickets: s.run.balance('ticket'),
-    });
+    const L = s.run.nightLedger();
+    const text = t('econ.summary', { n: L.night, float: Math.round(L.float), int: Math.round(L.interest), tickets: Math.round(L.tickets) });
     (app.ui as UIOverlayX).toast(text, 'good', SUMMARY_TOAST_S);
-    sumNight = -1; sumDep = 0; sumInterest = 0; sumCarry = 0;
   };
 
   /**
@@ -324,13 +294,11 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       };
       storyOff = startStory(session.world, params);
       interHint = createInterHint((app.ui as UIOverlayX).hudLayer);
-      wasPaid = false; sumNight = -1; sumDep = 0; sumInterest = 0; sumCarry = 0;
-      offs.push(bus.on('run:deposit', ({ pid, amount }) => { if (session && pid === session.run.selfId) trackDeposit(amount); }));
+      wasPaid = false;
       offs.push(bus.on('run:rescue', ({ pid, state }) => { if (session && pid === session.run.selfId && state === 'ring') app.ui.toast(t('hotline.toast.pocketEmpty'), 'warn'); }));
       offs.push(bus.on('eco:wallet', ({ pid, delta, reason }) => {
         if (!session || pid !== session.run.selfId) return;
-        if (reason === 'dawn:surplus') trackCarry(delta);                                  // only what was released to the pocket
-        else if (reason === 'house:float' && delta > 0) app.ui.toast(t('house.float.toast', { x: fmtCoins(delta) }), 'good');
+        if (reason === 'house:float' && delta > 0) app.ui.toast(t('house.float.toast', { x: fmtCoins(delta) }), 'good');
       }));
     },
     exit() {

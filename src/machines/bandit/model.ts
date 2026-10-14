@@ -43,9 +43,11 @@ export type BanditParts = {
 
 export const W = 0.44, D = 0.42;
 export const PED_W = 0.40, PED_H = 0.78;
-export const HEAD_TOP = 1.30, TOP = 1.48;
-export const REEL_R = 0.10, REEL_WIDTH = 0.075, REEL_X: readonly number[] = [-0.10, 0, 0.10], REEL_Y = 1.12;
-export const WIN_W = 0.30, WIN_H = 0.11;
+// seat-views: the head is 6 cm taller so the award glass can be 0.34 x 0.17 m (the scene renders at ~300 x 224 px: a 0.10 m glass left
+// the 8-row paytable at ~5 px per row, i.e. garbled)
+export const HEAD_TOP = 1.36, TOP = 1.52;
+export const REEL_R = 0.15, REEL_WIDTH = 0.095, REEL_X: readonly number[] = [-0.11, 0, 0.11], REEL_Y = 1.10;
+export const WIN_W = 0.345, WIN_H = 0.13;
 export const LEVER_PIVOT: readonly [number, number, number] = [0.24, 1.18, 0];
 export const LEVER_LEN = 0.42;
 export const MAW_COINS = 30;
@@ -99,7 +101,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BanditParts> {
   kit.box(0.20, 0.08, 0.005, pal.black, at(0, MAW_Y, D / 2 + 0.001));                           // maw window
   kit.box(0.05, 0.03, 0.01, pal.brass, at(0.13, 0.98, D / 2 + 0.005));                          // coin slot plate
   kit.box(0.10, 0.03, 0.10, pal.brass, at(0, 0.42, 0.12, root));                                // cup seat
-  kit.box(WIN_W, 0.008, 0.01, pal.red, at(0, REEL_Y, 0.112));                                   // payline bar
+  kit.box(WIN_W, 0.0035, 0.01, pal.red, at(0, REEL_Y, 0.17));                                    // payline bar (in front of the 0.15 m drums)
   kit.lathe([[0.02, 0.0], [0.05, 0.02], [0.056, 0.06], [0.05, 0.075]], 12, pal.brass, { pos: [0, 0.44, 0.24], parent: root }); // cup
 
   // ── reels: 22 facets each, reel 1 rotated +7 (see rules.REEL_ROT) ──
@@ -121,18 +123,18 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BanditParts> {
 
   // ── screens and lamps ──
   // 256 × 128 texels (2× the old density): the numerals are drawn at integer scale 2, so each glyph pixel is 2 texels
-  const award = kit.screen({ w: 0.30, h: 0.10, px: [256, 128], bezel: pal.black });
+  const award = kit.screen({ w: 0.34, h: 0.17, px: [256, 128], bezel: pal.black });
   award.mesh.position.set(0, (winTop + HEAD_TOP) / 2, D / 2 + 0.002);
   root.add(award.mesh);
 
   const eyes: [LampPart, LampPart] = [
-    kit.lamp({ r: 0.018, color: pal.red, shape: 'flat' }),
-    kit.lamp({ r: 0.018, color: pal.red, shape: 'flat' }),
+    kit.lamp({ r: 0.014, color: pal.red, shape: 'flat' }),
+    kit.lamp({ r: 0.014, color: pal.red, shape: 'flat' }),
   ];
-  eyes.forEach((e, i) => { e.root.position.set(i === 0 ? -0.19 : 0.19, (winTop + HEAD_TOP) / 2, D / 2 + 0.003); root.add(e.root); });
+  eyes.forEach((e, i) => { e.root.position.set(i === 0 ? -0.20 : 0.20, (winTop + HEAD_TOP) / 2, D / 2 + 0.003); root.add(e.root); });
 
   const lampReel = kit.lamp({ r: 0.03, color: pal.gold, shape: 'dome' });
-  lampReel.root.position.set(0, 1.44, 0.12);
+  lampReel.root.position.set(0, 1.47, 0.115);
   const lampCoin = kit.lamp({ r: 0.018, color: pal.neonCyan, shape: 'flat' });
   lampCoin.root.position.set(-0.15, 0.73, PED_W / 2 + 0.003);
   const lampTilt = kit.lamp({ r: 0.018, color: pal.red, shape: 'flat' });
@@ -172,8 +174,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BanditParts> {
   const coinOut = new THREE.Object3D(); coinOut.position.set(0, 0.52, 0.24); root.add(coinOut);
   const fxTwist = new THREE.Object3D(); fxTwist.position.set(0, winTop + 0.04, D / 2); root.add(fxTwist);
   const light = new THREE.Object3D();
-  light.position.set(0, 1.2, 0.2);
-  light.userData = { color: 0xffd9a0, intensity: 0.5, range: 1.2, flicker: 'CANDLE' };
+  light.position.set(0, 1.3, 0.5);   // seat-views: key light between the player and the award glass / reel window
+  light.userData = { color: 0xffe0b0, intensity: 1.0, range: 1.8, flicker: 'CANDLE' };
   root.add(light);
 
   const cup = new THREE.Object3D(); cup.position.set(0, 0.44, 0.24); root.add(cup);
@@ -190,7 +192,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<BanditParts> {
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.42, 0.62), look: new THREE.Vector3(0, 1.15, 0), fov: 50, mouse: 'pick' },
+    // framing: award glass (top) + reel window (bottom) inside the band between the HUD banner and the control bar, 4:3 and 16:9
+    playPose: { pos: new THREE.Vector3(0, 1.29, 0.80), look: new THREE.Vector3(0, 1.18, 0), fov: 50, mouse: 'pick' },
     colliders: [
       { min: [-PED_W / 2, 0, -PED_W / 2], max: [PED_W / 2, PED_H, PED_W / 2] },
       { min: [-W / 2, PED_H, -D / 2], max: [W / 2, HEAD_TOP, D / 2] },

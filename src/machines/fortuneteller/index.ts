@@ -21,7 +21,7 @@ import { Placard3D, INK, INK_SOFT, button, paginate, put, rowsIn, rule, wrapPx5 
 import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { Kit } from '@/kit/types';
 import { fmtCoins, type I18nVars } from '@/core/i18n';
-import { buildModel, CARD_H, CARD_X, FOLD, SHELF_Y, SHELF_Z, SPREAD, CRYSTAL, roman, type FortunetellerParts } from './model';
+import { buildModel, CARD_TILT, CARD_X, CARD_Y, FOLD, SHELF_Z, SPREAD, CRYSTAL, roman, type FortunetellerParts } from './model';
 import {
   DEFY_WINDOW_S, GRAND_OMEN, HOOK_CURSE_IMMUNE, HOOK_DEFY_MULT, HOOK_GRAND_RARITY, HOOK_OMEN_DUR, HOOK_VEIL, HOOK_WEIGHT,
   OMENS, buildDeck, buffId, coinsFor, deal, effective, isCurse, nearMiss, omenOf, playHeadless, resolvePick, type OmenKind,
@@ -53,7 +53,6 @@ const ALMANAC_W = 0.46, ALMANAC_H = 0.41;
 const ALMANAC_TEXT_W = ALMANAC_PX[0] - 28;
 const ALMANAC_BODY_H = ALMANAC_PX[1] - 30 - 36;
 /** Cards stand on the shelf: half the card height lifts the plane's centre off the shelf top. */
-const CARD_H_HALF = CARD_H / 2;
 
 export const def: MachineDef = {
   id: 'fortuneteller',
@@ -368,7 +367,7 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
     for (let i = 0; i < 3; i++) {
       this.sfx('coinFlick', { vol: 0.4, pitch: 3 + i });
       const card = p.omenCards[i];
-      const from = p.dispenser.position.clone(), to = p.cardSlots[i].position.clone().setY(SHELF_Y + 0.06);
+      const from = p.dispenser.position.clone(), to = p.cardSlots[i].position.clone().setY(CARD_Y);
       await this.anim(0.5, (k) => {
         card.position.lerpVectors(from, to, k);
         card.position.y += 0.1 * Math.sin(k * Math.PI);
@@ -388,7 +387,7 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
     this.sfx('button');
     if (pc.fast) return;
     const card = p.omenCards[ev.slot];
-    const base = p.cardSlots[ev.slot].position.y + CARD_H_HALF;
+    const base = p.cardSlots[ev.slot].position.y;
     return this.anim(0.2, (k) => {
       card.position.y = base + 0.025 * Math.sin(k * Math.PI);
       card.scale.setScalar(1 + 0.12 * Math.sin(k * Math.PI));
@@ -487,9 +486,9 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
       const mat = card.material as THREE.MeshBasicMaterial;
       mat.map = p.omenBack; mat.color.setScalar(1); mat.needsUpdate = true;
       card.scale.setScalar(1);
-      card.rotation.set(0, 0, 0);
+      card.rotation.set(-CARD_TILT, 0, 0);
       if (atDispenser) card.position.copy(p.dispenser.position);
-      else card.position.set(CARD_X[i], SHELF_Y + 0.06, SHELF_Z);
+      else card.position.set(CARD_X[i], CARD_Y, SHELF_Z);
     });
   }
 
@@ -497,7 +496,7 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
     const card = this.parts.omenCards[slot];
     const mat = card.material as THREE.MeshBasicMaterial;
     mat.map = this.parts.omenFaces[omen]; mat.needsUpdate = true;
-    card.scale.setScalar(1); card.position.y = SHELF_Y + 0.06;
+    card.scale.setScalar(1); card.position.y = CARD_Y;
   }
 
   /** Edge-on flip: scale.x = |cos|, the face texture is swapped at the midpoint. */

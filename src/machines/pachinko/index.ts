@@ -641,25 +641,29 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
     });
   }
 
-  /** The 160×120 LCD: mode, the three digits, tray balls (or a count-up of `winShown`). */
+  /** The 160×120 LCD: mode, the three digits, tray balls (or a count-up of `winShown`). The scene renders at ~300 px wide, so the
+   *  LCD is only ~65 px on screen: text is drawn at x3 / x2 (the 1x glyphs turned O / R / A into blobs). */
   private drawScreen(winShown?: number): void {
     const s = this.state;
     this.parts.screens.lcd.draw((g, sc) => {
       g.fillStyle = '#060a1a';
       g.fillRect(0, 0, sc.w, sc.h);
+      const big = (str: string, y: number, color: string, max = 3): void => {
+        const k = Math.min(max, str.length * 6 * 3 <= 154 ? 3 : str.length * 6 * 2 <= 154 ? 2 : 1);
+        sc.text(str, 80, y, { font: 'px5', color, align: 'center', scale: k });
+      };
       const mode = s.mode === 'K' ? this.t('kakuOn')
         : s.mode === 'A' ? (s.gate ? this.t('mAtt', { n: s.round }) : this.t('mClose'))
           : this.t('mNormal');
-      const col = s.mode === 'K' ? '#ff4fa0' : s.mode === 'A' ? '#ffd040' : '#7dd3ff';
-      sc.text(mode, 80, 6, { font: 'px5', color: col, align: 'center' });
+      big(mode, 2, s.mode === 'K' ? '#ff4fa0' : s.mode === 'A' ? '#ffd040' : '#7dd3ff');
       s.digits.forEach((d, i) => {
         g.fillStyle = s.reach ? '#3a1020' : '#101a33';
-        g.fillRect(34 + i * 30, 34, 24, 36);
-        sc.text(String(d), 46 + i * 30, 44, { font: 'px5', color: s.reach ? '#ff8080' : '#e8f4ff', align: 'center' });
+        g.fillRect(30 + i * 34, 28, 28, 38);
+        sc.text(String(d), 44 + i * 34, 33, { font: 'px5', color: s.reach ? '#ff8080' : '#e8f4ff', align: 'center', scale: 4 });
       });
-      if (s.reach) sc.text(this.t(s.reach === 'PREMIUM' ? 'reachP' : s.reach === 'SUPER' ? 'reachS' : 'reachN'), 80, 78, { font: 'px5', color: '#ff8080', align: 'center' });
-      if (winShown !== undefined) sc.text(`+${fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(winShown, this.src, { bet: this.roundBet }) : winShown)}`, 80, 98, { font: 'px5', color: '#ffd040', align: 'center' });
-      else sc.text(this.t('tray', { n: s.tray }), 80, 98, { font: 'px5', color: '#7dff7a', align: 'center' });
+      if (s.reach) big(this.t(s.reach === 'PREMIUM' ? 'reachP' : s.reach === 'SUPER' ? 'reachS' : 'reachN'), 70, '#ff8080');
+      if (winShown !== undefined) big(`+${fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(winShown, this.src, { bet: this.roundBet }) : winShown)}`, 94, '#ffd040', 2);
+      else big(this.t('tray', { n: s.tray }), 94, '#7dff7a', 2);
     });
   }
 

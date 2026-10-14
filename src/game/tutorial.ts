@@ -87,12 +87,14 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
   const self = run.selfId;
 
   // ── facts, counted from the bus; each step compares against a baseline taken when it starts ─────────────
-  let spins = 0, others = 0, deposits = 0, bought = 0;
+  let rounds = 0, others = 0, deposits = 0, bought = 0;
   let seatMid: InstanceId | null = null;
   const offs: Unsub[] = [];
+  // Every round counts for the spin step (any machine); `others` (rounds off The Big One) is what the TILT step waits for.
   offs.push(bus.on('machine:round', (e) => {
     if (e.pid !== self) return;
-    if (e.machineId === 'bigone') spins++; else others++;
+    rounds++;
+    if (e.machineId !== 'bigone') others++;
   }));
   offs.push(bus.on('run:deposit', (e) => { if (e.pid === self) deposits++; }));
   offs.push(bus.on('charm:add', (e) => { if (e.pid === self) bought++; }));
@@ -140,22 +142,25 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
   let idx = 0;
   let age = 0;
   let total = 0;
-  let base = { spins: 0, others: 0, deposits: 0, bought: 0 };
+  let base = { rounds: 0, others: 0, deposits: 0, bought: 0 };
   let holdFrom: number | null = null;
   let disposed = false;
 
   const enter = (i: number): void => {
     idx = i;
     age = 0;
-    base = { spins, others, deposits, bought };
+    base = { rounds, others, deposits, bought };
   };
   enter(0);
 
-  /** True when the current step is complete. */
+  /**
+   * True when the current step is complete. Each step's target counts on ANY machine, so the Watch clock hold (steps 1-3) always
+   * releases: walk = seated at any machine (The Big One is only the hint), spin = four rounds on any machine.
+   */
   const complete = (s: Step): boolean => {
     switch (s.key) {
-      case 'walk': return bigMid() !== null && seatMid === bigMid();
-      case 'spin': return spins - base.spins >= TILT_FREE_PULLS;   // four full-pay pulls, then rotate (TILT, GDD §3.4.3)
+      case 'walk': return seatMid !== null;
+      case 'spin': return rounds - base.rounds >= TILT_FREE_PULLS;   // four full-pay pulls, then rotate (TILT, GDD §3.4.3)
       case 'deposit': return deposits > base.deposits;
       case 'tilt': return others > base.others || age > 16;
       case 'hot': return age > 9;
@@ -166,7 +171,7 @@ export function startTutorial(host: TutorialHost): Tutorial | null {
   const text = (s: Step): string => {
     switch (s.key) {
       case 'spin': {
-        return t('tut.spin', { key: keyLabel('m.primary') });
+        return t('econ.spinAny', { key: keyLabel('m.primary') });
       }
       case 'deposit': return t('tut.deposit', { pct: Math.round(nightDef(0).interest * 100) });
       default: return t(`tut.${s.key}`);

@@ -485,22 +485,27 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
   private drawScreen(winShown?: number): void {
     const s = this.state;
     this.parts.screens.lcd.draw((g, sc) => {
+      // The scene renders at ~300 px wide, so this LCD is ~55 px on screen: every line is drawn at x3 (x2 / x1 when it would not fit)
+      const line = (str: string, y: number, color: string, max = 3): void => {
+        const k = Math.min(max, str.length * 6 * 3 <= 154 ? 3 : str.length * 6 * 2 <= 154 ? 2 : 1);
+        sc.text(str, 80, y, { font: 'px5', color, align: 'center', scale: k });
+      };
       g.fillStyle = '#0a0408'; g.fillRect(0, 0, sc.w, sc.h);
-      sc.text(this.t('game', { n: s.games }), 80, 6, { font: 'px5', color: LCD_PINK, align: 'center' });
+      line(this.t('game', { n: s.games }), 3, LCD_PINK);
       if (s.bonus) {
         const key = s.bonus.type === 'BIG' ? 'feast' : 'parade';
-        sc.text(this.t(key, { n: s.bonus.game, of: s.bonus.of }), 80, 34, { font: 'px5', color: LCD_GOLD, align: 'center' });
-        sc.text(`+${fmtCoins(s.bonus.net * s.bonus.v)}`, 80, 46, { font: 'px5', color: LCD_GOLD, align: 'center' });
+        line(this.t(key, { n: s.bonus.game, of: s.bonus.of }), 30, LCD_GOLD);
+        line(`+${fmtCoins(s.bonus.net * s.bonus.v)}`, 58, LCD_GOLD);
       } else if (s.held) {
-        sc.text(this.t(s.held === 'BIG' ? 'holdBig' : 'holdReg'), 80, 34, { font: 'px5', color: LCD_PINK, align: 'center' });
+        line(this.t(s.held === 'BIG' ? 'holdBig' : 'holdReg'), 42, LCD_PINK);
       } else if (s.freeNext) {
-        sc.text(this.t('replayFree'), 80, 34, { font: 'px5', color: '#4da6ff', align: 'center' });
+        line(this.t('replayFree'), 42, '#4da6ff');
       } else {
-        sc.text(this.t('ready'), 80, 34, { font: 'px5', color: '#7a7a8a', align: 'center' });
+        line(this.t('ready'), 42, '#b8b8c8');
       }
       const pay = winShown !== undefined ? `+${fmtCoins(winShown)}` : this.t('pay', { n: s.last.medals });
-      sc.text(pay, 80, 84, { font: 'px5', color: LCD_GOLD, align: 'center' });
-      if (this.peekT > 0) sc.text(this.t('set', { n: this.effSetting() }), 80, 100, { font: 'px5', color: '#ffffff', align: 'center' });
+      line(pay, s.bonus ? 90 : 84, LCD_GOLD);
+      if (this.peekT > 0) sc.text(this.t('set', { n: this.effSetting() }), 80, 108, { font: 'px5', color: '#ffffff', align: 'center', scale: 1 });
     });
   }
 

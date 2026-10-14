@@ -84,7 +84,8 @@ export function buildPause(el: HTMLElement, o: PauseOpts): () => void {
       if (r.hold && holding) p.rect(6, y + 11, Math.round((CARD_W - 12) * hold), 1, CARD_DANGER);
     });
     if (o.live) txt(p, fit(t('pauselive.label'), 88, { micro: true }), CARD_W / 2, CARD_H - 25, CARD_LIVE, { micro: true, align: 'center' });
-    txt(p, fit(t('ingame.pause.holdHint'), 88, { micro: true }), CARD_W / 2, CARD_H - 15, 0x9c8a62, { micro: true, align: 'center' });
+    // two micro lines (5 px tall): the hold hint sits 17 px up from the bottom, the key line 8 px up, so they never touch
+    txt(p, fit(t('ingame.pause.holdHint'), 88, { micro: true }), CARD_W / 2, CARD_H - 17, 0x9c8a62, { micro: true, align: 'center' });
     txt(p, 'W/S  ENTER  ESC', CARD_W / 2, CARD_H - 8, 0x7a6a4c, { micro: true, align: 'center' });
   });
 

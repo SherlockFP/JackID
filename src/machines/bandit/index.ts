@@ -420,10 +420,10 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
         sc.text(n, x0, y + Math.floor((14 - 7 * ns) / 2), { font: 'px5', scale: ns, color });
         sc.text(v, x0 + colW, y, { font: 'px5', scale: 2, color: '#F0E6CC', align: 'right' });
       };
-      left.forEach(([n, v], i) => row(n, v, 12, 30 + i * 22, i === 0 ? '#FF4040' : '#F0E6CC'));
-      right.forEach(([n, v], i) => row(n, v, 132, 30 + i * 22, '#F0E6CC'));
+      left.forEach(([n, v], i) => row(n, v, 12, 28 + i * 20, i === 0 ? '#FF4040' : '#F0E6CC'));
+      right.forEach(([n, v], i) => row(n, v, 132, 28 + i * 20, '#F0E6CC'));
       const foot = `${this.t('anyBar')} 15  ${SHOE_TEXT} 2/6`, fs = fitScale(foot, sc.w - 8, 14, 2);
-      sc.text(foot, sc.w / 2, 111 + Math.floor((14 - 7 * fs) / 2), { font: 'px5', scale: fs, color: '#D02020', align: 'center' });
+      sc.text(foot, sc.w / 2, 110 + Math.floor((14 - 7 * fs) / 2), { font: 'px5', scale: fs, color: '#D02020', align: 'center' });
     });
   }
 

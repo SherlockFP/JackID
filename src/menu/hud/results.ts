@@ -47,12 +47,15 @@ export function postLine(p: ResultsPost | undefined): string {
   return parts.join(' · ');
 }
 
-/** Stat keys the run may report; unknown keys print verbatim (translations land with the stats pass). */
+/** Stat keys the receipt prints as fixed rows (in this order), so the generic list below skips them. */
+const FIXED_STATS = ['rounds', 'wagered', 'paid', 'biggest', 'wins', 'nightsPaid'] as const;
+
+/** Any other stat the run reports (non-zero, capped); unknown keys print verbatim. */
 function statLines(stats: Record<string, number> | undefined): Array<[string, string]> {
   if (!stats) return [];
   return Object.entries(stats)
-    .filter(([, v]) => typeof v === 'number' && Number.isFinite(v) && v !== 0)
-    .slice(0, 6)
+    .filter(([k, v]) => !(FIXED_STATS as readonly string[]).includes(k) && typeof v === 'number' && Number.isFinite(v) && v !== 0)
+    .slice(0, 4)
     .map(([k, v]) => [has(`hud.results.stat.${k}`) ? t(`hud.results.stat.${k}`) : k, fmtNum(v)]);
 }
 
@@ -64,16 +67,23 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
   h('div', 'rcp-rule', paper);
 
   const me = s.players[0];
+  const name = me?.name?.trim() ? me.name.trim() : t('hud.results.you');
+  const st: Record<string, number> = s.stats ?? {};
+  const stat = (k: (typeof FIXED_STATS)[number]): number => (typeof st[k] === 'number' && Number.isFinite(st[k]) ? st[k] : 0);
   const rows: Array<[string, string]> = [
-    [t('hud.results.name'), me?.name ?? '—'],
+    [t('hud.results.name'), name],
     [t('hud.results.seed'), String(s.seed)],
     [t('hud.results.result'), t(resultKey(s.result))],
     [t('hud.results.floor'), fmtNum(s.floor)],
     [t('hud.results.time'), fmtTime(s.durationSec)],
-    [t('hud.results.rounds'), fmtNum(s.rounds)],
     [t('hud.results.maxWallet'), fmtCoins(s.maxWallet, true)],
-    [t('hud.results.biggest'), fmtCoins(s.biggestWin, true)],
     [t('hud.results.deadlines'), fmtNum(s.deadlines)],
+    [t('hud.results.stat.rounds'), fmtNum(s.rounds)],
+    [t('hud.results.stat.wagered'), fmtCoins(stat('wagered'), true)],
+    [t('hud.results.stat.paid'), fmtCoins(stat('paid'), true)],
+    [t('hud.results.stat.biggest'), fmtCoins(s.biggestWin, true)],
+    [t('hud.results.stat.wins'), fmtNum(stat('wins'))],
+    [t('hud.results.stat.nightsPaid'), fmtNum(stat('nightsPaid'))],
     ...statLines(s.stats),
   ];
   if (s.obols !== undefined) rows.push([t('hud.results.obols'), `+${fmtNum(s.obols)}`]);

@@ -37,7 +37,8 @@
 .shud-btn { display: flex; align-items: center; gap: calc(var(--su) * 2); padding: calc(var(--su) * 1.5) calc(var(--su) * 3); background: #1b261b; border: calc(var(--su) * 1.5) solid #7dff7a; font-size: calc(var(--su) * 6.5); line-height: 1; color: #7dff7a; white-space: nowrap; }
 .shud-btn.primary { background: #ffd040; border-color: #ffd040; color: #080b08; }
 .shud-btn.primary .shud-key { background: #080b08; color: #ffd040; }
-.shud-key { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3.5); line-height: 1; padding: calc(var(--su) * 1.5) calc(var(--su) * 1.5) calc(var(--su) * 1) ; background: #f4f0dc; color: #080b08; min-width: calc(var(--su) * 7); text-align: center; }
+/* the key glyph is VT323, not Press Start 2P: at chip size the pixel-font Q (and O, D) reads as a box */
+.shud-key { font-family: var(--f-body, 'VT323', monospace); font-size: calc(var(--su) * 5.5); line-height: 1; padding: calc(var(--su) * 1) calc(var(--su) * 1.5) 0; background: #f4f0dc; color: #080b08; min-width: calc(var(--su) * 7); text-align: center; }
 
 /* tone colours (state banner, number tops) */
 .tone-neutral { color: #f4f0dc; }

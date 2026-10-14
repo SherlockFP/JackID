@@ -73,6 +73,14 @@ export const BUFFERABLE_MACHINE_ACTIONS: ReadonlySet<string> = new Set([
   'primary', 'confirm', 'collect', 'fast', 'auto', 'camera', 'clear', 'double', 'alt',
   'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9',
 ]);
+/**
+ * A modal overlay that owns the digits (the phone deal sheet, see `setModal` on the input service): while it is open the
+ * seated machine never receives these machine actions (they are swallowed by input), and the walk-layer keys below choose
+ * instead. Pressing Esc closes the modal (`onModalCancel`) and never pauses.
+ */
+export const MODAL_SWALLOWED_ACTIONS: ReadonlySet<string> = new Set(['n1', 'n2', 'n3']);
+/** Walk-layer actions that stay live at a machine while a modal is open (they are polled through `pressed`). */
+export const MODAL_WALK_ACTIONS: ReadonlySet<string> = new Set(['phoneOpt1', 'phoneOpt2', 'phoneOpt3']);
 /** Codes whose machine binding fires on a quick TAP only (hold = free-look). */
 export const TAP_ONLY_CODES: ReadonlySet<string> = new Set(['Mouse2']);
 /** Codes that never reach the game: browser / OS shortcuts the player expects to keep. */

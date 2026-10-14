@@ -46,14 +46,16 @@
 //             of the pocket (the last Watch pays the gap in full). Float = --float 9 (3 activity pulls a Watch).
 //             Once the quota is covered and the pick is not Hot it banks: the minimum stake for the 3 activity pulls of each Watch
 //   banker    the same play, but deposits --banker-frac 0.8 of the pocket above the float at every Bell
-//   human     a casual player (--human-stake 2): stakes 2 coins on ~85 % of pulls (6 on the rest), rotates machine about every 4 pulls,
-//             goes for the Hot Lamp half the time it rotates, deposits a random 20-60 % slice of the pocket at about half the Bells
-//             and pays the gap only on the last Watch (if the pocket covers it). Banks like the others once the quota is covered.
+//   human     a casual player (wave 19): stakes a random 2-5 coins a pull (the ladder step at or below it), rotates machine every
+//             3-5 pulls, goes for the Hot Lamp ~60 % of the time it rotates (--human-hot-p 0.6), deposits a random 30-70 % slice of
+//             the pocket at ~80 % of the Bells and pays the gap only on the last Watch. Banks once the quota is covered.
 // Also modelled: House Favour (x1.25 / 1.15 / 1.07 on Nights 1-3), the Witching Watch +5 %, the activity float (never bet into the
 // 3 pulls the next Watches need). --no-favour switches Favour off; --trace N prints the first N runs Night by Night.
 //
-// TARGET TABLE (director's decision, cumulative reach): rotator N1 >= 92, N2 >= 85, N3 ~75, N5 45-50, N8 10-15; banker within
-// 10 points (currently ~16 behind: it over-deposits and starves its play); camper N3 <= 20. The shipped schedule.ts hits it: run node scripts/sim/run.mjs --runs 2000 to see the table.
+// TARGET TABLE (wave 19 director, cumulative reach, human bot first): human N1 >= 85, N2 >= 70, N3 >= 50, N5 25-30, N8 ~5; rotator a
+// bit above the human; camper N3 <= 15. Shipped (2000 runs): human 90/76/51/32/26/22/20/20; rotator 100/88/85/70/59/50/41/35;
+// camper N3 16. Open: N8 (human 20 vs ~5) needs the SI ladder smoothed (SI 1,2,4 … 128 gives N8 ~4) and the rotator sits ~35 points
+// above the human late (a bot/charm question, not the quota ladder). Run node scripts/sim/run.mjs --runs 2000 to see the table.
 import { writeFileSync } from 'node:fs';
 import { load, closeVite } from '../tests/_vite.mjs';
 
@@ -73,9 +75,12 @@ const DEP_MARGIN = Number(argVal('--dep-margin', 1.3));
 const DEP_MODE = argVal("--dep-mode", "gap");
 const FRONT_MIN_RATE = Number(argVal("--front-min-rate", 0.3));
 const FLOAT_FRAC = Number(argVal("--float-frac", 0));
-// human: the casual player. Stake HUMAN_STAKE on most pulls (3x on the rest), rotates machine about every 4 pulls, goes for the Hot
-// Lamp half the time it rotates, deposits a random slice of the pocket at about half the Bells (the gap on the last Watch only).
-const HUMAN_STAKE = Number(argVal('--human-stake', 2));
+// human: the casual player. Stakes 2-5 coins a pull, rotates machine every 3-5 pulls, goes for the Hot Lamp ~60 % of rotations,
+// deposits a random slice of the pocket at ~80 % of the Bells (the gap on the last Watch only).
+const HUMAN_STAKE_LO = Number(argVal('--human-stake-lo', 2));      // a casual stake: a random whole 2-5 coins a pull
+const HUMAN_STAKE_HI = Number(argVal('--human-stake-hi', 5));
+const HUMAN_HOT_P = Number(argVal('--human-hot-p', 0.6));          // share of rotations that go to the Hot Lamp
+const HUMAN_SHOP_P = Number(argVal('--human-shop-p', 0.5));        // chance the casual player visits the Pawn at a given stop
 const HUMAN_DEP_P = Number(argVal('--human-dep-p', 0.8));          // chance the human deposits at a Bell (not the last Watch)
 const HUMAN_DEP_LO = Number(argVal('--human-dep-lo', 0.3));        // ... and then this range of the pocket
 const HUMAN_DEP_HI = Number(argVal('--human-dep-hi', 0.7));
@@ -132,7 +137,8 @@ for (const id of WORLD_IDS) {
   defs[id] = def;
 }
 const world = WORLD_IDS.map((machineId, i) => ({ mid: `m${i}`, machineId, suit: (SUITS.suitOf(machineId) ?? '').toLowerCase() }));
-const lampCands = world.map((w) => ({ mid: w.mid, machineId: w.machineId }));
+// Lamp candidates as run.ts lampCandidates(): the machine's minimum stake; the pocket decides which ones may take a Lamp (circuit.lampEligible).
+const lampCands = world.map((w) => ({ mid: w.mid, machineId: w.machineId, minBet: defs[w.machineId].minBet }));
 const FLOOR = world.map((w) => ({ machineId: w.machineId, tags: [w.suit], category: 'gambling' }));
 const DEF = (id) => ENG.charmDef(id);
 
@@ -280,8 +286,10 @@ function makeHost(S, rng) {
 }
 
 /** Intermission shopping: up to two purchases from the Pawn, best priority first, within SPEND_FRAC of the pocket. */
-function shop(S, bot, due) {
+function shop(S, bot, due, rng) {
   if (NO_CHARMS || bot === 'camper') return;
+  // The casual player visits the Pawn at only some Bells (--human-shop-p): a careful stake is not a charm-every-Bell shopper.
+  if (bot === 'human' && rng && rng.next() >= HUMAN_SHOP_P) return;
   // Keep play money: a charm never eats the stake pool (about a third of the Night's quota stays in the pocket).
   for (let k = 0; k < 2; k++) {
     const stock = S.pawn.stock(1);
@@ -348,10 +356,10 @@ function playRun(bot, runIdx) {
         const dep = Math.min(want2, Math.max(0, S.pocket - float));
         if (dep > 0) { S.pocket -= dep; S.debt += Math.floor(dep * (1 + fx0.depositBonus)); }
       }
-      shop(S, bot, due);
+      shop(S, bot, due, hum.rng);
       fx0 = runFx(S);
       const lampRng = RNG.createRng((SEED * 31 + runIdx * 1009 + idx * 37 + w * 3 + 1) >>> 0);
-      circ.startWatch(lampRng, lampCands, { lamps: nd.no >= SCH.LAMP_FIRST_NIGHT, hot: SCH.hotLampCount(nd.no) + fx0.hotCount, cold: SCH.coldLampCount(nd.no), newIsHot: false });
+      circ.startWatch(lampRng, lampCands.filter((c) => CIR.lampEligible(c, S.pocket)), { lamps: nd.no >= SCH.LAMP_FIRST_NIGHT, hot: SCH.hotLampCount(nd.no) + fx0.hotCount, cold: SCH.coldLampCount(nd.no), newIsHot: false });
       const rate = SCH.interestRate(nd.interest, fx0.interestAdd);
       let pulls = nd.pulls + fx0.pullsAdd;
       const pullsMax = pulls;
@@ -370,7 +378,7 @@ function playRun(bot, runIdx) {
             const hot = world.find((x) => circ.isHot(x.mid) && openH(x));
             const pool = world.filter(openH);
             const cands = pool.length ? pool : world;
-            hum.cur = hot && hum.rng.next() < 0.5 ? hot : cands[hum.rng.int(0, cands.length - 1)];
+            hum.cur = hot && hum.rng.next() < HUMAN_HOT_P ? hot : cands[hum.rng.int(0, cands.length - 1)];
             hum.dwell = 3 + hum.rng.int(0, 2);
           }
           hum.dwell -= 1;
@@ -408,7 +416,7 @@ function playRun(bot, runIdx) {
           S.pocket += loan.coins; due += loan.quota; loans += 1; TOT.loans += 1; loanedRun = true;
         }
         const bet = banked ? (lim.min <= S.pocket ? lim.min : 0)
-          : bot === 'human' ? stakeAt(lim, hum.rng.next() < 0.85 ? HUMAN_STAKE : 3 * HUMAN_STAKE, S.pocket)
+          : bot === 'human' ? stakeAt(lim, HUMAN_STAKE_LO + hum.rng.int(0, HUMAN_STAKE_HI - HUMAN_STAKE_LO), S.pocket)
           : stakeFor(bot, lim, S.pocket);
         if (bet <= 0) break;
         // Activity float: after the 3 pulls interest needs, never bet into the coins the next Watches' 3 pulls each need.
@@ -479,7 +487,7 @@ function playRun(bot, runIdx) {
     // Start of the next Night (openFloor): the House float tops the pocket up to F(n), free and not in the quota.
     if (idx + 1 < SCH.BASE_RUN_NIGHTS && !NO_FLOAT) { const top = ECO.houseFloatTopUp(S.pocket, idx + 1); S.pocket += top; FLOAT_PAID[idx + 1] += top; }
     // Dawn visit: the Pawn shows the next Night's stock (priced at this Night's SI).
-    if (idx + 1 < SCH.BASE_RUN_NIGHTS) { S.shopNight = idx + 1; S.shopWatch = 0; shop(S, bot, dueOf(NIGHTS[idx + 1])); }
+    if (idx + 1 < SCH.BASE_RUN_NIGHTS) { S.shopNight = idx + 1; S.shopWatch = 0; shop(S, bot, dueOf(NIGHTS[idx + 1]), hum.rng); }
   }
   out.charms = S.held.length;
   if (loanedRun) TOT.runsWithLoan += 1;

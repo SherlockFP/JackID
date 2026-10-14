@@ -23,8 +23,9 @@ export function showRulesHint(mount: HTMLElement, text: string, ms = HINT_MS): (
   const su = 'var(--su, var(--u, 4px))';
   s.position = 'absolute';
   s.left = `calc(${su} * 3)`;
-  // under the HUD top band (`--hud-top-h`, set by hud.ts), so the coin counter and its stack are never covered
-  s.top = `calc(var(--hud-top-h, calc(${su} * 52)) + ${su} * 2)`;
+  // under the seat's goal / state banner stack (`--seat-top-b`, set by seatHud.ts while seated), which hangs below the HUD
+  // top band (`--hud-top-h`, set by hud.ts); so the chip never sits on the state banner or the coin counter
+  s.top = `calc(var(--seat-top-b, var(--hud-top-h, calc(${su} * 52))) + ${su} * 2)`;
   // a brass key cap: bitmap heading font, about 4.5 units tall, so it reads from the seat
   s.fontFamily = "var(--f-head, 'Press Start 2P', monospace)";
   s.fontSize = `calc(${su} * 4.5)`;

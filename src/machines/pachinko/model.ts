@@ -73,7 +73,13 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PachinkoParts> 
   for (const sx of [-1, 1]) kit.box(0.03, FRAME.h, FRAME.d, pal.steel, at(sx * (FRAME.w / 2 - 0.015), FRAME.h / 2, frameZ));
   kit.box(FRAME.w, 0.04, FRAME.d, pal.steel, at(0, FRAME.h - 0.02, frameZ));                          // canopy
   const cabZ = frameZ + 0.02;
-  kit.box(CAB.w, CAB.h, CAB.d, pal.black, at(0, CAB.y0 + CAB.h / 2, cabZ));                         // cabinet body
+  // cabinet body, built AROUND the playfield opening (the old solid box swallowed the tilted field, which sits behind its front face):
+  // a back block, then a front frame of four boxes below / above / left / right of the opening (y 1.05 ... 1.56)
+  const frontZ = cabZ + CAB.d / 2, openLo = 1.05, openHi = 1.56, sideW = 0.02;
+  kit.box(CAB.w, CAB.h, 0.18, pal.black, at(0, CAB.y0 + CAB.h / 2, frontZ - 0.21));                    // back block (z -0.28 ... -0.10)
+  kit.box(CAB.w, openLo - CAB.y0, 0.12, pal.black, at(0, (CAB.y0 + openLo) / 2, frontZ - 0.06));      // front frame: below the opening
+  kit.box(CAB.w, CAB.y0 + CAB.h - openHi, 0.12, pal.black, at(0, (openHi + CAB.y0 + CAB.h) / 2, frontZ - 0.06));   // above
+  for (const sx of [-1, 1]) kit.box(sideW, openHi - openLo, 0.12, pal.black, at(sx * (CAB.w / 2 - sideW / 2), (openLo + openHi) / 2, frontZ - 0.06));
   kit.box(CAB.w + 0.02, 0.02, CAB.d + 0.02, frameC, at(0, CAB.y0 + CAB.h + 0.01, cabZ));           // top bezel
   kit.box(0.03, CAB.h, 0.02, frameC, at(-CAB.w / 2, CAB.y0 + CAB.h / 2, cabZ + CAB.d / 2));        // side bezels
   kit.box(0.03, CAB.h, 0.02, frameC, at(CAB.w / 2, CAB.y0 + CAB.h / 2, cabZ + CAB.d / 2));
@@ -101,8 +107,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PachinkoParts> 
 
   // nails: one InstancedMesh of tetrahedra on the lane nodes (hidden under the LCD)
   const pins = LANE_NODES.filter((n) => !underLcd(n.x, n.y));
-  const nailGeo = new THREE.TetrahedronGeometry(0.0025, 0);
-  const nailMat = kit.mat(0xd9d9d9);
+  const nailGeo = new THREE.TetrahedronGeometry(0.0048, 0);
+  const nailMat = kit.mat(0xffffff);
   const nails = new THREE.InstancedMesh(nailGeo, nailMat, pins.length);
   const m4 = new THREE.Matrix4();
   pins.forEach((n, i) => { m4.makeTranslation(n.x, n.y, 0.004); nails.setMatrixAt(i, m4); });
@@ -174,8 +180,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PachinkoParts> 
 
   // light hint + speaker and coin anchors
   const light = new THREE.Object3D();
-  light.position.set(0, 1.25, cabZ + 0.2);
-  light.userData = { color: 0x40a0ff, intensity: 0.5, range: 1.2, flicker: 'STEADY' };
+  light.position.set(0, 1.42, 0.40);   // seat-views: soft key in front of the field
+  light.userData = { color: 0xb8d4ff, intensity: 1.0, range: 1.8, flicker: 'STEADY' };
   root.add(light);
   const speaker = new THREE.Object3D();
   speaker.position.set(0, 1.3, cabZ + 0.2);
@@ -211,7 +217,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PachinkoParts> 
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.22, 0.42), look: new THREE.Vector3(0, 1.2, 0), fov: 52, mouse: 'primary' },
+    // seat-views: the tilted 0.48 m field (centre ~y 1.30, z -0.04) fills the band between the HUD banner and the control bar, 4:3 and 16:9
+    playPose: { pos: new THREE.Vector3(0, 1.43, 0.75), look: new THREE.Vector3(0, 1.27, -0.03), fov: 52, mouse: 'primary' },
     colliders: [{ min: [-FRAME.w / 2, 0, -0.375], max: [FRAME.w / 2, FRAME.h, 0.075] }],
     interact: { min: [-FRAME.w / 2, 0.6, -0.4], max: [FRAME.w / 2, FRAME.h, 0.2] },
     anchors: { speaker, prompt, label, marqueeTop, servicePlate, stand, coinOut, light },

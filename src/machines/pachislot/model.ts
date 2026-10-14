@@ -113,7 +113,13 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<PachislotParts
   const at = (x: number, y: number, z: number): { pos: [number, number, number]; parent: THREE.Object3D } => ({ pos: [x, y, z], parent: root });
   kit.box(0.60, 0.95, 0.50, pal.black, at(0, 0.475, -0.225));                    // counter section (body in the kit black)
   kit.box(0.62, 0.03, 0.52, trim, at(0, 0.965, -0.225));                          // counter top trim
-  kit.box(0.50, 0.85, 0.45, BODY, at(0, 1.375, -0.225));                          // cabinet
+  // cabinet, built AROUND the reel opening: a solid back block, then a front frame of four boxes (below / above / left / right of the
+  // 0.24 x 0.15 window) so the drums at z -0.09 are really visible (the old single box closed the window and hid every reel)
+  const winTop = REEL_Y + WIN_H / 2, winBot = REEL_Y - WIN_H / 2, FACE_BACK = -0.19;
+  kit.box(0.50, 0.85, 0.26, BODY, at(0, 1.375, -0.32));                           // cabinet back block (z -0.45 ... -0.19)
+  kit.box(0.50, winBot - 0.95, 0.19, BODY, at(0, (0.95 + winBot) / 2, FACE_BACK / 2));          // front frame: below the window
+  kit.box(0.50, 1.80 - winTop, 0.19, BODY, at(0, (winTop + 1.80) / 2, FACE_BACK / 2));          // above the window
+  for (const sx of [-1, 1]) kit.box(0.25 - WIN_W / 2, WIN_H, 0.19, BODY, at(sx * (0.25 + WIN_W / 2) / 2, REEL_Y, FACE_BACK / 2));
   kit.box(0.52, 0.02, 0.47, trim, at(0, 1.81, -0.225));                           // gaudy top edge
   kit.box(0.50, 0.012, 0.01, trim, at(0, 1.80, 0.0));                             // front top trim line
   for (const sx of [-1, 1]) kit.box(0.02, 0.85, 0.01, trim, at(sx * 0.25, 1.375, 0.0));   // front corner trims
@@ -121,7 +127,6 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<PachislotParts
   kit.box(WIN_W + 0.03, 0.012, 0.012, pal.gold, at(0, REEL_Y + WIN_H / 2 + 0.006, 0.006));
   kit.box(WIN_W + 0.03, 0.012, 0.012, pal.gold, at(0, REEL_Y - WIN_H / 2 - 0.006, 0.006));
   for (const sx of [-1, 1]) kit.box(0.012, WIN_H, 0.012, pal.gold, at(sx * (WIN_W / 2 + 0.006), REEL_Y, 0.006));
-  kit.box(WIN_W, WIN_H, 0.004, pal.black, at(0, REEL_Y, 0.002));                  // dark backing behind the window
   // medal tray scoop (0.40 × 0.12) in front of the counter
   kit.box(0.40, 0.03, 0.12, pal.chrome, at(0, 0.975, 0.09));
   kit.box(0.40, 0.03, 0.01, trim, at(0, 0.99, 0.15));
@@ -211,8 +216,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<PachislotParts
   const stand = new THREE.Object3D(); stand.position.set(0, 0, 0.62); root.add(stand);
   const medals = new THREE.Object3D(); medals.position.set(0, 1.00, 0.10); root.add(medals);
   const light = new THREE.Object3D();
-  light.position.set(0, 1.50, 0.20);
-  light.userData = { color: 0xffcc66, intensity: 0.6, range: 1.0, flicker: 'STEADY' };
+  light.position.set(0, 1.45, 0.45);   // seat-views: a soft key between the player and the reel window
+  light.userData = { color: 0xffe2b0, intensity: 1.0, range: 2.0, flicker: 'STEADY' };
   root.add(light);
   const fxTwist = new THREE.Object3D(); fxTwist.position.set(0, LCD_Y, 0.02); root.add(fxTwist);
 
@@ -230,7 +235,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<PachislotParts
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.30, 0.55), look: new THREE.Vector3(0, 1.28, 0.05), fov: 50, mouse: 'primary' },
+    // framing: LCD (top) + reel window + stop buttons inside the band between the HUD banner and the control bar, 4:3 and 16:9
+    playPose: { pos: new THREE.Vector3(0, 1.42, 0.85), look: new THREE.Vector3(0, 1.37, 0), fov: 50, mouse: 'primary' },
     colliders: [{ min: [-0.30, 0, -0.475], max: [0.30, 1.80, 0.025] }],
     interact: { min: [-0.30, 0.3, -0.475], max: [0.30, 1.80, 0.20] },
     anchors: {

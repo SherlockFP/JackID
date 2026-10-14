@@ -21,6 +21,9 @@
  *    'walk'; machine-layer presses made then are buffered (last one wins) and replayed once the machine sink attaches.
  *  - Lock refused in walk mode → a small non-blocking centre hint "CLICK TO CAPTURE MOUSE"; any click while walking and
  *    unlocked requests the lock again (the hint hides on `input:lock`).
+ *  - Modal (`setModal`, e.g. the phone deal sheet): while a modal is open the seated machine never receives the digit
+ *    actions (`MODAL_SWALLOWED_ACTIONS`), the walk-layer deal keys (`MODAL_WALK_ACTIONS`) stay live at the machine, and Esc
+ *    fires `onModalCancel` instead of pausing.
  *  - Never binds Ctrl/Alt/Meta chords (browser shortcuts keep working); F5/F11/F12 stay with the browser.
  */
 import * as THREE from 'three';
@@ -28,8 +31,8 @@ import type {
   Action, BindingKey, Input, InputMode, MachineAction, MachineInputEvent, MachineSink,
 } from './input/types';
 import {
-  ALL_DEFAULTS, BUFFERABLE_MACHINE_ACTIONS, CUTSCENE_SKIP_CODES, MODIFIER_CODES, REPEATABLE_MACHINE_ACTIONS,
-  RESERVED_CODES, SEATED_WALK_ACTIONS, TAP_ONLY_CODES, codeLabel,
+  ALL_DEFAULTS, BUFFERABLE_MACHINE_ACTIONS, CUTSCENE_SKIP_CODES, MODAL_SWALLOWED_ACTIONS, MODAL_WALK_ACTIONS, MODIFIER_CODES,
+  REPEATABLE_MACHINE_ACTIONS, RESERVED_CODES, SEATED_WALK_ACTIONS, TAP_ONLY_CODES, codeLabel,
 } from './keymap';
 import { bus } from './events';
 import { app } from './app';
@@ -68,6 +71,15 @@ export interface InputExt extends Input {
    * replayed once `setMachineSink` attaches a sink in 'machine' mode.
    */
   seatTransition(on: boolean): void;
+  /**
+   * An overlay (owner name) takes the digits and Esc: while set, the seated machine is not sent the digit actions and
+   * Esc fires `onModalCancel` instead of pausing. `null` clears it (and releases any machine action still held).
+   */
+  setModal(owner: string | null): void;
+  /** The owner of the open modal, or null. */
+  readonly modal: string | null;
+  /** Esc (or the lock-loss pause) while a modal is open. Returns the unsubscribe. */
+  onModalCancel(fn: () => void): () => void;
   /** Codes currently bound to a binding key (copy). */
   codesOf(key: string): string[];
   /** Every binding key with its codes (frozen + extra, copy). */
@@ -149,6 +161,8 @@ class InputImpl implements InputExt {
   private rmbMoved = 0;                    // largest pointer travel since the RMB press
   private seatGlide = false;               // the camera is gliding into a seat (mode still 'walk', no sink yet)
   private seatBuf: { action: string; code: string; mods: Mods; t: number } | null = null;
+  private modalOwner: string | null = null;
+  private modalCancelFns = new Set<() => void>();
   private hintEl: HTMLDivElement | null = null;   // "CLICK TO CAPTURE MOUSE"
   private wheelAcc = 0;
   private readonly moveOut = { x: 0, z: 0 };
@@ -453,6 +467,19 @@ class InputImpl implements InputExt {
     this.sink = s;
   }
 
+  get modal(): string | null { return this.modalOwner; }
+
+  setModal(owner: string | null): void {
+    if (owner === this.modalOwner) return;
+    this.modalOwner = owner;
+    this.releaseMachine();                 // a digit held when the overlay opened must not stay down at the machine
+  }
+
+  onModalCancel(fn: () => void): () => void {
+    this.modalCancelFns.add(fn);
+    return () => { this.modalCancelFns.delete(fn); };
+  }
+
   seatTransition(on: boolean): void {
     this.seatGlide = on;
     if (on) { this.seatBuf = null; this.releaseWalk(); this.setCaptureHint(false); }   // walk actions end; the buffer starts empty
@@ -549,24 +576,33 @@ class InputImpl implements InputExt {
   private dispatch(r: Raw): void {
     const mode = this.mode;
     if (mode === 'ui') return;
+    const modal = this.modalOwner !== null;
+    // Esc (or the lock-loss pause that stands in for it) closes the open overlay and never pauses
+    if (modal && r.down && !r.repeat && (r.code === 'Escape' || r.code === '__pause')) {
+      for (const fn of [...this.modalCancelFns]) { try { fn(); } catch (e) { log.error('input', 'onModalCancel', e); } }
+      return;
+    }
     const gliding = this.seatGlide && mode === 'walk';     // gliding into a seat: seated walk rules, machine presses buffered
     const wmode = gliding ? 'machine' : mode;
     const keys = this.reverse.get(r.code) ?? EMPTY;
     let machineBound = false;
     let walkHandled = false;
     let skipped = false;
+    let swallowed = false;
     for (const k of keys) {
       if (k.startsWith('m.')) {
+        if (modal && MODAL_SWALLOWED_ACTIONS.has(k.slice(2))) { swallowed = true; continue; }   // the overlay owns the digit
         if (mode === 'machine') { machineBound = true; this.dispatchMachine(k.slice(2), r); }
         else if (gliding) this.bufferSeatPress(k.slice(2), r);
       } else {
         if (k === 'skip') skipped = true;
+        if (k === 'pause' && modal) { swallowed = true; continue; }
         if (this.dispatchWalk(k, r, wmode)) walkHandled = true;
       }
     }
     if (mode === 'cutscene' && !skipped && (CUTSCENE_SKIP_CODES.includes(r.code) || r.code === '__pause')) this.dispatchWalk('skip', r, mode);
     // unbound at the machine (and not a live seated walk action such as Esc / Tab / F1) → device letters: delivered raw
-    if (mode === 'machine' && !machineBound && !walkHandled && !MODIFIER_CODES.has(r.code) && !r.code.startsWith('Mouse')
+    if (mode === 'machine' && !machineBound && !walkHandled && !swallowed && !MODIFIER_CODES.has(r.code) && !r.code.startsWith('Mouse')
         && !r.code.startsWith('Wheel') && r.code !== '__pause' && !(r.down && r.repeat)) {   // device letters never auto-repeat
       this.sendMachine('key', r.down, r.repeat, r);
     }
@@ -594,6 +630,7 @@ class InputImpl implements InputExt {
   private dispatchWalk(a: string, r: Raw, mode: InputMode): boolean {
     const allowed = mode === 'walk'
       || (mode === 'machine' && SEATED_WALK_ACTIONS.has(a) && !(a === 'chat' && (r.code === 'Enter' || r.code === 'NumpadEnter')))
+      || (mode === 'machine' && this.modalOwner !== null && MODAL_WALK_ACTIONS.has(a))   // the open overlay's deal keys at a seat
       || (mode === 'cutscene' && a === 'skip')                       // cutscenes: Esc / lock loss only skip, never pause
       || (mode === 'menu' && a === 'pause');
     if (!allowed) return false;

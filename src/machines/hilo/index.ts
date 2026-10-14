@@ -6,7 +6,8 @@
  *    animation happens, on every peer. Settle-before-present (DECISIONS G): the wallet step runs as `emit`'s `credit`.
  *  - a multi-step round: the stake is charged on DEAL; the round stays OPEN between decisions (busy = false while the
  *    player chooses); a bust closes it at 0 (or the safety-net refund); COLLECT pays stake × running multiplier;
- *    auto-collect at ×1,000; standing up collects with ≥ 1 step, refunds with 0 steps.
+ *    auto-collect at ×1,000; COLLECT needs ≥ 1 step AND a payout above the stake (`paysProfit`), else it is disabled;
+ *    standing up collects when that holds, otherwise refunds the stake.
  *  - juice: anticipation (button press, marquee race), split-flap clatter, a rung tone per climb (+2 semitones), the
  *    thermometer rising, near-miss tease, bust drain (power-down, rungs fall one by one), tiered collect celebration.
  *  - charms: hooks `m.hilo.skipAdd`, `stepRtpAdd`, `safetyNet`, `sameBonus`, `startMult`; `luck` fate draws.
@@ -55,6 +56,11 @@ const LED_CAP = 99999;
 const rungLevel = (run: number): number => RUNG_AT.filter((m) => run >= m).length;
 /** Thermometer fill, log scale from ×1 to the auto-collect line. */
 const fill = (run: number): number => clamp(Math.log(Math.max(1, run)) / Math.log(AUTO_COLLECT), 0, 1);
+/**
+ * A collect has to PAY MORE than the stake. The whole-coin floor of stake × ladder is the least `payoutOf` can return, so
+ * a ladder whose floor does not clear the stake (a first ×1.07 step on a small bet) would pay a net-0 push: not allowed.
+ */
+const paysProfit = (bet: number, run: number): boolean => Math.floor(bet * run) > bet;
 
 export const def: MachineDef = {
   id: 'hilo',
@@ -78,7 +84,10 @@ export const def: MachineDef = {
     'm.hilo.sameBonus': 'Float: exact-rank hits multiply that step by 1 + x.',
     'm.hilo.startMult': 'Float: the ladder starts at ×(1 + x).',
   },
-  strings: { en: STRINGS.en, tr: STRINGS.tr },
+  strings: {
+    en: { ...STRINGS.en, noProfit: 'A collect has to pay more than the stake. Keep climbing.' },
+    tr: { ...STRINGS.tr, noProfit: 'Kasa bahisten fazla ödemeli. Tırmanmaya devam et.' },
+  },
 };
 
 export default class HiLo extends MachineBase<HiloParts, Ev, State> {
@@ -118,7 +127,8 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
     // Normal path: standUp() closed the round first. Safety net for forced / external releases.
     if (local && this.roundOpen) {
       const s = this.state;
-      this.settle({ gross: s.steps > 0 ? payoutOf(this.rng, this.roundBet, s.run) : this.roundBet, tags: s.steps > 0 ? ['ladder'] : [] });
+      const ladder = s.steps > 0 && paysProfit(this.roundBet, s.run);
+      this.settle({ gross: ladder ? payoutOf(this.rng, this.roundBet, s.run) : this.roundBet, tags: ladder ? ['ladder'] : [] });
     }
     this.state = { cur: null, run: 1, steps: 0, skips: 0, bet: 0 };          // every peer drops the ladder of whoever left
     this.refresh();
@@ -130,10 +140,10 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
     if (this.isLocalOccupant) this.showHud();
   }
 
-  /** Leaving with a ladder on the table collects it first (≥ 1 step) or refunds the stake (0 steps). */
+  /** Leaving with a ladder on the table collects it first (≥ 1 step that pays a profit) or refunds the stake. */
   protected override standUp(): void {
     if (this.roundOpen && !this.busy) {
-      if (this.state.steps > 0) void this.collect();
+      if (this.state.steps > 0 && paysProfit(this.roundBet, this.state.run)) void this.collect();
       else this.settle({ gross: this.roundBet });
     }
     super.standUp();
@@ -267,6 +277,7 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
     const s = this.state;
     if (this.busy || !this.roundOpen || !s.cur) return;
     if (s.steps < 1) { this.toast(this.t('needStep'), 'bad'); this.sfx('buzzer'); return; }
+    if (!paysProfit(this.roundBet, s.run)) { this.toast(this.t('noProfit'), 'bad'); this.sfx('buzzer'); return; }
     this.busy = true;
     this.showHud();
     const bet = this.roundBet;
@@ -444,7 +455,7 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
     b.higher.setEnabled(!c || guessable(c.rank, 'hi'));
     b.lower.setEnabled(!c || guessable(c.rank, 'lo'));
     b.skip.setEnabled(!!c && s.skips < this.skipCap());
-    b.collect.setEnabled(!!c && s.steps > 0);
+    b.collect.setEnabled(!!c && s.steps > 0 && paysProfit(this.roundBet, s.run));
     b.higher.setLit(!!c && guessable(c.rank, 'hi'));
     b.lower.setLit(!!c && guessable(c.rank, 'lo'));
   }
@@ -578,7 +589,7 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
       if (guessable(card.rank, 'hi')) ctrl.push({ key: this.k('up'), label: { k: 'm.hilo.cHigher' }, action: 'up' });
       if (guessable(card.rank, 'lo')) ctrl.push({ key: this.k('down'), label: { k: 'm.hilo.cLower' }, action: 'down' });
       if (s.skips < this.skipCap()) ctrl.push({ key: this.k('n3'), label: { k: 'm.hilo.cSkip' }, action: 'n3' });
-      if (s.steps > 0) ctrl.push({ key: this.k('collect'), label: { k: 'm.hilo.cCollect' }, action: 'collect', primary: true });
+      if (s.steps > 0 && paysProfit(this.roundBet, s.run)) ctrl.push({ key: this.k('collect'), label: { k: 'm.hilo.cCollect' }, action: 'collect', primary: true });
     }
     ctrl.push({ key: this.k('help'), label: { k: 'm.hilo.cRules' }, action: 'help' });
     ctrl.push({ key: this.k('exit'), label: { k: 'm.hilo.cLeave' }, action: 'exit' });

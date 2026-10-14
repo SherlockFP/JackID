@@ -12,6 +12,8 @@
  * Controls (seated): Space/Enter pick up · 1 / 2 / 3 choose an option (within 15 s of the pick-up) · E stands up.
  * From anywhere (walking or seated): P (`answerPhone`) picks a ringing line up, 1 / 2 / 3 (`phoneOpt1..3`) choose while the board
  * is up. The board stays up when the player stands and walks on. `phoneWalkKeys` is the walk-layer hook (WIRING in the work report).
+ * While the board is up it is a modal (`InputExt.setModal`): seated, 1 / 2 / 3 choose through the walk-layer keys and the
+ * machine is not sent them; Esc closes the board without choosing (the call and its seat buttons stay).
  * Hang-up is not in RunApi yet, so leaving only stands you up; the game resolves an unanswered call on its own clock.
  *
  * Subtitles and the caller's voice belong to game-hotline (its own overlay); the booth only plays the bell, the lamp
@@ -21,6 +23,7 @@ import * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import type { BindingKey, MachineAction, MachineInputEvent } from '@/core/input/types';
+import type { InputExt } from '@/core/input';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import type { PhoneCallState } from '@/net/protocol';
@@ -179,6 +182,7 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
   private sheetUntil = 0;
   private sheetSecs = -1;
   private offResult: (() => void) | null = null;
+  private offModalCancel: (() => void) | null = null;
   /** Ring cue for the walker: the first booth tells the player once per call that the phone rings for them. */
   private cueCall = -1;
 
@@ -195,6 +199,7 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
     this.parts.target.set('--');
     this.attractor.every('tick', 6, () => this.ctx.fx.glow(this.parts.lamp.root, 0xffd34a, 0.3, 0.5), { first: 3 });
     this.offResult = bus.on('hotline:result', (e) => this.onResult(e));
+    this.offModalCancel = this.inputExt().onModalCancel(() => { if (sheetOwner === this) this.closeSheet(this.sheetCall); });
     booths.add(this);
   }
 
@@ -253,6 +258,7 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
 
   dispose(): void {
     this.offResult?.(); this.offResult = null;
+    this.offModalCancel?.(); this.offModalCancel = null;
     booths.delete(this);
     if (sheetOwner === this) this.closeSheet();
     this.sheet?.dispose(); this.sheet = null;
@@ -361,6 +367,7 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
     if (!p.show()) {      // no overlay (menus, bench): the seat HUD buttons and keys remain
       p.dispose(); this.sheet = null; sheetOwner = null; sheetDone = call.id; return;
     }
+    this.inputExt().setModal('hotline-deals');   // the board owns 1 / 2 / 3 and Esc until it closes
     // The deal board covers the centre of the screen: ui.css moves the Collector's subtitles to the lower-left corner meanwhile.
     this.ctx.ui.root.classList.add('hl-sheet');
   }
@@ -373,6 +380,7 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
     const p = owner.sheet;
     owner.sheet = null;
     sheetOwner = null;
+    this.inputExt().setModal(null);
     this.ctx.ui.root.classList.remove('hl-sheet');
     p?.hide();
   }
@@ -455,6 +463,9 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
   }
 
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
+  /** The input service with its modal surface (the machine context hands out the same service as `Input`). */
+  private inputExt(): InputExt { return this.ctx.input as unknown as InputExt; }
+
   /** The key bound to a machine action, as the player sees it. `answerPhone` is a walk-layer action (see keymap.ts). */
   private k(a: MachineAction | 'answerPhone'): string {
     return a === 'answerPhone' ? this.ctx.input.keyLabel('answerPhone' as BindingKey) : this.ctx.input.keyLabel(`m.${a}` as BindingKey);

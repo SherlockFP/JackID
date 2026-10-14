@@ -382,8 +382,9 @@
 .px-frame:has(> .px-frame-title) > .px-frame-body { padding-top: calc(11 * var(--u)); }
 
 /* ── toasts (ART §10.7) ───────────────────────────────────────────────────────────────────── */
+/* Top-centre stack sits UNDER the HUD top band (--hud-top-h, set by hud.ts): it used to land on the title strip. */
 .px-toasts {
-  position: absolute; top: calc(8 * var(--u)); left: 50%; transform: translateX(-50%); z-index: 5;
+  position: absolute; top: calc(var(--hud-top-h, calc(8 * var(--u))) + 4 * var(--u)); left: 50%; transform: translateX(-50%); z-index: 5;
   display: flex; flex-direction: column; align-items: center; gap: calc(2 * var(--u));
   width: calc(168 * var(--u)); max-width: calc(100% - 16 * var(--u));
 }

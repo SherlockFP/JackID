@@ -564,8 +564,12 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       hMax = Math.max(hMax, Math.atan2(Math.abs(p[0]), dz));
     }
     const aspect = Math.max(0.4, window.innerWidth / Math.max(1, window.innerHeight));
-    const centre = (vMin + vMax) / 2;
-    const vHalf = Math.max((vMax - vMin) / 2 + 4 * DEG, Math.atan(Math.tan(hMax + 3 * DEG) / aspect));
+    // The seat's control strip covers the bottom ~30 % of the frame, so the frame is shifted down: the LOWEST price plate
+    // sits FLOOR_SHARE of the frame above its bottom edge, and every corner still fits above it.
+    const FLOOR_SHARE = 0.3;
+    const vSpan = vMax - vMin;
+    const vHalf = Math.max(vSpan / (2 * (1 - FLOOR_SHARE)) + 4 * DEG, Math.atan(Math.tan(hMax + 3 * DEG) / aspect));
+    const centre = vMin + (1 - 2 * FLOOR_SHARE) * vHalf;
     const pose = this.model.playPose;
     pose.pos.set(cam[0], cam[1], cam[2]);
     pose.look.set(cam[0], cam[1] + Math.sin(centre), cam[2] - Math.cos(centre));

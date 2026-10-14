@@ -52,8 +52,9 @@ type State = { hist: number[] };
 
 const HIST = 12;
 const GOLD = LAMP_HEX.jpOn, RED = 0xff2020, AMBER = LAMP_HEX.x1, GREEN = LAMP_HEX.x3;
-const DIM = 0.35;                           // resting lamp intensity
-const TRAIL = [1, 0.5, 0.25];               // head, then the two lamps behind it
+const DIM = 0.45;                           // resting lamp intensity
+const HOT_ZERO = 0xff3a3a;                  // a lit 'zero' lamp (its resting colour is almost black)
+const TRAIL = [1, 0.7, 0.55];               // head, then the two lamps behind it
 
 /** Colour of a multiplier on lamps, plates and LEDs. */
 export function colourOf(value: number, jp: boolean): number {
@@ -136,6 +137,8 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
   private visSlow = 1;
   private visArmed = false;
   private visReverse = false;
+  private readonly lampScale = new Float32Array(LAMPS).fill(1);
+  private readonly lampM = new THREE.Matrix4();
   private visPos = 0;          // float lamp position during hold / coast
   private visLamp = -1;        // landing lamp
   private visLamp2 = -1;       // second light landing lamp (or −1)
@@ -495,10 +498,23 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
       TRAIL.forEach((a, n) => { const j = lampOf(head + dir * n); lit[j] = Math.max(lit[j], a); });
     }
     const c = new THREE.Color();
+    const ringLamps = this.parts.ringLamps;
+    let moved = false;
     for (let i = 1; i < LAMPS; i++) {
-      c.setHex(valueHex(i)).multiplyScalar(lit[i]);
-      this.parts.ringLamps.setColorAt(i, c);
+      // a lit lamp is drawn hot (a lit dead lamp is bright red, not the near-black resting red) and swells with its brightness
+      const on = lit[i] > DIM;
+      c.setHex(on && valueHex(i) === LAMP_HEX.zero ? HOT_ZERO : valueHex(i)).multiplyScalar(on ? lit[i] * 1.15 : lit[i]);
+      ringLamps.setColorAt(i, c);
+      const sc = lit[i] >= 1 ? 1.8 : lit[i] >= 0.5 ? 1.35 : 1;
+      if (this.lampScale[i] !== sc) {
+        this.lampScale[i] = sc;
+        const [x, y] = lampXY(i);
+        this.lampM.makeScale(sc, sc, 1).setPosition(x, y, LAMP_Z);
+        ringLamps.setMatrixAt(i, this.lampM);
+        moved = true;
+      }
     }
+    if (moved) ringLamps.instanceMatrix.needsUpdate = true;
     ic.needsUpdate = true;
     // JACKPOT lamp: gold and breathing when armed, lit on landing, dark grey otherwise
     const jp = this.parts.jpLamp;
@@ -518,12 +534,12 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
     const at = lampXY(head >= 0 ? head : 0);
     light.position.set(at[0], at[1], LAMP_Z + 0.12);
     light.userData.color = head >= 0 ? colourOf(valueOfLamp(head, this.visArmed), lampOf(head) === 0 && this.visArmed) : LAMP_HEX.jpOff;
-    light.userData.intensity = head >= 0 ? 0.5 : 0;
+    light.userData.intensity = head >= 0 ? 1.0 : 0;
     if (this.visMode === 'land' && this.visLamp2 >= 0) {
       const at2 = lampXY(this.visLamp2);
       light2.position.set(at2[0], at2[1], LAMP_Z + 0.12);
       light2.userData.color = colourOf(valueOfLamp(this.visLamp2, this.visArmed), false);
-      light2.userData.intensity = 0.4;
+      light2.userData.intensity = 0.8;
     } else {
       light2.userData.intensity = 0;
     }

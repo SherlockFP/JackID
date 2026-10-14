@@ -26,6 +26,7 @@ export const LAMPS = 48;
 export const RING_Y = 1.3, RING_R = 0.42;
 export const LAMP_R = 0.0225;                // Ø0.045 lens discs
 export const LAMP_Z = FRONT_Z + 0.012;
+export const STOP_X = 0.39, STOP_TILT = 55;                  // STOP mushroom: lower-right corner of the plate, clear of the ring and of the seat HUD
 export const PLATE_R = 0.47;                 // value numbers sit just outside the lamps
 
 /** Clockwise angle of lamp `i` from 12 o'clock (radians). */
@@ -73,8 +74,11 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CyclonParts> {
   kit.box(W, 0.02, 0.85, chrome, at(0, 2.1, 0));                                      // crown line
   kit.box(0.5, 0.2, 0.12, midnight, at(0, 0.36, FRONT_Z + 0.02));                     // base face plinth
   kit.box(0.3, 0.12, 0.04, chrome, at(0.36, 0.3, D / 2 - 0.01));                     // coin tray lip
-  kit.box(0.36, 0.1, 0.12, midnight, at(0, 0.92, FRONT_Z + 0.06));                    // STOP pedestal (lower)
-  kit.box(0.34, 0.02, 0.16, chrome, at(0, 1.0, FRONT_Z + 0.07));                      // pedestal deck
+  // (seat-views: the STOP pedestal moved to the lower-right corner, outside the ring: dead centre at 0.92-1.0 m it hid the bottom lamps and
+  // the painted eye, and any lower it vanished behind the seat HUD)
+  // the deck and the mushroom are tilted 55 deg towards the player: the flat disc was edge-on (invisible) from the seat
+  kit.box(0.22, 0.14, 0.12, midnight, at(STOP_X, 0.66, FRONT_Z + 0.06));             // STOP pedestal (lower)
+  kit.box(0.22, 0.02, 0.22, 0x2c3458, { pos: [STOP_X, 0.765, FRONT_Z + 0.075], rot: [STOP_TILT, 0, 0], parent: root });   // pedestal deck
 
   // ── value plate: one canvas behind the lamp ring ──────────────────────────────────────────────────
   const valuePlate = kit.screen({ w: 1.0, h: 1.0, px: [256, 256], bezel: black });
@@ -109,9 +113,10 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CyclonParts> {
   centre.mesh.position.set(0, RING_Y, FRONT_Z + 0.03);
   root.add(centre.mesh);
 
-  // ── STOP mushroom on the pedestal deck at 1.0 m ──────────────────────────────────────────────────
-  const stop = kit.button({ shape: 'mushroom', r: 0.12, color: pal.red, lit: true });
-  stop.root.position.set(0, 1.02, FRONT_Z + 0.07);
+  // ── STOP mushroom on the pedestal deck (0.80 m, lower right) ──────────────────────────────────────────────────
+  const stop = kit.button({ shape: 'mushroom', r: 0.085, color: pal.red, lit: true });
+  stop.root.position.set(STOP_X, 0.775, FRONT_Z + 0.083);
+  stop.root.rotation.x = STOP_TILT * Math.PI / 180;
   root.add(stop.root);
 
   // ── siren card on the deco top (rotates; red when armed) ──────────────────────────────────────────
@@ -121,7 +126,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CyclonParts> {
 
   // ── LED strip under the ring ─────────────────────────────────────────────────────────────────────
   const leds = kit.screen({ w: 0.5, h: 0.12, px: [160, 32], bezel: black });
-  leds.mesh.position.set(0, 0.58, FRONT_Z + 0.08);
+  leds.mesh.position.set(0, 0.5, FRONT_Z + 0.08);
   root.add(leds.mesh);
 
   // ── marquee on the deco top ─────────────────────────────────────────────────────────────────────
@@ -160,7 +165,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CyclonParts> {
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.55, 0.95), look: new THREE.Vector3(0, RING_Y, 0), fov: 58, mouse: 'pick' },
+    // framing: the whole 1 m ring (top lamp under the banner, bottom lamp just above the stake plate) and the STOP mushroom, 4:3 and 16:9
+    playPose: { pos: new THREE.Vector3(0, 1.32, 1.5), look: new THREE.Vector3(0, 1.26, 0.35), fov: 58, mouse: 'pick' },
     colliders: [{ min: [-W / 2, 0, -D / 2], max: [W / 2, H, BODY_D / 2] }],
     interact: { min: [-W / 2, 0.3, -D / 2], max: [W / 2, H, D / 2 + 0.3] },
     anchors: { speaker, prompt: stop.root, label, marqueeTop, servicePlate, stand, coinOut, light, light2 },

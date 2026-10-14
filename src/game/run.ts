@@ -34,7 +34,7 @@ import {
   type ObolOutcome,
 } from './data/schedule';
 import {
-  COLD_MULT, Circuit, HOT_MULT, rollLamps, tiltBulbs, tiltFactor, tiltStep,
+  COLD_MULT, Circuit, HOT_MULT, lampEligible, rollLamps, tiltBulbs, tiltFactor, tiltStep,
   type CircuitSave, type CircuitView, type LampCandidate, type LampView, type TiltView,
 } from './circuit';
 import {
@@ -78,6 +78,11 @@ export interface RunStakeConfirmEvent {
   pid: PlayerId; mid: InstanceId; machineId: MachineId; state: 'ask' | 'clear';
   amount: number; pocket: number; seconds: number;
 }
+/**
+ * The Night summary's books (wave 19, the "QUOTA N PAID" toast): what the Night added up to. `float` is the House float granted at
+ * the Night's start, `interest` the interest the Settles added to the deposit (not the deposits), `tickets` the Tickets it earned.
+ */
+export interface NightLedger { night: number; float: number; interest: number; tickets: number }
 /** The Collector's rescue loan: the call rang (`'ring'`), the loan was taken (`'taken'`) or the call ended unanswered (`'lapsed'`). */
 export interface RunRescueEvent { pid: PlayerId; state: 'ring' | 'taken' | 'lapsed'; coins: number; quota: number; due: number }
 declare module '@/core/events' {
@@ -154,6 +159,8 @@ export interface RunExt {
   tickets: number; debtPaid: number; dreadPts: number;
   /** Surplus above the quota already returned to the pocket this Night (see `releaseSurplus`). Optional: older saves have none. */
   released?: number;
+  /** The Night summary's books (see `NightLedger`). Optional: older saves have none. */
+  ledger?: NightLedger;
   freeRerolls: number; skipRest: number;
   /** Pawn Window stock (wave 8). Optional: older saves have none. */
   pawn?: PawnSnapshot;
@@ -217,6 +224,8 @@ export interface RunWorldLink {
 export interface DebtRun extends RunApi {
   /** True from Dawn paying the Night until OPEN THE FLOOR. */
   readonly nightPaid: boolean;
+  /** The Night summary's books (float, interest, tickets) for the Night in progress. */
+  nightLedger(): Readonly<NightLedger>;
   /** Advance the run by `dt` sim seconds. Call from the fixed step. */
   tick(dt: number): void;
   /** Write any coalesced save now. Call on page hide / unload (`tick` also flushes within SAVE_SOON_SEC). */
@@ -446,6 +455,8 @@ class Run implements DebtRun {
   private elapsed = 0;
   private clockAcc = 0;
   private stats: Record<string, number> = { rounds: 0, wagered: 0, paid: 0, biggest: 0, wins: 0, nightsPaid: 0, interest: 0, deposited: 0 };
+  /** The Night summary's books; reset when the Night opens (`openFloor`), booked by the float, the Settles and the Tickets. */
+  private ledger: NightLedger = { night: 1, float: 0, interest: 0, tickets: 0 };
   private maxWallet = START.pocket;
   private biggest = 0;
   private bestMachine: string | null = null;
@@ -865,6 +876,9 @@ class Run implements DebtRun {
   phone(): PhoneCallState | null { return this.rescue.phone() ?? this.hotline.phone(); }
   answerPhone(choice: number): void { if (!this.rescue.answer(choice)) this.hotline.answer(choice); }
 
+  /** The Night summary's books for the Night in progress (float, interest, tickets). A copy: the caller cannot change them. */
+  nightLedger(): Readonly<NightLedger> { return { ...this.ledger }; }
+
   balance(cur: CurrencyId, _pid?: PlayerId): number {
     if (cur === 'coin') return this.coins;
     if (cur === 'ticket') return this.tickets;
@@ -877,7 +891,9 @@ class Run implements DebtRun {
       this.maxWallet = Math.max(this.maxWallet, this.coins);
       this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: Math.floor(amount), reason: _reason });
     } else if (cur === 'ticket') {
+      const before = this.tickets;
       this.tickets = Math.min(TICKET_CAP, this.tickets + Math.floor(amount));
+      this.ledger.tickets += this.tickets - before;
     } else {
       this.currencies.set(cur, (this.currencies.get(cur) ?? 0) + amount);
     }
@@ -993,6 +1009,7 @@ class Run implements DebtRun {
       if (gain > 0) this.earn('coin', gain, 'charm:elevator_token');
     }
     this.index += 1;
+    this.ledger = { night: this.index + 1, float: 0, interest: 0, tickets: 0 };   // a new Night's books start empty (before its float)
     const nd = nightDef(this.index);
     this.watches = nd.watches;
     this.watch = 0;
@@ -1023,7 +1040,7 @@ class Run implements DebtRun {
    */
   private houseFloat(): void {
     const top = houseFloatTopUp(this.coins, this.index);
-    if (top > 0) this.earn('coin', top, 'house:float');
+    if (top > 0) { this.earn('coin', top, 'house:float'); this.ledger.float += Math.floor(top); }
   }
 
   settleEarly(): boolean {
@@ -1031,7 +1048,9 @@ class Run implements DebtRun {
     if (this.debtPaid < this.quota.due) return false;
     const skip = Math.max(0, this.watches - this.watch - 1);
     if (skip > 0) {
+      const before = this.tickets;
       this.tickets = Math.min(TICKET_CAP, this.tickets + 4 * skip);
+      this.ledger.tickets += this.tickets - before;
       this.freeRerolls += skip;
     }
     this.skipRest = skip;
@@ -1126,6 +1145,7 @@ class Run implements DebtRun {
         if (interest > 0) {
           this.debtPaid += interest;
           this.stats.interest = (this.stats.interest ?? 0) + interest;
+          this.ledger.interest += interest;
           this.emit('run:deposit', { pid, amount: interest, paid: this.debtPaid, due: this.quota.due });
         }
       }
@@ -1409,14 +1429,17 @@ class Run implements DebtRun {
     return out;
   }
 
+  /** Machines that may take a Lamp at the current pocket (readable, minimum stake within `LAMP_MAX_MIN_BET_SHARE` of it). */
   private lampCandidates(): LampCandidate[] {
     const cands: LampCandidate[] = [];
     for (const m of this.worldLink?.machines() ?? []) {
       if (this.worldLink?.locked?.(m.instance)) continue;
-      const cat = registry.get(m.machineId)?.def.category;
+      const def = registry.get(m.machineId)?.def;
+      const cat = def?.category;
       if (cat === undefined || cat === 'system' || cat === 'party') continue;
       if (this.tycoonSys.staffAt(m.instance).length > 0) continue;        // staffed machines never take a Lamp
-      cands.push({ mid: m.instance, machineId: m.machineId });
+      const c: LampCandidate = { mid: m.instance, machineId: m.machineId, minBet: def?.minBet ?? 0 };
+      if (lampEligible(c, this.coins)) cands.push(c);
     }
     return cands;
   }
@@ -1834,7 +1857,7 @@ class Run implements DebtRun {
       metFired: this.metFired, ropeUsed: this.ropeUsed,
       clock: this.clock.snapshot(), clockLen: this.clockLen, lastCallSec: this.lastCallSec,
       pulls: this.pullCount, pullsMax: this.pullsMax, watchPulls: this.watchPulls, boughtThisWatch: this.boughtThisWatch,
-      tickets: this.tickets, debtPaid: this.debtPaid, released: this.released, dreadPts: this.dreadPts,
+      tickets: this.tickets, debtPaid: this.debtPaid, released: this.released, ledger: { ...this.ledger }, dreadPts: this.dreadPts,
       freeRerolls: this.freeRerolls, skipRest: this.skipRest,
       pawn: this.pawn.snapshot(), plays: Object.fromEntries(this.plays),
       discount: this.discount, nextDiscount: this.nextDiscount, elapsed: this.elapsed,
@@ -2081,6 +2104,7 @@ class Run implements DebtRun {
     this.pullCount = this.rules.unlimitedPulls ? Number.POSITIVE_INFINITY : e.pulls;
     this.pullsMax = e.pullsMax; this.watchPulls = e.watchPulls; this.boughtThisWatch = e.boughtThisWatch;
     this.tickets = e.tickets; this.debtPaid = e.debtPaid; this.released = Math.max(0, e.released ?? 0); this.dreadPts = e.dreadPts;
+    if (e.ledger) this.ledger = { ...e.ledger };
     this.freeRerolls = e.freeRerolls; this.skipRest = e.skipRest;
     if (e.pawn) this.pawn.restore(e.pawn);
     this.plays.clear();
