@@ -19,7 +19,7 @@ import { COLORS, h, uiSfx } from '@/core/ui/widgets';
 import { circuitView, lampLabel, type LampEntry, type LampView } from '@/game/circuit';
 import { dawnPlan } from '@/game/pace';
 import { watchEventView } from '@/game/watchEvents';
-import type { BankView, NextQuotaPreview } from '@/game/run';
+import type { BankView, NextQuotaPreview, OvershootView } from '@/game/run';
 import { inUnderneath } from '@/world/hollow';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { InstanceId, PlayerId } from '@/core/types';
@@ -168,8 +168,10 @@ export function createHud(): Hud {
   const planNext = h('span', 'pn hidden', plan);
   planNext.style.cssText = 'font-weight:700';
   // Four lines at most: the bank against the Dawn quota, the pocket, the Watch (pulls, clock), the tithe. The quota itself is on the
-  // QUOTA line above, so no head line.
+  // QUOTA line above, so no head line. The OVERSHOOT line (planOver) joins under the bank line once the quota is banked.
   const planBank = h('span', 'pb', plan);
+  // OVERSHOOT (wave 7 controls lane): once the quota is banked, the next overpay tier, what it pays and the coins to go.
+  const planOver = h('span', 'po hidden', plan);
   const planPocket = h('span', 'pk', plan);
   const planEnds = h('span', 'pe', plan);
   // WATCH TITHE (Night 3 on): the Watch tithe line, green once met. Shown only while run.watchTithe() reports it active.
@@ -179,6 +181,8 @@ export function createHud(): Hud {
   // two remember which Watch settled last in which Night, so the Night's first intermission (no Watch settled yet) counts all of them.
   let planNight = -1;
   let settledAt = -1;
+  // The highest OVERSHOOT tier index this Night's toast has announced (null: not read yet this Night, so the first read is silent).
+  let overSeen: number | null = null;
   // EMPIRE chip (tycoon): machines you bought and the house cut they pay per Watch. Hidden until the first purchase.
   const empire = h('div', 'hb empire hidden', topR);
   empire.style.cssText = 'padding:2px 8px;max-width:100%;color:#ffd34a;font-size:12px;letter-spacing:.06em;white-space:normal;overflow-wrap:anywhere;text-align:right';
@@ -559,7 +563,7 @@ export function createHud(): Hud {
     const q = r?.shift.quota();
     const sh = r?.shift.state();
     const seg = sh?.segment;
-    if (r && planNight !== r.night()) { planNight = r.night(); settledAt = -1; }
+    if (r && planNight !== r.night()) { planNight = r.night(); settledAt = -1; overSeen = null; }
     if (seg && sh?.phase === 'settle') settledAt = seg.index;
     // The bank view is on the real run (DebtRun), not on the RunApi facade: probe it as `empire()` is probed above.
     const bank = (r as (typeof r & { bank?: () => BankView }) | null)?.bank?.();
@@ -577,6 +581,16 @@ export function createHud(): Hud {
     const titheE = tithe?.on ? Math.max(0, Math.floor(tithe.earned)) : 0;
     const titheOn = titheN > 0;
     if (!r || !q || !seg || !bank || !show) return;
+    // OVERSHOOT: a tier reached in the Watch toasts once per Night (the grant itself lands at Dawn). The first read of a Night is
+    // silent, so a Night that opens already past a tier does not toast. Runs before the key check: a new tier always moves the balance.
+    const ov = (r as (typeof r & { overshootView?: () => OvershootView }) | null)?.overshootView?.() ?? null;
+    if (ov) {
+      if (overSeen === null) overSeen = ov.reached;
+      else if (ov.reached > overSeen && ov.tier) {
+        overSeen = ov.reached;
+        ui().toast(t('hud.plan.overToast', { r: t(`hud.plan.ov.${ov.tier}`) }), 'good', 4);
+      }
+    }
     const due = Math.max(0, Math.floor(q.due));
     // Watches already settled this Night: in a Watch the current one is not yet; at an intermission the segment still names the
     // Watch just settled (when one did), and the Night's first intermission has none. The last line names the next Watch.
@@ -612,6 +626,15 @@ export function createHud(): Hud {
       : t('hud.plan.bank', { p: money(p.projected), q: money(due) }));
     setCls(planPocket, 'hidden', pocket <= 0);
     setText(planPocket, t('hud.plan.pocket', { p: money(pocket) }));
+    // OVERSHOOT line: only once the quota is banked. The next tier's target and the coins to go; past the top tier, a plain line.
+    setCls(planOver, 'hidden', !(ov && paidNow));
+    if (ov && paidNow) {
+      const nx = ov.next;
+      setText(planOver, nx
+        ? t('hud.plan.over', { b: money(ov.balance), q: money(nx.target), r: t(`hud.plan.ov.${nx.id}`), g: money(nx.gap) })
+        : t('hud.plan.overTop'));
+      planOver.style.color = nx ? '#ffd34a' : 'var(--green)';
+    }
     setText(planEnds, interm
       ? t('hud.plan.next', { w: watch, n: seg.count })
       : t('hud.plan.ends', { w: watch, n: seg.count, p: pullsTxt, c: clock }));
@@ -636,7 +659,7 @@ export function createHud(): Hud {
     setCls(planNext, 'hidden', false);
     planNext.style.color = red ? '#ff5a4a' : '';
     setText(planNext, t('hud.plan.night', { q: money(next.due), k }));
-    for (const el of [planBank, planPocket, planEnds, planTithe]) setCls(el, 'hidden', true);
+    for (const el of [planBank, planOver, planPocket, planEnds, planTithe]) setCls(el, 'hidden', true);
   }
 
   function updateEmpire(): void {

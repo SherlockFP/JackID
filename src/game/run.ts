@@ -45,7 +45,7 @@ import {
 } from './economy';
 import { clearClockHolds, clockHeld, holdClock, releaseClock, tickClockHold } from './clockHold';
 import { createRescue, rescueTerms, brokeSteps, type BrokeHelp, type RescueLine } from './rescue';
-import { bankBalance, churnOf, interestBase, interestNext, previewWithdraw, pullsToQualify, withdrawable, type BankInput, type WithdrawPreview } from './bank';
+import { bankBalance, churnOf, interestBase, interestNext, previewWithdraw, pullsToQualify, tierReached, withdrawable, type BankInput, type WithdrawPreview } from './bank';
 import { bestBetFloor, depositRoom, pocketDead, watchFloat } from './float';
 import { Charms, PEG_CAP_RUN, allCharmDefs, choiceOffer, charmDef } from './charms/engine';
 import { Pawn, sellRefund, type PawnSnapshot } from './shop';
@@ -53,6 +53,7 @@ import { StampBook, setActiveStampBook, type StampSnapshot } from './stamps';
 import { scopeTags } from './suits';
 import { paceOf, oddsLine, type OddsLine } from './pace';
 import { profileOf } from './data/machineProfiles';
+import { MachineMods, type ModsSnapshot } from './machineMods';
 import { bossFor, type BossNight } from './bosses';
 import { applyKit, kitById } from './data/kits';
 import { DAILY_STAKE, dailyBetter, dailyKit, dailySeed, dayKey, isDayKey, type DailyBest } from './daily';
@@ -160,6 +161,19 @@ export interface BankView {
   pullsLeft: number;
   /** The cheapest bet on the floor. */
   minBet: number;
+}
+/** OVERSHOOT (the NIGHT PLAN line): the bank against the overpay tiers, read live in a Watch. See `DebtRun.overshootView()`. */
+export interface OvershootView {
+  /** Coins counted toward tonight's quota (the bank balance, floored). */
+  balance: number;
+  /** Tonight's quota. */
+  due: number;
+  /** The highest tier the balance has reached (`OVERSHOOT_TIERS` id), null when none. */
+  tier: string | null;
+  /** Index into `OVERSHOOT_TIERS` of that tier, -1 when none. */
+  reached: number;
+  /** The next tier above the balance: its id, the first whole coin count that reaches it (`target`) and the coins still to go (`gap`). Null when every tier is reached or there is no quota. */
+  next: { id: string; target: number; gap: number } | null;
 }
 /** The Collector's rescue loan: the call rang (`'ring'`), the loan was taken (`'taken'`) or the call ended unanswered (`'lapsed'`). */
 export interface RunRescueEvent { pid: PlayerId; state: 'ring' | 'taken' | 'lapsed'; coins: number; quota: number; due: number }
@@ -310,6 +324,8 @@ export interface RunExt {
   pawn?: PawnSnapshot;
   /** Symbol Stamps owned and the board (Pawn STAMPS tab). Optional: older saves have none. */
   stamps?: StampSnapshot;
+  /** Machine mods installed per instance (Ledger MODS tab). Optional: older saves have none. */
+  machineMods?: ModsSnapshot;
   /** Rounds opened per machine id (the Pawn's most-played machine). Optional. */
   plays?: Record<string, number>;
   /** Legacy (pre-wave 8 reroll counter), ignored. */
@@ -470,6 +486,8 @@ export interface DebtRun extends RunApi {
   readonly pawn: Pawn;
   /** Symbol Stamps (Big One upgrades bought at the Pawn). */
   readonly stamps: StampBook;
+  /** Machine mods (the Ledger's MODS tab): two sockets per owned machine, installed for the run. */
+  readonly machineMods: MachineMods;
   /** Sell a charm for 50 % (70 % with Pawn Ticket). Cursed charms cannot be sold. */
   sellCharm(id: string): boolean;
   /** Topside: STAY UP ends the run as a win. */
@@ -632,6 +650,7 @@ class Run implements DebtRun {
   private seatedMid: InstanceId | null = null;
   private readonly save: SaveStore | null;
   private readonly modsImpl: Mods;
+  readonly machineMods: MachineMods;
   private readonly tycoonSys: Tycoon;
   private readonly buffSys: BuffSystem;
   private readonly itemSys: ItemSystem;
@@ -886,6 +905,14 @@ class Run implements DebtRun {
       },
     });
     this.modsImpl.register(this.tycoonSys.provider);
+    // machine mods (Ledger MODS tab): two sockets per owned machine; the run owns the save and the wallet
+    this.machineMods = new MachineMods({
+      quota: () => this.quota.due, wallet: () => this.coins, open: () => this.tradeOpen(),
+      owns: (i) => this.tycoonSys.owned(i)?.machineId ?? null,
+      spend: (c, why) => this.spend('coin', c, why), touch: () => this.modsImpl.touch(),
+    });
+    this.modsImpl.register(this.machineMods);
+    this.machineMods.onChange(() => this.persistSoon());
     // special rooms: the open rooms' rules and the Boiler's pressure payout are one zone-scoped provider; the wing state reads the run
     this.modsImpl.register(roomsProvider({ opened: () => this.tycoonSys.state().zones, rooms: () => this.rooms }));
     bindWingSource({
@@ -1569,6 +1596,23 @@ class Run implements DebtRun {
       pullsLeft: Number.isFinite(this.pullCount) ? this.pullCount : 0,
       minBet: this.cheapestBet(),
     };
+  }
+
+  /**
+   * OVERSHOOT view: the bank balance against the overpay tiers (the same comparison the Dawn grant uses, `balance ÷ due`).
+   * `target` is the first whole coin count at a tier's ratio, so the HUD reads "balance/target" and the coins to go.
+   */
+  overshootView(): OvershootView {
+    const due = Math.max(0, Math.floor(this.quota.due));
+    const balance = bankBalance(this.bankInput());
+    const id = tierReached(balance, due);
+    const reached = id === null ? -1 : OVERSHOOT_TIERS.findIndex((t) => t.id === id);
+    const nextTier = OVERSHOOT_TIERS[reached + 1];
+    if (due <= 0 || !nextTier) return { balance, due, tier: id, reached, next: null };
+    let target = Math.ceil(due * nextTier.ratio);
+    while (target / due < nextTier.ratio) target++;
+    while (target > 0 && (target - 1) / due >= nextTier.ratio) target--;
+    return { balance, due, tier: id, reached, next: { id: nextTier.id, target, gap: Math.max(0, target - balance) } };
   }
 
   withdrawPreview(amount: number): WithdrawPreview {
@@ -2996,7 +3040,7 @@ class Run implements DebtRun {
       pulls: this.pullCount, pullsMax: this.pullsMax, watchPulls: this.watchPulls, boughtThisWatch: this.boughtThisWatch,
       tickets: this.tickets, debtPaid: this.debtPaid, ledger: { ...this.ledger }, dreadPts: this.dreadPts,
       freeRerolls: this.freeRerolls, skipRest: this.skipRest,
-      pawn: this.pawn.snapshot(), stamps: this.stamps.snapshot(), plays: Object.fromEntries(this.plays),
+      pawn: this.pawn.snapshot(), stamps: this.stamps.snapshot(), machineMods: this.machineMods.snapshot(), plays: Object.fromEntries(this.plays),
       discount: this.discount, nextDiscount: this.nextDiscount, elapsed: this.elapsed,
       maxWallet: this.maxWallet, biggest: this.biggest, rounds: this.rounds,
       rng: this.rng.getState(),
@@ -3337,6 +3381,7 @@ class Run implements DebtRun {
     this.freeRerolls = e.freeRerolls; this.skipRest = e.skipRest;
     if (e.pawn) this.pawn.restore(e.pawn);
     if (e.stamps) this.stamps.restore(e.stamps);
+    this.machineMods.restore(e.machineMods);
     this.plays.clear();
     for (const [id, n] of Object.entries(e.plays ?? {})) this.plays.set(id, n);
     this.discount = e.discount; this.nextDiscount = e.nextDiscount; this.elapsed = e.elapsed;

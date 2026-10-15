@@ -171,7 +171,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     app.input.setMode('ui');
     app.input.exitLock();
     app.ui.panel(SEAT_LEDGER_PANEL, (el) => {
-      mountLedger(el, s.run.tycoon, mid, { onClose: closeSeatedLedger, toast: (text) => app.ui.toast(text, 'sys') });
+      mountLedger(el, s.run.tycoon, mid, { onClose: closeSeatedLedger, toast: (text) => app.ui.toast(text, 'sys'), mods: s.run.machineMods });
     });
   };
   /**

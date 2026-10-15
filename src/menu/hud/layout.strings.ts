@@ -26,7 +26,7 @@ export default {
     'zone.hollow': 'Underneath',
     'clock.closing': 'WATCH ENDING…',
     'clock.bell': 'BELL — the Watch starts in {s} s',
-    'nightSummary': 'NIGHT {n} PAID · carried +{carry} · float +{float} · cut +{cut} · tickets +{tickets} · bank interest +{int}',
+    'nightSummary': 'NIGHT {n} PAID · bank {carry} (incl. interest +{int}) → pocket · float +{float} · cut +{cut} · tickets +{tickets}',
   },
   tr: {
     'stake.label': 'BAHİS / CEP',
@@ -50,6 +50,6 @@ export default {
     'zone.hollow': 'Altlar',
     'clock.closing': 'NÖBET KAPANIYOR…',
     'clock.bell': 'ÇAN — NÖBET {s} SN SONRA BAŞLIYOR',
-    'nightSummary': '{n}. GECE ÖDENDİ · devir +{carry} · kasa +{float} · kesinti +{cut} · bilet +{tickets} · banka faizi +{int}',
+    'nightSummary': '{n}. GECE ÖDENDİ · banka {carry} (faiz +{int} dahil) → cep · kasa +{float} · kesinti +{cut} · bilet +{tickets}',
   },
 };

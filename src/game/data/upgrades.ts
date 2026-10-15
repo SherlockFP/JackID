@@ -277,6 +277,35 @@ export const WING_DEFS: WingDef[] = [
   { zone: 'wheels', priceQuotaMult: KEYRING.buyQuotaMult, strings: wingStrings('wheels') },
 ];
 
+// ── Machine mods (design backlog #7). Each machine instance has MOD_SOCKETS sockets (machineMods.ts). The Ledger's MODS
+// tab sells these for `share` × the Night's quota; an installed mod stays on its machine for the run. The effects are
+// unscoped here: machineMods.ts scopes each one to the socketed instance (and to `machines` when set). Lamp, tilt and
+// feed mods are deltas (mult / add), so they compose with charms and bosses instead of overwriting their `set` values.
+export interface MachineModDef {
+  id: string;
+  /** Price as a share of the Night's quota (20–35 %). */
+  share: number;
+  /** Machine ids the mod fits; absent = any machine. */
+  machines?: MachineId[];
+  effects: ModEffect[];
+}
+export const MOD_DEFS: MachineModDef[] = [
+  // Hot ×1.5 → ×1.8 and Cold ×0.75 → ×0.6 at base (the lamp hooks start from HOT_MULT / COLD_MULT)
+  { id: 'hotWire', share: 0.30, effects: [
+    { hook: 'x.lamp.hotMult', op: 'mult', value: 1.2 },
+    { hook: 'x.lamp.coldMult', op: 'mult', value: 0.8 },
+  ] },
+  { id: 'luckyLatch', share: 0.25, effects: [
+    { hook: 'luck', op: 'add', value: 2 },
+    { hook: 'bet.maxMult', op: 'mult', value: 0.8 },
+  ] },
+  // Tilt grace: two more plays before the bulbs start to tilt the machine
+  { id: 'tiltGuard', share: 0.20, effects: [{ hook: 'x.tilt.grace', op: 'add', value: 2 }] },
+  // Big One jackpot feed 1 % → 2.5 % (the feed base is 0.01, or 0.015 with the feature)
+  { id: 'deepFeed', share: 0.35, machines: ['bigone'], effects: [{ hook: 'x.bigone.jackpotFeed', op: 'add', value: 0.015 }] },
+  { id: 'brake', share: 0.25, effects: [{ hook: 'speed.mult', op: 'mult', value: 0.85 }] },
+];
+
 // ── Foundations (meta tree, GDD §11.3). Costs in Obols, `fixed` = explicit level prices. ─────────────
 const META = (
   id: string, icon: SymbolId, fixed: number[], maxLevel: number, pos: [number, number],

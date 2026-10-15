@@ -203,6 +203,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       ledger = mountLedger(el, run.tycoon, mid, {
         onClose: closeLedger,
         toast: (text) => app.ui.toast(text, 'sys'),
+        mods: run.machineMods,
       });
     });
   };
