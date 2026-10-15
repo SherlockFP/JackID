@@ -74,12 +74,17 @@ export function dawnBank(balance: number, settles: number, interestAt: (balance:
  * The NIGHT PLAN projection: the BANK at Dawn only. The pocket is not counted (a coin counts once it is deposited);
  * the HUD shows the pocket on its own line.
  */
-export interface DawnPlan { projected: number; gap: number; met: boolean }
+export interface DawnPlan { projected: number; gap: number; met: boolean; surplus: number }
 
+/**
+ * `settles` is the Settles still to come, the Watch being set up included (the Night's first intermission has all of them).
+ * `surplus` is what the projected bank holds above the quota: the coins that return to the pocket at Dawn.
+ */
 export function dawnPlan(i: { due: number; balance: number; settles: number; interestAt: (balance: number) => number }): DawnPlan {
+  const due = Math.floor(i.due);
   const projected = dawnBank(i.balance, i.settles, i.interestAt);
-  const gap = Math.max(0, Math.floor(i.due) - projected);
-  return { projected, gap, met: gap === 0 };
+  const gap = Math.max(0, due - projected);
+  return { projected, gap, met: gap === 0, surplus: Math.max(0, projected - due) };
 }
 
 /** The odds fields of a machine profile (the rest is display-only). */

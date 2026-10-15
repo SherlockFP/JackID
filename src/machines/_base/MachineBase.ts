@@ -435,8 +435,13 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     if (why === 'confirm') this.toast(tr('stake.confirm', { amount, pocket: run.wallet() }), 'warn');
     else if (why === 'pulls') this.toast(tr('stake.pulls'), 'warn');
     else if (why === 'phase') this.toast(tr('stake.phase'), 'warn');
-    else if (why === 'limit' && amount < this.def.minBet) this.toast(tr('stake.minBet', { min: fmtCoins(this.def.minBet), pocket: fmtCoins(run.wallet()) }), 'warn');
-    else if (why === 'limit') this.toast(tr('stake.cap', { max: fmtCoins(run.betLimits(this.def.id, this.id).max) }), 'warn');
+    else if (why === 'limit') {
+      // Below the floor: HIGH TABLE (a raised minimum) names its own minimum; otherwise the machine minimum. Above: the Night's cap.
+      const lim = run.betLimits(this.def.id, this.id);
+      if (amount < lim.min && lim.min > this.def.minBet) this.toast(tr('stake.highMin', { min: fmtCoins(lim.min) }), 'warn');
+      else if (amount < lim.min) this.toast(tr('stake.minBet', { min: fmtCoins(this.def.minBet), pocket: fmtCoins(run.wallet()) }), 'warn');
+      else this.toast(tr('stake.cap', { max: fmtCoins(lim.max) }), 'warn');
+    }
     else this.toast(tr('common.noFunds'), 'bad');
   }
   /**

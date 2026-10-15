@@ -41,7 +41,8 @@ import { fmtCoins, fmtNum } from '@/core/i18n';
 import type { OvershootTier, QuotaState, RunApi } from '@/game/types';
 import type { BankView, DepositRefusal } from '@/game/run';
 import type { WithdrawPreview } from '@/game/bank';
-import { closingSeconds } from '@/game/data/schedule';
+/** The Bell's closing window (mirrors `closingSeconds()` in game/data/schedule: machines may not import game values). */
+const CLOSING_SEC = 3;
 import { nightPaid } from './night';
 import { bandFromPx, CONTROL_MARGIN, frameConsole, type Vec3 } from './fit';
 
@@ -680,7 +681,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
    * line with the seconds left (the closing lasts `closingSeconds()`), no error sound.
    */
   private closingWait(): void {
-    const s = Math.max(1, Math.ceil(closingSeconds() - this.closingFor));
+    const s = Math.max(1, Math.ceil(CLOSING_SEC - this.closingFor));
     this.ctx.ui.toast(this.t('watchEnding', { s }), 'info');
   }
 

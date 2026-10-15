@@ -16,7 +16,7 @@ registerStrings(houseMoodStrings.prefix, { en: houseMoodStrings.en, tr: houseMoo
 registerStrings(payoutStrings.prefix, { en: payoutStrings.en, tr: payoutStrings.tr });
 
 /** Payout multiplier per printed Night, Nights 1..8 (director: N1 x1.12 … N8 x0.95). */
-export const HOUSE_MOOD: readonly number[] = [1.12, 1.07, 1.03, 1.0, 0.98, 0.97, 0.96, 0.95];
+export const HOUSE_MOOD: readonly number[] = [1.18, 1.10, 1.03, 1.0, 0.98, 0.97, 0.96, 0.95];   // wave 57: play carries the early Nights
 
 /** The mood multiplier for a 0-based Night index (run.index). */
 export function houseMoodMult(index: number): number {

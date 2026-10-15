@@ -8,6 +8,7 @@ export default {
     'ends': 'WATCH {w}/{n} · {p} PULLS · {c} · BELL',
     'next': 'NEXT WATCH {w}/{n}',
     'night': 'NEXT NIGHT: quota {q} (×{k})',
+    'paid': 'NIGHT PAID ✓ — surplus {n} returns at Dawn',
   },
   tr: {
     'head': 'KOTA {q} · ŞAFAK',
@@ -16,5 +17,6 @@ export default {
     'ends': 'VARDİYA {w}/{n} · {p} ÇEKİŞ · {c} · ZİL',
     'next': 'SONRAKİ VARDİYA {w}/{n}',
     'night': 'SONRAKİ GECE: kota {q} (×{k})',
+    'paid': 'GECE ÖDENDİ ✓ — fazla {n} Şafak’ta geri döner',
   },
 };

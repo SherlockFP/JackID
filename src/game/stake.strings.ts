@@ -6,7 +6,8 @@ export default {
   prefix: 'stake.',
   en: {
     'confirm': 'PRESS AGAIN TO CONFIRM: {amount} of your {pocket} coins',
-    'cap': 'Above the stake limit: max {max}',
+    'cap': 'Above this Night\'s stake limit: max {max}',
+    'highMin': 'HIGH TABLE minimum: {min}',
     'pulls': 'No pulls left this Vardiya — ring the bell or wait for Mola',
     'phase': 'The floor is closed right now',
     'clamped': 'Bet lowered to {bet} (pocket {pocket})',
@@ -14,7 +15,8 @@ export default {
   },
   tr: {
     'confirm': 'ONAYLAMAK İÇİN TEKRAR BAS: {pocket} jetonun {amount} tanesi',
-    'cap': 'Bahis sınırının üstü: en çok {max}',
+    'cap': 'Bu Gece’nin bahis sınırının üstü: en çok {max}',
+    'highMin': 'HIGH TABLE asgarisi: {min}',
     'pulls': 'Bu Vardiya’da çekiş kalmadı — Zil’i çal ya da Mola’yı bekle',
     'phase': 'Salon şu an kapalı',
     'clamped': 'Bahis {bet} değerine indirildi (cep {pocket})',

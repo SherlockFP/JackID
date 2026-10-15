@@ -165,6 +165,10 @@ export function createHud(): Hud {
   const planPocket = h('span', 'pk', plan);
   const planEnds = h('span', 'pe', plan);
   let planKey = '';
+  // The NIGHT PLAN counts Settles from the run's segment, which still names the settled Watch during its intermission. These
+  // two remember which Watch settled last in which Night, so the Night's first intermission (no Watch settled yet) counts all of them.
+  let planNight = -1;
+  let settledAt = -1;
   // EMPIRE chip (tycoon): machines you bought and the house cut they pay per Watch. Hidden until the first purchase.
   const empire = h('div', 'hb empire hidden', topR);
   empire.style.cssText = 'padding:2px 8px;max-width:100%;color:#ffd34a;font-size:12px;letter-spacing:.06em;white-space:normal;overflow-wrap:anywhere;text-align:right';
@@ -529,6 +533,8 @@ export function createHud(): Hud {
     const q = r?.shift.quota();
     const sh = r?.shift.state();
     const seg = sh?.segment;
+    if (r && planNight !== r.night()) { planNight = r.night(); settledAt = -1; }
+    if (seg && sh?.phase === 'settle') settledAt = seg.index;
     // The bank view is on the real run (DebtRun), not on the RunApi facade: probe it as `empire()` is probed above.
     const bank = (r as (typeof r & { bank?: () => BankView }) | null)?.bank?.();
     // Dawn and Mola (wave 55): the NEXT NIGHT line, the exact quota of the coming Night, replaces the Watch plan.
@@ -540,10 +546,12 @@ export function createHud(): Hud {
     setCls(plan, 'hidden', !show);
     if (!r || !q || !seg || !bank || !show) return;
     const due = Math.max(0, Math.floor(q.due));
-    // Intermission: the segment still names the Watch just settled, so the last line names the next one.
+    // Watches already settled this Night: in a Watch the current one is not yet; at an intermission the segment still names the
+    // Watch just settled (when one did), and the Night's first intermission has none. The last line names the next Watch.
     const interm = sh?.phase === 'intermission';
-    const watch = interm ? seg.index + 2 : seg.index + 1;
-    const settles = interm ? seg.count - seg.index - 1 : seg.count - seg.index;
+    const done = interm && settledAt === seg.index ? seg.index + 1 : seg.index;
+    const watch = done + 1;
+    const settles = seg.count - done;
     const p = dawnPlan({ due, balance: bank.balance, settles, interestAt: bank.interestAt });
     const pocket = Math.max(0, Math.floor(bank.pocket));
     // The Watch ends at 0 pulls, at the clock, or at the Bell (the Debt Terminal).
@@ -561,7 +569,11 @@ export function createHud(): Hud {
     setCls(plan, 'ok', p.met);
     setCls(plan, 'gap', !p.met);
     // Green when the projection covers the quota, red otherwise (the plan classes below); one wording for both.
-    setText(planBank, t('hud.plan.bank', { p: money(p.projected), q: money(due) }));
+    // Quota paid before the Dawn: no quota-left line, the surplus that returns at Dawn instead.
+    const paidNow = bank.balance >= due;
+    setText(planBank, paidNow
+      ? t('hud.plan.paid', { n: money(p.surplus) })
+      : t('hud.plan.bank', { p: money(p.projected), q: money(due) }));
     setCls(planPocket, 'hidden', pocket <= 0);
     setText(planPocket, t('hud.plan.pocket', { p: money(pocket) }));
     setText(planEnds, interm

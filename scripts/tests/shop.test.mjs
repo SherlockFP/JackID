@@ -419,3 +419,90 @@ test('pawnPriceScale is 1 while the stake is low, and falls as the quota outgrow
   assert.ok(SCH.pawnPriceScale(3, 30, 12) < SCH.pawnPriceScale(2, 10, 12), 'later Nights cost less of their stake');
   assert.ok(SCH.pawnPriceScale(3, 30, 12) <= 1);
 });
+
+// ── Wave 56: build supply (every Mola offers a charm that builds on what you hold, within the affordable floor) ──
+const unlockedFor = (d, night, meta = false) => {
+  const u = d.unlock ?? '';
+  if (!u) return true;
+  const m = /^N(\d+)$/.exec(u);
+  return m ? night + 1 >= Number(m[1]) : meta;
+};
+/** Launch charms that could be on the shelf beside `held` on this Night: unlocked, not cursed, building on it. */
+const buildPool = (held, night) => E.allCharmDefs().filter((d) =>
+  CD.LAUNCH_CHARM_IDS.has(d.id) && d.rarity !== 'cursed' && !held.some((h) => h.id === d.id) && unlockedFor(d, night) && SH.buildsOn(d, held));
+/** An archetype charm the Pawn can build on: each one is a test subject. */
+const archetypeCharms = () => E.allCharmDefs().filter((d) => CD.LAUNCH_CHARM_IDS.has(d.id) && SH.archetypesOf(d).length > 0);
+/** A shelf that builds on `held` and costs at most `cap`. */
+const hasBuild = (stock, held, cap) => stock.some((s) => !!s && SH.buildsOn(E.charmDef(s.charmId), held) && s.price <= cap);
+
+test('buildsOn: shares an archetype with a held charm; a copy of itself, a plain charm or another archetype does not', () => {
+  const turnstile = E.charmDef('turnstile'), ladder = E.charmDef('suit_ladder'), lamp = E.charmDef('lampwick');
+  const thimble = E.charmDef('brass_thimble');
+  assert.deepEqual(SH.archetypesOf(turnstile), ['rotation']);
+  assert.deepEqual(SH.archetypesOf(thimble), [], 'a plain charm carries no archetype');
+  assert.equal(SH.buildsOn(ladder, [turnstile]), true, 'same archetype as a held charm');
+  assert.equal(SH.buildsOn(lamp, [turnstile]), false, 'another archetype');
+  assert.equal(SH.buildsOn(thimble, [turnstile]), false, 'a plain charm');
+  assert.equal(SH.buildsOn(turnstile, [turnstile]), false, 'a copy of itself is not a partner');
+  assert.equal(SH.buildsOn(ladder, []), false, 'nothing held');
+});
+
+test('floorCap: max(8, 25 % of the quota)', () => {
+  assert.equal(SH.floorCap(10), 8);
+  assert.equal(SH.floorCap(24), 8);
+  assert.equal(SH.floorCap(144), 36);
+});
+
+test('build supply: every Mola offers a charm that builds on what you hold, within the affordable floor', () => {
+  let checks = 0;
+  for (const h of archetypeCharms()) {
+    for (let night = 0; night < SCH.BASE_RUN_NIGHTS; night++) {
+      const nd = SCH.nightDef(night);
+      const cap = SH.floorCap(nd.base);
+      if (!buildPool([h], night).length) continue;
+      for (let watch = 0; watch < 2; watch++) {
+        for (let seed = 1; seed <= 12; seed++) {
+          const { p } = pawnOf({ seed, night, watch, si: nd.si, held: [h.id] });
+          checks++;
+          assert.ok(hasBuild(p.stock(1), [h], cap), `${h.id} N${night + 1} W${watch + 1} seed ${seed}: no affordable build charm`);
+        }
+      }
+    }
+  }
+  assert.ok(checks > 100, `only ${checks} checks ran`);
+});
+
+test('build supply holds through rerolls: after each reroll a build charm is still on a shelf, within the floor', () => {
+  let checks = 0;
+  for (const h of archetypeCharms()) {
+    for (let night = 1; night < SCH.BASE_RUN_NIGHTS; night++) {
+      const nd = SCH.nightDef(night);
+      const cap = SH.floorCap(nd.base);
+      if (!buildPool([h], night).length) continue;
+      for (let seed = 1; seed <= 6; seed++) {
+        const { p } = pawnOf({ seed, night, si: nd.si, held: [h.id], tickets: 30 });
+        p.stock(1);
+        for (let r = 0; r < 4; r++) {
+          assert.equal(p.reroll(), true);
+          checks++;
+          assert.ok(hasBuild(p.stock(1), [h], cap), `${h.id} N${night + 1} seed ${seed} reroll ${r + 1}: no affordable build charm`);
+        }
+      }
+    }
+  }
+  assert.ok(checks > 100, `only ${checks} checks ran`);
+});
+
+test('build supply is deterministic per seed and survives a save with the same shelves', () => {
+  for (const h of archetypeCharms().slice(0, 4)) {
+    const night = 3, si = SCH.nightDef(night).si;
+    for (let seed = 1; seed <= 10; seed++) {
+      const a = pawnOf({ seed, night, si, held: [h.id] }), b = pawnOf({ seed, night, si, held: [h.id] });
+      assert.deepEqual(ids(a.p.stock(1)), ids(b.p.stock(1)));
+      const snap = JSON.parse(JSON.stringify(a.p.snapshot()));
+      const c = pawnOf({ seed, night, si, held: [h.id] });
+      c.p.restore(snap);
+      assert.deepEqual(c.p.stock(1), a.p.stock(1), `${h.id} seed ${seed}: restored stock differs`);
+    }
+  }
+});

@@ -14,6 +14,9 @@
  *  - First shop of a run (Night 1, first Watch): at least one synergy charm (an engine, or a suit charm whose suit is on the floor)
  *    is on a regular shelf, so a new run always has a build to start. The Pawn also restocks on a Night rollover: after Dawn the
  *    host reports the NEXT Night's key, so the shelf is redrawn once per Night instead of repeating the last Watch's stock.
+ *  - Build supply (wave 56): every Mola has a regular shelf whose charm builds on what you hold (`buildsOn`: it shares an
+ *    archetype with a held charm, which also covers completing a set), priced within `floorCap` (max(8, 25 % of the quota)).
+ *    Skipped when the pool has none.
  *  - Price (Wave 20): def.price × SI × `pawnPriceScale`. The scale only lowers prices, so on every Night the dearest Common
  *    costs at most 60 % of the Night's base quota (the cheapest charm then sits near 30 %); Rares / Legendaries may exceed it.
  *  - Foundations / House hooks (read through `PawnHost.mod`): `x.pawn.freeRerolls` (Pawn Bell) adds free rerolls per visit,
@@ -27,6 +30,7 @@
 import type { PlayerId } from '@/core/types';
 import type { Rng } from '@/core/rng';
 import { allCharmDefs, charmDef } from '@/game/charms/engine';
+import { isSetId } from '@/game/charms/sets';
 import { LAUNCH_CHARM_IDS, SUIT_SCALED_CHARMS } from '@/game/data/charms';
 import { ENGINE_CHARM_IDS } from '@/game/data/charmsEngines';
 import { charmPrice, rollRarity, type ShopRarity } from '@/game/economy';
@@ -54,6 +58,8 @@ const MAX_SLOTS = SLOTS + SLOT_EXTRA_MAX;
 /** Director decision 3 (wave 42): every intermission offers a charm priced at most max(FLOOR_CHARM_MIN, FLOOR_CHARM_SHARE x quota). */
 export const FLOOR_CHARM_MIN = 8;
 export const FLOOR_CHARM_SHARE = 0.25;
+/** The affordable floor for a Night's quota: the price every Mola's floor and build charms stay within. */
+export function floorCap(quota: number): number { return Math.max(FLOOR_CHARM_MIN, FLOOR_CHARM_SHARE * quota); }
 /** Wave 7: chance that a regular shelf offers an owned engine charm as EVOLVE (only when one can take a second stack). */
 export const EVOLVE_CHANCE = 0.35;
 
@@ -197,6 +203,21 @@ export function previewPayout(bd: ModBreakdown, d: CharmDef, m: PawnMachine, sam
   return { from: bd.result, to: foldEffects('payout.mult', bd.base, [...cur, ...add]) };
 }
 
+/** Engine archetypes a charm carries (its tags that are set ids: `hot`, `clutch` …). */
+export function archetypesOf(d: Pick<CharmDef, 'tags'>): string[] {
+  return (d.tags ?? []).map((t) => t.toLowerCase()).filter(isSetId);
+}
+
+/**
+ * Does charm `d` build on the held charms? It shares an archetype with a held charm. Completing a set is covered by that:
+ * a set needs SET_SIZE charms of one archetype, so the held charm it completes with already shares the archetype.
+ * A copy of `d` itself is not a partner.
+ */
+export function buildsOn(d: CharmDef, held: readonly CharmDef[]): boolean {
+  const mine = archetypesOf(d);
+  return mine.length > 0 && held.some((h) => h.id !== d.id && archetypesOf(h).some((a) => mine.includes(a)));
+}
+
 /**
  * What a charm sells back for (`x.charm.sellValue`). The base share is 50 % (70 % with a Pawn Ticket) and a sell-value hook
  * can raise it (Pawnbroker's Friend sets 60 %). Never below the base share, never above 90 %. Cursed charms pay 0 (the caller).
@@ -265,6 +286,7 @@ export class Pawn implements PawnApi {
     const rng = this.host.rng().fork(`pawn:${this.host.night()}:${this.host.watch()}`);
     this.fill(rng, this.freeSlots());
     if (first) this.guaranteeSynergy(rng.fork('synergy'));
+    this.ensureBuild(rng.fork('build'));
     this.ensureFloor(rng.fork('floor'));
     this.rev += 1;
   }
@@ -288,10 +310,9 @@ export class Pawn implements PawnApi {
    * shelf that holds no synergy charm gives way to one of the three cheapest eligible charms, which sells at the cap (`SlotState.cap`).
    */
   private ensureFloor(rng: Rng): void {
-    const cap = Math.max(FLOOR_CHARM_MIN, FLOOR_CHARM_SHARE * this.quotaNow());
+    const cap = floorCap(this.quotaNow());
     if (this.slots.some((_s, i) => this.priceAt(i) <= cap)) return;
-    const suits = new Set<string>();
-    for (const m of this.host.floor?.() ?? []) for (const t of m.tags) suits.add(t.toLowerCase());
+    const suits = this.floorSuits();
     // the shelf to give up: the dearest free regular shelf, a synergy charm only when nothing else is free
     const free = this.slots.map((_s, i) => i).filter((i) => i !== UNDER_COUNTER_INDEX && i !== BIAS_SLOT && !this.slots[i]?.locked);
     const plain = free.filter((i) => {
@@ -310,6 +331,58 @@ export class Pawn implements PawnApi {
       .slice(0, 3);
     if (!cheap.length) return;
     this.slots[giveUp] = { id: rng.pick(cheap).d.id, locked: false, sold: false, cap };
+  }
+
+  /** The suit tags of the machines on the floor (empty = unknown, any suit). */
+  private floorSuits(): Set<string> {
+    const suits = new Set<string>();
+    for (const m of this.host.floor?.() ?? []) for (const t of m.tags) suits.add(t.toLowerCase());
+    return suits;
+  }
+
+  /**
+   * Build supply (wave 56, director): every Mola has a regular shelf that builds on the held charms (`buildsOn`) and is priced
+   * within the affordable floor (`floorCap`). A build charm already on a free shelf over the cap is capped in place. Otherwise a
+   * free shelf gives way to a build charm: one priced under the cap as it stands when the pool has one, else one of the three
+   * cheapest, sold at the cap. The bias shelf gives way last; the under-counter is only ever marked down, never replaced; with
+   * no build charm in the pool nothing happens. `avoid` (the charms a reroll just replaced) is skipped when another build charm exists.
+   */
+  private ensureBuild(rng: Rng, avoid: ReadonlySet<string> = new Set()): void {
+    const cap = floorCap(this.quotaNow());
+    const held = this.heldDefs();
+    const suits = this.floorSuits();
+    const built = (d: CharmDef | undefined): d is CharmDef => !!d && d.rarity !== 'cursed' && buildsOn(d, held);
+    const onShelf = (i: number): CharmDef | undefined => { const s = this.slots[i]; return s && !s.sold ? charmDef(s.id) : undefined; };
+    if (this.slots.some((_s, i) => built(onShelf(i)) && this.priceAt(i) <= cap)) return;
+    const open = this.slots.map((_s, i) => i).filter((i) => !this.slots[i]?.locked && !this.slots[i]?.sold);
+    const free = open.filter((i) => i !== UNDER_COUNTER_INDEX);
+    const own = (i: number): boolean => built(onShelf(i));
+    const synergy = (i: number): boolean => { const d = onShelf(i); return !!d && this.isSynergy(d, suits); };
+    // a build charm already on an open shelf (the bias shelf and the counter included) is marked down to the cap: the same charm, now affordable
+    const rank = (i: number): number => (i === UNDER_COUNTER_INDEX ? 2 : i === BIAS_SLOT ? 1 : 0);
+    const owned = [...open].sort((a, b) => rank(a) - rank(b)).find(own);
+    if (!free.length && owned === undefined) return;
+    const marked = owned !== undefined ? this.slots[owned] : undefined;
+    if (marked) { marked.cap = cap; this.rev += 1; return; }
+    // otherwise the shelf that gives way: the bias shelf last, then a synergy charm last, then the dearest
+    const target = [...free].sort((a, b) =>
+      Number(a === BIAS_SLOT) - Number(b === BIAS_SLOT)
+      || Number(synergy(a)) - Number(synergy(b))
+      || (this.slots[b] ? this.priceAt(b) : 0) - (this.slots[a] ? this.priceAt(a) : 0))[0];
+    const exclude = new Set<string>(this.slots.flatMap((x) => (x ? [x.id] : [])));
+    const all = allCharmDefs().filter((d) => built(d) && this.eligible(d, exclude));
+    if (!all.length) return;
+    const fresh = all.filter((d) => !avoid.has(d.id));
+    this.slots[target] = null;   // priced as an empty shelf: the old charm's cap does not apply
+    const priced = (fresh.length ? fresh : all).map((d) => ({ d, p: this.priceOf(d, target) }));
+    const natural = priced.filter((x) => x.p <= cap);
+    if (natural.length) {
+      this.slots[target] = { id: rng.pick(natural).d.id, locked: false, sold: false };
+    } else {
+      const cheap = priced.sort((a, b) => a.p - b.p || (a.d.id < b.d.id ? -1 : 1)).slice(0, 3);
+      this.slots[target] = { id: rng.pick(cheap).d.id, locked: false, sold: false, cap };
+    }
+    this.rev += 1;
   }
 
   /** Charm that starts a build: an engine, or a suit-scaled charm of a suit that is on the floor (any suit when the floor is unknown). */
@@ -517,6 +590,7 @@ export class Pawn implements PawnApi {
     const rng = this.host.rng().fork(`pawn:${this.host.night()}:${this.host.watch()}`).fork(`r${this.rolls}`);
     this.fill(rng, idx, avoid);
     this.fill(rng, idx.filter((i) => !this.slots[i]));   // a thin pool: allow a repeat rather than an empty shelf
+    this.ensureBuild(rng.fork('build'), avoid);          // a reroll can take the build shelf away: the build holds
     this.ensureFloor(rng.fork('floor'));                 // a reroll can take the floor shelf away: the floor holds
     this.rolls += 1;
     if (!free) this.paid += 1;

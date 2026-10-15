@@ -19,15 +19,15 @@ before(async () => {
 });
 
 test('the mood table: N1 x1.12 … N8 x0.95, whole percents +12 … -5, Overdrawn Nights keep the last value', () => {
-  assert.deepEqual([...HM.HOUSE_MOOD], [1.12, 1.07, 1.03, 1, 0.98, 0.97, 0.96, 0.95]);
-  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7].map((i) => HM.houseMoodPct(i)), [12, 7, 3, 0, -2, -3, -4, -5]);
+  assert.deepEqual([...HM.HOUSE_MOOD], [1.18, 1.1, 1.03, 1, 0.98, 0.97, 0.96, 0.95]);
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7].map((i) => HM.houseMoodPct(i)), [18, 10, 3, 0, -2, -3, -4, -5]);
   assert.equal(HM.houseMoodMult(12), 0.95, 'Night 13 keeps x0.95');
 });
 
 test('the HUD line: GENEROUS +12% on Night 1, EVEN on Night 4 (no sign), TIGHT -5% on Night 8', () => {
   const n1 = HM.houseMoodLine(0);
   assert.equal(n1.tone, 'generous');
-  assert.match(n1.text, /\+12%/);
+  assert.match(n1.text, /\+18%/);
   assert.equal(HM.houseMoodLine(3).tone, 'neutral');
   assert.match(HM.houseMoodLine(3).text, /0%/);
   const n8 = HM.houseMoodLine(7);
@@ -47,7 +47,7 @@ test('the provider adds one payout.mult multiplier while active, none otherwise'
   assert.equal(out.length, 1);
   assert.equal(out[0].kind, 'house');
   assert.equal(out[0].id, 'mood:2');
-  assert.deepEqual(out[0].effects, [{ hook: 'payout.mult', op: 'mult', value: 1.07 }]);
+  assert.deepEqual(out[0].effects, [{ hook: 'payout.mult', op: 'mult', value: 1.1 }]);
 });
 
 test('a debt run in play folds House Favour and the mood into payout.mult (Night 1: 1.25 x 1.12)', () => {
@@ -56,7 +56,7 @@ test('a debt run in play folds House Favour and the mood into payout.mult (Night
   assert.equal(run.startWatch(), true);
   for (let i = 0; i < 40 && run.shift.phase !== 'play'; i++) run.tick(0.5);
   assert.equal(run.shift.phase, 'play');
-  assert.ok(Math.abs(run.mod('payout.mult', 'bigone', 1) - 1.25 * 1.12) < 1e-9);
+  assert.ok(Math.abs(run.mod('payout.mult', 'bigone', 1) - 1.25 * 1.18) < 1e-9);
 });
 
 test('the quota ladder is the tuned one (24 teaching N1, 36 N2 by director, then doubling) and each step is within its cap (2x to N3, 3x from N4)', () => {
