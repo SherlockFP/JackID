@@ -8,6 +8,8 @@
  *   node scripts/qa/bench.mjs --run "goto:coinflip;play:Space:150x3;state" --seed 1 --shots <dir>   (debt-run driver)
  *
  * The boot veil is passed with a real mouse click (main.ts enters on a click, or on Enter/Space once the veil has focus).
+ * By default the page runs on the fixed clock (`?fixedstep=1&clock=manual`): the harness steps it, so waits, budgets and
+ * the bot's decisions are sim time and a seeded run repeats exactly. `--real-time` restores the wall clock.
  *
  * Starts its own Vite dev server and its own Chrome, each on a free port (Chrome also gets a temp profile), and
  * stops both on exit. It never touches processes it did not start.
@@ -28,7 +30,22 @@ const READY_TIMEOUT_MS = 120_000;
 /** Page loads after the first one in the current run (module-level, so the CLI can name a reload that failed a run). */
 let pageReloads = 0;
 const WIN = process.platform === 'win32';
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** The page's loop runs at this rate in the fixed-step clock (src/core/loop.ts: one sim step per frame of 1/60 s). */
+const FRAME_HZ = 60;
+/** A page promise that has not settled after this many frames (60 s of sim time) fails the call. */
+const PENDING_MAX_FRAMES = 3600;
+/** Real-time looks (5 ms apart, about 100 ms) at a page promise before any frame is stepped. */
+const PENDING_GRACE_POLLS = 20;
+/**
+ * The harness clock. Wall time by default. In the fixed-step manual clock (the page boots with `fixedstep=1&clock=manual`,
+ * see `--real-time`), the page moves only when the harness steps it, so every wait and budget counts sim frames:
+ * `step` is set while the clock is on and `frames` counts the frames stepped.
+ */
+const clock = { step: null, frames: 0 };
+/** Milliseconds now: sim ms while the harness steps the page, else wall time. */
+const nowMs = () => (clock.step ? (clock.frames * 1000) / FRAME_HZ : new Date().getTime());
+/** Waits `ms`: whole sim frames (rounded to the frame, at least one for a positive wait) when the page is stepped, else real time. */
+const sleep = (ms) => (clock.step ? clock.step(ms) : new Promise((r) => setTimeout(r, ms)));
 const log = (...a) => process.stderr.write(`[qa] ${a.join(' ')}\n`);
 
 /** A free loopback TCP port (bound, then released). */
@@ -222,10 +239,10 @@ function killTree(child) {
 }
 
 async function waitFor(fn, timeoutMs, what) {
-  const t0 = Date.now();
+  const t0 = nowMs();
   for (;;) {
     try { const v = await fn(); if (v) return v; } catch { /* not up yet */ }
-    if (Date.now() - t0 > timeoutMs) throw new Error(`timed out waiting for ${what}`);
+    if (nowMs() - t0 > timeoutMs) throw new Error(`timed out waiting for ${what}`);
     await sleep(150);
   }
 }
@@ -269,13 +286,30 @@ class Cdp {
   close() { try { this.ws?.close(); } catch { /* ignore */ } }
 }
 
+/**
+ * Sends one real key event (CDP). With the manual clock, it then waits in real time until the page has counted it (the
+ * `window.__qaKeys` listener, installed in capture phase at boot): the page takes the event in the same task, so the key
+ * is queued before the harness steps the next frame. Without this, a key could land on either side of a stepped frame.
+ */
+async function sendKey(cdp, type, params) {
+  const kind = type === 'keyUp' ? 'up' : 'down';
+  const seen = clock.step ? await evaluate(cdp, `window.__qaKeys.${kind}`) : null;
+  await cdp.send('Input.dispatchKeyEvent', { type, ...params });
+  if (!clock.step) return;
+  for (let i = 0; i < 200; i++) {                       // up to about 1 s of real time
+    if ((await evaluate(cdp, `window.__qaKeys.${kind}`)) > seen) return;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(`the page did not take the ${kind} of ${params.code}`);
+}
+
 /** Presses one key (KeyboardEvent.code) and holds it `ms`, as a real keyboard would. */
 async function pressKey(cdp, code, ms) {
   const k = keyInfo(code);
   const params = { code: k.code, key: k.key, windowsVirtualKeyCode: k.vk, nativeVirtualKeyCode: k.vk };
-  await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...params });
+  await sendKey(cdp, 'rawKeyDown', params);
   await sleep(ms);
-  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...params });
+  await sendKey(cdp, 'keyUp', params);
 }
 
 /** A real left click at (x, y) in CSS pixels (the 1280x720 viewport). */
@@ -294,29 +328,93 @@ async function evalJson(cdp, expr) {
   return JSON.parse(out);
 }
 
-/** Evaluates `expr` in the page and returns its JSON-able value. */
+/**
+ * Evaluates `expr` in the page and returns its JSON-able value. With the manual clock the page moves only when stepped, so a
+ * promise the expression returns (a seat glide, a cutscene) cannot be awaited over CDP: its result goes to `window.__qaSlot`,
+ * and the harness steps one frame at a time until it settles. Each frame is a fixed sim step, so the wait is deterministic.
+ */
 async function evaluate(cdp, expr) {
-  const r = await cdp.send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true });
+  if (!clock.step) {
+    const r = await cdp.send('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true });
+    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
+    return r.result?.value;
+  }
+  const r = await cdp.send('Runtime.evaluate', {
+    expression: `window.__qaSlot = { done: false }; ((v) => { if (v && typeof v.then === 'function') {
+      v.then((x) => { window.__qaSlot = { done: true, value: x }; }, (e) => { window.__qaSlot = { done: true, error: String((e && e.message) || e) }; });
+      return { pending: true }; } return { value: v }; })((${expr}))`,
+    returnByValue: true,
+    awaitPromise: false,
+  });
   if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
-  return r.result?.value;
+  const first = r.result?.value;
+  if (!first?.pending) return first?.value;
+  // A promise that needs only tasks (a cached module's import()) settles a few ms of real time after the call, not on a
+  // frame. So the probe waits that long in real time before the first frame: a race with the task would otherwise cost a
+  // frame in some runs and not in others. Only a promise that needs sim time (a glide, a cutscene) steps the page.
+  const probe = async () => (await cdp.send('Runtime.evaluate', { expression: 'window.__qaSlot', returnByValue: true })).result?.value;
+  let slot = await probe();
+  for (let w = 0; !slot?.done && w < PENDING_GRACE_POLLS; w++) {
+    await new Promise((r) => setTimeout(r, 5));
+    slot = await probe();
+  }
+  for (let n = 0; !slot?.done; n++) {
+    if (n >= PENDING_MAX_FRAMES) throw new Error(`the page promise did not settle within ${PENDING_MAX_FRAMES} frames (${expr.slice(0, 80)})`);
+    await stepFrames(cdp, 1000 / FRAME_HZ);            // one frame of sim time, then look again
+    slot = await probe();
+  }
+  if (slot.error !== undefined) throw new Error(slot.error);
+  return slot.value;
 }
+
+/**
+ * Runs `ms` of sim time in the page (`window.__qaClock.step`, src/core/loop.ts): whole frames, rounded, and at least one
+ * for a positive wait. It runs in chunks, so no single CDP call holds the page for long. Chunking does not change the
+ * run: the frames are the same, in the same order, with nothing in between.
+ */
+async function stepFrames(cdp, ms) {
+  let left = ms > 0 ? Math.max(1, Math.round((ms * FRAME_HZ) / 1000)) : 0;
+  while (left > 0) {
+    const n = Math.min(left, 300);
+    // the plain CDP call, not evaluate(): evaluate's promise wait steps through here, and must not reset its own slot
+    const r = await cdp.send('Runtime.evaluate', { expression: `window.__qaClock.step(${n})`, returnByValue: true, awaitPromise: false });
+    if (r.exceptionDetails) throw new Error(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text);
+    clock.frames += n;
+    left -= n;
+  }
+}
+
+/**
+ * The modules the page expressions above import on demand. Loaded in one batch before the manual clock attaches (see
+ * runBench), so a first `import()` inside an expression never waits on the network while the harness steps frames.
+ */
+const PAGE_MODULES = [
+  '/src/core/i18n.ts', '/src/game/charms/engine.ts', '/src/game/charms/sets.ts', '/src/game/daily.ts',
+  '/src/game/data/charmsEngines.ts', '/src/game/data/kits.ts', '/src/game/data/schedule.ts', '/src/game/nightCards.ts',
+  '/src/game/pace.ts', '/src/game/spotlight.ts', '/src/game/stakes.ts', '/src/game/watchEvents.ts',
+  '/src/machines/_base/stakePresets.ts', '/src/machines/bigone/rules.ts',
+];
+const PRELOAD_JS = `Promise.all([${PAGE_MODULES.map((m) => `import('${m}')`).join(', ')}]).then(() => true)`;
+
+/** Frames the page has run: the sim frame count with the manual clock, else the rAF counter (`window.__qaFrames`). */
+const framesOf = (cdp) => evaluate(cdp, clock.step ? 'window.__qaClock.frames()' : 'window.__qaFrames');
 
 // ── the run ────────────────────────────────────────────────────────────────────────────────────────────────
 // ── --run: the debt-run driver ─────────────────────────────────────────────────────────────────────────────
 /** Skips the story intro with real Space taps: one tap (80 ms, a tap not a hold) each 1.2 s once it has played that long. */
 async function skipIntro(cdp) {
-  const t0 = Date.now();
+  const t0 = nowMs();
   let started = 0, lastTap = 0, taps = 0;
   for (;;) {
     const id = await evaluate(cdp, 'window.jackid.app.cutscene.playing ?? null');
     if (id === 'intro') {
-      if (!started) started = Date.now();
-      if (taps < 8 && Date.now() - started >= 1200 && Date.now() - lastTap >= 1200) {
+      if (!started) started = nowMs();
+      if (taps < 8 && nowMs() - started >= 1200 && nowMs() - lastTap >= 1200) {
         await pressKey(cdp, 'Space', DEFAULT_HOLD_MS);
-        lastTap = Date.now();
+        lastTap = nowMs();
         taps++;
       }
-    } else if (started || Date.now() - t0 > 15_000) break;   // the intro is over (skipped or played out), or none came
+    } else if (started || nowMs() - t0 > 15_000) break;   // the intro is over (skipped or played out), or none came
     await sleep(120);
   }
   return { played: started > 0, taps };
@@ -701,11 +799,11 @@ const BIGONE_STATE_JS = (id) => instJs(id, `{ offer: Boolean(m.offer) }`);
  * `start`: wait up to 1.2 s first for the round to begin (a refused press never begins one, so that wait is then the cost).
  */
 async function waitRoundIdle(cdp, instance, { start = false, maxMs = 12000 } = {}) {
-  const t0 = Date.now();
+  const t0 = nowMs();
   const busy = async () => (await evaluate(cdp, instJs(instance, '(m.busy === true) || (m.inRound === true)'))) === true;
-  if (start) while (Date.now() - t0 < 1200 && !(await busy())) await sleep(40);
+  if (start) while (nowMs() - t0 < 1200 && !(await busy())) await sleep(40);
   let saw = false;
-  while (Date.now() - t0 < maxMs && (await busy())) { saw = true; await sleep(60); }
+  while (nowMs() - t0 < maxMs && (await busy())) { saw = true; await sleep(60); }
   if (saw) await sleep(120);                 // the frame after the last write (pot, history, wallet)
 }
 /**
@@ -829,8 +927,8 @@ async function readState(ctx) {
   let st = await evalJson(ctx.cdp, RUN_STATE_JS);
   if (!ctx.starterWaited && st.starterOffer == null && !st.over && st.night === 1 && (st.charms ?? []).length === 0) {
     ctx.starterWaited = true;
-    const t0 = Date.now();
-    while (st.starterOffer == null && !st.over && Date.now() - t0 < STARTER_WAIT_MS) {
+    const t0 = nowMs();
+    while (st.starterOffer == null && !st.over && nowMs() - t0 < STARTER_WAIT_MS) {
       await sleep(200);
       st = await evalJson(ctx.cdp, RUN_STATE_JS);
     }
@@ -1044,7 +1142,7 @@ function watchRec(ctx, st, ev) {
  */
 async function autoNight(ctx, rec, stopAt = null) {
   const { res } = ctx;
-  const t0 = Date.now();
+  const t0 = nowMs();
   const auto = (o) => ({ ...o, auto: true });
   // Per-Watch bookkeeping lives on the run, so a second auto:night step carries on where an event stop left the Watch.
   const bot = (ctx.bot ??= {
@@ -1098,7 +1196,7 @@ async function autoNight(ctx, rec, stopAt = null) {
   };
   while (!end) {
     if (++loops > AUTO_MAX_LOOPS) { end = 'loop budget'; break; }
-    if (Date.now() - t0 > AUTO_MAX_MS) { end = 'time budget'; break; }
+    if (nowMs() - t0 > AUTO_MAX_MS) { end = 'time budget'; break; }
     if (res.reloads) { end = 'page reloaded'; break; }
     st = await readState(ctx);
     if (st.over) { end = 'run over'; break; }
@@ -1408,13 +1506,13 @@ async function runKind(ctx, s, rec) {
       const squash = (x) => x.toUpperCase().replace(/\s+/g, '');
       const want = JSON.stringify(squash(ctx.eventAnnounce));
       const onPage = `[...document.querySelectorAll('.t-banner')].map((e) => e.textContent).join('|').toUpperCase().replace(/\\s+/g, '').includes(${want})`;
-      const t0 = Date.now();
+      const t0 = nowMs();
       let seen = false;
-      while (!seen && Date.now() - t0 < s.ms) {
+      while (!seen && nowMs() - t0 < s.ms) {
         seen = (await evaluate(cdp, onPage)) === true;
         if (!seen) await sleep(100);
       }
-      rec.waited = Date.now() - t0;
+      rec.waited = nowMs() - t0;
       rec.ok = seen;
       if (seen) { if (ctx.shotsDir) rec.shot = await ctx.shoot('banner-seen.png'); }
       else {
@@ -1447,12 +1545,12 @@ async function runKind(ctx, s, rec) {
  * (a goto to a locked machine, a seat that does not take) is recorded with `ok: false` and `error`; the caller goes on.
  */
 async function exec(ctx, s) {
-  const t0 = Date.now();
+  const t0 = nowMs();
   const rec = { step: s.text, ok: true };
   if (s.auto) rec.auto = true;
   ctx.run.steps.push(rec);
   try { await runKind(ctx, s, rec); } catch (e) { rec.ok = false; rec.error = String(e?.message ?? e); }
-  rec.ms = Date.now() - t0;
+  rec.ms = nowMs() - t0;
   log(`run ${s.text}: ${rec.error ? `error (${rec.error})` : rec.ok ? 'ok' : 'refused'} (${rec.ms} ms)`);
   return rec;
 }
@@ -1514,6 +1612,7 @@ export async function runBench(opts = {}) {
   const parsedRun = opts.run === undefined ? null : parseRunSteps(opts.run);   // --run: a debt run driven by steps
   const startSpec = parsedRun ? startSpecOf(parsedRun) : null;                  // kit / stake / daily: applied at run start
   const runSteps = parsedRun ? parsedRun.filter((s) => !START_KINDS.has(s.kind)) : null;
+  const realTime = Boolean(opts.realTime);                  // --real-time: wall-clock page (no fixed step, no manual clock)
   const world = Boolean(opts.world) || runSteps !== null;   // a real debt run (`/?skipmenu=1`), not a bench room
   const menu = Boolean(opts.menu);                          // `/`: the main menu; the script keys drive the die
   if (menu && (world || opts.sit || opts.force !== undefined || opts.machine !== undefined)) {
@@ -1619,7 +1718,9 @@ export async function runBench(opts = {}) {
     // 3) Bench room: boot veil (Enter), then the game is on screen and rAF is advancing.
     // --query "lang=tr" appends extra boot params (bootParams: lang); the HUD caches its strings, so the language must be set at boot.
     const extra = opts.query ? `&${String(opts.query).replace(/^[?&]+/, '')}` : '';
-    const url = menu ? `/?seed=${seed}${extra}` : world ? `/?skipmenu=1&seed=${seed}${extra}` : `/?bench=${machine}&seed=${seed}${extra}`;
+    // The fixed-step manual clock (default): the page moves only when this harness steps it, so waits and budgets are sim time.
+    const fixed = realTime ? '' : '&fixedstep=1&clock=manual';
+    const url = menu ? `/?seed=${seed}${extra}${fixed}` : world ? `/?skipmenu=1&seed=${seed}${extra}${fixed}` : `/?bench=${machine}&seed=${seed}${extra}${fixed}`;
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${vport}${url}` });
     await waitFor(() => evaluate(cdp, 'typeof window.jackid === "object"'), READY_TIMEOUT_MS, 'window.jackid');
     // --run start config (kit / stake / daily): wrapped before the veil is entered, so the run starts with it.
@@ -1627,6 +1728,10 @@ export async function runBench(opts = {}) {
     if (startRec && !startRec.ok) throw new Error(`--run start config: ${startRec.error}`);
     if (startRec) log(`start config: kit ${startRec.kit}, stake ${startRec.stake}${startRec.daily ? ' (daily)' : ''}`);
     await evaluate(cdp, 'window.__qaFrames = 0; (function f() { window.__qaFrames++; requestAnimationFrame(f); })(); true');
+    // Counts the key events the page takes (capture phase: before any game handler), for sendKey's wait.
+    await evaluate(cdp, 'window.__qaKeys = { down: 0, up: 0 }; '
+      + "window.addEventListener('keydown', () => { window.__qaKeys.down++; }, true); "
+      + "window.addEventListener('keyup', () => { window.__qaKeys.up++; }, true); true");
     const stateOf = () => evaluate(cdp, 'String((() => { const s = window.jackid.state(); return typeof s === "string" ? s : (s && (s.name ?? s.id ?? s.kind)) ?? JSON.stringify(s); })())');
     // The veil appears after boot and takes Enter; keep pressing it until the room has started.
     const enterVeil = async () => {
@@ -1646,10 +1751,19 @@ export async function runBench(opts = {}) {
     };
     await waitFor(async () => { await pressVeil(); await sleep(700); return (await stateOf()).includes(readyState) && (!menu || !(await veilUp())); }, READY_TIMEOUT_MS, `${readyState} state`)
       .catch(async (e) => { throw new Error(`${e.message} (state: ${await stateOf().catch(() => '?')})`); });
+    // The page is ready. With the manual clock it moves only from here on: every sleep() steps it (see stepFrames).
+    if (!realTime) {
+      if (!(await evaluate(cdp, 'typeof window.__qaClock === "object"'))) {
+        throw new Error('no window.__qaClock: the fixed-step clock is DEV-only (run the Vite dev server), or pass --real-time');
+      }
+      await evaluate(cdp, PRELOAD_JS);                   // real time, before any frame is stepped: no page expression waits on the network later
+      clock.step = (ms) => stepFrames(cdp, ms);
+      clock.frames = 0;
+    }
     await sleep(1500);                                   // room settles: camera, first frames
-    const f0 = await evaluate(cdp, 'window.__qaFrames');
+    const f0 = await framesOf(cdp);
     await sleep(1000);
-    const f1 = await evaluate(cdp, 'window.__qaFrames');
+    const f1 = await framesOf(cdp);
     res.framesPerSec = f1 - f0;
     if (res.framesPerSec <= 0) throw new Error('rendering did not advance (rAF frames stalled)');
     res.state = await stateOf();
@@ -1720,9 +1834,9 @@ export async function runBench(opts = {}) {
     // 4) Rounds: one pass of the script per round, then a screenshot. With --sit, the wallet and wagered are read
     //    before and after each pass.
     for (let r = 1; r <= (runSteps ? 0 : rounds); r++) {
-      const before = await evaluate(cdp, 'window.__qaFrames');
+      const before = await framesOf(cdp);
       const m0 = sit ? await money() : null;
-      const t0 = Date.now();
+      const t0 = nowMs();
       let lastKeyUp = t0;
       // With --frames, the waits after the last key are the frame timeline (see below), so they are not slept here.
       const lastKey = steps.reduce((acc, s, i) => (s.kind === 'key' ? i : acc), -1);
@@ -1731,9 +1845,9 @@ export async function runBench(opts = {}) {
         if (frames.length && i > lastKey) break;
         if (s.kind === 'wait') { await sleep(s.ms); continue; }
         await pressKey(cdp, s.code, s.ms);
-        lastKeyUp = Date.now();
+        lastKeyUp = nowMs();
       }
-      const entry = { round: r, ms: Date.now() - t0, frames: (await evaluate(cdp, 'window.__qaFrames')) - before };
+      const entry = { round: r, ms: nowMs() - t0, frames: (await framesOf(cdp)) - before };
       if (sit) {
         const m1 = await money();
         entry.wallet = [m0.wallet, m1.wallet];
@@ -1744,14 +1858,14 @@ export async function runBench(opts = {}) {
         entry.frameShots = [];
         for (const ms of frames) {
           const due = lastKeyUp + ms;
-          if (due > Date.now()) await sleep(due - Date.now());
+          if (due > nowMs()) await sleep(due - nowMs());
           await nextFrame(cdp);
-          const at = Date.now() - lastKeyUp;
+          const at = nowMs() - lastKeyUp;
           const name = rounds > 1 ? `${machine}-round${r}-f${ms}.png` : `${machine}-f${ms}.png`;
           entry.frameShots.push({ ms, actualMs: at, shot: await shoot(name) });
         }
         const end = lastKeyUp + Math.max(trailing, frames[frames.length - 1]);
-        if (end > Date.now()) await sleep(end - Date.now());
+        if (end > nowMs()) await sleep(end - nowMs());
       }
       if (probe) entry.probe = await evalJson(cdp, probe);
       if (res.reloads) throw new Error(`the page reloaded during round ${r} (${res.reloads}x; the veil came back, see viteEvents)`);
@@ -1771,7 +1885,9 @@ export async function runBench(opts = {}) {
       log(`walk view (player mode ${res.playerMode}) -> ${res.walkShot}`);
     }
   } finally {
-    // 5) Cleanup: everything we started, nothing else.
+    // 5) Cleanup: everything we started, nothing else. The clock goes back to wall time first (the waits below are real).
+    clock.step = null;
+    clock.frames = 0;
     stopping = true;
     try { cdp?.close(); } catch { /* */ }
     killTree(chrome);
@@ -1804,7 +1920,7 @@ function parseArgs(argv) {
     '--machine': 'machine', '--script': 'script', '--shots': 'shots', '--rounds': 'rounds', '--seed': 'seed', '--seat': 'seat',
     '--settle': 'settle', '--frames': 'frames', '--probe': 'probe', '--js': 'js', '--force': 'force', '--run': 'run', '--query': 'query', '--size': 'size',
   };
-  const switches = { '--sit': 'sit', '--walk-view': 'walkView', '--world': 'world', '--menu': 'menu' };
+  const switches = { '--sit': 'sit', '--walk-view': 'walkView', '--world': 'world', '--menu': 'menu', '--real-time': 'realTime' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') { o.help = true; continue; }

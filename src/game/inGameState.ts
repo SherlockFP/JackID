@@ -38,14 +38,14 @@ const FALL_HOLD_S = 1.6;
 /** The fall toast that names the seized bank (wave 45): long enough to read before the results hand-off. */
 const SEIZED_TOAST_S = 4;
 const END_HOLD_S = 0.4;
-/** Ignore a second Esc within this window after resuming (the browser and the input layer can both report it). */
-const PAUSE_DEBOUNCE_MS = 250;
+/** Ignore a second Esc within this window after resuming (the browser and the input layer can both report it). Sim seconds. */
+const PAUSE_DEBOUNCE_S = 0.25;
 /** The seated Upgrade Ledger (the walk-mode one lives in the session). */
 const SEAT_LEDGER_PANEL = 'ingame-ledger-seated';
 /** After the journal closes at a machine, pointer lock is refused for this long (the journal asks for it on its way out). */
 const LOCK_GUARD_S = 0.6;
-/** A seated J that arrives right after the journal closed (the same key press, one step late) must not reopen it. */
-const JOURNAL_SETTLE_MS = 250;
+/** A seated J that arrives right after the journal closed (the same key press, one step late) must not reopen it. Sim seconds. */
+const JOURNAL_SETTLE_S = 0.25;
 
 export function createInGameState(): AppStateHandler<'ingame'> {
   const scene = new THREE.Scene();
@@ -55,6 +55,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   let left = false;
   let ending = false;
   let paused = false;
+  /** Sim time of the last resume, for PAUSE_DEBOUNCE_S. */
   let resumedAt = -Infinity;
   let interOpen = false;
   let interKey = '';
@@ -73,10 +74,11 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   let toSettings = false;
   /** Which seated overlay (U ledger / J journal) is open, so closing it can hand the machine mode back. */
   let overlay: 'ledger' | 'journal' | null = null;
-  let lockGuard = 0;
-  /** When the seated journal last closed (performance.now), for JOURNAL_SETTLE_MS. */
+  /** Sim time (app.time.sim, seconds) the pointer-lock guard after a seated journal runs to. */
+  let lockGuardEnd = -Infinity;
+  /** Sim time the seated journal last closed, for JOURNAL_SETTLE_S. Gameplay-facing timers read sim time, never the wall clock. */
   let journalShutAt = -Infinity;
-  /** Esc pressed while the tutorial is up: the card opens on release, and only if the hold did not skip the tutorial. */
+  /** Esc pressed while the tutorial is up (sim time): the card opens on release, and only if the hold did not skip the tutorial. */
   let escHoldAt: number | null = null;
 
   /** Dev tooling is split out of the production bundle: `?bench=` is honoured only in a DEV build (DECISIONS G). */
@@ -132,7 +134,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       app.input.exitLock();
       showPauseCard();
     } else {
-      resumedAt = performance.now();
+      resumedAt = app.time.sim;
       app.ui.closePanel(PAUSE_PANEL);
       // A seated player resumes AT the machine (the machine sink is still attached): never force walk mode over a seat,
       // or E would no longer reach the machine and the player could not stand up.
@@ -151,14 +153,14 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     if (app.player?.seat != null) {
       app.input.setMode('machine');
       app.input.exitLock();
-      lockGuard = LOCK_GUARD_S;
+      lockGuardEnd = app.time.sim + LOCK_GUARD_S;
     } else {
       app.input.setMode('walk');
       void app.input.requestLock();
     }
   };
   const canOpenSeated = (): boolean => !!session && !paused && !ending && !left && !overlay && app.input.mode === 'machine';
-  const journalSettling = (): boolean => performance.now() - journalShutAt < JOURNAL_SETTLE_MS;
+  const journalSettling = (): boolean => app.time.sim - journalShutAt < JOURNAL_SETTLE_S;
 
   const closeSeatedLedger = (): void => {
     if (overlay !== 'ledger') return;
@@ -188,12 +190,9 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     openJournal();   // takes the mouse and the keys (mode 'ui'); on its way out it asks for walk mode, `watchOverlay` corrects that
   };
   /** The journal closes itself and sets walk mode; at a machine that must become 'machine' again (and the lock must go). */
-  const watchOverlay = (dt: number): void => {
-    if (overlay === 'journal' && app.input.mode !== 'ui') { overlay = null; journalShutAt = performance.now(); restoreSeatMode(); }
-    if (lockGuard > 0) {
-      lockGuard -= dt;
-      if (app.input.mode === 'machine' && app.input.locked) app.input.exitLock();
-    }
+  const watchOverlay = (): void => {
+    if (overlay === 'journal' && app.input.mode !== 'ui') { overlay = null; journalShutAt = app.time.sim; restoreSeatMode(); }
+    if (app.time.sim < lockGuardEnd && app.input.mode === 'machine' && app.input.locked) app.input.exitLock();
   };
 
   /**
@@ -312,7 +311,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       pauseLive = false;
       toSettings = false;
       overlay = null;
-      lockGuard = 0;
+      lockGuardEnd = -Infinity;
       journalShutAt = -Infinity;
       escHoldAt = null;
       app.canvas.addEventListener('click', onCanvasClick);
@@ -330,13 +329,13 @@ export function createInGameState(): AppStateHandler<'ingame'> {
         if (!session || ending) return;
         if (!down) {
           // a short press with the tutorial up opens the card now; a hold that skipped the tutorial does not
-          const held = escHoldAt === null ? Infinity : performance.now() - escHoldAt;
+          const held = escHoldAt === null ? Infinity : app.time.sim - escHoldAt;
           escHoldAt = null;
-          if (held < SKIP_HOLD_S * 1000 && !paused) setPaused(true);
+          if (held < SKIP_HOLD_S && !paused) setPaused(true);
           return;
         }
-        if (!paused && performance.now() - resumedAt < PAUSE_DEBOUNCE_MS) return;
-        if (!paused && tutorialActive()) { escHoldAt = performance.now(); return; }
+        if (!paused && app.time.sim - resumedAt < PAUSE_DEBOUNCE_S) return;
+        if (!paused && tutorialActive()) { escHoldAt = app.time.sim; return; }
         setPaused(!paused);
       }));
       if (params.bench && import.meta.env.DEV) return enterBench(params.bench, params.seed);
@@ -398,7 +397,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     frame(dt, alpha) {
       if (session) {
         session.frame(dt, alpha);
-        watchOverlay(dt);
+        watchOverlay();
         syncIntermission();
         app.renderer.render(scene, app.camera, session.player.overlay);
         return;

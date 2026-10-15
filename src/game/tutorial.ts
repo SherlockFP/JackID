@@ -33,7 +33,10 @@ export interface TutorialHost {
 }
 
 export interface Tutorial {
-  /** Called every render frame with the real frame time. */
+  /**
+   * Called every render frame. The tutorial's own timers (step age, the Esc hold) run on sim time, so slow-mo, hit-stop
+   * and pause hold them as they hold the Watch clock. `dt` (the frame's real time) is for the broke prompt only.
+   */
   update(dt: number): void;
   /** Removes the prompt, the glow and the subscriptions. Does not set the first-run flag. */
   dispose(): void;
@@ -169,7 +172,10 @@ function startSteps(host: TutorialHost): Tutorial | null {
   let age = 0;
   let total = 0;
   let base = { rounds: 0, others: 0, deposits: 0, bought: 0 };
+  /** Sim time (app.time.sim) the Esc hold began, for SKIP_HOLD_S. */
   let holdFrom: number | null = null;
+  /** Sim time the last update saw; the step timers advance by the sim time that passed since. */
+  let seenSim = app.time.sim;
   let disposed = false;
 
   const enter = (i: number): void => {
@@ -218,7 +224,7 @@ function startSteps(host: TutorialHost): Tutorial | null {
   active = { skip };
 
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (e.code === 'Escape' && !e.repeat && holdFrom === null) holdFrom = performance.now();
+    if (e.code === 'Escape' && !e.repeat && holdFrom === null) holdFrom = app.time.sim;
   };
   const onKeyUp = (e: KeyboardEvent): void => {
     if (e.code === 'Escape') holdFrom = null;
@@ -261,13 +267,15 @@ function startSteps(host: TutorialHost): Tutorial | null {
   };
 
   return {
-    update(dt: number): void {
+    update(): void {
+      const sdt = Math.max(0, app.time.sim - seenSim);   // sim seconds since the last update (0 while paused or in hit-stop)
+      seenSim = app.time.sim;
       if (disposed) return;
       // THE UNDERNEATH pauses the tutorial: its box and target marker hide, and no step, timer or skip moves until the player is back up.
       if (inUnderneath()) { el.style.display = 'none'; showTarget(null); releaseClock('tutorial'); return; }
 
       // Esc held for SKIP_HOLD_S skips (the pause card may open from the same press; Esc closes it as usual).
-      if (holdFrom !== null && performance.now() - holdFrom >= SKIP_HOLD_S * 1000) { skip(); return; }
+      if (holdFrom !== null && app.time.sim - holdFrom >= SKIP_HOLD_S) { skip(); return; }
       // Leaving Night 1 ends the tutorial.
       if (run.night() !== 1) { finish(); return; }
 
@@ -278,8 +286,8 @@ function startSteps(host: TutorialHost): Tutorial | null {
       const pawnInMola = phase === 'intermission' && STEPS[idx]?.key === 'pawn';
       if (!playing && !pawnInMola) { hide(); return; }
 
-      total += dt;
-      age += dt;
+      total += sdt;
+      age += sdt;
 
       // Advance through the steps that are complete this frame (a skip past several is allowed).
       while (idx < STEPS.length && complete(STEPS[idx])) {

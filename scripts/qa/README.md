@@ -29,6 +29,7 @@ npm run qa -- --machine bigone --script "Space:150,wait:3000" --rounds 3 --shots
 | `--probe "<expr>"` | read after every round (after the frame shots), recorded in `roundLog[].probe`. `await` is allowed |
 | `--query "<params>"` | extra boot query params, e.g. `--query "lang=tr"`. The language must be set at boot: the HUD caches its strings, so a `--js` setting would leave them in English |
 | `--size <W>x<H>` | the Chrome viewport (default `1280x720`), e.g. `--size 1920x1080` |
+| `--real-time` | the page runs on the wall clock (no fixed step). Default is the fixed clock, see **Fixed clock** below |
 
 Script tokens:
 
@@ -49,6 +50,20 @@ Output is one JSON object on stdout. With `--sit`, each `roundLog` entry has `wa
 ```
 
 On failure the output is `{ "error": "…" }` and the exit code is 1. Cleanup still runs.
+
+## Fixed clock (determinism)
+
+By default the page boots with `?fixedstep=1&clock=manual` (DEV build only, `src/core/loop.ts`). Then:
+
+- Each sim step is exactly 1/60 s, and the page moves only when the harness steps it (`window.__qaClock.step(n)`, one full
+  step and render per frame). Every `wait:`, key hold, `--frames` offset, round and budget counts sim frames, not wall time.
+- `performance.now()` reads the sim clock, so a wall-clock read in gameplay code (the offline `net.hostTime()`, the
+  hotline and rescue rings, the seat-replay window) cannot change the run. `Date.now()` is left alone (save catch-up).
+- A promise the page returns (a seat glide, a cutscene) is awaited by stepping one frame at a time, so the harness never
+  deadlocks on a promise that needs sim time.
+- The per-Night summaries are the same for the same `--seed` and steps. Two invocations are compared with
+  `node scripts/qa/bench.mjs --run "auto:night;nightcard:best;auto:night;state" --seed 3` (run twice, diff `run.nights`).
+- `--real-time` restores the wall-clock page and the wall-clock waits (the old behaviour; not reproducible).
 
 ## Forcing a decision state (`--force`)
 
@@ -193,7 +208,7 @@ Practical notes: `goto` needs the machine on the floor (the `coinflip`, `hilo`, 
 
 ### Night bot (`auto:night`)
 
-`auto:night` plays one Night the way a sensible human would, so long runs measure the design and not a min-stake loop. It stops when the Night rolls over (OPEN THE FLOOR), when the run ends, when it reaches the top, or after 15 minutes of wall time. Every decision is logged on stderr as `bot <what>: <reason>` and kept as a record `{ step: "decide: <what>", auto: true, reason }` in `run.steps`. Per Watch:
+`auto:night` plays one Night the way a sensible human would, so long runs measure the design and not a min-stake loop. It stops when the Night rolls over (OPEN THE FLOOR), when the run ends, when it reaches the top, or after 15 minutes of sim time (the fixed clock, see **Fixed clock**). Every decision is logged on stderr as `bot <what>: <reason>` and kept as a record `{ step: "decide: <what>", auto: true, reason }` in `run.steps`. Per Watch:
 
 - **Bets**: bets go on until the Watch's pulls are down to 2 (`BELL_KEEP_PULLS`; the 1-2 left stay unused) or the pocket is under the cheapest bet (capped at 60 bets, `AUTO_BETS_MAX`). Each bet picks one machine, in this order: the **Hot cabinet** (the Hot Lamp lit now; Tilt does not apply) first, then the **spotlight** kind (`run.spotlightView()`, x1.25 this Night), then the **least-tilted** open machine (the most full-value pulls left, `run.circuit.tilt(id).lit`, so the bot rotates off Tilt). A machine is never bet twice in one Watch while another is open. Eligible: placed and unlocked slot or lottery machines, the spotlight kind, and the known recipes. Two bets in a row that spend no pull drop a machine from the pool.
 - **Stake** (`pickStake`): **SAFE** (`Digit7`, about 5 % of the pocket) by default. **BOLD** (`Digit8`, about 15 %) on the Hot cabinet, on the spotlight, or while ahead of the Dawn projection (`dawn.met`). **BIG** (`Digit9`, about 30 %, a second press confirms it) only on a push-your-luck machine (`coinflip`, `bigone`) whose rule is live (coinflip rides a won flip once; bigone chases at `CHASE_P` or better), on an occasional seeded roll (about 1 bet in 5, `PUSH_BIG_ROLL`, a mulberry32 from `--seed`, never `Math.random`). BOLD needs 14 minimum bets in the pocket and BIG 20 (`BOLD_MIN_MULT`, `BIG_MIN_MULT`). A digit the machine keeps for itself (`stakeKeyOwned`), or a pocket under the multiple, takes the next step down (BIG, BOLD, SAFE, then the minimum walked down with `KeyZ` 8 times). `Digit0` closes a first-sit tip first. The decision is logged as `bet <machine> (<STAKE>)` with its reason.

@@ -183,6 +183,8 @@ export function createHud(): Hud {
   let settledAt = -1;
   // The highest OVERSHOOT tier index this Night's toast has announced (null: not read yet this Night, so the first read is silent).
   let overSeen: number | null = null;
+  // Last read: the Night's seal was broken (BREAK THE SEAL). Its rising edge clears the terminal's warning toast.
+  let sealBrokeSeen = false;
   // EMPIRE chip (tycoon): machines you bought and the house cut they pay per Watch. Hidden until the first purchase.
   const empire = h('div', 'hb empire hidden', topR);
   empire.style.cssText = 'padding:2px 8px;max-width:100%;color:#ffd34a;font-size:12px;letter-spacing:.06em;white-space:normal;overflow-wrap:anywhere;text-align:right';
@@ -567,6 +569,15 @@ export function createHud(): Hud {
     if (seg && sh?.phase === 'settle') settledAt = seg.index;
     // The bank view is on the real run (DebtRun), not on the RunApi facade: probe it as `empire()` is probed above.
     const bank = (r as (typeof r & { bank?: () => BankView }) | null)?.bank?.();
+    // BREAK THE SEAL: the terminal's "forfeits tonight's overshoot" confirm is answered, and the overshoot toast of this Night
+    // is stale (its rewards are forfeit), so both leave the screen at once: the result toast gets the slots. Once per break:
+    // the flag clears when the seal is whole again (a new Night).
+    const broken = bank?.sealBroken === true;
+    if (broken && !sealBrokeSeen) {
+      ui().dismissToasts({ kind: 'warn' });
+      ui().dismissToasts({ tag: 'overshoot' });
+    }
+    sealBrokeSeen = broken;
     // Dawn and Mola (wave 55): the NEXT NIGHT line, the exact quota of the coming Night, replaces the Watch plan.
     const next = r && (r.window() === 'dawn' || nightPaid(r))
       ? (r as (typeof r & { nextQuotaPreview?: () => NextQuotaPreview | null }) | null)?.nextQuotaPreview?.() ?? null
@@ -588,7 +599,7 @@ export function createHud(): Hud {
       if (overSeen === null) overSeen = ov.reached;
       else if (ov.reached > overSeen && ov.tier) {
         overSeen = ov.reached;
-        ui().toast(t('hud.plan.overToast', { r: t(`hud.plan.ov.${ov.tier}`) }), 'good', 4);
+        ui().toast(t('hud.plan.overToast', { r: t(`hud.plan.ov.${ov.tier}`) }), 'good', 4, 'overshoot');
       }
     }
     const due = Math.max(0, Math.floor(q.due));
@@ -604,7 +615,7 @@ export function createHud(): Hud {
     const pulls = r.pulls(self());
     const pullsTxt = Number.isFinite(pulls) ? String(Math.max(0, Math.floor(pulls))) : '∞';
     const clock = mmss(r.shift.timeLeft());
-    const key = `${due}|${watch}|${seg.count}|${bank.balance}|${pocket}|${interm}|${p.projected}|${p.gap}|${pullsTxt}|${clock}|${titheE}/${titheN}`;
+    const key = `${due}|${watch}|${seg.count}|${bank.balance}|${pocket}|${interm}|${p.projected}|${p.gap}|${pullsTxt}|${clock}|${titheE}/${titheN}|${broken ? 1 : 0}`;
     if (key === planKey) return;
     planKey = key;
     setCls(planNext, 'hidden', true);
@@ -626,9 +637,13 @@ export function createHud(): Hud {
       : t('hud.plan.bank', { p: money(p.projected), q: money(due) }));
     setCls(planPocket, 'hidden', pocket <= 0);
     setText(planPocket, t('hud.plan.pocket', { p: money(pocket) }));
-    // OVERSHOOT line: only once the quota is banked. The next tier's target and the coins to go; past the top tier, a plain line.
-    setCls(planOver, 'hidden', !(ov && paidNow));
-    if (ov && paidNow) {
+    // OVERSHOOT line: once the quota is banked. A broken seal forfeits tonight's tiers (overshootView is then null), so the line
+    // says so in red. Otherwise the next tier's target and the coins to go; past the top tier, a plain line.
+    setCls(planOver, 'hidden', !(broken || (ov && paidNow)));
+    if (broken) {
+      setText(planOver, t('hud.plan.overForfeit'));
+      planOver.style.color = '#ff5a4a';
+    } else if (ov && paidNow) {
       const nx = ov.next;
       setText(planOver, nx
         ? t('hud.plan.over', { b: money(ov.balance), q: money(nx.target), r: t(`hud.plan.ov.${nx.id}`), g: money(nx.gap) })

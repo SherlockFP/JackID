@@ -23,7 +23,7 @@ export default {
     'ov.golden': 'RARE CHARM, -5% NEXT',
     'ov.seal': 'JACKPOT SEAL: 5 TICKETS + LEGENDARY (RARE before Night 5)',
     'ov.envy': 'HOUSE ENVY: SOUL MARK OR 3 OBOLS',
-    'overForfeit': 'OVERSHOOT FORFEIT: SEAL BROKEN',
+    'overForfeit': 'OVERSHOOT FORFEIT TONIGHT',
   },
   tr: {
     'bank': 'ŞAFAK {p}/{q}',
@@ -42,6 +42,6 @@ export default {
     'ov.golden': 'NADİR TILSIM, SONRAKİ -%5',
     'ov.seal': 'JACKPOT MÜHRÜ: 5 BİLET + EFSANE (5. GECEDEN ÖNCE NADİR)',
     'ov.envy': 'EV KISKANCI: RUH MÜHRÜ YA DA 3 OBOL',
-    'overForfeit': 'AŞIM KAYBI: MÜHÜR KIRILDI',
+    'overForfeit': 'AŞIM BU GECE KAYIP',
   },
 };

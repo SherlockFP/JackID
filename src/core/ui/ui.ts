@@ -37,6 +37,8 @@ export interface UiDeps { keyLabel(a: BindingKey): string }
 
 /** Toast kinds beyond the frozen five (ART_BIBLE §10.7): MONEY gold, CURSE violet flicker, PHONE amber. */
 export type ExtraToastKind = 'money' | 'curse' | 'phone';
+/** Which toasts `dismissToasts` takes: by kind, by tag, or both. An empty match takes every toast. */
+export interface ToastMatch { kind?: ToastKind | ExtraToastKind; tag?: string }
 export interface BannerOpts {
   color?: string;
   shadow?: string;
@@ -50,7 +52,11 @@ export interface BannerOpts {
 export interface UIOverlayX extends UIOverlay {
   /** Permanent HUD container (wallet, quota, clock …); hidden by `setHudVisible(false)`. */
   readonly hudLayer: HTMLElement;
-  toast(text: string, kind?: ToastKind | ExtraToastKind, dur?: number): void;
+  /** `tag` names the toast for `dismissToasts`; a warning (kind 'warn') never waits behind the news on screen. */
+  toast(text: string, kind?: ToastKind | ExtraToastKind, dur?: number, tag?: string): void;
+  /** Removes the toasts that match, on screen or queued, at once. Their news is forgotten, so the next news with the same
+   *  words shows instead of merging into a toast that is gone (a result replaces its confirm prompt). */
+  dismissToasts(match?: ToastMatch): void;
   /** Big banner ("NIGHT 3", "LAST CALL", "PAID IN FULL"): letters drop in, hold, dither-dissolve. */
   banner(text: string, o?: BannerOpts): Promise<void>;
   dispose(): void;
@@ -90,7 +96,7 @@ const isTextTarget = (el: EventTarget | null): boolean =>
 interface PanelRec { el: HTMLElement; cleanup?: () => void; backdrop: HTMLElement | null; nav?: () => void }
 interface ModalRec { el: HTMLElement; cancel(): void; primary(): void }
 interface ChoiceJob { title: string; options: string[]; timeout?: number; resolve(i: number): void }
-interface ToastRec { text: string; kind: string; dur: number; words: string[]; count: number; timer: number; shown: boolean; el?: HTMLElement; cnt?: HTMLElement }
+interface ToastRec { text: string; kind: string; dur: number; words: string[]; count: number; timer: number; shown: boolean; tag?: string; el?: HTMLElement; cnt?: HTMLElement }
 
 /**
  * Words that identify a piece of news: upper-cased letter/number runs, 2+ characters (any digit run counts).
@@ -254,7 +260,7 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
 
   // ── toasts ──────────────────────────────────────────────────────────────────────────────────────
   const toastShown: ToastRec[] = [];      // on screen, newest first (at most TOAST_VISIBLE)
-  const toastWaiting: ToastRec[] = [];    // queued behind them, first come first shown
+  const toastWaiting: ToastRec[] = [];    // queued behind them, first come first shown (warnings ahead of the news)
   function showToast(rec: ToastRec): void {
     const el = h('div', `px-toast k-${rec.kind}`);
     h('i', 'bar', el);
@@ -269,11 +275,10 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
       { duration: 180, easing: 'cubic-bezier(.2,.8,.3,1)' });
     rec.timer = window.setTimeout(() => dismissToast(rec), rec.dur * 1000);
   }
-  function dismissToast(rec: ToastRec, quick = false): void {
-    const w = toastWaiting.indexOf(rec);
-    if (w >= 0) { toastWaiting.splice(w, 1); return; }
+  /** Takes a shown toast off the screen. Does not promote the next one (the caller decides who takes the slot). */
+  function hideToast(rec: ToastRec, quick = false): boolean {
     const i = toastShown.indexOf(rec);
-    if (i < 0 || !rec.el) return;
+    if (i < 0 || !rec.el) return false;
     toastShown.splice(i, 1);
     rec.shown = false;
     clearTimeout(rec.timer);
@@ -282,7 +287,33 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
       { duration: quick ? 90 : 220, easing: 'ease-in', fill: 'forwards' });
     a.onfinish = () => el.remove();
     setTimeout(() => el.remove(), 400);
+    return true;
+  }
+  function promoteToasts(): void {
     while (toastShown.length < TOAST_VISIBLE && toastWaiting.length) showToast(toastWaiting.shift()!);
+  }
+  function dismissToast(rec: ToastRec, quick = false): void {
+    const w = toastWaiting.indexOf(rec);
+    if (w >= 0) { toastWaiting.splice(w, 1); return; }
+    if (hideToast(rec, quick)) promoteToasts();
+  }
+  /** Puts a toast in line. A warning goes behind the warnings already waiting and ahead of the news; `first` (a news displaced
+   *  by a warning) goes to the head of the news. */
+  function enline(rec: ToastRec, first = false): void {
+    const news = toastWaiting.findIndex((w) => w.kind !== 'warn');
+    const at = (rec.kind === 'warn' || first) && news >= 0 ? news : toastWaiting.length;
+    toastWaiting.splice(at, 0, rec);
+  }
+  /** A warning (a confirm prompt, an arm prompt) never waits behind the news: it takes the slot of the oldest news on screen,
+   *  and that news goes back first in line. Only news and warnings already on screen keep their place. */
+  function admit(rec: ToastRec): void {
+    if (toastShown.length < TOAST_VISIBLE) { showToast(rec); return; }
+    if (rec.kind === 'warn') {
+      let old: ToastRec | undefined;
+      for (let i = toastShown.length - 1; i >= 0 && !old; i--) if (toastShown[i].kind !== 'warn') old = toastShown[i];
+      if (old) { hideToast(old, true); enline(old, true); showToast(rec); return; }
+    }
+    enline(rec);
   }
   /** Same news while the toast is on screen or queued: count it on that toast and restart its timer. */
   function mergeToast(rec: ToastRec, dur: number): void {
@@ -293,6 +324,16 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     clearTimeout(rec.timer);
     rec.dur = Math.max(rec.dur, dur);
     rec.timer = window.setTimeout(() => dismissToast(rec), rec.dur * 1000);
+  }
+  /** Removes the matching toasts (kind and/or tag; all when empty), shown or queued. Waiting ones go first, so none is promoted
+   *  just to be removed. */
+  function clearToasts(match: ToastMatch): void {
+    for (const rec of [...toastWaiting, ...toastShown]) {
+      if (match.kind && rec.kind !== match.kind) continue;
+      if (match.tag && rec.tag !== match.tag) continue;
+      for (let i = announced.length - 1; i >= 0; i--) if (announced[i].rec === rec) announced.splice(i, 1);
+      dismissToast(rec, true);
+    }
   }
 
   // ── machine HUD ─────────────────────────────────────────────────────────────────────────────────
@@ -605,16 +646,19 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
       if (!cross.classList.contains('target')) cross.classList.add('target');
     },
 
-    toast(text, kind: ToastKind | ExtraToastKind = 'info', dur = 2.5) {
+    toast(text, kind: ToastKind | ExtraToastKind = 'info', dur = 2.5, tag) {
       // One queue: the same or similar news within 3 s merges into the toast already showing (or waiting), and a
       // banner / feed line for it that came first is enough. At most TOAST_VISIBLE on screen; the rest wait.
       const words = announceWords(text);
       const hit = recentNews(words);
       if (hit) { if (hit.rec) mergeToast(hit.rec, dur); return; }
-      const rec: ToastRec = { text, kind, dur, words, count: 1, timer: 0, shown: false };
+      const rec: ToastRec = { text, kind, dur, words, count: 1, timer: 0, shown: false, tag };
       announced.push({ words, at: performance.now(), rec });
-      if (toastShown.length < TOAST_VISIBLE) showToast(rec);
-      else toastWaiting.push(rec);
+      admit(rec);
+    },
+
+    dismissToasts(match = {}) {
+      clearToasts(match);
     },
 
     bigWin(amount: number, tier: WinTier, title: string) {
