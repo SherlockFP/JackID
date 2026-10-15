@@ -276,7 +276,7 @@ export function indexConventionProblems(): string[] {
   return out;
 }
 
-// ─â”€ THE CIRCUIT (GDD §3.4): Tilt and Lamps ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+// ── THE CIRCUIT (GDD §3.4): Tilt and Lamps ────────────────────────────────────────────────────────
 /** Pulls on one instance per Watch that still pay in full (GDD §3.4.3: pulls 1–4 are ×1.00). */
 export const TILT_FREE_PULLS = 4;
 /** Hot Lamps come with Night 1 (playtest 6/10: the first Night needs a way out of a dry Watch). */
@@ -294,7 +294,7 @@ export function coldLampCount(nightNo: number, extra = 0): number {
   return Math.max(0, 1 + Math.round(extra));
 }
 
-// ─â”€ Obols (GDD §11.2) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+// ── Obols (GDD §11.2) ─────────────────────────────────────────────────────────────────────────────
 export type ObolOutcome = 'fell' | 'descend' | 'topside' | 'quit';
 /** Outcome multipliers: fall ×0.5, Descend ×1.0, Topside STAY UP ×1.5, abandon ×0.25. */
 export const OBOL_OUTCOME_MULT: Readonly<Record<ObolOutcome, number>> = { fell: 0.5, descend: 1, topside: 1.5, quit: 0.25 };

@@ -143,7 +143,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     this.attractor.every('flick', 9, () => this.flickTube(), { first: 4 });
   }
 
-  // ─â”€ attract: the tube dies now and then ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── attract: the tube dies now and then ─────────────────────────────────────────────────────────
   attract(dt: number, _time: number): void {
     this.attractor.update(dt);
   }
@@ -219,7 +219,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     super.standUp();
   }
 
-  // ─â”€ input (local occupant) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── input (local occupant) ───────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
@@ -308,7 +308,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     this.showHud();
   }
 
-  // ─â”€ authority: vend, scratch, finish ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── authority: vend, scratch, finish ─────────────────────────────────────────────────────────────
   /** Buys the queued card as soon as the shelf is free (no batch on show, no round open, no card under scratch). */
   private tryBuy(): void {
     if (!this.buyQueued || this.pend || this.busy || this.roundOpen || this.state.batch) return;
@@ -490,7 +490,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     };
   }
 
-  // ─â”€ presentation: every peer, including the emitter ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── presentation: every peer, including the emitter ─────────────────────────────────────────────
   present(ev: Ev, pc: PresentCtx): void | Promise<void> {
     switch (ev.k) {
       case 'vend': return this.presentVend(ev, pc);
@@ -668,7 +668,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     if (this.isLocalOccupant) this.showHud();
   }
 
-  // ─â”€ cosmetic, from the state only ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── cosmetic, from the state only ───────────────────────────────────────────────────────────────
   private textAdapter(): Text {
     const tex = this.ctx.kit.tex;
     return {
@@ -789,7 +789,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     sh.controls(ctrl);
   }
 
-  // ─â”€ seat HUD helpers ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── seat HUD helpers ────────────────────────────────────────────────────────────────────────────
   private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.${this.def.id}.${key}`, v } : { k: `m.${this.def.id}.${key}` }; }
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }

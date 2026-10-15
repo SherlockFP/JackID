@@ -147,7 +147,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     this.attractor.every('hop', 14, () => this.hop(), { first: 5 });
   }
 
-  // ─â”€ attract: lamps alternate, the coin hops now and then ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── attract: lamps alternate, the coin hops now and then ────────────────────────────────────────
   attract(dt: number, time: number): void {
     const on = Math.floor(time * 1.5) % 2 === 0;
     if (on !== this.attractOn) {
@@ -209,7 +209,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     super.standUp();
   }
 
-  // ─â”€ input (local occupant) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── input (local occupant) ───────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
@@ -255,7 +255,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
   /** The multiplier the next ride wins, as shown to the player. */
   private nextMult(): number { return STEP_MULT[Math.min(this.state.ride, STEP_MULT.length - 1)]; }
 
-  // ─â”€ authority-side logic: runs only on the local occupant ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── authority-side logic: runs only on the local occupant ────────────────────────────────────────
   private async flip(ride: boolean): Promise<void> {
     if (this.busy) return;
     let stake: number, bet: number, idx: number;
@@ -318,7 +318,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     return r;
   }
 
-  // ─â”€ presentation: every peer, including the emitter ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── presentation: every peer, including the emitter ─────────────────────────────────────────────
   present(ev: Ev, pc: PresentCtx): void | Promise<void> {
     switch (ev.k) {
       case 'call': return this.presentCall(ev);
@@ -484,7 +484,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     super.dispose();
   }
 
-  // ─â”€ late join / save ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── late join / save ──────────────────────────────────────────────────────────────────────────────
   getSnapshot(): State {
     return { ...this.state, history: [...this.state.history] };
   }
@@ -494,7 +494,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     this.refresh();
   }
 
-  // ─â”€ visuals ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── visuals ───────────────────────────────────────────────────────────────────────────────────────
   private idleChase(): void {
     const m = this.parts.marquee;
     if (this.state.pot > 0) m.chase('chase', 7);

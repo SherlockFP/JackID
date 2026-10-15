@@ -292,7 +292,7 @@ function contractMatches(w: NonNullable<ContractGoal['where']>, ev: ContractEv):
   return true;
 }
 
-// ─â”€ persistence ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+// ── persistence ──────────────────────────────────────────────────────────────────────────────────────
 /** Run-private state that the shared `RunSnapshot` shape does not carry. Stored under `resume.ext` (JSON-safe). */
 export interface RunExt {
   v: 1;
@@ -383,7 +383,7 @@ function isRunSave(s: RunSnapshot): s is RunSave {
   return typeof e === 'object' && e !== null && (e as { v?: unknown }).v === 1;
 }
 
-// ─â”€ public surface ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+// ── public surface ───────────────────────────────────────────────────────────────────────────────────
 export interface RunOpts {
   seed: number;
   /** Default 'debt'. 'free' = Free Casino sandbox. 'coop' / 'versus' are refused until M3. */
@@ -487,7 +487,7 @@ export interface DebtRun extends RunApi {
   readonly over: boolean;
   readonly topsideOpen: boolean;
   readonly rules: ModeRules;
-  // ─â”€ special rooms (wave 24) ─â”€
+  // ── special rooms (wave 24) ──
   /** Wing Keys in hand (a grille spends one). Replicated to clients in the run snapshot. */
   readonly wingKeys: number;
   /** The Manager's Key (opens the Counting Room only). */
@@ -502,7 +502,7 @@ export interface DebtRun extends RunApi {
   backOffice(): { tickets: number; obols: number };
   /** The Collector buys a charm for Obols at 2x its sell value. False when it is not held, cursed or the run is not in a Watch gap. */
   collectorBuy(charmId: string): boolean;
-  // ─â”€ tycoon (wave 28): buy a covered machine, collect its house cut ─â”€
+  // ── tycoon (wave 28): buy a covered machine, collect its house cut ──
   /** Coins to buy this covered machine now (0 = not for sale: open, owned, free-only or not a progressive run). */
   buyPriceOf(machineId: MachineId): number;
   /** BUY a covered machine with coins: it opens for the rest of the run and pays a house cut each Watch. False when refused or short. */
@@ -525,7 +525,7 @@ export function resumeRun(save: SaveStore, extra: { banner?: EventBannerShow } =
   return new Run({ seed: snap.seed, mode: snap.mode, cfg: snap.cfg, save, banner: extra.banner }, snap);
 }
 
-// ─â”€ inert sub-APIs (owned by other packages; warns once when touched) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+// ── inert sub-APIs (owned by other packages; warns once when touched) ─────────────────────────────────
 function inert<T extends object>(name: string, impl: Partial<T>): T {
   return new Proxy(impl, {
     get(target, prop, recv) {
@@ -541,7 +541,7 @@ function inert<T extends object>(name: string, impl: Partial<T>): T {
 
 const noop: Unsub = () => {};
 
-// ─â”€ modifier pipeline (the reference fold from modifiers.types) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+// ── modifier pipeline (the reference fold from modifiers.types) ─────────────────────────────────────
 class Mods implements ModifierApi {
   revision = 0;
   private readonly providers = new Set<ModProvider>();
@@ -604,7 +604,7 @@ class Mods implements ModifierApi {
   }
 }
 
-// ─â”€ the run ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+// ── the run ──────────────────────────────────────────────────────────────────────────────────────────
 class Run implements DebtRun {
   readonly mode: GameMode;
   readonly seed: number;
@@ -1007,7 +1007,7 @@ class Run implements DebtRun {
     this.prepareBoss();
   }
 
-  // ─â”€ identity and time words ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── identity and time words ───────────────────────────────────────────────────────────────────────
   get over(): boolean { return this.ended; }
   get topsideOpen(): boolean { return this.topside; }
   private get quotaMode(): boolean { return this.rules.quota; }
@@ -1020,7 +1020,7 @@ class Run implements DebtRun {
   private canPlay(): boolean { return this.phase === 'play' || this.phase === 'lastCall'; }
   private isLastWatch(): boolean { return this.watch === this.watches - 1; }
 
-  // ─â”€ wallet, pulls, bets ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── wallet, pulls, bets ───────────────────────────────────────────────────────────────────────────
   wallet(_pid?: PlayerId): number { return this.coins; }
   canAfford(cost: number, _pid?: PlayerId): boolean { return this.coins >= cost; }
   pulls(_pid?: PlayerId): number { return this.pullCount; }
@@ -1256,14 +1256,14 @@ class Run implements DebtRun {
   hostBet(pid: PlayerId, amount: number, src: EcoSource): boolean { return pid === this.selfId && this.bet(amount, src); }
   hostWin(pid: PlayerId, gross: number, src: EcoSource, meta: WinMeta): number { return pid === this.selfId ? this.win(gross, src, meta) : 0; }
 
-  // ─â”€ modifiers ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── modifiers ─────────────────────────────────────────────────────────────────────────────────────
   getModifier(hook: ModHook, machineId: MachineId, base: number, pid?: PlayerId): number { return this.mods.mod(hook, machineId, base, { pid }); }
   mod(hook: ModHook, machineId: MachineId, base: number, q?: ModQuery): number { return this.mods.mod(hook, machineId, base, q); }
   explain(hook: ModHook, machineId: MachineId, base: number, q?: ModQuery): ModBreakdown { return this.mods.explain(hook, machineId, base, q); }
   luck(machineId: MachineId, pid?: PlayerId): number { return this.mods.mod('luck', machineId, 0, { pid }); }
   charms(pid?: PlayerId): readonly CharmState[] { return this.charmBox.list(pid ?? this.selfId); }
 
-  // ─â”€ pools and info ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── pools and info ──────────────────────────────────────────────────────────────────────────────────
   jackpot(pool: string): number { return this.pools.get(pool)?.value ?? 0; }
   jackpotAdd(pool: string, amount: number): void { this.feedJackpot(pool, amount); }
   jackpotClaim(pool: string, src: EcoSource): number { return this.claimJackpot(pool, src); }
@@ -1336,7 +1336,7 @@ class Run implements DebtRun {
     return Promise.resolve('aborted');
   }
 
-  // ─â”€ DebtRun controls ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── DebtRun controls ──────────────────────────────────────────────────────────────────────────────
   tick(dt: number): void {
     if (this.ended || dt <= 0) return;
     this.elapsed += dt;
@@ -1519,7 +1519,7 @@ class Run implements DebtRun {
     return true;
   }
 
-  // ─â”€ the bank (wave 27): WITHDRAW and the numbers the Debt Terminal shows ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── the bank (wave 27): WITHDRAW and the numbers the Debt Terminal shows ─────────────────────────────
   /**
    * The Pawn (charms and the STAMPS tab) is open between Watches and during the Closing window (director decision 1: the
    * player can still shop while the Watch ends). Not in Bell, play, Settle or Dawn.
@@ -1672,7 +1672,7 @@ class Run implements DebtRun {
     return () => { this.listeners.delete(fn); };
   }
 
-  // ─â”€ phases ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── phases ─────────────────────────────────────────────────────────────────────────────────────────
   private enter(phase: ShiftPhase, left: number): void {
     const before = this.window();
     this.phase = phase;
@@ -1756,7 +1756,7 @@ class Run implements DebtRun {
     // The HUD shows the met / missed toast from `run:tithe` (menu/hud.ts); no second banner here.
   }
 
-  // ─â”€ tycoon: owned machines (wave 28) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── tycoon: owned machines (wave 28) ─────────────────────────────────────────────────────────────────
   /** Base quota the prices and cuts scale with: tonight's, or the next Night's once tonight is paid. */
   private priceQuota(): number { return nightQuota(this.index + (this.nightDone && !this.topside ? 1 : 0)); }
 
@@ -1969,7 +1969,7 @@ class Run implements DebtRun {
     return { ...meta, nodes: { ...meta.nodes }, unlocked: [...meta.unlocked] };
   }
 
-  // ─â”€ THE CIRCUIT: Tilt and Lamps (GDD §3.4) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── THE CIRCUIT: Tilt and Lamps (GDD §3.4) ──────────────────────────────────────────────────────────
   /** The Circuit only applies inside a timed quota Watch (not in the Free Casino, not between Watches). */
   private circuitLive(): boolean { return this.quotaMode && this.rules.timed && this.inWatch(); }
 
@@ -2141,7 +2141,7 @@ class Run implements DebtRun {
     this.emitLamps();
   }
 
-  // ─â”€ quota and debt ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── quota and debt ─────────────────────────────────────────────────────────────────────────────────
   private recomputeQuota(): void {
     if (!this.quotaMode) { this.quota.due = 0; this.syncQuota(); return; }
     const nd = nightDef(this.index);
@@ -2272,7 +2272,7 @@ class Run implements DebtRun {
     return !(this.phase === 'closing' || this.phase === 'settle' || this.phase === 'collection' || this.phase === 'over');
   }
 
-  // ─â”€ stake safety and the rescue call (wave 13) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── stake safety and the rescue call (wave 13) ─────────────────────────────────────────────────────
   /** First press of a stake above half the pocket arms it and returns false; the same stake again within the window returns true. */
   private confirmStake(amount: number, src: EcoSource, minBet: number): boolean {
     if (!this.quotaMode || this.openRounds.has(src.mid)) return true;
@@ -2372,7 +2372,7 @@ class Run implements DebtRun {
 
   private notify(): void { this.listeners.forEach((fn) => fn()); }
 
-  // ─â”€ the Hollow Door (src/game/hollow/rules.ts): the rules decide, the world shows it (`hollow:open`) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── the Hollow Door (src/game/hollow/rules.ts): the rules decide, the world shows it (`hollow:open`) ──────────────────
   /** Opens the door for a trigger when the rules allow it. Returns true when the door changed. */
   hollowTrigger(trigger: DoorTrigger): boolean {
     if (this.ended || !this.quotaMode) return false;
@@ -2448,7 +2448,7 @@ class Run implements DebtRun {
     this.modsImpl.touch(); // charm `on` handlers write their data bags
   }
 
-  // ─â”€ shift API ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── shift API ──────────────────────────────────────────────────────────────────────────────────────
   private makeShiftApi(): ShiftApi {
     const run = this;
     return {
@@ -2469,7 +2469,7 @@ class Run implements DebtRun {
     };
   }
 
-  // ─â”€ jackpots ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── jackpots ───────────────────────────────────────────────────────────────────────────────────────
   private makeJackpotsApi(): JackpotsApi {
     const run = this;
     return {
@@ -2514,7 +2514,7 @@ class Run implements DebtRun {
     this.notify();
   }
 
-  // ─â”€ wave 8: Pawn Window, boss Nights, starting kits, Tell Sheet ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── wave 8: Pawn Window, boss Nights, starting kits, Tell Sheet ───────────────────────────────────────
   private makePawn(): Pawn {
     return new Pawn({
       selfId: this.selfId,
@@ -2689,7 +2689,7 @@ class Run implements DebtRun {
     if (!ne.isActive(boss.id)) ne.trigger(boss.id);
   }
 
-  // ─â”€ special rooms (wave 24, docs/WAVE24_PLAN.md section 2) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── special rooms (wave 24, docs/WAVE24_PLAN.md section 2) ─────────────────────────────────────────
   /** Dawn after a paid Night: Wing Keys (Nights 1-6, bosses 3/6/8), the Manager's Key (Night 6 boss), and the Parlour after Night 3. */
   private grantKeys(): void {
     const night = this.night();
@@ -2708,7 +2708,7 @@ class Run implements DebtRun {
     this.modsImpl.touch();
   }
 
-  // ─â”€ wave 25: the Tally Bench (docs/WAVE25_TALLY.md) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── wave 25: the Tally Bench (docs/WAVE25_TALLY.md) ────────────────────────────────────────────────
   private marksChanged(lost: boolean): void {
     const left = this.soulMarkCount;
     bus.emit('duel:marks', { left, lost, blank: left === 0 && this.markEscrow === 0 });
@@ -2984,7 +2984,7 @@ class Run implements DebtRun {
     bus.emit('seat:odds', { pid: this.selfId, mid, line });
   }
 
-  // ─â”€ save and resume ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── save and resume ────────────────────────────────────────────────────────────────────────────────
   snapshot(): RunSave {
     const pid = this.selfId;
     const ext: RunExt = {
@@ -3056,7 +3056,7 @@ class Run implements DebtRun {
     if (this.dirty) this.persist();
   }
 
-  // ─â”€ overpay choice (GDD §2.6.5) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── overpay choice (GDD §2.6.5) ─────────────────────────────────────────────────────────────────
   overpayOffer(): OverpayOffer | null {
     const head = this.overpays[0];
     if (!head) return null;
@@ -3094,7 +3094,7 @@ class Run implements DebtRun {
     return took;
   }
 
-  // ─â”€ starter draft (draft wave) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── starter draft (draft wave) ───────────────────────────────────────────────────────────────────────
   openStarterDraft(): boolean {
     if (this.ended || !this.rules.timed || !this.quotaMode || this.starter) return false;
     // The session starts Watch 1 on load, so the offer opens at Night 1 before the first pull, in the intermission or in play.
@@ -3176,7 +3176,7 @@ class Run implements DebtRun {
       .map((d) => ({ id: d.id, price: Math.abs(d.price), maxStacks: d.maxStacks }));
   }
 
-  // ─â”€ bounty board (ContractsApi, GDD §11.9) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── bounty board (ContractsApi, GDD §11.9) ──────────────────────────────────────────────────────
   private makeContractsApi(): ContractsApi {
     return {
       register: (def) => {

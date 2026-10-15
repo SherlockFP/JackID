@@ -146,7 +146,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   // Night 1 onboarding: first run only (its own flag), Debt Run only, never a resumed or online run.
   const tutorial: Tutorial | null = !params.resume && !params.online && run.rules.timed ? startTutorial({ world, run }) : null;
 
-  // ─â”€ tycoon: service-plate badges (on the slot group, DECISIONS C26) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── tycoon: service-plate badges (on the slot group, DECISIONS C26) ──────────────────────────────────
   const badgeKeys = new Map<InstanceId, string>();
   const pops: Array<{ g: THREE.Object3D; k: number }> = [];
   const plateAt = new THREE.Vector3();
@@ -177,10 +177,10 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   }));
   offs.push(run.tycoon.onChange(() => { if (ready) syncAllBadges(); }));
 
-  // ─â”€ totems: rings on the floor ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── totems: rings on the floor ───────────────────────────────────────────────────────────────────────
   const totemView = new TotemView(app.kit, world.root, (id) => run.totems.def(id));
 
-  // ─â”€ Upgrade Ledger (U) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── Upgrade Ledger (U) ──────────────────────────────────────────────────────────────────────────────
   let ledger: LedgerHandle | null = null;
   let ledgerOpen = false;
   const closeLedger = (): void => {
@@ -207,7 +207,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     });
   };
 
-  // ─â”€ totems: B places the carried totem at your feet, or picks up the nearest placed one ─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── totems: B places the carried totem at your feet, or picks up the nearest placed one ─────────────
   const placeOrPickTotem = (): void => {
     const mine = run.totems.mine(self);
     const carried = mine.find((s) => s.pos === null);
@@ -227,7 +227,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     else app.ui.toast(t('ingame.totem.none'), 'warn');
   };
 
-  // ─â”€ horror director + its ActorDirector (started at enter, fed dread and time, disposed at exit) ─â”€─â”€─
+  // ── horror director + its ActorDirector (started at enter, fed dread and time, disposed at exit) ─────
   const actors = createActorDirector({ kit: app.kit, scene: () => world.root });
   const settings = (): { calm: boolean; reduceFlashing: boolean; subtitles: boolean } => {
     const s = app.save.data.settings;
@@ -271,12 +271,12 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     if (id in EVENT_DREAD) horror.notify(id as DreadEventKind);
   }));
 
-  // ─â”€ input: journal (J), upgrade ledger (U), totems (B) — walk mode only ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
+  // ── input: journal (J), upgrade ledger (U), totems (B) — walk mode only ──────────────────────────────
   offs.push(app.input.on('journal', (down) => { if (down && app.input.mode === 'walk') openJournal(); }));
   offs.push(app.input.on('upgrade', (down) => { if (down && app.input.mode === 'walk') openLedger(); }));
   offs.push(app.input.on('place', (down) => { if (down && app.input.mode === 'walk') placeOrPickTotem(); }));
 
-  // ─â”€ prompt, flush, ready ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
+  // ── prompt, flush, ready ─────────────────────────────────────────────────────────────────────────────
   let promptKey = '';
   const updatePrompt = (): void => {
     const f = app.input.mode === 'walk' ? world.interact.focused : null;

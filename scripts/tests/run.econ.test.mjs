@@ -23,7 +23,7 @@ before(async () => {
   REG.load();
 });
 
-// â”€â”€ the ladder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€─
+// ─â”€ the ladder ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
 test('quota ladder: strictly increasing night over night, N1 is the teaching Night under the Pauper pocket', () => {
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
   for (let i = 1; i < q.length; i++) assert.ok(q[i] > q[i - 1], `N${i + 1} (${q[i]}) must exceed N${i} (${q[i - 1]})`);
@@ -31,7 +31,7 @@ test('quota ladder: strictly increasing night over night, N1 is the teaching Nig
   for (let i = 1; i < SCH.BASE_RUN_NIGHTS + 4; i++) assert.ok(SCH.quotaFor(i) > SCH.quotaFor(i - 1), `Overdrawn ladder keeps rising at ${i + 1}`);
 });
 
-// â”€â”€ economy helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─â”€ economy helpers ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
 test('Night 1 stake cap is a third of the starting pocket and never below 1', () => {
   assert.equal(ECO.night1StakeCap(30), 10);
   assert.equal(ECO.night1StakeCap(2), 1);
@@ -68,7 +68,7 @@ test('WAVE 23 rescueTerms: the quota penalty is at most 1.3 x the cash given, an
   assert.deepEqual(RES.rescueTerms(196), { coins: 49, quota: 63 });
 });
 
-// â”€â”€ WAVE 23 quota ladder smoothing (flow-fixes) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─â”€ WAVE 23 quota ladder smoothing (flow-fixes) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
 test('WAVE 47 ladder: no Night steps up more than its cap (2x up to N3, 3x from N4); the tuned late ladder is pinned', () => {
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
   for (let i = 1; i < q.length; i++) assert.ok(q[i] / q[i - 1] <= SCH.maxLadderStep(i + 1) + 1e-9, `N${i + 1} / N${i} = ${(q[i] / q[i - 1]).toFixed(2)} <= ${SCH.maxLadderStep(i + 1)}`);
@@ -130,7 +130,7 @@ test('WAVE 47 floor events: the same event is never rolled twice in a row within
   assert.equal(b.view(), null, 'and no event is live between Watches');
 });
 
-// â”€â”€ the Watch clock hold â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€─
+// ─â”€ the Watch clock hold ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
 test('clock hold: holds for its time, release lets go, a forgotten hold expires', () => {
   HOLD.clearClockHolds();
   assert.equal(HOLD.clockHeld(), false);
@@ -174,7 +174,7 @@ test('the Watch clock stands still while the tutorial holds it, and runs again a
   run.dispose();
 });
 
-// â”€â”€ stake safety â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€─
+// ─â”€ stake safety ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
 test('Night 1 caps the top stake at a third of the starting pocket; Night 2 does not', () => {
   const run = RUN.createRun({ seed: 3, mode: 'debt' });
   if (!REG.get('bigone')) { run.dispose(); return; }
@@ -221,7 +221,7 @@ test('the second press must repeat the same stake, and the arm lapses after 6 s'
   run.dispose();
 });
 
-// â”€â”€ the rescue call â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─â”€ the rescue call ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
 test('rescue: pocket 0 with the quota unmet rings the Collector loan; taking it pays N now and adds 1.3 N to the quota', () => {
   const run = playing(11);
   const rings = [];
@@ -288,7 +288,7 @@ test('rescue line: ring, pick up, take; one option; save-safe numbers', () => {
   assert.equal(line.active(), false);
 });
 
-// â”€â”€ the Pawn â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€─
+// ─â”€ the Pawn ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
 function pawnOf(o = {}) {
   const h = { night: o.night ?? 0, watch: o.watch ?? 0, held: [], suits: o.suits ?? ['reels', 'cards', 'dice', 'wheels', 'drops', 'curios'] };
   const rng = R.createRng(o.seed ?? 1);
@@ -348,7 +348,7 @@ test('in a real run the Dawn shelf is already the next Night shelf and OPEN THE 
   run.dispose();
 });
 
-// â”€â”€ Wave 20: live interest, the pocket-short lamp banner, distinct names for two lamps on one machine â”€â”€â”€â”€â”€â”€â”€â”€
+// ─â”€ Wave 20: live interest, the pocket-short lamp banner, distinct names for two lamps on one machine ─â”€─â”€─â”€─â”€
 let CIRC, STR_TUT, STR_LAMPS;
 before(async () => {
   CIRC = await load('src/game/circuit.ts');

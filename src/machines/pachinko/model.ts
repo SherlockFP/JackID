@@ -67,7 +67,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PachinkoParts> 
   const root = kit.group('pachinko');
   const at = (x: number, y: number, z: number): { pos: [number, number, number]; parent: THREE.Object3D } => ({ pos: [x, y, z], parent: root });
 
-  // â”€â”€ static shell (flat colours, merges into one draw) â”€â”€
+  // ─â”€ static shell (flat colours, merges into one draw) ─â”€
   const frameZ = -0.15;
   kit.box(FRAME.w, FRAME.h, 0.04, pal.steel, at(0, FRAME.h / 2, frameZ - FRAME.d / 2 + 0.02));       // back plate
   for (const sx of [-1, 1]) kit.box(0.03, FRAME.h, FRAME.d, pal.steel, at(sx * (FRAME.w / 2 - 0.015), FRAME.h / 2, frameZ));
@@ -89,7 +89,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PachinkoParts> 
   kit.box(0.18, 0.02, 0.1, frameC, at(0, 0.7, cabZ + 0.14));                                         // service ledge
   kit.box(0.06, 0.12, 0.02, frameC, at(0.24, 0.84, cabZ + 0.15));                                   // handle housing
 
-  // â”€â”€ playfield â”€â”€
+  // ─â”€ playfield ─â”€
   const field = new THREE.Object3D();
   field.position.set(FIELD.x, FIELD.y, cabZ + CAB.d / 2 - 0.02);
   field.rotation.x = FIELD.tilt;
