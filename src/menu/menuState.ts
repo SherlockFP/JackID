@@ -1,10 +1,10 @@
 /**
- * Main menu (menu-3d, revamped). A 3D PSX scene: a giant glowing die inside a dark jackpot cabinet, in front of an
- * animated casino (menuBackdrop). Each die face is a menu entry (PLAY · MULTIPLAYER · FREE CASINO · FOUNDATIONS ·
- * SETTINGS · QUIT). A DOM overlay (menuHud) adds the neon logo, a readable list that mirrors the faces (click a name:
- * the die rolls there), a CONTINUE RUN card when a run is saved, and the version / credits footer.
- * Roll the die with the arrow keys / WASD or by dragging it; click or Enter selects the face toward the camera;
- * 1-6 jump straight to an entry, R continues the saved run, I opens the credits.
+ * Main menu (menu-3d). Driven ONLY by the 3D dice: no DOM overlay. Everything the player reads is painted in the scene:
+ * the JACKID marquee on top of the cabinet, each die face's label (the menu entry), and a panel under the glass with
+ * the focused entry's description (and the credits / quit card when opened).
+ * Roll the die with the arrow keys / WASD, the mouse wheel, or by dragging it; a click on the face toward the camera
+ * (or Enter / Space) selects it. A face that is not toward the camera is rolled to on click.
+ * When a run is saved, the QUIT face becomes CONTINUE RUN. Key I opens the credits (they have no face).
  * SETTINGS opens the full settings screen. PLAY runs the burst-out and enters the Debt Run (via the kit picker).
  *
  * Keep the factory name `createMenuState` (main.ts). Owner: MENU-3D.
@@ -17,31 +17,39 @@ import { app } from '@/core/app';
 import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
 import { hashSeed, randomSeed } from '@/core/rng';
+import { psxMaterial } from '@/core/renderer/psxMaterial';
 import { openSettingsScreen } from '@/core/ui/settingsScreen';
 import { openKitPicker } from './kitPicker';
 import { openFoundations } from './foundations';
 import { createMetaPrestige } from './foundations.logic';
 import { buildBackdrop, type Backdrop } from './menuBackdrop';
-import { openMenuHud, type MenuHud } from './menuHud';
 import { buildCabinet, DIE_CENTER, type Cabinet } from './menuCabinet';
 import { MenuDie, easeOutBack, type DieHit } from './menuDie';
 import { MenuBurst } from './menuBurst';
-import { paintDieFace, paintPanel, paintValueFace } from './menuArt';
+import { makeCanvasTex, paintDieFace, paintPanel, paintValueFace, type CanvasTex } from './menuArt';
 
 // Face order = BoxGeometry groups (+X, -X, +Y, -Y, +Z, -Z): PLAY faces you, MULTIPLAYER is one roll right, SETTINGS left,
-// FREE CASINO up, QUIT down, FOUNDATIONS round the back. Credits live in the footer (key I).
+// FREE CASINO up, QUIT down (CONTINUE RUN takes that face while a run is saved), FOUNDATIONS round the back.
 const MAIN_FACES = ['multi', 'settings', 'free', 'quit', 'play', 'foundations'] as const;
 // Six faces per cube: BACK gave way to CALM (Esc / Backspace still close the settings die).
 const SET_FACES = ['language', 'calm', 'music', 'controls', 'audio', 'graphics'] as const;
 type MainItem = typeof MAIN_FACES[number];
-/** List order on the overlay (and the 1-6 keys). */
-const LIST_ORDER: readonly MainItem[] = ['play', 'multi', 'free', 'foundations', 'settings', 'quit'];
+/** What a main-die face shows: its entry, or CONTINUE RUN on the QUIT face while a run is saved. */
+type FaceItem = MainItem | 'continue';
 type SetItem = typeof SET_FACES[number];
+/** The 3D text panel under the glass: a 480 x 240 texture on a 3.2 x 1.6 m plane. It sits between the die's bottom
+ *  edge (about y -1.2) and the casino floor, which hides anything below about y -2.9 at this depth. */
+const PANEL_PX = { w: 480, h: 240 };
+const PANEL_M = { w: 3.2, h: 1.6 };
+const PANEL_AT = new THREE.Vector3(0, -2.07, 1.31);   // in front of the cabinet's bottom bezel and the glass (GLASS_Z 1.16)
+/** The JACKID marquee (the cabinet paints it; its own plane stays hidden): 512 x 96 texture on the same aspect. */
+const TITLE_AT = new THREE.Vector3(0, 2.75, 0.78);
+const TITLE_M = { w: 4.2, h: 4.2 * 96 / 512 };
 /** Per-value steps for the controls face (mouse sensitivity). */
 const SENS = [0.001, 0.0022, 0.0035, 0.005];
 const SETTINGS_DIE_SCALE = 0.75;
 const MAIN_DIE_SIZE = 2.5;
-const LOOK_Y = 0.5;
+const LOOK_Y = 0.0;   // was 0.5: the view sits a little lower, so the info panel under the glass has room at the bottom
 const CAM_FOV = 50;
 const CAB_HALF_WIDTH = 2.9;
 const UP = new THREE.Vector3(0, 1, 0);
@@ -93,6 +101,18 @@ export function createMenuState(): AppStateHandler<'menu'> {
   scene.add(setDie.root);
   const burst = new MenuBurst(scene, mainDie, cab);
 
+  // Text in the scene (the menu has no DOM overlay): the marquee's JACKID texture as the title, and one canvas panel
+  // under the glass for the focused entry, the credits and the quit card.
+  const titleMesh = new THREE.Mesh(new THREE.PlaneGeometry(TITLE_M.w, TITLE_M.h), psxMaterial({ map: cab.marquee.tex, color: 0xffffff, lit: false }));
+  titleMesh.position.copy(TITLE_AT);
+  scene.add(titleMesh);
+  const panel: CanvasTex = makeCanvasTex(PANEL_PX.w, PANEL_PX.h);
+  panel.tex.magFilter = THREE.LinearFilter;   // text is drawn smaller than its texture: nearest sampling drops strokes
+  panel.tex.minFilter = THREE.LinearFilter;
+  const panelMesh = new THREE.Mesh(new THREE.PlaneGeometry(PANEL_M.w, PANEL_M.h), psxMaterial({ map: panel.tex, color: 0xffffff, lit: false }));
+  panelMesh.position.copy(PANEL_AT);
+  scene.add(panelMesh);
+
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   const tweens: Tween[] = [];
@@ -106,7 +126,6 @@ export function createMenuState(): AppStateHandler<'menu'> {
   let lastFocusKey = '';
   let unsubSettings: (() => void) | null = null;
   let attached = false;
-  let hud: MenuHud | null = null;
   let sub = false;                         // the Foundations screen is open over the menu
   let camX = 0, camY = 0;                  // parallax, smoothed
 
@@ -124,9 +143,23 @@ export function createMenuState(): AppStateHandler<'menu'> {
 
   // ── painting ────────────────────────────────────────────────────────────────────────────────────
 
+  /** The entry on main face `i`: the QUIT face becomes CONTINUE RUN while a run is saved. */
+  const faceItem = (i: number): FaceItem => {
+    const item = MAIN_FACES[i];
+    return item === 'quit' && savedRun() ? 'continue' : item;
+  };
+
+  const resumeLine = (): string => {
+    const r = savedRun();
+    return r ? t('menu.cont.sub', { floor: r.shift?.floor ?? 1, shift: (r.shift?.index ?? 0) + 1 }) : '';
+  };
+
   const paintMain = (i: number): void => {
-    const item: MainItem = MAIN_FACES[i];
-    mainDie.paint(i, (c, w, h) => paintDieFace(c, w, h, { label: t(`menu.face.${item}`), icon: item, lit: false }));
+    const item = faceItem(i);
+    const cont = item === 'continue';
+    mainDie.paint(i, (c, w, h) => paintDieFace(c, w, h, {
+      label: t(`menu.face.${item}`), icon: item, lit: cont, sub: cont ? resumeLine() : undefined,
+    }));
   };
 
   const valueOf = (item: Exclude<SetItem, 'language'>): { value: string; sub: string } => {
@@ -155,13 +188,19 @@ export function createMenuState(): AppStateHandler<'menu'> {
     setDie.paint(i, (c, w, h) => paintValueFace(c, w, h, { label: t(`menu.face.${item}`), value: v.value, sub: v.sub, lit: false }));
   };
 
-  const paintContext = (item: string, hintKey: string): void => {
-    const ctx = cab.context.ctx;
-    const lines = wrapLines(ctx, t(`menu.desc.${item}`), 640 * 0.86, 28).slice(0, 2);
-    cab.context.paint((c, w, h) => paintPanel(c, w, h, {
-      title: t(`menu.face.${item}`), lines, hint: t(hintKey), bodyPx: 28, titlePx: 40, hintPx: 22,
-    }));
+  /** The text panel under the glass: a title, body lines and a hint line (an empty hint is left out). */
+  const paintInfo = (title: string, lines: string[], hint: string, bodyPx = 28): void => {
+    panel.paint((c, w, h) => paintPanel(c, w, h, { title, lines, hint, bodyPx, titlePx: 32, hintPx: 22 }));
   };
+
+  /** The focused entry: its name, its description (up to three lines) and the control hint. */
+  const paintFocus = (item: string, descKey: string, hintKey: string): void => {
+    const lines = wrapLines(panel.ctx, t(descKey), PANEL_PX.w * 0.86, 28).slice(0, 3);
+    paintInfo(t(`menu.face.${item}`), lines, t(hintKey));
+  };
+
+  /** Description key of a main entry (PLAY says it replaces a saved run). */
+  const mainDescKey = (item: string): string => (item === 'play' && savedRun() ? 'menu.desc.playReplace' : `menu.desc.${item}`);
 
   const repaintAll = (): void => {
     for (let i = 0; i < 6; i++) { paintMain(i); paintSet(i); }
@@ -191,7 +230,6 @@ export function createMenuState(): AppStateHandler<'menu'> {
     if (face === die.frontFace()) { then?.(); return; }
     sfx('dice');
     cab.spinReels(0.55);
-    if (die === mainDie) hud?.setActive(MAIN_FACES[face]);
     die.rollTo(face, () => {
       sfx('diceLand', 0.8);
       app.fx.dust(die.base.clone().add(new THREE.Vector3(0, -0.85, 0)), 10);
@@ -205,11 +243,10 @@ export function createMenuState(): AppStateHandler<'menu'> {
   const startPlay = (): void => {
     if (leaving || phase !== 'main') return;
     phase = 'burst';
-    hud?.setVisible(false);
     cab.pullLever();
     cab.spinReels(1.4);
     app.audio.music.stinger('ascend');
-    app.ui.toast(t('menu.burst.toast'), 'sys', 2.5);
+    paintInfo(t('menu.face.play'), [t('menu.burst.toast')], '');
     burst.start();
   };
 
@@ -231,8 +268,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
     if (leaving || sub) return;
     sub = true;
     sfx('click');
-    hud?.setVisible(false);
-    openFoundations({ prestige: createMetaPrestige(app.save), onClose: () => { sub = false; if (!leaving) hud?.setVisible(true); } });
+    openFoundations({ prestige: createMetaPrestige(app.save), onClose: () => { sub = false; lastFocusKey = ''; } });
   };
 
   /** Resume the saved run: the same session start as PLAY, with the snapshot attached. */
@@ -243,7 +279,6 @@ export function createMenuState(): AppStateHandler<'menu'> {
     sfx('whoosh');
     app.audio.play('unlock', { bus: 'ui', vol: 0.8 });
     app.fx.flash(0xffe08a, 0.8, 0.35);
-    hud?.setVisible(false);
     void app.go('ingame', { mode: run.mode, seed: run.seed, online: false, resume: run });
   };
 
@@ -281,14 +316,17 @@ export function createMenuState(): AppStateHandler<'menu'> {
     setDie.base.copy(DIE_CENTER);
   };
 
+  /** The credits or the quit card, on the 3D panel. Any press closes it (see onKey / onDown). */
   const openInfo = (kind: 'credits' | 'quit'): void => {
     if (phase !== 'main') return;
     phase = 'info';
-    hud?.showInfo({
-      title: t(kind === 'credits' ? 'menu.credits.title' : 'menu.quit.title'),
-      lines: kind === 'credits' ? t('menu.credits.body').split('|') : [t('menu.quit.body')],
-      hint: t('menu.hint.info'),
-    }, closeInfo);
+    const credits = kind === 'credits';
+    paintInfo(
+      t(credits ? 'menu.credits.title' : 'menu.quit.title'),
+      credits ? t('menu.credits.body').split('|') : [t('menu.quit.body')],
+      t('menu.hint.info'),
+      credits ? 17 : 28,
+    );
     sfx('chime');
   };
 
@@ -296,7 +334,6 @@ export function createMenuState(): AppStateHandler<'menu'> {
     if (phase !== 'info') return;
     phase = 'busy';
     sfx('whoosh');
-    hud?.hideInfo();
     phase = 'main';
     lastFocusKey = '';
   };
@@ -339,23 +376,15 @@ export function createMenuState(): AppStateHandler<'menu'> {
 
   const activateMain = (face: number): void => {
     if (phase !== 'main') return;
-    switch (MAIN_FACES[face]) {
+    switch (faceItem(face)) {
       case 'play': startPlay(); break;
       case 'multi': goMulti(); break;
       case 'free': goFree(); break;
       case 'settings': sfx('click'); openSettingsScreen(); break;   // the full Settings screen (the settings die below is no longer reached)
       case 'foundations': goFoundations(); break;
       case 'quit': openInfo('quit'); break;
+      case 'continue': goContinue(); break;
     }
-  };
-
-  /** A name on the overlay list: roll the die to that face, then select it. */
-  const pickItem = (item: string): void => {
-    if (leaving || sub || phase !== 'main') return;
-    const face = (MAIN_FACES as readonly string[]).indexOf(item);
-    if (face < 0) return;
-    sfx('click', 0.6);
-    rollDie(mainDie, face, () => activateMain(face));
   };
 
   const openCredits = (): void => { if (!sub && !leaving) openInfo('credits'); };
@@ -372,6 +401,9 @@ export function createMenuState(): AppStateHandler<'menu'> {
 
   const onKey = (e: KeyboardEvent): void => {
     if (leaving || sub || app.input.mode !== 'menu') return;
+    // A key that was pressed on the boot veil (its handler removes the veil) is not menu input: the veil's own
+    // Enter / Space would otherwise land here as a select on the front face.
+    if (!document.contains(e.target as Node)) return;
     const k = e.code;
     const nav = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(k);
     if (phase === 'info') {
@@ -379,12 +411,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
       return;
     }
     if (phase !== 'main' && phase !== 'settings') return;
-    if (phase === 'main' && !e.repeat && !mainDie.rolling) {
-      const digit = /^(Digit|Numpad)([1-6])$/.exec(k);
-      if (digit) { e.preventDefault(); pickItem(LIST_ORDER[Number(digit[2]) - 1]); return; }
-      if (k === 'KeyR' && savedRun()) { e.preventDefault(); goContinue(); return; }
-      if (k === 'KeyI') { e.preventDefault(); openCredits(); return; }
-    }
+    if (phase === 'main' && !e.repeat && !mainDie.rolling && k === 'KeyI') { e.preventDefault(); openCredits(); return; }
     if (nav) e.preventDefault();
     const enter = k === 'Enter' || k === 'NumpadEnter' || k === 'Space';
     if (phase === 'main') {
@@ -476,6 +503,14 @@ export function createMenuState(): AppStateHandler<'menu'> {
     }
   };
 
+  /** The wheel rolls the main die one face: up brings the top face forward, down the bottom face (as the arrows do). */
+  const onWheel = (e: WheelEvent): void => {
+    if (leaving || sub || phase !== 'main' || app.input.mode !== 'menu') return;
+    e.preventDefault();
+    if (e.deltaY === 0 || mainDie.rolling) return;
+    rollDie(mainDie, mainDie.faceAt(e.deltaY < 0 ? UP : DOWN));
+  };
+
   const attach = (): void => {
     if (attached) return;
     attached = true;
@@ -483,6 +518,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
     app.canvas.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('wheel', onWheel, { passive: false });
   };
   const detach = (): void => {
     if (!attached) return;
@@ -491,12 +527,13 @@ export function createMenuState(): AppStateHandler<'menu'> {
     app.canvas.removeEventListener('pointerdown', onDown);
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('wheel', onWheel);
     app.canvas.style.cursor = '';
   };
 
   // ── camera ─────────────────────────────────────────────────────────────────────────────────────
 
-  /** Far enough that the whole cabinet (5.1 m tall, 5.4 m wide) clears the logo above and the footer below. */
+  /** Far enough that the whole cabinet (5.1 m tall, 5.4 m wide) and its marquee fit the frame. */
   const cameraDistance = (): number => {
     const tanV = Math.tan((CAM_FOV * Math.PI) / 360);
     const byHeight = 1.2 + 3.45 / tanV;
@@ -523,18 +560,11 @@ export function createMenuState(): AppStateHandler<'menu'> {
       app.camera.updateProjectionMatrix();
       sub = false;
       repaintAll();
-      hud?.dispose();
-      hud = openMenuHud({
-        items: () => LIST_ORDER.map((id) => ({ id, label: t(`menu.face.${id}`), desc: t(id === 'play' && savedRun() ? 'menu.desc.playReplace' : `menu.desc.${id}`) })),
-        resume: () => { const r = savedRun(); return r ? { floor: r.shift?.floor ?? 1, shift: (r.shift?.index ?? 0) + 1 } : null; },
-        onPick: pickItem, onContinue: goContinue, onCredits: openCredits,
-      });
-      hud.setActive(MAIN_FACES[mainDie.frontFace()]);
       app.audio.music.setState('menu', { fade: 1.2 });
       app.audio.ambience('menu', 1.5);
       unsubSettings?.();
       unsubSettings = bus.on('settings:changed', ({ key }) => {
-        if (key === 'lang' || key === 'vol' || key === 'psx' || key === 'mouseSens') { repaintAll(); if (key === 'lang') hud?.refresh(); }
+        if (key === 'lang' || key === 'vol' || key === 'psx' || key === 'mouseSens') repaintAll();
       });
       attach();
       if (params?.toast) app.ui.toast(params.toast, 'warn');
@@ -546,8 +576,6 @@ export function createMenuState(): AppStateHandler<'menu'> {
       press = null;
       tweens.length = 0;
       burst.reset();
-      hud?.dispose();
-      hud = null;
       setDie.root.visible = false;
       app.camera.fov = app.save.data.settings.fov;
       app.camera.updateProjectionMatrix();
@@ -569,17 +597,15 @@ export function createMenuState(): AppStateHandler<'menu'> {
       setDie.update(dt);
       cab.update(dt, time);
       backdrop.update(dt, time);
-      hud?.tick(time);
-      // focus caption under the glass follows the die once it stops rolling
+      // the panel under the glass follows the die once it stops rolling: the focused entry and its controls
       const onSet = setDie.root.visible && phase !== 'main';
       const die = onSet ? setDie : mainDie;
       if (!die.rolling && phase !== 'burst' && phase !== 'info') {
-        const item = onSet ? SET_FACES[die.frontFace()] : MAIN_FACES[die.frontFace()];
-        const key = `${onSet ? 's' : 'm'}:${item}`;
+        const item: string = onSet ? SET_FACES[die.frontFace()] : faceItem(die.frontFace());
+        const key = `${onSet ? 's' : 'm'}:${item}:${savedRun() ? 1 : 0}`;
         if (key !== lastFocusKey) {
           lastFocusKey = key;
-          hud?.setActive(onSet ? null : MAIN_FACES[die.frontFace()]);
-          paintContext(item, onSet ? 'menu.hint.settings' : 'menu.hint.roll');
+          paintFocus(item, onSet ? `menu.desc.${item}` : mainDescKey(item), onSet ? 'menu.hint.settings' : 'menu.hint.roll');
         }
       }
       if (phase === 'burst') {

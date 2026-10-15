@@ -127,6 +127,17 @@ export function drawIcon(ctx: CanvasRenderingContext2D, kind: string, cx: number
       ctx.beginPath(); ctx.moveTo(cx, cy - r * 0.98); ctx.lineTo(cx + r * 0.3, cy - r * 0.5); ctx.lineTo(cx - r * 0.3, cy - r * 0.5); ctx.closePath(); ctx.fill();
       break;
     }
+    case 'continue': {
+      // two play triangles: pick the run up where it stopped
+      for (const dx of [-0.42, 0.42]) {
+        ctx.beginPath();
+        ctx.moveTo(cx + (dx - 0.36) * r, cy - r * 0.8);
+        ctx.lineTo(cx + (dx + 0.5) * r, cy);
+        ctx.lineTo(cx + (dx - 0.36) * r, cy + r * 0.8);
+        ctx.closePath(); ctx.fill();
+      }
+      break;
+    }
     case 'credits': {
       ctx.beginPath(); ctx.arc(cx, cy - r * 0.6, r * 0.2, 0, Math.PI * 2); ctx.fill();
       ctx.fillRect(cx - r * 0.2, cy - r * 0.2, r * 0.4, r * 1.2);
@@ -147,8 +158,9 @@ export function drawIcon(ctx: CanvasRenderingContext2D, kind: string, cx: number
   ctx.restore();
 }
 
-/** One die face: red enamel (or teal for the settings die), gold frame, icon and a BIG label (two lines for two words). */
-export function paintDieFace(ctx: CanvasRenderingContext2D, w: number, h: number, o: { label: string; icon: string; lit: boolean; dark?: boolean }): void {
+/** One die face: red enamel (or teal for the settings die), gold frame, icon and a BIG label (two lines for two words).
+ *  `sub` is an optional small line under the label (the Continue face's floor and shift). */
+export function paintDieFace(ctx: CanvasRenderingContext2D, w: number, h: number, o: { label: string; icon: string; lit: boolean; dark?: boolean; sub?: string }): void {
   const g = ctx.createLinearGradient(0, 0, 0, h);
   if (o.dark) { g.addColorStop(0, '#0d2a30'); g.addColorStop(1, '#04100f'); }
   else { g.addColorStop(0, o.lit ? '#a81d30' : '#780e20'); g.addColorStop(1, '#1c0609'); }
@@ -159,10 +171,15 @@ export function paintDieFace(ctx: CanvasRenderingContext2D, w: number, h: number
   frame(ctx, w, h, o.lit ? GOLD_HI : GOLD, w / 16);
   const words = o.label.split(' ');
   const two = words.length === 2 && o.label.length > 7;
-  drawIcon(ctx, o.icon, w / 2, h * (two ? 0.27 : 0.31), w * 0.12, o.lit ? GOLD_HI : (o.dark ? '#5fd6c0' : '#e8485c'));
+  // with a sub-line the icon and the labels move up, so the line stays inside the inner frame (about 0.86 h)
+  const sub = Boolean(o.sub);
+  drawIcon(ctx, o.icon, w / 2, h * (sub ? 0.24 : two ? 0.27 : 0.31), w * (sub ? 0.1 : 0.12), o.lit ? GOLD_HI : (o.dark ? '#5fd6c0' : '#e8485c'));
   const col = o.lit ? GOLD_HI : '#fff0c8';
-  if (two) { bigLabel(ctx, words[0], w / 2, h * 0.55, w * 0.62, w * 0.23, col); bigLabel(ctx, words[1], w / 2, h * 0.74, w * 0.62, w * 0.23, col); }
-  else bigLabel(ctx, o.label, w / 2, h * 0.7, w * 0.62, w * 0.3, col);
+  if (two) {
+    bigLabel(ctx, words[0], w / 2, h * (sub ? 0.47 : 0.55), w * 0.76, w * 0.24, col);
+    bigLabel(ctx, words[1], w / 2, h * (sub ? 0.64 : 0.74), w * 0.76, w * 0.24, col);
+  } else bigLabel(ctx, o.label, w / 2, h * (sub ? 0.6 : 0.7), w * 0.8, w * 0.3, col);
+  if (o.sub) bodyText(ctx, o.sub, w / 2, h * 0.8, Math.round(w * 0.1), o.lit ? GOLD_HI : '#f0dca8', 'center');
 }
 
 /** A die-face label in the tall pixel font, as large as fits `maxW`, with a drop shadow and a faux-bold double strike. */
@@ -206,15 +223,16 @@ export function paintPanel(ctx: CanvasRenderingContext2D, w: number, h: number, 
   ctx.fillStyle = 'rgba(255,200,90,0.05)';
   for (let y = 0; y < h; y += 4) ctx.fillRect(0, y, w, 1);
   frame(ctx, w, h, GOLD, w / 40);
-  fitText(ctx, o.title, w / 2, h * 0.16, w * 0.86, o.titlePx ?? h * 0.1, o.titleColor ?? GOLD_HI);
+  // title and body sit clear of the inner frame line (about h / 8 down from the top edge)
+  fitText(ctx, o.title, w / 2, h * 0.2, w * 0.86, o.titlePx ?? h * 0.1, o.titleColor ?? GOLD_HI);
   const px = o.bodyPx ?? Math.round(h * 0.12);
   const step = px * 1.25;
-  let y = h * 0.34;
+  let y = h * 0.4;
   for (const line of o.lines) {
     bodyText(ctx, line, w / 2, y, px, '#f2d9a0', 'center');
     y += step;
   }
-  if (o.hint) bodyText(ctx, o.hint, w / 2, h * 0.9, o.hintPx ?? Math.round(h * 0.07), '#8fd9ff', 'center');
+  if (o.hint) bodyText(ctx, o.hint, w / 2, h * 0.84, o.hintPx ?? Math.round(h * 0.07), '#8fd9ff', 'center');   // above the inner frame line
 }
 
 /** Marquee: the title in gold with a red halo that flickers. */
