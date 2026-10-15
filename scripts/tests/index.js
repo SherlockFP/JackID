@@ -19,6 +19,7 @@ import './run.wave7.test.mjs';
 import './run.econ.test.mjs';
 import './hotline.test.mjs';
 import './run.money.test.mjs';
+import './overshoot.test.mjs';
 import './lootbox.test.mjs';
 import './world.test.mjs';
 import './stamps.test.mjs';

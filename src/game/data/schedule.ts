@@ -220,12 +220,25 @@ export function quotaFor(index: number, o: { discount?: number; coopScale?: numb
   return houseNoticeQuota(index + 1, core, o.wealth ?? 0) + assessmentFor(index, o.holdings ?? 0, o.assessRate);
 }
 
-/** Overpay tiers on `r = deposit ÷ quota` (GDD §2.6.5). Cumulative; each tier is awarded once per Night. */
-export const OVERSHOOT_TIERS: readonly OvershootTier[] = [
+/**
+ * An overpay tier that may restore a lost Soul Mark (HOUSE ENVY): when a Mark is out on the card it comes back (and the
+ * `reward` is not paid); with the card full, the `reward` pays instead. Run-side only: `run.ts` reads `restoreMark`.
+ */
+export type OvershootMarkTier = OvershootTier & { restoreMark?: boolean };
+
+/**
+ * Overpay tiers on `r = deposit ÷ quota` (GDD §2.6.5). Cumulative; each tier is awarded once per Night.
+ * The two top tiers (Overshoot depth) sit above golden: JACKPOT SEAL (3x) pays 5 Tickets and a Legendary charm to pick
+ * from two; HOUSE ENVY (4x) restores a lost Soul Mark, or pays 3 Obols when the card is full. Coins above the quota are
+ * locked until Dawn (`run.ts` overshootLocked), so the top tiers cost real liquidity.
+ */
+export const OVERSHOOT_TIERS: readonly OvershootMarkTier[] = [
   { id: 'gratuity', ratio: 1.1, reward: { currencies: { coin: 0, ticket: 2, obol: 0 }, text: 'game.overshoot.gratuity' } },
   { id: 'favoured', ratio: 1.25, reward: { buffs: [{ id: 'favoured' }], text: 'game.overshoot.favoured' } },
   { id: 'uncommon', ratio: 1.5, reward: { charm: { choose: 1, of: 3, rarity: 'uncommon' }, text: 'game.overshoot.uncommon' } },
   { id: 'golden', ratio: 2, reward: { charm: { choose: 1, of: 3, rarity: 'rare' }, nextQuotaDiscount: 0.05, text: 'game.overshoot.golden' } },
+  { id: 'seal', ratio: 3, reward: { currencies: { coin: 0, ticket: 5, obol: 0 }, charm: { choose: 1, of: 2, rarity: 'legendary' }, text: 'hud.plan.ov.seal' } },
+  { id: 'envy', ratio: 4, restoreMark: true, reward: { currencies: { coin: 0, ticket: 0, obol: 3 }, text: 'hud.plan.ov.envy' } },
 ];
 
 /** Interest rate for a Watch: schedule rate + `x.econ.interestAdd` bonuses (charms), floored at 0 (GDD §2.6.3). */

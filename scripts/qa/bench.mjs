@@ -109,7 +109,7 @@ export function parseScript(text) {
  *   pawn               one Pawn Window reroll (Intermission only)
  *   pawn:buy:<slot>    buy Pawn Window shelf <slot> (1-6, 1-based): sits there, the shelf key, Space twice
  *   pawn:look          sit at the Pawn Window, screenshot the seat view (run-pawn-look-<n>.png)
- *   auto:night         a bot plays one Night like a sensible human (Hot first, spotlight, Tilt rotation, push-your-luck, Dawn deposits, Mola); logs each decision
+ *   auto:night         a bot plays one Night like a sensible human (Hot first, spotlight, Tilt rotation, push-your-luck, SAFE / BOLD / BIG stakes, Dawn deposits, Mola); logs each decision
  *   auto:night:event   the same, but stops at the first Watch with a floor event (shot it, then auto:night carries on)
  *   auto:night:quota   the same, but stops in the Watch whose deposit meets the quota (before its Bell: the NIGHT PLAN's
  *                      OVERSHOOT line is on screen; shot it, then auto:night carries on)
@@ -681,6 +681,12 @@ const BOT_CATEGORIES = new Set(['slot', 'lottery']);
 const BOT_MIN_STAKE = 'KeyZ:60,wait:120';
 const TIP_KEY = 'Digit0';   // the neutral press that closes a first-sit tip (any key does; not a stake preset)
 const BOLD_MIN_MULT = 14;   // BOLD (Digit8, ~15 % of the pocket) only when the pocket holds at least this many minimum bets
+const BIG_MIN_MULT = 20;    // BIG (Digit9, ~30 % of the pocket) only from this many minimum bets up
+const PUSH_BIG_ROLL = 0.2;  // BIG on a push-your-luck bet when a seeded roll comes under this (about 1 bet in 5)
+/** The machines whose push-your-luck decision the bot makes mid-round (botRound). Only these may take BIG. */
+const PUSH_MACHINES = new Set(['coinflip', 'bigone']);
+const STAKE_DIGIT = { safe: 'Digit7', bold: 'Digit8', big: 'Digit9' };   // the presets' keys (stakePresets.ts STAKE_PRESET_ACTION)
+const CHASE_P_JS = `(async () => (await import('/src/machines/bigone/rules.ts')).CHASE_P)()`;
 const COINFLIP_COLLECT_AT = 3.6;   // coinflip: ride the first win once, collect at x3.6 (STEP_MULT[1] in coinflip/rules.ts)
 /** Machine instance state for the coinflip and bigone decisions (their fields are read at runtime, not in the page API). */
 const instJs = (id, body) => `(() => { const m = window.jackid.app.world?.machines().find((x) => x.id === ${JSON.stringify(id)}); return m ? (${body}) : null; })()`;
@@ -688,12 +694,14 @@ const CF_STATE_JS = (id) => instJs(id, `{ pending: Boolean(m.roundOpen && !m.bus
 const BIGONE_STATE_JS = (id) => instJs(id, `{ offer: Boolean(m.offer) }`);
 /**
  * Page JS: the floor machines the bot may bet on now (placed, unlocked, eligible), each with its tilt (`lit`: full-value pulls
- * left, 0..4; Hot machines ignore Tilt), whether it is a Hot Lamp, and whether it is the spotlight kind.
+ * left, 0..4; Hot machines ignore Tilt), whether it is a Hot Lamp, whether it is the spotlight kind, and `keep`: the stake
+ * digits it leaves to the presets (7 SAFE, 8 BOLD, 9 BIG; all false for a machine that never stakes).
  */
 const BOT_CANDS_JS = `(async () => {
   const a = window.jackid.app, r = a.run, w = a.world;
   if (!r || !w) return [];
   const { isSpotlightEligible } = await import('/src/game/spotlight.ts');
+  const { stakeKeyOwned } = await import('/src/machines/_base/stakePresets.ts');
   const hot = new Set((r.circuit?.lamps?.().hot ?? []).map((e) => e.mid));
   const spot = r.spotlightView?.()?.machineId ?? null;
   const known = ${JSON.stringify(['coinflip', 'bigone', ...Object.keys(BOT_RECIPE)])};
@@ -702,25 +710,85 @@ const BOT_CANDS_JS = `(async () => {
       && (known.includes(m.def.id) || cats.includes(m.def.category) || m.def.id === spot))
     .map((m) => {
       const t = r.circuit?.tilt?.(m.id) ?? null;
-      return { instance: m.id, machineId: m.def.id, lit: t ? t.lit : 4, hot: hot.has(m.id), spot: m.def.id === spot };
+      const staking = m.def.minBet > 0;
+      const keep = { safe: staking && !stakeKeyOwned(m.def.id, 'n7'), bold: staking && !stakeKeyOwned(m.def.id, 'n8'), big: staking && !stakeKeyOwned(m.def.id, 'n9') };
+      return { instance: m.id, machineId: m.def.id, lit: t ? t.lit : 4, hot: hot.has(m.id), spot: m.def.id === spot, keep };
     });
 })()`;
-/** Node: the one machine the bot bets on next, and why. Hot first (BOLD when the pocket allows), then the spotlight, then the least-tilted. */
-function pickBet(cands, bot, key, st) {
+/** Node: the one machine the bot bets on next, and why. Hot first, then the spotlight, then the least-tilted (the stake is pickStake's). */
+function pickBet(cands, bot, key) {
   const ok = cands.filter((c) => (bot.fails.get(c.instance) ?? 0) < 2);   // two refusals in a row: not a machine the bot can play
   if (!ok.length) return null;
   const played = bot.played.get(key) ?? new Set();
   const pool = ok.filter((c) => !played.has(c.instance));
   const use = pool.length ? pool : ok;
   const hot = use.find((c) => c.hot);
-  if (hot) return { c: hot, bold: st.pocket >= BOLD_MIN_MULT * st.minBet, why: 'Hot cabinet first (its Lamp is lit; Tilt does not apply)' };
+  if (hot) return { c: hot, why: 'Hot cabinet first (its Lamp is lit; Tilt does not apply)' };
   const spot = use.find((c) => c.spot);
-  if (spot) return { c: spot, bold: false, why: `the spotlight ${spot.machineId} (x1.25 this Night)` };
+  if (spot) return { c: spot, why: `the spotlight ${spot.machineId} (x1.25 this Night)` };
   const order = [...use].sort((x, y) => y.lit - x.lit || (bot.last.get(x.instance) ?? 0) - (bot.last.get(y.instance) ?? 0)
     || (x.instance < y.instance ? -1 : 1));
   const c = order[0];
-  return { c, bold: false, why: `rotate off Tilt: ${c.machineId} has ${c.lit} full-value pulls left` };
+  return { c, why: `rotate off Tilt: ${c.machineId} has ${c.lit} full-value pulls left` };
 }
+
+/** A seeded PRNG (mulberry32, values in [0, 1)): the bot's stake rolls depend only on --seed, never on Math.random. */
+function seededRng(seed) {
+  let a = (Math.floor(seed) ^ 0x6a09e667) >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * The push-your-luck rule of a machine, read before its bet: coinflip rides a won flip once (the bot's COINFLIP_COLLECT_AT
+ * rule, always on); bigone chases a line win at CHASE_P or better (the same test botRound makes). Resolves to { live, why }.
+ */
+async function pushRule(ctx, machineId) {
+  if (machineId === 'coinflip') return { live: true, why: `a won flip rides once for x${COINFLIP_COLLECT_AT}` };
+  if (machineId === 'bigone') {
+    const p = await evalJson(ctx.cdp, CHASE_P_JS);
+    return { live: p >= 1 / 3 - 1e-9, why: `a line win chases at 1 in ${Math.round(1 / p)}, 1 in 3 or better` };
+  }
+  return { live: false, why: 'no push-your-luck rule' };
+}
+
+/**
+ * Node: the stake for one bet, with its reason (the caller logs it). SAFE by default. BOLD on the Hot cabinet, on the spotlight,
+ * or while ahead of the Dawn projection (dawn.met), when the pocket holds BOLD_MIN_MULT minimum bets. BIG only on a
+ * push-your-luck machine (PUSH_MACHINES) whose rule is live, on an occasional seeded roll (PUSH_BIG_ROLL), from BIG_MIN_MULT
+ * minimum bets up. A digit the machine keeps for itself, or a pocket under the multiple, takes the next step down
+ * (BIG, BOLD, SAFE, then the minimum walked down with KeyZ). Resolves to { stake: 'big' | 'bold' | 'safe' | 'min', why }.
+ */
+async function pickStake(ctx, c, st) {
+  const keep = c.keep ?? {};
+  const mins = st.minBet > 0 ? st.pocket / st.minBet : 0;   // the pocket in minimum bets
+  const fits = { big: Boolean(keep.big) && mins >= BIG_MIN_MULT, bold: Boolean(keep.bold) && mins >= BOLD_MIN_MULT, safe: Boolean(keep.safe), min: true };
+  let want = 'safe', why = 'SAFE by default';
+  if (PUSH_MACHINES.has(c.machineId) && fits.big) {
+    const rule = await pushRule(ctx, c.machineId);
+    if (rule.live) {
+      ctx.rng ??= seededRng(ctx.seed ?? 1);
+      const roll = ctx.rng();
+      if (roll < PUSH_BIG_ROLL) { want = 'big'; why = `push-your-luck rule (${rule.why}), occasional roll ${roll.toFixed(2)} under ${PUSH_BIG_ROLL}`; }
+    }
+  }
+  if (want === 'safe') {
+    if (c.hot) { want = 'bold'; why = 'the Hot cabinet: BOLD'; }
+    else if (c.spot) { want = 'bold'; why = `the spotlight ${c.machineId}: BOLD`; }
+    else if (st.dawn?.met) { want = 'bold'; why = 'ahead of the Dawn projection: BOLD'; }
+  }
+  const chain = { big: ['big', 'bold', 'safe', 'min'], bold: ['bold', 'safe', 'min'], safe: ['safe', 'min'] }[want];
+  const stake = chain.find((k) => fits[k]);
+  if (stake !== want) why += `; ${want.toUpperCase()} not taken (${keep[want] === false ? 'the machine keeps its digit' : 'pocket under its multiple'}), ${stake.toUpperCase()} instead`;
+  if (stake === 'min') why += '; no preset digit here, so the stake walks down to the minimum';
+  return { stake, why };
+}
+
 /** Node: writes one bot decision as a record (`auto: true`, with its reason) and logs it. */
 function decide(ctx, what, reason) {
   ctx.run.steps.push({ step: `decide: ${what}`, ok: true, auto: true, reason });
@@ -751,7 +819,28 @@ async function readState(ctx) {
       st = await evalJson(ctx.cdp, RUN_STATE_JS);
     }
   }
+  noteNight(ctx, st);
   return st;
+}
+
+/**
+ * Folds one state read into its Night's summary (ctx.nights, see nightSummaries). Every read counts: the state step, the bot's
+ * loop and its Watch lines. The quota and the bank are the last read of the Night; met and paid stick once seen; the OVERSHOOT
+ * tier is the highest reached; the card and the charms are the last seen; the events are the floor events read.
+ */
+function noteNight(ctx, st, ev = st?.event ?? null) {
+  if (!st || st.over || st.night == null) return;
+  const acc = (ctx.nights ??= new Map());
+  const a = acc.get(st.night) ?? { quota: null, bank: null, met: false, paid: false, overshoot: null, reached: -1, card: null, charms: null, events: new Set() };
+  if (st.quotaDue > 0) a.quota = st.quotaDue;
+  if (st.bank != null) a.bank = st.bank;
+  if (st.quotaDue > 0 && st.quotaLeft <= 0) a.met = true;
+  if (st.nightDone) a.paid = true;
+  if (st.overshoot && st.overshoot.reached > a.reached) { a.reached = st.overshoot.reached; a.overshoot = st.overshoot.tier; }
+  if (st.nightCard) a.card = st.nightCard;
+  if (st.charms) a.charms = st.charms;
+  if (ev) a.events.add(ev.id);
+  acc.set(st.night, a);
 }
 
 const seatedIs = (ctx, want, ms) => waitFor(
@@ -915,6 +1004,7 @@ function watchRec(ctx, st, ev) {
   const tithe = t ? (t.on ? `${t.earned}/${t.target}${t.met ? ' met' : ` short ${t.shortfall}`}` : 'off') : null;
   const o = st.overshoot ?? null;
   const over = o ? `${o.tier ?? 'none'}${o.next ? ` (next ${o.next.id} +${o.next.gap})` : ''}` : '-';
+  noteNight(ctx, st, ev);
   ctx.run.steps.push({
     step: `watch ${st.night}-${st.watch}`, ok: true, auto: true, night: st.night, watch: st.watch, pocket: st.pocket,
     bank: st.bank, quotaDue: st.quotaDue, quotaLeft: st.quotaLeft, tithe: t, houseCut: st.houseCut ?? null, event: ev?.id ?? null,
@@ -1072,14 +1162,15 @@ async function autoNight(ctx, rec, stopAt = null) {
       // Spend the Watch's pulls down to BELL_KEEP_PULLS (or until the pocket is under the cheapest bet), then bank and ring.
       if (tried < AUTO_BETS_MAX && (st.pulls ?? Infinity) > BELL_KEEP_PULLS && st.pocket >= st.minBet) {
         bot.betsTried.set(key, tried + 1);
-        const pick = pickBet(await evalJson(ctx.cdp, BOT_CANDS_JS), bot, key, st);
+        const pick = pickBet(await evalJson(ctx.cdp, BOT_CANDS_JS), bot, key);
         if (!pick) { bot.betsTried.set(key, AUTO_BETS_MAX); decide(ctx, 'bet', 'no open machine to play: ring the Bell'); continue; }
         const { c } = pick;
+        const stake = await pickStake(ctx, c, st);
         if (!bot.played.has(key)) bot.played.set(key, new Set());
         bot.played.get(key).add(c.instance);
         bot.last.set(c.instance, ++bot.seq);
-        decide(ctx, `bet ${c.machineId}${pick.bold ? ' (BOLD)' : ''}`, pick.why);
-        const r = await exec(ctx, auto({ kind: 'bet', instance: c.instance, machine: c.machineId, bold: pick.bold, text: `bot:bet:${c.machineId}` }));
+        decide(ctx, `bet ${c.machineId} (${stake.stake.toUpperCase()})`, `${pick.why}; stake ${stake.stake.toUpperCase()}: ${stake.why}`);
+        const r = await exec(ctx, auto({ kind: 'bet', instance: c.instance, machine: c.machineId, stake: stake.stake, stakeWhy: stake.why, night: st.night, text: `bot:bet:${c.machineId}` }));
         if (r.ok) { count.bets++; bot.fails.set(c.instance, 0); } else bot.fails.set(c.instance, (bot.fails.get(c.instance) ?? 0) + 1);
         continue;
       }
@@ -1105,19 +1196,32 @@ async function autoNight(ctx, rec, stopAt = null) {
 }
 
 /**
- * One bot bet, seated at the machine: close the tip, set the stake (BOLD on Digit8, or walked down to the minimum with KeyZ),
- * then the machine's round. Push-your-luck decisions read the machine's state between keys:
+ * One bot bet, seated at the machine: close the tip, set the stake (pickStake's: a preset digit, or walked down to the minimum
+ * with KeyZ), then the machine's round. The stake the machine holds is recorded as `bet` (`stakeOk`: it is the stake asked for).
+ * Push-your-luck decisions read the machine's state between keys:
  *  - coinflip: flip; after a win, ride once while the pot is under x3.6 (COINFLIP_COLLECT_AT), then collect (KeyQ).
  *  - bigone: spin; a line win leaves a CHASE offer: chase (KeyG) only when CHASE_P is 1 in 3 or better, else collect (Space).
  *  - hilo, scratch and the rest: the recipe keys (BOT_RECIPE / BOT_RECIPE_GENERIC), then collect.
  */
+/** Node: sets the stake of one bot bet on the seated machine (`stake` from pickStake). BIG arms on its first press, sets on the second. */
+async function setStake(cdp, stake) {
+  if (stake === 'min') { await playKeys(cdp, parseScript(Array(8).fill(BOT_MIN_STAKE).join(','))); return; }
+  await pressKey(cdp, STAKE_DIGIT[stake], DEFAULT_HOLD_MS);
+  if (stake === 'big') { await sleep(300); await pressKey(cdp, STAKE_DIGIT.big, DEFAULT_HOLD_MS); }   // the second press confirms (6 s window)
+  await sleep(300);
+}
+
 async function botRound(ctx, s, rec) {
   const { cdp } = ctx;
   await pressKey(cdp, TIP_KEY, 60);
   await sleep(300);
-  if (s.bold) { await pressKey(cdp, 'Digit8', DEFAULT_HOLD_MS); await sleep(300); }
-  else await playKeys(cdp, parseScript(Array(8).fill(BOT_MIN_STAKE).join(',')));
-  rec.stake = s.bold ? 'bold' : 'min';
+  await setStake(cdp, s.stake);
+  rec.stake = s.stake;
+  rec.stakeWhy = s.stakeWhy;
+  // The stake the machine holds now (MachineBase.bet) against the one asked for: a preset's amount, or the minimum.
+  const set = await evalJson(cdp, instJs(s.instance, `{ bet: m.bet ?? null, minBet: m.def?.minBet ?? null, presets: typeof m.stakePresets === 'function' ? m.stakePresets() : null }`));
+  rec.bet = set?.bet ?? null;
+  rec.stakeOk = set ? (s.stake === 'min' ? set.bet === set.minBet : set.bet === set.presets?.[s.stake]) : null;
   if (s.machine === 'coinflip') {
     await pressKey(cdp, 'Space', 120);
     await sleep(2600);
@@ -1204,6 +1308,7 @@ async function runKind(ctx, s, rec) {
       rec.n = s.n;
       return;
     case 'bet': {
+      rec.night = s.night ?? null;
       const before = (await readState(ctx)).pulls;
       await gotoMachine(ctx, { instance: s.instance }, rec);
       const mode = await evaluate(cdp, 'window.jackid.app.input?.mode');
@@ -1353,6 +1458,30 @@ async function driveRun(ctx, steps) {
     if (ctx.res.reloads) { ctx.run.aborted = `the page reloaded after "${steps[i].text}" (the run is invalid, see viteEvents)`; break; }
   }
   ctx.run.failed = ctx.run.steps.filter((r) => r.ok === false && !r.auto).length;
+}
+
+/**
+ * The per-Night summary (`run.nights`, one entry per Night the run reached), from the state reads (noteNight) and the bot's
+ * bet records: quota (the Night's due), bank (the last read), met (the quota met at some read), paid (the Night was paid),
+ * overshoot (the highest OVERSHOOT tier reached), card (the Night Card picked for it), events (the floor events read in its
+ * Watches), charms (the owned charms at its last read) and stakes (the bets that spent a pull, by stake: safe, bold, big, min).
+ */
+function nightSummaries(ctx) {
+  const acc = ctx.nights ?? new Map();
+  return [...acc.keys()].sort((x, y) => x - y).map((night) => {
+    const a = acc.get(night);
+    const stakes = {};
+    for (const r of ctx.run.steps) if (r.night === night && r.ok && r.stake) stakes[r.stake] = (stakes[r.stake] ?? 0) + 1;
+    return { night, quota: a.quota, bank: a.bank, met: a.met, paid: a.paid, overshoot: a.overshoot, card: a.card, events: [...a.events], charms: a.charms ?? [], stakes };
+  });
+}
+
+/** One stderr line per Night of nightSummaries. */
+function nightLine(n) {
+  const stakes = Object.entries(n.stakes).map(([k, v]) => `${k} ${v}`).join(', ') || 'none';
+  return `night ${n.night}: quota ${n.quota ?? '-'}, bank ${n.bank ?? '-'} (${n.met ? 'met' : 'not met'}), ${n.paid ? 'paid' : 'not paid'}, `
+    + `overshoot ${n.overshoot ?? 'none'}, card ${n.card ?? 'none'}, events ${n.events.join(', ') || 'none'}, `
+    + `charms ${n.charms.join(', ') || 'none'}, stakes ${stakes}`;
 }
 
 /**
@@ -1559,7 +1688,10 @@ export async function runBench(opts = {}) {
 
     // 3e) --run: the debt-run steps (no rounds). The final screenshot is run-final.png.
     if (runSteps) {
-      await driveRun({ cdp, res, run: res.run, shoot, shotsDir, looks: 0 }, runSteps);
+      const ctx = { cdp, res, run: res.run, shoot, shotsDir, looks: 0, seed };
+      await driveRun(ctx, runSteps);
+      res.run.nights = nightSummaries(ctx);   // the per-Night summary: quota, paid, overshoot, card, events, charms, stakes
+      for (const n of res.run.nights) log(nightLine(n));
       if (shotsDir) res.run.shot = await shoot('run-final.png');
     }
 

@@ -1,5 +1,5 @@
 /**
- * Night Cards (director: Nights 2+ need a real decision). At every paid Dawn the run offers two seeded cards; the player keeps
+ * Night Cards (director: Nights 2+ need a real decision). At every paid Dawn the run offers two seeded cards (one safe-ish, one risk); the player keeps
  * one, and it rides the NEXT Night as a risk/reward modifier. Pure: the offer is a function of the run seed and the Night it
  * is for, so a seed always shows the same two cards. The cards are drawn by `nightCards.ui.ts`; the run holds the offer and the
  * kept card (`run.nightCardOffer()`, `run.pickNightCard()`, `run.nightCard()`).
@@ -20,12 +20,14 @@ import { coldLampCount, hotLampCount, nightDef, ratePercent, TILT_FREE_PULLS } f
 export const NIGHT_CARD_OFFER_SIZE = 2;
 /** Seconds the offer waits before the first card is taken for the player. */
 export const NIGHT_CARD_TIMEOUT_SEC = 20;
+/** The safe-ish card may raise the quota by at most this share (the card face's shown quota, after rounding; see the tests). */
+export const SAFE_QUOTA_RISE = 0.1;
 
 export type NightCardId =
   | 'rush_night' | 'double_down' | 'quiet_night' | 'lamp_festival' | 'lean_night'
   | 'high_table' | 'bankers_night' | 'charm_fair' | 'payday_night' | 'grace';
 
-/** How the card reads on the card face: a tag, not a balance rule. */
+/** How the card reads on the card face: a tag, not a balance rule. 'risk' is an offer's risk card; 'boon' and 'mixed' are the safe-ish side. */
 export type NightCardTone = 'risk' | 'boon' | 'mixed';
 
 /** The switches the modifier pipeline cannot express. Neutral values mean "no change". */
@@ -62,18 +64,21 @@ export interface NightCardDef {
  * or a bet floor, or a Lamp) next to its boon; the tone tags the trade. BANKER'S NIGHT: interest +5 pts, the Pawn shut, payouts x0.9
  * (director: it was taken in 4 of 5 Dawns at +10 pts with no cost). GRACE: Tilt grace +3 and no HOT lamp (no payout cut, so it is not
  * a second QUIET NIGHT). Every card has its own profile (see {@link nightCardProfile}). Order is the data order (the seeded offer
- * shuffles it).
+ * shuffles it). The four RISK cards (DOUBLE DOWN, HIGH TABLE, LEAN NIGHT, PAYDAY) each have real upside on every Night (the Watch's
+ * payouts rise net of any pull cut, or each win pays more), paid for by a bigger quota, a pull cut or a bet floor. The six safe-ish
+ * cards (BOON or MIXED) raise the quota by at most {@link SAFE_QUOTA_RISE}. LEAN NIGHT was x1.2 a pull on 2 fewer pulls (a net loss of
+ * 14 %); it is x1.5 now, so its risk side has real upside (+7 % on Night 2, more on later Nights).
  */
 export const NIGHT_CARDS: readonly NightCardDef[] = [
   { id: 'rush_night', tone: 'mixed', effects: [{ hook: 'quota.mult', op: 'mult', value: 0.75 }], fx: { watchAdd: -1 } },
   { id: 'double_down', tone: 'risk', effects: [{ hook: 'quota.mult', op: 'mult', value: 1.5 }, { hook: 'payout.mult', op: 'mult', value: 1.3 }], fx: {} },
   { id: 'quiet_night', tone: 'mixed', effects: [{ hook: 'x.econ.interestAdd', op: 'add', value: 0.05 }, { hook: 'payout.mult', op: 'mult', value: 0.95 }], fx: { noFloorEvents: true } },
-  { id: 'lamp_festival', tone: 'mixed', effects: [{ hook: 'quota.mult', op: 'mult', value: 1.1 }], fx: { hotLamps: 2, noColdLamps: true } },
-  { id: 'lean_night', tone: 'risk', effects: [{ hook: 'x.run.pullsAdd', op: 'add', value: -2 }, { hook: 'payout.mult', op: 'mult', value: 1.2 }], fx: {} },
+  { id: 'lamp_festival', tone: 'mixed', effects: [{ hook: 'quota.mult', op: 'mult', value: 1.08 }], fx: { hotLamps: 2, noColdLamps: true } },
+  { id: 'lean_night', tone: 'risk', effects: [{ hook: 'x.run.pullsAdd', op: 'add', value: -2 }, { hook: 'payout.mult', op: 'mult', value: 1.5 }], fx: {} },
   { id: 'high_table', tone: 'risk', effects: [{ hook: 'payout.mult', op: 'mult', value: 1.25 }], fx: { minBetMult: 2 } },
   { id: 'bankers_night', tone: 'mixed', effects: [{ hook: 'x.econ.interestAdd', op: 'add', value: 0.05 }, { hook: 'payout.mult', op: 'mult', value: 0.9 }], fx: { pawnClosed: true } },
-  { id: 'charm_fair', tone: 'boon', effects: [{ hook: 'x.pawn.slots', op: 'add', value: 2 }, { hook: 'shop.discount', op: 'add', value: 0.2 }, { hook: 'quota.mult', op: 'mult', value: 1.1 }], fx: {} },
-  { id: 'payday_night', tone: 'mixed', effects: [{ hook: 'payout.flat', op: 'add', value: 10 }, { hook: 'quota.mult', op: 'mult', value: 1.15 }], fx: {} },
+  { id: 'charm_fair', tone: 'boon', effects: [{ hook: 'x.pawn.slots', op: 'add', value: 2 }, { hook: 'shop.discount', op: 'add', value: 0.2 }, { hook: 'quota.mult', op: 'mult', value: 1.08 }], fx: {} },
+  { id: 'payday_night', tone: 'risk', effects: [{ hook: 'payout.flat', op: 'add', value: 10 }, { hook: 'quota.mult', op: 'mult', value: 1.15 }], fx: {} },
   { id: 'grace', tone: 'mixed', effects: [{ hook: 'x.tilt.grace', op: 'add', value: 3 }], fx: { hotLamps: 0 } },
 ];
 
@@ -103,19 +108,39 @@ export function nightCardProfile(def: NightCardDef): string {
   return [...tokens].sort().join('|');
 }
 
+/** The quota multiplier a card carries (1 when it moves no quota). */
+export function nightCardQuotaMult(def: NightCardDef): number {
+  return def.effects.filter((e) => e.hook === 'quota.mult').reduce((acc, e) => acc * e.value, 1);
+}
+
 /**
- * The cards offered at the Dawn that opens `night` (0-based Night index of the Night the card is for). Pure: the same seed
- * and Night always give the same distinct ids, in the same order. The second card is the next one in the seeded order whose
- * profile differs from the first (today every profile is distinct, so this is the plain first two).
+ * The safe-ish side of an offer: a boon or a mixed card whose quota rises by at most {@link SAFE_QUOTA_RISE}. The shown quota is
+ * rounded to whole coins, so the multiplier is kept under the cap with room for that rounding (the run tests check the shown numbers).
+ */
+export function isSafeNightCard(def: NightCardDef): boolean {
+  return def.tone !== 'risk' && nightCardQuotaMult(def) <= 1 + SAFE_QUOTA_RISE + 1e-9;
+}
+
+/**
+ * The cards offered at the Dawn that opens `night` (0-based Night index of the Night the card is for). Pure: the same seed and
+ * Night always give the same two ids. Every offer is one safe-ish card ({@link isSafeNightCard}) and one risk card, with different
+ * profiles, so an offer never holds two weak cards. The pair keeps the seeded shuffle order (the timer picks the first).
  */
 export function nightCardOffer(seed: number, night: number): NightCardId[] {
   const rng = createRng(hashSeed('nightcards', seed, night));
-  const picked: NightCardDef[] = [];
-  for (const d of rng.shuffle([...NIGHT_CARDS])) {
-    if (picked.length === NIGHT_CARD_OFFER_SIZE) break;
-    if (picked.every((p) => nightCardProfile(p) !== nightCardProfile(d))) picked.push(d);
+  const deck = rng.shuffle([...NIGHT_CARDS]);
+  const safe = deck.find(isSafeNightCard);
+  const risk = deck.find((d) => d.tone === 'risk' && (!safe || nightCardProfile(d) !== nightCardProfile(safe)));
+  if (!safe || !risk) {
+    // Not reachable with the shipped deck (the tests check the pair); keeps an offer open if a deck edit drops one side.
+    const picked: NightCardDef[] = [];
+    for (const d of deck) {
+      if (picked.length === NIGHT_CARD_OFFER_SIZE) break;
+      if (picked.every((p) => nightCardProfile(p) !== nightCardProfile(d))) picked.push(d);
+    }
+    return picked.map((d) => d.id);
   }
-  return picked.map((d) => d.id);
+  return deck.indexOf(safe) < deck.indexOf(risk) ? [safe.id, risk.id] : [risk.id, safe.id];
 }
 
 /**
@@ -123,7 +148,7 @@ export function nightCardOffer(seed: number, night: number): NightCardId[] {
  * the line reads (before and after, or the amount). The card face joins the lines with a separator.
  */
 export interface NightCardPreviewLine {
-  key: 'quota' | 'watches' | 'pulls' | 'payout' | 'net' | 'flat' | 'interest' | 'grace' | 'shelves' | 'discount' | 'hot' | 'cold' | 'noFloor' | 'minBet' | 'pawnShut';
+  key: 'quota' | 'watches' | 'pulls' | 'payout' | 'net' | 'netDown' | 'flat' | 'interest' | 'grace' | 'shelves' | 'discount' | 'hot' | 'cold' | 'noFloor' | 'minBet' | 'pawnShut';
   vars: Record<string, number>;
 }
 
@@ -153,8 +178,11 @@ export function nightCardPreview(def: NightCardDef, index: number, dueWith?: (mu
   if (pullsAdd !== 0) lines.push({ key: 'pulls', vars: { from: nd.pulls, to: pullsTo } });
   const payout = product('payout.mult');
   if (payout !== 1) lines.push({ key: 'payout', vars: { x: payout } });
-  // Fewer pulls pay on fewer pulls: the Watch's payouts move by the payout multiplier times the pull ratio (LEAN: x1.2 x 5/7 = -14 %).
-  if (pullsAdd !== 0) lines.push({ key: 'net', vars: { pct: Math.round((payout * pullsTo / nd.pulls - 1) * 100) } });
+  // Fewer pulls pay on fewer pulls: the Watch's payouts move by the payout multiplier times the pull ratio (LEAN: x1.5 x 5/7 = +7 %).
+  if (pullsAdd !== 0) {
+    const pct = Math.round((payout * pullsTo / nd.pulls - 1) * 100);
+    lines.push({ key: pct < 0 ? 'netDown' : 'net', vars: { pct } });
+  }
   const flat = sum('payout.flat', 'add');
   if (flat !== 0) lines.push({ key: 'flat', vars: { n: flat } });
   const interest = sum('x.econ.interestAdd', 'add');

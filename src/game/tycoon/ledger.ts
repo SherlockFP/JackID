@@ -22,6 +22,11 @@ const MODES: readonly BuyMode[] = [1, 10, 'max'];
 /** Upgrades per page; a spread is the summary + list page on the left and list pages on the right. */
 const PER = 4;
 /**
+ * MODS rows per page. Three, not four: the machine's PULLS strip sits over the foot of the book (about the bottom 25 %
+ * of the page at 1920x1080), and a fourth 62-texel row ran into it.
+ */
+const MOD_PER = 3;
+/**
  * Page canvas (texels) and its size on the table, in metres. The pages are 2× the old texel count and every line is
  * drawn at text scale 2 (`BIG` / `SMALL`), so the glyphs are about 14 texels tall and survive the 400×225 internal frame.
  */
@@ -38,6 +43,8 @@ const BIG_R: TxtOpts = { scale: 2, align: 'right' };
 const SMALL: TxtOpts = { micro: true, scale: 2 };
 const SMALL_R: TxtOpts = { micro: true, scale: 2, align: 'right' };
 const SMALL_C: TxtOpts = { micro: true, scale: 2, align: 'center' };
+/** MODS rows: the text column runs from MOD_X to the right margin MOD_R (the price right-aligns there). */
+const MOD_X = 28, MOD_R = PX_W - 12, MOD_W = MOD_R - MOD_X;
 
 export interface LedgerOpts {
   /** Called once when the book closes (Esc / U / `close()`). */
@@ -155,11 +162,13 @@ export function mountLedger(host: HTMLElement, api: TycoonApi, instance: Instanc
   // ── spreads and rows ─────────────────────────────────────────────────────────────────────────────
   /** Length of the active list: the machine's upgrade rows, or the mod defs on the MODS tab. */
   const listLen = (): number => (tab === 'mods' && mods ? MOD_DEFS.length : rows.length);
-  const pageCount = (): number => 1 + Math.ceil(listLen() / PER);
+  /** Rows per list page: UPGRADES four, MODS three (`MOD_PER`). */
+  const per = (): number => (tab === 'mods' && mods ? MOD_PER : PER);
+  const pageCount = (): number => 1 + Math.ceil(listLen() / per());
   const spreadCount = (): number => Math.ceil(pageCount() / 2);
-  const spreadOf = (i: number): number => Math.floor((1 + Math.floor(i / PER)) / 2);
+  const spreadOf = (i: number): number => Math.floor((1 + Math.floor(i / per())) / 2);
   /** Row indices shown by spread `s` (its left page 2s, right page 2s+1; page 0 is the summary). */
-  const rangeOf = (s: number): [number, number] => [(Math.max(2 * s, 1) - 1) * PER, Math.min(listLen(), (2 * s + 1) * PER)];
+  const rangeOf = (s: number): [number, number] => [(Math.max(2 * s, 1) - 1) * per(), Math.min(listLen(), (2 * s + 1) * per())];
 
   const TW = PX_W - 24;   // usable text width on a page
 
@@ -181,13 +190,17 @@ export function mountLedger(host: HTMLElement, api: TycoonApi, instance: Instanc
     wrap(t('tyc.ledger.hint3d'), TW, SMALL).forEach((ln, i) => txt(p, ln, 12, 200 + i * 12, MUTED, SMALL));
   }
 
-  /** One MODS page: up to PER mod defs. A row shows its state (installed, why it cannot be bought) and its price. */
+  /**
+   * One MODS page: up to MOD_PER mod defs. Each row is a fixed stack in one column (name, description, fit note or the why
+   * it cannot be bought, then the price on its own line, right-aligned). No two texts share a line, so nothing runs into
+   * anything; every line is trimmed to MOD_W with `..`.
+   */
   function paintModRows(p: Pix, page: number, hits: Hit2[] | null): void {
     if (!mods) return;
     txt(p, fit(t('mod.tab.mods'), TW, SMALL), 12, 10, MUTED, SMALL);
     p.rect(12, 24, TW, 2, PAPER_EDGE);
-    const first = (page - 1) * PER;
-    for (let i = 0; i < PER; i++) {
+    const first = (page - 1) * MOD_PER;
+    for (let i = 0; i < MOD_PER; i++) {
       const idx = first + i;
       const def = MOD_DEFS[idx];
       if (!def) break;
@@ -196,13 +209,15 @@ export function mountLedger(host: HTMLElement, api: TycoonApi, instance: Instanc
         p.rect(4, y0 - 6, PX_W - 8, 62, HILITE);
         txt(p, '>', 8, y0, ACCENT, BIG);
       }
-      txt(p, fit(t(`mod.${def.id}.name`), TW - 20, BIG), 34, y0, INK, BIG);
-      txt(p, fit(t(`mod.${def.id}.desc`), TW - 20, SMALL), 34, y0 + 16, MUTED, SMALL);
+      // line 1 name (y0), line 2 description (y0+16), line 3 fit note or why (y0+30), line 4 price (y0+42, to y0+55)
+      txt(p, fit(t(`mod.${def.id}.name`), MOD_W, BIG), MOD_X, y0, INK, BIG);
+      txt(p, fit(t(`mod.${def.id}.desc`), MOD_W, SMALL), MOD_X, y0 + 16, MUTED, SMALL);
       const isOn = mods.installed(instance).includes(def.id);
       const q = mods.quote(instance, def.id);
-      txt(p, fit(isOn ? t('mod.installed') : q.why ? t(`mod.why.${q.why}`) : t(`mod.fits.${def.machines?.[0] ?? 'any'}`), TW - 20, SMALL), 34, y0 + 30, MUTED, SMALL);
+      const note = isOn ? t('mod.installed') : q.why ? t(`mod.why.${q.why}`) : t(`mod.fits.${def.machines?.[0] ?? 'any'}`);
+      txt(p, fit(note, MOD_W, SMALL), MOD_X, y0 + 30, MUTED, SMALL);
       const priceTxt = isOn ? '' : `${t('mod.install')} ${fmtCoins(q.price, true)}`;
-      if (priceTxt) txt(p, fit(priceTxt, 110, BIG), PX_W - 12, y0 + 28, !q.why ? ACCENT : MUTED, BIG_R);
+      if (priceTxt) txt(p, fit(priceTxt, MOD_W, BIG), MOD_R, y0 + 42, !q.why ? ACCENT : MUTED, BIG_R);
       if (hits) hits.push({ x: 2, y: y0 - 6, w: PX_W - 4, h: 62, act: () => modAct(idx) });
     }
   }
@@ -244,6 +259,8 @@ export function mountLedger(host: HTMLElement, api: TycoonApi, instance: Instanc
   function paintPage(p: Pix, page: number, side: 'L' | 'R', hits: Hit2[] | null): void {
     p.clear(PAPER);
     p.rect(side === 'L' ? PX_W - 8 : 0, 0, 8, PX_H, PAPER_EDGE);
+    // past the last page (an odd page count leaves the last spread's right side empty): a blank leaf, no footer
+    if (page >= pageCount()) return;
     if (page === 0) paintSummary(p);
     else paintRows(p, page, hits);
     txt(p, t('tyc.ledger.pageOf', { n: page + 1, max: pageCount() }), PX_W / 2, PX_H - 14, MUTED, SMALL_C);

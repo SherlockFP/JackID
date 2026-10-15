@@ -51,14 +51,14 @@ test('the card face shows the concrete result for its Night (N2 quota 36): RUSH 
   const pv = (id, idx = 1) => NC.nightCardPreview(card(id), idx, (m) => Math.round(SCH.quotaFor(idx) * m));
   assert.deepEqual(pv('rush_night'), [{ key: 'quota', vars: { from: 36, to: 27 } }, { key: 'watches', vars: { from: 3, to: 2 } }]);
   assert.deepEqual(pv('double_down'), [{ key: 'quota', vars: { from: 36, to: 54 } }, { key: 'payout', vars: { x: 1.3 } }]);
-  assert.deepEqual(pv('lean_night'), [{ key: 'pulls', vars: { from: 7, to: 5 } }, { key: 'payout', vars: { x: 1.2 } }, { key: 'net', vars: { pct: -14 } }]);
+  assert.deepEqual(pv('lean_night'), [{ key: 'pulls', vars: { from: 7, to: 5 } }, { key: 'payout', vars: { x: 1.5 } }, { key: 'net', vars: { pct: 7 } }]);
   assert.deepEqual(pv('high_table'), [{ key: 'payout', vars: { x: 1.25 } }, { key: 'minBet', vars: { x: 2 } }]);
   assert.deepEqual(pv('quiet_night'), [{ key: 'payout', vars: { x: 0.95 } }, { key: 'interest', vars: { from: 50, to: 55 } }, { key: 'noFloor', vars: {} }]);
   assert.deepEqual(pv('bankers_night'), [{ key: 'payout', vars: { x: 0.9 } }, { key: 'interest', vars: { from: 50, to: 55 } }, { key: 'pawnShut', vars: {} }]);
   assert.deepEqual(pv('payday_night'), [{ key: 'quota', vars: { from: 36, to: 41 } }, { key: 'flat', vars: { n: 10 } }]);
   assert.deepEqual(pv('grace'), [{ key: 'grace', vars: { from: 4, to: 7 } }, { key: 'hot', vars: { from: 1, to: 0 } }]);
-  assert.deepEqual(pv('charm_fair'), [{ key: 'quota', vars: { from: 36, to: 40 } }, { key: 'shelves', vars: { n: 2 } }, { key: 'discount', vars: { pct: 20 } }]);
-  assert.deepEqual(pv('lamp_festival'), [{ key: 'quota', vars: { from: 36, to: 40 } }, { key: 'hot', vars: { from: 1, to: 2 } }, { key: 'cold', vars: { from: 1, to: 0 } }]);
+  assert.deepEqual(pv('charm_fair'), [{ key: 'quota', vars: { from: 36, to: 39 } }, { key: 'shelves', vars: { n: 2 } }, { key: 'discount', vars: { pct: 20 } }]);
+  assert.deepEqual(pv('lamp_festival'), [{ key: 'quota', vars: { from: 36, to: 39 } }, { key: 'hot', vars: { from: 1, to: 2 } }, { key: 'cold', vars: { from: 1, to: 0 } }]);
   assert.deepEqual(pv('lamp_festival', 0), [{ key: 'quota', vars: { from: 24, to: 26 } }, { key: 'hot', vars: { from: 1, to: 2 } }], 'no COLD lamp to remove on Night 1');
   for (const d of NC.NIGHT_CARDS) {
     for (let idx = 0; idx < 8; idx++) {
@@ -152,15 +152,15 @@ test('each card folds its declared effect through the pipeline', () => {
   assert.equal(foldHook([card('rush_night')], 'quota.mult', 1), 0.75);
   assert.equal(foldHook([card('double_down')], 'quota.mult', 1), 1.5);
   assert.equal(foldHook([card('double_down')], 'payout.mult', 1), 1.3);
-  assert.equal(foldHook([card('lean_night')], 'payout.mult', 1), 1.2);
+  assert.equal(foldHook([card('lean_night')], 'payout.mult', 1), 1.5);
   assert.equal(foldHook([card('lean_night')], 'x.run.pullsAdd', 7), 5, 'LEAN: 2 fewer pulls');
   assert.equal(foldHook([card('high_table')], 'payout.mult', 1), 1.25);
   assert.equal(foldHook([card('quiet_night')], 'x.econ.interestAdd', 0), 0.05, 'QUIET: +5 points');
   assert.equal(foldHook([card('quiet_night')], 'payout.mult', 1), 0.95, 'QUIET: payouts x0.95 (its cost)');
   assert.equal(foldHook([card('bankers_night')], 'x.econ.interestAdd', 0), 0.05, 'BANKER: +5 points (director: not +10)');
   assert.equal(foldHook([card('bankers_night')], 'payout.mult', 1), 0.9, 'BANKER: payouts x0.9 (its cost)');
-  assert.equal(foldHook([card('charm_fair')], 'quota.mult', 1), 1.1, 'CHARM FAIR: quota x1.1 (its cost)');
-  assert.equal(foldHook([card('lamp_festival')], 'quota.mult', 1), 1.1, 'LAMP FESTIVAL: quota x1.1 (its cost)');
+  assert.equal(foldHook([card('charm_fair')], 'quota.mult', 1), 1.08, 'CHARM FAIR: quota x1.08 (its cost)');
+  assert.equal(foldHook([card('lamp_festival')], 'quota.mult', 1), 1.08, 'LAMP FESTIVAL: quota x1.08 (its cost)');
   assert.equal(foldHook([card('grace')], 'payout.mult', 1), 1, 'GRACE: no payout cut (its cost is the HOT lamp)');
   assert.equal(foldHook([card('charm_fair')], 'x.pawn.slots', 0), 2, 'CHARM FAIR: +2 shelves');
   assert.equal(foldHook([card('charm_fair')], 'shop.discount', 0), 0.2, 'CHARM FAIR: -20 % prices');
@@ -193,16 +193,99 @@ test('the switches of each card are the ones the run reads', () => {
   assert.deepEqual(NC.nightCardFx('double_down'), NC.NEUTRAL_NIGHT_CARD_FX, 'a card with no switch is neutral');
 });
 
-test('LEAN NIGHT net is the payout times the pull ratio, and it is a loss on every base Night', () => {
+test('LEAN NIGHT net is the payout times the pull ratio, and a gain on every Night', () => {
   for (let idx = 0; idx < 8; idx++) {
     const nd = SCH.nightDef(idx);
     const lines = NC.nightCardPreview(card('lean_night'), idx);
     const net = lines.find((p) => p.key === 'net');
     const to = Math.max(1, nd.pulls - 2);
-    assert.equal(net?.vars.pct, Math.round((1.2 * to / nd.pulls - 1) * 100), `Night ${idx + 1} net`);
-    assert.ok(net.vars.pct < 0, `Night ${idx + 1}: LEAN is a net loss`);
+    assert.equal(net?.vars.pct, Math.round((1.5 * to / nd.pulls - 1) * 100), `Night ${idx + 1} net`);
+    assert.ok(net.vars.pct > 0, `Night ${idx + 1}: LEAN nets a gain`);
   }
   assert.equal(NC.nightCardPreview(card('double_down'), 1).some((p) => p.key === 'net'), false, 'no pulls change, no net line');
+  const down = NC.nightCardPreview({ ...card('lean_night'), effects: [{ hook: 'x.run.pullsAdd', op: 'add', value: -2 }, { hook: 'payout.mult', op: 'mult', value: 1.2 }] }, 1);
+  assert.deepEqual(down.find((p) => p.key === 'netDown' || p.key === 'net'), { key: 'netDown', vars: { pct: -14 } }, 'a net loss reads as netDown (no plus sign)');
+});
+
+const SEEDS200 = Array.from({ length: 200 }, (_, i) => i + 1);
+const OFFER_NIGHTS = [1, 2, 3, 4, 5, 6, 7];
+
+test('the deck has four RISK cards and six safe-ish cards (BOON or MIXED), and each safe-ish card raises the quota by at most 10 %', () => {
+  const risks = NC.NIGHT_CARDS.filter((d) => d.tone === 'risk').map((d) => d.id).sort();
+  assert.deepEqual(risks, ['double_down', 'high_table', 'lean_night', 'payday_night']);
+  for (const d of NC.NIGHT_CARDS) {
+    if (d.tone === 'risk') {
+      assert.equal(NC.isSafeNightCard(d), false, `${d.id} is not the safe side`);
+      continue;
+    }
+    assert.ok(['boon', 'mixed'].includes(d.tone), `${d.id} is a boon or mixed card`);
+    assert.ok(NC.nightCardQuotaMult(d) <= 1 + NC.SAFE_QUOTA_RISE + 1e-9, `${d.id}: quota x${NC.nightCardQuotaMult(d)} is within the cap`);
+    assert.equal(NC.isSafeNightCard(d), true, `${d.id} is a safe-ish card`);
+  }
+  assert.equal(card('payday_night').tone, 'risk', 'PAYDAY raises the quota 15 %: a risk card, not a safe one');
+});
+
+test('every RISK card has real upside on every Night: the Watch payout rises net of any pull cut, or each win pays more', () => {
+  for (const d of NC.NIGHT_CARDS.filter((c) => c.tone === 'risk')) {
+    const payout = d.effects.filter((e) => e.hook === 'payout.mult').reduce((acc, e) => acc * e.value, 1);
+    const flat = d.effects.filter((e) => e.hook === 'payout.flat').reduce((acc, e) => acc + e.value, 0);
+    const pullsAdd = d.effects.filter((e) => e.hook === 'x.run.pullsAdd').reduce((acc, e) => acc + e.value, 0);
+    for (let idx = 0; idx < 8; idx++) {
+      const nd = SCH.nightDef(idx);
+      const ratio = Math.max(1, Math.round(nd.pulls + pullsAdd)) / nd.pulls;
+      assert.ok(payout * ratio > 1 || flat > 0, `${d.id} Night ${idx + 1}: real upside`);
+    }
+  }
+});
+
+test('every Dawn offer is one safe-ish card and one risk card, with different profiles (200 seeds x 7 Nights)', () => {
+  for (const seed of SEEDS200) {
+    for (const night of OFFER_NIGHTS) {
+      const where = `seed ${seed} night ${night}`;
+      const defs = NC.nightCardOffer(seed, night).map(card);
+      assert.equal(defs.length, NC.NIGHT_CARD_OFFER_SIZE, `${where}: two cards`);
+      assert.equal(defs.filter((d) => NC.isSafeNightCard(d)).length, 1, `${where}: one safe-ish card`);
+      assert.equal(defs.filter((d) => d.tone === 'risk').length, 1, `${where}: one risk card`);
+      assert.notEqual(NC.nightCardProfile(defs[0]), NC.nightCardProfile(defs[1]), `${where}: the profiles differ`);
+    }
+  }
+});
+
+test('the real Dawn over 200 seeds x Nights 1-7: the offer is one safe and one risk card, the safe card shows at most +10 % quota, and the Night opens at the kept card\'s quota', () => {
+  let safeQuotaLines = 0;
+  for (const seed of SEEDS200) {
+    const over = [1, 1.6, 2.2][seed % 3];   // 2.2 takes the golden overshoot too
+    const r = RUN.createRun({ seed, mode: 'debt' });
+    for (const night of OFFER_NIGHTS) {
+      r.debtPaid = Math.ceil(r.quota.due * over);
+      r.syncQuota();
+      r.phase = 'collection';
+      r.dawn();
+      const where = `seed ${seed} night ${night} paid x${over}`;
+      const o = r.nightCardOffer();
+      assert.ok(o && o.night === night, `${where}: the offer is open`);
+      assert.deepEqual(o.candidates.map((d) => d.id), NC.nightCardOffer(seed, night), `${where}: the seeded pair`);
+      const safe = o.candidates.find((d) => NC.isSafeNightCard(d));
+      const risk = o.candidates.find((d) => d.tone === 'risk');
+      assert.ok(safe && risk && safe.id !== risk.id, `${where}: one safe-ish and one risk card`);
+      const dueWith = (m) => r.nextQuotaPreview(m)?.due ?? null;
+      const plain = r.nextQuotaPreview(1)?.due;
+      assert.ok(Number.isFinite(plain) && plain > 0, `${where}: a plain quota read`);
+      const sline = NC.nightCardPreview(safe, night, dueWith).find((p) => p.key === 'quota');
+      if (sline) {
+        safeQuotaLines += 1;
+        assert.ok(sline.vars.to <= sline.vars.from * 1.1, `${where}: ${safe.id} shows ${sline.vars.from} -> ${sline.vars.to}, more than +10 %`);
+      }
+      const pick = night % 2 ? risk : safe;   // both sides are kept in turn
+      const pline = NC.nightCardPreview(pick, night, dueWith).find((p) => p.key === 'quota');
+      const expect = pline ? pline.vars.to : plain;
+      assert.equal(r.pickNightCard(pick.id), true, `${where}: picked`);
+      assert.equal(r.openFloor(), true, `${where}: the floor opens`);
+      assert.equal(r.quota.due, expect, `${where}: the Night opens at the quota the card shows`);
+    }
+    r.dispose();
+  }
+  assert.ok(safeQuotaLines > 0, 'some safe-ish cards show a quota line in the sample');
 });
 
 test('every card has its own profile, and no offer ever holds two with the same profile', () => {

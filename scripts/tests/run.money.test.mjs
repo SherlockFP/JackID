@@ -318,37 +318,54 @@ test('Bank: DEPOSIT then WITHDRAW returns the coins, clamps to the bank and the 
   run.dispose();
 });
 
-test('Bank: an overpay stays in the bank: a part withdrawn keeps the quota met, taking past the quota gives it up, and putting it back pays no surplus', () => {
+test('Bank (overshoot lock): an overpay is locked until Dawn: WITHDRAW is refused while the bank is above the quota, and putting coins in pays no surplus', () => {
   const run = RUN.createRun({ seed: 62, mode: 'debt' });
   const due = run.quota.due;
-  run.coins = 100;
-  assert.ok(run.deposit(50, true));
+  run.coins = due + 100;
+  assert.ok(run.deposit(due + 50, true));
   assert.equal(run.coins, 50, 'the overpay is not paid back at the deposit (decision 2)');
-  assert.equal(run.bank().balance, 50, 'the bank holds the whole deposit');
+  assert.equal(run.bank().balance, due + 50, 'the bank holds the whole deposit');
   assert.equal(run.quota.met, true);
-  const over = 50 - due;                       // the coins above the quota
-  assert.equal(run.withdrawPreview(over).metLost, false, 'taking only the surplus keeps the quota met');
-  assert.equal(run.withdrawPreview(over + 1).metLost, true, 'one coin more and the quota is no longer met');
-  assert.equal(run.withdraw(over + 1), over + 1);
-  assert.equal(run.quota.met, false, 'the quota is no longer met');
-  assert.equal(run.quota.deposited, due - 1);
+  assert.equal(run.overshootLocked(), true, 'the 50 above the quota are locked');
+  assert.equal(run.bank().withdrawable, 0, 'the bank offers nothing to take back');
+  assert.equal(run.withdrawPreview(1).coins, 0, 'the preview gives nothing either');
+  assert.equal(run.withdraw(50), 0, 'the overpay cannot be taken out');
+  assert.equal(run.lastRefusal(), 'locked', 'the refusal names the lock');
+  assert.equal(run.coins, 50, 'nothing moved');
+  assert.equal(run.quota.met, true, 'the quota stays met');
   const surplus = [];
   const off = EV.bus.on('eco:wallet', (e) => { if (e.reason === 'dawn:surplus') surplus.push(e.delta); });
-  assert.ok(run.deposit(over + 1, true));
+  assert.ok(run.deposit(20, true));
   off();
-  assert.equal(surplus.length, 0, 'putting the coins back pays no surplus: Dawn is the only place it returns');
+  assert.equal(surplus.length, 0, 'putting coins in pays no surplus: Dawn is the only place it returns');
+  run.dispose();
+});
+
+test('Bank (overshoot lock): exactly at the quota nothing is locked, and a withdraw that drops below it is allowed as before', () => {
+  const run = RUN.createRun({ seed: 67, mode: 'debt' });
+  const due = run.quota.due;
+  run.coins = due + 10;
+  assert.ok(run.deposit(due, true));
+  assert.equal(run.quota.met, true);
+  assert.equal(run.overshootLocked(), false, 'the bank is at the quota, not above it');
+  assert.equal(run.bank().withdrawable, due);
+  assert.equal(run.withdrawPreview(1).metLost, true, 'taking any coin out loses the quota');
+  assert.equal(run.withdraw(1), 1, 'the withdraw goes through');
+  assert.equal(run.lastRefusal(), null, 'no refusal recorded');
+  assert.equal(run.quota.met, false);
   run.dispose();
 });
 test('Bank: quota credit that never was cash cannot be withdrawn (no deposit-bonus loop)', () => {
   const run = RUN.createRun({ seed: 63, mode: 'debt' });
-  run.coins = 50;
-  assert.ok(run.deposit(20, true));
+  const due = run.quota.due;
+  run.coins = due;
+  assert.ok(run.deposit(due - 8, true));     // the bank sits at the quota, not above it (the overshoot lock would refuse)
   run.bankGranted = 8;                       // as a deposit.bonus of +8 or a phone credit would book
   run.debtPaid += 8;
   run.syncQuota();
-  assert.equal(run.bank().balance, 28);
-  assert.equal(run.bank().withdrawable, 20);
-  assert.equal(run.withdraw(999), 20);
+  assert.equal(run.bank().balance, due);
+  assert.equal(run.bank().withdrawable, due - 8);
+  assert.equal(run.withdraw(999), due - 8);
   assert.equal(run.bank().balance, 8, 'the granted 8 stays counted toward the quota');
   run.dispose();
 });

@@ -33,7 +33,7 @@ import { WatchClock, type ClockSnapshot } from './clock';
 import {
   ACTIVITY_MIN_PULLS, BASE_RUN_NIGHTS, LAMP_FIRST_NIGHT, NETWORK_FEED, OVERSHOOT_TIERS, START, TICKET_CAP,
   assessmentFor, closingSeconds, coldLampCount, hotLampCount, interestFor, interestRate, isWitchingWatch, lastCallSeconds, nightDef, obolsFor, quotaFor,
-  ratePercent, type ObolOutcome,
+  ratePercent, type ObolOutcome, type OvershootMarkTier,
 } from './data/schedule';
 import {
   COLD_MULT, Circuit, HOT_MULT, lampEligible, lampView as lampViewOf, rollLamps, tiltBulbs, tiltFactor, tiltStep,
@@ -1565,6 +1565,20 @@ class Run implements DebtRun {
       || this.phase === 'closing' || this.phase === 'settle';
   }
 
+  /**
+   * OVERSHOOT LOCK (Overshoot depth): while the bank holds more than tonight's quota, the coins above the quota cannot leave
+   * until Dawn. Every coin that would leave is taken from the top of the bank, so the whole WITHDRAW is refused (the quota
+   * stays covered). Deposits still go in, and the locked coins still earn interest at each Settle.
+   */
+  overshootLocked(): boolean {
+    return this.quotaMode && !this.nightDone && this.quota.due > 0 && Math.floor(this.debtPaid) > Math.floor(this.quota.due);
+  }
+
+  /** The coins WITHDRAW may take now: none while the Watch is shut or the overshoot is locked. */
+  private bankWithdrawable(): number {
+    return this.withdrawOpen() && !this.overshootLocked() ? withdrawable(this.bankInput()) : 0;
+  }
+
   private bankInput(): BankInput {
     return {
       debtPaid: this.debtPaid, granted: this.bankGranted, due: this.quota.due, rate: this.liveRate(),
@@ -1581,7 +1595,7 @@ class Run implements DebtRun {
     const due = Math.max(0, Math.floor(this.quota.due));
     return {
       balance: bankBalance(i),
-      withdrawable: this.withdrawOpen() ? withdrawable(i) : 0,
+      withdrawable: this.bankWithdrawable(),
       pocket: Math.floor(this.coins),
       due,
       // A paid Night owes nothing: after Dawn the books are reset (debtPaid 0) but the quota still reads the paid Night.
@@ -1617,12 +1631,16 @@ class Run implements DebtRun {
 
   withdrawPreview(amount: number): WithdrawPreview {
     const i = this.bankInput();
-    return previewWithdraw(this.withdrawOpen() ? i : { ...i, granted: Number.MAX_SAFE_INTEGER }, amount);
+    const open = this.withdrawOpen() && !this.overshootLocked();
+    return previewWithdraw(open ? i : { ...i, granted: Number.MAX_SAFE_INTEGER }, amount);
   }
 
   withdraw(amount: number): number {
     if (!this.withdrawOpen()) return 0;
-    const amt = Math.min(Math.floor(Number.isFinite(amount) ? amount : 0), withdrawable(this.bankInput()));
+    const want = Math.floor(Number.isFinite(amount) ? amount : 0);
+    // The overshoot lock refuses the whole ask. The reason reads 'locked' (RefusalReason has no overshoot code yet).
+    if (want > 0 && this.overshootLocked()) { this.refuse('locked'); return 0; }
+    const amt = Math.min(want, withdrawable(this.bankInput()));
     if (amt <= 0) return 0;
     this.refusal = null;
     this.debtPaid = bankBalance(this.bankInput()) - amt;
@@ -1655,7 +1673,7 @@ class Run implements DebtRun {
     return {
       pocket: Math.floor(this.coins), minBet, pullsLeft: between ? nightDef(this.index).pulls : this.pullCount,
       steps: brokeSteps({
-        bank: this.withdrawOpen() ? withdrawable(this.bankInput()) : 0,
+        bank: this.bankWithdrawable(),
         tickets: this.tickets, ticketCoins: 5 * si,
         phoneRinging: ringing, loan: loan ?? undefined,
         bell: playing,
@@ -1881,7 +1899,7 @@ class Run implements DebtRun {
       if (ratio >= tier.ratio && !this.quota.claimed.some((c) => c.id === tier.id)) {
         const claim: OvershootClaim = { id: tier.id, at: Math.round(this.elapsed * 1000) };
         this.quota.claimed.push(claim);
-        this.grant(tier.reward);
+        this.grantTier(tier);
         this.emit('quota:overshoot', { tier: tier.id, pid: this.selfId });
       }
     }
@@ -2277,6 +2295,19 @@ class Run implements DebtRun {
     this.emit('quota:met', { index: this.index, ratio: this.debtPaid / this.quota.due });
   }
 
+  /**
+   * An overpay tier's payout (Overshoot depth). HOUSE ENVY (`restoreMark`) puts one lost Soul Mark back on the card while the
+   * card is short (lost = not on the card and not on the table); with the card full, its reward pays instead.
+   */
+  private grantTier(tier: OvershootMarkTier): void {
+    if (tier.restoreMark && this.soulMarkCount + this.markEscrow < SOUL_MARKS_PER_RUN) {
+      this.soulMarkCount += 1;
+      this.marksChanged(false);
+      return;
+    }
+    this.grant(tier.reward);
+  }
+
   private grant(reward: RewardSpec): void {
     if (reward.currencies) {
       for (const [cur, n] of Object.entries(reward.currencies)) if (n > 0) this.earn(cur, n, reward.text ?? 'overshoot');
@@ -2299,8 +2330,15 @@ class Run implements DebtRun {
         this.charmBox.add(this.selfId, offer.id, this.pegs());
       } else {
         // "Choose 1 of 3": roll the candidates now, queue them, and let the UI call pickOverpay (auto-pick on timeout).
-        const rarity = Array.isArray(offer.rarity) ? offer.rarity[0] : offer.rarity;
-        const cands = choiceOffer(this.rng.fork(`overpay:${this.index}:${this.overpays.length}:${rarity}`), rarity, offer.of, (id) => this.charmBox.has(this.selfId, id), this.index);
+        let rarity = Array.isArray(offer.rarity) ? offer.rarity[0] : offer.rarity;
+        const owned = (id: string): boolean => this.charmBox.has(this.selfId, id);
+        let cands = choiceOffer(this.rng.fork(`overpay:${this.index}:${this.overpays.length}:${rarity}`), rarity, offer.of, owned, this.index);
+        // Legendary charms unlock by Night (N5 and later): before that the pool is empty, so a Legendary offer falls back to a Rare
+        // choice rather than paying nothing. The queued offer carries the rarity it really is.
+        if (!cands.length && rarity === 'legendary') {
+          rarity = 'rare';
+          cands = choiceOffer(this.rng.fork(`overpay:${this.index}:${this.overpays.length}:rare`), rarity, offer.of, owned, this.index);
+        }
         if (cands.length) this.overpays.push({ rarity, ids: cands.map((d) => d.id), left: OVERPAY_TIMEOUT_SEC });
       }
     }

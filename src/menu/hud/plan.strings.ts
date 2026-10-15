@@ -21,6 +21,8 @@ export default {
     'ov.favoured': '+1 FREE PAWN REROLL',
     'ov.uncommon': 'UNCOMMON CHARM',
     'ov.golden': 'RARE CHARM, -5% NEXT',
+    'ov.seal': 'JACKPOT SEAL: 5 TICKETS + LEGENDARY',
+    'ov.envy': 'HOUSE ENVY: SOUL MARK OR 3 OBOLS',
   },
   tr: {
     'bank': 'ŞAFAK {p}/{q}',
@@ -37,5 +39,7 @@ export default {
     'ov.favoured': '+1 ÜCRETSİZ YENİLEME',
     'ov.uncommon': 'SEYREK TILSIM',
     'ov.golden': 'NADİR TILSIM, SONRAKİ -%5',
+    'ov.seal': 'JACKPOT MÜHRÜ: 5 BİLET + EFSANE',
+    'ov.envy': 'EV KISKANCI: RUH MÜHRÜ YA DA 3 OBOL',
   },
 };
