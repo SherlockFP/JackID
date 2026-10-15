@@ -24,15 +24,13 @@ import type { CollisionWorld, Interactable, InteractionSystem } from '../types';
 import type { LightHint } from '../sys/arch';
 import { buildDoorway, type Doorway } from './doorway';
 import { buildUnderneath, type Underneath } from './underneath';
-import type { LordReaction } from './lords';
 import {
-  ARRIVE, CRACK_DOOR, CRACK_RETURN, DOOR_H, DOOR_W, EXIT_DOOR, KNOCKS, KNOCK_WINDOW_S, LORD_IDS, LORD_POS, OPEN_S,
-  SEAM_AHEAD_M, SPLIT_CALM_S, SPLIT_S, type HollowExit, type HollowPhase, type HollowReason, type LordId,
+  ARRIVE, CRACK_DOOR, CRACK_RETURN, DOOR_H, DOOR_W, EXIT_DOOR, KNOCKS, KNOCK_WINDOW_S, LORD_IDS, LORD_PICK_Y, LORD_POS,
+  OPEN_S, SEAM_AHEAD_M, SPLIT_CALM_S, SPLIT_S, type HollowExit, type HollowPhase, type HollowReason, type LordId,
 } from './config';
 
 export { ARRIVE, CRACK_DOOR, EXIT_DOOR, HOLLOW_HOME, HOLLOW_TABLE_SLOT, LORD_IDS, LORD_POS, TABLE_POS } from './config';
 export type { HollowExit, HollowPhase, HollowReason, LordId } from './config';
-export type { LordReaction } from './lords';
 
 declare module '@/core/events' {
   interface GameEvents {
@@ -197,7 +195,10 @@ export class HollowDoor {
       const at = LORD_POS[id];
       this.addTransient({
         id: `hollow:lord:${id}`,
-        box: new THREE.Box3(new THREE.Vector3(at[0] - 0.9, at[1], at[2] - 0.9), new THREE.Vector3(at[0] + 0.9, at[1] + 2.8, at[2] + 0.9)),
+        box: new THREE.Box3(
+          new THREE.Vector3(at[0] - 0.7, at[1] + LORD_PICK_Y[0], at[2] - 0.7),
+          new THREE.Vector3(at[0] + 0.7, at[1] + LORD_PICK_Y[1], at[2] + 0.7),
+        ),
         maxDist: 3.0, priority: 4,
         enabled: () => this.phase === 'inside' && this.lord === null,
         label: () => t(`hollow.lord.${id}`),
@@ -238,16 +239,9 @@ export class HollowDoor {
   resolve(outcome: 'won' | 'taken'): boolean {
     const lord = this.lord;
     if (this.phase !== 'inside' || !lord) return false;
-    this.lordReact(outcome === 'won' ? 'shot' : 'taken');
     bus.emit('hollow:result', { lord, outcome, forgiveNights: outcome === 'won' ? FORGIVE_NIGHTS[lord] : 0 });
     this.finish('resolved', outcome === 'won');
     return true;
-  }
-
-  /** Presentation hook for the duel: a pull (the Lord looks at the player), a shot, or a taken run. Chosen Lord only, once chosen. */
-  lordReact(kind: LordReaction): void {
-    const p = app.player?.pos ?? null;
-    for (const l of this.o.under.lords) if (!this.lord || l.id === this.lord) l.react(kind, p);
   }
 
   /** Per frame. */
@@ -273,7 +267,6 @@ export class HollowDoor {
     } else if (this.phase === 'inside') {
       if (p && !this.lord && this.crossed(p, { x: EXIT_DOOR[0], y: EXIT_DOOR[1], z: EXIT_DOOR[2], yaw: Math.PI })) this.finish('left', true);
       this.roomWhispers(dt, c);
-      this.o.under.update(dt, p, c);
     }
   }
 
@@ -317,9 +310,9 @@ export class HollowDoor {
   private roomWhispers(dt: number, c: boolean): void {
     this.whisperT -= dt;
     if (this.whisperT > 0) return;
-    const lords = this.o.under.lords;
-    const l = lords[this.o.rng.int(0, lords.length - 1)];
-    sfx(this.o.rng.chance(0.5) ? 'whisper' : 'whispers', { vol: 0.45, pos: l.eye, pri: 3 });
+    const id = LORD_IDS[this.o.rng.int(0, LORD_IDS.length - 1)];
+    const at = LORD_POS[id];
+    sfx(this.o.rng.chance(0.5) ? 'whisper' : 'whispers', { vol: 0.45, pos: new THREE.Vector3(at[0], at[1] + 2.4, at[2]), pri: 3 });
     this.whisperT = c ? 12 + this.o.rng.float(0, 6) : 6 + this.o.rng.float(0, 6);
   }
 
@@ -424,7 +417,7 @@ export function buildHollow(o: { kit: KitX; tex: TexGen; seed: number; interact?
   const root = new THREE.Group();
   root.name = 'hollow';
   const rng = createRng(o.seed ^ 0x7f1e5);
-  const under = buildUnderneath(o.kit, o.tex, rng.fork('under'));
+  const under = buildUnderneath(o.kit, o.tex);
   root.add(under.root);
 
   const plateTex = o.tex.canvas(128, 128, (g, w, h) => {
@@ -479,6 +472,17 @@ export function revealHollow(reason: HollowReason): boolean {
 /** The live controller for this run, or null (no world, or the level has not built). */
 export function hollowDoor(): HollowDoor | null {
   return active;
+}
+
+/** True while the player stands in THE UNDERNEATH (zone `hollow`). The HUD and the tutorial hide the pit lines then. */
+export function inUnderneath(): boolean {
+  try {
+    const p = app.player?.pos;
+    if (!p) return false;
+    return app.world?.zoneAt({ x: p.x, y: p.y, z: p.z }) === 'hollow';
+  } catch {
+    return false;
+  }
 }
 
 // Machines (lordstable) read the door through core, not by importing this module (TECH_SPEC §1.1).

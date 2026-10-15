@@ -8,6 +8,10 @@
  * announce events. Presentation (every peer): LOCK bell → relay clacks, one lamp per number → tickets stamp hits
  * → tier celebration / pop text / near-miss beat.
  *
+ * DOUBLE DOWN: after the tenth number a 3 s window opens. A ticket's owner may stake the same again (charged at once);
+ * the second stake pays the paytable re-priced to the hits so far (`ddPays`, RTP-neutral). The last ten numbers and the
+ * payouts follow the window. Only the first ten numbers leave the host before the decision.
+ *
  * Juice: anticipation (bell, NEXT led counts down) → action (relay clack per number, board lamps light) → impact
  * (hit lamps flash, a ding per local hit stepping up a pentatonic scale) → follow-through (pop text, tier show, jackpot
  * chase on the relay brain, commiseration or near-miss).
@@ -23,8 +27,8 @@ import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/type
 import { juiceTier, tierTags, toWinTier } from '@/machines/_base/tiers';
 import { buildModel, commitBoard, setLamp, LAMP_DRAWN, LAMP_OFF, type KenoParts } from './model';
 import {
-  DRAWN, DRAW_COUNTS, MAX_STAKE, MIN_STAKE, identity, playHeadless, quickPick, runDraw, validPicks, weightsFor,
-  type Adjust,
+  DD_AFTER, DRAWN, DRAW_COUNTS, MAX_STAKE, MIN_STAKE, ddPays, identity, playHeadless, quickPick, runDraw, validPicks,
+  weightsFor, type Adjust, type DrawOutcome,
 } from './rules';
 import { STRINGS } from './keno.strings';
 
@@ -38,39 +42,56 @@ const TALLY_S = 1.0;
 const PAYOUT_S = 2.5;
 const STEP_SHARED_MS = 450;    // 20 numbers = 9.0 s
 const STEP_SOLO_MS = 200;
+const STEP_DD_MS = 150;        // the last ten numbers after DOUBLE DOWN: 1.5 s
+const DD_S = 3;                // DOUBLE DOWN decision window, after the tenth number is on the board
 const GOLD = 0xffd040, GREEN = 0x7dff7a, CREAM = '#f3e7c4', DIM = '#3d6b4f';
 
 // CRT grid (160 × 120 canvas): 10 × 8 numbers under a header
 const GX0 = 4, GY0 = 13, CW = 15.6, CH = 11.8;
 
 // ── contract types (aliases so they are assignable to `Json`) ──────────────────────────────────
-type Phase = 'idle' | 'open' | 'lock' | 'draw' | 'payout';
+type Phase = 'idle' | 'open' | 'lock' | 'draw' | 'offer' | 'payout';
+/** One ticket that may DOUBLE DOWN on this draw: the second stake and its pays by final hit count (index = hits). */
+type Offer = { p: PlayerId; slot: number; spots: number; stake: number; pays: number[] };
 type Ev =
   | { k: 'ticket'; p: PlayerId; slot: number; picks: number[]; stake: number; draws: number }
   | { k: 'drop'; p: PlayerId; slot: number }
   | { k: 'close'; drawNo: number; t: number }
-  | { k: 'draw'; drawNo: number; numbers: number[]; stepMs: number; extraP: PlayerId; extra: number[] }
+  | { k: 'draw'; drawNo: number; numbers: number[]; stepMs: number }
+  | { k: 'offer'; keys: Offer[] }
+  | { k: 'dd'; p: PlayerId; slot: number }
+  | { k: 'draw2'; drawNo: number; numbers: number[]; extra: number[]; stepMs: number }
   | { k: 'result'; p: PlayerId; slot: number; hits: number; payout: number; spots: number; stake: number; nearmiss: boolean; top: boolean; last: boolean };
-type Act = { k: 'submit'; slot: number; picks: number[]; stake: number; draws: number };
+type Act = { k: 'submit'; slot: number; picks: number[]; stake: number; draws: number } | { k: 'double'; slot: number };
 type LiveTicket = { p: PlayerId; slot: number; picks: number[]; stake: number; left: number };
 /** What every peer knows (public board and live tickets). Mutated only in `present`. */
 type State = { phase: Phase; drawNo: number; last: number[]; tickets: LiveTicket[] };
 type Snap = State;
 /** Host-only authority: live tickets (keyed `pid:slot`) and the shared cycle clock. */
 type Tk = { p: PlayerId; slot: number; picks: number[]; stake: number; left: number };
+/** Host-only: the draw between its tenth number and its last one (the DOUBLE DOWN window). */
+type Dd = {
+  live: Tk[]; out: DrawOutcome; adj: Adjust; stepMs: number;
+  show: number;                       // seconds until the window opens (the first ten numbers are still on the board)
+  open: boolean; wait: number;        // the decision window, open once `show` has run out
+  keys: Set<string>; doubled: Set<string>; pays: Map<string, number[]>;
+};
 /** Local draft of one ticket slot (presentation only). */
 type Draft = { picks: number[]; live: boolean };
 
 const keyOf = (p: PlayerId, slot: number): string => `${p}:${slot}`;
-const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.keno.' + k }));
+const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6', 'rule7'].map((k) => ({ k: 'm.keno.' + k }));
 const drawSecs = (stepMs: number): number => LOCK_S + (DRAWN * stepMs) / 1000 + TALLY_S + PAYOUT_S;
 
 export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
   private st: State = { phase: 'idle', drawNo: 0, last: [], tickets: [] };
-  private hs: { drawNo: number; clock: number; wait: number; tickets: Map<string, Tk>; cd: boolean } =
-    { drawNo: 0, clock: 0, wait: 0, tickets: new Map(), cd: false };
+  private hs: { drawNo: number; clock: number; wait: number; tickets: Map<string, Tk>; cd: boolean; dd: Dd | null } =
+    { drawNo: 0, clock: 0, wait: 0, tickets: new Map(), cd: false, dd: null };
   /** Local only: the four ticket slots of the seated player. */
   private draft: Draft[] = Array.from({ length: SLOTS }, (): Draft => ({ picks: [], live: false }));
+  /** Local only: tickets that may DOUBLE DOWN on the draw now on the board, and the ones already doubled. */
+  private offers = new Map<string, Offer>();
+  private ddDone = new Set<string>();
   private slot = 0;
   private spotTarget = 4;
   private drawIdx = 0;
@@ -108,6 +129,7 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
       case 'n2': this.cycleSpots(); break;                                   // 2: spot count 1–10
       case 'n3': this.cycleDraws(); break;                                   // 3: draws ×1/5/10/20
       case 'n4': this.nextSlot(); break;                                     // 4: next ticket slot
+      case 'n5': this.doubleDown(); break;                                   // 5: DOUBLE DOWN after the tenth number
       case 'clear': this.clearDraft(); break;                                // Backspace
       case 'confirm': this.submit(); break;                                  // Space: play / submit
       default: break;
@@ -170,6 +192,14 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
     this.cur.picks = [];
     this.sfx('click'); this.paintDesks(); this.showHud();
   }
+  /** DOUBLE DOWN on the live ticket in the current slot, while the decision window of its draw is open. */
+  private doubleDown(): void {
+    if (this.localSeat < 0) return;
+    const k = keyOf(this.selfId, this.slot);
+    if (!this.offers.has(k) || this.ddDone.has(k)) return;
+    this.sfx('click');
+    this.act({ k: 'double', slot: this.slot });
+  }
   private submit(): void {
     if (this.localSeat < 0) return;
     const d = this.cur;
@@ -183,6 +213,7 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
   private solo(): boolean { return this.humans().length <= 1; }
 
   protected onAction(pid: PlayerId, _seat: number, a: Act, rid: number): void {
+    if (a.k === 'double') { this.doubleOn(pid, a.slot, rid); return; }
     if (a.k !== 'submit') return;
     const { slot, picks, stake, draws } = a;
     if (!Number.isInteger(slot) || slot < 0 || slot >= SLOTS) { this.nak(pid, rid, 'm.keno.badSlot'); return; }
@@ -193,18 +224,35 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
     if (!solo && this.hs.clock >= SALES_CLOSE_S) { this.nak(pid, rid, 'm.keno.busy'); return; }
 
     const k = keyOf(pid, slot);
+    if (this.hs.dd?.keys.has(k)) { this.nak(pid, rid, 'm.keno.busy'); return; }   // this ticket is in the draw on the board
     this.hs.tickets.set(k, { p: pid, slot, picks: [...picks], stake, left: draws });
     if (!solo && !this.hs.cd) {
       this.hs.cd = true;
       void this.countdown(Math.max(0.1, SALES_CLOSE_S - this.hs.clock), 'sales');
     }
     void this.emit({ k: 'ticket', p: pid, slot, picks: [...picks], stake, draws });
-    if (solo && this.hs.wait <= 0) this.lock();                              // SP: draw now
+    if (solo && this.hs.wait <= 0 && !this.hs.dd) this.lock();               // SP: draw now
+  }
+
+  /**
+   * DOUBLE DOWN: the ticket's owner stakes the same again on the rest of the draw, while the window is open.
+   * The second stake is charged now and paid at the end of the draw from its state-priced `pays`.
+   */
+  private doubleOn(pid: PlayerId, slot: number, rid: number): void {
+    const dd = this.hs.dd;
+    const k = keyOf(pid, slot);
+    const t = dd?.live.find((x) => keyOf(x.p, x.slot) === k);
+    if (!dd || !t || !dd.keys.has(k)) { this.nak(pid, rid, 'm.keno.ddClosed'); return; }
+    if (dd.doubled.has(k)) { this.nak(pid, rid, 'm.keno.ddDone'); return; }
+    if (!this.ctx.run.hostBet(pid, t.stake, this.src)) { this.nak(pid, rid, 'm.keno.noFunds'); return; }
+    dd.doubled.add(k);
+    void this.emit({ k: 'dd', p: pid, slot });
   }
 
   /** Host timeline: shared = every CYCLE_S while tickets are live; solo = after the previous draw was presented. */
   hostTick(dt: number): void {
     const hs = this.hs;
+    if (hs.dd) this.ddTick(dt);
     if (hs.tickets.size === 0) { hs.clock = 0; hs.wait = 0; return; }
     if (this.solo()) {
       hs.wait -= dt;
@@ -218,6 +266,7 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
   /** Host: LOCK → charge every live ticket, draw once, pay every ticket, then announce the whole draw to every peer. */
   private lock(): void {
     const hs = this.hs;
+    if (hs.dd) return;                                     // the previous draw is still in its DOUBLE DOWN window
     this.cancelCountdown();
     hs.cd = false;
     const live: Tk[] = [];
@@ -244,28 +293,73 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
     });
 
     const stepMs = soloDraw ? STEP_SOLO_MS : STEP_SHARED_MS;
+    // only the first ten numbers go out now: the rest are announced after the DOUBLE DOWN window
     void this.emit({ k: 'close', drawNo: hs.drawNo, t: this.ctx.net.hostTime() });
-    void this.emit({ k: 'draw', drawNo: hs.drawNo, numbers: out.drawn, stepMs, extraP: this.selfId, extra: out.extra });
+    void this.emit({ k: 'draw', drawNo: hs.drawNo, numbers: out.drawn.slice(0, DD_AFTER), stepMs });
+    hs.dd = {
+      live, out, adj, stepMs, show: LOCK_S + (DD_AFTER * stepMs) / 1000, open: false, wait: DD_S,   // the bell, then ten numbers
+      keys: new Set(), doubled: new Set(), pays: new Map(),
+    };
+  }
 
-    live.forEach((t, i) => {
-      const o = out.tickets[i];
+  /** Host: the window opens once the tenth number has been presented; it closes after DD_S, then the draw finishes. */
+  private ddTick(dt: number): void {
+    const dd = this.hs.dd;
+    if (!dd) return;
+    if (!dd.open) {
+      dd.show -= dt;
+      if (dd.show > 0) return;
+      dd.open = true;
+      const first = new Set(dd.out.drawn.slice(0, DD_AFTER));
+      const offers: Offer[] = [];
+      for (const t of dd.live) {
+        const k = keyOf(t.p, t.slot);
+        const pays = ddPays(t.picks.length, t.stake, t.picks.filter((n) => first.has(n)).length, dd.adj);
+        if (!pays) continue;
+        dd.pays.set(k, pays);
+        dd.keys.add(k);
+        offers.push({ p: t.p, slot: t.slot, spots: t.picks.length, stake: t.stake, pays });
+      }
+      void this.emit({ k: 'offer', keys: offers });
+      if (!offers.length) { this.finishDraw(); return; }
+      void this.countdown(DD_S, 'offer');
+      return;
+    }
+    dd.wait -= dt;
+    if (dd.wait <= 0) this.finishDraw();
+  }
+
+  /** Host: the last ten numbers, then every ticket's payout (the second stake's pays included), then the results. */
+  private finishDraw(): void {
+    const hs = this.hs;
+    const dd = hs.dd;
+    if (!dd) return;
+    hs.dd = null;
+    this.cancelCountdown();
+    void this.emit({ k: 'draw2', drawNo: hs.drawNo, numbers: dd.out.drawn.slice(DD_AFTER), extra: dd.out.extra, stepMs: STEP_DD_MS });
+    dd.live.forEach((t, i) => {
+      const k = keyOf(t.p, t.slot);
+      const o = dd.out.tickets[i];
+      const second = dd.doubled.has(k);
+      const stake = second ? 2 * t.stake : t.stake;
+      const gross = o.gross + (second ? (dd.pays.get(k)?.[o.hits] ?? 0) : 0);
       const tags = o.top ? ['jackpot'] : [];
-      const jt = juiceTier(o.gross, t.stake, tags);
-      if (o.gross > 0) {
-        this.ctx.run.hostWin(t.p, o.gross, this.src, {
-          bet: t.stake, tier: toWinTier(jt), tags: [...new Set([...tags, ...tierTags(jt)])],
+      const jt = juiceTier(gross, stake, tags);
+      if (gross > 0) {
+        this.ctx.run.hostWin(t.p, gross, this.src, {
+          bet: stake, tier: toWinTier(jt), tags: [...new Set([...tags, ...tierTags(jt)])],
         });
       }
       t.left -= 1;
       const last = t.left <= 0;
       void this.emit({
-        k: 'result', p: t.p, slot: t.slot, hits: o.hits, payout: o.gross, spots: o.spots, stake: t.stake,
+        k: 'result', p: t.p, slot: t.slot, hits: o.hits, payout: gross, spots: o.spots, stake,
         nearmiss: o.nearmiss, top: o.top, last,
       });
-      if (last) hs.tickets.delete(keyOf(t.p, t.slot));
+      if (last) hs.tickets.delete(k);
     });
     // solo multi-draw: the next lock waits for this draw to be presented, plus 1.5 s
-    hs.wait = hs.tickets.size ? drawSecs(stepMs) + 1.5 : 0;
+    hs.wait = hs.tickets.size ? drawSecs(dd.stepMs) + 1.5 : 0;
   }
 
   // ── presentation (every peer) ─────────────────────────────────────────────────────────────────
@@ -274,7 +368,10 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
       case 'ticket': this.putTicket(ev.p, ev.slot, ev.picks, ev.stake, ev.draws); return;
       case 'drop': this.dropTicket(ev.p, ev.slot); return;
       case 'close': await this.onClose(ev.drawNo, pc); return;
-      case 'draw': await this.onDraw(ev.drawNo, ev.numbers, ev.stepMs, ev.extra, pc); return;
+      case 'draw': await this.onDraw(ev.drawNo, ev.numbers, ev.stepMs, pc); return;
+      case 'offer': this.onOffer(ev.keys); return;
+      case 'dd': this.onDd(ev.p, ev.slot); return;
+      case 'draw2': await this.onDraw2(ev.numbers, ev.extra, ev.stepMs, pc); return;
       case 'result': await this.onResult(ev, pc); return;
     }
   }
@@ -300,6 +397,8 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
   private async onClose(drawNo: number, pc: PresentCtx): Promise<void> {
     this.st.phase = 'lock';
     this.st.drawNo = drawNo;
+    this.offers.clear();
+    this.ddDone.clear();
     this.sfx('bell');
     this.parts.leds.next.set(tr('m.keno.lock'));
     for (const l of this.parts.relayLamps) { l.setColor(LAMP_OFF); l.setOn(false); }
@@ -309,17 +408,26 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
     if (!pc.fast) await this.wait(LOCK_S);
   }
 
-  /** Action: one relay clack and one lamp per number, the local player's hits blink as they land. */
-  private async onDraw(drawNo: number, numbers: number[], stepMs: number, extra: number[], pc: PresentCtx): Promise<void> {
+  /** Action: the first ten numbers, one relay clack and one lamp each. The local player's hits blink as they land. */
+  private async onDraw(drawNo: number, numbers: number[], stepMs: number, pc: PresentCtx): Promise<void> {
     this.st.phase = 'draw';
-    this.st.last = [...numbers];
+    this.st.last = [];
+    this.offers.clear();
+    this.ddDone.clear();
+    this.parts.leds.drawNo.set(String(drawNo % 1000).padStart(3, '0'));
+    await this.balls(numbers, 0, stepMs, pc);
+  }
+
+  /** The numbers from `from` on: one relay per number, the local player's hits blink and chime as they land. */
+  private async balls(numbers: number[], from: number, stepMs: number, pc: PresentCtx): Promise<void> {
     const mine = new Set<number>();
     for (const t of this.st.tickets) if (t.p === this.selfId) t.picks.forEach((n) => mine.add(n));
-    let hitsSoFar = 0;
+    let hits = this.st.last.filter((n) => mine.has(n)).length;
     const step = pc.fast ? 0 : stepMs / 1000;
     for (let i = 0; i < numbers.length; i++) {
       const n = numbers[i];
-      const relay = this.parts.relayLamps[i];
+      this.st.last.push(n);
+      const relay = this.parts.relayLamps[from + i];
       relay.setColor(LAMP_DRAWN);
       relay.setOn(true);
       setLamp(this.parts.board, n, 'drawn');
@@ -327,15 +435,41 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
       this.parts.leds.next.set(String(n));
       this.sfx('tileClack', { vol: 0.8 });
       if (mine.has(n)) {
-        hitsSoFar++;
-        this.sfx('chime', { pitch: Math.min(12, hitsSoFar * 2), vol: 0.7 });
+        hits++;
+        this.sfx('chime', { pitch: Math.min(12, hits * 2), vol: 0.7 });
         relay.blink(6, 0.4);
       }
       if (step) await this.wait(step);
     }
+  }
+
+  /** Impact: the window opens. Each ticket that may DOUBLE DOWN gets its second stake and the paytable re-priced to its hits. */
+  private onOffer(keys: Offer[]): void {
+    this.st.phase = 'offer';
+    this.offers = new Map(keys.map((o) => [keyOf(o.p, o.slot), o]));
+    this.paintDesks();
+    if (this.isLocalOccupant) this.showHud();
+  }
+
+  /** The ticket's second stake went on: a pop text on its desk, the HUD shows it as doubled. */
+  private onDd(p: PlayerId, slot: number): void {
+    this.ddDone.add(keyOf(p, slot));
+    this.sfx('chip', { vol: 0.8 });
+    const seat = this.seats.indexOf(p);
+    const at = seat >= 0 ? this.parts.desks[seat].screen.mesh : this.parts.boardScreen.mesh;
+    this.ctx.fx.popText(at, tr('m.keno.dbl'), GOLD, { dur: 1.0, rise: 0.25 });
+    this.paintDesks();
+    if (this.isLocalOccupant) this.showHud();
+  }
+
+  /** The last ten numbers, after the window (1.5 s), then the extra numbers for the owner. */
+  private async onDraw2(numbers: number[], extra: number[], stepMs: number, pc: PresentCtx): Promise<void> {
+    this.st.phase = 'draw';
+    this.offers.clear();
+    this.ddDone.clear();
+    await this.balls(numbers, DD_AFTER, stepMs, pc);
     for (const n of extra) setLamp(this.parts.board, n, 'drawn');
     commitBoard(this.parts.board);
-    this.parts.leds.drawNo.set(String(drawNo % 1000).padStart(3, '0'));
     this.paintDesks();
   }
 
@@ -501,6 +635,19 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
     ];
   }
 
+  /** DOUBLE DOWN window: the hits so far, the second stake, the new paytable for the hit counts still in reach, the balance. */
+  private ddNumbers(o: Offer, picks: number[], wallet: number): HudNumber[] {
+    const hits = picks.filter((n) => this.st.last.includes(n)).length;
+    const pays: string[] = [];
+    for (let k = o.spots; k >= hits && pays.length < 3; k--) if (o.pays[k] > 0) pays.push(`${k}:${fmtCoins(o.pays[k])}`);
+    return [
+      { label: { k: 'm.keno.nHits' }, value: `${hits}/${o.spots}`, tone: hits > 0 ? 'good' : 'neutral' },
+      { label: { k: 'm.keno.nSecond' }, value: fmtCoins(o.stake), tone: 'gold' },
+      { label: { k: 'm.keno.nPaytable' }, value: pays.join(' ') || '-', tone: 'cyan' },
+      { label: { k: 'm.keno.nBalance' }, value: fmtCoins(wallet), tone: 'neutral' },
+    ];
+  }
+
   /** Banner, key numbers and valid controls for the local player. Redraws only when something changed. */
   private showHud(): void {
     const sh = this.seatHud;
@@ -508,16 +655,24 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
     const seat = this.localSeat, d = this.cur, phase = this.st.phase;
     const mine = this.st.tickets.find((x) => x.p === this.selfId && x.slot === this.slot);
     const live = d.live || mine !== undefined;
-    const left = this.timerState && phase === 'open' ? Math.ceil(this.timerLeft) : 0;
+    const dkey = keyOf(this.selfId, this.slot);
+    const offer = phase === 'offer' ? this.offers.get(dkey) : undefined;
+    const canDouble = !!offer && !this.ddDone.has(dkey);
+    const left = this.timerState && (phase === 'open' || phase === 'offer') ? Math.ceil(this.timerLeft) : 0;
     const wallet = this.ctx.run.wallet();
-    const sig = [phase, seat, this.bet, this.drawIdx, this.spotTarget, this.slot, d.picks.join(','), live, left, this.st.drawNo, wallet, mine?.left ?? 0].join('|');
+    const sig = [phase, seat, this.bet, this.drawIdx, this.spotTarget, this.slot, d.picks.join(','), live, left, this.st.drawNo, wallet, mine?.left ?? 0,
+      canDouble, this.ddDone.size, this.st.last.length].join('|');
     if (sig === this.hudSig) return;
     this.hudSig = sig;
     sh.goal({ k: 'm.keno.goal' });
 
     // STATE: what phase the draw is in, and what the player should do
     const secs: Txt | undefined = left > 0 ? { k: 'm.keno.stSecs', v: { n: left } } : undefined;
-    if (phase === 'lock') sh.state({ k: 'm.keno.stLock' }, 'warn');
+    if (phase === 'offer') {
+      if (canDouble) sh.state({ k: 'm.keno.stOffer' }, 'gold', left > 0 ? { k: 'm.keno.stDdSecs', v: { n: left } } : undefined);
+      else sh.state({ k: this.ddDone.has(dkey) ? 'm.keno.stDoubled' : 'm.keno.stDraw' }, this.ddDone.has(dkey) ? 'cyan' : 'neutral');
+    }
+    else if (phase === 'lock') sh.state({ k: 'm.keno.stLock' }, 'warn');
     else if (phase === 'draw') sh.state({ k: 'm.keno.stDraw' }, 'neutral');
     else if (phase === 'payout') sh.state({ k: 'm.keno.stPay' }, 'neutral');
     else if (live) sh.state({ k: 'm.keno.stLive' }, 'cyan', mine ? { k: 'm.keno.stLeft', v: { n: mine.left } } : secs);
@@ -532,10 +687,11 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
       { label: { k: 'm.keno.nSlot' }, value: `${this.slot + 1}/${SLOTS}`, tone: 'neutral' },
       { label: { k: 'm.keno.nBalance' }, value: fmtCoins(wallet), tone: 'neutral' },
     ];
-    sh.numbers(nums);
+    sh.numbers(offer && mine ? this.ddNumbers(offer, mine.picks, wallet) : nums);
 
     // CONTROL BAR: only what is valid right now
     const ctrl: HudControl[] = [];
+    if (canDouble) ctrl.push({ key: this.k('n5'), label: { k: 'm.keno.cDouble' }, action: 'n5', primary: true });
     if (!live) {
       if (d.picks.length > 0) ctrl.push({ key: this.k('confirm'), label: { k: 'm.keno.cPlay' }, action: 'confirm', primary: true });
       ctrl.push({ key: this.k('n1'), label: { k: 'm.keno.cQuick' }, action: 'n1' });

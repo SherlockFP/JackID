@@ -6,6 +6,9 @@
  * → CALL (the Hook calls the total) → SETTLE (chips paid or taken per seat) → next window. Bets persist across rolls
  * (Pass, Come, odds, place, hardways), so a seat's layout lives in its book on the host and is mirrored to every peer.
  *
+ * PRESS (push your luck): once a point is set, a seat may press its Pass line on that point (key 3). The press equals the
+ * line bet, pays true odds (a fair bet), and rides until the point is made or a 7 comes. One press per point.
+ *
  * Juice: anticipation (the Hook raises the stick, the puck flips, the rail lamps blink) → action (dice rattle and fly,
  * pendant buzzes) → impact (the call pop text, the seven-out flicker and shake, furnace flames) → follow-through
  * (settle pop text, tier celebration, loss and near-miss beats).
@@ -22,7 +25,7 @@ import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/type
 import { juiceTier } from '@/machines/_base/tiers';
 import { buildModel, DICE_REST, drawLayout, PLACE_ORDER, spotXZ, TOP, type CrapsParts } from './model';
 import {
-  BASE_WEIGHT, defaultMods, oddsCap, playHeadless, resolveRoll, throwDice, validSpot,
+  BASE_WEIGHT, defaultMods, oddsCap, playHeadless, pressChance, pressRatio, resolveRoll, throwDice, validSpot,
   type Book, type Mods, type Roll, type RollOutcome,
 } from './rules';
 import { STRINGS } from './strings';
@@ -56,7 +59,8 @@ type Act =
   | { k: 'throw' }
   | { k: 'work'; on: boolean }
   | { k: 'down'; group: 'place' | 'odds' | 'all' }
-  | { k: 'maxOdds' };
+  | { k: 'maxOdds' }
+  | { k: 'press' };
 /** What every peer knows (public felt state). Mutated only in `present`. */
 type State = { phase: Win; point: number; shooter: number; lay: Bet[][]; working: boolean[]; last: number[] };
 type Snap = State;
@@ -146,6 +150,7 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
       case 'clear': if (seat >= 0) this.act({ k: 'down', group: 'all' }); break;     // take down every working prop
       case 'n1': if (seat >= 0) this.act({ k: 'maxOdds' }); break;                   // max odds behind line and come
       case 'n2': if (seat >= 0) this.act({ k: 'work', on: !this.st.working[seat] }); break;
+      case 'n3': if (seat >= 0) this.act({ k: 'press' }); break;                    // PRESS: double the Pass line on the point
       case 'n4': if (seat >= 0) this.act({ k: 'down', group: 'place' }); break;      // take down place and buy
       case 'n5': if (seat >= 0) this.hornBet(); break;
       case 'n6': if (seat >= 0) this.act({ k: 'down', group: 'odds' }); break;      // take down odds
@@ -204,7 +209,27 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
       this.takeDown(pid, seat, a.group, rid);
     } else if (a.k === 'maxOdds') {
       this.maxOdds(pid, seat, rid);
+    } else if (a.k === 'press') {
+      this.press(pid, seat, rid);
     }
+  }
+
+  /**
+   * Host: PRESS doubles the seat's Pass line on the point (once per point). The press is a true-odds bet on the point:
+   * it wins when the point is made, loses on a seven, and stays up on any other total (see `resolveRoll`).
+   */
+  private press(pid: PlayerId, seat: number, rid: number): void {
+    const hs = this.hs;
+    const book = hs.books[seat];
+    if (hs.phase !== 'open') { this.nak(pid, rid, 'm.craps.busy'); return; }
+    if (hs.point === 0 || !(book.pass > 0)) { this.nak(pid, rid, 'm.craps.noPress'); return; }
+    const spot = `press:${hs.point}`;
+    if (book[spot]) { this.nak(pid, rid, 'm.craps.pressed'); return; }
+    const amount = book.pass;                                  // "double": the press equals the line bet
+    if (sumBook(book) + amount > TABLE_MAX) { this.nak(pid, rid, 'm.craps.limit'); return; }
+    if (!this.chargeSeat(seat, amount, pid)) { this.nak(pid, rid, 'm.craps.noFunds'); return; }
+    book[spot] = amount;
+    this.emitLay(seat);
   }
 
   /** Host: validates one absolute spot amount, then charges or refunds the difference. */
@@ -221,6 +246,7 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
     const n = Number(spot.split(':')[1] ?? 0);
     const delta = amount - cur;
     if (delta === 0) return;
+    if (kind === 'press') { this.nak(pid, rid, 'm.craps.noPress'); return; }   // presses come only from the PRESS key
     if (delta > 0) {
       if (kind === 'pass' || kind === 'dpass') { if (point !== 0) { this.nak(pid, rid, 'm.craps.needPass'); return; } }
       else if (kind === 'come' || kind === 'dcome') { if (point === 0) { this.nak(pid, rid, 'm.craps.needPoint'); return; } }
@@ -676,6 +702,7 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
       { k: 'm.craps.hR4' },
       { k: 'm.craps.hR5', v: { working: this.k('n2') } },
       { k: 'm.craps.hR6', v: { clear: this.k('clear') } },
+      { k: 'm.craps.hR7', v: { press: this.k('n3') } },
     ];
   }
 
@@ -713,6 +740,18 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
     const last = st.last[0];
     if (last !== undefined) nums.push({ label: { k: 'm.craps.hNLast' }, value: String(last), tone: last === 7 ? 'bad' : 'neutral' });
     nums.push({ label: { k: 'm.craps.hNWorking' }, value: tr(st.working[seat] ? 'm.craps.hOn' : 'm.craps.hOff'), tone: st.working[seat] ? 'good' : 'neutral' });
+    // PRESS: the visible odds and payout on the point, or PRESSED once this point is pressed
+    const pressable = open && st.point > 0 && this.myAmount('pass') > 0;
+    const pressedNow = st.point > 0 && this.myAmount(`press:${st.point}`) > 0;
+    if (pressable || pressedNow) {
+      const [pa, pb] = pressRatio(st.point);
+      const pct = Math.round(pressChance(st.point) * 100);
+      nums.push({
+        label: { k: 'm.craps.hNPress' },
+        value: pressedNow ? { k: 'm.craps.hPressed' } : { k: 'm.craps.hPressVal', v: { p: pct, a: pa, b: pb } },
+        tone: pressedNow ? 'gold' : 'cyan',
+      });
+    }
     nums.push({ label: { k: 'm.craps.hNBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
     sh.numbers(nums);
 
@@ -722,6 +761,7 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
     if (mine) ctrl.push({ key: this.k('confirm'), label: { k: 'm.craps.hCThrow' }, action: 'confirm', primary: true });
     if (open) {
       ctrl.push({ key: this.k('n2'), label: { k: 'm.craps.hCWorking' }, action: 'n2' });
+      if (pressable && !pressedNow) ctrl.push({ key: this.k('n3'), label: { k: 'm.craps.hCPress' }, action: 'n3', primary: true });
       if (st.point > 0) ctrl.push({ key: this.k('n1'), label: { k: 'm.craps.hCMaxOdds' }, action: 'n1' });
       ctrl.push({ key: this.k('n4'), label: { k: 'm.craps.hCPlace' }, action: 'n4' });
       ctrl.push({ key: this.k('n5'), label: { k: 'm.craps.hCHorn' }, action: 'n5' });

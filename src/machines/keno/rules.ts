@@ -100,6 +100,49 @@ export function multOf(spots: number, hits: number, adj: Adjust = identity): num
   return Math.max(0, adj(`payAdd.${spots}.${hits}`, m));
 }
 
+/** DOUBLE DOWN: after this many numbers the player may stake the same again on the rest of the draw. */
+export const DD_AFTER = 10;
+const LEFT_POOL = POOL - DD_AFTER;     // numbers not yet drawn when DOUBLE DOWN opens
+const LEFT_DRAWS = DRAWN - DD_AFTER;   // numbers still to come
+/** Top multiple of one stake (the machine's maxPayoutMult). DOUBLE DOWN pays are capped here: only a far tail reaches it. */
+const MAX_MULT = 200000;
+
+/** Base RTP of a ticket with `spots` picks: the expected multiplier over the whole draw. */
+export function spotRtp(spots: number, adj: Adjust = identity): number {
+  let r = 0;
+  for (let h = 0; h <= spots; h++) r += hitProb(spots, h) * multOf(spots, h, adj);
+  return r;
+}
+
+/**
+ * Expected multiplier from the state after `h10` hits in the first ten numbers: the picks still out (`spots - h10`)
+ * meet the remaining draws from the numbers not yet out (hypergeometric, exact).
+ */
+export function stateValue(spots: number, h10: number, adj: Adjust = identity): number {
+  const out = spots - h10;
+  let v = 0;
+  for (let x = 0; x <= Math.min(out, LEFT_DRAWS); x++) {
+    const p = (choose(out, x) * choose(LEFT_POOL - out, LEFT_DRAWS - x)) / choose(LEFT_POOL, LEFT_DRAWS);
+    v += p * multOf(spots, h10 + x, adj);
+  }
+  return v;
+}
+
+/**
+ * DOUBLE DOWN pays for the second stake, by final hit count (index = hits; 0 below the hits already made). The
+ * paytable is re-priced to the current state: the second stake returns exactly the spot count's base RTP on average
+ * given the hits so far, so doubling never changes the expected return whatever the player knows. Null when nothing
+ * can pay from this state (no double).
+ */
+export function ddPays(spots: number, stake: number, h10: number, adj: Adjust = identity): number[] | null {
+  const v = stateValue(spots, h10, adj);
+  if (!(v > 0)) return null;
+  const rtp = spotRtp(spots, adj);
+  const cap = MAX_MULT * stake;
+  return Array.from({ length: spots + 1 }, (_, k) =>
+    k < h10 ? 0 : Math.min(cap, Math.round((stake * multOf(spots, k, adj) * rtp * 100) / v) / 100));
+}
+
 /** Lounge weights per number 1..80 (index 0 = number 1). `spotWeight.n` adds integer weight; callers decide solo-only. */
 export function weightsFor(adj: Adjust = identity): number[] {
   return Array.from({ length: POOL }, (_, i) => Math.max(0, BASE_WEIGHT + Math.round(adj(`spotWeight.${i + 1}`, 0))));

@@ -94,6 +94,8 @@ export const HOOK_XRAY = 'm.scratch.xray' as ModHook;            // > 0 shows on
 export type Card = {
   t: number; price: number; mult: number; gross: number; cells: number[];
   charm: number; near: boolean; lucky: boolean; free: boolean;
+  /** BUY THE THIRD was taken on this card (once per card). */
+  bought?: boolean;
 };
 export interface CardOpts { luck: number; top: number; charm: number; free?: boolean }
 
@@ -244,3 +246,88 @@ export const playHeadless: HeadlessPlay = (rng, bet, h) => {
   const card = rollCard(rng, t, Math.max(1, bet), { luck: h.luck, top: h.mod(HOOK_TOP, 1), charm: h.mod(HOOK_CHARM, 1) });
   return { gross: card.gross, tags: [...(card.lucky ? ['lucky'] : []), ...(card.near ? ['nearmiss'] : [])] };
 };
+
+// ── BUY THE THIRD (PIT PENNY): push your luck on a shown pair ───────────────────────────────────
+/** The buy costs this share of the card price (rounded, at least one coin). */
+export const BUY_SHARE = 0.5;
+/**
+ * Return of a bought spot per coin paid, before the share of buys that can add nothing (a pair of the card's own win:
+ * its third is already hidden there). A bought spot completing a pair worth `amount` has chance BUY_RTP x cost / amount.
+ * Calibrated so a player who buys every offer keeps the PIT PENNY RTP (0.805) within a point (see the sim in the
+ * scratch notes). A pair of a big amount is a long shot, shown as such.
+ */
+export const BUY_RTP = 1.06;
+export const buyCost = (price: number): number => Math.max(1, Math.round(price * BUY_SHARE));
+
+/** Chance that the bought spot completes a pair worth `amount` coins (a triple of it pays `amount`). */
+export function buyChance(price: number, amount: number, cost: number = buyCost(price)): number {
+  return amount > 0 ? Math.min(1, (BUY_RTP * cost) / amount) : 0;
+}
+
+/** The amount of the pair among the revealed spots (-1 when there is none). */
+export function pairAmount(cells: readonly number[], revealed: readonly number[]): number {
+  const seen = new Map<number, number>();
+  for (const z of revealed) {
+    const v = cells[z];
+    const n = (seen.get(v) ?? 0) + 1;
+    seen.set(v, n);
+    if (n === 2) return v;
+  }
+  return -1;
+}
+
+/** May BUY THE THIRD be taken now: a PIT PENNY card with a shown pair, still open, not bought yet. */
+export function canBuy(c: Card, revealed: readonly number[]): boolean {
+  return c.t === 0 && !c.bought && spotBest(c.cells, revealed) === 2 && spotOpen(c.cells, revealed) && revealed.length < c.cells.length;
+}
+
+/** The price and the chance of the buy on this card right now, or null when it cannot be bought. */
+export function buyOdds(c: Card, revealed: readonly number[]): { cost: number; chance: number } | null {
+  if (!canBuy(c, revealed)) return null;
+  const cost = buyCost(c.price);
+  return { cost, chance: buyChance(c.price, pairAmount(c.cells, revealed), cost) };
+}
+
+export interface Third {
+  /** The spot that opens. */
+  z: number;
+  /** The card's cells after the buy (only a hidden cell changes, and only on a hit). */
+  cells: number[];
+  /** The card's gross after the buy: a hit adds the pair's amount to whatever the card already pays. */
+  gross: number;
+  hit: boolean;
+  cost: number;
+  chance: number;
+}
+
+/**
+ * BUY THE THIRD: roll the chance, then open one extra hidden spot. A hit makes that spot the pair's third (a hidden
+ * cell that is not part of the card's own win) and pays its amount on top of the card's own triples. A miss opens a
+ * hidden spot that does not match. Consumes two draws (chance, spot).
+ */
+export function buyThird(rng: Rng, c: Card, revealed: readonly number[]): Third | null {
+  const odds = buyOdds(c, revealed);
+  if (!odds) return null;
+  const pair = pairAmount(c.cells, revealed);
+  const tri = c.gross > 0 ? c.gross : -1;             // a winning card's own triple amount
+  const hidden: number[] = [];
+  for (let z = 0; z < c.cells.length; z++) if (!revealed.includes(z)) hidden.push(z);
+  const hit = rng.next() < odds.chance;
+  if (hit) {
+    if (pair === tri) {                               // the pair is the card's own win: its third is hidden already
+      const z = hidden.find((h) => c.cells[h] === pair);
+      if (z !== undefined) return { z, cells: c.cells.slice(), gross: c.gross, hit: true, cost: odds.cost, chance: odds.chance };
+    } else {
+      const pool = hidden.filter((h) => c.cells[h] !== tri);
+      if (pool.length) {
+        const z = pool[rng.int(0, pool.length - 1)];
+        const cells = c.cells.slice();
+        cells[z] = pair;
+        return { z, cells, gross: c.gross + pair, hit: true, cost: odds.cost, chance: odds.chance };
+      }
+    }
+  }
+  const pool = hidden.filter((h) => c.cells[h] !== pair);
+  const z = pool.length ? pool[rng.int(0, pool.length - 1)] : hidden[rng.int(0, hidden.length - 1)];
+  return { z, cells: c.cells.slice(), gross: c.gross, hit: c.cells[z] === pair, cost: odds.cost, chance: odds.chance };
+}

@@ -126,7 +126,9 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CoinFlipParts> 
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.6, 0.8), look: new THREE.Vector3(0, 1.1, -0.1), fov: 56, mouse: 'primary' },
+    // seat view: backed off to 1.05 m and lowered, looking at the coin dish, so the booth (screen, marquee) and the coin
+    // frame in the camera with nothing standing between the lens and the booth (no mannequin in the shot)
+    playPose: { pos: new THREE.Vector3(0, 1.52, 1.05), look: new THREE.Vector3(0, 1.12, -0.1), fov: 58, mouse: 'primary' },
     colliders: [{ min: [-W / 2, 0, -D / 2], max: [W / 2, H - 0.02, D / 2] }],
     interact: { min: [-W / 2, 0.3, -D / 2], max: [W / 2, H - 0.02, D / 2 + 0.1] },
     anchors: { speaker, prompt: marquee.root, coinOut, light },

@@ -1,35 +1,31 @@
 /**
  * THE UNDERNEATH (world/hollow): a closed void room far below the pit. A long table with its lordstable seat in the
- * middle, one hanging lamp over it, three Lords behind it, and the doorway back up on the south wall. Everything is built
- * at `HOLLOW_HOME`, far from the pit, so the room needs no fog of its own: the walls hide the pit, and the lights are
- * its only light (the lamp, a red glow at the Lords' eyes, and the red rim of the exit).
+ * middle, one hanging lamp over it (a cone shade with a soft cone of light down onto the felt), and the three Lords behind
+ * the table: they are the lordstable machine's own dealers, so the room builds no figures of its own. The doorway back up
+ * is on the south wall. Everything is built at `HOLLOW_HOME`, far from the pit footprint, so the room needs no fog of its
+ * own: the walls hide the pit, and the lights are its only light (the lamp, a red glow at the Lords' eyes, and the red exit).
  */
 import * as THREE from 'three';
 import type { KitX } from '@/kit';
 import type { TexGen } from '@/core/texgen/types';
-import type { Rng } from '@/core/rng';
 import type { LightHint } from '../sys/arch';
 import { pendant } from '../lights';
 import { buildDoorway, type Doorway } from './doorway';
-import { buildLords, type LordRig } from './lords';
-import { ARRIVE, DOOR_H, DOOR_W, EXIT_DOOR, HOLLOW_HOME, LORD_POS, TABLE_POS, TABLE_Y, UNDER_H, UNDER_HALF } from './config';
+import { ARRIVE, DOOR_H, DOOR_W, EXIT_DOOR, HOLLOW_HOME, LAMP_DROP, LORD_POS, TABLE_POS, TABLE_Y, UNDER_H, UNDER_HALF } from './config';
 
 export interface Underneath {
   readonly root: THREE.Group;
   readonly statics: Array<{ box: THREE.Box3; tag?: 'solid' | 'walkable' }>;
   readonly lights: LightHint[];
   readonly anchors: Record<string, THREE.Object3D>;
-  readonly lords: LordRig[];
   /** The way back up, on the south wall. */
   readonly exit: Doorway;
-  /** Per frame: the Lords' idle head turns (`calm` shortens and slows them). */
-  update(dt: number, player: THREE.Vector3 | null, calm: boolean): void;
   dispose(): void;
 }
 
 const WALL_T = 0.4;
 
-export function buildUnderneath(kit: KitX, tex: TexGen, rng: Rng): Underneath {
+export function buildUnderneath(kit: KitX, tex: TexGen): Underneath {
   const H = HOLLOW_HOME;
   const root = new THREE.Group();
   root.name = 'hollow:underneath';
@@ -72,23 +68,21 @@ export function buildUnderneath(kit: KitX, tex: TexGen, rng: Rng): Underneath {
     kit.box(0.1, TABLE_Y - 0.08, 0.1, woodDark, { pos: [tx + sx, ty + (TABLE_Y - 0.08) / 2, tz + sz], parent: root });
   }
   statics.push({ box: new THREE.Box3(new THREE.Vector3(tx - 2.7, ty, tz - 0.5), new THREE.Vector3(tx + 2.7, ty + TABLE_Y, tz + 0.5)), tag: 'solid' });
-  for (const sx of [-2.1, 2.1]) {
-    const c = kit.lamp({ r: 0.045, color: 0xffcf7a, shape: 'dome' });
-    c.root.position.set(tx + sx, ty + TABLE_Y + 0.05, tz + 0.25);
-    root.add(c.root);
-  }
 
-  // one hanging lamp over the table (its cord hooks to the ceiling)
-  const lamp = pendant(kit, { id: 'hollow:lamp', pos: [H[0], top, H[2] - 1.5], drop: UNDER_H - 2.4, color: 0xff9a4a, intensity: 1.0, range: 7, flicker: 'SICK' });
+  // the one hanging lamp over the table: the cord runs up to the ceiling, the cone shade hangs at `top - LAMP_DROP`
+  const lampY = top - LAMP_DROP;
+  const lamp = pendant(kit, { id: 'hollow:lamp', pos: [tx, lampY, tz], drop: LAMP_DROP, color: 0xff9a4a, intensity: 1.0, range: 7, flicker: 'SICK' });
   root.add(lamp.root);
   lights.push(lamp.hint);
+  // the cone of light under the shade, down to the floor (additive, so it reads as light in the void)
+  const beam = new THREE.MeshBasicMaterial({
+    color: 0xffb070, transparent: true, opacity: 0.09, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+  });
+  const beamH = lampY - 0.2 - ty;
+  kit.cyl(0.3, 1.5, beamH, beam, { pos: [tx, ty + beamH / 2, tz], parent: root, seg: 20, open: true, shade: false });
 
-  // the Lords, and the red glow at their eyes
-  const lordsRoot = new THREE.Group();
-  lordsRoot.name = 'hollow:lords';
-  root.add(lordsRoot);
-  const lords = buildLords(kit, lordsRoot, rng);
-  lights.push({ id: 'hollow:eyes', pos: [H[0], H[1] + 2.4, H[2] - 3.9], color: 0xff2a1a, intensity: 0.5, range: 5, flicker: 'STEADY' });
+  // the red glow at the Lords' eyes (the Lords themselves are the lordstable machine's dealers)
+  lights.push({ id: 'hollow:eyes', pos: [H[0], H[1] + 2.5, H[2] - 2.5], color: 0xff2a1a, intensity: 0.5, range: 5, flicker: 'STEADY' });
 
   // the way back up
   const exit = buildDoorway(kit, { leaves: kit.mat({ color: 0x1a0a0a }), rim: 0xff1a1a });
@@ -114,12 +108,8 @@ export function buildUnderneath(kit: KitX, tex: TexGen, rng: Rng): Underneath {
   anchors['hollow.lord.mirrors'] = marker(LORD_POS.mirrors);
 
   return {
-    root, statics, lights, anchors, lords, exit,
-    update(dt, player, calm) {
-      for (const l of lords) l.tick(dt, player, calm);
-    },
+    root, statics, lights, anchors, exit,
     dispose() {
-      for (const l of lords) l.dispose();
       exit.dispose();
       root.traverse((obj) => {
         const m = obj as THREE.Mesh;

@@ -12,8 +12,9 @@
  *    tilt alarms, and tiered block celebrations;
  *  - `playHeadless` (shared rules) for staff auto-play and the bench sim.
  *
- * Controls: hold Space / LMB drop (3 a second) · A / D (←/→) aim the chute · F thump the shelf (two within 20 s tilt the
- * station 30 s) · H info · E stand. Coins are cosmetic on the shelf; the pile is a fixed gauge (see `model.ts`).
+ * Controls: hold Space / LMB drop (3 a second) · A / D (←/→) aim the chute · F thump the shelf (each thump pushes a few
+ * coins into the trays and fills the station's heat meter; the third pip trips the tilt alarm, which loses the tray and
+ * locks the station 30 s) · H info · E stand. Coins are cosmetic on the shelf; the pile is a fixed gauge (`model.ts`).
  */
 import * as THREE from 'three';
 import { TableBase } from '@/machines/_base/TableBase';
@@ -30,17 +31,24 @@ import {
   REEL_SYMBOLS, SHELF_Y, type CoinpusherParts,
 } from './model';
 import {
-  BLOCK, HOOK_WALLS, TILT_S, THUMP_TILT_S, TRAY_CAP, TRAY_TOKEN_RATE, WALLS_S, knobsFor, makeGov, govRecord,
-  playHeadless, rollDrop, rollUnits, trackLane, type Fate, type Gov, type LaneTrack, type StationIx,
+  BLOCK, HOOK_WALLS, SHOVE_COINS, THUMP_MAX, TILT_S, TRAY_CAP, TRAY_TOKEN_RATE, WALLS_S, heatNow, knobsFor, makeGov,
+  govRecord, playHeadless, rollDrop, rollShove, rollUnits, trackLane, type Fate, type Gov, type Knobs, type LaneTrack,
+  type StationIx,
 } from './rules';
 import { STRINGS } from './strings';
 
 export { playHeadless };
 
-/** Public state (every peer; late joiners get it in the snapshot). Times are host ms. */
-type St = { shelf: number; tilt: [number, number]; walls: number; blk: [number, number]; pay: [number, number]; win: [number, number] };
-/** Host-only bookkeeping that must survive a save. */
-type Host = { tray: [number, number]; tiltAt: [number, number]; wallsAt: number; lane: LaneTrack };
+/**
+ * Public state (every peer; late joiners get it in the snapshot). Times are host ms. `heat` is the thump meter as
+ * `heat[s]` pips at host time `heatT[s]`; it cools with time (`heatNow`).
+ */
+type St = {
+  shelf: number; tilt: [number, number]; walls: number; blk: [number, number]; pay: [number, number]; win: [number, number];
+  heat: [number, number]; heatT: [number, number];
+};
+/** Host-only bookkeeping that must survive a save. The heat copy here is the authority the thump checks against. */
+type Host = { tray: [number, number]; tiltAt: [number, number]; wallsAt: number; lane: LaneTrack; heat: [number, number]; heatT: [number, number] };
 type Snap = { s: St; g: Gov | null; h: Host | null };
 type Act = { k: 'drop'; x: number } | { k: 'thump' };
 /** Fate of one coin as [station, lost 0/1, units]. */
@@ -48,8 +56,8 @@ type FateTuple = [number, number, number];
 type Ev =
   | { k: 'drop'; st: number; x: number; lost: number; to: number; u: number; gold: number; gate: string; prize: string; wal: number; fates: FateTuple[] }
   | { k: 'block'; st: number; n: number; pay: number; bet: number; tags: string[] }
-  | { k: 'thump'; st: number }
-  | { k: 'tilt'; st: number; until: number }
+  | { k: 'thump'; st: number; heat: number; at: number; fates: FateTuple[] }
+  | { k: 'tilt'; st: number; until: number; at: number; lost: number }
   | { k: 'scav'; st: number; coins: number };
 type DropEv = Extract<Ev, { k: 'drop' }>;
 
@@ -88,10 +96,10 @@ export const def: MachineDef = {
 
 export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act> {
   // ── public state (mirrored from events) ──
-  private st: St = { shelf: PILE_START, tilt: [0, 0], walls: 0, blk: [0, 0], pay: [0, 0], win: [0, 0] };
+  private st: St = { shelf: PILE_START, tilt: [0, 0], walls: 0, blk: [0, 0], pay: [0, 0], win: [0, 0], heat: [0, 0], heatT: [0, 0] };
   // ── host-only authority ──
   private gov: Gov = makeGov();
-  private hostState: Host = { tray: [0, 0], tiltAt: [0, 0], wallsAt: 0, lane: { st: -1, n: 0 } };
+  private hostState: Host = { tray: [0, 0], tiltAt: [0, 0], wallsAt: 0, lane: { st: -1, n: 0 }, heat: [0, 0], heatT: [0, 0] };
   private tok: [number, number] = [TRAY_TOKEN_RATE, TRAY_TOKEN_RATE];
   private open: [boolean, boolean] = [false, false];
   private cnt: [number, number] = [0, 0];
@@ -99,7 +107,8 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
   /** A 'J' (jackpot) drop landed in the open block: the block settles as the jackpot tier. */
   private jack: [boolean, boolean] = [false, false];
   private lastDrop: [number, number] = [-1e9, -1e9];
-  private lastThump: [number, number] = [-1e9, -1e9];
+  /** Last whole heat pip drawn per station (the meter cools with time, so the screens repaint when it steps). */
+  private heatShown: [number, number] = [-1, -1];
   // ── local presentation / input ──
   private D = 1;                       // denomination (betLimits.min for this instance)
   private aim = 0;
@@ -160,7 +169,14 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
   protected onAction(pid: PlayerId, seat: number, a: Act, rid: number): void {
     const now = this.ctx.net.hostTime();
     if (a.k === 'drop') this.hostDrop(pid, seat, a.x, rid, now);
-    else this.hostThump(seat, now);
+    else this.hostThump(pid, seat, rid, now);
+  }
+
+  /** Credits one fate: into the open block of its station, else into that station's tray (capped). */
+  private credit(f: Fate): void {
+    if (f.lost) return;
+    if (this.open[f.st]) this.units[f.st] += f.units;
+    else this.hostState.tray[f.st] = Math.min(TRAY_CAP, this.hostState.tray[f.st] + f.units);
   }
 
   private hostDrop(pid: PlayerId, seat: number, x: number, rid: number, now: number): void {
@@ -179,13 +195,8 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     if (r.kind === 'W') this.hostState.wallsAt = now + Math.max(1, this.mod(HOOK_WALLS, WALLS_S)) * 1000;
     if (r.kind === 'J') this.jack[seat as 0 | 1] = true;
 
-    const credit = (f: Fate): void => {
-      if (f.lost) return;
-      if (this.open[f.st]) this.units[f.st] += f.units;
-      else this.hostState.tray[f.st] = Math.min(TRAY_CAP, this.hostState.tray[f.st] + f.units);
-    };
-    credit(r.coin);
-    for (const f of r.fates) credit(f);
+    this.credit(r.coin);
+    for (const f of r.fates) this.credit(f);
 
     this.cnt[seat] += 1;
     this.lastDrop[seat] = now;
@@ -217,17 +228,36 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     });
   }
 
-  private hostThump(seat: number, now: number): void {
-    const since = now - this.lastThump[seat];
-    if (since < THUMP_TILT_S * 1000) {
-      this.lastThump[seat] = -1e9;
+  /**
+   * THUMP: a safe thump pushes SHOVE_COINS coins off the shelf and adds a heat pip. The thump that would fill the last
+   * pip trips the alarm: the station's tray is lost (the governor records the loss) and the station locks for TILT_S.
+   */
+  private hostThump(pid: PlayerId, seat: number, rid: number, now: number): void {
+    if (now < this.hostState.tiltAt[seat]) { this.nak(pid, rid, 'm.coinpusher.tilted'); return; }
+    const heat = heatNow(this.hostState.heat[seat], this.hostState.heatT[seat], now);
+    if (heat + 1 > THUMP_MAX - 1) {          // the pip that would go past the last safe one trips the alarm
+      const lost = this.hostState.tray[seat];
+      this.hostState.tray[seat] = 0;
+      this.hostState.heat[seat] = 0;
+      this.hostState.heatT[seat] = now;
       this.hostState.tiltAt[seat] = now + TILT_S * 1000;
+      govRecord(this.gov, 0, -lost);
       this.closeBlock(seat);
-      void this.emit({ k: 'tilt', st: seat, until: this.hostState.tiltAt[seat] });
+      void this.emit({ k: 'tilt', st: seat, until: this.hostState.tiltAt[seat], at: now, lost });
       return;
     }
-    this.lastThump[seat] = now;
-    void this.emit({ k: 'thump', st: seat });
+    const walls = now < this.hostState.wallsAt;
+    const k: Knobs = knobsFor(this.gov, (h, b) => this.mod(h, b), this.luck(), walls);
+    const fates = rollShove(this.hostRng, k, seat as StationIx);
+    let paid = 0;
+    for (const f of fates) { this.credit(f); paid += f.units; }
+    govRecord(this.gov, 0, paid);                 // shove pays count in the realised return, like drop credits
+    this.hostState.heat[seat] = heat + 1;
+    this.hostState.heatT[seat] = now;
+    void this.emit({
+      k: 'thump', st: seat, heat: heat + 1, at: now,
+      fates: fates.map((f): FateTuple => [f.st, f.lost ? 1 : 0, f.units]),
+    });
   }
 
   hostTick(dt: number): void {
@@ -266,19 +296,33 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
 
   // ── snapshots ───────────────────────────────────────────────────────────────────────────────────────
   getSnapshot(forPid?: PlayerId): Snap {
-    const s: St = { ...this.st, tilt: [...this.st.tilt], blk: [...this.st.blk], pay: [...this.st.pay], win: [...this.st.win] };
+    const s: St = {
+      ...this.st, tilt: [...this.st.tilt], blk: [...this.st.blk], pay: [...this.st.pay], win: [...this.st.win],
+      heat: [...this.st.heat], heatT: [...this.st.heatT],
+    };
     const host = forPid === undefined;
     return {
       s,
       g: host ? { ...this.gov, acc: [...this.gov.acc], hist: this.gov.hist.map((p): [number, number] => [p[0], p[1]]) } : null,
-      h: host ? { tray: [...this.hostState.tray], tiltAt: [...this.hostState.tiltAt], wallsAt: this.hostState.wallsAt, lane: { ...this.hostState.lane } } : null,
+      h: host ? {
+        tray: [...this.hostState.tray], tiltAt: [...this.hostState.tiltAt], wallsAt: this.hostState.wallsAt,
+        lane: { ...this.hostState.lane }, heat: [...this.hostState.heat], heatT: [...this.hostState.heatT],
+      } : null,
     };
   }
 
   applySnapshot(sn: Snap): void {
-    this.st = { ...sn.s, tilt: [...sn.s.tilt], blk: [...sn.s.blk], pay: [...sn.s.pay], win: [...sn.s.win] };
+    this.st = {
+      ...sn.s, tilt: [...sn.s.tilt], blk: [...sn.s.blk], pay: [...sn.s.pay], win: [...sn.s.win],
+      heat: [...(sn.s.heat ?? [0, 0])], heatT: [...(sn.s.heatT ?? [0, 0])],
+    };
     if (sn.g) this.gov = { ...sn.g, acc: [...sn.g.acc], hist: sn.g.hist.map((p): [number, number] => [p[0], p[1]]) };
-    if (sn.h) this.hostState = { tray: [...sn.h.tray], tiltAt: [...sn.h.tiltAt], wallsAt: sn.h.wallsAt, lane: { st: sn.h.lane?.st ?? -1, n: sn.h.lane?.n ?? 0 } };
+    if (sn.h) {
+      this.hostState = {
+        tray: [...sn.h.tray], tiltAt: [...sn.h.tiltAt], wallsAt: sn.h.wallsAt, lane: { st: sn.h.lane?.st ?? -1, n: sn.h.lane?.n ?? 0 },
+        heat: [...(sn.h.heat ?? [0, 0])], heatT: [...(sn.h.heatT ?? [0, 0])],
+      };
+    }
     this.paintLeds();
     this.paintLamps();
   }
@@ -288,7 +332,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     switch (ev.k) {
       case 'drop': return this.presentDrop(ev, pc);
       case 'block': return this.presentBlock(ev, pc);
-      case 'thump': this.presentThump(); return;
+      case 'thump': return this.presentThump(ev, pc);
       case 'tilt': return this.presentTilt(ev, pc);
       case 'scav': this.presentScav(ev, pc); return;
     }
@@ -422,21 +466,42 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     if (tier !== 'none' && tier !== 'push' && !pc.fast) await this.celebrate(tier);
   }
 
-  private presentThump(): void {
+  /** A thump: the shelf kicks, a few coins are shoved off into the trays, and the station's meter steps up. */
+  private async presentThump(ev: Extract<Ev, { k: 'thump' }>, pc: PresentCtx): Promise<void> {
+    const s = ev.st as StationIx;
+    this.st.heat[s] = ev.heat;
+    this.st.heatT[s] = ev.at;
     this.kick = 1;
     this.sfx('thud', { vol: 0.8 });
+    if (ev.heat > THUMP_MAX - 2) this.parts.tiltLamp.blink(4, 0.25);   // the next thump trips the alarm
+    this.paintLeds();
+    if (pc.local) this.showHud();
+    const pieces = ev.fates.slice(0, FLY_COUNT);
+    if (!pc.fast && pieces.length > 0) {
+      await Promise.all(pieces.map((f, j) => this.flyCoin(FLY_FIRST + j, this.cosmeticShowerX(), this.cosmeticZ(),
+        f[1] === 1 ? null : f[0] as StationIx, f[1] === 1, false, pc.fast)));
+    }
+    for (const f of ev.fates) if (f[1] === 0) this.st.pay[f[0] as StationIx] += f[2];
+    if (pc.local) this.showHud();
   }
 
   private async presentTilt(ev: Extract<Ev, { k: 'tilt' }>, pc: PresentCtx): Promise<void> {
     this.st.tilt[ev.st] = ev.until;
     this.st.blk[ev.st] = 0;
     this.st.pay[ev.st] = 0;
+    this.st.heat[ev.st] = 0;
+    this.st.heatT[ev.st] = ev.at;
     this.parts.tiltLamp.blink(6, 3.0);
     this.sfx('buzzer', { vol: 0.8 });
     this.ctx.ui.flash('#ff3030', 0.35);
-    if (pc.local) { this.toast(tr('m.coinpusher.tilt', { n: TILT_S }), 'warn'); this.showHud(); }
+    if (pc.local) { this.toast(tr('m.coinpusher.tilt', { n: TILT_S, lost: fmtCoins(ev.lost * this.D) }), 'warn'); this.showHud(); }
     this.paintLeds();
   }
+
+  /** Current heat pips of a station (cooled to the host clock). */
+  private heatOf(s: number): number { return heatNow(this.st.heat[s], this.st.heatT[s], this.ctx.net.hostTime()); }
+  /** Pips drawn for a station: a partly cooled pip still shows, so a shown pip count of THUMP_MAX - 1 or more is the danger zone. */
+  private pipsOf(s: number): number { return Math.min(THUMP_MAX, Math.ceil(this.heatOf(s) - 1e-6)); }
 
   private presentScav(ev: Extract<Ev, { k: 'scav' }>, pc: PresentCtx): void {
     if (!pc.local) return;
@@ -458,6 +523,15 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     const k = Math.max(0.0001, this.wallsK);
     p.walls[0].scale.y = k;
     p.walls[1].scale.y = k;
+    // the heat meter cools with the clock: repaint the screens and the HUD when a whole pip steps down
+    for (let s = 0; s < 2; s++) {
+      const pips = this.pipsOf(s);
+      if (pips !== this.heatShown[s]) {
+        this.heatShown[s] = pips;
+        this.paintLeds();
+        if (this.localSeat === s) this.showHud();
+      }
+    }
   }
 
   // ── visuals: pile, lamps, screens, HUD ──────────────────────────────────────────────────────────────
@@ -482,12 +556,18 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     const p = this.parts;
     const screens = [p.leds.L, p.leds.R] as const;
     screens.forEach((scr, s) => {
+      const heat = this.pipsOf(s);
       scr.draw((g, sc) => {
-        void g;
         sc.clear('#070707');
         sc.text(tr('m.coinpusher.ledBet', { n: BLOCK * this.D }), 10, 24, { font: 'vt', size: 26, color: '#ffd040' });
         sc.text(tr('m.coinpusher.ledCredit', { n: this.st.blk[s] }), 10, 50, { font: 'vt', size: 26, color: '#7fe6ff' });
         sc.text(tr('m.coinpusher.ledWin', { n: this.st.win[s] }), 150, 50, { font: 'vt', size: 26, color: '#9cff8a' });
+        // THUMP meter: one pip per heat level; the pip after the last filled one is where the alarm waits
+        sc.text(tr('m.coinpusher.ledThump'), 130, 24, { font: 'vt', size: 26, color: '#ff9a6a' });
+        for (let i = 0; i < THUMP_MAX; i++) {
+          g.fillStyle = i < heat ? (heat >= THUMP_MAX - 1 ? '#ff3a2a' : '#ffb040') : '#2a2a2a';
+          g.fillRect(200 + i * 14, 10, 10, 14);
+        }
       });
     });
   }
@@ -504,6 +584,9 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
       { action: 'exit', label: tr('m.coinpusher.hintLeave') },
     ];
     const stats: Array<{ label: string; value: string }> = [{ label: tr('m.coinpusher.block', { n: this.st.blk[s] }), value: '' }];
+    const heat = this.pipsOf(s);
+    stats.push({ label: tr('m.coinpusher.heat', { n: heat, m: THUMP_MAX }), value: '' });
+    if (heat >= THUMP_MAX - 1) stats.push({ label: tr('m.coinpusher.tiltRisk'), value: '' });
     if (now < this.st.tilt[s]) stats.push({ label: tr('m.coinpusher.tiltTimer', { n: Math.ceil((this.st.tilt[s] - now) / 1000) }), value: '' });
     this.hud({ bet: BLOCK * this.D, hints, stats });
   }

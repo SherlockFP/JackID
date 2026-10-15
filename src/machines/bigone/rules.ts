@@ -602,3 +602,46 @@ export const playHeadless: HeadlessPlay = (rng, bet, h) => {
   });
   return { gross: round.gross, tags: round.tags };
 };
+
+// ── CHASE: push your luck after a line win ──────────────────────────────────────────────────────
+/** CHASE: one extra spin in which the won line must hit again. A fair gamble: 1/3 chance at x3 returns the pot on average. */
+export const CHASE_P = 1 / 3;
+/** A chase that hits pays this multiple of the pot (the whole win of the round). */
+export const CHASE_MULT = 3;
+
+/** The win a chase stakes: the top pattern of a single staked spin (no jackpot, curse or LUCKY 7). */
+export interface ChaseOffer { pot: number; line: number[]; sym: number; tags: string[] }
+
+export function chaseOf(round: Round): ChaseOffer | null {
+  if (round.spins.length !== 1 || round.curse || round.fill || round.gross <= 0) return null;
+  const top = round.spins[0].tally[round.spins[0].tally.length - 1];
+  if (!top || top.pat === 'FULL') return null;
+  return { pot: round.gross, line: top.cells.slice(), sym: top.sym, tags: round.tags.slice() };
+}
+
+export interface ChaseOut { win: boolean; grid: number[]; gross: number }
+
+/** A plain symbol (never GHOST or MAW) other than `sym`: the cell that breaks the line. */
+function missSym(rng: Rng, weights: readonly number[], sym: number): number {
+  for (let k = 0; k < 8; k++) {
+    const v = pickW(rng, weights);
+    if (v < SYM_COUNT && v !== sym) return v;
+  }
+  for (let v = 0; v < SYM_COUNT; v++) if (v !== sym) return v;
+  return sym;
+}
+
+/**
+ * One chase spin: a fresh grid. With CHASE_P every cell of the line shows `sym` (the line hits again); otherwise one
+ * plain cell of the line shows another symbol and the line is broken. Only the line decides the chase. A hit pays
+ * CHASE_MULT x the pot, capped like any line win.
+ */
+export function chaseRoll(rng: Rng, weights: readonly number[], offer: ChaseOffer, stake: number): ChaseOut {
+  const grid: number[] = [];
+  for (let i = 0; i < CELLS; i++) grid.push(pickW(rng, weights));
+  const win = rng.next() < CHASE_P;
+  if (win) for (const c of offer.line) grid[c] = offer.sym;
+  else grid[offer.line[rng.int(0, offer.line.length - 1)]] = missSym(rng, weights, offer.sym);
+  const gross = win ? Math.min(offer.pot * CHASE_MULT, stake * MAX_LINE_MULT) : 0;
+  return { win, grid, gross: Math.floor(gross) };
+}

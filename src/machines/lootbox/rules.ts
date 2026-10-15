@@ -172,6 +172,55 @@ export function valueOf(c: Content, si: number): number {
   return c.coins;
 }
 
+/**
+ * TRADE UP. After a reveal the player may give the prize up as credit toward a sealed capsule of the next tier. The
+ * credit is the prize's value (`valueOf`), the player pays the difference to the next tier's price. Marginal EV of the
+ * trade = E(next tier) − price(next tier), i.e. exactly that tier's own edge: a trade never adds an edge of its own.
+ * Offered only when the prize is worth less than the next capsule (the difference is always positive) and never at GILDED.
+ */
+export function nextTierOf(tier: number): TierId | null {
+  const t = Math.floor(tier) || 0;
+  return t >= 0 && t < TIERS.length - 1 ? ((t + 1) as TierId) : null;
+}
+
+export function tradeOpen(tier: number, c: Content, si: number, discount = 0): boolean {
+  const nt = nextTierOf(tier);
+  return nt !== null && valueOf(c, si) < tierPrice(nt, si, discount);
+}
+
+/** Coins the player pays to trade a prize up: the next tier's price less the prize's value (≥ 1 when `tradeOpen`). */
+export function tradeCost(tier: number, c: Content, si: number, discount = 0): number {
+  const nt = nextTierOf(tier);
+  return nt === null ? 0 : Math.max(1, tierPrice(nt, si, discount) - valueOf(c, si));
+}
+
+/** Normalised probability weights (0..1) of one tier after luck and the cursed multiplier. Sums to 1. */
+function shares(tier: number, luck: number, cursedMult: number): Record<Rarity, number> {
+  const w = effectiveWeights(tier, luck, cursedMult);
+  const total = Object.values(w).reduce((s, x) => s + x, 0) || 1;
+  const out = {} as Record<Rarity, number>;
+  for (const r of ORDER) out[r] = w[r] / total;
+  return out;
+}
+
+/** Share of capsules that are Rare or better (the shown odds of a sealed capsule). */
+export function rarePlusShare(tier: number, luck: number, cursedMult: number): number {
+  const s = shares(tier, luck, cursedMult);
+  return s.rare + s.legendary + s.cursed;
+}
+
+/** Average value of one capsule of `tier` at stake index `si` (coins, charms at the reference price). Shown as the odds. */
+export function tierEv(tier: number, si: number, luck: number, cursedMult: number): number {
+  const s = shares(tier, luck, cursedMult);
+  const def = tierDef(tier);
+  const coinW = def.coins.reduce((a, c) => a + c.w, 0);
+  const coinMean = coinW > 0 ? def.coins.reduce((a, c) => a + c.amount * c.w, 0) / coinW : 0;
+  let ev = s.coins * coinMean * si;
+  for (const r of LADDER_REFS) ev += s[r] * REF_PRICE[r] * si;
+  return ev;
+}
+const LADDER_REFS: readonly CharmRarityKey[] = ['common', 'uncommon', 'rare', 'legendary', 'cursed'];
+
 /** Pity threshold: 10 by default, `m.lootbox.pityAt` adds a negative offset, never below 5. */
 export function pityThreshold(pityAtMod: number): number {
   return Math.max(PITY_MIN, PITY_BASE + Math.floor(pityAtMod));

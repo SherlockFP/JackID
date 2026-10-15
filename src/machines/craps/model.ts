@@ -85,6 +85,7 @@ export function spotXZ(spot: string): [number, number] | null {
   const [kind, arg = ''] = spot.split(/:(.*)/s);
   const n = Number(arg);
   if (!(n in NUM_X)) return null;
+  if (kind === 'press') return SPOT_XZ.pass;                 // a press stacks on the Pass line it doubles
   if (kind === 'come') return [NUM_X[n], COME_Z];
   if (kind === 'codds') return [NUM_X[n], CODDS_Z];
   if (kind === 'dcome') return [NUM_X[n], DCOME_Z];

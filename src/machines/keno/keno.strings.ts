@@ -54,6 +54,17 @@ const en: Record<string, string> = {
   rule4: 'Draws x1, x5, x10 or x20 repeat the ticket. Each draw charges the stake again.',
   rule5: 'Up to 4 tickets, one per slot. A live ticket keeps running after you stand up.',
   rule6: 'Sales close 3 seconds before a shared draw. Lock the ticket in with PLAY.',
+  rule7: 'After the tenth number, DOUBLE DOWN stakes the same again on the rest of the draw. Its pays re-price to the hits you have.',
+  stOffer: 'DOUBLE DOWN OR HOLD',
+  stDdSecs: 'DECIDE IN {n}s',
+  stDoubled: 'DOUBLED: THE RELAYS ARE DRAWING',
+  nHits: 'HITS SO FAR',
+  nSecond: 'SECOND STAKE',
+  nPaytable: 'NEW PAYTABLE',
+  cDouble: 'DOUBLE DOWN',
+  dbl: 'DOUBLED',
+  ddDone: 'This ticket is already doubled',
+  ddClosed: 'Double down opens after the tenth number',
 };
 
 const tr: Record<string, string> = {
@@ -108,6 +119,17 @@ const tr: Record<string, string> = {
   rule4: 'x1, x5, x10 ya da x20 çekiliş bileti tekrarlar. Her çekilişte bahis yeniden alınır.',
   rule5: 'En fazla 4 bilet, her yuvaya bir tane. Canlı bilet sen kalkınca da oynamaya devam eder.',
   rule6: 'Ortak çekilişten 3 saniye önce satış kapanır. Bileti OYNA ile onaylarsın.',
+  rule7: 'Onuncu sayıdan sonra KATLA, bu çekilişin geri kalanına aynı bahsi yeniden koyar. Ödemeler tuttuğun sayıya göre yeniden hesaplanır.',
+  stOffer: 'KATLA YA DA BEKLE',
+  stDdSecs: '{n} SN İÇİNDE KARAR VER',
+  stDoubled: 'KATLANDI: RÖLELER ÇEKİLİYOR',
+  nHits: 'ŞU ANA KADAR İSABET',
+  nSecond: 'İKİNCİ BAHİS',
+  nPaytable: 'YENİ ÖDEME TABLOSU',
+  cDouble: 'KATLA',
+  dbl: 'KATLANDI',
+  ddDone: 'Bu bilet zaten katlandı',
+  ddClosed: 'Katlama onuncu sayıdan sonra açılır',
 };
 
 export default { prefix: 'm.keno.', en, tr };

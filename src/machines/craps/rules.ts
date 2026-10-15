@@ -75,6 +75,15 @@ export function layNet(n: number, a: number): number {
   if (n === 5 || n === 9) return Math.floor((2 * a) / 3);
   return Math.floor((5 * a) / 6);
 }
+/** PRESS on a point: the chance to make the point before a 7 (ways / (ways + 6)). Pays true odds, so the bet is fair. */
+export function pressChance(n: number): number {
+  const ways = n === 4 || n === 10 ? 3 : n === 5 || n === 9 ? 4 : 5;
+  return ways / (ways + 6);
+}
+/** PRESS payout as a ratio `[win, stake]` (true odds: 4 or 10 2:1, 5 or 9 3:2, 6 or 8 6:5). */
+export function pressRatio(n: number): readonly [number, number] {
+  return n === 4 || n === 10 ? [2, 1] : n === 5 || n === 9 ? [3, 2] : [6, 5];
+}
 /** Max odds multiple of the line bet for a point (3× / 4× / 5×; lay 6× is uniform in `layLimit`). */
 export function oddsCap(n: number, add = 0): number { return (n === 4 || n === 10 ? 3 : n === 5 || n === 9 ? 4 : 5) + add; }
 export function placeNet(n: number, a: number): number {
@@ -106,6 +115,7 @@ export function validSpot(spot: string): boolean {
     case 'place': return place;
     case 'buy': return n === 4 || n === 10;
     case 'codds': case 'dcodds': return place;
+    case 'press': return PLACE_NUMBERS.includes(n);           // PRESS on the point: `press:<point>`
     default: return false;
   }
 }
@@ -179,6 +189,9 @@ export function resolveRoll(book: Book, r: Roll, ctx: Ctx): RollOutcome {
         break;
       case 'dcodds':
         if (seven) win(s, a, layNet(n, a)); else if (t === n) lose(s, a); else keep(s, a);
+        break;
+      case 'press':   // true odds on the point (fair): stays up until the point is made or a 7 comes
+        if (t === n) win(s, a, oddsNet(n, a)); else if (seven) lose(s, a); else keep(s, a);
         break;
       case 'place': case 'buy':
         if (!on) { keep(s, a); break; }

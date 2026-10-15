@@ -2,12 +2,17 @@
  * Mystery Capsule Vendor (`lootbox`, solo, gallery). Three crank tiers (TIN 10 / BRASS 40 / GILDED 150 coins × stake
  * index). Each crank charges the stake (`beginRound`, one action point), rolls the capsule's content on the authority
  * and sends `vend`; the capsule rolls down the spiral chute to your hands. Twist it open (Space, or hold LMB and circle)
- * to send `open`, which settles the coins and grants any charm through `run.grantCharm(id)`.
+ * to reveal the prize.
+ *
+ * TRADE UP: a revealed prize that a higher tier can take in trade waits for a decision. KEEP (primary) settles it: coins
+ * are paid, a charm is granted through `run.grantCharm(id)`. TRADE UP (alt, C) credits the prize toward a sealed
+ * capsule of the next tier: the player pays the difference (`addStake`), the sealed capsule is rolled and sits in hand
+ * until it is twisted open too. The round stays open across the decisions (ladder pattern); the stake is the sum.
  *
  * Rules and tables: rules.ts (pure, shared with `playHeadless`). Model: model.ts. Strings: strings.ts.
  *
- * Controls (seated): 1/2/3 or ←/→ tier · Space crank (READY) / twist open (IN HAND) · hold LMB and circle the pointer to
- * twist · H contents · E stands up (an unopened capsule auto-opens first).
+ * Controls (seated): 1/2/3 or ←/→ tier · Space crank (READY) / twist open (IN HAND) / KEEP (decision) · alt (C) =
+ * TRADE UP (decision) · hold LMB and circle the pointer to twist · H contents · E stands up (a decision is kept first).
  *
  * Pity: the counter lives on the run (`run.stat('lootbox.pity.<pid>')`), so it persists across Nights and resets per run.
  */
@@ -21,22 +26,27 @@ import { fmtNum, t as tr, type I18nVars } from '@/core/i18n';
 import { lerp } from '@/core/math';
 import { buildModel, type LootboxParts } from './model';
 import {
-  NO_POOL, REF_PRICE, isRarePlus, nextPity, payoutOf, pityArmed, pityThreshold, rollCapsule, tierDef, tierPrice,
-  type CharmRarityKey, type Content, type PoolCharm, type Rarity, type TierId,
+  NO_POOL, REF_PRICE, isRarePlus, nextPity, nextTierOf, payoutOf, pityArmed, pityThreshold, rarePlusShare, rollCapsule,
+  tradeCost, tradeOpen, tierDef, tierPrice, valueOf,
+  type CharmRarityKey, type Content, type PoolCharm, type Rarity, type RollEnv, type TierId,
 } from './rules';
 import { STRINGS } from './strings';
 
 export { playHeadless } from './rules';
 import { playHeadless } from './rules';
 
-/** Authority-side state of the capsule in play (between crank and open). */
-interface Pending { tier: TierId; price: number; content: Content; dudIdx: number; forced: boolean; threshold: number; count: number }
+/** The capsule in play: the tier it is at now (a trade moves it up), its content and the pity bookkeeping. */
+interface Pending { tier: TierId; content: Content; dudIdx: number; forced: boolean; threshold: number; count: number }
+/** Settlement fields the credit step fills in (read by the presentation of the result). */
+interface Settle { coins: number; granted: boolean; fallback: boolean; net: number }
 
-/** Events are flat (Json-safe). `k: 'vend'` on crank commit, `k: 'open'` on twist. */
+/** Events are flat (Json-safe). `k: 'vend'` on crank commit, `open` on a twist, `trade` on TRADE UP, `collect` on KEEP. */
 type Ev =
   | { k: 'vend'; tier: number; price: number; cap: number }
-  | { k: 'open'; tier: number; kind: string; rarity: string; charmId: string; dupe: boolean; coins: number;
-      granted: boolean; fallback: boolean; dudIdx: number; forced: boolean; pity: number };
+  | { k: 'open'; tier: number; kind: string; rarity: string; charmId: string; dupe: boolean; dudIdx: number;
+      forced: boolean; pity: number; decide: boolean; coins: number; granted: boolean; fallback: boolean; net: number }
+  | { k: 'trade'; tier: number; cost: number; cap: number }
+  | { k: 'collect'; kind: string; rarity: string; coins: number; granted: boolean; fallback: boolean; net: number };
 
 const GOLD = 0xffc020;
 const VIOLET = 0x6010a0;
@@ -75,13 +85,13 @@ export const def: MachineDef = {
 export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   private tierSel: TierId = 0;
   private pending: Pending | null = null;
+  /** A revealed prize waits for KEEP or TRADE UP (the round is open; `busy` is false so input is free). */
+  private decision = false;
   private inHand = false;
   private twistOn = false;
   private twistAngle = 0;
   private twistLast = 0;
   private twistAcc = 0;
-  /** Price of the capsule in play (set on vend, read on open for the result callout). */
-  private vendPrice = 0;
   /** True while the reveal of an opened capsule runs. */
   private revealing = false;
   /** Seat HUD overlay (readability standard, see _base/seatHud.ts) and the last key it was drawn from. */
@@ -121,6 +131,8 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   }
   private pityCount(): number { return this.ctx.run.stat(PITY_KEY(this.selfId)); }
   private price(tier: TierId): number { return tierPrice(tier, this.stakeIndex, this.mod('m.lootbox.discount', 0)); }
+  private discount(): number { return this.mod('m.lootbox.discount', 0); }
+  private decisionUp(): boolean { return this.decision && !this.revealing; }
 
   tick(_dt: number): void { this.refreshHud(false); }
 
@@ -139,7 +151,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   onRelease(_pid: number, _seat: number, local: boolean): void {
     if (local) {
       this.seatHud?.hide();
-      if (this.pending) this.openCapsule();          // an unopened capsule never leaves with the player
+      this.leaveWithCapsule();                       // an unopened capsule never leaves with the player
       this.ctx.ui.machineHud(null);
       this.hudKey = '';
     }
@@ -150,10 +162,15 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     this.refreshHud(true);
   }
 
-  /** E stands up: open a capsule in hand first, then release (base defers while busy). */
+  /** E stands up: settle a decision (KEEP) or open a capsule in hand first, then release (base defers while busy). */
   protected standUp(): void {
-    if (this.pending) this.openCapsule();
+    this.leaveWithCapsule();
     super.standUp();
+  }
+
+  private leaveWithCapsule(): void {
+    if (this.decision) this.keep();
+    else if (this.pending) this.openCapsule();
   }
 
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
@@ -167,8 +184,12 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
       case 'left': this.selectTier(((this.tierSel + 2) % 3) as TierId); return;
       case 'right': this.selectTier(((this.tierSel + 1) % 3) as TierId); return;
       case 'primary': case 'confirm':
-        if (this.inHand && this.pending) this.openCapsule();
+        if (this.decisionUp()) this.keep();
+        else if (this.inHand && this.pending) this.openCapsule();
         else this.crank(this.tierSel);
+        return;
+      case 'alt':
+        if (this.decisionUp()) this.trade();
         return;
       case 'help': this.seatHud?.rules(this.contentsLines(), this.tx('tableTitle')); return;
     }
@@ -223,6 +244,18 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     this.parts.badges.forEach((b, i) => b.setOn(i === this.tierSel));
   }
 
+  private rollEnv(forced: boolean): RollEnv {
+    return {
+      luck: this.luck(),
+      cursedMult: this.mod('m.lootbox.cursedOdds', 1),
+      forceRarePlus: forced,
+      reroll: this.mod('m.lootbox.rerollToken', 0) >= 1,
+      si: this.stakeIndex,
+      owned: (id) => this.ctx.run.charms(this.selfId).some((s) => s.id === id),
+      pool: (r) => this.charmPool(r),
+    };
+  }
+
   /** Crank commit: charges the stake, rolls the content on the authority and sends `vend`. */
   private crank(tier: TierId): void {
     if (this.pending || this.busy) { this.refuse('busy'); return; }
@@ -232,51 +265,92 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     const count = this.pityCount();
     const threshold = pityThreshold(this.mod('m.lootbox.pityAt', 0));
     const forced = pityArmed(count, tier, threshold);
-    const content = rollCapsule(this.rng, tier, {
-      luck: this.luck(),
-      cursedMult: this.mod('m.lootbox.cursedOdds', 1),
-      forceRarePlus: forced,
-      reroll: this.mod('m.lootbox.rerollToken', 0) >= 1,
-      si: this.stakeIndex,
-      owned: (id) => this.ctx.run.charms(this.selfId).some((s) => s.id === id),
-      pool: (r) => this.charmPool(r),
-    });
+    const content = rollCapsule(this.rng, tier, this.rollEnv(forced));
     const dudIdx = this.rng.int(0, 5);
-    this.pending = { tier, price, content, dudIdx, forced, threshold, count };
+    this.pending = { tier, content, dudIdx, forced, threshold, count };
     this.inHand = false;
     void this.emit({ k: 'vend', tier, price, cap: this.cosmetic.int(0, 359) });
   }
 
-  /** Twist open: credit first (coins, charm grant, pity), then present. */
+  /**
+   * Twist open. A prize a higher tier can take in trade (`tradeOpen`) waits for KEEP or TRADE UP: the round stays open
+   * and `busy` clears (ladder pattern). Any other prize settles at once.
+   */
   private openCapsule(): void {
     const p = this.pending;
-    if (!p) return;
-    this.pending = null;
+    if (!p || this.decision) return;
     this.inHand = false;
     this.twistOn = false;
     const c = p.content;
-    const si = this.stakeIndex;
-    const ev: Ev = {
+    const decide = tradeOpen(p.tier, c, this.stakeIndex, this.discount());
+    const ev: Extract<Ev, { k: 'open' }> = {
       k: 'open', tier: p.tier, kind: c.kind, rarity: c.rarity, charmId: c.charmId, dupe: c.dupe,
       coins: payoutOf(c), granted: false, fallback: false, dudIdx: p.dudIdx, forced: p.forced, pity: p.count,
+      decide, net: 0,
     };
-    void this.emit(ev, () => {
-      let coins = ev.coins;
-      if (c.kind === 'charm' && !c.dupe) {
-        if (this.ctx.run.grantCharm(c.charmId)) {
-          ev.granted = true;
-        } else {
-          // peg board full, or the run refuses charm grants right now: pay the reference price in coins
-          coins = Math.round(REF_PRICE[c.rarity as Exclude<Rarity, 'dud' | 'coins'>] * si);
-          ev.fallback = true;
-          ev.coins = coins;
-        }
+    if (decide) {
+      this.decision = true;
+      this.busy = false;
+      void this.emit(ev);
+      return;
+    }
+    this.pending = null;
+    void this.emit(ev, () => this.settleCapsule(p, ev));
+  }
+
+  /** KEEP: settles the revealed prize (coins, or a charm grant). */
+  private keep(): void {
+    const p = this.pending;
+    if (!p || !this.decision) return;
+    this.decision = false;
+    this.pending = null;
+    const ev: Extract<Ev, { k: 'collect' }> = {
+      k: 'collect', kind: p.content.kind, rarity: p.content.rarity, coins: payoutOf(p.content),
+      granted: false, fallback: false, net: 0,
+    };
+    void this.emit(ev, () => this.settleCapsule(p, ev));
+  }
+
+  /**
+   * TRADE UP: the prize is credited toward a sealed capsule of the next tier. The player pays the difference (added to
+   * the open round), the sealed capsule is rolled now and waits in hand for its own twist.
+   */
+  private trade(): void {
+    const p = this.pending;
+    if (!p || !this.decision) return;
+    const si = this.stakeIndex;
+    const nt = nextTierOf(p.tier);
+    if (nt === null || !tradeOpen(p.tier, p.content, si, this.discount())) { this.sfx('buzzer'); return; }
+    const cost = tradeCost(p.tier, p.content, si, this.discount());
+    if (!this.addStake(cost)) return;              // base toasted and buzzed (funds)
+    this.decision = false;
+    p.tier = nt;
+    p.content = rollCapsule(this.rng, nt, this.rollEnv(false));
+    p.dudIdx = this.rng.int(0, 5);
+    p.forced = false;
+    this.inHand = false;
+    void this.emit({ k: 'trade', tier: nt, cost, cap: this.cosmetic.int(0, 359) });
+  }
+
+  /** Credit step: pays the coins or grants the charm (a full peg board pays the reference price), then moves pity. */
+  private settleCapsule(p: Pending, ev: Settle): void {
+    const c = p.content;
+    let coins = payoutOf(c);
+    if (c.kind === 'charm' && !c.dupe) {
+      if (this.ctx.run.grantCharm(c.charmId)) {
+        ev.granted = true;
+      } else {
+        // peg board full, or the run refuses charm grants right now: pay the reference price in coins
+        coins = Math.round(REF_PRICE[c.rarity as Exclude<Rarity, 'dud' | 'coins'>] * this.stakeIndex);
+        ev.fallback = true;
+        ev.coins = coins;
       }
-      const count = this.pityCount();
-      const next = nextPity(count, p.tier, c.rarity);
-      if (next !== count) this.ctx.run.stat(PITY_KEY(this.selfId), next - count);
-      this.settle({ gross: coins, tags: [c.rarity, ...(c.dupe ? ['dupe'] : [])] });
-    });
+    }
+    const count = this.pityCount();
+    const next = nextPity(count, p.tier, c.rarity);
+    if (next !== count) this.ctx.run.stat(PITY_KEY(this.selfId), next - count);
+    ev.net = coins - this.roundBet;
+    this.settle({ gross: coins, tags: [c.rarity, ...(c.dupe ? ['dupe'] : [])] });
   }
 
   // ── presentation (every peer) ───────────────────────────────────────────────────────────────────
@@ -284,6 +358,8 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     switch (ev.k) {
       case 'vend': return this.presentVend(ev, pc);
       case 'open': return this.presentOpen(ev, pc);
+      case 'trade': return this.presentTrade(ev, pc);
+      case 'collect': return this.presentCollect(ev, pc);
     }
   }
 
@@ -294,7 +370,6 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     for (const g of [capsuleTop, capsuleBottom]) {
       g.traverse((c) => { if (c instanceof THREE.Mesh) (c.material as THREE.MeshLambertMaterial).color?.copy(colour); });
     }
-    this.vendPrice = ev.price;
     this.refreshHud(true);
     const crank = cranks[ev.tier];
     if (!pc.fast) {
@@ -339,6 +414,25 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     this.refreshHud(true);
   }
 
+  /** TRADE UP: the sealed capsule of the next tier drops into hand in its own colour, then waits for its twist. */
+  private async presentTrade(ev: Extract<Ev, { k: 'trade' }>, pc: PresentCtx): Promise<void> {
+    const { capsuleTop, capsuleBottom, revealAnchor } = this.parts;
+    const groups = [capsuleTop, capsuleBottom];
+    const colour = new THREE.Color().setHSL(ev.cap / 360, 0.75, 0.55);
+    for (const g of groups) {
+      g.traverse((c) => { if (c instanceof THREE.Mesh) (c.material as THREE.MeshLambertMaterial).color?.copy(colour); });
+      g.position.copy(revealAnchor.position);
+      g.rotation.set(0, 0, 0);
+      g.visible = true;
+    }
+    this.sfx('stamp');
+    if (!pc.fast) await this.anim(0.35, (k) => { for (const g of groups) g.scale.setScalar(0.2 + 0.8 * k); }, 'outBack');
+    for (const g of groups) g.scale.setScalar(1);
+    this.inHand = this.isLocalOccupant;
+    this.ctx.fx.popText(revealAnchor, this.t('tradeDone', { tier: this.t(tierDef(ev.tier).id) }), GOLD, { scale: 1.0 });
+    this.refreshHud(true);
+  }
+
   /** SHAKE (0.35 s × 1–3; legendary adds a 0.6 s fake-out before the 4th) → OPEN pop → REVEAL 1.5 s with a beam. */
   private async presentOpen(ev: Extract<Ev, { k: 'open' }>, pc: PresentCtx): Promise<void> {
     this.inHand = false;
@@ -346,7 +440,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     const rarity = ev.rarity as Rarity;
     const at = revealAnchor;
     this.revealing = true;
-    this.callResult(ev);
+    if (!ev.decide) this.callResult(ev);
     this.refreshHud(true);
 
     if (!pc.fast) {
@@ -394,8 +488,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
         case 'legendary': this.sfx('win3'); this.sfx('bell'); this.ctx.fx.flash(GOLD, 0.3, 0.4); this.ctx.fx.zoomPunch(0.04, 0.3); break;
         case 'cursed': this.sfx('stinger'); this.sfx('lose'); this.ctx.fx.tint(VIOLET, 0.25, 1.5); break;
       }
-      if (ev.granted) this.sfx('stamp');
-      if (ev.coins > 0 || ev.fallback) this.ctx.fx.coins(this.model.anchors.coinOut, 8, { spread: 0.1, up: 0.2 });
+      if (!ev.decide) this.payFx(ev);
       if (ev.forced) this.ctx.fx.popText(at, this.t('pity'), GOLD, { scale: 1.1 });
       if (rarity === 'cursed') this.ctx.fx.flash(VIOLET, 0.15, 0.6);
     }
@@ -410,6 +503,21 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     this.parts.leds.win.setOn(false);
     this.revealing = false;
     this.refreshHud(true);
+  }
+
+  /** KEEP: the payout of a settled prize (coins pour, a granted charm stamps, a full board pays the fallback). */
+  private presentCollect(ev: Extract<Ev, { k: 'collect' }>, pc: PresentCtx): void {
+    if (!pc.fast) {
+      this.payFx(ev);
+      if (ev.fallback) this.ctx.fx.popText(this.parts.revealAnchor, this.t('pegFull', { n: fmtNum(ev.coins) }), 0xffd060, { scale: 1.0 });
+    }
+    this.callResult(ev);
+    this.refreshHud(true);
+  }
+
+  private payFx(ev: { granted: boolean; fallback: boolean; coins: number }): void {
+    if (ev.granted) this.sfx('stamp');
+    if (ev.coins > 0 || ev.fallback) this.ctx.fx.coins(this.model.anchors.coinOut, 8, { spread: 0.1, up: 0.2 });
   }
 
   /** Label text, colour and scale for the reveal of one open event. */
@@ -437,30 +545,49 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   private refreshHud(force: boolean): void {
     const sh = this.seatHud;
     if (!sh || !this.isLocalOccupant) return;
+    const p = this.pending;
+    const si = this.stakeIndex;
     const key = [this.tierSel, this.wallet(), this.price(this.tierSel), this.pityCount(), this.inHand ? 1 : 0,
-      this.pending ? 1 : 0, this.revealing ? 1 : 0].join('|');
+      p ? 1 : 0, this.revealing ? 1 : 0, this.decision ? 1 : 0, p ? p.tier : -1, p ? valueOf(p.content, si) : -1].join('|');
     if (!force && key === this.hudKey) return;
     this.hudKey = key;
     const pity = pityThreshold(this.mod('m.lootbox.pityAt', 0));
     const count = this.pityCount();
     sh.goal(this.tx('goal'));
-    if (this.revealing) sh.state(this.tx('stReveal'), 'neutral');
-    else if (this.pending && this.inHand) sh.state(this.tx('stTwist'), 'good', this.tx('stTwistSub'));
-    else if (this.pending) sh.state(this.tx('stRoll'), 'cyan');
-    else sh.state(this.tx('stReady'), 'gold', this.tx('stReadySub'));
-    sh.numbers([
-      { label: this.tx('nTier'), value: this.t(tierDef(this.tierSel).id), tone: 'gold' },
-      { label: this.tx('nPrice'), value: fmtNum(this.price(this.tierSel)), tone: 'neutral' },
-      { label: this.tx('nPity'), value: `${count}/${pity}`, tone: count >= pity - 2 ? 'warn' : 'neutral' },
-      { label: this.tx('nBalance'), value: fmtNum(this.wallet()), tone: 'neutral' },
-    ]);
-
     const ctrl: HudControl[] = [];
-    if (this.pending && this.inHand) {
-      ctrl.push({ key: this.k('primary'), label: this.tx('cTwist'), action: 'primary', primary: true });
-    } else if (!this.pending && !this.revealing) {
-      ctrl.push({ key: this.k('primary'), label: this.tx('cCrank'), action: 'primary', primary: true });
-      ctrl.push({ key: `${this.k('n1')}-${this.k('n3')}`, label: this.tx('cTier'), action: 'n1' });
+    if (this.revealing) {
+      sh.state(this.tx('stReveal'), 'neutral');
+    } else if (this.decisionUp() && p) {
+      const nt = nextTierOf(p.tier) ?? p.tier;
+      const odds = Math.round(rarePlusShare(nt, this.luck(), this.mod('m.lootbox.cursedOdds', 1)) * 100);
+      sh.state(this.tx('stDecide'), 'gold', this.tx('stDecideSub', {
+        v: fmtNum(valueOf(p.content, si)), cost: fmtNum(tradeCost(p.tier, p.content, si, this.discount())),
+        tier: this.t(tierDef(nt).id), odds: `${odds}`,
+      }));
+      sh.numbers([
+        { label: this.tx('nPrize'), value: fmtNum(valueOf(p.content, si)), tone: 'neutral' },
+        { label: this.tx('nTrade'), value: fmtNum(tradeCost(p.tier, p.content, si, this.discount())), tone: 'gold' },
+        { label: this.tx('nSealed'), value: this.t(tierDef(nt).id), tone: 'neutral' },
+        { label: this.tx('nRare'), value: `${odds}%`, tone: odds >= 10 ? 'good' : 'neutral' },
+      ]);
+      ctrl.push({ key: this.k('primary'), label: this.tx('cKeep'), action: 'primary', primary: true });
+      ctrl.push({ key: this.k('alt'), label: this.tx('cTrade'), action: 'alt' });
+    } else {
+      if (this.pending && this.inHand) sh.state(this.tx('stTwist'), 'good', this.tx('stTwistSub'));
+      else if (this.pending) sh.state(this.tx('stRoll'), 'cyan');
+      else sh.state(this.tx('stReady'), 'gold', this.tx('stReadySub'));
+      sh.numbers([
+        { label: this.tx('nTier'), value: this.t(tierDef(this.tierSel).id), tone: 'gold' },
+        { label: this.tx('nPrice'), value: fmtNum(this.price(this.tierSel)), tone: 'neutral' },
+        { label: this.tx('nPity'), value: `${count}/${pity}`, tone: count >= pity - 2 ? 'warn' : 'neutral' },
+        { label: this.tx('nBalance'), value: fmtNum(this.wallet()), tone: 'neutral' },
+      ]);
+      if (this.pending && this.inHand) {
+        ctrl.push({ key: this.k('primary'), label: this.tx('cTwist'), action: 'primary', primary: true });
+      } else if (!this.pending && !this.revealing) {
+        ctrl.push({ key: this.k('primary'), label: this.tx('cCrank'), action: 'primary', primary: true });
+        ctrl.push({ key: `${this.k('n1')}-${this.k('n3')}`, label: this.tx('cTier'), action: 'n1' });
+      }
     }
     ctrl.push({ key: this.k('help'), label: this.tx('cContents'), action: 'help' });
     ctrl.push({ key: this.k('exit'), label: this.tx('cLeave'), action: 'exit' });
@@ -475,18 +602,22 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     return [
       this.tx('tip1', { tiers: `${this.k('n1')}-${this.k('n3')}`, crank: this.k('primary') }),
       this.tx('tip2', { twist: this.k('primary') }),
+      this.tx('tip4', { keep: this.k('primary'), trade: this.k('alt') }),
       this.tx('tip3', { help: this.k('help') }),
     ];
   }
-  /** Contents card (H): the three tier tables. */
+  /** Contents card (H): the three tier tables and the trade-up rule. */
   private contentsLines(): Txt[] {
-    return [this.tx('tableTin'), this.tx('tableBrass'), this.tx('tableGilded'), this.tx('pityRule')];
+    return [this.tx('tableTin'), this.tx('tableBrass'), this.tx('tableGilded'), this.tx('pityRule'), this.tx('tradeRule')];
   }
-  /** Result callout for one open: net = coins paid − price; a charm grant is a win with no amount shown. */
-  private callResult(ev: Extract<Ev, { k: 'open' }>): void {
+  /**
+   * Result callout for one settled open or keep: net = coins paid − the round's stake (trade-up debits included). A charm
+   * grant is a win with no amount shown.
+   */
+  private callResult(ev: { granted: boolean; net: number }): void {
     if (!this.isLocalOccupant) return;
     if (ev.granted) { this.seatHud?.result('win', 0); return; }
-    const net = ev.coins - this.vendPrice;
+    const net = ev.net;
     this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'lose', net);
   }
 }

@@ -36,7 +36,15 @@ export const CROSS = 0.2;                // chance a coin crosses to the neighbo
 export const CENTRE = 0.2;               // |aim| below this is a centre drop
 export const GATE_CENTER = 0.06, GATE_OTHER = 0.01;
 export const GATE_LUCK = 0.01, GATE_LUCK_CAP = 0.15;   // +1 % absolute gate chance per luck point, cap +15 %
-export const THUMP_TILT_S = 20;          // second thump within this many s → tilt
+/**
+ * THUMP: shove the shelf. Each station has a heat meter with THUMP_MAX pips. A thump adds one pip and pushes SHOVE_COINS
+ * coins off the shelf (they fall through the normal gutter and cross rules, so the shove pays on average). The pip
+ * cools by one every THUMP_COOL_S. The thump that would fill the last pip trips the TILT alarm: the tray is lost and the
+ * station is locked for TILT_S. The shove pays go into the governor, so the live RTP is steered as for a drop.
+ */
+export const THUMP_MAX = 3;
+export const THUMP_COOL_S = 8;
+export const SHOVE_COINS = 3;
 export const TILT_S = 30;
 export const TRAY_TOKEN_RATE = 3;        // drops per second (hold to fire)
 
@@ -48,7 +56,7 @@ export const HOOK_MAGNET = 'm.coinpusher.trayMagnet' as ModHook;   // crossing r
 
 export type Bonus = 'S' | 'L' | 'W' | 'P' | 'J';
 export type Prize = 'common' | 'uncommon' | 'rare';
-export type Tag = 'coin' | 'shower' | 'prize' | 'plate';
+export type Tag = 'coin' | 'shower' | 'prize' | 'plate' | 'shove';
 export type StationIx = 0 | 1;
 
 export const BONUS_WEIGHTS: readonly number[] = [50, 25, 15, 8, 2];   // S, L, W, P, J (× prizeChance on P)
@@ -137,6 +145,18 @@ export function rollDrop(rng: Rng, k: Knobs, st: StationIx, aim: number, streak 
     out.fates.push(fall(rng, k, st, extra, 'plate', PLATE_UNITS, false, null));
   }
   return out;
+}
+
+/** The thump's shove: `n` shelf coins fall through the same gutter and cross rules as a drop (no lucky gate). */
+export function rollShove(rng: Rng, k: Knobs, st: StationIx, n: number = SHOVE_COINS): Fate[] {
+  const out: Fate[] = [];
+  for (let i = 0; i < n; i++) out.push(fall(rng, k, st, 0, 'shove', 1, false, null));
+  return out;
+}
+
+/** Heat pips left at host time `now` (ms): the stored heat cooled by one pip per THUMP_COOL_S since `at`. */
+export function heatNow(heat: number, at: number, now: number): number {
+  return Math.max(0, heat - Math.max(0, now - at) / (THUMP_COOL_S * 1000));
 }
 
 /** Units credited by a roll (coin + bonus). */

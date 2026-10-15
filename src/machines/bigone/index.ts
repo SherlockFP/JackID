@@ -30,7 +30,8 @@ import { px5Width } from '@/core/texgen/font';
 import { buildModel, type BigOneParts } from './model';
 import {
   BASE_VALUE, CELLS, HOLD_COST, LUCKY_SPINS, MAW, MAX_LINE_MULT, MAX_STAKE, PATTERN_IDS, PATTERN_MULT, SEED_STAKES, SYM_COUNT, SYM_NAMES,
-  buildMods, curseChance, playHeadless, playRound, type Mods, type Outcome, type PatternId, type Round,
+  buildMods, chaseOf, chaseRoll, curseChance, playHeadless, playRound, CHASE_MULT, CHASE_P,
+  type ChaseOffer, type Mods, type Outcome, type PatternId, type Round,
 } from './rules';
 import { STRINGS } from './strings';
 import { SYMBOL_BG, paintSymbol } from './symbols';
@@ -70,7 +71,13 @@ type EvalEv = {
   round: number;
 };
 type HoldEv = { k: 'hold'; reel: number };
-type Ev = SpinEv | EvalEv | HoldEv;
+/** CHASE: the extra spin of a chased win. `amount` is what it pays (0 on a miss), `stake` the round's stake. */
+type ChaseEv = { k: 'chase'; win: boolean; grid: number[]; line: number[]; amount: number; stake: number; tags: string[] };
+/** COLLECT: the pot is taken as it stands. */
+type CollectEv = { k: 'collect'; amount: number; stake: number };
+type Ev = SpinEv | EvalEv | HoldEv | ChaseEv | CollectEv;
+/** A chase offer waiting for the player: the pot at risk, its line and the round's stake. */
+type Offer = ChaseOffer & { stake: number };
 type State = {
   grid: number[]; meter: number; k: number; night: number; last10: number[]; hold: number; wardUsed: number; gross: number;
   /** The last spin's pattern breakdown, kept on the top screen until the next spin. */
@@ -157,6 +164,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   /** Combo show: a new show bumps `comboSeq` so an older show's timers do nothing; `comboOn` keeps the celebrate from taking the bulbs. */
   private comboSeq = 0;
   private comboOn = false;
+  /** A chased win waiting for the player: SPACE collects the pot, G chases it. Local only; `roundOpen` stays true meanwhile. */
+  private offer: Offer | null = null;
 
   protected createModel(kit: KitX): MachineModel<BigOneParts> {
     return buildModel(kit, this.modelOpts);
@@ -200,7 +209,11 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     if (local) {
       this.autoLeft = 0;
       this.seatHud?.hide();
-      if (this.roundOpen) this.settle({ gross: 0 });   // safety net: never strand a stake
+      if (this.offer) {                                // a chased win left on the table is collected, never lost
+        const o = this.offer;
+        this.offer = null;
+        this.settle({ gross: o.pot, tags: o.tags });
+      } else if (this.roundOpen) this.settle({ gross: 0 });   // safety net: never strand a stake
     }
     this.attractor.reset();
     this.refresh();
@@ -209,6 +222,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
 
   /** E / pause "STAND UP": cancel autoplay now. The current round (if any) still settles, then the seat is released. */
   protected override onStandUpRequest(): void {
+    if (this.offer) this.collectKey();               // leaving with a chase on offer collects the pot first
     if (this.autoLeft === 0) return;
     this.autoLeft = 0;
     this.showHud();
@@ -257,12 +271,16 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     this.showHud();
   }
 
+  /** SPACE: collects a chase offer when one is open, otherwise spins. */
   private spinKey(): void {
+    if (this.offer) { this.collectKey(); return; }
     if (this.autoLeft > 0) return;
     void this.spin();
   }
 
+  /** G: chases the open offer when there is one, otherwise toggles autoplay. */
   private toggleAuto(): void {
+    if (this.offer) { void this.chaseKey(); return; }
     if (this.autoLeft > 0) { this.autoStop(); return; }
     this.autoLeft = this.autoSize;
     this.sfx('button');
@@ -309,9 +327,11 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       if (!this.beginRound(stake)) { this.autoStop(); return; }
       this.showHud();
       let res: Round | null = null;
+      let offer: ChaseOffer | null = null;
       try {
         const round = this.roll(stake);
         res = round;
+        offer = chaseOf(round);                          // a line win may be chased: its settle waits for the player
         const since0 = this.sinceCurse();
         const night = this.ctx.run.night();
         const n = round.spins.length;
@@ -321,15 +341,16 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
           const tags = last ? round.tags : o.tags;
           await this.emit(spinEvent(o, stake, since0 + i, night, i));
           const ev = evalEvent(o, stake, { free: i, lucky: round.lucky, sevens: i === 0 ? o.sevens : [], last, round: round.gross, tags });
-          // the round settles once, on its last spin (settle-before-present, DECISIONS G)
-          await this.emit(ev, last ? () => this.settle({ gross: round.gross, tags: round.tags }) : undefined);
+          // the round settles once, on its last spin (settle-before-present, DECISIONS G); a chase offer settles later
+          await this.emit(ev, last && !offer ? () => this.settle({ gross: round.gross, tags: round.tags }) : undefined);
         }
+        if (offer) { this.offer = { ...offer, stake }; this.busy = false; }   // open the choice; releasing stays possible
       } finally {
-        if (this.roundOpen) this.settle({ gross: 0 });   // never strand a stake (rule 7)
+        if (this.roundOpen && !this.offer) this.settle({ gross: 0 });   // never strand a stake (rule 7)
       }
       if (res && this.autoLeft > 0 && !this.disposed) {
         const big = tierAtLeast(juiceTier(res.gross, stake, res.tags), 'big');
-        this.autoLeft = big || res.curse || res.fill || res.lucky ? 0 : this.autoLeft - 1;
+        this.autoLeft = big || res.curse || res.fill || res.lucky || this.offer ? 0 : this.autoLeft - 1;
         if (this.autoLeft > 0) void this.wait(0.6).then(() => this.autoTick());
       }
     } finally {
@@ -375,7 +396,80 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       case 'spin': return this.presentSpin(ev, pc);
       case 'eval': return this.presentEval(ev, pc);
       case 'hold': return this.presentHold(ev);
+      case 'chase': return this.presentChase(ev, pc);
+      case 'collect': return this.presentCollect(ev, pc);
     }
+  }
+
+  /** COLLECT (SPACE): takes the pot as it stands and settles the round. */
+  private collectKey(): void {
+    const o = this.offer;
+    if (!o || this.inRound) return;
+    this.offer = null;
+    this.inRound = true;
+    void this.emit({ k: 'collect', amount: o.pot, stake: o.stake }, () => this.settle({ gross: o.pot, tags: o.tags }))
+      .finally(() => { this.inRound = false; this.showHud(); });
+  }
+
+  /** CHASE (G): one extra spin on the same line. A hit pays x3 the pot; a miss loses it. The stake is not charged again. */
+  private async chaseKey(): Promise<void> {
+    const o = this.offer;
+    if (!o || this.inRound || !this.isLocalOccupant) return;
+    this.offer = null;
+    this.inRound = true;
+    try {
+      const c = chaseRoll(this.rng, this.currentMods().weights, o, o.stake);
+      const tags = c.win ? ['win', 'bigone:chase'] : [];
+      await this.emit(
+        { k: 'chase', win: c.win, grid: c.grid, line: o.line, amount: c.gross, stake: o.stake, tags },
+        () => this.settle({ gross: c.gross, tags }),
+      );
+    } finally {
+      this.inRound = false;
+      this.showHud();
+    }
+  }
+
+  /** The chase spin on every peer: the reels turn, the line lights on a hit, the win is called out. */
+  private async presentChase(ev: ChaseEv, pc: PresentCtx): Promise<void> {
+    const s = this.state;
+    s.tally = [];
+    this.lastStake = ev.stake;
+    this.clearHighlights();
+    for (let i = 0; i < 5; i++) this.paintReel(i, ev.grid);
+    this.drawText(this.t('chaseSpin'));
+    if (!pc.fast) {
+      this.sfx('reelStart');
+      const spinLoop = this.ctx.audio.play('reelLoop', { loop: true, param: 0.6, vol: 0.7 });
+      await Promise.all([0, 1, 2, 3, 4].map((i) => this.spinReel(i, STOP_T[i] * FREE_SPEED)));
+      spinLoop?.stop(0.06);
+    }
+    s.gross = ev.amount;
+    if (ev.win) this.lightCells(ev.line, 2);
+    this.drawText(this.t(ev.win ? 'chaseHit' : 'chaseMiss', { n: fmtCoins(ev.amount) }));
+    if (pc.local) this.callout(this.netOf(ev.amount, ev.stake, pc.local));
+    if (ev.win) {
+      this.sfx('win2');
+      await this.celebrate(juiceTier(ev.amount, ev.stake, ev.tags), {
+        amount: Math.max(0, this.netOf(ev.amount, ev.stake, pc.local)), mult: ev.amount / Math.max(1, ev.stake),
+        bet: ev.stake, bulbs: this.comboOn ? undefined : this.parts.bulbs.window, lamps: this.parts.paylineLamps,
+        restore: () => { if (!this.comboOn) this.bulbsIdle(); }, fast: pc.fast,
+      });
+    } else {
+      this.commiserate({ amount: ev.stake, at: this.parts.screens.top.mesh });
+      if (!pc.fast) await this.wait(0.3);
+    }
+    this.clearHighlights();
+    this.drawScreen();
+  }
+
+  /** The pot is collected: the callout names the net, the top screen shows the pot. */
+  private presentCollect(ev: CollectEv, pc: PresentCtx): void {
+    this.state.gross = ev.amount;
+    this.lastStake = ev.stake;
+    if (pc.local) this.callout(this.netOf(ev.amount, ev.stake, pc.local));
+    this.sfx('win1');
+    this.drawScreen();
   }
 
   private presentHold(ev: HoldEv): void {
@@ -865,7 +959,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
 
   /** The rules card: five rules, the symbol values, then every pattern with its multiplier, three to a line. */
   private rulesLines(): Txt[] {
-    const lines: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6', 'rule7'].map((k) => ({ k: 'm.bigone.' + k }));
+    const lines: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6', 'rule7', 'rule8'].map((k) => ({ k: 'm.bigone.' + k }));
     const vals = this.currentMods().values;
     lines.push(SYM_NAMES.map((n, s) => `${this.t(`sym_${n}`)} ${vals[s] ?? BASE_VALUE[s]}`).join('   '));
     for (let i = 0; i < PATTERN_IDS.length; i += 3) {
@@ -900,8 +994,9 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     sh.goal({ k: 'm.bigone.goal' });
     sh.stake(this.bet);
 
-    // STATE: auto, spinning, a held reel, or ready for the next spin
-    if (this.autoLeft > 0) sh.state({ k: 'm.bigone.stAuto', v: { n: this.autoLeft } }, 'cyan', { k: 'm.bigone.stAutoSub' });
+    // STATE: a chase on offer, auto, spinning, a held reel, or ready for the next spin
+    if (this.offer) sh.state({ k: 'm.bigone.stChase', v: { n: fmtCoins(this.offer.pot) } }, 'gold', { k: 'm.bigone.stChaseSub', v: { n: Math.round(1 / CHASE_P) } });
+    else if (this.autoLeft > 0) sh.state({ k: 'm.bigone.stAuto', v: { n: this.autoLeft } }, 'cyan', { k: 'm.bigone.stAutoSub' });
     else if (busy) sh.state({ k: 'm.bigone.stSpinning' }, 'cyan');
     else if (s.hold >= 0) sh.state({ k: 'm.bigone.stHold', v: { n: s.hold + 1 } }, 'good', { k: 'm.bigone.stHoldSub', v: { c: fmtCoins(Math.ceil(this.bet * HOLD_COST)) } });
     else if (!SeatHud.floorOpen()) sh.floorClosed();
@@ -920,7 +1015,10 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
 
     // CONTROL BAR: only what is valid right now
     const ctrl: HudControl[] = [];
-    if (this.autoLeft > 0) {
+    if (this.offer) {
+      ctrl.push({ key: this.k('primary'), label: { k: 'm.bigone.cCollect', v: { n: fmtCoins(this.offer.pot) } }, action: 'primary', primary: true });
+      ctrl.push({ key: this.k('auto'), label: { k: 'm.bigone.cChase', v: { m: CHASE_MULT, n: Math.round(1 / CHASE_P) } }, action: 'auto' });
+    } else if (this.autoLeft > 0) {
       ctrl.push({ key: this.k('auto'), label: { k: 'm.bigone.cStopAuto' }, action: 'auto', primary: true });
     } else {
       if (!busy && SeatHud.floorOpen()) {

@@ -26,6 +26,7 @@ import type { Kit } from '@/kit/types';
 import * as manga from '@/core/ui/manga';
 import type { LordId } from '@/game/hollow/rules';
 import { hollowDoorLink as hollowDoor } from '@/core/hollowDoorLink';
+import { createRng } from '@/core/rng';
 import { buildModel, CHAMBER_STEP, LORD_X, type LordsParts } from './model';
 import * as R from './rules';
 import { STRINGS } from './strings';
@@ -113,6 +114,11 @@ export default class LordsTable extends TableBase<LordsParts, Ev, Snap, Act> {
   private lastSpin: { clicks: number; reflect: boolean } | null = null;
   /** The black cut in place after a fire; removed by the end card. */
   private blackoutDone: (() => void) | null = null;
+  /** Idle head turns, per Lord (yaw, the target yaw, seconds until the next target). Seeded, render rate only. */
+  private headYaw = [0, 0, 0];
+  private headTo = [0, 0, 0];
+  private headLeft = [1.5, 2.5, 3.5];
+  private readonly headRng = createRng(0x1ad5);
 
   protected createModel(kit: Kit): MachineModel<LordsParts> { return buildModel(kit, this.modelOpts); }
 
@@ -126,6 +132,19 @@ export default class LordsTable extends TableBase<LordsParts, Ev, Snap, Act> {
     this.seatHud?.dispose();
     this.blackoutDone?.();
     super.dispose();
+  }
+
+  /** Slow idle head turns: each Lord drifts to a new point in the room every few seconds (a slow ease, no snap). */
+  frame(dt: number): void {
+    this.parts.lords.forEach((d, i) => {
+      this.headLeft[i] -= dt;
+      if (this.headLeft[i] <= 0) {
+        this.headTo[i] = this.headRng.float(-0.5, 0.5);
+        this.headLeft[i] = this.headRng.float(3.5, 6.5);
+      }
+      this.headYaw[i] += (this.headTo[i] - this.headYaw[i]) * Math.min(1, dt * 0.4);
+      d.head.rotation.y = this.headYaw[i];
+    });
   }
 
   // ── local input → action to the host ─────────────────────────────────────────────────────────

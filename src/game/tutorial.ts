@@ -23,6 +23,7 @@ import type { WorldHost } from '@/world/world';
 import type { DebtRun } from '@/game/run';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { holdClock, releaseClock } from '@/game/clockHold';
+import { inUnderneath } from '@/world/hollow';
 import { TILT_FREE_PULLS } from '@/game/data/schedule';
 import { createBrokePrompt } from '@/game/brokePrompt';
 
@@ -254,6 +255,8 @@ function startSteps(host: TutorialHost): Tutorial | null {
   return {
     update(dt: number): void {
       if (disposed) return;
+      // THE UNDERNEATH pauses the tutorial: its box and target marker hide, and no step, timer or skip moves until the player is back up.
+      if (inUnderneath()) { el.style.display = 'none'; showTarget(null); releaseClock('tutorial'); return; }
       total += dt;
       age += dt;
 

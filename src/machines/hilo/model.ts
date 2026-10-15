@@ -17,6 +17,7 @@ import type { ButtonPart, LedPanelPart, MarqueePart, ScreenSurface, BulbChain } 
 import type { KitX } from '@/kit';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 export type FlapCard = {
   root: THREE.Group;
@@ -88,9 +89,15 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<HiloParts> {
     r.name = `flap-${tag}`;
     r.position.set(cx, CARD_Y, 0);
     root.add(r);
-    // 240 x 336 px, no CRT scanlines: the rank and suit stay crisp at the play pose
-    const face = kit.screen({ w: CARD_W, h: CARD_H, px: [240, 336], bezel: DARK, glow: 0.5, scanlines: false });
-    face.mesh.position.set(0, 0, FRONT + 0.008);
+    // 360 x 504 px (was 240 x 336, upscaled ~1.4x at the seat): no CRT scanlines, no halo, linear + mips below, so the
+    // rank and suit stay crisp at the end-of-round frame. kit.screen bulges its glass ~21 mm towards the seat, which
+    // would swallow the flaps when they flip flat, so the card glass is a flat plane 3 mm in front of the frame, just
+    // behind the leaves (which cover it when they flip over).
+    const face = kit.screen({ w: CARD_W, h: CARD_H, px: [360, 504], bezel: DARK, scanlines: false });
+    face.mesh.geometry.dispose();
+    face.mesh.geometry = new THREE.PlaneGeometry(CARD_W, CARD_H);
+    face.mesh.position.set(0, 0, FRONT + 0.0105);
+    crispTexture(face.tex, 8);
     r.add(face.mesh);
     const leaves: THREE.Object3D[] = [];
     for (let i = 0; i < FLAP_LEAVES; i++) {

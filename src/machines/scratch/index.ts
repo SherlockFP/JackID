@@ -26,7 +26,7 @@ import { buildModel, cardPose, FRONT_Z, type ScratchParts } from './model';
 import {
   CARD_COUNT, HOOK_CHARM, HOOK_DISCOUNT, HOOK_SECOND, HOOK_TOP, MAX_QTY, PRIZE_MULTS, PRIZE_WEIGHTS,
   RARITY_RARE, RARITY_UNCOMMON, SECOND_CHANCE_EVERY, WEIGHT_TOTAL, ZONE_REVEAL, playHeadless, priceOf, rollCard,
-  spotBest, spotLeft, spotOpen, type Card, type CardOpts,
+  buyOdds, buyThird, spotBest, spotLeft, spotOpen, type Card, type CardOpts,
 } from './rules';
 import { FACE_H, FACE_W, brush, clearedFraction, paintFace, paintFoil, zoneRects, type Rect, type Text } from './faces';
 import { STRINGS } from './strings';
@@ -40,6 +40,8 @@ type Ev =
   | { k: 'vend'; t: number; price: number; paid: number; freeUsed: number; cards: Card[] }
   | { k: 'stroke'; i: number; pts: number[] }
   | { k: 'zone'; i: number; z: number }
+  /** BUY THE THIRD: the card after the buy (its cells, gross and prize mult), and the cost paid. */
+  | { k: 'buy'; i: number; cells: number[]; gross: number; mult: number; cost: number }
   /** how: 0 = scratched out, 1 = swept (Space), 2 = auto-swept when leaving. */
   | { k: 'done'; i: number; how: number; gross: number };
 
@@ -215,7 +217,11 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
         else this.sweepActive();
         break;
       // a PIT PENNY spot is the player's own decision: the sweep keys leave it alone until its picks are spent
-      case 'collect': case 'secondary': if (this.pend && !this.spotActive()) this.autoFinish(); break;
+      // COLLECT while a PIT PENNY spot is picked buys the third (when a pair shows); otherwise it sweeps the rest
+      case 'collect': case 'secondary':
+        if (this.pend && this.spotActive()) { if (a === 'collect') this.buyTheThird(); }
+        else if (this.pend) this.autoFinish();
+        break;
       case 'help': this.sfx('click'); this.seatHud?.rules(this.rulesLines()); break;
     }
   }
@@ -370,6 +376,43 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     if (!spotOpen(b.cards[i].cells, [...p.zoneSent[i]])) this.finishCard(1);
   }
 
+  /**
+   * BUY THE THIRD (COLLECT key while a PIT PENNY pick is open and a pair shows): +50 % of the card price is staked, and one
+   * more spot opens with the odds on the button. A hit adds the pair's prize to the card; a miss opens a non-matching spot.
+   */
+  private buyTheThird(): void {
+    const p = this.pend, b = this.state.batch;
+    if (!p || !b || !this.spotActive() || !this.isLocalOccupant) return;
+    const i = p.next;
+    const card = b.cards[i];
+    const revealed = [...p.zoneSent[i]];
+    const odds = buyOdds(card, revealed);
+    if (!odds) { this.sfx('buzzer', { vol: 0.4 }); return; }
+    if (!this.addStake(odds.cost)) return;                // unaffordable: addStake toasts and buzzes
+    const t = buyThird(this.rng, card, revealed);
+    if (!t) return;
+    p.total += t.gross - p.gross[i];
+    p.gross[i] = t.gross;
+    void this.emit({ k: 'buy', i, cells: t.cells, gross: t.gross, mult: t.gross / card.price, cost: t.cost });
+    p.zoneSent[i].add(t.z);
+    void this.emit({ k: 'zone', i, z: t.z });
+    if (!spotOpen(t.cells, [...p.zoneSent[i]])) this.finishCard(1);
+  }
+
+  /** The buy on every peer: the card takes its new cells and prize, and is marked bought (its spot opens next). */
+  private presentBuy(ev: Extract<Ev, { k: 'buy' }>, pc: PresentCtx): void {
+    const b = this.state.batch;
+    const c = b?.cards[ev.i];
+    if (!b || !c) return;
+    c.cells = ev.cells;
+    c.gross = ev.gross;
+    c.mult = ev.mult;
+    c.bought = true;
+    this.sfx('coinDrop', { vol: 0.7 });
+    this.ctx.fx.popText(this.parts.cardPlanes[ev.i], this.t('bought', { n: fmtCoins(ev.cost) }), GOLD, { dur: 1.0, rise: 0.25, scale: 1.0 });
+    if (this.isLocalOccupant) this.showHud();
+  }
+
   /** Auto-sweep every card still open (leaving, or the collect key). The last one settles the batch. */
   private autoFinish(): void {
     this.busy = true;                                     // holds the release until the batch has settled
@@ -424,6 +467,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
       case 'vend': return this.presentVend(ev, pc);
       case 'stroke': return this.presentStroke(ev, pc);
       case 'zone': return this.presentZone(ev, pc);
+      case 'buy': return this.presentBuy(ev, pc);
       case 'done': return this.presentDone(ev, pc);
     }
   }
@@ -697,6 +741,11 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     if (spot) {
       ctrl.push({ key: this.k('primary'), label: this.tx('cPick'), action: 'primary', primary: true });
       ctrl.push({ key: `${this.k('left')}/${this.k('right')}`, label: this.tx('cMove'), action: 'left' });
+      const odds = p && s.batch ? buyOdds(s.batch.cards[p.next], [...p.zoneSent[p.next]]) : null;
+      if (odds) {
+        const pct = odds.chance >= 0.01 ? `${Math.round(odds.chance * 100)}%` : '<1%';
+        ctrl.push({ key: this.k('collect'), label: this.tx('cBuy', { c: fmtCoins(odds.cost), p: pct }), action: 'collect' });
+      }
     } else if (open) {
       ctrl.push({ key: this.k('primary'), label: this.tx('cSweep'), action: 'primary', primary: true });
       ctrl.push({ key: this.k('collect'), label: this.tx('cSweepAll'), action: 'collect' });
@@ -731,6 +780,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
       this.tx('rule2'),
       this.tx('rule3'),
       this.tx('rule4'),
+      this.tx('rule5'),
       this.tx('topOdds', { m: PRIZE_MULTS[sel][last], p: odds, card: this.t(`c${sel}`) }),
     ];
   }

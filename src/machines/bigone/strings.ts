@@ -37,6 +37,10 @@ export const STRINGS: MachineStrings = {
     rule4: 'Every pattern pays at least twice its symbol value.',
     rule5: 'Patterns stack and are tallied one by one, smallest first. Each later pattern adds a combo bonus. When two reels line up, the next one slows down.',
     rule6: 'After a spin that did not pay, hold one reel for the next spin. It costs 50% more stake.',
+    rule8: 'After a win: COLLECT the pot, or CHASE it for one spin. A chase hit on the same line pays x3 the win. A miss loses it.',
+    stChase: 'WIN {n}: COLLECT OR CHASE', stChaseSub: 'Chase: 1 in {n} to hit the same line again',
+    cCollect: 'COLLECT {n}', cChase: 'CHASE x{m} · 1 IN {n}',
+    chaseSpin: 'CHASE', chaseHit: 'CHASE HIT +{n}', chaseMiss: 'CHASE MISSED',
     rule7: 'Three Suns land on one spin: LUCKY 7, three free spins that pay half.',
   },
   tr: {
@@ -71,6 +75,10 @@ export const STRINGS: MachineStrings = {
     rule4: 'Her desen, sembol değerinin en az iki katını öder.',
     rule5: 'Desenler üst üste biner ve küçükten büyüğe tek tek sayılır. Sonraki her desen kombo bonusu ekler. İki makara hizalanınca sıradaki yavaşlar.',
     rule6: 'Ödemeyen bir çevirmeden sonra bir makarayı sonraki çevirme için tut. %50 fazla bahis öder.',
+    rule8: 'Kazançtan sonra: KASAYI AL ya da bir çevirme için KOVALA. Aynı hatta kovalama tutarsa kazanç x3 olur. Tutmazsa kazanç gider.',
+    stChase: 'KAZANÇ {n}: AL YA DA KOVALA', stChaseSub: 'Kovala: aynı hattı tekrar tutma 1/{n}',
+    cCollect: 'AL {n}', cChase: 'KOVALA x{m} · 1/{n}',
+    chaseSpin: 'KOVALA', chaseHit: 'KOVALA TUTTU +{n}', chaseMiss: 'KOVALA TUTMADI',
     rule7: 'Bir çevirmede üç Güneş gelirse: ŞANS 7, yarı ödemeli üç bedava çevirme.',
   },
 };

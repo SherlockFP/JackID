@@ -17,6 +17,7 @@ import type { HudAnchorId } from '@/core/ui/types';
 import { claimAnnounce, type UIOverlayX } from '@/core/ui/ui';
 import { COLORS, h, uiSfx } from '@/core/ui/widgets';
 import { circuitView, lampLabel, type LampEntry, type LampView } from '@/game/circuit';
+import { inUnderneath } from '@/world/hollow';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { InstanceId, PlayerId } from '@/core/types';
 import { initial, mmss, Roller, signed, wallClock } from './hud/fmt';
@@ -113,6 +114,8 @@ export function createHud(): Hud {
   const lampHot = h('span', 'hot', lampsEl);
   const lampCold = h('span', 'cold', lampsEl);
   let lampsSeen: LampView = { hot: [], cold: [] };
+  /** True while the player is in THE UNDERNEATH: the pit's lamp lines stay hidden there. */
+  let voidOn = false;
   let seated = false;
 
   // ── top-right: quota ────────────────────────────────────────────────────────────────────────────
@@ -241,7 +244,7 @@ export function createHud(): Hud {
     setText(lampCold, cold);
     const none = !hot && !cold && !!v.pocketShort;
     if (none) setText(lampHot, t('lamps.none'));
-    setCls(lampsEl, 'hidden', seated || (!hot && !cold && !none));
+    setCls(lampsEl, 'hidden', voidOn || seated || (!hot && !cold && !none));
   }
   function showLamps(v: LampView): void {
     lampsSeen = v;
@@ -528,8 +531,16 @@ export function createHud(): Hud {
   let chaseLeft = 0;
   function updateLamps(dt: number): void {
     chaseLeft -= dt;
-    if (chaseLeft > 0 || lampsSeen.hot.length === 0 || seated) return;
+    if (chaseLeft > 0 || lampsSeen.hot.length === 0 || seated || voidOn) return;
     chaseLeft = CHASE_S;
+    renderLamps();
+  }
+
+  /** Hides the pit's lamp lines while the player is down in THE UNDERNEATH (zone `hollow`); shows them again on the way up. */
+  function updateVoid(): void {
+    const v = inUnderneath();
+    if (v === voidOn) return;
+    voidOn = v;
     renderLamps();
   }
 
@@ -549,6 +560,7 @@ export function createHud(): Hud {
       updatePulls();
       updateCharms();
       updatePhone(dt);
+      updateVoid();
       updateLamps(dt);
       updateFeed(dt);
       updateDread();

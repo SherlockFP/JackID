@@ -42,12 +42,20 @@ export const TABLE_POS: V3 = [H[0], H[1] + TABLE_Y, H[2] - 1.5];
 export const ARRIVE: V3 = [H[0], H[1], H[2] + 6];
 /** The way back up (south wall, opening faces the room). */
 export const EXIT_DOOR: V3 = [H[0], H[1], H[2] + UNDER_HALF];
-/** Lord stations: behind the table, facing it (mannequin forward is +Z). */
+/**
+ * Lord stations: the three dealers of the lordstable machine, behind the table (its LORD_X ±1.3 / 0 and LORD_Z −0.72 from the
+ * table centre). The floor point under each Lord's feet.
+ */
 export const LORD_POS: Record<LordId, V3> = {
-  ash: [H[0] - 3.2, H[1], H[2] - 3.9],
-  ledgers: [H[0], H[1], H[2] - 4.3],
-  mirrors: [H[0] + 3.2, H[1], H[2] - 3.9],
+  ash: [H[0] - 1.3, H[1], H[2] - 2.22],
+  ledgers: [H[0], H[1], H[2] - 2.22],
+  mirrors: [H[0] + 1.3, H[1], H[2] - 2.22],
 };
+/** Lord interaction band (m above the floor): above the table's own pick band (0.2 to 1.4), so E on the table sits and E on a Lord picks him. */
+export const LORD_PICK_Y: readonly [number, number] = [1.5, 2.9];
+
+/** The hanging lamp: its shade sits this far below the room's ceiling (the cord runs up to the ceiling). */
+export const LAMP_DROP = 2.2;
 
 /**
  * Trigger (a) doorway: the cracked wall plate, the Sump's north wall (inner face z = 6, facing +Z). The Sump is the
