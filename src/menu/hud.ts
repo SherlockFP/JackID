@@ -24,7 +24,9 @@ import { inUnderneath } from '@/world/hollow';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { InstanceId, PlayerId } from '@/core/types';
 import { initial, mmss, Roller, signed, wallClock } from './hud/fmt';
-import { createProcPops, goldBurst, pegBadge, pegLabel, playProcTick } from './hud/charmProc';
+import { createProcPops, goldBurst, pegBadge, pegLabel, playProcTick, renderSetChips } from './hud/charmProc';
+import { charmDef } from '@/game/charms/engine';
+import { activeSets } from '@/game/charms/sets';
 import { houseMoodPreviewParts, payoutChip, type PayoutPart } from '@/game/houseMood';
 import './hud/hud.css';
 import { nightPaid } from '@/machines/debt_terminal/night';
@@ -606,6 +608,8 @@ export function createHud(): Hud {
         el.title = name;
         pegs.push({ el, face: h('span', 'face', el, initial(name)), base: initial(name), name, text: '', title: '' });
       }
+      // Archetype set chips (sets.ts) next to the pegs: one per set switched on by the held charms. Rebuilt with the pegs.
+      renderSetChips(charmRow, activeSets(list, (id) => charmDef(id)?.tags));
     }
     // Live counters: the face shows the charm's counter (3/6, +16%) when it has one, else its initial. Written on change only.
     for (let i = 0; i < pegs.length && i < list.length; i++) {

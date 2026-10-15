@@ -49,7 +49,7 @@ type Ev =
   | { k: 'slock'; i: number; ok: boolean; why: string; off?: boolean };
 
 /** The selected card's DOM parts. */
-interface PawnCard { el: HTMLElement; icon: HTMLCanvasElement; name: HTMLElement; meta: HTMLElement; price: HTMLElement; desc: HTMLElement; note: HTMLElement; pips: HTMLElement }
+interface PawnCard { el: HTMLElement; icon: HTMLCanvasElement; name: HTMLElement; meta: HTMLElement; price: HTMLElement; desc: HTMLElement; note: HTMLElement; pips: HTMLElement; ribbon: HTMLElement; evo: HTMLElement }
 
 const GOLD = 0xffd040;
 const BLUE = 0x60a0ff;
@@ -116,6 +116,9 @@ export const def: MachineDef = {
       stArm: '{key} again to buy · {price}',
       stArmSub: 'Second press within {s} s',
       cConfirm: 'CONFIRM',
+      evolveRibbon: 'EVOLVE +',
+      'evo.turnstile': 'Payouts get ×(1 + 0.12 per Turn), up to 6 Turns.',
+      'evo.mimic': 'Copies the two cheapest charms that are not Legendary or Cursed.',
     },
     tr: {
       name: 'Rehin Penceresi',
@@ -163,6 +166,9 @@ export const def: MachineDef = {
       stArm: '{key} TEKRAR BAS · {price}',
       stArmSub: '{s} sn içinde ikinci kez bas',
       cConfirm: 'ONAYLA',
+      evolveRibbon: 'GELİŞTİR +',
+      'evo.turnstile': 'Kazançlar Tur başına ×(1 + 0,12) öder, en fazla 6 Tur.',
+      'evo.mimic': 'Legendary ya da Lanetli olmayan en ucuz iki tılsımı kopyalar.',
     },
   },
 };
@@ -685,7 +691,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
         continue;
       }
       const s = open ? stock[i] ?? null : null;
-      this.parts.icons[i]?.set(s ? { id: s.charmId, rarity: s.rarity, cursed: s.cursed, tag: s.tag } : null, sel);
+      this.parts.icons[i]?.set(s ? { id: s.charmId, rarity: s.rarity, cursed: s.cursed, tag: s.tag, evolve: s.evolve } : null, sel);
     }
     if (sm && st) this.drawStampLedger(offers, open, st); else this.drawLedger(stock, open);
     if (this.isLocalOccupant) this.showHud();
@@ -716,7 +722,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       const sl = stock[i] ?? null;
       const y = 26 + i * rowH;
       const mark = i === this.cursor ? '>' : ' ';
-      const name = sl ? tr(`charm.${sl.charmId}.name`).slice(0, 12) : this.t('sold');
+      const name = sl ? (sl.evolve ? `${tr(`charm.${sl.charmId}.name`).slice(0, 9)} +` : tr(`charm.${sl.charmId}.name`).slice(0, 12)) : this.t('sold');
       s.text(`${mark}${i + 1} ${name}`, 4, y, { font: 'px5', color: sl?.cursed ? '#c0a0ff' : '#ffe0a0' });
       if (sl && sl.fit > 0) s.text(tr('shop.fit', { n: sl.fit }), 78, y, { font: 'px5', color: '#80d0ff' });
       s.text(sl ? priceText(sl, fmtNum, this.t('free')) : '--', 124, y, { font: 'px5', color: sl?.locked ? '#ffffff' : '#ffd060', align: 'right' });
@@ -792,9 +798,13 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const desc = document.createElement('div'); desc.className = 'pc-desc';
     const pips = document.createElement('div'); pips.className = 'pc-pips'; pips.style.display = 'none';
     const note = document.createElement('div'); note.className = 'pc-note';
-    el.append(top, desc, pips, note);
+    // EVOLVE: the gold ribbon over the card, and the evolved numbers under the base text
+    const ribbon = document.createElement('div'); ribbon.className = 'pc-ribbon'; ribbon.style.display = 'none';
+    ribbon.textContent = this.t('evolveRibbon');
+    const evo = document.createElement('div'); evo.className = 'pc-evo'; evo.style.display = 'none';
+    el.append(ribbon, top, desc, evo, pips, note);
     this.ctx.ui.root.appendChild(el);
-    this.card = { el, icon, name, meta, price, desc, note, pips };
+    this.card = { el, icon, name, meta, price, desc, note, pips, ribbon, evo };
     // CHARMS | STAMPS: the tab strip over the card (the secondary key switches)
     const tabsEl = document.createElement('div'); tabsEl.className = 'pawn-tabs';
     const charms = document.createElement('span'); charms.className = 'pt';
@@ -813,6 +823,16 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       case 'cursed': return this.t('rarCursed');
       default: return this.t('rarCommon');
     }
+  }
+
+  /**
+   * What an evolved engine charm does, in its evolved numbers: the shared `hud.evo.<id>` line (charms/sets.strings.ts), or this
+   * machine's own `evo.<id>` line for the engine charms that have none there (Turnstile, Mimic).
+   */
+  private evoLine(id: string): string {
+    const shared = `hud.evo.${id}`;
+    const v = tr(shared);
+    return v !== shared ? v : this.t(`evo.${id}`);
   }
 
   /** The CHARMS | STAMPS strip: visible while seated and the stamp service exists. */
@@ -876,7 +896,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const id = sw && out ? out.id : sel?.charmId ?? '';
     const rarity: CharmRarity = sw ? 'common' : sel?.rarity ?? 'common';
     const cursed = !sw && !!sel?.cursed;
-    const state = sw ? `o${out?.refund ?? 0}` : `${sel?.price ?? 0}.${sel?.fit ?? 0}.${sel?.locked ? 1 : 0}.${sel?.discounted ? 1 : 0}.${sel?.underCounter ? 1 : 0}`;
+    const state = sw ? `o${out?.refund ?? 0}` : `${sel?.price ?? 0}.${sel?.fit ?? 0}.${sel?.locked ? 1 : 0}.${sel?.discounted ? 1 : 0}.${sel?.underCounter ? 1 : 0}.${sel?.evolve ? 1 : 0}`;
     const key = `${id}|${state}`;
     if (key === this.cardKey) return;
     this.cardKey = key;
@@ -886,7 +906,11 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const d = tr(descKey);
     c.desc.textContent = d === descKey ? this.t('noDesc') : d;
     const g = c.icon.getContext('2d');
-    if (g) { g.clearRect(0, 0, 24, 24); charmIconPix(id, rarity, cursed, true, sw ? undefined : sel?.tag).drawTo(g); }
+    const evolving = !sw && !!sel?.evolve;
+    if (g) { g.clearRect(0, 0, 24, 24); charmIconPix(id, rarity, cursed, true, sw ? undefined : sel?.tag, evolving).drawTo(g); }
+    c.ribbon.style.display = evolving ? '' : 'none';
+    c.evo.style.display = evolving ? '' : 'none';
+    if (evolving) c.evo.textContent = `${tr('hud.evo.label')} · ${this.evoLine(id)}`;
     c.price.textContent = sw ? '' : sel ? priceText(sel, fmtNum, this.t('free')) : '';
     c.price.style.display = c.price.textContent ? '' : 'none';
     if (sw && out) {

@@ -4,14 +4,14 @@ export default {
   en: {
     'head': 'QUOTA {q} · DAWN',
     'bank': 'DAWN: bank {p} of {q} needed',
-    'pocket': 'POCKET {p} — deposit it to count toward the quota',
+    'pocket': 'POCKET {p} — deposit to count',
     'ends': 'WATCH {w}/{n} · {p} PULLS · {c} · BELL',
     'next': 'NEXT WATCH {w}/{n}',
   },
   tr: {
     'head': 'KOTA {q} · ŞAFAK',
     'bank': 'ŞAFAK: banka {p} / {q} gerekli',
-    'pocket': 'CEP {p} — kotaya sayılması için yatır',
+    'pocket': 'CEP {p} — yatır, kotaya sayılsın',
     'ends': 'VARDİYA {w}/{n} · {p} ÇEKİŞ · {c} · ZİL',
     'next': 'SONRAKİ VARDİYA {w}/{n}',
   },

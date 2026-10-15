@@ -34,6 +34,8 @@ export interface PawnSlot {
   bias: boolean;
   /** Priced below the plain SI price (a discount charm or the discount slot). */
   discounted: boolean;
+  /** EVOLVE: a second copy of an owned engine charm. It takes a second stack (no peg) and its numbers move to the evolved tune. */
+  evolve?: boolean;
 }
 
 /** One charm that can be swapped out when the pegs are full, with its 50 % sellback. */
@@ -147,7 +149,7 @@ export function buyJuice(rarity: CharmRarity, cursed: boolean): 'plain' | 'rare'
 
 /** Stock fingerprint, so the tags and the ledger repaint only when something changed. */
 export function stockKey(stock: readonly (PawnSlot | null)[]): string {
-  return stock.map((s) => (s ? `${s.charmId}:${s.price}:${s.locked ? 1 : 0}:${s.fit}` : '-')).join('|');
+  return stock.map((s) => (s ? `${s.charmId}:${s.price}:${s.locked ? 1 : 0}:${s.fit}:${s.evolve ? 1 : 0}` : '-')).join('|');
 }
 
 // ── Symbol Stamps tab (game/stamps.ts `StampBook`, read from `run.stamps`) ───────────────────────────────

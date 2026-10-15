@@ -24,10 +24,10 @@ before(async () => {
 });
 
 // â”€â”€ the ladder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€─
-test('quota ladder: strictly increasing night over night, N1 just above the Pauper pocket', () => {
+test('quota ladder: strictly increasing night over night, N1 is the teaching Night under the Pauper pocket', () => {
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
   for (let i = 1; i < q.length; i++) assert.ok(q[i] > q[i - 1], `N${i + 1} (${q[i]}) must exceed N${i} (${q[i - 1]})`);
-  assert.ok(q[0] > SCH.START.pocket && q[0] <= 45, `N1 ${q[0]} sits above ${SCH.START.pocket} and at most 45`);
+  assert.ok(q[0] > 0 && q[0] < SCH.START.pocket, `N1 ${q[0]} is below the ${SCH.START.pocket} pocket (teaching Night)`);
   for (let i = 1; i < SCH.BASE_RUN_NIGHTS + 4; i++) assert.ok(SCH.quotaFor(i) > SCH.quotaFor(i - 1), `Overdrawn ladder keeps rising at ${i + 1}`);
 });
 
@@ -73,7 +73,7 @@ test('WAVE 47 ladder: no Night steps up more than its cap (2x up to N3, 3x from 
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
   for (let i = 1; i < q.length; i++) assert.ok(q[i] / q[i - 1] <= SCH.maxLadderStep(i + 1) + 1e-9, `N${i + 1} / N${i} = ${(q[i] / q[i - 1]).toFixed(2)} <= ${SCH.maxLadderStep(i + 1)}`);
   assert.deepEqual([SCH.maxLadderStep(2), SCH.maxLadderStep(3), SCH.maxLadderStep(4), SCH.maxLadderStep(8)], [2, 2, 3, 3]);
-  assert.deepEqual(q, [31, 42, 84, 168, 336, 672, 1344, 2688], 'the tuned ladder (wave 47, scripts/sim/run.mjs, 2000 human runs, seed 20261013)');
+  assert.deepEqual(q, [24, 42, 84, 168, 336, 672, 1344, 2688], 'the tuned ladder (wave 47, N1 teaching quota 24 by director; scripts/sim/run.mjs, 2000 human runs, seed 20261013)');
 });
 
 test('WAVE 47 house takes notice: from Night 5 the quota is at least 1.2 x the wealth at Dawn; the ladder is the floor; off below Night 5 and at share 0', () => {

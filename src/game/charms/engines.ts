@@ -93,14 +93,17 @@ const DEF_BY_ID: ReadonlyMap<string, CharmDef> = new Map(
 
 interface Ranked { def: CharmDef; data: Record<string, Json> }
 
+/** The copy engines. Neither copies the other or itself, so a copy never recurses. */
+const COPY_IDS: ReadonlySet<string> = new Set(['understudy', 'mimic']);
+
 /**
- * Understudy targets: owned charms that are neither Legendary nor Cursed (and not the Understudy), most expensive first.
- * Ties keep the order they were acquired in.
+ * Copy targets: owned charms that are neither Legendary nor Cursed (and not a copy engine), most expensive first.
+ * Ties keep the order they were acquired in. The Mimic reads the same list from the other end (cheapest first).
  */
 function understudyRanked(live: EngineLive): Ranked[] {
   const out: Ranked[] = [];
   for (const s of live.run.charms(live.pid)) {
-    if (s.id === 'understudy') continue;
+    if (COPY_IDS.has(s.id)) continue;
     const def = DEF_BY_ID.get(s.id);
     if (!def || def.rarity === 'legendary' || def.rarity === 'cursed') continue;
     const data = s.data && typeof s.data === 'object' && !Array.isArray(s.data) ? s.data : {};
@@ -114,6 +117,15 @@ function copycatSetOn(live: EngineLive): boolean {
   const held = live.run.charms(live.pid);
   return activeSets(held, (id) => DEF_BY_ID.get(id)?.tags).includes('copycat');
 }
+
+/** Turnstile numbers: payout per Turn and the Turn cap (four; six evolved). Its list of machines is kept to six. */
+const TURNSTILE_BASE = { per: 0.08, max: 4 };
+const TURNSTILE_EVO = { per: 0.12, max: 6 };
+const turnstileTune = (d: Readonly<Record<string, Json>>): { per: number; max: number } => (isEvo(d) ? TURNSTILE_EVO : TURNSTILE_BASE);
+/** The machines a Turnstile has counted this Watch. */
+const seenList = (d: Readonly<Record<string, Json>>): string[] => (Array.isArray(d.seen) ? d.seen : []).filter((s): s is string => typeof s === 'string');
+/** Turns held now: the machines counted this Watch, up to the cap. */
+const turnsOf = (d: Readonly<Record<string, Json>>): number => Math.min(turnstileTune(d).max, seenList(d).length);
 
 export const ENGINE_BEHAVIOURS: Readonly<Record<string, Behaviour>> = {
   /** A play on a different suit than the last one: +1 Rung (max 6, 8 evolved). Same suit as the last play: −3 Rungs. */
@@ -211,6 +223,18 @@ export const ENGINE_BEHAVIOURS: Readonly<Record<string, Behaviour>> = {
       'run:window': (p, c) => { if (p.window === 'dawn') c.data.watches = 0; },
     },
   },
+  /** Each machine played for the first time this Watch adds a Turn (the list keeps six machines, the cap is four, six evolved). */
+  turnstile: {
+    badge: (d) => turnsOf(d) || null,
+    on: {
+      'machine:result': (p, c) => {
+        const seen = seenList(c.data);
+        if (seen.includes(p.mid) || seen.length >= TURNSTILE_EVO.max) return;
+        c.data.seen = [...seen, p.mid];
+      },
+      'shift:phase': (p, c) => { if (p.phase === 'bell') c.data.seen = []; },
+    },
+  },
 };
 
 export const ENGINE_DYNAMIC_EFFECTS: Readonly<Record<string, EngineDynamic>> = {
@@ -278,22 +302,37 @@ export const ENGINE_DYNAMIC_EFFECTS: Readonly<Record<string, EngineDynamic>> = {
    * charms that are not Legendary or Cursed: one target, or two when the Understudy is evolved. While the Copycat set
    * is on, one more effect is copied: the first declarative effect of the next target. Triggers (`on`) are never copied.
    */
-  understudy: (live, q) => {
-    const ranked = understudyRanked(live);
-    const take = isEvo(live.data) ? 2 : 1;
-    const copied: ModEffect[] = [];
-    for (const t of ranked.slice(0, take)) {
-      copied.push(...(t.def.effects ?? []));
-      const dyn = ENGINE_DYNAMIC_EFFECTS[t.def.id] ?? DYNAMIC_EFFECTS[t.def.id];
-      if (dyn) {
-        const target: EngineLive = { data: t.data, run: live.run, pid: live.pid };
-        copied.push(...(dyn as EngineDynamic)(target, q));
-      }
-    }
-    if (copycatSetOn(live)) {
-      const extra = ranked.slice(take).flatMap((t) => t.def.effects ?? []);
-      if (extra.length) copied.push(extra[0]);
-    }
-    return copied;
+  understudy: (live, q) => copyFrom(live, q, understudyRanked(live), isEvo(live.data) ? 2 : 1),
+  /**
+   * Copies the cheapest owned charms (not Legendary, not Cursed, not a copy engine), one or two when evolved. The Copycat set
+   * adds one more effect, as for the Understudy.
+   */
+  mimic: (live, q) => copyFrom(live, q, [...understudyRanked(live)].reverse(), isEvo(live.data) ? 2 : 1),
+  /** ×(1 + 0.08 per Turn), at most ×1.32 (0.12 per Turn, ×1.72 at six Turns evolved). */
+  turnstile: (c) => {
+    const n = turnsOf(c.data);
+    return n > 0 ? mult(1 + turnstileTune(c.data).per * n) : [];
   },
 };
+
+/**
+ * The effects a copy engine copies: the declarative and the per-instant effects (with each target's own bag) of the first
+ * `take` targets in `order`. While the Copycat set is on, the first declarative effect of the next target is copied too.
+ * Triggers (`on`) are never copied.
+ */
+function copyFrom(live: EngineLive, q: ModQuery | undefined, order: readonly Ranked[], take: number): ModEffect[] {
+  const copied: ModEffect[] = [];
+  for (const t of order.slice(0, take)) {
+    copied.push(...(t.def.effects ?? []));
+    const dyn = ENGINE_DYNAMIC_EFFECTS[t.def.id] ?? DYNAMIC_EFFECTS[t.def.id];
+    if (dyn) {
+      const target: EngineLive = { data: t.data, run: live.run, pid: live.pid };
+      copied.push(...(dyn as EngineDynamic)(target, q));
+    }
+  }
+  if (copycatSetOn(live)) {
+    const extra = order.slice(take).flatMap((t) => t.def.effects ?? []);
+    if (extra.length) copied.push(extra[0]);
+  }
+  return copied;
+}

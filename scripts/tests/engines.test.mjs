@@ -1,4 +1,4 @@
-// Unit tests for wave 8 items 3, 4 and 6: the ten engine charms (src/game/charms/engines.ts, data/charmsEngines.ts),
+// Unit tests for wave 8 items 3, 4 and 6: the engine charms (src/game/charms/engines.ts, data/charmsEngines.ts),
 // Boss Nights (src/game/bosses.ts, data/bosses.ts) and starting kits (data/kits.ts). Engine maxima are asserted against
 // the plan's Max column, not against the code's own constants.
 import { test, before, after } from 'node:test';
@@ -59,10 +59,10 @@ function payoutOf(effects) {
 const near = (x, y) => assert.ok(Math.abs(x - y) < 1e-9, `expected ${y}, got ${x}`);
 
 // ── item 3: data ────────────────────────────────────────────────────────────────────────────────
-test('engine data: ten charms, unique ids, none clashing with the base catalogue', () => {
+test('engine data: twelve charms, unique ids, none clashing with the base catalogue', () => {
   const ids = D.CHARM_ENGINE_DATA.map((d) => d.id);
-  assert.equal(ids.length, 10);
-  assert.equal(new Set(ids).size, 10);
+  assert.equal(ids.length, 12);
+  assert.equal(new Set(ids).size, 12);
   const base = new Set(C.CHARM_DATA.map((d) => d.id));
   for (const id of ids) assert.ok(!base.has(id), `${id} clashes with data/charms.ts`);
 });
@@ -72,7 +72,7 @@ test('engine data: rarity, price and unlock match the plan table', () => {
     suit_ladder: ['rare', 42, 'N3'], pressure_valve: ['uncommon', 20, 'N2'], capacitor: ['rare', 42, 'N4'],
     lampwick: ['uncommon', 22, 'N3'], ticket_press: ['uncommon', 18, 'N2'], last_gasp: ['rare', 40, 'N3'],
     understudy: ['legendary', 95, 'N5'], false_ceiling: ['legendary', 100, 'N6'], gilded_chip: ['uncommon', 20, 'N2'],
-    snowball_ledger: ['uncommon', 20, 'N2'],
+    snowball_ledger: ['uncommon', 20, 'N2'], turnstile: ['uncommon', 20, 'N2'], mimic: ['uncommon', 22, 'N3'],
   };
   for (const d of D.CHARM_ENGINE_DATA) assert.deepEqual([d.rarity, d.price, d.unlock], want[d.id], d.id);
 });
@@ -81,6 +81,13 @@ test('engine data: every charm has one archetype and all six archetypes are used
   const tags = D.CHARM_ENGINE_DATA.map((d) => d.tags);
   for (const t of tags) assert.equal(t.length, 1);
   assert.deepEqual([...new Set(tags.map((t) => t[0]))].sort(), [...D.ENGINE_ARCHETYPES].sort());
+});
+
+test('engine data: every archetype has at least two charms, so every set can switch on (SET_SIZE 2)', () => {
+  for (const a of D.ENGINE_ARCHETYPES) {
+    const n = D.CHARM_ENGINE_DATA.filter((d) => d.tags[0] === a).length;
+    assert.ok(n >= 2, `${a} has ${n} charm(s)`);
+  }
 });
 
 test('engine data: every charm has EN and TR names and descriptions', () => {
@@ -518,4 +525,44 @@ test('evolution: Understudy+ copies the two most expensive targets, the base cop
 test('evolution: an evolved charm\'s bag is read by the engine, so Understudy copies the evolved target', () => {
   const owned = [{ id: 'understudy', stacks: 1 }, { id: 'pressure_valve', stacks: 2, data: evo({ pressure: 10 }) }];
   near(payoutOf(E.ENGINE_DYNAMIC_EFFECTS.understudy(live(evo(), { charms: owned }))).m, 1 + 0.14 * 10);
+});
+
+// ── wave 7 (director): Turnstile (rotation) and Mimic (copycat), the second charm of each set ─────────────────────
+test('Turnstile: a machine played for the first time this Watch adds a Turn; a repeat does not; the Turns reset at the bell', () => {
+  const h = E.ENGINE_BEHAVIOURS.turnstile.on;
+  const c = ctx({});
+  h['machine:result'](play({ mid: 'a' }), c);
+  h['machine:result'](play({ mid: 'a' }), c);
+  h['machine:result'](play({ mid: 'b' }), c);
+  assert.deepEqual(c.data.seen, ['a', 'b']);
+  assert.equal(E.ENGINE_BEHAVIOURS.turnstile.badge(c.data), 2);
+  h['shift:phase'](play({ phase: 'play' }), c);
+  assert.deepEqual(c.data.seen, ['a', 'b'], 'only the bell starts a new Watch');
+  h['shift:phase']({ phase: 'bell', index: 0 }, c);
+  assert.deepEqual(c.data.seen, []);
+});
+
+test('Turnstile: payouts ×(1 + 0.08 per Turn), four Turns at most; evolved ×(1 + 0.12 per Turn), six at most', () => {
+  const dyn = E.ENGINE_DYNAMIC_EFFECTS.turnstile;
+  const five = ['a', 'b', 'c', 'd', 'e'];
+  near(payoutOf(dyn(live({ seen: five.slice(0, 2) }))).m, 1 + 0.08 * 2);
+  near(payoutOf(dyn(live({ seen: five }))).m, 1 + 0.08 * 4, 'capped at four Turns');
+  near(payoutOf(dyn(live({ seen: [...five, 'f', 'g'], evo: true }))).m, 1 + 0.12 * 6, 'evolved cap six');
+  assert.deepEqual(dyn(live({ seen: [] })), [], 'no Turn, no bonus');
+});
+
+test('Mimic copies the cheapest owned charm that is not Legendary or Cursed (and never a copy engine)', () => {
+  const dyn = E.ENGINE_DYNAMIC_EFFECTS.mimic;
+  // ticket_press (18) is the cheapest eligible one; suit_ladder (42) and crown_of_coins (Legendary) are not copied
+  const charms = [{ id: 'suit_ladder', stacks: 1, data: { rungs: 6 } }, { id: 'ticket_press', stacks: 1 }, { id: 'crown_of_coins', stacks: 1 }];
+  near(payoutOf(dyn(live({}, { charms, tickets: 6 }))).a, 0.02 * 2, 'ticket_press: +2 % per 3 Tickets, two groups of three');
+  assert.deepEqual(dyn(live({}, { charms: [{ id: 'crown_of_coins', stacks: 1 }] })), [], 'nothing eligible: nothing copied');
+  assert.deepEqual(dyn(live({}, { charms: [{ id: 'understudy', stacks: 1 }, { id: 'mimic', stacks: 1 }] })), [], 'copy engines do not copy each other');
+  assert.equal(E.ENGINE_BEHAVIOURS.mimic, undefined, 'no `on` triggers for Mimic');
+});
+
+test('the Understudy skips the Mimic: it copies the most expensive eligible charm, never the other copy engine', () => {
+  const dyn = E.ENGINE_DYNAMIC_EFFECTS.understudy;
+  const charms = [{ id: 'mimic', stacks: 1 }, { id: 'ticket_press', stacks: 1 }, { id: 'suit_ladder', stacks: 1, data: { rungs: 6 } }];
+  near(payoutOf(dyn(live({}, { charms }))).m, 1.72, 'suit_ladder (42) is copied, not the Mimic (22)');
 });

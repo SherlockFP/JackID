@@ -368,8 +368,8 @@ const OPEN_BOT_JS = `(() => {
   return ids.filter((id) => open.has(id));
 })()`;
 /**
- * One coin bet per machine, as keys: close the first-sit tip (Digit9 is unbound on these machines, so it is a no-op
- * otherwise), walk the stake down to the minimum (KeyZ), then place the bet and collect it (KeyQ).
+ * One coin bet per machine, as keys: close the first-sit tip (Digit0, a neutral key: Digit7/8/9 are the SAFE/BOLD/BIG stake
+ * presets, and Digit9 would arm BIG), walk the stake down to the minimum (KeyZ), then place the bet and collect it (KeyQ).
  */
 const BOT_RECIPE = {
   coinflip: 'Space:120,wait:2600,KeyQ:120,wait:500',
@@ -378,7 +378,8 @@ const BOT_RECIPE = {
   bigone: 'Space:120,wait:3200,KeyQ:120,wait:500',
 };
 const BOT_MIN_STAKE = 'KeyZ:60,wait:120';
-const botKeys = (machine) => parseScript(`Digit9:60,wait:300,${Array(8).fill(BOT_MIN_STAKE).join(',')},${BOT_RECIPE[machine]}`);
+const TIP_KEY = 'Digit0';   // the neutral press that closes a first-sit tip (any key does; not a stake preset)
+const botKeys = (machine) => parseScript(`${TIP_KEY}:60,wait:300,${Array(8).fill(BOT_MIN_STAKE).join(',')},${BOT_RECIPE[machine]}`);
 
 const AUTO_MAX_MS = 15 * 60_000;   // auto:night stops after this much wall time (the run is left where it is)
 const AUTO_MAX_LOOPS = 4000;
@@ -434,7 +435,7 @@ async function pawnBuy(ctx, slot, rec) {
   const { cdp } = ctx;
   rec.slot = slot;
   await sitAt(ctx, 'charm_vendor', rec);
-  await pressKey(cdp, 'Digit9', DEFAULT_HOLD_MS);       // closes the first-sit tip (a no-op otherwise)
+  await pressKey(cdp, TIP_KEY, DEFAULT_HOLD_MS);        // closes the first-sit tip (a no-op otherwise)
   await sleep(300);
   const b = await evalJson(cdp, PAWN_JS);
   if (!b.open) { rec.ok = false; rec.reason = 'window closed (it opens between Watches)'; return; }
@@ -467,7 +468,7 @@ async function pawnBuy(ctx, slot, rec) {
 async function pawnLook(ctx, rec) {
   const { cdp } = ctx;
   await sitAt(ctx, 'charm_vendor', rec);
-  await pressKey(cdp, 'Digit9', DEFAULT_HOLD_MS);       // the tip card would cover the window
+  await pressKey(cdp, TIP_KEY, DEFAULT_HOLD_MS);        // the tip card would cover the window
   await sleep(900);                                     // the camera glide into the seat
   const b = await evalJson(cdp, PAWN_JS);
   rec.open = b.open;
@@ -924,11 +925,11 @@ export async function runBench(opts = {}) {
       const inputMode = await evaluate(cdp, 'window.jackid.app.input.mode');
       if (!res.seated || inputMode !== 'machine') throw new Error(`seated=${res.seated}, input mode "${inputMode}" (want "machine")`);
       // The FIRST-SIT tip is a placard: the next machine action only closes it (seatHud.blocking), so it would eat
-      // the script's first key. Digit9 is the neutral press that closes it; it is sent only while the placard is up.
+      // the script's first key. TIP_KEY (Digit0) is the neutral press that closes it; it is sent only while the placard is up.
       if (await evaluate(cdp, 'Boolean(window.jackid.bench.main?.m?.seatHud?.blocking)')) {
-        await pressKey(cdp, 'Digit9', DEFAULT_HOLD_MS);
+        await pressKey(cdp, TIP_KEY, DEFAULT_HOLD_MS);
         await sleep(600);
-        log('first-sit tip closed (Digit9)');
+        log(`first-sit tip closed (${TIP_KEY})`);
       }
       log(`seated (input mode ${inputMode})`);
     }

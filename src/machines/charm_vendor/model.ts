@@ -25,7 +25,7 @@ import { ICON_PX, charmIconPix, rarityColor, stampIconPix, stampRim, type StampI
  */
 export interface CharmIcon {
   readonly root: THREE.Group;
-  set(charm: { id: string; rarity: CharmRarity; cursed: boolean; tag?: string } | null, selected: boolean): void;
+  set(charm: { id: string; rarity: CharmRarity; cursed: boolean; tag?: string; evolve?: boolean } | null, selected: boolean): void;
   /** The STAMPS tab: a stamp badge on the cushion instead of a charm. */
   setStamp(stamp: StampIconSpec | null, selected: boolean): void;
   animate(t: number, dt: number): void;
@@ -60,12 +60,12 @@ function buildIcon(i: number): CharmIcon {
     root,
     set(charm, selected) {
       sel = selected;
-      const k = charm ? `${charm.id}|${charm.rarity}|${charm.cursed ? 1 : 0}|${charm.tag ?? ''}|${selected ? 1 : 0}` : '';
+      const k = charm ? `${charm.id}|${charm.rarity}|${charm.cursed ? 1 : 0}|${charm.tag ?? ''}|${selected ? 1 : 0}|${charm.evolve ? 1 : 0}` : '';
       if (k === key) return;
       key = k;
       root.visible = charm !== null;
       if (!charm) return;
-      charmIconPix(charm.id, charm.rarity, charm.cursed, selected, charm.tag).paintInto(cv);
+      charmIconPix(charm.id, charm.rarity, charm.cursed, selected, charm.tag, !!charm.evolve).paintInto(cv);
       tex.needsUpdate = true;
       glowMat.color.setHex(rarityColor(charm.cursed ? 'cursed' : charm.rarity));
     },

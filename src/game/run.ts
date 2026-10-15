@@ -1338,7 +1338,8 @@ class Run implements DebtRun {
     this.coolBoiler();
     this.boughtThisWatch = 0;
     this.clockLen = isOvertime ? OVERTIME_SEC : Math.max(10, Math.round(this.mod('x.run.clockAdd', RUN_MACHINE, nd.clock)));
-    this.lastCallSec = lastCallSeconds(this.isLastWatch());
+    // Last Call: the base length (20 s, 30 s in the last Watch) plus `x.run.lastCallAdd` (Clutch set: +6 s)
+    this.lastCallSec = Math.max(0, Math.round(this.mod('x.run.lastCallAdd', RUN_MACHINE, lastCallSeconds(this.isLastWatch()))));
     this.pullsMax = isOvertime ? OVERTIME_PULLS : Math.max(1, Math.round(this.mod('x.run.pullsAdd', RUN_MACHINE, nd.pulls)));
     this.pullCount = this.pullsMax;
     this.pullToast(this.pullsMax, 'watch');

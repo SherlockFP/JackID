@@ -60,11 +60,13 @@
 .hud .quota .short { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--amber); }
 
 /* NIGHT PLAN: under the quota in the top-right column (hud.ts updatePlan). Four plain text lines, right-aligned, one line each. */
+/* The panel is capped at its top-right grid cell (max-width 100%), and its lines wrap inside it: a long line never runs out of the
+   plate over the centre column or the machine art. */
 .hud .plan { display: flex; flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u)); margin-top: calc(3 * var(--u));
-  max-width: min(46vw, calc(300 * var(--u))); padding: calc(2 * var(--u)) calc(4 * var(--u)); background: rgba(0, 0, 0, .5);
+  max-width: 100%; box-sizing: border-box; padding: calc(2 * var(--u)) calc(4 * var(--u)); background: rgba(0, 0, 0, .5);
   box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark); text-align: right; }
-.hud .plan span { display: block; font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1.35;
-  color: var(--bone); white-space: nowrap; }
+.hud .plan span { display: block; max-width: 100%; font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1.35;
+  color: var(--bone); white-space: normal; overflow-wrap: anywhere; }
 .hud .plan .pb { color: var(--signal); }
 .hud .plan span.pk, .hud .plan span.pe { opacity: .8; }
 .hud .plan span.hidden { display: none; }

@@ -18,6 +18,17 @@
   font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 7); line-height: 1;
 }
 .pawn-card .pc-desc { margin-top: calc(var(--su) * 3); font-size: calc(var(--su) * 10); line-height: 1.12; color: #f4f0dc; }
+/* EVOLVE: a gold ribbon across the top of the card, and the evolved numbers under the base text. */
+.pawn-card .pc-ribbon {
+  display: inline-block; margin: calc(var(--su) * -1) 0 calc(var(--su) * 2); padding: calc(var(--su) * 1.5) calc(var(--su) * 3);
+  background: #ffd040; color: #140e08; text-shadow: none; border: calc(var(--su) * 1) solid #000;
+  font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 5); line-height: 1; letter-spacing: 0.04em;
+}
+.pawn-card .pc-evo {
+  margin-top: calc(var(--su) * 3); padding: calc(var(--su) * 1.5) calc(var(--su) * 2.5);
+  border-left: calc(var(--su) * 1.5) solid #ffd040; background: rgba(255, 208, 64, 0.1);
+  font-size: calc(var(--su) * 9); line-height: 1.12; color: #ffd040;
+}
 .pawn-card .pc-note { margin-top: calc(var(--su) * 2); font-size: calc(var(--su) * 8); line-height: 1.1; color: #c8a4ff; }
 @media (max-width: 760px) { .pawn-card { top: 24%; width: 52%; } }
 

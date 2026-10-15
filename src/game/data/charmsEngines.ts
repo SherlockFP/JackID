@@ -62,6 +62,14 @@ export const CHARM_ENGINE_DATA: readonly CharmDef[] = [
   engine('snowball_ledger', 'uncommon', 20, 'N2', 'banker',
     ['Snowball Ledger', 'Each Watch settled with at least 25% of the quota deposited adds +1% interest (max +3%, resets at Dawn).'],
     ['Kartopu Defteri', 'Kotanın en az %25\'i yatırılmış her Vardiya kapanışı +%1 faiz ekler (en fazla +%3, Şafakta sıfırlanır).']),
+  // Director (wave 7 sets): every archetype needs a second charm so each set can switch on.
+  engine('turnstile', 'uncommon', 20, 'N2', 'rotation',
+    ['Turnstile', 'Each machine you play for the first time this Watch adds a Turn (max 4). Payouts get ×(1 + 0.08 per Turn). Turns reset at each Watch.'],
+    ['Turnike', 'Bu Vardiyada ilk kez oynadığın her makine +1 Tur ekler (en fazla 4). Kazançlar Tur başına ×(1 + 0,08) öder. Turlar her Vardiyada sıfırlanır.']),
+  // Copies the cheapest owned charm (the Understudy copies the most expensive): the second copycat, so the Copycat set can switch on.
+  engine('mimic', 'uncommon', 22, 'N3', 'copycat',
+    ['Mimic', 'Copies the effects of your cheapest owned charm that is not Legendary or Cursed. Does not copy triggers. Copycat set: one more effect.'],
+    ['Taklit', 'Legendary ya da Lanetli olmayan en ucuz tılsımının etkilerini kopyalar. Tetikleyicileri kopyalamaz. Taklitçi Seti: bir etki daha.']),
 ];
 
 /** Ids of the ten engine charms, for `LAUNCH_CHARM_IDS` (the integrator adds them there). */

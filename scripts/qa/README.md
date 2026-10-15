@@ -75,8 +75,13 @@ npm run qa -- --machine craps --sit --script "Digit5,Enter:120,wait:6000" --roun
 ```
 
 Baccarat: `1` bets Player, `Space` locks, `Space` skips the squeeze. Craps: `5` is a horn bet, `Enter` throws (shooter only).
-The first sit shows a tip card that the next key closes. `--sit` closes it with `Digit9` before the first round, and only
-while it is up. Keys that a script presses during a round are real key events (CDP `Input.dispatchKeyEvent`).
+The first sit shows a tip card that the next key closes. `--sit` closes it with `Digit0` before the first round, and only
+while it is up.
+
+**Stake presets (`Digit7` / `Digit8` / `Digit9`).** On a seated machine with a stake, `7` is SAFE (about 5 % of the pocket),
+`8` is BOLD (about 15 %) and `9` is BIG (about 30 %). BIG asks for a second press within the confirm window, so a single
+`Digit9` only arms it. Scripts and bot recipes must not press `Digit9` as a tip-closer: it arms BIG. The tip closer is
+`Digit0` (`TIP_KEY` in `bench.mjs`), which no keymap binds in the game. Keys that a script presses during a round are real key events (CDP `Input.dispatchKeyEvent`).
 
 ## What it does
 
@@ -123,7 +128,7 @@ npm run qa -- --world --seed 7 --shots <dir> \
 ```
 
 Keys: `W` walks through the seam, `A/D/W/S` walk, `E` sits at a Lord station and at the table, `Space` pulls, `R` spins
-(one Ticket), `C` calls CHEAT. Digit9 closes the table's first-sit tip (it eats the next key). The intro tape is skipped
+(one Ticket), `C` calls CHEAT. Digit0 closes the table's first-sit tip (it eats the next key). The intro tape is skipped
 with a single Space tap (see **Intro skip** below). Seed 7 fires on the player's first pull (the run ends as a fall). Seed 1 is a Lord win.
 
 ## Debt-run driver (`--run`)
@@ -133,7 +138,7 @@ steps in order. Steps are separated by `;`. A `play` step's keys use the script 
 `xN` repeat suffix belongs at the end of the whole `play` list:
 
 ```
-npm run qa -- --run "goto:coinflip;wait:600;state;play:Digit9,Space:120,wait:1500x2;state;stand;bank:deposit:5;state" --seed 1 --shots <dir>
+npm run qa -- --run "goto:coinflip;wait:600;state;play:Digit0,Space:120,wait:1500x2;state;stand;bank:deposit:5;state" --seed 1 --shots <dir>
 node scripts/qa/bench.mjs --run "auto:night;state" --seed 1 --shots <dir>
 ```
 
@@ -164,7 +169,7 @@ A `play` or `bot:bet` record has `bets`: one `{ stake, machine, ok, refusal }` p
 
 The steps use the running app's own handles (`window.jackid.app`: `world`, `player`, `run`, `cutscene`, `camera`, `input`), so no hook is added to the game.
 
-Practical notes: `goto` needs the machine on the floor (the `coinflip`, `hilo`, `scratch`, `bigone`, `hotline`, `cashier`, `charm_vendor` ids are placed for seed 1). The quota, the Bell, the Pawn and the deposits only work in the right phase, so a full Night needs enough coins: `goto` plus `play` builds the pocket, and `lever` after a paid quota opens the floor. The first Watch of a run starts with the intro (there is no Intermission before it, so the Pawn Window is closed for it). The first sit at a machine shows a tip that the next key closes; `Digit9` is unbound on these machines, so it closes the tip and does nothing else (the bot and the Pawn steps press it first).
+Practical notes: `goto` needs the machine on the floor (the `coinflip`, `hilo`, `scratch`, `bigone`, `hotline`, `cashier`, `charm_vendor` ids are placed for seed 1). The quota, the Bell, the Pawn and the deposits only work in the right phase, so a full Night needs enough coins: `goto` plus `play` builds the pocket, and `lever` after a paid quota opens the floor. The first Watch of a run starts with the intro (there is no Intermission before it, so the Pawn Window is closed for it). The first sit at a machine shows a tip that the next key closes. The bot and the Pawn steps press `Digit0` first: it is no stake preset, so it closes the tip and does nothing else. Never use `Digit9` for this (it arms BIG).
 
 ### Night bot (`auto:night`)
 
@@ -174,7 +179,7 @@ Practical notes: `goto` needs the machine on the floor (the `coinflip`, `hilo`, 
 - **Withdraw**: a pocket below the cheapest bet pulls the whole bank back out first.
 - **Shop**: in the Intermission, the cheapest shelf that is not cursed, needs no swap, and costs at most 30 % of the pocket (`pawn:buy`, then `stand`).
 - **Lever**: starts the Watch (`lever`); after a paid Night it opens the floor.
-- **Bets**: 1 bet on odd Watches, 2 on even ones, rotating over the open machines of `BOT_MACHINES` (`coinflip`, `hilo`, `scratch`, `bigone`; the ones placed and unlocked now). Each bet is a `bot:bet:<id>` record: `goto`, `Digit9` (closes the tip), the stake walked down to the minimum (`KeyZ` 8 times), the machine's recipe (`BOT_RECIPE`: `Space` to play, `KeyQ` to collect, `Digit1` the hilo guess). `pulls` is `[before, after]`; `ok` is whether a pull was spent.
+- **Bets**: 1 bet on odd Watches, 2 on even ones, rotating over the open machines of `BOT_MACHINES` (`coinflip`, `hilo`, `scratch`, `bigone`; the ones placed and unlocked now). Each bet is a `bot:bet:<id>` record: `goto`, `Digit0` (closes the tip), the stake walked down to the minimum (`KeyZ` 8 times), the machine's recipe (`BOT_RECIPE`: `Space` to play, `KeyQ` to collect, `Digit1` the hilo guess). `pulls` is `[before, after]`; `ok` is whether a pull was spent.
 - **Bell**: rings the Bell (`bell`) once the Watch's bets are placed, after `stand`. Unused pulls keep the rebate. A Watch whose pulls run out closes by itself.
 - **Per-Watch line**: once a Watch reaches its Bell (after its deposit), it logs `watch N<night> W<watch>: pocket, bank, quota due/left, event` to stderr and adds a record `{ step: "watch N-W", auto: true, pocket, bank, quotaDue, quotaLeft, event }` to `run.steps`. `event` is the floor event id or null.
 

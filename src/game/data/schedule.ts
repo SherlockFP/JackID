@@ -75,6 +75,12 @@ export interface NightDef {
  * higher N3 (which drops N3 below target). A design call for the director.
  */
 /**
+ * Director (teaching Night): Night 1 is a teaching Night, base quota 24 (was 31) against the 30 pocket, so one bad streak does
+ * not end a first run. Nights 2..8 keep the ladder (N2 42 is 1.75x the new N1, still <= 2x).
+ * Human bot, 2000 runs, seed 20261013 (scripts/sim/run.mjs, after the Clutch and Turnstile/Mimic catalogue): reach N1 93.6 %, N2 78 %,
+ * N3 58 %, N4 46 %. The teaching Night is a gift by design; the later Nights are unchanged.
+ */
+/**
  * Wave 47b (director): 3x late steps made Night 5 a cliff (160 -> 504); the base ladder is back to 2x steps and the House-notice wealth floor carries the late tension.
  * Wave 47 (director, late snowball): from Night 4 a ladder step may be up to 3x (N5 504 = 3 x N4; N6 1510, N7 4520, N8 13500 are
  * ~3x each), and from Night 5 the House takes notice of the wealth (`houseNoticeQuota`: quota >= 1.2 x the coins held at the Dawn
@@ -88,7 +94,7 @@ export interface NightDef {
  * The human N8 ~22 % is accepted by the director (the design floor was ~15 %).
  */
 export const BASE_NIGHTS: readonly NightDef[] = [
-  { no: 1, floor: 'B7', name: 'first', base: 31, watches: 3, pulls: 7, clock: 150, interest: 0.55, favour: 1.25, si: 1, card: 0 },
+  { no: 1, floor: 'B7', name: 'first', base: 24, watches: 3, pulls: 7, clock: 150, interest: 0.55, favour: 1.25, si: 1, card: 0 },
   { no: 2, floor: 'B6', name: 'second', base: 42, watches: 3, pulls: 7, clock: 150, interest: 0.50, favour: 1.15, si: 3, card: 3 },
   { no: 3, floor: 'B5', name: 'third', base: 84, watches: 3, pulls: 8, clock: 165, interest: 0.45, favour: 1.07, si: 10, card: 3 },
   { no: 4, floor: 'B4', name: 'fourth', base: 168, watches: 3, pulls: 9, clock: 165, interest: 0.40, favour: 1, si: 30, card: 4 },

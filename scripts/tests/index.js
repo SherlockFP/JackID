@@ -15,6 +15,7 @@ import './shop.test.mjs';
 import './engines.test.mjs';
 import './sets.test.mjs';
 import './run.wave8.test.mjs';
+import './run.wave7.test.mjs';
 import './run.econ.test.mjs';
 import './hotline.test.mjs';
 import './run.money.test.mjs';

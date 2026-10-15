@@ -81,9 +81,15 @@ const ids =(stock) => stock.map((s) => (s ? s.charmId : null));
 const TAGS = {
   capacitor: ['hot'], lampwick: ['hot'], pressure_valve: ['clutch'], last_gasp: ['clutch'],
   ticket_press: ['banker'], snowball_ledger: ['banker'], false_ceiling: ['whale'], gilded_chip: ['whale'],
-  suit_ladder: ['rotation'], understudy: ['copycat'],
+  suit_ladder: ['rotation'], understudy: ['copycat'], turnstile: ['rotation'], mimic: ['copycat'],
 };
 const tagsOf = (id) => TAGS[id];
+
+test('sets (director): the Rotation and Copycat sets switch on with their second charm (Turnstile, Mimic)', () => {
+  assert.deepEqual(S.activeSets([{ id: 'suit_ladder' }, { id: 'turnstile' }], tagsOf), ['rotation']);
+  assert.deepEqual(S.activeSets([{ id: 'understudy' }, { id: 'mimic' }], tagsOf), ['copycat']);
+  assert.deepEqual(S.activeSets([{ id: 'understudy' }], tagsOf), [], 'one copycat alone does not switch the set on');
+});
 
 test('sets: two charms of one archetype switch that set on; one alone does not', () => {
   assert.deepEqual(S.activeSets([{ id: 'capacitor' }], tagsOf), []);

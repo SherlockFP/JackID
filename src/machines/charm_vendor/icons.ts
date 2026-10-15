@@ -122,8 +122,14 @@ export function glyphFor(id: string, cursed: boolean, tag?: string): Glyph {
   return g ?? FALLBACK[hashId(id) % FALLBACK.length];
 }
 
-/** One charm's badge: plate, rim, glyph, outline. `lit` brightens it (the selected slot). */
-export function charmIconPix(id: string, rarity: CharmRarity, cursed: boolean, lit: boolean, tag?: string): Pix {
+/** EVOLVE mark: a gold plus in the top-right corner of the badge (the second stack's sign on the shelf). */
+const EVOLVE_GOLD = 0xffd040;
+function evolveMark(p: Pix): void {
+  p.px(20, 1, EVOLVE_GOLD); p.px(19, 2, EVOLVE_GOLD); p.px(20, 2, 0xfff0a0); p.px(21, 2, EVOLVE_GOLD); p.px(20, 3, EVOLVE_GOLD);
+}
+
+/** One charm's badge: plate, rim, glyph, outline. `lit` brightens it (the selected slot). `evolve` adds the EVOLVE mark. */
+export function charmIconPix(id: string, rarity: CharmRarity, cursed: boolean, lit: boolean, tag?: string, evolve = false): Pix {
   const p = new Pix(ICON_PX, ICON_PX);
   const kind: CharmRarity = cursed ? 'cursed' : rarity;
   const rim = rarityColor(kind);
@@ -135,6 +141,7 @@ export function charmIconPix(id: string, rarity: CharmRarity, cursed: boolean, l
   glyphFor(id, cursed, tag)(p, body, hi, lo);
   if (kind === 'legendary') { p.px(3, 4, 0xffffff); p.px(20, 5, 0xffffff); p.px(19, 19, 0xffffff); p.px(4, 18, 0xfff0a0); }
   if (kind === 'rare') { p.px(4, 5, hi); p.px(19, 18, hi); }
+  if (evolve) evolveMark(p);
   p.outline(0x0a0604);
   return p;
 }
