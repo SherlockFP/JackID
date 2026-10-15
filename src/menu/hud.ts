@@ -249,7 +249,12 @@ export function createHud(): Hud {
     const k = ((Math.round(Math.atan2(lateral, ahead) / (Math.PI / 4)) % 8) + 8) % 8;
     return { d: Math.round(Math.hypot(dx, dz)), arrow: ARROWS[k] };
   };
-  /** The HOT line: nearest Hot Lamp with its distance and arrow, "+N" for the other Hot Lamps. '' when none. */
+  /** The short place name of a Lamp's slot zone ('' when the slot is unknown). */
+  const lampZone = (mid: InstanceId): string => {
+    const z = app.world?.slot(mid)?.zone;
+    return z && has(`hud.zone.${z}`) ? t(`hud.zone.${z}`) : '';
+  };
+  /** The HOT line: nearest Hot Lamp, its zone, distance and arrow, "+N" for the other Hot Lamps. '' when none. */
   const hotLine = (list: LampEntry[]): string => {
     if (list.length === 0) return '';
     let best: { e: LampEntry; d: number; arrow: string } | null = null;
@@ -257,7 +262,11 @@ export function createHud(): Hud {
       const b = lampBearing(e.mid);
       if (b && (!best || b.d < best.d)) best = { e, ...b };
     }
-    const parts = [t('hud.lampChase.hot', { name: lampName(best?.e ?? list[0]) })];
+    const lead = best?.e ?? list[0];
+    const where = lampZone(lead.mid);
+    const parts = [where
+      ? t('hud.lampChase.hotAt', { name: lampName(lead), where })
+      : t('hud.lampChase.hot', { name: lampName(lead) })];
     if (best) parts.push(t('hud.lampChase.dist', { d: best.d, a: best.arrow }));
     if (list.length > 1) parts.push(`+${list.length - 1}`);
     return parts.join(' · ');

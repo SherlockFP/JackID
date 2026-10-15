@@ -2370,8 +2370,9 @@ class Run implements DebtRun {
       pegsFree: () => this.pegs() - this.charmBox.pegsUsed(this.selfId),
       wallet: () => this.coins,
       tickets: () => this.tickets,
+      rerollSurcharge: () => this.stakeFx().rerollTickets,
       spendTickets: (n, why) => {
-        // Stake 4: each paid Pawn reroll costs one Ticket more (the shelf's rerollCost label does not show it yet).
+        // Stake 4: each paid Pawn reroll costs one Ticket more (the shelf's rerollCost label adds it via rerollSurcharge).
         const cost = n + (why === 'pawn:reroll' ? this.stakeFx().rerollTickets : 0);
         if (cost < 0 || this.tickets < cost) return false;
         this.tickets -= cost;

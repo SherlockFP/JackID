@@ -588,7 +588,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       return { key, amount: amounts[key], keyLabel: stakeKeyOwned(this.def.id, action) ? '' : this.ctx.input.keyLabel(`m.${action}`) };
     });
     const active = STAKE_PRESET_KEYS.find((k) => amounts[k] === this.bet) ?? null;
-    this.ctx.events.emit('stake:presets', { mid: this.id, on: true, bet: this.bet, pocket, hs, active, armed, rows });
+    this.ctx.events.emit('stake:presets', { mid: this.id, on: true, bet: this.bet, pocket, hs, active, armed, rows, pullCost: this.def.actionCost ?? 1 });
   }
   /** Coins the run charges for a stake of `amount` (`bet.costMult`, the same fold `run.bet()` applies). */
   protected costOf(amount: number): number { return Math.ceil(amount * this.mod('bet.costMult', 1)); }

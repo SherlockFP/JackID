@@ -1,7 +1,8 @@
 /**
  * Circuit lamp glow (WORLD-SYS). Listens to `circuit:lamps` (fired at each Bell and empty at Settle) and puts a pooled
  * light over every Hot and Cold machine, plus a visible halo and a light column, so the Lamps read from across the pit:
- *   Hot  warm amber, strong breathing (about 0.4 Hz, ±45 %), a halo over the cabinet and a tall beam above it.
+ *   Hot  warm amber, strong breathing (about 0.4 Hz, ±45 %), a halo over the cabinet, a tall beam above it, and a
+ *        floating "HOT ×1.5" tag over the beam (grows with distance, never breathes).
  *   Cold clear dim blue, steady, a halo and a short faint column.
  * The lights live in the shared LightPool (world/sys/lightPool), so the pool's six slots still decide what is real.
  * The halo and beam are additive sprites / open cylinders parented to the pool's scene root (no picking, no shadows).
@@ -9,7 +10,9 @@
  */
 import * as THREE from 'three';
 import { bus } from '@/core/events';
+import { t } from '@/core/i18n';
 import type { Hex, InstanceId, Unsub } from '@/core/types';
+import { HOT_MULT } from '@/game/circuit';
 import type { LightPool } from './lightPool';
 import { app } from '@/core/app';
 
@@ -23,6 +26,10 @@ const COLD_RANGE = 4.5;
 const MOUNT_Y = 2.1;
 const BREATH_HZ = 0.4;
 const BEAM_H = 3.2;
+/** The Hot cabinet's floating tag ("HOT ×1.5"): metres above the lamp mount, and its world size at the near end. */
+const TAG_Y = 1.1;
+const TAG_W = 1.9;
+const TAG_H = 0.57;
 const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 
 export interface LampGlowOpts {
@@ -41,7 +48,8 @@ export interface LampGlow {
 }
 
 interface Glow { sprite: THREE.Sprite; sm: THREE.SpriteMaterial; beam: THREE.Mesh; bm: THREE.MeshBasicMaterial; size: number }
-interface Live { owner: string; hot: boolean; off: () => void; phase: number; glow: Glow | null; at: THREE.Vector3 }
+interface Tag { sprite: THREE.Sprite; sm: THREE.SpriteMaterial; tex: THREE.CanvasTexture }
+interface Live { owner: string; hot: boolean; off: () => void; phase: number; glow: Glow | null; tag: Tag | null; at: THREE.Vector3 }
 
 /** Shared textures and column geometry, made on first use (needs a DOM canvas; absent in node, the glow is then light only). */
 interface Shared { halo: THREE.CanvasTexture; beam: THREE.CanvasTexture; hotCol: THREE.CylinderGeometry; coldCol: THREE.CylinderGeometry }
@@ -120,8 +128,43 @@ export function createLampGlow(o: LampGlowOpts): LampGlow {
     g.bm.dispose();
   };
 
+  /** The tag: a dark plate with the Hot multiplier, read in the current language when the Lamps are lit (each Bell). */
+  const makeTag = (host: THREE.Object3D, x: number, y: number, z: number): Tag | null => {
+    if (!sharedGlow()) return null;
+    const label = t('circuit.hot', { x: HOT_MULT });
+    const tex = canvasTex(320, 96, (g) => {
+      g.fillStyle = 'rgba(18,9,3,0.88)';
+      g.fillRect(0, 0, 320, 96);
+      g.strokeStyle = '#ffa040';
+      g.lineWidth = 6;
+      g.strokeRect(3, 3, 314, 90);
+      g.fillStyle = '#ffd08a';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      // shrink the type to fit the plate (Turkish runs longer than English)
+      g.font = 'bold 44px sans-serif';
+      const w = g.measureText(label).width;
+      if (w > 290) g.font = `bold ${Math.floor(44 * 290 / w)}px sans-serif`;
+      g.fillText(label, 160, 50);
+    });
+    const sm = new THREE.SpriteMaterial({ map: tex, color: 0xffffff, transparent: true, depthWrite: false, fog: false });
+    const sprite = new THREE.Sprite(sm);
+    sprite.scale.set(TAG_W, TAG_H, 1);
+    sprite.position.set(x, y + MOUNT_Y + TAG_Y, z);
+    sprite.raycast = () => undefined;
+    host.add(sprite);
+    return { sprite, sm, tex };
+  };
+
+  const dropTag = (g: Tag | null): void => {
+    if (!g) return;
+    g.sprite.removeFromParent();
+    g.sm.dispose();
+    g.tex.dispose();
+  };
+
   const clear = (): void => {
-    for (const l of live) { l.off(); dropGlow(l.glow); }
+    for (const l of live) { l.off(); dropGlow(l.glow); dropTag(l.tag); }
     live.length = 0;
   };
 
@@ -140,7 +183,8 @@ export function createLampGlow(o: LampGlowOpts): LampGlow {
     // the scene root the pool's lights hang from (the halo and beam go there too)
     const host = o.pool.lights[0]?.parent ?? null;
     const glow = host ? makeGlow(host, p.x, p.y, p.z, hot) : null;
-    live.push({ owner, hot, off: offLight, phase: (serial++ * 0.618) % 1, glow, at: new THREE.Vector3(p.x, p.y + MOUNT_Y, p.z) });
+    const tag = host && hot ? makeTag(host, p.x, p.y, p.z) : null;
+    live.push({ owner, hot, off: offLight, phase: (serial++ * 0.618) % 1, glow, tag, at: new THREE.Vector3(p.x, p.y + MOUNT_Y, p.z) });
   };
 
   const unsub: Unsub = bus.on('circuit:lamps', (e) => {
@@ -163,6 +207,8 @@ export function createLampGlow(o: LampGlowOpts): LampGlow {
         const s = 0.5 + 0.5 * Math.sin(clock * Math.PI * 2 * BREATH_HZ + l.phase * Math.PI * 2);
         const level = (l.hot ? 1 + amp * (0.9 * s - 0.45) : 1 - amp * 0.1 * s) * (1 + (l.hot ? 0.6 : 0.3) * far);
         o.pool.api.setLevel(l.owner, level, 0);
+        // the tag grows with distance, so it reads from across the pit (it does not breathe)
+        if (l.tag) l.tag.sprite.scale.set(TAG_W * (1 + 0.6 * far), TAG_H * (1 + 0.6 * far), 1);
         if (l.glow) {
           const g = l.glow;
           if (l.hot) {

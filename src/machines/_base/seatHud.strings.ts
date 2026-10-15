@@ -14,6 +14,8 @@ const en: Record<string, string> = {
   kBust: 'BUST',
   kSurrender: 'SURRENDER',
   kEven: 'EVEN MONEY',
+  pullRate1: '1 PULL = 1 ROUND',
+  pullRateN: '{n} PULLS = 1 ROUND',
 };
 
 const tr: Record<string, string> = {
@@ -28,6 +30,8 @@ const tr: Record<string, string> = {
   kBust: 'BATTI',
   kSurrender: 'TESLİM',
   kEven: 'EŞİT PARA',
+  pullRate1: '1 ÇEKİŞ = 1 TUR',
+  pullRateN: '{n} ÇEKİŞ = 1 TUR',
 };
 
 export default { prefix: 'hud.seat.', en, tr };

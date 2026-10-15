@@ -25,6 +25,7 @@ import { showRulesHint } from '@/machines/_base/rulesHint';
 import { bus } from '@/core/events';
 import type { CharmRarity } from '@/game/types';
 import type { KitX } from '@/kit';
+import type { LabelPart } from '@/kit/types';
 import { fmtNum, t as tr } from '@/core/i18n';
 import { lerp } from '@/core/math';
 import { buildModel, SHUTTER_DROP, type CharmVendorParts } from './model';
@@ -37,14 +38,18 @@ import {
 } from './rules';
 
 type Juice = 'plain' | 'rare' | 'legend' | 'cursed';
+/** A price plate's state: neutral (closed, empty), affordable (green), or short of coins (red). */
+type PlateTone = 'plain' | 'go' | 'no';
+/** Refused for coins: `short` is the coins still missing and `pocket` the coins held (both set only on a funds refusal). */
+interface FundsRefusal { short?: number; pocket?: number }
 type Ev =
   /** A purchase. `why` names the refusal when `ok` is false. */
-  | { k: 'buy'; i: number; charmId: string; price: number; juice: Juice; ok: boolean; why: string }
+  | { k: 'buy'; i: number; charmId: string; price: number; juice: Juice; ok: boolean; why: string; short?: number; pocket?: number }
   | { k: 'reroll'; ok: boolean; why: string }
   | { k: 'lock'; i: number; ok: boolean; why: string; off?: boolean }
   | { k: 'curse'; charmId: string; ok: boolean; why: string }
   /** The STAMPS tab: a stamp purchase, a reroll of the board, a lock. */
-  | { k: 'sbuy'; i: number; kind: StampOffer['kind']; target: string; ok: boolean; why: string }
+  | { k: 'sbuy'; i: number; kind: StampOffer['kind']; target: string; ok: boolean; why: string; short?: number; pocket?: number }
   | { k: 'sreroll'; ok: boolean; why: string }
   | { k: 'slock'; i: number; ok: boolean; why: string; off?: boolean };
 
@@ -76,6 +81,7 @@ export const def: MachineDef = {
       h_pick: 'PICK', h_buy: 'BUY', h_reroll: 'REROLL', h_lock: 'LOCK', h_curse: 'UNCURSE', h_leave: 'LEAVE',
       s_coins: 'COINS', s_tickets: 'TICKETS', s_item: 'ITEM',
       closed: 'WINDOW CLOSED', funds: 'NOT ENOUGH COINS', tickets: 'NO TICKETS', none: 'NOTHING THERE',
+      needMore: 'Need {n} more coins (pocket {p})', plateNeed: 'NEED {n} MORE',
       noService: 'NOTHING TO UNCURSE', free: 'FREE', locked: 'LOCKED', rerolled: 'NEW STOCK', cleansed: 'CLEANSED',
       sold: 'SOLD', paid: 'PAID', ledger: 'PAWN LEDGER', ledgerClosed: 'CLOSED',
       ledgerHint: '1-4 PICK  SPACE BUY', ledgerTickets: 'TICKETS',
@@ -128,6 +134,7 @@ export const def: MachineDef = {
       h_pick: 'SEÇ', h_buy: 'AL', h_reroll: 'YENİLE', h_lock: 'KİLİTLE', h_curse: 'LANET AÇ', h_leave: 'AYRIL',
       s_coins: 'PARA', s_tickets: 'BİLET', s_item: 'EŞYA',
       closed: 'PENCERE KAPALI', funds: 'PARA YETMİYOR', tickets: 'BİLET YOK', none: 'BURADA BİR ŞEY YOK',
+      needMore: '{n} para daha lazım (cebinde {p})', plateNeed: '{n} DAHA LAZIM',
       noService: 'AÇILACAK LANET YOK', free: 'BEDAVA', locked: 'KİLİTLİ', rerolled: 'YENİ STOK', cleansed: 'TEMİZLENDİ',
       sold: 'SATILDI', paid: 'ÖDENDİ', ledger: 'REHİN DEFTERİ', ledgerClosed: 'KAPALI',
       ledgerHint: '1-4 SEÇ  BOŞLUK AL', ledgerTickets: 'BİLET',
@@ -203,6 +210,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   /** The CHARMS | STAMPS tab strip above the card. */
   private tabs?: { el: HTMLElement; charms: HTMLElement; stamps: HTMLElement };
   private cardKey = '';
+  /** The last repaint's plate state per slot (which of the three plates shows). */
+  private plateTones: PlateTone[] = [];
   private uiBlocked = false;
   private offBlock: (() => void) | null = null;
   private offHint: (() => void) | null = null;
@@ -365,7 +374,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       return;
     }
     const ok = slot.price <= 0 || this.ctx.run.canAfford(slot.price, this.selfId);
-    if (!ok) { this.armed = null; this.commitBuy(pawn, i, slot, false, 'funds'); return; }
+    if (!ok) { this.armed = null; this.commitBuy(pawn, i, slot, false, 'funds', undefined, slot.price - this.wallet()); return; }
     if (this.armed?.i !== i) {                                  // first press: arm and show the price
       this.armed = { i, left: BUY_CONFIRM_S };
       this.sfx('hover');
@@ -384,10 +393,10 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   }
 
   /** Emit the purchase; the wallet moves inside the credit step through `pawn.buy`, which also marks the slot sold. */
-  private commitBuy(pawn: PawnApi, i: number, slot: PawnSlot, ok: boolean, why: string, replaceId?: string): void {
+  private commitBuy(pawn: PawnApi, i: number, slot: PawnSlot, ok: boolean, why: string, replaceId?: string, short?: number): void {
     const juice = buyJuice(slot.rarity, slot.cursed);
     void this.emit(
-      { k: 'buy', i, charmId: slot.charmId, price: slot.price, juice, ok, why },
+      { k: 'buy', i, charmId: slot.charmId, price: slot.price, juice, ok, why, ...this.fundsFields(why, short) },
       ok ? () => {
         const r = pawn.buy(this.selfId, i, replaceId);
         if (!r.ok) this.ctx.ui.toast(this.buyRefusal(pawn, r.why), 'bad');
@@ -409,7 +418,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
         this.swap = null;
         if (!slot || !pick) { this.refresh(true); return; }
         const ok = slot.price <= 0 || this.wallet() + pick.refund >= slot.price;
-        this.commitBuy(pawn, sw.i, slot, ok, ok ? '' : 'funds', pick.id);
+        this.commitBuy(pawn, sw.i, slot, ok, ok ? '' : 'funds', pick.id, slot.price - this.wallet() - pick.refund);
         this.refresh(true);
         return;
       }
@@ -447,12 +456,15 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   /** Two presses like a charm: the first arms the offer (the price shows), the second inside BUY_CONFIRM_S buys. */
   private buyStamp(i: number): void {
     const st = this.stamps();
-    const fail = (why: string, o?: StampOffer | null): void => { this.armed = null; void this.emit({ k: 'sbuy', i, kind: o?.kind ?? 'gild', target: o?.target ?? '', ok: false, why }); };
+    const fail = (why: string, o?: StampOffer | null, short?: number): void => {
+      this.armed = null;
+      void this.emit({ k: 'sbuy', i, kind: o?.kind ?? 'gild', target: o?.target ?? '', ok: false, why, ...this.fundsFields(why, short) });
+    };
     if (!st || !st.open()) { fail('stamp.why.closed'); return; }
     const o = st.offers()[i] ?? null;
     if (!o) { fail('stamp.why.none'); return; }
     if (st.count() >= st.cap()) { fail('stamp.why.full', o); return; }
-    if (!this.ctx.run.canAfford(o.price, this.selfId)) { fail('stamp.why.funds', o); return; }
+    if (!this.ctx.run.canAfford(o.price, this.selfId)) { fail('stamp.why.funds', o, o.price - this.wallet()); return; }
     if (this.armed?.i !== i) {
       this.armed = { i, left: BUY_CONFIRM_S };
       this.sfx('hover');
@@ -543,16 +555,23 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     }
   }
 
-  private denied(why: string): void {
+  /** The coins behind a funds refusal (`short` still missing, `pocket` held); empty for every other refusal. */
+  private fundsFields(why: string, short?: number): FundsRefusal {
+    return short !== undefined && (why === 'funds' || why === 'stamp.why.funds') ? { short: Math.max(0, short), pocket: this.wallet() } : {};
+  }
+
+  private denied(why: string, funds?: FundsRefusal): void {
     this.sfx('error');
     const sh = this.parts.shutter;
     const y0 = sh.position.y;
     void this.anim(0.2, (k) => { sh.position.y = y0 + Math.sin(k * Math.PI * 6) * 0.01; });
-    if (this.isLocalOccupant && why) this.toast(why.startsWith('shop.') || why.startsWith('stamp.') ? tr(why) : this.t(why), 'warn');
+    if (!this.isLocalOccupant || !why) return;
+    if (funds?.short !== undefined) { this.toast(this.t('needMore', { n: fmtNum(funds.short), p: fmtNum(funds.pocket ?? 0) }), 'warn'); return; }
+    this.toast(why.startsWith('shop.') || why.startsWith('stamp.') ? tr(why) : this.t(why), 'warn');
   }
 
   private async presentBuy(ev: Extract<Ev, { k: 'buy' }>, pc: PresentCtx): Promise<void> {
-    if (!ev.ok) { this.denied(ev.why); return; }
+    if (!ev.ok) { this.denied(ev.why, ev); return; }
     const { tray, itemSlots } = this.parts;
     const fx = this.ctx.fx;
     const anchor = this.model.anchors.coinOut;
@@ -601,7 +620,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   }
 
   private async presentStampBuy(ev: Extract<Ev, { k: 'sbuy' }>, pc: PresentCtx): Promise<void> {
-    if (!ev.ok) { this.denied(ev.why); return; }
+    if (!ev.ok) { this.denied(ev.why, ev); return; }
     if (pc.fast) { this.refresh(true); return; }
     const col = stampColor(ev.kind);
     const fx = this.ctx.fx;
@@ -610,7 +629,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     this.sfx('cashRegister');
     fx.coins(this.model.anchors.coinOut, 8, { spread: 0.1, up: 0.2 });
     this.parts.lamp.blink(6, 0.4);
-    const tag = this.parts.tags[ev.i];
+    const tag = this.plate(ev.i);
     if (tag) fx.squash(tag.mesh, 0.2, 0.25);
     await this.anim(0.18, () => undefined);
     this.sfx('stamp');
@@ -633,7 +652,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   private async presentStampLock(ev: Extract<Ev, { k: 'slock' }>): Promise<void> {
     if (!ev.ok) { this.denied(ev.why); return; }
     this.sfx(ev.off ? 'hover' : 'click');
-    const tag = this.parts.tags[ev.i];
+    const tag = this.plate(ev.i);
     if (tag) this.ctx.fx.squash(tag.mesh, 0.15, 0.2);
     this.ctx.fx.popText(this.parts.itemSlots[ev.i] ?? this.model.anchors.prompt, ev.off ? tr('shop.unlocked') : this.t('locked'), GOLD, { scale: 1.1 });
     this.refresh(true);
@@ -653,7 +672,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   private async presentLock(ev: Extract<Ev, { k: 'lock' }>): Promise<void> {
     if (!ev.ok) { this.denied(ev.why); return; }
     this.sfx(ev.off ? 'hover' : 'click');
-    const tag = this.parts.tags[ev.i];
+    const tag = this.plate(ev.i);
     if (tag) this.ctx.fx.squash(tag.mesh, 0.15, 0.2);
     this.ctx.fx.popText(this.parts.itemSlots[ev.i] ?? this.model.anchors.prompt, ev.off ? tr('shop.unlocked') : this.t('locked'), GOLD, { scale: 1.1 });
     this.refresh(true);
@@ -681,24 +700,40 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     this.stampCache = offers;
     const n = sm ? STAMP_SLOTS : Math.min(SLOTS_MAX, Math.max(SLOTS, pawn?.slotCount?.() ?? stock.length));
     if (n !== this.slotN) { this.slotN = n; this.fitPose(); }
-    for (let i = SLOTS; i < SLOTS_MAX; i++) { const t = this.parts.tags[i]; if (t) t.mesh.visible = i < n; }
+    this.showPlates(n);
     const key = [sm && st ? `S${stampKey(offers)}.${st.count()}` : stockKey(stock), st ? 1 : 0, open ? 1 : 0, this.wallet(), this.tickets(), this.cursor, this.swap ? `s${this.swap.i}.${this.swap.idx}` : '', this.armed?.i ?? -1].join('|');
     if (!force && key === this.repaintKey) { if (this.isLocalOccupant) this.showHud(); this.syncCard(); return; }
     this.repaintKey = key;
 
-    // every tag carries its price, locked ones in brackets (the lock shows on the shelf and in the ledger)
+    // every plate carries its price, locked ones in brackets (the lock shows on the shelf and in the ledger). Green when the
+    // pocket covers the price (a free or cursed charm always does); red with "NEED N MORE" when it does not.
+    const pocket = this.wallet();
     for (let i = 0; i < SLOTS_MAX; i++) {
-      let txt: string;
+      let txt = '--';
+      let tone: PlateTone = 'plain';
       if (sm) {
         const o = offers[i] ?? null;
-        txt = !open || !o ? '--' : o.locked ? `[${fmtNum(o.price)}]` : String(fmtNum(o.price));
+        if (open && o) {
+          const short = o.price > 0 ? Math.max(0, o.price - pocket) : 0;
+          const shown = short > 0 ? this.t('plateNeed', { n: fmtNum(short) }) : String(fmtNum(o.price));
+          tone = short > 0 ? 'no' : 'go';
+          txt = o.locked ? `[${shown}]` : shown;
+        }
       } else {
         const s = stock[i] ?? null;
-        const price = priceText(s, fmtNum, this.t('free'));
-        txt = !open ? '--' : s?.locked ? `[${price}]` : price;
+        if (pawn && open && s) {
+          const short = this.shortOf(pawn, s.price, i, pocket);
+          const shown = short > 0 ? this.t('plateNeed', { n: fmtNum(short) }) : priceText(s, fmtNum, this.t('free'));
+          tone = short > 0 ? 'no' : 'go';
+          txt = s.locked ? `[${shown}]` : shown;
+        }
       }
+      this.plateTones[i] = tone;
       this.parts.tags[i]?.setText(txt);
+      this.parts.plateGo[i]?.setText(txt);
+      this.parts.plateNo[i]?.setText(txt);
     }
+    this.showPlates(n);
     this.parts.ticketLed.set(String(fmtNum(this.tickets())).padStart(4, ' '));
     for (let i = 0; i < SLOTS_MAX; i++) {
       const sel = this.isLocalOccupant && i === this.cursor;
@@ -713,6 +748,33 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     if (sm && st) this.drawStampLedger(offers, open, st); else this.drawLedger(stock, open);
     if (this.isLocalOccupant) this.showHud();
     this.syncCard();
+  }
+
+  /** Coins still missing for shelf `i` at `price` (0 = affordable). A pegs-full shelf counts the best sellback toward the price, as the buy does. */
+  private shortOf(pawn: PawnApi, price: number, i: number, pocket: number): number {
+    if (price <= 0) return 0;
+    const refund = pawn.needsSwap(this.selfId, i) ? Math.max(0, ...pawn.swapChoices(this.selfId, i).map((c) => c.refund)) : 0;
+    return Math.max(0, price - pocket - refund);
+  }
+
+  /** The price plate on shelf `i` that is showing now (green, red or neutral). */
+  private plate(i: number): LabelPart | undefined {
+    const tone = this.plateTones[i] ?? 'plain';
+    if (tone === 'go') return this.parts.plateGo[i];
+    if (tone === 'no') return this.parts.plateNo[i];
+    return this.parts.tags[i];
+  }
+
+  /** Shows one plate per slot (the one matching its tone). Slots past the shelves on show stay hidden; the first SLOTS always show. */
+  private showPlates(n: number): void {
+    const p = this.parts;
+    for (let i = 0; i < SLOTS_MAX; i++) {
+      const on = i < SLOTS || i < n;
+      const tone = this.plateTones[i] ?? 'plain';
+      if (p.tags[i]) p.tags[i].mesh.visible = on && tone === 'plain';
+      if (p.plateGo[i]) p.plateGo[i].mesh.visible = on && tone === 'go';
+      if (p.plateNo[i]) p.plateNo[i].mesh.visible = on && tone === 'no';
+    }
   }
 
   private drawLedger(stock: readonly (PawnSlot | null)[], open: boolean): void {

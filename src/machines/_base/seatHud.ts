@@ -92,6 +92,9 @@ export class SeatHud {
   private readonly stakeEl: HTMLElement;
   private readonly stakeL: HTMLElement;
   private readonly stakeV: HTMLElement;
+  /** PULLS per ROUND of the seated machine (`pullRate()`), drawn as a line under the STAKE readout; 0 hides it. */
+  private readonly rateEl: HTMLElement;
+  private pullsPer = 0;
   /** The smart-stake preset row (stakePresets.ts) and the last state the seated machine published. */
   private readonly presetsEl: HTMLElement;
   private presetsState: StakePresetsEvent | null = null;
@@ -153,6 +156,8 @@ export class SeatHud {
     this.stakeEl = make('div', 'shud-stake shud-panel tone-gold', bottom);
     this.stakeL = make('span', 'shud-stake-l', this.stakeEl);
     this.stakeV = make('span', 'shud-stake-v', this.stakeEl);
+    this.rateEl = make('div', 'shud-rate shud-panel', bottom);
+    this.rateEl.style.display = 'none';
     // SMART STAKES: the SAFE / BOLD / BIG presets (keys 7 / 8 / 9) under the STAKE readout; drawn from `stake:presets`
     this.presetsEl = make('div', 'shud-presets', bottom);
     this.presetsEl.style.display = 'none';
@@ -172,7 +177,30 @@ export class SeatHud {
     this.offs.push(bus.on('stake:confirm', ({ need }) => { this.stakeNeed = need; this.refreshStake(); }));
     this.offs.push(bus.on('run:stakeConfirm', (e) => { if (mine(e.pid)) { this.stakeNeed = e.state === 'ask'; this.refreshStake(); } }));
     // the seated machine publishes before its machine shows the HUD, so the last state is kept and drawn on show()
-    this.offs.push(bus.on('stake:presets', (e) => { this.presetsState = e.on ? e : null; this.refreshPresets(); }));
+    this.offs.push(bus.on('stake:presets', (e) => {
+      this.presetsState = e.on ? e : null;
+      this.refreshPresets();
+      this.pullRate(e.on ? (e.pullCost ?? 1) : null);
+    }));
+  }
+
+  /**
+   * What one play of the seated machine costs in PULLS (`def.actionCost`): "1 PULL = 1 ROUND", "2 PULLS = 1 ROUND". Say what a
+   * pull buys. `null`, 0 or a non-number hides the line. The line shows while seated and the UI is not blocking.
+   */
+  pullRate(perRound: number | null): void {
+    this.pullsPer = perRound !== null && Number.isFinite(perRound) && perRound >= 1 ? Math.round(perRound) : 0;
+    this.refreshRate();
+  }
+
+  /** Repaints the PULLS-per-ROUND line (DOM only on change of the text). */
+  private refreshRate(): void {
+    const n = this.pullsPer;
+    const show = this.shown && !this.uiBlocked && n > 0;
+    this.rateEl.style.display = show ? '' : 'none';
+    if (!show) return;
+    const text = n === 1 ? tr('hud.seat.pullRate1') : tr('hud.seat.pullRateN', { n });
+    if (this.rateEl.textContent !== text) this.rateEl.textContent = text;
   }
 
   /** Repaints the SAFE / BOLD / BIG row: the active preset lit, a BIG waiting for its second press blinking. */
@@ -217,6 +245,7 @@ export class SeatHud {
   setUiBlocked(on: boolean): void {
     this.uiBlocked = on;
     this.root.style.display = on ? 'none' : '';
+    this.refreshRate();
     this.placeToasts();
   }
 
@@ -262,7 +291,7 @@ export class SeatHud {
   show(): void {
     this.shown = true; this.root.classList.add('on'); this.root.parentElement?.classList.add('seated');
     this.stakeKnown = false; this.stakeBet = 0;   // each seat reports its own stake; a seat that never does shows no STAKE readout
-    this.refreshTilt(); this.refreshStake(); this.refreshPresets(); this.placeToasts();
+    this.refreshTilt(); this.refreshStake(); this.refreshRate(); this.refreshPresets(); this.placeToasts();
   }
   /** Stood up: hide everything, drop the result and any open card (an unseen tip stays unseen). */
   /** Label of the help key; the in-game session points this at the live binding (default key H). */
@@ -286,6 +315,7 @@ export class SeatHud {
     this.clearResult();
     this.closeCard();
     this.refreshTilt();
+    this.refreshRate();
     this.refreshPresets();
     this.placeToasts();
   }

@@ -3,7 +3,8 @@
  *
  *  - Stock is drawn ONCE per intermission from the stream `pawn:${night}:${watch}`; buying never reshuffles anything.
  *  - Rerolls (`pawn:${night}:${watch}` → fork `r<n>`) replace only slots that are unlocked and unsold.
- *    Free rerolls are used first; the paid cost is 1 Ticket, +1 per further paid reroll in the same intermission.
+ *    Free rerolls are used first; the paid cost is 1 Ticket, +1 per further paid reroll in the same intermission,
+ *    plus the stake surcharge (`rerollSurcharge`, Stake 4: +1), which `rerollCost()` shows and the run charges.
  *  - A lock (1 Ticket, max 2) keeps the item on the shelf through rerolls and into the next intermission until it is
  *    bought or unlocked. Prices follow the current SI, so a locked charm costs what it costs now.
  *  - From Night 2 the under-the-counter slot (index 3) holds a Rare/Legendary or a Cursed charm, 50 / 50.
@@ -110,6 +111,8 @@ export interface PawnHost {
   discount?(): number;
   /** Optional: `x.shop.discountSlot` fraction applied to the DISCOUNT_SLOT only. */
   discountSlot?(): number;
+  /** Optional: extra Tickets on every PAID reroll (Stake 4: +1). The label (`rerollCost`) shows it; the run charges it in `spendTickets('pawn:reroll')`. */
+  rerollSurcharge?(): number;
   /** Optional: shelf bias on/off (default on). */
   bias?(): boolean;
   /** Optional: is a meta unlock code (F3, W, A:...) earned? Default: never, so cursed charms (F3) stay off the shelf. */
@@ -457,7 +460,11 @@ export class Pawn implements PawnApi {
   }
 
   /** Free rerolls left this visit: the run's own, the Pawn Bell's, and the Golden Ticket's first reroll. */
-  rerollCost(): number { return this.freeRerolls() > 0 ? 0 : 1 + this.paid; }
+  /** The Tickets the next reroll costs as the label shows them: the base (1, then +1 per paid reroll) plus the stake surcharge. */
+  rerollCost(): number {
+    if (this.freeRerolls() > 0) return 0;
+    return 1 + this.paid + Math.max(0, Math.round(this.host.rerollSurcharge?.() ?? 0));
+  }
   freeRerolls(): number {
     this.sync();
     return this.host.freeRerolls() + this.visitFree + (this.firstFree() ? 1 : 0);

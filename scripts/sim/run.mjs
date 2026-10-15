@@ -11,6 +11,8 @@
 //                                                    try a schedule without editing schedule.ts (8 values each; also --pulls, --start)
 //   node scripts/sim/run.mjs --calibrate --bots rotator   set each Night's quota to the --target survival curve, then print the tables
 //   node scripts/sim/run.mjs --no-float              the House float off (F(n) = 12 + 6n topped up at each Night start is ON by default)
+//   node scripts/sim/run.mjs --bots human --no-shop  the human bot never visits the Pawn (--human-shop-p 0). Wave 50 check, 2000 runs:
+//                                                    reach N1 97.5, N2 90.3, N3 78.9, N4 63.9 %: N3 is above the 35 % floor, so the ladder stays (84)
 //
 // DESIGN (director's decision): base machines are slightly negative EV (RTP 0.90-0.96 before Lamps). The player turns
 // +EV only through decisions: Hot Lamp (x1.5), rotating off Tilt, interest on deposits, phone deals and the charms and
@@ -120,7 +122,7 @@ const TYC = { bought: new Array(8).fill(0), cut: new Array(8).fill(0), price: ne
 const HUMAN_STAKE_LO = Number(argVal('--human-stake-lo', 0.05));    // wave 45: a smart stake is a random 5-15 % of the pocket a pull (the ladder step at or below it)
 const HUMAN_STAKE_HI = Number(argVal('--human-stake-hi', 0.15));
 const HUMAN_HOT_P = Number(argVal('--human-hot-p', 0.6));          // share of rotations that go to the Hot Lamp
-const HUMAN_SHOP_P = Number(argVal('--human-shop-p', 0.5));        // chance the casual player visits the Pawn at a given stop
+const HUMAN_SHOP_P = args.includes('--no-shop') ? 0 : Number(argVal('--human-shop-p', 0.5));        // chance the casual player visits the Pawn at a given stop; --no-shop = never
 const HUMAN_DEP_P = Number(argVal('--human-dep-p', 0.8));          // chance the human deposits at a Bell (not the last Watch)
 const HUMAN_DEP_LO = Number(argVal('--human-dep-lo', 0.3));        // ... and then this range of the pocket
 const HUMAN_DEP_HI = Number(argVal('--human-dep-hi', 0.7));

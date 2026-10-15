@@ -112,6 +112,8 @@ export interface StakePresetsEvent {
   /** BIG is waiting for its second press. */
   armed: StakePresetKey | null;
   rows: StakePresetRow[];
+  /** PULLS one round of this machine costs (`def.actionCost`, default 1): the seat HUD's "1 PULL = 1 ROUND" line. */
+  pullCost?: number;
 }
 
 declare module '@/core/events' {

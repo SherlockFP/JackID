@@ -101,8 +101,11 @@ export type CharmVendorParts = {
   hands: THREE.Object3D;
   /** Four pedestal anchors (charm sits here while it is on offer). */
   itemSlots: THREE.Object3D[];
-  /** Price tags, one per slot. */
+  /** Price tags, one per slot (neutral gold on black: closed, empty, or no price to compare). */
   tags: LabelPart[];
+  /** Affordable price plates (green) and short plates (red, "NEED N MORE"), one per slot, on the same spot as `tags`. */
+  plateGo: LabelPart[];
+  plateNo: LabelPart[];
   lamp: LampPart;
   /** 128 × 80 px ledger: the stock list with names and prices. */
   ledger: ScreenSurface;
@@ -111,6 +114,10 @@ export type CharmVendorParts = {
   /** Lit charm icons floating over the four cushions (hidden for sold / empty slots and while the window is shut). */
   icons: CharmIcon[];
 };
+
+/** Price plate colours: the affordable plate is green, the short plate red (text and ground). */
+const PLATE_GO_TEXT = 0xd8ffd8, PLATE_GO_BG = 0x14502a;
+const PLATE_NO_TEXT = 0xffd6d0, PLATE_NO_BG = 0x6e1010;
 
 export const W = 2.0, D = 0.7, H = 2.4;
 export const COUNTER_H = 1.0;
@@ -172,6 +179,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CharmVendorPar
   // ── pedestals (static) and item slots (anchors) ──
   const itemSlots: THREE.Object3D[] = [];
   const tags: LabelPart[] = [];
+  const plateGo: LabelPart[] = [];
+  const plateNo: LabelPart[] = [];
   const icons: CharmIcon[] = [];
   SLOT_X.forEach((x, i) => {
     const back = i >= 4;
@@ -192,6 +201,15 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CharmVendorPar
     if (back) tag.mesh.visible = false;
     root.add(tag.mesh);
     tags.push(tag);
+    const go = kit.label({ text: '--', w: 0.46, h: 0.16, px: [384, 112], color: PLATE_GO_TEXT, bg: PLATE_GO_BG, font: 'px5' });
+    const no = kit.label({ text: '--', w: 0.46, h: 0.16, px: [384, 112], color: PLATE_NO_TEXT, bg: PLATE_NO_BG, font: 'px5' });
+    for (const plate of [go, no]) {
+      plate.mesh.position.copy(tag.mesh.position);
+      if (back) plate.mesh.visible = false;
+      root.add(plate.mesh);
+    }
+    plateGo.push(go);
+    plateNo.push(no);
     if (i === 3) {
       const mark = kit.box(0.08, 0.02, 0.08, pal.neonPink, at(x, COUNTER_H + 0.1, COUNTER_Z - 0.05));
       mark.rotation.y = Math.PI / 4;
@@ -221,8 +239,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<CharmVendorPar
   light.userData = { color: 0xffd060, intensity: 0.6, range: 2.0, flicker: 'STEADY' };
   root.add(light);
 
-  const parts: CharmVendorParts = { tray, shutter, hands, itemSlots, tags, lamp, ledger, ticketLed, icons };
-  kit.finalize(root, { keep: [tray, shutter, hands, lamp.root, ledger.mesh, ticketLed.root, light, ...itemSlots, ...tags.map((t) => t.mesh), ...icons.map((c) => c.root)] });
+  const parts: CharmVendorParts = { tray, shutter, hands, itemSlots, tags, plateGo, plateNo, lamp, ledger, ticketLed, icons };
+  kit.finalize(root, { keep: [tray, shutter, hands, lamp.root, ledger.mesh, ticketLed.root, light, ...itemSlots, ...tags.map((t) => t.mesh), ...plateGo.map((t) => t.mesh), ...plateNo.map((t) => t.mesh), ...icons.map((c) => c.root)] });
 
   return {
     root,
