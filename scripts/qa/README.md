@@ -19,6 +19,7 @@ npm run qa -- --machine bigone --script "Space:150,wait:3000" --rounds 3 --shots
 | `--sit` | seat the player at the table first, through the bench hook `window.jackid.bench.sit()` (DEV build only). The script keys then go to the machine. The wallet and wagered are read before and after each round |
 | `--seat <n>` | with `--sit`: the seat index (default: first free seat) |
 | `--settle <ms>` | with `--sit`: wait after sitting before the first round (default 4000) |
+| `--force "<machineId>:<state>"` | with `--sit`, same machine: after the seat (and `--js`), before the rounds, put the seated machine into `<state>` through the bench hook `window.jackid.bench.force()`. The result is in `force`. Fails the run when the machine has no handler |
 | `--walk-view` | no sit. Press the script keys on foot, then screenshot the first-person view to `<machine>-walk.png` (needs `--shots`) |
 | `--frames "<ms,ms,...>"` | screenshots at exact offsets after the last key is released (`<machine>-f<ms>.png`, or `-round<N>-f<ms>.png`). Each shot waits for a rendered frame. Trailing `wait:` steps are part of this timeline. Needs `--shots` |
 | `--world` | a real debt run (`/?skipmenu=1&seed=N`) in the pit instead of a bench room. `--machine` is not needed |
@@ -44,6 +45,23 @@ Output is one JSON object on stdout. With `--sit`, each `roundLog` entry has `wa
 ```
 
 On failure the output is `{ "error": "…" }` and the exit code is 1. Cleanup still runs.
+
+## Forcing a decision state (`--force`)
+
+A machine's push-your-luck decision (Big One CHASE, scratch BUY THE THIRD, craps PRESS, keno DOUBLE DOWN, lootbox
+TRADE UP, coinpusher THUMP) is offered only in a state the player reaches by luck. `--force` puts the seated machine
+straight into that state so the decision can be shot and timed:
+
+```
+npm run qa -- --machine coinflip --sit --force "coinflip:win" --script "wait:1500" --shots <dir>
+```
+
+The bench hook `window.jackid.bench.force('<machineId>:<state>')` (src/world/bench.ts) dispatches to the handler the
+machine registered with `registerDebugForce(machineId, fn)` (src/core/debugForce.ts, `fn(state) => boolean`). With no
+registered handler it falls back to the optional `debugForce(state)` method (MachineBase; the bench panel's force field
+uses it too). It returns `{ ok, via: 'registry' | 'method' | 'none', reason? }`. A machine opts in by registering at
+module load, e.g. `registerDebugForce('bigone', (s) => { …; return true; })`, or by implementing `debugForce`. The
+state names are the machine's own (`coinflip` takes `win | loss | near`).
 
 ## Table machines (`--sit`)
 

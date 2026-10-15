@@ -32,6 +32,7 @@ import { TableBase } from '@/machines/_base/TableBase';
 import * as registry from '@/machines/_base/registry';
 import { BenchRun } from '@/game/benchRun';
 import { openBenchPanel } from './benchPanel';
+import { debugForceFor } from '@/core/debugForce';
 
 export const ROOM = 12;                     // m, square
 const EYE = 1.62;
@@ -497,6 +498,24 @@ export class Bench {
     this.main!.m._restore(JSON.parse(json) as typeof before, app.net.selfId);
     const after = this.main!.m._snapshot();
     return { ok: JSON.stringify(after.s) === JSON.stringify(before.s) && after.r === before.r, bytes: json.length };
+  }
+
+  /**
+   * QA hook: `window.jackid.bench.force('<machineId>:<state>')` (harness: `--force "<machineId>:<state>"`, after `--sit`).
+   * Puts the seated machine into `state` through its handler: the `registerDebugForce` registry (src/core/debugForce.ts)
+   * first, else the optional `debugForce(state)` method. Returns what happened; `ok:false` carries a reason.
+   */
+  force(spec: string): { ok: boolean; via: 'registry' | 'method' | 'none'; reason?: string } {
+    const cut = String(spec).indexOf(':');
+    const id = cut < 0 ? '' : spec.slice(0, cut).trim(), state = cut < 0 ? '' : spec.slice(cut + 1).trim();
+    if (!id || !state) return { ok: false, via: 'none', reason: 'expected "<machineId>:<state>"' };
+    if (id !== this.def.id) return { ok: false, via: 'none', reason: `bench machine is "${this.def.id}", not "${id}"` };
+    const m = this.main?.m;
+    if (!m || this.seatState !== 'seated') return { ok: false, via: 'none', reason: 'the player is not seated' };
+    const reg = debugForceFor(id);
+    if (reg) return reg(state) === true ? { ok: true, via: 'registry' } : { ok: false, via: 'registry', reason: `the handler refused "${state}"` };
+    if (typeof m.debugForce === 'function') { m.debugForce(state); return { ok: true, via: 'method' }; }
+    return { ok: false, via: 'none', reason: `"${id}" has no debug force handler` };
   }
 
   /** Add a mannequin bot to the first free seat of a table (host-side). */

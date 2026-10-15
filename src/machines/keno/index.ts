@@ -21,6 +21,7 @@ import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/co
 import type { PlayerId } from '@/core/types';
 import type { ModHook } from '@/game/types';
 import { fmtCoins, t as tr } from '@/core/i18n';
+import { registerDebugForce } from '@/core/debugForce';
 import { TableBase } from '@/machines/_base/TableBase';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
@@ -98,6 +99,8 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
   /** Seat HUD overlay (goal, state, key numbers, controls, result callout, tip and rules cards). */
   private seatHud?: SeatHud;
   private hudSig = '';
+  /** Host, debug force (`keno:double`): the next draw offers DOUBLE DOWN to the local player's tickets even with no hit yet. */
+  private forceOffer = false;
 
   protected createModel(kit: KitX): MachineModel<KenoParts> { return buildModel(kit, this.modelOpts); }
 
@@ -314,8 +317,11 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
       const offers: Offer[] = [];
       for (const t of dd.live) {
         const k = keyOf(t.p, t.slot);
-        const pays = ddPays(t.picks.length, t.stake, t.picks.filter((n) => first.has(n)).length, dd.adj);
+        const forced = this.forceOffer && t.p === this.selfId;
+        const pays = ddPays(t.picks.length, t.stake, t.picks.filter((n) => first.has(n)).length, dd.adj)
+          ?? (forced ? new Array<number>(t.picks.length + 1).fill(0) : null);
         if (!pays) continue;
+        if (forced) this.forceOffer = false;
         dd.pays.set(k, pays);
         dd.keys.add(k);
         offers.push({ p: t.p, slot: t.slot, spots: t.picks.length, stake: t.stake, pays });
@@ -526,10 +532,21 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
   }
 
   // ── seats ─────────────────────────────────────────────────────────────────────────────────────
+  /**
+   * Debug force (bench `--force keno:double`, seated): arms the next draw to offer DOUBLE DOWN on the local player's
+   * ticket (a ticket must be submitted before the draw locks). The offer pays zero when the ticket has no hit yet.
+   */
+  private debugState(state: string): boolean {
+    if (state.trim().toLowerCase() !== 'double' || !this.isHost || this.localSeat < 0) return false;
+    this.forceOffer = true;
+    return true;
+  }
+
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintDesks();
     this.paintRail();
     if (local) {
+      registerDebugForce(this.def.id, (s) => this.debugState(s));
       this.sfx('chime', { vol: 0.5 });
       this.hud(null);
       this.seatHud?.show();

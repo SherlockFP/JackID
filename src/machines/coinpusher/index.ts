@@ -26,6 +26,7 @@ import type { MachineInputEvent } from '@/core/input/types';
 import type { HudHint } from '@/core/ui/types';
 import { clamp, lerp } from '@/core/math';
 import { fmtCoins, t as tr } from '@/core/i18n';
+import { registerDebugForce } from '@/core/debugForce';
 import {
   buildModel, pileXZ, STATION_X, CHUTE_TRAVEL, CHUTE_Y, TRAY_X, TRAY_Y, TRAY_Z, FLY_FIRST, FLY_COUNT, PILE_SLOTS,
   REEL_SYMBOLS, SHELF_Y, type CoinpusherParts,
@@ -62,6 +63,7 @@ type Ev =
 type DropEv = Extract<Ev, { k: 'drop' }>;
 
 const AIM_SPEED = 0.8;                 // aim units per second while A/D is held
+const SHOVE_JOLT = 0.10;               // metres the pusher drives forward on a THUMP (visible, then it returns)
 const SHOWER_WAVE = 4;                 // coins per shower wave (≤ the flying slots)
 const PILE_START = 180;                // restock level (house coins on the shelf)
 const PRIZE_TIER_ICON = ['prizeCommon', 'prizeUncommon', 'prizeRare'] as const;
@@ -278,8 +280,30 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
   // ── seats ───────────────────────────────────────────────────────────────────────────────────────────
   onOccupy(_pid: PlayerId, seat: number, local: boolean): void {
     this.paintLamps();
-    if (local) { this.sfx('chime', { vol: 0.5 }); this.showHud(); }
+    if (local) {
+      registerDebugForce(this.def.id, (s) => this.debugState(s));
+      this.sfx('chime', { vol: 0.5 });
+      this.showHud();
+    }
     this.parts.chutes[seat].position.x = STATION_X[seat] + this.aim * CHUTE_TRAVEL;
+  }
+
+  /**
+   * Debug force (bench `--force coinpusher:<state>`, seated): `thump` puts the seated station on one heat pip (the next
+   * THUMP is safe), `danger` on THUMP_MAX - 1 (the next THUMP trips the tilt alarm). Host-local, like the other states.
+   */
+  private debugState(state: string): boolean {
+    const pips = state.trim().toLowerCase() === 'danger' ? THUMP_MAX - 1 : state.trim().toLowerCase() === 'thump' ? 1 : -1;
+    const s = this.localSeat;
+    if (pips < 0 || s < 0 || !this.isHost) return false;
+    const now = this.ctx.net.hostTime();
+    this.hostState.heat[s] = pips;
+    this.hostState.heatT[s] = now;
+    this.st.heat[s] = pips;
+    this.st.heatT[s] = now;
+    this.paintLeds();
+    this.showHud();
+    return true;
   }
 
   onRelease(pid: PlayerId, seat: number, local: boolean): void {
@@ -476,6 +500,8 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     if (ev.heat > THUMP_MAX - 2) this.parts.tiltLamp.blink(4, 0.25);   // the next thump trips the alarm
     this.paintLeds();
     if (pc.local) this.showHud();
+    const w = this.parts.pusher.getWorldPosition(new THREE.Vector3());
+    this.ctx.fx.popText([w.x, w.y + 0.12, w.z], tr('m.coinpusher.heat', { n: ev.heat, m: THUMP_MAX }), 0xffb040, { scale: 0.9 });
     const pieces = ev.fates.slice(0, FLY_COUNT);
     if (!pc.fast && pieces.length > 0) {
       await Promise.all(pieces.map((f, j) => this.flyCoin(FLY_FIRST + j, this.cosmeticShowerX(), this.cosmeticZ(),
@@ -514,9 +540,11 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
   frame(dt: number, _t: number): void {
     const p = this.parts;
     this.clock += dt;
-    this.kick = Math.max(0, this.kick - dt * 4);
+    this.kick = Math.max(0, this.kick - dt * 2.2);
     const ph = (this.clock / 2.4) * Math.PI * 2;
-    p.pusher.position.z = -0.15 + 0.06 * Math.sin(ph) + 0.03 * this.kick;
+    // a thump: the pusher drives forward and back over ~0.45 s (kick runs 1 → 0, the jolt peaks at the middle)
+    const jolt = this.kick > 0 ? Math.sin(Math.PI * (1 - this.kick)) : 0;
+    p.pusher.position.z = -0.15 + 0.06 * Math.sin(ph) + SHOVE_JOLT * jolt;
     p.gate.rotation.z += dt * Math.PI * 2 * 0.25;
     const up = this.ctx.net.hostTime() < this.st.walls ? 1 : 0;
     this.wallsK = lerp(this.wallsK, up, 1 - Math.exp(-dt * 8));

@@ -18,6 +18,7 @@
  */
 import type * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
+import { registerDebugForce } from '@/core/debugForce';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
 import { countUp, blinkOn, emitComboShow, flashPrefs } from '@/machines/_base/juice';
@@ -102,6 +103,7 @@ const TALLY_NOTES = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16];
 /** Tally text colours, escalating from pale to hot. */
 const TALLY_INK = ['#c8e8ff', '#ffe27a', '#ffb000', '#ff7a1a', '#ff4fa0', '#ffffff'];
 const CURSE_SHOW = 3.2;
+const FORCE_CHASE_TRIES = 400;          // debug force: re-rolls allowed to find a chaseable line win
 const JACKPOT_COUNT = 2.0;
 const LAST10 = 10;
 const LID_OPEN = (25 * Math.PI) / 180;
@@ -166,6 +168,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   private comboOn = false;
   /** A chased win waiting for the player: SPACE collects the pot, G chases it. Local only; `roundOpen` stays true meanwhile. */
   private offer: Offer | null = null;
+  /** Debug force (`bigone:chase`): the next spin is re-rolled until it is a chaseable line win. */
+  private forceChase = false;
 
   protected createModel(kit: KitX): MachineModel<BigOneParts> {
     return buildModel(kit, this.modelOpts);
@@ -194,10 +198,18 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     this.attractor.update(dt);
   }
 
+  /** Debug force (bench `--force bigone:chase`, seated): the next spin is re-rolled until it is a line win that can be chased. */
+  private debugState(state: string): boolean {
+    if (state.trim().toLowerCase() !== 'chase' || !this.isLocalOccupant) return false;
+    this.forceChase = true;
+    return true;
+  }
+
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.refresh();
     this.bulbsIdle();
     if (local) {
+      registerDebugForce(this.def.id, (s) => this.debugState(s));
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
@@ -329,7 +341,11 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       let res: Round | null = null;
       let offer: ChaseOffer | null = null;
       try {
-        const round = this.roll(stake);
+        let round = this.roll(stake);
+        if (this.forceChase) {                           // debug force: re-roll (pure, no state change) until a line win can be chased
+          for (let t = 0; t < FORCE_CHASE_TRIES && !chaseOf(round); t++) round = this.roll(stake);
+          this.forceChase = false;
+        }
         res = round;
         offer = chaseOf(round);                          // a line win may be chased: its settle waits for the player
         const since0 = this.sinceCurse();

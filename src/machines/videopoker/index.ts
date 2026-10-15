@@ -29,7 +29,7 @@ import { buildModel, type VideoPokerParts, type VpButton } from './model';
 import { STRINGS } from './strings';
 import {
   DOUBLE_CAP, DOUBLE_STEPS, DENOMS, HOLD_IDLE_S, MAX_CREDITS, WIN_IDLE_S, type Cat, type Game, type Variant,
-  doubleDeal, doubleResult, drawHand, holdHint, newDeck, payCredits, payTable, rankChar, secondLookChance,
+  doubleDeal, doubleResult, drawHand, holdHint, holdOdds, newDeck, payCredits, payTable, rankChar, secondLookChance,
   suitChar, isRed, playHeadless,
 } from './rules';
 
@@ -365,7 +365,7 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     s.hand = ev.hand.slice(); s.held = 0; s.phase = 'hold'; s.pot = 0; s.steps = 0; s.cat = 'none';
     this.evalCat = '';
     this.dbl = null;
-    this.hint = holdHint(s.hand, s.game);
+    this.hint = holdHint(s.hand, s.game, MAX_CREDITS, this.variant());   // the paytable the hand actually pays
     this.hintOn = this.feature('videopoker.hintOptimal');
     void buttons.deal.press(0.12);
     this.sfx('shuffle');
@@ -579,6 +579,13 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
   }
 
   /** Banner, key numbers and the controls valid right now. Only while the local player sits here. */
+  /** Chance (whole percent) that drawing with `mask` (bit i = card i held) ends on a paying hand. */
+  private oddsPct(mask: number): number {
+    const s = this.state;
+    if (s.hand.length !== 5) return 0;
+    return Math.round(holdOdds(s.hand, mask, s.game, this.variant()) * 100);
+  }
+
   private showHud(): void {
     const sh = this.seatHud;
     if (!sh || !this.isLocalOccupant) return;
@@ -589,7 +596,7 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     // STATE: what phase the hand is in
     if (busy) sh.state({ k: 'm.videopoker.stBusy' }, 'cyan');
     else if (s.phase === 'ready') sh.state({ k: 'm.videopoker.stReady' }, 'gold', { k: 'm.videopoker.stReadySub', v: { n: fmtCoins(this.stake()) } });
-    else if (s.phase === 'hold') sh.state({ k: 'm.videopoker.stHold' }, 'good', { k: 'm.videopoker.stHoldSub' });
+    else if (s.phase === 'hold') sh.state({ k: 'm.videopoker.stHold' }, 'good', { k: 'm.videopoker.stHoldSub', v: { pct: this.oddsPct(s.held) } });
     else if (s.phase === 'win') sh.state({ k: 'm.videopoker.stWin' }, 'gold', { k: 'm.videopoker.stWinSub' });
     else sh.state({ k: 'm.videopoker.stPick' }, 'warn', { k: 'm.videopoker.stPickSub' });
 
@@ -601,6 +608,11 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
       { label: { k: 'm.videopoker.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
     ];
     if (this.evalCat !== '') nums.push({ label: { k: 'm.videopoker.nHand' }, value: { k: `m.videopoker.cat_${this.evalCat}` }, tone: 'cyan' });
+    // DRAW ODDS: chance that the draw ends on a paying hand, for your holds and (when unlocked) the suggested hold
+    if (s.phase === 'hold' && !busy) {
+      nums.push({ label: { k: 'm.videopoker.nYourOdds' }, value: `${this.oddsPct(s.held)}%`, tone: 'neutral' });
+      if (this.hintOn) nums.push({ label: { k: 'm.videopoker.nBestOdds' }, value: `${this.oddsPct(this.hint)}%`, tone: 'good' });
+    }
     if (s.pot > 0) nums.push({ label: { k: 'm.videopoker.nPot' }, value: fmtCoins(s.pot), tone: 'good' });
     if (s.phase === 'win' || s.phase === 'pick') nums.push({ label: { k: 'm.videopoker.nDouble' }, value: `${s.steps}/${DOUBLE_STEPS}`, tone: 'warn' });
     sh.numbers(nums);

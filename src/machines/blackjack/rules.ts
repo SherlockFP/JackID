@@ -11,7 +11,7 @@
 import type { CardId } from '@/core/texgen/types';
 import type { Rng } from '@/core/rng';
 import type { HeadlessPlay } from '@/game/types';
-import { bjTotal, newShoe, rankOf, isRed, type Suit } from '@/machines/_base/cards';
+import { bjCardValue, bjTotal, cardId, newShoe, rankOf, isRed, SUITS, type Suit } from '@/machines/_base/cards';
 
 export type Action = 'hit' | 'stand' | 'double' | 'split' | 'surrender';
 export const ACTIONS: readonly Action[] = ['hit', 'stand', 'double', 'split', 'surrender'];
@@ -79,6 +79,34 @@ export function legalActions(h: PHand, c: LegalCtx): Action[] {
   if (first && !h.split && c.singleHand) out.push('surrender');
   return out.sort((a, b) => ACTIONS.indexOf(a) - ACTIONS.indexOf(b));
 }
+// ── decision odds shown on the seat HUD (display only: no effect on the play or the RTP) ──────────────────────────
+/**
+ * The cards not on the table: a fresh DECKS-deck shoe minus `seen` (every card face up on the felt). This is the estimate a
+ * player can make without counting; the live shoe may hold other cards, the odds do not change the deal.
+ */
+export function unseenCards(seen: readonly CardId[]): CardId[] {
+  const left = new Map<CardId, number>();
+  for (const s of SUITS) for (let r = 2; r <= 14; r++) left.set(cardId(r, s), DECKS);
+  for (const c of seen) { const n = left.get(c) ?? 0; if (n > 0) left.set(c, n - 1); }
+  const out: CardId[] = [];
+  for (const [c, n] of left) for (let i = 0; i < n; i++) out.push(c);
+  return out;
+}
+/** Chance (0..1) that the next card busts the active `hand`. `seen` = every card on the table, the hand included. */
+export function bustChanceOnHit(hand: readonly CardId[], seen: readonly CardId[]): number {
+  const pool = unseenCards(seen);
+  if (pool.length === 0) return 0;
+  let bust = 0;
+  for (const c of pool) if (bjTotal([...hand, c]).bust) bust++;
+  return bust / pool.length;
+}
+/** Chance (0..1) that the hidden card under an ace makes a dealer blackjack (a ten-value card). */
+export function dealerBjChance(seen: readonly CardId[]): number {
+  const pool = unseenCards(seen);
+  if (pool.length === 0) return 0;
+  return pool.filter((c) => bjCardValue(c) === 10).length / pool.length;
+}
+
 /** Equal rank, or any two ten-values (T J Q K). */
 export function sameOrTens(a: CardId, b: CardId): boolean {
   return sameRank(a, b) || (isTen(a) && isTen(b));

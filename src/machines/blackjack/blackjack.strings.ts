@@ -24,8 +24,8 @@ const en: Record<string, string> = {
   // ── seat HUD (readability standard) ─────────────────────────────────────────────────────────
   goal: 'Beat the dealer without going over 21',
   stBet: 'PLACE YOUR BET', stReady: 'WAITING FOR OTHERS', stDeal: 'DEALING', stIns: 'INSURANCE?',
-  stInsEven: 'EVEN MONEY? 1 TO 1 NOW', stInsOffer: 'PAYS 2:1 IF DEALER HAS BJ · COSTS {n}',
-  stTurn: 'YOUR TURN', stOther: 'ANOTHER PLAYER\'S TURN', stDealerPlays: 'DEALER PLAYS',
+  stInsEven: 'EVEN MONEY? 1 TO 1 NOW', stInsOffer: 'PAYS 2:1 IF DEALER HAS BJ ({pct}% CHANCE) · COSTS {n}',
+  stTurn: 'YOUR TURN', stTurnOdds: 'HIT BUSTS {pct}% · STAND ON {total}', stOther: 'ANOTHER PLAYER\'S TURN', stDealerPlays: 'DEALER PLAYS',
   stPayout: 'PAYING OUT', stEnd: 'ROUND OVER', stShuffle: 'SHUFFLING', stSecs: '{n}s',
   nBet: 'YOUR BET', nSide: 'TWIN SOULS', nBalance: 'BALANCE', nHand: 'YOUR HAND',
   nDealer: 'DEALER', nDealerHole: 'DEALER · HOLE CARD DOWN', nIns: 'INSURANCE', nShowing: '{n}',
@@ -64,8 +64,8 @@ const tr: Record<string, string> = {
   // ── seat HUD (readability standard) ─────────────────────────────────────────────────────────
   goal: 'Krupiyeyi 21\'i geçmeden yenmeye çalış',
   stBet: 'BAHSİNİ KOY', stReady: 'DİĞERLERİ BEKLENİYOR', stDeal: 'KARTLAR DAĞITILIYOR', stIns: 'SİGORTA?',
-  stInsEven: 'EŞİT PARA? ŞİMDİ 1\'E 1', stInsOffer: 'KRUPİYEDE BJ VARSA 2\'YE 1 · BEDEL {n}',
-  stTurn: 'SIRA SENDE', stOther: 'BAŞKA OYUNCUNUN SIRASI', stDealerPlays: 'KRUPİYE OYNUYOR',
+  stInsEven: 'EŞİT PARA? ŞİMDİ 1\'E 1', stInsOffer: 'KRUPİYEDE BJ VARSA 2\'YE 1 ({pct}% ŞANS) · BEDEL {n}',
+  stTurn: 'SIRA SENDE', stTurnOdds: 'KART ÇEKMEK {pct}% PATLATIR · ELİN {total}', stOther: 'BAŞKA OYUNCUNUN SIRASI', stDealerPlays: 'KRUPİYE OYNUYOR',
   stPayout: 'ÖDEMELER YAPILIYOR', stEnd: 'EL BİTTİ', stShuffle: 'KARIŞTIRILIYOR', stSecs: '{n} sn',
   nBet: 'BAHSİN', nSide: 'İKİZ RUHLAR', nBalance: 'BAKİYE', nHand: 'SENİN ELİN',
   nDealer: 'KRUPİYE', nDealerHole: 'KRUPİYE · KAPALI KART', nIns: 'SİGORTA', nShowing: '{n}',

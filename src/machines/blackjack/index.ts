@@ -972,6 +972,14 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
     return r === 14 ? 'A' : r === 13 ? 'K' : r === 12 ? 'Q' : r === 11 ? 'J' : String(r);
   }
 
+  /** Every card face up on the felt (all boxes' hands and the dealer's shown cards): the basis of the decision odds. */
+  private seenCards(): CardId[] {
+    const out: CardId[] = [];
+    for (const bx of this.st.boxes) for (const h of bx.hands) for (const c of h.cards) if (c !== '') out.push(c as CardId);
+    for (const c of this.st.dealer) if (c !== '') out.push(c as CardId);
+    return out;
+  }
+
   /** Banner, key numbers and valid controls. Only while the local player sits at a box. */
   private refreshHud(): void {
     const sh = this.seatHud;
@@ -993,11 +1001,18 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
       case 'deal': sh.state({ k: 'm.blackjack.stDeal' }, 'neutral'); break;
       case 'ins':
         if (b.offer === 2) sh.state({ k: 'm.blackjack.stInsEven' }, 'warn', secs);
-        else if (b.offer === 1) sh.state({ k: 'm.blackjack.stIns' }, 'warn', { k: 'm.blackjack.stInsOffer', v: { n: fmtCoins(R.insuranceMax(b.main)) } });
-        else sh.state({ k: 'm.blackjack.stIns' }, 'neutral');
+        else if (b.offer === 1) {
+          const pct = Math.round(100 * R.dealerBjChance(this.seenCards()));
+          sh.state({ k: 'm.blackjack.stIns' }, 'warn', { k: 'm.blackjack.stInsOffer', v: { n: fmtCoins(R.insuranceMax(b.main)), pct } });
+        } else sh.state({ k: 'm.blackjack.stIns' }, 'neutral');
         break;
       case 'turn':
-        if (myTurn) sh.state({ k: 'm.blackjack.stTurn' }, 'good', secs);
+        if (myTurn && st.turn) {
+          // DECISION ODDS: the chance that a HIT on this hand busts (STAND keeps the total)
+          const cards = (b.hands[st.turn.hand]?.cards ?? []).filter((c) => c !== '') as CardId[];
+          const pct = Math.round(100 * R.bustChanceOnHit(cards, this.seenCards()));
+          sh.state({ k: 'm.blackjack.stTurn' }, 'good', { k: 'm.blackjack.stTurnOdds', v: { pct, total: bjTotal(cards).total } });
+        } else if (myTurn) sh.state({ k: 'm.blackjack.stTurn' }, 'good', secs);
         else sh.state({ k: 'm.blackjack.stOther' }, 'cyan');
         break;
       case 'dealer': sh.state({ k: 'm.blackjack.stDealerPlays' }, 'neutral'); break;

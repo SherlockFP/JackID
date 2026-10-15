@@ -19,6 +19,7 @@ import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/co
 import type { PlayerId } from '@/core/types';
 import type { ModHook } from '@/game/types';
 import { fmtCoins, t as tr } from '@/core/i18n';
+import { registerDebugForce } from '@/core/debugForce';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { TableBase } from '@/machines/_base/TableBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
@@ -610,9 +611,29 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
   }
 
   // ── seats ─────────────────────────────────────────────────────────────────────────────────────
+  /**
+   * Debug force (bench `--force craps:press`, seated, between rolls): sets a point (6) when none is up, puts the seat's
+   * Pass line on it through the real bet path, then presses. Host-local: the bench is a single-player table.
+   */
+  private debugState(state: string): boolean {
+    if (state.trim().toLowerCase() !== 'press') return false;
+    const seat = this.localSeat, hs = this.hs;
+    if (!this.isHost || seat < 0 || hs.phase !== 'open') return false;
+    if (!(hs.books[seat].pass > 0)) this.setBet(this.selfId, seat, 'pass', this.bet, 0);
+    if (!(hs.books[seat].pass > 0)) return false;
+    if (hs.point === 0) {
+      hs.point = 6;
+      void this.emit({ k: 'puck', on: true, point: 6 });
+      void this.emit({ k: 'phase', p: 'point' });
+    }
+    this.press(this.selfId, seat, 0);
+    return (hs.books[seat][`press:${hs.point}`] ?? 0) > 0;
+  }
+
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
     this.paintLamps();
     if (local) {
+      registerDebugForce(this.def.id, (s) => this.debugState(s));
       this.sfx('chime', { vol: 0.5 });
       this.seatHud?.show();
       this.showHud();

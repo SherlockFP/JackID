@@ -30,7 +30,7 @@ import { bus } from '@/core/events';
 import { lerp, TAU } from '@/core/math';
 import { buildModel, pegX, pegY, slotX, FUNNEL_Y, LAND_Y, ROWS, DX, RISK_ANGLE, type PlinkoParts } from './model';
 import {
-  HOOK_EDGE, HOOK_EXTRA, HOOK_FLOOR, HOOK_GOLDEN, MAX_EXTRA, MAX_MULT, RISK_KEYS, RTP, SLOTS,
+  HALF_MULT, HOOK_EDGE, HOOK_EXTRA, HOOK_FLOOR, HOOK_GOLDEN, MAX_EXTRA, MAX_MULT, RISK_KEYS, RTP, SLOTS,
   baseMult, clampPucks, clampRisk, playHeadless, roundPayout, rollDrop, type DropOpts, type Risk,
 } from './rules';
 
@@ -545,7 +545,12 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
     sh.goal(this.tx('goal'));
     if (live) sh.state(this.tx('stFall'), 'cyan', this.queued > 0 ? this.tx('stQueued', { n: this.queued }) : undefined);
     else if (this.confirmArm) sh.state(this.tx('confirm', { amount: fmtCoins(this.confirmArm.amount) }), 'bad', this.tx('confirmSub', { n: Math.ceil(this.confirmArm.seconds) }));
-    else sh.state(this.tx('stReady'), 'gold', this.tx('stReadySub', { risk }));
+    else {
+      // DECISION READOUT: the payout table of the chosen risk row, edge to centre, and its return (base table)
+      const r = clampRisk(s.risk);
+      const table = HALF_MULT[r].map((x) => `×${x}`).join(' ');
+      sh.state(this.tx('stReady'), 'gold', this.tx('stTable', { risk, table, rtp: (RTP[r] * 100).toFixed(1) }));
+    }
     sh.numbers([
       { label: this.tx('nBet'), value: fmtCoins(live ? this.roundBet : this.bet * s.pucks), tone: 'gold' },
       { label: this.tx('nPucks'), value: String(s.pucks), tone: 'cyan' },

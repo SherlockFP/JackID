@@ -209,6 +209,13 @@ export async function runBench(opts = {}) {
   const probe = opts.probe ? String(opts.probe) : null;   // JS, read after every round (recorded as roundLog[].probe)
   const before = opts.js ? String(opts.js) : null;        // JS, run once after the room settles, before the rounds
   const sit = Boolean(opts.sit);
+  const force = opts.force === undefined ? null : String(opts.force).trim();   // "<machineId>:<state>", after --sit
+  if (force !== null) {
+    const fm = /^([a-z][a-z0-9_]*):(.+)$/.exec(force);
+    if (!fm) throw new Error(`bad --force "${force}" (want "<machineId>:<state>", e.g. "bigone:win")`);
+    if (fm[1] !== machine) throw new Error(`--force is for "${fm[1]}", but --machine is "${machine}"`);
+    if (!sit) throw new Error('--force needs --sit (the machine must be seated first)');
+  }
   const walkView = Boolean(opts.walkView);
   const seat = opts.seat === undefined ? undefined : Math.floor(Number(opts.seat));
   const settle = opts.settle === undefined ? 4000 : Math.max(0, Math.floor(Number(opts.settle)));   // ms after sitting
@@ -220,7 +227,7 @@ export async function runBench(opts = {}) {
   const res = {
     machine, seed, rounds: 0, roundLog: [], consoleErrors: 0, errors: [], shots: [], state: '', framesPerSec: 0,
     mode: sit ? 'sit' : walkView ? 'walk-view' : 'walk', seated: false, playerMode: '', walkShot: null,
-    reloads: 0, viteEvents: [],          // page loads after the first one (the veil comes back): the run is then invalid
+    force: null, reloads: 0, viteEvents: [],          // page loads after the first one (the veil comes back): the run is then invalid
     cleanup: { vite: 'not started', chrome: 'not started', profile: 'not created', ports: 'n/a' },
   };
   let vite = null, chrome = null, cdp = null, profile = null, vport = 0, dport = 0, stopping = false;
@@ -342,6 +349,16 @@ export async function runBench(opts = {}) {
       await sleep(400);
     }
 
+    // 3d) --force "<machineId>:<state>": once, after the seat and --js, before the rounds. The bench hook puts the seated
+    //     machine into <state> (registry handler, else debugForce). Recorded as `force`; ok:false fails the run.
+    if (force !== null) {
+      const fr = await evalJson(cdp, `window.jackid.bench.force(${JSON.stringify(force)})`);
+      res.force = fr;
+      if (!fr?.ok) throw new Error(`--force "${force}" failed: ${fr?.reason ?? 'no reason given'}`);
+      log(`forced ${force} (via ${fr.via})`);
+      await sleep(400);
+    }
+
     // 4) Rounds: one pass of the script per round, then a screenshot. With --sit, the wallet and wagered are read
     //    before and after each pass.
     for (let r = 1; r <= rounds; r++) {
@@ -421,13 +438,13 @@ export async function runBench(opts = {}) {
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────
 const USAGE = 'usage: node scripts/qa/bench.mjs (--machine <id> | --world) [--script "Space:200,wait:1500,KeyX"] [--shots <dir>] '
-  + '[--frames "300,1200"] [--probe "<js>"] [--js "<js>"] [--rounds <n>] [--seed <n>] [--sit [--seat <n>]] [--walk-view]';
+  + '[--frames "300,1200"] [--probe "<js>"] [--js "<js>"] [--rounds <n>] [--seed <n>] [--sit [--seat <n>] [--force "<id>:<state>"]] [--walk-view]';
 
 function parseArgs(argv) {
   const o = {};
   const flags = {
     '--machine': 'machine', '--script': 'script', '--shots': 'shots', '--rounds': 'rounds', '--seed': 'seed', '--seat': 'seat',
-    '--settle': 'settle', '--frames': 'frames', '--probe': 'probe', '--js': 'js',
+    '--settle': 'settle', '--frames': 'frames', '--probe': 'probe', '--js': 'js', '--force': 'force',
   };
   const switches = { '--sit': 'sit', '--walk-view': 'walkView', '--world': 'world' };
   for (let i = 0; i < argv.length; i++) {

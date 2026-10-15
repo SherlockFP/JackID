@@ -27,7 +27,7 @@ import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_
 import { buildModel, cellPos, FLIP_OPEN, type MinesParts } from './model';
 import {
   CAP, CAP_RAISED, CELLS, COLS, HOOK_CAP, HOOK_EDGE, HOOK_INSURE, HOOK_SCAN, IDLE_S, PRESETS, RTP,
-  autoCash, clampCap, clampInsure, clampMines, commit, multAt, pick as pickRule, playHeadless, takeDust, isRevealed,
+  autoCash, clampCap, clampInsure, clampMines, commit, multAt, nextSafeChance, pick as pickRule, playHeadless, takeDust, isRevealed,
   type Board, type Commit, type Opts,
 } from './rules';
 import STR from './mines.strings';
@@ -689,10 +689,14 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
     sh.goal({ k: 'm.mines.goal' });
 
     // STATE: arm, reveal, or cash out
+    // DECISION READOUT: odds that the next tile is safe, and what a safe tile would pay on the ladder
+    const pSafe = this.roundOpen ? nextSafeChance(s.k, s.defused ? 1 : 0, s.rm) : 0;
+    const nextX = this.roundOpen ? multAt(s.k + 1, s.corners, s.rm, this.opts()) : 0;
+    const odds: Txt = { k: 'm.mines.stOdds', v: { pct: Math.round(pSafe * 100), next: fmtMult(nextX) } };
     if (this.busy) sh.state({ k: 'm.mines.stBusy' }, 'neutral');
     else if (!this.roundOpen) sh.state({ k: 'm.mines.stArm' }, 'gold', { k: 'm.mines.stArmSub' });
-    else if (!canCash) sh.state({ k: 'm.mines.stFirst' }, 'cyan', { k: 'm.mines.stFirstSub' });
-    else sh.state({ k: 'm.mines.stPlay' }, 'good', { k: 'm.mines.stPlaySub' });
+    else if (!canCash) sh.state({ k: 'm.mines.stFirst' }, 'cyan', odds);
+    else sh.state({ k: 'm.mines.stPlay' }, 'good', odds);
 
     // KEY NUMBERS: stake, mines, ladder, safe reveals, cash-out value, balance
     const nums: HudNumber[] = [];
@@ -700,6 +704,7 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
     nums.push({ label: { k: 'm.mines.nMines' }, value: String(this.roundOpen ? s.rm : s.m), tone: 'bad' });
     nums.push({ label: { k: 'm.mines.nLadder' }, value: `x${fmtMult(canCash ? s.mult : 1)}`, tone: 'cyan' });
     if (this.roundOpen) nums.push({ label: { k: 'm.mines.nSafe' }, value: String(s.k), tone: 'good' });
+    if (this.roundOpen) nums.push({ label: { k: 'm.mines.nNextSafe' }, value: `${Math.round(pSafe * 100)}%`, tone: pSafe >= 0.5 ? 'good' : 'warn' });
     if (canCash) nums.push({ label: { k: 'm.mines.nWin' }, value: fmtCoins(this.potential()), tone: 'good' });
     nums.push({ label: { k: 'm.mines.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' });
     sh.numbers(nums);

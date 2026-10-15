@@ -176,9 +176,11 @@ for (let n = 0; n <= 52; n++) {
 /** Offset of the size-j subsets in a table; the size-j rank of a sorted set is `combRank(set)`. */
 const OFF: number[] = [0];
 for (let j = 1; j <= HAND + 1; j++) OFF.push(OFF[j - 1] + BINOM[52][j - 1]);
-const combRank = (a: readonly number[]): number => {
+const combRank = (a: readonly number[]): number => combRankN(a, a.length);
+/** Rank of the first `n` entries of a sorted set (no allocation: the table build calls it millions of times). */
+const combRankN = (a: readonly number[], n: number): number => {
   let r = 0;
-  for (let i = 0; i < a.length; i++) r += BINOM[a[i]][i + 1];
+  for (let i = 0; i < n; i++) r += BINOM[a[i]][i + 1];
   return r;
 };
 /** The four natural royals (ranks 10…A, one per suit), sorted. */
@@ -228,8 +230,12 @@ export function wildPpc(hand: readonly number[], w: number, t: Partial<Record<Ca
  * `t[OFF[j] + combRank(Y)]` = Σ over 5-card hands F ⊇ Y of the per-credit pay ppc(F), natural royals excluded (they pay
  * a credits-dependent amount and are counted separately).
  */
-function buildTable(game: Game, v: Variant): Float64Array {
+interface VTable { val: Float64Array; hit: Uint32Array }
+function buildTable(game: Game, v: Variant): VTable {
   const t = new Float64Array(OFF[HAND + 1]);
+  // hit[Y] = number of 5-card hands F ⊇ Y that pay (naturals included): the draw odds, built in the same pass
+  const hit = new Uint32Array(OFF[HAND + 1]);
+  const sub = [0, 0, 0, 0, 0];
   const a = [0, 0, 0, 0, 0];
   for (a[0] = 0; a[0] < 52; a[0]++)
     for (a[1] = a[0] + 1; a[1] < 52; a[1]++)
@@ -237,10 +243,19 @@ function buildTable(game: Game, v: Variant): Float64Array {
         for (a[3] = a[2] + 1; a[3] < 52; a[3]++)
           for (a[4] = a[3] + 1; a[4] < 52; a[4]++) {
             const w = game === 'deuces' ? a.reduce((n, c) => n + (rankOf(c) === 0 ? 1 : 0), 0) : 0;
-            if (w >= 1 && w <= 3) { t[OFF[HAND] + combRank(a)] = wildPpc(a, w, paysFor(game, v)); continue; }
-            const e = evaluate(a, game, v);
-            const nat = e.cat === 'royal' || e.cat === 'naturalRoyal';
-            t[OFF[HAND] + combRank(a)] = nat ? 0 : e.ppc;
+            let pay: number, nat = false;
+            if (w >= 1 && w <= 3) pay = wildPpc(a, w, paysFor(game, v));
+            else {
+              const e = evaluate(a, game, v);
+              nat = e.cat === 'royal' || e.cat === 'naturalRoyal';
+              pay = e.ppc;
+            }
+            t[OFF[HAND] + combRank(a)] = nat ? 0 : pay;
+            if (pay > 0) for (let mask = 0; mask < 1 << HAND; mask++) {
+              let n = 0;
+              for (let i = 0; i < HAND; i++) if ((mask >> i) & 1) sub[n++] = a[i];
+              hit[OFF[n] + combRankN(sub, n)]++;
+            }
           }
   // A size-m set's sum also belongs to each of its (m−1)-subsets; each hand is counted (5−(m−1)) times there, so divide.
   for (let m = HAND; m >= 1; m--) {
@@ -260,11 +275,11 @@ function buildTable(game: Game, v: Variant): Float64Array {
     };
     rec(0, 0);
   }
-  return t;
+  return { val: t, hit };
 }
 
-const tableCache = new Map<string, Float64Array>();
-function tableFor(game: Game, v: Variant): Float64Array {
+const tableCache = new Map<string, VTable>();
+function tableFor(game: Game, v: Variant): VTable {
   const key = `${game}|${v.upgraded ? 1 : 0}|${v.bonusQuads ? 1 : 0}`;
   let t = tableCache.get(key);
   if (!t) {
@@ -275,9 +290,29 @@ function tableFor(game: Game, v: Variant): Float64Array {
   return t;
 }
 
+/**
+ * Draw odds of a hold: the chance (0..1) that the draw from the 47 undealt cards ends on a paying hand, before any
+ * Second Look. Exact: inclusion–exclusion over the discarded cards on the hit table, as `holdEV` does for credits.
+ */
+export function holdOdds(hand: readonly number[], held: number, game: Game, v: Variant = {}): number {
+  const t = tableFor(game, v).hit;
+  const H: number[] = [], D: number[] = [];
+  for (let i = 0; i < HAND; i++) ((held >> i) & 1 ? H : D).push(hand[i]);
+  const k = D.length;
+  let total = 0;
+  for (let x = 0; x < 1 << k; x++) {
+    const Y = H.slice();
+    let sign = 1;
+    for (let j = 0; j < k; j++) if ((x >> j) & 1) { Y.push(D[j]); sign = -sign; }
+    Y.sort((p, q) => p - q);
+    total += sign * t[OFF[Y.length] + combRank(Y)];
+  }
+  return Math.min(1, Math.max(0, total / BINOM[52 - HAND][k]));
+}
+
 /** Expected credits of keeping `held` (bit i = card i) and drawing the rest from the 47 cards the hand does not use. */
 function holdEV(hand: readonly number[], held: number, game: Game, credits: number, v: Variant): number {
-  const t = tableFor(game, v);
+  const t = tableFor(game, v).val;
   const H: number[] = [], D: number[] = [];
   for (let i = 0; i < HAND; i++) ((held >> i) & 1 ? H : D).push(hand[i]);
   const k = D.length;

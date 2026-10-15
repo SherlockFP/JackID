@@ -26,6 +26,7 @@ import {
 } from './rules';
 import { STRINGS } from './strings';
 import { WheelInset } from './wheelInset';
+import { registerDebugForce } from '@/core/debugForce';
 
 // ── timing (seconds, ×1 speed) ──────────────────────────────────────────────────────────────────
 const OPEN_S = 20;          // shared betting window
@@ -45,16 +46,28 @@ type Ev =
   | { k: 'lay'; seat: number; bets: Bet[] }
   | { k: 'ready'; seat: number; on: boolean }
   | { k: 'phase'; p: Phase }
+  /** LET IT RIDE offer: the seat's straight-up chips sit on `spot` for one more spin (READY to ride, CLEAR to take them). */
+  | { k: 'ride'; seat: number; spot: string }
   | { k: 'spin'; pocket: number; orbitMs: number; dropMs: number; bounces: number }
   | { k: 'result'; pocket: number; rerolled: boolean; seats: Array<{ seat: number; stake: number; gross: number; nearmiss: boolean }> };
 type Act = { k: 'set'; spot: string; a: number } | { k: 'clear' } | { k: 'ready' };
 /** What every peer knows (public felt state). Mutated only in `present`. */
-type State = { phase: Phase; layouts: Bet[][]; ready: boolean[]; history: number[] };
+type State = { phase: Phase; layouts: Bet[][]; ready: boolean[]; history: number[]; rides: Array<string | null> };
 type Snap = State;
 
 const SEATS = 6;
 const emptyLayouts = (): Bet[][] => Array.from({ length: SEATS }, () => [] as Bet[]);
 const emptyReady = (): boolean[] => new Array<boolean>(SEATS).fill(false);
+const emptyRides = (): Array<string | null> => new Array<string | null>(SEATS).fill(null);
+/** Host-only: stakes not yet locked, ready flags, the round timer, LET IT RIDE chips waiting for the next window. */
+type HostState = {
+  phase: Phase; layouts: Bet[][]; ready: boolean[]; timer: number;
+  /** Per seat: the straight-up chips that won and may ride (applied at the next betting window). */
+  ride: Bet[][];
+  /** Per seat: the layout is a ride that the player has not touched yet (drops at the timer unless READY). */
+  riding: boolean[];
+};
+const freshHost = (): HostState => ({ phase: 'idle', layouts: emptyLayouts(), ready: emptyReady(), timer: 0, ride: emptyLayouts(), riding: emptyReady() });
 
 /** Chip stack for an amount, greedy largest-first. */
 function chipsFor(amount: number): ChipValue[] {
@@ -92,10 +105,12 @@ function nearestSpot(x: number, z: number): string | null {
 
 const wrapTau = (a: number): number => ((a % (Math.PI * 2)) + Math.PI * 4) % (Math.PI * 2);
 
+export { playHeadless };
+
 export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Act> {
-  private st: State = { phase: 'idle', layouts: emptyLayouts(), ready: emptyReady(), history: [] };
+  private st: State = { phase: 'idle', layouts: emptyLayouts(), ready: emptyReady(), history: [], rides: emptyRides() };
   /** HOST-ONLY authority: stakes not yet locked, ready flags, round timer. */
-  private hs: { phase: Phase; layouts: Bet[][]; ready: boolean[]; timer: number } = { phase: 'idle', layouts: emptyLayouts(), ready: emptyReady(), timer: 0 };
+  private hs: HostState = freshHost();
   /** Local only: my layout at the last LOCK, for Rebet (R). */
   private lastMine: Bet[] = [];
 
@@ -207,11 +222,13 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
       const next = hs.layouts[seat].filter((b) => b.s !== a.spot);
       if (a.a > 0) next.push({ s: a.spot, a: a.a });
       hs.layouts[seat] = next;
+      hs.riding[seat] = false;                                  // the player touched the layout: a ride is theirs to keep
       this.unready(seat);
       void this.emit({ k: 'lay', seat, bets: next });
     } else if (a.k === 'clear') {
       if (hs.phase !== 'open') { this.nak(pid, rid, 'm.roulette.busy'); return; }
       hs.layouts[seat] = [];
+      hs.riding[seat] = false;
       this.unready(seat);
       void this.emit({ k: 'lay', seat, bets: [] });
     } else if (a.k === 'ready') {
@@ -229,11 +246,39 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     void this.emit({ k: 'ready', seat, on: false });
   }
 
+  /**
+   * LET IT RIDE: a straight-up winner finds its chips still on the number. Pre-laid, not charged until READY, and dropped
+   * at the timer unless confirmed. A seat that already has chips down keeps them.
+   */
+  private applyRides(): void {
+    const hs = this.hs;
+    for (let s = 0; s < SEATS; s++) {
+      const ride = hs.ride[s];
+      hs.ride[s] = [];
+      if (!ride.length || this.seats[s] === null || hs.layouts[s].length > 0) continue;
+      hs.layouts[s] = ride.map((b) => ({ ...b }));
+      hs.riding[s] = true;
+      hs.ready[s] = false;
+      void this.emit({ k: 'lay', seat: s, bets: hs.layouts[s] });
+      void this.emit({ k: 'ride', seat: s, spot: ride[0].s });
+    }
+  }
+
+  /** Bench "force" state `ride`: the local seat gets a straight-up ride offer on No. 17 (solo tables, the host's own window). */
+  private debugState(state: string): boolean {
+    if (state.trim().toLowerCase() !== 'ride' || this.localSeat < 0 || this.disposed) return false;
+    const hs = this.hs;
+    hs.ride[this.localSeat] = [{ s: 'straight:17', a: 10 }];
+    if (hs.phase === 'open') this.applyRides();
+    return true;
+  }
+
   /** Host: betting window opens (solo: no timer; shared: 20 s). */
   private openBetting(): void {
     const hs = this.hs;
     hs.phase = 'open';
     hs.timer = OPEN_S;
+    this.applyRides();
     if (this.humans().length >= 2) void this.countdown(OPEN_S, 'bet');
     void this.emit({ k: 'phase', p: 'open' });
   }
@@ -245,7 +290,7 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     if (hs.phase === 'idle') {
       if (humans > 0) this.openBetting();
     } else if (hs.phase === 'open') {
-      if (humans === 0) { this.hs = { phase: 'idle', layouts: emptyLayouts(), ready: emptyReady(), timer: 0 }; return; }
+      if (humans === 0) { this.hs = freshHost(); return; }
       if (humans >= 2 && (hs.timer -= dt) <= 0) {
         if (hs.layouts.some((l) => l.length > 0)) this.lock();
         else this.openBetting();                       // nobody has chips yet: the window restarts
@@ -278,6 +323,14 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
   private lock(): void {
     const hs = this.hs;
     this.cancelCountdown();
+    // a LET IT RIDE the player has not confirmed with READY is not charged: it drops when the timer runs out
+    for (let s = 0; s < SEATS; s++) {
+      if (hs.riding[s] && !hs.ready[s] && hs.layouts[s].length > 0) {
+        hs.layouts[s] = [];
+        hs.riding[s] = false;
+        void this.emit({ k: 'lay', seat: s, bets: [] });
+      }
+    }
     const active: Array<{ seat: number; bets: Bet[]; stake: number }> = [];
     for (let s = 0; s < SEATS; s++) {
       const bets = hs.layouts[s];
@@ -306,6 +359,13 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     hs.timer = dur;
     hs.layouts = emptyLayouts();
     hs.ready = emptyReady();
+    hs.riding = emptyReady();
+    // LET IT RIDE: whoever's straight-up number came up gets the chips offered back on it for the next window
+    hs.ride = emptyLayouts();
+    active.forEach((a, i) => {
+      const hit = a.bets.filter((b) => b.s === `straight:${out.pocket}`);
+      if (hit.length > 0 && out.seats[i].gross > 0) hs.ride[a.seat] = hit.map((b) => ({ ...b }));
+    });
     void this.emit({ k: 'phase', p: 'lock' });
     void this.emit({ k: 'spin', pocket: out.pocket, orbitMs: out.orbitMs, dropMs: out.dropMs, bounces: out.bounces });
     void this.emit({
@@ -318,8 +378,13 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
   // ── presentation (every peer) ─────────────────────────────────────────────────────────────────
   async present(ev: Ev, pc: PresentCtx): Promise<void> {
     switch (ev.k) {
+      case 'ride':
+        this.st.rides[ev.seat] = ev.spot;
+        if (this.isLocalOccupant) this.showHud();
+        return;
       case 'lay':
         this.st.layouts[ev.seat] = ev.bets;
+        this.st.rides[ev.seat] = null;
         this.paintChips();
         if (ev.bets.length) this.sfx('chip');
         if (this.isLocalOccupant) this.showHud();
@@ -436,10 +501,10 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
 
   // ── snapshots: public felt state only ─────────────────────────────────────────────────────────
   getSnapshot(): Snap {
-    return { phase: this.st.phase, layouts: this.st.layouts.map((l) => [...l]), ready: [...this.st.ready], history: [...this.st.history] };
+    return { phase: this.st.phase, layouts: this.st.layouts.map((l) => [...l]), ready: [...this.st.ready], history: [...this.st.history], rides: [...this.st.rides] };
   }
   applySnapshot(sn: Snap): void {
-    this.st = { phase: sn.phase, layouts: sn.layouts.map((l) => [...l]), ready: [...sn.ready], history: [...sn.history] };
+    this.st = { phase: sn.phase, layouts: sn.layouts.map((l) => [...l]), ready: [...sn.ready], history: [...sn.history], rides: [...(sn.rides ?? emptyRides())] };
     this.paintAll();
   }
 
@@ -447,6 +512,7 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
   onOccupy(_pid: PlayerId, seat: number, local: boolean): void {
     this.paintLamps();
     if (local) {
+      registerDebugForce(this.def.id, (s) => this.debugState(s));
       this.sfx('chime', { vol: 0.5 });
       this.seatHud?.show();
       this.showHud();
@@ -556,11 +622,17 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     const ready = st.ready[seat];
     const betting = open && !ready;
     const layout = this.myBets().reduce((s, b) => s + b.a, 0);
+    const rideSpot = betting ? st.rides[seat] : null;
     sh.goal({ k: 'm.roulette.hGoal' });
 
     // STATE: what phase, and what you have to do
     if (st.phase === 'idle') sh.state({ k: 'm.roulette.hWait' }, 'neutral');
     else if (open && ready) sh.state({ k: 'm.roulette.hReady' }, 'cyan');
+    else if (rideSpot) {
+      // DECISION READOUT: the straight-up odds and what the ride is worth, before the player commits
+      const n = Number(rideSpot.slice('straight:'.length));
+      sh.state({ k: 'm.roulette.hRide', v: { n } }, 'gold', { k: 'm.roulette.hRideSub', v: { go: this.k('confirm'), clear: this.k('clear') } });
+    }
     else if (open) {
       const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
       // seat-views: the banner says how to start the spin (alone: no timer, so nothing else tells the player the wheel is waiting for them)

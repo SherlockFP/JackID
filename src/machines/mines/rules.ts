@@ -72,6 +72,14 @@ export function autoCash(k: number, corners: number, m: number, o: Opts): boolea
   return k >= CELLS - m || (k > 0 && multAt(k, corners, m, o) >= o.cap);
 }
 
+/**
+ * Chance that the next tile opened is safe, for the decision readout. Unopened safe tiles over unopened tiles: `k`
+ * safe tiles are open, and a spent defuse (`defusedMines` 0 or 1) is an opened mine, so it leaves the pool too.
+ */
+export function nextSafeChance(k: number, defusedMines: number, m: number): number {
+  const unopened = CELLS - k - defusedMines;
+  return unopened > 0 ? Math.max(0, CELLS - m - k) / unopened : 0;
+}
 export const isCorner = (cell: number): boolean => CORNERS.includes(cell);
 
 /** Cell centre → (row, col); row-major index, row 0 is the back row. */

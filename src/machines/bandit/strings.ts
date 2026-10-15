@@ -16,6 +16,9 @@ export const STRINGS: MachineStrings = {
     sym_2BAR: '2BAR', sym_3BAR: '3BAR', sym_SHOE: 'SHOE',
     // seat HUD (readability standard)
     goal: 'Land a winning combination on the centre line',
+    hi: 'HI', lo: 'LO', sym_BLANK: 'BLANK', gCard: 'Card {card}', gWin: 'RIGHT · x{n}', gPush: 'EQUAL · PUSH', gLose: 'WRONG · POT LOST',
+    stGamble: 'HI OR LO ON THE NEXT CARD', stGambleSub: 'HI {hi} · LO {lo}', nPot: 'POT', nOn: 'ON THE TABLE',
+    cHi: 'HI', cLo: 'LO', cTake: 'COLLECT',
     stReady: 'PULL THE LEVER', stReadySub: 'STAKE {n}', stSpin: 'REELS SPINNING',
     stTilt: 'TILT · CABINET LOCKED', stTiltSub: 'Wait for it to reset',
     nBet: 'YOUR BET', nCredits: 'CREDITS', nCoin: 'COIN', nBalance: 'BALANCE', nLast: 'LAST WIN',
@@ -29,6 +32,7 @@ export const STRINGS: MachineStrings = {
     rule4: 'LUCKY NUDGE can move one reel one stop after a pull.',
     rule5: 'Five losses in a row and the maw swallows the pile. THUMP 3 times in 10 s locks the cabinet for 8 s.',
     rule6: 'Pays per credit: STAR 1000 · 3BAR 200 · 2BAR 100 · BAR 50 · MELON 100 · ORANGE 30 · PLUM 20 · SHOE 50 · any BAR 15.',
+    rule7: 'After a win, HI or LO on the next card. A right guess multiplies the pot, an equal card keeps it, a wrong one loses it. COLLECT takes the pot.',
   },
   tr: {
     name: 'Tek Kollu Haydut',
@@ -41,6 +45,9 @@ export const STRINGS: MachineStrings = {
     sym_2BAR: '2BAR', sym_3BAR: '3BAR', sym_SHOE: 'NAL',
     // seat HUD (readability standard)
     goal: 'Ortadaki hatta kazandıran bir kombinasyon yakala',
+    hi: 'ÜST', lo: 'ALT', sym_BLANK: 'BOŞ', gCard: 'Kart {card}', gWin: 'DOĞRU · x{n}', gPush: 'EŞİT · BERABERE', gLose: 'YANLIŞ · POT KAYBEDİLDİ',
+    stGamble: 'SONRAKİ KARTTA ÜST YA DA ALT', stGambleSub: 'ÜST {hi} · ALT {lo}', nPot: 'POT', nOn: 'MASADAKİ',
+    cHi: 'ÜST', cLo: 'ALT', cTake: 'AL',
     stReady: 'KOLU ÇEK', stReadySub: 'BAHİS {n}', stSpin: 'MAKARALAR DÖNÜYOR',
     stTilt: 'SARSINTI · MAKİNE KİLİTLİ', stTiltSub: 'Sıfırlanmasını bekle',
     nBet: 'BAHSİN', nCredits: 'KREDİ', nCoin: 'JETON', nBalance: 'BAKİYE', nLast: 'SON KAZANÇ',
@@ -54,5 +61,6 @@ export const STRINGS: MachineStrings = {
     rule4: 'ŞANSLI İTME, çekişten sonra bir makarayı bir adım oynatabilir.',
     rule5: 'Arka arkaya beş kayıpta ağız parayı yutar. 10 sn içinde 3 kez VUR, makineyi 8 sn kilitler.',
     rule6: 'Kredi başına ödeme: YILDIZ 1000 · 3BAR 200 · 2BAR 100 · BAR 50 · KAVUN 100 · PORTAKAL 30 · EROZ 20 · NAL 50 · her BAR 15.',
+    rule7: 'Kazançtan sonra bir sonraki karta ÜST ya da ALT de: doğru tahmin potu çarpar, eşit kart potu korur, yanlış olan potu kaybettirir. AL potu çeker.',
   },
 };

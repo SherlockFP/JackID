@@ -208,6 +208,67 @@ export function tagsOf(r: Roll): string[] {
   return t;
 }
 
+// ── HI / LO gamble on the next symbol (after a win; the pot is at risk, the round stays open) ─────────────────
+/** Value of a symbol for the gamble: its pay order (BLANK lowest). Equal values tie (the pot stays). */
+export const GAMBLE_VALUE: Readonly<Record<Sym, number>> = {
+  BLANK: 0, PLUM: 20, ORANGE: 30, BAR: 50, SHOE: 50, MELON: 100, '2BAR': 100, '3BAR': 200, STAR: 1000,
+};
+/** Return of the gamble per coin staked, before ties: a right guess pays pot × mult, a tie returns the pot. */
+export const GAMBLE_RTP = 0.95;
+/** A side is only offered when a right guess grows the pot by at least this factor. */
+export const GAMBLE_MIN_MULT = 1.1;
+/** Gambles per win before the pot is collected for you. */
+export const GAMBLE_MAX_RIDES = 3;
+
+/** Weight of each symbol on the gamble card: reel 0's 64 virtual stops, read through the physical strip. */
+function cardWeights(): Map<Sym, number> {
+  const out = new Map<Sym, number>();
+  REEL_WEIGHTS[0].forEach((w, seg) => out.set(SEGMENTS[seg], (out.get(SEGMENTS[seg]) ?? 0) + w));
+  return out;
+}
+const CARD_W = cardWeights();
+
+export interface GambleSide { offered: boolean; p: number; mult: number }
+export interface GambleOdds { hi: GambleSide; lo: GambleSide; tie: number }
+
+/**
+ * Odds of the two sides for a pot whose current symbol is `cur`. `p` is the chance the next card is higher (HI) or
+ * lower (LO); `mult` = (GAMBLE_RTP − tie) / p, rounded down to 0.05. Pure: the live table and the bench read the same.
+ */
+export function gambleOdds(cur: Sym): GambleOdds {
+  const v0 = GAMBLE_VALUE[cur];
+  let hiW = 0, loW = 0, eqW = 0;
+  for (const [s, w] of CARD_W) {
+    const v = GAMBLE_VALUE[s];
+    if (v > v0) hiW += w; else if (v < v0) loW += w; else eqW += w;
+  }
+  const side = (w: number): GambleSide => {
+    if (w <= 0) return { offered: false, p: 0, mult: 0 };
+    const tie = eqW / VIRTUAL;
+    const mult = Math.floor((20 * (GAMBLE_RTP - tie) * VIRTUAL) / w) / 20;
+    return { offered: mult >= GAMBLE_MIN_MULT, p: w / VIRTUAL, mult };
+  };
+  return { hi: side(hiW), lo: side(loW), tie: eqW / VIRTUAL };
+}
+
+/** The gamble card: one draw, the same 64-stop law as the reels. */
+export function gambleCard(rng: Rng): Sym {
+  return SEGMENTS[segmentOf(0, rng.int(0, VIRTUAL - 1))];
+}
+
+/** Outcome of a guess: `win` (the card is on the guessed side), `push` (equal value), `lose`. */
+export function gambleResult(cur: Sym, card: Sym, side: 'hi' | 'lo'): 'win' | 'push' | 'lose' {
+  const a = GAMBLE_VALUE[card], b = GAMBLE_VALUE[cur];
+  if (a === b) return 'push';
+  return (side === 'hi') === (a > b) ? 'win' : 'lose';
+}
+
+/** Bench "force" for the gamble: the same five draws, with the centre line shown as three PLUM (a win the panel can take). */
+export function forcedPlum(r: Roll, credits: number, cfg: PayCfg): Roll {
+  const syms: Sym[] = ['PLUM', 'PLUM', 'PLUM'];
+  return { ...r, seg: [2, 2, 2], syms, nudge: null, forced: false, near: false, line: evalLine(syms, credits, cfg) };
+}
+
 /** Headless single pull (staff auto-play and balance sims). Same rules as the live machine. */
 export const playHeadless: HeadlessPlay = (rng, bet, h) => {
   const { credits, denom } = splitBet(bet);

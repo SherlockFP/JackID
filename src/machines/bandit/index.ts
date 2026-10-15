@@ -14,7 +14,7 @@
  *  - charm hooks `m.bandit.*` (see `def.modHooks`), attract mode (breathing reel lamp, an occasional lever twitch),
  *    snapshots for late joiners, and `playHeadless` for staff auto-play and sims.
  *
- * Controls: Space pull · LMB-drag the knob (release past the trip) · wheel / Z / X credits · B max credits ·
+ * Controls: Space pull · LMB-drag the knob (release past the trip) · wheel / Z / X credits · B max credits · 3 / 4 HI / LO and Q collect on a waiting win ·
  * 1 cycles the coin · 2 thump · E stand.
  */
 import { MachineBase } from '@/machines/_base/MachineBase';
@@ -28,24 +28,31 @@ import { px5Width } from '@/core/texgen/font';
 import { clamp, lerp } from '@/core/math';
 import { buildModel, LEVER_MAX, LEVER_TRIP, MAW_COINS, type BanditParts } from './model';
 import {
-  DENOMS, facetOf, HOOK_JACKPOT, HOOK_LUCK, MAX_CREDITS, STOPS, coinsFor, playHeadless, readCfg, roll, tagsOf,
-  type PayCfg, type Roll, type Sym,
+  DENOMS, GAMBLE_MAX_RIDES, facetOf, forcedPlum, gambleCard, gambleOdds, gambleResult, HOOK_JACKPOT, HOOK_LUCK,
+  MAX_CREDITS, STOPS, coinsFor, playHeadless, readCfg, roll, tagsOf, type PayCfg, type Roll, type Sym,
 } from './rules';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
+import { registerDebugForce } from '@/core/debugForce';
 import { STRINGS } from './strings';
 
 export { playHeadless };
 
 /** The rules card. `rule6` is the paytable in text: the glass on the reels is too small to read from the seat. */
-const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.bandit.' + k }));
+const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6', 'rule7'].map((k) => ({ k: 'm.bandit.' + k }));
 
 type Ev =
   | { k: 'lever'; angle: number }
   /** One pull. `stops` are the final physical stops; `nudge` the reel moved one stop after the base result. */
   | { k: 'pull'; credits: number; denom: number; stops: [number, number, number]; nudge: { reel: number; dir: number } | null;
     pay: number; kind: string; forced: boolean; near: boolean; tags: string[] }
-  | { k: 'tilt'; until: number };
-type State = { stops: [number, number, number]; tiltUntil: number; round: number; losses: number; lastWin: number };
+  | { k: 'tilt'; until: number }
+  /** One HI / LO guess (`side`) or the pot taken (`collect`). `next` is the pot after it; `mult` the offered factor. */
+  | { k: 'gamble'; side: 'hi' | 'lo' | 'collect'; cur: Sym; card: Sym; res: 'win' | 'push' | 'lose' | 'none'; pot: number; next: number; ride: number; mult: number };
+/** `pot` is a win waiting for the HI / LO gamble (or COLLECT); `bet` its round stake; `cur` the symbol it is judged on. */
+type State = {
+  stops: [number, number, number]; tiltUntil: number; round: number; losses: number; lastWin: number;
+  pot: number; bet: number; cur: Sym; ride: number;
+};
 
 const LEVER_SENS = 2.6;            // rad of lever per unit of screen height
 const LEVER_EMIT_MS = 66;          // ≤ 15 Hz cosmetic lever stream
@@ -54,6 +61,8 @@ const SPIN_RPS = 6;                // reel revolutions per second while spinning
 const STOP_AT = [1.2, 1.6, 2.0];   // seconds after the lever trips, per reel (the mechanical stop order)
 const GOLD = 0xffd040, RED = 0xff3020;
 const SHOE_TEXT = 'SHOE';
+/** A win on this centre symbol can be gambled: at least one side is offered (`gambleOdds`). */
+const gambleOffered = (cur: Sym): boolean => { const o = gambleOdds(cur); return o.hi.offered || o.lo.offered; };
 /** Largest integer px5 scale (≤ maxS) at which `text` fits the box; never below 1. */
 const fitScale = (text: string, maxW: number, maxH: number, maxS: number): number => {
   for (let s = maxS; s > 1; s--) if (px5Width(text, s) <= maxW && 7 * s <= maxH) return s;
@@ -86,13 +95,15 @@ export const def: MachineDef = {
 };
 
 export default class Bandit extends MachineBase<BanditParts, Ev, State> {
-  private state: State = { stops: [0, 0, 0], tiltUntil: 0, round: 0, losses: 0, lastWin: 0 };
+  private state: State = { stops: [0, 0, 0], tiltUntil: 0, round: 0, losses: 0, lastWin: 0, pot: 0, bet: 0, cur: 'BLANK', ride: 0 }; // i18n-ok: symbol id
   private credits = 1;
   private denomIdx = 0;
   private leverAngle = 0;
   private dragging: { y0: number; a0: number } | null = null;
   private lastLeverEmit = -1e9;
   private thumps: number[] = [];
+  /** Bench "force" state `gamble`: the next pull lands three PLUM (a win the HI / LO panel can take). */
+  private forceGamble = false;
   private lampOn = false;
   private tiltLampOn = false;
   /** Seat HUD overlay (created in init, shown while seated). */
@@ -134,6 +145,7 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.refresh();
     if (local) {
+      registerDebugForce(this.def.id, (s) => this.debugState(s));
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
@@ -141,12 +153,30 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
     }
   }
 
+  /** Bench: `gamble` makes the next pull a PLUM×3 win, so the HI / LO panel can be checked without luck. */
+  private debugState(state: string): boolean {
+    if (state.trim().toLowerCase() !== 'gamble' || !this.isLocalOccupant || this.disposed) return false;
+    this.forceGamble = true;
+    return true;
+  }
+
   onRelease(_pid: number, _seat: number, local: boolean): void {
     this.dragging = null;
     this.attractor.reset();
     this.refresh();
-    if (local) { this.setLever(0); this.seatHud?.hide(); }
+    // safety net for forced / external releases: a pot still waiting for the gamble is paid, never stranded
+    if (local && this.roundOpen) { this.settle({ gross: this.state.pot, tags: ['ladder'] }); }
+    if (local) { this.state.pot = 0; this.state.ride = 0; this.setLever(0); this.seatHud?.hide(); }
   }
+
+  /** Leaving with a pot on the table collects it first (the same safe default as the other ladder games). */
+  protected override standUp(): void {
+    if (this.pending) void this.collect();              // busy now: settle() releases the seat afterwards
+    super.standUp();
+  }
+
+  /** A win is waiting for the HI / LO gamble (or COLLECT). */
+  private get pending(): boolean { return this.roundOpen && !this.busy && this.state.pot > 0; }
 
   onLang(): void {
     this.drawAward();
@@ -169,6 +199,9 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
       case 'betMax': this.changeBet(() => { this.credits = this.affordableCredits(); }); break;
       case 'n1': this.changeBet(() => { this.denomIdx = (this.denomIdx + 1) % DENOMS.length; }); break;
       case 'n2': this.thump(); break;
+      case 'n3': void this.gamble('hi'); break;          // HI / LO only while a win waits (gamble() checks)
+      case 'n4': void this.gamble('lo'); break;
+      case 'collect': void this.collect(); break;
     }
   }
 
@@ -233,22 +266,69 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
     const credits = this.credits, denom = this.denom;
     this.showHud();
     let r: Roll | null = null;
+    let held = false;                                          // a win waiting for the HI / LO gamble (no payout yet)
     try {
       const luck = this.luck() + this.mod(HOOK_LUCK, 0);
       r = roll(this.rng, { credits, luck, cfg: this.payCfg(), jackpot: this.mod(HOOK_JACKPOT, 1) });
+      if (this.forceGamble) { this.forceGamble = false; r = forcedPlum(r, credits, this.payCfg()); }
       const pay = coinsFor(r.line.units, denom);
       const tags = tagsOf(r);
       const ev: Ev = {
         k: 'pull', credits, denom, stops: r.seg, nudge: r.nudge, pay, kind: r.line.kind, forced: r.forced, near: r.near, tags,
       };
-      // settle before presentation (DECISIONS G): the wallet is credited, then the reels show the result
-      const credit = (): void => { this.settle({ gross: pay, tags }); this.busy = true; };
+      // a win the gamble can grow stays on the table: the round stays open until HI, LO or COLLECT settles it
+      held = pay > 0 && gambleOffered(r.syms[1]);
+      if (held) { this.state.pot = pay; this.state.bet = this.roundBet; this.state.cur = r.syms[1]; this.state.ride = 0; }
+      // settle before presentation (DECISIONS G): a plain win or loss is credited, then the reels show the result
+      const credit = held ? undefined : (): void => { this.settle({ gross: pay, tags }); this.busy = true; };
       await this.emit(ev, credit);
     } finally {
-      if (this.roundOpen) this.settle({ gross: 0 });           // never strand a stake (rule 7)
+      if (this.roundOpen && !held) this.settle({ gross: 0 });  // never strand a stake (rule 7)
       this.busy = false;
     }
     this.showHud();
+  }
+
+  /** HI or LO on the next card for the waiting pot. A right guess grows the pot, a tie keeps it, a wrong guess loses it. */
+  private async gamble(side: 'hi' | 'lo'): Promise<void> {
+    if (!this.pending) return;
+    const s = this.state;
+    const cur = s.cur;
+    const odds = gambleOdds(cur)[side];
+    if (!odds.offered) { this.sfx('buzzer', { vol: 0.4 }); return; }
+    this.busy = true;
+    this.showHud();
+    const pot = s.pot, bet = s.bet;
+    const card = gambleCard(this.rng);
+    const res = gambleResult(cur, card, side);
+    const next = res === 'win' ? Math.floor(pot * odds.mult) : res === 'push' ? pot : 0;
+    const ride = s.ride + 1;
+    const credit = res === 'lose' ? (): void => { this.settle({ gross: 0, tags: ['ladder'] }); this.busy = true; } : undefined;
+    try {
+      await this.emit({ k: 'gamble', side, cur, card, res, pot, next, ride, mult: odds.mult }, credit);
+    } finally {
+      if (this.roundOpen && res === 'lose') this.settle({ gross: 0 });
+      this.busy = false;
+    }
+    if (res !== 'lose') {
+      this.state.pot = next; this.state.cur = card; this.state.ride = ride; this.state.bet = bet;
+      // the top of the ladder pays itself: GAMBLE_MAX_RIDES right guesses in a row, collected at once
+      if (res === 'win' && ride >= GAMBLE_MAX_RIDES) await this.collect();
+    }
+    this.showHud();
+  }
+
+  /** Takes the pot: credit first, present after (DECISIONS G), so a reload mid-show never loses it. */
+  private async collect(): Promise<void> {
+    if (!this.pending) return;
+    this.busy = true;
+    this.showHud();
+    const amount = this.state.pot, bet = this.state.bet, cur = this.state.cur, ride = this.state.ride;
+    const credit = (): void => { this.settle({ gross: amount, tags: ['ladder'] }); };
+    const shown = this.emit({ k: 'gamble', side: 'collect', cur, card: cur, res: 'none', pot: amount, next: amount, ride, mult: 0 }, credit);
+    if (this.roundOpen) credit();                              // the emit was refused: still pay out, never strand the pot
+    this.state.pot = 0; this.state.ride = 0; this.state.bet = bet;
+    try { await shown; } finally { this.showHud(); }
   }
 
   // ── presentation: every peer, including the emitter ────────────────────────────────────────────
@@ -257,7 +337,39 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
       case 'lever': if (!pc.local) this.setLever(ev.angle); return;
       case 'pull': return this.presentPull(ev, pc);
       case 'tilt': return this.presentTilt(ev, pc);
+      case 'gamble': return this.presentGamble(ev, pc);
     }
+  }
+
+  /** The HI / LO card turns over on every peer; a collect pours the pot out. */
+  private async presentGamble(ev: Extract<Ev, { k: 'gamble' }>, pc: PresentCtx): Promise<void> {
+    const fx = this.ctx.fx, P = this.parts;
+    if (ev.side === 'collect') {
+      this.sfx('win1');
+      this.drawLeds(ev.pot);
+      await this.pourCoins(ev.pot, { bet: ev.pot, fast: pc.fast, onCount: (v) => this.drawLeds(v) });
+      this.refresh();
+      return;
+    }
+    this.sfx('click');
+    fx.popText(P.reels[1].root, this.t('gCard', { card: this.t(`sym_${ev.card}`) }), GOLD, { dur: 0.9, rise: 0.2, scale: 1 });
+    await this.wait(pc.fast ? 0.05 : 0.5);
+    if (this.disposed) return;
+    if (ev.res === 'win') {
+      this.sfx('win2');
+      fx.popText(P.reels[1].root, this.t('gWin', { n: ev.mult.toFixed(2) }), GOLD, { dur: 1.0, rise: 0.25, scale: 1.1 });
+      this.drawLeds(ev.next);
+    } else if (ev.res === 'push') {
+      this.sfx('click');
+      fx.popText(P.reels[1].root, this.t('gPush'), GOLD, { dur: 0.9, rise: 0.2, scale: 1 });
+      this.drawLeds(ev.next);
+    } else if (ev.res === 'lose') {
+      this.sfx('thud', { vol: 0.8 });
+      fx.popText(P.reels[1].root, this.t('gLose'), RED, { dur: 1.0, rise: 0.25, scale: 1 });
+      this.drawLeds(0);
+      this.commiserate({ at: P.reels[1].root });
+    }
+    this.refresh();
   }
 
   private async presentPull(ev: Extract<Ev, { k: 'pull' }>, pc: PresentCtx): Promise<void> {
@@ -370,6 +482,7 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
   }
   applySnapshot(s: State): void {
     this.state = { ...s, stops: [...s.stops] as [number, number, number] };
+    if (this.state.pot > 0 && !this.roundOpen) this.resumeRound(this.state.bet);   // a pot still at risk stays collectable
     this.refresh();
   }
 
@@ -444,32 +557,50 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
     ];
   }
 
+  /** One gamble side as the player reads it: the chance of a right guess and the factor it pays. */
+  private sideText(o: { offered: boolean; p: number; mult: number }): string {
+    return o.offered ? `${Math.round(o.p * 100)}% x${o.mult.toFixed(2)}` : '-';
+  }
+
   /** Banner, key numbers and the controls valid right now. Only while the local player sits here. */
   private showHud(): void {
     const sh = this.seatHud;
     if (!sh || !this.isLocalOccupant) return;
     const busy = this.busy || this.roundOpen;
     const tilt = this.tiltOn();
+    const gambling = this.pending;
+    const odds = gambling ? gambleOdds(this.state.cur) : null;
     sh.goal({ k: 'm.bandit.goal' });
 
-    // STATE: what the cabinet is doing
+    // STATE: what the cabinet is doing. A waiting win shows the HI / LO odds and payouts for the next card.
     if (tilt) sh.state({ k: 'm.bandit.stTilt' }, 'bad', { k: 'm.bandit.stTiltSub' });
+    else if (odds) sh.state({ k: 'm.bandit.stGamble' }, 'gold', { k: 'm.bandit.stGambleSub', v: { hi: this.sideText(odds.hi), lo: this.sideText(odds.lo) } });
     else if (busy) sh.state({ k: 'm.bandit.stSpin' }, 'cyan');
     else sh.state({ k: 'm.bandit.stReady' }, 'gold', { k: 'm.bandit.stReadySub', v: { n: fmtCoins(this.bet) } });
 
-    // KEY NUMBERS: stake, credits, coin size, balance, last win
-    const nums: HudNumber[] = [
-      { label: { k: 'm.bandit.nBet' }, value: fmtCoins(this.bet), tone: 'gold' },
-      { label: { k: 'm.bandit.nCredits' }, value: `${this.credits}/${MAX_CREDITS}`, tone: 'neutral' },
-      { label: { k: 'm.bandit.nCoin' }, value: fmtCoins(this.denom), tone: 'neutral' },
-      { label: { k: 'm.bandit.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
-      { label: { k: 'm.bandit.nLast' }, value: fmtCoins(this.state.lastWin), tone: this.state.lastWin > 0 ? 'good' : 'neutral' },
-    ];
+    // KEY NUMBERS: stake, credits, coin size, balance, last win (a waiting win swaps in the pot and the card it is judged on)
+    const nums: HudNumber[] = odds
+      ? [
+        { label: { k: 'm.bandit.nPot' }, value: fmtCoins(this.state.pot), tone: 'gold' },
+        { label: { k: 'm.bandit.nOn' }, value: { k: `m.bandit.sym_${this.state.cur}` }, tone: 'cyan' },
+        { label: { k: 'm.bandit.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
+      ]
+      : [
+        { label: { k: 'm.bandit.nBet' }, value: fmtCoins(this.bet), tone: 'gold' },
+        { label: { k: 'm.bandit.nCredits' }, value: `${this.credits}/${MAX_CREDITS}`, tone: 'neutral' },
+        { label: { k: 'm.bandit.nCoin' }, value: fmtCoins(this.denom), tone: 'neutral' },
+        { label: { k: 'm.bandit.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
+        { label: { k: 'm.bandit.nLast' }, value: fmtCoins(this.state.lastWin), tone: this.state.lastWin > 0 ? 'good' : 'neutral' },
+      ];
     sh.numbers(nums);
 
     // CONTROL BAR: only what is valid right now
     const ctrl: HudControl[] = [];
-    if (!busy && !tilt) {
+    if (odds && !tilt) {
+      if (odds.hi.offered) ctrl.push({ key: this.k('n3'), label: { k: 'm.bandit.cHi' }, action: 'n3', primary: true });
+      if (odds.lo.offered) ctrl.push({ key: this.k('n4'), label: { k: 'm.bandit.cLo' }, action: 'n4', primary: true });
+      ctrl.push({ key: this.k('collect'), label: { k: 'm.bandit.cTake' }, action: 'collect' });
+    } else if (!busy && !tilt) {
       ctrl.push({ key: this.k('primary'), label: { k: 'm.bandit.cPull' }, action: 'primary', primary: true });
       ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.bandit.cCredits' }, action: 'betUp' });
       ctrl.push({ key: this.k('n1'), label: { k: 'm.bandit.cCoin' }, action: 'n1' });

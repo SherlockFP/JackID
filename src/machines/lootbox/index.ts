@@ -24,6 +24,7 @@ import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import { fmtNum, t as tr, type I18nVars } from '@/core/i18n';
 import { lerp } from '@/core/math';
+import { registerDebugForce } from '@/core/debugForce';
 import { buildModel, type LootboxParts } from './model';
 import {
   NO_POOL, REF_PRICE, isRarePlus, nextPity, nextTierOf, payoutOf, pityArmed, pityThreshold, rarePlusShare, rollCapsule,
@@ -55,6 +56,7 @@ const GREEN = 0x60ff90;
 const WHITE = 0xffffff;
 const PITY_KEY = (pid: number): string => `lootbox.pity.${pid}`;
 const TWIST_TURNS = 1.5;                       // full turns of pointer travel to twist a capsule open
+const TAP_MAX_TURN = Math.PI / 4;              // a press that travels less than this (absolute) is a TAP and opens it
 
 export const def: MachineDef = {
   id: 'lootbox',
@@ -92,6 +94,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   private twistAngle = 0;
   private twistLast = 0;
   private twistAcc = 0;
+  private twistTravel = 0;
   /** True while the reveal of an opened capsule runs. */
   private revealing = false;
   /** Seat HUD overlay (readability standard, see _base/seatHud.ts) and the last key it was drawn from. */
@@ -140,6 +143,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
 
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     if (local) {
+      registerDebugForce(this.def.id, (s) => this.debugState(s));
       this.sfx('chime');
       this.hudKey = '';
       this.seatHud?.show();
@@ -203,6 +207,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
         this.twistLast = Math.atan2(e.ndc.y, e.ndc.x);
         this.twistAcc = 0;
         this.twistAngle = 0;
+        this.twistTravel = 0;
         return;
       }
       const hit = this.pick(this.parts.cranks.map((c) => c.root));
@@ -220,11 +225,27 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
       this.twistLast = a;
       this.twistAcc += d;
       this.twistAngle += d;
+      this.twistTravel += Math.abs(d);
       if (Math.abs(this.twistAcc) > Math.PI / 2) { this.twistAcc = 0; this.sfx('tileClack'); }
       if (Math.abs(this.twistAngle) >= TWIST_TURNS * 2 * Math.PI) { this.twistOn = false; this.openCapsule(); }
       return;
     }
-    if (e.type === 'up') this.twistOn = false;
+    if (e.type === 'up') {
+      // a TAP (press and release with little travel) twists the capsule open too; circling is the slow way
+      const tap = this.twistOn && this.pending !== null && this.inHand && this.twistTravel < TAP_MAX_TURN;
+      this.twistOn = false;
+      if (tap) this.openCapsule();
+    }
+  }
+
+  /** Debug force (bench `--force lootbox:trade`): the seated player's next capsule is a 1-coin prize a higher tier can take in trade. */
+  private debugState(state: string): boolean {
+    if (state.trim().toLowerCase() !== 'trade') return false;
+    if (!this.isLocalOccupant || this.pending || this.busy || this.decision) return false;
+    const shown = this.crank(0, { kind: 'coins', rarity: 'coins', charmId: '', coins: 1, dupe: false });
+    if (!shown) return false;
+    void shown.then(() => this.openCapsule());
+    return true;
   }
 
   private within(obj: THREE.Object3D, root: THREE.Object3D): boolean {
@@ -257,19 +278,19 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   }
 
   /** Crank commit: charges the stake, rolls the content on the authority and sends `vend`. */
-  private crank(tier: TierId): void {
-    if (this.pending || this.busy) { this.refuse('busy'); return; }
+  private crank(tier: TierId, debugContent?: Content): Promise<void> | undefined {
+    if (this.pending || this.busy) { this.refuse('busy'); return undefined; }
     const price = this.price(tier);
-    if (!this.ctx.run.canAfford(price, this.selfId)) { this.refuse('funds'); return; }
-    if (!this.beginRound(price)) return;           // base already toasted and buzzed
+    if (!this.ctx.run.canAfford(price, this.selfId)) { this.refuse('funds'); return undefined; }
+    if (!this.beginRound(price)) return undefined; // base already toasted and buzzed
     const count = this.pityCount();
     const threshold = pityThreshold(this.mod('m.lootbox.pityAt', 0));
     const forced = pityArmed(count, tier, threshold);
-    const content = rollCapsule(this.rng, tier, this.rollEnv(forced));
+    const content = debugContent ?? rollCapsule(this.rng, tier, this.rollEnv(forced));
     const dudIdx = this.rng.int(0, 5);
     this.pending = { tier, content, dudIdx, forced, threshold, count };
     this.inHand = false;
-    void this.emit({ k: 'vend', tier, price, cap: this.cosmetic.int(0, 359) });
+    return this.emit({ k: 'vend', tier, price, cap: this.cosmetic.int(0, 359) });
   }
 
   /**

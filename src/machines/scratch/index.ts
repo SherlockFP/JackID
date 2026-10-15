@@ -22,6 +22,7 @@ import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/co
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import { fmtCoins, type I18nVars } from '@/core/i18n';
+import { registerDebugForce } from '@/core/debugForce';
 import { buildModel, cardPose, FRONT_Z, type ScratchParts } from './model';
 import {
   CARD_COUNT, HOOK_CHARM, HOOK_DISCOUNT, HOOK_SECOND, HOOK_TOP, MAX_QTY, PRIZE_MULTS, PRIZE_WEIGHTS,
@@ -118,6 +119,8 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   private strokeQ: number[] = [];
   private flushT = 0;
   private buyQueued = false;        // BUY pressed while the previous batch was still settling: buy once the shelf is free
+  /** Debug force (`scratch:third`): the next PIT PENNY batch opens with a pair already showing, so BUY THE THIRD is on offer. */
+  private forcePair = false;
   /** Seat HUD overlay (readability standard, see _base/seatHud.ts). */
   private seatHud?: SeatHud;
 
@@ -151,8 +154,30 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     this.sfx('lightFlicker', { vol: 0.4 });
   }
 
+  /** Debug force (bench `--force scratch:third`, seated): arms the next vend so its first PIT PENNY card shows a pair. */
+  private debugState(state: string): boolean {
+    if (state.trim().toLowerCase() !== 'third' || !this.isLocalOccupant) return false;
+    this.forcePair = true;
+    return true;
+  }
+
+  /** Debug force: reveals two equal cells of the batch's first card (zone = cell index), through the normal zone event. */
+  private revealForcedPair(): void {
+    const p = this.pend, b = this.state.batch;
+    if (!p || !b || p.next !== 0 || b.cards[0]?.t !== 0) return;
+    const cells = b.cards[0].cells;
+    for (let a = 0; a < cells.length; a++) {
+      for (let c = a + 1; c < cells.length; c++) {
+        if (cells[a] !== cells[c] || p.zoneSent[0].size > 0) continue;
+        for (const z of [a, c]) { p.zoneSent[0].add(z); void this.emit({ k: 'zone', i: 0, z }); }
+        return;
+      }
+    }
+  }
+
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     if (local) {
+      registerDebugForce(this.def.id, (s) => this.debugState(s));
       if (this.state.batch && !this.pend && !this.roundOpen) {       // a batch left open (reload / release): resume it
         this.rebuildPend();
         this.resumeRound(this.state.bet);
@@ -315,7 +340,10 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     this.pend = { n: cards.length, total: gross.reduce((a, b) => a + b, 0), next: 0, gross, zoneSent: cards.map(() => new Set<number>()), paid: total };
     this.busy = false;                                    // the round stays open: scratching is interactive
     this.stroking = false; this.strokeQ = [];
-    void this.emit({ k: 'vend', t: type, price, paid: total, freeUsed: freeN, cards });
+    const forced = this.forcePair;
+    this.forcePair = false;
+    const shown = this.emit({ k: 'vend', t: type, price, paid: total, freeUsed: freeN, cards });
+    if (forced) void shown.then(() => this.revealForcedPair());   // after the vend presents: the batch exists then
   }
 
   /** Scratch-out check after a stroke: send the zones that are now open, and finish the card when all are. */
