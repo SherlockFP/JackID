@@ -72,11 +72,13 @@ function showCards(run: DebtRun): void {
       e.stopImmediatePropagation();
       take(i);
     };
-    root.addEventListener('keydown', onKey);   // the veil owns its keys: 1-3 take a card while it is open
+    // The veil owns its keys: 1-3 take a card while it is open, whatever has focus (a capture listener on the window runs
+    // before the game's own bubble listener, and stopImmediatePropagation keeps the keys from it).
+    window.addEventListener('keydown', onKey, true);
     cards[0]?.focus({ preventScroll: true });
     return () => {
       alive = false;
-      root.removeEventListener('keydown', onKey);
+      window.removeEventListener('keydown', onKey, true);
     };
   });
 }

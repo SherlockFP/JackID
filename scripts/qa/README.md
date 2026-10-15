@@ -152,8 +152,12 @@ Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` 
 | `pawn:buy:<slot>` | buys Pawn Window shelf `slot` (1-based, 1 to 6). Sits at the Pawn Window (`charm_vendor`) if not seated there, closes the tip, presses the shelf's key (`1`-`4`; `5` and `6` by `→` from shelf 4), then `Space` twice. `ok` is whether the shelf now reads sold. `charm`, `price`, `paid` say what it was. Intermission only (`reason` says so otherwise) |
 | `pawn:look` | sits at the Pawn Window and screenshots the seat view to `run-pawn-look-<n>.png` (with `--shots`). `shelves` lists the stock (`null` = sold or empty, `[]` outside an Intermission) |
 | `auto:night` | a bot plays one Night, see **Night bot** below. Its own actions are records with `auto: true` |
+| `auto:night:event` | the same bot, but it stops at the first Watch whose floor event is live (no cutscene up), before that Watch's deposit. Its record has `end: "event"`. A later `auto:night` carries on from there |
+| `events` | records and prints the live floor event (`watchEventView()`, `null` between Watches): `event` = `{ id, leftS, pulls }`, `announce` = the banner line |
+| `banner:<ms>` | polls the page for the live event's announce line (up to `ms`), records `waited`, and shoots `banner-seen.png` when it shows. On a miss it records what `.t-banner` holds |
+| `shot:<name>` | screenshot to `<shots>/<name>.png` (needs `--shots`) |
 | `wait:<ms>` | pauses |
-| `state` | records the state in `run.states` and logs it: `phase`, `night` (1-based), `watch` (1-based), `pocket`, `bank` (the balance), `withdrawable`, `quotaDue`, `quotaLeft`, `pullsLeft`, `pulls`, `minBet`, `nightDone`, `topside`, `over`, `seated` (the machine instance id or null), `intro` (the cutscene id or null) |
+| `state` | records the state in `run.states` and logs it: `phase`, `night` (1-based), `watch` (1-based), `pocket`, `bank` (the balance), `withdrawable`, `quotaDue`, `quotaLeft`, `pullsLeft`, `pulls`, `minBet`, `nightDone`, `topside`, `over`, `seated` (the machine instance id or null), `intro` (the cutscene id or null), `starterOffer` (the three charm ids while the Starter Draft is open, else null), `starterLeft` (its timer, sim s), `charms` (the owned charm ids, `id xN` when stacked) |
 
 Each step is recorded in `run.steps` as `{ step, ok, ms, … }`, in the order it ran (`via`, `at`, `instance`, `amount`, `lever`, `state`, `charm`, `price`, `paid`, `shelves`, `shot` where they apply). A failed step is kept: `ok:false` with `error` (a step that threw: the `goto` to a locked machine, a seat that does not take) or `reason` (a step the run refused). **The steps go on after a failed step.** `run.failed` counts the failed user steps. Only a page reload stops the list: `run.aborted` says so, the run is then invalid (see `viteEvents`), and the exit code is 1. Output is the same one JSON object; `run.intro` is `{ played, taps }`, and `run.shot` is `run-final.png` when `--shots` is set. `rounds` is 0 in this mode.
 
@@ -171,6 +175,25 @@ Practical notes: `goto` needs the machine on the floor (the `coinflip`, `hilo`, 
 - **Lever**: starts the Watch (`lever`); after a paid Night it opens the floor.
 - **Bets**: 1 bet on odd Watches, 2 on even ones, rotating over the open machines of `BOT_MACHINES` (`coinflip`, `hilo`, `scratch`, `bigone`; the ones placed and unlocked now). Each bet is a `bot:bet:<id>` record: `goto`, `Digit9` (closes the tip), the stake walked down to the minimum (`KeyZ` 8 times), the machine's recipe (`BOT_RECIPE`: `Space` to play, `KeyQ` to collect, `Digit1` the hilo guess). `pulls` is `[before, after]`; `ok` is whether a pull was spent.
 - **Bell**: rings the Bell (`bell`) once the Watch's bets are placed, after `stand`. Unused pulls keep the rebate. A Watch whose pulls run out closes by itself.
+- **Per-Watch line**: once a Watch reaches its Bell (after its deposit), it logs `watch N<night> W<watch>: pocket, bank, quota due/left, event` to stderr and adds a record `{ step: "watch N-W", auto: true, pocket, bank, quotaDue, quotaLeft, event }` to `run.steps`. `event` is the floor event id or null.
+
+The bot keeps its per-Watch bookkeeping on the run, so a bot step split by `auto:night:event` does not deposit twice or bet more than planned in one Watch.
+
+### Starter Draft and floor events: a worked check
+
+The Starter Draft opens before the first pull of Night 1 and holds the Bell until a card is taken. Pick card 2 and check the charm:
+
+```
+node scripts/qa/bench.mjs --run "shot:starter-offer;play:Digit2;wait:400;state;shot:starter-picked" --seed 1 --shots <dir>
+```
+
+The state after the pick shows `starterOffer: null` and `charms: ["lampwick"]` (seed 1). Stop at a floor event and shoot the HUD timer (the event line sits under the Watch line; it counts only in play, so the Bell holds it):
+
+```
+node scripts/qa/bench.mjs --run "play:Digit2;wait:300;auto:night:event;events;shot:event-hud;auto:night;state" --seed 1 --shots <dir>
+```
+
+Seed 1 has its first event on Watch 3 (`draft`). Seed 2 has one on Watch 1 (`tilt_switch`). A Watch 1 event fires its announce before the first step (no `event:start` reaches a listener installed after the room settles), so `banner:` cannot catch that line. Later Watches can be checked with `banner:<ms>`.
 
 The recipes are approximate key sequences, not a strategy. A bet that does not spend a pull is recorded `ok:false` with `reason`. The summary record is `auto:night`: `night` (`[from, to]`), `end` (`night paid`, `run over`, `topside`, `lever refused`, `page reloaded`, `time budget`, `loop budget`), `deposits`, `shops`, `bets`, `bells`, `loops`. `ok` is true for `night paid` and `topside`.
 

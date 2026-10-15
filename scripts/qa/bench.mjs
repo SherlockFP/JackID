@@ -104,18 +104,26 @@ export function parseScript(text) {
  *   pawn               one Pawn Window reroll (Intermission only)
  *   pawn:buy:<slot>    buy Pawn Window shelf <slot> (1-6, 1-based): sits there, the shelf key, Space twice
  *   pawn:look          sit at the Pawn Window, screenshot the seat view (run-pawn-look-<n>.png)
- *   auto:night         a bot plays one Night (deposit 40 %, shop, lever, rotating coin bets, Bell); see the README
+ *   auto:night         a bot plays one Night (deposit 40 %, shop, lever, rotating coin bets, Bell); prints each Watch's state
+ *   auto:night:event   the same, but stops at the first Watch with a floor event (shot it, then auto:night carries on)
+ *   events             record and print the live floor event (watchEvents.ts watchEventView), null between Watches
+ *   shot:<name>        screenshot to <shots>/<name>.png (needs --shots)
  *   wait:<ms>          pause
- *   state              record pocket, bank, quota, night, watch, pulls, phase, seated (res.run.states)
+ *   state              record pocket, bank, quota, night, watch, pulls, phase, seated, starterOffer, charms (res.run.states)
  */
 export function parseRunSteps(text) {
   const out = [];
   for (const raw of String(text ?? '').split(';')) {
     const tok = raw.trim();
     if (!tok) continue;
-    if (['stand', 'lever', 'bell', 'pawn', 'state'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
+    if (['stand', 'lever', 'bell', 'pawn', 'state', 'events'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
     if (tok === 'pawn:look') { out.push({ kind: 'pawnlook', text: tok }); continue; }
     if (tok === 'auto:night') { out.push({ kind: 'auto', text: tok }); continue; }
+    if (tok === 'auto:night:event') { out.push({ kind: 'auto', untilEvent: true, text: tok }); continue; }
+    let m0 = /^shot:([A-Za-z0-9_-]{1,60})$/.exec(tok);
+    if (m0) { out.push({ kind: 'shot', name: m0[1], text: tok }); continue; }
+    m0 = /^banner:(\d+)$/.exec(tok);
+    if (m0) { out.push({ kind: 'banner', ms: Number(m0[1]), text: tok }); continue; }
     let m = /^goto:([a-z][a-z0-9_]*)$/.exec(tok);
     if (m) { out.push({ kind: 'goto', machine: m[1], text: tok }); continue; }
     m = /^pawn:buy:(\d+)$/.exec(tok);
@@ -138,7 +146,7 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | auto:night | wait:<ms> | state)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | auto:night | auto:night:event | events | banner:<ms> | shot:<name> | wait:<ms> | state)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
   return out;
@@ -273,6 +281,8 @@ const RUN_STATE_JS = `(() => {
     pullsLeft: b.pullsLeft, pulls: Number.isFinite(pulls) ? pulls : null, minBet: b.minBet,
     nightDone: r.nightPaid, topside: r.topsideOpen,
     over: r.over, seated: a.player?.seat?.mid ?? null, intro: a.cutscene.playing ?? null,
+    starterOffer: r.starterDraft()?.candidates.map((d) => d.id) ?? null, starterLeft: r.starterDraft()?.left ?? null,
+    charms: r.charms().map((c) => (c.stacks > 1 ? c.id + " x" + c.stacks : c.id)),
   };
 })()`;
 
@@ -445,22 +455,40 @@ async function shopPick(ctx) {
   return best;
 }
 
+/** The live floor event (watchEvents.ts `watchEventView`), or null between Watches. */
+const EVENT_JS = `(await import('/src/game/watchEvents.ts')).watchEventView()`;
+/** The event's announce line as the banner shows it (the bus id is watch.<id>, its strings are event.watch.<id>.*). */
+const ANNOUNCE_JS = (id) => `(async () => (await import('/src/core/i18n.ts')).t(${JSON.stringify('event.watch.' + id + '.announce')}, { suit: '' }))()`;
+const evText = (ev) => (ev ? `${ev.id} (${Math.ceil(ev.leftS)} s${ev.pulls == null ? '' : `, ${ev.pulls} pulls`})` : 'none');
+
+/** One per-Watch line: pocket, bank, quota and the floor event. Logged, and kept as an `auto: true` record in run.steps. */
+function watchRec(ctx, st, ev) {
+  ctx.run.steps.push({
+    step: `watch ${st.night}-${st.watch}`, ok: true, auto: true, night: st.night, watch: st.watch, pocket: st.pocket,
+    bank: st.bank, quotaDue: st.quotaDue, quotaLeft: st.quotaLeft, event: ev?.id ?? null,
+  });
+  log(`watch N${st.night} W${st.watch}: pocket ${st.pocket}, bank ${st.bank}, quota due ${st.quotaDue} left ${st.quotaLeft}, event ${evText(ev)}`);
+}
+
 /**
  * `auto:night`: a sensible bot plays one Night. Per Watch: deposit 40 % of the pocket (20 % when refused) while quota is
  * owed; shop the cheapest affordable shelf; lever (starts the Watch). In play: 1 bet on odd Watches, 2 on even ones,
  * rotating over the open machines; then the Bell (unused pulls keep the rebate). A broke pocket withdraws the bank first.
+ * Each Watch's state (pocket, bank, quota, floor event) is printed once, when it reaches the Bell. `untilEvent`
+ * (`auto:night:event`) stops at the first Watch that has a floor event, so the event can be shot; a later auto:night carries on.
  * Ends when the Night rolls over (OPEN THE FLOOR), the run is over, or it reaches the top. Each action is its own record
  * (`auto: true`), in order, before the summary record.
  */
-async function autoNight(ctx, rec) {
+async function autoNight(ctx, rec, untilEvent = false) {
   const { res } = ctx;
   const t0 = Date.now();
   const auto = (o) => ({ ...o, auto: true });
+  // Per-Watch bookkeeping lives on the run, so a second auto:night step carries on where an event stop left the Watch.
+  const bot = (ctx.bot ??= { betsTried: new Map(), handled: new Set(), logged: new Set(), evStop: new Set(), rot: 0 });
   const n0 = (await readState(ctx)).night;
-  const betsTried = new Map();          // `${night}:${watch}` -> bets attempted in that Watch
-  const handled = new Set();            // intermissions whose deposit and shop were tried
   const count = { deposits: 0, shops: 0, bets: 0, bells: 0 };
-  let rot = 0, leverFails = 0, loops = 0, end = null, st = null;
+  const events = [];                    // ids of the floor events of the Watches this call reached
+  let leverFails = 0, loops = 0, end = null, st = null;
   /** This Watch's deposit: 40 % of the pocket while quota is owed (20 % when the terminal refuses it). Once per Watch. */
   const depositFor = async (s) => {
     if (!(s.quotaLeft > 0 && s.pocket > 0)) return;
@@ -488,7 +516,18 @@ async function autoNight(ctx, rec) {
     }
     // The first Watch of a Night starts with the intro (no intermission before it): its deposit is taken in the Bell or play.
     if (st.phase === 'bell' || st.phase === 'play' || st.phase === 'lastCall') {
-      if (!handled.has(key)) { handled.add(key); await depositFor(st); continue; }
+      // --event: stop at the Watch's floor event (no cutscene up, so its banner and HUD timer are on screen), before the deposit.
+      if (untilEvent && !bot.evStop.has(key) && st.intro == null) {
+        const ev = await evalJson(ctx.cdp, EVENT_JS);
+        if (ev) { bot.evStop.add(key); events.push(ev.id); end = 'event'; break; }
+      }
+      if (!bot.handled.has(key)) { bot.handled.add(key); await depositFor(st); continue; }
+      if (!bot.logged.has(key)) {
+        bot.logged.add(key);
+        const ev = await evalJson(ctx.cdp, EVENT_JS);
+        watchRec(ctx, await readState(ctx), ev);
+        if (ev) events.push(ev.id);
+      }
     }
     if (st.phase === 'intermission') {
       if (st.nightDone) {                               // the Night is paid: OPEN THE FLOOR (the lever)
@@ -498,8 +537,8 @@ async function autoNight(ctx, rec) {
         if (!r.ok) await sleep(300);
         continue;
       }
-      if (!handled.has(key)) {
-        handled.add(key);
+      if (!bot.handled.has(key)) {
+        bot.handled.add(key);
         await depositFor(st);
         const pick = await shopPick(ctx);
         if (pick) {
@@ -516,14 +555,14 @@ async function autoNight(ctx, rec) {
       continue;
     }
     if (st.phase === 'play' || st.phase === 'lastCall') {
-      const tried = betsTried.get(key) ?? 0;
+      const tried = bot.betsTried.get(key) ?? 0;
       const bets = st.watch % 2 === 1 ? 1 : 2;
       if (tried < bets && (st.pulls ?? Infinity) > 0 && st.pocket >= st.minBet) {
-        betsTried.set(key, tried + 1);
+        bot.betsTried.set(key, tried + 1);
         const open = await evalJson(ctx.cdp, OPEN_BOT_JS);
-        if (open.length === 0) { betsTried.set(key, bets); continue; }   // nothing open to bet on: ring the Bell below
-        const machine = open[rot % open.length];
-        rot++;
+        if (open.length === 0) { bot.betsTried.set(key, bets); continue; }   // nothing open to bet on: ring the Bell below
+        const machine = open[bot.rot % open.length];
+        bot.rot++;
         const r = await exec(ctx, auto({ kind: 'bet', machine, text: `bot:bet:${machine}` }));
         if (r.ok) count.bets++;
         continue;
@@ -539,8 +578,9 @@ async function autoNight(ctx, rec) {
   rec.watch = st?.watch ?? null;
   rec.end = end;
   rec.loops = loops;
+  rec.events = events;
   Object.assign(rec, count);
-  rec.ok = end === 'night paid' || end === 'topside';
+  rec.ok = end === 'night paid' || end === 'topside' || end === 'event';
   if (!rec.ok) rec.reason = end;
 }
 
@@ -594,7 +634,42 @@ async function runKind(ctx, s, rec) {
       return;
     case 'pawnbuy': return pawnBuy(ctx, s.slot, rec);
     case 'pawnlook': return pawnLook(ctx, rec);
-    case 'auto': return autoNight(ctx, rec);
+    case 'auto': return autoNight(ctx, rec, s.untilEvent === true);
+    case 'events': {
+      const ev = await evalJson(cdp, EVENT_JS);
+      rec.event = ev;
+      ctx.eventAnnounce = ev ? await evalJson(cdp, ANNOUNCE_JS(ev.id)) : null;
+      rec.announce = ctx.eventAnnounce;
+      log(`event: ${evText(ev)}${ctx.eventAnnounce ? ` · '${ctx.eventAnnounce}'` : ''}`);
+      return;
+    }
+    case 'banner': {   // polls the page text for the live event's announce line; shoots it the moment it shows
+      rec.text = ctx.eventAnnounce ?? null;
+      if (!ctx.eventAnnounce) { rec.ok = false; rec.reason = 'no live event (run events first)'; return; }
+      // A banner is a `.t-banner` whose letters are spans (dropLetters), so compare its textContent with the spaces dropped.
+      const squash = (x) => x.toUpperCase().replace(/\s+/g, '');
+      const want = JSON.stringify(squash(ctx.eventAnnounce));
+      const onPage = `[...document.querySelectorAll('.t-banner')].map((e) => e.textContent).join('|').toUpperCase().replace(/\\s+/g, '').includes(${want})`;
+      const t0 = Date.now();
+      let seen = false;
+      while (!seen && Date.now() - t0 < s.ms) {
+        seen = (await evaluate(cdp, onPage)) === true;
+        if (!seen) await sleep(100);
+      }
+      rec.waited = Date.now() - t0;
+      rec.ok = seen;
+      if (seen) { if (ctx.shotsDir) rec.shot = await ctx.shoot('banner-seen.png'); }
+      else {
+        rec.reason = `announce line not on the page within ${s.ms} ms`;
+        rec.banners = await evalJson(cdp, `[...document.querySelectorAll('.t-banner')].map((e) => e.textContent.slice(0, 80))`);
+      }
+      return;
+    }
+    case 'shot': {
+      if (!ctx.shotsDir) { rec.ok = false; rec.reason = 'no --shots dir'; return; }
+      rec.shot = await ctx.shoot(`${s.name}.png`);
+      return;
+    }
     case 'wait':
       await sleep(s.ms);
       return;
