@@ -191,12 +191,17 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   };
 
   /**
-   * The compact paid-Night summary: a toast, never a modal. "QUOTA N PAID · float +F · interest +I · tickets +T", read from the
+   * The compact paid-Night summary: a toast, never a modal. "NIGHT N PAID · carried +C · float +F · cut +K · tickets +T …", read from the
    * run's Night ledger (`run.nightLedger()`): the same integers the run booked, so the figures add up to what the player got.
    */
   const showSummary = (s: DebtSession): void => {
     const L = s.run.nightLedger();
-    const text = t('econ.summary', { n: L.night, float: Math.round(L.float), int: Math.round(L.interest), tickets: Math.round(L.tickets) });
+    // The pocket delta of the Night is carried + float + cut (the books reconcile); interest is in the bank and reaches the pocket
+    // only through "carried". The label says NIGHT N PAID (it was "QUOTA N PAID", which read as the quota, not the Night).
+    const text = t('hud.nightSummary', {
+      n: L.night, carry: Math.round(L.carried), float: Math.round(L.float), cut: Math.round(L.cut),
+      tickets: Math.round(L.tickets), int: Math.round(L.interest),
+    });
     (app.ui as UIOverlayX).toast(text, 'good', SUMMARY_TOAST_S);
   };
 

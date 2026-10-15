@@ -371,7 +371,8 @@ export function createHud(): Hud {
     setCls(clock, 'lastcall', lastCall);
     setCls(clock, 'interm', interm);
     setText(clockNum, interm ? '' : mmss(left));
-    setText(clockPhase, interm ? t('interm.topBar') : lastCall ? t('hud.clock.lastCall') : r?.window() === 'dawn' ? t('hud.clock.dawn') : t('hud.clock.watch'));
+    // Closing (director wave 41): the last 3 s of a Watch, the deposits / withdrawals / Pawn still open, so the label says so.
+    setText(clockPhase, interm ? t('interm.topBar') : phase === 'closing' ? t('hud.clock.closing') : lastCall ? t('hud.clock.lastCall') : r?.window() === 'dawn' ? t('hud.clock.dawn') : t('hud.clock.watch'));
     setText(clockWall, interm ? '' : t('hud.clock.wall', { n: wallClock(sh?.clock ?? 0) }));
     if (phase !== lastPhase) {
       if (lastCall && !clockAlarmed) {

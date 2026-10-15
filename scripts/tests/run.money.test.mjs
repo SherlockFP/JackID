@@ -40,22 +40,29 @@ test('Dawn: an exact payment returns nothing extra', () => {
   run.dispose();
 });
 
-test('quota met: the deposit that covers it returns the surplus to the pocket at once, not at Dawn', () => {
+test('quota met (decision 2): a deposit after the quota is met is banked, not paid back; the surplus waits for Dawn', () => {
   const run = RUN.createRun({ seed: 45, mode: 'debt' });
   const due = run.quota.due;
+  const pocket = [];
+  const off = EV.bus.on('eco:wallet', (e) => { if (e.reason === 'dawn:surplus') pocket.push(e.delta); });
   run.debtPaid = due - 100;
   run.syncQuota();
   run.coins = 1000;
   assert.ok(run.deposit(300, true), 'the deposit is accepted');
-  assert.equal(run.coins, 1000 - 300 + 200, 'the 200 above the quota is back in the pocket straight away');
-  assert.equal(run.debtPaid, due + 200, 'the terminal still counts the whole deposit');
+  assert.equal(run.coins, 700, 'nothing is paid back at the deposit');
+  assert.equal(run.debtPaid, due + 200, 'the bank holds the whole deposit');
   assert.equal(run.quota.deposited, due + 200);
-  assert.equal(run.quota.overshoot, 200, 'overshoot (and so the tiers) read the total, not the held part');
+  assert.equal(run.quota.overshoot, 200, 'overshoot (and so the tiers) read the bank');
   assert.ok(run.quota.met);
+  assert.deepEqual(pocket, [], 'no surplus reaches the pocket before Dawn');
+  run.dawn();
+  off();
+  assert.deepEqual(pocket, [200], 'Dawn returns bank minus quota, once');
+  assert.equal(run.coins, 900);
   run.dispose();
 });
 
-test('quota met: later overpays are released as they land, and Dawn returns only what was not released', () => {
+test('quota met (decision 2): overpays keep earning interest until Dawn, and Dawn returns the whole surplus once', () => {
   const run = RUN.createRun({ seed: 46, mode: 'debt' });
   const due = run.quota.due;
   run.debtPaid = due;
@@ -63,28 +70,17 @@ test('quota met: later overpays are released as they land, and Dawn returns only
   run.coins = 500;
   run.deposit(120, true);
   run.deposit(80, true);
-  assert.equal(run.coins, 500 - 120 - 80 + 200, 'every overpay goes back at once');
+  assert.equal(run.coins, 300, 'every overpay stays in the bank');
+  run.watchPulls = 3;
+  run.settleWatch();
+  const interest = run.stats.interest ?? 0;
+  assert.equal(interest, Math.floor(Math.min(due + 200, 2 * due) * 0.5), 'Night 1 pays 50 % on the whole bank, overpay included');
+  assert.equal(run.coins, 300, 'the interest goes into the bank too');
+  assert.equal(run.debtPaid, due + 200 + interest);
   const before = run.coins;
   run.dawn();
-  assert.equal(run.coins, before, 'nothing is paid twice at Dawn');
+  assert.equal(run.coins, before + 200 + interest, 'Dawn returns the whole surplus, interest included, exactly once');
   assert.equal(run.debtPaid, 0, 'the next quota starts from zero deposited');
-  run.dispose();
-});
-
-test('quota met: interest booked at Settle is on the whole deposit, and its surplus goes back too', () => {
-  const run = RUN.createRun({ seed: 47, mode: 'debt' });
-  const due = run.quota.due;
-  run.debtPaid = due;
-  run.syncQuota();
-  run.coins = 500;
-  run.deposit(100, true);
-  const released = run.released;
-  assert.equal(released, 100);
-  const deposited = run.debtPaid;
-  run.debtPaid += 30;                         // the interest settleWatch books (on the total deposit)
-  run.releaseSurplus();
-  assert.equal(run.debtPaid, deposited + 30, 'the total keeps the interest');
-  assert.equal(run.released, released + 30, 'the interest above the quota is released as well');
   run.dispose();
 });
 
@@ -287,23 +283,23 @@ test('phone: from Night 2 the first Watch of every Night always rings; Night 1 a
 });
 
 // ── THE BANK (wave 27, bank-econ): WITHDRAW, the churn rule, the broke-start help, the cashier's way out ───────────
-test('bank math: the withdrawable part leaves out quota credit that never was cash, churn is min(out, back in)', async () => {
+test('bank math (wave 41): the whole deposit is the bank; the withdrawable part leaves out quota credit that never was cash; churn is min(out, back in)', async () => {
   const BK = await load('src/game/bank.ts');
-  const i = { debtPaid: 50, released: 19, granted: 6, due: 31, rate: 0.9, watchPulls: 3, churn: 0 };
-  assert.equal(BK.bankBalance(i), 31, 'the surplus that went back to the pocket is not in the bank');
-  assert.equal(BK.withdrawable(i), 25, 'granted quota credit (deposit bonus, phone credit) stays in the bank');
+  const i = { debtPaid: 50, granted: 6, due: 31, rate: 0.9, watchPulls: 3, churn: 0 };
+  assert.equal(BK.bankBalance(i), 50, 'the surplus above the quota is still in the bank until Dawn');
+  assert.equal(BK.withdrawable(i), 44, 'granted quota credit (deposit bonus, phone credit) stays in the bank');
   assert.equal(BK.churnOf(20, 12), 12);
   assert.equal(BK.churnOf(5, 12), 5);
   assert.equal(BK.interestBase(30, 12), 18);
-  assert.equal(BK.interestNext({ ...i, debtPaid: 20, released: 0, granted: 0 }), 18, '20 x 90 %');
-  assert.equal(BK.interestNext({ ...i, debtPaid: 20, released: 0, granted: 0, churn: 20 }), 0, 'coins that went out and back this Watch earn nothing');
-  const pv = BK.previewWithdraw({ debtPaid: 40, released: 0, granted: 0, due: 31, rate: 0.9, watchPulls: 3, churn: 0 }, 15);
+  assert.equal(BK.interestNext({ ...i, debtPaid: 20, granted: 0 }), 18, '20 x 90 %');
+  assert.equal(BK.interestNext({ ...i, debtPaid: 20, granted: 0, churn: 20 }), 0, 'coins that went out and back this Watch earn nothing');
+  const pv = BK.previewWithdraw({ debtPaid: 40, granted: 0, due: 31, rate: 0.9, watchPulls: 3, churn: 0 }, 15);
   assert.equal(pv.coins, 15);
   assert.equal(pv.bankAfter, 25);
   assert.equal(pv.leftAfter, 6);
   assert.equal(pv.metLost, true, 'the quota was met and would not be');
-  assert.equal(pv.interestLost, 62 * 0 + Math.floor(Math.min(40, 62) * 0.9) - Math.floor(Math.min(25, 62) * 0.9), 'the interest the 15 coins would have earned at the next Bell');
-  assert.equal(BK.previewWithdraw({ debtPaid: 5, released: 0, granted: 5, due: 31, rate: 0.9, watchPulls: 0, churn: 0 }, 99).coins, 0, 'nothing but granted credit: nothing to take');
+  assert.equal(pv.interestLost, Math.floor(Math.min(40, 62) * 0.9) - Math.floor(Math.min(25, 62) * 0.9), 'the interest the 15 coins would have earned at the next Bell');
+  assert.equal(BK.previewWithdraw({ debtPaid: 5, granted: 5, due: 31, rate: 0.9, watchPulls: 0, churn: 0 }, 99).coins, 0, 'nothing but granted credit: nothing to take');
 });
 
 test('Bank: DEPOSIT then WITHDRAW returns the coins, clamps to the bank and the quota drops with them', () => {
@@ -322,27 +318,27 @@ test('Bank: DEPOSIT then WITHDRAW returns the coins, clamps to the bank and the 
   run.dispose();
 });
 
-test('Bank: an overpay is forgotten on withdraw (the surplus already went back), the quota-met flag follows', () => {
+test('Bank: an overpay stays in the bank: a part withdrawn keeps the quota met, taking past the quota gives it up, and putting it back pays no surplus', () => {
   const run = RUN.createRun({ seed: 62, mode: 'debt' });
   const due = run.quota.due;
   run.coins = 100;
   assert.ok(run.deposit(50, true));
-  assert.equal(run.coins, 100 - 50 + (50 - due), 'the 50 - due above the quota came straight back');
-  assert.equal(run.bank().balance, due, 'the bank holds exactly the quota');
+  assert.equal(run.coins, 50, 'the overpay is not paid back at the deposit (decision 2)');
+  assert.equal(run.bank().balance, 50, 'the bank holds the whole deposit');
   assert.equal(run.quota.met, true);
-  const pv = run.withdrawPreview(10);
-  assert.equal(pv.metLost, true);
-  assert.equal(run.withdraw(10), 10);
+  const over = 50 - due;                       // the coins above the quota
+  assert.equal(run.withdrawPreview(over).metLost, false, 'taking only the surplus keeps the quota met');
+  assert.equal(run.withdrawPreview(over + 1).metLost, true, 'one coin more and the quota is no longer met');
+  assert.equal(run.withdraw(over + 1), over + 1);
   assert.equal(run.quota.met, false, 'the quota is no longer met');
-  assert.equal(run.quota.deposited, due - 10);
+  assert.equal(run.quota.deposited, due - 1);
   const surplus = [];
   const off = EV.bus.on('eco:wallet', (e) => { if (e.reason === 'dawn:surplus') surplus.push(e.delta); });
-  assert.ok(run.deposit(10, true));
-  assert.equal(surplus.length, 0, 'putting the 10 back pays no surplus twice');
+  assert.ok(run.deposit(over + 1, true));
   off();
+  assert.equal(surplus.length, 0, 'putting the coins back pays no surplus: Dawn is the only place it returns');
   run.dispose();
 });
-
 test('Bank: quota credit that never was cash cannot be withdrawn (no deposit-bonus loop)', () => {
   const run = RUN.createRun({ seed: 63, mode: 'debt' });
   run.coins = 50;
@@ -357,16 +353,16 @@ test('Bank: quota credit that never was cash cannot be withdrawn (no deposit-bon
   run.dispose();
 });
 
-test('Bank: WITHDRAW is open before the Watch is settled and shut in Closing, Settle, Dawn and once the Night is paid', () => {
+test('Bank: WITHDRAW is open until the Watch settles (Closing included, decision 1) and shut in Settle, Dawn and once the Night is paid', () => {
   const run = RUN.createRun({ seed: 64, mode: 'debt' });
   run.coins = 40;
   assert.ok(run.deposit(20, true));
-  for (const ph of ['closing', 'settle', 'collection']) {
+  for (const ph of ['settle', 'collection']) {
     run.phase = ph;
     assert.equal(run.bank().open, false, `${ph}: closed`);
     assert.equal(run.withdraw(5), 0);
   }
-  for (const ph of ['intermission', 'play', 'lastCall']) {
+  for (const ph of ['closing', 'bell', 'intermission', 'play', 'lastCall']) {
     run.phase = ph;
     assert.equal(run.bank().open, true, `${ph}: open`);
   }
@@ -388,7 +384,7 @@ test('Bank: coins that go out and back in the same Watch earn no interest at the
     run.dispose();
     return got;
   };
-  assert.equal(settleInterest(false), 18, 'a plain deposit earns 90 % on Night 1');
+  assert.equal(settleInterest(false), 10, 'a plain deposit earns 50 % on Night 1 (wave 41: was 90 %)');
   assert.equal(settleInterest(true), 0, 'the same coins that left and came back this Watch earn nothing');
 });
 

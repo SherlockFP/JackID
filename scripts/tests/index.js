@@ -36,3 +36,4 @@ import './juice.test.mjs';
 import './gamble.test.mjs';
 import './hollow.test.mjs';
 import './run.hollow.test.mjs';
+import './run.wave41.test.mjs';

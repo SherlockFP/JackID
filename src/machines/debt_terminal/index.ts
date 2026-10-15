@@ -22,8 +22,10 @@
  * pulls keep the settle rebate; decision 1: a Watch is never stuck).
  *
  * Deposit rules: PRESS with digits typed commits the typed amount (not the highlighted cell). 10/25/50 %/REST never pass what is
- * still due; once the quota is met they refuse (no spam-depositing). ALL and a typed amount are the explicit overpay ladder. After
- * Dawn the screen reads NIGHT N PAID and no stale quota numbers (see `night.ts`); deposits are refused until the floor opens.
+ * still due; REST refuses once the quota is met. Director decision 2: after the quota is met, deposits are still accepted (10 / 25 /
+ * 50 % of the pocket, ALL, a typed amount) and the surplus keeps earning until Dawn; WITHDRAW takes it back any time. Every refusal
+ * says why (decision 3: not a quota Watch, Watch closed, nothing to deposit, the float). After Dawn the screen reads NIGHT N PAID and
+ * no stale quota numbers (see `night.ts`); deposits are refused until the floor opens.
  *
  * Presentation pattern: state is read from run on every peer (`tick` keeps the LEDs/CRT in step); `present()` only
  * animates. Credit first, present after: the deposit / withdraw is applied inside `emit`'s credit step.
@@ -37,7 +39,7 @@ import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_
 import type { KitX } from '@/kit';
 import { fmtCoins, fmtNum } from '@/core/i18n';
 import type { OvershootTier, QuotaState, RunApi } from '@/game/types';
-import type { BankView } from '@/game/run';
+import type { BankView, DepositRefusal } from '@/game/run';
 import type { WithdrawPreview } from '@/game/bank';
 import { nightPaid } from './night';
 import { bandFromPx, CONTROL_MARGIN, frameConsole, type Vec3 } from './fit';
@@ -61,6 +63,8 @@ type Ev =
 type FloorCtl = { openFloor?(): boolean; startWatch?(): boolean };
 type BellCtl = { ringBell?(): boolean };
 type BankCtl = { bank?(): BankView; withdraw?(n: number): number; withdrawPreview?(n: number): WithdrawPreview };
+/** The run's deposit gate (decision 3): the reason a deposit is refused, or null. Absent on the bench stub. */
+type DepositCtl = { depositRefusal?(amount: number, confirmAll?: boolean): DepositRefusal | null };
 
 const GOLD = 0xffd040;
 const RED = 0xff3030;
@@ -99,7 +103,7 @@ export const def: MachineDef = {
       rule4: "Keys: arrows move the cursor, PRESS hits a key, C switches DEPOSIT / WITHDRAW / QUOTA, 1-9 type an amount, BACK removes a digit.",
       crt_paid: 'NIGHT {n} PAID', crt_carry: 'CARRIED', crt_floor: 'PULL: OPEN THE FLOOR', crt_bell: 'PULL: RING THE BELL',
       floorOpen: 'FLOOR OPEN', belled: 'BELL', nightN: 'NIGHT {n}',
-      nightPaidNote: 'NIGHT PAID: OPEN THE FLOOR', metNote: 'QUOTA MET: TYPE AN AMOUNT TO OVERPAY', typeAmount: 'TYPE AN AMOUNT FIRST',
+      nightPaidNote: 'NIGHT PAID: OPEN THE FLOOR', metNote: 'QUOTA MET: OVERPAY WITH 10 / 25 / 50 %, ALL OR A TYPED AMOUNT', typeAmount: 'TYPE AN AMOUNT FIRST',
       stNone: "NO QUOTA DUE",
       stPaid: "NIGHT PAID",
       stPaidSub: "Pull the lever to open the floor",
@@ -140,6 +144,11 @@ export const def: MachineDef = {
       tip2: "[{move}] MOVE  ·  [{press}] PRESS  ·  [{digits}] TYPE AN AMOUNT  ·  [{mode}] SWITCH",
       tip3: "Out of coins? WITHDRAW some. Quota met? [{settle}] SETTLE  ·  [{help}] RULES",
       floorKept: "Float kept: {n} coins stay in your pocket",
+      floorRefuse: "Float kept: the pocket keeps {n} coins. Only a confirmed ALL goes below it",
+      notQuota: "Not a quota Watch: nothing to deposit toward tonight",
+      watchClosed: "Watch closed: deposits open again between Watches",
+      nothingDeposit: "Nothing to deposit: the pocket is empty",
+      watchEnding: "Watch ending: the lever waits until it settles",
       c_float: 'keeps {n} in pocket (float)',
       allConfirm: "ALL empties your pocket. Press ALL again to confirm",
       c_bank: 'BANK', c_pocket: 'POCKET', c_left: 'LEFT TO PAY', c_metBig: 'QUOTA MET', c_interest: 'BELL INTEREST',
@@ -172,7 +181,7 @@ export const def: MachineDef = {
       rule4: "Tuşlar: oklar imleci gezdirir, BAS tuşa basar, C YATIR / ÇEK / KOTA arasında geçer, 1-9 tutar yazar, GERİ bir rakam siler.",
       crt_paid: '{n}. GECE ÖDENDİ', crt_carry: 'DEVİR', crt_floor: 'ÇEK: KATI AÇ', crt_bell: 'ÇEK: ZİLİ ÇAL',
       floorOpen: 'KAT AÇIK', belled: 'ZİL', nightN: '{n}. GECE',
-      nightPaidNote: 'GECE ÖDENDİ: KATI AÇ', metNote: 'KOTA TAMAM: FAZLASI İÇİN TUTAR YAZ', typeAmount: 'ÖNCE TUTAR YAZ',
+      nightPaidNote: 'GECE ÖDENDİ: KATI AÇ', metNote: 'KOTA TAMAM: %10 / %25 / %50, HEPSİ VEYA TUTAR İLE FAZLA YATIR', typeAmount: 'ÖNCE TUTAR YAZ',
       stNone: "ÖDENECEK KOTA YOK",
       stPaid: "GECE ÖDENDİ",
       stPaidSub: "Katı açmak için kolu çek",
@@ -213,6 +222,11 @@ export const def: MachineDef = {
       tip2: "[{move}] GEZ  ·  [{press}] BAS  ·  [{digits}] TUTAR YAZ  ·  [{mode}] DEĞİŞTİR",
       tip3: "Jetonun mu bitti? Biraz ÇEK. Kota tamam mı? [{settle}] KAPAT  ·  [{help}] KURALLAR",
       floorKept: "Yedek akçe: {n} jeton cepte kalır",
+      floorRefuse: "Yedek akçe: cepte {n} jeton kalmalı. Yalnızca onaylı HEPSİ bunun altına iner",
+      notQuota: "Kota nöbeti değil: bu gece için yatıracak bir şey yok",
+      watchClosed: "Nöbet kapandı: yatırma, nöbetler arasında yeniden açılır",
+      nothingDeposit: "Yatırılacak bir şey yok: cep boş",
+      watchEnding: "Nöbet bitiyor: kol, kapanana kadar bekler",
       c_float: 'cepte {n} kalır (yedek akçe)',
       allConfirm: "HEPSİ cebini boşaltır. Onaylamak için HEPSİ'ye tekrar bas",
       c_bank: 'BANKA', c_pocket: 'CEP', c_left: 'ÖDENECEK', c_metBig: 'KOTA TAMAM', c_interest: 'ZİL FAİZİ',
@@ -472,8 +486,11 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     const q = this.quota();
     const wallet = this.wallet();
     const left = quotaLeft(q.due, q.deposited);
-    if (nightPaid(this.ctx.run)) { this.refuse('nightPaidNote'); return; }     // Dawn paid it: the next Night has no quota yet
-    const run = this.ctx.run;
+    const run = this.ctx.run as RunApi & DepositCtl;
+    // Decision 3: the reasons that refuse any deposit now (not a quota Watch, Watch closed, Dawn paid, empty pocket) come first.
+    const phaseWhy = run.depositRefusal?.(wallet, true) ?? null;
+    if (phaseWhy !== null) { this.clearEntry(); this.refuseDeposit(phaseWhy); return; }
+    if (nightPaid(this.ctx.run)) { this.clearEntry(); this.refuse('nightPaidNote'); return; }   // Dawn paid it: no quota until the floor opens
     // The first deposit of a Watch keeps a float in the pocket (`float.ts`); ALL goes below it only once confirmed.
     const floor = run.depositFloor?.() ?? 0;
     const room = Math.max(0, wallet - floor);
@@ -484,7 +501,9 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       amount = clampDeposit(customAmount(this.entry), wallet);                 // a typed amount is explicit: it may overpay
       this.clearEntry();
     } else {
-      if (left <= 0) { this.refuse('metNote'); return; }                       // quota met: a held PRESS must not keep depositing
+      // REST is what the quota still needs: nothing to take once it is met. 10 / 25 / 50 % of the pocket keep working after it
+      // (decision 2: the overpay is banked and earns interest until Dawn).
+      if (key === 'rest' && left <= 0) { this.clearEntry(); this.refuse('metNote'); return; }
       this.clearEntry();
       if (key === 'all') {
         if (floor > 0 && this.allArm <= 0) {                                   // the first press arms it, the second confirms
@@ -497,14 +516,16 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
         confirmAll = floor > 0;
         amount = wallet;
       } else {
-        amount = clampDeposit(Math.min(amountFor(key, wallet, left), left), wallet);
+        const want = amountFor(key, wallet, left);
+        amount = clampDeposit(left > 0 ? Math.min(want, left) : want, wallet);
       }
     }
     if (!confirmAll && amount > room) {                                        // the float stays in the pocket, even for the last coins of the quota (only ALL goes below it)
       amount = room;
-      if (amount <= 0) { this.refuse('floorKept'); return; }
+      if (amount <= 0) { this.refuseDeposit('float', floor); return; }
       this.ctx.ui.toast(this.t('floorKept', { n: fmtNum(floor) }), 'sys');
     }
+    if (amount <= 0) { this.refuseDeposit('nothing'); return; }
     const ok = amount > 0 && this.ctx.run.canAfford(amount, this.selfId);
     const dep = q.deposited + (ok ? amount : 0);
     void this.emit(
@@ -555,7 +576,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       const q = this.quota();
       const ok = q.met && this.ctx.run.shift.settleEarly();
       void this.emit({ k: 'lever', id, ok });
-      if (!ok) this.ctx.ui.toast(this.t('notYet'), 'warn');
+      if (!ok) this.ctx.ui.toast(this.t(this.ctx.run.shift.phase === 'closing' ? 'watchEnding' : 'notYet'), 'warn');
       return;
     }
     // The floor lever: OPEN THE FLOOR when the Night is paid, else RING THE BELL for the next Watch. Each call refuses
@@ -595,9 +616,20 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   }
 
   /** A refused press: one sound and one line, no coins moved, nothing emitted. */
-  private refuse(key: string): void {
+  private refuse(key: string, vars?: Record<string, string | number>): void {
     this.sfx('error');
-    this.ctx.ui.toast(this.t(key), 'warn');
+    this.ctx.ui.toast(this.t(key, vars), 'warn');
+  }
+
+  /** A deposit the run refuses: the line names the reason (decision 3). `floor` is the Watch's float for the float line. */
+  private refuseDeposit(why: DepositRefusal, floor = 0): void {
+    switch (why) {
+      case 'notQuota': this.refuse('notQuota'); return;
+      case 'closed': this.refuse('watchClosed'); return;
+      case 'nightPaid': this.refuse('nightPaidNote'); return;
+      case 'nothing': this.refuse('nothingDeposit'); return;
+      case 'float': this.refuse('floorRefuse', { n: fmtNum(floor) }); return;
+    }
   }
 
   // ── presentation (every peer) ───────────────────────────────────────────────────────────────────

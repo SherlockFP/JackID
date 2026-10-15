@@ -98,10 +98,14 @@ export interface RunStakeConfirmEvent {
   amount: number; pocket: number; seconds: number;
 }
 /**
- * The Night summary's books (wave 19, the "QUOTA N PAID" toast): what the Night added up to. `float` is the House float granted at
- * the Night's start, `interest` the interest the Settles added to the deposit (not the deposits), `tickets` the Tickets it earned.
+ * The Night summary's books (wave 19, the "NIGHT N PAID" toast): what the Night added up to. `float` is the House float granted at
+ * the Night's start, `interest` the interest the Settles added to the bank (not the deposits), `tickets` the Tickets it earned.
+ * `carried` is the surplus above the quota that Dawn returned to the pocket (director wave 41: the surplus stays in the bank until
+ * Dawn). The pocket delta of a Night is `carried + float + cut`; interest reaches the pocket only through `carried`.
  */
-export interface NightLedger { night: number; float: number; interest: number; tickets: number; /** House cut from owned machines (Wave 28). */ cut: number }
+export interface NightLedger { night: number; float: number; interest: number; tickets: number; /** House cut from owned machines (Wave 28). */ cut: number; carried: number }
+/** Why a Debt Terminal deposit is refused (director decision 3): the terminal shows the matching line. */
+export type DepositRefusal = 'notQuota' | 'closed' | 'nightPaid' | 'nothing' | 'float';
 /** The bank as the Debt Terminal shows it (wave 27). */
 export interface BankView {
   /** Coins counted toward tonight's quota. */
@@ -245,7 +249,7 @@ export interface RunExt {
   clock: ClockSnapshot; clockLen: number; lastCallSec: number;
   pulls: number; pullsMax: number; watchPulls: number; boughtThisWatch: number;
   tickets: number; debtPaid: number; dreadPts: number;
-  /** Surplus above the quota already returned to the pocket this Night (see `releaseSurplus`). Optional: older saves have none. */
+  /** Legacy (before wave 41): surplus above the quota already returned to the pocket early. Restored by taking it off `debtPaid`. */
   released?: number;
   /** The Night summary's books (see `NightLedger`). Optional: older saves have none. */
   ledger?: NightLedger;
@@ -607,10 +611,11 @@ class Run implements DebtRun {
   // money, pulls, debt
   private coins = START.pocket;
   private tickets = START.tickets;
-  /** Total deposited this Night (interest and overpay included). Quota, ratio, overshoot and interest all read this. */
+  /**
+   * The bank: total deposited this Night (interest and overpay included). Quota, ratio, overshoot and interest all read this.
+   * Director wave 41: nothing leaves it before Dawn, so the surplus above the quota keeps earning until then.
+   */
   private debtPaid = 0;
-  /** Part of `debtPaid` above the quota already paid back to the pocket this Night. Dawn returns only what is left. */
-  private released = 0;
   private pullCount = 0;
   private pullsMax = 0;
   private watchPulls = 0;
@@ -684,7 +689,7 @@ class Run implements DebtRun {
   };
   /** Machines bought with coins (tycoon): never covered again, paid a house cut at each Watch settle. */
   private owned = new Set<MachineId>();
-  private ledger: NightLedger = { night: 1, float: 0, interest: 0, tickets: 0, cut: 0 };
+  private ledger: NightLedger = { night: 1, float: 0, interest: 0, tickets: 0, cut: 0, carried: 0 };
   private maxWallet = START.pocket;
   private biggest = 0;
   private bestMachine: string | null = null;
@@ -806,7 +811,6 @@ class Run implements DebtRun {
           this.bankGranted += c;
           this.debtPaid += c;
           this.stats.deposited = (this.stats.deposited ?? 0) + c;
-          this.releaseSurplus();
           this.syncQuota();
           this.emit('run:deposit', { pid: this.selfId, amount: c, paid: this.debtPaid, due: this.quota.due });
           this.checkMet();
@@ -1046,14 +1050,27 @@ class Run implements DebtRun {
   }
 
   /**
+   * Why a deposit of `amount` would be refused, or null when it goes through (director decision 3). Order: not a quota Watch,
+   * the Watch is closed (Settle, Dawn, the run is over), the Night is paid (Dawn until OPEN THE FLOOR), nothing to deposit, and
+   * the float (`depositFloor`, lifted only by a confirmed ALL). A deposit after the quota is met is accepted (decision 2).
+   */
+  depositRefusal(amount: number, confirmAll = false): DepositRefusal | null {
+    if (!this.quotaMode || this.topside) return 'notQuota';
+    if (this.ended || this.phase === 'settle' || this.phase === 'collection') return 'closed';
+    if (this.nightDone) return 'nightPaid';
+    const amt = Math.min(Math.floor(Number.isFinite(amount) ? amount : 0), this.coins);
+    if (amt <= 0) return 'nothing';
+    if (!confirmAll && amt > depositRoom(this.coins, this.depositFloor())) return 'float';
+    return null;
+  }
+
+  /**
    * Debt Terminal deposit. No deposit of a Watch may take the pocket below `depositFloor()` unless `confirmAll`
    * (the player confirmed ALL). Refused (false) otherwise; the terminal clamps to the room before it asks.
    */
   deposit(amount: number, confirmAll = false): boolean {
-    if (!this.quotaMode || this.ended || this.phase === 'collection') return false;
+    if (this.depositRefusal(amount, confirmAll) !== null) return false;
     const amt = Math.min(Math.floor(amount), this.coins);
-    if (amt <= 0) return false;
-    if (!confirmAll && amt > depositRoom(this.coins, this.depositFloor())) return false;
     this.watchDeposits += 1;
     this.watchDepCoins += amt;
     this.coins -= amt;
@@ -1062,7 +1079,6 @@ class Run implements DebtRun {
     this.debtPaid += credit;
     this.stats.deposited = (this.stats.deposited ?? 0) + credit;
     this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: -amt, reason: 'deposit' });
-    this.releaseSurplus();
     this.syncQuota();
     this.emit('run:deposit', { pid: this.selfId, amount: credit, paid: this.debtPaid, due: this.quota.due });
     this.checkMet();
@@ -1076,7 +1092,7 @@ class Run implements DebtRun {
 
   buyCharm(charmId: string, price: number): boolean {
     if (this.ended) return false;
-    if (this.quotaMode && this.phase !== 'intermission') return this.refuse('phase');
+    if (this.quotaMode && !this.shopOpen()) return this.refuse('phase');
     if (!charmDef(charmId)) return false;
     if (price > 0 && this.coins < price) return this.refuse('funds');
     if (!this.charmBox.add(this.selfId, charmId, this.pegs())) return this.refuse('limit');
@@ -1285,7 +1301,7 @@ class Run implements DebtRun {
       if (gain > 0) this.earn('coin', gain, 'charm:elevator_token');
     }
     this.index += 1;
-    this.ledger = { night: this.index + 1, float: 0, interest: 0, tickets: 0, cut: 0 };   // a new Night's books start empty (before its float)
+    this.ledger = { night: this.index + 1, float: 0, interest: 0, tickets: 0, cut: 0, carried: 0 };   // a new Night's books start empty (before its float)
     const nd = nightDef(this.index);
     this.watches = nd.watches;
     this.watch = 0;
@@ -1342,15 +1358,23 @@ class Run implements DebtRun {
   }
 
   // ── the bank (wave 27): WITHDRAW and the numbers the Debt Terminal shows ─────────────────────────────
-  /** A withdraw is allowed before the Watch is settled: Intermission, Bell, play and Last Call (never Closing, Settle, Dawn, or a paid Night). */
+  /**
+   * The Pawn (charms and the STAMPS tab) is open between Watches and during the Closing window (director decision 1: the
+   * player can still shop while the Watch ends). Not in Bell, play, Settle or Dawn.
+   */
+  private shopOpen(): boolean {
+    return (this.phase === 'intermission' || this.phase === 'closing') && !this.ended;
+  }
+
+  /** A withdraw is allowed until the Watch settles: Intermission, Bell, play, Last Call and Closing (never Settle, Dawn, or a paid Night). */
   private withdrawOpen(): boolean {
     if (this.ended || !this.quotaMode || this.nightDone || this.topside) return false;
-    return this.phase === 'intermission' || this.phase === 'bell' || this.phase === 'play' || this.phase === 'lastCall';
+    return this.phase === 'intermission' || this.phase === 'bell' || this.phase === 'play' || this.phase === 'lastCall' || this.phase === 'closing';
   }
 
   private bankInput(): BankInput {
     return {
-      debtPaid: this.debtPaid, released: this.released, granted: this.bankGranted, due: this.quota.due, rate: this.liveRate(),
+      debtPaid: this.debtPaid, granted: this.bankGranted, due: this.quota.due, rate: this.liveRate(),
       watchPulls: this.watchPulls, churn: churnOf(this.watchWd, this.watchDepCoins),
     };
   }
@@ -1384,9 +1408,7 @@ class Run implements DebtRun {
     if (!this.withdrawOpen()) return 0;
     const amt = Math.min(Math.floor(Number.isFinite(amount) ? amount : 0), withdrawable(this.bankInput()));
     if (amt <= 0) return 0;
-    // the book is rebuilt from the held balance: the overpay that went back to the pocket is forgotten (see bank.ts)
     this.debtPaid = bankBalance(this.bankInput()) - amt;
-    this.released = 0;
     this.watchWd += amt;
     this.stats.deposited = Math.max(0, (this.stats.deposited ?? 0) - amt);
     this.coins += amt;
@@ -1528,7 +1550,6 @@ class Run implements DebtRun {
       }
     }
     this.payHouseCut(overtime);
-    this.releaseSurplus();                                   // the interest just added may be surplus too
     if (!this.rules.unlimitedPulls && this.pullCount > 0) {
       if (this.watchPulls >= ACTIVITY_MIN_PULLS) this.earn('ticket', this.pullCount, 'settle:unused-pulls');
       this.pullCount = 0;
@@ -1625,13 +1646,15 @@ class Run implements DebtRun {
     this.finishBoss();
     this.grantKeys();
     this.releaseMarkEscrow();
-    // Whatever surplus is still held (interest booked after the release, or a Night paid exactly) returns now. The rest went
-    // back at the deposit that met the quota (`releaseSurplus`), so Night N+1 starts with the cash either way.
-    const surplus = Math.max(0, this.debtPaid - due - this.released);
+    // The surplus above the quota (overpays and the interest on them, all of it banked until now) returns to the pocket at Dawn,
+    // so Night N+1 starts with the cash. It is the Night summary's "carried" figure.
+    const surplus = Math.max(0, this.debtPaid - due);
     this.debtPaid = 0;
-    this.released = 0;
     this.bankGranted = 0;
-    if (surplus > 0) this.earn('coin', surplus, 'dawn:surplus');
+    if (surplus > 0) {
+      this.ledger.carried += surplus;
+      this.earn('coin', surplus, 'dawn:surplus');
+    }
     this.stats.nightsPaid = (this.stats.nightsPaid ?? 0) + 1;
     this.syncQuota();
     this.nightDone = true;
@@ -1908,20 +1931,6 @@ class Run implements DebtRun {
     q.met = this.debtPaid >= q.due;
     q.overshoot = Math.max(0, this.debtPaid - q.due);
     q.ratio = q.due > 0 ? this.debtPaid / q.due : 0;
-  }
-
-  /**
-   * Quota met: the surplus above the quota goes back to the pocket at once, so the player can shop in the Intermission
-   * (Mola) with it. `debtPaid` keeps the whole deposit, so interest (`settleWatch`) and overshoot still read the full
-   * amount; `released` tracks what has already gone back so no coin is paid twice. The reason is the Night summary's
-   * carry key (`inGameState.ts`).
-   */
-  private releaseSurplus(): void {
-    if (!this.quotaMode || this.quota.due <= 0) return;
-    const extra = this.debtPaid - this.quota.due - this.released;
-    if (extra <= 0) return;
-    this.released += extra;
-    this.earn('coin', extra, 'dawn:surplus');
   }
 
   private checkMet(): void {
@@ -2207,7 +2216,7 @@ class Run implements DebtRun {
       night: () => (this.nightDone && !this.topside ? this.index + 1 : this.index),
       watch: () => (this.nightDone && !this.topside ? 0 : this.watch),
       floor: () => this.floorMachines(),
-      open: () => this.phase === 'intermission' && !this.ended,
+      open: () => this.shopOpen(),
       si: () => nightDef(this.index).si,
       held: () => this.charmBox.list(this.selfId).map((s) => s.id),
       canTake: (id) => {
@@ -2266,7 +2275,7 @@ class Run implements DebtRun {
       rng: () => this.rng,
       night: () => (this.nightDone && !this.topside ? this.index + 1 : this.index),
       watch: () => (this.nightDone && !this.topside ? 0 : this.watch),
-      open: () => this.phase === 'intermission' && !this.ended,
+      open: () => this.shopOpen(),
       baseQuota: () => nightDef(this.nightDone && !this.topside ? this.index + 1 : this.index).base,
       wallet: () => this.coins,
       tickets: () => this.tickets,
@@ -2654,7 +2663,7 @@ class Run implements DebtRun {
       metFired: this.metFired, ropeUsed: this.ropeUsed,
       clock: this.clock.snapshot(), clockLen: this.clockLen, lastCallSec: this.lastCallSec,
       pulls: this.pullCount, pullsMax: this.pullsMax, watchPulls: this.watchPulls, boughtThisWatch: this.boughtThisWatch,
-      tickets: this.tickets, debtPaid: this.debtPaid, released: this.released, ledger: { ...this.ledger }, dreadPts: this.dreadPts,
+      tickets: this.tickets, debtPaid: this.debtPaid, ledger: { ...this.ledger }, dreadPts: this.dreadPts,
       freeRerolls: this.freeRerolls, skipRest: this.skipRest,
       pawn: this.pawn.snapshot(), stamps: this.stamps.snapshot(), plays: Object.fromEntries(this.plays),
       discount: this.discount, nextDiscount: this.nextDiscount, elapsed: this.elapsed,
@@ -2907,10 +2916,13 @@ class Run implements DebtRun {
     this.clock.restore(e.clock); this.clockLen = e.clockLen; this.lastCallSec = e.lastCallSec;
     this.pullCount = this.rules.unlimitedPulls ? Number.POSITIVE_INFINITY : e.pulls;
     this.pullsMax = e.pullsMax; this.watchPulls = e.watchPulls; this.boughtThisWatch = e.boughtThisWatch;
-    this.tickets = e.tickets; this.debtPaid = e.debtPaid; this.released = Math.max(0, e.released ?? 0); this.dreadPts = e.dreadPts;
+    // Legacy saves (before wave 41) kept the surplus that went back early in `released` on top of the bank: it already sits in the
+    // pocket, so it comes off the bank here and Dawn returns only the rest.
+    this.debtPaid = Math.max(0, e.debtPaid - Math.max(0, e.released ?? 0));
+    this.tickets = e.tickets; this.dreadPts = e.dreadPts;
     this.owned = new Set(e.owned ?? []);
     this.allInWatch = e.allIn ?? -1;
-    if (e.ledger) this.ledger = { cut: 0, ...e.ledger };
+    if (e.ledger) this.ledger = { cut: 0, carried: 0, ...e.ledger };
     this.freeRerolls = e.freeRerolls; this.skipRest = e.skipRest;
     if (e.pawn) this.pawn.restore(e.pawn);
     if (e.stamps) this.stamps.restore(e.stamps);

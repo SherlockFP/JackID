@@ -65,6 +65,8 @@
 // Also modelled: House Favour (x1.25 / 1.15 / 1.07 on Nights 1-3), the Witching Watch +5 %, the activity float (never bet into the
 // 3 pulls the next Watches need). --no-favour switches Favour off; --trace N prints the first N runs Night by Night.
 //
+// WAVE 41 (director): Night 1 interest 0.50, Night 2 0.90 (schedule.ts). Human 2000 runs: 84.7 / 62.8 / 48.7 / 36.9 / 28.9 / 23.4 / 17.9 / 15.3.
+// The surplus above the quota stays in the bank until Dawn (decision 2), so the bots' interest runs on it to the last Watch.
 // TARGET TABLE (wave 19 director, cumulative reach, human bot first): human N1 >= 85, N2 >= 70, N3 >= 50, N5 25-30, N8 ~5; rotator a
 // bit above the human; camper N3 <= 15. Shipped (2000 runs): human 90/76/51/32/26/22/20/20; rotator 100/88/85/70/59/50/41/35;
 // camper N3 16. Open: N8 (human 20 vs ~5) needs the SI ladder smoothed (SI 1,2,4 … 128 gives N8 ~4) and the rotator sits ~35 points
@@ -604,8 +606,9 @@ function playRun(bot, runIdx) {
       if (watchPulls >= SCH.ACTIVITY_MIN_PULLS && pulls > 0) S.tickets = Math.min(SCH.TICKET_CAP, S.tickets + pulls);
       if (TRACE && runIdx < TRACE && idx < 2) console.log(`   N${nd.no} W${w + 1} end: pulls ${watchPulls} debt ${S.debt} pocket ${S.pocket}`);
       if (idx === 0 && w === 0 && newbieLike(bot)) {
-        // Mola after the first Watch: the surplus above the quota (if the interest met it) goes back to the pocket at once
-        const pocketNow = S.pocket + Math.max(0, S.debt - due);
+        // Mola after the first Watch: the surplus above the quota stays in the bank until Dawn (director decision 2), so the
+        // spendable pocket is the pocket itself; the bank is only withdrawable at the terminal.
+        const pocketNow = S.pocket;
         N1.mola.push(pocketNow);
         const prices = S.pawn.stock(1).filter((x) => x && x.price > 0).map((x) => x.price);
         N1.molaN += 1; if (prices.length && Math.min(...prices) <= pocketNow) N1.molaAfford += 1;

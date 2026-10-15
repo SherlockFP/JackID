@@ -10,6 +10,8 @@ export default {
     'paidTag': 'N{n} PAID',
     'lampChase.hot': 'HOT · {name}',
     'lampChase.dist': '{d}m {a}',
+    'clock.closing': 'WATCH ENDING…',
+    'nightSummary': 'NIGHT {n} PAID · carried +{carry} · float +{float} · cut +{cut} · tickets +{tickets} · bank interest +{int}',
   },
   tr: {
     'stake.label': 'BAHİS / CEP',
@@ -17,5 +19,7 @@ export default {
     'paidTag': 'G{n} ÖDENDİ',
     'lampChase.hot': 'SICAK · {name}',
     'lampChase.dist': '{d}m {a}',
+    'clock.closing': 'NÖBET KAPANIYOR…',
+    'nightSummary': '{n}. GECE ÖDENDİ · devir +{carry} · kasa +{float} · kesinti +{cut} · bilet +{tickets} · banka faizi +{int}',
   },
 };

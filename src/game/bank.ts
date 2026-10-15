@@ -1,20 +1,20 @@
 /**
- * THE BANK (wave 27, bank-econ): pure maths behind the Debt Terminal's DEPOSIT / WITHDRAW / QUOTA screens. No state, no bus,
- * no three: `run.ts` owns the state and calls these, the terminal reads the results, the tests check them.
+ * THE BANK (wave 27, bank-econ; director wave 41): pure maths behind the Debt Terminal's DEPOSIT / WITHDRAW / QUOTA screens. No
+ * state, no bus, no three: `run.ts` owns the state and calls these, the terminal reads the results, the tests check them.
  *
  * The model, in one paragraph. Coins in the bank count toward tonight's quota and earn interest at every Settle (the end of a
- * Watch). WITHDRAW takes them back to the pocket at any time before the Watch is settled. A withdrawn coin stops counting and stops
- * earning, and a coin that went out and came back in the same Watch (`churn`) earns nothing that Watch, so the bank cannot be
- * used as a free pocket-shuffle. Only coins that really came from the pocket plus interest can be withdrawn: quota credit that
- * never was cash (deposit bonus, phone credit, a kit's pre-deposit: `granted`) stays in the bank.
+ * Watch) until Dawn. Deposits keep working after the quota is met: the surplus stays in the bank and keeps earning, and Dawn
+ * returns `bank - quota` to the pocket (no early release, director decision 2). WITHDRAW takes coins back to the pocket at any
+ * time before the Watch is settled. A withdrawn coin stops counting and stops earning, and a coin that went out and came back in
+ * the same Watch (`churn`) earns nothing that Watch, so the bank cannot be used as a free pocket-shuffle. Only coins that really
+ * came from the pocket plus interest can be withdrawn: quota credit that never was cash (deposit bonus, phone credit, a kit's
+ * pre-deposit: `granted`) stays in the bank.
  */
 import { ACTIVITY_MIN_PULLS, OVERSHOOT_TIERS, interestFor } from './data/schedule';
 
 export interface BankInput {
-  /** Total counted toward tonight's quota (`run.debtPaid`: deposits, interest, overpay already paid back). */
+  /** Total held in the bank toward tonight's quota (`run.debtPaid`: deposits, interest; the surplus stays here until Dawn). */
   debtPaid: number;
-  /** Part of `debtPaid` above the quota that already went back to the pocket (never withdrawable twice). */
-  released: number;
   /** Quota credit that never was pocket cash (deposit bonus, phone credit, kit pre-deposit). */
   granted: number;
   /** Tonight's quota (loan-inflated). */
@@ -27,13 +27,13 @@ export interface BankInput {
   churn: number;
 }
 
-/** Coins counted in the bank: what a WITHDRAW can touch is `withdrawable`. */
-export function bankBalance(i: Pick<BankInput, 'debtPaid' | 'released'>): number {
-  return Math.max(0, Math.floor(i.debtPaid) - Math.floor(i.released));
+/** Coins counted in the bank (quota credit included). What a WITHDRAW can touch is `withdrawable`. */
+export function bankBalance(i: Pick<BankInput, 'debtPaid'>): number {
+  return Math.max(0, Math.floor(i.debtPaid));
 }
 
 /** Coins a withdraw may take now (balance minus the quota credit that never was cash). */
-export function withdrawable(i: Pick<BankInput, 'debtPaid' | 'released' | 'granted'>): number {
+export function withdrawable(i: Pick<BankInput, 'debtPaid' | 'granted'>): number {
   return Math.max(0, bankBalance(i) - Math.max(0, Math.floor(i.granted)));
 }
 
@@ -80,16 +80,13 @@ export function tierReached(paid: number, due: number): string | null {
   return best?.id ?? null;
 }
 
-/**
- * What taking `amount` out of the bank would do. A withdraw rebuilds the book from the held balance (the overpay already paid
- * back is forgotten: `released` goes to 0 and `debtPaid` becomes the balance after), so the tier check reads the new balance.
- */
+/** What taking `amount` out of the bank would do (what the player gives up). */
 export function previewWithdraw(i: BankInput, amount: number): WithdrawPreview {
   const room = withdrawable(i);
   const coins = Math.max(0, Math.min(Math.floor(Number.isFinite(amount) ? amount : 0), room));
   const bank = bankBalance(i);
   const bankAfter = bank - coins;
-  const after: BankInput = { ...i, debtPaid: bankAfter, released: 0 };
+  const after: BankInput = { ...i, debtPaid: bankAfter };
   const lostRaw = interestNext(i) - interestNext(after);
   const before = tierReached(i.debtPaid, i.due);
   const now = tierReached(bankAfter, i.due);
