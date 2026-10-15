@@ -22,6 +22,7 @@ import { createQuotaBoard, type QuotaBoard } from './props/quotaBoard';
 import { buildSignposts } from './props/signposts';
 import { buildRooms, type RoomsBuild } from './rooms';
 import { buildHollow } from './hollow';
+import { buildHome } from './home';
 
 // ── constants ───────────────────────────────────────────────────────────────────────────────────
 const T = 0.3;            // wall thickness (GDD §8.1)
@@ -430,6 +431,15 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   Object.assign(anchors, hollow.anchors);
   updates.push({ update: (dt, time) => hollow.update(dt, time) });
   disposables.push(hollow);
+
+  // ── THE APARTMENT (world/home): far offset at HOME_ORIGIN, reached by the lift after a Night (wave 69 Home layer) ──
+  const home = buildHome({ kit, tex, seed: ctx.seed, interact: ctx.interact, collision: ctx.collision, lights: ctx.lights });
+  root.add(home.root);
+  lights.push(...home.lights);
+  statics.push(...home.statics);
+  Object.assign(anchors, home.anchors);
+  updates.push({ update: (dt, time) => home.update(dt, time) });
+  disposables.push(home);
 
   // ── plaques and signage (zones, shops, doors) ────────────────────────────────────────────────
   const plaque = (key: string, w: number, h: number, x: number, y: number, z: number, rot: 0 | 90 | 180 | 270, color: number) => {

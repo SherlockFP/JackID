@@ -69,6 +69,8 @@ import { createTycoon, type Tycoon } from './tycoon';
 import { createBuffSystem, type BuffSystem } from './buffs';
 import { createItemSystem, type ItemSystem } from './items';
 import { createHotline, type Hotline, type HotlineSave } from './hotline';
+import { createPhone } from './home/phone';
+import type { HomePhoneApi, HomeSave, HomeStage } from './home/contract';
 import {
   DOOR_FIRST_NIGHT, PHONE_HOUR, PHONE_MINUTE, initDoor, reveal as doorReveal, ring as doorRing, answer as doorAnswer, enter as doorEnter,
   pickLord, leave as doorLeave, finish as doorFinish, dawn as doorDawn, type DoorState, type DoorTrigger, type DuelEnd, type DoorStatus,
@@ -232,6 +234,20 @@ const BELL_SEC = 2;
 const SETTLE_SEC = 1.5;
 /** Dawn Collection length (GDD §2.7). */
 const COLLECTION_SEC = 12;
+/**
+ * The Home stages in sim seconds (docs/WAVE69_HOME.md). The run owns the clock of every stage, so a headless run walks the whole
+ * Evening on its own; the controller (src/game/home/evening.ts) reads the same numbers to time its fades, sounds and teleports.
+ *  - `ride`: the lift up. Dark by `dark`, the ding and the teleport at `teleport`, back in by the end; the Evening starts then.
+ *  - `evening`: the walk in the apartment. At zero the player falls asleep on their own, so nothing can soft-lock.
+ *  - `sleep`: bedCreak and the fade to black; the next Night opens at the end.
+ *  - `doomed`: the same ride home, then the lights flicker (`flickerAt` to `flickerEnd`), three knocks and the end (`end`).
+ */
+export const HOME_TIMING = {
+  ride: 2.6, dark: 0.8, teleport: 1.0, fadeIn: 1.4,
+  evening: 120,
+  sleep: 1.8,
+  doomed: { flickerAt: 2.6, flickerEnd: 4.2, knocks: [4.7, 5.6, 6.5] as readonly number[], end: 8.0 },
+} as const;
 /** Overtime Watch from the Rope Ladder (GDD §4.2 #89). */
 const OVERTIME_PULLS = 5;
 const OVERTIME_SEC = 90;
@@ -393,6 +409,8 @@ export interface RunExt {
   nightCards?: NightCardSave;
   /** Per-Watch floor event (wave 43): the live event and its time left. Optional: a save between Watches has none. */
   watchEvent?: WatchEventSave | null;
+  /** THE EVENING (wave 69): the Home stage, the lights and chain, and the phone's slice. Optional: older saves and online runs have none. */
+  home?: HomeSave;
   /** Machine of the Night (wave 55): this Night's spotlight and the kind spotlit last Night. Optional: older saves have none. */
   spotlight?: SpotlightSave;
   /** Watch tithe (wave 58): this Watch's net winnings and the tithe's quota adds. Optional: older saves have none. */
@@ -417,6 +435,11 @@ export interface RunOpts {
   save?: SaveStore;
   /** Event banners (night events) for the HUD. Optional: without it events still run, silently. */
   banner?: EventBannerShow;
+  /**
+   * THE EVENING (wave 69): this run has the Home layer (the lift home after a paid Night, the phone, the doomed ride after a missed
+   * quota). The session sets it for a solo Debt Run; an online run leaves it off and keeps the old lever and the trapdoor. Off by default.
+   */
+  home?: boolean;
 }
 
 /** What the world exposes to the run (machines and slot positions). Attached once the pit exists. */
@@ -466,8 +489,25 @@ export interface DebtRun extends RunApi {
   nightCard(): NightCardDef | null;
   /** Intermission → Bell (the BELL ROPE). */
   startWatch(): boolean;
-  /** Night intermission → next Night (OPEN THE FLOOR). Refused while the Topside choice is open. */
+  /**
+   * The floor lever of a paid Night. With the Home layer on (solo Debt Run, not Night 8) it TAKES THE LIFT: stage `ride`, then the
+   * Evening; the bed opens the next Night. Otherwise it opens the next Night at once (the old lever). From the Evening it sleeps.
+   * Refused while the Topside choice is open.
+   */
   openFloor(): boolean;
+  // ── THE EVENING (wave 69, src/game/home): a sub-state of the intermission, never a phase ──
+  /** The Home layer is on for this run (a solo Debt Run asked for it). Online runs and tests without `home` are off. */
+  readonly homeOn: boolean;
+  /** Where the run stands at home: `ride` (lift up), `evening`, `sleep`, `doomed` (a missed quota), or null (on the casino floor). */
+  homeStage(): HomeStage | null;
+  /** Stage, sim seconds left in it, and the lights and chain of the apartment (the controller and the save read it). */
+  homeState(): { stage: HomeStage | null; left: number; lights: boolean; chain: boolean };
+  /** The floor lever would take the lift now (paid Night, Home layer on, not Night 8): the terminal reads it for its label. */
+  homeLiftReady(): boolean;
+  /** The bed: the Evening ends, the screen goes dark and the next Night opens at the end of the stage. False outside the Evening. */
+  homeSleep(): boolean;
+  /** The controller reports the apartment's lights and chain so a save keeps them. */
+  homeFlags(f: { lights?: boolean; chain?: boolean }): void;
   /** Pay the rest of the Night now (SETTLE lever). Needs `deposit ≥ quota`. */
   settleEarly(): boolean;
   /**
@@ -552,10 +592,10 @@ export function createRun(opts: RunOpts): DebtRun {
 }
 
 /** Continue the saved run, if the save holds a resumable run; otherwise null. The Watch clock resumes frozen. */
-export function resumeRun(save: SaveStore, extra: { banner?: EventBannerShow } = {}): DebtRun | null {
+export function resumeRun(save: SaveStore, extra: { banner?: EventBannerShow; home?: boolean } = {}): DebtRun | null {
   const snap = save.data.resume;
   if (!snap || !isRunSave(snap)) return null;
-  return new Run({ seed: snap.seed, mode: snap.mode, cfg: snap.cfg, save, banner: extra.banner }, snap);
+  return new Run({ seed: snap.seed, mode: snap.mode, cfg: snap.cfg, save, banner: extra.banner, home: extra.home }, snap);
 }
 
 // ── inert sub-APIs (owned by other packages; warns once when touched) ─────────────────────────────────
@@ -784,6 +824,15 @@ class Run implements DebtRun {
   /** The House refused the loan tonight or earlier (a rescue call lapsed unanswered): the red seam can open with an empty pocket. */
   private hollowRefused = false;
 
+  // THE EVENING (wave 69): the Home stage (a flag on the intermission, or on the Dawn collection while the doom walks in), its
+  // clock, the apartment's lights and chain, and the phone. All null / default when the Home layer is off.
+  readonly homeOn: boolean;
+  private hStage: HomeStage | null = null;
+  private hLeft = 0;
+  private hLights = true;
+  private hChain = false;
+  private readonly hPhone: HomePhoneApi | null;
+
   // status
   private living = true;
   private ended = false;
@@ -848,6 +897,7 @@ class Run implements DebtRun {
   constructor(opts: RunOpts, resume: RunSave | null) {
     this.mode = playableMode(opts.mode);
     this.rules = rulesFor(this.mode);
+    this.homeOn = opts.home === true && this.rules.quota && this.rules.timed;
     // Daily run (daily.ts): the seed, kit and stake come from the UTC day, whatever the menu passed. A resumed run keeps its day.
     const cfgDay = (opts.cfg as { dailyDay?: unknown } | undefined)?.dailyDay;
     const dayOfRun = opts.cfg?.daily === true && this.rules.quota ? (isDayKey(cfgDay) ? cfgDay : dayKey()) : null;
@@ -1044,6 +1094,8 @@ class Run implements DebtRun {
       bus.on('cutscene:end', () => { releaseClock('cutscene'); }),
     );
     this.jackpots = this.makeJackpotsApi();
+    // THE EVENING: the phone belongs to the Home layer (solo only); an online run has none (`homePhone()` is null).
+    this.hPhone = this.homeOn ? createPhone(this) : null;
 
     if (resume) {
       this.restore(resume);
@@ -1333,6 +1385,8 @@ class Run implements DebtRun {
   }
   phone(): PhoneCallState | null { return this.rescue.phone() ?? this.hotline.phone(); }
   answerPhone(choice: number): void { if (!this.rescue.answer(choice)) this.hotline.answer(choice); }
+  /** The player's own phone (spouse and Collector threads). Null when the Home layer is off (online, tests). */
+  homePhone(): HomePhoneApi | null { return this.hPhone; }
 
   /** The Night summary's books for the Night in progress (float, interest, tickets). A copy: the caller cannot change them. */
   nightLedger(): Readonly<NightLedger> { return { ...this.ledger }; }
@@ -1408,6 +1462,7 @@ class Run implements DebtRun {
     this.buffSys.tick(dt);
     this.hotline.tick(dt);
     this.rescue.tick(dt);
+    this.hPhone?.tick(dt);   // the phone's own gate keeps its messages to the Watches (any phase may tick it)
     this.tickSafety(dt);
     tickClockHold(dt);
     this.itemSys.tick(dt);
@@ -1419,6 +1474,8 @@ class Run implements DebtRun {
     if (!this.rules.timed) return;
     // The Starter Draft's timer runs in every phase (its countdown is on screen); the Bell waits for the offer.
     const starterHolds = this.tickStarter(dt);
+    if (this.hStage !== null) this.tickHome(dt);
+    if (this.ended) return;   // the doom ended the run
     switch (this.phase) {
       case 'bell':
         if (starterHolds) break;   // the Starter Draft holds the Bell until a charm is taken (or its timer runs out)
@@ -1440,6 +1497,7 @@ class Run implements DebtRun {
         if (this.phaseLeft <= 0) this.afterSettle();
         break;
       case 'collection':
+        if (this.hStage === 'doomed') break;   // a missed quota: the doom walks on its own clock (tickHome)
         this.phaseLeft -= dt;
         if (this.phaseLeft <= 0) this.dawn();
         break;
@@ -1485,13 +1543,27 @@ class Run implements DebtRun {
 
   openFloor(): boolean {
     if (this.ended || !this.quotaMode || this.topside) return this.refuse('noWatch');
+    if (this.hStage === 'doomed') return this.refuse('noWatch');
     if (this.phase !== 'intermission') return this.refuse(this.phaseRefusal());
     if (!this.nightDone) return this.refuse('nightUnpaid');
+    // THE EVENING: the lever at home is the bed (the fade, then the next Night); mid-lift or mid-sleep it waits.
+    if (this.hStage === 'evening') return this.homeSleep();
+    if (this.hStage !== null) return this.refuse('noWatch');
     // Night Cards: with the panel on screen the lever waits for a pick (the panel's own timer still auto-picks, so nothing
     // soft-locks). Headless runs and tests have no panel: there an open offer is settled by its first card.
     if (this.nightCardGate && this.nightCardOffer()) return this.refuse('nightCard');
     this.refusal = null;
     const settled = this.nightCards.settle();
+    if (settled) this.emit('run:nightcard', { pid: this.selfId, state: 'auto', card: settled });
+    // The Home layer takes the lever for the lift (solo Debt Run, not Night 8); every other run opens the next Night at once.
+    if (this.homeLiftReady()) { this.setHome('ride', HOME_TIMING.ride); return true; }
+    this.beginNight();
+    return true;
+  }
+
+  /** The next Night begins (the old OPEN THE FLOOR body): the lever without the Home layer, and the end of the bed's sleep. */
+  private beginNight(): void {
+    const settled = this.nightCards.settle();   // a no-op after openFloor settled the offer; the sleep arrives here with it closed
     if (settled) this.emit('run:nightcard', { pid: this.selfId, state: 'auto', card: settled });
     // Ascent: the pit rises one floor. The Elevator Token pays 5 % of the pocket (max 300 × SI).
     if (this.charmBox.has(this.selfId, 'elevator_token')) {
@@ -1531,7 +1603,71 @@ class Run implements DebtRun {
     if (spot) this.banner?.(spotlightStartLine(spot, machineName(spot.machineId)), { color: '#ffd34a', hold: 4, size: 16 });
     this.enter('intermission', 0);
     this.persist();
+  }
+
+  // ── THE EVENING (wave 69): the lift home, the apartment, the bed, and the doomed ride ───────────────────
+  homeStage(): HomeStage | null { return this.hStage; }
+  homeState(): { stage: HomeStage | null; left: number; lights: boolean; chain: boolean } {
+    return { stage: this.hStage, left: this.hLeft, lights: this.hLights, chain: this.hChain };
+  }
+  homeFlags(f: { lights?: boolean; chain?: boolean }): void {
+    if (typeof f.lights === 'boolean') this.hLights = f.lights;
+    if (typeof f.chain === 'boolean') this.hChain = f.chain;
+    this.persistSoon();
+  }
+
+  /** The lever would take the lift: Home layer on, a paid Night (not the Topside Night 8), the floor lever idle, the run alive. */
+  homeLiftReady(): boolean {
+    return this.homeOn && this.quotaMode && !this.ended && !this.topside && this.hStage === null
+      && this.phase === 'intermission' && this.nightDone && this.index + 1 !== BASE_RUN_NIGHTS;
+  }
+
+  homeSleep(): boolean {
+    if (this.ended || this.hStage !== 'evening') return false;
+    this.setHome('sleep', HOME_TIMING.sleep);
     return true;
+  }
+
+  /** Moves the Home stage, tells the world (`home:stage`) and saves. `null` = back on the casino floor. */
+  private setHome(stage: HomeStage | null, left: number): void {
+    this.hStage = stage;
+    this.hLeft = left;
+    this.emit('home:stage', { stage });
+    this.notify();
+    this.persist();
+  }
+
+  /** The Home clock: the ride arrives, the Evening falls asleep on its own, the bed opens the next Night, the doom ends the run. */
+  private tickHome(dt: number): void {
+    this.hLeft -= dt;
+    if (this.hLeft > 0) return;
+    switch (this.hStage) {
+      case 'ride':
+        // arrival: the apartment is lit and the chain is off, then the phone looks at the Evening (spouse present or not, requests)
+        this.hLights = true; this.hChain = false;
+        this.hPhone?.onEvening();
+        this.setHome('evening', HOME_TIMING.evening);
+        break;
+      case 'evening':
+        this.setHome('sleep', HOME_TIMING.sleep);   // the auto-sleep: nothing at home can soft-lock the run
+        break;
+      case 'sleep':
+        this.hStage = null; this.hLeft = 0;
+        this.beginNight();
+        this.emit('home:stage', { stage: null });
+        break;
+      case 'doomed':
+        this.fall('shot');
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** A missed quota in a Home-layer run: the ride home happens anyway, and the Collector's men are waiting (see `tickHome`). */
+  private startDoomed(): void {
+    this.hLights = true; this.hChain = false;
+    this.setHome('doomed', HOME_TIMING.doomed.end);
   }
 
   /**
@@ -1794,6 +1930,7 @@ class Run implements DebtRun {
     bindWingSource(null);
     this.hotline.dispose();
     this.rescue.dispose();
+    this.hPhone?.dispose();
     clearClockHolds();
     this.buffSys.dispose();
     this.itemSys.dispose();
@@ -1960,7 +2097,12 @@ class Run implements DebtRun {
       this.persist();
       return;
     }
-    if (!paid) { this.fall(); return; }
+    if (!paid) {
+      // THE EVENING: a solo Home-layer run takes the ride home first (the Collector's men are at the door); the trapdoor is for the rest
+      if (this.homeOn) { this.startDoomed(); return; }
+      this.fall();
+      return;
+    }
     // HOUSE TAKES NOTICE (wave 47): the wealth of this Dawn (pocket + bank, before the surplus returns) floors the next quota.
     const wealth = this.coins + this.debtPaid;
     this.houseWealth = wealth;
@@ -2014,12 +2156,13 @@ class Run implements DebtRun {
     if (noticed > plain) this.banner?.(t('run.house.notice', { n: Math.round(noticed) }), { color: '#ff7a5a', hold: 4, size: 16 });
   }
 
-  private fall(): void {
+  /** The quota was missed. Without an `ending` it is the trapdoor; `'shot'` is the Collector's visit at home (the story plays `mafia_visit`). */
+  private fall(ending?: string): void {
     this.living = false;
     this.syncQuota();   // the quota the receipt reads is the bank's, as of this Dawn (wave 42, bug a)
     this.emit('quota:failed', { index: this.index });
-    this.emit('player:fall', { pid: this.selfId });
-    this.endRun('fell');
+    if (ending === undefined) this.emit('player:fall', { pid: this.selfId });
+    this.endRun('fell', ending);
   }
 
   private postMortem(): NonNullable<RunSummary['post']> {
@@ -3180,6 +3323,7 @@ class Run implements DebtRun {
       ...(this.watchEv.snapshot() ? { watchEvent: this.watchEv.snapshot() } : {}),
       ...(this.spotlight.snapshot() ? { spotlight: this.spotlight.snapshot() as SpotlightSave } : {}),
       ...(this.tithe.snapshot() ? { tithe: this.tithe.snapshot() as TitheSave } : {}),
+      ...(this.hPhone ? { home: this.homeSave(this.hPhone) } : {}),
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -3192,6 +3336,35 @@ class Run implements DebtRun {
       wingKeys: this.wingKeys, managerKey: this.managerKey, boiler: { p: this.rooms.p, blown: this.rooms.blown },
       ext,
     };
+  }
+
+  /** The Home slice of the save: the stage and its clock, the lights and chain, and the phone's own slice (`RunExt.home`). */
+  private homeSave(phone: HomePhoneApi): HomeSave {
+    const p = phone.snapshot();
+    return { stage: this.hStage, left: Math.max(0, this.hLeft), lights: this.hLights, chain: this.hChain, ...(p ? { phone: p } : {}) };
+  }
+
+  /**
+   * Restores the Home layer from a save. A reload cannot resume a lift or a sleep, so a ride, an Evening and a sleep all come back as
+   * the Evening at the front door (the controller teleports the player to `home.spawn`); a Night that was left on the floor stays there.
+   * The doom comes back whole: the ride home, the lights and the knocks play again and then end the run.
+   */
+  private restoreHome(h: HomeSave | undefined): void {
+    this.hPhone?.restore(h?.phone);
+    this.hLights = h?.lights !== false;
+    this.hChain = h?.chain === true;
+    this.hStage = null; this.hLeft = 0;
+    const st = h?.stage ?? null;
+    if (st === 'doomed' && this.phase === 'collection' && !this.nightDone) {
+      this.hStage = 'doomed';
+      this.hLeft = HOME_TIMING.doomed.end;
+    } else if ((st === 'evening' || st === 'ride' || st === 'sleep') && this.phase === 'intermission' && this.nightDone && !this.topside) {
+      const saved = Number.isFinite(h?.left) ? (h?.left ?? 0) : HOME_TIMING.evening;
+      // a sleep that was cut off finishes soon; a ride starts the Evening from the top; an Evening keeps its clock (at least a breath)
+      const left = st === 'sleep' ? 3 : st === 'ride' ? HOME_TIMING.evening : saved;
+      this.hStage = 'evening';
+      this.hLeft = Math.min(HOME_TIMING.evening, Math.max(5, left));
+    }
   }
 
   /** Boundary save (phase, deposit, purchase, quota, jackpot …): serialises now and clears the coalescing state. */
@@ -3534,6 +3707,7 @@ class Run implements DebtRun {
     this.watchEv.restore(e.watchEvent);
     this.spotlight.restore(e.spotlight);
     this.tithe.restore(e.tithe);
+    if (this.homeOn) this.restoreHome(e.home);
     this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);
     this.watchDeposits = Math.max(0, e.watchDep ?? 0);
     this.watchFloatSnap = typeof e.watchFloat === 'number' && Number.isFinite(e.watchFloat) ? Math.max(0, Math.floor(e.watchFloat)) : null;

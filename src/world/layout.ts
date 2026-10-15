@@ -17,6 +17,7 @@ import { createRng, hashSeed, type Rng } from '@/core/rng';
 import type { SlotDef } from './types';
 import type { ZoneDef } from './sys/arch';
 import { HOLLOW_TABLE_SLOT } from './hollow/config';
+import { HOME_LOOK, HOME_ZONE_RECT } from './home/config';
 
 type Rot = 0 | 90 | 180 | 270;
 const S = (id: InstanceId, zone: ZoneId, size: SlotSize, x: number, z: number, rotY: Rot, y?: number): SlotDef =>
@@ -278,6 +279,8 @@ export const ZONES: ZoneDef[] = [
   { id: 'lift', rect: [-5.1, -32.2, -2.9, -30], gated: true, ...look(0x2a2418, 20, 60, 0x2a2418) },
   // THE UNDERNEATH (world/hollow): far below the pit; the look is HOLLOW_LOOK (fog 2–14 m, a dark red ambient)
   { id: 'hollow', rect: [108, 108, 132, 132], ...look(0x030103, 2, 14, 0x140a0a) },
+  // THE APARTMENT (world/home): far offset at HOME_ORIGIN; the room only (the hallway is outside, lit by its own bulb)
+  { id: 'home', rect: HOME_ZONE_RECT, ...look(HOME_LOOK.fog.color, HOME_LOOK.fog.near, HOME_LOOK.fog.far, HOME_LOOK.ambient) },
 ];
 
 /**

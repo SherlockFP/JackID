@@ -25,6 +25,9 @@ import type { OddsLine } from '@/game/pace';
 import { BRASS, CREAM, INK, INK_SOFT, Placard3D, button, paginate, put, rowsIn, rulesFirstEver, rulesMarkShown, wrapPx5 } from './placard3d';
 import { showRulesHint } from './rulesHint';
 import type { StakePresetsEvent } from './stakePresets';
+import { flashPrefs } from './juice';
+import { tierAtLeast, type JuiceTier } from './tiers';
+import { uiSfx } from '@/core/ui/widgets';
 import './seatHud.css';
 import './seatHudLayout.css';
 
@@ -49,6 +52,8 @@ const RESULT_KEY: Record<HudResultKind, string> = {
 };
 
 const txt = (x: Txt): string => (typeof x === 'string' ? x : tr(x.k, x.v));
+/** Count-up length of a big win's amount on the result callout (s). */
+const RESULT_COUNT_S = 0.8;
 
 /** The Tell Sheet parts as text: HIT · ×10+ · CLASS · NEED. The numbers are formatted in pace.ts; this lays out words. */
 function oddsText(l: OddsLine): string[] {
@@ -400,20 +405,42 @@ export class SeatHud {
     this.ctrlEl.style.display = items.length ? '' : 'none';
   }
 
-  /** Colour-coded callout held for `hold` seconds. `amount` = net coins (negative = lost). */
-  result(kind: HudResultKind, amount = 0, hold = 1.5, label?: string): void {
+  /**
+   * Colour-coded callout held for `hold` seconds. `amount` = net coins (negative = lost). `tier` (optional): the round's
+   * tier, or for a loss the tier of the stake. A win at big or above slams in with a gold glow and counts up over 0.8 s
+   * (numberTick). A loss at big or above flashes red once. The slam and the red flash are off under reduce-flashing / calm.
+   */
+  result(kind: HudResultKind, amount = 0, hold = 1.5, label?: string, tier?: JuiceTier): void {
     this.clearResult();
-    this.resultEl.className = `shud-result r-${kind}`;
+    const prefs = flashPrefs();
+    const big = tier !== undefined && tierAtLeast(tier, 'big');
+    const slam = big && amount > 0;
+    const cls = ['shud-result', `r-${kind}`];
+    if (slam) { cls.push('gold'); if (!prefs.reduced && !prefs.calm) cls.push('slam'); }
+    if (big && amount < 0 && !prefs.reduced && !prefs.calm) cls.push('red');
+    this.resultEl.className = cls.join(' ');
     this.resultT.textContent = label ?? tr(RESULT_KEY[kind]);
-    this.resultA.textContent = amount > 0 ? `+${fmtCoins(amount)}` : amount < 0 ? `-${fmtCoins(-amount)}` : '';
+    this.resultA.textContent = slam ? `+${fmtCoins(0)}` : amount > 0 ? `+${fmtCoins(amount)}` : amount < 0 ? `-${fmtCoins(-amount)}` : '';
     this.resultA.style.display = amount === 0 ? 'none' : '';
     void this.resultEl.offsetWidth;                       // restart the pop-in
     this.resultEl.classList.add('on');
-    const end = performance.now() + hold * 1000;
+    const endMs = hold * 1000;
+    let start = -1;                                       // the first frame's timestamp: the callout's clock
     let live = true;
-    const tick = (): void => {
+    let last = -1;
+    const tick = (now: number): void => {
       if (!live) return;
-      if (performance.now() >= end) { this.resultEl.classList.remove('on'); this.cancelResult = null; return; }
+      if (start < 0) start = now;
+      const el = now - start;
+      if (slam && el < endMs) {
+        const k = Math.min(1, el / (RESULT_COUNT_S * 1000));
+        const v = Math.round(amount * (1 - Math.pow(1 - k, 3)));          // outCubic count-up
+        if (v !== last) { last = v; this.resultA.textContent = `+${fmtCoins(v)}`; uiSfx('numberTick', 0.5); }
+      }
+      if (el >= endMs) {
+        if (slam) this.resultA.textContent = `+${fmtCoins(amount)}`;
+        this.resultEl.classList.remove('on'); this.cancelResult = null; return;
+      }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);

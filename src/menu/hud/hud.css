@@ -63,11 +63,20 @@
 .hud .bar { position: relative; width: calc(64 * var(--u)); height: calc(4 * var(--u)); background: #000;
   box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark); }
 .hud .bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--amber); }
-.hud .quota.met .bar i { background: var(--green); }
-.hud .quota.short.late .bar i { background: var(--signal); animation: hud-blink .5s steps(2, start) infinite; }
+/* quota juice (hud.ts setQuotaBar): the pale ghost sits under the fill (a rise leads, the fill grows into it); quarter marks on the bar */
+.hud .bar i.gh { background: #fff3c4; }
+.hud .bar i:not(.gh) { z-index: 1; }
+.hud .bar b.mark { position: absolute; top: 0; bottom: 0; width: calc(1 * var(--u)); margin-left: calc(-0.5 * var(--u)); background: #000; opacity: .6; z-index: 2; }
+.hud .quota.met .bar i:not(.gh) { background: var(--green); }
+.hud .quota.short.late .bar i:not(.gh) { background: var(--signal); animation: hud-blink .5s steps(2, start) infinite; }
 .hud .quota .int { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 .hud .quota.met .num { color: var(--green); }
 .hud .quota .short { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--amber); }
+
+/* HEAT meter under the quota (hud.ts updateHeat): a thin bar, amber to red, blinking above 75 */
+.hud .heat { flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u)); }
+.hud .heat .bar i { transition: width .25s steps(4); }
+.hud .heat.blink .bar i { animation: hud-blink .5s steps(2, start) infinite; }
 
 /* NIGHT PLAN: under the quota in the top-right column (hud.ts updatePlan). Four plain text lines, right-aligned, one line each. */
 /* The panel is capped at its top-right grid cell (max-width 100%), and its lines wrap inside it: a long line never runs out of the
@@ -167,6 +176,23 @@
   font-family: var(--f-head); font-size: calc(14 * var(--u) * var(--k, 1)); line-height: 1; color: var(--shine);
   text-shadow: calc(2 * var(--u)) calc(2 * var(--u)) 0 #000; animation: win-pop .9s ease-out forwards; }
 .hud .win-pop.huge { color: #fff1b8; }
+
+/* overshoot stamp (hud.ts slamStamp): the tier's name slams in over the centre, settles, then fades. --k is the tier's size. */
+.hud .hud-stamp { position: absolute; left: 50%; top: 30%; z-index: 5; pointer-events: none; white-space: nowrap;
+  font-family: var(--f-head); font-size: calc(12 * var(--u)); line-height: 1; color: #ffe9a8; text-shadow: calc(2 * var(--u)) calc(2 * var(--u)) 0 #000;
+  padding: calc(4 * var(--u)) calc(10 * var(--u)); background: rgba(16, 16, 25, .78); box-shadow: 0 0 0 calc(2 * var(--u)) #ffd34a;
+  transform: translate(-50%, -50%) rotate(-6deg) scale(var(--k, 1));
+  animation: hud-stamp-slam 1.6s steps(8, end) forwards; }
+@keyframes hud-stamp-slam {
+  0% { opacity: 0; transform: translate(-50%, -50%) rotate(-6deg) scale(calc(2.4 * var(--k, 1))); }
+  10% { opacity: 1; transform: translate(-50%, -50%) rotate(-6deg) scale(calc(0.92 * var(--k, 1))); }
+  16% { opacity: 1; transform: translate(-50%, -50%) rotate(-6deg) scale(var(--k, 1)); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+/* the planOver line hops once the overshoot tier lands (hud.ts overshootCrossed), and a set chip hops when its set switches on */
+.hud .plan span.po.hop { animation: hud-hop .25s ease-out; }
+.hud .set-chip.hop { animation: hud-hop .25s ease-out; }
 
 @keyframes charm-pop {
   0% { transform: translate(-50%, 0) scale(.6); opacity: 0; }

@@ -5,8 +5,18 @@
  */
 import type { BuffDef, NightEventDef } from '@/game/types';
 import type { ModEffect } from '@/game/modifiers.types';
+import { CHARM_LUCK_CAP, charmLuckFor } from './charms';
 
 const S = (en: { name: string; desc: string }, tr: { name: string; desc: string }): BuffDef['strings'] => ({ en, tr });
+
+/**
+ * The blessing's luck: 2 points on each machine, clamped by that machine's charm-luck budget (`charmLuckFor`, the same clamp a
+ * charm's `luckFx` applies). A machine with no budget gets none, so the blessing cannot beat the RTP the charms are held to.
+ */
+const BLESSED_LUCK: ModEffect[] = Object.keys(CHARM_LUCK_CAP).flatMap((id): ModEffect[] => {
+  const v = charmLuckFor(id, 2);
+  return v > 0 ? [{ hook: 'luck', op: 'add', value: v, scope: { machines: [id] } }] : [];
+});
 
 const tonic = (
   id: string, icon: string, kind: BuffDef['kind'], s: number, maxStacks: number, effects: ModEffect[],
@@ -59,6 +69,22 @@ export const BUFF_DATA: BuffDef[] = [
     effects: [{ hook: 'speed.mult', op: 'mult', value: 1.5 }],
     strings: S({ name: 'Overheat', desc: 'Smoke curls out of the cabinet. It runs slower.' },
       { name: 'Aşırı Isınma', desc: 'Dolaptan duman yükseliyor. Daha yavaş çalışır.' }),
+  },
+
+  // ── home and overshoot (wave 69): luck from home (pillar 2), and the overshoot tier that was a dead reward ──
+  {
+    id: 'blessed', kind: 'buff', scope: 'player', icon: 'icon.star', maxStacks: 1,
+    duration: { kind: 'shifts', n: 1 }, reapply: 'refresh', tags: ['home', 'blessing'],
+    effects: BLESSED_LUCK,
+    strings: S({ name: 'Blessed', desc: 'Her faith, kept for the next Watch: +2 luck on each machine, capped per machine.' },
+      { name: 'Kutsanmış', desc: 'Eşinin inancı bir sonraki nöbete kadar: makine başına +2 şans, makine başına sınırlı.' }),
+  },
+  {
+    id: 'favoured', kind: 'buff', scope: 'player', icon: 'icon.star', maxStacks: 1,
+    duration: { kind: 'shifts', n: 1 }, reapply: 'refresh', tags: ['overshoot'],
+    effects: [{ hook: 'x.pawn.freeRerolls', op: 'add', value: 1 }],
+    strings: S({ name: 'Favoured', desc: '+1 free Pawn reroll for one Watch.' },
+      { name: 'Gözde', desc: 'Bir nöbet boyunca +1 bedava Pawn yenileme.' }),
   },
 
   // ── bounty rewards ──

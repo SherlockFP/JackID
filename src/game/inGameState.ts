@@ -64,6 +64,10 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   let wasPaid = false;
   /** The paid-Night summary is due and waits for the Dawn Night Card offer to close (see syncHint). */
   let summaryDue = false;
+  /** The quota of the Night in play, sampled while it is still unpaid: the Dawn title card's paid figure is this due plus the surplus. */
+  let dueSeen = 0;
+  /** The highest overshoot tier granted at this Dawn (`quota:overshoot`, emitted in order, so the last one is the highest); null when none. */
+  let overTier: string | null = null;
   /** This session is online: no Night Card panel is mounted there (nightCards.ui is solo only), so the offer never holds the summary. */
   let online = false;
   let storyOff: (() => void) | null = null;
@@ -212,6 +216,12 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     root?.classList.add('dawn-toast');
     app.timers.ui.after(SUMMARY_TOAST_S, () => root?.classList.remove('dawn-toast'));
     (app.ui as UIOverlayX).toast(text, 'good', SUMMARY_TOAST_S);
+    // NIGHT N PAID as a title card with the rolling amount: the paid total is the quota plus the surplus that returned at Dawn
+    // (the receipt's "paid"). The tier by margin: a met quota is BIG, an overshoot tier HUGE, the JACKPOT SEAL or HOUSE ENVY MEGA.
+    const paid = Math.round(dueSeen + L.carried);
+    const tier = overTier === 'seal' || overTier === 'envy' ? 'mega' : overTier ? 'huge' : 'big';
+    if (paid > 0) void (app.ui as UIOverlayX).bigWin(paid, tier, t('hud.juice.nightPaid', { n: L.night }));
+    overTier = null;
   };
 
   /**
@@ -243,6 +253,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     const timed = s.run.rules.timed && !s.run.over;
     const inter = timed && s.run.shift.phase === 'intermission';
     const paid = timed && nightPaid(s.run);
+    if (timed && !paid) dueSeen = s.run.shift.quota().due;   // the Night's quota, read while it is still to pay (see showSummary)
     if (paid && !wasPaid) summaryDue = true;
     wasPaid = paid;
     if (!paid) summaryDue = false;
@@ -352,6 +363,9 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       storyNight(session.run.night());   // a resumed run has no Night event yet: the room notes gate on it
       interHint = createInterHint((app.ui as UIOverlayX).hudLayer);
       wasPaid = false;
+      dueSeen = 0;
+      overTier = null;
+      offs.push(bus.on('quota:overshoot', ({ pid, tier }) => { if (session && pid === session.run.selfId) overTier = tier; }));
       offs.push(bus.on('run:rescue', ({ pid, state }) => { if (session && pid === session.run.selfId && state === 'ring') app.ui.toast(t('hotline.toast.pocketEmpty'), 'warn'); }));
       offs.push(bus.on('eco:wallet', ({ pid, delta, reason }) => {
         if (!session || pid !== session.run.selfId) return;

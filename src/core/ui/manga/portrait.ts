@@ -149,12 +149,20 @@ const SPECS: Record<string, PortraitSpec> = {
     brow: { kind: 'none', w: 0 }, bg: 'tiles', outfit: 'robe',
     palette: { ink: '#050508', paper: '#e9eef2', accent: '#9fd3e6', coat: '#1a1d28' },
   },
+  // The spouse (wave 69, the Home layer): a housecoat, hair up with a clip, the warm rust of the lamp. Tired eyes, a small
+  // soft mouth, a worn look. Dots behind, like the wallpaper in the kitchen.
+  spouse: {
+    hair: 'bun', hairColor: '#6b4a36', skin: '#f0d2b8', eyes: 'tired', mouth: 'soft', accessories: ['hairclip', 'blush'],
+    jaw: 'soft', nose: 'small', head: [0.98, 1], tilt: 0.03, shoulders: 0.94, neck: 0.9, line: 0.9, lash: 0.4,
+    brow: { kind: 'droop', w: 2.5 }, bg: 'dots', outfit: 'jacket',
+    palette: { ink: '#120d0a', paper: '#f4ead8', accent: '#c0603c', coat: '#5a4a48' },
+  },
 };
 
 const PLAIN: PortraitSpec = SPECS.you;
 
 /** Spec ids the bench and the dialogue use. Unknown ids fall back to the plain Mark. */
-export const PORTRAIT_IDS: readonly string[] = ['tamsin', 'kuro', 'lucan', 'mimosa', 'orrin', 'vell', 'notary', 'clerk', 'you', 'lord_ash', 'lord_ledgers', 'lord_mirrors'];
+export const PORTRAIT_IDS: readonly string[] = ['tamsin', 'kuro', 'lucan', 'mimosa', 'orrin', 'vell', 'notary', 'clerk', 'you', 'lord_ash', 'lord_ledgers', 'lord_mirrors', 'spouse'];
 export function portraitSpec(id: string): PortraitSpec { return SPECS[id] ?? PLAIN; }
 
 export const PW = 256;

@@ -64,6 +64,8 @@ const ROUND_LIMIT = 25;             // s before a round times out
 const LEAVE_AUTO = 60;              // s a leaving player may auto-shoot an open chain
 const PINK = 0xff4fa0, GOLD = 0xffd040, KAKU = 0xa040ff;
 const ZONE_KEY: Readonly<Record<Zone, string>> = { FOUL: 'zFoul', LOW: 'zLow', SWEET: 'zSweet', HIGH: 'zHigh', RIGHT: 'zRight' };
+/** Reach reveal: digit 2 lands this long after digit 1, digit 3 slows over REACH_SLOW_S, then holds REACH_HOLD_S. */
+const REACH_DIGIT2_S = 0.35, REACH_SLOW_S = 1.5, REACH_HOLD_S = 0.6;
 const DEG = Math.PI / 180;
 
 export const def: MachineDef = {
@@ -545,21 +547,59 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
     });
   }
 
+  /** A spin without a reach lands all three digits at once. A reach is revealed digit by digit (see `reachReveal`). */
   private revealSpin(ev: Extract<Ev, { k: 'spin' }>): void {
+    if (this.disposed) return;
+    if (ev.reach) { void this.reachReveal(ev); return; }
+    this.state.digits = ev.digits;
+    this.state.reach = null;
+    this.sfx('reelStop', { vol: 0.6 });
+    if (ev.jackpot) this.landJackpot();
+    this.drawScreen();
+  }
+
+  /**
+   * A reach (two digits matching): digit 1 lands, digit 2 lands REACH_DIGIT2_S later, then digit 3 slows over
+   * REACH_SLOW_S under a riser and a rising tick while the hold lamps blink. The last digit then holds for REACH_HOLD_S
+   * (a loss holds as a near miss, a jackpot holds as the build-up) and lands on its real value.
+   */
+  private async reachReveal(ev: Extract<Ev, { k: 'spin' }>): Promise<void> {
+    this.state.digits[0] = ev.digits[0];
+    this.sfx('reelStop', { vol: 0.6, param: 0 });
+    this.drawScreen();
+    await this.wait(REACH_DIGIT2_S);
+    if (this.disposed) return;
+    this.state.digits[1] = ev.digits[1];
+    this.state.reach = ev.reach;                                  // two digits are lined up: the reach banner shows
+    this.sfx('reelStop', { vol: 0.6, param: 0.5 });
+    this.drawScreen();
+    this.sfx('tensionRise', { vol: 0.8, param: (REACH_SLOW_S - 0.6) });   // a riser as long as the slow third digit
+    this.parts.holdLamps.forEach((l) => l.blink(6, REACH_SLOW_S + REACH_HOLD_S));
+    let gap = 0.05, t = 0;
+    while (t < REACH_SLOW_S) {                                    // the third digit slows: each step ticks higher
+      this.state.digits[2] = 1 + Math.floor(this.cosmetic.next() * 9);
+      this.sfx('reelTick', { vol: 0.5, param: 0.2 + 0.7 * (t / REACH_SLOW_S) });
+      this.drawScreen();
+      await this.wait(gap);
+      if (this.disposed) return;
+      t += gap;
+      gap = Math.min(0.3, gap * 1.2);
+    }
+    // the hold: a loss is a near miss, a jackpot is the build-up for the land
+    if (ev.jackpot) await this.wait(REACH_HOLD_S);
+    else await this.nearMiss({ dur: REACH_HOLD_S, lamps: this.parts.holdLamps });
     if (this.disposed) return;
     this.state.digits = ev.digits;
     this.state.reach = ev.reach;
-    this.sfx('reelStop', { vol: 0.6 });
-    if (ev.reach) {
-      this.sfx('heartbeat', { vol: 0.5 });
-      this.parts.holdLamps.forEach((l) => l.blink(6, 0.5));
-    }
-    if (ev.jackpot) {
-      this.sfx('jackpot', { vol: 0.8 });
-      this.ctx.fx.sparks(this.parts.startPocket, 14, GOLD);
-      this.ctx.fx.popText(this.parts.field, this.t('jackpot'), GOLD, { dur: 1.4, rise: 0.3, scale: 1.4, shake: true });
-    }
+    this.sfx('reelStop', { vol: 0.6, param: 1 });
+    if (ev.jackpot) this.landJackpot();
     this.drawScreen();
+  }
+
+  private landJackpot(): void {
+    this.sfx('jackpot', { vol: 0.8 });
+    this.ctx.fx.sparks(this.parts.startPocket, 14, GOLD);
+    this.ctx.fx.popText(this.parts.field, this.t('jackpot'), GOLD, { dur: 1.4, rise: 0.3, scale: 1.4, shake: true });
   }
 
   private presentMode(ev: Extract<Ev, { k: 'mode' }>): void {
@@ -603,7 +643,7 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
     if (tier === 'none' || tier === 'push' || tier === 'small') {
       await this.pourCoins(ev.amount, { bet: ev.bet, fast: pc.fast, onCount: (v) => this.drawScreen(v) });
     } else {
-      void this.celebrate(tier, { amount: ev.amount, fast: pc.fast, restore: () => this.refresh() });
+      void this.celebrate(tier, { amount: ev.amount, bet: ev.bet, fast: pc.fast, restore: () => this.refresh() });
       await countUp(this.ctx, 0, ev.amount, pc.fast ? 0.1 : 1.2 * this.speed, (v) => this.drawScreen(v));
     }
     if (!this.disposed) this.drawScreen();

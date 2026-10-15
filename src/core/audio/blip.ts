@@ -34,6 +34,8 @@ export const BLIP_VOICES: Readonly<Record<string, BlipVoice>> = {
   bartender: VOICE({ wave: 'triangle', f0: 300, span: 5, dur: 0.04, vol: 0.26, lp: 3000, noise: 0.05, cps: 28 }),
   mira: VOICE({ wave: 'sine', f0: 880, span: 7, dur: 0.035, vol: 0.24, lp: 7000, noise: 0.06, cps: 34 }),                              // bright
   oracle: VOICE({ wave: 'sine', f0: 440, span: 5, dur: 0.07, vol: 0.22, lp: 4000, noise: 0.12, cps: 20, glide: 1 }),                      // long, breathy
+  // The spouse (wave 69): a warm, low-middle voice with a tired breath in it; slower than Mira, softer than the House
+  spouse: VOICE({ wave: 'triangle', f0: 290, span: 4, dur: 0.05, vol: 0.2, lp: 2400, noise: 0.16, cps: 21, glide: 1 }),
   // The Dark Lords (THE HOLLOW DOOR): deep, slow, almost no inflection
   lord_ash: VOICE({ wave: 'triangle', f0: 96, span: 2, dur: 0.11, vol: 0.4, lp: 520, noise: 0.05, cps: 10 }),
   lord_ledgers: VOICE({ wave: 'sine', f0: 118, span: 2, dur: 0.1, vol: 0.4, lp: 640, noise: 0.07, cps: 10 }),

@@ -20,6 +20,7 @@ export type HorrorBeat = 'flicker' | 'blackout' | 'whisper' | 'pa' | 'jump' | 'c
 
 declare module '@/core/events' {
   interface GameEvents {
+    /** `dread` is 0..1 (the same unit as dread:change). */
     'horror:event': { kind: HorrorBeat; dread: number };
   }
 }
@@ -111,8 +112,9 @@ export class HorrorDirector {
     const set = this.d.settings();
     const v = this.dread.update(dt, s);
     const tier = this.dread.tier;
+    // dread:change is 0..1, the unit RunApi.dread() emits (run.ts), so the story stingers and the light grade read one scale.
     const rounded = Math.round(v);
-    if (rounded !== this.lastRounded) { this.lastRounded = rounded; bus.emit('dread:change', { value: rounded }); }
+    if (rounded !== this.lastRounded) { this.lastRounded = rounded; bus.emit('dread:change', { value: rounded / 100 }); }
 
     // Grade the room and the score. Cheap, so once every half second is plenty.
     this.gradeTimer -= dt;
@@ -141,7 +143,7 @@ export class HorrorDirector {
   notify(kind: DreadEventKind): void {
     const calm = this.d.settings().calm;
     this.dread.bump(kind, calm ? 0.5 : 1);
-    bus.emit('horror:event', { kind, dread: this.dread.value });
+    bus.emit('horror:event', { kind, dread: this.fraction });
   }
 
   /** Speak a House PA line (index 0..7, or random). Called by the scheduler and by beats (Last Call, Dawn). */
@@ -154,7 +156,7 @@ export class HorrorDirector {
     const text = t(`horror.pa.${clamp(i, 0, n - 1)}`);
     const distort = set.calm ? 0 : this.dread.tier === 'calm' ? 0.1 : this.dread.tier === 'uneasy' ? 0.2 : 0.4;
     this.speak('house', text, t('horror.speaker.house'), { mood: 'calm', distort, duck: true }, set.subtitles);
-    bus.emit('horror:event', { kind: 'pa', dread: this.dread.value });
+    bus.emit('horror:event', { kind: 'pa', dread: this.fraction });
   }
 
   /** Register a guest mannequin for the shift rule. Seated guests use the sitting clips. */
@@ -240,7 +242,7 @@ export class HorrorDirector {
     const amount = reduceFlashing ? 0.2 : 0.55;
     lights.flicker(this.pickZone(), amount, this.d.rng.float(0.2, 0.6));
     this.d.audio.play('lightFlicker', { vol: 0.6, pos: this.nearestOf(), bus: 'sfx' });
-    bus.emit('horror:event', { kind: 'flicker', dread: this.dread.value });
+    bus.emit('horror:event', { kind: 'flicker', dread: this.fraction });
   }
 
   private blackout(): void {
@@ -263,7 +265,7 @@ export class HorrorDirector {
   private jump(reduceFlashing: boolean): void {
     this.d.audio.music.stinger('jumpscare', { vol: 0.8 });
     if (!reduceFlashing) this.d.lights()?.pulse('all', { color: 0x330000, mul: 0.4, dur: 0.5 });
-    bus.emit('horror:event', { kind: 'jump', dread: this.dread.value });
+    bus.emit('horror:event', { kind: 'jump', dread: this.fraction });
   }
 
   private whisper(): void {
@@ -273,7 +275,7 @@ export class HorrorDirector {
     this.whisperLast = i;
     const text = t(`horror.whisper.${i}`);
     this.speak('mannequin', text, t('horror.speaker.whisper'), { mood: 'whisper', distort: 0, duck: false }, set.subtitles);
-    bus.emit('horror:event', { kind: 'whisper', dread: this.dread.value });
+    bus.emit('horror:event', { kind: 'whisper', dread: this.fraction });
   }
 
   private tickPa(dt: number, tier: DreadTier, set: HorrorSettings): void {
@@ -358,7 +360,7 @@ export class HorrorDirector {
   }
 
   private patronBeat(): void {
-    bus.emit('horror:event', { kind: 'patronShift', dread: this.dread.value });
+    bus.emit('horror:event', { kind: 'patronShift', dread: this.fraction });
   }
 
   // ── the Collector (Dawn walk) ───────────────────────────────────────────────────────────────
@@ -372,7 +374,7 @@ export class HorrorDirector {
     a.walkSpeed = 1.2;
     a.stepEvery = 1.2 * CLINK_GAP;
     a.onStep = (c) => this.d.audio.play('coin', { pos: c.root, vol: 0.7, priority: 6 });
-    bus.emit('horror:event', { kind: 'collectorWalk', dread: this.dread.value });
+    bus.emit('horror:event', { kind: 'collectorWalk', dread: this.fraction });
 
     const stops = this.d.rng.shuffle([...HALL]).slice(0, 3);
     for (const p of [...stops, LIFT]) {

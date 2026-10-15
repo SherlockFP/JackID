@@ -59,6 +59,9 @@ const LEVER_EMIT_MS = 66;          // ≤ 15 Hz cosmetic lever stream
 const THUMP_WINDOW_MS = 10000, THUMP_LIMIT = 3, TILT_MS = 8000;
 const SPIN_RPS = 6;                // reel revolutions per second while spinning
 const STOP_AT = [1.2, 1.6, 2.0];   // seconds after the lever trips, per reel (the mechanical stop order)
+const NEAR_HOLD_S = 0.8;           // a near miss keeps reel 3 turning this long before its last turn
+const NEAR_TURN_S = 0.9;           // the slow last turn of reel 3 (one extra revolution, see the kit's stopAt)
+const TAU = Math.PI * 2;
 const GOLD = 0xffd040, RED = 0xff3020;
 const SHOE_TEXT = 'SHOE';
 /** A win on this centre symbol can be gambled: at least one side is offered (`gambleOdds`). */
@@ -341,35 +344,43 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
     }
   }
 
-  /** The HI / LO card turns over on every peer; a collect pours the pot out. */
+  /**
+   * The HI / LO card turns over on every peer, through the shared gamble sounds (`gamble:fx`, the same ones the risk
+   * layer plays): a card flip, a rung that climbs one step per win, a bust, and a collect that pours the pot out.
+   */
   private async presentGamble(ev: Extract<Ev, { k: 'gamble' }>, pc: PresentCtx): Promise<void> {
     const fx = this.ctx.fx, P = this.parts;
     if (ev.side === 'collect') {
-      this.sfx('win1');
-      this.drawLeds(ev.pot);
-      await this.pourCoins(ev.pot, { bet: ev.pot, fast: pc.fast, onCount: (v) => this.drawLeds(v) });
+      this.gambleFx('collect', 0, ev.pot);
+      if (pc.fast) { this.drawLeds(ev.pot); this.refresh(); return; }
+      await countUp(this.ctx, 0, ev.pot, 1.0 * this.speed, (v) => this.drawLeds(v));
       this.refresh();
       return;
     }
-    this.sfx('click');
+    this.gambleFx('flip', 0, 0);
     fx.popText(P.reels[1].root, this.t('gCard', { card: this.t(`sym_${ev.card}`) }), GOLD, { dur: 0.9, rise: 0.2, scale: 1 });
-    await this.wait(pc.fast ? 0.05 : 0.5);
+    await this.wait(pc.fast ? 0.05 : 0.36);                  // the card turns over
     if (this.disposed) return;
     if (ev.res === 'win') {
-      this.sfx('win2');
-      fx.popText(P.reels[1].root, this.t('gWin', { n: ev.mult.toFixed(2) }), GOLD, { dur: 1.0, rise: 0.25, scale: 1.1 });
+      this.gambleFx('win', ev.ride, ev.next);                // the rung climbs one step per win
+      fx.popText(P.reels[1].root, this.t('gWin', { n: ev.mult.toFixed(2) }), GOLD, { dur: 1.0, rise: 0.25, scale: 1 + 0.1 * Math.min(ev.ride, 5) });
       this.drawLeds(ev.next);
     } else if (ev.res === 'push') {
       this.sfx('click');
       fx.popText(P.reels[1].root, this.t('gPush'), GOLD, { dur: 0.9, rise: 0.2, scale: 1 });
       this.drawLeds(ev.next);
     } else if (ev.res === 'lose') {
-      this.sfx('thud', { vol: 0.8 });
+      this.gambleFx('lose', 0, 0);
       fx.popText(P.reels[1].root, this.t('gLose'), RED, { dur: 1.0, rise: 0.25, scale: 1 });
       this.drawLeds(0);
       this.commiserate({ at: P.reels[1].root });
     }
     this.refresh();
+  }
+
+  /** One shared gamble sound (see `gamble:fx`, core/audio/gambleFx.ts). `step` is the rung (1-based), `pot` the coins. */
+  private gambleFx(kind: 'flip' | 'win' | 'lose' | 'collect', step: number, pot: number): void {
+    this.ctx.events.emit('gamble:fx', { kind, mid: this.id, step, pot });
   }
 
   private async presentPull(ev: Extract<Ev, { k: 'pull' }>, pc: PresentCtx): Promise<void> {
@@ -409,8 +420,13 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
         await this.wait(Math.max(0, STOP_AT[r] - last));
         last = STOP_AT[r];
         if (this.disposed) { spinLoop?.stop(0.03); return; }
-        P.reels[r].stopAt(facetOf(r, base[r]), 0.32, 0.25);
-        this.sfx('reelStop', { vol: 0.9 });
+        if (r === 2 && ev.near) {
+          await this.nearHold(facetOf(2, base[2]));          // the near miss holds reel 3 and lands it slowly
+          if (this.disposed) { spinLoop?.stop(0.03); return; }
+        } else {
+          P.reels[r].stopAt(facetOf(r, base[r]), 0.32, 0.25);
+          this.sfx('reelStop', { vol: 0.9 });
+        }
         if (r === 2) fx.shake(0.003, 0.12);
       }
       spinLoop?.stop(0.06);
@@ -440,7 +456,7 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
       if (!fast) for (let i = 0; i < rings; i++) { this.sfx('bell', { vol: 0.7 }); await this.wait(0.2); }
       P.lampReel.blink(6, 1.2);
       if (tier === 'medium' || tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot') {
-        void this.celebrate(tier, { amount: ev.pay, lamps: [P.lampReel, P.lampCoin], restore: () => P.lampReel.setOn(true), fast });
+        void this.celebrate(tier, { amount: ev.pay, bet, lamps: [P.lampReel, P.lampCoin], restore: () => P.lampReel.setOn(true), fast });
         await countUp(this.ctx, 0, ev.pay, fast ? 0.1 : 1.2 * this.speed, (v) => this.drawLeds(v));
       } else {
         this.sfx(ev.pay >= bet * 10 ? 'jackpot' : ev.pay >= bet * 3 ? 'win2' : 'win1');   // small wins: celebrate stays quiet, so the jingle plays here
@@ -452,6 +468,28 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
       if (s.losses >= 5 && !fast) await this.swallow();
     }
     if (!this.disposed) this.refresh();
+  }
+
+  /**
+   * The near miss on the last reel: two STARs are lined up and reel 3 is still turning. It keeps turning for NEAR_HOLD_S
+   * under a rising riser while the payline lamp blinks, then makes one slow last turn. Each facet clacks with a
+   * reelTick that rises in pitch and gets further apart as the drum slows, and it lands on the losing stop.
+   */
+  private async nearHold(stop: number): Promise<void> {
+    const reel = this.parts.reels[2];
+    const step = TAU / reel.count;
+    this.sfx('tensionRise', { vol: 0.8, param: 0.2 });       // a 0.8 s riser; its thump lands as the slow turn starts
+    this.parts.lampReel.blink(8, NEAR_HOLD_S);
+    await this.wait(NEAR_HOLD_S);
+    if (this.disposed) return;
+    let facet = Math.floor(reel.root.rotation.x / step);
+    void this.ctx.tweens.run(NEAR_TURN_S * 0.75, (k) => {    // the tick tween covers the eased phase of the kit's stop
+      if (this.disposed) return;
+      const f = Math.floor(reel.root.rotation.x / step);
+      if (f !== facet) { facet = f; this.sfx('reelTick', { vol: 0.6, param: 0.3 + 0.6 * k }); }
+    }, { ease: 'outCubic' });
+    await reel.stopAt(stop, NEAR_TURN_S, 0.2);
+    if (!this.disposed) this.sfx('reelStop', { vol: 0.9 });
   }
 
   /** The maw takes the pile after five losses in a row: the coins sink away, the eye vents glow for 2 s. */

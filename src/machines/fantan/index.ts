@@ -510,9 +510,15 @@ export default class FanTan extends TableBase<FantanParts, Ev, Snap, Act> {
     const best = winners[0];
     if (best && best.gross > best.stake) {
       const tier = juiceTier(best.gross, best.stake);
-      void this.celebrate(tier, { amount: best.gross, at: square.mesh, lamps: [seatLamps[best.seat]], fast: pc.fast, restore: () => this.paintLamps() });
+      void this.celebrate(tier, { amount: best.gross, bet: best.stake, at: square.mesh, lamps: [seatLamps[best.seat]], fast: pc.fast, restore: () => this.paintLamps() });
     } else if (!best) {
       this.sfx('coin');
+    }
+    // every winning seat of the local player gets its own show at its lamp (the best winner's show is above)
+    for (const w of winners) {
+      if (w === best || w.seat !== this.localSeat || w.gross <= w.stake) continue;
+      const lamp = seatLamps[w.seat];
+      void this.celebrate(juiceTier(w.gross, w.stake), { amount: w.gross, bet: w.stake, at: lamp.root, lamps: [lamp], fast: pc.fast, restore: () => this.paintLamps() });
     }
     const mineSeat = ev.seats.find((s) => s.seat === this.localSeat);
     if (mineSeat && mineSeat.stake > 0) {

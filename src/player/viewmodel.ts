@@ -1,9 +1,9 @@
 /**
  * First-person viewmodel (PLAYER): low-poly gloved hands in their OWN scene, rendered after the world with the
  * depth buffer cleared (`renderer.render(scene, camera, { scene: vm.scene, camera: vm.camera })`), FOV 50, near 0.01
- * (TECH_SPEC §11.7, ART_BIBLE §8.5). Each hand is ~150 tris: palm, 4 two-segment fingers, a 2-segment thumb and a
- * sleeve in the player's jacket colour. Materials are unlit with baked vertex shading (the scene has no lights);
- * `setLightLevel` dims them in dark rooms.
+ * (TECH_SPEC §11.7, ART_BIBLE §8.5). Each hand is ~156 tris: palm, 4 two-segment fingers, a 2-segment thumb, a sleeve in
+ * the player's jacket colour and a leather cuff ring where glove meets sleeve (WAVE69 §8). Materials are unlit with baked
+ * vertex shading (the scene has no lights); `setLightLevel` dims them in dark rooms.
  *
  * Holds (`hold`): coin (default), card, tonic, phone, ticket, ledger, gun (two-handed),
  * totem, or any `Object3D` the caller supplies (card fan, totem, scratch coin…). One-shot animations (`play`):
@@ -37,6 +37,8 @@ export interface ViewmodelHost extends Viewmodel {
   /** 0..1 brightness of the surroundings. */
   setLightLevel(v: number): void;
   setSleeveColor(c: Hex): void;
+  /** Glove leather on both hands. `GLOVE_IVORY` is the old look (no cuff ring); the porcelain look still overrides. */
+  setGloveColor(c: Hex): void;
   /** Cracked-porcelain texture for the collateral look (optional; a flat bone colour is used without it). */
   setPorcelainMap(map: THREE.Texture | null): void;
   dispose(): void;
@@ -75,7 +77,12 @@ const POSE_KEYS = ['px', 'py', 'pz', 'rx', 'ry', 'rz', 'curl', 'index', 'thumb']
 const newPose = (): HandPose => ({ px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, curl: 0.3, index: 0.3, thumb: 0.2 });
 const copyPose = (to: HandPose, from: HandPose): void => { for (const k of POSE_KEYS) to[k] = from[k]; };
 
-const GLOVE = 0xe6dec5;
+/** Gloves (WAVE69 §8; ART_BIBLE §2.1). Dark leather P16 RUST_DEEP is the default; the darkest leather allowed, so dim rooms still show it. */
+export const GLOVE_LEATHER = 0x4a2110;
+/** P09 IVORY: the pre-wave-69 glove (Settings → GLOVES off). Has no cuff ring. */
+export const GLOVE_IVORY = 0xe6dec5;
+/** P26 WALNUT: the wrist ring, a little lighter than the leather glove. */
+const CUFF_LEATHER = 0x523119;
 const PORCELAIN = 0xf4eedc;
 
 class Hand {
@@ -84,20 +91,31 @@ class Hand {
   readonly holder = new THREE.Object3D();
   readonly pose = newPose();
   private readonly joints: THREE.Group[][] = [];       // [thumb, index, middle, ring, pinky][segment]
-  private readonly glove = mat(GLOVE);
+  private readonly glove: THREE.MeshBasicMaterial;
+  private gloveHex: Hex;
+  private readonly ringMat: THREE.MeshBasicMaterial;
+  private readonly ring: THREE.Mesh;                   // the cuff ring at the wrist (leather gloves only)
   private readonly sleeve: THREE.MeshBasicMaterial;
   private sleeveHex: Hex;
   private porcelain = false;
   private light = 1;
 
-  constructor(private readonly side: 1 | -1, sleeveColor: Hex, private readonly home: THREE.Vector3, private readonly homeRot: THREE.Euler) {
+  constructor(private readonly side: 1 | -1, sleeveColor: Hex, gloveColor: Hex, private readonly home: THREE.Vector3, private readonly homeRot: THREE.Euler) {
     this.sleeveHex = sleeveColor;
+    this.gloveHex = gloveColor;
+    this.glove = mat(gloveColor);
     this.sleeve = mat(sleeveColor);
+    this.ringMat = mat(CUFF_LEATHER);
     const r = this.root;
     r.add(mesh(boxG(0.074, 0.022, 0.08), this.glove));                                    // palm
     const cuff = mesh(boxG(0.082, 0.07, 0.34), this.sleeve, 0, -0.004, 0.2);              // forearm in the jacket sleeve
     cuff.rotation.x = 0.1;
     r.add(cuff);
+    // glove cuff ring: one box (12 tris), 4 mm proud of the forearm's front end, centred on that face (0, 0.013, 0.031)
+    this.ring = mesh(boxG(0.09, 0.078, 0.014), this.ringMat, 0, 0.013, 0.031);
+    this.ring.rotation.x = 0.1;
+    this.ring.visible = gloveColor !== GLOVE_IVORY;
+    r.add(this.ring);
     const lens = [[0.032, 0.026], [0.036, 0.028], [0.038, 0.03], [0.033, 0.026]];       // index, middle, ring, pinky
     for (let f = 0; f < 4; f++) {
       const [l1, l2] = lens[f];
@@ -130,14 +148,17 @@ class Hand {
   setFingers(n: number): void { this.joints.forEach((j, i) => { j[0].visible = i < n; }); }
   setPorcelain(on: boolean, map: THREE.Texture | null): void {
     this.porcelain = on;
-    this.glove.map = on ? map : null;
-    this.glove.needsUpdate = true;
+    for (const m of [this.glove, this.ringMat]) { m.map = on ? map : null; m.needsUpdate = true; }
     this.refresh();
   }
   setSleeve(c: Hex): void { this.sleeveHex = c; this.refresh(); }
+  /** Leather for the glove (GLOVE_IVORY = the old look, no cuff ring). */
+  setGlove(c: Hex): void { this.gloveHex = c; this.ring.visible = c !== GLOVE_IVORY; this.refresh(); }
   setLight(v: number): void { if (Math.abs(v - this.light) > 0.004) { this.light = v; this.refresh(); } }
   private refresh(): void {
-    this.glove.color.setHex(this.porcelain ? PORCELAIN : GLOVE).multiplyScalar(this.light);
+    const bone = this.porcelain;
+    this.glove.color.setHex(bone ? PORCELAIN : this.gloveHex).multiplyScalar(this.light);
+    this.ringMat.color.setHex(bone ? PORCELAIN : CUFF_LEATHER).multiplyScalar(this.light);
     this.sleeve.color.setHex(this.sleeveHex).multiplyScalar(this.light);
   }
 
@@ -152,7 +173,7 @@ class Hand {
       this.joints[f][1].rotation.x = -c * 1.1;
     }
   }
-  dispose(): void { disposeGeometries(this.root); this.glove.dispose(); this.sleeve.dispose(); }
+  dispose(): void { disposeGeometries(this.root); this.glove.dispose(); this.ringMat.dispose(); this.sleeve.dispose(); }
 }
 
 // ── one-shot animations ───────────────────────────────────────────────────────────────────────────
@@ -284,13 +305,13 @@ const LEFT_HOME = new THREE.Vector3(-0.2, -0.19, -0.35);
 const LEFT_ROT = new THREE.Euler(0.5, 0.14, 0.1);
 const GUN_HOME = new THREE.Vector3(0.135, -0.135, -0.3);
 
-export function createViewmodel(sleeveColor: Hex = 0x7a1a20): ViewmodelHost {
+export function createViewmodel(sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = GLOVE_LEATHER): ViewmodelHost {
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.01, 4);
   const own: THREE.Material[] = [];
   const ownMat: OwnMat = (c) => { const x = mat(c); own.push(x); return x; };
-  const right = new Hand(1, sleeveColor, RIGHT_HOME, RIGHT_ROT);
-  const left = new Hand(-1, sleeveColor, LEFT_HOME, LEFT_ROT);
+  const right = new Hand(1, sleeveColor, gloveColor, RIGHT_HOME, RIGHT_ROT);
+  const left = new Hand(-1, sleeveColor, gloveColor, LEFT_HOME, LEFT_ROT);
   const rig = new THREE.Group();
   rig.add(right.root, left.root);
   scene.add(rig);
@@ -379,6 +400,7 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20): ViewmodelHost {
       if (porcelain) { right.setPorcelain(true, map); left.setPorcelain(true, map); }
     },
     setSleeveColor(c) { right.setSleeve(c); left.setSleeve(c); },
+    setGloveColor(c) { right.setGlove(c); left.setGlove(c); },
     setLightLevel(v) { lightLevel = clamp(v, 0.2, 1); },
     drive(d) {
       bobX = d.bobX * 0.4; bobY = d.bobY * 0.4;

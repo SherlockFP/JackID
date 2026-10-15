@@ -145,3 +145,30 @@ export function winFeel(mult: number): WinFeel {
     zoom: f(FEEL_ZOOM),
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// Juice numbers (pure: no DOM, no audio, no rng). Used by juice.ts, MachineBase and the juice unit tests.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Wins in a row (local player) from which the streak shows: the `xN STREAK` pop, a longer chase, a rising jingle. */
+export const STREAK_MIN = 3;
+/** The win jingle climbs this many semitones at most. */
+export const STREAK_STEP_CAP = 8;
+
+/**
+ * The pop value of a win: the NET (gross less the stake) when the stake is given, else the amount as given. Callers
+ * pass the gross to `celebrate` / `pourCoins` with the stake, so the net is computed in one place.
+ */
+export function netWin(gross: number, bet?: number): number {
+  return bet !== undefined && bet > 0 ? gross - bet : gross;
+}
+
+/** Semitones the win jingle climbs for a streak of `n` wins in a row: +1 per win from the third, capped (3 → +1, 10 → +8). */
+export function streakSteps(n: number): number {
+  return Math.min(STREAK_STEP_CAP, Math.max(0, Math.floor(n) - STREAK_MIN + 1));
+}
+
+/** Anticipation before an impact of tier `t`, in sim seconds: `big` 0.6 s, `huge` and up 1.2 s, lower tiers none. */
+export function windupSec(t: JuiceTier): number {
+  return t === 'big' ? 0.6 : tierAtLeast(t, 'huge') ? 1.2 : 0;
+}

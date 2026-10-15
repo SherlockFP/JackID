@@ -104,11 +104,15 @@ export function startStory(world: World, params: InGameParams, gate: NoteGate | 
   offs.push(app.cutscene.registerHook('story.pick', (_args, ctx) => { flags.descendLook = ctx.vars.pick === 0; }));
   offs.push(app.cutscene.registerHook('story.unlock', () => { flags.wingSeen = true; }));
   offs.push(app.cutscene.registerHook('story.keyTurned', () => { flags.keyTurned = true; }));
+  // the Collector's visit (cutscenes/mafia_visit): the front door swings open at its cue; a seek jumps straight to open
+  offs.push(app.cutscene.registerHook('home.doorOpen', (_args, ctx) => { void app.world?.home?.doorTo(1, ctx.seeking ? 0 : 0.8); }));
 
   offs.push(bus.on('quota:met', () => { if (live) void playStory('quota_met'); }));
   offs.push(bus.on('run:end', ({ summary }) => {
     if (!live) return;
-    if (summary.result === 'fell') void playStory('quota_fail');
+    // a missed quota at home (solo) ends with the Collector's visit, not the trapdoor (WAVE69 §7)
+    if (summary.ending === 'shot') void playStory('mafia_visit');
+    else if (summary.result === 'fell') void playStory('quota_fail');
     else if (summary.result === 'escaped' && summary.ending !== 'descend') void playStory('ending_elevator');
   }));
   offs.push(bus.on('tycoon:prestige', () => { if (live) void playStory('descend'); }));

@@ -179,11 +179,17 @@ Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` 
 | `stand` | stands up from the seat (`world.standUp()`), then waits until the seat is free |
 | `bank:deposit:<n>` | a Debt Terminal deposit of n coins (`run.deposit(n)`). `ok:false` when the run refuses it (pocket floor, quota room, not a quota Watch) |
 | `bank:withdraw:<n>` | takes n coins back from the bank into the pocket (`run.withdraw(n)`, the broke path). `ok:false` when the window is shut or the bank is empty |
-| `lever` | the terminal lever the run accepts now: OPEN THE FLOOR (Night paid), else the Bell (Intermission), else SETTLE (quota met). `lever: null` when none is open |
+| `lever` | the terminal lever the run accepts now: OPEN THE FLOOR (Night paid), else the Bell (Intermission), else SETTLE (quota met). `lever: null` when none is open. With the Home layer a paid Night's OPEN THE FLOOR is TAKE THE LIFT (`home` says the stage after: `ride`), and at home it is the bed (`sleep`) |
 | `bell` | rings the Bell early (`run.ringBell()`): ends the Watch while playing or Last Call; unused pulls keep the ticket rebate. `ok:false` outside a playing Watch |
 | `pawn` | one Pawn Window reroll (`run.pawn.reroll()`, Intermission only) |
 | `pawn:buy:<slot>` | buys Pawn Window shelf `slot` (1-based, 1 to 6). Sits at the Pawn Window (`charm_vendor`) if not seated there, closes the tip, presses the shelf's key (`1`-`4`; `5` and `6` by `→` from shelf 4), then `Space` twice. `ok` is whether the shelf now reads sold. `charm`, `price`, `paid` say what it was. Intermission only (`reason` says so otherwise) |
 | `pawn:look` | sits at the Pawn Window and screenshots the seat view to `run-pawn-look-<n>.png` (with `--shots`). `shelves` lists the stock (`null` = sold or empty, `[]` outside an Intermission) |
+| `home:lift` | TAKE THE LIFT: `run.homeLiftReady()` then `run.openFloor()` on a paid Night with the Home layer, then waits (sim time, up to 10 s) for stage `evening` (the ride is 2.6 s). `night` is the Night paid, `stage` the stage reached. Fails (`reason`) off the casino floor, with the layer off, on a Night Card offer the lever is held for, or on Night 8 (the Topside choice) |
+| `home:sleep` | the bed: the world's own `home:interact` event for station `bed`, sent through the app bus (`window.jackid.app.events`), then waits for the sleep (1.8 s) to open the next Night. `night` is the Night slept through, `nightAfter` the next one. Fails off the Evening |
+| `home:talk` | the spouse: station `spouse`. The record has `lines` (the i18n keys `phone.talk()` returned, `null` when a talk was already running), `harmony` and `blessed` (the `blessed` buff is held: the first talk of an Evening at Harmony 4+) |
+| `home:switch` / `home:chain` | the ceiling light / the door chain: stations `switch` and `chain`. The record has `before` and `after` (`world.home` `lights` and `chain`) and `run` (`run.homeState()`); `ok` is false when the state did not flip |
+| `phone:open` | presses the phone key (default `KeyT`, read from `input.bindings().phone`), then reads the phone: `open` (the `.px-phone` overlay is up), `unread`, `harmony`, `heat`, `messages`, `pending` (messages that wait for a reply). Walk mode only |
+| `phone:reply:<n>` | presses digit `n` (1-3) while the phone is open; `answered` is `[before, after]` and `ok` is whether a reply was taken (`harmony` and `heat` are `[before, after]` too). A message arrives only in a Watch (`play`): reach one with `auto:night:event` or a long `wait`, then `phone:open` |
 | `auto:night` | a bot plays one Night, see **Night bot** below. Its own actions are records with `auto: true` |
 | `auto:night:event` | the same bot, but it stops at the first Watch whose floor event is live (no cutscene up), before that Watch's deposit. Its record has `end: "event"`. A later `auto:night` carries on from there |
 | `auto:night:quota` | the same bot, but it stops in the Watch whose deposit meets the quota, before that Watch's Bell, so the NIGHT PLAN's OVERSHOOT line is on screen (shoot it, then `auto:night` carries on). Its record has `end: "quota met"` |
@@ -220,7 +226,8 @@ Practical notes: `goto` needs the machine on the floor (the `coinflip`, `hilo`, 
 - **Deposit**: once per Watch, after the bets, only what is needed and never below the bot float (`botFloor`, 3 × `cheapestMin`, see **Floor and minimum** above; the game's float applies too when higher). While quota is owed: the gap to the Dawn projection (`dawnPlan`, pace.ts: the bank at Dawn against the quota), 0 when the projection covers it. Once the quota is met: the gap to the next OVERSHOOT tier (`run.overshootView()`) when the pocket above the float covers it, else nothing, and the bot keeps playing toward that tier. A refusal retries at half.
 - **Shop** (the Mola: the Intermission, the Pawn Window): a shelf that is clean (not cursed, no swap) and costs at most 30 % of the pocket. With **no charm held yet**, the best of those by rarity (legendary, rare, uncommon, common), then by price. With a charm held, only a shelf that completes an archetype set or shares an archetype with a held charm (`charms/sets.ts`): a set completion first, then the cheapest. Buys with `pawn:buy`, then `stand`.
 - **Night Card**: a paid Dawn opens a two-card offer (`nightCardOffer`, the lever waits on it). The bot stops there (`end: "night card"`) when the next step in the list is `nightcard:<n|best>`, which then picks. Read-only steps (`state`, `shot`, `events`, `wait`, `banner`) between the two do not count, so `auto:night;state;nightcard:best` hands over the offer too. With no such next step it picks the best card itself (`nightcard:best`, the highest expected value, see **Night Card choice**). The stop record carries the offer: `offer` (the ids), `cards` (with their preview lines) and `have` (pocket + bank). An offer open at a later step is handled the same way.
-- **Lever**: starts the Watch (`lever`); after a paid Night it opens the floor.
+- **Lever**: starts the Watch (`lever`); after a paid Night it opens the floor, which with the Home layer is the lift (see **The Evening**).
+- **The Evening** (Home layer, solo runs): after the lift the bot is at home (`homeStage`). In the Evening it talks to the spouse once (`home:talk`, logged as `bot home`) and goes to bed (`home:sleep`), and the call ends when the next Night opens, as before. The ride, the sleep and the doom (a missed quota: `homeStage: doomed`, the run then ends `fell` with ending `shot`) are waited out by sim time. `evening stuck` ends the call when the bed is refused six times. The summary record has `evenings` (talks made).
 - **Withdraw**: a pocket under two cheapest minimum bets (`canBet` fails: no bet, and one kept) withdraws to the bot float (3 × `cheapestMin`) before it bets, not the whole bank (a full withdraw and redeposit churns the quota). A refused withdraw is not retried in that Watch.
 - **Overshoot Seal**: while the seal holds coins (`sealed` true, `sealCoins` above 0), `withdrawable` reads 0 and the bot does not withdraw. It does not break the seal either (BREAK THE SEAL forfeits tonight's tiers, a player choice). The pocket then stays at a minimum bet or more (no bet takes it under one), and the Watch rings its Bell. A sealed bank is therefore not a pocket-under-minimum failure: the check reads `withdrawable` (0 when sealed or empty), not `bank`.
 - **Bell**: rings the Bell (`bell`) once the Watch's pulls are down to 2, or the pocket cannot cover a bet and keep one minimum bet, and its deposit is made, after `stand`. Unused pulls keep the rebate. A Watch whose pulls run out closes by itself.
@@ -234,7 +241,7 @@ The bot keeps its per-Watch bookkeeping on the run, so a bot step split by `auto
 
 ### Starter Draft and floor events: a worked check
 
-The Starter Draft opens on a fresh Watch 1 before any pull, or at a Night 1 intermission (the Mola), and holds the Bell until a card is taken. Its three cards are seeded (`starterOffer(seed)`), so they differ by seed, and the bot's pick is logged as `bot starter` (a refused pick is logged once as `pick <id> refused`). The first state read on Night 1 with no charm yet waits (once per run, up to 6 s) until `starterOffer` is non-null, so an early `state` does not read a draft that has not opened yet. Pick card 2 and check the charm:
+The Starter Draft opens on a fresh Watch 1 before any pull, or at a Night 1 intermission (the Mola), and holds the Bell until a card is taken. Its three cards are seeded (`starterOffer(seed)`), so they differ by seed, and the bot's pick is logged as `bot starter` (a refused pick is logged once as `pick <id> refused`). The first state read on Night 1 with no charm yet waits (once per run) while the offer is still to come (`starterPending`: the run has not made it) until `starterOffer` is non-null, so an early `state` does not read a draft that has not opened yet. The offer waits for the intro, the title card and a quiet beat, so it opens about 12 s of sim time in under the fixed clock; the wait caps at 40 s (`STARTER_WAIT_MS`) and logs `starter draft: no offer after N ms` when it gives up. Pick card 2 and check the charm:
 
 ```
 node scripts/qa/bench.mjs --run "shot:starter-offer;play:Digit2;wait:400;state;shot:starter-picked" --seed 1 --shots <dir>
@@ -281,6 +288,30 @@ lines before trusting the pick; it is a bot choice for QA, not a strategy.
 The state record's `tithe` is the Watch tithe (`run.watchTithe()`: `{ on, target, earned, met, shortfall }`, `on` false outside a
 tithe Watch), and `houseCut` is the house cut the owned machines have paid tonight at each Watch settle (`run.nightLedger().cut`).
 Either is null on a build without that API. The per-Watch line and record carry both.
+
+## The Evening (Home layer, wave 69)
+
+A solo debt run has the Home layer (`run.homeOn`): a paid Night's floor lever is TAKE THE LIFT, the Evening is a sub-state of the
+intermission (stages `ride`, `evening`, `sleep`; never a new phase), and a missed quota is the doomed ride (`doomed`) that ends with
+`fell` and ending `shot`. The run owns every stage on sim time (`HOME_TIMING` in `src/game/run.ts`: ride 2.6 s, Evening 120 s then it
+sleeps by itself, sleep 1.8 s, doom 8 s), so the fixed clock walks it byte for byte. `auto:night` passes the Evening on its own (the lift,
+one talk, the bed). The explicit steps (see the step table) drive it by hand:
+
+```
+node scripts/qa/bench.mjs --run "auto:night;home:lift;state;home:talk;home:switch;home:chain;phone:open;home:sleep;state" --seed 3 --shots <dir>
+```
+
+`auto:night` stops at the rollover, so after it the Night is paid only if the bot paid it; `home:lift` needs a paid Night and the Dawn offer
+picked (`nightcard:best`) when the lever is held for it. The state record adds `homeStage` (`ride` | `evening` | `sleep` | `doomed` | null),
+`home` (`{ stage, left, lights, chain }`, `left` in sim s) and `phone` (`{ unread, harmony, heat, messages, answered }`), and
+`starterPending`. The apartment's stations are driven through the same `home:interact` event the world's E prompts emit (`window.jackid.app.events`),
+so a run without the apartment built (no `world.home`) still passes the flow; the teleport and the fades need the apartment (`home.spawn`).
+Two invocations with the same seed give the same `run.nights` and the same stage trace.
+
+`home:miss` forces a missed quota with no bets: it starts every Watch (the lever), rings the Bell once the Watch is in play, and repeats until
+the doom ride starts or the run ends (`stage: "doomed"`, then the run ends with `fell` / ending `shot` and the mafia cutscene). Do not use
+`lever` and `bell` by hand for this: the lever refuses during a Watch ending and the Bell refuses outside play. Try
+`--run "home:miss;wait:9000;state" --seed 1902`.
 
 ## Intro skip
 

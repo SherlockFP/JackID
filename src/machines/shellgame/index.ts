@@ -17,7 +17,7 @@
 import * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
-import { juiceTier } from '@/machines/_base/tiers';
+import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
 import type { MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
@@ -396,6 +396,8 @@ export default class ShellGame extends MachineBase<ShellParts, Ev, Snap> {
     this.sfx('cardSlap', { vol: 0.6 });
     await this.anim(0.5, (k) => this.liftAll(CUP_LIFT * (1 - k)), 'inQuad');
     s.phase = 'shuffle';
+    // a hot streak (heat 3+) makes the shuffle itself tense: a riser climbs with the heat
+    if (s.heat >= 3) this.sfx('tensionRise', { vol: 0.5, param: Math.min(1, s.heat / 5) });
   }
 
   private async presentSwap(ev: SwapEv, pc: PresentCtx): Promise<void> {
@@ -526,8 +528,13 @@ export default class ShellGame extends MachineBase<ShellParts, Ev, Snap> {
         fx.sparks(ev.pearl >= 0 ? this.cupAt(ev.pearl) : th.head, 10, GREEN);
       }
       this.parts.leds.win.setOn(true);
-      if (tier === 'medium' || tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot') this.sfx('cashRegister', { vol: 0.8 });
-      await this.pourCoins(ev.gross, { bet: ev.bet, fast: pc.fast });
+      if (tierAtLeast(tier, 'medium')) {
+        // a medium-plus cup win gets the show (coins, flash, pop, jingle) on the heat bulbs instead of the bare pour
+        this.sfx('cashRegister', { vol: 0.8 });
+        void this.celebrate(tier, { amount: ev.gross - ev.bet, bet: ev.bet, lamps: this.parts.heatBulbs, fast: pc.fast });
+      } else {
+        await this.pourCoins(ev.gross, { bet: ev.bet, fast: pc.fast });
+      }
     } else {
       if (!ev.palmed && ev.pearl >= 0) {
         // the horror twist: the jaw opens and the pearl rests on a tongue

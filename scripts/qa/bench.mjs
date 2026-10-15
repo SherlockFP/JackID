@@ -135,7 +135,14 @@ export function parseScript(text) {
  *   stand              stand up from the seat
  *   bank:deposit:<n>   Debt Terminal deposit of n coins (run.deposit)
  *   bank:withdraw:<n>  take n coins back from the bank into the pocket (run.withdraw, the broke path)
- *   lever              the terminal lever the run accepts now: OPEN THE FLOOR, else the Bell, else SETTLE
+ *   lever              the terminal lever the run accepts now: OPEN THE FLOOR (with the Home layer on: TAKE THE LIFT home), else the Bell, else SETTLE
+ *   home:lift          TAKE THE LIFT (run.openFloor on a paid Night with the Home layer): waits for stage `evening` (the ride, ~2.6 s sim)
+ *   home:sleep         the bed: the `home:interact` event for station `bed`; waits for the next Night to open (the sleep, ~1.8 s sim)
+ *   home:talk          the spouse: station `spouse` (the first talk each Evening at Harmony 4+ is the BLESSING); records the lines
+ *   home:switch        the ceiling light: station `switch` (lights toggle); records the lights
+ *   home:chain         the door chain: station `chain` (chain toggles); records the chain
+ *   phone:open         presses the phone key (default T, rebindable) and records whether the overlay is up, the unread count, Harmony, Heat
+ *   phone:reply:<n>    presses digit n (1-3) for reply n of the open message; records the answered count before and after
  *   bell               ring the Bell early (run.ringBell: ends the Watch while playing or Last Call, unused pulls rebate)
  *   pawn               one Pawn Window reroll (Intermission only)
  *   pawn:buy:<slot>    buy Pawn Window shelf <slot> (1-6, 1-based): sits there, the shelf key, Space twice
@@ -159,6 +166,15 @@ export function parseRunSteps(text) {
     const tok = raw.trim();
     if (!tok) continue;
     if (['stand', 'lever', 'bell', 'pawn', 'state', 'events'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
+    // THE EVENING (wave 69): the lift, the apartment's stations and the phone
+    if (['home:lift', 'home:sleep', 'home:talk', 'home:switch', 'home:chain', 'home:miss', 'phone:open'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
+    let mr = /^phone:reply:(\d+)$/.exec(tok);
+    if (mr) {
+      const n = Number(mr[1]);
+      if (!(n >= 1 && n <= 3)) throw new Error(`bad reply in "${tok}" (phone:reply:<1-3>, the reply digit keys)`);
+      out.push({ kind: 'phone:reply', n, text: tok });
+      continue;
+    }
     if (tok === 'daily') { out.push({ kind: 'daily', text: tok }); continue; }
     if (tok === 'pawn:look') { out.push({ kind: 'pawnlook', text: tok }); continue; }
     if (tok === 'auto:night') { out.push({ kind: 'auto', text: tok }); continue; }
@@ -202,7 +218,7 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | auto:night | auto:night:event | auto:night:quota | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:sleep | home:talk | home:switch | home:chain | home:miss | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
   const once = (kind) => {
@@ -452,6 +468,33 @@ const BET_TAP_JS = `(() => {
 })()`;
 /** Page JS: the run's last refusal (`run.lastRefusal()`), or null. It is not cleared by every step (see noteRefusal). */
 const REFUSAL_JS = '(window.jackid.app.run.lastRefusal?.() ?? null)';
+
+// ── THE EVENING (wave 69): the lift, the apartment's stations and the phone ─────────────────────────────────────────────────────
+/** Sim ms the Evening steps wait for a stage: the ride (2.6 s), the sleep (1.8 s) and a margin; a stuck stage fails the step. */
+const HOME_WAIT_MS = 10_000;
+/** Page JS: the run's home stage and Night, or null without a run. */
+const HOME_STAGE_JS = '(() => { const r = window.jackid.app.run; return r ? { stage: r.homeStage?.() ?? null, night: r.night(), over: r.over === true } : null; })()';
+/** Page JS: the world's own event for a station of the apartment (what E at that station emits), sent through the app bus. */
+const homeEmitJs = (station) => `(() => { window.jackid.app.events.emit('home:interact', { station: ${JSON.stringify(station)} }); return true; })()`;
+/** Page JS: the phone in numbers, and whether its overlay is up (`.px-phone` of phone.ui.ts), or { has: false } without a phone. */
+const PHONE_JS = `(() => {
+  const a = window.jackid.app, r = a.run, p = r && r.homePhone ? r.homePhone() : null;
+  if (!p) return { has: false };
+  const ms = p.messages();
+  const panel = document.querySelector('.px-phone');
+  return { has: true, open: !!panel && !panel.hidden, unread: p.unread(), harmony: p.harmony(), heat: p.heat(), messages: ms.length,
+    answered: ms.filter((m) => m.answered !== null).length, pending: ms.filter((m) => m.answered === null && m.replies.length > 0).length, mode: a.input.mode };
+})()`;
+/** Node: waits (sim time) until `test(home)` holds for the run's home stage and Night, the run is over, or `ms` have passed. Returns the last read. */
+async function waitHome(ctx, test, ms) {
+  const t0 = nowMs();
+  let h = await evalJson(ctx.cdp, HOME_STAGE_JS);
+  while (h && !test(h) && !h.over && nowMs() - t0 < ms) {
+    await sleep(100);
+    h = await evalJson(ctx.cdp, HOME_STAGE_JS);
+  }
+  return h;
+}
 /** Page JS: the stake attempts recorded from index n on (see BET_TAP_JS). */
 const betsFrom = (n) => `(window.jackid.app.run?.__qaBets ?? []).slice(${n})`;
 const BET_COUNT_JS = '(window.jackid.app.run?.__qaBets ?? []).length';
@@ -717,8 +760,18 @@ const QUOTA_SPLIT_FN_JS = `function quotaSplitOf(r) {
     return { base: t.base ?? null, titheAdded: t.added ?? 0 };
   } catch (e) { return null; }
 }`;
+/** Page JS (a function in RUN_STATE_JS): the player's phone (run.homePhone()) in numbers, or null without the Home layer. */
+const HOME_PHONE_FN_JS = `function homePhoneOf(r) {
+  try {
+    const p = typeof r.homePhone === 'function' ? r.homePhone() : null;
+    if (!p) return null;
+    const ms = p.messages();
+    return { unread: p.unread(), harmony: p.harmony(), heat: p.heat(), messages: ms.length, answered: ms.filter((m) => m.answered !== null).length };
+  } catch (e) { return null; }
+}`;
 const RUN_STATE_JS = `(async () => {
   ${NIGHT_CARD_IDS_JS}
+  ${HOME_PHONE_FN_JS}
   ${SPOTLIGHT_FN_JS}
   ${TITHE_FN_JS}
   ${OVERSHOOT_FN_JS}
@@ -745,6 +798,10 @@ const RUN_STATE_JS = `(async () => {
     nightDone: r.nightPaid, topside: r.topsideOpen,
     over: r.over, seated: a.player?.seat?.mid ?? null, intro: a.cutscene.playing ?? null,
     starterOffer: r.starterDraft()?.candidates.map((d) => d.id) ?? null, starterLeft: r.starterDraft()?.left ?? null,
+    starterPending: r.starterPending?.() === true,   // the offer is still to come (Night 1, none made yet): the first read waits for it
+    homeStage: r.homeStage?.() ?? null,              // THE EVENING: 'ride' | 'evening' | 'sleep' | 'doomed', or null on the casino floor
+    home: r.homeOn ? r.homeState() : null,           // { stage, left (sim s), lights, chain }, or null without the Home layer
+    phone: homePhoneOf(r),                           // the player's phone: { unread, harmony, heat, messages, answered }, or null
     charms: r.charms().map((c) => (c.stacks > 1 ? c.id + " x" + c.stacks : c.id)),
     spotlight: spotlightOf(r),                     // Machine of the Night: { machineId, night, plays, progress }, or null
     tithe: watchTitheOf(r),                        // the Watch tithe (run.watchTithe()): { on, target, earned, met, shortfall }, or null
@@ -992,23 +1049,29 @@ const BELL_KEEP_PULLS = 2;         // the bot spends the Watch's pulls down to t
 const AUTO_BETS_MAX = 60;          // a bot bet cap per Watch (each bet spends a pull; refusals retire a machine, see pickBet)
 const AUTO_LEVER_FAILS = 6;        // lever refused this many times in a row: the Night cannot move on
 
-/** How long the first Night 1 read waits for the Starter Draft to open (its timer is slow in a headless run). */
-const STARTER_WAIT_MS = 6000;
+/**
+ * The most the first Night 1 read waits for the Starter Draft to open. The offer waits for the intro, the Night's title card (up to
+ * 8 s of its own, draft.ui.ts CARD_HOLD_CAP_SEC) and a quiet beat, so under the fixed clock it opens about 12 s of sim time in; the
+ * cap is a safety net for a draft that never comes, not the usual wait.
+ */
+const STARTER_WAIT_MS = 40_000;
 
 /**
- * Reads the debt-run state (RUN_STATE_JS). The Starter Draft opens a moment after the run starts, so on Night 1 with no charm
- * yet, the first read waits (once per run, up to STARTER_WAIT_MS) until `starterOffer` is non-null. A later read with the
- * draft taken (or no draft on this build) does not wait; a draft that never opens reads null after the wait.
+ * Reads the debt-run state (RUN_STATE_JS). The Starter Draft opens some seconds after the run starts, so on Night 1 with no charm
+ * yet and the offer still to come (`starterPending`: the run has not made it), the first read waits (once per run) until
+ * `starterOffer` is non-null, or the run says no offer is coming, or STARTER_WAIT_MS has passed. A later read with the draft taken
+ * (or no draft on this build) does not wait.
  */
 async function readState(ctx) {
   let st = await evalJson(ctx.cdp, RUN_STATE_JS);
-  if (!ctx.starterWaited && st.starterOffer == null && !st.over && st.night === 1 && (st.charms ?? []).length === 0) {
+  if (!ctx.starterWaited && st.starterOffer == null && st.starterPending && !st.over && st.night === 1 && (st.charms ?? []).length === 0) {
     ctx.starterWaited = true;
     const t0 = nowMs();
-    while (st.starterOffer == null && !st.over && nowMs() - t0 < STARTER_WAIT_MS) {
+    while (st.starterOffer == null && st.starterPending && !st.over && nowMs() - t0 < STARTER_WAIT_MS) {
       await sleep(200);
       st = await evalJson(ctx.cdp, RUN_STATE_JS);
     }
+    if (st.starterOffer == null && st.starterPending && !st.over) log(`starter draft: no offer after ${nowMs() - t0} ms`);
   }
   noteNight(ctx, st);
   return st;
@@ -1247,12 +1310,13 @@ async function autoNight(ctx, rec, stopAt = null) {
     last: new Map(), seq: 0,   // instance -> the bet sequence number of its last bet (rotation ties)
     metStop: new Set(),  // Nights whose quota-met stop has been taken (auto:night:quota)
     wdRefused: new Set(),  // Watches whose withdraw to the float was refused (not retried in that Watch)
+    evening: new Map(),    // Night -> bed presses in its Evening (the first also talks to the spouse)
   });
   // A call that starts on a paid Night (OPEN THE FLOOR waiting, the Dawn offer may still be open) opens the next Night and plays
   // it: its own rollover ends the call. Any other start plays the Night it is in (its paid state, then the rollover, ends it).
   const s0 = await readState(ctx);
   const n0 = s0.nightDone ? s0.night + 1 : s0.night;
-  const count = { deposits: 0, shops: 0, bets: 0, bells: 0 };
+  const count = { deposits: 0, shops: 0, bets: 0, bells: 0, evenings: 0 };
   const events = [];                    // ids of the floor events of the Watches this call reached
   let leverFails = 0, loops = 0, end = null, st = null, offer = null;   // offer: the Dawn offer the bot saw (summarizeOffer)
   /** A Watch's state, printed once (at its Bell, so the pocket is the one the Watch ends with). */
@@ -1302,6 +1366,25 @@ async function autoNight(ctx, rec, stopAt = null) {
     if (st.over) { end = 'run over'; break; }
     if (st.topside) { end = 'topside'; break; }
     if (st.night > n0) { end = 'night paid'; break; }   // the rollover past the Night this call plays (n0)
+    if (st.homeStage) {
+      // THE EVENING: the lift is a ride; at home the bot talks to the spouse once (the Harmony 4+ blessing) and goes to bed. The Night
+      // rolls over when the sleep ends. The doom (a missed quota) is waited out: the run ends by itself.
+      if (st.homeStage === 'evening') {
+        const tries = bot.evening.get(st.night) ?? 0;
+        if (tries >= AUTO_LEVER_FAILS) { end = 'evening stuck'; break; }
+        bot.evening.set(st.night, tries + 1);
+        if (tries === 0) {
+          decide(ctx, 'home', `the Evening of Night ${st.night} (harmony ${st.phone?.harmony ?? '-'}, heat ${st.phone?.heat ?? '-'}): talk to the spouse, then sleep`);
+          await exec(ctx, auto({ kind: 'home:talk', text: 'home:talk' }));
+          count.evenings++;
+        }
+        const r = await exec(ctx, auto({ kind: 'home:sleep', text: 'home:sleep' }));
+        if (!r.ok) await sleep(300);
+        continue;
+      }
+      await sleep(300);                                 // ride, sleep, doomed: the game moves on by itself
+      continue;
+    }
     const key = `${st.night}:${st.watch}`;
     if (bot.failNight !== st.night) { bot.fails.clear(); bot.failNight = st.night; }   // refusals of one Night do not bar a machine in the next
 
@@ -1594,7 +1677,124 @@ async function runKind(ctx, s, rec) {
       rec.lever = await evaluate(cdp, `(() => { const r = window.jackid.app.run; return r.openFloor() ? 'openFloor'
         : r.startWatch() ? 'startWatch' : r.settleEarly() ? 'settleEarly' : null; })()`);
       rec.ok = rec.lever !== null;
+      // with the Home layer on, OPEN THE FLOOR on a paid Night is the lift (stage ride), and at home it is the bed (stage sleep)
+      if (rec.lever === 'openFloor') rec.home = (await evalJson(cdp, HOME_STAGE_JS))?.stage ?? null;
       if (!rec.ok) noteRefusal(rec, before, await evaluate(cdp, REFUSAL_JS));
+      return;
+    }
+    case 'home:lift': {
+      // TAKE THE LIFT: the paid Night's floor lever with the Home layer. The ride (fade, ding, teleport) runs on sim time; the step
+      // waits for the Evening so the next step finds the player at the front door.
+      const before = await evaluate(cdp, REFUSAL_JS);
+      const h0 = await evalJson(cdp, HOME_STAGE_JS);
+      rec.night = h0?.night ?? null;
+      if (!h0 || h0.stage !== null) { rec.ok = false; rec.reason = `not on the casino floor (home stage "${h0?.stage ?? 'none'}")`; return; }
+      rec.ok = (await evaluate(cdp, `(() => { const r = window.jackid.app.run; return r.homeLiftReady?.() === true && r.openFloor() === true; })()`)) === true;
+      if (!rec.ok) {
+        rec.reason = 'no lift: the Home layer is off, the Night is unpaid, the lever is held (a Night Card offer, Night 8), or the run ended';
+        noteRefusal(rec, before, await evaluate(cdp, REFUSAL_JS));
+        return;
+      }
+      const h = await waitHome(ctx, (x) => x.stage === 'evening', HOME_WAIT_MS);
+      rec.stage = h?.stage ?? null;
+      rec.ok = rec.stage === 'evening';
+      if (!rec.ok) rec.reason = `the ride did not reach the Evening (stage ${rec.stage})`;
+      return;
+    }
+    case 'home:sleep': {
+      // The bed: the same `home:interact` event the world emits for E at the bed, through the app bus. The sleep fades, then the run
+      // opens the next Night; the step waits for that.
+      const h0 = await evalJson(cdp, HOME_STAGE_JS);
+      rec.night = h0?.night ?? null;
+      if (!h0 || h0.stage !== 'evening') { rec.ok = false; rec.reason = `not in the Evening (home stage "${h0?.stage ?? 'none'}")`; return; }
+      await evaluate(cdp, homeEmitJs('bed'));
+      const h = await waitHome(ctx, (x) => x.stage === null && x.night > h0.night, HOME_WAIT_MS);
+      rec.stage = h?.stage ?? null;
+      rec.nightAfter = h?.night ?? null;
+      rec.ok = h != null && h.stage === null && h.night > h0.night;
+      if (!rec.ok) rec.reason = `the bed did not open the next Night (stage ${rec.stage}, Night ${rec.nightAfter})`;
+      return;
+    }
+    case 'home:miss': {
+      // Forces a missed quota without betting: start every Watch (lever), ring the Bell once the Watch is in play (the bell cue
+      // refuses for ~2 s), repeat until the doom ride starts or the run ends. Waits on sim time like the other home steps.
+      const h0 = await evalJson(cdp, HOME_STAGE_JS);
+      rec.night = h0?.night ?? null;
+      let h = h0, seen = null;
+      for (let i = 0; i < 400 && h && !h.over && h.stage !== 'doomed'; i++) {
+        await evaluate(cdp, `(() => { const r = window.jackid.app.run; return r.startWatch() || r.ringBell() || r.settleEarly() || false; })()`);
+        await sleep(250);
+        h = await evalJson(cdp, HOME_STAGE_JS);
+        seen = h?.stage ?? seen;
+      }
+      rec.stage = h?.stage ?? null;
+      rec.over = h?.over === true;
+      rec.ok = rec.stage === 'doomed' || rec.over;
+      if (!rec.ok) rec.reason = `the quota was not missed (stage ${rec.stage}, Night ${h?.night ?? '?'})`;
+      return;
+    }
+    case 'home:talk': {
+      // The spouse: station `spouse`. The phone's `talk()` is wrapped for the call, so the record names the lines it returned.
+      const r = await evalJson(cdp, `(() => {
+        const a = window.jackid.app, r = a.run, p = r.homePhone?.();
+        if (!p) return { ok: false, reason: 'no phone: the Home layer is off' };
+        if (r.homeStage?.() !== 'evening') return { ok: false, reason: 'not in the Evening (home stage ' + (r.homeStage?.() ?? 'none') + ')' };
+        const talk = p.talk; let got = null;
+        p.talk = function () { got = talk.apply(this, arguments); return got; };
+        try { a.events.emit('home:interact', { station: 'spouse' }); } finally { p.talk = talk; }
+        let blessed = null;
+        try { blessed = r.buffs.has('blessed', { pid: r.selfId }); } catch (e) { /* the buff may not exist on this build */ }
+        return { ok: true, lines: got ? got.map((l) => l.key) : null, harmony: p.harmony(), blessed };
+      })()`);
+      Object.assign(rec, r);
+      return;
+    }
+    case 'home:switch':
+    case 'home:chain': {
+      const station = s.kind === 'home:switch' ? 'switch' : 'chain';
+      const r = await evalJson(cdp, `(() => {
+        const a = window.jackid.app, r = a.run;
+        if (r.homeStage?.() !== 'evening') return { ok: false, reason: 'not in the Evening (home stage ' + (r.homeStage?.() ?? 'none') + ')' };
+        const h = a.world?.home;
+        const before = h ? { lights: h.lightsOn(), chain: h.chainOn() } : null;
+        a.events.emit('home:interact', { station: ${JSON.stringify(station)} });
+        const after = h ? { lights: h.lightsOn(), chain: h.chainOn() } : null;
+        return { ok: true, before, after, run: r.homeState() };
+      })()`);
+      Object.assign(rec, r);
+      if (r.ok && r.before && r.after) {
+        const key = station === 'switch' ? 'lights' : 'chain';
+        rec.ok = r.after[key] !== r.before[key];
+        if (!rec.ok) rec.reason = `the ${key} did not change (no apartment on this build?)`;
+      }
+      return;
+    }
+    case 'phone:open': {
+      // The phone key (default T; read from the bindings): the overlay shows on the walking player. Records what the phone holds.
+      const code = (await evaluate(cdp, `(() => { const b = window.jackid.app.input.bindings(); return (b.phone && b.phone[0]) || 'KeyT'; })()`)) || 'KeyT';
+      const p0 = await evalJson(cdp, PHONE_JS);
+      if (!p0.has) { rec.ok = false; rec.reason = 'no phone: the Home layer is off'; return; }
+      await pressKey(cdp, code, DEFAULT_HOLD_MS);
+      await sleep(300);
+      const p1 = await evalJson(cdp, PHONE_JS);
+      Object.assign(rec, { key: code, open: p1.open, unread: p1.unread, harmony: p1.harmony, heat: p1.heat, messages: p1.messages, pending: p1.pending });
+      rec.ok = p1.open === true;
+      if (!rec.ok) rec.reason = `the phone did not open (input mode "${p1.mode}")`;
+      return;
+    }
+    case 'phone:reply': {
+      const p0 = await evalJson(cdp, PHONE_JS);
+      if (!p0.has) { rec.ok = false; rec.reason = 'no phone: the Home layer is off'; return; }
+      if (!p0.open) { rec.ok = false; rec.reason = 'the phone is not open (phone:open first)'; return; }
+      rec.answered = [p0.answered, p0.answered];
+      await pressKey(cdp, `Digit${s.n}`, DEFAULT_HOLD_MS);
+      await sleep(300);
+      const p1 = await evalJson(cdp, PHONE_JS);
+      rec.answered = [p0.answered, p1.answered];
+      rec.harmony = [p0.harmony, p1.harmony];
+      rec.heat = [p0.heat, p1.heat];
+      rec.ok = p1.answered > p0.answered;
+      if (!rec.ok) rec.reason = p0.pending ? 'the reply was not taken (refused, a call is up, or the coins were short)' : 'no message is waiting for a reply';
       return;
     }
     case 'bell': {

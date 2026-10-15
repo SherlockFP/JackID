@@ -41,8 +41,8 @@ type Ev =
   | { k: 'vend'; t: number; price: number; paid: number; freeUsed: number; cards: Card[] }
   | { k: 'stroke'; i: number; pts: number[] }
   | { k: 'zone'; i: number; z: number }
-  /** BUY THE THIRD: the card after the buy (its cells, gross and prize mult), and the cost paid. */
-  | { k: 'buy'; i: number; cells: number[]; gross: number; mult: number; cost: number }
+  /** BUY THE THIRD: the card after the buy (its cells, gross and prize mult), the cost paid, and whether the third matched. */
+  | { k: 'buy'; i: number; cells: number[]; gross: number; mult: number; cost: number; hit: boolean }
   /** how: 0 = scratched out, 1 = swept (Space), 2 = auto-swept when leaving. */
   | { k: 'done'; i: number; how: number; gross: number };
 
@@ -55,6 +55,8 @@ const GOLD = 0xffd040;
 const RARITY_COL = [0, 0xc59c42, 0x63e6de, 0xff42a5];
 const LED_CREDIT = 0x6bff8a, LED_BET = 0x63e6de, LED_WIN = 0xffce5a;
 const FLUSH_S = 1 / 15;
+/** BUY THE THIRD hold: six ticks whose gaps shrink, ~0.6 s in all, before the third spot opens. */
+const BUY_TICK_GAPS = [0.14, 0.12, 0.1, 0.09, 0.08, 0.07] as const;
 
 /** Stroke points are flat [x, y, x, y …] in face pixels. */
 function drawPolyline(g: CanvasRenderingContext2D, pts: number[]): void {
@@ -111,6 +113,8 @@ export const def: MachineDef = {
 export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> {
   private state: State = { sel: 0, qty: 1, bet: 0, batch: null, losers: 0, bin: 0, hist: [] };
   private pend: Pend | null = null;
+  /** The bought third spot between its buy and its reveal (presentation only): card index and whether it matched. */
+  private buyReveal: { i: number; hit: boolean } | null = null;
   private views: View[] = [];
   private stroking = false;
   private cursor = SPOT_START;      // PIT PENNY: the spot under the player's cursor (local only)
@@ -422,14 +426,18 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     if (!t) return;
     p.total += t.gross - p.gross[i];
     p.gross[i] = t.gross;
-    void this.emit({ k: 'buy', i, cells: t.cells, gross: t.gross, mult: t.gross / card.price, cost: t.cost });
+    void this.emit({ k: 'buy', i, cells: t.cells, gross: t.gross, mult: t.gross / card.price, cost: t.cost, hit: t.hit });
     p.zoneSent[i].add(t.z);
     void this.emit({ k: 'zone', i, z: t.z });
     if (!spotOpen(t.cells, [...p.zoneSent[i]])) this.finishCard(1);
   }
 
-  /** The buy on every peer: the card takes its new cells and prize, and is marked bought (its spot opens next). */
-  private presentBuy(ev: Extract<Ev, { k: 'buy' }>, pc: PresentCtx): void {
+  /**
+   * The buy on every peer: the card takes its new cells and prize, and is marked bought. The third spot then stays shut
+   * for ~0.6 s with ticks that speed up; the zone event that follows opens it (`presentZone`: gold and PAIR! on a hit,
+   * a muted buzzer on a miss). The hold is presentation only: the outcome was already decided by the authority.
+   */
+  private async presentBuy(ev: Extract<Ev, { k: 'buy' }>, pc: PresentCtx): Promise<void> {
     const b = this.state.batch;
     const c = b?.cards[ev.i];
     if (!b || !c) return;
@@ -440,6 +448,22 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     this.sfx('coinDrop', { vol: 0.7 });
     this.ctx.fx.popText(this.parts.cardPlanes[ev.i], this.t('bought', { n: fmtCoins(ev.cost) }), GOLD, { dur: 1.0, rise: 0.25, scale: 1.0 });
     if (this.isLocalOccupant) this.showHud();
+    if (pc.fast) return;
+    this.buyReveal = { i: ev.i, hit: ev.hit };
+    for (let k = 0; k < BUY_TICK_GAPS.length; k++) {
+      this.sfx('clockTick', { vol: 0.45, pitch: k });                // the tension tick, a semitone higher each time
+      await this.wait(BUY_TICK_GAPS[k]);
+    }
+  }
+
+  /** The gold flash and PAIR! pop when a bought third matches (or the muted buzzer when it does not). Presentation only. */
+  private buyResult(i: number, hit: boolean): void {
+    const plane = this.parts.cardPlanes[i];
+    if (!hit) { this.sfx('buzzer', { vol: 0.25 }); return; }
+    this.ctx.fx.flash(GOLD, 0.3, 0.3);
+    this.ctx.fx.sparks(plane, 16, GOLD);
+    this.ctx.fx.popText(plane, this.t('pairHit'), GOLD, { dur: 1.2, rise: 0.3, scale: 1.3, shake: true });
+    this.sfx('win2', { pitch: 4 });
   }
 
   /** Auto-sweep every card still open (leaving, or the collect key). The last one settles the batch. */
@@ -581,8 +605,11 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     this.sfx('click', { vol: 0.6 });
     this.ctx.fx.sparks(this.parts.cardPlanes[ev.i], 3, GOLD);
     if (this.isLocalOccupant) this.showHud();                 // picks left and the BUY THE THIRD control follow the revealed spots
+    const buy = this.buyReveal !== null && this.buyReveal.i === ev.i ? this.buyReveal : null;
+    if (buy) this.buyReveal = null;
     if (pc.fast) return;
     this.shimmer(ev.i, z);
+    if (buy) this.buyResult(ev.i, buy.hit);
     if (c.t === 0) {                                          // PIT PENNY: a pair among the picks, the card still open
       const now = zoneIds(b.rev[ev.i], zs.length);
       if (spotBest(c.cells, now) === 2 && spotBest(c.cells, before) < 2 && spotOpen(c.cells, now)) {
@@ -658,7 +685,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
       if (total > 0) {
         const tt = juiceTier(total, bet);
         if (tierAtLeast(tt, 'medium')) {
-          void this.celebrate(tt, { amount: total, marquee: this.parts.marquee, lamps: [this.parts.deskLamp], restore: () => this.idleChase(), fast: pc.fast });
+          void this.celebrate(tt, { amount: total, bet, marquee: this.parts.marquee, lamps: [this.parts.deskLamp], restore: () => this.idleChase(), fast: pc.fast });
         } else {
           await this.pourCoins(total, { bet, fast: pc.fast });
         }

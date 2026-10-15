@@ -586,6 +586,13 @@ export default class Baccarat extends TableBase<BaccaratParts, Ev, Snap, Act> {
   private async presentResult(ev: ResultEv, fast: boolean, pc: PresentCtx): Promise<void> {
     const p = this.model.parts, st = this.st;
     st.phase = 'result';
+    // a third card was drawn: hold half a second on the landed card before the winner shows (heartbeat, lamps flicker)
+    if (!fast && st.cards.some((row) => (row[2] ?? '') !== '')) {
+      this.sfx('heartbeat', { vol: 0.6 });
+      p.lamps.player.blink(8, 0.5);
+      p.lamps.banker.blink(8, 0.5);
+      await this.wait(0.5);
+    }
     st.win = ev.winner;
     st.road.push(ev.winner === 'P' ? 1 : ev.winner === 'B' ? 2 : 3);
     if (st.road.length > 72) st.road.shift();
@@ -609,12 +616,17 @@ export default class Baccarat extends TableBase<BaccaratParts, Ev, Snap, Act> {
         const tier = juiceTier(payout, stake);
         const lamp: LampPart | undefined = ev.winner === 'P' ? p.lamps.player : ev.winner === 'B' ? p.lamps.banker : undefined;
         void this.celebrate(tier, {
-          amount: payout, at: this.model.anchors.coinOut, lamps: lamp ? [lamp] : [], fast: pc.fast,
+          amount: payout, bet: stake, at: this.model.anchors.coinOut, lamps: lamp ? [lamp] : [], fast: pc.fast,
           restore: () => this.paintLamps(),
         });
         if (tier !== 'small' && tier !== 'push') void p.dealer.play('Interact', { fade: 0.2 }); // i18n-ok: clip id
         void this.pourCoins(payout, { bet: stake, fast });
       } else if (stake > 0) {
+        // one point short: the side you backed lost by a single point, so the tease plays before the loss
+        const lost = ev.winner === 'P' ? R.SP.B : ev.winner === 'B' ? R.SP.P : -1;
+        if (!fast && lost >= 0 && Math.abs(ev.p - ev.b) === 1 && st.bets[seat][lost] > 0) {
+          await this.nearMiss({ at: this.model.anchors.coinOut, lamps: [ev.winner === 'P' ? p.lamps.banker : p.lamps.player] });
+        }
         this.commiserate({ at: this.model.anchors.coinOut });
       }
     }

@@ -1,0 +1,85 @@
+/* THE PHONE (wave 69, Home layer): the chip and the overlay. Tokens come from ui.css; edges are hard, motion is stepped. */
+
+.px-phone-chip {
+  position: absolute; left: calc(8 * var(--u)); bottom: calc(var(--lb) * var(--bar-h) + 8 * var(--u));
+  z-index: 2; display: flex; align-items: center; gap: calc(4 * var(--u));
+  padding: calc(3 * var(--u)) calc(6 * var(--u));
+  background: var(--panel); box-shadow: inset 0 0 0 var(--u) var(--slate), 0 0 0 var(--u) var(--void);
+  font-family: var(--f-head); font-size: var(--fh); line-height: 1; color: var(--ivory);
+  cursor: pointer; pointer-events: auto; user-select: none;
+}
+.px-phone-chip:hover, .px-phone-chip.open { box-shadow: inset 0 0 0 var(--u) var(--amber), 0 0 0 var(--u) var(--void); }
+.px-phone-chip-label { white-space: nowrap; }
+.px-phone-chip[hidden],
+.px-phone[hidden] { display: none !important; }
+
+/* the unread dot: a stepped blink, the same beat as the toast's shake */
+.px-phone-dot { display: none; width: calc(4 * var(--u)); height: calc(4 * var(--u)); background: var(--amber); }
+.px-phone-dot.lit { display: inline-block; animation: px-phone-blink 0.5s steps(2, end) infinite; }
+.px-phone-chip .px-phone-dot { position: absolute; right: calc(-2 * var(--u)); top: calc(-2 * var(--u)); }
+.px-phone-chip .px-phone-dot.lit { box-shadow: 0 0 0 var(--u) var(--void); }
+@keyframes px-phone-blink { 0% { opacity: 1; } 50% { opacity: 0.2; } }
+
+.px-phone {
+  position: absolute; left: calc(8 * var(--u)); bottom: calc(var(--lb) * var(--bar-h) + 40 * var(--u));
+  z-index: 2; display: flex; flex-direction: column; gap: calc(4 * var(--u));
+  width: min(calc(232 * var(--u)), calc(100% - 16 * var(--u)));
+  padding: calc(5 * var(--u));
+  background: var(--panel); box-shadow: inset 0 0 0 var(--u) var(--brass), 0 0 0 var(--u) var(--void);
+  color: var(--ivory); font-family: var(--f-body); font-size: calc(12 * var(--u)); line-height: 1.15;
+  pointer-events: auto;
+}
+.px-phone-head { display: flex; align-items: center; justify-content: space-between; }
+.px-phone-title { font-family: var(--f-head); font-size: var(--fh); color: var(--shine); }
+
+.px-phone-tabs { display: flex; gap: calc(3 * var(--u)); }
+.px-phone-tab {
+  appearance: none; flex: 1 1 0; min-width: 0; position: relative;
+  padding: calc(4 * var(--u)) calc(3 * var(--u)); border: 0; border-radius: 0;
+  background: var(--soot); box-shadow: inset 0 0 0 var(--u) var(--slate);
+  font-family: var(--f-head); font-size: calc(6 * var(--u)); line-height: 1.2; color: var(--grout);
+  text-align: center; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.px-phone-tab.on { background: var(--brass-dark); box-shadow: inset 0 0 0 var(--u) var(--amber); color: var(--shine); }
+.px-phone-tab:hover, .px-phone-tab:focus-visible { outline: none; color: var(--ivory); }
+.px-phone-tab .px-phone-dot { position: absolute; right: calc(3 * var(--u)); top: calc(3 * var(--u)); }
+
+.px-phone-thread {
+  display: flex; align-items: center; gap: calc(6 * var(--u)); min-height: calc(28 * var(--u));
+  padding: calc(3 * var(--u)) 0; border-bottom: var(--u) solid var(--slate);
+}
+.px-phone-avatar { width: calc(28 * var(--u)); height: calc(42 * var(--u)); object-fit: cover; image-rendering: pixelated; flex: 0 0 auto; }
+.px-phone-name { font-family: var(--f-head); font-size: calc(7 * var(--u)); line-height: 1.2; color: var(--shine); flex: 1 1 auto; }
+.px-phone-heatlbl { font-family: var(--f-head); font-size: calc(6 * var(--u)); color: var(--grout); }
+.px-phone-pips { display: inline-flex; gap: calc(2 * var(--u)); }
+.px-pip { display: inline-block; width: calc(6 * var(--u)); height: calc(8 * var(--u)); background: var(--soot); box-shadow: inset 0 0 0 var(--u) var(--slate); }
+.px-pip.on { background: var(--coral); box-shadow: inset 0 0 0 var(--u) var(--red); }
+
+.px-phone-body {
+  display: flex; flex-direction: column; gap: calc(4 * var(--u));
+  max-height: calc(170 * var(--u)); min-height: calc(60 * var(--u)); overflow-y: auto; padding: calc(2 * var(--u)) 0;
+  scrollbar-width: thin; scrollbar-color: var(--slate) var(--soot);
+}
+.px-msg {
+  max-width: 88%; padding: calc(4 * var(--u)) calc(5 * var(--u)) calc(3 * var(--u));
+  background: var(--soot); box-shadow: inset 0 0 0 var(--u) var(--slate);
+}
+.px-msg.in { align-self: flex-start; }
+.px-msg.out { align-self: flex-end; background: var(--brass-dark); box-shadow: inset 0 0 0 var(--u) var(--brass); }
+.px-msg-text { color: var(--ivory); }
+.px-msg-meta { margin-top: calc(2 * var(--u)); font-family: var(--f-head); font-size: calc(5 * var(--u)); color: var(--concrete); }
+.px-phone-empty { color: var(--grout); font-style: normal; padding: calc(6 * var(--u)) 0; text-align: center; }
+
+.px-phone-replies { display: flex; flex-direction: column; gap: calc(3 * var(--u)); }
+.px-phone-reply {
+  appearance: none; display: flex; align-items: center; gap: calc(5 * var(--u)); width: 100%;
+  padding: calc(4 * var(--u)) calc(5 * var(--u)); border: 0; border-radius: 0;
+  background: var(--soot); box-shadow: inset 0 0 0 var(--u) var(--slate);
+  font-family: var(--f-body); font-size: calc(12 * var(--u)); line-height: 1.15; color: var(--ivory); text-align: left; cursor: pointer;
+}
+.px-phone-reply b { font-family: var(--f-head); font-size: calc(7 * var(--u)); color: var(--amber); font-weight: normal; }
+.px-phone-reply:hover:not(:disabled),
+.px-phone-reply:focus-visible:not(:disabled) { background: var(--brass); color: var(--void); outline: none; }
+.px-phone-reply:disabled { opacity: 0.4; cursor: default; }
+
+.px-phone-hint { font-family: var(--f-head); font-size: calc(5 * var(--u)); line-height: 1.4; color: var(--concrete); text-align: center; }

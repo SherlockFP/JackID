@@ -554,7 +554,9 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
       const green = this.parts.tiles.filter((_, i) => ((s.safe >> i) & 1) === 1).slice(0, 8);
       for (const tile of green) fx.glow(tile, GREEN, 0.14, 0.5);
       if (tier === 'medium' || tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot') {
-        this.sfx('win2');
+        // a medium-plus cash-out gets the full show (coins, flash, pop, jingle) and keeps the on-screen count-up under it
+        void this.celebrate(tier, { amount: ev.gross - bet, bet, fast: pc.fast });
+        if (!pc.fast && (tier === 'huge' || tier === 'mega' || tier === 'jackpot')) fx.shake(0.04, 0.5, { roll: 1.6 });
         await countUp(this.ctx, 0, ev.gross, pc.fast ? 0.1 : 1.0 * this.speed, (v) => this.drawScreen(v));
       } else {
         await this.pourCoins(ev.gross, { bet, fast: pc.fast, onCount: (v) => this.drawScreen(v) });

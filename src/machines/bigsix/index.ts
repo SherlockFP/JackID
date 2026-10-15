@@ -42,6 +42,8 @@ const SPIN_MIN_MS = 6000, SPIN_MAX_MS = 11000;
 const SEATS = 8;
 const CHIP_CAP = 290;       // InstancedMesh budget (300 chips)
 const PEG = (Math.PI * 2) / SEGMENT_COUNT;
+/** An angle folded into (−π, π]: the short way round a wheel. */
+const wrapPi = (a: number): number => ((((a + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI;
 const FLAP_MAX = 0.436;     // 25° per peg
 const GOLD = 0xffd040, GREEN = 0x7dff7a;
 const CHIP_Z = 0.42;
@@ -54,7 +56,7 @@ type Ev =
   | { k: 'nudge'; seat: number; on: boolean }
   | { k: 'phase'; p: Phase }
   | { k: 'mult'; seg: number }
-  | { k: 'spin'; seg: number; durMs: number; turns: number; nudges: number; creeped: boolean }
+  | { k: 'spin'; seg: number; durMs: number; turns: number; nudges: number; creeped: boolean; near: boolean }
   | { k: 'result'; seg: number; rerolled: boolean; seats: Array<{ seat: number; stake: number; gross: number; nearmiss: boolean }> }
   | { k: 'peek'; isOne: boolean };
 type Act = { k: 'set'; spot: BetSym; a: number } | { k: 'clear' } | { k: 'ready' } | { k: 'nudge' };
@@ -306,7 +308,8 @@ export default class BigSixWheel extends TableBase<BigSixParts, Ev, Snap, Act> {
     hs.ready = emptyFlags();
     hs.nudge = emptyFlags();
     void this.emit({ k: 'phase', p: 'lock' });
-    void this.emit({ k: 'spin', seg: out.seg, durMs, turns, nudges: out.nudges, creeped: out.creeped });
+    // `near` (presentation only): some seat backed an EYE or 25 that the wheel stopped one peg from
+    void this.emit({ k: 'spin', seg: out.seg, durMs, turns, nudges: out.nudges, creeped: out.creeped, near: out.seats.some((s) => s.nearmiss) });
     void this.emit({
       k: 'result', seg: out.seg, rerolled: out.rerolled,
       seats: active.map((a, i) => ({ seat: a.seat, stake: a.stake, gross: out.seats[i].gross, nearmiss: out.seats[i].nearmiss })),
@@ -412,14 +415,41 @@ export default class BigSixWheel extends TableBase<BigSixParts, Ev, Snap, Act> {
     }
     disc.rotation.y = final;
     flapper.rotation.z = 0;
-    // stop: a wobble back onto the segment, no more than half a peg
+    // stop: a near miss first overshoots one peg onto the EYE or 25 and hangs there; then a wobble back onto the segment
     if (!pc.fast) {
+      if (ev.near) await this.nearOvershoot(ev.seg, final);
       const amp = PEG * 0.35;
       await this.anim(STOP_S, (k) => { disc.rotation.y = final + amp * Math.sin(k * Math.PI * 3) * (1 - k); });
     }
     this.st.history = [ev.seg, ...this.st.history].slice(0, 12);
     this.drawHistory();
     if (!pc.fast) await this.wait(ANNOUNCE_S * 0.3);
+  }
+
+  /**
+   * The wheel's near miss: it runs one peg past the stop onto the neighbouring EYE (or 25), hangs there with the flapper
+   * held up and, for the EYE, the lid cracked, then rolls back onto the real segment. Only the wheel moves; the outcome is
+   * already drawn.
+   */
+  private async nearOvershoot(seg: number, final: number): Promise<void> {
+    const { flapper, eyeLid } = this.parts;
+    const disc = this.parts.wheel.disc;
+    const n = SEGMENT_COUNT;
+    const sides = [(seg + 1) % n, (seg - 1 + n) % n];
+    const onto = sides.find((i) => SEGMENTS[i] === 'EYE') ?? sides.find((i) => SEGMENTS[i] === '25');
+    if (onto === undefined) return;
+    const d = wrapPi(this.parts.wheel.angleOf(onto) - this.parts.wheel.angleOf(seg));   // one peg, the short way round
+    await this.anim(0.3, (k) => { disc.rotation.y = final + d * k; }, 'outQuad');
+    disc.rotation.y = final + d;
+    this.sfx('wheelTick', { vol: 0.5 });
+    flapper.rotation.z = -FLAP_MAX * 0.5;                           // the flapper is held up on the peg
+    eyeLid.position.y = SEGMENTS[onto] === 'EYE' ? 0.05 : 0;        // the lid cracks a little for an EYE
+    await this.wait(0.4);
+    if (this.disposed) return;
+    this.sfx('wheelTick', { vol: 0.4 });
+    flapper.rotation.z = 0;
+    await this.anim(0.4, (k) => { disc.rotation.y = final + d * (1 - k); }, 'inQuad');
+    eyeLid.position.y = 0;
   }
 
   /** Impact + follow-through: EYE opens, HOUSE blacks out, pop text, tier celebration, loss and near-miss beats. */
@@ -436,7 +466,8 @@ export default class BigSixWheel extends TableBase<BigSixParts, Ev, Snap, Act> {
     rim.pattern('blink', 4);
 
     if (sym === 'EYE') {
-      this.sfx('jackpotSiren', { vol: 0.5 });
+      // the siren is the jackpot show's (celebrate, below) when someone backed the EYE; it sounds here only for an empty EYE
+      if (!best) this.sfx('jackpotSiren', { vol: 0.5 });
       if (!pc.fast) await this.anim(0.6, (k) => { eyeLid.position.y = 0.4 * k; });
       else eyeLid.position.y = 0.4;
       if (best) pupil.position.x = HUB.x + ((best.seat - (SEATS - 1) / 2) / ((SEATS - 1) / 2)) * 0.04;   // the eye looks at the winner
@@ -469,8 +500,9 @@ export default class BigSixWheel extends TableBase<BigSixParts, Ev, Snap, Act> {
 
     // follow-through: payouts and the local player's feedback
     if (best && best.gross > best.stake) {
-      const tier = juiceTier(best.gross, best.stake);
-      void this.celebrate(tier, { amount: best.gross, at: wheel, lamps: [seatLamps[best.seat]], fast: pc.fast, restore: () => this.paintLamps() });
+      // an EYE is the jackpot symbol: the pit wave and the coin rain (juice tag, as cyclone:jackpot)
+      const tier = juiceTier(best.gross, best.stake, sym === 'EYE' ? ['bigsix:jackpot'] : []);
+      void this.celebrate(tier, { amount: best.gross - best.stake, bet: best.stake, at: wheel, lamps: [seatLamps[best.seat]], fast: pc.fast, restore: () => this.paintLamps() });
     } else if (!best) {
       this.sfx('coin');
     }

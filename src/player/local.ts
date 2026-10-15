@@ -18,13 +18,14 @@ import type { InputExt } from '@/core/input';
 import type { PlayerFx } from '@/game/types';
 import type { CollisionWorld } from '@/world/types';
 import { app } from '@/core/app';
+import { bus } from '@/core/events';
 import { ease } from '@/core/tween';
 import { clamp, damp, dampAngle, DEG2RAD, lerp } from '@/core/math';
 import { CameraRig, type ShakeOpts } from './camera';
 import { FpsController } from './controller';
 import { PF } from './flags';
 import { SURFACE_SOUND, surfaceForZone, type Surface } from './surface';
-import { createViewmodel, type ViewmodelHost } from './viewmodel';
+import { createViewmodel, GLOVE_IVORY, GLOVE_LEATHER, type ViewmodelHost } from './viewmodel';
 import type { CinematicKey, LocalPlayer } from './types';
 
 export type * from './types';
@@ -45,6 +46,8 @@ const BOB_Y = 0.014;
 const BOB_X = 0.006;
 const UP = new THREE.Vector3(0, 1, 0);
 const X_AXIS = new THREE.Vector3(1, 0, 0);
+/** Glove leather for Settings → GLOVES (WAVE69 §8): dark leather by default, the old ivory when off. */
+const gloveColour = (leather: boolean) => (leather ? GLOVE_LEATHER : GLOVE_IVORY);
 
 /** Extras for `enterMachine` beyond the frozen signature (all optional). */
 export interface SeatOptions {
@@ -149,7 +152,7 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
 
   const rig = new CameraRig(camera);
   const sleeve = new THREE.Color(app.save.data.profile.color).multiplyScalar(0.65).getHex();
-  const viewmodel = createViewmodel(sleeve);
+  const viewmodel = createViewmodel(sleeve, gloveColour(settings().gloves));
   viewmodel.hold('coin');
   viewmodel.setVisible(settings().viewmodel);
 
@@ -538,10 +541,13 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
         bobX: rig.bob.x, bobY: rig.bob.y, sprint: ctrl.sprinting, crouch: ctrl.crouchK, grounded: ctrl.grounded,
         lookDx: lookDxFrame, lookDy: lookDyFrame, aspect: camera.aspect,
       });
+      watchTickets();
       viewmodel.update(dt);
     },
 
     dispose() {
+      disposed = true;
+      for (const off of unsubs) off();
       finishWalk(false);
       token++;
       seatInput(false);
@@ -583,6 +589,51 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
     rig.setTarget(eyeScratch, targetQuat, settings().fov);
     rig.snap();
   }
+
+  // ── hand reactions and live settings ──────────────────────────────────────────────────────────────
+  // Walk mode only: the hands are hidden when seated. `drinking` counts the tonic drinks in flight. The hand holds the
+  // bottle while any runs and goes back to the coin after the last one, so the Q coin tricks come back.
+  let drinking = 0;
+  let ticketsSeen = -1;                             // the run's ticket balance at the last frame; -1 = no run
+  let disposed = false;
+  const handsAllowed = (): boolean => phase !== 'seated' && phase !== 'glideIn' && !cutscene && !cinematicActive && !ghost;
+  const walkHands = (): boolean => settings().viewmodel && player.mode === 'walk';
+  /** The run's own id for this player (buff owners are keyed by it; online it may differ from the default `id`). */
+  const self = (): PlayerId => app.run?.selfId ?? id;
+
+  /** A tonic was drunk: the bottle comes up to the mouth (`drink`), then the hand is a coin again. */
+  function drinkTonic(): void {
+    if (!walkHands() || (viewmodel.item !== 'coin' && viewmodel.item !== 'tonic')) return;
+    drinking++;
+    viewmodel.hold('tonic');
+    void viewmodel.play('drink').then(() => {
+      drinking--;
+      if (!disposed && drinking === 0 && viewmodel.item === 'tonic') viewmodel.hold('coin');
+    });
+  }
+
+  /** A ticket was received: the card is punched. Gun-holding hands are left alone (the two-handed grip). */
+  function punchTicket(): void {
+    if (!walkHands() || viewmodel.item === 'gun') return;
+    void viewmodel.play('punchCard');
+  }
+
+  /** Run.earn('ticket') emits no event, so the balance is read once a frame and a rise is a ticket received. */
+  function watchTickets(): void {
+    const run = app.run;
+    if (!run) { ticketsSeen = -1; return; }
+    const now = run.balance('ticket', self());
+    if (ticketsSeen >= 0 && now > ticketsSeen) punchTicket();
+    ticketsSeen = now;
+  }
+
+  const unsubs: Array<() => void> = [
+    bus.on('buff:add', ({ owner, buff }) => { if (owner === `p:${self()}` && buff.id.startsWith('tonic.')) drinkTonic(); }),
+    bus.on('settings:changed', ({ key }) => {
+      if (key === 'gloves') viewmodel.setGloveColor(gloveColour(settings().gloves));
+      else if (key === 'viewmodel') viewmodel.setVisible(settings().viewmodel && handsAllowed());
+    }),
+  ];
 
   // Body spawns at the origin; the world places it with `teleport`.
   ctrl.reset(0, 0, 0);

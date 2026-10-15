@@ -52,6 +52,8 @@ import { hollowDoor } from '@/world/hollow';
 import { mountDraftUi } from '@/game/draft.ui';
 import { mountNightCardsUi } from '@/game/nightCards.ui';
 import { mountOverpayUi } from '@/game/overpay.ui';
+import { mountPhoneUi } from '@/game/home/phone.ui';
+import { mountEvening, type Evening } from '@/game/home/evening';
 
 export interface DebtSession {
   readonly world: WorldHost;
@@ -89,18 +91,26 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   const banner = (text: string, o?: { color?: string; hold?: number; size?: 8 | 16 | 24 }): void => {
     void (app.ui as UIOverlayX).banner(text, o);
   };
-  const run = (params.resume ? resumeRun(app.save, { banner }) : null)
+  // THE EVENING (wave 69): a solo run has the Home layer (the lift home, the phone, the doomed ride); an online run keeps the old
+  // lever and the trapdoor. The run decides what the flag means for the mode (the Free Casino has no Evening).
+  const home = !params.online;
+  const run = (params.resume ? resumeRun(app.save, { banner, home }) : null)
     ?? createRun({
-      seed: params.seed, mode: playableMode(params.mode), save: app.save, banner,
+      seed: params.seed, mode: playableMode(params.mode), save: app.save, banner, home,
       // Only the starting kit travels from the menu for now; the MP lobby config is not applied here yet.
       cfg: params.config?.kit || params.config?.stake || params.config?.daily
         ? { kit: params.config.kit, stake: params.config.stake, daily: params.config.daily }
         : undefined,
     });
   app.run = run;
-  if (!params.resume && !params.online) mountDraftUi(run);
-  if (!params.online) mountNightCardsUi(run);
-  mountOverpayUi(run);
+  // The UI the run's own state asks for. Their disposers run with the session (the draft ticker and the phone chip must not outlive it).
+  const mounts: Unsub[] = [];
+  // The Starter Draft: a fresh run opens it, and a resumed Night 1 does too while the offer can still open or is open (a saved open
+  // offer holds the Bell, so without the panel the run would wait on a card nobody can take).
+  if (!params.online && (!params.resume || run.starterPending() || run.starterDraft() !== null)) mounts.push(mountDraftUi(run));
+  if (!params.online) mounts.push(mountNightCardsUi(run));
+  if (run.homeOn) mounts.push(mountPhoneUi(run));
+  mounts.push(mountOverpayUi(run));
   const self = run.selfId;
   // The Lords' table (the Hollow Door): the duel's end becomes run effects, its spent Tickets come off the run, and the door seals.
   lordsHooks.apply = (end) => {
@@ -139,6 +149,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   player.teleport(new THREE.Vector3(spawn.pos[0], spawn.pos[1], spawn.pos[2]), spawn.yaw);
   app.input.setMode('walk');
   const online = params.online ? startOnlineHooks(scene, player, run) : null;
+  // THE EVENING: the lift, the apartment's stations and the doomed ride (solo runs); the run owns the stage, this shows it
+  const evening: Evening | null = run.homeOn ? mountEvening(run, world, player) : null;
 
   const hud = createHud();
   let ready = false;
@@ -405,6 +417,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       player.fixedUpdate(dt);
       world.fixedUpdate(dt);
       run.tick(dt);
+      evening?.update(dt);
       horror.update(dt, horrorState(), dt);
       online?.fixedUpdate(dt);
     },
@@ -447,6 +460,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       horror.dispose();
       for (const a of actors.all()) actors.despawn(a);
       totemView.dispose();
+      evening?.dispose();
+      for (const off of mounts.splice(0)) off();
       run.dispose();
       online?.dispose();
       hud.setPrompt(null);

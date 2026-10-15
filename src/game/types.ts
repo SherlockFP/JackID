@@ -25,6 +25,7 @@ import type { BuffsApi } from './buffs.types';
 import type { TotemsApi, CollateralApi } from './items.types';
 import type { ContractsApi, CurrencyId, JackpotsApi } from './economy.types';
 import type { DoorTrigger, DuelEnd, LordId } from './hollow/rules';
+import type { HomePhoneApi } from './home/contract';
 
 export * from './modifiers.types';
 export * from './shift.types';
@@ -170,6 +171,11 @@ export interface RunApi {
   // hotline (system machine 'hotline' only)
   phone(): PhoneCallState | null;
   answerPhone(choice: number): void;                        // −1 = pick up; host resolves
+  /**
+   * THE EVENING (wave 69): the player's own phone, with the spouse and Collector threads (src/game/home/phone.ts). Null when the
+   * run has no Home layer (online runs, bench rooms): callers then show no phone at all.
+   */
+  homePhone(): HomePhoneApi | null;
 
   // ── the Hollow Door (src/game/hollow): once per run, saved in the run. The world and the Lords' table call these. ──
   /** Opens the door for a trigger when the rules allow it (once per run). The world shows the doorway on `hollow:open`. */

@@ -46,6 +46,14 @@ function markEvolved(state: CharmState): void {
   if ((state.stacks ?? 1) >= 2) bagOf(state).evo = true;
 }
 
+// `charm:evolve` (wave 7 juice): a second copy of a charm evolves it. Emitted by `Charms.add` only, so the HUD can hop the
+// peg with an EVOLVED pop. The peg count does not change (an evolution takes no peg).
+declare module '@/core/events' {
+  interface GameEvents {
+    'charm:evolve': { pid: PlayerId; charmId: string; stacks: number };
+  }
+}
+
 export interface CharmHost {
   readonly selfId: PlayerId;
   run(): RunApi;
@@ -81,10 +89,12 @@ export class Charms implements ModProvider {
     const def = DEFS.get(id);
     if (!def) return false;
     const existing = this.find(pid, id);
+    let evolved = false;
     if (existing) {
       if ((existing.stacks ?? 1) >= (def.maxStacks ?? 1)) return false;
       existing.stacks = (existing.stacks ?? 1) + 1;
       markEvolved(existing);   // an evolution takes no peg
+      evolved = existing.stacks === 2;
     } else {
       if (this.pegsUsed(pid) >= pegs) return false;
       const list = this.owned.get(pid) ?? [];
@@ -93,6 +103,7 @@ export class Charms implements ModProvider {
       bus.emit('charm:add', { pid, charmId: id });
     }
     this.host.touch();
+    if (evolved) bus.emit('charm:evolve', { pid, charmId: id, stacks: 2 });
     return true;
   }
 

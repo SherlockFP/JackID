@@ -2,8 +2,9 @@
  * The Sump receipt (GDD §9.9): a thermal-paper run summary that prints line by line, then gets its stamp.
  * Pure DOM. `resultsState.ts` owns the overlay, keys and the app transitions.
  */
+import { app } from '@/core/app';
 import { fmtCoins, fmtNum, fmtTime, has, t } from '@/core/i18n';
-import { uiSfx, h } from '@/core/ui/widgets';
+import { counter, uiSfx, h } from '@/core/ui/widgets';
 import type { RunSummary } from '@/net/protocol';
 import { dailyLine } from '@/game/daily';
 import './results.css';
@@ -25,6 +26,8 @@ export interface Receipt {
 }
 
 const LINE_S = 0.12;
+/** The longest roll of a receipt figure (PEAK POCKET, PAID, BIGGEST), seconds. */
+const ROLL_S = 0.9;
 const resultKey = (r: string): string => (has(`hud.results.result.${r}`) ? `hud.results.result.${r}` : `hud.results.result.lost`);
 const won = (r: RunSummary['result']): boolean => r === 'escaped' || r === 'won';
 
@@ -87,18 +90,19 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
   const name = me?.name?.trim() ? me.name.trim() : t('hud.results.you');
   const st: Record<string, number> = s.stats ?? {};
   const stat = (k: (typeof FIXED_STATS)[number]): number => (typeof st[k] === 'number' && Number.isFinite(st[k]) ? st[k] : 0);
-  const rows: Array<[string, string]> = [
+  // The third cell of a row is the figure that rolls up from 0 as its line prints (PEAK POCKET, PAID, BIGGEST).
+  const rows: Array<[string, string, number?]> = [
     [t('hud.results.name'), name],
     [t('hud.results.seed'), String(s.seed)],
     [t('hud.results.result'), t(resultKey(s.result))],
     [t('hud.results.floor'), fmtNum(s.floor)],
     [t('hud.results.time'), fmtTime(s.durationSec)],
-    [t('hud.results.maxWallet'), fmtCoins(s.maxWallet, true)],
+    [t('hud.results.maxWallet'), fmtCoins(s.maxWallet, true), s.maxWallet],
     [t('hud.results.deadlines'), fmtNum(s.deadlines)],
     [t('hud.results.stat.rounds'), fmtNum(s.rounds)],
     [t('hud.results.stat.wagered'), fmtCoins(stat('wagered'), true)],
-    [t('hud.results.stat.paid'), fmtCoins(stat('paid'), true)],
-    [t('hud.results.stat.biggest'), fmtCoins(s.biggestWin, true)],
+    [t('hud.results.stat.paid'), fmtCoins(stat('paid'), true), stat('paid')],
+    [t('hud.results.stat.biggest'), fmtCoins(s.biggestWin, true), s.biggestWin],
     [t('hud.results.stat.wins'), fmtNum(stat('wins'))],
     [t('hud.results.stat.nightsPaid'), fmtNum(stat('nightsPaid'))],
     ...statLines(s.stats),
@@ -110,10 +114,18 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
   const dailyText = daily ? dailyLine(daily.date, daily.night, s.obols ?? 0) : '';
 
   const body = h('div', 'rcp-body', paper);
-  const lines: HTMLElement[] = rows.map(([k, v]) => {
+  /** A rolled line's roll: starts when the line prints, or lands at once when the print is skipped. */
+  const rolls = new Map<HTMLElement, (instant: boolean) => void>();
+  const lines: HTMLElement[] = rows.map(([k, v, roll]) => {
     const row = h('div', 'rcp-line', body);
     h('span', 'k', row, k);
-    h('span', 'v', row, v);
+    if (roll === undefined) {
+      h('span', 'v', row, v);
+    } else {
+      const cell = h('span', 'v', row);
+      const c = counter(cell, { fmt: (n) => fmtCoins(Math.round(n), true), tickSfx: 'numberTick', maxDur: ROLL_S });
+      rolls.set(row, (instant) => c.set(roll, instant ? { instant: true } : { dur: ROLL_S }));
+    }
     return row;
   });
   const post = postLine((s as RunSummary & { post?: ResultsPost }).post);
@@ -142,7 +154,8 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
     }
   }
 
-  const stamp = h('div', `rcp-stamp${won(s.result) ? ' good' : ''}`, paper, won(s.result) ? t('hud.results.stamp') : t(resultKey(s.result)));
+  const winner = won(s.result);
+  const stamp = h('div', `rcp-stamp ${winner ? 'good' : 'bad'}`, paper, winner ? t('hud.results.stamp') : t(resultKey(s.result)));
   stamp.hidden = true;
   const btns = h('div', 'rcp-btns', root);
   const again = h('button', 'rcp-btn', btns, t('hud.results.again'));
@@ -166,15 +179,22 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
   async function print(): Promise<void> {
     if (done) return;
     for (const ln of lines) {
-      if (skip) { lines.forEach((l) => l.classList.add('on')); break; }
+      if (skip) { lines.forEach((l) => { l.classList.add('on'); rolls.get(l)?.(true); }); break; }
       ln.classList.add('on');
+      rolls.get(ln)?.(false);
       uiSfx('click', 0.3);
       await wait(LINE_S * 1000);
     }
     done = true;
     stamp.hidden = false;
     stamp.classList.add('thud');
-    uiSfx('quotaTick', 1);
+    // The stamp is the result: a win flashes gold and plays the win stinger; a loss plays the lose sound under its red stamp.
+    if (winner) {
+      if (!app.save?.data?.settings?.calm) { try { app.fx.flash(0xffd34a, 0.3, 0.4); } catch { /* the flash is optional */ } }
+      try { app.audio.music.stinger('bigWin', { vol: 0.7 }); } catch { /* the stinger is optional */ }
+    } else {
+      uiSfx('lose', 0.8);
+    }
   }
 
   return {

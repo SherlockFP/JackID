@@ -36,6 +36,8 @@ const SETTLE_S = 0.6;
 const ANNOUNCE_S = 1.0;
 const PAYOUT_S = 0.9;
 const CLEAR_S = 0.6;
+const WHEEL_TICK_S = 1.5;   // the wheel ticks past each pocket over its last 1.5 s (the gaps grow as it slows)
+const HOVER_S = 0.4;        // a near miss hovers over the neighbour pocket this long before the drop
 const TABLE_MAX = 2000;     // per player per spin
 const CHIP_CAP = 590;       // InstancedMesh budget (600 chips)
 const GOLD = 0xffd040, GREEN = 0x7dff7a;
@@ -48,7 +50,8 @@ type Ev =
   | { k: 'phase'; p: Phase }
   /** LET IT RIDE offer: the seat's straight-up chips sit on `spot` for one more spin (READY to ride, CLEAR to take them). */
   | { k: 'ride'; seat: number; spot: string }
-  | { k: 'spin'; pocket: number; orbitMs: number; dropMs: number; bounces: number }
+  /** `near` (presentation only): some seat's straight-up number sat one pocket from the ball, so the ball hovers there first. */
+  | { k: 'spin'; pocket: number; orbitMs: number; dropMs: number; bounces: number; near: boolean }
   | { k: 'result'; pocket: number; rerolled: boolean; seats: Array<{ seat: number; stake: number; gross: number; nearmiss: boolean }> };
 type Act = { k: 'set'; spot: string; a: number } | { k: 'clear' } | { k: 'ready' };
 /** What every peer knows (public felt state). Mutated only in `present`. */
@@ -104,6 +107,8 @@ function nearestSpot(x: number, z: number): string | null {
 }
 
 const wrapTau = (a: number): number => ((a % (Math.PI * 2)) + Math.PI * 4) % (Math.PI * 2);
+/** Where the ball sits over pocket `n` on the rail radius (the dolly's frame). */
+const railXZ = (n: number): [number, number] => { const a = pocketAngle(n); return [Math.sin(a) * 0.275, Math.cos(a) * 0.275]; };
 
 export { playHeadless };
 
@@ -371,7 +376,10 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
       if (hit.length > 0 && out.seats[i].gross > 0) hs.ride[a.seat] = hit.map((b) => ({ ...b }));
     });
     void this.emit({ k: 'phase', p: 'lock' });
-    void this.emit({ k: 'spin', pocket: out.pocket, orbitMs: out.orbitMs, dropMs: out.dropMs, bounces: out.bounces });
+    void this.emit({
+      k: 'spin', pocket: out.pocket, orbitMs: out.orbitMs, dropMs: out.dropMs, bounces: out.bounces,
+      near: out.seats.some((s) => s.nearmiss),
+    });
     void this.emit({
       k: 'result', pocket: out.pocket, rerolled: out.rerolled,
       seats: active.map((a, i) => ({ seat: a.seat, stake: a.stake, gross: out.seats[i].gross, nearmiss: out.seats[i].nearmiss })),
@@ -445,10 +453,32 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
       rotor.rotation.y = rEnd; ballPivot.rotation.y = bEnd;
     } else {
       this.sfx('chipStack', { vol: 0.6 });
-      const spinS = (ev.orbitMs + ev.dropMs) / 1000;
+      const spinS = (ev.orbitMs + ev.dropMs) / 1000, dropS = ev.dropMs / 1000;
+      const dropAt = spinS - dropS;                                 // the ball leaves the rail
+      const hoverAt = ev.near ? dropAt - HOVER_S : dropAt;          // a near miss hovers over the neighbour first
+      const [hx, hz] = railXZ(ev.near ? wheelAt(ev.pocket, ev.pocket % 2 ? 1 : -1) : ev.pocket);
+      const [px, pz] = railXZ(ev.pocket);
+      const step = (Math.PI * 2) / POCKETS;
+      let tick = Math.floor(rStart / step), knocks = 0;
       await this.anim(spinS, (k) => {
         rotor.rotation.y = rStart + (rEnd - rStart) * k;
         ballPivot.rotation.y = bStart + (bEnd - bStart) * (1 - Math.pow(1 - k, 2));
+        // the linear clock behind the eased k (outQuad): the wheel ticks past each pocket in its last WHEEL_TICK_S
+        const s = (1 - Math.sqrt(Math.max(0, 1 - k))) * spinS;
+        if (s >= spinS - WHEEL_TICK_S) {
+          const idx = Math.floor(rotor.rotation.y / step);
+          if (idx !== tick) { tick = idx; this.sfx('wheelTick', { vol: 0.5, param: 0.4 }); }
+        }
+        if (s >= hoverAt) {                                          // the ball: hover, then drop into the pocket
+          const u = s < dropAt ? 0 : Math.min(1, (s - dropAt) / dropS);
+          dolly.visible = true;
+          dolly.position.set(hx + (px - hx) * u, 0.05 + 0.04 * (1 - u) * (1 - u), hz + (pz - hz) * u);
+        }
+        // the bounce knocks in the drop: as many as the spin drew, each softer and closer together
+        while (knocks < ev.bounces && s >= dropAt + dropS * (1 - Math.pow(0.6, knocks + 1))) {
+          this.sfx('ballBounce', { vol: 0.7, param: Math.max(0.15, 0.9 * Math.pow(0.6, knocks)) });
+          knocks++;
+        }
       }, 'outQuad');
     }
     // impact: the ball drops into the pocket
@@ -477,7 +507,7 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     const best = winners[0];
     if (best) {
       const tier = juiceTier(best.gross, best.stake);
-      void this.celebrate(tier, { amount: best.gross, at: wheel, lamps: [lamps[best.seat]], fast: pc.fast, restore: () => this.paintLamps() });
+      void this.celebrate(tier, { amount: best.gross, bet: best.stake, at: wheel, lamps: [lamps[best.seat]], fast: pc.fast, restore: () => this.paintLamps() });
     } else {
       this.sfx('coin');
     }

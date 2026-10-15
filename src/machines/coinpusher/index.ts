@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import { TableBase } from '@/machines/_base/TableBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
+import { flashPrefs } from '@/machines/_base/juice';
 import type { Kit } from '@/kit/types';
 import { isBot, type PlayerId } from '@/core/types';
 import type { MachineInputEvent } from '@/core/input/types';
@@ -113,6 +114,9 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
   private lastDrop: [number, number] = [-1e9, -1e9];
   /** Last whole heat pip drawn per station (the meter cools with time, so the screens repaint when it steps). */
   private heatShown: [number, number] = [-1, -1];
+  /** The local station is one pip short of the tilt alarm: its loops (heartbeat, riser, amber tint) run until it cools. */
+  private dangerOn = false;
+  private dangerStop: Array<() => void> = [];
   // ── local presentation / input ──
   private D = 1;                       // denomination (betLimits.min for this instance)
   private aim = 0;
@@ -482,7 +486,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     }
     if (kind !== '') {
       const tier = GATE_JUICE[kind] ?? 'small';
-      if (pc.local && !pc.fast) await this.celebrate(tier === 'jackpot' ? 'jackpot' : tier === 'medium' ? 'medium' : 'small');
+      if (pc.local && !pc.fast) void this.celebrate(tier === 'jackpot' ? 'jackpot' : tier === 'medium' ? 'medium' : 'small', { bet: this.D });
     }
     if (kind === 'W') this.sfx('whoosh', { vol: 0.6 });
     if (kind !== '') p.stationLamps[s].setOn(true);
@@ -502,7 +506,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     if (ev.pay <= 0) { this.commiserate(); return; }
     const tier = juiceTier(ev.pay, ev.bet, ev.tags);
     void this.pourCoins(Math.min(40, Math.round(ev.pay / Math.max(1, this.D))));
-    if (tier !== 'none' && tier !== 'push' && !pc.fast) await this.celebrate(tier);
+    if (tier !== 'none' && tier !== 'push' && !pc.fast) void this.celebrate(tier, { amount: ev.pay, bet: ev.bet });   // not awaited: a long show must not hold the queue
   }
 
   /** A thump: the shelf kicks, a few coins are shoved off into the trays, and the station's meter steps up. */
@@ -578,6 +582,28 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
         if (this.localSeat === s) this.showHud();
       }
     }
+    const ls = this.localSeat;
+    this.setDanger(ls >= 0 && this.pipsOf(ls) >= THUMP_MAX - 1);
+  }
+
+  /**
+   * Danger on the local station: the tilt pips sit one short of the max, so the next thump trips the alarm. A heartbeat
+   * and a riser loop, with a faint amber tint, until the meter cools below the danger pips or the seat is left.
+   */
+  private setDanger(on: boolean): void {
+    if (on === this.dangerOn) return;
+    this.dangerOn = on;
+    this.dangerStop.splice(0).forEach((stop) => stop());
+    if (!on) return;
+    const { timers, fx } = this.ctx;
+    this.dangerStop.push(timers.every(0.8, () => this.sfx('heartbeat', { vol: 0.5 })));
+    this.dangerStop.push(timers.every(1.6, () => this.sfx('tensionRise', { vol: 0.6, param: 0.6 })));
+    if (!flashPrefs().reduced) this.dangerStop.push(timers.every(0.4, () => fx.tint(0xffb040, 0.08, 0.5)));
+  }
+
+  override dispose(): void {
+    this.setDanger(false);
+    super.dispose();
   }
 
   // ── visuals: pile, lamps, screens, HUD ──────────────────────────────────────────────────────────────

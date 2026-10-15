@@ -19,6 +19,7 @@ import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/type
 import { MachineBase } from '@/machines/_base/MachineBase';
 import { juiceTier } from '@/machines/_base/tiers';
 import { blinkOn, countUp } from '@/machines/_base/juice';
+import { glitchPulse } from '@/core/fx';
 import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { ScreenSurface } from '@/kit/types';
 import type { KitX } from '@/kit/index';
@@ -420,9 +421,10 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
       this.ctx.fx.popText(screen.mesh, this.t('win', { n: fmtCoins(this.isLocalOccupant ? this.ctx.run.previewCredit(ev.pay, this.src, { bet: this.roundBet }) : ev.pay) }), 0xffd040, { dur: 1.1, rise: 0.3, scale: 1.1 + 0.1 * tierRank(tier), shake: royal });
       this.ctx.fx.glow(screen.mesh, 0xffd040, 0.3, 0.5);
       if (royal) {
+        // a royal flush is the jackpot show (pit-wide gold, bells, coin rain) plus a CRT glitch (glitchPulse honours reduceFlashing)
         this.ctx.fx.shake(0.02, 0.4);
-        this.sfx('jackpot');
-        marquee.chase('win', 12);
+        void this.celebrate('jackpot', { amount: ev.pay, bet: this.roundBet, marquee, at: screen.mesh, fast: pc.fast });
+        if (pc.fast) { this.sfx('jackpot'); marquee.chase('win', 12); } else glitchPulse(0.7, 0.5);
       } else {
         this.sfx(tierRank(tier) >= 2 ? 'win3' : tierRank(tier) === 1 ? 'win2' : 'win1');
         marquee.chase('win', 8);
@@ -481,7 +483,8 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     const tier = juiceTier(ev.amount, ev.bet, isRoyalCat(s.cat) ? ['jackpot'] : []);
     this.refresh();
     if (tier === 'medium' || tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot') {
-      void this.celebrate(tier, { amount: ev.amount, marquee, fast: pc.fast, at: screen.mesh });
+      // a royal already had its jackpot show at the draw: collect only counts the pot up under it
+      if (tier !== 'jackpot') void this.celebrate(tier, { amount: ev.amount, bet: ev.bet, marquee, fast: pc.fast, at: screen.mesh });
       await countUp(this.ctx, 0, ev.amount, pc.fast ? 0.1 : 1.2 * this.speed, (v) => this.drawScreen(v));
     } else {
       await this.pourCoins(ev.amount, { bet: ev.bet, fast: pc.fast, onCount: (v) => this.drawScreen(v) });

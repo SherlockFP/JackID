@@ -17,6 +17,7 @@ import type {
 import { foldEffects, modHookMeta, scopeMatches, stackedValue } from '@/game/types';
 import type { PhoneCallState, RunConfig } from '@/net/protocol';
 import type { ShiftState } from '@/game/shift.types';
+import type { HomePhoneApi } from '@/game/home/contract';
 import type { CutscenePlayOpts, CutsceneResult } from '@/core/cutscene/types';
 import { createRng } from '@/core/rng';
 import { bus } from '@/core/events';
@@ -265,6 +266,8 @@ export class BenchRun implements RunApi {
   stat(key: string, add = 0): number { const v = (this.counters.get(key) ?? 0) + add; if (add) this.counters.set(key, v); return v; }
   phone(): PhoneCallState | null { return null; }
   answerPhone(_choice: number): void {}
+  // The Evening (wave 69) has no home on the bench: no phone, so the phone UI and the flow stay out of the way.
+  homePhone(): HomePhoneApi | null { return null; }
   // The Hollow Door is off on the bench (no floor below the pit to open it on).
   hollowTrigger(): boolean { return false; }
   hollowCanRing(): boolean { return false; }

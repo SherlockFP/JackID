@@ -240,7 +240,8 @@ export function buildIntermission(el: HTMLElement, run: DebtRun, o: InterOpts): 
 
   const cont = (): void => {
     if (run.openFloor()) {
-      void (app.ui as UIOverlayX).banner(t('ingame.night', { n: run.night() }));
+      // THE EVENING: the lever took the lift, so no Night has opened yet; the bed's banner names the Night when it does
+      if (run.homeStage() === null) void (app.ui as UIOverlayX).banner(t('ingame.night', { n: run.night() }));
       o.redraw();
     } else {
       run.startWatch();

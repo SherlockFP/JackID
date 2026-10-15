@@ -18,6 +18,7 @@
  */
 import type { PlayerId } from '@/core/types';
 import { isBot } from '@/core/types';
+import type { Voice } from '@/core/audio/types';
 import type { KitX } from '@/kit';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { TableBase } from '@/machines/_base/TableBase';
@@ -29,7 +30,7 @@ import { TAU, clamp01, lerp } from '@/core/math';
 import { buildModel, layoutCable, type ElevatorParts } from './model';
 import {
   AFTER_S, BOARD_S, BOT_MAX, DOORS_S, HOOK_FLOOR, HOOK_INSURE, HOOK_LATE, INSURE_MIN, MAX_MULT, RATE, RTP, SNAP_S,
-  STAKE_MAX, STAKE_MIN, TABLE_CAP, TARGETS, botTarget, cashMult, crashFromSeed, multAt, outTime, playHeadless,
+  STAKE_MAX, STAKE_MIN, TABLE_CAP, TARGETS, botTarget, cashMult, crashFromSeed, floorsPassed, multAt, outTime, playHeadless,
   carYOf, refundChance, snapAt,
 } from './rules';
 import STR from './strings';
@@ -108,6 +109,9 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
   /** Seat HUD overlay (readability standard, see _base/seatHud.ts). Created in init, shown while seated. */
   private seatHud?: SeatHud;
   private hudTick = 0;                        // throttle for the live multiplier on the HUD (ms, host clock)
+  /** The climb's motor: one looping voice from the start of the ride to the snap (pitch follows the multiplier). */
+  private motor: Voice | null = null;
+  private tallyN = 0;                         // doublings already ticked on the tally this ride
 
   protected createModel(kit: KitX): MachineModel<ElevatorParts> { return buildModel(kit, this.modelOpts); }
 
@@ -123,8 +127,36 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
   attract(dt: number): void { this.attractor.update(dt); }
 
   dispose(): void {
+    this.stopMotor(0.05);
     this.seatHud?.dispose();
     super.dispose();
+  }
+
+  /** The motor loop starts at the ride: a fresh voice, the tally rewound. */
+  private startMotor(): void {
+    this.motor?.stop(0.05);
+    this.tallyN = 0;
+    this.motor = this.ctx.audio.play('motor', { pos: this.model.anchors.speaker, loop: true, vol: 0.45 });
+  }
+
+  /** The motor stops (the cable snaps, or the machine goes away). */
+  private stopMotor(fade: number): void {
+    this.motor?.stop(fade);
+    this.motor = null;
+  }
+
+  /**
+   * While the car climbs: the motor's pitch rises with the multiplier (+3 semitones an octave, capped at +12, so the cap
+   * comes at ×16), and each doubling ticks the tally one semitone higher.
+   */
+  private rideSound(m: number): void {
+    this.motor?.setPitch(Math.min(12, 3 * Math.log2(Math.max(1, m))));
+    this.motor?.setVol(0.45 - 0.1 * clamp01(Math.log(Math.max(1, m)) / Math.log(MAX_MULT)));
+    const doublings = floorsPassed(m);
+    while (this.tallyN < doublings) {
+      this.tallyN++;
+      this.sfx('tallyTick', { vol: 0.7, pitch: Math.min(12, this.tallyN) });
+    }
   }
 
   onOccupy(_pid: PlayerId, _seat: number, local: boolean): void {
@@ -370,8 +402,8 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
       case 'phase':
         s.phase = ev.p;
         if (ev.p === 'board') { this.drawHistory(); this.sfx('elevator'); }
-        if (ev.p === 'after') { this.carMode = 'free'; await this.returnCar(fast); }
-        if (ev.p === 'idle') this.carMode = 'rest';
+        if (ev.p === 'after') { this.carMode = 'free'; this.stopMotor(0.2); await this.returnCar(fast); }
+        if (ev.p === 'idle') { this.carMode = 'rest'; this.stopMotor(0.2); }
         this.showHud();
         return;
       case 'seat':
@@ -393,7 +425,7 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
       case 'go':
         s.phase = 'ride'; s.t0 = ev.t0;
         this.sfx('creak');
-        this.sfx('motor');
+        this.startMotor();
         this.carMode = 'ride';
         this.showHud();
         return;
@@ -411,7 +443,8 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
           this.seatHud?.result(net > 0 ? 'win' : 'even', net);
           this.showHud();
           const tier = juiceTier(ev.payout, ev.stake, ev.roof ? ['elevator:roof', 'jackpot'] : []);
-          await this.celebrate(tier, { amount: ev.payout, at });
+          // not awaited: a long show must not hold the table's queue (juice.ts rule); the net pop is the win
+          void this.celebrate(tier, { amount: ev.payout - ev.stake, bet: ev.stake, mult: ev.mult, at });
         } else {
           this.ctx.fx.sparks(at, 4, GREEN);
         }
@@ -437,11 +470,12 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
         s.hist = [...s.hist, ev.crash].slice(-8);
         this.drawHistory();
         this.carMode = 'free';
+        this.stopMotor(0.2);                                   // the cable snaps: the motor cuts out
         if (ev.roof) {
           p.roofFlood.visible = true;
           this.sfx('jackpot');
           this.ctx.fx.flash(0xfff4d0, 0.8, 0.3);
-          void this.celebrate('mega', { amount: 0, at: p.car });
+          void this.celebrate('mega', { amount: 0, mult: MAX_MULT, at: p.car });   // the roof's ×250 sets the feel (no pop: no stake here)
           void this.anim(fast ? 0.05 : 0.6, (k) => { p.car.position.y = lerp(p.car.position.y, carYOf(MAX_MULT), k * 0.5); });
           await this.wait(1.5);
           p.roofFlood.visible = false;
@@ -468,6 +502,7 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
     const live = this.carMode === 'ride' && s.t0 > 0;
     const m = live ? Math.min(MAX_MULT, multAt(Math.max(0, (now - s.t0) / 1000))) : 1;
     if (live && this.isLocalOccupant && now - this.hudTick > 150) { this.hudTick = now; this.showHud(); }
+    if (live) this.rideSound(m);
     if (this.carMode === 'ride') {
       const amp = 0.002 + 0.006 * clamp01(Math.log(Math.max(1, m)) / Math.log(50));
       p.car.position.y = carYOf(m);

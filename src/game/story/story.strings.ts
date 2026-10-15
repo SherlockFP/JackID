@@ -29,6 +29,8 @@ export default {
     'speaker.clerk': 'THE CLERK',
     'choice.look': 'LOOK AT THE CARD',
     'choice.away': 'LOOK AWAY',
+    // the Collector's visit (cutscenes/mafia_visit.cutscene.ts): one line, read by the House
+    'mafia.1': 'The House sends its regards.',
 
     'note.n01.t': 'Debt Terminal, operating notes',
     'note.n01.b': 'Deposit the Night\'s quota before the clock runs out. Partial payments are accepted. Gratitude is not.',
@@ -112,6 +114,7 @@ export default {
     'speaker.clerk': 'KATİP',
     'choice.look': 'KARTA BAK',
     'choice.away': 'BAKMA',
+    'mafia.1': 'Kasa selamını yolladı.',
 
     'note.n01.t': 'Borç Terminali, kullanım notu',
     'note.n01.b': 'Gece kotasını süre dolmadan yatırın. Kısmi ödeme kabul edilir. Teşekkür kabul edilmez.',

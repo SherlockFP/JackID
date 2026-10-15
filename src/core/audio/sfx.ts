@@ -56,6 +56,7 @@ const TRIM: Record<string, number> = {
   footstepCarpet: 1.61, footstepConcrete: 1.23, footstepMetal: 1.35, footstepWood: 1.07, footstepWet: 1.1, boom: 0.44,
   coinInsert: 0.78, coinRain: 1.75, tensionRise: 0.83, tallyTick: 2.8,
   gambleOpen: 0.8, gambleStep: 0.9, gambleBust: 0.6, allinDrum: 0.8, allinHit: 0.75, allinMiss: 0.5,
+  knock: 0.8, chainRattle: 1.05, lightSwitch: 1.61, bedCreak: 2.6, phoneBuzz: 2.6, liftDing: 0.86, msgBlip: 2.3, lockTurn: 0.73,
 };
 
 function def(names: string | string[], run: KitRecipe, meta: SfxMeta = {}): void {
@@ -944,10 +945,95 @@ def('allinMiss', (k) => {
   return 1.3;
 }, { pri: 8, max: 2 });
 
+// ── the Evening (wave 69, Home layer): the names in HOME_SFX (src/game/home/contract.ts) ─────────────
+/** Three hard knuckle knocks on a wooden door (~0.3 s apart, each a little different), with a short hallway tail. */
+def('knock', (k) => {
+  let at = 0, last = 0;
+  for (let i = 0; i < 3; i++) {
+    const v = rnd(0.85, 1);
+    thump(k, at, 230, 115, 0.05, 0.65 * v, 'triangle');                                        // knuckle body
+    snap(k, at, 0.6 * v, 1900, 0.012, 1.4);                                                    // knuckle tip
+    ring(k, at + 0.004, rnd(170, 210), 0.11, 0.1 * v, { ratios: [1, 2.1, 3.4], amps: [1, 0.35, 0.12] }); // door panel
+    k.noise(0.28, { at, vol: 0.05 * v, filter: 'lowpass', freq: 900, to: 260, env: { a: 0.004, d: 0.27, s: 0, r: 0.02 } }); // room tail
+    last = at; at += rnd(0.3, 0.36);
+  }
+  return last + 0.3;
+}, { pri: 7, max: 2 });
+/** Door chain: slides along its track, rattles against the plate, then drops into the keeper with a small clunk. */
+def('chainRattle', (k) => {
+  k.noise(0.22, { vol: 0.14, filter: 'bandpass', freq: 1800, to: 3600, q: 2, env: { a: 0.03, d: 0.19, s: 0, r: 0.02 } });  // slide
+  let t = 0.06, gap = 0.04;
+  for (let i = 0; i < 12; i++) {
+    clink(k, t, 0.24 * (1 - (0.5 * i) / 12) * rnd(0.8, 1), rnd(2400, 3800), rnd(0.025, 0.04), rnd(-0.5, 0.5));
+    t += gap * rnd(0.7, 1.3); gap *= 0.93;
+  }
+  thump(k, t, 210, 120, 0.04, 0.5, 'triangle'); snap(k, t, 0.45, 2600, 0.01, 1.4); ring(k, t, 980, 0.12, 0.06);      // keeper
+  return t + 0.2;
+}, { pri: 5, max: 3 });
+/** Plastic wall switch: a sharp press, the hollow housing, and the second clack as the toggle snaps over. */
+def('lightSwitch', (k) => {
+  snap(k, 0, 0.55, 3800, 0.008, 2);
+  k.osc('triangle', 1400, 0.03, { vol: 0.25, to: 700, env: { a: 0.001, d: 0.03, s: 0, r: 0.005 } });
+  thump(k, 0, 260, 160, 0.02, 0.25, 'triangle');
+  ring(k, 0.004, 2100, 0.03, 0.06, { ratios: [1, 1.9, 3.1], amps: [1, 0.4, 0.15] });
+  snap(k, 0.055, 0.3, 2600, 0.01, 2);
+  return 0.09;
+}, { pri: 6, max: 3 });
+/** Bed frame taking weight: a wooden creak that sags and rises, a few slat ticks, then the mattress settles. */
+def('bedCreak', (k) => {
+  const dur = 1.0, path = [150, 215, 170, 240, 185, 200, 160].map((f) => f * rnd(0.97, 1.03));
+  k.osc('sawtooth', path[0], dur, { path, vol: 0.15, lp: 800, q: 5, env: { a: 0.1, d: 0.3, s: 0.5, r: 0.3 }, am: [6, 0.6] });
+  k.osc('square', path[0] * 2.01, dur, { path: path.map((f) => f * 2.01), vol: 0.035, lp: 1200, env: { a: 0.12, d: 0.3, s: 0.4, r: 0.3 } });
+  for (const t of [0.12, 0.46]) thump(k, t, 95, 60, 0.12, 0.25, 'triangle');                                 // wood on the frame
+  for (let i = 0; i < 4; i++) snap(k, rnd(0.05, dur * 0.8), 0.12, rnd(900, 1800), 0.008, 3);                 // slats
+  k.noise(0.4, { at: 0.75, vol: 0.05, filter: 'lowpass', freq: 300, env: { a: 0.02, d: 0.38, s: 0, r: 0.02 } }); // settle
+  return dur + 0.2;
+}, { pri: 5, max: 2 });
+/** Phone on a table set to vibrate: two short buzzes, each a motor whine with the case rattling on the wood. */
+def('phoneBuzz', (k) => {
+  for (const t of [0, 0.24]) {
+    k.osc('sine', 178, 0.15, { at: t, vol: 0.19, env: { a: 0.01, d: 0.13, s: 0.6, r: 0.02 }, am: [46, 0.6] });
+    k.osc('square', 178, 0.15, { at: t, vol: 0.05, lp: 900, env: { a: 0.01, d: 0.13, s: 0.6, r: 0.02 }, am: [46, 0.6] });
+    k.noise(0.15, { at: t, vol: 0.11, filter: 'bandpass', freq: 1400, q: 2, env: { a: 0.01, d: 0.14, s: 0, r: 0.02 } });
+    thump(k, t, 120, 80, 0.04, 0.19, 'triangle');
+  }
+  return 0.44;
+}, { pri: 6, max: 2 });
+/** Lift arrives: a two-tone bell (A5, then a fourth lower at E5), each note a struck metal bell with inharmonic partials. */
+def('liftDing', (k) => {
+  const tone = (at: number, f: number, dur: number, vol: number): void => {
+    k.fm(f, 3.5, 1.8, dur, { at, vol, idxEnd: 0.1 });
+    ring(k, at, f, dur * 0.6, vol * 0.2, { ratios: [1, 2.76, 5.4], amps: [1, 0.35, 0.12] });
+    snap(k, at, vol * 0.45, 3200, 0.008, 2);
+  };
+  tone(0, hz('A5'), 1.2, 0.34);
+  tone(0.45, hz('E5'), 1.4, 0.3);
+  return 1.9;
+}, { pri: 7 });
+/** Soft message notification: two quiet sine pips rising a fourth (G5 to C6) with the faintest tick. */
+def('msgBlip', (k) => {
+  k.osc('sine', hz('G5'), 0.07, { vol: 0.2, env: { a: 0.004, d: 0.065, s: 0, r: 0.01 } });
+  k.osc('sine', hz('C6'), 0.13, { at: 0.075, vol: 0.2, env: { a: 0.004, d: 0.12, s: 0, r: 0.02 } });
+  snap(k, 0, 0.1, 4500, 0.006, 2);
+  return 0.22;
+}, { bus: 'ui', pri: 5, max: 3 });
+/** Deadbolt turned with a key: the key scrapes in, the pins lift one at a time (ticks), the bolt throws with a steel clunk. */
+def('lockTurn', (k) => {
+  k.noise(0.16, { vol: 0.1, filter: 'bandpass', freq: 2200, to: 3400, q: 2, env: { a: 0.03, d: 0.13, s: 0, r: 0.02 } });  // key scrapes in
+  for (let i = 0; i < 5; i++) {
+    const t = 0.13 + i * 0.05 + rnd(0, 0.01);
+    snap(k, t, 0.38 - i * 0.03, 2200 + i * 120, 0.008, 6);                                                              // pin lifts
+    ring(k, t, rnd(1200, 1400) + i * 60, 0.03, 0.03);
+  }
+  thump(k, 0.4, 150, 70, 0.14, 0.6); snap(k, 0.4, 0.5, 1100, 0.025, 1.2); ring(k, 0.41, 620, 0.2, 0.09);                 // bolt throws
+  k.noise(0.06, { at: 0.4, vol: 0.18, filter: 'highpass', freq: 3000, env: TICK_ENV(0.06) });
+  return 0.7;
+}, { pri: 7 });
+
 /** Sounds longer than ~0.8 s: their voices are wired into slow-motion (`setTimeScale`) so a big win drags with the screen. */
 const LONG = ['win2', 'win3', 'winHuge', 'winRise', 'winMega', 'jackpot', 'jackpotBells', 'quotaMet', 'quotaFail', 'stinger', 'tensionRise', 'trapdoor', 'powerDown', 'powerUp', 'tapeStop',
   'tinnitus', 'defib', 'totemPlace', 'lose', 'bell', 'upgrade', 'unlock', 'coinShower', 'glassBreak', 'shuffle', 'dice', 'printer', 'whisper', 'creak',
-  'phoneRing', 'clockAlarm', 'cashRegister', 'elevatorDing', 'gunShot', 'door', 'doorCreak', 'heartbeat'];
+  'phoneRing', 'clockAlarm', 'cashRegister', 'elevatorDing', 'gunShot', 'door', 'doorCreak', 'heartbeat', 'liftDing', 'bedCreak'];
 for (const n of LONG) { const d = SFX_DEFS.get(n); if (d) d.meta.long = true; }
 for (const n of ['gambleOpen', 'allinDrum', 'allinHit', 'allinMiss']) { const d = SFX_DEFS.get(n); if (d) d.meta.long = true; }
 
@@ -1085,6 +1171,16 @@ export function buildAmbience(id: AmbienceId, env: AmbEnv): AmbBed {
       b.every(0.8, 3, () => b.event('drip', 0.15, [3, 12], { pitch: rnd(-6, 4) }));
       b.every(15, 30, () => b.event('creak', 0.09, [4, 12], { param: 0.15 }));
       b.every(25, 50, () => b.event('footstepWet', 0.08, [4, 10]));
+      break;
+    case 'apartment':                              // home at night: fridge hum, the road far off, soft rain, the neighbour's TV through the wall
+      b.osc('sine', 50, 0.018); b.osc('sine', 100, 0.006, { detune: 4 }); b.osc('sawtooth', 50, 0.004, { lp: 200 });
+      b.noise({ color: 'pink', freq: 180, q: 2, gain: 0.012 });                                                 // fridge motor air
+      { const road = b.noise({ color: 'brown', type: 'lowpass', freq: 240, gain: 0.08 }); b.mod(road.gain, 0.05, 0.025); } // traffic swell
+      b.noise({ color: 'pink', freq: 650, q: 0.7, gain: 0.02 });                                                // road rumble
+      b.noise({ color: 'white', type: 'highpass', freq: 3500, q: 0.7, gain: 0.01 });                            // soft rain
+      b.noise({ color: 'pink', freq: 2400, q: 0.6, gain: 0.018, lfo: [0.15, 500] });                            // rain on the glass
+      { const tv1 = b.noise({ color: 'pink', freq: 520, q: 2.2, gain: 0.012 }); b.mod(tv1.gain, 3.1, 0.008); }  // TV murmur, syllable rhythm
+      { const tv2 = b.noise({ color: 'pink', freq: 1250, q: 2.5, gain: 0.006 }); b.mod(tv2.gain, 4.3, 0.004); }
       break;
     default:                                       // 'pit' (and any unknown id): the casino floor
       b.noise({ color: 'pink', freq: 600, q: 0.6, gain: 0.16, lfo: [0.11, 200] }); b.noise({ color: 'brown', type: 'lowpass', freq: 160, gain: 0.22 });

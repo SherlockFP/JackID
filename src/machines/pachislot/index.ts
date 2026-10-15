@@ -42,7 +42,8 @@ export { playHeadless };
 
 /** Event payloads (type aliases so they stay JSON-compatible). The lottery flag is never sent. */
 type StartEv = { k: 'start'; v: number; free: boolean; game: number };
-type StopEv = { k: 'stop'; reel: number; press: number; final: number; slip: number };
+/** `tease` (presentation only): this last stop misses with a flagged role two reels deep, so the reel creeps its last turn. */
+type StopEv = { k: 'stop'; reel: number; press: number; final: number; slip: number; tease: boolean };
 type ResultEv = {
   k: 'result'; v: number; game: number; role: string; medals: number; replay: boolean; free: boolean; bonus: Bonus | null;
   of: number; carry: Bonus | null; lost: boolean; tease: boolean; stops: number[];
@@ -69,6 +70,8 @@ type State = {
 type Game = { flag: Role; target: Role; avoidTease: boolean; free: boolean; v: number; slipMax: number; autoAim: boolean };
 
 const HINT_COLOUR: Record<Hint, number> = { white: 0xffffff, blue: 0x3060ff, purple: 0xb040ff, gold: 0xffd040 };
+/** The last-reel tease: the creep's length, s (0.8–1.2 s, the shared near-miss tease). */
+const TEASE_S = 1.0;
 const LCD_PINK = '#ff5aa0';
 const LCD_GOLD = '#ffd040';
 
@@ -253,8 +256,13 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
     });
     this.stopped[reel] = plan.final;
     this.reelSpin[reel] = false;
-    void this.emit({ k: 'stop', reel, press, final: plan.final, slip: plan.slip });
-    if (this.stopped.every((s) => s !== null)) void this.resolve();
+    // the judge is pure, so the last stop can already say whether it is a near miss (the stop carries the tease flag).
+    // The replay value is not needed here: it only sets the medals of a REPLAY, never the tease bit or a zero payout.
+    const last = this.stopped.every((s) => s !== null);
+    const j = last ? judge(maskOf(this.stopped as number[]), g.flag, g.target, this.state.held, 0) : null;
+    const tease = !!j && j.tease && j.medals === 0 && !j.bonus;
+    void this.emit({ k: 'stop', reel, press, final: plan.final, slip: plan.slip, tease });
+    if (last) void this.resolve();
     this.showHud();
   }
 
@@ -345,11 +353,30 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
     this.state.stops[ev.reel] = ev.final;
     buttons.stop[ev.reel].setLit(false);
     void buttons.stop[ev.reel].press(0.06);
-    this.sfx('reelStop', { vol: 1, param: ev.reel / 2 });
     this.sfx('click', { vol: 0.6, pitch: 4 });
     if (pc.local) this.ctx.fx.shake(0.002, 0.08);
+    if (ev.tease && !pc.fast) { await this.lastReelTease(ev.reel, ev.final); return; }
+    this.sfx('reelStop', { vol: 1, param: ev.reel / 2 });
     const dur = pc.fast ? 0.04 : 0.05 + 0.03 * ev.slip;      // ≤ 0.19 s, the skill window
     await reels[ev.reel].stopAt(ev.final, dur, 0);
+  }
+
+  /**
+   * The last-reel tease (the shape the near-miss machines share): the reel that slipped away creeps its last turn over
+   * TEASE_S with an ease-out. One reelTick per symbol passes, each one higher and further apart than the last, and the
+   * reel lands with a soft stop. The result's near-miss beat (red pulse) follows.
+   */
+  private async lastReelTease(reel: number, final: number): Promise<void> {
+    const r = this.parts.reels[reel];
+    const step = (Math.PI * 2) / r.count;
+    let facet = Math.floor(r.root.rotation.x / step);
+    void this.ctx.tweens.run(TEASE_S * 0.75, (k) => {       // the tick tween covers the eased phase of the kit's stop
+      if (this.disposed) return;
+      const f = Math.floor(r.root.rotation.x / step);
+      if (f !== facet) { facet = f; this.sfx('reelTick', { vol: 0.6, param: 0.3 + 0.6 * k }); }
+    });
+    await r.stopAt(final, TEASE_S, 0.1);
+    if (!this.disposed) this.sfx('reelStop', { vol: 0.9, param: reel / 2 });
   }
 
   private async presentResult(ev: ResultEv, pc: PresentCtx): Promise<void> {
@@ -392,7 +419,7 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
     if (coins > 0) {
       this.sfx('coinDrop');
       if (tier === 'medium' || tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot') {
-        void this.celebrate(tier, { amount: coins, lamps: lamps.oniEyes, restore: () => this.refresh(), fast: pc.fast });
+        void this.celebrate(tier, { amount: coins, bet, lamps: lamps.oniEyes, restore: () => this.refresh(), fast: pc.fast });
       } else {
         await this.pourCoins(coins, { bet, fast: pc.fast, onCount: () => this.drawScreen() });
       }
@@ -436,7 +463,7 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
     this.drawScreen(coins);
     this.ctx.fx.popText(this.parts.reels[1].root, this.t('feastEnd'), 0xffd040, { dur: 1.3, rise: 0.35, scale: 1.2, shake: true });
     if (tier === 'medium' || tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot') {
-      await this.celebrate(tier, { amount: coins, lamps: lamps.oniEyes, restore: () => this.refresh(), fast: pc.fast });
+      void this.celebrate(tier, { amount: coins, bet: BET_IN * ev.v, lamps: lamps.oniEyes, restore: () => this.refresh(), fast: pc.fast });
     } else {
       await this.pourCoins(coins, { bet: BET_IN * ev.v, fast: pc.fast, onCount: (v) => this.drawScreen(v) });
     }

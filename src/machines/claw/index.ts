@@ -374,7 +374,7 @@ export default class Claw extends MachineBase<ClawParts, Ev, Snap> {
     const carry = (m: THREE.Object3D | null): void => { if (m && !fell) this.carry(m); };
     await this.anim(1.0, (k) => {
       this.setDepth(lerp(HEAD_DOWN, HEAD_TOP, k));
-      if (liftDrop && !fell && k >= 0.6) { fell = true; this.sfx('thud', { vol: 0.5 }); void this.dropPrize(mesh, target); }
+      if (liftDrop && !fell && k >= 0.6) { fell = true; void this.slip(mesh, target); }
       carry(mesh);
     }, 'outQuad');
     if (liftDrop) {
@@ -388,7 +388,7 @@ export default class Claw extends MachineBase<ClawParts, Ev, Snap> {
     this.sfx('motor', { vol: 0.4 });
     await this.anim(1.5, (k) => {
       this.setGantry(lerp(x0, CHUTE.x, k), lerp(z0, CHUTE.z, k));
-      if (travelDrop && !fell && k >= 0.8 / 1.5) { fell = true; this.sfx('thud', { vol: 0.5 }); void this.dropPrize(mesh, target); }
+      if (travelDrop && !fell && k >= 0.8 / 1.5) { fell = true; void this.slip(mesh, target); }
       carry(mesh);
     }, 'inOutQuad');
     if (travelDrop) {
@@ -438,13 +438,30 @@ export default class Claw extends MachineBase<ClawParts, Ev, Snap> {
     } else {
       if (ev.kinds.includes('egg')) this.sfx('jackpot');
       else this.sfx('win2');
-      void this.celebrate(juiceTier(ev.gross, this.st.stake, ev.tags));
-      if (ev.gross > 0) void this.pourCoins(ev.gross);
+      // the stake was charged at start, so the win shown is the gross less the stake; the multiple uses the gross
+      const bet = this.st.stake;
+      void this.celebrate(juiceTier(ev.gross, bet, ev.tags), { amount: Math.max(0, ev.gross - bet), bet });
+      if (ev.gross > 0) void this.pourCoins(ev.gross, { bet });
       for (const c of charmsOf(ev.kinds)) this.toast(t(c === 'rare' ? 'm.claw.charmRare' : 'm.claw.charmCommon'), 'good');
     }
     this.parts.timer.set('--');
     this.timerShown = '';
     if (this.isLocalOccupant) this.showHud();
+  }
+
+  /**
+   * A slip: the prize leaves the grip and hangs for a beat. A 0.3 s wobble and a near-miss tease (heartbeat, red pulse,
+   * the win LED flutters) run first, then it falls onto its pile spot with the thud.
+   */
+  private async slip(mesh: THREE.Object3D | null, target: Prize | null): Promise<void> {
+    if (mesh) {
+      const r0 = mesh.rotation.z;
+      const wobble = this.anim(0.3, (k) => { mesh.rotation.z = r0 + Math.sin(k * Math.PI * 4) * 0.22 * (1 - k); }, 'outQuad');
+      await Promise.all([wobble, this.nearMiss({ at: mesh, dur: 0.3, lamps: [this.parts.leds.win] })]);
+      mesh.rotation.z = r0;
+    }
+    this.sfx('thud', { vol: 0.5 });
+    await this.dropPrize(mesh, target);
   }
 
   /** The prize drops (failed or weak grip): it falls onto its pile spot. */

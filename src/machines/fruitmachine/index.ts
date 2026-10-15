@@ -26,7 +26,7 @@ import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_
 import { buildModel, REEL_X, type FruitParts } from './model';
 import {
   HOOK, LADDER, STOPS, SQUARES, TOP_RUNG, canPick, gambleStep, newCore, nudgeReel, openGamble,
-  pay, playHeadless, startSpin, type Core, type Feature, type Gamble, type Pick, type Square,
+  pay, playHeadless, startSpin, symAt, type Core, type Feature, type Gamble, type Pick, type Square,
 } from './rules';
 import { STRINGS } from './strings';
 
@@ -68,6 +68,19 @@ const GAMBLE_S = 10;
 const STOP_GAP_S = 0.3;
 const FIRST_STOP_S = 1.0;
 const LED_AMBER = '#ffb020';
+/** A reach: the last reel keeps turning this long before its slow stop. */
+const REACH_HOLD_S = 0.8;
+
+/**
+ * A reach: exactly two of the three fruits on the line match (a STEP pair is not a fruit) and the line is not a win.
+ * The third reel is then the one that decides, so it is held (see `reachHold`).
+ */
+const reachOf = (stops: readonly number[]): boolean => {
+  const s = [0, 1, 2].map((r) => symAt(r, stops[r]));
+  const pair = s[0] === s[1] || s[0] === s[2] ? s[0] : s[1] === s[2] ? s[1] : null;
+  if (pair === null || pair === 'STEP') return false;
+  return !(s[0] === s[1] && s[1] === s[2]);
+};
 
 const SQ_KEY: Record<Square['k'], string> = { NUDGE: 'lab_nudge', CASH: 'lab_win', HOLD: 'lab_hold' };
 
@@ -431,11 +444,14 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
     const fast = pc.fast;
     this.setPub(ev.pub);
     if (!fast) await this.wait(FIRST_STOP_S);
+    const reach = !fast && ev.line === 0 && !ev.held[2] && reachOf(ev.stops);
     for (let r = 0; r < REEL_X.length; r++) {
       if (ev.held[r]) { this.spinSet[r] = false; this.view.stops[r] = ev.stops[r]; continue; }
+      const held = reach && r === 2;
+      if (held) await this.reachHold();                     // the last reel keeps turning through the hold, then stops slowly
       this.spinSet[r] = false;
       this.view.stops[r] = ev.stops[r];
-      void reels[r].stopAt(ev.stops[r], fast ? 0.04 : 0.10, 0.12);
+      void reels[r].stopAt(ev.stops[r], held ? 0.6 : fast ? 0.04 : 0.10, held ? 0.2 : 0.12);
       this.sfx('reelStop', { vol: 0.9, param: r / 2 });
       this.ctx.fx.shake(0.002, 0.06);
       if (!fast) await this.wait(STOP_GAP_S);
@@ -468,6 +484,18 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
     }
     this.refresh();
     this.roundEnd(pc, ev.stake, ev.pub.nudges, false);
+  }
+
+  /**
+   * A reach: two fruits line up and the last reel is still turning. It keeps turning for REACH_HOLD_S under a riser, a
+   * tag and a near-miss beat (heartbeat, red pulse); the caller then lands it slowly.
+   */
+  private async reachHold(): Promise<void> {
+    const reel = this.parts.reels[2];
+    this.sfx('tensionRise', { vol: 0.8, param: 0.2 });        // a 0.8 s riser; its thump lands as the stop starts
+    this.ctx.tweens.shake(reel.root, 0.008, REACH_HOLD_S);     // the real reel shakes in its housing
+    this.ctx.fx.popText(reel.root, this.t('reach'), 0xffd040, { dur: 0.8, rise: 0.2, scale: 1 });
+    await this.nearMiss({ dur: REACH_HOLD_S, at: reel.root });
   }
 
   private async presentNudge(ev: NudgeEv, pc: PresentCtx): Promise<void> {
@@ -547,7 +575,7 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
 
   private async payShow(amount: number, stake: number, fast: boolean): Promise<void> {
     const tier = juiceTier(amount, stake);
-    if (tierAtLeast(tier, 'medium')) await this.celebrate(tier, { amount, restore: () => this.refresh(), fast });
+    if (tierAtLeast(tier, 'medium')) await this.celebrate(tier, { amount, bet: stake, restore: () => this.refresh(), fast });
     else await this.pourCoins(amount, { bet: stake, fast });
     this.refresh();
   }

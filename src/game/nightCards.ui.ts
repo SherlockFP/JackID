@@ -4,6 +4,10 @@
  * Draft. A card takes 1 / 2 or a click; the run's `run:nightcard` event closes the panel (picked, or auto-picked with the SAFE card
  * when the 20 s run out, which a toast names). While the panel is open, new toasts wait behind it (`holdToasts`). The returned
  * disposer closes the panel and removes the chip. Rules and the deck live in `nightCards.ts`; the run holds the offer and the kept card.
+ *
+ * Juice (wave 7): the cards deal in 120 ms apart with the flip sound. A pick scales the chosen card up with a gold flash, fades the
+ * others, and flies the card to the chip; the panel closes when it lands. Calm mutes the flash, reduced motion drops the motion (the
+ * sounds stay). Nothing here starts a timer of its own: the ticker is the UI frame, and the flight runs on the Web Animations API.
  */
 import './nightCards.css';
 import { app } from '@/core/app';
@@ -23,6 +27,19 @@ const KEYS = ['1', '2'];
 const RECEIPT_SEC = 1.5;
 /** The timer pulses in its last this-many seconds. */
 const PULSE_LAST_SEC = 5;
+/** The deal: each card lands this long after the one before it (sound and motion). */
+const DEAL_GAP_S = 0.12;
+/** A pick: the chosen card's gold rise runs for PICK_RISE_MS; the card flies to the chip from PICK_FLY_S; the panel closes at PICK_DONE_S. */
+const PICK_RISE_MS = 220;
+const PICK_FLY_S = 0.3;
+const PICK_FLY_MS = 500;
+const PICK_DONE_S = 0.85;
+
+/** The open card panel takes a pick as the flight (set while the panel is up; null otherwise). Returns false when it cannot. */
+let activePick: ((card: string) => boolean) | null = null;
+
+const calmOn = (): boolean => !!app?.save?.data?.settings?.calm;
+const reduceMotion = (): boolean => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
 /** Unpaid tithe booked since the last Dawn receipt: the `run:tithe` shortfalls of the missed Watches. */
 interface TitheBook { unpaid: number }
@@ -62,14 +79,16 @@ export function mountNightCardsUi(run: DebtRun): () => void {
   }));
   offs.push(bus.on('run:nightcard', (e) => {
     if (e.pid !== run.selfId) return;
-    if (e.state === 'offer') { showCards(run, book); return; }
+    if (e.state === 'offer') { showCards(run, book, chip, refreshChip); return; }
+    // A pick flies its card to the chip, and the panel closes when it lands (activePick). Any other state closes at once.
+    if (e.state === 'picked' && e.card && activePick?.(e.card)) return;
     app.ui.closePanel(PANEL);   // the held toasts show now
     refreshChip();
     // A warning kind: the auto-pick is news the player must see now, so it takes a toast slot ahead of the news in line.
     if (e.state === 'auto' && e.card) ui.toast(t('nightcard.timeout', { card: t(`nightcard.${e.card}.name`) }), 'warn', 3);
   }));
   refreshChip();
-  if (run.nightCardOffer()) showCards(run, book);
+  if (run.nightCardOffer()) showCards(run, book, chip, refreshChip);
   return () => {
     app.ui.closePanel(PANEL);
     for (const off of offs.splice(0)) off();
@@ -78,7 +97,7 @@ export function mountNightCardsUi(run: DebtRun): () => void {
 }
 
 /** The card panel: modal (the veil blocks the walk), no Esc (a card must be kept), keys 1-2 captured before the game sees them. */
-function showCards(run: DebtRun, book: TitheBook): void {
+function showCards(run: DebtRun, book: TitheBook, chip: HTMLElement, refreshChip: () => void): void {
   const offer = run.nightCardOffer();
   if (!offer) return;
   const ui = app.ui as UIOverlayX;
@@ -94,6 +113,8 @@ function showCards(run: DebtRun, book: TitheBook): void {
   const receipt = { n: offer.night, due, paid: due + books.carried, interest: books.interest, tithe: book.unpaid };
   book.unpaid = 0;
   const cheap = cheapestBet();
+  const reduce = reduceMotion();
+  const calm = calmOn();
   app.ui.panel(PANEL, (host) => {
     ui.holdToasts(true);   // the news waits behind the panel: released by the cleanup below
     let alive = true;
@@ -150,13 +171,90 @@ function showCards(run: DebtRun, book: TitheBook): void {
       card.addEventListener('click', () => take(i));
       return card;
     });
-    // The countdown rides the UI ticker (frame time, no timer of its own); it stops with the panel.
-    addTicker(() => {
+    // The deal: each card lands DEAL_GAP_S after the one before it. The motion is on the Web Animations API (delayed, no timer of its own).
+    if (!reduce) {
+      cards.forEach((card, i) => {
+        card.animate([
+          { opacity: 0, transform: 'translateY(-12%) scale(.8)' },
+          { opacity: 1, transform: 'translateY(0) scale(1.05)', offset: 0.7 },
+          { opacity: 1, transform: 'translateY(0) scale(1)' },
+        ], { duration: 260, delay: i * DEAL_GAP_S * 1000, fill: 'backwards', easing: 'ease-out' });
+      });
+    }
+    const dealt = cards.map(() => false);
+    let dealT = 0;
+    // The pick flight, once a card is chosen: null while the offer is open.
+    let pick: { idx: number; t: number; flown: boolean; ghost: HTMLElement | null; target: { x: number; y: number } } | null = null;
+    /** Chooses a card: the chosen one rises gold, the others fade, and the flight to the chip starts at PICK_FLY_S. */
+    const startPick = (idx: number): boolean => {
+      if (pick) return true;   // a second pick while the first flies is ignored (the panel closes on its own)
+      const chosen = cards[idx];
+      if (!chosen) return false;
+      pick = { idx, t: 0, flown: false, ghost: null, target: { x: 0, y: 0 } };
+      chosen.classList.add('nc-picked');
+      if (!reduce) chosen.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }], { duration: PICK_RISE_MS, fill: 'forwards', easing: 'ease-out' });
+      cards.forEach((c, j) => {
+        if (j === idx) return;
+        if (reduce) c.style.opacity = '0';
+        else c.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, fill: 'forwards' });
+      });
+      if (!calm) app.fx.flash(0xffd34a, 0.3, 0.25);   // the gold flash (fx.flash honours reduced flashing)
+      uiSfx('chime', 0.8);
+      return true;
+    };
+    /** The chosen card flies to its chip: the chip's place is measured while it is shown (the kept card is set by now), then it hides. */
+    const flyChosen = (p: NonNullable<typeof pick>): void => {
+      refreshChip();
+      const cr = chip.getBoundingClientRect();
+      chip.hidden = true;
+      p.target = { x: cr.left + cr.width / 2, y: cr.top + cr.height / 2 };
+      const card = cards[p.idx];
+      if (!card || reduce) return;
+      const r = card.getBoundingClientRect();
+      const g = card.cloneNode(true) as HTMLElement;
+      g.classList.add('nc-ghost');
+      g.style.left = `${r.left}px`; g.style.top = `${r.top}px`; g.style.width = `${r.width}px`; g.style.height = `${r.height}px`;
+      app.ui.root.appendChild(g);
+      const dx = p.target.x - (r.left + r.width / 2), dy = p.target.y - (r.top + r.height / 2);
+      g.animate([
+        { transform: 'translate(0, 0) scale(1.08)', opacity: 1 },
+        { transform: `translate(${dx}px, ${dy}px) scale(0.4)`, opacity: 0.4 },
+      ], { duration: PICK_FLY_MS, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' });
+      p.ghost = g;
+    };
+    /** The chip lands: it shows, pops, and the panel closes. */
+    const landPick = (p: NonNullable<typeof pick>): void => {
+      p.ghost?.remove();
+      p.ghost = null;
+      refreshChip();
+      if (!chip.hidden && !reduce) chip.animate([
+        { transform: 'translateX(-50%) skewX(-8deg) scale(1.5)' },
+        { transform: 'translateX(-50%) skewX(-8deg) scale(1)' },
+      ], { duration: 220, easing: 'ease-out' });
+      app.ui.closePanel(PANEL);
+    };
+    const pickFromEvent = (card: string): boolean => {
+      const idx = ids.findIndex((id) => id === card);
+      return idx >= 0 && startPick(idx);
+    };
+    activePick = pickFromEvent;
+    // The countdown rides the UI ticker (frame time, no timer of its own); it stops with the panel. The deal sound and the pick flight ride it too.
+    addTicker((dt) => {
       if (!alive) return false;
+      if (!pick) {
+        dealT += dt;
+        cards.forEach((_, i) => { if (!dealt[i] && dealT >= i * DEAL_GAP_S) { dealt[i] = true; uiSfx('cardFlip', 0.8); } });
+      } else {
+        pick.t += dt;
+        if (!pick.flown && pick.t >= PICK_FLY_S) { pick.flown = true; flyChosen(pick); }
+        if (pick.t >= PICK_DONE_S) { const p = pick; pick = null; landPick(p); return false; }
+        return undefined;   // the countdown freezes while the card flies (the offer is already taken)
+      }
       const left = Math.max(0, run.nightCardOffer()?.left ?? 0);
       timerTxt.textContent = t('nightcard.timer', { s: Math.ceil(left) });
       timer.classList.toggle('nc-pulse', left > 0 && left <= PULSE_LAST_SEC);
       fill.style.width = `${Math.min(100, (left / NIGHT_CARD_TIMEOUT_SEC) * 100)}%`;
+      return undefined;
     });
     const onKey = (e: KeyboardEvent): void => {
       const i = KEYS.indexOf(e.key);
@@ -171,6 +269,8 @@ function showCards(run: DebtRun, book: TitheBook): void {
     return () => {
       alive = false;
       window.removeEventListener('keydown', onKey, true);
+      pick?.ghost?.remove();
+      if (activePick === pickFromEvent) activePick = null;
       ui.holdToasts(false);   // the news held behind the panel shows now
     };
   });

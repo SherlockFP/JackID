@@ -34,7 +34,7 @@ import { fmtCoins, t } from '@/core/i18n';
 import { TableBase } from '@/machines/_base/TableBase';
 import { SeatHud, type HudControl, type HudNumber, type HudResultKind, type Txt } from '@/machines/_base/seatHud';
 import { bjTotal, rankOf } from '@/machines/_base/cards';
-import { juiceTier } from '@/machines/_base/tiers';
+import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { STRINGS } from './blackjack.strings';
 import {
@@ -773,7 +773,9 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
     b.results = ev.results; b.twin = ev.twin; b.ready = false; b.offer = 0;
     const at = p.spots[ev.box];
     const bj = ev.results.includes('bj');
-    const tier = juiceTier(ev.ret, ev.stake, bj ? ['blackjack'] : []);
+    const jt = juiceTier(ev.ret, ev.stake, bj ? ['blackjack'] : []);
+    // a natural pays 3:2 (x2.5 gross), which the multiple alone reads as small: it is a set-piece, so it celebrates at medium
+    const tier = bj && !tierAtLeast(jt, 'medium') ? 'medium' : jt;
     // callouts show the NET the run credits (previewCredit: House Favour, modifiers, limit) less the stake, never the gross
     const mine = this.isLocalOccupant && ev.box === this.localSeat && ev.stake > 0;
     const net = mine ? this.ctx.run.previewCredit(ev.ret, this.src, { bet: ev.stake }) - ev.stake : ev.ret - ev.stake;
@@ -785,7 +787,8 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
       else this.sfx(tier === 'small' ? 'win1' : tier === 'medium' ? 'win2' : 'win3');
       this.ctx.fx.popText(at, `+${fmtCoins(win)}`, GOLD, { dur: 1.1, rise: 0.3, scale: 1.1 });
       if (bj) this.ctx.fx.popText(at, this.t('rBj'), GOLD, { dur: 1.1, rise: 0.4 });
-      if (tier !== 'small') void this.celebrate(tier, { amount: win, at, fast });
+      if (tier !== 'small') void this.celebrate(tier, { amount: win, bet: ev.stake, at, fast });
+      void this.pourCoins(win, { bet: ev.stake, from: at, fast });
     } else if (net === 0 && ev.stake > 0) {
       this.sfx('coin', { vol: 0.6 });
       this.ctx.fx.popText(at, this.t('rPush'), 0xffffff, { dur: 0.9, rise: 0.2 });

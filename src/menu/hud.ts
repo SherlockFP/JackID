@@ -7,6 +7,10 @@
  *
  * Juice: wallet counter rolls 30 ticks/s; gains fly as numbers into the wallet anchor and bump it; spends bump, red only when the pocket is short; big
  * results add hit-stop and a feed line; Last Call runs a banner and blinks the clock.
+ * Meta moments (wave 7 juice, juiceMath.ts): the centre win figure rolls up from 0 and lands on a burst; the wallet ticks pitched while
+ * it rises; the quota bar has a lagging ghost, rolled numbers and quarter ticks; QUOTA MET bumps and bursts (one stinger, with the
+ * cutscene); an overshoot tier slams a stamp; a set switched on toasts and hops; an evolved charm hops; HOT / COLD / OVERHEAT banner
+ * on the last machine played, with a HEAT meter under the quota; a huge win takes the title card.
  */
 import * as THREE from 'three';
 import { app } from '@/core/app';
@@ -25,9 +29,11 @@ import { inUnderneath } from '@/world/hollow';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { InstanceId, PlayerId } from '@/core/types';
 import { initial, mmss, Roller, signed } from './hud/fmt';
-import { createProcPops, goldBurst, pegBadge, pegLabel, playProcTick, renderSetChips } from './hud/charmProc';
+import { createProcPops, goldBurst, pegBadge, pegLabel, playProcTick, renderSetChips, setChipName } from './hud/charmProc';
+import { countUpSec, heatTone, overTierLevel, overTierSting, quotaCrossings, rollPitch, TickGate } from './hud/juiceMath';
+import { FIXED_STEP } from '@/core/loop';
 import { charmDef } from '@/game/charms/engine';
-import { activeSets } from '@/game/charms/sets';
+import { activeSets, type SetId } from '@/game/charms/sets';
 import { houseMoodPreviewParts, payoutChip, type PayoutPart } from '@/game/houseMood';
 import { spotlightChip, type SpotlightView } from '@/game/spotlight';
 import './hud/hud.css';
@@ -80,14 +86,42 @@ const BIG = WIN_TIERS.indexOf('big');
 const HUGE = WIN_TIERS.indexOf('huge');
 /** A tier's win pop is scaled by this many ms after its machine:result (the payout follows it in the same tick). */
 const WIN_LINK_MS = 600;
+/** The centre figure holds this long after it lands, before its rise and fade (UI seconds). */
+const WIN_POP_TAIL_S = 0.9;
+/** The QUOTA MET stinger waits this long, so a quota_met cutscene that the same event starts can take the lead (one stinger). */
+const MET_STINGER_CHECK_S = 0.12;
+/** The overshoot stamp's life, seconds. */
+const STAMP_LIFE_S = 1.6;
+/** Buffs that are streak state (buffs/streaks.ts): HOT stacks, COLD and OVERHEAT. */
+const STREAK_IDS: ReadonlySet<string> = new Set(['hot', 'cold', 'overheat']);
 
 function setText(el: HTMLElement, s: string): void { if (el.textContent !== s) el.textContent = s; }
 function setCls(el: HTMLElement, cls: string, on: boolean): void { el.classList.toggle(cls, on); }
+
+/** Settings the juice reads: calm mutes the shake and the flashes (the figures and the sounds stay). */
+const juiceSettings = () => app.save?.data?.settings;
+const calmOn = (): boolean => !!juiceSettings()?.calm;
+const reduceMotion = (): boolean => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+/** One roll tick on the UI bus: pitch rises with the roll's progress (0..1). Silent when audio is not ready. */
+function rollTick(progress: number, vol: number): void {
+  try { app.audio.play('numberTick', { bus: 'ui', vol, pitch: rollPitch(progress) }); } catch { /* audio is optional */ }
+}
+/** Restarts a CSS class animation on an element (remove, reflow, add). */
+function replayClass(el: HTMLElement, cls: string): void {
+  el.classList.remove(cls);
+  void el.offsetWidth;
+  el.classList.add(cls);
+}
 
 /** Screen point where the big numbers start (centre, a little above the middle). */
 function popOrigin(): { x: number; y: number } {
   return { x: window.innerWidth / 2, y: window.innerHeight * 0.42 };
 }
+
+/** A centre win figure rolling from 0 to its amount (winPop): it lands with a gold burst, then holds, rises and fades. */
+interface WinRoll { el: HTMLElement; num: HTMLElement; target: number; idx: number; dur: number; life: number; t: number; shown: number; landed: boolean; gate: TickGate }
+/** A stamp slammed over the HUD (the overshoot tier), removed when its life is up. */
+interface Stamp { el: HTMLElement; t: number }
 
 export function createHud(): Hud {
   const root = h('div', 'hud');
@@ -138,6 +172,9 @@ export function createHud(): Hud {
   const staff = h('div', 'hb staff hidden', topL);
   const roll = new Roller();
   let walletSeen = false;
+  // The wallet's roll ticks: where the current rise started (the pitch climbs over it), and the 12 Hz throttle.
+  let rollStart = 0;
+  const rollGate = new TickGate();
 
   // ── top-centre: clock + night line ──────────────────────────────────────────────────────────────
   const clock = h('div', 'clock', topC);
@@ -164,8 +201,25 @@ export function createHud(): Hud {
   h('span', 'lbl', quota, t('hud.quota.label'));
   const quotaNum = h('span', 'num', quota, '0 / 0');
   const quotaBar = h('div', 'bar', quota);
+  // The ghost is the pale lead segment under the amber fill: a rise shows it at once and the fill grows into it (a lagging fill).
+  const quotaGhost = h('i', 'gh', quotaBar);
   const quotaFill = h('i', '', quotaBar);
+  for (const m of [25, 50, 75]) h('b', 'mark', quotaBar).style.left = `${m}%`;
   const quotaShort = h('span', 'short', quota, '');
+  // The quota figure rolls toward the deposited amount (Roller, as the wallet). The fill's last percent and the Night it was read in
+  // decide the 25 / 50 / 75 / 100 % ticks: a Night's first read is silent.
+  const quotaRoll = new Roller();
+  let quotaSeen = false;
+  let quotaPct = -1;
+  let quotaNight = -1;
+  // HEAT meter (the streak heat of the machine the player played last), under the quota. Hidden until that machine has heat.
+  const heatEl = h('div', 'hb heat hidden', topR);
+  h('span', 'lbl', heatEl, t('hud.juice.heat'));
+  const heatBar = h('div', 'bar', heatEl);
+  const heatFill = h('i', '', heatBar);
+  let heatMid: InstanceId | null = null;
+  let heatColor = '';
+  let heatPct = -1;
   // PAYOUT chip (wave 47): every global payout.mult source (House Favour, the House Mood, the Witching bonus, ...) under the quota.
   // Shown in play, and in Mola as the next Watch's preview. Plain text on a dark plate, 14px+, each part coloured by its sign.
   const payout = h('div', 'hb payout hidden', topR);
@@ -226,6 +280,17 @@ export function createHud(): Hud {
   let pegs: Array<{ el: HTMLElement; face: HTMLElement; base: string; name: string; text: string; title: string }> = [];
   let lastWin = { idx: 0, at: Number.NEGATIVE_INFINITY };
   const procPops = createProcPops(root);
+  /** Centre win figures still rolling or holding, and the overshoot stamps still up (both driven by update(dt)). */
+  const winRolls: WinRoll[] = [];
+  const stamps: Stamp[] = [];
+  /** Charm sets switched on so far (null until the first read, so a run that opens with sets on does not toast them). */
+  let setsSeen: SetId[] | null = null;
+  /** Evolved charm ids waiting for their peg: the peg is rebuilt on the same frame the evolution lands. */
+  const evoPending: string[] = [];
+  /** Streak buff stacks already announced, per owner and id ('i:<machine>|hot'): a refresh at the same stacks is not news. */
+  const streakSeen = new Map<string, number>();
+  /** Seconds left before the QUOTA MET stinger is decided (0 = none pending). */
+  let metStingerLeft = 0;
 
   // ── feed, phone, prompt, dread ──────────────────────────────────────────────────────────────────
   const feed = h('div', 'feed', root);
@@ -262,16 +327,72 @@ export function createHud(): Hud {
     window.setTimeout(() => { if (claimAnnounce(text)) addFeed(text, cls); }, 0);
   }
 
-  /** The gain at the centre of the screen for a win: big gold figure, scaled by tier (small 1× up to jackpot 2×). */
-  function winPop(text: string, idx: number): void {
-    const el = h('div', idx >= HUGE ? 'win-pop huge' : 'win-pop', root, text);
+  /**
+   * The gain at the centre of the screen for a win: a big gold figure, scaled by tier (small 1× up to jackpot 2×). It rolls up
+   * from 0 over the tier's count-up (`countUpSec`), with a rising pitch-ticked roll, and lands with a gold burst (bigger by
+   * tier) and, for big and up, the camera shake. The roll is driven by `updateWinRolls` (the frame time), not a timer.
+   */
+  function winPop(amount: number, idx: number): void {
+    const el = h('div', idx >= HUGE ? 'win-pop huge' : 'win-pop', root);
     el.style.setProperty('--k', String(Math.min(2, 1 + 0.2 * (idx - SMALL))));
-    // Big and huge wins: a gold burst at the figure and a camera shake, stronger by tier (the shake setting scales it).
-    if (idx >= BIG) {
-      goldBurst(root, '42%', idx >= HUGE ? 2 : 1);
-      try { app.fx.shake(idx >= HUGE ? 0.02 : 0.012, idx >= HUGE ? 0.5 : 0.3, { roll: 0.6 }); } catch { /* the shake is optional */ }
+    const num = h('span', 'wn', el, signed(0, money));
+    const dur = countUpSec(idx);
+    const life = dur + WIN_POP_TAIL_S;
+    // The CSS pop lasts the whole life: it pops in, holds through the roll and the landing, then rises and fades.
+    el.style.animationDuration = `${life.toFixed(2)}s`;
+    winRolls.push({ el, num, target: Math.max(0, Math.round(amount)), idx, dur, life, t: 0, shown: 0, landed: false, gate: new TickGate() });
+  }
+
+  /** The win figure's landing: the figure reads its final value, a gold burst (by tier), the camera shake for big and up, a bump. */
+  function landWin(w: WinRoll): void {
+    setText(w.num, signed(w.target, money));
+    goldBurst(root, '42%', w.idx >= HUGE ? 2 : w.idx >= BIG ? 1 : 0);
+    if (w.idx >= BIG && !calmOn()) {
+      try { app.fx.shake(w.idx >= HUGE ? 0.02 : 0.012, w.idx >= HUGE ? 0.5 : 0.3, { roll: 0.6 }); } catch { /* the shake is optional */ }
     }
-    window.setTimeout(() => el.remove(), 900);
+    if (!reduceMotion()) w.num.animate([{ transform: 'scale(1.3)' }, { transform: 'scale(1)' }], { duration: 220, easing: 'cubic-bezier(.3,1.6,.5,1)' });
+  }
+
+  /** A modal (the Night Card offer, the Dawn receipt) owns the screen: the HUD's centre figures and stamps hide under it
+   *  (they keep their timers, so they do not restart when the modal closes). */
+  function hudHiddenByModal(): boolean {
+    try { return !!ui().blocking; } catch { return false; }
+  }
+
+  function updateWinRolls(dt: number): void {
+    const hidden = hudHiddenByModal();
+    for (let i = winRolls.length - 1; i >= 0; i--) {
+      const w = winRolls[i];
+      w.el.style.visibility = hidden ? 'hidden' : '';
+      w.t += dt;
+      if (!w.landed) {
+        const k = Math.min(1, w.t / w.dur);
+        const v = Math.round(w.target * (1 - Math.pow(1 - k, 3)));   // ease-out, as the Roller's count-up
+        const changed = v !== w.shown;
+        if (changed) { w.shown = v; setText(w.num, signed(v, money)); }
+        // a tick per change, at most 12 Hz, pitched up with the roll (the gate counts down on every frame)
+        if (w.gate.pass(dt, changed && v > 0)) rollTick(k, 0.3);
+        if (k >= 1) { w.landed = true; landWin(w); }
+      }
+      if (w.t >= w.life) { w.el.remove(); winRolls.splice(i, 1); }
+    }
+  }
+
+  /** A stamp slammed over the HUD (the overshoot tier's name): it lands big and settles, then fades and is removed. */
+  function slamStamp(text: string, k: number): void {
+    const el = h('div', 'hud-stamp', root, text);
+    el.style.setProperty('--k', String(k.toFixed(2)));
+    stamps.push({ el, t: 0 });
+  }
+
+  function updateStamps(dt: number): void {
+    const hidden = hudHiddenByModal();
+    for (let i = stamps.length - 1; i >= 0; i--) {
+      const s = stamps[i];
+      s.el.style.visibility = hidden ? 'hidden' : '';
+      s.t += dt;
+      if (s.t >= STAMP_LIFE_S) { s.el.remove(); stamps.splice(i, 1); }
+    }
   }
 
   /**
@@ -353,13 +474,60 @@ export function createHud(): Hud {
   if (circuit0) showLamps(circuit0.lamps());
 
   // ── events ──────────────────────────────────────────────────────────────────────────────────────
+  /**
+   * HOT / COLD / OVERHEAT on the machine the local player last played (`heatMid`): a banner with its sound when the streak starts
+   * or a HOT stack goes up. A refresh at the same stacks is not news. Other machines and other players' streaks stay quiet here.
+   */
+  function onStreakBuff(owner: string, buff: BuffState): void {
+    const base = buff.id.split(':')[0];
+    if (!STREAK_IDS.has(base) || heatMid === null || owner !== `i:${heatMid}`) return;
+    const key = `${owner}|${base}`;
+    const prev = streakSeen.get(key) ?? 0;
+    streakSeen.set(key, buff.stacks);
+    if (buff.stacks <= prev) return;
+    if (base === 'hot') {
+      void ui().banner(t('hud.juice.hot', { n: buff.stacks }), { color: COLORS.shine, hold: 1.1, size: 16 });
+      uiSfx('buffGain', 0.9);
+    } else if (base === 'cold') {
+      void ui().banner(t('hud.juice.cold'), { color: COLORS.ice, hold: 1.1, size: 16 });
+      uiSfx('buffLose', 0.8);
+    } else {
+      void ui().banner(t('hud.juice.overheat'), { color: COLORS.coral, hold: 1.4, size: 16 });
+      uiSfx('buffLose', 1);
+      if (!calmOn()) app.fx.flash(0xc52129, 0.25, 0.35);
+    }
+  }
+
+  /**
+   * An overshoot tier crossed in the Watch (the NIGHT PLAN's OVERSHOOT line): the tier's name slams as a stamp, a gold burst, one
+   * flash (not in calm), a sting by tier, and the OVERSHOOT line hops. The grant itself lands at Dawn (inGameState's receipt).
+   */
+  function overshootCrossed(tier: string): void {
+    slamStamp(t(`hud.juice.over.${tier}`), 1 + 0.08 * Math.max(0, overTierLevel(tier)));
+    goldBurst(root, '42%', 2);
+    if (!calmOn()) app.fx.flash(0xffd34a, 0.2, 0.3);
+    uiSfx(overTierSting(tier), 0.8);
+    replayClass(planOver, 'hop');
+  }
+
+  /**
+   * A charm set switched on (the active sets, from the charms the player holds): a toast, a gold burst on the charm strip, the new
+   * set chip hops, and the chime. The first read of a run is silent (a set already on at the start is not news).
+   */
+  function setOn(id: SetId, chip: HTMLElement | undefined): void {
+    ui().toast(t('hud.juice.setOn', { name: setChipName(id), desc: t(`hud.set.${id}.desc`) }), 'good', 4, `set:${id}`);
+    goldBurst(charms, '50%', 1);
+    if (chip) replayClass(chip, 'hop');
+    uiSfx('chime', 0.9);
+  }
+
   on('eco:wallet', ({ pid, delta }) => {
     if (pid !== self() || delta === 0) return;
     if (delta > 0) {
       // machine:result is emitted just before the payout, so a win that tier-scales the gain is still the last one seen.
       const idx = performance.now() - lastWin.at < WIN_LINK_MS ? lastWin.idx : 0;
       const win = idx >= SMALL;
-      if (win) winPop(signed(delta, money), idx);
+      if (win) winPop(delta, idx);
       ui().fly({
         from: popOrigin(), to: 'wallet', text: win ? '' : signed(delta, money), color: COLORS.shine,
         onArrive: () => { ui().bump('wallet', 1 + Math.min(1, delta / 2000)); uiSfx('numberTick', 0.7); },
@@ -370,7 +538,7 @@ export function createHud(): Hud {
     }
   });
 
-  on('machine:result', ({ pid, machineId, tier, bet, gross }) => {
+  on('machine:result', ({ pid, machineId, tier, bet, gross, credited }) => {
     if (pid !== self()) return;
     const idx = tierIndex(tier);
     lastWin = { idx, at: performance.now() };
@@ -379,7 +547,14 @@ export function createHud(): Hud {
     addFeed(t('hud.feed.win', { who: t('hud.feed.you'), x: mult, machine: machineName(machineId) }), idx >= HUGE ? 'gold' : '');
     app.fx.hitstop(idx >= HUGE ? 0.08 : 0.04);
     ui().fly({ from: popOrigin(), to: 'wallet', text: t(`hud.tier.${tier}`), color: COLORS.bulb, dur: 1.0 });
+    // A local huge (or above) machine win gets the title card with the rolling amount. Skipped in the QA fixed-step clock (the bench).
+    if (idx >= HUGE && !FIXED_STEP && credited > 0) void ui().bigWin(credited, tier, t(`hud.tier.${tier}`));
   });
+
+  // The local player's machine (the one they last played): its streak heat and the HOT / COLD / OVERHEAT banners follow it.
+  on('machine:round', ({ pid, mid }) => { if (pid === self()) heatMid = mid; });
+  on('buff:add', ({ owner, buff }) => onStreakBuff(owner, buff));
+  on('buff:remove', ({ owner, id }) => { streakSeen.delete(`${owner}|${id.split(':')[0]}`); });
 
   on('machine:jackpot', ({ pid, machineId, amount }) => {
     if (pid !== self()) return;
@@ -405,7 +580,14 @@ export function createHud(): Hud {
     if (label) procPops.show(label, tier ?? 0);
   });
 
-  on('quota:met', () => { addFeed(t('hud.feed.quotaMet'), 'gold'); uiSfx('quotaTick', 1); });
+  // QUOTA MET: the quota box bumps and bursts. The stinger is decided a few frames later (update), so the quota_met cutscene that
+  // the same event may start carries the one stinger and nothing stacks on it.
+  on('quota:met', () => {
+    addFeed(t('hud.feed.quotaMet'), 'gold');
+    ui().bump('quota', 1.4);
+    goldBurst(quota, '50%', 2);
+    metStingerLeft = MET_STINGER_CHECK_S;
+  });
   on('quota:failed', () => { addFeed(t('hud.feed.quotaFailed'), 'red'); });
   on('event:start', ({ id }) => { feedNews(t('hud.feed.event', { name: t(`event.${id}.name`) }), 'gold'); });
   on('event:end', ({ id }) => { feedNews(t('hud.feed.eventEnd', { name: t(`event.${id}.name`) }), ''); });
@@ -415,6 +597,8 @@ export function createHud(): Hud {
     addFeed(t('hud.feed.milestone', { name, n: level }), 'gold');
   });
   on('charm:add', ({ pid, charmId }) => { if (pid === self()) addFeed(t('hud.feed.charm', { name: t(`charm.${charmId}.name`) })); });
+  // A second copy evolves its charm (no new peg): the peg hops with an EVOLVED pop and the upgrade sound, once it is rebuilt.
+  on('charm:evolve', ({ pid, charmId }) => { if (pid === self()) evoPending.push(charmId); });
   on('circuit:lamps', (v) => {
     showLamps(v);
     if (v.hot.length > 0) addFeed(t('circuit.feed.hot', { name: v.hot.map(lampName).join(', ') }), 'gold');
@@ -437,9 +621,17 @@ export function createHud(): Hud {
     const r = app.run;
     if (!r) return;
     const w = r.wallet(self());
-    if (!walletSeen) { roll.set(w, true); walletSeen = true; }
-    else roll.set(w);
-    roll.tick(dt);
+    if (!walletSeen) { roll.set(w, true); walletSeen = true; rollStart = w; }
+    else {
+      // a new rise starts where the figure is now: the ticks climb over that rise (a fall ticks nothing)
+      if (w !== roll.target && w > roll.shown) rollStart = roll.shown;
+      roll.set(w);
+    }
+    const moved = roll.tick(dt);
+    // the rising roll ticks at most 12 Hz, pitched up with its progress (0 at the rise's start, an octave at its end)
+    if (roll.target > roll.shown && rollGate.pass(dt, moved)) {
+      rollTick((roll.shown - rollStart) / Math.max(1, roll.target - rollStart), 0.22);
+    } else rollGate.pass(dt, false);
     setText(walletNum, `${coinSym()} ${money(roll.shown)}`);
     // red only while the pocket cannot cover the last thing asked for (the run refused it for funds)
     setCls(wallet, 'short', r.lastRefusal() === 'funds');
@@ -489,15 +681,49 @@ export function createHud(): Hud {
     }
   }
 
-  function updateQuota(): void {
+  /**
+   * The quota bar: a rise shows its pale ghost at the new width at once and the amber fill grows into it; a fall drops the fill fast
+   * and the ghost drains after it. Ticks sound as the fill crosses 25 / 50 / 75 / 100 % (not on the Night's first read).
+   */
+  function setQuotaBar(frac: number, night: number): void {
+    const pct = Math.round(frac * 1000) / 10;
+    const w = `${pct}%`;
+    if (quotaPct < 0 || night !== quotaNight) {
+      quotaNight = night;
+      quotaPct = pct;
+      quotaGhost.style.transition = 'none';
+      quotaFill.style.transition = 'none';
+      quotaGhost.style.width = w;
+      quotaFill.style.width = w;
+      return;
+    }
+    if (pct === quotaPct) return;
+    if (pct > quotaPct) {
+      quotaGhost.style.transition = 'none';
+      quotaGhost.style.width = w;
+      quotaFill.style.transition = reduceMotion() ? 'none' : 'width .45s steps(8)';
+    } else {
+      quotaFill.style.transition = reduceMotion() ? 'none' : 'width .12s steps(3)';
+      quotaGhost.style.transition = reduceMotion() ? 'none' : 'width .6s ease-out .15s';
+      quotaGhost.style.width = w;
+    }
+    quotaFill.style.width = w;
+    for (const m of quotaCrossings(quotaPct, pct)) uiSfx('numberTick', m === 100 ? 0.9 : 0.6);
+    quotaPct = pct;
+  }
+
+  function updateQuota(dt: number): void {
     const r = app.run;
     if (!r) return;
     const q = r.shift.quota();
     const due = Math.max(0, q.due);
     const dep = Math.max(0, q.deposited);
     const frac = due > 0 && !nightPaid(r) ? Math.min(1, dep / due) : 1;
-    setText(quotaNum, `${money(dep)} / ${money(due)}`);
-    quotaFill.style.width = `${Math.round(frac * 100)}%`;
+    // the deposited figure rolls toward the amount (the Roller, as the wallet's), a Night's first read sets it at once
+    if (!quotaSeen) { quotaRoll.set(dep, true); quotaSeen = true; } else quotaRoll.set(dep);
+    quotaRoll.tick(dt);
+    setText(quotaNum, `${money(Math.round(quotaRoll.shown))} / ${money(due)}`);
+    setQuotaBar(frac, r.night());
     const paid = nightPaid(r);
     const met = paid || q.met || (due > 0 && dep >= due);
     if (paid) setText(quotaNum, t('hud.paidTag', { n: r.night() }));   // short tag: it must not clip the top banner
@@ -615,6 +841,7 @@ export function createHud(): Hud {
       else if (ov.reached > overSeen && ov.tier) {
         overSeen = ov.reached;
         ui().toast(t('hud.plan.overToast', { r: t(`hud.plan.ov.${ov.tier}`) }), 'good', 4, 'overshoot');
+        overshootCrossed(ov.tier);
       }
     }
     const due = Math.max(0, Math.floor(q.due));
@@ -779,8 +1006,20 @@ export function createHud(): Hud {
         el.title = name;
         pegs.push({ el, face: h('span', 'face', el, initial(name)), base: initial(name), name, text: '', title: '' });
       }
-      // Archetype set chips (sets.ts) next to the pegs: one per set switched on by the held charms. Rebuilt with the pegs.
-      renderSetChips(charmRow, activeSets(list, (id) => charmDef(id)?.tags));
+      // Archetype set chips (sets.ts) next to the pegs: one per set switched on by the held charms. Rebuilt with the pegs. A set
+      // that was not on before its chip appears is news: the set-on toast, burst, hop and chime.
+      const sets = activeSets(list, (id) => charmDef(id)?.tags);
+      const chips = renderSetChips(charmRow, sets);
+      const prevSets = setsSeen;
+      if (prevSets) sets.forEach((s, i) => { if (!prevSets.includes(s)) setOn(s, chips[i]); });
+      setsSeen = sets;
+    }
+    // An evolved charm: its peg (rebuilt above when the stacks changed) hops with an EVOLVED pop and the upgrade sound.
+    for (const id of evoPending.splice(0)) {
+      const el = charmRow.querySelector<HTMLElement>(`[data-id="${id}"]`);
+      if (el) replayClass(el, 'hop');
+      procPops.show(t('hud.evo.label'), 2);
+      uiSfx('upgrade', 0.9);
     }
     // Live counters: the face shows the charm's counter (3/6, +16%) when it has one, else its initial. Written on change only.
     for (let i = 0; i < pegs.length && i < list.length; i++) {
@@ -865,12 +1104,45 @@ export function createHud(): Hud {
     dread.style.opacity = String(Math.min(1, 0.35 * d));
   }
 
+  /**
+   * HEAT meter: the streak heat of the machine the player played last. The run reads it through the optional `streakHeat(mid)`
+   * probe (like the other optional run views); without the probe, or with no heat, the meter stays hidden. Amber to red, and it
+   * blinks above 75.
+   */
+  function updateHeat(): void {
+    const r = app.run as (typeof app.run & { streakHeat?: (mid: InstanceId) => number }) | null;
+    const v = r?.streakHeat && heatMid !== null ? r.streakHeat(heatMid) : 0;
+    const pct = Number.isFinite(v) ? Math.max(0, Math.min(100, Math.round(v))) : 0;
+    setCls(heatEl, 'hidden', pct <= 0);
+    if (pct <= 0) { heatPct = -1; return; }
+    if (pct === heatPct) return;
+    heatPct = pct;
+    const tone = heatTone(pct);
+    if (tone.color !== heatColor) { heatColor = tone.color; heatFill.style.background = tone.color; }
+    heatFill.style.width = `${pct}%`;
+    setCls(heatEl, 'blink', tone.blink);
+  }
+
+  /**
+   * The QUOTA MET stinger, once the event's frame has passed: a quota_met cutscene that started (it carries its own stinger) takes
+   * the lead, and only a met quota with no scene on plays the stinger here.
+   */
+  function updateMetStinger(dt: number): void {
+    if (metStingerLeft <= 0) return;
+    metStingerLeft -= dt;
+    if (metStingerLeft > 0) return;
+    metStingerLeft = 0;
+    if (app.cutscene.playing === null) {
+      try { app.audio.music.stinger('quotaMet', { vol: 0.8 }); } catch { /* the stinger is optional */ }
+    }
+  }
+
   return {
     el: root,
     update(dt: number): void {
       updateWallet(dt);
       updateClock(dt);
-      updateQuota();
+      updateQuota(dt);
       updatePayout(dt);
       updatePlan();
       updateEmpire();
@@ -883,6 +1155,10 @@ export function createHud(): Hud {
       updateWatchEvent();
       updateFeed(dt);
       updateDread();
+      updateWinRolls(dt);
+      updateStamps(dt);
+      updateHeat();
+      updateMetStinger(dt);
     },
     setVisible(show: boolean): void { ui().setHudVisible(show); },
     setPrompt(p: HudPrompt | null): void {

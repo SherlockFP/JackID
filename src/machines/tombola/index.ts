@@ -38,6 +38,7 @@ const UNFOLD_DRAG = 0.22;       // NDC rise of a drag up on the held ticket
 const PULL_S = 0.6;
 const BLANK_S = 0.8;
 const PRIZE_S = 1.5;
+const UNROLL_S = 0.5;           // the paper strip unrolls, its number ticking, before the result is written
 // Hex for lamps and pop texts (fx), CSS for the canvas screens.
 const RULE_LINES: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.tombola.' + k }));
 const GOLD = 0xffd040, GREEN = 0x7dff7a, RED = 0xff6a5a;
@@ -47,7 +48,8 @@ const LAMP_OFF = 0x2a2018;
 // ── contract types ──────────────────────────────────────────────────────────────────────────────
 type Ev =
   | { k: 'pay'; p: PlayerId; price: number }
-  | { k: 'pull'; p: PlayerId; ticket: number; alt: number; lucky: boolean; remaining: number }
+  /** `hold`: seconds the held ticket waits before it unfolds on its own (the countdown ring shows it). */
+  | { k: 'pull'; p: PlayerId; ticket: number; alt: number; lucky: boolean; remaining: number; hold: number }
   | { k: 'drop'; p: PlayerId; ticket: number; remaining: number }
   | { k: 'prize'; p: PlayerId; ticket: number; cubby: number; prize: PrizeId; gross: number; price: number; remaining: number }
   | { k: 'blank'; p: PlayerId; ticket: number; price: number; remaining: number }
@@ -71,6 +73,10 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
 
   // local presentation (this peer only)
   private cranked = false;
+  /** The held ticket's hold countdown (presentation): seconds left, the full hold, and whether the ticket needs a repaint. */
+  private ringLeft = 0;
+  private ringTotal = 0;
+  private ringDirty = false;
   private crankAuto = 0;
   private crankDrag = 0;
   private dragPrev: { x: number; y: number } | null = null;
@@ -198,7 +204,7 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
         if (spare && out.alt >= 0) this.hs.spare--;
         this.hs.hold = { p: pid, ticket: out.ticket, price: paid.price, t: HOLD_S, felt: false };
         this.hs.paid = null;
-        void this.emit({ k: 'pull', p: pid, ticket: out.ticket, alt: out.alt, lucky: out.lucky, remaining: this.hs.drum.length });
+        void this.emit({ k: 'pull', p: pid, ticket: out.ticket, alt: out.alt, lucky: out.lucky, remaining: this.hs.drum.length, hold: HOLD_S });
         return;
       }
       case 'unfold': {
@@ -219,7 +225,7 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
         if (!out) return;
         h.ticket = out.ticket; h.t = HOLD_S; h.felt = true;
         void this.emit({ k: 'drop', p: pid, ticket: old, remaining: this.hs.drum.length });
-        void this.emit({ k: 'pull', p: pid, ticket: out.ticket, alt: -1, lucky: out.lucky, remaining: this.hs.drum.length });
+        void this.emit({ k: 'pull', p: pid, ticket: out.ticket, alt: -1, lucky: out.lucky, remaining: this.hs.drum.length, hold: HOLD_S });
         return;
       }
     }
@@ -341,6 +347,7 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
     this.sfx('tileClack', { vol: 0.8 });
     this.spin += 6;
     if (!pc.fast) void this.anim(PULL_S, (k) => { this.parts.hatch.rotation.x = -Math.sin(k * Math.PI) * 0.9; });
+    this.ringTotal = ev.hold; this.ringLeft = ev.hold; this.ringDirty = true;     // the countdown ring runs until the unfold
     this.paintPulled(ev.ticket, '');
     this.paintPaper();
     if (ev.alt >= 0) this.ctx.fx.popText(this.parts.pulled.mesh, tr('m.tombola.spare'), GOLD, { dur: 1.1, rise: 0.25 });
@@ -352,6 +359,7 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
   private async onDrop(ev: Extract<Ev, { k: 'drop' }>, pc: PresentCtx): Promise<void> {
     this.st.held = null;
     this.st.remaining = ev.remaining;
+    this.ringLeft = 0;
     this.sfx('click', { vol: 0.7 });
     this.ctx.fx.popText(this.parts.pulled.mesh, tr('m.tombola.dropped'), RED, { dur: 0.9, rise: 0.2 });
     this.paintAll();
@@ -364,6 +372,7 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
     this.st.held = null;
     this.st.remaining = ev.remaining;
     this.st.shelf[ev.cubby] = null;
+    await this.unroll(ev.ticket, pc.fast);
     const text = ev.prize === 'grand' ? tr('m.tombola.grand') : tr('m.tombola.win', { n: fmtCoins(ev.gross) });
     this.paintPulled(ev.ticket, text, GOLD_CSS);
     this.paintPaper(true);
@@ -379,7 +388,7 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
     this.ctx.fx.popText(at, text, ev.gross > ev.price ? GOLD : GREEN, { dur: 1.2, rise: 0.3 });
     if (ev.p === this.selfId) {
       void this.celebrate(tier, {
-        amount: ev.gross, at, lamps: [cub.lamp], fast: pc.fast,
+        amount: ev.gross, bet: ev.price, at, lamps: [cub.lamp], fast: pc.fast,
         restore: () => { this.paintAll(); },
       });
     }
@@ -393,6 +402,7 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
     this.st.owner = null;
     this.st.held = null;
     this.st.remaining = ev.remaining;
+    await this.unroll(ev.ticket, pc.fast);
     this.paintPulled(ev.ticket, tr('m.tombola.blank'), RED_CSS);
     this.paintPaper(true);
     this.sfx('click', { vol: 0.6 });
@@ -454,6 +464,11 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
     this.spin *= Math.max(0, 1 - 2.5 * dt);
     this.spinAngle += this.spin * dt;
     this.parts.drum.rotation.x = this.spinAngle;
+    // the held ticket's hold countdown runs down on the sim clock (the host unfolds it at zero)
+    if (this.ringLeft > 0) {
+      this.ringLeft = Math.max(0, this.ringLeft - dt);
+      this.ringDirty = true;
+    }
   }
 
   // ── painting ─────────────────────────────────────────────────────────────────────────────────
@@ -500,15 +515,48 @@ export default class Tombola extends TableBase<TombolaParts, Ev, Snap, Act> {
     this.parts.evNeedle.rotation.z = -Math.min(1.2, ev * 0.6);
   }
 
-  /** Counter ticket face: the number, and the outcome text once revealed. */
-  private paintPulled(ticket: number, text: string, color: string = CREAM): void {
+  /**
+   * Counter ticket face: the number, and the outcome text once revealed. `ring` is the hold countdown as a fraction left
+   * (0 = no ring): a gold arc that shrinks clockwise from the top.
+   */
+  private paintPulled(ticket: number, text: string, color: string = CREAM, ring = 0): void {
     this.parts.pulled.draw((g, sc) => {
       g.fillStyle = '#efe3c0'; g.fillRect(0, 0, sc.w, sc.h);
       g.fillStyle = '#7a1d1d'; g.fillRect(0, 0, sc.w, 9);
       sc.text(tr('m.tombola.ticket', { n: '' }).trim(), 3, 1, { font: 'px5', color: CREAM });
       sc.text(String(ticket).padStart(2, '0'), sc.w / 2, 14, { font: 'px5', color: '#1a1206', align: 'center' });
       if (text) sc.text(text, sc.w / 2, 32, { font: 'px5', color, align: 'center' });
+      if (ring > 0) {
+        g.beginPath();
+        g.arc(sc.w - 10, 22, 6, -Math.PI / 2, -Math.PI / 2 + ring * Math.PI * 2);
+        g.strokeStyle = GOLD_CSS; g.lineWidth = 2; g.stroke();
+      }
     });
+  }
+
+  /** Render: repaint the held ticket with its countdown ring when the clock moved. */
+  frame(_dt: number, _t: number): void {
+    if (!this.ringDirty) return;
+    this.ringDirty = false;
+    if (this.st.held !== null) this.paintPulled(this.st.held, '', CREAM, this.ringTotal > 0 ? this.ringLeft / this.ringTotal : 0);
+  }
+
+  /**
+   * The paper strip unrolls over ~0.5 s while its number ticks through digits, then the result is written. Presentation
+   * only: the ticket was settled by the host before this event.
+   */
+  private async unroll(ticket: number, fast: boolean): Promise<void> {
+    this.ringLeft = 0;
+    if (fast) return;
+    let step = -1;
+    await this.anim(UNROLL_S, (k) => {
+      this.parts.pulledMesh.scale.y = 0.15 + 0.85 * k;
+      const n = Math.floor(k * 10);
+      if (n !== step) { step = n; this.sfx('tileClack', { vol: 0.35, pitch: n }); }
+      const shown = k < 0.9 ? (ticket * 17 + n * 37) % 100 : ticket;
+      this.paintPulled(shown, '');
+    }, 'outQuad');
+    this.parts.pulledMesh.scale.y = 1;
   }
 
   /** The counter ticket is visible while one is held (or while its outcome is shown, `keep`). */

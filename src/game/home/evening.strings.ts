@@ -1,0 +1,30 @@
+/** THE EVENING (wave 69, Home layer): the lever's label, the apartment's one-liners and the spouse's speaker plate. Loaded by the `*.strings.ts` glob in main.ts. */
+export default {
+  prefix: 'evening.',
+  en: {
+    'lever': 'TAKE THE LIFT',
+    'hint': 'Home at last. Talk, check the phone, lock up. The bed ends the night.',
+    'speaker.spouse': 'SPOUSE',
+    'speaker.note': 'NOTE',
+    'note': 'On the pillow: "Gone to my sister\'s. Pay what you owe."',
+    'door': 'Locked for the night.',
+    'peephole': 'The hall is empty.',
+    'window.1': 'Rain on the glass. The Pit glows far below.',
+    'window.2': 'The street is empty. One light still burns down in the Pit.',
+    'window.3': 'Your reflection looks tired. Behind it, the dark.',
+    'window.4': 'A siren, somewhere. It does not stop here.',
+  },
+  tr: {
+    'lever': 'ASANSÖRE BİN',
+    'hint': 'Sonunda evdesin. Konuş, telefona bak, kapıyı kilitle. Yatak geceyi bitirir.',
+    'speaker.spouse': 'EŞİM',
+    'speaker.note': 'NOT',
+    'note': 'Yastığın üstünde: "Kız kardeşime gittim. Borcunu öde."',
+    'door': 'Gece için kilitli.',
+    'peephole': 'Koridor boş.',
+    'window.1': 'Camda yağmur. Çukur çok aşağıda parlıyor.',
+    'window.2': 'Sokak bomboş. Çukurda bir ışık hâlâ yanıyor.',
+    'window.3': 'Yansıman yorgun görünüyor. Arkasında karanlık var.',
+    'window.4': 'Uzaktan bir siren sesi. Buraya uğramıyor.',
+  },
+};

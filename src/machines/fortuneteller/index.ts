@@ -463,7 +463,7 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
       this.ctx.fx.popText(p.fog, `×${o.coin}`, CRYSTAL[o.kind], { dur: 1.1, rise: 0.3, scale: 1.2, shake: o.coin >= 3 });
       const tier = juiceTier(ev.coins, ev.bet);
       if (tier === 'medium' || tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot') {
-        void this.celebrate(tier, { amount: ev.coins, marquee: p.marquee, lamps: [p.leds.win, p.leds.bet], restore: () => p.marquee.chase('chase', 4), fast: pc.fast });
+        void this.celebrate(tier, { amount: ev.coins, bet: ev.bet, marquee: p.marquee, lamps: [p.leds.win, p.leds.bet], restore: () => p.marquee.chase('chase', 4), fast: pc.fast });
         await this.countCoins(ev.coins);
       } else {
         await this.pourCoins(ev.coins, { bet: ev.bet, fast: pc.fast, onCount: (v) => this.drawScreen(v) });
@@ -481,11 +481,23 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
   private async presentOthers(ev: Extract<Ev, { k: 'others' }>, pc: PresentCtx): Promise<void> {
     if (pc.fast) { for (const [slot, omen] of ev.slots) this.showFace(slot, omen); return; }
     // the outcome stays on the shelf until the next reading (faces are cleared by `placeCards` on the next start)
+    // the Grand Omen among the unpicked cards is the near miss: it is flipped last, after a held beat
+    const grand = ev.slots.find(([, omen]) => omen === GRAND_OMEN);
     for (const [slot, omen] of ev.slots) {
-      if (this.faceUp[slot]) continue;
+      if (this.faceUp[slot] || omen === GRAND_OMEN) continue;
       this.faceUp[slot] = true;
       void this.flipCard(slot, omen, 0.45);
       await this.wait(0.25);
+    }
+    if (grand && !this.faceUp[grand[0]]) {
+      const [slot, omen] = grand;
+      const card = this.parts.omenCards[slot];
+      await this.nearMiss({ at: card, dur: 0.6 });
+      this.faceUp[slot] = true;
+      await this.flipCard(slot, omen, 0.45);
+      this.ctx.fx.glow(card, CRYSTAL.blessing, 0.6, 0.8);
+      if (pc.local) this.ctx.fx.zoomPunch(0.02, 0.3);
+      this.ctx.fx.popText(card, this.t('grandSeen'), CRYSTAL.blessing, { dur: 1.2, rise: 0.3, scale: 1.0 });
     }
     await this.wait(0.3);
   }

@@ -104,17 +104,18 @@ export function setChipName(id: SetId): string { return t(`hud.set.${id}.name`);
 
 /**
  * Shows the active archetype sets as small chips in `root` (the strip of pegs), replacing the chips already there. A set
- * off is simply not in `sets`, so its chip goes. Each chip's hover text is the set's bonus.
+ * off is simply not in `sets`, so its chip goes. Each chip's hover text is the set's bonus. Returns the chips, in `sets` order.
  */
-export function renderSetChips(root: HTMLElement, sets: readonly SetId[]): void {
+export function renderSetChips(root: HTMLElement, sets: readonly SetId[]): HTMLElement[] {
   for (const old of root.querySelectorAll('.set-chip')) old.remove();
-  for (const s of sets) {
+  return sets.map((s) => {
     const chip = h('span', 'set-chip', root, setChipName(s));
     chip.title = t(`hud.set.${s}.desc`);
     chip.style.cssText = 'display:inline-block;margin:0 calc(var(--u) * 3) calc(var(--u) * 2) 0;padding:calc(var(--u) * 1) calc(var(--u) * 3);'
       + 'font-size:calc(var(--u) * 7);line-height:1.2;color:#1b1206;background:#ffd23c;border:calc(var(--u) * 1) solid #000;'
       + 'box-shadow:calc(var(--u) * 2) calc(var(--u) * 2) 0 #000;pointer-events:none;white-space:nowrap;';
-  }
+    return chip;
+  });
 }
 
 /**
@@ -136,6 +137,8 @@ export function popSize(text: string, tier = 0): 0 | 1 | 2 {
  * Removes itself. size 0 small, 1 medium, 2 big (more sparks, reach and life).
  */
 export function goldBurst(root: HTMLElement, top: string, size: 0 | 1 | 2): void {
+  // Reduced motion: the burst is motion, so it is not drawn (the pop text and the figure still read).
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
   const wrap = h('div', 'charm-burst', root);
   wrap.style.cssText = `position:absolute;left:50%;top:${top};width:0;height:0;pointer-events:none;`;
   const ring = h('div', '', wrap);

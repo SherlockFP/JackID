@@ -11,7 +11,8 @@ export interface Settings {
   invertY: boolean;
   fov: number;                  // 60..95, def 72
   headBob: number;              // 0..1, def 1
-  viewmodel: boolean;
+  viewmodel: boolean;           // first-person hands on/off (HANDS / ELLER)
+  gloves: boolean;              // dark leather gloves (true) or the old ivory gloves (false) (GLOVES / ELDİVEN)
   vol: { master: number; sfx: number; ui: number; music: number; amb: number; voice: number };
   psx: PsxSettings;
   showFps: boolean;
@@ -46,6 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
   fov: 72,
   headBob: 1,
   viewmodel: true,
+  gloves: true,
   vol: { master: 0.8, sfx: 0.9, ui: 0.8, music: 0.6, amb: 0.7, voice: 0.9 },
   psx: DEFAULT_PSX,
   showFps: false,

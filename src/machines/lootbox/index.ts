@@ -24,6 +24,7 @@ import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
 import { fmtNum, t as tr, type I18nVars } from '@/core/i18n';
 import { lerp } from '@/core/math';
+import { coinCount } from '@/machines/_base/juice';
 import { registerDebugForce } from '@/core/debugForce';
 import { buildModel, type LootboxParts } from './model';
 import {
@@ -56,6 +57,16 @@ const VIOLET = 0x6010a0;
 const BLUE = 0x60a0ff;
 const GREEN = 0x60ff90;
 const WHITE = 0xffffff;
+/** The colour a sealed capsule takes while it shakes: the rarity's beam colour; null for a dud, coins or a plain common. */
+function rarityTint(rarity: Rarity): number | null {
+  return rarity === 'legendary' ? GOLD : rarity === 'cursed' ? VIOLET : rarity === 'rare' ? BLUE : rarity === 'uncommon' ? GREEN : null;
+}
+/** The lit material of every mesh under the capsule halves (each half owns its material, see model.ts). */
+function halfMaterials(groups: readonly THREE.Object3D[]): THREE.MeshLambertMaterial[] {
+  const out: THREE.MeshLambertMaterial[] = [];
+  for (const g of groups) g.traverse((c) => { if (c instanceof THREE.Mesh) out.push(c.material as THREE.MeshLambertMaterial); });
+  return out;
+}
 const PITY_KEY = (pid: number): string => `lootbox.pity.${pid}`;
 const TWIST_TURNS = 1.5;                       // full turns of pointer travel to twist a capsule open
 const TAP_MAX_TURN = Math.PI / 4;              // a press that travels less than this (absolute) is a TAP and opens it
@@ -472,7 +483,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     this.refreshHud(true);
   }
 
-  /** SHAKE (0.35 s × 1–3; legendary adds a 0.6 s fake-out before the 4th) → OPEN pop → REVEAL 1.5 s with a beam. */
+  /** SHAKE (0.35 s × 1–3, the halves take the rarity colour; legendary holds 0.6 s before the last shake) → OPEN pop → REVEAL 1.5 s with a beam. */
   private async presentOpen(ev: Extract<Ev, { k: 'open' }>, pc: PresentCtx): Promise<void> {
     this.inHand = false;
     const { capsuleTop, capsuleBottom, revealAnchor, rarityBeam } = this.parts;
@@ -484,8 +495,11 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
 
     if (!pc.fast) {
       const shakes = rarity === 'uncommon' ? 2 : isRarePlus(rarity) ? 3 : 1;
+      // anticipation: the sealed halves take the rarity colour while they shake (plain dud and common stay as vended)
+      const tint = rarityTint(rarity);
+      if (tint !== null) for (const m of halfMaterials([capsuleTop, capsuleBottom])) m.color?.lerp(new THREE.Color(tint), 0.7);
       for (let s = 0; s < shakes; s++) {
-        if (rarity === 'legendary' && s === 3) await this.wait(0.6);
+        if (rarity === 'legendary' && s === shakes - 1) await this.wait(0.6);   // the breath before the last shake
         this.sfx('tileClack', { pos: at });
         await this.anim(0.35, (k) => {
           const w = Math.sin(k * Math.PI * 4) * 0.25 * (1 - k * 0.5);
@@ -556,7 +570,8 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
 
   private payFx(ev: { granted: boolean; fallback: boolean; coins: number }): void {
     if (ev.granted) this.sfx('stamp');
-    if (ev.coins > 0 || ev.fallback) this.ctx.fx.coins(this.model.anchors.coinOut, 8, { spread: 0.1, up: 0.2 });
+    // the coin spray scales with the value (about 8 coins at x1 of the reference, up to 60), not a fixed handful
+    if (ev.coins > 0 || ev.fallback) this.ctx.fx.coins(this.model.anchors.coinOut, ev.coins > 0 ? coinCount(ev.coins) : 8, { spread: 0.1, up: 0.2 });
   }
 
   /** Label text, colour and scale for the reveal of one open event. */

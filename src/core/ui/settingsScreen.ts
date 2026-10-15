@@ -168,6 +168,8 @@ function videoPage(c: Ctx): void {
     value: S().psx.drawDistance, wrap: false, onChange: (v) => { putPsx('drawDistance', v); c.reload(); },
   }));
   flag(c, 'psx.crt', t('settings.crt'), S().psx.crt, (v) => { putPsx('crt', v); c.reload(); });
+  flag(c, 'viewmodel', t('settings.viewmodel'), S().viewmodel, (v) => put('viewmodel', v), t('settings.viewmodel.tip'));
+  flag(c, 'gloves', t('settings.gloves'), S().gloves, (v) => put('gloves', v), t('settings.gloves.tip'));
 
   head(c, t('settings.sec.filters'));
   slide(c, 'psx.jitter', t('settings.jitter'), { min: 0, max: 1, step: 0.05, value: S().psx.jitter, format: pct, apply: (v) => putPsx('jitter', v) });

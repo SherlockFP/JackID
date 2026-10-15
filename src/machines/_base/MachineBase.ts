@@ -146,6 +146,13 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   private _ray = new THREE.Raycaster();
   private _sink: MachineSink | null = null;
   private _attract: juice.AttractScript | null = null;
+  /** Win streak of the local occupant (see `settle`): reset on a loss, on a new occupant and on stand-up. */
+  private _streak = 0;
+  /** Default idle show (`idleShow`): the glint scheduler, built once from the parts that have a marquee or bulbs. */
+  private _idle: juice.AttractScript | null = null;
+  private _idleChecked = false;
+  /** The latest `anticipate` call: only its own music fall-back runs (a newer call replaces it). */
+  private _antTok = 0;
   /** Active `_timer` (see TableBase.countdown): host-ms deadline + label. */
   protected timerState: { until: number; label: string } | null = null;
 
@@ -227,6 +234,8 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   get isHost(): boolean { return this.ctx.net.isHost; }
   get selfId(): PlayerId { return this.ctx.net.selfId; }
   get occupant(): PlayerId | null { return this.seats[0] ?? null; }
+  /** Wins in a row for the local occupant (0 for everyone else). Read by `juice.celebrate` for the streak show. */
+  get winStreak(): number { return this.isLocalOccupant ? this._streak : 0; }
   get localSeat(): number { return this.seats.indexOf(this.ctx.net.selfId); }
   get isLocalOccupant(): boolean { return this.localSeat >= 0; }
   get src(): EcoSource { return { mid: this.id, machineId: this.def.id }; }
@@ -499,6 +508,8 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     this._roundOpen = false;
     this._hsMult = 1;
     const credited = this.ctx.run.win(gross, this.src, meta);
+    // win streak (presentation only): a win extends it, a loss ends it, a push leaves it as it was
+    if (this.isLocalOccupant) { if (gross > bet) this._streak++; else if (gross < bet) this._streak = 0; }
     this.busy = false;
     this.offerGamble(credited);
     if (this.isLocalOccupant) this.fitBet();          // a lost round can leave the pocket under the current bet
@@ -650,6 +661,18 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
 
   /** Tier-escalating win show (see juice.ts). Call from `present()`; fire-and-forget unless the show is short. */
   protected celebrate(tier: JuiceTier, o?: juice.CelebrateOpts): Promise<void> { return juice.celebrate(this, tier, { speed: this.speed, ...o }); }
+  /**
+   * Music tension before a show: the intensity rises to `level` now and falls back after `sec` (scaled by Speed).
+   * Local player only; a newer call replaces the older fall-back. The fall-back goes to 0 (the music API has no
+   * intensity getter, so the previous value cannot be restored).
+   */
+  protected anticipate(sec: number, level = 0.8): void {
+    if (!this.isLocalOccupant || this._disposed || !(sec > 0)) return;
+    const music = this.ctx.audio.music;
+    const tok = ++this._antTok;
+    music.setIntensity(clamp(level, 0, 1), 0.4);
+    void this.wait(sec).then(() => { if (!this._disposed && tok === this._antTok) music.setIntensity(0, 1.5); });
+  }
   /** Small readable loss feedback + sound. */
   protected commiserate(o?: { amount?: number; at?: THREE.Object3D }): void { juice.loss(this, o); }
   /** Held-breath tease before a "nearly won" loss; awaitable. */
@@ -753,7 +776,21 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   _frame(dt: number, t: number): void {
     this.frame(dt, t);
     this._riskL?.frame();
-    if (!this.busy && this.seats.every((s) => s === null)) this.attract(dt, t);
+    if (!this.busy && this.seats.every((s) => s === null)) { this.idleShow(dt); this.attract(dt, t); }
+  }
+  /**
+   * Default idle show (unoccupied, visible): a 1.5 s glint on the marquee and bulb chains about every 12 s. The parts
+   * are found once by duck-typing `model.parts`; a machine with neither schedules nothing.
+   */
+  private idleShow(dt: number): void {
+    if (!this._idleChecked) {
+      this._idleChecked = true;
+      const roots: THREE.Object3D[] = [];
+      const parts = Object.values((this.model?.parts ?? {}) as object) as Array<{ root?: THREE.Object3D; chase?: unknown; pattern?: unknown } | null>;
+      for (const p of parts) if (p?.root && (typeof p.chase === 'function' || typeof p.pattern === 'function')) roots.push(p.root);
+      if (roots.length) this._idle = new juice.AttractScript(this.cosmetic).every('glint', juice.IDLE_GLINT_S, () => juice.idleGlint(this, roots), { jitter: 3, first: 6 });
+    }
+    this._idle?.update(dt);
   }
   /** A seat was granted (`moccOk`). Local occupant gets the occupancy RNG stream. */
   _occupy(pid: PlayerId, seat: number, seed: number, local: boolean): void {
@@ -761,6 +798,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     if (local) {
       this._aliasHeld.clear();
       this._pend = null; this._pendHeld = false;
+      this._streak = 0;
       this.rng = createRng(seed);
       this._releaseRequested = false;
       this.bet = clamp(this.bet, this.def.minBet, this.def.maxBet);
@@ -779,6 +817,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     if (local) {
       this._riskL?.onRelease();
       this._hsMult = 1;
+      this._streak = 0;
       this._pend = null; this._pendHeld = false;
       this.disarmBig();
       this._stakeSig = '';

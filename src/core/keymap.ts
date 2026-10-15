@@ -16,7 +16,7 @@ export const DEFAULT_BINDINGS: Record<BindingKey, string[]> = {
   // ── walk ──
   fwd: ['KeyW', 'ArrowUp'], back: ['KeyS', 'ArrowDown'], left: ['KeyA', 'ArrowLeft'], right: ['KeyD', 'ArrowRight'],
   sprint: ['ShiftLeft', 'ShiftRight'], crouch: ['KeyC'], interact: ['KeyE'], pause: ['Escape'],
-  scoreboard: ['Tab'], chat: ['KeyT', 'Enter'], give: ['KeyG'], help: ['F1'], debug: ['F3'], debugColliders: ['F4'],
+  scoreboard: ['Tab'], chat: ['Enter'], give: ['KeyG'], help: ['F1'], debug: ['F3'], debugColliders: ['F4'],
   upgrade: ['KeyU'], use: ['KeyF'], place: ['KeyB'], emote: ['KeyV'], ping: ['Mouse1', 'KeyZ'],
   talk: ['KeyY'], journal: ['KeyJ'],
   // `skip` is Space in the pit (also the hop key); during cutscenes Enter / Escape count as well (CUTSCENE_SKIP_CODES)
@@ -43,6 +43,8 @@ export const EXTRA_BINDINGS: Record<string, string[]> = {
   jump: ['Space'], fidget: ['KeyQ'], cheer: ['Digit7'], shrug: ['Digit8'], dance: ['Digit9'],
   // the phone from anywhere (walking or seated): KeyP picks up a ringing line; 1 / 2 / 3 choose a deal while the sheet is up
   answerPhone: ['KeyP'], phoneOpt1: ['Digit1'], phoneOpt2: ['Digit2'], phoneOpt3: ['Digit3'],
+  // the pocket phone (wave 69): T opens or closes the threads while walking; 1 / 2 / 3 answer while it is open
+  phone: ['KeyT'], phoneReply1: ['Digit1'], phoneReply2: ['Digit2'], phoneReply3: ['Digit3'],
 };
 
 /** Every binding key the service knows (frozen + extra) with its default codes. */
@@ -123,7 +125,11 @@ export function actionLabel(key: string): string {
  * Walk actions that deliberately share one code (DECISIONS G): skip and jump both use Space in the pit. Sharing is
  * not a conflict, so the rebinding UI never swaps them apart.
  */
-export const SHARED_CODES: Readonly<Record<string, readonly string[]>> = { Space: ['skip', 'jump'] };
+export const SHARED_CODES: Readonly<Record<string, readonly string[]>> = {
+  Space: ['skip', 'jump'],
+  // the hotline's deal keys and the pocket phone's reply keys share the digits: one press is read by whichever surface is up
+  Digit1: ['phoneOpt1', 'phoneReply1'], Digit2: ['phoneOpt2', 'phoneReply2'], Digit3: ['phoneOpt3', 'phoneReply3'],
+};
 
 /** Binding keys of the same layer (other than `key`) that already use `code`, minus deliberate shares. */
 export function conflictsFor(bindings: Readonly<Record<string, readonly string[]>>, key: string, code: string): string[] {

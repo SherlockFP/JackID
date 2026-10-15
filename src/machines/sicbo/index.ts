@@ -337,6 +337,10 @@ export default class SicBo extends TableBase<SicBoParts, Ev, Snap, Act> {
       if (!fast) await this.wait(0.6);
       await this.tumble(faces, fast, 0.6);
     }
+    // NEAR MISS: the local ticket missed by one, so the last die stops one face off for a beat before it lands
+    if (!fast && ev.seats.some((r) => r.seat === this.localSeat && r.stake > 0 && r.gross <= 0 && r.nearmiss)) {
+      await this.holdLastDie(faces);
+    }
 
     // IMPACT: the dice land, the layout shakes, a triple drops the stamp
     this.sfx('diceLand');
@@ -379,6 +383,16 @@ export default class SicBo extends TableBase<SicBoParts, Ev, Snap, Act> {
     this.ctx.fx.glow(stamp, GOLD, 0.6, 0.8);
   }
 
+  /** The last die rolls to the face one off, holds ~0.4 s, then rolls onto its real face (presentation only). */
+  private async holdLastDie(faces: Dice): Promise<void> {
+    const { dice, diceRest, diceFrom } = this.parts;
+    const i = 2, real = faces[i];
+    const off = real > 1 ? real - 1 : real + 1;
+    await dice.roll(i, diceFrom, diceRest[i], off, TUMBLE_S * 0.15);
+    await this.wait(0.4);
+    await dice.roll(i, diceFrom, diceRest[i], real, TUMBLE_S * 0.15);
+  }
+
   /** Rolls the dice to `faces`; the cosmetic tumble is on the local clock. */
   private async tumble(faces: Dice, fast: boolean, scale: number): Promise<void> {
     const { dice, diceRest, diceFrom } = this.parts;
@@ -402,7 +416,7 @@ export default class SicBo extends TableBase<SicBoParts, Ev, Snap, Act> {
     const best = winners[0];
     if (best) {
       const tier = juiceTier(best.gross, best.stake);
-      void this.celebrate(tier, { amount: best.gross, at, lamps: [lamps[best.seat]], fast: pc.fast, restore: () => this.paintLamps() });
+      void this.celebrate(tier, { amount: best.gross, bet: best.stake, at, lamps: [lamps[best.seat]], fast: pc.fast, restore: () => this.paintLamps() });
     } else {
       this.sfx('coin');
     }

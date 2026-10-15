@@ -41,6 +41,10 @@ const strings = {
     'crt': 'CRT effect',
     'scanlines': 'Scanlines',
     'vignette': 'Vignette',
+    'viewmodel': 'Hands',
+    'viewmodel.tip': 'Your first-person hands. Off hides them.',
+    'gloves': 'Gloves',
+    'gloves.tip': 'Dark leather gloves. Off gives the old ivory gloves.',
     // audio
     'sec.volume': 'VOLUME',
     'vol.master': 'Master',
@@ -112,6 +116,10 @@ const strings = {
     'crt': 'CRT efekti',
     'scanlines': 'Tarama çizgileri',
     'vignette': 'Köşe karartması',
+    'viewmodel': 'Eller',
+    'viewmodel.tip': 'Birinci şahıs ellerin. Kapalıyken gizlenir.',
+    'gloves': 'Eldiven',
+    'gloves.tip': 'Koyu deri eldivenler. Kapalıyken eski fildişi eldivenler.',
     // audio
     'sec.volume': 'SES DÜZEYİ',
     'vol.master': 'Ana ses',

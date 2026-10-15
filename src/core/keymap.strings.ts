@@ -19,6 +19,7 @@ const strings = {
     'action.journal': 'JackID card (hold)', 'action.skip': 'Skip cutscene (hold)', 'action.jump': 'Hop',
     'action.fidget': 'Coin trick (walking)', 'action.cheer': 'Cheer', 'action.shrug': 'Shrug', 'action.dance': 'Dance',
     'action.answerPhone': 'Answer the phone (from anywhere)', 'action.phoneOpt1': 'Phone deal 1', 'action.phoneOpt2': 'Phone deal 2', 'action.phoneOpt3': 'Phone deal 3',
+    'action.phone': 'Pocket phone (open / close)', 'action.phoneReply1': 'Phone reply 1', 'action.phoneReply2': 'Phone reply 2', 'action.phoneReply3': 'Phone reply 3',
     // machine
     'action.m.primary': 'Primary (spin / deal)', 'action.m.secondary': 'Secondary (tap RMB)',
     'action.m.up': 'Up', 'action.m.down': 'Down', 'action.m.left': 'Left', 'action.m.right': 'Right',
@@ -50,6 +51,7 @@ const strings = {
     'action.skip': 'Ara sahneyi atla (basılı tut)', 'action.jump': 'Zıpla', 'action.fidget': 'Jeton hilesi (yürürken)',
     'action.cheer': 'Alkışla', 'action.shrug': 'Omuz silk', 'action.dance': 'Dans et',
     'action.answerPhone': 'Telefonu aç (her yerden)', 'action.phoneOpt1': 'Telefon teklifi 1', 'action.phoneOpt2': 'Telefon teklifi 2', 'action.phoneOpt3': 'Telefon teklifi 3',
+    'action.phone': 'Cep telefonu (aç / kapat)', 'action.phoneReply1': 'Telefon yanıtı 1', 'action.phoneReply2': 'Telefon yanıtı 2', 'action.phoneReply3': 'Telefon yanıtı 3',
     // machine
     'action.m.primary': 'Ana eylem (çevir / dağıt)', 'action.m.secondary': 'İkincil (sağ tık)',
     'action.m.up': 'Yukarı', 'action.m.down': 'Aşağı', 'action.m.left': 'Sol', 'action.m.right': 'Sağ',

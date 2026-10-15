@@ -53,6 +53,7 @@ import { fits, resolvePlacements, type Placement } from './sys/placement';
 import { Router, type SeatPhase } from './sys/router';
 import { SlotRec } from './sys/slot';
 import { newLook, ZoneMap } from './sys/zones';
+import { homeRoom } from './home';
 
 declare module '@/core/events' {
   interface GameEvents {
@@ -685,6 +686,8 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
     collision,
     interact,
     lights: pool.api as WorldLights,
+    /** The apartment's room controls (wave 69), absent until the level has built the flat. */
+    get home() { return homeRoom() ?? undefined; },
     items: items.api,
     ready,
     get progress() { return jobsTotal === 0 ? 1 : jobsDone / jobsTotal; },

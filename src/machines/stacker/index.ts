@@ -51,6 +51,8 @@ const HIST = 12;
 const WHITE = 0xfff0e0;
 const DIM_PREVIEW = 0x3a1010;
 const DIM_PANEL = '#ff3020';
+/** Length of the riser that lands on the take-or-climb deadline (tensionRise at param 1). */
+const RISER_S = 1.6;
 
 /** Colour of a placed row: amber on MINOR (row 10), gold on MAJOR, red otherwise (rungs 4 and 7 included). */
 export function rowColour(row: number): number {
@@ -101,6 +103,11 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
   private barCs = -1;
   private barRow = -1;
   private barW = 0;
+  /** Take-or-climb window cues (authority only, presentation): next tick time, riser fired, and whether the row screen shows the countdown. */
+  private rungTickAt = 0;
+  private rungRiser = false;
+  private rungShown = false;
+  private rungRow = 0;
 
   protected createModel(kit: Kit): MachineModel<StackerParts> {
     return buildModel(kit, this.modelOpts);
@@ -216,6 +223,8 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
     if (rungMult(p.row) > 0) {
       p.phase = 'rung';
       p.decideAt = this.simT + DECIDE_S;
+      this.rungTickAt = this.simT;
+      this.rungRiser = false;
     } else {
       p.phase = 'gap';
       p.gapAt = this.simT + ROW_GAP_S;
@@ -268,7 +277,23 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
     const p = this.play;
     if (!p) return;
     if (p.phase === 'gap' && this.simT >= p.gapAt) this.startRow();
-    else if (p.phase === 'rung' && this.simT >= p.decideAt) this.take();
+    else if (p.phase === 'rung') {
+      this.rungCue(p);
+      if (this.simT >= p.decideAt) this.take();
+    }
+  }
+
+  /**
+   * The take-or-climb window, as the authority hears it: the ticks speed up as the window closes, and a riser lands on
+   * the deadline. Presentation only; the window still ends on the sim clock (default TAKE).
+   */
+  private rungCue(p: Play): void {
+    const left = Math.max(0, p.decideAt - this.simT);
+    if (!this.rungRiser && left <= RISER_S) { this.rungRiser = true; this.sfx('tensionRise', { vol: 0.6, param: 1 }); }
+    if (this.simT >= this.rungTickAt) {
+      this.sfx('clockTick', { vol: 0.4, pitch: Math.round(6 * (1 - left / DECIDE_S)) });   // climbs a tritone as it closes
+      this.rungTickAt = this.simT + clamp(left * 0.2, 0.12, 0.6);                      // ticks speed up as it closes
+    }
   }
 
   // ── present: every peer, including the emitter ──────────────────────────────────────────────────
@@ -335,7 +360,7 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
       const tier = juiceTier(ev.gross, ev.bet, ev.tags);
       if (ev.outcome === 'major') await this.majorShow(ev);
       if (tierAtLeast(tier, 'medium')) {
-        await this.celebrate(tier, { amount: ev.gross, marquee, restore: () => this.idleChase(), fast: pc.fast });
+        await this.celebrate(tier, { amount: ev.gross, bet: ev.bet, marquee, restore: () => this.idleChase(), fast: pc.fast });
       } else {
         await this.pourCoins(ev.gross, { bet: ev.bet, fast: pc.fast, onCount: (v) => this.drawPanel(v) });
       }
@@ -365,6 +390,9 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
   /** Bar drive (render rate): the bar cells follow the shared motion; the light follows the active row. */
   frame(dt: number, _time: number): void {
     this.parts.prizeTurntable.rotation.y += dt * 0.5;
+    const p = this.play;
+    if (p && p.phase === 'rung') this.drawWindow(p.row, Math.max(0, (p.decideAt - this.simT) / DECIDE_S));
+    else if (this.rungShown) { this.rungShown = false; this.drawRow(this.rungRow); }
     const b = this.bar;
     if (!b) { if (this.barCs >= 0) this.paintBar(null); return; }
     const cs = clamp(Math.round(b.m.posAt(this.simT - b.t0)), 0, b.m.max);
@@ -414,6 +442,19 @@ export default class Stacker extends MachineBase<StackerParts, Ev, State> {
     this.parts.leds.row.draw((g, sc) => {
       g.fillStyle = '#080808'; g.fillRect(0, 0, sc.w, sc.h);
       sc.text(n, 4, 4, { font: 'px5', color: DIM_PANEL });
+    });
+  }
+
+  /** The row screen doubles as the decision clock: the row number, and a bar that shrinks over the take-or-climb window. */
+  private drawWindow(row: number, frac: number): void {
+    const n = String(row).padStart(2, '0');
+    this.rungRow = row;
+    this.rungShown = true;
+    this.parts.leds.row.draw((g, sc) => {
+      g.fillStyle = '#080808'; g.fillRect(0, 0, sc.w, sc.h);
+      sc.text(n, 4, 4, { font: 'px5', color: DIM_PANEL });
+      g.fillStyle = frac < 0.3 ? '#ff4040' : '#ffb020';
+      g.fillRect(0, sc.h - 3, Math.round(sc.w * frac), 3);
     });
   }
 
