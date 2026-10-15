@@ -65,6 +65,13 @@
 // Also modelled: House Favour (x1.25 / 1.15 / 1.07 on Nights 1-3), the Witching Watch +5 %, the activity float (never bet into the
 // 3 pulls the next Watches need). --no-favour switches Favour off; --trace N prints the first N runs Night by Night.
 //
+// WAVE 42 (director): interest 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20 (schedule.ts), and the quota ladder 31, 44, 88, 176, 352,
+// 704, 1408, 2816 (each step at most 2x). Human 2000 runs (seed 20261013): reach 86 / 66 / 50 / 39 / 33 / 29 / 26 / 23 %. The
+// targets (N1 85, N2 ~70, N3 ~50, N5 ~30, N8 ~8-12) hold for N1-N3; N5 and N8 do not, and no ladder under the 2x cap can make them:
+// N5 <= 4 x N3 and N8 <= 64 x N2, and a quota of 20 000 at N8 still leaves ~20 % of runs reaching it (the survivors' pockets are far
+// above any quota the ladder allows). `--quotas 31,44,88,176,352,704,1408,2816` reproduces the table with the schedule as shipped.
+// The Pawn now always shows a charm at most max(8, 25 % of quota) and a stamp at most 30 % (decision 3); the floor shelf sells at that
+// cap. Settle is 1.5 s with the bank open (decision 2); the sim does not model the Settle clock.
 // WAVE 41 (director): Night 1 interest 0.50, Night 2 0.90 (schedule.ts). Human 2000 runs: 84.7 / 62.8 / 48.7 / 36.9 / 28.9 / 23.4 / 17.9 / 15.3.
 // The surplus above the quota stays in the bank until Dawn (decision 2), so the bots' interest runs on it to the last Watch.
 // TARGET TABLE (wave 19 director, cumulative reach, human bot first): human N1 >= 85, N2 >= 70, N3 >= 50, N5 25-30, N8 ~5; rotator a

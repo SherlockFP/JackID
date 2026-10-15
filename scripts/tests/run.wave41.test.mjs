@@ -16,10 +16,8 @@ before(async () => {
   REG.load();
 });
 
-test('decision 4: Night 1 pays 50 % a Watch; Night 2 pays 90 % (the sim needs it to hold Night 3 near 50 %)', () => {
-  assert.equal(SCH.BASE_NIGHTS[0].interest, 0.5);
-  assert.equal(SCH.BASE_NIGHTS[1].interest, 0.9);
-  assert.equal(SCH.BASE_NIGHTS[2].interest, 0.28, 'Night 3 unchanged');
+test('decision 4 (wave 41, superseded by wave 42 decision 1): the interest falls one step per Night, 0.55 ... 0.20', () => {
+  assert.deepEqual(SCH.BASE_NIGHTS.map((n) => n.interest), [0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2]);
 });
 
 test('decision 1: the Closing window is 3 s in every Watch', () => {
@@ -73,7 +71,7 @@ test('decision 3: each refused deposit names its reason', () => {
   assert.equal(run.depositRefusal(20), 'nothing', 'an empty pocket has nothing to deposit');
   run.coins = 100;
   run.phase = 'settle';
-  assert.equal(run.depositRefusal(5), 'closed', 'Settle is the end of the Watch');
+  assert.equal(run.depositRefusal(5), null, 'Settle stays open (wave 42, decision 2)');
   run.phase = 'collection';
   assert.equal(run.depositRefusal(5), 'closed', 'Dawn is the end of the Watch');
   run.phase = 'intermission'; run.nightDone = true;

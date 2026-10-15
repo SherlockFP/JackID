@@ -46,20 +46,29 @@ export interface NightDef {
  * N5 28-29 %. The pull count barely moves N4 reach (11 pulls: 32 %), so the quota is the lever.
  */
 /**
+ * Wave 42 (director decision 1): interest falls smoothly, one step per Night: 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20 (N1..N8),
+ * monotonic, so no Night is a cliff. Overdrawn interest continues the slope (0.20 - 0.04 k, floor 0.04).
+ * The quota ladder is then tuned for the same human bot (scripts/sim/run.mjs, 2000 runs, seed 20261013), each step <= 2x and
+ * strictly increasing: N2 44, N3 88, N4 176 ... N8 2816 (the N2 and N3 targets are the lever; N5 and N8 are bounded, see the
+ * sim header). Reach: N1 86 %, N2 66 %, N3 50 %, N4 39 %, N5 33 %, N6 29 %, N7 26 %, N8 23 %.
+ * Why N5 and N8 stay high: with each Night at most 2x the one before, N5 <= 4 x N3 and N8 <= 64 x N2. A quota of 20 000 at N8
+ * still leaves ~20 % reaching it (the survivors' pockets are far above the quota), so the late reach has a floor the ladder cannot cut.
+ */
+/**
  * Wave 41 (director decision 4): Night 1 interest 0.90 -> 0.50 (the bank was the first Night's cash engine: "30 -> 98 coins by
  * Night 2" was too easy), and Night 2 0.30 -> 0.90 because without it the human bot's Night 3 reach fell 52 % -> 23 % (the
  * Night 1 surplus is the Night 2 pocket). Human bot, 2000 runs, seed 20261013: N1 84.7 %, N2 62.8 %, N3 48.7 %, N4 36.9 %,
  * N5 28.9 %, N6 23.4 %, N7 17.9 %, N8 15.3 %. N1 at 0.55 would give 86 %.
  */
 export const BASE_NIGHTS: readonly NightDef[] = [
-  { no: 1, floor: 'B7', name: 'first', base: 31, watches: 3, pulls: 7, clock: 150, interest: 0.50, favour: 1.25, si: 1, card: 0 },
-  { no: 2, floor: 'B6', name: 'second', base: 58, watches: 3, pulls: 7, clock: 150, interest: 0.90, favour: 1.15, si: 3, card: 3 },
-  { no: 3, floor: 'B5', name: 'third', base: 115, watches: 3, pulls: 8, clock: 165, interest: 0.28, favour: 1.07, si: 10, card: 3 },
-  { no: 4, floor: 'B4', name: 'fourth', base: 140, watches: 3, pulls: 9, clock: 165, interest: 0.26, favour: 1, si: 30, card: 4 },
-  { no: 5, floor: 'B3', name: 'fifth', base: 250, watches: 4, pulls: 8, clock: 180, interest: 0.22, favour: 1, si: 100, card: 4 },
-  { no: 6, floor: 'B2', name: 'sixth', base: 520, watches: 4, pulls: 9, clock: 180, interest: 0.20, favour: 1, si: 300, card: 4 },
-  { no: 7, floor: 'B1', name: 'seventh', base: 1100, watches: 4, pulls: 9, clock: 195, interest: 0.16, favour: 1, si: 1000, card: 4 },
-  { no: 8, floor: 'G', name: 'final', base: 2300, watches: 4, pulls: 10, clock: 210, interest: 0.12, favour: 1, si: 3000, card: 5 },
+  { no: 1, floor: 'B7', name: 'first', base: 31, watches: 3, pulls: 7, clock: 150, interest: 0.55, favour: 1.25, si: 1, card: 0 },
+  { no: 2, floor: 'B6', name: 'second', base: 44, watches: 3, pulls: 7, clock: 150, interest: 0.50, favour: 1.15, si: 3, card: 3 },
+  { no: 3, floor: 'B5', name: 'third', base: 88, watches: 3, pulls: 8, clock: 165, interest: 0.45, favour: 1.07, si: 10, card: 3 },
+  { no: 4, floor: 'B4', name: 'fourth', base: 176, watches: 3, pulls: 9, clock: 165, interest: 0.40, favour: 1, si: 30, card: 4 },
+  { no: 5, floor: 'B3', name: 'fifth', base: 352, watches: 4, pulls: 8, clock: 180, interest: 0.35, favour: 1, si: 100, card: 4 },
+  { no: 6, floor: 'B2', name: 'sixth', base: 704, watches: 4, pulls: 9, clock: 180, interest: 0.30, favour: 1, si: 300, card: 4 },
+  { no: 7, floor: 'B1', name: 'seventh', base: 1408, watches: 4, pulls: 9, clock: 195, interest: 0.25, favour: 1, si: 1000, card: 4 },
+  { no: 8, floor: 'G', name: 'final', base: 2816, watches: 4, pulls: 10, clock: 210, interest: 0.20, favour: 1, si: 3000, card: 5 },
 ];
 
 export const BASE_RUN_NIGHTS = BASE_NIGHTS.length;
@@ -75,7 +84,7 @@ export function overdrawnNight(no: number): NightDef {
     watches: 4,
     pulls: 10,
     clock: 210,
-    interest: Math.max(0.04, 0.12 - 0.01 * k),
+    interest: Math.max(0.04, 0.20 - 0.04 * k),
     favour: 1,
     si: sig(3000 * Math.pow(3.5, k), 2),
     card: 5,

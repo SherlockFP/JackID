@@ -29,7 +29,7 @@ import { allCharmDefs, charmDef } from '@/game/charms/engine';
 import { LAUNCH_CHARM_IDS, SUIT_SCALED_CHARMS } from '@/game/data/charms';
 import { ENGINE_CHARM_IDS } from '@/game/data/charmsEngines';
 import { charmPrice, rollRarity, type ShopRarity } from '@/game/economy';
-import { pawnPriceScale } from '@/game/data/schedule';
+import { nightDef, pawnPriceScale } from '@/game/data/schedule';
 import { foldEffects, scopeMatches, stackedValue } from '@/game/types';
 import type { CharmDef, ModBreakdown } from '@/game/types';
 import type { ModHook } from '@/game/modifiers.types';
@@ -50,6 +50,9 @@ const REGULAR = 3;
 /** Regular shelves the house can add (`x.pawn.slots`). They sit after the under-counter slot, so UNDER_COUNTER_INDEX stays put. */
 export const SLOT_EXTRA_MAX = 2;
 const MAX_SLOTS = SLOTS + SLOT_EXTRA_MAX;
+/** Director decision 3 (wave 42): every intermission offers a charm priced at most max(FLOOR_CHARM_MIN, FLOOR_CHARM_SHARE x quota). */
+export const FLOOR_CHARM_MIN = 8;
+export const FLOOR_CHARM_SHARE = 0.25;
 
 /** Dearest launch Common's base price: the anchor of the Pawn price scale (`pawnPriceScale`). Computed once. */
 let commonTopMemo: number | null = null;
@@ -75,6 +78,8 @@ export interface PawnHost {
   open(): boolean;
   /** Stake index (price multiplier). */
   si(): number;
+  /** Optional: the Night's quota the shelf floor is read against (decision 3). Default: the Night's base quota. */
+  quota?(): number;
   /** Ids of every charm held. */
   held(): readonly string[];
   /** False when another copy cannot be taken (non-stackable and held, or stacks maxed). */
@@ -118,7 +123,8 @@ export interface PawnHost {
   explain?(machineId: string): ModBreakdown;
 }
 
-interface SlotState { id: string; locked: boolean; sold: boolean }
+/** `cap`: the floor shelf (decision 3) sells at this price at most; absent on every other shelf. */
+interface SlotState { id: string; locked: boolean; sold: boolean; cap?: number }
 export interface PawnSnapshot {
   v: 1;
   /** `${night}:${watch}` of the visit the stock was drawn for; '' = never drawn. */
@@ -249,7 +255,51 @@ export class Pawn implements PawnApi {
     const rng = this.host.rng().fork(`pawn:${this.host.night()}:${this.host.watch()}`);
     this.fill(rng, this.freeSlots());
     if (first) this.guaranteeSynergy(rng.fork('synergy'));
+    this.ensureFloor(rng.fork('floor'));
     this.rev += 1;
+  }
+
+  /** The Night's quota the floor is read against: the host's, else the Night's base. */
+  private quotaNow(): number {
+    return this.host.quota?.() ?? nightDef(this.host.night()).base;
+  }
+
+  /** Price of the charm on shelf `i` (Infinity for an empty or sold shelf). */
+  private priceAt(i: number): number {
+    const s = this.slots[i];
+    const d = s && !s.sold ? charmDef(s.id) : undefined;
+    return d ? this.priceOf(d, i) : Number.POSITIVE_INFINITY;
+  }
+
+  /**
+   * Director decision 3: every intermission has at least one charm priced at most max(8, 25 % of the Night's quota), so a pocket
+   * that just cleared Dawn always has something it can afford. The Pawn's price scale alone does not reach that on the dear
+   * Nights (its cheapest Common is ~36 % of the quota from Night 4), so the floor shelf is a marked bargain: the dearest regular
+   * shelf that holds no synergy charm gives way to one of the three cheapest eligible charms, which sells at the cap (`SlotState.cap`).
+   */
+  private ensureFloor(rng: Rng): void {
+    const cap = Math.max(FLOOR_CHARM_MIN, FLOOR_CHARM_SHARE * this.quotaNow());
+    if (this.slots.some((_s, i) => this.priceAt(i) <= cap)) return;
+    const suits = new Set<string>();
+    for (const m of this.host.floor?.() ?? []) for (const t of m.tags) suits.add(t.toLowerCase());
+    // the shelf to give up: the dearest free regular shelf, a synergy charm only when nothing else is free
+    const free = this.slots.map((_s, i) => i).filter((i) => i !== UNDER_COUNTER_INDEX && i !== BIAS_SLOT && !this.slots[i]?.locked);
+    const plain = free.filter((i) => {
+      const s = this.slots[i];
+      const d = s ? charmDef(s.id) : undefined;
+      return !d || !this.isSynergy(d, suits);
+    });
+    const giveUp = (plain.length ? plain : free).sort((a, b) => this.priceAt(b) - this.priceAt(a))[0];
+    if (giveUp === undefined) return;
+    const exclude = new Set<string>(this.slots.flatMap((s) => (s ? [s.id] : [])));
+    // the three cheapest by price on this shelf; the bargain is capped below, so any of them is priced at most `cap`
+    const cheap = allCharmDefs()
+      .filter((d) => d.rarity !== 'cursed' && this.eligible(d, exclude))
+      .map((d) => ({ d, p: this.priceOf(d, giveUp) }))
+      .sort((a, b) => a.p - b.p || (a.d.id < b.d.id ? -1 : 1))
+      .slice(0, 3);
+    if (!cheap.length) return;
+    this.slots[giveUp] = { id: rng.pick(cheap).d.id, locked: false, sold: false, cap };
   }
 
   /** Charm that starts a build: an engine, or a suit-scaled charm of a suit that is on the floor (any suit when the floor is unknown). */
@@ -378,7 +428,9 @@ export class Pawn implements PawnApi {
     if (base <= 0) return base;
     let f = 1 - clamp01(this.host.discount?.() ?? 0);
     if (i === DISCOUNT_SLOT) f *= 1 - clamp01(this.host.discountSlot?.() ?? 0);
-    return Math.max(1, Math.round(base * f));
+    const price = Math.max(1, Math.round(base * f));
+    const cap = this.slots[i]?.cap;
+    return cap !== undefined ? Math.min(price, cap) : price;
   }
 
   /** Free rerolls left this visit: the run's own, the Pawn Bell's, and the Golden Ticket's first reroll. */
@@ -435,6 +487,7 @@ export class Pawn implements PawnApi {
     const rng = this.host.rng().fork(`pawn:${this.host.night()}:${this.host.watch()}`).fork(`r${this.rolls}`);
     this.fill(rng, idx, avoid);
     this.fill(rng, idx.filter((i) => !this.slots[i]));   // a thin pool: allow a repeat rather than an empty shelf
+    this.ensureFloor(rng.fork('floor'));                 // a reroll can take the floor shelf away: the floor holds
     this.rolls += 1;
     if (!free) this.paid += 1;
     this.rev += 1;
@@ -517,7 +570,7 @@ export class Pawn implements PawnApi {
   snapshot(): PawnSnapshot {
     return {
       v: 1, key: this.key, rolls: this.rolls, paid: this.paid, visitFree: this.visitFree, firstUsed: this.firstUsed,
-      slots: this.slots.map((s) => (s ? { id: s.id, locked: s.locked, sold: s.sold } : null)),
+      slots: this.slots.map((s) => (s ? { id: s.id, locked: s.locked, sold: s.sold, ...(s.cap !== undefined ? { cap: s.cap } : {}) } : null)),
     };
   }
 
@@ -532,7 +585,10 @@ export class Pawn implements PawnApi {
     this.slots = new Array<SlotState | null>(n).fill(null);
     for (let i = 0; i < n; i++) {
       const s = snap.slots[i];
-      if (s && typeof s.id === 'string' && charmDef(s.id)) this.slots[i] = { id: s.id, locked: !!s.locked, sold: !!s.sold };
+      if (s && typeof s.id === 'string' && charmDef(s.id)) {
+        const cap = typeof s.cap === 'number' && Number.isFinite(s.cap) ? Math.max(1, Math.floor(s.cap)) : undefined;
+        this.slots[i] = { id: s.id, locked: !!s.locked, sold: !!s.sold, ...(cap !== undefined ? { cap } : {}) };
+      }
     }
     this.rev += 1;
   }

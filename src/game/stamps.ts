@@ -44,6 +44,8 @@ export const SHIFT_MAX = 3;
 export const ETCH_MAX = 4;
 /** Every stamp ever bought counts (levels summed). The best build under this cap is the RTP ceiling the tests pin at 1.30. */
 export const STAMP_CAP = 8;
+/** Director decision 3 (wave 42): every intermission offers a stamp at most this share of the Night's quota. */
+export const FLOOR_STAMP_SHARE = 0.3;
 export const OFFER_COUNT = 3;
 /** At most this many offers may be locked at once (a lock keeps the offer through rerolls and intermissions). */
 export const MAX_STAMP_LOCKS = 1;
@@ -181,6 +183,8 @@ export interface StampHost {
   open(): boolean;
   /** The Night's BASE quota (before the Assessment and discounts): the price base. */
   baseQuota(): number;
+  /** Optional: the Night's quota the shelf floor is read against (decision 3). Default: the base quota. */
+  quota?(): number;
   wallet(): number;
   tickets(): number;
   /** Debit coins. Atomic: false means nothing was charged. */
@@ -361,7 +365,29 @@ export class StampBook implements ModProvider, StampApi {
     }
     const rng = this.host.rng().fork(`stamps:${this.host.night()}:${this.host.watch()}`);
     this.fill(rng, this.freeSlots());
+    this.ensureFloor();
     this.rev += 1;
+  }
+
+  /**
+   * Director decision 3 (wave 42): every intermission offers at least one stamp priced at most 30 % of the Night's quota. When
+   * the board has none, the dearest unlocked offer gives way to the cheapest stamp the pool still holds (seeded among the three
+   * cheapest, so the visit still varies).
+   */
+  private ensureFloor(): void {
+    const cap = FLOOR_STAMP_SHARE * (this.host.quota?.() ?? this.host.baseQuota());
+    const priceOn = (i: number): number => this.view(i)?.price ?? Number.POSITIVE_INFINITY;
+    if (this.slots.some((_s, i) => priceOn(i) <= cap)) return;
+    const give = this.slots.map((_s, i) => i).filter((i) => !this.slots[i]?.locked).sort((a, b) => priceOn(b) - priceOn(a))[0];
+    if (give === undefined) return;
+    const cheap = this.pool(new Set())
+      .map((p) => ({ p, price: stampPrice(p.kind, p.target, this.levelOf(p.kind, p.target), this.host.baseQuota()) }))
+      .sort((a, b) => a.price - b.price || (`${a.p.kind}:${a.p.target}` < `${b.p.kind}:${b.p.target}` ? -1 : 1))
+      .slice(0, 3)
+      .filter((x) => x.price <= cap);
+    if (!cheap.length) return;
+    const pick = this.host.rng().fork(`stamps:floor:${this.host.night()}:${this.host.watch()}`).pick(cheap).p;
+    this.slots[give] = { kind: pick.kind, target: pick.target, locked: false, sold: false };
   }
 
   private freeSlots(): number[] {
@@ -413,6 +439,9 @@ export class StampBook implements ModProvider, StampApi {
 
   offers(): readonly (StampOffer | null)[] {
     if (!this.host.open()) return [];
+    // The board is drawn for this visit on first read (nothing else calls sync(): a player who opens the STAMPS tab first
+    // saw an empty board, wave 42). sync() is idempotent per visit.
+    this.sync();
     return this.slots.map((_s, i) => this.view(i));
   }
 
@@ -435,6 +464,7 @@ export class StampBook implements ModProvider, StampApi {
     for (const i of idx) this.slots[i] = null;
     const rng = this.host.rng().fork(`stamps:${this.host.night()}:${this.host.watch()}`).fork(`r${this.rolls}`);
     this.fill(rng, idx, avoid);
+    this.ensureFloor();   // a reroll can take the cheap offer away: the floor holds (decision 3)
     this.rev += 1;
     return true;
   }

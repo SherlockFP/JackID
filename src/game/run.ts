@@ -77,6 +77,7 @@ import {
   type LockerOpen, type LockerResult, type RoomsState,
 } from './rooms';
 import pullsStrings from './pulls.strings';
+import bankStrings from './bank.strings';
 import type { EventBannerShow } from './buffs/banner';
 import type { IdleReport, TycoonState } from '@/game/types';
 
@@ -126,8 +127,10 @@ export interface BankView {
   pullsToQualify: number;
   /** Interest is capped at 2 x the quota: the most the bank can earn per Settle. */
   interestCap: number;
-  /** True while a WITHDRAW is allowed (not in Closing, Settle or Dawn, and not once the Night is paid). */
+  /** True while a WITHDRAW is allowed (not in Dawn, and not once the Night is paid). Open through Closing and Settle. */
   open: boolean;
+  /** Seconds left of the Settle (the HUD countdown until the lever returns); 0 outside Settle. */
+  settleLeft?: number;
   /** Pulls left in this Watch. */
   pullsLeft: number;
   /** The cheapest bet on the floor. */
@@ -168,8 +171,9 @@ interface PendingOverpay { rarity: CharmDef['rarity']; ids: string[]; left: numb
 
 /** Bell strike length (GDD §2.3). */
 const BELL_SEC = 2;
-/** Settle length (GDD §2.3). */
-const SETTLE_SEC = 3;
+/** Settle length (GDD §2.3). Wave 42 (director decision 2): 1.5 s. Deposits and WITHDRAW stay open through it (the bank is
+ *  settled at its start, so a coin moved now earns from the next Watch on); the lever comes back when it ends. */
+const SETTLE_SEC = 1.5;
 /** Dawn Collection length (GDD §2.7). */
 const COLLECTION_SEC = 12;
 /** Overtime Watch from the Rope Ladder (GDD §4.2 #89). */
@@ -211,6 +215,7 @@ export const STAKE_CONFIRM_REASON: RefusalReason = 'confirm';
 
 /** Pull grant toasts (`pulls.grant`, `pulls.r.*`). Registered here too so headless tests see them without the main.ts glob. */
 registerStrings(pullsStrings.prefix, { en: pullsStrings.en, tr: pullsStrings.tr });
+registerStrings(bankStrings.prefix, { en: bankStrings.en, tr: bankStrings.tr });
 
 let bossStringsDone = false;
 /** Boss names and texts to `event.<id>.name|desc|announce` (the banner and HUD read them like any Night event). Once. */
@@ -813,6 +818,8 @@ class Run implements DebtRun {
           this.stats.deposited = (this.stats.deposited ?? 0) + c;
           this.syncQuota();
           this.emit('run:deposit', { pid: this.selfId, amount: c, paid: this.debtPaid, due: this.quota.due });
+          // Wave 42 (decision 4): a phone credit moves no coin, so it says so: it went into the bank and cannot be withdrawn.
+          this.bankNote('bank.credit', { n: Math.floor(c) });
           this.checkMet();
           this.emit('quota:update', { quota: this.quota });
           this.persist();
@@ -1051,12 +1058,14 @@ class Run implements DebtRun {
 
   /**
    * Why a deposit of `amount` would be refused, or null when it goes through (director decision 3). Order: not a quota Watch,
-   * the Watch is closed (Settle, Dawn, the run is over), the Night is paid (Dawn until OPEN THE FLOOR), nothing to deposit, and
+   * the Watch is closed (Dawn, the run is over), the Night is paid (Dawn until OPEN THE FLOOR), nothing to deposit, and
    * the float (`depositFloor`, lifted only by a confirmed ALL). A deposit after the quota is met is accepted (decision 2).
+   * Closing and Settle stay open (wave 42, decision 2): the bank was settled at the start of Settle, so a coin put in then
+   * earns from the next Watch on.
    */
   depositRefusal(amount: number, confirmAll = false): DepositRefusal | null {
     if (!this.quotaMode || this.topside) return 'notQuota';
-    if (this.ended || this.phase === 'settle' || this.phase === 'collection') return 'closed';
+    if (this.ended || this.phase === 'collection') return 'closed';
     if (this.nightDone) return 'nightPaid';
     const amt = Math.min(Math.floor(Number.isFinite(amount) ? amount : 0), this.coins);
     if (amt <= 0) return 'nothing';
@@ -1081,6 +1090,8 @@ class Run implements DebtRun {
     this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: -amt, reason: 'deposit' });
     this.syncQuota();
     this.emit('run:deposit', { pid: this.selfId, amount: credit, paid: this.debtPaid, due: this.quota.due });
+    // Wave 42 (decision 4): every move into the bank is named, so a pocket that falls and a bank that rises read as one transfer.
+    this.bankNote('bank.deposit', { n: credit, p: Math.floor(this.coins) });
     this.checkMet();
     this.emit('quota:update', { quota: this.quota });
     this.persist();
@@ -1366,10 +1377,14 @@ class Run implements DebtRun {
     return (this.phase === 'intermission' || this.phase === 'closing') && !this.ended;
   }
 
-  /** A withdraw is allowed until the Watch settles: Intermission, Bell, play, Last Call and Closing (never Settle, Dawn, or a paid Night). */
+  /**
+   * A withdraw is allowed from Intermission to the end of Settle: Bell, play, Last Call, Closing and Settle (wave 42,
+   * decision 2). Never Dawn, the Topside choice, or a paid Night.
+   */
   private withdrawOpen(): boolean {
     if (this.ended || !this.quotaMode || this.nightDone || this.topside) return false;
-    return this.phase === 'intermission' || this.phase === 'bell' || this.phase === 'play' || this.phase === 'lastCall' || this.phase === 'closing';
+    return this.phase === 'intermission' || this.phase === 'bell' || this.phase === 'play' || this.phase === 'lastCall'
+      || this.phase === 'closing' || this.phase === 'settle';
   }
 
   private bankInput(): BankInput {
@@ -1394,6 +1409,7 @@ class Run implements DebtRun {
       pullsToQualify: this.phase === 'intermission' || this.phase === 'bell' ? pullsToQualify(0) : pullsToQualify(this.watchPulls),
       interestCap: Math.floor(2 * due * Math.max(0, i.rate)),
       open: this.withdrawOpen(),
+      settleLeft: this.phase === 'settle' ? Math.max(0, this.phaseLeft) : 0,
       pullsLeft: Number.isFinite(this.pullCount) ? this.pullCount : 0,
       minBet: this.cheapestBet(),
     };
@@ -1666,13 +1682,17 @@ class Run implements DebtRun {
 
   private fall(): void {
     this.living = false;
+    this.syncQuota();   // the quota the receipt reads is the bank's, as of this Dawn (wave 42, bug a)
     this.emit('quota:failed', { index: this.index });
     this.emit('player:fall', { pid: this.selfId });
     this.endRun('fell');
   }
 
   private postMortem(): NonNullable<RunSummary['post']> {
-    const q = this.shift.quota();
+    // Wave 42 (bug a): "short" is the BANK against the quota, read here from the run's own books, never the pocket. A run that
+    // fell at Dawn must print how far the bank was from the quota, not a "quota met" line.
+    this.syncQuota();
+    const due = Math.max(0, Math.floor(this.quota.due));
     let topCharm: string | null = null;
     let best = 0;
     for (const s of this.charmBox.list(this.selfId)) {          // owned order: ties go to the earliest
@@ -1680,7 +1700,7 @@ class Run implements DebtRun {
       if (n > best) { best = n; topCharm = s.id; }
     }
     return {
-      short: Math.max(0, q.due - q.deposited),
+      short: Math.max(0, due - Math.floor(this.debtPaid)),
       pullsLeft: Number.isFinite(this.pullCount) ? this.pullCount : 0,
       bestMachine: this.bestMachine,
       topCharm,
@@ -2128,6 +2148,8 @@ class Run implements DebtRun {
     this.persist();
   }
   private toast(key: string): void { this.banner?.(t(key), { color: '#c9a0ff', hold: 3, size: 8 }); }
+  /** A bank movement the player should read (deposit, phone credit): the same banner as the pulls, in the bank's gold. */
+  private bankNote(key: string, vars: Record<string, number>): void { this.banner?.(t(key, vars), { color: '#e8d27a', hold: 3, size: 8 }); }
   /** Every pull grant says what it was: "+N pulls · reason" (wave 38). Losses and unknown counts stay silent. */
   private pullToast(n: number, reason: 'phone' | 'bought' | 'watch'): void {
     if (!this.banner || !Number.isFinite(n) || n <= 0) return;
@@ -2218,6 +2240,7 @@ class Run implements DebtRun {
       floor: () => this.floorMachines(),
       open: () => this.shopOpen(),
       si: () => nightDef(this.index).si,
+      quota: () => nightQuota(this.nightDone && !this.topside ? this.index + 1 : this.index),
       held: () => this.charmBox.list(this.selfId).map((s) => s.id),
       canTake: (id) => {
         const s = this.charmBox.find(this.selfId, id);
@@ -2277,6 +2300,7 @@ class Run implements DebtRun {
       watch: () => (this.nightDone && !this.topside ? 0 : this.watch),
       open: () => this.shopOpen(),
       baseQuota: () => nightDef(this.nightDone && !this.topside ? this.index + 1 : this.index).base,
+      quota: () => nightQuota(this.nightDone && !this.topside ? this.index + 1 : this.index),
       wallet: () => this.coins,
       tickets: () => this.tickets,
       spend: (c, reason) => {

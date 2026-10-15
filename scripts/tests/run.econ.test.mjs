@@ -68,10 +68,10 @@ test('WAVE 23 rescueTerms: the quota penalty is at most 1.3 x the cash given, an
 });
 
 // ── WAVE 23 quota ladder smoothing (flow-fixes) ──────────────────────────────────────────────────────
-test('WAVE 23 ladder: no Night steps up more than 2.2x, and N3 -> N4 is at most 1.6x (was 1.78x, the wall)', () => {
+test('WAVE 42 ladder: no Night steps up more than 2x (director decision 1: the cap that keeps N2 and N3 near the human bot targets)', () => {
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
-  for (let i = 1; i < q.length; i++) assert.ok(q[i] / q[i - 1] <= 2.2, `N${i + 1} / N${i} = ${(q[i] / q[i - 1]).toFixed(2)} <= 2.2`);
-  assert.ok(SCH.BASE_NIGHTS[3].base / SCH.BASE_NIGHTS[2].base <= 1.6, 'N3 -> N4 <= 1.6x');
+  for (let i = 1; i < q.length; i++) assert.ok(q[i] / q[i - 1] <= 2 + 1e-9, `N${i + 1} / N${i} = ${(q[i] / q[i - 1]).toFixed(2)} <= 2`);
+  assert.deepEqual(q, [31, 44, 88, 176, 352, 704, 1408, 2816], 'the tuned ladder (scripts/sim/run.mjs, 2000 human runs)');
 });
 
 // ── the Watch clock hold ─────────────────────────────────────────────────────────────────────────────
@@ -305,18 +305,18 @@ test('live interest: the schedule rate plus bonuses, floored at 0; the deposit i
   assert.equal(SCH.ratePercent(SCH.interestRate(0.3, -0.01)), 29, 'Night 2 with the Skipped Interest buff');
   assert.equal(SCH.interestRate(0.1, -0.5), 0, 'never negative');
   const live = SCH.liveInterest(0, 0, 50, 40);
-  assert.deepEqual([live.rate, live.amount, live.cap], [0.5, 25, 80], 'floor(min(deposit, 2 × due) × rate), Night 1 at 50 % (wave 41)');
-  assert.equal(SCH.liveInterest(0, 0, 500, 40).amount, 40, 'a huge deposit still earns on at most 2 × due');
+  assert.deepEqual([live.rate, live.amount, live.cap], [0.55, 27, 80], 'floor(min(deposit, 2 × due) × rate), Night 1 at 55 % (wave 42)');
+  assert.equal(SCH.liveInterest(0, 0, 500, 40).amount, 44, 'a huge deposit still earns on at most 2 × due (80 × 55 %)');
   assert.equal(SCH.liveInterest(0, 0, 500, 40).cap, 80);
 });
 
 test('the Terminal rate is the live rate of the current Night (what Settle pays), not the schedule rate alone', () => {
   const run = RUN.createRun({ seed: 41, mode: 'debt' });
-  assert.equal(run.interestPct(), 50, 'Night 1 schedule rate (wave 41: 50 %, was 90 %)');
+  assert.equal(run.interestPct(), 55, 'Night 1 schedule rate (wave 42: 55 %, then 50, 45 … 20 per Night)');
   run.index = 1;
-  assert.equal(run.interestPct(), 90, 'Night 2 schedule rate (wave 41: 90 %, was 30 %, so the bank still reaches Night 3)');
+  assert.equal(run.interestPct(), 50, 'Night 2 schedule rate');
   run.index = 2;
-  assert.equal(run.interestPct(), 28, 'Night 3 schedule rate');
+  assert.equal(run.interestPct(), 45, 'Night 3 schedule rate');
   run.dispose();
 });
 

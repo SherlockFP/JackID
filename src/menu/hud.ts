@@ -370,9 +370,12 @@ export function createHud(): Hud {
     const interm = phase === 'intermission';
     setCls(clock, 'lastcall', lastCall);
     setCls(clock, 'interm', interm);
-    setText(clockNum, interm ? '' : mmss(left));
+    // Settle (wave 42, decision 2): the bank stays open and the top line counts down to the lever, one line, no clock number.
+    const settling = phase === 'settle';
+    const settleSec = settling ? Math.ceil((r as (typeof r & { bank?: () => BankView }) | null)?.bank?.()?.settleLeft ?? 0) : 0;
+    setText(clockNum, interm || settling ? '' : mmss(left));
     // Closing (director wave 41): the last 3 s of a Watch, the deposits / withdrawals / Pawn still open, so the label says so.
-    setText(clockPhase, interm ? t('interm.topBar') : phase === 'closing' ? t('hud.clock.closing') : lastCall ? t('hud.clock.lastCall') : r?.window() === 'dawn' ? t('hud.clock.dawn') : t('hud.clock.watch'));
+    setText(clockPhase, interm ? t('interm.topBar') : settling ? t('bank.settle', { s: settleSec }) : phase === 'closing' ? t('hud.clock.closing') : lastCall ? t('hud.clock.lastCall') : r?.window() === 'dawn' ? t('hud.clock.dawn') : t('hud.clock.watch'));
     setText(clockWall, interm ? '' : t('hud.clock.wall', { n: wallClock(sh?.clock ?? 0) }));
     if (phase !== lastPhase) {
       if (lastCall && !clockAlarmed) {

@@ -74,7 +74,7 @@ test('quota met (decision 2): overpays keep earning interest until Dawn, and Daw
   run.watchPulls = 3;
   run.settleWatch();
   const interest = run.stats.interest ?? 0;
-  assert.equal(interest, Math.floor(Math.min(due + 200, 2 * due) * 0.5), 'Night 1 pays 50 % on the whole bank, overpay included');
+  assert.equal(interest, Math.floor(Math.min(due + 200, 2 * due) * 0.55), 'Night 1 pays 55 % on the whole bank, overpay included');
   assert.equal(run.coins, 300, 'the interest goes into the bank too');
   assert.equal(run.debtPaid, due + 200 + interest);
   const before = run.coins;
@@ -353,16 +353,14 @@ test('Bank: quota credit that never was cash cannot be withdrawn (no deposit-bon
   run.dispose();
 });
 
-test('Bank: WITHDRAW is open until the Watch settles (Closing included, decision 1) and shut in Settle, Dawn and once the Night is paid', () => {
+test('Bank: WITHDRAW is open through Closing and Settle (wave 42, decision 2) and shut in Dawn and once the Night is paid', () => {
   const run = RUN.createRun({ seed: 64, mode: 'debt' });
   run.coins = 40;
   assert.ok(run.deposit(20, true));
-  for (const ph of ['settle', 'collection']) {
-    run.phase = ph;
-    assert.equal(run.bank().open, false, `${ph}: closed`);
-    assert.equal(run.withdraw(5), 0);
-  }
-  for (const ph of ['closing', 'bell', 'intermission', 'play', 'lastCall']) {
+  run.phase = 'collection';
+  assert.equal(run.bank().open, false, 'collection: closed');
+  assert.equal(run.withdraw(5), 0);
+  for (const ph of ['settle', 'closing', 'bell', 'intermission', 'play', 'lastCall']) {
     run.phase = ph;
     assert.equal(run.bank().open, true, `${ph}: open`);
   }
@@ -384,7 +382,7 @@ test('Bank: coins that go out and back in the same Watch earn no interest at the
     run.dispose();
     return got;
   };
-  assert.equal(settleInterest(false), 10, 'a plain deposit earns 50 % on Night 1 (wave 41: was 90 %)');
+  assert.equal(settleInterest(false), 11, 'a plain deposit earns 55 % on Night 1 (wave 42)');
   assert.equal(settleInterest(true), 0, 'the same coins that left and came back this Watch earn nothing');
 });
 
