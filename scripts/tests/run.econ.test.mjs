@@ -71,7 +71,7 @@ test('WAVE 23 rescueTerms: the quota penalty is at most 1.3 x the cash given, an
 test('WAVE 42 ladder: no Night steps up more than 2x (director decision 1: the cap that keeps N2 and N3 near the human bot targets)', () => {
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
   for (let i = 1; i < q.length; i++) assert.ok(q[i] / q[i - 1] <= 2 + 1e-9, `N${i + 1} / N${i} = ${(q[i] / q[i - 1]).toFixed(2)} <= 2`);
-  assert.deepEqual(q, [31, 44, 88, 176, 352, 704, 1408, 2816], 'the tuned ladder (scripts/sim/run.mjs, 2000 human runs)');
+  assert.deepEqual(q, [31, 38, 72, 144, 288, 576, 1150, 2300], 'the tuned ladder (wave 45, scripts/sim/run.mjs, 2000 human runs with 5-15 % stakes)');
 });
 
 // ── the Watch clock hold ─────────────────────────────────────────────────────────────────────────────

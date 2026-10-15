@@ -59,7 +59,7 @@
 //             follows the broke prompt in order: WITHDRAW from the bank, sell Tickets at the cashier, the House loan. --no-withdraw / --no-tickets
 //             switch the first two off (the old game). Prints the NIGHT 1 BROKE-START REPORT (stuck rate, how it recovers, pocket at Mola).
 //   newbie    the same, but it deposits everything the float allows at the first Bell (--newbie-dep 1): the "money ran out" player.
-//   human     a casual player (wave 19): stakes a random 2-5 coins a pull (the ladder step at or below it), rotates machine every
+//   human     a casual player (wave 19): stakes a random 5-15 % of the pocket a pull (wave 45; --human-stake-lo/hi), the ladder step at or below it, rotates machine every
 //             3-5 pulls, goes for the Hot Lamp ~60 % of the time it rotates (--human-hot-p 0.6), deposits a random 30-70 % slice of
 //             the pocket at ~80 % of the Bells and pays the gap only on the last Watch. Banks once the quota is covered.
 // Also modelled: House Favour (x1.25 / 1.15 / 1.07 on Nights 1-3), the Witching Watch +5 %, the activity float (never bet into the
@@ -98,7 +98,7 @@ const DEP_MARGIN = Number(argVal('--dep-margin', 1.3));
 const DEP_MODE = argVal("--dep-mode", "gap");
 const FRONT_MIN_RATE = Number(argVal("--front-min-rate", 0.3));
 const FLOAT_FRAC = Number(argVal("--float-frac", 0));
-// human: the casual player. Stakes 2-5 coins a pull, rotates machine every 3-5 pulls, goes for the Hot Lamp ~60 % of rotations,
+// human: the casual player. Stakes 5-15 % of the pocket a pull (wave 45, director: smart stakes), rotates machine every 3-5 pulls, goes for the Hot Lamp ~60 % of rotations,
 // deposits a random slice of the pocket at ~80 % of the Bells (the gap on the last Watch only).
 // tycoon (wave 28): the human bot BUYS a covered machine when the pocket stays at TYC_RESERVE x the quota gap after paying, and the
 // owned machines pay their house cut at each Watch settle (the real progression.ts maths, seeded ghosts). --no-tycoon turns it off.
@@ -106,8 +106,8 @@ const NO_TYCOON = args.includes('--no-tycoon');
 const TYC_RESERVE = Number(argVal('--tycoon-reserve', 1.0));
 const TYC_FRAC = Number(argVal('--tycoon-frac', 0.3));   // the bot only buys when the price is at most this share of its pocket
 const TYC = { bought: new Array(8).fill(0), cut: new Array(8).fill(0), price: new Array(8).fill(0), runs: 0, ownedEnd: 0 };
-const HUMAN_STAKE_LO = Number(argVal('--human-stake-lo', 2));      // a casual stake: a random whole 2-5 coins a pull
-const HUMAN_STAKE_HI = Number(argVal('--human-stake-hi', 5));
+const HUMAN_STAKE_LO = Number(argVal('--human-stake-lo', 0.05));    // wave 45: a smart stake is a random 5-15 % of the pocket a pull (the ladder step at or below it)
+const HUMAN_STAKE_HI = Number(argVal('--human-stake-hi', 0.15));
 const HUMAN_HOT_P = Number(argVal('--human-hot-p', 0.6));          // share of rotations that go to the Hot Lamp
 const HUMAN_SHOP_P = Number(argVal('--human-shop-p', 0.5));        // chance the casual player visits the Pawn at a given stop
 const HUMAN_DEP_P = Number(argVal('--human-dep-p', 0.8));          // chance the human deposits at a Bell (not the last Watch)
@@ -556,7 +556,7 @@ function playRun(bot, runIdx) {
           if (idx === 0 && stuckW) N1.byLoan += 1;
         }
         const bet = banked ? (lim.min <= S.pocket ? lim.min : 0)
-          : bot === 'human' ? stakeAt(lim, HUMAN_STAKE_LO + hum.rng.int(0, HUMAN_STAKE_HI - HUMAN_STAKE_LO), S.pocket)
+          : bot === 'human' ? stakeAt(lim, Math.max(lim.min, (HUMAN_STAKE_LO + (HUMAN_STAKE_HI - HUMAN_STAKE_LO) * hum.rng.next()) * S.pocket), S.pocket)
           : newbieLike(bot) ? stakeAt(lim, CAREFUL_STAKE_LO + hum.rng.int(0, CAREFUL_STAKE_HI - CAREFUL_STAKE_LO), S.pocket)
           : stakeFor(bot, lim, S.pocket);
         if (bet <= 0) break;

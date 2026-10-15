@@ -35,6 +35,8 @@ const SUMMARY_TOAST_S = 10;
 
 /** A fall shows its fade before the Results state takes over; other endings hand off at once. */
 const FALL_HOLD_S = 1.6;
+/** The fall toast that names the seized bank (wave 45): long enough to read before the results hand-off. */
+const SEIZED_TOAST_S = 4;
 const END_HOLD_S = 0.4;
 /** Ignore a second Esc within this window after resuming (the browser and the input layer can both report it). */
 const PAUSE_DEBOUNCE_MS = 250;
@@ -239,7 +241,8 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     // seated (or walking up to a seat, or in machine mode): the hint never sits over the Pawn or terminal view
     const seated = app.player?.seat != null || s.world.seat != null || app.input.mode === 'machine';
     const show = inter && !s.run.topsideOpen && !seated && !paused && !ending;
-    interHint?.set(show ? t(paid ? 'interm.hintFloor' : 'interm.hintBell') + (paid ? '' : terminalBearing(s)) : null);
+    // one line in every Mola (wave 45): the lever is never gated on the quota, so the line names the same three steps every time
+    interHint?.set(show ? t('run.mola') + terminalBearing(s) : null);
   };
 
   /** Topside panel follows the run: open while the Topside choice is up, closed otherwise. */
@@ -258,6 +261,16 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     interOpen = true;
     interKey = key;
     app.ui.panel(INTER_PANEL, (el) => buildIntermission(el, s.run, { redraw: () => { interKey = ''; } }));
+  };
+
+  /**
+   * Wave 45 (director): a fall with money in the bank says what became of it. The bank is still whole at `run:end` (the run zeroes
+   * nothing on a fall), so its balance is the coins the House seized.
+   */
+  const reportSeized = (summary: RunSummary): void => {
+    if (summary.result !== 'fell' || !session) return;
+    const seized = Math.floor(session.run.debt().paid);
+    if (seized > 0) (app.ui as UIOverlayX).toast(t('run.fall.seized', { n: fmtCoins(seized) }), 'bad', SEIZED_TOAST_S);
   };
 
   const endRun = (summary: RunSummary): void => {
@@ -298,7 +311,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
         if (!down || left || ending || paused || (m !== 'walk' && m !== 'machine')) return;
         openSettingsScreen({ page: 'controls', focus: 'keys' });
       }));
-      offs.push(bus.on('run:end', ({ summary }) => endRun(summary)));
+      offs.push(bus.on('run:end', ({ summary }) => { reportSeized(summary); endRun(summary); }));
       offs.push(app.input.on('pause', (down) => {
         if (!session || ending) return;
         if (!down) {

@@ -60,15 +60,22 @@ export interface NightDef {
  * Night 1 surplus is the Night 2 pocket). Human bot, 2000 runs, seed 20261013: N1 84.7 %, N2 62.8 %, N3 48.7 %, N4 36.9 %,
  * N5 28.9 %, N6 23.4 %, N7 17.9 %, N8 15.3 %. N1 at 0.55 would give 86 %.
  */
+/**
+ * Wave 45 (director, between-Watch flow and smart stakes): the human bot now stakes 5-15 % of the pocket a pull (scripts/sim/run.mjs),
+ * which lifts its early reach, so the ladder is re-tuned to base 31, 38, 72, 144, 288, 576, 1150, 2300 (each step <= 2x, strictly
+ * increasing, sig-3 values). Human bot, 2000 runs, seed 20261013: N1 86.8 %, N2 70.5 %, N3 50.0 %, N4 38.1 %, N5 34.0 %, N6 31.1 %,
+ * N7 28.8 %, N8 26.9 %. N5 stays near 34 %, not 30: with N3 at ~50 % the 2x cap allows N5 <= 4 x N3 = 288, and a higher N5 needs a
+ * higher N3 (which drops N3 below target). A design call for the director.
+ */
 export const BASE_NIGHTS: readonly NightDef[] = [
   { no: 1, floor: 'B7', name: 'first', base: 31, watches: 3, pulls: 7, clock: 150, interest: 0.55, favour: 1.25, si: 1, card: 0 },
-  { no: 2, floor: 'B6', name: 'second', base: 44, watches: 3, pulls: 7, clock: 150, interest: 0.50, favour: 1.15, si: 3, card: 3 },
-  { no: 3, floor: 'B5', name: 'third', base: 88, watches: 3, pulls: 8, clock: 165, interest: 0.45, favour: 1.07, si: 10, card: 3 },
-  { no: 4, floor: 'B4', name: 'fourth', base: 176, watches: 3, pulls: 9, clock: 165, interest: 0.40, favour: 1, si: 30, card: 4 },
-  { no: 5, floor: 'B3', name: 'fifth', base: 352, watches: 4, pulls: 8, clock: 180, interest: 0.35, favour: 1, si: 100, card: 4 },
-  { no: 6, floor: 'B2', name: 'sixth', base: 704, watches: 4, pulls: 9, clock: 180, interest: 0.30, favour: 1, si: 300, card: 4 },
-  { no: 7, floor: 'B1', name: 'seventh', base: 1408, watches: 4, pulls: 9, clock: 195, interest: 0.25, favour: 1, si: 1000, card: 4 },
-  { no: 8, floor: 'G', name: 'final', base: 2816, watches: 4, pulls: 10, clock: 210, interest: 0.20, favour: 1, si: 3000, card: 5 },
+  { no: 2, floor: 'B6', name: 'second', base: 38, watches: 3, pulls: 7, clock: 150, interest: 0.50, favour: 1.15, si: 3, card: 3 },
+  { no: 3, floor: 'B5', name: 'third', base: 72, watches: 3, pulls: 8, clock: 165, interest: 0.45, favour: 1.07, si: 10, card: 3 },
+  { no: 4, floor: 'B4', name: 'fourth', base: 144, watches: 3, pulls: 9, clock: 165, interest: 0.40, favour: 1, si: 30, card: 4 },
+  { no: 5, floor: 'B3', name: 'fifth', base: 288, watches: 4, pulls: 8, clock: 180, interest: 0.35, favour: 1, si: 100, card: 4 },
+  { no: 6, floor: 'B2', name: 'sixth', base: 576, watches: 4, pulls: 9, clock: 180, interest: 0.30, favour: 1, si: 300, card: 4 },
+  { no: 7, floor: 'B1', name: 'seventh', base: 1150, watches: 4, pulls: 9, clock: 195, interest: 0.25, favour: 1, si: 1000, card: 4 },
+  { no: 8, floor: 'G', name: 'final', base: 2300, watches: 4, pulls: 10, clock: 210, interest: 0.20, favour: 1, si: 3000, card: 5 },
 ];
 
 export const BASE_RUN_NIGHTS = BASE_NIGHTS.length;

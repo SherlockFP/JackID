@@ -24,6 +24,7 @@ import type { TiltView } from '@/game/circuit';
 import type { OddsLine } from '@/game/pace';
 import { BRASS, CREAM, INK, INK_SOFT, Placard3D, button, paginate, put, rowsIn, rulesFirstEver, rulesMarkShown, wrapPx5 } from './placard3d';
 import { showRulesHint } from './rulesHint';
+import type { StakePresetsEvent } from './stakePresets';
 import './seatHud.css';
 import './seatHudLayout.css';
 
@@ -91,6 +92,9 @@ export class SeatHud {
   private readonly stakeEl: HTMLElement;
   private readonly stakeL: HTMLElement;
   private readonly stakeV: HTMLElement;
+  /** The smart-stake preset row (stakePresets.ts) and the last state the seated machine published. */
+  private readonly presetsEl: HTMLElement;
+  private presetsState: StakePresetsEvent | null = null;
   /** Re-places the stack edges (`--seat-top-b` / `--seat-bot-t`) when the goal, banner or stake stack changes size. */
   private readonly stackRo: ResizeObserver | null;
   private stakeBet = 0;
@@ -149,6 +153,9 @@ export class SeatHud {
     this.stakeEl = make('div', 'shud-stake shud-panel tone-gold', bottom);
     this.stakeL = make('span', 'shud-stake-l', this.stakeEl);
     this.stakeV = make('span', 'shud-stake-v', this.stakeEl);
+    // SMART STAKES: the SAFE / BOLD / BIG presets (keys 7 / 8 / 9) under the STAKE readout; drawn from `stake:presets`
+    this.presetsEl = make('div', 'shud-presets', bottom);
+    this.presetsEl.style.display = 'none';
     this.numsEl = make('div', 'shud-nums', bottom);
     this.ctrlEl = make('div', 'shud-ctrl shud-panel', bottom);
     this.stackRo = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => this.placeToasts()) : null;
@@ -164,6 +171,24 @@ export class SeatHud {
     this.offs.push(bus.on('eco:wallet', (e) => { if (mine(e.pid)) this.refreshStake(); }));
     this.offs.push(bus.on('stake:confirm', ({ need }) => { this.stakeNeed = need; this.refreshStake(); }));
     this.offs.push(bus.on('run:stakeConfirm', (e) => { if (mine(e.pid)) { this.stakeNeed = e.state === 'ask'; this.refreshStake(); } }));
+    // the seated machine publishes before its machine shows the HUD, so the last state is kept and drawn on show()
+    this.offs.push(bus.on('stake:presets', (e) => { this.presetsState = e.on ? e : null; this.refreshPresets(); }));
+  }
+
+  /** Repaints the SAFE / BOLD / BIG row: the active preset lit, a BIG waiting for its second press blinking. */
+  private refreshPresets(): void {
+    const s = this.presetsState;
+    const show = this.shown && !this.uiBlocked && s !== null && s.rows.length > 0;
+    this.presetsEl.style.display = show ? '' : 'none';
+    if (!show || s === null) return;
+    this.presetsEl.replaceChildren();
+    for (const r of s.rows) {
+      const cls = ['shud-preset', r.key === s.active ? 'on' : '', r.key === s.armed ? 'armed' : ''].filter(Boolean).join(' ');
+      const b = make('div', cls, this.presetsEl);
+      make('span', 'shud-key shud-preset-k', b).textContent = r.keyLabel;
+      make('span', 'shud-preset-l', b).textContent = tr(`stakePreset.${r.key}`);
+      make('span', 'shud-preset-v', b).textContent = fmtCoins(r.amount);
+    }
   }
 
   /** A machine's own stake (e.g. set before the round event) for the STAKE readout; the pocket is read from the run. */
@@ -237,7 +262,7 @@ export class SeatHud {
   show(): void {
     this.shown = true; this.root.classList.add('on'); this.root.parentElement?.classList.add('seated');
     this.stakeKnown = false; this.stakeBet = 0;   // each seat reports its own stake; a seat that never does shows no STAKE readout
-    this.refreshTilt(); this.refreshStake(); this.placeToasts();
+    this.refreshTilt(); this.refreshStake(); this.refreshPresets(); this.placeToasts();
   }
   /** Stood up: hide everything, drop the result and any open card (an unseen tip stays unseen). */
   /** Label of the help key; the in-game session points this at the live binding (default key H). */
@@ -261,6 +286,7 @@ export class SeatHud {
     this.clearResult();
     this.closeCard();
     this.refreshTilt();
+    this.refreshPresets();
     this.placeToasts();
   }
   dispose(): void {

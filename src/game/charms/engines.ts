@@ -19,6 +19,9 @@ export interface EngineLive extends LiveCharm { pid?: PlayerId }
 export type EngineDynamic = (live: EngineLive, q?: ModQuery) => ModEffect[];
 type Behaviour = Partial<Pick<CharmDef, 'on' | 'badge'>>;
 
+/** Per-count rates behind the engine charms. Shared by the dynamic effects below and the HUD peg readouts (charmProc.ts). */
+export const ENGINE_RATES = { rung: 0.12, pressure: 0.10, charge: 0.25, wickHot: 0.08, watchInterest: 0.01 } as const;
+
 const num = (v: Json | undefined): number => (typeof v === 'number' && isFinite(v) ? v : 0);
 const mult = (value: number): ModEffect[] => [{ hook: 'payout.mult', op: 'mult', value }];
 const inc = (value: number): ModEffect[] => (value > 0 ? [{ hook: 'payout.mult', op: 'inc', value }] : []);
@@ -139,24 +142,24 @@ export const ENGINE_DYNAMIC_EFFECTS: Readonly<Record<string, EngineDynamic>> = {
   /** ×(1 + 0.12 per Rung), at most ×1.72. */
   suit_ladder: (c) => {
     const r = num(c.data.rungs);
-    return r > 0 ? mult(1 + 0.12 * r) : [];
+    return r > 0 ? mult(1 + ENGINE_RATES.rung * r) : [];
   },
   /** ×(1 + 0.10 per Pressure), at most ×1.8. */
   pressure_valve: (c) => {
     const p = num(c.data.pressure);
-    return p > 0 ? mult(1 + 0.10 * p) : [];
+    return p > 0 ? mult(1 + ENGINE_RATES.pressure * p) : [];
   },
   /** ×(1 + 0.25 per charge), at most ×2.5, on Hot machines only (scoped to the Hot instances this Watch). */
   capacitor: (c) => {
     const charge = num(c.data.charge);
     const hot = circuitView(c.run)?.lamps().hot.map((e) => e.mid) ?? [];
     if (charge <= 0 || hot.length === 0) return [];
-    return [{ hook: 'payout.mult', op: 'mult', value: 1 + 0.25 * charge, scope: { instances: hot } }];
+    return [{ hook: 'payout.mult', op: 'mult', value: 1 + ENGINE_RATES.charge * charge, scope: { instances: hot } }];
   },
   /** +0.08 to the Hot multiplier per wick, at most +0.48 (six wicks). */
   lampwick: (c) => {
     const w = num(c.data.wicks);
-    return w > 0 ? [{ hook: 'x.lamp.hotMult', op: 'add', value: 0.08 * w }] : [];
+    return w > 0 ? [{ hook: 'x.lamp.hotMult', op: 'add', value: ENGINE_RATES.wickHot * w }] : [];
   },
   /** +2 % per 3 Tickets held, at most +20 % (30 Tickets). Additive. */
   ticket_press: (c) => inc(Math.min(0.2, 0.02 * Math.floor(c.run.balance('ticket', c.pid) / 3))),
@@ -178,7 +181,7 @@ export const ENGINE_DYNAMIC_EFFECTS: Readonly<Record<string, EngineDynamic>> = {
   /** +1 % interest per settled Watch (max 3), on the interest hook the economy reads at Dawn. */
   snowball_ledger: (c) => {
     const n = num(c.data.watches);
-    return n > 0 ? [{ hook: 'x.econ.interestAdd', op: 'add', value: 0.01 * n }] : [];
+    return n > 0 ? [{ hook: 'x.econ.interestAdd', op: 'add', value: ENGINE_RATES.watchInterest * n }] : [];
   },
   /**
    * Copies the target's declarative effects and its per-instant effects (with the target's own bag). Target = most

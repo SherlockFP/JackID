@@ -29,3 +29,18 @@
   max-width: min(70vw, calc(var(--su) * 180)); padding: calc(var(--su) * 1) calc(var(--su) * 3);
   font-size: calc(var(--su) * 3); line-height: 1.2; text-align: center; white-space: normal; overflow-wrap: anywhere;
 }
+
+/* SMART STAKES (stakePresets.ts): SAFE / BOLD / BIG under the STAKE readout, keys 7 / 8 / 9. The stake in play is lit;
+   a BIG waiting for its second press blinks red. A preset whose digit the machine keeps shows its amount with no key cap. */
+.seat-hud .shud-presets { display: flex; justify-content: center; gap: calc(var(--su) * 2); max-width: 96%; }
+.seat-hud .shud-preset {
+  display: flex; align-items: center; gap: calc(var(--su) * 1.5); padding: calc(var(--su) * 1.5) calc(var(--su) * 3);
+  background: rgba(6, 9, 6, 0.9); border-bottom: calc(var(--su) * 1.5) solid #2c3a2c; color: #b8c0a8; white-space: nowrap;
+}
+.seat-hud .shud-preset-k:empty { display: none; }
+.seat-hud .shud-preset-l { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3.5); line-height: 1; }
+.seat-hud .shud-preset-v { font-size: calc(var(--su) * 6.5); line-height: 1; color: #f4f0dc; }
+.seat-hud .shud-preset.on { color: #ffd040; border-bottom-color: #ffd040; background: rgba(40, 32, 4, 0.92); }
+.seat-hud .shud-preset.on .shud-preset-v { color: #ffd040; }
+.seat-hud .shud-preset.armed { border-bottom-color: #ff5a4a; animation: shud-stake-blink 0.6s steps(2, start) infinite; }
+@media (prefers-reduced-motion: reduce) { .seat-hud .shud-preset.armed { animation: none; } }

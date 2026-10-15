@@ -2,12 +2,15 @@
  * Charm proc juice + live peg counters (wave 8, item 9). Owner: HUD lane. Pure helpers; `hud.ts` wires them to the bus.
  *  - `playProcTick(tier)`: rising-pitch tick, ratio 1 + 0.06·tier (PlayOpts.pitch in semitones).
  *  - `createProcPops(root)`: gold pop text ("×1.48") stacked near the top centre of the screen.
- *  - `pegBadge(id, data)`: the charm's `badge(data)` as peg text ('' = none).
+ *  - `pegBadge(id, data)`: the charm's `badge(data)` as short peg face text, "3/8" ('' = none).
+ *  - `pegLabel(id, data)`: the full localised readout, "PRESSURE 3/8 · next win ×1.3" (for the peg's hover title).
  */
 import { app } from '@/core/app';
+import { type I18nVars, lang, t } from '@/core/i18n';
 import type { Json } from '@/core/types';
 import { h } from '@/core/ui/widgets';
 import { charmDef } from '@/game/charms/engine';
+import { ENGINE_RATES } from '@/game/charms/engines';
 
 const MAX_POPS = 4;
 const POP_LIFE_MS = 900;
@@ -23,20 +26,60 @@ export function playProcTick(tier: number): void {
   try { app.audio.play('charmTick', { bus: 'ui', vol: 0.8, pitch: procTickSemitones(tier) }); } catch { /* audio is optional */ }
 }
 
-/** Counter charms: the cap of their raw count, shown as "3/6". */
-const COUNTER_MAX: Readonly<Record<string, number>> = { suit_ladder: 6, pressure_valve: 8, capacitor: 6, snowball_ledger: 3 };
-/** Lampwick counts wicks; each wick is +8 % on the payout. */
-const WICK_PCT = 8;
+/**
+ * Engine counter readouts. `max` is the cap of the raw count; `next` is the multiplier the next win pays at count n,
+ * `pct` the bonus percent at count n. Rates come from `ENGINE_RATES` so the label cannot drift from the payout.
+ */
+interface Readout {
+  max: number;
+  next?: (n: number) => number;
+  pct?: (n: number) => number;
+}
+const READOUTS: Readonly<Record<string, Readout>> = {
+  suit_ladder: { max: 6, next: (n) => 1 + ENGINE_RATES.rung * n },
+  pressure_valve: { max: 8, next: (n) => 1 + ENGINE_RATES.pressure * n },
+  capacitor: { max: 6, next: (n) => 1 + ENGINE_RATES.charge * n },
+  lampwick: { max: 6, pct: (n) => Math.round(ENGINE_RATES.wickHot * n * 100) },
+  snowball_ledger: { max: 3, pct: (n) => Math.round(ENGINE_RATES.watchInterest * n * 100) },
+};
 
-/** Live peg text from the charm's `badge(data)`, readable: "3/6", "+16%". '' when the charm shows none. */
+const bagOf = (data: Json | undefined): Record<string, Json> =>
+  data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, Json>) : {};
+
+/** The charm's live count from its `badge(data)`; 0 when it has none. */
+function countOf(id: string, data: Json | undefined): number {
+  const v = charmDef(id)?.badge?.(bagOf(data));
+  return typeof v === 'number' && v > 0 ? v : 0;
+}
+
+/** A multiplier for the label: "1.3", "1.24" (Turkish "1,3"). */
+function fmtX(m: number): string {
+  const s = String(Number(m.toFixed(2)));
+  return lang() === 'tr' ? s.replace('.', ',') : s;
+}
+
+/** Short peg face text from the charm's `badge(data)`: "3/8" for counters, "+16%" for wicks. '' when the charm shows none. */
 export function pegBadge(id: string, data: Json | undefined): string {
-  const bag = data && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, Json>) : {};
-  const v = charmDef(id)?.badge?.(bag);
+  const v = charmDef(id)?.badge?.(bagOf(data));
   if (v === null || v === undefined || v === '' || v === 0) return '';
   if (typeof v !== 'number') return String(v);
-  if (id === 'lampwick') return `+${WICK_PCT * v}%`;
-  const max = COUNTER_MAX[id];
-  return max !== undefined ? `${v}/${max}` : String(v);
+  const r = READOUTS[id];
+  if (r?.pct) return `+${r.pct(v)}%`;
+  return r ? `${v}/${r.max}` : String(v);
+}
+
+/**
+ * Full readable peg label for an engine counter, localised: "PRESSURE 3/8 · next win ×1.3", "WICKS 2/6 · Hot +16%".
+ * '' when the charm has no live count (the peg then shows its initial). For the peg's hover title.
+ */
+export function pegLabel(id: string, data: Json | undefined): string {
+  const r = READOUTS[id];
+  const n = countOf(id, data);
+  if (!r || n <= 0) return '';
+  const vars: I18nVars = { n, max: r.max };
+  if (r.next) vars.x = fmtX(r.next(n));
+  if (r.pct) vars.pct = r.pct(n);
+  return t(`hud.charm.peg.${id}`, vars);
 }
 
 /**

@@ -69,8 +69,12 @@ import { juiceTier, tierTags, toWinTier, type JuiceTier } from './tiers';
 import * as juice from './juice';
 import { RiskLayer } from './riskLayer';
 import { GambleUi } from '@/game/gambleUi';
+import { HS_MULT } from '@/game/gamble';
+import { BIG_CONFIRM_SEC, presetOf, stakeKeyOwned, stakePresetAmounts, STAKE_PRESET_ACTION, STAKE_PRESET_KEYS, type StakePresetKey, type StakePresetRow } from './stakePresets';
 
 const FORCE_RELEASE_S = 10;
+/** How often the seated machine re-checks its smart-stake presets (cheap: the HUD is written only on change). */
+const STAKE_POLL_S = 0.25;
 
 /**
  * Space / LMB (`primary`) and Enter (`confirm`) are aliases on every machine (TECH §11.6). Machines were written
@@ -134,6 +138,10 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   private _riskL: RiskLayer | null = null;
   /** Stake multiplier of the open round (HIGH STAKES = 5, else 1); the machine only ever sees its own nominal numbers. */
   private _hsMult = 1;
+  /** Smart stakes (stakePresets.ts): seconds left for BIG's second press (0 = not armed), the last published state, the poll clock. */
+  private _stakeBigArm = 0;
+  private _stakeSig = '';
+  private _stakeT = 0;
   private _offLang: (() => void) | null = null;
   private _ray = new THREE.Raycaster();
   private _sink: MachineSink | null = null;
@@ -273,6 +281,12 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   /** Sink → machine: fold the primary / confirm alias, then `onInput`. */
   private _route(e: MachineInputEvent): void {
     if (this._riskL?.route(e as MachineInputEvent & { code?: string; mods?: { shift?: boolean } })) return;   // risk layer keys (G / Shift+H / K / ladder)
+    // smart stakes: 7 SAFE, 8 BOLD, 9 BIG (stakePresets.ts). A digit the machine keeps for itself is passed on below.
+    const preset = presetOf(e.action);
+    if (preset !== null && this.def.minBet > 0 && !stakeKeyOwned(this.def.id, e.action)) {
+      if (e.down && !e.repeat) this.pressPreset(preset);
+      return;
+    }
     const to = this.inputAlias;
     if (to === null || (e.action !== 'primary' && e.action !== 'confirm')) { this.onInput(e); return; }
     const src = e.action;
@@ -528,6 +542,54 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     const ok = this.betLadder().filter((v) => v <= w);
     this.bet = ok.length ? ok[ok.length - 1] : this.def.minBet;
   }
+  // ── smart stakes (stakePresets.ts): 7 SAFE (~5 % of the pocket), 8 BOLD (~15 %), 9 BIG (~30 %, second press) ──
+  /** The three preset stakes for the pocket now: the bet ladder (the run's cap included), High Stakes aware. */
+  protected stakePresets(): Record<StakePresetKey, number> {
+    return stakePresetAmounts({
+      pocket: this.ctx.run.wallet(), min: this.def.minBet, ladder: this.betLadder(),
+      costOf: (v) => this.costOf(v), hsMult: this._riskL?.highStakes ? HS_MULT : 1,
+    });
+  }
+  /** A preset key was pressed: SAFE and BOLD set at once; BIG asks for a second press (the high-stake confirm). */
+  private pressPreset(key: StakePresetKey): void {
+    if (!this.isLocalOccupant || this.busy || this.roundOpen || this._riskL?.ladderOpen) return;   // a stake is on the table: the next round takes the new one
+    const amount = this.stakePresets()[key];
+    if (key === 'big' && this.bet !== amount && this._stakeBigArm <= 0) {
+      this._stakeBigArm = BIG_CONFIRM_SEC;
+      this.ctx.events.emit('stake:confirm', { need: true });
+      this.sfx('click');
+      this.toast(tr('stakePreset.armBig', { key: this.ctx.input.keyLabel(`m.${STAKE_PRESET_ACTION.big}`), amount: fmtCoins(amount) }), 'warn');
+      this.publishStakes();
+      return;
+    }
+    this.disarmBig();
+    this.bet = amount;
+    this.sfx('click');
+    this.toast(tr('stakePreset.set', { name: tr(`stakePreset.${key}`), amount: fmtCoins(amount) }), 'info');
+    this.publishStakes();
+  }
+  private disarmBig(): void {
+    if (this._stakeBigArm <= 0) return;
+    this._stakeBigArm = 0;
+    this.ctx.events.emit('stake:confirm', { need: false });
+  }
+  /** Publishes the presets to the seat HUD (`stake:presets`) when they changed. `on: false` clears them (stand-up). */
+  private publishStakes(on = true): void {
+    const amounts = on && this.def.minBet > 0 && this.isLocalOccupant ? this.stakePresets() : null;
+    const pocket = this.ctx.run.wallet();
+    const hs = this._riskL?.highStakes ?? false;
+    const armed = this._stakeBigArm > 0 ? 'big' : null;
+    const sig = amounts === null ? 'off' : `${this.bet}|${pocket}|${hs}|${armed}|${amounts.safe}|${amounts.bold}|${amounts.big}`;
+    if (sig === this._stakeSig) return;
+    this._stakeSig = sig;
+    if (amounts === null) { this.ctx.events.emit('stake:presets', { mid: this.id, on: false, bet: this.bet, pocket, hs, active: null, armed: null, rows: [] }); return; }
+    const rows: StakePresetRow[] = STAKE_PRESET_KEYS.map((key) => {
+      const action = STAKE_PRESET_ACTION[key];
+      return { key, amount: amounts[key], keyLabel: stakeKeyOwned(this.def.id, action) ? '' : this.ctx.input.keyLabel(`m.${action}`) };
+    });
+    const active = STAKE_PRESET_KEYS.find((k) => amounts[k] === this.bet) ?? null;
+    this.ctx.events.emit('stake:presets', { mid: this.id, on: true, bet: this.bet, pocket, hs, active, armed, rows });
+  }
   /** Coins the run charges for a stake of `amount` (`bet.costMult`, the same fold `run.bet()` applies). */
   protected costOf(amount: number): number { return Math.ceil(amount * this.mod('bet.costMult', 1)); }
   /**
@@ -673,6 +735,8 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       else if ((this._releaseWait += dt) > FORCE_RELEASE_S) { log.warn('machine', `${this.id} forced release while busy`); this.busy = false; this.standUp(); }
     }
     this._riskL?.step(dt);
+    if (this._stakeBigArm > 0 && (this._stakeBigArm -= dt) <= 0) this.disarmBig();
+    if (this.isLocalOccupant && this.def.minBet > 0 && (this._stakeT -= dt) <= 0) { this._stakeT = STAKE_POLL_S; this.publishStakes(); }   // Z / X, wallet and high-stakes changes reach the HUD
     this._firePending();                                    // a press queued during a round goes now that it is idle
     this.tick(dt);
     if (this.isHost) this.hostTick(dt);
@@ -692,7 +756,9 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       this.rng = createRng(seed);
       this._releaseRequested = false;
       this.bet = clamp(this.bet, this.def.minBet, this.def.maxBet);
+      if (this.def.minBet > 0) { this._stakeBigArm = 0; this._stakeSig = ''; this.bet = this.stakePresets().safe; }   // smart stakes: every sit starts on SAFE
       this.fitBet();
+      this.publishStakes();
       void this.risk;                                       // the risk layer lives with the local seat
     }
     this.ctx.events.emit('player:seat', { pid, mid: this.id, seat, on: true });
@@ -706,6 +772,9 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       this._riskL?.onRelease();
       this._hsMult = 1;
       this._pend = null; this._pendHeld = false;
+      this.disarmBig();
+      this._stakeSig = '';
+      this.publishStakes(false);
       this.ctx.ui.machineHud(null);
       this._releaseRequested = false;
       if (this._roundOpen) {            // a machine must settle in onRelease; never strand a stake silently
