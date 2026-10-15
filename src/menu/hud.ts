@@ -89,17 +89,24 @@ export function createHud(): Hud {
     return r ? { self: r.selfId, pocket: r.wallet(r.selfId) } : { self: -1, pocket: 0 };
   };
 
-  // The top band is a three-column grid (left | centre | right), so the centre clock never overlaps the corner blocks.
+  // The top band is a three-column grid (left | centre), the centre clock is capped so it never runs under the right stack.
   const top = h('div', 'hud-top', root);
   const topL = h('div', 'hud-tl', top);
   const topC = h('div', 'hud-tc', top);
-  const topR = h('div', 'hud-tr', top);
+  // The right stack (quota, PAYOUT, NIGHT PLAN, EMPIRE, buffs, phone) is one column of its own, not part of the band's height:
+  // a tall stack then never pushes the feed or the seat banners down.
+  const topR = h('div', 'hud-rs', root);
   // The seat HUD's state banner and tooltip stack under this band: it reads `--hud-top-h` (seatHud.css) from the #ui root.
   const host = ui().hudLayer.parentElement;
   const setTopH = (): void => { host?.style.setProperty('--hud-top-h', `${top.offsetTop + top.offsetHeight}px`); };
   const topRo = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(setTopH) : null;
   topRo?.observe(top);
   setTopH();
+  // The right stack's bottom edge (`--hud-rs-b`, the same frame as --hud-top-h): a toast anchored under it never sits on the stack.
+  const setRsB = (): void => { host?.style.setProperty('--hud-rs-b', `${topR.offsetTop + topR.offsetHeight}px`); };
+  const rsRo = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(setRsB) : null;
+  rsRo?.observe(topR);
+  setRsB();
 
   // ── top-left: pocket, tickets, staff ────────────────────────────────────────────────────────────
   const wallet = h('div', 'hb wallet', topL);
@@ -153,13 +160,13 @@ export function createHud(): Hud {
   let planKey = '';
   // EMPIRE chip (tycoon): machines you bought and the house cut they pay per Watch. Hidden until the first purchase.
   const empire = h('div', 'hb empire hidden', topR);
-  empire.style.cssText = 'margin-top:4px;padding:2px 8px;color:#ffd34a;font-size:12px;letter-spacing:.06em;white-space:nowrap';
+  empire.style.cssText = 'padding:2px 8px;max-width:100%;color:#ffd34a;font-size:12px;letter-spacing:.06em;white-space:normal;overflow-wrap:anywhere;text-align:right';
   empire.title = t('prog.empire.tip');
   const empireNum = h('span', 'num', empire, '');
   let empireKey = '';
 
-  // ── right edge: buffs ───────────────────────────────────────────────────────────────────────────
-  const buffs = h('div', 'hb buffs', root);
+  // ── right stack, last: buffs (a wrapping row under the EMPIRE chip) ───────────────────────────────
+  const buffs = h('div', 'hb buffs', topR);
   let buffKey = '';
   let buffTimers: Array<{ el: HTMLElement; b: BuffState; color: string }> = [];
   let buffIds = new Set<string>();
@@ -181,7 +188,7 @@ export function createHud(): Hud {
   // ── feed, phone, prompt, dread ──────────────────────────────────────────────────────────────────
   const feed = h('div', 'feed', root);
   const feedLines: Array<{ el: HTMLElement; age: number }> = [];
-  const phone = h('div', 'hb phone hidden', root);
+  const phone = h('div', 'hb phone hidden', topR);
   const phoneArc = h('div', 'arc', phone);
   h('div', 'bell', phone);
   h('span', 'lbl', phone, t('hud.phone.ring'));
@@ -732,8 +739,10 @@ export function createHud(): Hud {
       for (const [id] of anchors) ui().setAnchor(id, null);
       procPops.dispose();
       topRo?.disconnect();
+      rsRo?.disconnect();
       SeatHud.stakeSource = () => ({ self: -1, pocket: 0 });
       host?.style.removeProperty('--hud-top-h');
+      host?.style.removeProperty('--hud-rs-b');
       host?.classList.remove('seated');
       root.remove();
     },

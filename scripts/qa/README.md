@@ -140,6 +140,8 @@ steps in order. Steps are separated by `;`. A `play` step's keys use the script 
 ```
 npm run qa -- --run "goto:coinflip;wait:600;state;play:Digit0,Space:120,wait:1500x2;state;stand;bank:deposit:5;state" --seed 1 --shots <dir>
 node scripts/qa/bench.mjs --run "auto:night;state" --seed 1 --shots <dir>
+node scripts/qa/bench.mjs --run "kit:rotator;stake:2;auto:night;state" --seed 1 --shots <dir>   # start config first, then the Night
+node scripts/qa/bench.mjs --run "daily;auto:night;state" --seed 1 --shots <dir>                 # the day's run
 ```
 
 Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` prints its banner on stdout before the JSON.
@@ -163,9 +165,18 @@ Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` 
 | `shot:<name>` | screenshot to `<shots>/<name>.png` (needs `--shots`) |
 | `wait:<ms>` | pauses |
 | `state` | records the state in `run.states` and logs it: `phase`, `night` (1-based), `watch` (1-based), `pocket`, `bank` (the balance), `withdrawable`, `quotaDue`, `quotaLeft`, `pullsLeft`, `pulls`, `minBet`, `nightDone`, `topside`, `over`, `seated` (the machine instance id or null), `intro` (the cutscene id or null), `starterOffer` (the three charm ids while the Starter Draft is open, else null), `starterLeft` (its timer, sim s), `charms` (the owned charm ids, `id xN` when stacked) |
+| `kit:<id>` | start config, not a step: the starting kit (`kits.ts` id, e.g. `kit:rotator`). Applied when the run starts, through the same `config` the kit picker passes to `app.go('ingame', …)` (`src/menu/menuState.ts` → `session.ts` → `createRun`). Unknown kit: the run is not started (error) |
+| `stake:<n>` | start config, not a step: the stake 0-7 (`STAKE_MAX`), applied the same way. The picker's unlock rules are not enforced (the QA profile is fresh, so every stake above 0 would be locked); the start record's `gated.kit` / `gated.stake` say whether the picker would have held it back |
+| `daily` | start config, not a step: the day's run, as the picker's daily toggle (today's kit, stake 3, the UTC day's seed; `run.ts` fixes the seed and kit). Cannot be combined with `kit:` or `stake:` |
+
+Start config steps can sit anywhere in the list; each applies once, at run start, and is recorded first in `run.steps` as `{ step: "kit:…", start: true, kit, stake, daily, gated }`. `run.start` holds the same object.
+
+`--run` blocks until the steps finish, or until the run ends (then the steps left over are skipped, see below), and only then writes the JSON, once. The process exits after that write has flushed. The exception is a page reload, which ends the list at once (see below).
+
+When the run has ended (`run.over`, or the run is gone because the menu took the screen back), every remaining step is skipped with one record `{ step: "run over", ok: true, note, skipped: [...] }` listing them. A `play` repeat that comes after the end is not pressed (its record has `note: "run over after N of M"`). No step throws in that case.
 
 Each step is recorded in `run.steps` as `{ step, ok, ms, … }`, in the order it ran (`via`, `at`, `instance`, `amount`, `lever`, `state`, `charm`, `price`, `paid`, `shelves`, `shot` where they apply).
-A `play` or `bot:bet` record has `bets`: one `{ stake, machine, ok, refusal }` per `run.bet()` call the step made (the stake of each play, accepted or not; `refusal` is the run's refusal reason, null when accepted). Stakes are read through a wrapper that `--run` installs on the run once. A refused `lever`, `pawn`, `deposit`, `withdraw` or `bell` record has `refusal` (the run's `lastRefusal()` after the step) and `refusalNew`. The run keeps its last refusal until the next accepted bet or buy, so `refusalNew: false` means the reason may be left over from an earlier refusal; `reason` then stays the generic text. A failed step is kept: `ok:false` with `error` (a step that threw: the `goto` to a locked machine, a seat that does not take) or `reason` (a step the run refused). **The steps go on after a failed step.** `run.failed` counts the failed user steps. Only a page reload stops the list: `run.aborted` says so, the run is then invalid (see `viteEvents`), and the exit code is 1. Output is the same one JSON object; `run.intro` is `{ played, taps }`, and `run.shot` is `run-final.png` when `--shots` is set. `rounds` is 0 in this mode.
+A `play` or `bot:bet` record has `bets`: one `{ stake, machine, ok, refusal }` per `run.bet()` call the step made (the stake of each play, accepted or not; `refusal` is the run's refusal reason, null when accepted). Stakes are read through a wrapper that `--run` installs on the run once. A refused `lever`, `pawn`, `deposit`, `withdraw` or `bell` record has `refusal` (the run's `lastRefusal()` after the step) and `refusalNew`. The run keeps its last refusal until the next accepted bet or buy, so `refusalNew: false` means the reason may be left over from an earlier refusal; `reason` then stays the generic text. A failed step is kept: `ok:false` with `error` (a step that threw: the `goto` to a locked machine, a seat that does not take) or `reason` (a step the run refused). **The steps go on after a failed step.** `run.failed` counts the failed user steps. Only a page reload stops the list: `run.aborted` says so, the run is then invalid (see `viteEvents`), and the exit code is 1. The run ending does not (see the `run over` note above). Output is the same one JSON object; `run.intro` is `{ played, taps }`, and `run.shot` is `run-final.png` when `--shots` is set. `rounds` is 0 in this mode.
 
 The steps use the running app's own handles (`window.jackid.app`: `world`, `player`, `run`, `cutscene`, `camera`, `input`), so no hook is added to the game.
 

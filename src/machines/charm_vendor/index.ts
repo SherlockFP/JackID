@@ -123,6 +123,7 @@ export const def: MachineDef = {
       windowClosed: 'PAWN WINDOW CLOSED',
       stArm: '{key} again to buy · {price}',
       stArmSub: 'Second press within {s} s',
+      stArmQuota: 'Leaves {p} coins — quota needs {n} more. {key} again to buy anyway',
       cConfirm: 'CONFIRM',
       evolveRibbon: 'EVOLVE +',
       'evo.turnstile': 'Payouts get ×(1 + 0.12 per Turn), up to 6 Turns.',
@@ -176,6 +177,7 @@ export const def: MachineDef = {
       windowClosed: 'REHİN PENCERESİ KAPALI',
       stArm: '{key} TEKRAR BAS · {price}',
       stArmSub: '{s} sn içinde ikinci kez bas',
+      stArmQuota: 'Geriye {p} para kalır — kota {n} para daha ister. Yine de almak için {key} tekrar bas',
       cConfirm: 'ONAYLA',
       evolveRibbon: 'GELİŞTİR +',
       'evo.turnstile': 'Kazançlar Tur başına ×(1 + 0,12) öder, en fazla 6 Tur.',
@@ -757,6 +759,22 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     return Math.max(0, price - pocket - refund);
   }
 
+  /**
+   * The Night's quota check for a buy at `price`: null when the buy is free, a cursed sale, or leaves the Night's quota covered
+   * (pocket + bank at least the quota still owed). Otherwise `p` is the pocket left after the buy and `q` the coins the quota
+   * still needs beyond pocket + bank. The bank is the coins already counted toward the quota (`quota.deposited`).
+   */
+  private quotaGap(price: number): { p: number; q: number } | null {
+    if (price <= 0) return null;
+    const quota = this.ctx.run.shift?.quota();
+    if (!quota) return null;
+    const left = Math.max(0, Math.floor(quota.due) - Math.floor(quota.deposited));
+    if (left <= 0) return null;
+    const p = this.wallet() - price;
+    const q = left - (p + Math.floor(quota.deposited));
+    return q > 0 ? { p, q } : null;
+  }
+
   /** The price plate on shelf `i` that is showing now (green, red or neutral). */
   private plate(i: number): LabelPart | undefined {
     const tone = this.plateTones[i] ?? 'plain';
@@ -1033,6 +1051,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     const stq = this.stamps();
     const key = [this.cursor, this.wallet(), this.tickets(), this.open() ? 1 : 0, cur?.charmId ?? '', cur?.locked ? 1 : 0, cur?.fit ?? 0,
       this.pawn()?.rerollCost() ?? 0, this.swap ? `s${this.swap.idx}` : '', this.armed?.i ?? -1, this.tab, stq ? 1 : 0,
+      this.ctx.run.shift?.quota()?.deposited ?? 0,
       this.tab === 1 && stq ? `${stampKey(this.stampCache)}.${stq.count()}.${stq.rerollCost()}` : ''].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
@@ -1065,9 +1084,12 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
 
     // STATE
     const armedHere = open && sel !== null && canBuy && this.armed !== null && this.armed.i === this.cursor;
+    // the first press on a buy that leaves the Night's quota short: amber, and the second press still buys
+    const quotaWarn = armedHere && sel ? this.quotaGap(sel.price) : null;
     if (!open) sh.state({ k: 'm.charm_vendor.stShut' }, 'neutral', { k: 'm.charm_vendor.stShutSub' });
     else if (!sel) sh.state({ k: 'm.charm_vendor.stEmpty' }, 'neutral', { k: 'm.charm_vendor.stEmptySub' });
     else if (!canBuy) sh.state({ k: 'm.charm_vendor.stFunds' }, 'warn', { k: 'm.charm_vendor.stFundsSub', v: { n: fmtNum(sel.price - wallet) } });
+    else if (quotaWarn) sh.state({ k: 'm.charm_vendor.stArmQuota', v: { p: fmtNum(quotaWarn.p), n: fmtNum(quotaWarn.q), key: this.k('primary') } }, 'warn', { k: 'm.charm_vendor.stArmSub', v: { s: BUY_CONFIRM_S } });
     else if (armedHere) sh.state({ k: 'm.charm_vendor.stArm', v: { key: this.k('primary'), price: priceText(sel, fmtNum, this.t('free')) } }, 'gold', { k: 'm.charm_vendor.stArmSub', v: { s: BUY_CONFIRM_S } });
     else sh.state({ k: 'm.charm_vendor.stChoose' }, 'gold', { k: 'm.charm_vendor.stChooseSub' });
 

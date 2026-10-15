@@ -5,16 +5,24 @@
 .hud .lbl { font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1; color: var(--bone); }
 .hud .num { font-family: var(--f-body); font-size: calc(16 * var(--u)); line-height: 1; }
 
-/* top band: a 3-column grid (left | centre | right) so the blocks can never overlap at any width */
+/* top band: a 3-column grid (left | centre | right). The centre track is capped (min(50vw, 320u)) and the sides take the rest,
+   so the centre plate never runs under the right stack at any width (1024 and 1280 wide checked). The right stack is NOT in
+   this band: it hangs on its own column (.hud-rs) so a tall stack never pushes the feed or the seat banners down. */
 .hud .hud-top { position: absolute; left: calc(4 * var(--u)); right: calc(4 * var(--u)); top: calc(4 * var(--u));
-  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; column-gap: calc(8 * var(--u)); }
-.hud .hud-tl, .hud .hud-tc, .hud .hud-tr { display: flex; flex-direction: column; min-width: 0; }
-.hud .hud-tl { align-items: flex-start; gap: calc(2 * var(--u)); }
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, min(50%, calc(320 * var(--u)))) minmax(0, 1fr);
+  align-items: start; column-gap: 0; }
+.hud .hud-tl, .hud .hud-tc { display: flex; flex-direction: column; min-width: 0; }
+.hud .hud-tl { grid-column: 1; align-items: flex-start; gap: calc(2 * var(--u)); }
 /* the centre stack sits on its own dark plate, so the clock and its lines read clearly over the machine's sign and marquee behind */
-.hud .hud-tc { align-items: center; gap: calc(3 * var(--u)); padding: calc(2 * var(--u)) calc(8 * var(--u)); background: rgba(0, 0, 0, .6);
+.hud .hud-tc { grid-column: 2; align-items: center; gap: calc(3 * var(--u)); padding: calc(2 * var(--u)) calc(8 * var(--u)); background: rgba(0, 0, 0, .6);
   box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark); }
-.hud .hud-tr { align-items: flex-end; }
-.hud .hud-top .hb { position: relative; left: auto; top: auto; right: auto; transform: none; }
+/* the right stack: quota, PAYOUT, NIGHT PLAN, EMPIRE, buffs, the phone chip. One column, one gap, right-aligned.
+   Its width is what is left to the right of the centre track: half the HUD box minus the track's half, minus the 4u inset and a 4u gap.
+   Percentages, not vw: the HUD box is the #ui root, which can be narrower than the window. */
+.hud .hud-rs { position: absolute; top: calc(4 * var(--u)); right: calc(4 * var(--u)); display: flex; flex-direction: column; align-items: flex-end;
+  gap: calc(4 * var(--u)); width: max-content;
+  max-width: calc(50% - min(25%, calc(160 * var(--u))) - calc(8 * var(--u))); }
+.hud .hud-top .hb, .hud .hud-rs .hb { position: relative; left: auto; top: auto; right: auto; transform: none; }
 
 /* top-left: pocket, tickets, staff */
 .hud .wallet .num { color: var(--shine); font-size: calc(16 * var(--u)); }
@@ -62,7 +70,7 @@
 /* NIGHT PLAN: under the quota in the top-right column (hud.ts updatePlan). Four plain text lines, right-aligned, one line each. */
 /* The panel is capped at its top-right grid cell (max-width 100%), and its lines wrap inside it: a long line never runs out of the
    plate over the centre column or the machine art. */
-.hud .plan { display: flex; flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u)); margin-top: calc(3 * var(--u));
+.hud .plan { display: flex; flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u));
   max-width: 100%; box-sizing: border-box; padding: calc(2 * var(--u)) calc(4 * var(--u)); background: rgba(0, 0, 0, .5);
   box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark); text-align: right; }
 .hud .plan span { display: block; max-width: 100%; font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1.35;
@@ -76,7 +84,7 @@
 /* PAYOUT chip (wave 47, hud.ts updatePayout): under the quota, a wrapping line of text on a dark plate. 16px+ and high contrast;
    the total and each part are coloured by sign (green up, coral down, ivory flat). */
 .hud .payout { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; column-gap: calc(4 * var(--u)); row-gap: calc(1 * var(--u));
-  max-width: min(46vw, calc(320 * var(--u))); margin-top: calc(3 * var(--u)); padding: calc(3 * var(--u)) calc(6 * var(--u));
+  max-width: 100%; padding: calc(3 * var(--u)) calc(6 * var(--u));
   background: rgba(0, 0, 0, .85); box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark);
   font-family: var(--f-body); font-size: max(18px, calc(9 * var(--u))); line-height: 1.15; letter-spacing: .03em;
   text-align: right; text-shadow: none; }
@@ -88,9 +96,8 @@
 .hud .payout .tot { font-size: 1.1em; }
 .hud .payout .note { flex-basis: 100%; font-size: .8em; color: #d8cfb8; }
 
-/* right edge: buffs */
-/* top: never above the top band's bottom edge (--hud-top-h), so the NIGHT PLAN panel under the quota is not covered */
-.hud .buffs { right: calc(4 * var(--u)); top: max(calc(34 * var(--u)), calc(var(--hud-top-h, 0px) + 4 * var(--u))); flex-direction: column; align-items: flex-end; gap: calc(3 * var(--u)); }
+/* buffs: a wrapping row at the foot of the right stack (hud.ts puts it in .hud-rs after the EMPIRE chip) */
+.hud .buffs { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; gap: calc(3 * var(--u)); max-width: 100%; }
 .hud .ico { position: relative; width: calc(12 * var(--u)); height: calc(12 * var(--u)); background: var(--coal);
   box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass); display: inline-flex; align-items: center; justify-content: center;
   font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--ivory); }
@@ -130,7 +137,7 @@
 .hud .feed .ln.old { opacity: 0; }
 .hud .feed .ln.gold { color: var(--shine); }
 .hud .feed .ln.red { color: var(--coral); }
-.hud .phone { left: 74%; top: calc(var(--hud-top-h, calc(52 * var(--u))) + 2 * var(--u)); transform: none; }
+.hud .phone { max-width: 100%; }
 .hud .phone .bell { width: calc(12 * var(--u)); height: calc(12 * var(--u)); background: var(--amber); animation: hud-blink .4s steps(2, start) infinite; }
 .hud .phone .arc { width: calc(14 * var(--u)); height: calc(14 * var(--u)); border-radius: 50%; background: conic-gradient(var(--amber) var(--p, 360deg), transparent 0); }
 .hud .dread { position: absolute; inset: 0; pointer-events: none; opacity: 0;

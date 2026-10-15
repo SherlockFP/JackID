@@ -21,6 +21,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PAWN_SLOTS_MAX = 6;   // charm_vendor SLOTS_MAX: 4 shelves plus up to 2 Second Window extras
+const STAKE_MAX = 7;       // stakes.ts STAKE_MAX
 const CHROME = process.env.QA_CHROME || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const DEFAULT_HOLD_MS = 80;
 const READY_TIMEOUT_MS = 120_000;
@@ -110,6 +111,10 @@ export function parseScript(text) {
  *   shot:<name>        screenshot to <shots>/<name>.png (needs --shots)
  *   wait:<ms>          pause
  *   state              record pocket, bank, quota, night, watch, pulls, phase, seated, starterOffer, charms (res.run.states)
+ *   kit:<id>           start config (applied at run start, not a step): the kit, as the kit picker's config passes it
+ *   stake:<n>          start config: the stake 0-7 (STAKE_MAX)
+ *   daily              start config: the day's run (kit, stake 3 and seed from the UTC day, as the picker's daily toggle)
+ * The start config is applied once, when the run starts (see startConfigJs); its step records are first in run.steps.
  */
 export function parseRunSteps(text) {
   const out = [];
@@ -117,6 +122,7 @@ export function parseRunSteps(text) {
     const tok = raw.trim();
     if (!tok) continue;
     if (['stand', 'lever', 'bell', 'pawn', 'state', 'events'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
+    if (tok === 'daily') { out.push({ kind: 'daily', text: tok }); continue; }
     if (tok === 'pawn:look') { out.push({ kind: 'pawnlook', text: tok }); continue; }
     if (tok === 'auto:night') { out.push({ kind: 'auto', text: tok }); continue; }
     if (tok === 'auto:night:event') { out.push({ kind: 'auto', untilEvent: true, text: tok }); continue; }
@@ -133,6 +139,15 @@ export function parseRunSteps(text) {
       out.push({ kind: 'pawnbuy', slot, text: tok });
       continue;
     }
+    m = /^kit:([a-z][a-z0-9_]*)$/.exec(tok);
+    if (m) { out.push({ kind: 'kit', id: m[1], text: tok }); continue; }
+    m = /^stake:(\d+)$/.exec(tok);
+    if (m) {
+      const n = Number(m[1]);
+      if (!(n >= 0 && n <= STAKE_MAX)) throw new Error(`bad stake in "${tok}" (stake:<0-${STAKE_MAX}>)`);
+      out.push({ kind: 'stake', n, text: tok });
+      continue;
+    }
     m = /^bank:deposit:(\d+)$/.exec(tok);
     if (m) { out.push({ kind: 'deposit', amount: Number(m[1]), text: tok }); continue; }
     m = /^bank:withdraw:(\d+)$/.exec(tok);
@@ -146,10 +161,31 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | auto:night | auto:night:event | events | banner:<ms> | shot:<name> | wait:<ms> | state)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | auto:night | auto:night:event | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
+  const once = (kind) => {
+    const hits = out.filter((s) => s.kind === kind);
+    if (hits.length > 1) throw new Error(`"${hits[1].text}": one ${kind} step per --run`);
+    return hits[0];
+  };
+  const daily = once('daily'), kit = once('kit'), stake = once('stake');
+  if (daily && (kit || stake)) throw new Error('"daily" fixes the kit and the stake: drop kit:<id> and stake:<n> (the kit picker does the same)');
   return out;
+}
+
+/** The start config from the kit/stake/daily steps (applied at run start, not steps), or null when there are none. */
+const START_KINDS = new Set(['kit', 'stake', 'daily']);
+export function startSpecOf(parsed) {
+  const cfg = parsed.filter((s) => START_KINDS.has(s.kind));
+  if (!cfg.length) return null;
+  const spec = { text: cfg.map((s) => s.text).join(';') };
+  for (const s of cfg) {
+    if (s.kind === 'kit') spec.kit = s.id;
+    else if (s.kind === 'stake') spec.stake = s.n;
+    else spec.daily = true;
+  }
+  return spec;
 }
 
 /** `--frames "300,1200"` → sorted, unique ms offsets after the last key. */
@@ -293,8 +329,48 @@ const BET_TAP_JS = `(() => {
 /** Page JS: the run's last refusal (`run.lastRefusal()`), or null. It is not cleared by every step (see noteRefusal). */
 const REFUSAL_JS = '(window.jackid.app.run.lastRefusal?.() ?? null)';
 /** Page JS: the stake attempts recorded from index n on (see BET_TAP_JS). */
-const betsFrom = (n) => `(window.jackid.app.run.__qaBets ?? []).slice(${n})`;
-const BET_COUNT_JS = '(window.jackid.app.run.__qaBets ?? []).length';
+const betsFrom = (n) => `(window.jackid.app.run?.__qaBets ?? []).slice(${n})`;
+const BET_COUNT_JS = '(window.jackid.app.run?.__qaBets ?? []).length';
+/**
+ * Page JS: the run has ended (`run.over`), or the run is gone (session teardown clears `app.run` once the menu takes the
+ * screen back). Checked before each step, so the steps after it are skipped instead of throwing.
+ */
+const RUN_OVER_JS = '(() => { const r = window.jackid?.app?.run; return !r || r.over === true; })()';
+
+/**
+ * Page JS: applies the start config (the kit picker's `config`: `{ kit, stake, daily }`) to the next debt `ingame` start.
+ * It wraps `app.go` once: the first `go('ingame', { mode: 'debt' })` (the veil's click, the same call the kit picker makes
+ * in menuState.ts) gets `config` merged in. The daily run takes today's kit and DAILY_STAKE, as the picker's toggle does.
+ * The stake and kit are not gated here: the picker's unlock rules are reported as `gated` (the QA profile is fresh).
+ */
+const startConfigJs = (spec) => `(async () => {
+  const a = window.jackid.app, spec = ${JSON.stringify(spec)};
+  const { KITS } = await import('/src/game/data/kits.ts');
+  const daily = await import('/src/game/daily.ts');
+  const stakes = await import('/src/game/stakes.ts');
+  const cfg = spec.daily ? { kit: daily.dailyKit(daily.dayKey()), stake: daily.DAILY_STAKE, daily: true }
+    : { kit: spec.kit, stake: spec.stake, daily: false };
+  const kit = cfg.kit ?? 'pauper';
+  const row = KITS.find((k) => k.id === kit);
+  if (!row) return { ok: false, error: 'unknown kit "' + kit + '"' };
+  const stake = cfg.stake ?? 0;
+  const unlocked = a.save?.data?.meta?.unlocked ?? [];
+  const gated = {
+    kit: !cfg.daily && row.unlockCost > 0 && !unlocked.includes('kit:' + kit),
+    stake: !cfg.daily && stake > 0 && !stakes.stakeUnlocked(a.save?.data?.stakeCleared ?? {}, kit, stake),
+  };
+  let pending = { kit: cfg.kit, stake: cfg.stake, daily: cfg.daily };
+  const go = a.go.bind(a);
+  a.go = (to, params) => {
+    if (pending && to === 'ingame' && params && params.mode === 'debt') {
+      const config = { ...(params.config ?? {}), ...pending };
+      pending = null;
+      return go(to, { ...params, config });
+    }
+    return go(to, params);
+  };
+  return { ok: true, kit, stake, daily: cfg.daily, gated };
+})()`;
 
 /**
  * A refused step's refusal: `refusal` is the run's `lastRefusal()` after the step, `refusalNew` whether it changed during
@@ -308,7 +384,9 @@ function noteRefusal(rec, before, now) {
 
 /** Page JS: the debt run's state, for `state`, the step records and the auto:night loop. Watch and Night are 1-based. */
 const RUN_STATE_JS = `(() => {
-  const a = window.jackid.app, r = a.run, b = r.bank(), pulls = r.pulls();
+  const a = window.jackid.app, r = a.run;
+  if (!r) return { over: true, run: null };   // the run is gone: the menu took the screen back
+  const b = r.bank(), pulls = r.pulls();
   return {
     phase: r.shift.phase, night: r.night(), watch: typeof r.watch === 'number' ? r.watch + 1 : null,
     pocket: b.pocket, bank: b.balance, withdrawable: b.withdrawable, quotaDue: b.due, quotaLeft: b.left,
@@ -632,6 +710,7 @@ async function runKind(ctx, s, rec) {
     case 'play':
       rec.bets = [];
       for (let i = 0; i < s.n; i++) {
+        if (i > 0 && await evaluate(cdp, RUN_OVER_JS)) { rec.note = `run over after ${i} of ${s.n}`; break; }   // no repeat after the end
         const n0 = await evaluate(cdp, BET_COUNT_JS);
         await playKeys(cdp, s.keys);
         rec.bets.push(...(await evalJson(cdp, betsFrom(n0))));
@@ -773,11 +852,16 @@ async function exec(ctx, s) {
  */
 async function driveRun(ctx, steps) {
   await evaluate(ctx.cdp, BET_TAP_JS);
-  for (const s of steps) {
-    // auto:night after the run is over has no Night left to play: skipped (no record, no refused line)
-    if (s.kind === 'auto' && (await readState(ctx).then((st) => st.over, () => false))) { log(`run ${s.text}: skipped (the run is over)`); continue; }
-    await exec(ctx, s);
-    if (ctx.res.reloads) { ctx.run.aborted = `the page reloaded after "${s.text}" (the run is invalid, see viteEvents)`; break; }
+  for (let i = 0; i < steps.length; i++) {
+    // The run has ended (or is gone): every remaining step is skipped, with one note for all of them.
+    if (await evaluate(ctx.cdp, RUN_OVER_JS)) {
+      const skipped = steps.slice(i).map((x) => x.text);
+      ctx.run.steps.push({ step: 'run over', ok: true, note: `run over: skipped ${skipped.length} remaining step(s)`, skipped });
+      log(`run over: skipped ${skipped.length} remaining step(s) (${skipped.join('; ')})`);
+      break;
+    }
+    await exec(ctx, steps[i]);
+    if (ctx.res.reloads) { ctx.run.aborted = `the page reloaded after "${steps[i].text}" (the run is invalid, see viteEvents)`; break; }
   }
   ctx.run.failed = ctx.run.steps.filter((r) => r.ok === false && !r.auto).length;
 }
@@ -789,7 +873,9 @@ async function driveRun(ctx, steps) {
  *   errors:string[], shots:string[], state:string, framesPerSec:number, cleanup:object}>}
  */
 export async function runBench(opts = {}) {
-  const runSteps = opts.run === undefined ? null : parseRunSteps(opts.run);   // --run: a debt run driven by steps
+  const parsedRun = opts.run === undefined ? null : parseRunSteps(opts.run);   // --run: a debt run driven by steps
+  const startSpec = parsedRun ? startSpecOf(parsedRun) : null;                  // kit / stake / daily: applied at run start
+  const runSteps = parsedRun ? parsedRun.filter((s) => !START_KINDS.has(s.kind)) : null;
   const world = Boolean(opts.world) || runSteps !== null;   // a real debt run (`/?skipmenu=1`), not a bench room
   const machine = String(opts.machine ?? (world ? 'run' : ''));
   if (!/^[a-z][a-z0-9_]*$/.test(machine)) throw new Error('machine id required, e.g. "bigone" (or --world)');
@@ -888,6 +974,10 @@ export async function runBench(opts = {}) {
     const url = world ? `/?skipmenu=1&seed=${seed}` : `/?bench=${machine}&seed=${seed}`;
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${vport}${url}` });
     await waitFor(() => evaluate(cdp, 'typeof window.jackid === "object"'), READY_TIMEOUT_MS, 'window.jackid');
+    // --run start config (kit / stake / daily): wrapped before the veil is entered, so the run starts with it.
+    const startRec = startSpec ? await evalJson(cdp, startConfigJs(startSpec)) : null;
+    if (startRec && !startRec.ok) throw new Error(`--run start config: ${startRec.error}`);
+    if (startRec) log(`start config: kit ${startRec.kit}, stake ${startRec.stake}${startRec.daily ? ' (daily)' : ''}`);
     await evaluate(cdp, 'window.__qaFrames = 0; (function f() { window.__qaFrames++; requestAnimationFrame(f); })(); true');
     const stateOf = () => evaluate(cdp, 'String((() => { const s = window.jackid.state(); return typeof s === "string" ? s : (s && (s.name ?? s.id ?? s.kind)) ?? JSON.stringify(s); })())');
     // The veil appears after boot and takes Enter; keep pressing it until the room has started.
@@ -906,8 +996,9 @@ export async function runBench(opts = {}) {
     res.state = await stateOf();
     log(`in game (${res.state}), ${res.framesPerSec} fps`);
     if (runSteps) {                                       // --run: the intro is skipped with a Space tap before any step
-      res.run = { intro: await skipIntro(cdp), steps: [], states: [], shot: null, failed: 0, aborted: null };
+      res.run = { intro: await skipIntro(cdp), steps: [], states: [], shot: null, failed: 0, aborted: null, start: startRec };
       log(`intro: played ${res.run.intro.played}, Space taps ${res.run.intro.taps}`);
+      if (startRec) res.run.steps.push({ step: startSpec.text, ok: true, start: true, kit: startRec.kit, stake: startRec.stake, daily: startRec.daily, gated: startRec.gated });
     }
 
     const shoot = async (name) => {
@@ -1066,17 +1157,19 @@ function parseArgs(argv) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   (async () => {
-    let code = 0;
+    // The JSON is written once, after runBench has resolved (the steps finished, or the run ended and the rest was
+    // skipped, and the cleanup ran). Exit only after the write has flushed, so a piped output is never cut short.
+    let code = 0, out;
     try {
       const o = parseArgs(process.argv.slice(2));
       if (o.help || (!o.machine && !o.world && o.run === undefined)) { process.stderr.write(USAGE + '\n'); process.exit(o.help ? 0 : 2); }
       const result = await runBench(o);
-      process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+      out = result;
       if (result.run?.aborted) code = 1;                 // steps that failed are in the JSON; a reload invalidates the run
     } catch (e) {
       code = 1;
-      process.stdout.write(JSON.stringify({ error: String(e?.message ?? e) }, null, 2) + '\n');
+      out = { error: String(e?.message ?? e) };
     }
-    process.exit(code);
+    process.stdout.write(JSON.stringify(out, null, 2) + '\n', () => process.exit(code));
   })();
 }
