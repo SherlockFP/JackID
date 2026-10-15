@@ -51,12 +51,12 @@ test('the card face shows the concrete result for its Night (N2 quota 36): RUSH 
   const pv = (id, idx = 1) => NC.nightCardPreview(card(id), idx, (m) => Math.round(SCH.quotaFor(idx) * m));
   assert.deepEqual(pv('rush_night'), [{ key: 'quota', vars: { from: 36, to: 27 } }, { key: 'watches', vars: { from: 3, to: 2 } }]);
   assert.deepEqual(pv('double_down'), [{ key: 'quota', vars: { from: 36, to: 54 } }, { key: 'payout', vars: { x: 1.3 } }]);
-  assert.deepEqual(pv('lean_night'), [{ key: 'pulls', vars: { from: 7, to: 5 } }, { key: 'payout', vars: { x: 1.2 } }]);
+  assert.deepEqual(pv('lean_night'), [{ key: 'pulls', vars: { from: 7, to: 5 } }, { key: 'payout', vars: { x: 1.2 } }, { key: 'net', vars: { pct: -14 } }]);
   assert.deepEqual(pv('high_table'), [{ key: 'payout', vars: { x: 1.25 } }, { key: 'minBet', vars: { x: 2 } }]);
   assert.deepEqual(pv('quiet_night'), [{ key: 'payout', vars: { x: 0.95 } }, { key: 'interest', vars: { from: 50, to: 55 } }, { key: 'noFloor', vars: {} }]);
   assert.deepEqual(pv('bankers_night'), [{ key: 'payout', vars: { x: 0.9 } }, { key: 'interest', vars: { from: 50, to: 55 } }, { key: 'pawnShut', vars: {} }]);
   assert.deepEqual(pv('payday_night'), [{ key: 'quota', vars: { from: 36, to: 41 } }, { key: 'flat', vars: { n: 10 } }]);
-  assert.deepEqual(pv('grace'), [{ key: 'payout', vars: { x: 0.95 } }, { key: 'grace', vars: { from: 4, to: 7 } }]);
+  assert.deepEqual(pv('grace'), [{ key: 'grace', vars: { from: 4, to: 7 } }, { key: 'hot', vars: { from: 1, to: 0 } }]);
   assert.deepEqual(pv('charm_fair'), [{ key: 'quota', vars: { from: 36, to: 40 } }, { key: 'shelves', vars: { n: 2 } }, { key: 'discount', vars: { pct: 20 } }]);
   assert.deepEqual(pv('lamp_festival'), [{ key: 'quota', vars: { from: 36, to: 40 } }, { key: 'hot', vars: { from: 1, to: 2 } }, { key: 'cold', vars: { from: 1, to: 0 } }]);
   assert.deepEqual(pv('lamp_festival', 0), [{ key: 'quota', vars: { from: 24, to: 26 } }, { key: 'hot', vars: { from: 1, to: 2 } }], 'no COLD lamp to remove on Night 1');
@@ -104,7 +104,7 @@ test('preview parity: each card preview quota is the quota its Night opens with 
   const cases = offerCasePerCard();
   assert.equal(cases.size, IDS.length, 'every card is offered on Nights 1-7 of some seed');
   for (const [id, { seed, night }] of cases) {
-    for (const over of [1, 1.6]) {
+    for (const over of [1, 1.6, 2.2]) {   // 2.2 takes the golden overshoot (-5 % next quota)
       const where = `${id} seed ${seed} Night ${night} paid x${over}`;
       const r = dawnRun(seed, night - 1, over);
       const o = r.nightCardOffer();
@@ -161,7 +161,7 @@ test('each card folds its declared effect through the pipeline', () => {
   assert.equal(foldHook([card('bankers_night')], 'payout.mult', 1), 0.9, 'BANKER: payouts x0.9 (its cost)');
   assert.equal(foldHook([card('charm_fair')], 'quota.mult', 1), 1.1, 'CHARM FAIR: quota x1.1 (its cost)');
   assert.equal(foldHook([card('lamp_festival')], 'quota.mult', 1), 1.1, 'LAMP FESTIVAL: quota x1.1 (its cost)');
-  assert.equal(foldHook([card('grace')], 'payout.mult', 1), 0.95, 'GRACE: payouts x0.95 (its cost)');
+  assert.equal(foldHook([card('grace')], 'payout.mult', 1), 1, 'GRACE: no payout cut (its cost is the HOT lamp)');
   assert.equal(foldHook([card('charm_fair')], 'x.pawn.slots', 0), 2, 'CHARM FAIR: +2 shelves');
   assert.equal(foldHook([card('charm_fair')], 'shop.discount', 0), 0.2, 'CHARM FAIR: -20 % prices');
   assert.equal(foldHook([card('payday_night')], 'payout.flat', 0), 10);
@@ -175,7 +175,7 @@ test('every card has a real cost beside its boon: a quota or payout up, a payout
     return d.effects.some((e) => (e.hook === 'quota.mult' && e.value > 1) || (e.hook === 'payout.mult' && e.value < 1)
       || (e.hook === 'payout.mult' && e.value > 1) || (e.hook === 'x.run.pullsAdd' && e.value < 0)
       || (e.hook === 'x.econ.interestAdd' && e.value < 0))
-      || fx.watchAdd < 0 || fx.minBetMult > 1 || fx.pawnClosed;
+      || fx.watchAdd < 0 || fx.minBetMult > 1 || fx.pawnClosed || fx.hotLamps === 0 || fx.noColdLamps || fx.noFloorEvents;
   };
   for (const d of NC.NIGHT_CARDS) assert.ok(costOf(d), `${d.id} has a cost`);
 });
@@ -189,7 +189,55 @@ test('the switches of each card are the ones the run reads', () => {
   assert.equal(NC.nightCardFx('high_table').minBetMult, 2);
   assert.equal(NC.nightCardFx('bankers_night').pawnClosed, true);
   assert.deepEqual(NC.nightCardFx(null), NC.NEUTRAL_NIGHT_CARD_FX, 'no card is neutral');
-  assert.deepEqual(NC.nightCardFx('grace'), NC.NEUTRAL_NIGHT_CARD_FX, 'a card with no switch is neutral');
+  assert.equal(NC.nightCardFx('grace').hotLamps, 0, 'GRACE: no HOT lamp this Night');
+  assert.deepEqual(NC.nightCardFx('double_down'), NC.NEUTRAL_NIGHT_CARD_FX, 'a card with no switch is neutral');
+});
+
+test('LEAN NIGHT net is the payout times the pull ratio, and it is a loss on every base Night', () => {
+  for (let idx = 0; idx < 8; idx++) {
+    const nd = SCH.nightDef(idx);
+    const lines = NC.nightCardPreview(card('lean_night'), idx);
+    const net = lines.find((p) => p.key === 'net');
+    const to = Math.max(1, nd.pulls - 2);
+    assert.equal(net?.vars.pct, Math.round((1.2 * to / nd.pulls - 1) * 100), `Night ${idx + 1} net`);
+    assert.ok(net.vars.pct < 0, `Night ${idx + 1}: LEAN is a net loss`);
+  }
+  assert.equal(NC.nightCardPreview(card('double_down'), 1).some((p) => p.key === 'net'), false, 'no pulls change, no net line');
+});
+
+test('every card has its own profile, and no offer ever holds two with the same profile', () => {
+  const profiles = NC.NIGHT_CARDS.map((d) => NC.nightCardProfile(d));
+  assert.equal(new Set(profiles).size, profiles.length, 'the deck has no two same-profile cards');
+  assert.notEqual(NC.nightCardProfile(card('quiet_night')), NC.nightCardProfile(card('grace')), 'QUIET and GRACE differ');
+  for (const seed of SEEDS) {
+    for (const night of NIGHTS) {
+      const ids = NC.nightCardOffer(seed, night);
+      const ps = ids.map((id) => NC.nightCardProfile(card(id)));
+      assert.equal(new Set(ps).size, ps.length, `seed ${seed} night ${night}: one profile each`);
+    }
+  }
+});
+
+test('HIGH TABLE moves no quota: its Night opens at the plain read, which already carries the golden overshoot discount', () => {
+  let checked = 0;
+  let discounted = 0;
+  for (const seed of SEEDS.slice(0, 80)) {
+    const r = dawnRun(seed, 0, 2.2);
+    const o = r.nightCardOffer();
+    if (o?.candidates.some((d) => d.id === 'high_table')) {
+      const plain = r.nextQuotaPreview(1)?.due;
+      const lines = NC.nightCardPreview(card('high_table'), o.night, (m) => r.nextQuotaPreview(m)?.due ?? null);
+      assert.equal(lines.some((p) => p.key === 'quota'), false, `seed ${seed}: no quota line on HIGH TABLE`);
+      if (plain < SCH.quotaFor(o.night)) discounted += 1;   // the -2 the QA bench showed: its ladder base ignored this discount
+      assert.equal(r.pickNightCard('high_table'), true);
+      assert.equal(r.openFloor(), true);
+      assert.equal(r.quota.due, plain, `seed ${seed}: the Night opens at the plain read`);
+      checked += 1;
+    }
+    r.dispose();
+  }
+  assert.ok(checked > 0, 'a HIGH TABLE offer exists in the sample');
+  assert.ok(discounted > 0, 'the golden discount lowers some plain reads below the ladder');
 });
 
 test('a card stacks with other effects on its Night (boss rules still apply): folds are order-free', () => {

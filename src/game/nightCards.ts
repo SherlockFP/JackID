@@ -59,8 +59,10 @@ export interface NightCardDef {
 
 /**
  * The deck. Ten cards, each with a distinct decision. Every card carries a real cost (a quota or payout line, or a Watch, a pull
- * or a bet floor) next to its boon; the tone tags the trade. BANKER'S NIGHT: interest +5 pts, the Pawn shut, payouts x0.9 (director:
- * it was taken in 4 of 5 Dawns at +10 pts with no cost). Order is the data order (the seeded offer shuffles it).
+ * or a bet floor, or a Lamp) next to its boon; the tone tags the trade. BANKER'S NIGHT: interest +5 pts, the Pawn shut, payouts x0.9
+ * (director: it was taken in 4 of 5 Dawns at +10 pts with no cost). GRACE: Tilt grace +3 and no HOT lamp (no payout cut, so it is not
+ * a second QUIET NIGHT). Every card has its own profile (see {@link nightCardProfile}). Order is the data order (the seeded offer
+ * shuffles it).
  */
 export const NIGHT_CARDS: readonly NightCardDef[] = [
   { id: 'rush_night', tone: 'mixed', effects: [{ hook: 'quota.mult', op: 'mult', value: 0.75 }], fx: { watchAdd: -1 } },
@@ -72,7 +74,7 @@ export const NIGHT_CARDS: readonly NightCardDef[] = [
   { id: 'bankers_night', tone: 'mixed', effects: [{ hook: 'x.econ.interestAdd', op: 'add', value: 0.05 }, { hook: 'payout.mult', op: 'mult', value: 0.9 }], fx: { pawnClosed: true } },
   { id: 'charm_fair', tone: 'boon', effects: [{ hook: 'x.pawn.slots', op: 'add', value: 2 }, { hook: 'shop.discount', op: 'add', value: 0.2 }, { hook: 'quota.mult', op: 'mult', value: 1.1 }], fx: {} },
   { id: 'payday_night', tone: 'mixed', effects: [{ hook: 'payout.flat', op: 'add', value: 10 }, { hook: 'quota.mult', op: 'mult', value: 1.15 }], fx: {} },
-  { id: 'grace', tone: 'mixed', effects: [{ hook: 'x.tilt.grace', op: 'add', value: 3 }, { hook: 'payout.mult', op: 'mult', value: 0.95 }], fx: {} },
+  { id: 'grace', tone: 'mixed', effects: [{ hook: 'x.tilt.grace', op: 'add', value: 3 }], fx: { hotLamps: 0 } },
 ];
 
 const BY_ID: ReadonlyMap<string, NightCardDef> = new Map(NIGHT_CARDS.map((d) => [d.id, d]));
@@ -89,12 +91,31 @@ export function nightCardFx(id: string | null): NightCardFx {
 }
 
 /**
+ * The shape of a card's trade: the effect hooks it moves and the switches it sets. Two cards with one profile are the same
+ * decision, so an offer never holds both (see {@link nightCardOffer}).
+ */
+export function nightCardProfile(def: NightCardDef): string {
+  const fx = { ...NEUTRAL_NIGHT_CARD_FX, ...def.fx };
+  const tokens = new Set<string>(def.effects.map((e) => e.hook));
+  for (const k of Object.keys(NEUTRAL_NIGHT_CARD_FX) as (keyof NightCardFx)[]) {
+    if (fx[k] !== NEUTRAL_NIGHT_CARD_FX[k]) tokens.add(`fx.${k}`);
+  }
+  return [...tokens].sort().join('|');
+}
+
+/**
  * The cards offered at the Dawn that opens `night` (0-based Night index of the Night the card is for). Pure: the same seed
- * and Night always give the same distinct ids, in the same order.
+ * and Night always give the same distinct ids, in the same order. The second card is the next one in the seeded order whose
+ * profile differs from the first (today every profile is distinct, so this is the plain first two).
  */
 export function nightCardOffer(seed: number, night: number): NightCardId[] {
   const rng = createRng(hashSeed('nightcards', seed, night));
-  return rng.shuffle([...NIGHT_CARDS]).slice(0, NIGHT_CARD_OFFER_SIZE).map((d) => d.id);
+  const picked: NightCardDef[] = [];
+  for (const d of rng.shuffle([...NIGHT_CARDS])) {
+    if (picked.length === NIGHT_CARD_OFFER_SIZE) break;
+    if (picked.every((p) => nightCardProfile(p) !== nightCardProfile(d))) picked.push(d);
+  }
+  return picked.map((d) => d.id);
 }
 
 /**
@@ -102,7 +123,7 @@ export function nightCardOffer(seed: number, night: number): NightCardId[] {
  * the line reads (before and after, or the amount). The card face joins the lines with a separator.
  */
 export interface NightCardPreviewLine {
-  key: 'quota' | 'watches' | 'pulls' | 'payout' | 'flat' | 'interest' | 'grace' | 'shelves' | 'discount' | 'hot' | 'cold' | 'noFloor' | 'minBet' | 'pawnShut';
+  key: 'quota' | 'watches' | 'pulls' | 'payout' | 'net' | 'flat' | 'interest' | 'grace' | 'shelves' | 'discount' | 'hot' | 'cold' | 'noFloor' | 'minBet' | 'pawnShut';
   vars: Record<string, number>;
 }
 
@@ -128,9 +149,12 @@ export function nightCardPreview(def: NightCardDef, index: number, dueWith?: (mu
   }
   if (fx.watchAdd !== 0) lines.push({ key: 'watches', vars: { from: nd.watches, to: Math.max(1, nd.watches + fx.watchAdd) } });
   const pullsAdd = sum('x.run.pullsAdd', 'add');
-  if (pullsAdd !== 0) lines.push({ key: 'pulls', vars: { from: nd.pulls, to: Math.max(1, Math.round(nd.pulls + pullsAdd)) } });
+  const pullsTo = Math.max(1, Math.round(nd.pulls + pullsAdd));
+  if (pullsAdd !== 0) lines.push({ key: 'pulls', vars: { from: nd.pulls, to: pullsTo } });
   const payout = product('payout.mult');
   if (payout !== 1) lines.push({ key: 'payout', vars: { x: payout } });
+  // Fewer pulls pay on fewer pulls: the Watch's payouts move by the payout multiplier times the pull ratio (LEAN: x1.2 x 5/7 = -14 %).
+  if (pullsAdd !== 0) lines.push({ key: 'net', vars: { pct: Math.round((payout * pullsTo / nd.pulls - 1) * 100) } });
   const flat = sum('payout.flat', 'add');
   if (flat !== 0) lines.push({ key: 'flat', vars: { n: flat } });
   const interest = sum('x.econ.interestAdd', 'add');

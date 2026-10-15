@@ -61,7 +61,7 @@ test('every 5th play on the spotlight pays one Ticket; other machines do not cou
   assert.equal(sp.current().plays, 10);
   assert.equal(sp.current().progress, 0);
   assert.equal(SP.spotlightChip(sp.current(), 'Scratch').includes('×1.25'), true);
-  assert.equal(SP.spotlightChip({ ...sp.current(), progress: 2 }, 'Scratch').includes('2/5 to a Ticket'), true);
+  assert.equal(SP.spotlightChip({ ...sp.current(), progress: 2 }, 'Scratch').includes('3 plays to a Ticket'), true);
 });
 
 test('the Dawn ends the spotlight: no source, the beam event clears, and the next Night avoids the same kind', () => {

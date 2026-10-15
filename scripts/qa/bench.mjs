@@ -111,6 +111,8 @@ export function parseScript(text) {
  *   pawn:look          sit at the Pawn Window, screenshot the seat view (run-pawn-look-<n>.png)
  *   auto:night         a bot plays one Night like a sensible human (Hot first, spotlight, Tilt rotation, push-your-luck, Dawn deposits, Mola); logs each decision
  *   auto:night:event   the same, but stops at the first Watch with a floor event (shot it, then auto:night carries on)
+ *   auto:night:quota   the same, but stops in the Watch whose deposit meets the quota (before its Bell: the NIGHT PLAN's
+ *                      OVERSHOOT line is on screen; shot it, then auto:night carries on)
  *   events             record and print the live floor event (watchEvents.ts watchEventView), null between Watches
  *   shot:<name>        screenshot to <shots>/<name>.png (needs --shots)
  *   wait:<ms>          pause
@@ -129,7 +131,8 @@ export function parseRunSteps(text) {
     if (tok === 'daily') { out.push({ kind: 'daily', text: tok }); continue; }
     if (tok === 'pawn:look') { out.push({ kind: 'pawnlook', text: tok }); continue; }
     if (tok === 'auto:night') { out.push({ kind: 'auto', text: tok }); continue; }
-    if (tok === 'auto:night:event') { out.push({ kind: 'auto', untilEvent: true, text: tok }); continue; }
+    if (tok === 'auto:night:event') { out.push({ kind: 'auto', stopAt: 'event', text: tok }); continue; }
+    if (tok === 'auto:night:quota') { out.push({ kind: 'auto', stopAt: 'quota', text: tok }); continue; }
     let m0 = /^shot:([A-Za-z0-9_-]{1,60})$/.exec(tok);
     if (m0) { out.push({ kind: 'shot', name: m0[1], text: tok }); continue; }
     m0 = /^banner:(\d+)$/.exec(tok);
@@ -168,7 +171,7 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | auto:night | auto:night:event | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | auto:night | auto:night:event | auto:night:quota | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
   const once = (kind) => {
@@ -445,7 +448,8 @@ const NIGHT_CARD_OFFER_JS = `(async () => {
   const { quotaFor } = await import('/src/game/data/schedule.ts');
   const { t, lang } = await import('/src/core/i18n.ts');
   const b = r.bank();
-  const quotaBase = quotaFor(o.night);
+  // The plain next-Night read (ladder + overshoot discount + notice), not the bare ladder: otherwise every card shows a phantom change.
+  const quotaBase = r.nextQuotaPreview?.(1)?.due ?? quotaFor(o.night);
   const comma = lang() === 'tr';
   const vars = (v) => {
     const out = {};
@@ -566,11 +570,22 @@ const SPOTLIGHT_FN_JS = `function spotlightOf(r) {
   return s ? { machineId: s.machineId, night: s.night, plays: s.plays, progress: s.progress } : null;
 }`;
 
+/**
+ * Page JS helper: the OVERSHOOT view (run.overshootView(): the bank against the overpay tiers) for the state record, null when
+ * the build has none. `next` is the tier above the bank: its id, target coins and the gap still to go (null at the top tier).
+ */
+const OVERSHOOT_FN_JS = `function overshootOf(r) {
+  const o = typeof r.overshootView === 'function' ? r.overshootView() : null;
+  if (!o) return null;
+  return { balance: o.balance, due: o.due, tier: o.tier ?? null, reached: o.reached, next: o.next ? { id: o.next.id, target: o.next.target, gap: o.next.gap } : null };
+}`;
+
 /** Page JS: the debt run's state, for `state`, the step records and the auto:night loop. Watch and Night are 1-based. */
 const RUN_STATE_JS = `(async () => {
   ${NIGHT_CARD_IDS_JS}
   ${SPOTLIGHT_FN_JS}
   ${TITHE_FN_JS}
+  ${OVERSHOOT_FN_JS}
   const a = window.jackid.app, r = a.run;
   if (!r) return { over: true, run: null };   // the run is gone: the menu took the screen back
   const b = r.bank(), pulls = r.pulls();
@@ -593,6 +608,7 @@ const RUN_STATE_JS = `(async () => {
     spotlight: spotlightOf(r),                     // Machine of the Night: { machineId, night, plays, progress }, or null
     tithe: watchTitheOf(r),                        // the Watch tithe (run.watchTithe()): { on, target, earned, met, shortfall }, or null
     houseCut: houseCutOf(r),                       // the house cut paid tonight so far (run.nightLedger().cut), or null
+    overshoot: overshootOf(r),                     // OVERSHOOT (run.overshootView()): { balance, due, tier, reached, next: { id, target, gap } | null }, or null
     dawn: await (async () => { ${DAWN_BODY} })(),  // the Dawn projection the deposits aim at (pace.ts dawnPlan)
   };
 })()`;
@@ -713,6 +729,8 @@ function decide(ctx, what, reason) {
 
 const AUTO_MAX_MS = 15 * 60_000;   // auto:night stops after this much wall time (the run is left where it is)
 const AUTO_MAX_LOOPS = 4000;
+const BELL_KEEP_PULLS = 2;         // the bot spends the Watch's pulls down to this many, then deposits and rings the Bell (1-2 stay unused: the rebate)
+const AUTO_BETS_MAX = 60;          // a bot bet cap per Watch (each bet spends a pull; refusals retire a machine, see pickBet)
 const AUTO_LEVER_FAILS = 6;        // lever refused this many times in a row: the Night cannot move on
 
 /** How long the first Night 1 read waits for the Starter Draft to open (its timer is slow in a headless run). */
@@ -895,24 +913,30 @@ const evText = (ev) => (ev ? `${ev.id} (${Math.ceil(ev.leftS)} s${ev.pulls == nu
 function watchRec(ctx, st, ev) {
   const t = st.tithe ?? null;
   const tithe = t ? (t.on ? `${t.earned}/${t.target}${t.met ? ' met' : ` short ${t.shortfall}`}` : 'off') : null;
+  const o = st.overshoot ?? null;
+  const over = o ? `${o.tier ?? 'none'}${o.next ? ` (next ${o.next.id} +${o.next.gap})` : ''}` : '-';
   ctx.run.steps.push({
     step: `watch ${st.night}-${st.watch}`, ok: true, auto: true, night: st.night, watch: st.watch, pocket: st.pocket,
     bank: st.bank, quotaDue: st.quotaDue, quotaLeft: st.quotaLeft, tithe: t, houseCut: st.houseCut ?? null, event: ev?.id ?? null,
+    overshoot: o,
   });
-  log(`watch N${st.night} W${st.watch}: pocket ${st.pocket}, bank ${st.bank}, quota due ${st.quotaDue} left ${st.quotaLeft}, tithe ${tithe ?? '-'}, house cut ${st.houseCut ?? '-'}, event ${evText(ev)}`);
+  log(`watch N${st.night} W${st.watch}: pocket ${st.pocket}, bank ${st.bank}, quota due ${st.quotaDue} left ${st.quotaLeft}, overshoot ${over}, tithe ${tithe ?? '-'}, house cut ${st.houseCut ?? '-'}, event ${evText(ev)}`);
 }
 
 /**
  * `auto:night`: a sensible bot plays one Night. Per Watch: shop the cheapest affordable shelf in the intermission, then
- * lever (starts the Watch). In play: 1 bet on odd Watches, 2 on even ones, rotating over the open machines. Once the bets
- * are in, the bot deposits 40 % of the pocket (20 % when refused) while quota is owed, so the Watch's winnings are banked
- * before the Bell; then the Bell (unused pulls keep the rebate). A broke pocket withdraws the bank first.
- * Each Watch's state (pocket, bank, quota, floor event) is printed once, at its Bell. `untilEvent`
- * (`auto:night:event`) stops at the first Watch that has a floor event, so the event can be shot; a later auto:night carries on.
+ * lever (starts the Watch). In play: bets rotate over the open machines (Hot, spotlight, least Tilt) until the Watch's pulls
+ * are down to BELL_KEEP_PULLS or the pocket is under the cheapest bet. Then the bot deposits only what it needs, into the
+ * pocket above the float: the Dawn gap while quota is owed; once the quota is met, the gap to the next OVERSHOOT tier when the
+ * pocket allows it (else nothing, and the bot keeps playing). Then the Bell (unused pulls keep the rebate). A broke pocket
+ * withdraws only the top-up to the float plus one bet, not the whole bank (no withdraw and redeposit churn).
+ * Each Watch's state (pocket, bank, quota, OVERSHOOT, floor event) is printed once, at its Bell. `stopAt` (`auto:night:event`
+ * or `auto:night:quota`) stops at the first Watch with a floor event, or the first Watch whose deposit meets the quota (before
+ * its Bell), so the event or the OVERSHOOT line can be shot; a later auto:night carries on.
  * Ends when the Night rolls over (OPEN THE FLOOR), the run is over, or it reaches the top. Each action is its own record
  * (`auto: true`), in order, before the summary record.
  */
-async function autoNight(ctx, rec, untilEvent = false) {
+async function autoNight(ctx, rec, stopAt = null) {
   const { res } = ctx;
   const t0 = Date.now();
   const auto = (o) => ({ ...o, auto: true });
@@ -922,6 +946,7 @@ async function autoNight(ctx, rec, untilEvent = false) {
     played: new Map(),   // Watch key -> instances bet on in it
     fails: new Map(),    // instance -> bets in a row that spent no pull
     last: new Map(), seq: 0,   // instance -> the bet sequence number of its last bet (rotation ties)
+    metStop: new Set(),  // Nights whose quota-met stop has been taken (auto:night:quota)
   });
   const n0 = (await readState(ctx)).night;
   const count = { deposits: 0, shops: 0, bets: 0, bells: 0 };
@@ -936,19 +961,29 @@ async function autoNight(ctx, rec, untilEvent = false) {
     if (ev) events.push(ev.id);
   };
   /**
-   * This Watch's deposit, once per Watch after the bets: enough to stay on the Dawn projection (the gap to the quota), and at
-   * least 40 % of the pocket, never into the float (the terminal's floor). A refusal retries at half.
+   * This Watch's deposit, once per Watch after the bets: only what is needed, never into the float (the terminal's floor).
+   * While quota is owed: the Dawn gap (the coins the projection still lacks). Once met: the gap to the next OVERSHOOT tier
+   * (run.overshootView), only when the pocket above the float covers it. A refusal retries at half.
    */
   const depositFor = async () => {
     const s = await readState(ctx);
-    if (!(s.quotaLeft > 0 && s.pocket > 0)) return;
+    if (!(s.pocket > 0)) return;
     const d = await evalJson(ctx.cdp, DAWN_JS);
     const floor = d?.float ?? 0;
     const room = Math.max(0, s.pocket - floor);
-    const want = Math.max(d?.gap ?? 0, Math.floor(s.pocket * 0.4));
-    const amount = Math.min(room, want);
-    if (amount <= 0) { decide(ctx, 'deposit', `none: the pocket ${s.pocket} is at the float ${floor}`); return; }
-    decide(ctx, 'deposit', `${amount} of pocket ${s.pocket}: Dawn projection ${d.projected} of quota ${d.due} (gap ${d.gap}), float ${floor} kept`);
+    let need, why;
+    if (s.quotaLeft > 0) {
+      need = d ? d.gap : s.quotaLeft;
+      why = `the quota gap ${need} (Dawn projection ${d?.projected} of quota ${d?.due})`;
+    } else {
+      const next = s.overshoot?.next ?? null;
+      if (!next) { need = 0; why = 'quota met, top OVERSHOOT tier reached'; }
+      else if (next.gap <= room) { need = next.gap; why = `quota met, toward ${next.id} (target ${next.target})`; }
+      else { need = 0; why = `quota met, ${next.id} needs ${next.gap} above the float, pocket room ${room}: keep playing`; }
+    }
+    const amount = Math.min(room, need);
+    if (amount <= 0) { decide(ctx, 'deposit', `none: ${why}; float ${floor} kept`); return; }
+    decide(ctx, 'deposit', `${amount} of pocket ${s.pocket}: ${why}, float ${floor} kept`);
     for (const amt of [amount, Math.floor(amount / 2)]) {
       if (amt <= 0) break;
       const r = await exec(ctx, auto({ kind: 'deposit', amount: amt, text: `bank:deposit:${amt}` }));
@@ -974,16 +1009,26 @@ async function autoNight(ctx, rec, untilEvent = false) {
     }
 
     if (st.pocket < st.minBet && st.withdrawable > 0) {
-      const r = await exec(ctx, auto({ kind: 'withdraw', amount: st.withdrawable, text: `bank:withdraw:${st.withdrawable}` }));
+      // Top up only: the float plus one bet, not the whole bank (the bank is what the quota counts, so a full withdraw churns).
+      const d = await evalJson(ctx.cdp, DAWN_JS);
+      const amount = Math.min(st.withdrawable, Math.max(st.minBet - st.pocket, (d?.float ?? 0) + st.minBet - st.pocket));
+      const r = await exec(ctx, auto({ kind: 'withdraw', amount, text: `bank:withdraw:${amount}` }));
       if (!r.ok) await sleep(300);
       continue;
     }
     // The first Watch of a Night starts with the intro (no intermission before it): its deposit is taken in the Bell or play.
     if (st.phase === 'bell' || st.phase === 'play' || st.phase === 'lastCall') {
       // --event: stop at the Watch's floor event (no cutscene up, so its banner and HUD timer are on screen), before the bets.
-      if (untilEvent && !bot.evStop.has(key) && st.intro == null) {
+      if (stopAt === 'event' && !bot.evStop.has(key) && st.intro == null) {
         const ev = await evalJson(ctx.cdp, EVENT_JS);
         if (ev) { bot.evStop.add(key); events.push(ev.id); end = 'event'; break; }
+      }
+      // --quota: stop in the Watch whose deposit met the quota, before its Bell (the NIGHT PLAN's OVERSHOOT line is on screen).
+      if (stopAt === 'quota' && st.phase === 'play' && st.quotaDue > 0 && st.quotaLeft <= 0 && st.intro == null
+        && !bot.metStop.has(st.night)) {
+        bot.metStop.add(st.night);
+        end = 'quota met';
+        break;
       }
       if (st.phase === 'bell') await logWatchOnce(key);   // the Bell is already rung (not by this bot's own play)
     }
@@ -1024,11 +1069,11 @@ async function autoNight(ctx, rec, untilEvent = false) {
     }
     if (st.phase === 'play' || st.phase === 'lastCall') {
       const tried = bot.betsTried.get(key) ?? 0;
-      const bets = st.watch % 2 === 1 ? 1 : 2;
-      if (tried < bets && (st.pulls ?? Infinity) > 0 && st.pocket >= st.minBet) {
+      // Spend the Watch's pulls down to BELL_KEEP_PULLS (or until the pocket is under the cheapest bet), then bank and ring.
+      if (tried < AUTO_BETS_MAX && (st.pulls ?? Infinity) > BELL_KEEP_PULLS && st.pocket >= st.minBet) {
         bot.betsTried.set(key, tried + 1);
         const pick = pickBet(await evalJson(ctx.cdp, BOT_CANDS_JS), bot, key, st);
-        if (!pick) { bot.betsTried.set(key, bets); decide(ctx, 'bet', 'no open machine to play: ring the Bell'); continue; }
+        if (!pick) { bot.betsTried.set(key, AUTO_BETS_MAX); decide(ctx, 'bet', 'no open machine to play: ring the Bell'); continue; }
         const { c } = pick;
         if (!bot.played.has(key)) bot.played.set(key, new Set());
         bot.played.get(key).add(c.instance);
@@ -1055,7 +1100,7 @@ async function autoNight(ctx, rec, untilEvent = false) {
   rec.events = events;
   if (end === 'night card' && offer) { rec.offer = offer.ids; rec.cards = offer.cards; rec.have = offer.have; }   // the two cards for the script to choose from
   Object.assign(rec, count);
-  rec.ok = end === 'night paid' || end === 'topside' || end === 'event' || end === 'run over' || end === 'night card';
+  rec.ok = end === 'night paid' || end === 'topside' || end === 'event' || end === 'quota met' || end === 'run over' || end === 'night card';
   if (!rec.ok) rec.reason = end;
 }
 
@@ -1222,7 +1267,7 @@ async function runKind(ctx, s, rec) {
     }
     case 'pawnbuy': return pawnBuy(ctx, s.slot, rec);
     case 'pawnlook': return pawnLook(ctx, rec);
-    case 'auto': return autoNight(ctx, rec, s.untilEvent === true);
+    case 'auto': return autoNight(ctx, rec, s.stopAt ?? null);
     case 'events': {
       const ev = await evalJson(cdp, EVENT_JS);
       rec.event = ev;

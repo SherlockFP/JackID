@@ -2,13 +2,15 @@
 export default {
   prefix: 'spotlight.',
   en: {
-    'chip': 'SPOTLIGHT: {name} {mult} · {done}/{every} to a Ticket',
+    'chip': 'SPOTLIGHT: {name} {mult} · {left} plays to a Ticket',
+    'chip.one': 'SPOTLIGHT: {name} {mult} · 1 play to a Ticket',
     'start': 'SPOTLIGHT: {name} pays {mult}, a Ticket every {every}th play',
     'ticket': 'SPOTLIGHT TICKET +{tickets}',
     'payout': 'SPOTLIGHT',
   },
   tr: {
-    'chip': 'SPOTLIGHT: {name} {mult} · {done}/{every} Bilete',
+    'chip': 'SPOT: {name} {mult} · Bilete {left} oyun',
+    'chip.one': 'SPOT: {name} {mult} · Bilete 1 oyun',
     'start': 'SPOTLIGHT: {name} {mult} öder, her {every}. oyunda bir Bilet',
     'ticket': 'SPOTLIGHT BİLETİ +{tickets}',
     'payout': 'SPOTLIGHT',

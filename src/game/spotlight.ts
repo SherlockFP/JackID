@@ -7,7 +7,7 @@
  * change is announced on the bus as `spotlight:change` (the world's gold beam and the HUD chip listen; payload null = none).
  */
 import { bus } from '@/core/events';
-import { registerStrings, t } from '@/core/i18n';
+import { lang, registerStrings, t } from '@/core/i18n';
 import { createRng, hashSeed } from '@/core/rng';
 import type { InstanceId, MachineId } from '@/core/types';
 import type { ModProvider, ModQuery, ModSource, ModSourceKind } from '@/game/types';
@@ -61,9 +61,13 @@ export function spotlightPick(seed: number, night: number, machineIds: readonly 
   return createRng(hashSeed('spotlight', seed, night)).pick(pool);
 }
 
-/** The HUD chip line: "SPOTLIGHT: Big One ×1.25 · 2/5 to a Ticket". `name` is the machine's display name. */
+/**
+ * The HUD chip line: "SPOTLIGHT: Big One ×1.25 · 3 plays to a Ticket" (TR "SPOT: Big One ×1,25 · Bilete 3 oyun").
+ * `left` = plays still to go to the next Ticket (every - progress). `name` is the machine's display name.
+ */
 export function spotlightChip(v: SpotlightView, name: string): string {
-  return t('spotlight.chip', { name, mult: spotlightMultText(), done: v.progress, every: SPOTLIGHT_TICKET_EVERY });
+  const left = SPOTLIGHT_TICKET_EVERY - v.progress;
+  return t('spotlight.chip', { name, mult: spotlightMultText(), left, n: left });
 }
 
 /** The Night-open banner: "SPOTLIGHT: Big One ×1.25 pays, a Ticket every 5th play". */
@@ -76,7 +80,11 @@ export function spotlightTicketLine(tickets: number = SPOTLIGHT_TICKETS): string
   return t('spotlight.ticket', { tickets });
 }
 
-function spotlightMultText(): string { return `×${SPOTLIGHT_MULT.toFixed(2)}`; }
+/** The multiplier as printed: "×1.25" in English, "×1,25" in Turkish. */
+function spotlightMultText(): string {
+  const m = SPOTLIGHT_MULT.toFixed(2);
+  return `×${lang() === 'tr' ? m.replace('.', ',') : m}`;
+}
 
 export class Spotlight implements ModProvider {
   readonly kind: ModSourceKind = 'event';
