@@ -523,9 +523,12 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     const d = this.def;
     let base = d.betSteps ? [...d.betSteps] : (() => { const a: number[] = []; for (let b = d.minBet; b < d.maxBet; b *= 2) a.push(b); a.push(d.maxBet); return a; })();
     // the run's limit (Night 1 stake cap, SI) wins: never offer a stake the run would refuse
-    const lim = Math.max(d.minBet, this.ctx.run.betLimits(d.id, this.id).max);
-    base = base.filter((v) => v <= lim);
-    if (!base.length) base = [d.minBet];
+    const limits = this.ctx.run.betLimits(d.id, this.id);
+    const lim = Math.max(d.minBet, limits.max);
+    // ...and never one below the run's minimum (HIGH TABLE doubles it): the run would refuse it as 'limit'
+    const floor = Math.min(lim, Math.max(d.minBet, limits.min ?? d.minBet));
+    base = base.filter((v) => v <= lim && v >= floor);
+    if (!base.length) base = [floor];
     const cap = Math.min(lim, Math.floor(d.maxBet * this.mod('bet.maxMult', 1)));
     let last = base[base.length - 1];
     for (let e = Math.pow(10, Math.floor(Math.log10(Math.max(1, last)))); last < cap && e < 1e15; e *= 10) {

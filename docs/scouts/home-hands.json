@@ -1,0 +1,89 @@
+{
+ "area": "First-person viewmodel hands (root C:\\Users\\Admin\\Documents\\JackID; citations are repo-relative). Hands are a separate own-scene overlay, built from unlit PSX MeshBasic boxes with baked vertex shading. The glove colour is a single module constant, the sleeve comes from the player's profile colour, and no cosmetic, shop or settings path exposes gloves today.",
+ "files": [
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\player\\viewmodel.ts",
+   "role": "Hand geometry and materials (palm 97, forearm/sleeve cuff 98-100, 4 fingers 101-113, thumb 114-123, held-item holder 124), GLOVE 0xe6dec5 (78), PORCELAIN (79), Hand.refresh colour x light (131-142), ANIMS one-shots (165-224), buildItem/buildGun (229-278), RIGHT/LEFT home poses (281-284), createViewmodel + ViewmodelHost (287-450)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\player\\viewmodel\\fidget.ts",
+   "role": "Q coin tricks and idle roll: five tricks (148-154), idle knuckle walk 8-12 s (155-156), input latches (201-203), amplitude from headBob/Calm (160-165), tick (217-269) writes additive hand-pose deltas, place (271-284) positions the trick coin."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\player\\types.ts",
+   "role": "Public Viewmodel contract: HeldItem union (22), setVisible/hold/play/setHandLook/update (23-31); LocalPlayer.viewmodel (41)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\player\\local.ts",
+   "role": "Creates the viewmodel with sleeve = profile colour x0.65 (151-154); visibility gates (299, 322, 355, 365, 368, 388, 422, 426); applyFx porcelain look (398); per-frame light (535) and drive/update (537-541)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\core\\settings.ts",
+   "role": "Settings.viewmodel boolean (14), default true (48), generic sanitizer walk (77-118): new boolean keys get their default on old saves."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\core\\ui\\settingsScreen.ts",
+   "role": "Settings rows: flag() helper (100-102), comfort section with calm flag (198-199), live-apply comment (206-207). No viewmodel or gloves row exists (grep-verified)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\core\\ui\\settingsScreen.strings.ts",
+   "role": "Label keys: calm EN 56-57, TR 127-128, sec.comfort 55 / 126."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\core\\save.ts",
+   "role": "Profile colour: PROFILE_COLORS (53), random pick on first save (88), load (103). No UI setter found in src."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\core\\events.ts",
+   "role": "'settings:changed' event type (55); emitted in save.ts:150, applied in main.ts:135."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\core\\renderer\\psxMaterial.ts",
+   "role": "psxMaterial factory (381-387), build() with onBeforeCompile and uniforms (304-349), clone override (354-373), psxTexture forces nearest/no-mips (271-280), cache rules (13-15)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\core\\renderer\\psxRenderer.ts",
+   "role": "Overlay pass: clearDepth then viewmodel render with snap grid set to lowRes/2 (232-241), world snap (99)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\bench.ts",
+   "role": "STUB_VIEWMODEL literal typed as Viewmodel (42). Breaks if a required member is added to the Viewmodel interface."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\docs\\ART_BIBLE.md",
+   "role": "Spec: §8.5 viewmodel (2307-2315), §1.3 viewmodel snap factor 1.0 (125), §1.4 affine (148), §1.5 dither (156-175), §2.1 palette (405-440; P09 IVORY 418 'gloves'; P13 418-422 'leather'; P16 425; P25 434), mannequin gloves P09 (1161)."
+  }
+ ],
+ "apis": [
+  "createViewmodel(sleeveColor: Hex = 0x7a1a20): ViewmodelHost (viewmodel.ts:287). Host adds scene, camera, item, drive, setLightLevel (382), setSleeveColor (381), setPorcelainMap (377), dispose (436).",
+  "Viewmodel public surface: setVisible (345), hold(item, obj?) (346-362; builds coin/card/tonic/phone/ticket/ledger/totem via buildItem, or gun), play(name) (363-369; ANIMS: flip, drink, throw, point, punchCard, recoil, give at 165-224), setHandLook({fingers, porcelain}) (370-376), update(dt) (390-435).",
+  "Hand (private class, viewmodel.ts:81-156): glove = mat(GLOVE) (87); sleeve = mat(sleeveColor) (88-95); setPorcelain (131-136, swaps glove.map and colour); setSleeve (137); setLight (138); refresh() (139-142) multiplies glove and sleeve colour by light level; apply() writes root pose and finger curls (145-154).",
+  "mat(color) = psxMaterial({color, vertexColors: true, lit: false, unique: true}) (viewmodel.ts:61). shaded(geometry, floor=0.58) bakes per-vertex directional shade using LIGHT (0.35,0.85,0.4) (46-58). boxG/cylG wrap it (59-60). Any new mesh needs these wrappers, otherwise vertexColors:true reads no colour attribute.",
+  "Hand geometry: palm box 0.074x0.022x0.08 (97); forearm sleeve box 0.082x0.07x0.34 at z=0.2, rotation.x=0.1 (98-99); 4 two-segment finger boxes (101-113); 2-segment thumb (114-123). About 144 tris per hand (12 boxes x 12). Holder for held items at (-0.012*side, 0.012, -0.075) (124).",
+  "Colour sources: GLOVE 0xe6dec5 = ART P09 IVORY (viewmodel.ts:78, ART_BIBLE.md:418); PORCELAIN 0xf4eedc (79); sleeve = new THREE.Color(app.save.data.profile.color).multiplyScalar(0.65) (player/local.ts:151), default 0x7a1a20 (viewmodel.ts:287). Those are the only skin/colour literals for hands.",
+  "Poses: RIGHT_HOME (0.19,-0.165,-0.33), RIGHT_ROT (0.42,-0.12,-0.08) (viewmodel.ts:281-282); LEFT_HOME (-0.2,-0.19,-0.35), LEFT_ROT (0.5,0.14,0.1) (283-284); GUN_HOME (285). Camera fov 50, near 0.01, far 4 (289). Viewmodel scene is a bare THREE.Scene with no fog and no lights (288, 'unlit').",
+  "Fidget API (fidget.ts:23-36): tick(dt, r, l, coinHeld) before apply, place() after world matrices, stop(), reset(), dispose(); busy getter. Called from viewmodel.ts:418 (tick with item==='coin') and 434 (place)."
+ ],
+ "extensionPoints": [
+  "viewmodel.ts:78 GLOVE constant is read in exactly two places: Hand field init at 87 and Hand.refresh at 140. Making it per-instance (a field plus a setGlove(c) beside setSleeve at 137) is the minimal route for dark leather. ViewmodelHost gets a setGloveColor next to setSleeveColor (381).",
+  "viewmodel.ts:98-100 is the only cuff geometry (forearm sleeve box). A glove cuff ring is inserted right after line 100 and before the finger loop (101). Use boxG(...) and this.glove, tilted rotation.x=0.1 like the forearm. Estimated front-edge position of the forearm is about (0, +0.013, +0.031) (computed from the rotation of the box at z=0.2), so verify in-engine. A single collar box is 12 tris (about 156 per hand, within ART 8.5's ~150). A four-bar frame is 48 tris (about 192), which overshoots the spec.",
+  "Texture hook on the glove: setPorcelainMap (viewmodel.ts:377-380) and Hand.setPorcelain (131-136) set glove.map directly. No caller passes a map today. Leather grain could use the same path, but the texture must go through psxTexture (psxMaterial.ts:271-280) first, because direct map assignment skips the build() path at psxMaterial.ts:305.",
+  "Settings toggle: add gloves: boolean to Settings (settings.ts:14) and DEFAULT_SETTINGS (48, default true). The sanitizer walk (settings.ts:85, 109) handles booleans and missing keys generically. Add a flag(c, 'gloves', ...) row beside calm (settingsScreen.ts:199), with strings EN (settingsScreen.strings.ts:56-57) and TR (127-128). Listen to 'settings:changed' (events.ts:55) to apply live, as ui.ts:1011 does. Existing viewmodel visibility is already reapplied on settings changes only at the next phase change (local.ts:322, 355, 368, 426).",
+  "Per-state look: LocalPlayer.viewmodel is public (types.ts:41), and setHandLook is already driven by applyFx (local.ts:398). A Home-state glove look could be set the same way: a new optional Viewmodel method (types.ts:23-31) plus a call in local.ts. Note bench.ts:42 types STUB_VIEWMODEL against the Viewmodel interface, so new members must be optional or added to the stub.",
+  "New one-shot hand animations (for knock, chain, phone, or door interactions): add an entry to the ANIMS record (viewmodel.ts:165-224), then call viewmodel.play(name) (types.ts:27). No game code calls play() today (grep: none outside player/), so this is an unwired hook.",
+  "Held items for Home phone calls: hold('phone') (viewmodel.ts:244-248 model, 346-362 hold, 332 pose) already exists. A call to hold('phone') while coin tricks run cuts the trick (fidget.ts:225 coinHeld=false)."
+ ],
+ "risks": [
+  "No cosmetic or shop system exists for hands. Grep for cosmetic/outfit/shop found only charm-shop code (src/game/shop.ts:14, 50-64) and gameplay hits. The only per-player look is profile.color, picked at random on first save (save.ts:53, 88), loaded (save.ts:103), and read in local.ts:151. No setter exists in src.",
+  "The settings.viewmodel flag is persisted and used (settings.ts:14, 48; local.ts:154, 322, 355, 368, 388, 426) but has NO settings UI row (settingsScreen.ts rows 106-212; no 'viewmodel' key in settingsScreen.strings.ts). Players cannot turn hands off today.",
+  "Hands dim with light: refresh multiplies by lightLevel 0.2..1 (viewmodel.ts:138, 382; driven at local.ts:535 as 0.35+0.65*light). With the vertex shade floor 0.58 (viewmodel.ts:49), very dark leather such as P25 #311910 falls to roughly (10,5,3) in dim rooms and vanishes. Prefer P13/P16-range leather or a lighter cuff ring.",
+  "PSX output: the viewmodel overlay is drawn after clearDepth (psxRenderer.ts:232-241), then the whole frame goes through 4x4 Bayer dither and 15-bit quantize (psxRenderer.ts:245-249; ART_BIBLE.md §1.5 at 156-175). Very dark gradients will band or dither. Stay on master-palette hexes (ART §2.1 pre-snapped to 15-bit, ART_BIBLE.md:19).",
+  "Changing GLOVE from P09 IVORY changes a documented palette role. ART_BIBLE.md:418 lists P09 as 'default UI text, card faces, gloves', and §8.5 (2309) says the sleeve follows the jacket colour. Mannequin and dealer hands stay P09 (ART_BIBLE.md:1161), so a glove change should be scoped to the viewmodel only.",
+  "Visibility is gated by phase: hidden in seated/machine, cinematic start (local.ts:299, 365) and cutscene (422). The death cutscene will therefore hide gloves unless the cutscene ends first. Shown only in phase 'free' (368, 388, 426).",
+  "Coin tricks run only when item==='coin' and walk mode (viewmodel.ts:418; fidget.ts:222-226). Holding a phone or ticket at Home stops the Q tricks by design.",
+  "Drift between ART_BIBLE and code: ART_BIBLE.md:2310 right-hand home (0.22,-0.20,-0.35) vs viewmodel.ts:281 (0.19,-0.165,-0.33). ART 2314 idle coin flip every 6 s vs fidget.ts:155-156 idle knuckle walk after 8-12 s. ART 305 viewmodel far 2 m vs viewmodel.ts:289 far 4. Treat code as truth or update ART first.",
+  "Unwired API surface (grep-verified, src outside player/): hold(), play(), setSleeveColor() (viewmodel.ts:381), setPorcelainMap() (377), setLightLevel only from local.ts:535. The only live hold is the default coin (local.ts:153, viewmodel.ts:446). The totem comment in items/view.ts:3 ('the viewmodel hand owns those') has no caller that holds totems.",
+  "Separate system to avoid confusing: the sonkart 'hand' card fan (src/machines/sonkart/index.ts:844, model.ts:31) is a different hand, not this viewmodel."
+ ],
+ "suggestion": "Minimal path for leather gloves with a cuff ring, respecting PSX conventions:\n\n1. viewmodel.ts: replace the GLOVE read (line 87 init, line 140 refresh) with a per-hand field. Add Hand.setGlove(c) next to setSleeve (137), and ViewmodelHost.setGloveColor next to setSleeveColor (381). Pick a leather hex from the master palette: P13 CASINO_RED 0x8C1921 is already tagged 'leather' (ART_BIBLE.md:422), P16 RUST_DEEP 0x4A2110 (425) or P12 OXBLOOD 0x5A1019 (421) for a darker read. Avoid anything darker than about P16, because of the light-dimming issue above.\n2. viewmodel.ts: after line 100, add one collar box: boxG(0.09, 0.078, 0.014) with this.glove, rotation.x=0.1, centre about (0, 0.013, 0.031). This is 12 tris per hand, within the ~150 budget. Verify the seam in-engine.\n3. local.ts: at lines 151-154, the sleeve stays jacket colour. Apply the glove colour from settings after creation, or via a new optional createViewmodel parameter. Keep the porcelain collateral (local.ts:398) overriding to bone, as it does now.\n4. settings.ts (14, 48) plus settingsScreen.ts (flag row near 199) plus settingsScreen.strings.ts (EN 56-57, TR 127-128): add a gloves toggle with live apply through settings:changed (events.ts:55). Optionally also expose a Home-state look via a new optional Viewmodel method (types.ts:23-31), keeping bench.ts:42 compiling.\n5. Do not add a cosmetic or shop system unless the director asks. None exists, and the current slot for the look is the viewmodel only.\"]"
+}

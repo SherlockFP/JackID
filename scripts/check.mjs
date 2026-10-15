@@ -4,7 +4,7 @@
 //               no empty values, identical {placeholders}, `.one` has an `.other`; en.ts/tr.ts hold common.* and ui.* only.
 //  2. keys      every literal t('key') in src resolves to a registered key (charm.* / phone.* only warn: their strings
 //               are registered from defs that may not exist yet).
-//  2b. charms   every hook a LAUNCH_CHARM_IDS charm sets needs a reader in src outside src/game/data/ (warn
+//  2b. charms   every hook a LAUNCH_CHARM_IDS charm sets needs a reader in src outside src/game/data/ (ERROR
 //               'inert-charm'; charms with a code behaviour, and circuit-lane x.lamp.* / x.tilt.* hooks, are skipped).
 //  3. literals  prose string literals outside t() in UI code (core/ui, core/cutscene, menu, game, machines, world).
 //               ERROR inside a text sink (.textContent, .innerHTML, .placeholder, .title, label:/text:/title: …,
@@ -403,12 +403,12 @@ try {
     };
     for (const def of CHARM_DATA) {
       if (!LAUNCH_CHARM_IDS.has(def.id) || CIRCUIT_PENDING_CHARMS.has(def.id) || behaviours[def.id]) continue;
-      if (!def.effects?.length) { warn(charmFile, `inert-charm: ${def.id} sets no hooks and has no behaviour`); continue; }
+      if (!def.effects?.length) { err(charmFile, `inert-charm: ${def.id} sets no hooks and has no behaviour`); continue; }
       for (const e of def.effects) {
         if (CIRCUIT_PENDING_HOOK.test(e.hook) || hasReader(e.hook)) continue;
         const alt = e.hook.replace(/^x\./, 'm.');
         const hint = alt !== e.hook && hasReader(alt) ? ` (code reads ${alt.replace(/\[[^\]]*\]$/, '')})` : '';
-        warn(charmFile, `inert-charm: ${def.id} sets ${e.hook}, no reader in src${hint}`);
+        err(charmFile, `inert-charm: ${def.id} sets ${e.hook}, no reader in src${hint}`);
       }
     }
   }

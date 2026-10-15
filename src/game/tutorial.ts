@@ -26,6 +26,7 @@ import { holdClock, releaseClock } from '@/game/clockHold';
 import { inUnderneath } from '@/world/hollow';
 import { TILT_FREE_PULLS } from '@/game/data/schedule';
 import { createBrokePrompt } from '@/game/brokePrompt';
+import { machineName } from '@/game/progression';
 
 export interface TutorialHost {
   readonly world: WorldHost;
@@ -48,6 +49,9 @@ export const SKIP_HOLD_S = 1;
 const GOLD = 0xffd36b;
 /** The first three steps (walk, spin, deposit) hold the Watch clock. */
 const HOLD_STEPS = 3;
+
+/** A modal panel is on screen (the Night Card, the pause card …; `modalPanel` marks it `data-modal="1"`). The Pawn tip waits behind it. */
+const modalUp = (): boolean => typeof document !== 'undefined' && document.querySelector('[data-modal="1"]') !== null;
 
 /** The tutorial currently on screen (one at a time). Lets the pause card and Esc see it without a handle on the session. */
 let active: { skip(): void } | null = null;
@@ -202,6 +206,7 @@ function startSteps(host: TutorialHost): Tutorial | null {
 
   const text = (s: Step): string => {
     switch (s.key) {
+      case 'walk': return t('tut.walk', { name: machineName('bigone').toUpperCase() });   // the machine's own name, in the language on screen
       case 'spin': {
         return t('econ.spinAny', { key: keyLabel('m.primary') });
       }
@@ -279,12 +284,14 @@ function startSteps(host: TutorialHost): Tutorial | null {
       // Leaving Night 1 ends the tutorial.
       if (run.night() !== 1) { finish(); return; }
 
-      // Only a Watch shows the steps. In the intermission (Mola) only the pawn step shows (the charm window). The Bell's
-      // countdown, the settle, and Dawn hide the box; the step waits and resumes with the next Watch.
+      // Only a Watch shows the steps. The pawn step shows only while the Pawn window is open (the Mola, `run.pawn.open()`) and no
+      // other modal (the Night Card) is on screen. The Bell's countdown, the settle, and Dawn hide the box; the step waits and
+      // resumes with the next Watch.
       const phase = run.shift.state().phase;
       const playing = phase === 'play' || phase === 'lastCall';
-      const pawnInMola = phase === 'intermission' && STEPS[idx]?.key === 'pawn';
-      if (!playing && !pawnInMola) { hide(); return; }
+      const pawnStep = STEPS[idx]?.key === 'pawn';
+      const pawnOpen = phase === 'intermission' && run.pawn.open() && !modalUp();
+      if (pawnStep ? !pawnOpen : !playing) { hide(); return; }
 
       total += sdt;
       age += sdt;

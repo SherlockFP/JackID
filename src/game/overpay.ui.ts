@@ -16,6 +16,8 @@ import type { DebtRun, OverpayOffer } from './run';
 const PANEL = 'overpay-pick';
 /** Keys that take a card, by card index. */
 const KEYS = ['1', '2', '3'];
+/** Longest a title card may hold the panel (seconds of its own time). */
+const CARD_HOLD_CAP_SEC = 8;
 /** The Night title card (a ui banner in the banner layer) is on screen: read from the DOM, as draft.ui.ts does. */
 const titleCardUp = (): boolean => typeof document !== 'undefined' && document.querySelector('.px-bwl .px-bw') !== null;
 /** Another modal panel than `own` is on screen (`modalPanel` marks each one with `data-modal="1"`). */
@@ -94,12 +96,17 @@ export function mountOverpayUi(run: DebtRun): () => void {
 
   // The queue is polled on the UI ticker (frame time, no timer of its own). The panel opens for the head offer only when no other
   // modal is up; while it waits the offer keeps its place and its timer runs on, so the auto-pick stays the fallback.
-  addTicker(() => {
+  // A title card holds the panel for at most CARD_HOLD_CAP_SEC of its own time (as the Starter Draft does): a banner that never
+  // dissolves (the fixed QA clock) must not stall the offer.
+  let cardHeld = 0;
+  addTicker((dt) => {
     if (!alive || app.run !== run) { close(); return false; }   // disposed, or the Debt Run ended (the session cleared app.run)
     const o = run.overpayOffer();
+    const card = titleCardUp();
+    cardHeld = card ? cardHeld + dt : 0;
     const blocked = !o || o.candidates.length === 0
       || run.starterDraft() !== null || run.nightCardOffer() !== null
-      || Boolean(app.cutscene.playing) || titleCardUp() || otherModalUp(root);
+      || Boolean(app.cutscene.playing) || (card && cardHeld < CARD_HOLD_CAP_SEC) || otherModalUp(root);
     if (!o || blocked) {
       if (shown) close();
       return true;

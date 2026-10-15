@@ -1,0 +1,155 @@
+{
+ "area": "Juice / FX / feedback systems (read-only inventory of C:/Users/Admin/Documents/JackID, static reads, nothing run)",
+ "inventory": [
+  "core/fx.ts createFx (C:/Users/Admin/Documents/JackID/src/core/fx.ts:70, 269 lines): screen and object juice facade. shake(amp,dur,{roll,freq,sustain}) :117 scaled by settings.shake; flash(color,alpha,dur) :122 one channel that a weaker flash cannot cut, 333 ms gap under reduceFlashing; chroma :134; tint :135; zoomPunch(amount,dur) :139; slowmo(scale,dur,{ease}) :140, online clamp >=0.6 at :142, never weakens a running one :143, restores via onDone :154; hitstop(sec) :157 (offline <=0.25 s, online <=0.12 s); squash :162; lightPulse :163; winBurst(tier,at,{amount,color,flyToWallet}) :171-245 with push/small/medium/big/huge/jackpot branches ('mega' has no branch, handled by machine escalate); loss(at,{amount}) :247. Call sites outside core: shake 55, popText 184, flash 34, lightPulse 16, zoomPunch 13, tint 12, squash 11, hitstop 9, slowmo 4 (+cutscene effects.ts:95), chroma 3, glitchPulse 2.",
+  "core/fx/particles.ts (729 lines): 7 instanced emitters, one draw call each. Caps coins 256, confetti 384, decals 64, puffs 224, drips 96, sparks 512, lights 192 (:482-488; sum 1728 against the 2000 budget in core/fx/types.ts:11). Presets :313-322 (coins, sparks, confetti, smoke, dust, glow, embers, drips). Full emitter overwrites by ring cursor :199-204. Fountains via BurstOpts.over :545-552. glow :644. decal :655 (zero callers outside core). trail :672-679 (one caller). Clink sound token bucket 12/s :527-529, refill :685.",
+  "core/fx/popText.ts (290 lines): one instanced mesh for every floating number. Pixel glyph atlas re-uploaded at most 15 Hz (:19); MAX_POPS 24 (:24); texts popping at the same spot stack (spawn ~:205-212); flyTo HUD anchor with onArrive and landing sfx (:219, :275-281); big-pop jitter (:247); Bayer dissolve fade (:249).",
+  "core/fx/layer.ts (271 lines): camera shake stack MAX_SHAKES 8 (:33), value-noise offset capped 0.25 m (:34), roll capped 0.35 rad (:35), stepShake :136-152. Light boosts MAX_BOOSTS 12 (:36) applied per frame to PointLights in radius (beginFrame :181-239); the light list is rescanned with scene.traverse at most every 500 ms (:168-177). Particles freeze in hit-stop (:106) while shake and boosts keep running on sim time (:111-113).",
+  "core/fx/atlas.ts (211 lines) and core/fx/types.ts (108 lines): one 128x128 procedural sprite atlas (8x8 cells of 16 px, Cell map :14-19) shared by all emitters. types.ts is the frozen FxApi contract: budgets :11-14, winBurst ladder doc :96-103 ('use these, do not hand-roll'). Renderer post channels (flash, tint, chroma, zoom, vignette, desaturate, blackout, glitch) are uniforms written per frame (core/renderer/psxRenderer.ts:169-176); there is no bloom (core/renderer/types.ts:15), so glow is additive sprites.",
+  "core/tween.ts (193 lines): two systems, app.tweens.sim (frozen by pause and hit-stop) and app.tweens.ui (real time). run(dur,fn,{ease,delay,stepFps,onDone}) :100; to(obj,props,dur) :104; vec3 :116; shake :121 (zero callers); punch :130 (zero callers); spin :139 (6 callers); squash :148 (fx.squash, 5 callers); killOf :158. Twelve eases :12-13 and table :40-53 including outBack, outElastic, outBounce (about 24 uses outside core). stepFps PSX quantise :182. Machines drive most motion through MachineBase.anim (core/machines/_base/MachineBase.ts:630, about 198 call sites in machines) backed by kit/anim.ts, one sim-scaled update per frame.",
+  "core/audio/audio.ts (565 lines): engine.play(name,{bus,vol,pitch(semitones),pos,priority,loop,param}). Voice pool MAX_VOICES 32 with priority steal (:36, :296-300); per-recipe starts-per-100 ms limiter (:309); spatial panner with distance fade (:241-250); per-bus duck holds (:159-166). winJingle(tier) :475-482 maps tier to recipe and ducks the music 0.4-0.65 for 1.8-5.5 s. coins(n) cascade :484 (up to 40 clinks). setTimeScale(k,ramp) :502-504 pitch-shifts every non-music voice by 1200*log2(k) cents (:503), so slow-mo is audible; LONG recipes follow it (core/audio/sfx.ts:948-951).",
+  "core/audio/sfx.ts (1098 lines): about 113 recipes via def() (:61) with a per-recipe loudness trim table TRIM (:38-58). winSfx(tier) :966-978 (push winPush, small win1, medium win2, big win3, huge winHuge, mega winMega, jackpot jackpot). coinCascade(n) :961 (up to 40 clinks as one voice). Layers: coinShower :321, coinRain loop :875, jackpotSiren :539, jackpotBells :547, numberTick :171, sparkle :629, heartbeat :653, tensionRise :883, tallyTick :891, coinDrop :301 (used by ambience beds only).",
+  "core/audio/gambleFx.ts (40 lines): gamble:fx to sfx. 'win' rung plays gambleStep with pitch RUNG_SEMIS[step] (0,2,4,7,9,12...26 semitones) at :26-30. 'collect' sizes the coin cascade by the pot (clamp 6-30). All-in drum and hit/miss stingers.",
+  "core/audio/music/stingers.ts (203 lines): one-shot musical punctuation on an un-ducked stinger bus (header). Stingers class :163; RECIPES :27 (quotaMet, quotaFail, ...); StingerHooks.detune :11 for tape-stop effects. Story cutscenes trigger these via 'stinger' cues.",
+  "machines/_base/juice.ts (441 lines): TIER_SHOW :84-93 (per tier: show seconds from 0.4 push to 6 jackpot, chase Hz, sfx, glow colour). celebrate(host,tier,opts) :150 (called from 42 files) -> winFeelLayer :194 (flash, shake, zoom and coin pour scaled by multiplier; skipped for big and up) and escalate :218-255 (big: 60-coin fountain + shake; huge: slow-mo 0.4 for 0.4 s at :225 + winRise + delayed gold flash; mega: 120-piece confetti + chroma + zoom + floorStrobe :257; jackpot: pitWave :275, bells, looping coin rain, six 24-coin waves). nearMiss :315 (heartbeat, red pulse, zoom 1.5 percent, vignette 0.45, lamp flutter; 21 files). pourCoins :358 (26 files; coinCount formula; optional onCount count-up). countUp exported. emitComboShow / comboTwinkle for show:combo. AttractScript :411 (jittered idle taps; attractor.every used at 24 sites).",
+  "machines/_base/tiers.ts (148 lines): tier thresholds at x3/x10/x25/x50 of stake (:17). winFeel(mult) :119-147 is the continuous win curve (log scale over x1..x50, keyframes :95-106): flash alpha 0.10 to 0.66, flash colour gold to white-gold, pour coins 6 to 60 and pour time 0.4 to 2.2 s, pop scale 1.1 to 2.8, pitch -1 to +8 semitones, shake 0 to 0.05 m, zoom 0 to 0.07. This is the global win-tier ladder, and it already exists.",
+  "menu/hud.ts (927 lines), menu/hud/fmt.ts Roller (:32-50) and menu/hud/charmProc.ts: wallet counter rolls at 30 ticks/s (hud.ts:442-443; step = max(1, 15 percent of gap)). Gains fly to the wallet via ui.fly (hud.ts:356-368), wallet bump scaled by delta and numberTick on arrival (:365). Spends only bump 0.6 (:369). winPop centre text from small up, with goldBurst and shake from big (:266-276, lasts 900 ms). machine:result from big up adds a feed line and hit-stop 0.04/0.08 (:373-380) plus a tier-label fly. Buff chips get a 'hop' class on new buffs, polled every 0.25 s (:40, :716-735; hud.css:118). Charm procs: playProcTick pitch = tier (charmProc.ts:28-30), gold pop, goldBurst :138, shake for big pops.",
+  "core/ui/ui.ts (C:/Users/Admin/Documents/JackID/src/core/ui/ui.ts): fly(o) :889, 30 fps stepped WAAPI arc into HUD anchors with arrival bump and spark, MAX_FLY 48 (:77, guard :900). bump(id,strength) :936-941, 200 ms scale 1 to 1.25 to 1. banner(text,opts) :702 (Night title card, event banners, Last Call at hud.ts:478). bigWin(amount,tier,title) :699: rolling amount, rays, coins, flash and shake, 2.5/4/6 s, skippable after 0.8 s (core/ui/types.ts:50). Its only caller in the repo is game/benchRun.ts:236, so a real run never shows it.",
+  "menu/menuBurst.ts (164 lines): PLAY transition, 1.55 s. start() :38 plays powerUp. update() :48: anticipation 0-0.35 s (die swells 12 percent, jitter, lightPulse). impact() :81 at 0.35 s (26 shards, 48 coins, 36 sparks, white flash 0.9, shake 0.22, coinShower and jackpot sfx). Glass :108 at 0.45 s (22 glass shards, sparks, glassBreak). At 0.9 s: flash 1.0, zoomPunch 0.12, win3. No hit-stop or slow-mo. Owned by menu/menuState.ts:92.",
+  "player/viewmodel.ts (450 lines): first-person hands with bob, sway (capped 3 cm), look and porcelain/finger-tax looks (setHandLook, used at player/local.ts:398). ANIMS :165-225 (flip, drink, throw, point, punchCard, recoil, give) played via play(name) :363. hold(item) :346 for coin, card, tonic, phone, ticket, ledger, gun, totem. Q coin tricks in player/viewmodel/fidget.ts (5 tricks :148-153, sfx helper :207). Landing and fall in player/local.ts:162-170 (thud and shake; fall: shake 0.08 s/0.6 s, roll 2.5, creak). Footstep sound per surface in player/surface.ts:18-23.",
+  "world/lights.ts (172 lines): fixture builders plus deterministic flickerLevel() envelopes BUZZ, DYING, CANDLE, SICK, STROBE (:47). world/sys/juiceFx.ts (80 lines): juice:pitWave turns into four gold rings of light pulses (one wave at a time, :44-58); juice:floorStrobe into a pool strobe capped at 3 Hz (:61-63, STROBE_HZ_MAX :14). Only pool lights near the camera react.",
+  "core/cutscene/effects.ts (142 lines): cue handlers for shake, flash, tint, chroma, zoom, slowmo, hitstop, glitch (:80-100). glitchPulse at core/fx.ts:51-54 for horror stingers.",
+  "core/settings.ts: reduceFlashing (flash x0.35, at most 3 per second), calm, and shake (0-1 multiplier) at :20-23 with defaults :54-56. These are the only juice knobs: there is no particle, audio or hit-stop intensity setting."
+ ],
+ "gaps": [
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/game/buffs/engine.ts:130,144,344 (buff:add and buff:remove emitted); src/game/buffs/streaks.ts:43-66 (hot/cold decided) and :78-80 (overheat); src/core/audio/sfx.ts:603,609 (buffGain, buffLose recipes); src/menu/hud.ts:716-735 (chip 'hop' only)",
+   "moment": "Hot streak starts (3+ wins in a row on one machine), cold streak, Overheat (the biggest swing)",
+   "current": "buff:add and buff:remove have zero subscribers (grep finds emitters only). buffGain and buffLose are never played. The only feedback is a 'hop' class on the buff chip, polled every 0.25 s. Overheat is silent.",
+   "proposal": "Subscribe a juice bridge to buff:add for ids hot, cold, overheat: play buffGain with pitch +2 semitones per stack (same ladder idea as gambleFx.ts:26-30); fx.glow on the machine coinOut anchor (gold for hot, red for overheat); on overheat for the local occupant add fx.tint(0xc52129,0.25,0.6) + fx.chroma(1.2,0.4) + buffLose; ui.banner('HOT x3', {hold:1.2,size:8}). Gate screen effects on the owning player.",
+   "effort": "S",
+   "impact": 5
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/player/viewmodel.ts:165-225 (ANIMS), :346 (hold), :363 (play); only caller src/player/local.ts:153 hold('coin'); src/player/types.ts:25-27",
+   "moment": "Local win, ticket printed, tonic drunk, charm proc, stake handed over, machine pointed at",
+   "current": "Hands never react to gameplay. flip, drink, throw, point, punchCard, recoil, give and hold of card, tonic, phone, ticket, ledger, gun are unreachable. Only idle sway and the Q coin tricks show.",
+   "proposal": "In local.ts subscribe: eco:wallet gain for the local player -> viewmodel.play('flip') on coin wins, 'point' (hand rises) on medium and up; ticket or receipt -> hold('ticket') then play('punchCard'); tonic -> hold('tonic') then play('drink'); stake placed -> play('give'). play() already cancels fidget and returns a promise, so fire-and-forget is safe.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/core/ui/ui.ts:699 (bigWin); src/game/benchRun.ts:236 (only caller); src/menu/hud.ts:266-276 (in-run win pop), :373-380 (machine:result)",
+   "moment": "Huge (x25-50), mega and jackpot wins in a real Night",
+   "current": "The rolling-amount banner (rays, coins, flash, shake, skippable) is built but reachable only from the bench. In a real run the peak is a 900 ms centre pop plus a gold burst.",
+   "proposal": "From hud.ts machine:result, when tier is huge or above and the local player occupies the machine, call ui.bigWin(gross, tier, t('common.win')) (or t('common.jackpot')). The banner queue (enqueueBw) already orders it after the Night title card. Skip in fast or bench modes.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/_base/juice.ts:315-333 (nearMiss), :225 (only dilation, after impact); src/machines/coinflip/index.ts:397 and src/machines/devilstable/index.ts:605 (post-result slowmo only)",
+   "moment": "Near-miss beat, reach, the 'almost' tease before a losing face",
+   "current": "The held breath runs at 1x sim speed; heartbeat, red pulse, zoom and vignette carry it. Time dilation only happens after a big result lands.",
+   "proposal": "For the local occupant call fx.slowmo(0.65, dur*0.8, {ease:'inOutQuad'}) at the top of nearMiss. The tween restores itself via onDone (core/fx.ts:148-155) and online clamps to >=0.6 (core/fx.ts:142). Same for pachinko reach and bigone tease (src/machines/bigone/index.ts:550-557, which already plays tensionRise with a param).",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/menu/hud.ts:442-443 (roll.tick), :365 (numberTick only on arrival); src/menu/hud/fmt.ts:32-50 (Roller)",
+   "moment": "Wallet count-up after a win",
+   "current": "The number rolls at 30 ticks/s with no sound. The single numberTick plays when a pop lands.",
+   "proposal": "On each Roller step while the shown value rises, play a throttled numberTick (vol 0.25, at most 12 Hz, pitch rising with progress 0 to 12 semitones). Reuse the proc-tick pattern (src/menu/hud/charmProc.ts:28-30). No new assets.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/game/buffs/index.ts:75 (streak.win metric); src/game/buffs/streaks.ts:43-52 (win counter); per-machine escalation only: src/machines/bigone/index.ts:727, src/machines/keno/index.ts:448, src/machines/lottoblower/index.ts:448, src/machines/hilo/index.ts:501; gamble ladder src/core/audio/gambleFx.ts:26-30",
+   "moment": "2nd, 3rd, 4th consecutive win on any machine",
+   "current": "No global pitch or tier escalation for win streaks. Each machine invents its own ladder, and the win counter is read only by buff conditions.",
+   "proposal": "In juice.celebrate for the local occupant, read the streak (streak.win metric or Streaks.winStreak(mid)) and add pitch min(8, 2*(streak-1)) semitones to the jingle and coin layer (feel.pitch already flows there, src/machines/_base/tiers.ts:101). Append 'x3 STREAK' to the win pop text. One shared streak ladder for every machine.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/game/buffs/streaks.ts:18,34-38 (heat track and getter), :51 (gain), :57 (decay), :61-63 (overheat threshold); src/game/buffs/index.ts:74 (exposed only as buff metric 'heat'); no HUD or machine render",
+   "moment": "Heat building toward Overheat (anticipation)",
+   "current": "Heat 0-100 decides when Overheat fires but is drawn nowhere: no meter, no lamp, no sound. Overheat reads as a surprise.",
+   "proposal": "Pulse the machine glow with fx.glow every 0.6 s, faster as heat rises (read streaks.heat(mid)). Add heartbeat (src/core/audio/sfx.ts:653) above heat 70 and tensionRise (sfx.ts:883, param = heat/100) above 85, so the coming Overheat is felt one or two rounds ahead.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/core/fx.ts:171-245 (winBurst coins spawn at the machine); src/core/ui/ui.ts:889-900 (fly, numbers only, MAX_FLY guard); src/core/audio/sfx.ts:331 (coinMagnet recipe, no callers)",
+   "moment": "Medium-plus wins (coins pour into the wallet)",
+   "current": "Coins pour at the machine and stop. Only a number flies to the HUD. The coinMagnet recipe exists but nothing plays it.",
+   "proposal": "For the local player on medium-plus wins, spawn 6-10 DOM coin pips with ui.fly (glyph text, staggered 40 ms), each arriving with the existing wallet bump; play coinMagnet on the first arrival. Respects MAX_FLY (src/core/ui/ui.ts:900).",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/core/fx.ts:247-255 (loss = 5 dust, shake 0.006, red pop); src/game/buffs/streaks.ts:53-60 (loss streak; cold buff added with no feedback)",
+   "moment": "Loss, cold streak (repeated losses on one machine)",
+   "current": "Losses are deliberately quiet and the cold buff has no feedback. Nothing marks a run of bad luck or builds tension toward a turn.",
+   "proposal": "On buff:add cold: play tensionRise (sfx.ts:883) with param by loss count for about 1.2 s and fx.setPostLevel('desaturate', 0.2, 0.6) (core/fx.ts:57-60); on buff:remove cold restore with a short flash. The dread-side mirror of the streak gap.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/menu/menuBurst.ts:81-107 (impact), :108 (glass); src/menu/menuState.ts:92 (owner)",
+   "moment": "PLAY burst impact, the first big moment the player sees",
+   "current": "The burst is the most complete sequence in the codebase but has no hit-stop or time dip at impact; it uses a flash and shake only.",
+   "proposal": "fx.hitstop(0.06) at impact (menuBurst.ts:81) and fx.slowmo(0.5,0.2) at the glass beat (:108). First confirm menuState drives MenuBurst.update with sim-time dt, otherwise slowmo will not apply.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/core/fx/particles.ts:482 (coins cap 256), :199-204 (ring overwrite); src/core/fx.ts:222 (jackpot coins 200 over 3 s); src/machines/_base/juice.ts:218-255 (60 fountain plus six 24-coin waves)",
+   "moment": "Jackpot coin rain (about 400 coins over 4 s)",
+   "current": "Burst coins are queued into a 256-slot ring: the newest overwrite the oldest still-falling coins, so the densest moment loses coins mid-air.",
+   "proposal": "Raise the coins emitter cap to 384 (total 1856 of the 2000 budget, core/fx/types.ts:11) or thin the rain to four waves. Verify in the QA bench before shipping.",
+   "effort": "S",
+   "impact": 2
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/core/fx.ts:105-107 (glow, decal), src/core/fx/particles.ts:492-495 (decal presets scorch, stain, crack, hand), :672-679 (trail); src/machines/coinflip/index.ts:383 (only trail caller)",
+   "moment": "Marks left by impacts: shot, glass break, spilled loss, jackpot coins",
+   "current": "decal has zero callers outside core and trail has one. The scorch, stain, crack and hand presets are never shown.",
+   "proposal": "fx.decal('scorch') at the devilstable shot point (src/machines/devilstable/index.ts:605 area), fx.decal('stain') under a machine after a loss, fx.decal('crack') on the menuBurst glass, fx.trail on jackpot coins.",
+   "effort": "S",
+   "impact": 2
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/core/audio/sfx.ts:715,721 (totemPlace, totemPulse recipes, no callers); src/game/items/totems.ts:91 (totem:place emitted, no listener); src/game/items/view.ts:21 (totem:proc pulses the 3D view only)",
+   "moment": "Totem placed; totem proc",
+   "current": "Placing a totem is silent; a proc pulses the mesh without sound.",
+   "proposal": "Subscribe in game/items/view.ts: play totemPlace on totem:place and totemPulse on totem:proc, pitch by proc index.",
+   "effort": "S",
+   "impact": 2
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/core/audio/sfx.ts:331 (coinMagnet), :603 (buffGain), :609 (buffLose), :685 (neonBuzz); doorSlam, elevatorDing, mannequinCreak and footstepCarpet/Concrete/Metal/Wood have no references outside sfx.ts (footsteps use 'footstep' + param, src/player/surface.ts:18-23)",
+   "moment": "Sound catalogue hygiene",
+   "current": "About ten calibrated recipes (TRIM entries) are never played. Calibrated audio is wasted and free juice stays unused.",
+   "proposal": "Use buffGain, buffLose, coinMagnet and neonBuzz as layers for the streak, overheat and coin-fly gaps; delete the four footstep variants or mark them deprecated.",
+   "effort": "S",
+   "impact": 2
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/_base/juice.ts:411 (AttractScript); attractor.every sites e.g. src/machines/cashier/index.ts:73 and src/machines/debt_terminal/index.ts:322 (24 sites, periods 6-11 s)",
+   "moment": "Idle machine when the player walks up",
+   "current": "Idle taps are fixed timers. Nothing reacts to the player approaching or looking at a machine.",
+   "proposal": "In attract(dt) check local distance (<=4 m) and a gaze flag; when both hold for more than 1 s, fire one tease (fx.glow plus a sparkle or coinDrop; the ambience beds already use these at sfx.ts:1047-1049).",
+   "effort": "S",
+   "impact": 2
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/menu/hud.ts:369 (spend = bump 0.6 only); src/core/audio/sfx.ts:301 (coinDrop)",
+   "moment": "Stake placed or purchase",
+   "current": "Money leaving the wallet has no sound or particle; only the figure bumps.",
+   "proposal": "Throttled coinDrop (vol 0.3) on local spends of at least 1 percent of the pocket. Keep the red short state for refusals only (existing).",
+   "effort": "S",
+   "impact": 2
+  }
+ ],
+ "notes": "Read-only static inventory of the working tree; another team is editing, so line numbers may drift. Nothing was run. Corrections to the brief: (1) A global win-tier ladder already exists: continuous winFeel curve (src/machines/_base/tiers.ts:95-147), TIER_SHOW and celebrate escalation (src/machines/_base/juice.ts:84-93, 150-292), winBurst tier branches (src/core/fx.ts:171-245), winSfx mapping (src/core/audio/sfx.ts:966-978). The missing parts are the layer above it (HUD banner, streak layer). (2) Coin shower exists (coinShower sfx.ts:321; 60-coin fountain juice.ts:218+; coinRain loop sfx.ts:875; jackpot rain). (3) Screen flash exists (core/fx.ts:122-133) with a reduceFlashing guard. (4) Pitch escalation exists in the gamble ladder (gambleFx.ts:26-30), the charm proc tick (charmProc.ts:28-30) and per-machine chimes, but not on streaks. (5) Anticipation exists (nearMiss juice.ts:315; bigone tease bigone/index.ts:531-557; tensionRise has about 17 call sites) but there is no time dilation before a reveal.\n\nHow the moments feel now (code level). Small x1-3: win1 sfx, 8 coins, glow, a world pop that flies to the wallet, HUD centre pop, numberTick on arrival. Medium x3-10: 14 coins, sparks, light pulse, coinShower, win2 (long, slow-mo-able), flash alpha 0.26-0.46, pour 16-38 coins. Big x10-25: 40 + 60 coins, shake, hit-stop 0.06, gold flash, HUD gold burst and shake, feed line, 3 s marquee and bulbs. Huge x25-50: winBurst huge (100 coins over 2 s, 80 confetti, zoom punch, hit-stop 0.08) plus 60-coin fountain, 0.4 s slow-mo at 40 percent, winRise, delayed gold flash, 5 s show. Mega x50+: huge burst plus 120-piece confetti volley, chroma, zoom, 16 pit-light strobe pulses, 7 s show. Jackpot: paper flash, gold tint 1.6 s, chroma, 200 coins over 3 s, pit-wide gold wave, bells, coin-rain loop, six 24-coin waves, hit-stop 0.12, 6 s show. Loss: 5 dust, shake 0.006, red pop, lose sfx (deliberately quiet). Near-miss: heartbeat, red pulse, zoom 1.5 percent, vignette 0.45, lamps 7 Hz over about 0.9 s, no dilation. Hot, cold, overheat: chip hop only. Heat: invisible. Wallet count: silent roll. Spend: silent bump. Charm proc: pitch tick by tier, gold pop, burst and shake. Gamble ladder: pitch +2 to +26 semitones per rung, coins by pot. PLAY burst: complete 1.55 s sequence with no hit-stop. Hands: bob, sway and Q coin tricks only.\n\nCost: screen-space effects are a few uniform writes or one tween each. Particles are 7 instanced draw calls with caps totalling 1728. popText is one draw call. Light pulses rescan the scene at most every 500 ms (src/core/fx/layer.ts:168-177). Audio has 32 voices with priority steal and a per-name limiter. The only budget pressure is the coin emitter at jackpot (gap above).\n\nPossible duplicate: a local win shows a world pop flying to the wallet (juice.ts celebrate via popText flyTo) and a HUD centre pop with the same amount (src/menu/hud.ts:266-276 and :356-366). Check whether this reads as layering before adding a third number.\n\nConstraints for any new proposal: online play clamps slow-mo to >=0.6 and hit-stop to <=0.12 (core/fx.ts:142, 158). Flashes must go through fx.flash (reduceFlashing, core/fx.ts:122-133). Shake must go through settings.shake (core/fx.ts:118). Settings has no particle, audio or hit-stop intensity knob (core/settings.ts:20-23)."
+}

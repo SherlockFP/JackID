@@ -1,0 +1,146 @@
+{
+ "area": "META moments: run.ts, menu/hud.ts, game/*.ui.ts (nightCards, overpay, draft), nightCards.ts, stamps.ts, spotlight.ts, tycoon/bank/charms/buffs, progression/cover (floor unlocks), results receipt (menu/hud/results.ts, resultsState.ts). Read-only audit of the working tree.",
+ "gaps": [
+  {
+   "where": "src/game/inGameState.ts:202-214 (showSummary: one 'good' toast, text hud.nightSummary); src/game/run.ts:1944-1995 (dawn(): surplus earned at 1989-1991); src/core/ui/ui.ts:699 (bigWin) with BW table ui.ts:82-88 and runBigWin ui.ts:495-558; src/game/nightCards.ui.ts:116-127 (receipt count-up, a different modal)",
+   "moment": "NIGHT N PAID at Dawn: the Night's books (carried, float, cut, tickets, interest). The biggest payoff of the loop.",
+   "current": "A five-figure toast for SUMMARY_TOAST_S with no sound, no stamp, no flash and no count-up. ui.toast is silent (showToast ui.ts:271 never calls uiSfx). The same numbers roll only inside the Night Card receipt. ui.bigWin, the one title card with a rolling amount, coin rain, flash and shake, has a single caller: src/game/benchRun.ts:236.",
+   "proposal": "After the Dawn receipt, call app.ui.bigWin(paidTotal, tier, t('NIGHT N PAID')) and scale the tier by the paid margin (big for a met quota, huge when an overshoot tier paid, mega for JACKPOT SEAL or HOUSE ENVY). Keep the toast as the line-item summary. Put a stamp sound on the title and a tallyTick per ledger line (sfx.ts:891 tallyTick is defined and unused in game code).",
+   "effort": "S",
+   "impact": 5
+  },
+  {
+   "where": "src/menu/hud.ts:610-618 (in-Watch overshoot toast, 4 s, kind 'good', silent); src/menu/hud.ts:666-672 (planOver line only changes colour); src/game/run.ts:1966-1975 (grantTier at Dawn, then emit 'quota:overshoot'); the quota:overshoot event has no consumer anywhere in src (grep); src/game/overpay.ui.ts:45-68 (silent open, purchase sfx on pick)",
+   "moment": "Crossing an OVERSHOOT tier (overpay principal ratio), the top-end skill payoff of the overpay system, and its Dawn grant.",
+   "current": "Silent 4-second toast; the NIGHT PLAN overshoot line recolours. The grant lands silently at Dawn and surfaces only as the overpay pick panel.",
+   "proposal": "In-Watch crossing: uiSfx('chime') plus ui.flash(GOLD, 0.2, 0.3), a goldBurst (src/menu/hud/charmProc.ts:138, size 1) anchored on the planOver line, and a 'hop' class on that line. At Dawn subscribe to 'quota:overshoot' and escalate by tier like celebrate() in src/machines/_base/juice.ts:150 (fx.slowmo(0.4, 0.4), hitstop 0.06 and confetti for the top tier), with the tier name as a ui.banner.",
+   "effort": "M",
+   "impact": 5
+  },
+  {
+   "where": "src/game/run.ts:1848-1857 (Settle interest: debtPaid += interest, emit run:deposit, interestNote); src/game/run.ts:3329-3332 (interestNote: run:interest + bankNote banner); src/game/run.ts:2593 (bankNote: size 8, 3 s); src/game/draft.ui.ts:27 (only feedback: uiSfx('coin', 0.8)); src/machines/debt_terminal/index.ts:875 (shownDep re-synced only on paid/night change), :884 and :938 (LED and BANK read shownDep), :853-863 (presentLever: stamp + 'SETTLED' popText, no amount)",
+   "moment": "Each Bell pays interest on the bank: the compounding loop the debt design rests on.",
+   "current": "A three-second text banner and one coin tick. The terminal's BANK figure has no roll (countUp exists only in presentDeposit at debt_terminal/index.ts:789 and presentWithdraw at :841).",
+   "proposal": "Terminal reacts to run:interest: countUp (src/machines/_base/juice.ts:375) from the old to the new balance, tallyTick ticks, a small coin shower sized by collectCoins(amount) (src/core/audio/gambleFx.ts:18), a gold popText '+N' at the bank, then ui.fly '+N' to the 'wallet' anchor. Keep the banner. See also the possible stale-display bug in notes.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/menu/hud.ts:492-509 (updateQuota: fill width written per frame at :500, 'met' class at :504); src/menu/hud/hud.css:65 (.hud .bar i has no transition); src/menu/hud.ts:408 (quota:met = feed line + one quotaTick); src/menu/hud.ts:244 ('quota' anchor registered, never bumped or flown to)",
+   "moment": "The quota bar filling, and the first crossing (QUOTA MET).",
+   "current": "The fill jumps; the box turns green; one tick. The terminal (debt_terminal/index.ts:804-806: quotaMet sfx, gold flash, popText) and the 9 s cutscene (src/game/story/cutscenes/quota_met.cutscene.ts:4-22) carry the beat, but the HUD box has none.",
+   "proposal": "CSS transition on the fill (width .3s, steps(6)). On quota:met: ui.bump('quota', 1.4), a goldBurst at the quota box (charmProc.ts:138, size 2), and the existing 'quotaMet' stinger (src/core/audio/music/stingers.ts) instead of quotaTick. On deposits (run.ts:1257, eco:wallet reason 'deposit'): fly a '-N' token from the wallet to the 'quota' anchor with ui.fly (ui.ts:889), then bump it, so the coin's trip is visible.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/game/run.ts:1351-1362 (earn: only the coin branch emits eco:wallet; ticket and obol branches emit nothing); src/menu/hud.ts:447 (tickets: text only); hud.ts:363, 381, 387 (only 'wallet' is ever a fly target); src/game/spotlight.ts:130-132 (paid-Ticket flag) and hud.ts:911-927 (chip ignores the flag); src/game/spotlight.ts:79 (spotlightTicketLine, no callers); src/game/ingame/roomsHost.ts:107-108 (Back Office: toast only); run.ts:1564 (ticket grant on skip)",
+   "moment": "Tickets earned (spotlight every 5th play, Watch tithe, Back Office) and spent (buy-a-pull = 3 Tickets, Back Office exchange), and the TICKET_CAP clip at run.ts:1359.",
+   "current": "A counter changes and nothing else. The spotlight's Ticket flag is read by nobody and its callout line is written but unused. Capped gains vanish silently.",
+   "proposal": "Emit 'run:ticket' {n, reason} from earn and spend. The HUD flies a gold '+N' token from the source (spotlight chip or the machine) to the 'tickets' anchor (already registered at hud.ts:244), bumps it and plays numberTick. On a spotlight Ticket: chip 'hop', goldBurst, and spotlightTicketLine as a 2 s toast. A capped gain gets a warn toast.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/game/nightCards.ui.ts:63-69 (state handler closes the panel on pick, no feedback), :80-100 (panel open, no animation or sound), :85-88 (take, silent), :135-149 (cards); src/game/overpay.ui.ts:45-68 (open silent; uiSfx('purchase') on pick at :62 only); src/game/draft.ui.ts:56-61 (pick silent); src/core/ui/ui.ts:824-833 (ui.panel plays no sound and no animation); src/game/nightCards.css:17 (hover lift only); nightCards.ui.ts, overpay.ui.ts and draft.ui.ts contain zero animate() calls and their CSS has no entrance keyframes",
+   "moment": "The Dawn decision: the Night Card offer, the overpay charm pick and the Starter Draft cards appear, then one is chosen.",
+   "current": "Cards snap in. The choice is confirmed only by the panel closing and the chip appearing. The chosen card or charm is not shown going anywhere.",
+   "proposal": "Deal-in: each card animates in 120 ms apart (scale .8 to 1.05 to 1, translateY) with uiSfx('cardFlip'). On pick: the chosen card scales to 1.08 with a gold flash via app.fx.flash, the others fade, uiSfx('chime') plays, and the card flies to the chip or the charm row (ui.fly). Under 5 s the existing nc-pulse (nightCards.css:42-44) gains the gmb-shake tension pattern (src/game/gamble.css:37-38).",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/game/charms/engine.ts:84-88 (second copy: markEvolved, no event emitted), :93 (charm:add only for a new peg); src/menu/hud.ts:417 (charm:add = feed line); hud.ts:767-790 (updateCharms: pegs rebuilt by replaceChildren at :773, no entry motion); hud.ts:395-406 (charm:proc hop only for procs); src/menu/hud/hud.css:135 (.charm.hop keyframe exists)",
+   "moment": "A charm joins the peg strip (buy, Starter Draft, overpay pick), and a second copy EVOLVES without a new peg.",
+   "current": "A feed line for new charms; evolution only changes the peg's counter text (pegBadge), silently. The new peg appears without motion.",
+   "proposal": "Emit 'charm:evolve' from engine.ts:87. HUD: add 'hop' to the matching peg, goldBurst size 1 (charmProc.ts:138), createProcPops show with the label (charmProc.ts:180, 'EVOLVED' or the charm name), and sfx 'upgrade' (src/core/audio/sfx.ts:575, defined and unused in meta). A new peg gets a hop plus a 'chime'. Fly the picked card to the 'charms' anchor (registered hud.ts:244).",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/menu/hud.ts:767-790 (updateCharms; renderSetChips at :783 rebuilds the chips on every list change); src/menu/hud/charmProc.ts:109-119 (chip is text plus hover title); src/game/charms/sets.ts:33-45 (activeSets; bonus text exists as hud.set.<id>.desc)",
+   "moment": "A second charm of an archetype switches a set on (HOT, CLUTCH, BANKER, WHALE, ROTATION), or a sale switches it off.",
+   "current": "A gold chip appears in the peg strip. No toast, sound, burst or motion. The bonus is only in a hover title.",
+   "proposal": "Diff the previous and new activeSets inside updateCharms. On a new set: ui.toast(set name plus desc, tagged 'set' so repeats merge), goldBurst size 2, the chip gets 'hop', app.fx.shake(0.012), and sfx 'win2' or 'chime'. On a set loss: a short 'lose' or 'buzzer' cue and the chip dims.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/game/buffs/streaks.ts:52-59 (HOT at 3 wins, COLD at 4 losses, via buffs.add); src/game/buffs/engine.ts:130,144 (emits buff:add); no consumer of buff:add in src (grep); src/menu/hud.ts:714-735 (buff row marks new ids 'hop' only); src/menu/hud/hud.css:118; src/core/audio/music/stingers.ts:151-158 ('buff' and 'debuff' stingers, reachable only from cutscene cues via src/core/cutscene/effects.ts:39); src/core/audio/sfx.ts:603 and :609 (buffGain, buffLose defined, unused in game)",
+   "moment": "A win streak reaches HOT, a loss streak reaches COLD, or a machine overheats.",
+   "current": "At most a 0.25 s hop on a small icon in the top-right buff row, and only if the instance buff is listed for the player (engine.ts:177-186 filter). No banner, sound or counter.",
+   "proposal": "Subscribe to buff:add for streak ids: ui.banner 'HOT x N' (gold, size 16) or 'COLD' (grey or red), uiSfx('buffGain') or uiSfx('buffLose'), music.stinger('buff' or 'debuff') at low volume on the first start only, and fx.burst('sparks') at the machine. Add a 'WIN STREAK x N' feed line so the streak has a visible count.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/game/run.ts:2496-2507 (takeRescue: earn coin, emit 'taken'); src/game/inGameState.ts:355 (only 'ring' is handled; 'taken' and 'lapsed' ignored); src/menu/hud.ts:356-371 (coins arrive as a plain '+N' fly)",
+   "moment": "The House loan is taken while the pocket is dead: the broke-to-alive reversal, the run's emotional turn.",
+   "current": "Coins fly in as a plain '+N'. The phone stops ringing. No banner, sting or shower.",
+   "proposal": "On 'taken': ui.banner 'LOAN IN: +N' (gold, size 16), fx.coins over the phone anchor (count 40), sfx 'powerUp' (sfx.ts:676) with a coinShower, and fx.flash(GOLD, 0.25, 0.4). On 'lapsed': a quiet 'lose' cue so the miss reads.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/menu/hud/results.ts:145 and :29 (won() only changes the stamp class); :166-178 (print: uiSfx click per line, then stamp thud and quotaTick, no count-up, no comparison); src/menu/resultsState.ts:65-81 (enter prints); src/menu/hud/results.css:23-29 (stamp thud). No personal-best storage found (grep for best finds only the post line, results.ts:62).",
+   "moment": "Run end: the receipt is where the player decides on CLIMB AGAIN.",
+   "current": "Each line ticks and the stamp thuds. Win and loss differ only by stamp colour and text. No sting, no count-up, no new-best signal.",
+   "proposal": "Roll PEAK POCKET, PAID and BIGGEST with counter() (src/core/ui/widgets.ts:621, tickSfx). Win: stamp slam with fx.flash and the win stinger. Loss: 'lose' sfx and a red stamp. Keep personal bests in the save (src/core/save.ts) and show a NEW BEST stamp with goldBurst when one is beaten. Focus CLIMB AGAIN after the stamp.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "src/game/tycoon/index.ts:313-318 (milestone and buy events); src/menu/hud.ts:413-416 (milestone = feed line only); src/game/data/upgrades.ts:54-57 (visual milestones: brass_trim L10, gold_marquee L25, crown_topper L50, gilded_cabinet L100); src/machines/_base/upgrades.ts:14-20 (reachedVisuals, setUpgradeVisuals); src/machines/_base/MachineBase.ts:702 (all upgradeVisuals hidden on build); a grep found no call site for setUpgradeVisuals or reachedVisuals in src",
+   "moment": "An upgrade track reaches L10, L25, L50 or L100, which should put a new fitting on the machine.",
+   "current": "A feed line. The ledger names the next visual as text (src/game/tycoon/ledger.ts:256). If the grep is complete, the physical fitting is never shown.",
+   "proposal": "Confirm with a wider search first. Then in the per-instance world sync call setUpgradeVisuals(model, reachedVisuals(views)) and pop the new fitting with the popBadges curve (src/game/tycoon/badges.ts:108, 0 to 1.35 to 1), a goldBurst or fx.burst('sparks') at the fitting, ui.banner 'NEW FITTING: <name>' (the 'ledger.visual' string exists), and sfx 'upgrade'. The buy path already has cashRegister, coinLand and the book wobble (ledger.ts:304-306).",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "src/game/ingame/session.ts:357-358 (only the E-buy path plays 'purchase'); :362-368 (night change: 'sys' toast only); :389-393 (free unlock: setCovered(false, 1.2) with no sound); src/world/props/cover.ts:97 (lift tween) and :143-196 (NEW marquee appears with setOn(true), no entrance)",
+   "moment": "Night opens a floor machine (progression schedule, FLOOR_READY) and its tarp lifts.",
+   "current": "The tarp slides off over 1.2 s, the NEW sign comes on, and a four-second system toast names it. No sound, dust or light pulse at the moment it opens.",
+   "proposal": "On any lift (free or bought): fx.burst('dust') at the slot (src/core/fx/types.ts:67), fx.lightPulse on the slot (types.ts:94), sfx 'unlock' (sfx.ts:595, story-only today), and a Dawn ui.banner 'NEW: <machine>'. The E-buy lift gets a larger burst.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "src/game/ingame/session.ts:419-423 and src/game/ingame/panels.ts:243 (the title is banner 'ingame.night' at default size 24, stamp sound only); src/core/ui/ui.ts:560-574 (runBanner: letters and stamp, no flash, shake or rays); src/game/houseMood.ts:35-40 (houseMoodLine: tone text, no callers); houseMood.ts:19 (HOUSE_MOOD 1.18 down to 0.95); src/menu/hud.ts:553 (mood appears only in the PAYOUT chip)",
+   "moment": "Night start: the title card, and the House Mood that sets the payout for that Night.",
+   "current": "'NIGHT N' stamps in. The mood is found only in the PAYOUT chip, and nothing announces a change of mood.",
+   "proposal": "Add a sub-line from houseMoodLine (GENEROUS in green, TIGHT in red). Music stinger 'buff' at low volume on generous Nights and 'debuff' on tight ones. Flash the title drop on boss Nights, and use ui.bigWin 'big' (flash and shake, ui.ts:82-88) for spotlight or boss titles.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "src/game/run.ts:1919-1928 (payHouseCut: earn coin and banner 'prog.cut'); src/menu/hud.ts:704-712 (updateEmpire: text only, no bump); src/game/ingame/session.ts:375 (paid-Night cut toast)",
+   "moment": "Each Watch's Settle pays the owned machines' house cut, the tycoon's reward.",
+   "current": "A banner and a small wallet fly. The EMPIRE chip does not react, and nothing moves at the machines themselves.",
+   "proposal": "For each owned machine, fly small coins from its slot to the 'wallet' anchor (fx.coins at the slot, then ui.fly), register 'empire' as an anchor (hud.ts:244) and ui.bump it on payout, and play sfx 'coinInsert' (sfx.ts:57, used only by the bigone machine).",
+   "effort": "S",
+   "impact": 3
+  }
+ ],
+ "inventory": [
+  "FxApi (world FX, one object at app.fx): burst(preset,at,n) src/core/fx/types.ts:62; coins(at,n) types.ts:63 (cap 60); sparks types.ts:64; confetti types.ts:65; glow types.ts:69; popText(at,text,color,dur) types.ts:77; shake(amp,dur,o) types.ts:80; flash(color,alpha,dur) types.ts:81; chroma types.ts:82; tint types.ts:83; zoomPunch types.ts:84; slowmo(scale,dur,o) types.ts:86; hitstop(sec) types.ts:88; squash(obj,amount,dur) types.ts:92; lightPulse(target,o) types.ts:94; winBurst(tier,at,o) types.ts:103 (tier escalation, no audio); loss types.ts:105. Implementation src/core/fx.ts:70 onward; reduceFlashing and settings.shake honoured at src/core/fx.ts:117-130.",
+  "Screen post levels: setPostLevel(key,value,dur) src/core/fx.ts:57 (vignetteBoost, desaturate, blackout, sustained); glitchPulse(amount,dur) src/core/fx.ts:51.",
+  "Audio: app.audio.play(name,{vol,pitch,bus,pos,priority,param}) src/core/audio/types.ts:136 (PlayOpts types.ts:41-49, pitch in semitones); winJingle(tier) types.ts:139; coins(n) types.ts:140; duck(bus,amount,dur) types.ts:160; setTimeScale(k,ramp) types.ts:158; music.stinger(id,{vol,duck}) types.ts:97; StingerId values types.ts:72-73 (quotaMet, jackpot, bigWin, buff, debuff, ascend, descend, ...).",
+  "uiSfx(name,vol) src/core/ui/widgets.ts:55-60 (UI bus, 40 ms per-name rate limit); tycoon cue(name,vol) src/game/tycoon/ui3d.ts:22-25.",
+  "SFX registry src/core/audio/sfx.ts:28 (SFX_DEFS); winSfx(tier) sfx.ts:966-976; coinCascade(n) sfx.ts:961; LONG (slow-mo'd voices) sfx.ts:948; TRIM table sfx.ts:36-60. Defined but not used by meta code: tallyTick sfx.ts:891, coinRain, buffGain sfx.ts:603, buffLose sfx.ts:609, upgrade sfx.ts:575, unlock sfx.ts:595 (story cutscenes only), powerUp sfx.ts:676, chime sfx.ts:195.",
+  "Toasts: ui.toast(text,kind,dur,tag) src/core/ui/ui.ts:659 (silent; showToast ui.ts:271); dismissToasts ui.ts:675; holdToasts ui.ts:~680 (modal hold).",
+  "Banner: ui.banner(text,{color,hold,size,wave,shadow}) src/core/ui/ui.ts:702 calling runBanner ui.ts:560-574 (letters drop, stamp sound, no flash).",
+  "Big win title card: ui.bigWin(amount,tier,title) src/core/ui/ui.ts:699 calling runBigWin ui.ts:495-558 (rolling amount, coin confetti, flash and shake by tier). Config BW table src/core/ui/ui.ts:82-88 (mini to jackpot: coins 6 to 80, flashes 0 to 2, shake 0 to 5, rays from huge). Only production caller is src/game/benchRun.ts:236.",
+  "Fly and bump: ui.fly(FlyOpts{from,to,text,color,dur,onArrive}) src/core/ui/ui.ts:889; ui.bump(id,strength) src/core/ui/ui.ts:936-942 (scale pulse 200 ms); setAnchor ui.ts:880; anchors registered in src/menu/hud.ts:243-246 (wallet, tickets, clock, quota, buffs, charms, pulls). HudAnchorId also names 'bank', 'jackpot', 'upgrades' (src/core/ui/types.ts:31), none used by meta.",
+  "Panels: ui.panel(id,build) src/core/ui/ui.ts:824 (silent, no animation); choice modal with popUp and a 160 ms translate src/core/ui/ui.ts:426-432 (reference pattern); modalPanel(el,opts) src/core/ui/widgets.ts:204.",
+  "Rolling number widget: counter(parent,{fmt,tickSfx,maxDur}) src/core/ui/widgets.ts:621-647 (tick sound every second change). Per-frame callbacks: addTicker(fn) in src/core/ui/widgets.ts (used by src/game/nightCards.ui.ts:118).",
+  "Tween system: createTweenSystem() src/core/tween.ts:191; ease table src/core/tween.ts:40.",
+  "countUp(ctx,from,to,dur,onValue) src/machines/_base/juice.ts:375 (also used by the terminal at src/machines/debt_terminal/index.ts:789). celebrate(host,tier,opts) src/machines/_base/juice.ts:150 is the tier ladder to copy (big fountain and shake, huge slow-mo at 40 percent for 0.4 s, mega confetti and zoom, jackpot 6 s wave). comboTwinkle and emitComboShow src/machines/_base/juice.ts:383 onward.",
+  "Coin count from amount: collectCoins(pot) src/core/audio/gambleFx.ts:18 (6 to 30 coins); wireGambleFx src/core/audio/gambleFx.ts:21.",
+  "Charm HUD juice: playProcTick(tier) src/menu/hud/charmProc.ts:28 (charmTick, pitch climbs with tier); popSize(text,tier) src/menu/hud/charmProc.ts (about line 124); goldBurst(root,top,size) src/menu/hud/charmProc.ts:138; createProcPops(root).show(text,tier) src/menu/hud/charmProc.ts:180 (medium and big pops add a burst, big adds shake); renderSetChips src/menu/hud/charmProc.ts:109.",
+  "Object juice: popBadges(group,k) src/game/tycoon/badges.ts:108 (scale 0 to 1.35 to 1); cover lift setCovered(on,dur) src/world/props/cover.ts:97 (1.2 s tween); createNewMarquee src/world/props/cover.ts:143 (neon sign and chasing bulbs).",
+  "Deposit template: src/machines/debt_terminal/index.ts:747-810 (anticipation, coin stream, countUp roll, receipt print, quota-met flash and popText). Stamp purchase template: src/machines/charm_vendor/index.ts:600-640 (squash, flash, popText, stamp sfx).",
+  "CSS keyframes ready to reuse: hud-hop, hud-glow, win-pop, charm-pop (src/menu/hud/hud.css:161-186); rcp-thud (src/menu/hud/results.css:29); nc-pulse (src/game/nightCards.css:44); gmb-drain, gmb-shake, gmb-pop (src/game/gamble.css:19, 38, 44)."
+ ],
+ "notes": "Summary: most meta moments end at a toast or banner plus one sound. The strongest juice already exists on the machine side (debt terminal deposit, quota-met cutscene, the Pawn's stamp purchase, machine win pops) and is not reused for meta moments. Cheapest wins: (a) bind ui.bigWin (src/core/ui/ui.ts:699, currently only benchRun.ts:236) to the Dawn payoff; (b) give the registered-but-unused HUD anchors (quota, tickets, charms) a bump or fly; (c) consume events nobody handles (quota:overshoot, buff:add, charm evolution, run:rescue 'taken', the spotlight Ticket flag).\n\nPossible bug, verify in play: the terminal LED and BANK read this.shownDep (src/machines/debt_terminal/index.ts:884, :938). shownDep is re-synced only on deposit, withdraw (:756, :795, :821, :844) and on a paid or Night change (:875). Settle interest raises debtPaid (src/game/run.ts:1849) and emits run:deposit, which the terminal does not consume (grep), so the BANK figure may stay at its pre-interest value until the next deposit or withdraw.\n\nDead or unused code: .hud .wallet.gain (src/menu/hud/hud.css:31) is never applied, a free glow for wallet gains. spotlightTicketLine (src/game/spotlight.ts:79) and houseMoodLine (src/game/houseMood.ts:35) have no callers.\n\nDawn sequence today: quota_met cutscene (9 s, src/game/story/cutscenes/quota_met.cutscene.ts:4-22) then Dawn receipt count-up (nightCards.ui.ts:116-127) then Night Card offer (silent open, silent pick) then overpay pick (silent open) then NIGHT PAID toast. For quota met, the terminal flash, the cutscene and any HUD burst would all fire on the same beat, so pick one lead layer per stage and make the Dawn a single timeline.\n\nSettings: fx.shake and fx.flash honour settings.shake and reduceFlashing (src/core/fx.ts:117-130), and ui.bigWin reduces coins and flashes under reduceFlashing (src/core/ui/ui.ts:498, :526-527). Route new flashes through app.fx.flash.\n\nCaveats: static reading of the working tree, which has uncommitted changes (git status lists run.ts, hud.ts, nightCards*, checkpoints, tutorial and others), so line numbers reflect that tree. Nothing was run and nothing was edited. \"No consumer\" and \"no call site\" claims are grep-based over src; confirm before wiring, especially setUpgradeVisuals (no caller found) and buff:add.\n\nDopamine levers not used anywhere in meta yet: anticipation (the Night Card timer already pulses but the pick is not built up), count-ups on each ledger line, escalating tiers (copy the celebrate ladder in src/machines/_base/juice.ts:150), and a visible win or loss streak counter."
+}

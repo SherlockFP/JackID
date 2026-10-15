@@ -9,6 +9,7 @@
 import type * as THREE from 'three';
 import type { GameMode, Hex, InstanceId, LocalAABB, MachineId, PlayerId, SlotSize, Unsub, V3, Vec3Like, ZoneId } from '@/core/types';
 import type { AnyMachine } from '@/machines/_base/types';
+import type { HomeRoomApi } from '@/game/home/contract';
 
 export type { LocalAABB, SlotSize, ZoneId, KnownZoneId } from '@/core/types';
 
@@ -154,6 +155,9 @@ export interface World {
   prop<T extends WorldProp = WorldProp>(id: PropId): T | null;
   anchor(name: string): THREE.Object3D | null;
   registerAnchor(name: string, obj: THREE.Object3D): Unsub;
+
+  /** The apartment's controls (wave 69 Home layer, src/world/home). Absent in bench rooms. */
+  readonly home?: HomeRoomApi;
 
   fixedUpdate(dt: number): void;
   frame(dt: number, t: number): void;

@@ -10,7 +10,8 @@
  * the bet floor); `run.ts` reads them through {@link NightCards.fx} at the matching point.
  *
  * Rules: one card per Night (a pick is kept for one Night index only). Boss Nights still apply: the boss rule registers on
- * its own and stacks with the card. The 20 s timer auto-picks the first card, so the Dawn never sticks.
+ * its own and stacks with the card. The 20 s timer auto-picks the SAFE card (never the risk side), so the Dawn never sticks
+ * and a player who looks away never gets the gamble.
  */
 import { createRng, hashSeed } from '@/core/rng';
 import type { ModEffect, ModProvider, ModQuery, ModSource, ModSourceKind } from './modifiers.types';
@@ -18,7 +19,7 @@ import { coldLampCount, hotLampCount, nightDef, ratePercent, TILT_FREE_PULLS } f
 
 /** Cards offered at each Dawn. */
 export const NIGHT_CARD_OFFER_SIZE = 2;
-/** Seconds the offer waits before the first card is taken for the player. */
+/** Seconds the offer waits before the safe card is taken for the player (the last 5 s pulse on the panel). */
 export const NIGHT_CARD_TIMEOUT_SEC = 20;
 /** The safe-ish card may raise the quota by at most this share (the card face's shown quota, after rounding; see the tests). */
 export const SAFE_QUOTA_RISE = 0.1;
@@ -148,7 +149,7 @@ export function nightCardOffer(seed: number, night: number): NightCardId[] {
  * the line reads (before and after, or the amount). The card face joins the lines with a separator.
  */
 export interface NightCardPreviewLine {
-  key: 'quota' | 'watches' | 'pulls' | 'payout' | 'net' | 'netDown' | 'flat' | 'interest' | 'grace' | 'shelves' | 'discount' | 'hot' | 'cold' | 'noFloor' | 'minBet' | 'pawnShut';
+  key: 'quota' | 'watches' | 'pulls' | 'payout' | 'net' | 'netDown' | 'flat' | 'interest' | 'grace' | 'shelves' | 'discount' | 'hot' | 'cold' | 'noFloor' | 'minBet' | 'pocket' | 'pawnShut';
   vars: Record<string, number>;
 }
 
@@ -156,9 +157,10 @@ export interface NightCardPreviewLine {
  * The concrete result of `def` for the Night at `index` (0-based, the Night the card is for): every number it changes, before and
  * after. `dueWith(m)` is the Night's exact quota with the card's quota multiplier `m` folded in: the run's own read
  * (`DebtRun.nextQuotaPreview(m)?.due`), the same number the Night opens with. There is no ladder estimate: without an exact read
- * (no reader, or the run gives none) the quota line is left out rather than shown wrong.
+ * (no reader, or the run gives none) the quota line is left out rather than shown wrong. `cheapestBet` is the cheapest minimum bet
+ * on the floor: a bet floor card (HIGH TABLE) names the pocket it needs, the doubled cheapest minimum bet.
  */
-export function nightCardPreview(def: NightCardDef, index: number, dueWith?: (mult: number) => number | null): NightCardPreviewLine[] {
+export function nightCardPreview(def: NightCardDef, index: number, dueWith?: (mult: number) => number | null, cheapestBet?: number): NightCardPreviewLine[] {
   const nd = nightDef(index);
   const sum = (hook: ModEffect['hook'], op: ModEffect['op']): number => def.effects
     .filter((e) => e.hook === hook && e.op === op).reduce((acc, e) => acc + e.value, 0);
@@ -197,7 +199,10 @@ export function nightCardPreview(def: NightCardDef, index: number, dueWith?: (mu
   const coldNow = coldLampCount(nd.no);
   if (fx.noColdLamps && coldNow > 0) lines.push({ key: 'cold', vars: { from: coldNow, to: 0 } });
   if (fx.noFloorEvents) lines.push({ key: 'noFloor', vars: {} });
-  if (fx.minBetMult !== 1) lines.push({ key: 'minBet', vars: { x: fx.minBetMult } });
+  if (fx.minBetMult !== 1) {
+    lines.push({ key: 'minBet', vars: { x: fx.minBetMult } });
+    if (cheapestBet !== undefined && fx.minBetMult > 1) lines.push({ key: 'pocket', vars: { n: Math.max(1, Math.floor(cheapestBet)) * fx.minBetMult } });
+  }
   if (fx.pawnClosed) lines.push({ key: 'pawnShut', vars: {} });
   return lines;
 }
@@ -274,12 +279,15 @@ export class NightCards implements ModProvider {
   }
 
   /**
-   * Closes an open offer with its first card (the timer's pick, used when OPEN THE FLOOR comes before a pick, so the Night can
-   * never be held by an offer nobody answers). Returns the card, or null when no offer is open.
+   * Closes an open offer with its SAFE card (the timer's pick, used when OPEN THE FLOOR comes before a pick, so the Night can
+   * never be held by an offer nobody answers). The safe card is the first non-risk card on offer; the first card only if the
+   * offer holds no safe one (not reachable with the shipped deck). Returns the card, or null when no offer is open.
    */
   settle(): NightCardId | null {
-    const first = this.offer?.ids[0];
-    return first !== undefined && this.pick(first) ? first : null;
+    const o = this.offer;
+    if (!o) return null;
+    const id = o.ids.find((c) => nightCardDef(c)?.tone !== 'risk') ?? o.ids[0];
+    return id !== undefined && this.pick(id) ? id : null;
   }
 
   /** The card kept for the Night in progress, or null. */

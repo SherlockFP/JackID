@@ -18,24 +18,43 @@ const PANEL = 'starter-draft';
 const KEYS = ['1', '2', '3'];
 /** A ui banner (ui.ts `.px-bw` in the banner layer) is on screen: the title card of the Night, read from the DOM (ui.ts keeps no getter). */
 const titleCardUp = (): boolean => typeof document !== 'undefined' && document.querySelector('.px-bwl .px-bw') !== null;
+/** A modal panel is on screen (`modalPanel` marks it `data-modal="1"`): the offer waits for it, as the overpay panel does. */
+const modalUp = (): boolean => typeof document !== 'undefined' && document.querySelector('[data-modal="1"]') !== null;
+/**
+ * Sim seconds one title card may hold the offer. A banner clears on its own timers, and a stepped harness (the QA clock) can run
+ * those late: one long step fires one hold tick per call, so a card can outlive its wait. A normal card clears in about 3 s, so the
+ * gate gives up on a card after this and the offer opens (a modal hides any banner under it, and the card resumes after).
+ */
+const CARD_HOLD_CAP_SEC = 8;
 
 export function mountDraftUi(run: DebtRun): () => void {
   const offs: Unsub[] = [];
   // Every Settle's interest is a coin sound (the bank's work, heard as well as read).
   offs.push(bus.on('run:interest', (e) => { if (e.pid === run.selfId) uiSfx('coin', 0.8); }));
   offs.push(bus.on('run:draft', (e) => { if (e.pid === run.selfId) app.ui.closePanel(PANEL); }));
-  // The offer waits for the opening cutscenes (intro, Collector) and the Night's title card ("1. GECE", a ui banner) to finish,
-  // then a short beat, so it never covers them and the card never sits on the heading.
+  // The offer waits for the opening cutscenes (intro, Collector), the Night's title card ("1. GECE", a ui banner) and any other
+  // modal to clear, then a short beat, so it never covers them (a title card gives way after CARD_HOLD_CAP_SEC). It is asked on
+  // every frame until it opens: a pull before the cards clear does not lose it (run.openStarterDraft takes it at the Night 1
+  // Mola). An open offer (a resumed save) shows at once.
   let quiet = 0;
+  let cardHeld = 0;
+  let shown = false;
   let done = false;
   addTicker((dt) => {
     if (done) return false;
-    if (app.cutscene.playing || titleCardUp()) { quiet = 0; return true; }
+    // Nothing left to offer: taken (or timed out), or the run left Night 1.
+    if (!run.starterPending() && run.starterDraft() === null) { done = true; return false; }
+    if (shown) return true;
+    if (app.cutscene.playing || modalUp()) { quiet = 0; cardHeld = 0; return true; }
+    if (titleCardUp()) {
+      // A card holds the offer for at most CARD_HOLD_CAP_SEC of its own sim time; past that the quiet beat runs over it.
+      cardHeld += dt;
+      if (cardHeld < CARD_HOLD_CAP_SEC) { quiet = 0; return true; }
+    } else cardHeld = 0;
     quiet += dt;
     if (quiet < 0.6) return true;
-    done = true;
-    if (run.openStarterDraft()) showCards(run);
-    return false;
+    if (run.starterDraft() !== null || run.openStarterDraft()) { shown = true; showCards(run); }
+    return true;
   });
   return () => {
     done = true;

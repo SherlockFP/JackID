@@ -16,7 +16,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { connect as netConnect, createServer } from 'node:net';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -47,6 +47,18 @@ const nowMs = () => (clock.step ? (clock.frames * 1000) / FRAME_HZ : new Date().
 /** Waits `ms`: whole sim frames (rounded to the frame, at least one for a positive wait) when the page is stepped, else real time. */
 const sleep = (ms) => (clock.step ? clock.step(ms) : new Promise((r) => setTimeout(r, ms)));
 const log = (...a) => process.stderr.write(`[qa] ${a.join(' ')}\n`);
+
+/**
+ * The screenshot file for `name` in `dir`. A name already taken (this run's `used` set, or a file already on disk) gets -2, -3 ...
+ * before the .png, so a shot is never overwritten. Adds the chosen file name to `used`.
+ */
+function uniqueShotPath(dir, name, used) {
+  const base = String(name).replace(/\.png$/i, '');
+  let file = `${base}.png`;
+  for (let n = 2; used.has(file) || existsSync(join(dir, file)); n++) file = `${base}-${n}.png`;
+  used.add(file);
+  return join(dir, file);
+}
 
 /** A free loopback TCP port (bound, then released). */
 function freePort() {
@@ -128,12 +140,12 @@ export function parseScript(text) {
  *   pawn               one Pawn Window reroll (Intermission only)
  *   pawn:buy:<slot>    buy Pawn Window shelf <slot> (1-6, 1-based): sits there, the shelf key, Space twice
  *   pawn:look          sit at the Pawn Window, screenshot the seat view (run-pawn-look-<n>.png)
- *   auto:night         a bot plays one Night like a sensible human (Hot first, spotlight, Tilt rotation, push-your-luck, SAFE / BOLD / BIG stakes, Dawn deposits, Mola); logs each decision
+ *   auto:night         a bot plays one Night like a sensible human (Hot first, spotlight, Tilt rotation, push-your-luck, SAFE / BOLD / BIG stakes, Dawn deposits, Mola); logs each decision. Started on a paid Night (OPEN THE FLOOR waiting), it opens the next and plays that one
  *   auto:night:event   the same, but stops at the first Watch with a floor event (shot it, then auto:night carries on)
  *   auto:night:quota   the same, but stops in the Watch whose deposit meets the quota (before its Bell: the NIGHT PLAN's
  *                      OVERSHOOT line is on screen; shot it, then auto:night carries on)
  *   events             record and print the live floor event (watchEvents.ts watchEventView), null between Watches
- *   shot:<name>        screenshot to <shots>/<name>.png (needs --shots)
+ *   shot:<name>        screenshot to <shots>/<name>.png (needs --shots; a name already taken gets -2, -3, never overwritten)
  *   wait:<ms>          pause
  *   state              record pocket, bank, quota, night, watch, pulls, phase, seated, starterOffer, charms (res.run.states)
  *   kit:<id>           start config (applied at run start, not a step): the kit, as the kit picker's config passes it
@@ -681,11 +693,37 @@ const OVERSHOOT_FN_JS = `function overshootOf(r) {
 }`;
 
 /** Page JS: the debt run's state, for `state`, the step records and the auto:night loop. Watch and Night are 1-based. */
+/** Page JS (a function in RUN_STATE_JS): the cheapest minimum bet on the floor now, over the placed, unlocked staking machines
+ * (betLimits().min: the Night Card multipliers and the Night 1 cap included). Null without a run. */
+const CHEAPEST_MIN_FN_JS = `function cheapestMinOf(r, w) {
+  if (!r || !w || typeof r.betLimits !== 'function') return null;
+  let min = Infinity;
+  try {
+    for (const m of w.machines()) {
+      if (!(m.def.minBet > 0) || w.isLocked(m.id)) continue;
+      const lim = r.betLimits(m.def.id, m.id);
+      if (lim && lim.min > 0 && lim.min < min) min = lim.min;
+    }
+  } catch (e) { return null; }
+  return Number.isFinite(min) ? min : null;
+}`;
+/** Page JS (a function in RUN_STATE_JS): the Night's quota before the tithes (`base`, the tithe basis: no tithes, no rescue loans)
+ * and the coins the missed Watch tithes added tonight (`titheAdded`), from the run's save slice. Null before the first quota. */
+const QUOTA_SPLIT_FN_JS = `function quotaSplitOf(r) {
+  try {
+    const s = typeof r.snapshot === 'function' ? r.snapshot() : null;
+    const t = s && s.ext ? s.ext.tithe : null;   // RunSave.ext.tithe (TitheSave), absent until the Night quota is set
+    if (!t) return null;
+    return { base: t.base ?? null, titheAdded: t.added ?? 0 };
+  } catch (e) { return null; }
+}`;
 const RUN_STATE_JS = `(async () => {
   ${NIGHT_CARD_IDS_JS}
   ${SPOTLIGHT_FN_JS}
   ${TITHE_FN_JS}
   ${OVERSHOOT_FN_JS}
+  ${CHEAPEST_MIN_FN_JS}
+  ${QUOTA_SPLIT_FN_JS}
   const a = window.jackid.app, r = a.run;
   if (!r) return { over: true, run: null };   // the run is gone: the menu took the screen back
   const b = r.bank(), pulls = r.pulls();
@@ -700,7 +738,10 @@ const RUN_STATE_JS = `(async () => {
     nightCardOffer: nightCardIds(r),               // the offered card ids while the offer is open, else null
     phase: r.shift.phase, night: r.night(), watch: typeof r.watch === 'number' ? r.watch + 1 : null,
     pocket: b.pocket, bank: b.balance, withdrawable: b.withdrawable, quotaDue: b.due, quotaLeft: b.left,
+    sealed: b.sealed ?? null, sealCoins: b.sealCoins ?? null,   // the Overshoot Seal: sealed true holds sealCoins (not withdrawable)
     pullsLeft: b.pullsLeft, pulls: Number.isFinite(pulls) ? pulls : null, minBet: b.minBet,
+    cheapestMin: cheapestMinOf(r, a.world),        // the cheapest minimum bet on the floor now (Night Card multipliers included), or null
+    quotaSplit: quotaSplitOf(r),                   // { base, titheAdded }: the quota before the tithes, and the coins the missed tithes added
     nightDone: r.nightPaid, topside: r.topsideOpen,
     over: r.over, seated: a.player?.seat?.mid ?? null, intro: a.cutscene.playing ?? null,
     starterOffer: r.starterDraft()?.candidates.map((d) => d.id) ?? null, starterLeft: r.starterDraft()?.left ?? null,
@@ -783,6 +824,19 @@ const TIP_KEY = 'Digit0';   // the neutral press that closes a first-sit tip (an
 const BOLD_MIN_MULT = 14;   // BOLD (Digit8, ~15 % of the pocket) only when the pocket holds at least this many minimum bets
 const BIG_MIN_MULT = 20;    // BIG (Digit9, ~30 % of the pocket) only from this many minimum bets up
 const PUSH_BIG_ROLL = 0.2;  // BIG on a push-your-luck bet when a seeded roll comes under this (about 1 bet in 5)
+const BOT_FLOAT_MIN_BETS = 3;   // the bot's pocket float: 3 x the cheapest minimum bet, Night Card multipliers included (the game's own float is 2 x)
+/** The cheapest minimum bet on the floor now (the state's `cheapestMin`: betLimits, Night Card multipliers included), else the bank's. */
+const minNow = (st) => (st.cheapestMin > 0 ? st.cheapestMin : st.minBet);
+/** The pocket float the bot keeps: BOT_FLOAT_MIN_BETS cheapest minimum bets, or the game's own float (`gameFloor`) when that is higher. */
+const botFloor = (st, gameFloor = 0) => Math.max(gameFloor ?? 0, BOT_FLOAT_MIN_BETS * minNow(st));
+/**
+ * A bet is taken only when the pocket left after it still holds one cheapest minimum bet (`keepsMinAfter`), so no bet takes the
+ * pocket under the cheapest bet. The bot bets from BET_ROOM_MIN_BETS minimum bets up (`canBet`): under that the pocket is topped
+ * up from the bank first (withdraw to the float), or, with the bank sealed or empty, the Watch rings its Bell.
+ */
+const BET_ROOM_MIN_BETS = 2;
+const canBet = (st) => st.pocket >= BET_ROOM_MIN_BETS * minNow(st);
+const keepsMinAfter = (st, cost) => st.pocket - cost >= minNow(st);
 /** The machines whose push-your-luck decision the bot makes mid-round (botRound). Only these may take BIG. */
 const PUSH_MACHINES = new Set(['coinflip', 'bigone']);
 const STAKE_DIGIT = { safe: 'Digit7', bold: 'Digit8', big: 'Digit9' };   // the presets' keys (stakePresets.ts STAKE_PRESET_ACTION)
@@ -826,12 +880,21 @@ const BOT_CANDS_JS = `(async () => {
       const t = r.circuit?.tilt?.(m.id) ?? null;
       const staking = m.def.minBet > 0;
       const keep = { safe: staking && !stakeKeyOwned(m.def.id, 'n7'), bold: staking && !stakeKeyOwned(m.def.id, 'n8'), big: staking && !stakeKeyOwned(m.def.id, 'n9') };
-      return { instance: m.id, machineId: m.def.id, lit: t ? t.lit : 4, hot: hot.has(m.id), spot: m.def.id === spot, keep };
+      // min: this machine's minimum bet now (betLimits, Night Card multipliers included); presets: the SAFE / BOLD / BIG amounts
+      // for the pocket now (MachineBase.stakePresets), so a bet's cost is known before it is placed.
+      const lim = r.betLimits?.(m.def.id, m.id) ?? null;
+      const presets = staking && typeof m.stakePresets === 'function' ? m.stakePresets() : null;
+      return { instance: m.id, machineId: m.def.id, lit: t ? t.lit : 4, hot: hot.has(m.id), spot: m.def.id === spot, keep,
+        min: lim && lim.min > 0 ? lim.min : (staking ? m.def.minBet : null), presets };
     });
 })()`;
-/** Node: the one machine the bot bets on next, and why. Hot first, then the spotlight, then the least-tilted (the stake is pickStake's). */
-function pickBet(cands, bot, key) {
-  const ok = cands.filter((c) => (bot.fails.get(c.instance) ?? 0) < 2);   // two refusals in a row: not a machine the bot can play
+/**
+ * Node: the one machine the bot bets on next, and why. Hot first, then the spotlight, then the least-tilted (the stake is
+ * pickStake's). A machine is eligible when its minimum bet leaves one cheapest minimum bet in the pocket (keepsMinAfter).
+ */
+function pickBet(cands, bot, key, st) {
+  const ok = cands.filter((c) => (bot.fails.get(c.instance) ?? 0) < 2   // two refusals in a row: not a machine the bot can play
+    && keepsMinAfter(st, c.min ?? minNow(st)));
   if (!ok.length) return null;
   const played = bot.played.get(key) ?? new Set();
   const pool = ok.filter((c) => !played.has(c.instance));
@@ -875,13 +938,20 @@ async function pushRule(ctx, machineId) {
  * Node: the stake for one bet, with its reason (the caller logs it). SAFE by default. BOLD on the Hot cabinet, on the spotlight,
  * or while ahead of the Dawn projection (dawn.met), when the pocket holds BOLD_MIN_MULT minimum bets. BIG only on a
  * push-your-luck machine (PUSH_MACHINES) whose rule is live, on an occasional seeded roll (PUSH_BIG_ROLL), from BIG_MIN_MULT
- * minimum bets up. A digit the machine keeps for itself, or a pocket under the multiple, takes the next step down
- * (BIG, BOLD, SAFE, then the minimum walked down with KeyZ). Resolves to { stake: 'big' | 'bold' | 'safe' | 'min', why }.
+ * minimum bets up. A digit the machine keeps for itself, a pocket under the multiple, or a preset that would leave the pocket
+ * under one cheapest minimum bet (keepsMinAfter), takes the next step down (BIG, BOLD, SAFE, then the minimum walked down with
+ * KeyZ). Resolves to { stake: 'big' | 'bold' | 'safe' | 'min', why }.
  */
 async function pickStake(ctx, c, st) {
   const keep = c.keep ?? {};
-  const mins = st.minBet > 0 ? st.pocket / st.minBet : 0;   // the pocket in minimum bets
-  const fits = { big: Boolean(keep.big) && mins >= BIG_MIN_MULT, bold: Boolean(keep.bold) && mins >= BOLD_MIN_MULT, safe: Boolean(keep.safe), min: true };
+  const mins = minNow(st) > 0 ? st.pocket / minNow(st) : 0;   // the pocket in minimum bets (the cheapest one on the floor now)
+  // A preset is taken only when its amount clears this machine's minimum now (the run refuses a bet under betLimits().min: 'limit',
+  // e.g. a HIGH TABLE floor) and the pocket left after it still holds one cheapest minimum bet (keepsMinAfter).
+  const presetOk = (k) => {
+    const amount = c.presets?.[k];
+    return Boolean(keep[k]) && amount != null && amount >= (c.min ?? 0) && keepsMinAfter(st, amount);
+  };
+  const fits = { big: presetOk('big') && mins >= BIG_MIN_MULT, bold: presetOk('bold') && mins >= BOLD_MIN_MULT, safe: presetOk('safe'), min: true };
   let want = 'safe', why = 'SAFE by default';
   if (PUSH_MACHINES.has(c.machineId) && fits.big) {
     const rule = await pushRule(ctx, c.machineId);
@@ -898,7 +968,14 @@ async function pickStake(ctx, c, st) {
   }
   const chain = { big: ['big', 'bold', 'safe', 'min'], bold: ['bold', 'safe', 'min'], safe: ['safe', 'min'] }[want];
   const stake = chain.find((k) => fits[k]);
-  if (stake !== want) why += `; ${want.toUpperCase()} not taken (${keep[want] === false ? 'the machine keeps its digit' : 'pocket under its multiple'}), ${stake.toUpperCase()} instead`;
+  if (stake !== want) {
+    const amount = c.presets?.[want];
+    const cause = keep[want] === false ? 'the machine keeps its digit'
+      : amount == null || amount < (c.min ?? 0) ? 'the preset is under the machine minimum now'
+        : !keepsMinAfter(st, amount) ? 'it would leave the pocket under one minimum bet'
+          : 'pocket under its multiple';
+    why += `; ${want.toUpperCase()} not taken (${cause}), ${stake.toUpperCase()} instead`;
+  }
   if (stake === 'min') why += '; no preset digit here, so the stake walks down to the minimum';
   return { stake, why };
 }
@@ -945,8 +1022,9 @@ async function readState(ctx) {
 function noteNight(ctx, st, ev = st?.event ?? null) {
   if (!st || st.over || st.night == null) return;
   const acc = (ctx.nights ??= new Map());
-  const a = acc.get(st.night) ?? { quota: null, bank: null, met: false, paid: false, overshoot: null, reached: -1, card: null, charms: null, events: new Set() };
-  if (st.quotaDue > 0) a.quota = st.quotaDue;
+  const a = acc.get(st.night) ?? { quota: null, baseQuota: null, titheAdded: null, bank: null, met: false, paid: false, overshoot: null, reached: -1, card: null, charms: null, events: new Set() };
+  if (st.quotaDue > 0) a.quota = st.quotaDue;          // the final due (the last read)
+  if (st.quotaSplit?.base != null) { a.baseQuota = st.quotaSplit.base; a.titheAdded = st.quotaSplit.titheAdded; }
   if (st.bank != null) a.bank = st.bank;
   if (st.quotaDue > 0 && st.quotaLeft <= 0) a.met = true;
   if (st.nightDone) a.paid = true;
@@ -1058,7 +1136,8 @@ async function pawnLook(ctx, rec) {
 /**
  * Page JS: the Mola shop pick. A shelf is bought when it is clean (not cursed, no swap), costs at most 30 % of the pocket, and
  * either completes an archetype set (the set switches on with it) or shares an archetype with a held charm. A set completion
- * comes first, then the cheapest. Resolves to { slot, charmId, price, why } (slot null with the reason when nothing qualifies).
+ * comes first, then the cheapest. With no charm held, any clean affordable shelf qualifies: the best by rarity, then price.
+ * Resolves to { slot, charmId, price, why } (slot null with the reason when nothing qualifies).
  */
 const SHOP_PICK_JS = `(async () => {
   const r = window.jackid.app.run, p = r.pawn, me = r.selfId;
@@ -1071,6 +1150,10 @@ const SHOP_PICK_JS = `(async () => {
   const held = r.charms().map((c) => ({ id: c.id }));
   const heldArch = new Set(held.flatMap((h) => (tagsOf(h.id) ?? []).filter((t) => ENGINE_ARCHETYPES.includes(t))));
   const setsNow = activeSets(held, tagsOf).length;
+  // No charm held yet: the best affordable shelf (rarity first, then the price, the stronger charm of a rarity), not only a
+  // set or an archetype match (nothing is held to match yet). Otherwise: a set completion first, then the cheapest match.
+  const first = held.length === 0;
+  const RANK = { common: 1, uncommon: 2, rare: 3, legendary: 4 };
   let best = null;
   p.stock(me).forEach((s, i) => {
     if (!s || s.cursed || p.needsSwap(me, i) || s.price <= 0 || s.price > wallet * 0.3) return;
@@ -1078,12 +1161,17 @@ const SHOP_PICK_JS = `(async () => {
     const arch = tags.filter((t) => ENGINE_ARCHETYPES.includes(t));
     const completes = activeSets([...held, { id: s.charmId }], tagsOf).length > setsNow;
     const matches = arch.some((t) => heldArch.has(t));
-    if (!completes && !matches) return;
-    const cand = { slot: i + 1, charmId: s.charmId, price: s.price, completes, arch: arch[0] ?? null };
-    if (!best || (cand.completes && !best.completes) || (cand.completes === best.completes && cand.price < best.price)) best = cand;
+    if (!first && !completes && !matches) return;
+    const rank = RANK[charmDef(s.charmId)?.rarity] ?? 0;
+    const cand = { slot: i + 1, charmId: s.charmId, price: s.price, completes, arch: arch[0] ?? null, rank };
+    const better = !best || (first
+      ? (cand.rank > best.rank || (cand.rank === best.rank && cand.price > best.price))
+      : ((cand.completes && !best.completes) || (cand.completes === best.completes && cand.price < best.price)));
+    if (better) best = cand;
   });
-  if (!best) return { slot: null, why: 'no affordable charm matches a held archetype or completes a set' };
-  best.why = best.completes ? 'completes the ' + best.arch + ' set' : 'shares the ' + best.arch + ' archetype with a held charm';
+  if (!best) return { slot: null, why: first ? 'no affordable charm on the shelves (30 % of the pocket)' : 'no affordable charm matches a held archetype or completes a set' };
+  if (first) best.why = 'no charm held yet: the best affordable one (' + (charmDef(best.charmId)?.rarity ?? '?') + ', ' + best.price + ' coins)';
+  else best.why = best.completes ? 'completes the ' + best.arch + ' set' : 'shares the ' + best.arch + ' archetype with a held charm';
   return best;
 })()`;
 
@@ -1121,19 +1209,25 @@ function watchRec(ctx, st, ev) {
   noteNight(ctx, st, ev);
   ctx.run.steps.push({
     step: `watch ${st.night}-${st.watch}`, ok: true, auto: true, night: st.night, watch: st.watch, pocket: st.pocket,
-    bank: st.bank, quotaDue: st.quotaDue, quotaLeft: st.quotaLeft, tithe: t, houseCut: st.houseCut ?? null, event: ev?.id ?? null,
+    bank: st.bank, withdrawable: st.withdrawable ?? null, sealCoins: st.sealCoins ?? null, minBet: st.cheapestMin ?? st.minBet ?? null,
+    quotaDue: st.quotaDue, quotaLeft: st.quotaLeft, tithe: t, houseCut: st.houseCut ?? null, event: ev?.id ?? null,
     overshoot: o,
   });
-  log(`watch N${st.night} W${st.watch}: pocket ${st.pocket}, bank ${st.bank}, quota due ${st.quotaDue} left ${st.quotaLeft}, overshoot ${over}, tithe ${tithe ?? '-'}, house cut ${st.houseCut ?? '-'}, event ${evText(ev)}`);
+  const sealed = st.sealCoins > 0 ? `, sealed ${st.sealCoins}` : '';
+  log(`watch N${st.night} W${st.watch}: pocket ${st.pocket}, bank ${st.bank}${sealed}, quota due ${st.quotaDue} left ${st.quotaLeft}, overshoot ${over}, tithe ${tithe ?? '-'}, house cut ${st.houseCut ?? '-'}, event ${evText(ev)}`);
 }
 
 /**
  * `auto:night`: a sensible bot plays one Night. Per Watch: shop the cheapest affordable shelf in the intermission, then
  * lever (starts the Watch). In play: bets rotate over the open machines (Hot, spotlight, least Tilt) until the Watch's pulls
- * are down to BELL_KEEP_PULLS or the pocket is under the cheapest bet. Then the bot deposits only what it needs, into the
+ * are down to BELL_KEEP_PULLS or the pocket cannot cover a bet and keep one minimum bet. Then the bot deposits only what it needs, into the
  * pocket above the float: the Dawn gap while quota is owed; once the quota is met, the gap to the next OVERSHOOT tier when the
- * pocket allows it (else nothing, and the bot keeps playing). Then the Bell (unused pulls keep the rebate). A broke pocket
- * withdraws only the top-up to the float plus one bet, not the whole bank (no withdraw and redeposit churn).
+ * pocket allows it (else nothing, and the bot keeps playing). Then the Bell (unused pulls keep the rebate). The pocket never
+ * goes below the float (botFloor: BOT_FLOAT_MIN_BETS = 3 cheapest minimum bets, Night Card multipliers included). A bet is taken
+ * only when the pocket left after it still holds one cheapest minimum bet (keepsMinAfter). A pocket under two of them (canBet)
+ * withdraws to that float before it bets (not the whole bank: no withdraw and redeposit churn). A sealed bank (the Overshoot
+ * Seal: withdrawable 0) is not broken, so the Watch then rings its Bell with the pocket still at a minimum bet or more.
+ * A call that starts on a paid Night (OPEN THE FLOOR waiting) opens the next Night and plays it.
  * Each Watch's state (pocket, bank, quota, OVERSHOOT, floor event) is printed once, at its Bell. `stopAt` (`auto:night:event`
  * or `auto:night:quota`) stops at the first Watch with a floor event, or the first Watch whose deposit meets the quota (before
  * its Bell), so the event or the OVERSHOOT line can be shot; a later auto:night carries on.
@@ -1148,11 +1242,16 @@ async function autoNight(ctx, rec, stopAt = null) {
   const bot = (ctx.bot ??= {
     betsTried: new Map(), handled: new Set(), banked: new Set(), logged: new Set(), evStop: new Set(),
     played: new Map(),   // Watch key -> instances bet on in it
-    fails: new Map(),    // instance -> bets in a row that spent no pull
+    fails: new Map(),    // instance -> bets in a row that spent no pull (cleared at each Night: a machine's limits change with the Night)
+    failNight: null,     // the Night `fails` was last cleared for
     last: new Map(), seq: 0,   // instance -> the bet sequence number of its last bet (rotation ties)
     metStop: new Set(),  // Nights whose quota-met stop has been taken (auto:night:quota)
+    wdRefused: new Set(),  // Watches whose withdraw to the float was refused (not retried in that Watch)
   });
-  const n0 = (await readState(ctx)).night;
+  // A call that starts on a paid Night (OPEN THE FLOOR waiting, the Dawn offer may still be open) opens the next Night and plays
+  // it: its own rollover ends the call. Any other start plays the Night it is in (its paid state, then the rollover, ends it).
+  const s0 = await readState(ctx);
+  const n0 = s0.nightDone ? s0.night + 1 : s0.night;
   const count = { deposits: 0, shops: 0, bets: 0, bells: 0 };
   const events = [];                    // ids of the floor events of the Watches this call reached
   let leverFails = 0, loops = 0, end = null, st = null, offer = null;   // offer: the Dawn offer the bot saw (summarizeOffer)
@@ -1165,15 +1264,16 @@ async function autoNight(ctx, rec, stopAt = null) {
     if (ev) events.push(ev.id);
   };
   /**
-   * This Watch's deposit, once per Watch after the bets: only what is needed, never into the float (the terminal's floor).
-   * While quota is owed: the Dawn gap (the coins the projection still lacks). Once met: the gap to the next OVERSHOOT tier
-   * (run.overshootView), only when the pocket above the float covers it. A refusal retries at half.
+   * This Watch's deposit, once per Watch after the bets: only what is needed, never into the float (botFloor, 3 x the cheapest
+   * minimum bet, or the game's own float when higher). While quota is owed: the Dawn gap (the coins the projection still
+   * lacks). Once met: the gap to the next OVERSHOOT tier (run.overshootView), only when the pocket above the float covers it.
+   * A refusal retries at half.
    */
   const depositFor = async () => {
     const s = await readState(ctx);
     if (!(s.pocket > 0)) return;
     const d = await evalJson(ctx.cdp, DAWN_JS);
-    const floor = d?.float ?? 0;
+    const floor = botFloor(s, d?.float ?? 0);
     const room = Math.max(0, s.pocket - floor);
     let need, why;
     if (s.quotaLeft > 0) {
@@ -1201,23 +1301,30 @@ async function autoNight(ctx, rec, stopAt = null) {
     st = await readState(ctx);
     if (st.over) { end = 'run over'; break; }
     if (st.topside) { end = 'topside'; break; }
-    if (st.night !== n0) { end = 'night paid'; break; }
+    if (st.night > n0) { end = 'night paid'; break; }   // the rollover past the Night this call plays (n0)
     const key = `${st.night}:${st.watch}`;
+    if (bot.failNight !== st.night) { bot.fails.clear(); bot.failNight = st.night; }   // refusals of one Night do not bar a machine in the next
 
     if (st.starterOffer) {
       // The Starter Draft holds the Bell until a card is taken (its timer is slow in a headless run): the bot takes one now.
       const p = await evalJson(ctx.cdp, STARTER_PICK_JS);
-      if (p.ok) decide(ctx, 'starter', `take ${p.id}: ${p.why}`);
-      else await sleep(300);
+      if (p?.ok) decide(ctx, 'starter', `take ${p.id}: ${p.why}`);
+      else {
+        // A refused pick is logged once (the draft stays open until a pick is accepted or its timer runs out).
+        if (p?.id && !bot.starterRefused) { bot.starterRefused = true; decide(ctx, 'starter', `pick ${p.id} refused by the run (${p.why}); retrying`); }
+        await sleep(300);
+      }
       continue;
     }
 
-    if (st.pocket < st.minBet && st.withdrawable > 0) {
-      // Top up only: the float plus one bet, not the whole bank (the bank is what the quota counts, so a full withdraw churns).
+    if (!canBet(st) && st.withdrawable > 0 && !bot.wdRefused.has(key)) {
+      // Withdraw to the float, before any bet: the pocket is under two cheapest minimum bets (one to bet, one to keep). Not the
+      // whole bank (the bank is what the quota counts, so a full withdraw and redeposit churns). A refused withdraw is not retried
+      // in this Watch. A sealed bank reads withdrawable 0 and is left alone.
       const d = await evalJson(ctx.cdp, DAWN_JS);
-      const amount = Math.min(st.withdrawable, Math.max(st.minBet - st.pocket, (d?.float ?? 0) + st.minBet - st.pocket));
+      const amount = Math.min(st.withdrawable, botFloor(st, d?.float ?? 0) - st.pocket);
       const r = await exec(ctx, auto({ kind: 'withdraw', amount, text: `bank:withdraw:${amount}` }));
-      if (!r.ok) await sleep(300);
+      if (!r.ok) { bot.wdRefused.add(key); await sleep(300); }
       continue;
     }
     // The first Watch of a Night starts with the intro (no intermission before it): its deposit is taken in the Bell or play.
@@ -1276,18 +1383,25 @@ async function autoNight(ctx, rec, stopAt = null) {
     }
     if (st.phase === 'play' || st.phase === 'lastCall') {
       const tried = bot.betsTried.get(key) ?? 0;
-      // Spend the Watch's pulls down to BELL_KEEP_PULLS (or until the pocket is under the cheapest bet), then bank and ring.
-      if (tried < AUTO_BETS_MAX && (st.pulls ?? Infinity) > BELL_KEEP_PULLS && st.pocket >= st.minBet) {
+      // Spend the Watch's pulls down to BELL_KEEP_PULLS (or until the pocket cannot cover a bet and keep one minimum bet: canBet),
+      // then bank and ring.
+      if (tried < AUTO_BETS_MAX && (st.pulls ?? Infinity) > BELL_KEEP_PULLS && canBet(st)) {
         bot.betsTried.set(key, tried + 1);
-        const pick = pickBet(await evalJson(ctx.cdp, BOT_CANDS_JS), bot, key);
-        if (!pick) { bot.betsTried.set(key, AUTO_BETS_MAX); decide(ctx, 'bet', 'no open machine to play: ring the Bell'); continue; }
+        const cands = (await evalJson(ctx.cdp, BOT_CANDS_JS)) ?? [];
+        const pick = pickBet(cands, bot, key, st);
+        if (!pick) {
+          bot.betsTried.set(key, AUTO_BETS_MAX);
+          const affordable = cands.filter((c) => keepsMinAfter(st, c.min ?? minNow(st))).length;
+          decide(ctx, 'bet', `no bet: ${cands.length} open machine(s), ${affordable} the pocket can bet on (a bet keeps one minimum bet, ${minNow(st)} coins): ring the Bell`);
+          continue;
+        }
         const { c } = pick;
         const stake = await pickStake(ctx, c, st);
         if (!bot.played.has(key)) bot.played.set(key, new Set());
         bot.played.get(key).add(c.instance);
         bot.last.set(c.instance, ++bot.seq);
         decide(ctx, `bet ${c.machineId} (${stake.stake.toUpperCase()})`, `${pick.why}; stake ${stake.stake.toUpperCase()}: ${stake.why}`);
-        const r = await exec(ctx, auto({ kind: 'bet', instance: c.instance, machine: c.machineId, stake: stake.stake, stakeWhy: stake.why, night: st.night, text: `bot:bet:${c.machineId}` }));
+        const r = await exec(ctx, auto({ kind: 'bet', instance: c.instance, machine: c.machineId, stake: stake.stake, stakeWhy: stake.why, minBet: c.min ?? null, night: st.night, text: `bot:bet:${c.machineId}` }));
         if (r.ok) { count.bets++; bot.fails.set(c.instance, 0); } else bot.fails.set(c.instance, (bot.fails.get(c.instance) ?? 0) + 1);
         continue;
       }
@@ -1334,12 +1448,22 @@ async function botRound(ctx, s, rec) {
   await pressKey(cdp, TIP_KEY, 60);
   await sleep(300);
   await setStake(cdp, s.stake);
+  if (s.stake === 'min' && s.minBet > 0) {
+    // The walk-down stops at the ladder's bottom (the machine's own minBet). A Night Card floor (betLimits.min, HIGH TABLE) can lift
+    // the run's minimum above it, and the run refuses a bet under that minimum ('limit'). Step up with KeyX to the minimum, as a player does.
+    for (let i = 0; i < 4; i++) {
+      const cur = await evalJson(cdp, instJs(s.instance, '(m.bet ?? null)'));
+      if (cur == null || cur >= s.minBet) break;
+      await pressKey(cdp, 'KeyX', DEFAULT_HOLD_MS);
+      await sleep(300);
+    }
+  }
   rec.stake = s.stake;
   rec.stakeWhy = s.stakeWhy;
-  // The stake the machine holds now (MachineBase.bet) against the one asked for: a preset's amount, or the minimum.
+  // The stake the machine holds now (MachineBase.bet) against the one asked for: a preset's amount, or the minimum (betLimits.min).
   const set = await evalJson(cdp, instJs(s.instance, `{ bet: m.bet ?? null, minBet: m.def?.minBet ?? null, presets: typeof m.stakePresets === 'function' ? m.stakePresets() : null }`));
   rec.bet = set?.bet ?? null;
-  rec.stakeOk = set ? (s.stake === 'min' ? set.bet === set.minBet : set.bet === set.presets?.[s.stake]) : null;
+  rec.stakeOk = set ? (s.stake === 'min' ? set.bet === (s.minBet ?? set.minBet) : set.bet === set.presets?.[s.stake]) : null;
   if (s.machine === 'coinflip') {
     await pressKey(cdp, 'Space', 120);
     await waitRoundIdle(cdp, s.instance, { start: true });   // the flip is in the air until its present ends (see waitRoundIdle)
@@ -1580,9 +1704,11 @@ async function driveRun(ctx, steps) {
 
 /**
  * The per-Night summary (`run.nights`, one entry per Night the run reached), from the state reads (noteNight) and the bot's
- * bet records: quota (the Night's due), bank (the last read), met (the quota met at some read), paid (the Night was paid),
- * overshoot (the highest OVERSHOOT tier reached), card (the Night Card picked for it), events (the floor events read in its
- * Watches), charms (the owned charms at its last read) and stakes (the bets that spent a pull, by stake: safe, bold, big, min).
+ * bet records: quota (the Night's final due, the last read), baseQuota (the quota before the Watch tithes: no tithes, no rescue
+ * loans) and titheAdded (the coins the missed Watch tithes added tonight), bank (the last read), met (the quota met at some
+ * read), paid (the Night was paid), overshoot (the highest OVERSHOOT tier reached), card (the Night Card picked for it), events
+ * (the floor events read in its Watches), charms (the owned charms at its last read) and stakes (the bets that spent a pull, by
+ * stake: safe, bold, big, min).
  */
 function nightSummaries(ctx) {
   const acc = ctx.nights ?? new Map();
@@ -1590,14 +1716,18 @@ function nightSummaries(ctx) {
     const a = acc.get(night);
     const stakes = {};
     for (const r of ctx.run.steps) if (r.night === night && r.ok && r.stake) stakes[r.stake] = (stakes[r.stake] ?? 0) + 1;
-    return { night, quota: a.quota, bank: a.bank, met: a.met, paid: a.paid, overshoot: a.overshoot, card: a.card, events: [...a.events], charms: a.charms ?? [], stakes };
+    return {
+      night, quota: a.quota, baseQuota: a.baseQuota, titheAdded: a.titheAdded, bank: a.bank, met: a.met, paid: a.paid,
+      overshoot: a.overshoot, card: a.card, events: [...a.events], charms: a.charms ?? [], stakes,
+    };
   });
 }
 
 /** One stderr line per Night of nightSummaries. */
 function nightLine(n) {
   const stakes = Object.entries(n.stakes).map(([k, v]) => `${k} ${v}`).join(', ') || 'none';
-  return `night ${n.night}: quota ${n.quota ?? '-'}, bank ${n.bank ?? '-'} (${n.met ? 'met' : 'not met'}), ${n.paid ? 'paid' : 'not paid'}, `
+  const split = n.baseQuota == null ? '' : ` (base ${n.baseQuota}, tithes +${n.titheAdded ?? 0})`;
+  return `night ${n.night}: quota ${n.quota ?? '-'}${split}, bank ${n.bank ?? '-'} (${n.met ? 'met' : 'not met'}), ${n.paid ? 'paid' : 'not paid'}, `
     + `overshoot ${n.overshoot ?? 'none'}, card ${n.card ?? 'none'}, events ${n.events.join(', ') || 'none'}, `
     + `charms ${n.charms.join(', ') || 'none'}, stakes ${stakes}`;
 }
@@ -1774,9 +1904,10 @@ export async function runBench(opts = {}) {
       if (startRec) res.run.steps.push({ step: startSpec.text, ok: true, start: true, kit: startRec.kit, stake: startRec.stake, daily: startRec.daily, gated: startRec.gated });
     }
 
+    const shotNames = new Set();   // names written in this run: a reused name becomes -2, -3 (uniqueShotPath), never overwritten
     const shoot = async (name) => {
       const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
-      const path = join(shotsDir, name);
+      const path = uniqueShotPath(shotsDir, name, shotNames);
       writeFileSync(path, Buffer.from(data, 'base64'));
       res.shots.push(path);
       return path;

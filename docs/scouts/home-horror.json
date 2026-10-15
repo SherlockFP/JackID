@@ -1,0 +1,249 @@
+{
+ "area": "Horror director (src/game/horror), cutscene runtime (src/core/cutscene), story cutscene data (src/game/story/cutscenes), world actors (src/world/actors) and audio (src/core/audio). Read-only map for the Home layer (elevator up to apartment, phone messages, knock, peephole, chain lock, mafia death scene). Paths are absolute under C:/Users/Admin/Documents/JackID. Working tree is read as-is (src/game/run.ts is modified in the working tree per the gitStatus snapshot, so its line numbers are current).",
+ "files": [
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/horror/director.ts",
+   "role": "HorrorDirector: dread-driven flicker (237-244), blackout (246-261), whisper (269-277), PA (148-158), jump stinger (263-267), patron shift-when-unseen (301-358, dormant), Collector Dawn walk (175-187, 366-384), tickCollector clink (386-398). Tick entry update() 110-138; createHorror 425-427."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/horror/dread.ts",
+   "role": "Pure DreadMeter. EVENT_DREAD kinds and points (11-17), night base (21, 39-42), quota pressure (45-48), tiers (54-60), slew 20/s (83-91), shown value 0..100 (94)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/horror/horror.strings.ts",
+   "role": "Player text keys: PA lines horror.pa.0-7 (10-17), whispers horror.whisper.0-11 (18-29), speaker labels (8-9). EN and TR."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/world/actors/observe.ts",
+   "role": "observed(viewers,p,r): within OBSERVE_RANGE 6 m (line 9) or in camera frustum (17-24, 27-34). nearestViewer (37-44)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/world/actors/actorDirector.ts",
+   "role": "ActorDirectorImpl and LiveActor: spawn with dressing style (65-82; only collector/porcelain/ghost/shadow/plain, 66-69), walkPath over A* (97-109), play (112-119), lookAt (121-125), sitAt (133-144), onStep/stepEvery footstep hook (37-38, 176-180). Owned by horror."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/world/actors/nav.ts",
+   "role": "A* over the casino patrol graph (findPath 58-104, doorway blocked when zone closed 61/81, NAV_POINTS 107). Casino-only; no apartment graph."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/cutscene/types.ts",
+   "role": "Frozen cutscene data contract: CutTarget (28-33), CamKey/CamPath (36-53), ActorSpec kind mannequin only (64-72), ActorCue with moveTo/turnTo/clip/look (73-81), AudioCue sfx/music/stinger (96-103), FxCue (107-118), LightCue (122-131), HookCue (133-139), GateCue choice/input/timeout (148-153), CutsceneDef (159-175), CutscenePlayer API (196-213), ActorDirector interface marked owned by horror (215-228)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/cutscene/player.ts",
+   "role": "Timeline runner: compile tracks to one cue list (70-90), Run lifecycle start/begin/seek/update/advance/fire (99-285), gates (289-330), skip rules (51-55, 330-409), createCutscenePlayer with registerHook (491) and play (495). Actors come from CutActors (139), not horror ActorDirector."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/cutscene/actors.ts",
+   "role": "CutActors: spawn declared mannequins (57-71), cue application incl. moveTo lerp and turnTo (77-126), per-frame move/turn (138-158). Straight-line lerp, no nav and no collision."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/cutscene/camera.ts",
+   "role": "CutCamera: CamKey/CamPath sampling, Catmull-Rom paths, seeded handheld (38-80, 204, 213)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/cutscene/effects.ts",
+   "role": "Cue appliers: applyAudio (26-59, sfx with at/loop/stopAfter), applyFx (70-104: fade, shake, flash, glitch), applyLight (107-120, via app.world.lights), showSubtitle (134-140, blips in the cue voice)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/cutscene/targets.ts",
+   "role": "resolveTarget (18-42): literal point, actor bone, named anchor via app.world.anchor (21-25), player eye (27-33), machine anchor (34-40). Missing target warns once and resolves to the origin (63-66)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/story/index.ts",
+   "role": "Story runtime: playStory (48-55, host-only online, sets tail), holdForStory (58-60), bus-to-scene triggers (98-155): quota_fail on run:end fell (109-113), dread:change stingers (118-121), audit at Night 7 Watch 2 (136-142), intro (149-155); story hooks story.pick/unlock/keyTurned (104-106)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/story/cutscenes/quota_fail.cutscene.ts",
+   "role": "The existing loss scene (duration 12, trapdoor camera 10, trapdoor sfx 23, shake 29, fade 31). It has no hook track, so nothing opens the trapdoor."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/story/cutscenes/quota_explain.cutscene.ts",
+   "role": "Collector as a declared mannequin actor (actors 9-11), actor cues turnTo local player (18-21), camera anchored on the collector."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/story/cutscenes/intro.cutscene.ts",
+   "role": "Waking scene; chain to quota_explain (9); letterbox and fadeIn (8)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/story/cutscenes/ending_elevator.cutscene.ts",
+   "role": "Elevator ride cutscene: camera on elevator.door (11-14), elevator and motor sfx (26-27), music elevator state (25), light levels (34). Closest precedent for an elevator up to home."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/story/cutscenes/descend.cutscene.ts",
+   "role": "Choice gate with a 3 s timeout (21-22) plus hook story.pick (23). Precedent for branching on a player choice."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/ingame/session.ts",
+   "role": "Horror wiring: ActorDirector and createHorror with deps (234-247), horrorState from run (248-266), bus wiring shift:phase lastCall then pa and collection then startDawnWalk (267-271), quota:met stop (272), event:start to notify for EVENT_DREAD ids (273-274), horror.update in fixedUpdate (408), dispose (447)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/run.ts",
+   "role": "Shift phases: enter emits shift:phase and run:window (1808-1816), Dawn window is phase collection (1065), COLLECTION_SEC 12 (234, 1937), dawn() settles (1944), fall() on a missed quota (2017-2023), endRun(result, ending) emits run:end (2044-2070), takeRun precedent endRun fell with ending taken (2574-2578), dread() 0..1 (1375-1378), addDread (1379-1381), dreadPts 0..100 (775)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/inGameState.ts",
+   "role": "endRun UI path: FALL_HOLD_S 1.6 (37), END_HOLD_S 0.4 (40), results wait on holdForStory (289-298)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/events.ts",
+   "role": "Bus event types: run:window (68), run:end (73), shift:phase (74), quota:met (76), dread:change {value:number} with no unit documented (79)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/audio/sfx.ts",
+   "role": "Recipes: def() (61), TRIM loudness (38-58), snap/thump helpers (89, 93), gunShot (290-298), door (819-824), doorCreak (825), doorSlam (829), footsteps (837-863), phoneRing (760-768), phonePickup (770), creak (736), trapdoor (792), elevator (800-806), unlock (595), ratchet (214), lever (202), click (152), LONG list (948-950), buildAmbience switch with default pit (~1040-1090). No knock, chain, bed, light-switch or apartment recipe or bed."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/audio/audio.ts",
+   "role": "Engine: play lookup (352-362; unknown name warns once and returns null), register custom recipe (474), setListener (488), setMuffle (498)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/audio/music/stingers.ts",
+   "role": "Stingers: jumpscare (96), door (123-129, a heavy-door stinger), curse, collector, blackout, discovery."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/audio/synth.ts",
+   "role": "Kit (SynthKit) osc/noise/chord/sample (202-271), fm (285), SPEAKERS table (362-369), profileFor derives a stable voice for any unknown speaker id (372-376)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/audio/blip.ts",
+   "role": "Typewriter blip voices: BLIP_VOICES (31-45, house, collector, mira, mannequin...), blipVoiceFor derives one for any other id (47)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/audio/types.ts",
+   "role": "Audio contracts: SfxName (17-31), PlayOpts with pos/vol/pitch/loop/priority/param (41-49), StingerId (70-72), MusicStateId incl. silent (66-68), SpeakOpts (112-123), VoiceApi (124-128), AmbienceId (130), AudioEngine (132-161)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/kit/types.ts",
+   "role": "Mannequin: MANNEQUIN_CLIPS incl. Death01 (32) and Pistol_Shoot (35), MannequinOpts style/mask/clip/stepFps (49-60), MannequinActor (74+)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/kit/mannequin.ts",
+   "role": "Look presets: plain, porcelain, ghost, shadow, collector (header line 8)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/kit/props.ts",
+   "role": "Prop ids (header 6-14): masks incl. mask_collector and mask_porcelain, held incl. phone, pistol, revolver, shotgun, key, envelope. prop() dispatch (408-414)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/world/props/decor.ts",
+   "role": "ManagementDoor: hinged leaf door, setOpen(open, dur=1.4) (133-156), buildManagementDoor (157-171). Closest existing door to reuse for the apartment front door."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/world/props/elevator.ts",
+   "role": "Lift prop: doors(open) (143), ride(dir) moves the car y to 6 (up) or -30 (down) (158-164). No callers of ride() in src."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/world/props/trapdoor.ts",
+   "role": "Hero trapdoor plate, 100 deg open, 30 m shaft, open/close API (header 1-10). No callers of open() in src."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/world/level.ts",
+   "role": "Prop placement: elevator at (-4,0,-30) (274-276), managementDoor (299-302), trapdoor (242-244), named anchors incl. elevator.door, elevator, trapdoor, mgmt.door (460-467), props map (478-486)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/world/types.ts",
+   "role": "WorldLights setLevel/flicker/pulse/strobe/setDread (86-97), WorldLightTarget (84), TrapdoorProp (53-58), ElevatorProp (59-65), world.prop accessor (154)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/world/sys/lightPool.ts",
+   "role": "setDread(v) sets dreadTarget = clamp01(v) (422). Receives dread:change via world.ts."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/world/world.ts",
+   "role": "Listeners: phone:ring sets ringing (170), dread:change forwards raw value into lightPool.setDread (172)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/hotline.ts",
+   "role": "THE HOTLINE, the existing in-game phone: CALL_CHANCE 0.45 (44), RING_SECONDS 20 (45), ANSWER_SECONDS 15 (46), OFFER_COUNT 3 (50), HOLLOW_CALL_CHANCE (94), seeded per Watch via hashSeed (header), createHotline (452), deals call run.addDread (280-417)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/menu/hud.ts",
+   "role": "HUD phone: on phone:ring shows the phone and plays phoneRing (432)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/hollow/rules.ts",
+   "role": "Existing knock trigger: 3 knocks within 4 s on a cracked plate, during Last Call from Night 2 (header 5; knock() 53-60)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/data/buffs.ts",
+   "role": "Blackout Night event: the ELEKTRİK KESİLDİ / POWER FAILURE announce string is here (105-108), not in story/cutscenes. Its effect is dread +10 and lights out."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/math.ts",
+   "role": "clamp01 (13)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/main.ts",
+   "role": "import.meta.glob('./**/*.cutscene.ts') auto-registers every cutscene def (51)."
+  }
+ ],
+ "apis": [
+  "C:/Users/Admin/Documents/JackID/src/game/horror/director.ts:110 HorrorDirector.update(dt: number, s: HorrorState, realDt = dt): void. Per sim frame, drives dread, scares, PA, patrons, Collector and actors.",
+  "C:/Users/Admin/Documents/JackID/src/game/horror/director.ts:141 HorrorDirector.notify(kind: DreadEventKind): void. Bumps the dread meter (halved in Calm) and emits horror:event.",
+  "C:/Users/Admin/Documents/JackID/src/game/horror/director.ts:148 HorrorDirector.pa(index?: number): void. House PA line with subtitle and voice.",
+  "C:/Users/Admin/Documents/JackID/src/game/horror/director.ts:161 HorrorDirector.addPatron(actor: ActorHandle, zone: string, seated?: boolean): void. Registers a mannequin for the shift-when-unseen rule. Has NO callers in src.",
+  "C:/Users/Admin/Documents/JackID/src/game/horror/director.ts:175 startDawnWalk(s: HorrorState) / stopDawnWalk() at 183.",
+  "C:/Users/Admin/Documents/JackID/src/game/horror/dread.ts:78 DreadMeter.bump(kind, mul=1); update(dt, i: DreadInput) at 83; set(value, eventDread) at 102; tier getter at 97.",
+  "C:/Users/Admin/Documents/JackID/src/game/horror/dread.ts:15 EVENT_DREAD: Record<DreadEventKind, number> (blackout 10, fullMoon 15, witchingWatch 10, missedCall 5, cursedCandy 10, breathing 10, shrineCurse 15, flicker 0). Add knock/footsteps kinds here.",
+  "C:/Users/Admin/Documents/JackID/src/world/actors/observe.ts:27 observed(viewers: readonly Viewer[], p: THREE.Vector3, r=0.8): boolean (within 6 m, OBSERVE_RANGE line 9, or in frustum). inFrustum(cam, p, r) at 17; nearestViewer at 37.",
+  "C:/Users/Admin/Documents/JackID/src/world/actors/actorDirector.ts:65 ActorDirectorImpl.spawn(id, at: V3, o?: {dressing?, frozen?}): Promise<ActorHandle|null>. walkPath(actor, to, {speed}) at 97; play(actor, clip, {loop}) at 112; lookAt at 121; sitAt at 133. LiveActor.onStep and stepEvery at 37-38.",
+  "C:/Users/Admin/Documents/JackID/src/world/actors/nav.ts:58 findPath(from: Vec2, to: Vec2, {closedZone}): Vec2[] | null. A* over casino NAV graph only.",
+  "C:/Users/Admin/Documents/JackID/src/core/cutscene/types.ts:177 CutscenePlayOpts {startAt?, seed?, vars?, skippable?, actors?: Record<string, Partial<ActorSpec>>}. CutscenePlayer.play(id, o) at 204.",
+  "C:/Users/Admin/Documents/JackID/src/core/cutscene/types.ts:201 CutscenePlayer.registerHook(name, fn: (args, ctx: {id,t,seeking,vars}) => void|Promise<void>): Unsub. Only cutscene-to-game bridge. Idempotent, honour ctx.seeking (133-139). Callers: story/index.ts:104-106, core/ui/manga/index.ts:66-78.",
+  "C:/Users/Admin/Documents/JackID/src/core/cutscene/types.ts:159 CutsceneDef {id, kind?, duration, skippable? (default true, line 163), letterbox?, hideHud?, lockInput? (166), actors? (mannequin only, 64-72), tracks, applyOnSkip? (170), chain? (172), fadeIn?, fadeOut?}.",
+  "C:/Users/Admin/Documents/JackID/src/core/cutscene/types.ts:73 ActorCue {t, clip?, fade?, loop?, speed?, moveTo?: {pos, dur, ease?, faceMove?} (76), turnTo?: {target|rotY, dur?} (77), look? (78), visible?, tint?, scale?, stepFps?}.",
+  "C:/Users/Admin/Documents/JackID/src/core/cutscene/types.ts:97 AudioCue {do:'sfx', name, vol?, pitch?, at?: CutTarget, loop?, stopAfter?} | {do:'music', state, fade?, intensity?, dread?} | {do:'stinger', id} | {do:'ambience', id} | {do:'muffle', amount, ramp?}.",
+  "C:/Users/Admin/Documents/JackID/src/core/cutscene/types.ts:107 FxCue {do: fade | letterbox | shake | flash | tint | chroma | zoom | slowmo | hitstop | glitch}.",
+  "C:/Users/Admin/Documents/JackID/src/core/cutscene/types.ts:122 LightCue {target: all | zone | {anchor} | {machine}, level?, color?, flicker?, dur?, restore?}.",
+  "C:/Users/Admin/Documents/JackID/src/core/cutscene/types.ts:148 GateCue {t, id, until: timeout|input|choice|hook, timeout?, options?}. Gate value lands in ctx.vars[id]. Online, host-only (player.ts:289-302).",
+  "C:/Users/Admin/Documents/JackID/src/core/cutscene/types.ts:28 CutTarget = V3 | {actor, bone?, offset?} | {anchor, offset?} | {player:'local'|PlayerId, offset?} | {machine, anchor?, offset?}.",
+  "C:/Users/Admin/Documents/JackID/src/game/story/index.ts:48 playStory(id, o?): Promise<CutsceneResult>; holdForStory(): Promise<void> at 58 (results hand-off waits on this, inGameState.ts:296).",
+  "C:/Users/Admin/Documents/JackID/src/game/run.ts:2044 private endRun(result: 'escaped'|'fell'|'quit'|..., ending?: string). Emits run:end (2070). Public precedent: takeRun() at 2574 calls endRun('fell','taken').",
+  "C:/Users/Admin/Documents/JackID/src/core/audio/types.ts:136 AudioEngine.play(name: SfxName|string, o?: PlayOpts): Voice|null. PlayOpts {pos?: Vector3|Object3D (positional), vol, pitch, bus, loop, priority, param} (41-49). register(name, recipe, meta) at 138; coins(n) 140; ambience(id, fade) 141; setMuffle 156; voice.speak 153 region (VoiceApi 124-128).",
+  "C:/Users/Admin/Documents/JackID/src/core/audio/types.ts:66 MusicStateId includes 'silent' (67), 'dread', 'tense', 'elevator', 'defeat'. MusicApi.setState/setDread/stinger at 89/94/97.",
+  "C:/Users/Admin/Documents/JackID/src/core/audio/sfx.ts:61 def(names, run: (k: Kit, o: PlayOpts) => duration, meta {bus, pri, max, gain, long}). Kit helpers: snap(k, at, vol, f, dur, q, type, pan) at 89; thump(k, at, f0, f1, dur, vol, type) at 93; ring(k, at, f, decay, vol, ...) at 98.",
+  "C:/Users/Admin/Documents/JackID/src/core/audio/synth.ts:202 class Kit implements SynthKit: osc (215), noise (243), chord (266), sample (271), fm (285).",
+  "C:/Users/Admin/Documents/JackID/src/core/audio/synth.ts:372 profileFor(speaker) returns a stable procedural voice for unknown ids. blip.ts:47 blipVoiceFor(speaker) does the same for typewriter blips.",
+  "C:/Users/Admin/Documents/JackID/src/core/cutscene/actors.ts:57 CutActors.spawn(key, spec: ActorSpec); cue(key, c, seek, since) at 77 (clip at 86, moveTo 94-107, turnTo 109-125).",
+  "C:/Users/Admin/Documents/JackID/src/kit/types.ts:49 MannequinOpts {color?, jointColor?, height?, style?: plain|porcelain|ghost|shadow|collector (56), mask?, clip?, stepFps?, frozen?}. MannequinActor.play(clip, {fade, loop, speed, hold, at}) line ~82.",
+  "C:/Users/Admin/Documents/JackID/src/kit/props.ts:414 kit.prop(id, {color?, scale?}): Group. Ids (6-14): phone, pistol, revolver, shotgun, key, envelope, mask_collector, mask_porcelain, hat_collector, hat_fedora, etc.",
+  "C:/Users/Admin/Documents/JackID/src/world/props/decor.ts:145 ManagementDoor.setOpen(open: boolean, dur=1.4): Promise<void> (hinged leaf). Built by buildManagementDoor at 157.",
+  "C:/Users/Admin/Documents/JackID/src/world/props/elevator.ts:143 ElevatorProp.doors(open, dur); :158 ride(dir: 'up'|'down', dur=4): Promise<void> (world/types.ts:59-65 interface).",
+  "C:/Users/Admin/Documents/JackID/src/world/types.ts:53 TrapdoorProp.open(who?: PlayerId|'all', dur?): Promise<void> and close(dur?). World prop accessor world.prop<T>(id) at 154 (world.ts:713)."
+ ],
+ "extensionPoints": [
+  "C:/Users/Admin/Documents/JackID/src/main.ts:51 import.meta.glob('./**/*.cutscene.ts') auto-registers any new file in src/game/story/cutscenes/ that default-exports a CutsceneDef. Subtitle text goes in the story strings file (types.ts:9 note).",
+  "C:/Users/Admin/Documents/JackID/src/game/story/index.ts:98-102 fire(key, id): once-per-run gate for a scene. Add a bus subscription inside startStory (lines 98-155) to trigger a new scene from a run event (shift:phase 131-135, run:window 136-142, run:end 109-113, dread:change 118-121).",
+  "C:/Users/Admin/Documents/JackID/src/game/story/index.ts:104-106 registerHook(...) pattern in startStory (also core/ui/manga/index.ts:66-78). The only way a cue reaches game code, so an elevator ride, door swing or kill must enter here.",
+  "C:/Users/Admin/Documents/JackID/src/game/ingame/session.ts:239-247 createHorror deps: lights() getter (242), viewers() (245), settings() (246), zones and freeSpot optional and NOT passed. A Home layer can pass its own WorldLights and viewer here. session.ts:267-275 holds the shift:phase, quota:met and event:start wiring.",
+  "C:/Users/Admin/Documents/JackID/src/game/horror/director.ts:19 HorrorBeat union and declare-module GameEvents 'horror:event' (21-25). Add beats here; emit via bus at the point of the beat (e.g. 243, 266, 276).",
+  "C:/Users/Admin/Documents/JackID/src/game/horror/dread.ts:11-17 add knock/footsteps/phone threat DreadEventKind and EVENT_DREAD points. Route through HorrorDirector.notify (director.ts:141), which session.ts:273-274 already calls for EVENT_DREAD ids.",
+  "C:/Users/Admin/Documents/JackID/src/game/horror/director.ts:133 tickScares is gated by !settings.calm. Put any new scare under the same gate. Add per-frame ticks next to tickPa/tickPatrons/tickCollector (135-136).",
+  "C:/Users/Admin/Documents/JackID/src/game/horror/director.ts:301-326 tickPatrons is the reusable shift-when-unseen pattern (unseen timer, 2 s threshold, per-zone cooldown). Wire via addPatron (161) with an apartment zone key, or copy the timer for a hallway figure.",
+  "C:/Users/Admin/Documents/JackID/src/core/audio/sfx.ts:61 def(names, recipe, meta) adds a recipe, plus a TRIM entry (38-58) for loudness and an optional LONG entry (948-950) for slow-mo. audio.ts:474 register(name, recipe, meta) adds a machine-private sound at runtime.",
+  "C:/Users/Admin/Documents/JackID/src/core/audio/sfx.ts:~1040-1090 buildAmbience switch: add a case (e.g. 'apartment') for a home bed; unknown ids fall back to 'pit' (casino floor).",
+  "C:/Users/Admin/Documents/JackID/src/core/audio/synth.ts:362-369 SPEAKERS and blip.ts:31-45 BLIP_VOICES: add a 'spouse' entry, or do nothing and let profileFor (372) and blipVoiceFor (47) derive a stable voice.",
+  "C:/Users/Admin/Documents/JackID/src/menu/hud.ts:432 on('phone:ring') shows the HUD phone and plays phoneRing. Use this for phone-message UI; the HotLine (src/game/hotline.ts:44-51, 452) already implements seeded calls, timed answers and three-option offers that can be reused.",
+  "C:/Users/Admin/Documents/JackID/src/game/story/index.ts:109-113 run:end branch on summary.result: 'fell' plays quota_fail. Add an ending check (e.g. summary.ending === 'shot') before this so a death scene does not also play quota_fail.",
+  "C:/Users/Admin/Documents/JackID/src/game/run.ts:2574-2578 takeRun(): a public precedent for ending the run mid-phase through endRun('fell', 'taken'). A mafia kill can follow the same route with a new ending string."
+ ],
+ "risks": [
+  "VERIFIED UNIT MISMATCH on the shared 'dread:change' event. src/game/horror/director.ts:114-115 emits Math.round(v) on a 0..100 scale (dread.ts:94 shown value). src/game/run.ts:1375-1381 emits RunApi.dread(), which is 0..1. Consumers expect 0..1: src/game/story/index.ts:118-121 fires stinger_turn at value>=0.5 and stinger_tape at value>=0.8, so any horror value >=1 (one point of dread) fires both once per run. src/world/world.ts:172 forwards the raw value to src/world/sys/lightPool.ts:422, which clamps to 0..1 (src/core/math.ts:13), so any horror value >=1 pins the light grade to max until the next 0.5 s write at director.ts:121. director.ts:106 claims the horror value matches RunApi.dread(), but it does not. Fix before building on the event.",
+  "TWO DREAD STORES. The run keeps dreadPts (run.ts:775) and changes it through addDread (run.ts:1379-1381), which the hotline deals call (hotline.ts:280, 310, 370, 382, 393, 417). The horror director has its own DreadMeter (dread.ts:72) fed only by HorrorState (session.ts:248-266). Phone-deal dread never reaches horror tiers or scares, and charmRelief only reads mod('dread.add') (session.ts:262). The Home layer needs one source of truth.",
+  "DORMANT PATRON RULE. HorrorDirector.addPatron (director.ts:161) has no callers in src, and session.ts:239-247 passes no zones or freeSpot. The shift-when-unseen behaviour (director.ts:301-358) is dead code today. Reusable, but not proven in play.",
+  "NO KNOCK, CHAIN, BED, LIGHT-SWITCH, BREATH OR APARTMENT SOUND EXISTS. grep for knock finds only comments (sfx.ts:92, 940). 'lock' appears only in a comment (sfx.ts:278). Closest usable recipes: door (sfx.ts:819), doorCreak (825), footsteps (837-863), unlock (595), ratchet (214), click (152), creak (736), gunShot (290), phoneRing (760). The stinger door exists (music/stingers.ts:123-129). audio.play warns once and returns null for an unknown name (audio.ts:357-362), so a missing name is silent in play.",
+  "CUTSCENE ACTORS ARE NOT NAV-AWARE. The cutscene player builds CutActors (player.ts:139), not ActorDirectorImpl, so walkPath is unavailable to scenes. CutActors.cue lerps straight to moveTo with no collision (actors.ts:94-107, 138-149). A goon through a door must be scripted as waypoint moveTo cues, and will clip geometry unless the points avoid walls. ActorDirector (types.ts:215-228) is the horror-owned interface, not the cutscene one.",
+  "TRAPDOOR AND ELEVATOR ARE UNWIRED. No caller of TrapdoorProp.open (world/types.ts:56) or ElevatorProp.ride (props/elevator.ts:158) exists in src. quota_fail.cutscene.ts:23 plays the trapdoor sfx and frames the anchor (10), but has no hook track, so the plate never swings. There is no bus listener for player:fall (run.ts:2021), only quota:failed in hud.ts:409. Any elevator-up-to-home or door motion needs a new hook registered in story/index.ts (or a Home module) and a call to these props.",
+  "CUTSCENE ANCHORS RESOLVE AGAINST app.world. targets.ts:21-25 and effects.ts:108-111 read app.world. A Home scene must make the apartment the active world first, or anchors resolve to the origin with a warning (targets.ts:63-66).",
+  "DEATH SCENE ROUTING. Any run:end with result 'fell' plays quota_fail (story/index.ts:109-111). The results hand-off waits on holdForStory (inGameState.ts:293-296; playStory sets tail at story/index.ts:53). A death must branch on ending or the loss scene will stack. Death cutscenes should set skippable:false (types.ts:163), and their kill hook must be idempotent and honour ctx.seeking (types.ts:133-139) because applyOnSkip defaults to true (types.ts:170).",
+  "NO GOON OR MAFIA CHARACTER EXISTS. grep finds no goon, mafia, thug, enforcer or hitman. Dressing ids are collector, porcelain, ghost, shadow and plain only (actorDirector.ts:66-69). Clips Death01 (kit/types.ts:32) and Pistol_Shoot (35) exist, and the pistol prop exists (kit/props.ts:6-14). Use 'plain' with a pistol prop on hand_r.",
+  "NO HOME ARCHITECTURE. No apartment, flat, bed, peephole or chain-lock model exists (grep). The only door-like prop is ManagementDoor (decor.ts:133-171), a hinged leaf. The only ambience beds are menu, void, elevator, shaft, parlour, sump and pit (sfx.ts:~1040-1090). The elevator ambience (elevator bed) and the ending_elevator scene are the closest precedent.",
+  "CUTSCENES ARE NON-INTERACTIVE. A cutscene takes input mode 'cutscene', hides the HUD and sets the player to cinematic (player.ts:147-163). The Home night loop (peephole, chain, lights off, stay quiet) is gameplay and needs its own state or mode. Gates are the only input path (player.ts:289-330) and only for choice, input, timeout or hook.",
+  "ONLINE IS HOST-ONLY. playStory returns 'aborted' on a peer (story/index.ts:49), and online gates wait for the host (player.ts:295, GATE_FAILSAFE 90 at 55). A multiplayer Home needs the net relay.",
+  "CALM MODE. director.ts:133 disables all scares while calm (only the 30 s Dawn clink remains, director.ts:178). The spec's knock and mafia approach should respect this, or it will be a no-op in Calm.",
+  "ELEKTRİK KESİLDİ premise check. The string is not in src/game/story/cutscenes. It is the Blackout Night-event announce at src/game/data/buffs.ts:108 (effect dread +10 and lights out, buffs.ts:105-108). The horror director's blackout (director.ts:246-254) is a separate code path with no text.",
+  "BLACKOUT ZONE SELECTION. pickZone (director.ts:404-408) returns 'all' because zones are not passed (session.ts:239-247). Per-zone flicker and blackout are therefore whole-pit only today."
+ ],
+ "suggestion": "Minimal integration plan for the horror and audio side of the Home layer, grounded in the citations above:\n\n1. Fix the dread unit mismatch first. Make the horror director emit the same 0..1 fraction that run.ts:1381 and the story thresholds (story/index.ts:118-121) expect, e.g. value / 100 at director.ts:115. Decide one source of truth for run.dreadPts (run.ts:775) and the HorrorDirector meter (dread.ts:72), and feed phone-deal dread into HorrorState (session.ts:248-266). Without this, the new scares and stingers will misfire.\n\n2. Reuse the horror pattern, not the casino world. Give the Home its own HorrorDirector-like tick (or a HomeDirector using dread.ts, observe.ts and the tickPatrons unseen-timer at director.ts:301-326). Point lights() at the apartment WorldLights (world/types.ts:86-97) and viewers() at the apartment camera. The shift-when-unseen rule is the natural WTTG hook: a figure in the hallway advances only while observed(...) is false (observe.ts:27-34) for 2 s+, the same as patrons.\n\n3. Dawn to home: script the ascent as a cutscene in the ending_elevator.cutscene.ts shape (camera on elevator.door, elevator sfx, elevator music, elevator ambience) and call ElevatorProp.ride('up') from a new hook registered in story/index.ts. Switch app.world to the apartment before the anchors resolve (targets.ts:21-25).\n\n4. Phone: reuse hotline.ts scheduling (CALL_CHANCE 44, RING_SECONDS 45, ANSWER_SECONDS 46, OFFER_COUNT 50, seeded via hashSeed) for spouse and mafia messages, and the HUD ring at menu/hud.ts:432. Give the spouse a new speaker id and let profileFor (synth.ts:372) and blipVoiceFor (blip.ts:47) derive the voice, or add entries to SPEAKERS and BLIP_VOICES. Schedule mafia threats against the quota deadline using horrorState timing (session.ts:248-266).\n\n5. Sound gaps to fill with def() recipes (sfx.ts:61) using the snap/thump helpers (sfx.ts:89-96): knock (3 thumps modelled on the door recipe, sfx.ts:819-824), chain rattle (variant of unlock/ratchet, sfx.ts:595, 214), light-switch click (sfx.ts:152), bed creak (sfx.ts:736). Add a 'apartment' case to buildAmbience (sfx.ts ~1040-1090). Reuse footsteps (sfx.ts:852-856) positionally via PlayOpts.pos (audio/types.ts:41-49) and the existing 'door' stinger (music/stingers.ts:123-129).\n\n6. Peephole and chain: peephole is a narrow-frustum Viewer; inFrustum (observe.ts:17-24) already supports it. Chain and lights-off reuse WorldLights.setLevel and flicker (world/types.ts:86-97, director.ts:246-261).\n\n7. Death: a new scripted scene in src/game/story/cutscenes with a 'plain' mannequin goon (actors, types.ts:64-72), a pistol prop on hand_r (kit/props.ts), waypoint moveTo cues through a hinged door (a ManagementDoor-style prop, decor.ts:133-171, driven by a hook), clip Pistol_Shoot (kit/types.ts:35), gunShot at the goon (sfx.ts:290), flash and fade (types.ts:108-111), then an idempotent kill hook (types.ts:133-139). Set skippable:false (types.ts:163). Route the kill through a takeRun-like method (run.ts:2574-2578) with ending 'shot', and branch story/index.ts:109-113 on ending so quota_fail does not also play.\n\n8. Not verified at runtime. All statements are from reading the working tree (run.ts is modified in the working tree per the gitStatus snapshot; the others are unmodified). Nothing was run and no servers were started."
+}

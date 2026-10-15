@@ -1,7 +1,8 @@
 /**
- * NIGHT PLAN panel (top-right, under the quota; src/menu/hud.ts `updatePlan`). At most four short lines, one line each: the copy
- * stays under ~24 characters so the panel never wraps at 1280x720 or 1920x1080 (uiScale 0.75). The OVERSHOOT line (`over*`, `ov.*`)
- * is the one longer line, shown only once the quota is banked. Only glyphs the HUD fonts have.
+ * NIGHT PLAN panel (top-right, under the quota; src/menu/hud.ts `updatePlan`). One line each, nowrap. Most copy stays under ~24
+ * characters. Two lines run longer: the OVERSHOOT line (`over*`, `ov.*`, shown once the quota is banked) and the broke hint (`broke.*`,
+ * EN about 39 characters, shown only while the pocket cannot cover the cheapest bet and tonight's quota is unpaid). The tithe lines
+ * (`tithe`, `unpaid`) are optional too. Only glyphs the HUD fonts have.
  * Loaded by the `*.strings.ts` glob in main.ts.
  */
 export default {
@@ -13,8 +14,11 @@ export default {
     'next': 'NEXT WATCH {w}/{n}',
     'night': 'NEXT NIGHT {q} (×{k})',
     'paid': 'PAID · SURPLUS {n}',
-    'tithe': 'WATCH TITHE {e}/{n}',
-    'over': 'OVERSHOOT: {b}/{q} → {r} (+{g})',
+    'tithe': 'NET WIN {e}/{n}',
+    'unpaid': '+{n} unpaid tithe in quota',
+    'broke.bank': 'POCKET EMPTY · WITHDRAW AT THE TERMINAL',
+    'broke.phone': 'POCKET EMPTY · ANSWER THE PHONE',
+    'over': 'OVERSHOOT: {b}/{q} → {r} ({g} to go)',
     'overTop': 'OVERSHOOT: TOP TIER',
     'overToast': 'OVERSHOOT {r} · PAYS AT DAWN',
     'ov.gratuity': '+2 TICKETS',
@@ -32,8 +36,11 @@ export default {
     'next': 'SONRAKİ V{w}/{n}',
     'night': 'SONRAKİ GECE {q} (×{k})',
     'paid': 'ÖDENDİ · FAZLA {n}',
-    'tithe': 'NÖBET ÖŞÜR {e}/{n}',
-    'over': 'AŞIM: {b}/{q} → {r} (+{g})',
+    'tithe': 'NET KAZANÇ {e}/{n}',
+    'unpaid': '+{n} ödenmemiş vergi kotada',
+    'broke.bank': 'CEP BOŞ · TERMİNALDEN ÇEK',
+    'broke.phone': 'CEP BOŞ · TELEFONU AÇ',
+    'over': 'AŞIM: {b}/{q} → {r} ({g} kaldı)',
     'overTop': 'AŞIM: EN ÜST KADEME',
     'overToast': 'AŞIM {r} · ŞAFAKTA ÖDENİR',
     'ov.gratuity': '+2 BİLET',

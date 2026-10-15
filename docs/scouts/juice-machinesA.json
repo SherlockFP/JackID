@@ -1,0 +1,189 @@
+{
+ "area": "machinesA: shared machine feedback (src/machines/_base juice/tiers/MachineBase, src/core/fx, src/core/audio, src/core/tween.ts) and 16 machines: baccarat, bandit, bigone, bigsix, bingo, bingopin, blackjack, cardwar, claw, coinflip, coinpusher, craps, cyclone, derby, devilstable, dicetower. Read-only static audit, no runtime or audio verification.",
+ "inventory": [
+  "C:/Users/Admin/Documents/JackID/src/machines/_base/juice.ts:150 celebrate(host, tier, opts) tier-escalating win show (win pop, pour, jingle, lamp pulse, marquee/bulb chase); opts amount/bet/mult/marquee/bulbs/lamps/restore/fast/speed.",
+  "C:/Users/Admin/Documents/JackID/src/machines/_base/juice.ts:84-93 TIER_SHOW per tier: show seconds, chase Hz, layered sfx, glow colour (push 0.4s, small 1.2s, medium 2s, big 3s, huge 5s, mega 7s, jackpot 6s).",
+  "C:/Users/Admin/Documents/JackID/src/machines/_base/juice.ts:218-254 escalate(): big = coin fountain + shake; huge = 0.4s slow-mo + rising winRise + gold flash; mega = confetti volley + chroma + zoom punch + floor strobe; jackpot = pit-wide gold wave, jackpotBells, coinRain loop, six ceiling coin waves.",
+  "C:/Users/Admin/Documents/JackID/src/machines/_base/juice.ts:294 loss() (dust puff, red pop, lose sfx) and :315 nearMiss() (heartbeat, red light pulse, vignette boost for local player, lamp flutter, awaitable).",
+  "C:/Users/Admin/Documents/JackID/src/machines/_base/juice.ts:358 pourCoins(amount, {bet, from, onCount}) coin pour with count-up; :375 countUp(); :383 emitComboShow + :393 comboTwinkle (cross-machine combo light show).",
+  "C:/Users/Admin/Documents/JackID/src/machines/_base/juice.ts:411 AttractScript.every(id, period, fn, {jitter, first}) idle scheduler; :439 breathe(), :441 blinkOn().",
+  "C:/Users/Admin/Documents/JackID/src/machines/_base/juice.ts:112-115 spectatorTier(): others see an attenuated tier (no flash/shake/hit-stop beyond 3 m); :155-156 applies it.",
+  "C:/Users/Admin/Documents/JackID/src/machines/_base/tiers.ts:21-31 juiceTier(gross, bet, tags): multiplier bands 1x push, 3x small, 10x medium, 25x big, 50x huge, mega; only tags 'jackpot' or '<ns>:jackpot' force the jackpot tier (:23).",
+  "C:/Users/Admin/Documents/JackID/src/machines/_base/tiers.ts:119-147 winFeel(mult): continuous log2 curve over x1..x50 for flash alpha/length, coins, pour length, pop scale and colour, pitch, shake, zoom; TIER_FLOOR_MULT at :114 is the fallback when no bet/mult is passed.",
+  "C:/Users/Admin/Documents/JackID/src/machines/_base/MachineBase.ts:491-506 settle({gross, tags, tier}): juiceTier on the HIGH STAKES bet, adds bigwin/hugewin/megawin tags, credits wallet before presentation, then offerGamble().",
+  "C:/Users/Admin/Documents/JackID/src/machines/_base/MachineBase.ts:629-655 anim()/wait() on the sim clock (speed-scaled) and wrappers celebrate/commiserate/nearMiss/pourCoins; :636 sfx(name, opts) positional by speaker anchor.",
+  "C:/Users/Admin/Documents/JackID/src/machines/_base/MachineBase.ts:662-682 lazy RiskLayer (double-or-nothing, high stakes, all-in) emitting gamble:fx at :675; offerGamble() at :680.",
+  "C:/Users/Admin/Documents/JackID/src/core/fx.ts:98-171 FxApi: coins (cap 60), sparks, smoke, dust, glow, popText, shake, flash (dedupes under reduceFlashing), chroma, tint, zoomPunch, slowmo (never weakens a running slow-mo), hitstop, lightPulse, winBurst(tier).",
+  "C:/Users/Admin/Documents/JackID/src/core/fx/particles.ts:482-488 pool caps: coins 256, confetti 384, sparks 512, puffs 224, lights 192 (ring buffer evicts oldest); core/fx/popText.ts:24 MAX_POPS 24.",
+  "C:/Users/Admin/Documents/JackID/src/core/audio/audio.ts:475-483 winJingle(tier) maps to winSfx and ducks the music bus for big/huge/mega/jackpot; :484 coins(n) cascade.",
+  "C:/Users/Admin/Documents/JackID/src/core/audio/sfx.ts:966-975 winSfx(tier): small win1, medium win2, big win3, huge winHuge, mega winMega, push winPush. Tension/anticipation sfx present: tensionRise, heartbeat, winRise, jackpotBells, coinRain, coinShower, reelTick, tallyTick, clockTick, whisper, tinnitus.",
+  "C:/Users/Admin/Documents/JackID/src/core/audio/gambleFx.ts:14-40 gamble:fx listener: win = gambleStep with a 12-rung semitone climb, lose = gambleBust, collect = coin cascade sized by pot, allin drum/hit/miss.",
+  "C:/Users/Admin/Documents/JackID/src/core/audio/music/stingers.ts:29-156 musical stinger library (bell, jackpot, bigWin, curse, buff, debuff, collector, ascend...). No machine calls it: DECISIONS.md:89 says machines use winJingle/SFX only.",
+  "C:/Users/Admin/Documents/JackID/src/machines/bigone/index.ts:550-578 teaseShow + spinReel(slow): the best anticipation in the set. Lined-up run crawls its reel, rising reelTick pitch, tensionRise riser, nearMiss beat. bigone/show.ts:1-60 combo plan and hzCap flash caps.",
+  "C:/Users/Admin/Documents/JackID/src/core/tween.ts:12-13 Ease list incl. outBack, outElastic, outBounce, outExpo, inExpo.",
+  "C:/Users/Admin/Documents/JackID/src/game/data/buffs.ts:38-56 hot / cold / overheat buffs (hot = +15 pct payout per stack and heat gain x1.5; overheat = speed x1.5). game/buffs/index.ts:74-76 registers heat, streak.win, streak.loss metrics. No machine reads these for visuals."
+ ],
+ "gaps": [
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/_base/juice.ts:121-122 (doc: amount = Coins won). Gross-as-amount callers: C:/Users/Admin/Documents/JackID/src/machines/bandit/index.ts:443; .../baccarat/index.ts:611-612; .../cardwar/index.ts:639-640; .../bigsix/index.ts:473; .../derby/index.ts:464; .../cyclone/index.ts:465; .../bingopin/index.ts:551. Net callers: .../bigone/index.ts:469-470; .../bingo/index.ts:509-510; .../craps/index.ts:585; .../blackjack/index.ts:788; .../dicetower/index.ts:511",
+   "moment": "every win, all tiers (the big +N pop)",
+   "current": "The amount passed is the gross return, which includes the returned stake. cardwar computes net = payout - stake (cardwar/index.ts:633), cyclone computes net = gross - bet (cyclone/index.ts:396), bigsix treats gross > stake as a win (bigsix/index.ts:490). So on seven machines the gold +N pop shows about twice the net the HUD reports on a 1:1 win. The other five pass net.",
+   "proposal": "Pass net (gross minus stake, previewCredit where bigone uses it) at the seven call sites, or change celebrate to take gross plus bet and compute the pop value itself so the contract cannot drift again.",
+   "effort": "S",
+   "impact": 5
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/bandit/index.ts:408-415 (reels stop 1.2/1.6/2.0 s, no pre-stop hold) and :449-451 (nearMiss runs after reel 3 has stopped); C:/Users/Admin/Documents/JackID/src/machines/bandit/rules.ts:188 (near computed at roll time)",
+   "moment": "near miss: two STARs lined up, reel 3 misses",
+   "current": "The tease is shown after the losing face is already on the drum. The heartbeat and the reel-3 lamp pulse play over a settled reel. The rule already knows the outcome at roll time, but the presentation does not use it for stop timing.",
+   "proposal": "When ev.near, delay reel 3 by about 0.8 s and give it the bigone-style slow last turn (bigone/index.ts:562-578 spinReel slow) with rising reelTick pitch, a tensionRise riser (as bigone/index.ts:557) and a payline lamp blink. Keep the existing nearMiss call as the closing beat.",
+   "effort": "S",
+   "impact": 5
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/blackjack/index.ts:776 (tags ['blackjack'] passed), C:/Users/Admin/Documents/JackID/src/machines/_base/tiers.ts:21-31 (juiceTier ignores non-jackpot tags), :788 (celebrate skipped when tier is small), :770-799 (presentSettle never calls pourCoins)",
+   "moment": "blackjack natural (3:2) and every ordinary 1:1 win",
+   "current": "A natural returns 2.5x the stake, which juiceTier calls small, so celebrate is skipped. The natural gets win3 sfx, sparks and two pop texts, but no coin show and no pour. A plain 1:1 win gets win1 sfx and one pop, with no coins and no count-up.",
+   "proposal": "Floor a natural at medium (a blackjack tag hook in juiceTier, like the jackpot tag, or tierAtLeast in presentSettle) and celebrate it. Call pourCoins(ret, {bet}) on every positive settle so 1:1 wins pour and the pop counts up.",
+   "effort": "S",
+   "impact": 5
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/claw/index.ts:436-442 (celebrate with no amount or bet; pourCoins with no onCount)",
+   "moment": "every claw win, small capsule to golden egg",
+   "current": "No +N pop is ever spawned, because celebrate only spawns the pop when amount is passed. The pour has no count-up, so the amount never appears on screen beyond the coins and the charm toast.",
+   "proposal": "Pass amount = gross minus stake and bet = stake to celebrate, and onCount to pourCoins (or countUp into the win LED). The pop then uses the same winFeel scale as the other machines.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/claw/index.ts:372-378 (lift drop at k >= 0.6, thud) and :391 (travel drop). No nearMiss call anywhere in claw/index.ts.",
+   "moment": "near miss: the prize slips off the grip during lift or travel",
+   "current": "The lost prize falls on a 0.5-volume thud at the slip and the claw returns. There is no wobble, no held breath and no tease, even though the grip reveal (strong-grip LED at close, index.ts:362) already builds tension.",
+   "proposal": "When g.dropAt is set, add a 0.3 s prize wobble (rotation oscillation in carry()) and a juice.nearMiss beat (heartbeat, red pulse, lamp flutter) before the drop, anchored at the prize mesh. For a won prize on a weak grip, add a short hold before the chute.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/devilstable/index.ts:600-637 (presentShot: 0.5 s servo, then the shot; slow-mo only on the last shell at :605); :566 (round win hard-codes celebrate('medium')); :647 (ride pop is the literal x1.9)",
+   "moment": "anticipation before a live shot (the core dread loop)",
+   "current": "The only tension beat is slow-mo on the last shell. Before a live shot aimed at the local player there is no build: no heartbeat, no vignette, no lantern pulse, just a 0.5 s servo wait.",
+   "proposal": "Held breath before a shot aimed at the local seat: about 0.6 s heartbeat plus the juice vignette boost (as juice.ts:325), the target lantern pulsing, and the shell count highlighted. Use a shorter version for other seats. Read the real ride multiplier for the pop and pick the round-win tier from the round instead of a fixed medium.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/bigsix/index.ts:438-444 (EYE: siren, lid opens after the stop, glow and shake) and :472-473 (tier from multiplier, no tag). C:/Users/Admin/Documents/JackID/src/machines/claw/rules.ts:202-204 (golden egg tagged 'golden', not a jackpot tag). C:/Users/Admin/Documents/JackID/src/machines/cyclone/rules.ts:166 (correct pattern: cyclone:jackpot).",
+   "moment": "jackpot symbol hit (bigsix EYE 50:1, claw golden egg)",
+   "current": "EYE pays 51x and gets the 7 s mega show (confetti, floor strobe) but not the 6 s jackpot show with the pit wave, bell layer and coin rain (juice.ts:239-252). The golden egg reaches a multiplier-only tier, with a jackpot sfx on top.",
+   "proposal": "Tag EYE as bigsix:jackpot and the golden egg as claw:jackpot, the same way cyclone already does, so both get the pit-wide wave and coin rain.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/bigsix/index.ts:415-418 (final wobble, half a peg), :438-441 (EYE lid opens only after the stop), :480-481 (nearMiss after the stop, losing local seat only). C:/Users/Admin/Documents/JackID/src/machines/bigsix/rules.ts:96-97 (nearmiss flag: one peg from a backed EYE or 25)",
+   "moment": "near miss: the wheel stops one peg from an EYE or 25 you backed",
+   "current": "The near miss is announced after the wheel has settled, so the heartbeat lands on a dead wheel. The disc already passes each peg with a flapper flick (:404-410), which could carry the tension.",
+   "proposal": "For r.nearmiss, let the final deceleration overshoot one peg past the EYE or 25 and hang there (flapper held, wheelTick per peg) before rolling back. Crack the eye lid a little during the hang. Keep nearMiss as the closing beat.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/bingo/index.ts:508-513 (celebrate only when mine); :493 (1 TO GO blink only in onAward, after the draw); :432-450 (onDraw has no near tell). Spectator attenuation already exists: juice.ts:112-115, :155-156.",
+   "moment": "big win on another desk; one number away from a card",
+   "current": "A frame jackpot at another desk gets a pop and a shake, and only the card owner gets the show. 1 TO GO lights only after the game is over, so the player learns a card was close only at the end.",
+   "proposal": "Celebrate every winning desk at spectator tier (celebrate already attenuates for non-local viewers). In onDraw, blink desk.oneToGo as soon as a card has one number left, and hold about 0.3 s on that number's draw with a rising tileClack pitch.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/coinpusher/index.ts:509-517 (heat rises; danger only blinks tiltLamp when heat > THUMP_MAX-2, :516); :530-542 (tilt: buzzer and flash); :546-547 (pipsOf defines the danger zone but drives no sound)",
+   "moment": "anticipation: heat meter at the danger pip",
+   "current": "At two of three pips the only cue is a 4 Hz lamp blink, with no sound or screen change. The tilt then lands with a buzzer.",
+   "proposal": "While pipsOf(s) is at THUMP_MAX-1 or more, loop a heartbeat sfx and a tensionRise riser scaled by pips, add a faint amber fx.tint and a small shake on each thump. Keep the existing tilt flash. Stop the loop on cool-down or tilt.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/bandit/index.ts:345-373 (presentGamble: click, win2, thud, popText, commiserate; no card reveal; no gamble:fx). Shared ladder: C:/Users/Admin/Documents/JackID/src/machines/_base/MachineBase.ts:675 (gamble:fx emit); C:/Users/Admin/Documents/JackID/src/core/audio/gambleFx.ts:14-40 (rung climb, bust, pot-sized collect cascade)",
+   "moment": "gamble rung win, loss and collect",
+   "current": "Bandit's HI/LO is a separate ladder with text pops only. There is no card flip, the rung sound is a fixed win2 with no climb, and collect pours without the gamble cascade. The shared gamble juice never runs here.",
+   "proposal": "Emit the same gamble:fx kinds from presentGamble (flip, win with step, lose, collect with pot) or call the same sfx, add a 0.36 s card flip on the gamble card, and grow the pop scale per rung.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/baccarat/index.ts:565-574 (third card slides in face up, cardSlap, 0.32 s move); :586-626 (presentResult: natural stinger at :597; no nearMiss anywhere in baccarat)",
+   "moment": "anticipation: the third card decides the coup",
+   "current": "The drawn card flies in and is revealed in one move, then the winner lamp lights. Only naturals build any sound. Nothing holds on the decision, and a result one point from the other side is a plain loss.",
+   "proposal": "Hold about 0.5 s after the third card lands (heartbeat, the lamp on the side in question flickers, the total text pulses), then reveal the winner. Use juice.nearMiss when the coup finishes one point short. Keep the existing squeeze and peek mechanic.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/game/data/buffs.ts:38-56 (hot, cold, overheat with flame and smoke icons); C:/Users/Admin/Documents/JackID/src/game/buffs/index.ts:74-76 (heat, streak.win, streak.loss metrics). No machine code reads these for visuals.",
+   "moment": "win streak and overheat (three wins in a row heat the machine)",
+   "current": "A hot streak only changes the numbers. The cabinet looks the same, the streak metrics are exposed but no presentation reads them, and overheat has no visible cost.",
+   "proposal": "Give machines a read path to heat and streak.win each round, then a cabinet-level heat state: ember sparks (fx.sparks, core/fx.ts:101), a faster marquee chase, a warm glow (fx.glow, :105), a buff sfx on hot start, and fx.smoke (:103) plus visibly slowed reels while overheated.",
+   "effort": "L",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/_base/juice.ts:166-167 (feel uses o.mult, else amount/bet, else TIER_FLOOR_MULT). Calls without bet or mult: bandit/index.ts:443; baccarat/index.ts:611; cardwar/index.ts:639; coinflip/index.ts:473; bigsix/index.ts:473; derby/index.ts:464; cyclone/index.ts:465; claw/index.ts:441; craps/index.ts:585; dicetower/index.ts:511; bingo/index.ts:509; bingopin/index.ts:551; blackjack/index.ts:788; devilstable/index.ts:566,657; coinpusher/index.ts:485,505. Calls that pass bet: bigone/index.ts:469, :615.",
+   "moment": "every win tier (feel scale: flash, pop size, pitch, pour)",
+   "current": "Without bet, feel falls back to the tier floor. A 12x and a 24x big win feel identical (both 10x), and every mega win uses 50x. The curve varies only between tiers, not within them.",
+   "proposal": "Pass bet (or mult) at each of these call sites so winFeel grades continuously inside each tier. Pass the same bet to pourCoins where it is missing.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/cyclone/index.ts:418-432 (landing: lamp blink only), :444-473 (verdict; commiserate on zero at :470). JP is lamp 0: C:/Users/Admin/Documents/JackID/src/machines/cyclone/rules.ts:20",
+   "moment": "near miss: the light stops one lamp from the armed jackpot",
+   "current": "Landing beside the Eye, armed or not, gets the same bonk as any loss. The armed reveal (index.ts:378-386) builds tension only before the spin.",
+   "proposal": "When the landing lamp is adjacent to JP, hold about 0.5 s with the JP lamp and marquee flickering (lamps.blink) and a nearMiss heartbeat before the verdict. Keep the bonk for other losses.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/dicetower/index.ts:497 (popSkull on snake eyes or boxcars), :522-524 (skull plays sfx whisper only), :501 (tags ['doubles'] on any pair; ignored by juiceTier at tiers.ts:23), rules.ts:68 (doubles spot pays 5.5)",
+   "moment": "big win on doubles; special on snake eyes or boxcars",
+   "current": "The doubles tag does nothing for the presentation tier. Snake eyes and boxcars get only a whisper while the skull pops, and the payout tier stays medium.",
+   "proposal": "Doubles: floor the tier at medium with tierMin. Snake eyes and boxcars: a jackpot-class sting (jackpotSiren, gold glow, 0.1 s hitstop, a sparks burst on the skull), keeping the skull animation.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "No attractor.every in: baccarat, bigsix, bingo, blackjack, cardwar, coinpusher, craps, devilstable, dicetower (index.ts). Pattern: juice.ts:411-436. In use: bandit/index.ts:124, claw/index.ts:104, coinflip/index.ts:147, bigone/index.ts:188, cyclone/index.ts:173, bingopin/index.ts:163. derby/index.ts:566 is time-driven only.",
+   "moment": "idle machine (retention between rounds)",
+   "current": "Nine of the sixteen have no idle beat, so the cabinet or table sits still between rounds. Six have the scheduler, so the pit is inconsistent.",
+   "proposal": "Add one or two AttractScript entries per machine: coinpusher a coin nudge every about 10 s, craps a stick twitch, devilstable a lantern flicker and shell rattle, dicetower a tower knock, blackjack a chip-stack tap, bigsix an eye blink, baccarat a chandelier flicker, cardwar a head turn.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/bingopin/index.ts:499-515 (presentLand), :526-559 (presentEnd: lines lit with bell; commiserate at :555; no nearMiss)",
+   "moment": "near miss: the last ball lands one hole short of a line",
+   "current": "A losing end gets a commiserate and nothing else. There is no tease when the ball is one hole from a line, even though the hole lamps (:510) already show the layout.",
+   "proposal": "When the lit board has four of five on a line, hold on the open hole with juice.nearMiss at the field, flicker that hole lamp, then give the verdict.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/craps/index.ts:505-521 (throw: dice land at normal speed, no final slow bounce), :540-572 (callShow: total pops right after the land), :585-591 (nearMiss only after a losing point bet, :591)",
+   "moment": "anticipation on the roll; near miss on a point",
+   "current": "The dice land at normal speed and the total pops at once. Point rolls one roll from a win only get a nearMiss after the loss.",
+   "proposal": "Slow the local shooter's final bounce with fx.slowmo(about 0.4, 0.3), the same device coinflip uses (coinflip/index.ts:397), then add a held beat before callShow. Add nearMiss when a point bet is one roll from a made pass.",
+   "effort": "M",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/baccarat/index.ts:611-616 and C:/Users/Admin/Documents/JackID/src/machines/cardwar/index.ts:639-643 (celebrate plus pourCoins). juice.ts:355-357 says do not stack them. Also cardwar/index.ts:626 (suited tie pays 51x and gets the generic mega show; siren only).",
+   "moment": "small to mega wins; suited tie",
+   "current": "Both calls spawn coin sprites and coin audio. winFeelLayer (juice.ts:203-205) and pourCoins (:365-367) each add coins and cascades, so the coin cloud and sound double on small and medium wins. The suited tie gets a 0.35 siren and no jackpot escalation.",
+   "proposal": "Keep one coin source per win: celebrate's own pour for tiers above small, pourCoins for push and small only, or a skipPour flag. Tag suited ties as cardwar:jackpot so they get the 6 s jackpot show.",
+   "effort": "S",
+   "impact": 2
+  }
+ ],
+ "notes": "Scope and limits: static read of the 16 machines plus shared juice/fx/audio code. Nothing was run, no audio or visual timing was checked, and no files were changed. seatHud.ts, the particle step functions and tween internals were not read in detail. Line numbers were checked against the working tree as it stood during this read.\n\nVerified facts behind the top gaps: juice.ts:121-122 documents amount as 'Coins won', yet seven callers pass a gross return. The juiceTier tag check (tiers.ts:23) ignores every tag except jackpot, which is why blackjack and dicetower tags do nothing. gamble:fx is emitted only by the shared risk layer (MachineBase.ts:675), so bandit's custom HI/LO skips it.\n\nAnticipation quality by machine, for the reel-slowing, ball-bounce and last-card question: bigone (crawl and riser), coinflip (edge balance, near-miss lean, slow-mo), cyclone (armed reveal, coast with falling ticks), bigsix (exponential decay with a flapper per peg) and claw (grip LED on close) do this well. bandit (fixed stagger, reel 3 not slowed), craps (no slowed landing), baccarat (third card in one move), blackjack (no dealer suspense) and coinpusher (no danger tension) do not. derby's race is keyframed, so there is no slow tail; its photo finish is the one cue, and its near miss is after the finish (derby/index.ts:477).\n\nDecision conflict to flag, not a gap: DECISIONS.md:89 says machines use winJingle and SFX, never music.stinger. The musical stinger library (stingers.ts, including jackpot, bigWin, buff, debuff) therefore sits unused. Revisiting that decision would unlock a musical mega or jackpot cue, roughly impact 3, effort M, but it needs an owner's decision first.\n\nSmaller findings not in the top 20: devilstable hard-codes medium at index.ts:566 and x1.9 at :647; escalate 'big' adds a second shake on top of winBurst's big shake (fx.ts:197 and juice.ts:222); bingo's popText for other desks is the only spectator cue for big wins."
+}

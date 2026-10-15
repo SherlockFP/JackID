@@ -72,8 +72,8 @@
 /* NIGHT PLAN: under the quota in the top-right column (hud.ts updatePlan). Four plain text lines, right-aligned, one line each. */
 /* The panel is capped at its top-right grid cell (max-width 100%), and its lines wrap inside it: a long line never runs out of the
    plate over the centre column or the machine art. */
-/* Body font (VT323), smaller than the 8u headings: at 9u a line of ~24 characters is about a third of the right column at 1920x1080,
-   and the copy is kept short (plan.strings.ts), so no line wraps at 1280x720 or 1920x1080 (uiScale 0.75). */
+/* Body font (VT323), smaller than the 8u headings: at 9u a line of ~24 characters is about a third of the right column at 1920x1080.
+   The copy is kept short (plan.strings.ts) and every line is nowrap; the longest line is the EN broke hint (~39 characters). */
 .hud .plan { display: flex; flex-direction: column; align-items: flex-end; gap: calc(1 * var(--u));
   max-width: 100%; box-sizing: border-box; padding: calc(2 * var(--u)) calc(4 * var(--u)); background: rgba(0, 0, 0, .5);
   box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark); text-align: right; }
@@ -81,6 +81,8 @@
   color: var(--bone); white-space: nowrap; }
 .hud .plan .pb { color: var(--signal); }
 .hud .plan span.pk, .hud .plan span.pe { opacity: .8; }
+.hud .plan span.pbk { color: #ff5a4a; }
+.hud .plan span.pu { color: #ffd34a; }
 .hud .plan span.hidden { display: none; }
 .hud .plan.ok .pb { color: var(--green); }
 .hud .plan.gap .pb { color: var(--signal); }

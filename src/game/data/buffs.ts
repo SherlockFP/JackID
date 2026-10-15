@@ -57,8 +57,8 @@ export const BUFF_DATA: BuffDef[] = [
     id: 'overheat', kind: 'debuff', scope: 'instance', icon: 'icon.flame', maxStacks: 1,
     duration: { kind: 'seconds', s: 25 }, reapply: 'refresh', tags: ['overheat', 'curse'],
     effects: [{ hook: 'speed.mult', op: 'mult', value: 1.5 }],
-    strings: S({ name: 'Overheat', desc: 'Smoke curls out of the cabinet. It runs 50 % slower.' },
-      { name: 'Aşırı Isınma', desc: 'Dolaptan duman yükseliyor. %50 daha yavaş çalışır.' }),
+    strings: S({ name: 'Overheat', desc: 'Smoke curls out of the cabinet. It runs slower.' },
+      { name: 'Aşırı Isınma', desc: 'Dolaptan duman yükseliyor. Daha yavaş çalışır.' }),
   },
 
   // ── bounty rewards ──

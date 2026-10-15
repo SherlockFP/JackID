@@ -446,11 +446,13 @@ export interface DebtRun extends RunApi {
   /** Take the first candidate that fits and drop the offer (the timeout fallback; also used by `tick`). */
   autoPickOverpay(): boolean;
   /**
-   * Starter Draft (draft wave, run start): open the three-charm offer before the first Bell. Only a fresh Night 1 Watch 1
-   * (before its Bell) opens it, once per run. False when it is already open or done, or the run is not a Debt Run.
+   * Starter Draft (draft wave, run start): open the three-charm offer. Opens in a fresh Night 1 Watch 1 (before any pull) or in
+   * any Night 1 intermission (Mola), once per run. False when it is not due yet, already offered, or the run is not a Debt Run.
    */
   openStarterDraft(): boolean;
-  /** The open starter offer: its three charms and the timer (sim s, runs down in the Bell only). Null when closed. */
+  /** The Starter Draft is still to come (Night 1, no offer made yet): the UI keeps asking `openStarterDraft` until it opens. */
+  starterPending(): boolean;
+  /** The open starter offer: its three charms and the timer (sim s, runs in every phase, the Bell waits for it). Null when closed. */
   starterDraft(): { candidates: CharmDef[]; left: number } | null;
   /** Take one starter charm: closes the offer and lets the Bell strike. False when closed or the id is not on offer. */
   pickStarter(charmId: string): boolean;
@@ -955,7 +957,7 @@ class Run implements DebtRun {
     }, this.modsImpl, { banner: opts.banner });
     this.buffs = this.buffSys.buffs;
     this.hotline = createHotline(this, {
-      now: () => performance.now(),   // = net.hostTime() offline and on the host (the run only lives on the host)
+      now: () => Math.round(this.elapsed * 1000),   // the run's sim clock (ms): a wall-clock read would make a seeded run differ
       host: {
         wingClosed: (z) => !this.tycoonSys.state().zones.includes(z),
         openWing: (z) => this.tycoonSys.grantZone(z),
@@ -1000,7 +1002,7 @@ class Run implements DebtRun {
     });
     this.rescue = createRescue({
       selfId: this.selfId,
-      now: () => performance.now(),
+      now: () => Math.round(this.elapsed * 1000),   // the run's sim clock (ms), as the hotline above
       ringSeconds: () => Math.max(20, Math.round(this.mod('x.phone.ringTime', 'hotline', 10))),   // a broke player has to stand up and walk to the booth
       take: (loan) => this.takeRescue(loan),
     });
@@ -1415,9 +1417,11 @@ class Run implements DebtRun {
     if (autoCard) { this.emit('run:nightcard', { pid: this.selfId, state: 'auto', card: autoCard }); this.notify(); this.persist(); }
     if (this.phase === 'play' || this.phase === 'lastCall') this.tycoonSys.tick(dt);
     if (!this.rules.timed) return;
+    // The Starter Draft's timer runs in every phase (its countdown is on screen); the Bell waits for the offer.
+    const starterHolds = this.tickStarter(dt);
     switch (this.phase) {
       case 'bell':
-        if (this.tickStarter(dt)) break;   // the Starter Draft holds the Bell until a charm is taken (or its timer runs out)
+        if (starterHolds) break;   // the Starter Draft holds the Bell until a charm is taken (or its timer runs out)
         this.phaseLeft -= dt;
         if (this.phaseLeft <= 0) this.startPlay();
         break;
@@ -3247,11 +3251,20 @@ class Run implements DebtRun {
   }
 
   // ── starter draft (draft wave) ───────────────────────────────────────────────────────────────────────
+  /**
+   * The Starter Draft is still to come: Night 1 of a timed quota run with no offer made yet. The UI keeps asking until it opens;
+   * it is no longer pending once the offer is made (open or taken) or the run leaves Night 1.
+   */
+  starterPending(): boolean {
+    return !this.ended && this.rules.timed && this.quotaMode && this.index === 0 && this.starter === null;
+  }
+
   openStarterDraft(): boolean {
-    if (this.ended || !this.rules.timed || !this.quotaMode || this.starter) return false;
-    // The session starts Watch 1 on load, so the offer opens at Night 1 before the first pull, in the intermission or in play.
-    if (this.index !== 0 || this.watch > 1 || this.watchPulls > 0 || this.nightDone) return false;
-    if (this.phase !== 'intermission' && this.phase !== 'play') return false;
+    if (!this.starterPending()) return false;
+    // A fresh Watch 1 before any pull (the offer then holds the Bell), or any Night 1 intermission (Mola). A player who pulled
+    // first is offered the cards at the Mola, so the offer is not lost.
+    const freshWatch = this.watch === 0 && this.watchPulls === 0 && (this.phase === 'bell' || this.phase === 'play');
+    if (!freshWatch && this.phase !== 'intermission') return false;
     const ids = starterOffer(this.seed, (id) => this.charmBox.has(this.selfId, id));
     if (ids.length === 0) return false;
     this.starter = { ids, open: true, left: STARTER_TIMEOUT_SEC };
@@ -3301,7 +3314,7 @@ class Run implements DebtRun {
     return true;
   }
 
-  /** The Bell waits for the starter draft: true while it is open. Its timer runs down here and takes the first card that fits. */
+  /** The starter draft's timer (every phase): true while the offer is open. At zero it takes the first card that fits. */
   private tickStarter(dt: number): boolean {
     const s = this.starter;
     if (!s?.open) return false;

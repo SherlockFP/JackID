@@ -59,7 +59,7 @@ export class Streaks {
       if (t.loss >= COLD_FROM_LOSSES) this.buffs.add('cold', { pid, mid });
     }
     if (t.heat >= HEAT_MAX) {
-      this.buffs.add('overheat', { pid, mid });
+      this.overheat(pid, mid, machineId);
       t.heat = HEAT_AFTER_OVERHEAT;
     }
   }
@@ -68,7 +68,16 @@ export class Streaks {
   onRound(pid: PlayerId, mid: InstanceId, machineId: MachineId): void {
     if (!this.host.isHost) return;
     const p = this.host.run().mod('x.surge.fire', machineId, 0, { pid, instance: mid });
-    if (p > 0 && this.host.rng.chance(Math.min(1, p))) this.buffs.add('overheat', { pid, mid });
+    if (p > 0 && this.host.rng.chance(Math.min(1, p))) this.overheat(pid, mid, machineId);
+  }
+
+  /**
+   * Starts Overheat on an instance. The `x.overheat.mult` hook (Heat Lamp ×2) scales the buff's effects for as long as
+   * it lasts: the scale is written into the buff's data when it starts, so a charm bought later does not change it.
+   */
+  private overheat(pid: PlayerId, mid: InstanceId, machineId: MachineId): void {
+    const effectScale = this.host.run().mod('x.overheat.mult', machineId, 1, { pid, instance: mid });
+    this.buffs.add('overheat', { pid, mid, data: { effectScale } });
   }
 
   /** Real-time decay of heat (once per frame). */

@@ -20,6 +20,7 @@ import { circuitView, lampLabel, type LampEntry, type LampView } from '@/game/ci
 import { dawnPlan } from '@/game/pace';
 import { watchEventView } from '@/game/watchEvents';
 import type { BankView, NextQuotaPreview, OvershootView } from '@/game/run';
+import type { BrokeHelp, BrokeStep } from '@/game/rescue';
 import { inUnderneath } from '@/world/hollow';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { InstanceId, PlayerId } from '@/core/types';
@@ -61,6 +62,15 @@ const self = (): PlayerId => app.run?.selfId ?? 0;
 const ui = (): UIOverlayX => app.ui as UIOverlayX;
 const coinSym = (): string => t('common.coinSuffix').trim();
 const money = (n: number): string => fmtCoins(n);
+/**
+ * The broke hint (NIGHT PLAN): the bank first (WITHDRAW at the terminal, the same order the broke card lists them), else the phone,
+ * where the rescue call (the House loan) or a hotline rings. '' when neither way out is open.
+ */
+function brokeHint(steps: BrokeStep[]): string {
+  if (steps.some((s) => s.id === 'bank')) return t('hud.plan.broke.bank');
+  if (steps.some((s) => s.id === 'phone' || s.id === 'loan')) return t('hud.plan.broke.phone');
+  return '';
+}
 const hexCss = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
 /** Machine strings register under `m.<id>.` (registry.ts), so the display name is `m.<id>.name`. */
 const machineName = (id: string): string => (has(`m.${id}.name`) ? t(`m.${id}.name`) : id);
@@ -167,15 +177,20 @@ export function createHud(): Hud {
   // NEXT NIGHT (wave 55): at Dawn and in Mola the plan shows this line alone, the exact quota of the coming Night.
   const planNext = h('span', 'pn hidden', plan);
   planNext.style.cssText = 'font-weight:700';
-  // Four lines at most: the bank against the Dawn quota, the pocket, the Watch (pulls, clock), the tithe. The quota itself is on the
-  // QUOTA line above, so no head line. The OVERSHOOT line (planOver) joins under the bank line once the quota is banked.
+  // The core four lines: the bank against the Dawn quota, the pocket, the Watch (pulls, clock), the tithe. The quota itself is on the
+  // QUOTA line above, so no head line. The OVERSHOOT line (planOver) joins under the bank line once the quota is banked. Optional
+  // lines: the broke hint (under the pocket), and the unpaid tithe (under the tithe), which stays until the Night ends.
   const planBank = h('span', 'pb', plan);
   // OVERSHOOT (wave 7 controls lane): once the quota is banked, the next overpay tier, what it pays and the coins to go.
   const planOver = h('span', 'po hidden', plan);
   const planPocket = h('span', 'pk', plan);
+  // BROKE HINT: the pocket cannot cover the cheapest bet and tonight's quota is unpaid. Names the way out (bank, else phone).
+  const planBroke = h('span', 'pbk hidden', plan);
   const planEnds = h('span', 'pe', plan);
-  // WATCH TITHE (Night 3 on): the Watch tithe line, green once met. Shown only while run.watchTithe() reports it active.
+  // WATCH TITHE (Night 3 on): the Watch tithe line (net winnings), green once met. Shown only while run.watchTithe() reports it active.
   const planTithe = h('span', 'pt hidden', plan);
+  // UNPAID TITHE: the quota the missed Watches added tonight. Shown from the first missed Settle to the end of the Night.
+  const planUnpaid = h('span', 'pu hidden', plan);
   let planKey = '';
   // The NIGHT PLAN counts Settles from the run's segment, which still names the settled Watch during its intermission. These
   // two remember which Watch settled last in which Night, so the Night's first intermission (no Watch settled yet) counts all of them.
@@ -585,9 +600,9 @@ export function createHud(): Hud {
     if (r && next && bank) { showNextNight(next, bank.pocket, bank.balance); return; }
     const show = !!r && !!q && !!seg && !!bank && q.due > 0 && r.window() === 'watch' && !nightPaid(r);
     setCls(plan, 'hidden', !show);
-    // The Watch tithe (wave 7 controls lane): optional, so the plan builds before that lane lands.
-    // run.watchTithe() reports { on, target, earned, met, shortfall } (src/game/checkpoints.ts).
-    const tithe = (r as (typeof r & { watchTithe?: () => { on: boolean; earned: number; target: number } | null }) | null)?.watchTithe?.() ?? null;
+    // The Watch tithe: run.watchTithe() reports { on, target, earned, met, shortfall, added } (src/game/checkpoints.ts). Probed
+    // like the other optional run views, so a run without it reads null and the tithe lines stay hidden.
+    const tithe = (r as (typeof r & { watchTithe?: () => { on: boolean; earned: number; target: number; added?: number } | null }) | null)?.watchTithe?.() ?? null;
     const titheN = tithe?.on ? Math.floor(tithe.target) : 0;
     const titheE = tithe?.on ? Math.max(0, Math.floor(tithe.earned)) : 0;
     const titheOn = titheN > 0;
@@ -615,7 +630,13 @@ export function createHud(): Hud {
     const pulls = r.pulls(self());
     const pullsTxt = Number.isFinite(pulls) ? String(Math.max(0, Math.floor(pulls))) : '∞';
     const clock = mmss(r.shift.timeLeft());
-    const key = `${due}|${watch}|${seg.count}|${bank.balance}|${pocket}|${interm}|${p.projected}|${p.gap}|${pullsTxt}|${clock}|${titheE}/${titheN}|${broken ? 1 : 0}`;
+    // The unpaid tithe: the quota the missed Watches added, kept until the Night ends (run.watchTithe().added, on or off a Watch).
+    const unpaid = Math.max(0, Math.floor(tithe?.added ?? 0));
+    // The broke hint: only while the pocket cannot cover the cheapest bet (brokeHelp is null otherwise) and tonight's quota is unpaid.
+    const paidNow = bank.balance >= due;
+    const help = (r as (typeof r & { brokeHelp?: () => BrokeHelp | null }) | null)?.brokeHelp?.() ?? null;
+    const brokeTxt = !paidNow && help ? brokeHint(help.steps) : '';
+    const key = `${due}|${watch}|${seg.count}|${bank.balance}|${pocket}|${interm}|${p.projected}|${p.gap}|${pullsTxt}|${clock}|${titheE}/${titheN}|${unpaid}|${brokeTxt}|${broken ? 1 : 0}`;
     if (key === planKey) return;
     planKey = key;
     setCls(planNext, 'hidden', true);
@@ -627,11 +648,14 @@ export function createHud(): Hud {
       // Green once the Watch has paid the tithe in play; amber while it is still a target (the plan's own colour read as a note).
       planTithe.style.color = titheE >= titheN ? 'var(--green)' : '#ffd34a';
     }
+    setCls(planUnpaid, 'hidden', unpaid <= 0);
+    if (unpaid > 0) setText(planUnpaid, t('hud.plan.unpaid', { n: money(unpaid) }));
+    setCls(planBroke, 'hidden', !brokeTxt);
+    setText(planBroke, brokeTxt);
     setCls(plan, 'ok', p.met);
     setCls(plan, 'gap', !p.met);
     // Green when the projection covers the quota, red otherwise (the plan classes below); one wording for both.
     // Quota paid before the Dawn: no quota-left line, the surplus that returns at Dawn instead.
-    const paidNow = bank.balance >= due;
     setText(planBank, paidNow
       ? t('hud.plan.paid', { n: money(p.surplus) })
       : t('hud.plan.bank', { p: money(p.projected), q: money(due) }));
@@ -674,7 +698,7 @@ export function createHud(): Hud {
     setCls(planNext, 'hidden', false);
     planNext.style.color = red ? '#ff5a4a' : '';
     setText(planNext, t('hud.plan.night', { q: money(next.due), k }));
-    for (const el of [planBank, planOver, planPocket, planEnds, planTithe]) setCls(el, 'hidden', true);
+    for (const el of [planBank, planOver, planPocket, planBroke, planEnds, planTithe, planUnpaid]) setCls(el, 'hidden', true);
   }
 
   function updateEmpire(): void {

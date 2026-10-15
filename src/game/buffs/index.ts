@@ -16,6 +16,7 @@ import { BUFF_DATA, NIGHT_EVENT_DATA } from '@/game/data/buffs';
 import { Buffs, type BuffHost } from './engine';
 import { NightEvents } from './events';
 import { Streaks } from './streaks';
+import { Hungry, HUNGRY_BUFF } from './hungry';
 import { bridgeEventBanners, type EventBannerShow } from './banner';
 
 export { Buffs } from './engine';
@@ -37,7 +38,7 @@ export interface BuffSystem {
   readonly streaks: Streaks;
   /** Once per frame, real seconds. */
   tick(dt: number): void;
-  /** Host, at each Bell: rolls the nightly event. Returns its id or null. */
+  /** Host, at each Bell: a Glutton's Bib may turn one played machine Hungry, then the nightly event rolls. Returns the event id or null. */
   onBell(): string | null;
   /** Shift end: `shift` buffs expire, streaks reset. */
   onShiftEnd(): void;
@@ -56,10 +57,11 @@ export function createBuffSystem(
   const buffs = new Buffs(host);
   const nightEvents = new NightEvents(host);
   const streaks = new Streaks(host, buffs);
+  const hungry = new Hungry(host, buffs);
   const unsubs: Unsub[] = [];
 
   // catalogue: definitions and their i18n names (buff.<id>.name|desc, event.<id>.name|desc|announce)
-  for (const def of BUFF_DATA) {
+  for (const def of [...BUFF_DATA, HUNGRY_BUFF]) {
     unsubs.push(buffs.register(def));
     registerStrings(`buff.${def.id}.`, { en: def.strings.en, tr: def.strings.tr });
   }
@@ -85,6 +87,7 @@ export function createBuffSystem(
   unsubs.push(bus.on('machine:result', ({ mid, machineId, pid, bet, gross }) => {
     buffs.onResult(pid, mid, gross > 0);
     streaks.onResult(pid, mid, machineId, gross, bet);
+    hungry.onResult(mid, machineId);
   }));
   unsubs.push(bus.on('shift:phase', ({ phase }) => {
     if (phase === 'settle') onShiftEnd();
@@ -108,6 +111,7 @@ export function createBuffSystem(
       nightEvents.tick();
     },
     onBell(): string | null {
+      hungry.onBell();
       return nightEvents.roll();
     },
     onShiftEnd,

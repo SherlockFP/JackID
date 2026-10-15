@@ -1,8 +1,9 @@
 /**
  * Watch checkpoints (wave 58, director): the WATCH TITHE. From Night 3 every quota Watch has its own mini-target: 12 % of the
  * Night's quota, EARNED IN PLAY during that Watch. Earned = net winnings (credited wins less the stakes played), never deposits,
- * withdrawals or interest. Met at the Watch's Settle: +1 Ticket. Missed: the shortfall is added to tonight's quota (run.ts folds
- * `addedQuota()` into the quota formula), so a Night paid early in Watch 1 still has to be played through.
+ * withdrawals or interest. Met at the Watch's Settle: +1 Ticket. Missed: HALF the shortfall, rounded up (TITHE_PENALTY_SHARE), is added
+ * to tonight's quota (run.ts folds `addedQuota()` into the quota formula), so a Night paid early in Watch 1 still has to be played
+ * through. The penalty is a fine, not a spiral: the full shortfall never lands on the quota.
  *
  * Pure and HUD-agnostic: run.ts owns the wallet and calls `setNightQuota` (each quota recompute), `begin` (each Watch start),
  * `played` (each stake and each credited win), `settle` (each Watch settle) and `newNight` (each Night open). `view()` is the readout.
@@ -15,10 +16,17 @@ export const TITHE_SHARE = 0.12;   // director: 0.2 was missed ~70 % of the time
 export const TITHE_FROM_NIGHT = 3;
 /** Tickets paid for a met tithe. */
 export const TITHE_TICKETS = 1;
+/** The share of a missed Watch's shortfall that joins tonight's quota (rounded up). Half, so a missed tithe is a fine, not a spiral. */
+export const TITHE_PENALTY_SHARE = 0.5;
 
 /** The Watch's target for a Night quota (0 when there is nothing to earn against). */
 export function titheTarget(nightQuota: number): number {
   return Math.max(0, Math.floor((Number.isFinite(nightQuota) ? nightQuota : 0) * TITHE_SHARE));
+}
+
+/** The quota a missed Watch adds for its shortfall: TITHE_PENALTY_SHARE of it, rounded up (0 with no shortfall). */
+export function tithePenalty(shortfall: number): number {
+  return Math.ceil(Math.max(0, Number.isFinite(shortfall) ? shortfall : 0) * TITHE_PENALTY_SHARE);
 }
 
 /** Net winnings of a Watch: the credited wins less the stakes, never below 0 (a losing Watch earns nothing). */
@@ -40,15 +48,17 @@ export interface TitheView {
   earned: number;
   /** Earned has reached the target (live; the Settle decides the outcome). */
   met: boolean;
-  /** How far short the Watch is now (0 once met). */
+  /** How far short the Watch is now (0 once met). The full gap; the quota adds only TITHE_PENALTY_SHARE of it at the Settle. */
   shortfall: number;
+  /** Quota the missed tithes have added tonight. Kept on or off a tithe Watch, until the Night ends (HUD: the unpaid tithe line). */
+  added: number;
 }
 
 export interface TitheResult {
   state: 'met' | 'missed';
   target: number;
   earned: number;
-  /** Coins added to tonight's quota (0 when met). */
+  /** Coins added to tonight's quota: the penalty (tithePenalty of the gap), 0 when met. run.ts emits it as `run:tithe` `shortfall`. */
   shortfall: number;
   /** Tickets paid (TITHE_TICKETS when met, else 0). */
   tickets: number;
@@ -112,6 +122,7 @@ export class WatchTithe {
       earned: this.on ? earned : 0,
       met: this.on && earned >= target,
       shortfall: this.on ? Math.max(0, target - earned) : 0,
+      added: this.added,
     };
   }
 
@@ -121,10 +132,10 @@ export class WatchTithe {
     const target = titheTarget(this.base);
     const earned = titheEarned(this.won, this.staked);
     const met = earned >= target;
-    const shortfall = met ? 0 : target - earned;
+    const penalty = met ? 0 : tithePenalty(target - earned);
     this.on = false;
-    this.added += shortfall;
-    return { state: met ? 'met' : 'missed', target, earned, shortfall, tickets: met ? TITHE_TICKETS : 0 };
+    this.added += penalty;
+    return { state: met ? 'met' : 'missed', target, earned, shortfall: penalty, tickets: met ? TITHE_TICKETS : 0 };
   }
 
   /** The save slice, or undefined when there is nothing to keep (no Night quota yet). */

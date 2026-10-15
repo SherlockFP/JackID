@@ -2,7 +2,7 @@
 export default {
   prefix: 'tut.',
   en: {
-    'walk': 'Walk to THE BIG ONE and sit down.',
+    'walk': 'Walk to {name} and sit down.',
     'spin': 'Press {key}. Spin 4 times, then try another machine — TILT lowers repeat pay.',
     'deposit': 'At the Bank Terminal press DEPOSIT, then 50%: bank coins earn +{rate}% per Watch tonight. You have {n} Watches. Deposit early — the bank grows every Watch. The quota is due at Dawn.',
     'tilt': 'TILT: the same machine pays less. Rotate to another one.',
@@ -19,7 +19,7 @@ export default {
     'broke.loan': 'HOUSE LOAN: {c} coins now, the quota +{q} tonight. Answer the phone ({key}) and take the loan.',
   },
   tr: {
-    'walk': 'THE BIG ONE’a yürü ve otur.',
+    'walk': '{name} makinesine yürü ve otur.',
     'spin': '{key} ile çevir. 4 kez çevir, sonra başka bir makineyi dene — TİLT aynı makinede ödemeyi düşürür.',
     'deposit': 'Banka Terminali’nde YATIR’a, sonra %50’ye bas: bankadaki jeton her Vardiya %{rate} faiz kazanır. {n} Vardiyan var. Erken yatır — banka her Vardiya büyür. Kota Şafak’ta ödenir.',
     'tilt': 'TİLT: aynı makine daha az öder. Başka birine geç.',

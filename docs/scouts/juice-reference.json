@@ -1,0 +1,148 @@
+{
+ "area": "Juice and dopamine feedback: win count-ups, anticipation, escalation tiers, celebrations, streak/heat, quota and jackpot moments (read-only research)",
+ "inventory": [
+  "celebrate(host, tier, opts): src/machines/_base/juice.ts:150-187; escalation big fountain+shake juice.ts:220-223, huge slowmo juice.ts:224-228, mega confetti/chroma/floorStrobe juice.ts:229-238, jackpot pitWave+coin rain juice.ts:239-253",
+  "TIER_SHOW durations/Hz/sfx/glow: juice.ts:84-93; TIER_MULT x3/x10/x25/x50: src/machines/_base/tiers.ts:17; juiceTier(gross,bet,tags): tiers.ts:21; winFeel(mult) continuous log curve for flash, coins, pop, pitch, shake, zoom: tiers.ts:119-147",
+  "nearMiss(host,{dur,at,lamps,fast}) heartbeat, red pulse, vignette, zoom: juice.ts:315-331 (called from 17 machine files)",
+  "pourCoins(host,amount,{onCount}) count-up on sim clock: juice.ts:358-372; countUp(ctx,from,to,dur,onValue): juice.ts:375",
+  "loss(host,{amount,at}): juice.ts:294; emitComboShow/comboTwinkle: juice.ts:383/393; AttractScript: juice.ts:411-436; flashPrefs gate: juice.ts:44-50",
+  "FxApi (burst, coins, sparks, confetti, popText, shake, dithered flash, chroma, tint, zoomPunch, slowmo, hitstop, lightPulse, winBurst, loss): src/core/fx/types.ts:62-107; one tween per post channel: src/core/fx.ts:42-48; setPostLevel: fx.ts:57; glitchPulse: fx.ts:51; honours settings.shake and reduceFlashing: fx.ts:12",
+  "Roller rolling counter (30 ticks/s, 15 pct step): src/menu/hud/fmt.ts:32-54",
+  "playProcTick/procTickSemitones: src/menu/hud/charmProc.ts:22-30; popSize: charmProc.ts:124; goldBurst: charmProc.ts:138-167; createProcPops stack (MAX_POPS 4): charmProc.ts:18, 180-209",
+  "uiSfx(name,vol): src/core/ui/widgets.ts:55; addTicker(fn): widgets.ts:65",
+  "gambleFx: RUNG_SEMIS pitch ladder src/core/audio/gambleFx.ts:15; collectCoins sqrt-of-pot cascade gambleFx.ts:18; win pitch climb gambleFx.ts:27-29; tensionRise on all-in arm gambleFx.ts:33",
+  "SFX loudness TRIM table (numberTick, tallyTick, clockTick, tensionRise, winRise, jackpotSiren, etc.): src/core/audio/sfx.ts:38-59; LONG list sfx.ts:948; tensionRise recipe sfx.ts:883",
+  "Big One riser through held breath: src/machines/bigone/index.ts:557",
+  "HUD CSS: charm-pop/win-pop src/menu/hud/hud.css:163-177; hud-blink/hud-hop/hud-glow hud.css:184-186; prefers-reduced-motion disables HUD animation hud.css:187; quota bar hud.css:63-67; wallet glow hud.css:31",
+  "HUD win pop winPop(text,idx) src/menu/hud.ts:266-275 (burst+shake at BIG hud.ts:270-273); machine:result hitstop hud.ts:380; charm:proc handler hud.ts:395-403; machine:jackpot handler hud.ts:384-388; quota:met handler hud.ts:408; quota fill width hud.ts:500; overshoot toast hud.ts:612-617",
+  "Toast kinds incl. curse/money/phone (ExtraToastKind): src/core/ui/ui.ts:38-41; holdToasts: ui.ts:60-62; px-curse violet keyframes: src/core/ui/ui.css:101",
+  "Night card receipt roll (cubic ease + coin tick about every 0.1 s): src/game/nightCards.ui.ts:116-127; countdown bar: nightCards.ui.ts:130-133; nc-pulse: src/game/nightCards.css:44",
+  "Settle/results receipt print + stamp thud: src/menu/hud/results.ts:164-177; rcp-thud keyframes: src/menu/hud/results.css:29",
+  "Streaks/heat 0..100 and overheat: src/game/buffs/streaks.ts:20-81 (Hot stacks HOT_MAX_STACKS 3 at :25); buff metrics heat, streak.win, streak.loss: src/game/buffs/index.ts:74-76",
+  "Hungry buff: src/game/buffs/hungry.ts:13-21 (def, tag curse), onBell 44-51",
+  "Quota met emitted: src/game/run.ts:2369; jackpot pool 'net' (seed, drip): run.ts:908; jackpot:win listener: run.ts:1041"
+ ],
+ "gaps": [
+  {
+   "where": "src/menu/hud.ts:362 (eco:wallet calls winPop(signed(delta,money), idx)); hud.ts:266-275 winPop; hud.ts:377-381 BIG+ tier-name fly",
+   "moment": "Any win at SMALL or above, centre figure; BIG and above also flies the tier name",
+   "current": "The centre figure appears at its final value in one frame (hud.ts:362). Count-up exists only machine-side (juice.ts:358-372 pourCoins onCount, juice.ts:375 countUp) and in the Night receipt (nightCards.ui.ts:116-127). Burst and shake only at BIG+ (hud.ts:270-273).",
+   "proposal": "Count-up: roll the centre figure from 0 to the amount over 0.5-1.1 s with ease-out (countUp pattern, juice.ts:375). Pitch each tick up with progress (procTickSemitones, charmProc.ts:22-25). Land with goldBurst (charmProc.ts:138) and the existing shake (hud.ts:272). Scale duration by tier.",
+   "effort": "S",
+   "impact": 5
+  },
+  {
+   "where": "src/machines/_base/juice.ts:150-187 celebrate(); design rule at juice.ts:2",
+   "moment": "Win tiers big and above, before the reveal lands",
+   "current": "celebrate() starts at impact: flash, pop, jingle, pour (juice.ts:161-176). The header at juice.ts:2 requires anticipation, action, impact, follow-through, but no windup stage exists. Anticipation exists only as nearMiss() for losses (juice.ts:315-331, 17 machine files), the Big One riser (bigone/index.ts:557) and the all-in arm (gambleFx.ts:33). tiers.ts:21 can classify the result before the reveal.",
+   "proposal": "Anticipation: add windup(host, tier) run before celebrate for tier >= big. Play tensionRise (sfx.ts:883) with its param climbing 0 to 1 over 0.6 s (big/medium) or 1.2 s (huge+). Ramp lamp blink rate (l.blink, juice.ts:183) and add two slow zoom creeps (fx.zoomPunch, fx/types.ts:84). Fire celebrate on the last beat. Machines call await windup then void celebrate.",
+   "effort": "S",
+   "impact": 5
+  },
+  {
+   "where": "src/machines/_base/reels.ts:155-158 nearMissLine; src/machines/pachislot/index.ts:404 nearMiss dur 0.7",
+   "moment": "Two matching reels with the third about to land (slot-style machines)",
+   "current": "Near miss is a generic 0.7-0.9 s held breath (juice.ts:315-331: heartbeat, red pulse, vignette, zoom) before the losing face lands (pachislot/index.ts:404). The detector exists (reels.ts:155-158). No slowed last-reel deceleration was found by keyword in reels.ts.",
+   "proposal": "Last-symbol tease: when nearMissLine flags two of three, decelerate the last reel over 0.8-1.2 s with ease-out and one reelTick per symbol passing (TRIM in sfx.ts:38-59). Land it with a soft cue after the loud pair, and keep the red pulse. Reuse the helper for other near-miss machines.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "src/game/buffs/streaks.ts:20, 43-65, 78-81; src/game/buffs/index.ts:74-76 (heat, streak.win, streak.loss metrics)",
+   "moment": "Win streak building heat per machine, and overheat",
+   "current": "Heat 0..100 is computed and exposed as buff metrics, but nothing in src/menu renders heat or streaks (grep finds no matches). Hot stacks up to 3 (streaks.ts:23, 25, 53) show only as buff chips in the list (hud.ts:719).",
+   "proposal": "Heat meter: draw a 4 px bar in the top-right stack under the quota (style as hud.css:63-65), colour ramp amber to signal, pulse with hud-blink (hud.css:184) above 75. On overheat, play fx.tint red (fx/types.ts:83), a gmb-alarm-style border blink (gamble.css:61) and a buzzer sting.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "src/menu/hud.ts:500 (quotaFill.style.width); src/menu/hud/hud.css:63-67",
+   "moment": "Each deposit toward the quota (debt repayment)",
+   "current": "Bar width is set directly on each update and .bar i has no transition (hud.css:65), so the fill jumps. The quota number does not roll. Deposit feedback is limited to the wallet glow (hud.css:31) and a bump (hud.ts:365).",
+   "proposal": "Bar tween: CSS width transition of about .35 s, with a white ghost segment that lags and drains behind the fill. Roll the numbers with Roller (fmt.ts:32-54). Fire numberTick (sfx.ts:39) when crossing 25/50/75/100 percent, and a short hud-glow on the bar.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/menu/hud.ts:612-617 overshoot toast (good, 4 s); hud.ts:664 OVERSHOOT line",
+   "moment": "Overshoot tier reached (overpay tiers: JACKPOT SEAL, HOUSE ENVY)",
+   "current": "A 4 s toast (hud.ts:617) and the NIGHT PLAN text line. No stamp, flash or sting is tied to the tier change.",
+   "proposal": "Tier reveal: slam a stamp (reuse rcp-thud, results.css:29) with the tier name in the charm-pop style (hud.css:163-177). Add one dithered fx.flash (fx/types.ts:81), a tier-scaled sting (winRise, jackpotBells; sfx.ts TRIM), and a goldBurst size 2 (charmProc.ts:138). Keep the toast for the text.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/menu/hud/charmProc.ts:18-19, 180-209 createProcPops; src/menu/hud.ts:395-403 charm:proc handler",
+   "moment": "A round where several charms proc in sequence",
+   "current": "Each proc spawns an independent pop, a tick and a peg hop (hud.ts:398-401, charmProc.ts:28-30). Max 4 live pops (charmProc.ts:18). No running total links them.",
+   "proposal": "Chain resolve: queue procs 120-140 ms apart in the order they resolve (left-to-right, as in Balatro). Each bounces its peg with the existing hop and pitch-ticks with procTickSemitones (charmProc.ts:22). End with a larger '= total' pop (popSize, charmProc.ts:124, size 2) and a goldBurst. Needs a per-round batch from the emitter (emitter not read).",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "src/menu/hud.ts:408 quota:met handler (feed line + quotaTick only); src/game/run.ts:2369 emits quota:met",
+   "moment": "Quota met (a Night's debt paid, once per Night)",
+   "current": "HUD path is one feed line and one quotaTick (hud.ts:408). A quotaMet sfx (sfx.ts:560), a music stinger (src/core/audio/music/stingers.ts:34) and a cutscene kind (src/core/cutscene/types.ts:24) exist, but whether they fire on this event was not verified.",
+   "proposal": "Debt-cleared beat: on quota:met, play fx.slowmo(0.3, 0.4) (fx/types.ts:86), a gold dithered flash, fx.coins with 40-60 coins (fx/types.ts:63), a banner, and countUp of the paid amount (juice.ts:375). Check the existing stinger and cutscene first to avoid stacking.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/game/run.ts:908 'net' pool (seed, drip); src/menu/hud.ts:384-388 machine:jackpot handler (feed + fly only)",
+   "moment": "Jackpot pool growing (variable reward), and a jackpot win",
+   "current": "The pool drips up in the model (run.ts:908), but hud.ts has no pool readout (grep for pool or jackpot finds only the handlers at 384-388). The jackpot win gets a feed line and a fly (hud.ts:384-388). World signage was not checked.",
+   "proposal": "Jackpot ticker: a rolling jackpot figure in the top bar that steps up with each drip (numberTick at low volume, pitch rising with value). Flash gold on each 1 percent step. On a network win that resets it, play a 0.8 s jolt (fx.shake, small). Visible growth is the variable-reward hook.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "src/menu/hud/results.ts:164-177 stamp thud; src/menu/hud/results.css:29 rcp-thud; src/game/nightCards.ui.ts:116-127 receipt roll (template)",
+   "moment": "Dawn / Settle result sheet",
+   "current": "Receipt lines print at 0.12 s each, then the stamp lands with one quotaTick regardless of outcome (results.ts:164-177). The Night card receipt already rolls with cubic ease and a coin tick about every 0.1 s (nightCards.ui.ts:116-127).",
+   "proposal": "Stamp by payout: a bigger thud with goldBurst for a win, a dim red flicker for a bust. Run the total line through the nightCards roll (ease plus tick) so the figure climbs before the stamp lands.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "src/menu/hud/hud.css:163-177 (charm-pop, win-pop, ease-out .9 s); src/menu/hud/charmProc.ts:147 goldBurst cubic-bezier",
+   "moment": "All pop text and burst motion (PSX aesthetic cohesion)",
+   "current": "Pops and bursts use smooth ease curves. The HUD already uses steps() for blinking (hud.css:40, 67), so stepped motion matches the style.",
+   "proposal": "PSX stepped pops: use animation-timing-function steps(4) on pop scale and position, and on burst sparks, with a 1 to 2 frame snap on impact. Cheap CSS change that reads as choppy hardware and still reads as impact.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "src/game/buffs/hungry.ts:13-21 HUNGRY_BUFF (tag curse); hungry.ts:44-51 onBell",
+   "moment": "A machine turns Hungry at the Bell (a curse)",
+   "current": "Turning Hungry is a silent data change in the files read. No toast or sfx was found in hungry.ts. It appears only in the buff list (hud.ts:719).",
+   "proposal": "Curse beat: on add, show a 'curse' toast (ExtraToastKind, ui.ts:38-41) with the px-curse violet flicker (ui.css:101), a low buzzer or lose sting, and a pulse on the machine's bib decal.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "src/game/buffs/streaks.ts:23, 25, 53 (Hot stacks 1-3); src/core/audio/gambleFx.ts:15-29 (rung pitch ladder)",
+   "moment": "Hot stack goes up (win streak 3, 4, 5)",
+   "current": "Stacks change silently. The only display is the buff list (hud.ts:719). No stack-up pop or pitch step was found in the files read.",
+   "proposal": "Stack-up beat: on each stack increase, show a small 'HOT x2' pop through the proc pop stack (createProcPops, charmProc.ts:180), tick pitched with the rung ladder (RUNG_SEMIS, gambleFx.ts:15), and a hud-glow (hud.css:186).",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "src/menu/hud.ts:467 (setCls clock lastcall); src/menu/hud/hud.css:40 blink; src/core/fx.ts:57 setPostLevel",
+   "moment": "Last Call, final 10 seconds",
+   "current": "The clock blinks (hud.css:40) and a banner plays. No per-second tick or vignette ramp was found in the lines read.",
+   "proposal": "Final-seconds urgency: each of the last 10 s play clockTick (sfx.ts:54) with rising pitch, punch the clock number with hud-hop (hud.css:185), and ramp setPostLevel('vignetteBoost') toward 0.45 (the nearMiss pattern, juice.ts:325).",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "src/machines/_base/juice.ts:411-436 AttractScript",
+   "moment": "Idle machine with a pending near-miss or a jackpot pool near a threshold",
+   "current": "AttractScript exists for periodic idle motion (juice.ts:411). Adoption across machines was not checked.",
+   "proposal": "Idle tell: feed the pool or near-miss state into AttractScript, so an idle machine sends a light chase or coin rattle when its pool nears a threshold. Low effort teaser that pulls the eye toward a machine.",
+   "effort": "S",
+   "impact": 2
+  }
+ ],
+ "notes": "Scope: read-only. Nothing was edited; no git writes, no servers, no Chrome. Research used WebSearch and WebFetch; URLs are inline below.\n\nVerdict: machine-level juice is already deep (juice.ts tier table and celebrate escalation, the tiers.ts winFeel curve, nearMiss in 17 machine files, the pachislot tease). The biggest gaps are at the game layer and in anticipation. The centre win figure does not count up (hud.ts:362). juice.ts:2 requires an anticipation stage that celebrate() never runs. Quota, heat, overshoot and jackpot-pool moments are visually flat, and the heat meter exists in data but is never drawn.\n\nSuggested order: gaps 1, 2, 5, 6, 8 first (all S effort, impact 4-5), then 3, 4, 7, 9. Gaps 10-15 are polish.\n\nDesign caution (Kelly counterpoint, https://gamedeveloper.com/design/video-indies-resist-the-urge-to-juice-it-or-lose-it- , GDC year conflicts across sources): heavy polish can cost immersion. For a casino ledger, keep the numbers readable and put the juice on the figure, not over it. New flashes should go through flashPrefs (juice.ts:44-50) and the reduceFlashing setting (fx.ts:12). HUD animations already switch off under prefers-reduced-motion (hud.css:187).\n\nResearch, with confidence:\n- Balatro: scoring resolves piece by piece (chips, then mult), rolling digits, jokers trigger left to right with a bounce, shake scaled to score, rising pitch per scored card. Source is a third-party breakdown, https://blakecrosley.com/guides/design/balatro . Its numbers are illustrative and were not checked against the game. Developer intent (enjoying a scoring chain before knowing the outcome) is paraphrased from a video transcript, https://amara.org/videos/qZaMrU6iDy4J/en/4529388/15363640 . Medium confidence.\n- Juice principles (tween, squash and stretch, shake, colour, easing, sound): secondhand summary of Jonasson and Purho's talk at https://rpgplayground.com/research-making-a-juicy-game/ . https://roblog.co.uk/2024/03/juicy-games/ names no specific techniques.\n- Near miss, neuroscience: Clark et al. 2009, Neuron 61(3):481-490, https://pmc.ncbi.nlm.nih.gov/articles/PMC2658737/ . Near misses drove more activity than full misses in reward areas (ventral striatum, insula) and raised the wish to keep playing. The effect was tied to the player having control. Small sample of non-problem gamblers. High confidence in the finding, via search summary. Chase and Clark 2010 (J Neurosci) extended this to regular gamblers; secondary summary only.\n- 2020 bioRxiv EEG preprint: faster re-initiation after a near miss. Preprint, not peer-reviewed as far as checked: https://www.biorxiv.org/content/10.1101/2020.10.08.330654v1\n- Time-on-device and the 'machine zone': Schull, Addiction by Design, https://muse.jhu.edu/book/61897 (publisher summary). The reel-stop and near-miss audio claims come from low-quality blogs (https://www.tynmagazine.com/?p=229360 , gigwise) and are unverified. Treat them as hypotheses to playtest.\n- Vampire Survivors: the developer drew on gambling-industry design, https://researchportal.port.ac.uk/en/publications/vampire-survivors-how-developers-used-gambling-psychology-to-crea/ . Gem pickups play a sound and fill a bar, https://www.thevibes.com/articles/lifestyles/53373/vampire-survivors-an-escalating-dopamine-rush-disguised-as-a-retro-game . Pitch escalation details were not found.\n- Luck be a Landlord: not knowing the next symbol is itself rewarding, https://the-pixels.com/?p=144675 (secondhand review).\n- CloverPit: reviews praise combo payoff and atmosphere, and criticise an item-pool lottery and repetition, https://trendingnow.games/reviews/cloverpit-review and https://www.pcgamesn.com/cloverpit/steam-roguelike-balatro . No juice-level analysis was found. Lesson: the payoff must be felt on every combo, not only the big one.\n- Peglin: no usable results.\n\nNot verified (flagged for follow-up): whether the quota-met stinger and cutscene fire on quota:met; whether jackpot pool readouts exist in world signage; the reel-stop driver (not read); the charm:proc emitter (not read); whether Hot stacks or Hungry already produce a toast elsewhere (only the files listed were read)."
+}

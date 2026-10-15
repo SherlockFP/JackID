@@ -10,7 +10,7 @@ export default {
     'met': 'TITHE MET: +{n} TICKET',
   },
   tr: {
-    'missed': 'ÖŞÜR KAÇTI: kota +{n}',
-    'met': 'ÖŞÜR TAMAM: +{n} BİLET',
+    'missed': 'VERGİ KAÇTI: kota +{n}',
+    'met': 'VERGİ TAMAM: +{n} BİLET',
   },
 };

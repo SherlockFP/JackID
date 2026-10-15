@@ -48,7 +48,7 @@ export default {
     'dealers_break.desc': 'Blackjack’te her iki kartta ikiye katlamaya izin verilir.',
     'dealers_break.announce': 'KRUPİYER MOLASI. HER ŞEYİ İKİYE KATLA.',
     'cold_snap.name': 'SOĞUK DALGA',
-    'cold_snap.desc': 'SOĞUK makine ×0,5 öder, ama bu Watch’a +1 çekiliş gelir.',
+    'cold_snap.desc': 'SOĞUK makine ×0,5 öder, ama bu Nöbete +1 çekiliş gelir.',
     'cold_snap.announce': 'SOĞUK DALGA. SOĞUK OLAN DAHA DA SOĞUYOR. BİR ÇEKİLİŞ DAHA.',
     'jackpot_whisper.name': 'İKRAMİYE FISILTISI',
     'jackpot_whisper.desc': 'Big One ikramiye ödemeleri ×3.',

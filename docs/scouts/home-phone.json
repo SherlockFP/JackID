@@ -1,0 +1,256 @@
+{
+ "area": "Phone and messaging (read-only map). Covers the Hotline call system (game module and booth view), the Collector's rescue call line, Mira's story calls, the DOM choice/subtitle/toast/panel overlay, the in-world 3D placard UI (notes, journal, deal board), the first-person viewmodel and held props, the manga portrait and dialogue box, and the i18n *.strings.ts pattern. No message-thread UI or spouse/mafia content exists yet.",
+ "files": [
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/hotline.ts",
+   "role": "Core phone module. Ring roll and timing (44-53, 540-565), call start and end (507-537), 3-offer roll (478-494), option codec (426-442), pickup and choose (581-616), tick (618-633), save and restore (635-643), factory (452-658). Emits phone:ring/phone:end (523, 536), hotline:result (535), phone:story (590-593)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/hotline.strings.ts",
+   "role": "Caller lines call.1..6 and call.hollow (8-14), deal name/boon/cost keys (24-74), result notes (76+). Prefix 'hotline.' (5-6)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/rescue.ts",
+   "role": "Second call line that reuses the hotline wire format (PhoneCallState, id base 1e6). Collector loan. RescueLine API (43-55), ring/answer/tick (91-122), brokeSteps including the 'phone' step (128-155, push at 155)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/story/calls.ts",
+   "role": "Mira wrong-number call table: StoryCall {id, night, lines} (6-16), STORY_CALLS (18-27), storyCallFor (30-32). Data-only; the phone decides pickup."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/story/calls.strings.ts",
+   "role": "Mira call lines, prefix 'story.' keys call.mira_n2.1..3 and call.mira_n5.1..3, en (4-13) and tr (14-21)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/ingame/roomsHost.ts",
+   "role": "Consumes phone:story (157-165): one ui.subtitle per line on a timer, plus holdClockFor('miraCall') (164)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/machines/hotline/index.ts",
+   "role": "Booth view and input. Walk-layer phoneWalkKeys (161-167), tick and ring view (228-257), onResult toast (207-213), answerPhoneKey (282-289), onInput and takeOffer (315-334), deal sheet as Placard3D (338-349). Strings en/tr in def.strings (77-151)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/machines/hotline/rules.ts",
+   "role": "Pure helpers: ring cadence and timing constants RING_TOTAL_S 20, ANSWER_S 15 (8-14), ringState (24), canAnswer target 0 or self (76-78), resolveVars with '@key' indirection (44-49)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/machines/hotline/model.ts",
+   "role": "3D booth: rotary phone with handset on cradle (73-75), booth lamp, two-digit nixie target (19-25)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/ui/ui.ts",
+   "role": "DOM overlay. choice() queue and pump (400-434; numbered options with keycap 421; timeout returns -1 at 426-429; public choice 759-764). Digit1-9 keyboard pick (979-981, skipped in 'machine' mode). subtitle (747-757). panel (824-835). toast with 'phone' ExtraToastKind (39), icon map 'phone':'bell' (69), toast signature with tag (56, UIOverlayX)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/ui/types.ts",
+   "role": "UIOverlay public contract: toast (49, ToastKind only), subtitle (52, phone dialogue), choice (53), modal (54), panel (55)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/ui/ui.css",
+   "role": "Choice styling .px-choices / .px-choice / .opt / .tmr (334-357); .k-phone toast amber (442-443); .phone ring-chip direction text (303-304)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/ui/widgets.ts",
+   "role": "modalPanel(el, {escClose, dim}) marks a ui.panel as modal: blocks gameplay input, backdrop, Esc closes (doc 201, function 204)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/events.ts",
+   "role": "Bus event typing. phone:ring/phone:end (111-112), run:window (68), run:deadline {index,due,seconds} (70), run:clock {remaining} at 1 Hz (72), shift:phase (74), chat:msg (116). hotline.ts declares phone:story (36-41), phone:length (86-88), hotline:result (131-133) via module augmentation."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/run.ts",
+   "role": "Integration host. RunExt optional hotline save (357-358, 'Optional: older saves have none'). createHotline (959). phone()/answerPhone() route rescue then hotline (1334-1335). run:clock emit (1406). hotline.tick (1409). Watch clock held only while clockHeld() (1430). run:deadline emit at Watch start (1477). shift:phase and run:window emit in enter() (1814-1816). Ringing gate for broke help (1740) and checkRescue (2485). Snapshot (3169) and restore (3526). Hollow 3:33 'phone333' trigger (2557)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/clockHold.ts",
+   "role": "Watch-clock hold API: holdClock, holdClockFor(reason, sec) (21-23), releaseClock, clockHeld (27-28), tickClockHold (32-38). Anything that needs reading time holds the Watch clock."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/types.ts",
+   "role": "RunApi (117). phone(): PhoneCallState|null and answerPhone(choice) (171-172). RunWindow = 'watch'|'dawn' (49)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/shift.types.ts",
+   "role": "ShiftPhase union incl. 'play','closing','settle','collection','intermission','over' (24)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/watchEvents.ts",
+   "role": "Per-Watch seeded floor events, 45-60 s (header 1-20; rollWatchEvent 58). Precedent for periodic seeded in-Watch scheduling."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/net/protocol.ts",
+   "role": "PhoneCallState {id, script, target, ringingSince, answeredBy, step, options} (64). RunSnapshot.phone (74). Wire messages phone and phoneAns (188-189): declared, no handler found in src."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/net/session.ts",
+   "role": "HOST_ONLY set includes 'phone' (61-66); phoneAns is not listed."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/menu/hud.ts",
+   "role": "On-screen phone is only a HUD chip: PHONE_SECONDS 10 (37), chip DOM (233-238: bell, arc, label, direction), listeners on phone:length/ring/end (430-433), updatePhone (798-803), boothHint distance text (809)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/menu/hud/hud.css",
+   "role": "Chip styles: .hud .phone (152), bell blink (153), conic arc ring (154)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/world/world.ts",
+   "role": "Lights react to phone:ring/phone:end (170-171). lightPool.ts RING profile (91) and ringing() (144)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/keymap.ts",
+   "role": "Walk bindings: EXTRA_BINDINGS (41-46) with answerPhone KeyP, phoneOpt1..3 Digit1..3 (45); SEATED_WALK_ACTIONS (55-57) includes answerPhone; MODAL_WALK_ACTIONS (83) phoneOpt1..3."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/keymap.strings.ts",
+   "role": "Action labels for action.answerPhone and action.phoneOpt1..3 (en line 21, tr line 52)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/input/types.ts",
+   "role": "Frozen Action union (18). New walk actions go to EXTRA_BINDINGS instead (keymap.ts comment 41)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/inGameState.ts",
+   "role": "Per-frame phoneWalkKeys((a) => app.input.pressed(a)) call (392), so hotline keys work walking or seated."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/story/notes.ts",
+   "role": "In-world placard pattern: present(p, def) takes input mode 'ui', exits pointer lock, closes on interact (128-141); openNote (162-166); openJournal (176-178); keys map (217). Paper, tape and journal are Placard3D boards."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/story/notes.data.ts",
+   "role": "NoteDef with zone and night gating (9-19); noteOpen (32-36); NOTES table (43-73). Data-driven content table precedent."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/machines/_base/placard3d.ts",
+   "role": "Held-up 3D board. PlacardSpec {name, w, h, px, pages, paint, act, keys, rest, autoHide} (153-180). class Placard3D (230), show (292), hide (318), pointer regions (388), key (406)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/player/viewmodel.ts",
+   "role": "First-person hands. Gloves already exist (header 2; GLOVE color 78). Held 'phone' model (244-246) and pose (332). One-shot anims list (165-216). Hand look API (370-376)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/player/types.ts",
+   "role": "HeldItem union includes 'phone' (22). Viewmodel.hold(item, obj?) (25)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/player/local.ts",
+   "role": "Only call site: viewmodel.hold('coin') at 153. No code holds the phone in hand today."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/kit/props.ts",
+   "role": "kit.prop('phone') static prop, attaches to hand_r (11, 317-323). Also used by Devil's Stable burner item (src/machines/devilstable/index.ts:59, 734)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/cutscene/types.ts",
+   "role": "Cutscene DSL: ActorSpec.props for a mannequin holding a prop (64-71); SubtitleCue (85-93); GateCue with until 'choice' and options (148-153)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/cutscene/actors.ts",
+   "role": "Spawns mannequins and attaches props to bones (66)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/cutscene/player.ts",
+   "role": "Cutscene choice gate calls ui.choice (296-300); settles the gate with the picked index."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/cutscene/effects.ts",
+   "role": "showSubtitle(cue) (134-140): text and speaker resolved via t(), voice optional."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/story/cutscenes/descend.cutscene.ts",
+   "role": "Example choice gate with two options and timeout (line 22); pick sets a story flag through a hook (story/index.ts 104)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/ui/manga/portrait.ts",
+   "role": "Procedural portraits. SPECS (55) keyed by id incl. notary, clerk, you (106-127). PORTRAIT_IDS (157). portrait() (1664), hasPortrait (1680). No spouse spec."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/ui/manga/dialogue.ts",
+   "role": "dialogue(speakerId, lineKey, side, expr) bottom-third box with portrait and typewriter (1-60). Used by tallytable and lordstable machines."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/ui/manga/manga.strings.ts",
+   "role": "Speaker and title labels: who.<id> and title.<id>, en (19-36), tr (68-79)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/ui/manga/mangaPanel.ts",
+   "role": "speakerName (161), speakerTitle (162), cutin (171)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/story/story.strings.ts",
+   "role": "Speaker keys speaker.house, collector, mira, pa, clerk: en (25-29), tr (108-112). UI keys story.ui.* (8-24)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/i18n.ts",
+   "role": "registerStrings(prefix, {en, tr}) (20). Vars use {name} interpolation. Plurals via .one/.other keys (file header). Missing key falls back to en then to the key."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/main.ts",
+   "role": "Auto-loads every ./**/*.strings.ts and *.cutscene.ts via import.meta.glob (50-51)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/core/audio/sfx.ts",
+   "role": "phoneRing (760), phonePickup (770). typewriter and popUp exist in the SfxName union (core/audio/types.ts 23, 26)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/src/game/hollow/rules.ts",
+   "role": "Hollow Door phone trigger: 3:33 call with no caller (PHONE_HOUR/MINUTE 26-27; DoorTrigger 30). Uses hotline hollowAt (hotline.ts 549-555)."
+  },
+  {
+   "path": "C:/Users/Admin/Documents/JackID/scripts/tests/hotline.test.mjs",
+   "role": "Test harness pattern to copy for a messages module: load() from _vite.mjs, mockRun (lines 1-30)."
+  }
+ ],
+ "apis": [
+  "UIOverlay.choice(title, options[], {timeout?}): Promise<number> (types.ts:53; impl ui.ts:759-764; resolves -1 on timeout ui.ts:426-429; Digit1-9 answer ui.ts:979-981)",
+  "UIOverlay.subtitle(text|null, speaker?, dur?) (types.ts:52; ui.ts:747-757)",
+  "UIOverlay.panel(id, build(el)) -> PanelHandle (types.ts:55; ui.ts:824-833) plus modalPanel(el, {escClose, dim}) (widgets.ts:204)",
+  "UIOverlayX.toast(text, kind 'phone', dur?, tag?) (ui.ts:56, ExtraToastKind ui.ts:39, icon ui.ts:69). The 'phone' kind is typed only on UIOverlayX; brokePrompt.ts:59 casts to UIOverlayX for hudLayer",
+  "createHotline(run: RunApi, {host?, now?}): Hotline {phone(), answer(choice), tick(dt), snapshot(), restore(s), dispose(), ringNow(), scheduledAt()} (hotline.ts:135-147, 452)",
+  "DealDef {id, weight, minNight?, eligible?(ctx), offer(ctx)->DealVars, apply(ctx, vars)->Outcome|void} (hotline.ts:229-238); DEALS table (273-412); rollOffers weighted without replacement (478-494)",
+  "encodeOption(offer) / decodeOption(str) -> 'hotline.deal.<id>|k=v|...' (hotline.ts:426-442); dealKey (424). Reusable for reply options on PhoneCallState.options",
+  "Seeded rolls: hashSeed('hotline.ring'|'hotline.offer'|'hotline.apply', run.seed, night, watch, id) + createRng (hotline.ts:513, 550, 556, 610); 'hollow.phone' salt at 550",
+  "Bus: phone:ring / phone:end (events.ts:111-112; emitted hotline.ts:523/536); phone:length (hotline.ts:86-88, 524); hotline:result (hotline.ts:131-133, 535); phone:story (hotline.ts:36-41, 593); run:clock (events.ts:72, emit run.ts:1406); run:deadline (events.ts:70, emit run.ts:1477); run:window (events.ts:68, emit run.ts:1816); shift:phase (events.ts:74, emit run.ts:1814)",
+  "RunExt optional save field pattern: hotline?: HotlineSave (run.ts:357-358) written in snapshot (run.ts:3169) and read in restore (run.ts:3526)",
+  "RunApi effects used by deals: earn/spend (hotline.ts:248, 279, 336), addDread (280, 310, 370, 393), buffs.add(id, {source:{kind:'phone', id:'hotline'}}) (hotline.ts:244), shift.extend (356), grantCharm (298), jackpotAdd (382), stat (614), balance('ticket') (352), quota().due (250). Signatures in types.ts:117+ and 171-172",
+  "Buff registration pattern: BuffDef list HOTLINE_BUFFS (hotline.ts:157-218), run.buffs.register and registerStrings('buff.<id>.') (hotline.ts:461-464)",
+  "holdClockFor(reason, sec) / holdClock / releaseClock / clockHeld (clockHold.ts:16-30); Watch clock ticks only when !clockHeld() (run.ts:1430)",
+  "Placard3D(spec: PlacardSpec) with show()/hide()/dispose()/pointer()/key()/goto()/repaint() (placard3d.ts:153-180, 230, 292, 318, 328, 388, 406); presented via story/notes.ts present() (128-141) and openNote (162-166)",
+  "viewmodel.hold('phone') (player/types.ts:25; viewmodel.ts:244-246 model, 332 pose); one-shot viewmodel.play(name) (types.ts:27; ANIMS viewmodel.ts:165-216)",
+  "kit.prop('phone') -> prop with attachHint bone hand_r (kit/props.ts:317-323); cutscene ActorSpec.props: [{prop:'phone', bone:'hand_r'}] (cutscene/types.ts:64-71; actors.ts:66)",
+  "Manga: dialogue(speakerId, lineKey, 'left'|'right', expr) (manga/dialogue.ts); portrait(id, expr) (manga/portrait.ts:1664); hasPortrait (1680); speakerName (mangaPanel.ts:161)",
+  "Keys: EXTRA_BINDINGS (keymap.ts:41-46) for new walk actions, SEATED_WALK_ACTIONS (55-57), MODAL_WALK_ACTIONS (83); labels in keymap.strings.ts:21/52",
+  "i18n: registerStrings(prefix, {en, tr}) (i18n.ts:20); t(key, vars) with {name} interpolation; '@key' indirection in vars (hotline.ts:55, machines/hotline/rules.ts:44-49); *.strings.ts auto-loaded (main.ts:50)"
+ ],
+ "extensionPoints": [
+  "NEW MODULE slot: a pure messages module next to hotline.ts (for example src/game/messages.ts), factory createMessages(run, opts) mirroring createHotline (hotline.ts:452-658), with its own snapshot/restore/dispose/tick.",
+  "run.ts wiring slots: create beside the hotline (run.ts:959), optional RunExt field beside hotline (run.ts:357-358), tick beside hotline.tick (run.ts:1409), snapshot beside run.ts:3169, restore beside run.ts:3526, dispose beside the hotline dispose (run.ts:1795).",
+  "Per-Watch start and stop: subscribe to shift:phase like hotline.ts:574-577 (start on 'play', stop on closing/settle/collection/intermission/over) and clear buffs on run:window 'dawn' like hotline.ts:579.",
+  "Mafia pressure timing: run:deadline {index, due, seconds} (run.ts:1477) gives the quota per Watch; run:clock {remaining} at 1 Hz (run.ts:1406) and run.timeLeft() (types.ts RunApi) give the countdown; run.shift.quota().due (hotline.ts:250) gives the live amount still owed.",
+  "Reply choices: ui.choice (ui.ts:759) for a quick numbered pick with a timeout, or a Placard3D board with clickable regions (placard3d.ts regions, act strings) for a full thread view; reply options can reuse the encodeOption/decodeOption codec (hotline.ts:426-442).",
+  "Held phone UI: viewmodel.hold('phone') (viewmodel.ts:244-246, 332) is ready and unused; call it from a new open/close handler, following the notes present()/closeStage() pattern (notes.ts:128-141).",
+  "Overlay UI alternative: ui.panel + modalPanel (ui.ts:824; widgets.ts:204) as the Ledger does (session.ts:204-212).",
+  "Notifications: toast kind 'phone' via UIOverlayX (ui.ts:39, 56, 69; css ui.css:442-443). It is declared and unused today. Optional unread indicator: reuse the .hud .phone chip styles (hud.css:152-154, hud.ts:233-238) with a new event, not phone:ring.",
+  "Walk input: add new actions to EXTRA_BINDINGS (keymap.ts:41-46) and labels (keymap.strings.ts:21, 52); decide whether they belong in SEATED_WALK_ACTIONS (keymap.ts:55-57). The per-frame pump at inGameState.ts:392 can carry them.",
+  "Strings: new messages.strings.ts with prefix (pattern hotline.strings.ts:5-6, calls.strings.ts:4-5), en and tr, auto-loaded (main.ts:50). Speaker labels follow story.strings.ts:25-29 and 108-112.",
+  "Spouse and mafia portraits: add entries to SPECS (portrait.ts:55) and PORTRAIT_IDS (157), and who.<id>/title.<id> in manga.strings.ts (19-36 en, 68-79 tr). dialogue() (manga/dialogue.ts) then works unchanged.",
+  "Content tables: data-driven like DEALS (hotline.ts:273-412), STORY_CALLS (story/calls.ts:18-27) and NOTES (story/notes.data.ts:43-73), with night gating like calls.ts:9 and notes.data.ts:15-18.",
+  "Tests: copy the harness pattern in scripts/tests/hotline.test.mjs (lines 1-30, mockRun) for a messages.test.mjs."
+ ],
+ "risks": [
+  "Do not model messages as PhoneCallState or route them through run.phone(). run.phone() feeds the broke prompt (run.ts:1740, rescue.ts:155 'phone' step), checkRescue gating (run.ts:2485), the booth lamp and deal board (machines/hotline/index.ts:228-257), the HUD ring chip (hud.ts:430-433) and the world lights (world.ts:170-171). Use new event names.",
+  "Digit key conflicts: keys 1-3 are the hotline's walk-layer deal keys (keymap.ts:45, machines/hotline/index.ts:161-167, called per frame at inGameState.ts:392), and ui.choice also takes Digit1-9 whenever a choice is up (ui.ts:979-981). Two numbered-choice surfaces at once would both react to the same key.",
+  "The hotline's phone keys are dead without a booth: phoneWalkKeys returns early when no booth exists (machines/hotline/index.ts:163-164), and answerPhoneKey is a booth method (282-289). The apartment phone (Home has no booth) must call run APIs or its own module directly.",
+  "Watch clock: the hotline does not hold the clock (run.ts:1430 checks clockHeld; only subtitle, cutscene and Mira paths hold it, e.g. roomsHost.ts:164). Reading a thread during a Watch costs Watch time unless holdClockFor is called. Messages must stay silent outside 'play' like hotline.ts:576.",
+  "Multiplayer: 'phone' and 'phoneAns' wire messages are declared (protocol.ts:188-189) with no handler found in src, and 'phone' is host-only (session.ts:65). RunSnapshot.phone (protocol.ts:74) is the only net field. Single-player is unaffected; MP needs a protocol addition.",
+  "Save and restore: new state must be an optional RunExt field with a blank default (run.ts:357-358 precedent). Restore must re-emit unread or live-thread state the way hotline.restore re-emits phone:ring for a live call (hotline.ts:639-642).",
+  "Seeded rolls: pick salts unique to messages (for example 'messages.<thread>') so they do not correlate with 'hotline.ring' (hotline.ts:556) or 'hollow.phone' (hotline.ts:550).",
+  "ui.choice returns -1 on timeout (ui.ts:426-429) and the caller must treat it as no reply. Cutscene gates already rely on this (cutscene/player.ts:298-299).",
+  "Toast kind 'phone' is typed only on UIOverlayX (ui.ts:52-56). UIOverlay.toast in types.ts:49 accepts ToastKind only, so calls must cast like brokePrompt.ts:59.",
+  "Placard3D sets input mode 'ui' and exits pointer lock (notes.ts:128-138) and adds the note-open class (placard3d.ts NOTE_OPEN_CLASS). A held phone board must close cleanly on Dawn and on run end.",
+  "Portrait additions touch three tables (portrait.ts SPECS 55 and PORTRAIT_IDS 157; manga.strings.ts 19-36 and 68-79). Missing ids fall back to the plain Mark (portrait.ts:158), so forgetting one fails quietly.",
+  "Findings for the other areas (FYI): gloves already exist on the first-person hands (viewmodel.ts:2, 78), so the director does not need a new glove model. The election-style phone chip (hud.ts:233-238) shows booth distance, so it is misleading at Home. Found no existing spouse, mafia, apartment or home content (grep). The only chat is the lobby log (menu/lobbyState.ts:94-200), not reusable in-run. The elevator (world/props/elevator.ts, cutscenes/ending_elevator) is not in this area."
+ ],
+ "suggestion": "Minimal integration plan for phone threads (spouse, mafia), read-only findings only:\n\n1. Data and rules in a new pure module (for example src/game/messages.ts, no DOM, no three). Define threads and messages as data tables like DEALS (hotline.ts:273-412) and STORY_CALLS (story/calls.ts:18-27): MessageDef {id, thread: 'spouse'|'mafia', night?, when (a Watch index or a quota-fraction threshold), textKey, replies?: [{key, effects}]}. Each reply's effect is applied through RunApi calls (earn/spend/addDread/buffs.add/shift.extend), as the deals do (hotline.ts:244-248, 279-287, 356).\n\n2. Scheduling: createMessages(run, opts) mirrors createHotline (hotline.ts:452-658). Start on shift:phase 'play' and stop on closing/settle/collection/intermission/over (hotline.ts:574-577). Roll per Watch with hashSeed('messages.<thread>', run.seed, night, watch) (hotline.ts:513, 556 pattern). Mafia escalation reads run:deadline and quota.due (run.ts:1477, hotline.ts:250). Timing is driven by run:clock (run.ts:1406) or by a tick(dt) called from run.ts:1409, next to hotline.tick.\n\n3. Wiring in run.ts: create beside createHotline (run.ts:959), add an optional RunExt field beside hotline (run.ts:357-358), snapshot at run.ts:3169, restore at run.ts:3526, dispose at run.ts:1795. Emit new bus events (for example msg:in and msg:reply, declared by module augmentation as hotline.ts:36-41 does). Do not reuse phone:ring, phone:end or run.phone().\n\n4. Reply UI, two options:\n   a. Quick replies: ui.choice(title, options, {timeout}) (ui.ts:759-764). Digit keys are shared with the hotline (see risks), so only use it when no hotline board is up.\n   b. Full thread view: a Placard3D board held up with the phone, following story/notes.ts present() and closeStage() (128-141) and PlacardSpec (placard3d.ts:153-180). Hold the phone in the viewmodel with viewmodel.hold('phone') (viewmodel.ts:244-246, 332). Clickable reply regions use placard regions and act strings.\n\n5. Opening the phone: a new walk action in EXTRA_BINDINGS (keymap.ts:41-46) with labels in keymap.strings.ts:21 and 52, read per frame like inGameState.ts:392. Pick a key other than KeyP and digits, or gate KeyP on whether a hotline call is live.\n\n6. Notifications: toast kind 'phone' via the UIOverlayX cast (ui.ts:39, 56, 69; ui.css:442-443). Optionally an unread count on the HUD chip (hud.ts:233-238), driven by the new events rather than phone:ring.\n\n7. Strings: messages.strings.ts with prefix 'messages.' (en and tr, pattern hotline.strings.ts:5-6). Speaker labels go in the story.strings.ts speaker.* style (25-29, 108-112). The spouse portrait needs a SPECS entry (portrait.ts:55), PORTRAIT_IDS (157) and who/title keys (manga.strings.ts 19-36, 68-79). Show it through dialogue() or a thread avatar via portraitSrc.\n\n8. Home-phone input: the booth-bound handlers (machines/hotline/index.ts:161-167, 282-289) do nothing without a booth, so the apartment phone should call run APIs directly.\n\n9. Tests: a scripts/tests/messages.test.mjs using the hotline.test.mjs harness (lines 1-30, mockRun)."
+}

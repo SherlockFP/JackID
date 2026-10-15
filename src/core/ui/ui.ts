@@ -57,6 +57,9 @@ export interface UIOverlayX extends UIOverlay {
   /** Removes the toasts that match, on screen or queued, at once. Their news is forgotten, so the next news with the same
    *  words shows instead of merging into a toast that is gone (a result replaces its confirm prompt). */
   dismissToasts(match?: ToastMatch): void;
+  /** Holds the toasts while a modal they would cover is open (the Night Card panel; the toast layer paints over panels): the
+   *  news on screen and in line is taken off and new news queues, in order, until `holdToasts(false)` shows it all. */
+  holdToasts(on: boolean): void;
   /** Big banner ("NIGHT 3", "LAST CALL", "PAID IN FULL"): letters drop in, hold, dither-dissolve. */
   banner(text: string, o?: BannerOpts): Promise<void>;
   dispose(): void;
@@ -67,6 +70,8 @@ const TOAST_ICON: Record<string, IconName> = {
 };
 /** Toasts on screen at once; the rest wait in line. */
 const TOAST_VISIBLE = 2;
+/** Toasts held behind an open modal (`holdToasts`); the oldest drops past this many. */
+const TOAST_HELD_MAX = 6;
 /** A toast or banner with the same news as one shown in the last this-many ms merges into it (or is dropped). */
 const ANNOUNCE_MERGE_MS = 3000;
 const MAX_FLY = 48;
@@ -261,6 +266,8 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
   // ── toasts ──────────────────────────────────────────────────────────────────────────────────────
   const toastShown: ToastRec[] = [];      // on screen, newest first (at most TOAST_VISIBLE)
   const toastWaiting: ToastRec[] = [];    // queued behind them, first come first shown (warnings ahead of the news)
+  let toastHold = false;                  // holdToasts(true): toasts wait in toastHeld (in order) until it is released
+  const toastHeld: Array<{ text: string; kind: string; dur: number; tag?: string }> = [];
   function showToast(rec: ToastRec): void {
     const el = h('div', `px-toast k-${rec.kind}`);
     h('i', 'bar', el);
@@ -328,9 +335,10 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
   /** Removes the matching toasts (kind and/or tag; all when empty), shown or queued. Waiting ones go first, so none is promoted
    *  just to be removed. */
   function clearToasts(match: ToastMatch): void {
+    const hit = (kind: string, tag?: string): boolean => !((match.kind && kind !== match.kind) || (match.tag && tag !== match.tag));
+    for (let i = toastHeld.length - 1; i >= 0; i--) if (hit(toastHeld[i].kind, toastHeld[i].tag)) toastHeld.splice(i, 1);
     for (const rec of [...toastWaiting, ...toastShown]) {
-      if (match.kind && rec.kind !== match.kind) continue;
-      if (match.tag && rec.tag !== match.tag) continue;
+      if (!hit(rec.kind, rec.tag)) continue;
       for (let i = announced.length - 1; i >= 0; i--) if (announced[i].rec === rec) announced.splice(i, 1);
       dismissToast(rec, true);
     }
@@ -551,6 +559,8 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
 
   async function runBanner(text: string, o: BannerOpts): Promise<void> {
     const wrap = h('div', 'px-bw t-banner', bwLayer);
+    // Set above the centre: the title card used to sit at 30 % and cover the centre-screen prompt (E) and the Big One marquee.
+    wrap.style.top = '22%';
     wrap.style.setProperty('--bw-s', String(o.size ?? 24));
     wrap.style.setProperty('--bw-c', o.color ?? COLORS.ivory);
     wrap.style.setProperty('--bw-sh', o.shadow ?? COLORS.black);
@@ -647,6 +657,11 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     },
 
     toast(text, kind: ToastKind | ExtraToastKind = 'info', dur = 2.5, tag) {
+      if (toastHold) {                                        // a modal is open: the news waits, in order, for holdToasts(false)
+        toastHeld.push({ text, kind, dur, tag });
+        if (toastHeld.length > TOAST_HELD_MAX) toastHeld.shift();
+        return;
+      }
       // One queue: the same or similar news within 3 s merges into the toast already showing (or waiting), and a
       // banner / feed line for it that came first is enough. At most TOAST_VISIBLE on screen; the rest wait.
       const words = announceWords(text);
@@ -659,6 +674,26 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
 
     dismissToasts(match = {}) {
       clearToasts(match);
+    },
+
+    holdToasts(on) {
+      if (on) {
+        if (toastHold) return;
+        toastHold = true;
+        // The news on screen (oldest first) and in line goes behind the modal with the new news: a toast still painted there
+        // would cover the modal's title. Each one's record is forgotten, so its replay shows instead of merging into nothing.
+        for (const rec of [...[...toastShown].reverse(), ...toastWaiting]) {
+          for (let i = announced.length - 1; i >= 0; i--) if (announced[i].rec === rec) announced.splice(i, 1);
+          if (rec.shown) hideToast(rec, true);
+          else { const w = toastWaiting.indexOf(rec); if (w >= 0) toastWaiting.splice(w, 1); }
+          toastHeld.push({ text: rec.text, kind: rec.kind, dur: rec.dur, tag: rec.tag });
+        }
+        while (toastHeld.length > TOAST_HELD_MAX) toastHeld.shift();
+        return;
+      }
+      if (!toastHold) return;
+      toastHold = false;
+      for (const x of toastHeld.splice(0)) ui.toast(x.text, x.kind as ToastKind | ExtraToastKind, x.dur, x.tag);   // in order
     },
 
     bigWin(amount: number, tier: WinTier, title: string) {

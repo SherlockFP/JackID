@@ -55,6 +55,23 @@ function cloneJson<T>(v: T): T {
   return JSON.parse(JSON.stringify(v)) as T;
 }
 
+/**
+ * Strength multiplier an instance carries in its data (`effectScale`, written by Streaks from a charm hook such as
+ * Heat Lamp's `x.overheat.mult`). Absent or invalid means ×1.
+ */
+function effectScaleOf(st: BuffState): number {
+  const d = st.data;
+  const k = d && typeof d === 'object' && !Array.isArray(d) ? d.effectScale : undefined;
+  return typeof k === 'number' && Number.isFinite(k) && k >= 0 ? k : 1;
+}
+
+/** A `mult` effect keeps its direction and scales its distance from ×1 (×1.5 at k=2 is ×2); `add`/`inc` scale linearly. */
+function scaleEffect(e: ModEffect, k: number): ModEffect {
+  if (k === 1 || e.op === 'set' || e.op === 'min' || e.op === 'max') return e;
+  if (e.op === 'mult') return { ...e, value: Math.max(0, 1 + (e.value - 1) * k) };
+  return { ...e, value: e.value * k };
+}
+
 function dataOf(st: BuffState): Record<string, Json> {
   const d = st.data;
   if (d && typeof d === 'object' && !Array.isArray(d)) return d;
@@ -274,9 +291,11 @@ export class Buffs implements BuffsApi, ModProvider {
         const def = this.defMap.get(st.id);
         if (!def?.effects?.length) continue;
         const inst = key.startsWith('i:') ? q.instance : undefined;
+        const k = effectScaleOf(st);
+        const scaled = k === 1 ? def.effects : def.effects.map((e) => scaleEffect(e, k));
         const effects: ModEffect[] = inst
-          ? def.effects.map((e) => ({ ...e, scope: { ...e.scope, instances: [inst] } }))
-          : def.effects;
+          ? scaled.map((e) => ({ ...e, scope: { ...e.scope, instances: [inst] } }))
+          : scaled;
         out.push({ kind: 'buff', id: def.id, owner: ownerOf(key), stacks: st.stacks, effects, order: out.length });
       }
     }

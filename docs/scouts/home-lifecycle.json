@@ -1,0 +1,134 @@
+{
+ "area": "Debt Run lifecycle: phase machine (play, closing, settle, Mola/intermission, Dawn/collection, over), Night and Watch transitions, quota settle and miss, end-of-run, save/restore, timers, floor events, phone/rescue/Hollow Door, and online (MP) run wiring. Paths in apis/extensionPoints/risks are relative to C:\\Users\\Admin\\Documents\\JackID; `files` gives absolute paths. Read-only; no files changed.",
+ "files": [
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\run.ts",
+   "role": "Run class (3565 lines). Phase tick 1389-1449; enter 1808-1820; startWatch 1451-1485; openFloor (Mola lever / next Night) 1486-1535; ringBell 1547; settleEarly 1556; settleWatch 1829-1876; afterSettle 1930-1941; dawn (quota read and miss) 1944-2003; fall 2017-2023; endRun 2044-2087; quota 2281-2370; RunExt 318-400; snapshot 3144-3195; persist/persistSoon/flush 3198-3213; restore 3487-3564; Hollow Door 2533-2564; rescue/loan 2458-2510."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\shift.types.ts",
+   "role": "ShiftPhase union (line 24), QuotaState (36), ShiftState (75), ShiftApi (97-102)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\types.ts",
+   "role": "RunWindow 'watch'|'dawn' (49), RefusalReason (58), RunApi (117). RunPhase is removed (45)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\data\\schedule.ts",
+   "role": "BASE_NIGHTS 8 Nights with watches/clock/pulls (102-111); BASE_RUN_NIGHTS (113); overdrawnNight (116-131); nightDef (134-137); lastCallSeconds (148); CLOSING_SEC=3 (153); WATCH_EVENT_CHANCE=0.75 (163)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\clock.ts",
+   "role": "WatchClock 7-48: start/tick/stop/extend, snapshot 42, restore 43-47 (running taken from snapshot)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\watchEvents.ts",
+   "role": "Per-Watch floor events (effect-only, no choices): catalogue 39-51, rollWatchEvent 58-65, WatchEvents class 88-173, module-level live singleton 83."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\hotline.ts",
+   "role": "Phone scheduler and choice model: constants 44-51, onPlay seeded ring 540-565, phase listener and onOff 568-577, answer(choice) 581-616, tick 618-633, snapshot/restore 635-649, createHotline 452."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\rescue.ts",
+   "role": "Pocket-empty loan line: constants 18-27, createRescue 61 (ring/answer)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\hollow\\rules.ts",
+   "role": "Hollow Door state machine: KNOCKS/KNOCK_WINDOW_S 23-24, DoorTrigger knock|phone|loan (30), initDoor 44, reveal 49."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\ingame\\session.ts",
+   "role": "Frame driver: createRun/resumeRun per peer 92-99; shift:phase listener (horror dawn walk) 267-272; fixedUpdate calls run.tick 404-410; frame auto-startWatch 418-423; pagehide flush 296-297."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\inGameState.ts",
+   "role": "UI-side end and Mola: syncHint Mola line 242-259; Topside panel sync 262-275; FALL_HOLD_S 37; endRun hold and results hand-off 289-298; run:end to endRun 327."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\ingame\\panels.ts",
+   "role": "Topside panel: stayUp 251, goBackDown 252."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\story\\index.ts",
+   "role": "run:end story branches 109-113: fell maps to quota_fail, escaped maps to ending_elevator."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\ingame\\mp.ts",
+   "role": "Online hooks: QUOTA_PERIOD 30, rdelta receive 73-75, end listener 76-80 (no sender found), coop snapshot 82-89, host sendQuota 105-109, sharedQuota 133."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\net\\protocol.ts",
+   "role": "RunSnapshot 66-95; RunSummary.result union 98; start/end 135-137; rsnap/rdelta 164-165 (no rsnap sender found); phone/phoneAns 188-189 (no sender found)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\net\\session.ts",
+   "role": "Host-only message allowlist 63-65 (includes end, rsnap, phone). Generic transport only."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\core\\timers.ts",
+   "role": "Project rule (2-6): gameplay waits should use app.timers.sim; the run does not use it and uses phaseLeft plus sim dt instead."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\benchRun.ts",
+   "role": "BenchRun implements RunApi (104). Any new RunApi member needs parity here."
+  }
+ ],
+ "apis": [
+  "ShiftPhase = 'idle'|'bell'|'play'|'lastCall'|'closing'|'settle'|'collection'|'intermission'|'over' (shift.types.ts:24)",
+  "Run.tick(dt) phase switch: bell 1423-1426, play/lastCall 1428-1433 (clock ticks only when !clockHeld(), 1430), closing 1434-1437, settle 1438-1441, collection 1442-1445 (no clockHeld check). Called from ingame/session.ts:407",
+  "private enter(phase, left) run.ts:1808-1820: emits shift:phase (1814); emits run:window when window() changes (1816); dawn entry doorDawn 1818",
+  "startWatch(): boolean run.ts:1451: refuses unless intermission; watchEv.begin 1459 before clock 1462, pulls 1465, tithe 1472",
+  "openFloor(): boolean run.ts:1486 (Mola lever): refuses if topside 1487 or !nightDone 1489 or night-card gate 1492; index++ 1501; per-Night reset 1502-1518; recomputeQuota 1520; prepareBoss 1521; enter intermission 1532",
+  "ringBell() run.ts:1547 (play to closing); settleEarly() run.ts:1556 (needs debtPaid >= quota.due, 1559; sets skipRest 1568; settleWatch 1569)",
+  "settleWatch() run.ts:1829-1876: clock.stop, watchEv.end 1831, enter settle 1836, interest 1838-1862, house cut 1863, unused pulls to tickets 1864-1868, tithe 1870, syncQuota/checkMet 1872-1873, persist 1875",
+  "afterSettle() run.ts:1930-1941: if skipRest==0 and watch+1<watches, watch++ and enter intermission (Mola between Watches, 1933); else tycoonSys.onDawn, enter collection with COLLECTION_SEC (1937)",
+  "dawn() run.ts:1944-2003: expireContracts 1945; paid = debtPaid>=due 1947; false_bottom 1948-1952; rope_ladder overtime Watch with nightDone still false, enter intermission 1953-1961; if !paid fall() 1963; paid: overshoot tiers 1968-1977, houseNotice 1978, surplus returns 1984-1992, nightDone=true 1995, topside=true at BASE_RUN_NIGHTS 1996, Night-card offer 1999, enter intermission 2000",
+  "fall() run.ts:2017-2023: living=false 2018; emit quota:failed 2020 and player:fall 2021; endRun('fell') 2022",
+  "endRun(result, ending?) run.ts:2044-2087: ended=true, rescue.hangUp, clock.stop, watchEv.end, enter over 2049; obols 2051-2053 (runObols 2093: 'fell' is the fall outcome); summary.ending spread 2063; emit run:end 2070; save d.resume=null 2075, history append 2076, flush 2084",
+  "recomputeQuota() run.ts:2281; dueOf(index, p) 2305-2313; syncQuota 2357-2364 (q.met = debtPaid>=due, 2361); checkMet 2366-2370 (emits quota:met only, does not end the run)",
+  "RunExt interface run.ts:319-400 (v:1; later fields optional with defaults); isRunSave 405-408 checks v===1 only",
+  "snapshot(): RunSave run.ts:3144-3195 (ext built 3146-3183, top-level RunSnapshot 3184-3194)",
+  "persist() run.ts:3198-3204 (save.update d.resume=snap); persistSoon 3207-3209 (dirty flag); tick flush 1393-1395 (SAVE_SOON_SEC=2, line 201); flush() 3211-3213",
+  "restore(s) run.ts:3487-3564: phase/phaseLeft 3490, clock 3492, quota 3517-3519, watchEvent 3534, hollow 3527, ended = !living || phase==='over' 3563",
+  "constructor resume branch run.ts:1048-1055 (restore, else recomputeQuota + enter intermission/play + kit); restore emits no shift:phase",
+  "resumeRun(save) run.ts:555-559; createRun 550",
+  "WatchClock start/tick/stop/resume/snapshot/restore clock.ts:13-47 (restore: running = s.running && left>0, line 46)",
+  "WatchEvents begin(rng,night,watch,blocked) watchEvents.ts:102-114 (emits event:start 112); tick 117-122; onPull 125-131; end 134-141 (emits event:end 140); collect 144-148; snapshot/restore 156-172; live singleton 83 (set 110, cleared 138, 170)",
+  "createHotline(run, opts) hotline.ts:452; onPlay 540-565 (seeded: hashSeed('hotline.ring', seed, night, watch) 556; ring at fraction RING_FROM..RING_TO of Watch seconds 558; forced first Watch from Night 2, line 562); onOff 568-572; phase listener 574-577 (phone live only in play/lastCall); answer(choice) 581-616 (-1 = pick up 584-595; offer index 606-613; Hollow branch 598-605); tick 618-633; snapshot 649; restore 635-643; ringNow 652-656",
+  "RunApi.phone() run.ts:1334 (rescue first, then hotline); answerPhone 1335; hotline.tick 1409 and rescue.tick 1410 inside run.tick",
+  "tickSafety run.ts:2458-2471 (0.5 s scan 2469-2470 runs checkRescue 2483 and checkHollowLoan 2474; hangs up when !canPlay, 2463); takeRescue 2499-2510",
+  "Hollow Door: hollowCanRing 2537-2539 (night>=DOOR_FIRST_NIGHT, status hidden, phone unspent); hollowRing 2540; hollowAnswer(godown|hangup) 2541; hollowLeave 2544-2548; setDoor 2552-2562 (emits hollow:open, saves hollowSeen, persist)",
+  "stayUp() run.ts:1768 (topside to endRun('escaped','elevator')); goBackDown 1773-1778; quit 1779; Topside panel panels.ts:251-252",
+  "MP: ingame/session.ts:92-99 creates a local DebtRun per peer (run.ts:95 comment: MP lobby config not applied); mp.ts:105-109 host sends rdelta quota every 1 s (QUOTA_PERIOD mp.ts:30); mp.ts:76-80 client 'end' listener (no host sender found in src)",
+  "RunSummary.result union 'escaped'|'fell'|'quit'|'abandoned'|'won'|'lost' (protocol.ts:98); optional ending string on summary (run.ts:2063)",
+  "Story hooks story/index.ts:109-113: run:end fell to playStory('quota_fail'); escaped and not descend to 'ending_elevator'; quota:met 108 to 'quota_met'",
+  "inGameState endRun hold: FALL_HOLD_S=1.6 (inGameState.ts:37) on app.timers.ui (293) then holdForStory then app.go('results') (296)"
+ ],
+ "extensionPoints": [
+  "Home/Mola slot: dawn() paid branch ends with enter('intermission') at run.ts:2000. Discriminate a home stage by nightDone===true (set at 1995) and a new flag, not by phase alone: rope_ladder overtime also enters intermission with nightDone false (run.ts:1953-1961).",
+  "Sleep = advance to next Night: openFloor body run.ts:1501-1533 is the existing next-Night routine. Extract it into a beginNight() helper and call it from the home sleep action, keeping the topside refusal (1487) and night-card gate (1492).",
+  "Death slot: dawn() miss branch run.ts:1963 (if (!paid) { this.fall(); return; }). Charm saves at 1948-1962 must still run first. Insert a deferred home/doomed stage here instead of calling fall() immediately; the eventual death goes through fall()/endRun with an ending tag (endRun 2044; summary.ending 2063), so obols (2051-2053) and stake logic (2057) still apply.",
+  "Phone with choices: copy the createHotline shape (hotline.ts:452-659: seeded schedule in onPlay, offers, answer(choice), tick, snapshot/restore). Wire it next to createHotline (run.ts:959) and tick it next to hotline.tick (run.ts:1409). Expose it via RunApi.phone (run.ts:1334) or a new home method. Its phone-live gate must be widened beyond play/lastCall (hotline.ts:574-577).",
+  "Deadline anchor: no Night-level countdown exists. The quota is read only at dawn() (run.ts:1944-1947) after the final Watch settle (afterSettle 1934-1937) and the 12 s collection timer (run.ts:234, 1442-1445). Progress for threats can read syncQuota (2357) and debtPaid/quota.due.",
+  "Save slot: add optional RunExt fields with restore defaults (pattern run.ts:326-399). Write them in snapshot (run.ts:3146-3183) and read them in restore (run.ts:3487-3564). Keep v:1 (isRunSave 405-408). Store remaining-time fields the way phaseLeft is stored (3149, 3490).",
+  "Floor events: WatchEvents (watchEvents.ts) is effect-only with no choice model. Use it only for modifiers, not for spouse or threat messages.",
+  "Story/death: story/index.ts:109-113 maps any 'fell' to quota_fail. Add a branch keyed on the ending tag, or a new cutscene id, or the death plays the trapdoor scene.",
+  "Online: client listener mp.ts:76-80 and host-only types protocol.ts:164-165 and 188-189 are the intended slots for shared phone or death state, but they have no sender in src. Any shared home or death state needs a new host-authoritative message wired on both sides."
+ ],
+ "risks": [
+  "Quota miss is decided at dawn() (run.ts:1963) and the trapdoor fall() runs there. A home-then-mafia death changes that ordering, and dawn() also owns overshoot tiers (1968-1977), Night-card offers (1999), hollow dawn cleanup (1818), and rope_ladder/false_bottom saves (1948-1962). Any deferral must keep all of these.",
+  "No Night deadline clock exists. Settle can end a Night early via settleEarly (run.ts:1556-1571, skipRest 1568), so a Night-length countdown would not be reliable. A threat schedule keyed to time must key off Watch index and quota progress.",
+  "Timers ignore clockHeld in the closing, settle, and collection phases (run.ts:1434-1445). Cutscenes and the Dawn horror walk (ingame/session.ts:270) do not pause the 12 s collection timer. Home waits need an explicit hold policy. The project rule is app.timers.sim (core/timers.ts:2-6), which run.ts does not use.",
+  "Phone is off outside play/lastCall: hotline.ts:574-577 and rescue cutoff run.ts:2463. Spouse messages at home need their own gate or they stay silent.",
+  "restore() sets phase directly and emits no shift:phase or run:window (run.ts:3490, constructor 1048-1049). Listeners that re-arm on phase change (hotline.ts:574, ingame/session.ts:267) do not run after a reload into home.",
+  "Clock resume contradiction: the comment at run.ts:554 says the Watch clock 'resumes frozen', but clock.ts:46 restores running from the snapshot. I did not find where the freeze happens. Treat as unverified.",
+  "Naming collision: the Topside 'elevator' already exists as the Night-8 choice (panels.ts:251, run.ts:1770) and the ending_elevator cutscene (story/index.ts:112). The new elevator-to-apartment needs a distinct id or a deliberate reuse.",
+  "Topside gating: openFloor refuses while topside is true (run.ts:1487), and topside is set at BASE_RUN_NIGHTS (1996). Overdrawn Nights 9+ (schedule.ts:116-131) run after that, so home sleep must work with topside cleared (goBackDown 1773-1778).",
+  "Multiplayer: each peer runs its own DebtRun (ingame/session.ts:92-99). Only the co-op quota display is broadcast (mp.ts:105-109). rsnap/phone/phoneAns/end are declared (protocol.ts:164, 188-189, 137) but have no sender in src. A death or phone choice is therefore local to a peer, and determinism comes only from the seed, as hotline.ts:556 does with hashSeed.",
+  "Module-level state: WatchEvents.live (watchEvents.ts:83) assumes one run per page. Do not copy this pattern for home state.",
+  "Any new RunApi member must be added to BenchRun (benchRun.ts:104) or stubbed through the inert() helper (run.ts:562-574), or the typecheck breaks.",
+  "Night cards and overpay modals gate the Dawn summary (inGameState.ts:249-253), and online runs skip the Night-card UI (ingame/session.ts:101-102). The home UI needs the same online policy."
+ ],
+ "suggestion": "Keep ShiftPhase unchanged to avoid ripple into hotline.ts:576, tutorial.ts:291-314, inGameState.ts:244-267, and charms/engines.ts:220. Model home as an optional stage in RunExt (for example home?: {stage: 'elevator'|'home'|'doomed', left, phone state}) that defaults to absent. Like topside (run.ts:1061, 3149), it is a flag on intermission, so it is saved and restored with the rest of ext.\n\nMinimal plan: (1) dawn() paid branch (run.ts:1995-2000): set home stage 'elevator' instead of entering a plain Mola when the design wants the trip; the Mola lever stays available behind it. (2) dawn() miss branch (run.ts:1963): if the design wants the mafia death at home, set stage 'doomed' and persist instead of fall(); fall() stays the trapdoor path. (3) Home tick: decrement stage time inside run.tick's switch (run.ts:1422-1448), decided by sim dt, with an explicit clockHeld policy. (4) Home phone: a createHotline-shaped scheduler seeded by hashSeed(seed, night, 'home', k) (hotline.ts:556 pattern), wired next to run.ts:959 and ticked at run.ts:1409, with its own live gate. (5) Sleep: call an extracted beginNight() from openFloor's body (run.ts:1501-1533). (6) Death: endRun('fell', 'mafia') via fall() (run.ts:2017-2022), add a story branch at story/index.ts:109-113 plus a new cutscene. (7) Save: add optional RunExt fields, written at run.ts:3146-3183 and read at 3487-3564, with v:1 kept. Online: state that home and death are per-peer and seeded, or add a host-authoritative message later (protocol.ts:164, 188-189; mp.ts:76-80). Verify the clock-resume claim (run.ts:554 vs clock.ts:46) before relying on it."
+}

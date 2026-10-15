@@ -1,0 +1,221 @@
+{
+ "area": "World, rooms and the elevator (src/world/**, src/machines/elevator, src/game/rooms.ts, src/game/ingame/roomsHost.ts, src/game/hollow). Paths in this map are under C:\\Users\\Admin\\Documents\\JackID; citations are repo-relative file:line. Read-only pass: nothing was edited and no git or server commands were run.",
+ "files": [
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\props\\elevator.ts",
+   "role": "TRANSPORT lift prop. class Elevator 126, doors() 143, ride(up y=6 / down y=-30) 158, resetCar 166, setFloor 171, setLocked 184, chain+padlock 105-112, OUT OF SERVICE sign 114-116, createElevator 200. Car is a visual only: no collider, no player carry."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\machines\\elevator\\index.ts",
+   "role": "GAMBLING machine, NOT transport: shared 8-seat crash table (TableBase). Header 1-17, def 77-99 (category physics, slot XL, zone midway at 81), class 101."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\machines\\elevator\\model.ts",
+   "role": "Crash-table geometry (cabinet, car, 8 rider stations). Not the lift. buildModel 75."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\level.ts",
+   "role": "Builds the whole pit. buildLevel 137-141 (root 'level:pit'), lift wall gap 199, niche walls 201-203, lift + gate 274 and 303-305 (gate has a solid collider box -5..-3, z -30.2..-29.8), rooms 413-423, hollow 426-432, spawns incl. unused 'lift' set 448-455, anchors 'elevator.door' 461 and 'elevator' 462, props map 479-483, lift lights 320."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\world.ts",
+   "role": "World assembly. buildLevel call 201-202, statics to collision 211, anchors/props/lights merged 212-216, zone open state 195-197 and tycoon zones 673-674, gate close 227, zone culling 219 and 614-616, phone:ring to light pool 170."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\layout.ts",
+   "role": "Zones and slots. ZONES 265-281 (lift zone gated 278, hollow zone 280), MID-01 slot 72, machine mapping MID-01 to 'elevator' 196, nav node d.lift 302 and edge c.mouth-d.lift 315."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\hollow\\index.ts",
+   "role": "THE HOLLOW DOOR controller and the only existing separate-space pattern. HollowDoor 92, reveal 148, enter (teleport in) 182-193, update with walk trigger 248-266, finish (teleport out) 370-381, buildHollow 416, ambienceAt 66-73, HOLLOW_LOOK 54, knock interactable 128."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\hollow\\config.ts",
+   "role": "Hollow constants. Origin HOLLOW_HOME [120,-10,120] 28, room UNDER_HALF 30 and UNDER_H 31, door DOOR_W/DOOR_H 33-34, ARRIVE 42, EXIT_DOOR 44, CRACK_DOOR 64, table slot 81, fall-limit reasoning 21-25."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\hollow\\doorway.ts",
+   "role": "Door-frame builder with split leaves (setSplit). buildDoorway 33."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\hollow\\underneath.ts",
+   "role": "Void room builder for the Underneath. buildUnderneath 28."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\props\\decor.ts",
+   "role": "Closest existing DOOR template: buildManagementDoor 157 (hinge group, steel leaf, plaque, sched-driven swing), used at level.ts:299."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\props\\trapdoor.ts",
+   "role": "Floor-plate prop with collider toggling (the setEnabled pattern). TRAPDOOR_OPEN_DEG 16, SHAFT_DEPTH 17, class Trapdoor 86, createTrapdoor 154."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\types.ts",
+   "role": "Contracts. PropId 81, Interactable 23-31, InteractionSystem 32-35, CollisionWorld 36-44, WorldProp 47, ElevatorProp 59-66, WorldLightTarget 84, WorldLights 86-97 (setLevel 88), World.prop/anchor 154-155."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\interact.ts",
+   "role": "Interaction focus. DEFAULT_REACH 2.2 at 20, createInteraction 78."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\rooms\\index.ts",
+   "role": "Special-room dressing (wings, grilles, Boiler, lockers). buildRooms 44, RoomsBuild 33. These are zones in the pit, not separate spaces."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\sys\\zones.ts",
+   "role": "Zone model and fog cross-fade. FOG_BLEND_M 12."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\sys\\lightPool.ts",
+   "role": "Light budget: POOL_SIZE real PointLights, retargeted around the camera (header 1-12)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\player\\local.ts",
+   "role": "Player implementation. teleport 342 (instant, no fade), fallOut fade 172, fade-in restore 351, carriedBy (teammate-follow, not a platform) 112 and 181, setCutscene 414."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\player\\types.ts",
+   "role": "LocalPlayer contract. teleport 44, setCutscene 53, setHandLook 29."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\player\\controller.ts",
+   "role": "FALL_LIMIT_Y = -12 at 35: below it the player is lost and the screen fades."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\player\\viewmodel.ts",
+   "role": "First-person hands. Header 2 says 'gloved hands', GLOVE colour 0xe6dec5 at 78, palm and finger meshes 97-109, setHandLook 370. Gloves already exist."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\core\\cutscene\\types.ts",
+   "role": "Cutscene contract. CutTarget anchor 31, HookCue and HookTrack 139-140 (a way to call elevator/door logic from a timeline)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\core\\cutscene\\player.ts",
+   "role": "Cutscene runtime. setCutscene(true) 154, skip jumps under black via app.ui.fade(1,0) 401, registerHook 491."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\run.ts",
+   "role": "Night and Dawn state machine. COLLECTION_SEC 234, enter() emits shift:phase and run:window 1808-1818, Watch clock ticks only in play/lastCall 1428-1433, Dawn 12 s timer 1442-1444, afterSettle 1930-1937, dawn() 1944 with quota check and fall() 1963, fall() emits quota:failed and endRun('fell') 2017-2022, openFloor (next Night, index+=1) 1486-1501, stayUp (escape by elevator) 1768-1770, topside set 1996, endRun and run:end 2044-2070."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\ingame\\panels.ts",
+   "role": "Intermission UI. The openFloor button (next Night) at 242, stayUp at 251."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\ingame\\session.ts",
+   "role": "Session wiring. Player spawn teleport 138-139, horror startDawnWalk 270."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\ingame\\roomsHost.ts",
+   "role": "Joins world rooms, the run and the screen (startRoomsHost, header 1-6). Not spatial."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\rooms.ts",
+   "role": "Keyring and wing rules (header 1-15). Logic only, no geometry."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\data\\rooms.ts",
+   "role": "WingId 11. LIN_POOL_TAGS includes 'MAHJONG' at 85, so mahjong is a line-up machine, not a room."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\hotline.ts",
+   "role": "Phone-call system. Header 1-7, phone:ring emitted 523 and 640 (also src\\game\\rescue.ts:96). This is the only phone logic."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\horror\\director.ts",
+   "role": "HorrorDirector. startDawnWalk 175 (spawns a walking Collector mannequin), stopDawnWalk 183."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\clockHold.ts",
+   "role": "Watch-clock hold API (holdClock, holdClockFor, releaseClock; header 1-9). Holds the Watch clock only, not the Dawn timer."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\story\\cutscenes\\ending_elevator.cutscene.ts",
+   "role": "The only lift-related cutscene. Camera anchored on 'elevator.door' and 'elevator' (11-12). No ride hook."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\game\\story\\cutscenes\\quota_fail.cutscene.ts",
+   "role": "Quota-fail cutscene, anchored on the trapdoor (10). A mafia death must not reuse this anchor."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\core\\events.ts",
+   "role": "Bus events. run:window 68, run:end 73, shift:phase 74, quota:met 76, quota:failed 77."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\core\\audio\\sfx.ts",
+   "role": "Available sounds. click 152, whoosh 433, phoneRing 760, trapdoor 792, elevator 800, doorCreak 825, doorSlam 829, footstep variants 852-857. No knock, chain, lock or light-switch sound found."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\kit\\types.ts",
+   "role": "Kit builder API. group 126, box 127, cyl 128, plane 131, lathe 132, extrude 133, tube 134, label 143, lamp 152, glass 166, mannequin 173, prop 178."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\kit\\props.ts",
+   "role": "Decor prop catalogue. Only hats and masks (229-250). No bed, door, switch, peephole or phone."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\world\\actors\\actorDirector.ts",
+   "role": "Mannequin actor director: spawns and walks actors on the nav graph (header 1-5). Owned by horror; usable for a spouse or a mafia actor."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\core\\renderer\\fog.ts",
+   "role": "Draw distance. FOG_FAR 12 (near 18, normal 26, far 40 m)."
+  },
+  {
+   "path": "C:\\Users\\Admin\\Documents\\JackID\\src\\machines\\hotline\\model.ts",
+   "role": "Hotline booth model. Rotary telephone on the shelf (62). The only phone geometry in the project."
+  }
+ ],
+ "apis": [
+  "Q1 SEPARATE SPACE, SAME SCENE, FAR OFFSET: THE UNDERNEATH is HOLLOW_HOME [120,-10,120] (src/world/hollow/config.ts:28), room half-size 9 and height 4.6 (config.ts:30-31). It is built inside buildLevel at src/world/level.ts:426 via buildHollow (src/world/hollow/index.ts:416), which returns {root, lights, statics, anchors, update, dispose}. level.ts:427-431 merges those into the level lists. world.ts:211-216 then moves statics into collision, anchors and props into the registries, and lights into the light pool.",
+  "Q1 ENTRY (teleport, not a scene change): HollowDoor.update (index.ts:266) fires enter() when the player crosses the doorway. enter() (index.ts:182-193) calls p.teleport(ARRIVE, 0) at 191, then swaps ambience with app.audio.ambience('void') at 193. EXIT: finish() (index.ts:370) teleports back to the stored pose at 381 and swaps ambience via ambienceAt (index.ts:66-73). This is the one working precedent for a separate space and reuses the pit's world.",
+  "Q1 TELEPORT: LocalPlayer.teleport(pos, yaw) (src/player/types.ts:44; impl src/player/local.ts:342) is an instant jump with no fade. The fade-in is only restored if fallOut set fadedOut (local.ts:172, 351). The cutscene jump-under-black pattern is app.ui.fade(1,0) then seek (src/core/cutscene/player.ts:401). Use an explicit fade around the teleport.",
+  "Q1 MAHJONG: no separate space. src/machines/mahjong is a machine module, and 'MAHJONG' is only a line-up pool tag (src/game/data/rooms.ts:85). 'Special rooms' are the seven wings, which are pit zones gated by grilles (src/game/data/rooms.ts:11, src/world/layout.ts:265-281), not separate spaces.",
+  "Q2 ELEVATOR MACHINE vs TRANSPORT: src/machines/elevator is a GAMBLING crash table (shared 8-seat TableBase, stake and cash-out; src/machines/elevator/index.ts:1-17; def 77-99; zone midway 81). It sits in slot MID-01 (src/world/layout.ts:72, 196). The TRANSPORT lift is the prop in src/world/props/elevator.ts (class Elevator at 126). Both are named 'elevator'.",
+  "Q3 PROPS THAT EXIST: door-like pieces are buildManagementDoor (src/world/props/decor.ts:157, hinge swing, used at level.ts:299); the trapdoor plate (src/world/props/trapdoor.ts:86, swing 100 deg at :16); the lift's brass-bar gate halves with doors() (props/elevator.ts:74-82, 143); the Hollow doorway with split leaves (src/world/hollow/doorway.ts:33, DOOR_W/H config.ts:33-34); wing grilles and gates (level.ts:278-292). Chain and padlock across the lift opening (props/elevator.ts:105-112). Phone: no world prop; only the hotline booth model (src/machines/hotline/model.ts:62). Light switch: none, except a decorative brass switch inside the lift car (props/elevator.ts:97-101). Bed: none. Peephole: none.",
+  "Q3 KIT PRIMITIVES (src/kit/types.ts): group 126, box 127, cyl 128, plane 131, lathe 132, extrude 133, tube 134, label 143, lamp 152, glass 166, mannequin 173 (NPC), prop 178 (catalogue is hats and masks only: src/kit/props.ts:229-250).",
+  "Q4 INTERACTABLES (E prompts): Interactable {id, box, maxDist?, priority?, enabled(), label(), sub?(), onInteract()} (src/world/types.ts:23-31). world.interact.add(i) returns an unsubscribe (types.ts:33). Default reach 2.2 m (src/world/interact.ts:20). Pattern examples: src/world/hollow/index.ts:128 and 358, src/world/rooms/grilles.ts:156.",
+  "Q4 COLLISION: CollisionWorld {addStatic(box, tag), addLocal, remove, setEnabled(id,on), moveAndSlide, raycast, floorAt} (src/world/types.ts:36-44). Door or floor colliders are toggled with setEnabled (trapdoor pattern, src/world/props/trapdoor.ts:154). There is no moving-collider API. STEP_UP 0.35 (src/world/collision.ts:20).",
+  "Q4 LIGHTS: push a LightHint into level.lights (pattern level.ts:316-320) and it reaches the pool at world.ts:214-216. Switch by zone or object: world.lights.setLevel(target: 'all'|ZoneId|InstanceId|Object3D, level, dur?, color?) (src/world/types.ts:84-88). The pool has POOL_SIZE real PointLights and retargets around the camera (src/world/sys/lightPool.ts:1-12).",
+  "Q4 ZONES AND CULLING: ZoneId is an open string (src/core/types.ts:55). A new zone is a ZONES rect plus look() in src/world/layout.ts:265-281 (hollow precedent at 280). Level children with userData.zone are hidden when far (src/world/world.ts:219 and 614-616, using zones.distanceTo < reach+2). Fog far is 40 m (src/core/renderer/fog.ts:12).",
+  "Q4 NPC: kit.mannequin (src/kit/types.ts:173) or a cutscene ActorSpec of kind 'mannequin' (src/core/cutscene/types.ts). ActorDirector walks mannequins on the nav graph (src/world/actors/actorDirector.ts:1-5). Horror already spawns a walking Collector at Dawn (src/game/horror/director.ts:175-183, wired at src/game/ingame/session.ts:270).",
+  "Q5 LIFT MECHANICS: Elevator.ride(dir, dur) moves the car sprite to y=6 (up) or y=-30 (down) (src/world/props/elevator.ts:158-163). doors(open) at 143. setLocked at 184 (no callers, so the chain and sign stay visible). resetCar 166. NO gameplay code calls ride(). The only lift cutscene (ending_elevator.cutscene.ts:11-12) uses the anchor for the camera only. Anchors: 'elevator.door' (level.ts:461), 'elevator' (level.ts:462).",
+  "Q5 LIFT GATE: gates.lift (level.ts:303-305) has a solid collider box (-5,0,-30.2)-(-3,2.6,-29.8). Zone 'lift' is gated (layout.ts:278), so world.ts:195-197 closes it in quota mode. Zone 'lift' opens only if the tycoon zone list contains it (world.ts:197, 673-674). No src/game code adds 'lift' (grep for quoted 'lift' finds only src/world/hollow/index.ts:70). So in quota mode the lift stays shut.",
+  "Q5 DAWN AND NIGHT FLOW: Watch then Dawn: afterSettle (src/game/run.ts:1930-1937) calls enter('collection', COLLECTION_SEC=12) (run.ts:234, 1937). enter() (run.ts:1808-1818) emits 'shift:phase' (1814) and 'run:window' (1816), and calls doorDawn (1818), which spends an unentered Hollow door. The Dawn timer ticks at run.ts:1442-1444 and calls dawn() when it expires. dawn() (run.ts:1944) calls fall() when unpaid (run.ts:1963). fall() (run.ts:2017-2022) emits 'quota:failed' and 'player:fall', then endRun('fell'). endRun (run.ts:2044) emits 'run:end' (run.ts:2070). Results read run:end (src/game/story/index.ts:109, src/game/inGameState.ts:327).",
+  "Q5 NEXT NIGHT (sleep): openFloor() (src/game/run.ts:1486) increments index at 1501 and is blocked by nightCardGate (1492). It is bound to the intermission button (src/game/ingame/panels.ts:242). There is no other next-Night path. The existing escape-up ending is stayUp() to endRun('escaped','elevator') (run.ts:1768-1770), allowed only when topside is set (run.ts:1996).",
+  "Q5 SCRIPTED HOOKS: cutscene HookCue {t, hook, args} (src/core/cutscene/types.ts:139-140). Handlers register through registerHook (src/core/cutscene/player.ts:491; example src/game/story/index.ts:104). A timeline can therefore call lift or door logic without new plumbing.",
+  "GLOVES: already implemented in the first-person viewmodel (src/player/viewmodel.ts:2 'gloved hands', GLOVE 0xe6dec5 at 78, palm 97, fingers 106-109, setHandLook 370; src/player/types.ts:29). A glove variant is a tint or sleeve change, not new work.",
+  "PHONE AND CLOCK: hotline is the phone-call system (src/game/hotline.ts:1-7, phone:ring at 523 and 640; src/game/rescue.ts:96). world.ts:170 lights the pool on ring. Watch-clock hold API: src/game/clockHold.ts:1-9, honoured by run.ts:1430. It does not cover the Dawn timer."
+ ],
+ "extensionPoints": [
+  "level.ts:426-432: add a buildHome() call beside buildHollow and merge root, lights, statics, anchors, updates and disposables the same way (pattern exactly as the hollow block).",
+  "level.ts:479-483: the props map. Add a home prop id here (PropId in src/world/types.ts:81, lookup via world.prop at types.ts:154).",
+  "layout.ts:265-281: ZONES. Add a far 'home' rect with look(), following the hollow entry at line 280. Set userData.zone on its root so world.ts:219 and 614-616 cull it by distance.",
+  "world.ts:201-216: the level merge pipeline. Statics go to collision (211), anchors and props to registries (212-213), lights to pool (214-216).",
+  "hollow/index.ts:182-193 and 370-381: the teleport-in and teleport-out shape with ambience swap. Reuse it for the lift-to-apartment trip, adding an explicit fade around the teleport (local.ts:172, cutscene/player.ts:401).",
+  "run.ts:1808-1818 enter(): the Dawn window hook. Listen to 'run:window' (core/events.ts:68) or 'shift:phase' (74) to start the lift trip.",
+  "run.ts:1486 openFloor() with its intermission button at panels.ts:242: the existing next-Night call. A bed 'sleep' interactable can invoke it.",
+  "run.ts:1963 and 2017-2022 (fall): the quota-missed branch. A mafia death route replaces or extends it, ending in endRun and 'run:end' (run.ts:2044-2070).",
+  "cutscene HookCue (core/cutscene/types.ts:139-140) with registerHook (core/cutscene/player.ts:491): call elevator.ride, elevator.doors or home actions from timelines.",
+  "hotline.ts:523 and 640 'phone:ring' bus event: a ready trigger for spouse or mafia phone messages.",
+  "lights: LightHint zone tag plus world.lights.setLevel(zone, 0) (types.ts:88) gives a one-call lights-off for the apartment."
+ ],
+ "risks": [
+  "TIMING (highest): the Dawn collection timer is 12 s (run.ts:234) and expires automatically (run.ts:1442-1444 calls dawn()). dawn() calls fall() when the quota is unpaid (run.ts:1963). The clock hold API (src/game/clockHold.ts) and the Watch clock tick (run.ts:1428-1433) do not cover collection. An elevator trip plus apartment cannot fit in 12 s, and an unhold would trigger the quota settlement early. A new hold on the Dawn phaseLeft is needed.",
+  "QUOTA-FAIL PATH: today a missed quota is fall() to endRun('fell') (run.ts:2017-2022), with a trapdoor cutscene (cutscenes/quota_fail.cutscene.ts:10). The mafia death must be a new endRun result and cutscene. Reusing the trapdoor anchor would look wrong.",
+  "NO FADE ON TELEPORT: LocalPlayer.teleport (local.ts:342-355) jumps instantly. The fade-in only restores if fadedOut was set by fallOut (local.ts:172, 351). The trip needs explicit app.ui.fade(1,dur,'#101019') then teleport then fade(0,...).",
+  "NO PHYSICAL LIFT: CollisionWorld has no moving-collider API (types.ts:36-44). carriedBy (local.ts:112, 181) follows a teammate, not a floor. The lift car (props/elevator.ts:158-163) is visual only and nothing calls ride(). A physical ride needs new per-frame collider or carry logic.",
+  "LIFT IS INERT IN QUOTA MODE: zone 'lift' is gated (layout.ts:278). It opens only if the tycoon zone list contains 'lift' (world.ts:197, 673-674), and no src/game code adds it. The gate is solid (level.ts:303-305). Chain and 'OUT OF SERVICE' sign are always visible (props/elevator.ts:105-116, setLocked unused at 184).",
+  "NAME COLLISION: machine id 'elevator' (src/machines/elevator/index.ts:78, placed MID-01 layout.ts:72, 196) and the lift prop/anchor 'elevator' (level.ts:462, 479-481; types.ts:81). Keep them distinct in code and cutscene targets (CutTarget machine vs anchor, cutscene/types.ts:31-33).",
+  "FALL LIMIT: below y = -12 the player is lost (player/controller.ts:35). The apartment floor must stay above it. The Hollow sits at y=-10 for this reason (hollow/config.ts:21-25).",
+  "LIGHT BUDGET: the pool renders POOL_SIZE real PointLights and retargets around the camera (sys/lightPool.ts:1-12). Keep the apartment to a few zone-tagged lights so setLevel(zone) works and the pit is not starved.",
+  "CULLING AND FOG: zoned level children are hidden when far (world.ts:614-616). Unzoned children stay visible at any distance. Fog far is 40 m (renderer/fog.ts:12). The apartment must sit beyond pit sightlines (the Hollow uses 120 m).",
+  "TIME MODEL: Watches (play phase) run on the pit floor and Dawn is the apartment entry, so 'phone messages during Watches' implies the phone reaches the player in the pit. phone:ring is global (hotline.ts:523) and lights the pool (world.ts:170), not a home phone. Decide whether messages arrive on the pit floor or only at home, or the design conflicts with the Dawn-only entry (run.ts:1937).",
+  "SOUNDS: no knock, chain, lock or light-switch sound exists. Usable: click (sfx.ts:152), doorCreak (825), doorSlam (829), footstep variants (852-857), phoneRing (760). Knock and chain need new assets or a substitution.",
+  "PROPS: no bed, peephole, chain-lock, light switch or home phone in the world. The kit catalogue is hats and masks (kit/props.ts:229-250). The only phone geometry is the hotline booth (machines/hotline/model.ts:62). These are new builders, following the management-door and hollow-doorway patterns.",
+  "HOLLOW INTERACTION: Dawn spends an unentered Hollow door (run.ts:1818). If the apartment and Hollow both reveal on the same Dawn, their ordering matters.",
+  "NIGHT ADVANCE: the only next-Night transition is openFloor() (run.ts:1486, index at 1501), gated by nightCardGate (1492) and bound to the intermission button (panels.ts:242). Sleep must call this or a new path. The night-card modal can block it.",
+  "HORROR OVERLAP: HorrorDirector owns the walking Collector and patrol actors (game/horror/director.ts:175-183). Hallway footsteps or knocks at home will need an agreed owner with that director."
+ ],
+ "suggestion": "Concrete minimal plan, following the Hollow Door pattern. (1) Add src/world/home/index.ts with buildHome(opts) returning {root, lights, statics, anchors, update, dispose}, mirroring buildHollow (hollow/index.ts:416). Place it at a far offset (outside the pit footprint and beyond 40 m fog, floor above y = -12), and register it in buildLevel after level.ts:432. Add a 'home' ZONES rect with look() in layout.ts after line 280, and set userData.zone on the root for distance culling. (2) Keep the transport lift (props/elevator.ts) as the visual: call doors(true) and ride('up') from a HookCue (cutscene/types.ts:139) for the ascent. Do not rely on a physical ride, since there is no moving collider. The apartment trip itself is an explicit fade plus teleport (local.ts:172 and 342; cutscene/player.ts:401 jump-under-black), with the return teleport to the lift door anchor (level.ts:461, 'elevator.door'). (3) Trigger the trip from Dawn enter() (run.ts:1808-1818) on 'run:window', and add a Dawn-timer hold so the 12 s auto-settle (run.ts:1442-1444) does not fire during the trip. (4) Sleep is a bed interactable (world.interact.add, types.ts:33, reach 2.2 interact.ts:20) that calls run.openFloor() (run.ts:1486) for the next Night. (5) Phone messages: subscribe to 'phone:ring'-style bus events (hotline.ts:523) for spouse or mafia calls, with a home phone prop. Decide on pit-floor delivery first (see risks). (6) Mafia death replaces fall() on a missed quota (run.ts:1963): a new endRun path, a new cutscene registered with registerHook (cutscene/player.ts:491), and results from 'run:end' (run.ts:2070). Never reuse the trapdoor anchor (quota_fail.cutscene.ts:10). (7) Lights: LightHint zone 'home' (level.ts:316-320 pattern), with world.lights.setLevel('home', 0) for the light switch (types.ts:88). (8) Gloves are already in the viewmodel (viewmodel.ts:78, 97), so only a tint or sleeve change is needed. Not inspected: src/game/hollow/rules.ts (game-side Hollow effects) and the props/clock.ts and props/quotaBoard.ts builders, which were only confirmed to exist (level.ts:264-270).\""
+}

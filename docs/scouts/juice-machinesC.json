@@ -1,0 +1,190 @@
+{
+ "area": "machinesC: _base juice and feedback (MachineBase, juice.ts, tiers.ts, seatHud, riskLayer), core fx/audio hooks, and 13 machines (roulette, scratch, shellgame, shrine, sicbo, sonkart, stacker, tallytable, tavla, teetotum, threecard, tombola, videopoker). Read-only audit; nothing edited.",
+ "inventory": [
+  "juice.celebrate(host, tier, opts) src/machines/_base/juice.ts:150 (tier show: winBurst + jingle + layer sfx + light pulse + marquee/bulb/lamp pattern for TIER_SHOW secs; escalate for big/huge/mega/jackpot). Wrapper MachineBase.celebrate MachineBase.ts:649. CelebrateOpts juice.ts:120-139 (amount, at, bet, mult, marquee, bulbs, lamps, restore, fast, speed).",
+  "juice.nearMiss(host, {dur, at, lamps, fast}) juice.ts:315 (heartbeat, red lightPulse, local zoom + vignette, lamp blink). Wrapper MachineBase.ts:653 (dur x speed).",
+  "juice.loss / commiserate(amount, at) juice.ts:294 (dust, short shake, lose sfx, '-X' pop only if amount given). Wrapper MachineBase.ts:651.",
+  "juice.pourCoins(host, amount, {bet, from, onCount, fast, speed}) juice.ts:358 (coin pour, coinPour + coins sfx, optional count-up via onCount). coinCount juice.ts:349. Wrapper MachineBase.ts:655. No wallet fly (gap).",
+  "juice.countUp(ctx, from, to, dur, onValue) juice.ts:375 (sim-clock outCubic count; used by videopoker index.ts:485).",
+  "juice.AttractScript every(id, period, fn, {jitter, first}) / update(dt) / reset() juice.ts:411-436; MachineBase.attractor getter MachineBase.ts:644-646; attract() only runs when unseated and idle MachineBase.ts:750-754.",
+  "juice.TIER_SHOW per tier {show secs, hz, sfx, glow} juice.ts:84-93; juice.breathe(t,hz) juice.ts:439; blinkOn(t,hz,duty) juice.ts:441.",
+  "tiers.juiceTier(gross, bet, tags) tiers.ts:21-31 (none/push/small/medium/big/huge/mega; tag 'jackpot' forces jackpot). TIER_MULT tiers.ts:17 (3x,10x,25x,50x). tierTags tiers.ts:43.",
+  "tiers.winFeel(mult) tiers.ts:119-147: continuous flash colour/alpha/dur, coin count, pour dur, pop scale/colour, pitch, shake, zoom over x1..x50 (log curve, keyframes FEEL_* tiers.ts:95-106). TIER_FLOOR_MULT tiers.ts:114.",
+  "MachineBase.settle({gross, tier, tags, silent}) MachineBase.ts:491-507: juiceTier + tierTags + run.win credit + offerGamble + release handling. TableBase.paySeat TableBase.ts:90-99 (host payout with tier tags).",
+  "TableBase.countdown(sec, label) TableBase.ts:112-119: shared visible countdown (timerState ring) that late joiners receive.",
+  "SeatHud.result(kind, amount, hold, label) src/machines/_base/seatHud.ts:404-428 (fixed callout; hold uses performance.now at 412/416). CSS seatHud.css:19-27 (0.12s steps(3) pop, no tier variant).",
+  "FxApi (src/core/fx/types.ts:60-108): popText(at,text,color,{dur,rise,scale,flyTo:'wallet',sfx,shake,onArrive}) types.ts:77 with PopTextOpts types.ts:40-51; winBurst(tier,at,{amount,flyToWallet}) types.ts:103; coins types.ts:63 (<=60); sparks 64; confetti 65; glow 69; flash(color,alpha,dur) 81 (reduceFlashing-gated in core/fx.ts:122-133); chroma 82; tint 83; zoomPunch 84; slowmo(scale,dur) 86; hitstop(sec) 88; squash 92; lightPulse(at,{color,mul,radius,dur}) 94; trail 71; decal 73.",
+  "glitchPulse(amount, dur) src/core/fx.ts:51-54 (horizontal tear + RGB split, reduceFlashing-aware; exported outside FxApi, import from '@/core/fx' like juice.ts:25). setPostLevel(key,value,dur) core/fx.ts:57 (vignetteBoost, desaturate, blackout).",
+  "Audio: ctx.audio.winJingle(tier,{pos,pitch}) src/core/audio/audio.ts:475-483 (adds music duck hold for big+); ctx.audio.coins(n,opts) audio.ts:484; ctx.audio.duck(bus,amount,dur) audio.ts:507; ctx.audio.music.setIntensity(v, ramp) src/core/audio/types.ts:92 and music/index.ts:291 (userI is a floor on the bed); setDread types.ts:94; stinger types.ts:97.",
+  "Win/tension SFX recipes src/core/audio/sfx.ts: win1 :450, win2 :457, win3 :465, winHuge :477, winRise :497, winMega :505, jackpot :521, jackpotSiren :539, jackpotBells :547, stinger :552, bell :414, chime :195, sparkle :629, coinShower :321, coinPour :323, numberTick :171, heartbeat :653, tensionRise :883, coinRain :875, tallyTick :891, allinDrum :919, wheelTick :386, ballBounce :400, ballDrop :406, ballRoll :392. winSfx tier->recipe map :966-977; coinCascade(n) :961-964.",
+  "Gamble ladder audio src/core/audio/gambleFx.ts: RUNG_SEMIS pitch table :15, wireGambleFx switch :21-39 (open, flip, win, lose, collect, allin* handled; tension/max/offer/hsBoost fall to default :37 silent).",
+  "RiskLayer events src/machines/_base/riskLayer.ts: offer :161, open :175, tension :189 (before 0.7+0.3*step wait :191), flip :195, win/max :199-201, lose :208, collect via payPot :222-230 (emits collect :227 only), all-in :248-279.",
+  "World juice bridge src/world/sys/juiceFx.ts: pitWave rings and floorStrobe with STROBE_HZ_MAX=3 :25, one wave at a time, reduceFlashing softens strobes (doc :9-10). Juice events declared juice.ts:31-41; emitComboShow juice.ts:383; comboTwinkle juice.ts:393.",
+  "Flash preferences: setFlashPrefsHost juice.ts:47 (wired in src/game/story/notes.ts:32), flashPrefs() juice.ts:48-50 (defined but not read by juice.ts; only bigone uses it at src/machines/bigone/index.ts:45).",
+  "Particle and popText budgets: coins cap 256, sparks 512, confetti 384 with ring-evict (src/core/fx/particles.ts:482-488, spawn evict :198-203); MAX_POPS 24 (src/core/fx/popText.ts:24); addBoost light-pulse pool has no reduceFlashing gate (src/core/fx/layer.ts:155-158).",
+  "Machine-side lamp and light APIs seen in use: lamp.blink(hz,dur) juice.ts:328; lamp.setColor/setOn (sonkart index.ts:767); marquee.chase(name,hz) scratch index.ts:512; bulbs.pattern(name,hz) juice.ts:182; rim.pattern('chase',14) roulette index.ts:442; countdown ring via TableBase.countdown."
+ ],
+ "gaps": [
+  {
+   "where": "src/machines/_base/seatHud.ts:404-428 (result), seatHud.css:19-27; callers roulette index.ts:500, sicbo index.ts:398, shellgame index.ts:489-491, tombola index.ts:362/392, videopoker index.ts:578, tavla index.ts:696-697, threecard index.ts:599",
+   "moment": "small win, big win, loss: the seat callout that follows every round (13 machines)",
+   "current": "result(kind, amount, hold, label) is one fixed style for every machine and every size: a 0.12 s steps(3) pop (seatHud.css:20-25), no tier input, no count-up of the amount, no shake or glow for big wins. The hold timer runs on performance.now (seatHud.ts:412, 416), so it expires during hit-stop and slow-mo. A x100 callout looks identical to a x1 callout.",
+   "proposal": "Add an optional tier argument (juiceTier from settle/paySeat). tier >= big gets an r-big class: outBack scale slam via CSS keyframes, gold glow, the amount counts up 0 to net over ~0.8 s with a numberTick per step (same shape as juice.countUp, sim clock). Big losses get a red tint and a short ctx.fx.shake(0.006). Move the hold onto the sim clock (ctx.timers.wait) so the callout survives hit-stop. One change lifts every seated machine.",
+   "effort": "S",
+   "impact": 5
+  },
+  {
+   "where": "src/core/audio/gambleFx.ts:22-39 (default silent :37); src/machines/_base/riskLayer.ts:161 (offer), 188-191 (tension then wait), 199-201 (max rung), 222-230 (payPot emits collect only :227)",
+   "moment": "anticipation and big win of DOUBLE OR NOTHING, offered after every local win on every machine (MachineBase.ts:680-682)",
+   "current": "Only open, flip, win, lose, collect and all-in kinds make sound. 'tension' (the suspense beat before every flip, riskLayer.ts:189), 'offer' (the win chip, :161), 'max' (the top rung, :199-201) and 'hsBoost' are silent. The top-rung payout is credited with no coin cascade because payPot('max') does not emit a collect fx (:222-230).",
+   "proposal": "In gambleFx.ts map tension to tensionRise with param = step/ladder so the riser climbs with each rung; max to winMega plus engine.coins(collectCoins(pot)*2); offer to a short chime at 0.5 vol; hsBoost to a chime pitched up. In riskLayer.payPot('max') also emit fx('collect') so the cascade plays. Pure wiring, no new assets.",
+   "effort": "S",
+   "impact": 5
+  },
+  {
+   "where": "src/machines/roulette/index.ts:473-506 (resultShow: commiserate :487 and nearMiss :488 in one tick, after spinShow landed the ball :455-464); src/machines/sicbo/index.ts:393-413 (same order after dice land :341-359); rules roulette rules.ts:150 (straight-up on adjacent pocket), sicbo rules.ts:145 (total off by one)",
+   "moment": "near miss and loss on roulette and sicbo (2 of the 13 machines; nearMiss is used by only 3 of 13: roulette, sicbo, scratch)",
+   "current": "The held breath is played after the outcome is already visible, and at the same instant as the losing 'lose' womp: juice.loss plays lose immediately (juice.ts:298) and nearMiss plays heartbeat immediately (juice.ts:321). The tease reads as noise, not as 'almost'. The near-miss flag exists but is only shown post-hoc.",
+   "proposal": "Choreograph the tease before the landing. Roulette: over the last ~0.6 s slow the ball and let it hover over the neighbour pocket for ~0.4 s with lamp flutter and heartbeat, then drop. Sicbo: hold the last die on the face one off the target for ~0.4 s. Then either skip the loss womp when nearMiss fires or await nearMiss before commiserate. Pass amount to roulette's commiserate so a loss shows '-X' (roulette index.ts:487 has none). Put 'near' into settle tags so any machine can call nearMiss.",
+   "effort": "M",
+   "impact": 5
+  },
+  {
+   "where": "src/machines/scratch/index.ts:412-429 (buyTheThird; emit at :425 has no hit flag), presentBuy 432-443, presentZone 570-593 (click + shimmer), rules.ts:304-332 (buyThird computes hit)",
+   "moment": "anticipation and win/loss of BUY THE THIRD, the push-your-luck moment of PIT PENNY",
+   "current": "buyThird computes t.hit (rules.ts:326/332) but the buy event carries cells, gross, mult, cost only. A hit and a miss present identically: the spot opens with the same click and shimmer (presentZone 577-585), and the outcome shows only when the card is done (presentDone 634-645).",
+   "proposal": "Add hit:boolean to the buy event. Hit: keep the third spot closed for ~0.6 s with a tension tick, then open it with a gold flash (fx.flash is already reduce-aware), sparks on the pair, popText 'PAIR!' with shake:true, and win2 pitched up. Miss: a muted buzzer, a grey pop, and the spot opens last.",
+   "effort": "S",
+   "impact": 5
+  },
+  {
+   "where": "src/machines/videopoker/index.ts:14-15 (header promises 'royal: CRT glitch and jackpot stinger'), presentDraw 416-434 (royal branch 422-425: shake, jackpot sfx, marquee only), presentCollect 475-490 (only celebrate, line 484); no glitch call anywhere in the file; core/fx.ts:51-54 glitchPulse exists",
+   "moment": "jackpot: royal flush hit",
+   "current": "The royal flush gets a shake, a jackpot stinger and marquee chase at the draw (422-425), but no celebrate tier show and no screen glitch. The celebrate and coin count-up only run when the player presses collect (484-485). The documented CRT glitch is not implemented, so the peak moment is underplayed and the header is out of date.",
+   "proposal": "In presentDraw's royal branch call void this.celebrate('jackpot', {amount: previewCredit, marquee, at: screen.mesh, fast}) and glitchPulse(0.7, 0.5) imported from '@/core/fx' (it already honours reduceFlashing at core/fx.ts:52). Keep the count-up for collect. Update the header to match.",
+   "effort": "S",
+   "impact": 5
+  },
+  {
+   "where": "src/machines/_base/juice.ts:358-372 (pourCoins: coins at tray :365, sounds :366-367, count-up :371, no wallet fly); winPop juice.ts:209-215 is the only wallet fly (local + amount); callers stacker index.ts:340, videopoker index.ts:487, shellgame index.ts:530, scratch index.ts:663",
+   "moment": "small and medium win (the most frequent payouts)",
+   "current": "On the emitter the wallet is credited before the show (MachineBase.ts:363 credit, then enqueue), so the balance jumps with no visual of money arriving. Coins fall into the tray and stop. Only celebrate tiers above small with an amount get a flyTo wallet, so most wins never visibly bank.",
+   "proposal": "At the end of pourCoins, when host.isLocalOccupant and not fast, pop '+amount' with flyTo:'wallet' and sfx:'numberTick' (both in PopTextOpts, core/fx/types.ts:40-51). Add a small winFeel flash and zoom for x1-x3 too (winFeel already computes them, tiers.ts:119-147).",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/machines/shellgame/index.ts:477-553 (presentEnd: tier computed :480 and used only for cashRegister :529; payout is pourCoins :530; no celebrate call in the file)",
+   "moment": "big win and jackpot on the cups",
+   "current": "A x10 or x50 cup win gets the same pour as a x1 win plus a cash-register click. No tier show, marquee, bulbs or lamp payoff. The heat streak (shellgame index.ts:12, 261-263, 311-312) never pays out visually.",
+   "proposal": "For medium and up: await this.celebrate(tier, {amount: ev.gross, bet: ev.bet, lamps: heat bulbs, fast}) instead of the bare pour. For heat >= 3 raise a tensionRise during the shuffle (the clockTick pitch already follows heat, line 412). At the jam threshold play a ~0.6 s clockAlarm build before powerDown (:543).",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/machines/tallytable/index.ts:636-644 (showResult: result with coins only :641, win2 :642); paid event 552-557; no pourCoins or celebrate anywhere in the file; pledge and soul tiers pass 0",
+   "moment": "big win in a duel; pledge and soul stakes",
+   "current": "A duel win is a text callout and a 3 s banner. Coins are never poured or counted, and a pledge or soul win shows no amount at all. The narrative beats (notary dialogue :548, manga reveal :564, clue cut-ins :587-603) are strong, but there is no money beat.",
+   "proposal": "Coins tier: await pourCoins(p.coins, {bet: p.S, onCount: draw the Sheet row}) then celebrate by tier. Pledge and soul: a tally-stamp sting (reuse stamp and shake at :533-535) and a manga cut-in showing the ticket or obol count won. Count-up on the Sheet row.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "src/machines/shrine/index.ts:177-225 (blessing result 'win' with amount 0 at :191; blessing flash alpha 0.1 at :208; buff name popText :210); full case: src/machines/shrine/rules.ts:68 (CANDLE_CAP 'full'), model.ts:27 (CANDLES=8); refresh :228-240 has no full-set state",
+   "moment": "reward (blessing) and milestone (eighth candle)",
+   "current": "A blessing says WIN with no number and a faint flash, and the buff name pops at the light anchor only. Lighting the last candle gives no reward ceremony; 'THE CASE IS FULL' only appears on a refused light.",
+   "proposal": "Blessing: flash alpha 0.3, celebrate('small') for a coin-glow, and a large buff-name popText (scale ~1.6) with a chime. Eighth candle: celebrate('huge') with a bulbs pattern and popText 'THE CASE IS OPEN', plus a ~0.6 s flame cascade (the flames already flicker at :97-101).",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/machines/stacker/rules.ts:59 (DECIDE_S=5, default TAKE); src/machines/stacker/index.ts:216-218 (rung window), 266-271 (tick takes), 232-238 (decide event only on climb), 298-323 (presentStop: a perfect stop has fell empty and gets the same thud :304)",
+   "moment": "anticipation: the rung take-or-climb window; perfect stop",
+   "current": "The 5 s take-or-climb window has no in-world countdown or tick (no timer or ring anywhere in stacker), so the decision is only readable in the HUD. A perfect alignment (no fell) gets the same thud as any stop, and the default TAKE is silent.",
+   "proposal": "Draw a shrinking brass ring or bar over the prize window for DECIDE_S, with tick sfx that speed up over the last 2 s and a tensionRise. On a perfect stop add a semitone to the row chime (the drone pattern at :295), a sparkle, fx.sparks along the bar and a scaled 'PERFECT' popText. All reuse existing sfx and fx.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "src/machines/tombola/index.ts:338-350 (pull: number shown, prize hidden), 229-243 (settleHold reveals immediately at unfold), 262-263 (host-only hold countdown), src/machines/tombola/rules.ts:26-27 (HOLD_S=2.5), pull emit :201 (hold time not sent)",
+   "moment": "anticipation of the held ticket; jackpot (grand)",
+   "current": "The unfold, the most important gesture, reveals instantly: no paper unroll, no digit ticks, no hold. The 2.5 s auto-unfold countdown runs only on the host and is never sent to clients, so the player sees no timer.",
+   "proposal": "Send holdS in the pull event and draw a ring or ticket-edge countdown with tick clicks that speed up. On unfold play a ~0.5 s paper unroll with digits ticking (tileClack) before the result is emitted, and a tensionRise for grand tickets. A blank next to a winning cubby gets popText 'SO CLOSE' (reuses the feel mechanic).",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "src/machines/_base/MachineBase.ts:170 (default attract empty), 750-754 (attract runs only when idle and unseated); attract exists only in scratch index.ts:143, shellgame index.ts:136, shrine index.ts:75, stacker index.ts:112, videopoker index.ts:119-122; missing in roulette, sicbo, sonkart, tallytable, tavla, teetotum, threecard, tombola",
+   "moment": "idle table (first impression and pull back to the machine)",
+   "current": "Eight of the thirteen machines are completely still when nobody sits at them. Seven of those have marquee or bulb parts in their model (grep of model.ts for roulette, sicbo, tavla, threecard, teetotum, tallytable, tombola), which the existing attract scheduler could drive.",
+   "proposal": "Give MachineBase a default attract: this.attractor.update(dt) plus a default every(~12 s, jittered) that runs marquee.chase('chase', 4) for ~1.5 s when the model has a marquee part, or a bulb glint otherwise. Machines can override with a tap or sparkle. One change lifts eight machines.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/core/audio/types.ts:142 (ctx.audio.music), :92 (setIntensity); src/core/audio/music/index.ts:291 (userI is a floor on the bed); the only caller is src/core/cutscene/effects.ts:44",
+   "moment": "anticipation across all machines (held breath before a result)",
+   "current": "No machine raises the score during a held breath. The bed's intensity layers and retarget ramp exist, but they are only driven by cutscenes, so the room sound never tightens while a roulette ball or a stacker bar is in play.",
+   "proposal": "Add protected anticipate(sec, level=0.7) to MachineBase: music.setIntensity(level, 0.4) now and music.setIntensity(0, 1.2) via ctx.timers.after(sec). Use on roulette lock (roulette index.ts:412-416), sicbo rattle (sicbo :310-315), videopoker pick (videopoker :299-309), stacker rung (stacker :216-218), tombola hold (tombola :229). Always reset on release so the floor cannot stick.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "src/machines/_base/MachineBase.ts:491-507 (settle: no per-machine streak); the only streak is shellgame heat (src/machines/shellgame/index.ts:64, 261-263, 311-312)",
+   "moment": "streak of consecutive wins; big win",
+   "current": "Consecutive wins are not tracked for any machine except shellgame heat. A run of wins sounds and looks the same as the first win.",
+   "proposal": "Track _streak in settle (reset on a loss and on stand-up). From 3 in a row: popText 'x3 STREAK' that grows per win, winJingle pitch +1 semitone per step (the stacker drone idea, stacker index.ts:295), and a bulb chase while the streak is >= 3. Lives in settle, so every machine gets it.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "src/machines/roulette/rules.ts:165, 179, 183 (bounces 2-5 generated); roulette index.ts:51, 374 (emitted); spinShow 431-470 never reads ev.bounces (uses orbitMs/dropMs at 435, 448; single outQuad tween 449-453); src/core/audio/sfx.ts:386 wheelTick, :400 ballBounce, :406 ballDrop exist and roulette does not use them; lucky reroll is a glow only (roulette index.ts:502)",
+   "moment": "anticipation of the ball; lucky reroll",
+   "current": "The ball's deflector bounces are generated but never drawn or sounded. The spin has no tick per pocket. A lucky reroll only glows the wheel, with no ceremony.",
+   "proposal": "Turn the bounce count into 2-5 small pitch knocks of the ball pivot during the drop, each with ballBounce. Add a wheelTick per pocket passed over the last ~1.5 s with growing gaps (the classic roulette tick). On a lucky reroll play a short powerUp sting, popText 'LUCKY', and a second brief spin instead of a glow.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "src/machines/videopoker/index.ts:299-309 (startPick: one heartbeat :306), 438-473 (presentDouble: win = fixed sparks :459, popText 'x2' scale 1.2 :460, win2 :461 regardless of ev.step :449)",
+   "moment": "double-up (risk ladder) win and lose",
+   "current": "Every double-up win looks and sounds the same, whether it is the first or the fourth step, so the ladder gives no sense of climbing.",
+   "proposal": "Pitch the win sound by ev.step with the gambleFx RUNG_SEMIS table (src/core/audio/gambleFx.ts:15, 27), scale the x2 pop and sparks with the step, raise the marquee chase hz with the step, and count the pot up on each step.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "src/machines/scratch/index.ts:634-645 (per card: popText xmult :636, sparks :637, win sfx :638, jackpot sfx and confetti at mult >= 50 :639); 658-663 (celebrate or pour only at batch end)",
+   "moment": "big win on a single card (x50 or more)",
+   "current": "A single card paying x100 gets a jackpot sting and 16 confetti but no coin pour or light show until every card in the batch is done. The biggest single moment is split from its payout.",
+   "proposal": "Per card with tier >= medium: celebrate(tier, {amount: c.gross, at: plane}) with a light pulse, plus a running batch-total popText. The batch-end show then fires only for the aggregate tier.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "src/machines/threecard/index.ts:583-588 (celebrate skipped for small at :588), 601 and 627-633 (clearChipsFor removes stake chips at once)",
+   "moment": "small win (the most common payout) and stake settle",
+   "current": "A small win plays a sound and a popText but no coin pour, and the stake chips vanish instead of flying back to the seat. The most frequent payout is the least felt.",
+   "proposal": "Fly the seat's chip stack to the seat anchor over ~0.5 s before clearing (chips.stack already exists, :618), and pourCoins for small wins. Keep full celebrate for medium and up.",
+   "effort": "M",
+   "impact": 3
+  },
+  {
+   "where": "src/machines/teetotum/index.ts:646-666 (faceFx: 'all' calls celebrate('big') with no amount at :658; golden face jackpot sfx and popText at :662-665 with no screen moment)",
+   "moment": "big win (take-all face) and golden face",
+   "current": "The take-all celebrate does not carry the amount, so no pop number is tied to the show, and golden faces get a jackpot sound but no visual payoff. The spin itself is strong (spinTop 597-634: motor hum, precession, 12 accelerating clicks).",
+   "proposal": "Pass the pot share as amount and the stake as bet to celebrate for 'all'. For golden faces, celebrate('huge') with the pot number and a gold flash (core flash is reduce-aware, core/fx.ts:122-133).",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "src/machines/_base/juice.ts:257-272 (local floorStrobe: 16 lightPulses at 0.25 s = 4 Hz, mul 2.6), juice.ts:275-291 (pitWave rings), juice.ts:322 (nearMiss red pulse); juice.ts:48 flashPrefs defined but not read by juice.ts; src/core/fx/layer.ts:155-158 (addBoost has no reduce gate); compare src/world/sys/juiceFx.ts:9-10, 25 (world caps strobes at 3 Hz and honours reduce); src/core/ui/settingsScreen.strings.ts:61 says 'No strobes'",
+   "moment": "guardrail: any mega or jackpot show and every new strobe (accessibility, not a dopamine gain)",
+   "current": "The machine-local strobe chain runs at 4 Hz and ignores reduceFlashing and calm, unlike the world layer (3 Hz cap, reduce-aware) and bigone (flashOpts at src/machines/bigone/index.ts:45). New juice added on this path inherits the problem.",
+   "proposal": "In juice.ts read flashPrefs() once per show. When reduced or calm, skip the local strobe chain and the pitWave rings and keep one soft pulse; otherwise keep the gap >= 0.34 s (<= 3 Hz). Gate lightPulse/addBoost the same way. Do this before adding more strobes.",
+   "effort": "S",
+   "impact": 3
+  }
+ ],
+ "notes": "PER-MACHINE MATRIX (small win / big win / jackpot / near miss / loss / anticipation). Line refs are to each machine's index.ts.\n- roulette: small+big: celebrate for the best winner only (:480), no per-seat show. Jackpot: none. Near: nearMiss post-hoc (:488). Loss: commiserate without amount (:487). Anticipation: lock chime and rake (:412-416), orbit and drop (:431-464), 1 s announce. Gaps 3, 15.\n- sicbo: small+big: celebrate best winner (:405). Triple: stamp drop, strobe and popText (:341-380). Near: total off-by-one, post-hoc (:413). Loss: commiserate (:412). Anticipation: strongest set here (cage rattle :310-315, ratchet and flip, dice tumble :383-391, lights :350-359). Gap 3.\n- scratch: small+big: per-card xmult pop (:636), batch celebrate at medium+ (:658-663). Jackpot: x50 sfx and confetti per card (:639). Near: PIT PENNY near (:642). Loss: commiserate per card (:644). Anticipation: foil sweep, shimmer (:596-610), idle flicker (:143), BUY THE THIRD with no tell. Gaps 4, 17.\n- shellgame: small+big: pourCoins only (:530), no celebrate. Jackpot: none. Near: none. Loss: jaw crack and lose (:532-540). Anticipation: swap clock ticks with heat pitch (:412), cheat alarm (:519), idle wag (:136). Gap 7.\n- shrine: blessing: flash 0.1 and buff-name pop (:208-210), no amount. Curse: tint and crack (:212-214). Near: none. Anticipation: moth wings and coins into dish (:195-196), ember attract (:75). Gap 9.\n- sonkart: local winner celebrate (:753); bot winners get popText and quips (:744-748). Jackpot card 'jp': hitstop 0.06 and confetti (:733). Near: none. Loss: local commiserate (:756). Anticipation: card play, call and turn bells (:683-711), catch hitstop (:688). No attract (only countdown). Gap 12.\n- stacker: small: pourCoins with LED count-up (:340). Medium+: celebrate (:338). Major: gold grid fill, capsule and bell (majorShow :347-362). Near: 'SAVED!' popText only (:313). Loss: commiserate and blink (:331-333). Anticipation: moving bar with drone pitch per row (:295), rung chime (:317), 5 s take window silent (rules :59). Attract sweep (:112). Gap 10.\n- tallytable: duel result is text only (:636-644); no pour, no celebrate. Near: none. Loss: buzzer and notary line (:544-548). Anticipation: strongest narrative here (clue cut-ins :587-603, stamp :533, reveal cut-in :564). No attract. Gap 8.\n- tavla: over event celebrates the tier with gammon and backgammon labels (:683-703); cube accept and pass sounds (:670-682). Near: none. Loss: commiserate (:700). Anticipation: cup lift (:626), doubles pop (:630-632), cube chime (:664-667). No attract. Gap 12.\n- teetotum: per-winner celebrate (:563); take-all celebrate('big') with no amount (:658); golden face sound only (:662-665). Near: none. Loss: commiserate without amount (:566). Anticipation: best in the set (spinTop :597-634). Gap 19.\n- threecard: small: popText and sound only (:583-595); big: celebrate (:588); straight flush lid pop (:587). Near: none (no nearMiss for pair-plus). Loss: commiserate only when return is 0 (:593). Anticipation: shuffle drum (:455), dealer flips and bell or buzzer qualify stamp (presentReveal :545-572). Gap 18.\n- tombola: own prize celebrate with amount (:380-385); grand prize tagged jackpot (:378). Blank: commiserate and Widow head-shake (:399-400). Near: none. Anticipation: crank, hatch, held ticket (invisible 2.5 s hold), Widow clap on prize (:427-438). Gap 11.\n- videopoker: collect celebrate and count-up at medium+ (:484-485), pour below (:487). Royal: jackpot sound and shake at draw, celebrate deferred to collect (:422-425). Double-up is flat (:458-461). Near: none (no 'one card from royal' signal). Loss: commiserate and shake (:465-467). Anticipation: deal flips (:377-382), draw flips and EVAL blink (:397-411), double heartbeat (:306), DEAL-lamp attract (:119-122). Gaps 5, 16.\n\nCROSS-CUTTING NOTES\n1. Pacing: celebrate is fire-and-forget (juice.ts:150-186) and does not set busy. Roulette (:480), sicbo (:405), sonkart (:753), tombola (:381), videopoker (:484) all do not await it, so the next round's lock chime can talk over a 7 s mega show. A round's restore callback (e.g. roulette :480 paintLamps) can repaint lamps mid-round. Consider a short hold (~0.8 s) on medium+ wins; this trades throughput for feel.\n2. Stacking: big tier adds winBurst 40 coins (core/fx.ts:194) plus escalate 60 coins and a second shake (juice.ts:221-222); huge plays winHuge's own riser at t=0 (sfx.ts:478) and winRise at 0.4 s (juice.ts:226), so two risers overlap; jackpot layers fanfare, siren loop, bells and coin-rain loop (juice.ts:241-243). Worth one riser per tier and ducking.\n3. Particle ring: coins (cap 256) evict the oldest on overflow (particles.ts:198-203). winBurst bypasses the 60-per-call guard in FxApi.coins (core/fx.ts:178-229 calls ps.burst with 160-200), so a mega or jackpot can evict an earlier pour. Probably intended, but worth knowing before adding more coin layers.\n4. Fast mode: MachineBase.ts:394 sets fast when more than 4 events are pending; it skips escalation but keeps winBurst and winJingle, which is the right degradation.\n5. Doc drift: videopoker header (:14-15) promises a CRT glitch that does not exist.\n6. Existing strengths to build on, not rewrite: tier curve (tiers.ts:95-147), the double-or-nothing ladder and all-in shot (riskLayer.ts), the win and tension sfx library (sfx.ts), tallytable's cut-ins, teetotum's spin, sicbo's rattle and triple stamp. Most gaps are wiring: unused events (gamble tension, max, offer), data already sent but not shown (scratch buy hit, tombola hold time, roulette bounces), and missing hooks (attract on tables, music intensity, streak).\n7. Quick wins with no new assets, ordered: gamble wiring (gap 2), buy-the-third tell (gap 4), videopoker royal celebrate and glitch (gap 5), seatHud tier callout (gap 1), default attract (gap 12), anticipate() music helper (gap 13), pourCoins wallet fly (gap 6).\n8. Read-only audit: no files edited, no git writes, no servers started."
+}

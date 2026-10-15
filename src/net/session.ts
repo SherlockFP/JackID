@@ -6,8 +6,11 @@
  *  - client: joins server → tab → Trystero in that order (3 s each, Trystero 15 s). Sends only to the host.
  * Inbound messages are decoded and checked here (host-only types from clients are dropped, rate limits apply), then
  * queued and delivered on `poll()`, so the game loop sees them in one place.
+ * `hostTime()` is the sim clock in ms offline (pausable, deterministic in the QA harness), the wall clock on the host and
+ * the synced host clock on a client (online path unchanged).
  */
 import type { Json, Lang, PlayerId, Unsub } from '@/core/types';
+import { app } from '@/core/app';
 import { bootParams } from '@/core/bootParams';
 import { log } from '@/core/log';
 import type { Settings } from '@/core/settings';
@@ -109,6 +112,8 @@ const clampInt = (v: number, lo: number, hi: number, fb: number): number =>
   Number.isInteger(v) ? Math.min(hi, Math.max(lo, v)) : fb;
 const clampHex = (v: unknown): number => (Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 0xffffff ? (v as number) : 0xffffff);
 const now = (): number => performance.now();
+/** Offline host clock: the sim clock in ms (`app.time.sim`). Before the app exists (boot, tests) the wall clock. */
+const simNow = (): number => (app ? app.time.sim * 1000 : now());
 
 /** Room codes use the TECH alphabet (no I/O/0/1), minted by the host from crypto randomness. */
 const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -557,7 +562,8 @@ export function createSession(profile: () => LocalProfile, opts: SessionOptions 
     players,
 
     hostTime(): number {
-      return mode === 'client' ? clock.toHost(now()) : now();
+      if (mode === 'client') return clock.toHost(now());
+      return mode === 'host' ? now() : simNow();   // offline: the sim clock (pause stops it)
     },
 
     rtt(pid?: PlayerId): number {

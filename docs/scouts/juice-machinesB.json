@@ -1,0 +1,186 @@
+{
+ "area": "machinesB",
+ "inventory": [
+  "juice.celebrate(host, tier, {amount, bet, mult, at, marquee, bulbs, lamps, restore, fast, speed}) at C:/Users/Admin/Documents/JackID/src/machines/_base/juice.ts:150; MachineBase wrapper this.celebrate at MachineBase.ts:649",
+  "juice.nearMiss(host, {dur, at, lamps, fast}) at juice.ts:315 (plays heartbeat + red pulse + vignette only, juice.ts:321-326); wrapper MachineBase.ts:653",
+  "juice.loss / this.commiserate at juice.ts:294 and MachineBase.ts:651 (small shake 0.006 by design, fx.ts:247)",
+  "juice.pourCoins(host, amount, {bet, from, onCount, fast}) at juice.ts:358; coinCount juice.ts:349; wrapper MachineBase.ts:655",
+  "juice.countUp(ctx, from, to, dur, onValue) at juice.ts:375",
+  "tiers.ts: TIER_MULT :17, juiceTier :21, TIER_FLOOR_MULT :114, winFeel(mult) :119-146 (continuous log curve, needs bet/mult from caller)",
+  "juice.TIER_SHOW table (show secs, chase hz, sfx, glow) at juice.ts:84-93; escalate() tier layers at juice.ts:218-254; pitWave/floorStrobe juice.ts:257-291",
+  "juice.AttractScript.every(id, period, fn, {jitter, first}) at juice.ts:411-436; this.attractor MachineBase.ts:644; attract() only when idle MachineBase.ts:753",
+  "juice.breathe / blinkOn at juice.ts:439, 441; emitComboShow / comboTwinkle juice.ts:383, 393 (not wired by any of the 16 machines)",
+  "fx.winBurst(tier, at, {amount, flyToWallet}) fx.ts:171-222; fx.lightPulse fx.ts:163; fx.slowmo fx.ts:140; fx.hitstop; fx.zoomPunch fx.ts:139; fx.chroma fx.ts:134",
+  "fx/types.ts: ParticlePreset :23 (coins, sparks, confetti, smoke, dust, glow, embers, drips); fx.trail :71; fx.decal :73; PopTextOpts :40-51 (dur, rise, scale, shake, flyTo, sfx)",
+  "audio/types.ts: play(name, {pos, vol, pitch, loop, param}) :41-49; Voice {stop(fade), setPitch(semi), setVol} :50; MusicApi.setIntensity :92, setDread :94, stinger :97",
+  "audio.ts: winJingle(tier, {pitch}) :475; coins(n) :484; sfx.ts: tensionRise riser def :883 (only caller bigone/index.ts:557); reelLoop used only by bandit/index.ts:401 and bigone/index.ts:459",
+  "_base/reels.ts: nearMissLine(grid, line, symbol, need, wild) :158 (zero callers); kit/reels.ts stopAt(index, dur, bounce) :81",
+  "_base/seatHud.ts: result(kind, amount, hold, label) :404; CSS seatHud.css:19-27 and :59-62",
+  "tween.ts: Ease incl. outBack, outElastic, outBounce, outExpo :12-13; ctx.tweens punch/squash/shake/spin :17-30",
+  "juice.flashPrefs() :48 (only bigone reads it; celebrate/nearMiss ignore calm/reduced)",
+  "game/buffs/streaks.ts: HOT_FROM_WINS 3, COLD_FROM_LOSSES 4, HEAT_MAX 100 (:20-24); per-instance hot/overheat buffs game/data/buffs.ts:38-58; no machine reads them"
+ ],
+ "gaps": [
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/mines/index.ts:556-561 (presentEnd cash branch)",
+   "moment": "big cash-out (medium tier and up, x3+ stake)",
+   "current": "Medium+ cash-outs only play sfx win2 plus a 1 s on-screen countUp. No celebrate(), no coin pour, no flash, shake or confetti, and no marquee. Small cash-outs (pourCoins, line 560) actually get a coin pour, so the biggest payouts get the flattest show.",
+   "proposal": "Replace the medium+ branch with await this.celebrate(tier, {amount: ev.gross, bet, lamps: [], restore: () => this.drawScreen(), fast: pc.fast}) and keep the countUp as the on-screen count. Add fx.shake at huge and above, and glow the green tiles longer.",
+   "effort": "S",
+   "impact": 5
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/_base/juice.ts:315-331 (nearMiss) with C:/Users/Admin/Documents/JackID/src/core/audio/sfx.ts:883 (tensionRise)",
+   "moment": "near miss (every machine that teases)",
+   "current": "nearMiss plays heartbeat, a red light pulse, a 0.015 zoom and a vignette (juice.ts:321-326). The purpose-built riser sfx tensionRise is never played by juice; its only machine caller is bigone/index.ts:557. nearMiss is called from only 5 of the 16 machines (hilo:347, keno:512, lottoblower:498, mahjong:547, pachislot:404). nearMissLine in _base/reels.ts:158 has zero callers.",
+   "proposal": "Inside juice.nearMiss add ctx.audio.play('tensionRise', {pos, param: 0.6, vol: 0.7}) next to the heartbeat so every tease rises into the land. Add an optional tell (highlight the near symbol or card for the hold). Call nearMiss from the fruit reel, pachinko reach and elevator crash paths (see the gaps below).",
+   "effort": "S",
+   "impact": 5
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/fruitmachine/index.ts:429-441 (presentSpin), :68-69 (STOP_GAP_S, FIRST_STOP_S), :425 (reelStart only)",
+   "moment": "reach and near miss on the reels (solo fruit machine, the most-played slot)",
+   "current": "Reels stop on a fixed 0.3 s cadence (line 68) with bounce 0.12 and a shake of 0.002 (line 440, imperceptible). There is no slow-down or hold when two reels already match, no tease, and no nearMiss call anywhere in the file. nearMissLine (reels.ts:158) is unused.",
+   "proposal": "After reel 2 stops, if nearMissLine() shows a 2-of-3 line, hold reel 3 for about 0.8 s, stop it with a slower stopAt (dur 0.6, bounce 0.2), play tensionRise across the hold and call nearMiss({at: reels[2].root}) with a popText. On a real reach raise the reel shake from 0.002 to about 0.01.",
+   "effort": "M",
+   "impact": 5
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/pachinko/index.ts:532-562 (presentSpin, revealSpin), reach heartbeat at :553-555",
+   "moment": "reach (the three-digit near win) and its outcome, and the jackpot",
+   "current": "All three digits are written in one step (revealSpin :548-551). Reach adds only a heartbeat and a holdLamps blink (:553-555). The roughly 1.2 s shuffle (:538-545) ends in an instant reveal. tensionRise is not used here.",
+   "proposal": "On reach, reveal digit 1, then digit 2 at 0.35 s steps. Slow the third digit's shuffle over about 1.5 s with tensionRise (param rising 0 to 1) and a heartbeat per step, then hold 0.6 s before landing. Win: sparks plus the existing jackpot popText. Loss: nearMiss({lamps: holdLamps}) before the land.",
+   "effort": "M",
+   "impact": 5
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/core/audio/types.ts:92 (setIntensity), :97 (stinger); callers only in src/core/cutscene/effects.ts:44 and src/game/horror/director.ts:125; zero calls in src/machines",
+   "moment": "sustained tension (ladder climbs, multiplier runs, countdowns, long duels)",
+   "current": "The adaptive score never reacts to casino play. Machines only call audio.winJingle (ducking, audio.ts:475) and one-shot sfx. A 20-step hilo run or a x25 mines board sounds the same as the lounge bed.",
+   "proposal": "Add a juice helper tension(host, v, ramp) that calls ctx.audio.music.setIntensity(v, ramp) and returns to 0 on settle or bust. Drive it from hilo (run and steps, presentGuess :360-370), mines (mult, presentPick :466-480), elevator (multiplier in frame(), :466-482), keno (hits in balls(), :431-455) and fantan (countdown). Cap v at about 0.6 so it reads as build, not takeover.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/game/buffs/streaks.ts:20-30 and C:/Users/Admin/Documents/JackID/src/game/data/buffs.ts:38-58 (hot and overheat instance buffs); no machine under src/machines reads hot or overheat",
+   "moment": "win streak heats a machine; machine overheats",
+   "current": "The streak engine applies hot (up to 3 stacks) and overheat instance buffs and the heat meter, shown only as a HUD buff line. The cabinet itself does not change at all.",
+   "proposal": "From each machine's attract() or frame(), read the instance's hot stacks through run.buffs and show them on the cabinet: marquee to a hot chase at 1-2 stacks, bulbs at 3, and on overheat a smoke burst (fx.burst('smoke')) with a red breathe. One shared helper in juice.ts makes it a single call per machine.",
+   "effort": "M",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/fortuneteller/index.ts:303-306 (nearmiss tag) and :481-491 (presentOthers)",
+   "moment": "near miss: the Grand Omen sat among the unpicked cards",
+   "current": "Logic tags nearmiss (rules.ts:109-110, :122), but presentOthers flips every unpicked card at 0.45 s with a 0.25 s gap. The Grand Omen is revealed exactly like a dud, with no hold, emphasis or sound.",
+   "proposal": "In presentOthers, if an unpicked omen is GRAND_OMEN, flip it last, hold about 0.6 s with nearMiss({at: that card}), zoomPunch 0.02, a gold glow on its face and popText 'the Grand Omen was here'. Apply still pays the reward.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/elevator/index.ts:393-398 (case go: one-shot creak and motor) and :466-482 (frame ride visuals)",
+   "moment": "crash ride, the core tension of the game",
+   "current": "Nothing in the ride rises with the multiplier audibly. Only a creak and a motor one-shot at the start. Visually the cable frays (:479) and car shake (:472) scale, but there is no pitch or loop. Voice.setPitch (audio/types.ts:50) has zero callers across src/machines.",
+   "proposal": "On go, start a looping motor voice (ctx.audio.play('motor', {loop: true, vol: 0.5})). In frame() call voice.setPitch(12 * log2(m)), capped at +12 semitones, and setVol to taper. On snap, voice.stop(0.2). Add a tally tick each time the multiplier doubles.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "celebrate call sites: C:/Users/Admin/Documents/JackID/src/machines/{elevator/index.ts:414, fantan/index.ts:513, fortuneteller/index.ts:466, fruitmachine/index.ts:550, hilo/index.ts:420, keno/index.ts:506, lottoblower/index.ts:471,495, pachinko/index.ts:606, pachislot/index.ts:395,439, pisti/index.ts:509,590, plinko/index.ts:424, reddog/index.ts:508}; juice.ts:166-167; tiers.ts:114-146",
+   "moment": "any medium-or-bigger win (feel scaling)",
+   "current": "Only mahjong/index.ts:536 passes bet. Without bet or mult, winFeel gets the tier floor (x3 medium, x10 big, x25 huge), so a x3.1 win and a x9.9 medium win get identical flash, pour, pop scale and pitch. The continuous curve in tiers.ts:119-146 is effectively off for 15 of 16 machines.",
+   "proposal": "Pass bet: stake (or mult: payout / stake where the machine knows it, for example elevator ev.mult and keno payout / stake) at every celebrate call. Mechanical one-line change per file.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/lootbox/index.ts:486-488 (shakes, dead legendary hold), :557-560 (payFx); no celebrate call anywhere in the file",
+   "moment": "capsule reveal: anticipation, legendary and cursed prizes, coin prizes",
+   "current": "rare and above get 3 shakes (rules.ts:72). The legendary breath is written as s === 3 (line 488), which can never run because the loop is s = 0..2, so the intended hold is dead code. Coin prizes always pour 8 sprite coins (line 559) with no count-up, whatever the value. Legendary and cursed get a flash or tint but no celebrate show. The capsule gives no colour clue before opening; the beam appears only after (lines 500-506).",
+   "proposal": "Fix the hold to s === shakes - 1. Tint both capsule halves with the rarity colour during the shakes as anticipation. Scale payFx coins by value with coinCount(amount) (juice.ts:349) and countUp the LED. Celebrate big or huge for legendary and cursed with the amount.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/fantan/index.ts:509-531 (resultShow payouts)",
+   "moment": "multi-seat win where the local player is not the top winner",
+   "current": "celebrate runs only for the best winner (lines 509-516). Every other winning seat, including the local player, gets only a lamp popText (521-531) with no coins, pour or show. In a 6-seat round the local player's second win is flat.",
+   "proposal": "For every local winner with gross above stake, call celebrate(tier, {amount: gross, bet: stake, at: their seat lamp}); the best winner keeps the bigger show. Others keep the lamp pop.",
+   "effort": "S",
+   "impact": 4
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/lottoblower/index.ts:464-476 and :487-496 (double jackpot show); C:/Users/Admin/Documents/JackID/src/machines/reddog/index.ts:508-512 (celebrate plus pourCoins); C:/Users/Admin/Documents/JackID/src/machines/elevator/index.ts:414 (await inside the table event chain, MachineBase.ts:388-405)",
+   "moment": "jackpot win (lottoblower); every red dog win; local cash-out at a crash table",
+   "current": "The lottoblower jackpot winner gets two jackpot shows (onJackpot line 471 plus onResult line 495): two sirens and bells, two coin-rain loops, two pit waves. Red Dog pays coins twice (celebrate's coins plus the pour), with coinPour and coins sounds twice. Elevator awaits its celebrate, so the table's queue stalls 1.2 to 7 s after a local cash-out (juice.ts:15 forbids this).",
+   "proposal": "Lottoblower: keep the jackpot show once (in onJackpot), drop the celebrate in onResult when ev.jp > 0. Red Dog: skip pourCoins for medium and up, since celebrate already pours. Elevator: void the celebrate and pass mult: ev.mult and bet: ev.stake.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/fruitmachine/index.ts:423-425 (reelStart only); C:/Users/Admin/Documents/JackID/src/machines/pachislot/index.ts:337 (reelStart only), :15 (header claims reel whir), :352 (stopAt bounce 0); pattern at src/machines/bandit/index.ts:401",
+   "moment": "every spin, the silent stretch between start and first stop",
+   "current": "The spin is silent between reelStart and the first reelStop. reelLoop exists and two machines use it, but neither reel game does. Pachislot's header promises a reel whir that the code does not play. Its stops also use bounce 0 (line 352), so they have no kick, while fruitmachine uses 0.12 (line 438).",
+   "proposal": "On start: const hum = ctx.audio.play('reelLoop', {loop: true, param: 0.6, vol: 0.6}) and hum.stop(0.1) after the last stop. Give pachislot a 0.1 bounce on stopAt.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/_base/seatHud.ts:404-421 (result), seatHud.css:19-27 and :59-62",
+   "moment": "every result the local player sees, across all 16 machines",
+   "current": "The banner pops in with steps(3) and shows the net amount as static text. Colour depends only on kind; a win, a big win and a jackpot look the same, and there is no count-up.",
+   "proposal": "Pass a tier (or derive from amount/stake): larger scale and a BIG WIN or HUGE WIN label for medium and up, and count the amount up with countUp (juice.ts:375) over about 0.6 s.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/mines/index.ts:466-471 (tremble 0.08 s, flip 0.25 s) and :479 (heartbeat only at mult >= 10)",
+   "moment": "each reveal, and the reveal before a likely boom",
+   "current": "The tile tremble lasts 0.08 s, so each reveal has almost no build-up. Tension appears only at mult 10 or more (heartbeat). Nothing tells the player how dangerous the next tile is.",
+   "proposal": "Lengthen the hover to about 0.3 s with a tensionRise riser (param = mult / 50) and a selector flicker. Show remaining safe tiles near the multiplier as a visible tell. Call nearMiss when the next pick would be the last safe tile.",
+   "effort": "M",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/plinko/index.ts:338 (golden lamp pre-show), :407-413 (landed), :380-382 (pegHit); fx.trail unused in all 16 machines (types.ts:71)",
+   "moment": "puck lands next to the golden slot; each puck in flight",
+   "current": "The golden slot lights before the drop, but a puck that lands one slot away gets nothing; landed() pops only for mult 2 or more or golden. Pucks have no trail.",
+   "proposal": "When a puck lands adjacent to ev.goldenSlot, call nearMiss({at: label}) and flicker the gold lamp. Add fx.trail(puck, {color: gold, life: 0.25, rate: 30}) on each puck.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "no attract() override in src/machines/{fantan, hilo, keno, lordstable, lottoblower, mahjong, pisti, reddog}/index.ts; base hook at MachineBase.ts:170 and :753",
+   "moment": "idle machine on the floor (ambient life)",
+   "current": "Eight of 16 machines animate nothing while unoccupied (hilo has only a marquee idleChase). Red Dog has no idle motion at all; the dog moves only on results (reddog/index.ts:492-495).",
+   "proposal": "Add attractor.every entries (juice.ts:411): Red Dog dog blink and tail wag every 6 to 9 s; pisti or mahjong card or tile flip; fantan bowl lamp sweep; keno lamp chase; lottoblower blow puff. Each is one line in init() plus attract(dt).",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/hilo/index.ts:360-370 (step presentation: heartbeat at run >= 50 on line 369, confetti at run >= 100 on line 370)",
+   "moment": "ladder run climbs past x2, x5, x10, x25",
+   "current": "Each step is the same x-multiplier popText and win1/2/3 sound. The only escalation is a heartbeat at 50 and confetti at 100, so a long run feels similar at each step.",
+   "proposal": "At run thresholds (2, 5, 10, 25) add a milestone pop with a riser (tensionRise, param = run / 50) and a rung chime flourish. Keep it a pop, not a full show, so the next step is not delayed.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/keno/index.ts:431-455 (balls, hits chime at 447-449)",
+   "moment": "a local ticket nearing its hit target during the draw",
+   "current": "The local player's hits chime upward by semitones, but nothing builds as a ticket approaches its target (for example 9 of 10 spots hit). The near-miss beat comes only after the draw (line 512).",
+   "proposal": "When a local ticket reaches picks minus 1 mid-draw: speed the remaining steps (step times 0.6), heartbeat, blink the relay lamp with relay.blink, and popText 'ONE AWAY'. Uses existing calls.",
+   "effort": "S",
+   "impact": 3
+  },
+  {
+   "where": "C:/Users/Admin/Documents/JackID/src/machines/pisti/index.ts:531-592 (presentPlay, pistiFx) and :503-515 (round end, celebrate(tier) without amount at line 509)",
+   "moment": "capture opportunity (anticipation); pot payout at round end",
+   "current": "Playable cards never signal a capture: no rank-match highlight anywhere in the file. The round-end payout pops text per winner and calls celebrate(tier) with no amount or bet, so the local pot gets no count-up and no pour from its own payout.",
+   "proposal": "Glow hand cards whose rank matches the table's top card, reusing the flashPeg pattern from plinko. At round end pass amount and bet to celebrate and countUp the pot (juice.ts:375).",
+   "effort": "M",
+   "impact": 3
+  }
+ ],
+ "notes": "Scope: read-only static audit. Nothing edited, no git writes, no servers. The 16 target machine files are not in the git status modified list, so they reflect HEAD; streaks.ts and buffs were read as currently modified in the working tree. Timings and behaviour come from code only, not from a running build, so the feel itself is unverified.\n\nEngine verdict: the shared juice engine is solid (TIER_SHOW juice.ts:84-93, tiered celebrate and escalate juice.ts:150-254, winFeel curve tiers.ts:119-146, AttractScript juice.ts:411, nearMiss, pourCoins, countUp). Most gaps are in how machines call it, not in the engine.\n\nCross-cutting findings:\n(a) celebrate is called without bet or mult in 15 of 16 callers; only mahjong passes bet (mahjong/index.ts:536). winFeel therefore uses tier floors.\n(b) The adaptive music is never driven by machine play. setIntensity and setState callers are only cutscene/effects.ts:43-44 and horror/director.ts:121-125.\n(c) Unused existing parts: tensionRise riser (sfx.ts:883, only bigone), reelLoop (only bandit and bigone), Voice.setPitch (zero callers in src/machines), nearMissLine (reels.ts:158, zero callers), fx.trail (only coinflip), comboTwinkle (no machine listens).\n(d) juice.celebrate and juice.nearMiss ignore flashPrefs (juice.ts:48; only bigone reads it). Any new flash or zoom should check calm and reduced first.\n(e) juice.ts:15 says never await a long show inside present(); elevator/index.ts:414 does.\n\nPer machine (paths under C:/Users/Admin/Documents/JackID/src/machines/). Format: small win | big win | jackpot | near miss | loss | anticipation -> top proposal.\n- elevator: small = awaited celebrate plus coin sfx (:414) | big = 60-coin fountain, shake, huge slow-mo (juice.ts:218-228) | roof jackpot = mega show and flood, car lifts (:435-446) | near = none | loss = red FELL pop, car drop with shake 0.06 and red flash (:420-462) | anticipation = YES (cable sway :387, frays per doubling :479, car shake :472) -> pitch-tracked ride loop; crash-just-above-target tease.\n- fantan: small and big = celebrate only for best winner (:509-516); other winners get lamp pop only | near = none | loss = commiserate, local only (:525) | anticipation = YES (bowl lift, wand per group, heartbeat at 12 or fewer :472, gong :498) -> celebrate every local winner; hold before final group.\n- fortuneteller: small = x-pop and pour (:452-478) | big = Grand Omen wings spread, medium-plus celebrate (:452-466) | near = Grand Omen among unpicked is tagged but shown silently (:481-491) | loss = curse or thud commiserate (:472-473) | anticipation = partial (pick 0.2 s, flip 1.2 s with whisper or curse, :409-421) -> Grand Omen near-miss beat.\n- fruitmachine: small = pourCoins count-up and chime (:548-551, :544) | big = medium-plus celebrate via payShow (:548-552) | feature = featHold popText and jackpot sting (:445-448) | near = none (no nearMiss, no nearMissLine) | loss = commiserate only if no squares and no release (:466-468) | anticipation = weak (fixed 0.3 s stop cadence :68, shake 0.002 :440, no hum) -> reach tease and reel hum.\n- hilo: small = win1 and rung chime and x-pop (:363-368) | big = collect celebrate medium-plus with countUp (:408-424) | run 50 and up = heartbeat (:369), 100 and up = confetti (:370) | near = nearMiss tease before reveal (:344-348) | loss = powerDown drain, commiserate, refund pour (:373-392) | anticipation = YES (button, marquee race, rung tones) -> ladder milestones and music intensity.\n- keno: small and big = celebrate for the local ticket only (:506); others get a pop | near = nearMiss, local only (:512) | loss = commiserate, local only (:513) | anticipation = YES (LOCK bell :406-418, NEXT countdown frame :575-577, relay clacks :445) -> draw tension as a ticket nears its target.\n- lootbox: small = 8 fixed coin sprites (:557-560) | big and legendary = flash, zoom and bell only; no celebrate in file | cursed = violet tint and stinger (:528-532) | near = pity popText only | loss = dud whoosh and lose (:522) | anticipation = partial (shake count by rarity :486; legendary hold dead at :488) -> fix hold, rarity tint, value-scaled coins.\n- lordstable: no coin payout in this file | win by lord fire = bell and manga cut-in (:446-449) | near = n/a (duel) | loss = youFire cut-in | anticipation = STRONG (accelerating heartbeat gaps 0.9/0.6/0.35 :461, hammer :471, blackout) -> victory without a fire only gets win3 (:451) and a banner; add a small celebrate.\n- lottoblower: small and big = celebrate for the winner (:495) | jackpot = DOUBLE show (:471 and :495) | near = nearMiss (:498) | loss = commiserate (:499) | anticipation = YES (blow stir, ball thud :445, chime per hit :448, moon) -> dedupe jackpot show; hit-count tension.\n- mahjong: small = win2 and pour (:534-538) | big = celebrate with bet (:536) | win = tiles lay flat green, MAHJONG pop with shake at x20 (:514-525) | near = NEAR HAND waits glow, nearMiss and pour (:546-551) | loss = powerDown and commiserate (:553-554) | anticipation = YES (deal stagger, upcard flip, turn beads) -> no attract hook; tenpai glow pulse.\n- mines: small = pourCoins count-up (:560) | big cash (medium-plus) = sfx win2 and countUp only (:556-558), NO celebrate, NO coin pour, NO flash | bust = lightFlicker, tint, commiserate (:563-567) | near = none | anticipation = weak (0.08 s tremble :466-468; heartbeat only at mult 10 or more, :479) -> celebrate medium-plus cash-outs; longer hover with riser.\n- pachinko: small = pocket pops +3, +5, +7 with chime (:489-505) | big = chain celebrate plus countUp (:599-610) | jackpot = sparks, shake, popText (:557-560) | near = reach heartbeat only; digits appear at once (:548-555) | loss = commiserate on empty block (:593) | anticipation = partial -> staggered reach reveal with riser.\n- pachislot: small = pour with LCD count (:395-397) | big = BIG and REG announce, 0.3 s sound cut, taiko, eyes flare (:372-383), medium-plus celebrate (:395, :439) | near = nearMiss after the stop on a flagged role (:402-405) | loss = commiserate (:406) | anticipation = partial (lever spring, stop clacks; header's reel whir not implemented) -> reel hum and stop bounce.\n- pisti: small = win2 and popText (:521-528) | pisti capture = colour flash, shake, sparks, celebrate big or medium (:572-592) | pot = popText per winner, celebrate without amount (:509) | near = none | loss = commiserate (:511) | anticipation = weak (no capture-ready highlight) -> glow matching cards; pot countUp.\n- plinko: small = x2+ pop and pour (:407-413, :426) | big = celebrate medium-plus with marquee (:422-424) | HIGH edge = siren and red chase for 3 s (:434-443) | near = none (golden lamp pre-shown :338, nothing for a near-golden landing) | loss = commiserate and marquee blink (:429-431) | anticipation = YES (chute, marquee race, pentatonic peg pings :380-382) -> near-golden tease; puck trails.\n- reddog: small and big = celebrate and pourCoins both fire for the same payout (:508-512) | dog reacts per result (:492-495) | near = none | loss = droop and commiserate | anticipation = partial (barkSpread per rank, about :472-484) and third card gets only cardFlip (:457) -> third-card suspense, dog idle, remove double pour.\n\nNot verified: rules-level probabilities, real timing feel, and how often the _pending above 4 fast path triggers on shared tables."
+}

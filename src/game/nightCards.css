@@ -26,7 +26,22 @@
 .nc-prev { font-family: var(--f-head, monospace); font-size: calc(10 * var(--dpx)); line-height: 1.5; color: #000; padding: calc(4 * var(--dpx)) calc(6 * var(--dpx)); background: #fff3c4; border: calc(2 * var(--dpx)) solid #000; overflow-wrap: anywhere; }
 .nc-prev:empty { display: none; }
 .nc-take { margin-top: auto; font-family: var(--f-head, monospace); font-size: calc(10 * var(--dpx)); color: #000; text-decoration: underline; }
-.nc-timer { margin-top: calc(12 * var(--dpx)); font-size: calc(16 * var(--dpx)); color: #2a2016; text-align: right; }
+/* The Dawn receipt: last Night's settlement, counted up in the modal's head. */
+.nc-receipt { margin: 0 0 calc(12 * var(--dpx)); padding: calc(8 * var(--dpx)) calc(10 * var(--dpx)); box-sizing: border-box; background: #fffdf5;
+  border: calc(2 * var(--dpx)) solid #000; box-shadow: calc(3 * var(--dpx)) calc(3 * var(--dpx)) 0 #000; }
+.nc-rec-title { display: inline-block; margin: 0 0 calc(6 * var(--dpx)); padding: calc(3 * var(--dpx)) calc(8 * var(--dpx)); font-family: var(--f-head, monospace); font-size: calc(10 * var(--dpx));
+  line-height: 1.4; color: #fff; background: #0f6f63; transform: skewX(-8deg); }
+.nc-rec-grid { display: flex; flex-wrap: wrap; gap: calc(6 * var(--dpx)) calc(18 * var(--dpx)); }
+.nc-rec-row { display: flex; flex-direction: column; min-width: calc(110 * var(--dpx)); }
+.nc-rec-k { font-size: calc(15 * var(--dpx)); line-height: 1.1; color: #2a2016; }
+.nc-rec-v { font-family: var(--f-head, monospace); font-size: calc(14 * var(--dpx)); line-height: 1.3; color: #000; font-variant-numeric: tabular-nums; }
+/* The Dawn countdown: a bar that drains over the 20 s, and the last 5 s pulse red. */
+.nc-timer { display: flex; align-items: center; gap: calc(10 * var(--dpx)); margin: 0 0 calc(14 * var(--dpx)); font-family: var(--f-head, monospace); font-size: calc(11 * var(--dpx)); line-height: 1.3; color: #000; }
+.nc-timer-bar { flex: 1 1 auto; height: calc(10 * var(--dpx)); background: #fffdf5; border: calc(2 * var(--dpx)) solid #000; overflow: hidden; }
+.nc-timer-bar > i { display: block; height: 100%; width: 100%; background: #0f6f63; }
+.nc-timer.nc-pulse { color: #b3201c; animation: nc-pulse .5s steps(2, end) infinite; }
+.nc-timer.nc-pulse .nc-timer-bar > i { background: #b3201c; }
+@keyframes nc-pulse { 50% { opacity: .2; } }
 .nc-chip { --dpx: calc(var(--u, 1.5px) / 1.5);
   position: fixed; left: 50%; bottom: calc(10 * var(--dpx)); z-index: 20; pointer-events: none; white-space: nowrap; padding: calc(4 * var(--dpx)) calc(10 * var(--dpx));
   font-family: var(--f-head, monospace); font-size: calc(10 * var(--dpx)); color: #fff; background: #000; border: calc(2 * var(--dpx)) solid #f4ecd8;
