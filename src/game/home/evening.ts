@@ -21,6 +21,7 @@ import type { WorldHost } from '@/world/world';
 import type { LocalPlayerHost } from '@/player/local';
 import { HOME_TIMING, type DebtRun } from '../run';
 import { HOME_AMBIENCE, HOME_ANCHORS, HOME_ORIGIN, HOME_SFX, type HomeStage, type HomeStation } from './contract';
+import { dreamOf } from './phone';
 import strings from './evening.strings';
 
 registerStrings(strings.prefix, { en: strings.en, tr: strings.tr });
@@ -120,7 +121,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     let subs = true;
     try { subs = app.save.data.settings.subtitles !== false; } catch { /* default on */ }
     if (subs) app.ui.subtitle(text, who, sec);
-    else ui().toast(text, 'info', sec);
+    else { ui().dismissToasts(); ui().toast(text, 'info', sec); }   // one centre line at a time: the Evening's older hint steps aside
   };
 
   // ── placing the player ─────────────────────────────────────────────────────────────────────────────
@@ -157,6 +158,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     beats = { ding: false, tp: false, fadeIn: false, flick: 0, knocks: 0 };
     seatWait = 0;
     wantLock = true;
+    ui().dismissToasts();   // the lift starts clean: the pit's news (a stale toast, a quota line) does not ride up with the player
     if (world.seat) world.standUp();   // the lever is pulled from the terminal's seat
     fadeTo(1, T.dark);
   };
@@ -174,6 +176,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     }
     unlock();
     world.home?.setSpouse(spousePresent());
+    ui().dismissToasts();   // the arrival hint is the only centre-top line of the Evening: stale toasts from the pit step aside
     ui().toast(t('evening.hint'), 'sys', 5);
   };
 
@@ -191,6 +194,10 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     unlock();
     fadeTo(0, 0.9);
     void ui().banner(t('ingame.night', { n: run.night() }));
+    // the Night's dream (rolled when the bed closed the last Night) is a line of the apartment, not a banner: the banner queue
+    // can sit behind the Dawn banner for seconds, and the dream belongs to the waking moment, so it speaks through the subtitle
+    const d = dreamOf(run.homePhone());
+    if (d) say(t(d.key), '', 5);
   };
 
   const change = (from: HomeStage | null, to: HomeStage | null): void => {

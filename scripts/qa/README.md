@@ -185,7 +185,10 @@ Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` 
 | `pawn:buy:<slot>` | buys Pawn Window shelf `slot` (1-based, 1 to 6). Sits at the Pawn Window (`charm_vendor`) if not seated there, closes the tip, presses the shelf's key (`1`-`4`; `5` and `6` by `→` from shelf 4), then `Space` twice. `ok` is whether the shelf now reads sold. `charm`, `price`, `paid` say what it was. Intermission only (`reason` says so otherwise) |
 | `pawn:look` | sits at the Pawn Window and screenshots the seat view to `run-pawn-look-<n>.png` (with `--shots`). `shelves` lists the stock (`null` = sold or empty, `[]` outside an Intermission) |
 | `home:lift` | TAKE THE LIFT: `run.homeLiftReady()` then `run.openFloor()` on a paid Night with the Home layer, then waits (sim time, up to 10 s) for stage `evening` (the ride is 2.6 s). `night` is the Night paid, `stage` the stage reached. Fails (`reason`) off the casino floor, with the layer off, on a Night Card offer the lever is held for, or on Night 8 (the Topside choice) |
-| `home:sleep` | the bed: the world's own `home:interact` event for station `bed`, sent through the app bus (`window.jackid.app.events`), then waits for the sleep (1.8 s) to open the next Night. `night` is the Night slept through, `nightAfter` the next one. Fails off the Evening |
+| `home:sleep` | the bed: the world's own `home:interact` event for station `bed`, sent through the app bus (`window.jackid.app.events`), then waits for the sleep (1.8 s) to open the next Night. `night` is the Night slept through, `nightAfter` the next one. Then it waits (up to 300 polls of 100 ms sim) for the arrival fade (`.px-fade`) to clear, so the next step starts on the casino floor in the light: `fadeClear` is true when it has. A dark screen that never clears fails the step. Fails off the Evening |
+| `home:peep` | the peephole: the world's `home:interact` for station `peephole` (the 2 s look through the door). Waits the look out (2.2 s sim), then `stage` must still be `evening`. Fails off the Evening |
+| `home:knock-check` | logs the Home state: `run` (`run.homeState()`: `stage`, `left` in sim s, `lights`, `chain`) and `world` (`world.home` `lights` and `chain`), also logged as `knock-check:` on stderr. `ok` needs the Home layer and the apartment built. Read-only: it runs after the run has ended, like `state` |
+| `anchor:<name>` | teleports the player to a named world anchor (`world.anchor(name)`, e.g. `anchor:home.spawn`, `anchor:home.peephole`, `anchor:elevator.door`), standing at its world position (+0.05 m, as the Home placement stands) and facing the way the anchor faces. `at` and `yaw` say where it landed. For visual checks only. Needs a debt run; a Home anchor needs the apartment built (`ok:false`, `reason` names the missing anchor). A game step: it is skipped once the run has ended |
 | `home:talk` | the spouse: station `spouse`. The record has `lines` (the i18n keys `phone.talk()` returned, `null` when a talk was already running), `harmony` and `blessed` (the `blessed` buff is held: the first talk of an Evening at Harmony 4+) |
 | `home:switch` / `home:chain` | the ceiling light / the door chain: stations `switch` and `chain`. The record has `before` and `after` (`world.home` `lights` and `chain`) and `run` (`run.homeState()`); `ok` is false when the state did not flip |
 | `phone:open` | presses the phone key (default `KeyT`, read from `input.bindings().phone`), then reads the phone: `open` (the `.px-phone` overlay is up), `unread`, `harmony`, `heat`, `messages`, `pending` (messages that wait for a reply). Walk mode only |
@@ -206,7 +209,7 @@ Start config steps can sit anywhere in the list; each applies once, at run start
 
 `--run` blocks until the steps finish, or until the run ends (then the steps left over are skipped, see below), and only then writes the JSON, once. The process exits after that write has flushed. The exception is a page reload, which ends the list at once (see below).
 
-When the run has ended (`run.over`, or the run is gone because the menu took the screen back), every remaining step is skipped with one record `{ step: "run over", ok: true, note, skipped: [...] }` listing them. A `play` repeat that comes after the end is not pressed (its record has `note: "run over after N of M"`). No step throws in that case.
+When the run has ended (`run.over`, or the run is gone because the menu took the screen back), only the game-driving steps are skipped. They are listed in one record `{ step: "run over", ok: true, note, skipped: [...] }`, placed where the first skipped step was. The read-only steps still run after the end: `state`, `shot`, `wait`, `events`, `banner` and `home:knock-check`, so the mafia_visit cutscene and the results can be shot. A `play` repeat that comes after the end is not pressed (its record has `note: "run over after N of M"`). No step throws in that case.
 
 Each step is recorded in `run.steps` as `{ step, ok, ms, … }`, in the order it ran (`via`, `at`, `instance`, `amount`, `lever`, `state`, `charm`, `price`, `paid`, `shelves`, `shot` where they apply).
 A `play` or `bot:bet` record has `bets`: one `{ stake, machine, ok, refusal }` per `run.bet()` call the step made (the stake of each play, accepted or not; `refusal` is the run's refusal reason, null when accepted). Stakes are read through a wrapper that `--run` installs on the run once. A refused `lever`, `pawn`, `deposit`, `withdraw`, `bell` or `nightcard` record has `refusal` (the run's `lastRefusal()` after the step) and `refusalNew`. The run keeps its last refusal until the next accepted bet or buy, so `refusalNew: false` means the reason may be left over from an earlier refusal; `reason` then stays the generic text. A failed step is kept: `ok:false` with `error` (a step that threw: the `goto` to a locked machine, a seat that does not take) or `reason` (a step the run refused). **The steps go on after a failed step.** `run.failed` counts the failed user steps. Only a page reload stops the list: `run.aborted` says so, the run is then invalid (see `viteEvents`), and the exit code is 1. The run ending does not (see the `run over` note above). Output is the same one JSON object; `run.intro` is `{ played, taps }`, and `run.shot` is `run-final.png` when `--shots` is set. `rounds` is 0 in this mode.
@@ -312,6 +315,22 @@ Two invocations with the same seed give the same `run.nights` and the same stage
 the doom ride starts or the run ends (`stage: "doomed"`, then the run ends with `fell` / ending `shot` and the mafia cutscene). Do not use
 `lever` and `bell` by hand for this: the lever refuses during a Watch ending and the Bell refuses outside play. Try
 `--run "home:miss;wait:9000;state" --seed 1902`.
+
+**Recipe: capture the forced-miss scene (mafia_visit).** Seed 1902 on Night 1 misses the quota with no bets, so the doom ride
+runs and the run ends `fell` / `shot`. The cutscene starts after the end, which is why the shots after the end must still run:
+
+```
+node scripts/qa/bench.mjs --run "home:miss;wait:9000;shot:mafia-visit;wait:4000;shot:mafia-later;state" --seed 1902 --shots <dir>
+```
+
+- `home:miss` returns once the stage is `doomed` (about 60 s of sim time: the Watches run out). `wait:9000` lands in the
+  cutscene: `mafia-visit.png` shows the goon in the apartment hall. `state` then has `over: true`, `homeStage: "doomed"` and
+  `intro: "mafia_visit"` while the cutscene plays. The later shot (13 s after the miss) is a later beat of the scene, not the
+  results screen. Tune the `wait:` offsets for the beat you want, or add `--frames` if you need exact offsets.
+- The steps after the end are read-only, so they run: `shot`, `wait`, `state` and `home:knock-check` (the doom's lights and
+  chain). Game steps such as `anchor:` are skipped with the `run over` record.
+- For a frame of the apartment itself (the hall, the door), take the Evening instead: `auto:night;nightcard:best;home:lift;anchor:home.spawn;shot:evening`
+  (checked on seed 3: `home:lift` is held for the Dawn offer, so `nightcard:best` must come first). Then `anchor:home.peephole` for the door.
 
 ## Intro skip
 

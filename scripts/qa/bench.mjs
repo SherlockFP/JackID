@@ -141,6 +141,10 @@ export function parseScript(text) {
  *   home:talk          the spouse: station `spouse` (the first talk each Evening at Harmony 4+ is the BLESSING); records the lines
  *   home:switch        the ceiling light: station `switch` (lights toggle); records the lights
  *   home:chain         the door chain: station `chain` (chain toggles); records the chain
+ *   home:peep          the peephole: station `peephole` (the 2 s look through the door); waits the look out, records the stage
+ *   home:knock-check   logs the Home state (run.homeState() and world.home lights and chain); read-only, runs after the end too
+ *   anchor:<name>      teleports the player to a named world anchor (world.anchor), facing where the anchor faces: visual checks
+ *                      (anchor:home.peephole, anchor:home.spawn). Needs a debt run; the Home anchors need the apartment built
  *   phone:open         presses the phone key (default T, rebindable) and records whether the overlay is up, the unread count, Harmony, Heat
  *   phone:reply:<n>    presses digit n (1-3) for reply n of the open message; records the answered count before and after
  *   bell               ring the Bell early (run.ringBell: ends the Watch while playing or Last Call, unused pulls rebate)
@@ -167,7 +171,9 @@ export function parseRunSteps(text) {
     if (!tok) continue;
     if (['stand', 'lever', 'bell', 'pawn', 'state', 'events'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
     // THE EVENING (wave 69): the lift, the apartment's stations and the phone
-    if (['home:lift', 'home:sleep', 'home:talk', 'home:switch', 'home:chain', 'home:miss', 'phone:open'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
+    if (['home:lift', 'home:sleep', 'home:talk', 'home:switch', 'home:chain', 'home:peep', 'home:knock-check', 'home:miss', 'phone:open'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
+    const ma = /^anchor:([A-Za-z][A-Za-z0-9_.-]{0,80})$/.exec(tok);
+    if (ma) { out.push({ kind: 'anchor', name: ma[1], text: tok }); continue; }
     let mr = /^phone:reply:(\d+)$/.exec(tok);
     if (mr) {
       const n = Number(mr[1]);
@@ -218,7 +224,7 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:sleep | home:talk | home:switch | home:chain | home:miss | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:sleep | home:talk | home:switch | home:chain | home:peep | home:knock-check | home:miss | anchor:<name> | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
   const once = (kind) => {
@@ -234,7 +240,7 @@ export function parseRunSteps(text) {
 /** The start config from the kit/stake/daily steps (applied at run start, not steps), or null when there are none. */
 const START_KINDS = new Set(['kit', 'stake', 'daily']);
 /** Steps that only read or wait: they do not change the Night, so auto:night's next-step look skips them. */
-const READ_ONLY_KINDS = new Set(['state', 'shot', 'events', 'wait', 'banner']);
+const READ_ONLY_KINDS = new Set(['state', 'shot', 'events', 'wait', 'banner', 'home:knock-check']);
 export function startSpecOf(parsed) {
   const cfg = parsed.filter((s) => START_KINDS.has(s.kind));
   if (!cfg.length) return null;
@@ -484,6 +490,43 @@ const PHONE_JS = `(() => {
   const panel = document.querySelector('.px-phone');
   return { has: true, open: !!panel && !panel.hidden, unread: p.unread(), harmony: p.harmony(), heat: p.heat(), messages: ms.length,
     answered: ms.filter((m) => m.answered !== null).length, pending: ms.filter((m) => m.answered === null && m.replies.length > 0).length, mode: a.input.mode };
+})()`;
+/** Page JS: the screen fade (`.px-fade`, src/core/ui/ui.ts) is clear: no running fade animation and the veil at 0. True with no fade element. */
+const FADE_CLEAR_JS = `(() => {
+  const el = document.querySelector('.px-fade');
+  if (!el) return true;
+  const busy = el.getAnimations().some((x) => x.playState === 'running' || x.playState === 'pending');
+  return !busy && (parseFloat(getComputedStyle(el).opacity) || 0) <= 0.01;
+})()`;
+/** Sim ms of the peephole look (evening.ts PEEP_SEC = 2 s), plus a margin, before the step reads the stage again. */
+const HOME_PEEP_MS = 2200;
+/** Polls (100 ms of sim time each) the arrival fade gets after the bed before the step fails. */
+const FADE_POLLS_MAX = 300;
+/** Waits until the screen fade after the bed (the arrival in the casino) has cleared. False if it is still up at the cap. */
+async function waitFadeClear(ctx) {
+  for (let i = 0; i < FADE_POLLS_MAX; i++) {
+    if (await evaluate(ctx.cdp, FADE_CLEAR_JS)) return true;
+    await sleep(100);
+  }
+  return false;
+}
+/**
+ * Page JS: teleports the player to a named world anchor (`world.anchor(name)`), standing at its world position (the Home
+ * placement's 0.05 m stand lift, as evening.ts places the lift arrival) and facing the way the anchor faces (its -Z). Visual checks.
+ */
+const anchorJs = (name) => `(() => {
+  const a = window.jackid.app, w = a.world, name = ${JSON.stringify(name)};
+  if (!w || !a.player) return { ok: false, reason: 'no debt run on screen' };
+  const o = w.anchor(name);
+  if (!o) return { ok: false, reason: 'no anchor "' + name + '" in this world (the Home anchors need the apartment built)' };
+  o.updateWorldMatrix(true, false);
+  const pos = o.getWorldPosition(a.camera.position.clone());
+  pos.y += 0.05;
+  const dir = a.camera.position.clone().set(0, 0, -1).applyQuaternion(o.getWorldQuaternion(a.camera.quaternion.clone()));
+  const yaw = Math.atan2(-dir.x, -dir.z);
+  a.player.teleport(pos, yaw);
+  const r2 = (v) => Math.round(v * 100) / 100;
+  return { ok: true, anchor: name, at: [r2(pos.x), r2(pos.y), r2(pos.z)], yaw: r2(yaw) };
 })()`;
 /** Node: waits (sim time) until `test(home)` holds for the run's home stage and Night, the run is over, or `ms` have passed. Returns the last read. */
 async function waitHome(ctx, test, ms) {
@@ -1712,7 +1755,45 @@ async function runKind(ctx, s, rec) {
       rec.stage = h?.stage ?? null;
       rec.nightAfter = h?.night ?? null;
       rec.ok = h != null && h.stage === null && h.night > h0.night;
-      if (!rec.ok) rec.reason = `the bed did not open the next Night (stage ${rec.stage}, Night ${rec.nightAfter})`;
+      if (!rec.ok) { rec.reason = `the bed did not open the next Night (stage ${rec.stage}, Night ${rec.nightAfter})`; return; }
+      // The arrival: the player is teleported back under black, and the screen fades in. The next step starts after it has cleared.
+      rec.fadeClear = await waitFadeClear(ctx);
+      if (!rec.fadeClear) { rec.ok = false; rec.reason = 'the arrival fade did not clear (the screen is still dark)'; }
+      return;
+    }
+    case 'home:peep': {
+      // The peephole: the world's `home:interact` for station `peephole` (the 2 s look). The step waits the look out, then reads the stage.
+      const h0 = await evalJson(cdp, HOME_STAGE_JS);
+      rec.night = h0?.night ?? null;
+      if (!h0 || h0.stage !== 'evening') { rec.ok = false; rec.reason = `not in the Evening (home stage "${h0?.stage ?? 'none'}")`; return; }
+      await evaluate(cdp, homeEmitJs('peephole'));
+      await sleep(HOME_PEEP_MS);
+      const h1 = await evalJson(cdp, HOME_STAGE_JS);
+      rec.stage = h1?.stage ?? null;
+      rec.ok = rec.stage === 'evening';
+      if (!rec.ok) rec.reason = `the look ended the Evening (stage ${rec.stage})`;
+      return;
+    }
+    case 'home:knock-check': {
+      // Logs the Home state: the run's stage, sim seconds left, lights and chain, and the apartment's own lights and chain.
+      const r = await evalJson(cdp, `(() => {
+        const a = window.jackid.app, r = a.run, h = a.world?.home ?? null;
+        if (!r) return { ok: false, reason: 'no run on screen' };
+        const st = r.homeOn ? r.homeState() : null;
+        return { ok: st !== null, run: st, world: h ? { lights: h.lightsOn(), chain: h.chainOn() } : null, apartment: !!h,
+          reason: st === null ? 'the Home layer is off' : (h ? null : 'no apartment built (world.home)') };
+      })()`);
+      Object.assign(rec, r);
+      rec.ok = r.ok === true && r.apartment === true;
+      if (!rec.ok) rec.reason = r.reason ?? 'no apartment built (world.home)';
+      log(`knock-check: ${JSON.stringify({ run: r.run, world: r.world })}`);
+      return;
+    }
+    case 'anchor': {
+      // Visual checks: teleport the player to the anchor's place, facing it. The record names the place it landed on.
+      const r = await evalJson(cdp, anchorJs(s.name));
+      Object.assign(rec, r);
+      rec.ok = r.ok === true;
       return;
     }
     case 'home:miss': {
@@ -1885,13 +1966,16 @@ async function exec(ctx, s) {
  */
 async function driveRun(ctx, steps) {
   await evaluate(ctx.cdp, BET_TAP_JS);
+  // Once the run has ended (or is gone), only the game-driving steps are skipped. The read-only ones (state, shot, events, wait,
+  // banner, home:knock-check) still run, so the mafia_visit cutscene and the results can be shot after the end.
+  let overRec = null;
   for (let i = 0; i < steps.length; i++) {
-    // The run has ended (or is gone): every remaining step is skipped, with one note for all of them.
-    if (await evaluate(ctx.cdp, RUN_OVER_JS)) {
-      const skipped = steps.slice(i).map((x) => x.text);
-      ctx.run.steps.push({ step: 'run over', ok: true, note: `run over: skipped ${skipped.length} remaining step(s)`, skipped });
-      log(`run over: skipped ${skipped.length} remaining step(s) (${skipped.join('; ')})`);
-      break;
+    if (!READ_ONLY_KINDS.has(steps[i].kind) && await evaluate(ctx.cdp, RUN_OVER_JS)) {
+      if (!overRec) { overRec = { step: 'run over', ok: true, note: '', skipped: [] }; ctx.run.steps.push(overRec); }
+      overRec.skipped.push(steps[i].text);
+      overRec.note = `run over: skipped ${overRec.skipped.length} game step(s); read-only steps still run`;
+      log(`run over: skipped "${steps[i].text}"`);
+      continue;
     }
     // auto:night looks here: a following nightcard step picks the Dawn offer, not the bot. Read-only steps (state, shot, events,
     // wait, banner) between them do not count, so `auto:night;state;nightcard:best` still hands the offer to the step.

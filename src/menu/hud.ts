@@ -37,6 +37,7 @@ import { activeSets, type SetId } from '@/game/charms/sets';
 import { houseMoodPreviewParts, payoutChip, type PayoutPart } from '@/game/houseMood';
 import { spotlightChip, type SpotlightView } from '@/game/spotlight';
 import './hud/hud.css';
+import './hud/evening.css';
 import { nightPaid } from '@/machines/debt_terminal/night';
 import { SeatHud } from '@/machines/_base/seatHud';
 
@@ -197,6 +198,19 @@ export function createHud(): Hud {
   let seated = false;
 
   // ── top-right: quota ────────────────────────────────────────────────────────────────────────────
+  // THE EVENING card (wave 69): the apartment's one compact read-out, shown only while the run is at home (evening.css).
+  const evCard = h('div', 'hud-evening', topR);
+  h('span', 'ev-title', evCard, t('hud.evening.title'));
+  const evObj = h('span', 'ev-obj', evCard, '');
+  const evHarm = h('div', 'ev-row', evCard);
+  h('span', 'lbl', evHarm, t('hud.evening.harmony'));
+  const harmPips: HTMLElement[] = [];
+  for (let i = 0; i < 5; i++) harmPips.push(h('span', 'pip harm', evHarm, '♥'));
+  const evHeat = h('div', 'ev-row', evCard);
+  h('span', 'lbl', evHeat, t('hud.evening.heat'));
+  const heatPips: HTMLElement[] = [];
+  for (let i = 0; i < 6; i++) heatPips.push(h('span', 'pip heat', evHeat));
+  let evKey = '';
   const quota = h('div', 'hb quota', topR);
   h('span', 'lbl', quota, t('hud.quota.label'));
   const quotaNum = h('span', 'num', quota, '0 / 0');
@@ -1137,11 +1151,34 @@ export function createHud(): Hud {
     }
   }
 
+  /**
+   * THE EVENING card: at home (run.homeStage() set) the pit's stack and modifier rows give way to it (`.evening-on` on the root,
+   * evening.css). The objective is the next Night's quota; Harmony and Heat are the spouse's and the Collector's read-outs.
+   */
+  function updateEvening(): void {
+    const r = app.run;
+    const stage = (r as (typeof r & { homeStage?: () => string | null }) | null)?.homeStage?.() ?? null;
+    const at = !!r && stage !== null;
+    setCls(root, 'evening-on', at);
+    if (!r || !at) return;
+    const ph = r.homePhone();
+    const harmony = ph?.harmony() ?? 0;
+    const heat = ph?.heat() ?? 0;
+    const next = (r as typeof r & { nextQuotaPreview?: () => NextQuotaPreview | null }).nextQuotaPreview?.() ?? null;
+    const key = `${harmony}|${heat}|${next ? next.due : -1}`;
+    if (key === evKey) return;
+    evKey = key;
+    setText(evObj, next ? t('hud.evening.objective', { q: money(next.due) }) : t('hud.evening.rest'));
+    harmPips.forEach((p, i) => setCls(p, 'on', i < harmony));
+    heatPips.forEach((p, i) => setCls(p, 'on', i < heat));
+  }
+
   return {
     el: root,
     update(dt: number): void {
       updateWallet(dt);
       updateClock(dt);
+      updateEvening();
       updateQuota(dt);
       updatePayout(dt);
       updatePlan();

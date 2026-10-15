@@ -15,7 +15,7 @@ import { HOME_ANCHORS, type HomeRoomApi, type HomeStation } from '@/game/home/co
 import type { CollisionWorld, InteractionSystem, WorldLights } from '../types';
 import type { InteractableX } from '../interact';
 import type { LightHint } from '../sys/arch';
-import { ANCHOR_PLAN, at, DOOR_H, DOOR_X0, DOOR_X1, HOME_ZONE, SPOUSE_SEAT, WIN_X0, WIN_X1, WIN_Y0, WIN_Y1 } from './config';
+import { ANCHOR_PLAN, at, HOME_ZONE, SPOUSE_SEAT, STATION_PRIORITY, WALL_STATIONS, WIN_X0, WIN_X1, WIN_Y0, WIN_Y1 } from './config';
 import { buildRoom, type Statics } from './room';
 import { HomeDoor } from './door';
 
@@ -125,19 +125,21 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
     station('phone', boxAt(1.95, 0.9, -2.75, 2.45, 1.6, -2.1), 2, {
       label: () => t('home.station.phone'),
     }),
-    station('switch', boxAt(0.45, 0.95, 2.25, 0.95, 1.45, 2.6), 3, {
+    station('switch', boxAt(...WALL_STATIONS.switch), STATION_PRIORITY.switch, {
       label: () => t('home.station.switch'),
       sub: () => (lightsOn ? t('home.station.switch.on') : t('home.station.switch.off')),
     }),
-    station('chain', boxAt(DOOR_X0 + 0.1, 1.3, 2.35, DOOR_X1 - 0.1, 1.55, 2.72), 3, {
+    // the door-side stations sit inside the room (config WALL_STATIONS). Priority decides the overlaps: the peephole at eye
+    // height beats the low door, which beats the chain on the track.
+    station('chain', boxAt(...WALL_STATIONS.chain), STATION_PRIORITY.chain, {
       label: () => t('home.station.chain'),
       sub: () => (chainOn ? t('home.station.chain.on') : t('home.station.chain.off')),
     }),
-    station('peephole', boxAt(-0.75, 1.43, 2.35, -0.45, 1.67, 2.72), 3, {
+    station('peephole', boxAt(...WALL_STATIONS.peephole), STATION_PRIORITY.peephole, {
       label: () => t('home.station.peephole'),
     }),
     // the door is locked for the night in wave 69: it stays focusable (so the reason shows), but greyed
-    station('door', boxAt(DOOR_X0, 0, 2.3, DOOR_X1, DOOR_H, 2.72), 1, {
+    station('door', boxAt(...WALL_STATIONS.door), STATION_PRIORITY.door, {
       label: () => t('home.station.door'),
       sub: () => t('home.station.door.sub'),
       disabled: () => true,

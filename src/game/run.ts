@@ -120,6 +120,19 @@ export interface RunStakeConfirmEvent {
  * Dawn). The pocket delta of a Night is `carried + float + cut`; interest reaches the pocket only through `carried`.
  */
 export interface NightLedger { night: number; float: number; interest: number; tickets: number; /** House cut from owned machines (Wave 28). */ cut: number; carried: number }
+/**
+ * The Dawn receipt: one snapshot taken in `dawn()` before the books reset, so the receipt never reads a reset or a later Night.
+ * `due` is the quota the paid Night closed against (tithes included), `paid` the bank's balance at Dawn (the same number the Debt
+ * Terminal shows, interest included), `interest` the part of that balance the bank paid as interest, `tithe` the quota the
+ * missed Watch tithes added to that Night.
+ */
+export interface DawnReceipt { night: number; due: number; paid: number; interest: number; tithe: number }
+const isCount = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0;
+/** A saved receipt, or null: older saves have none, and a damaged one is dropped rather than shown. */
+function restoredDawnReceipt(d: DawnReceipt | undefined): DawnReceipt | null {
+  if (!d || !isCount(d.night) || !isCount(d.due) || !isCount(d.paid) || !isCount(d.interest) || !isCount(d.tithe)) return null;
+  return { night: Math.floor(d.night), due: Math.floor(d.due), paid: Math.floor(d.paid), interest: Math.floor(d.interest), tithe: Math.floor(d.tithe) };
+}
 /** Every reason a run action refuses, as `lastRefusal()` names it: the full `RefusalReason` union (types.ts). */
 export type RunRefusal = RefusalReason;
 export type { DepositRefusal } from '@/game/types';
@@ -415,6 +428,8 @@ export interface RunExt {
   spotlight?: SpotlightSave;
   /** Watch tithe (wave 58): this Watch's net winnings and the tithe's quota adds. Optional: older saves have none. */
   tithe?: TitheSave;
+  /** The Dawn receipt of the last paid Night (the Night Cards panel reads it). Optional: older saves have none. */
+  dawnBook?: DawnReceipt;
 }
 /** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
 interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
@@ -456,6 +471,8 @@ export interface DebtRun extends RunApi {
   readonly nightPaid: boolean;
   /** The Night summary's books (float, interest, tickets) for the Night in progress. */
   nightLedger(): Readonly<NightLedger>;
+  /** The Dawn receipt of the last paid Night (a copy), or null before the first paid Dawn. Taken in `dawn()`, before the reset. */
+  dawnReceipt(): DawnReceipt | null;
   /** The live interest rate of this Night in whole percent (schedule + bonuses): the Terminal and the tutorial show it. */
   interestPct(): number;
   /** Advance the run by `dt` sim seconds. Call from the fixed step. */
@@ -819,6 +836,8 @@ class Run implements DebtRun {
   private forgiveUntil = -1;
   /** HOUSE TAKES NOTICE: the wealth read at the last paid Dawn (pocket + bank). Floors the quota of the Night that Dawn opens. */
   private houseWealth = 0;
+  /** The Dawn receipt of the last paid Night: written once by `dawn()`, before its books reset, and read by the Night Cards panel. */
+  private dawnBook: DawnReceipt | null = null;
   /** Multiplies the Obols this run banks at its end (a taken run: ×1.5). */
   private obolMult = 1;
   /** The House refused the loan tonight or earlier (a rescue call lapsed unanswered): the red seam can open with an empty pocket. */
@@ -1390,6 +1409,9 @@ class Run implements DebtRun {
 
   /** The Night summary's books for the Night in progress (float, interest, tickets). A copy: the caller cannot change them. */
   nightLedger(): Readonly<NightLedger> { return { ...this.ledger }; }
+
+  /** The Dawn receipt of the last paid Night (a copy), or null before the first paid Dawn. */
+  dawnReceipt(): DawnReceipt | null { return this.dawnBook ? { ...this.dawnBook } : null; }
 
   /** The live interest rate of this Night, whole percent: the schedule rate plus `x.econ.interestAdd` (what Settle pays). */
   interestPct(): number { return ratePercent(this.liveRate()); }
@@ -2103,6 +2125,14 @@ class Run implements DebtRun {
       this.fall();
       return;
     }
+    // The Dawn receipt, read once before anything resets: the quota, the deposits that paid it, the interest on them and the tithes
+    // the Night's missed Watches added. The Night Cards panel reads this snapshot only (never the live books after the reset below).
+    const bankAtDawn = Math.max(0, Math.floor(this.debtPaid));
+    const interestAtDawn = Math.max(0, Math.floor(this.nightInterest));
+    this.dawnBook = {
+      night: nightDef(this.index).no, due: Math.max(0, Math.floor(due)), paid: bankAtDawn,
+      interest: interestAtDawn, tithe: Math.max(0, Math.floor(this.tithe.addedQuota())),
+    };
     // HOUSE TAKES NOTICE (wave 47): the wealth of this Dawn (pocket + bank, before the surplus returns) floors the next quota.
     const wealth = this.coins + this.debtPaid;
     this.houseWealth = wealth;
@@ -3323,6 +3353,7 @@ class Run implements DebtRun {
       ...(this.watchEv.snapshot() ? { watchEvent: this.watchEv.snapshot() } : {}),
       ...(this.spotlight.snapshot() ? { spotlight: this.spotlight.snapshot() as SpotlightSave } : {}),
       ...(this.tithe.snapshot() ? { tithe: this.tithe.snapshot() as TitheSave } : {}),
+      ...(this.dawnBook ? { dawnBook: { ...this.dawnBook } } : {}),
       ...(this.hPhone ? { home: this.homeSave(this.hPhone) } : {}),
     };
     return {
@@ -3707,6 +3738,7 @@ class Run implements DebtRun {
     this.watchEv.restore(e.watchEvent);
     this.spotlight.restore(e.spotlight);
     this.tithe.restore(e.tithe);
+    this.dawnBook = restoredDawnReceipt(e.dawnBook);
     if (this.homeOn) this.restoreHome(e.home);
     this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);
     this.watchDeposits = Math.max(0, e.watchDep ?? 0);

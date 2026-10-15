@@ -1,6 +1,6 @@
 // Tests for the pocket phone (src/game/home/phone.ts, strings in phone.strings.ts, buffs in data/buffs.ts): the seeded
 // schedule, one message per spouse Night, the Collector's gate, replies applied once, the pocket check, the bounds, the Evening
-// rules, the blessing, the escalation, the snapshot round trip and the content tables. The run is a small mock with only what
+// rules, the warmth of talk, the dream at the bed, the escalation, the snapshot round trip and the content tables. The run is a small mock with only what
 // the phone reads, so Nights, Watches and the quota can be set freely.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -36,6 +36,7 @@ function mockRun(s = {}) {
       return true;
     },
     buffs: { add: (id, o) => { log.buffs.push({ id, o }); } },
+    dread: () => st.dread ?? 0.5,   // 0..1; the dream's calm is 1 − dread (0.5 is neutral)
   };
 }
 
@@ -291,25 +292,135 @@ test('bounds: Harmony stays within 0..5 and Heat within 0..6 under any run of Ev
   });
 });
 
-test('talk: lines by Harmony; the first talk of an Evening grants blessed at Harmony 4 or more, once', () => {
-  const run = mockRun({ seed: 10, due: 100, carried: 30 });
+test('talk: the lines follow Harmony; talking gives warmth only: +1 once a Night, with a margin of 5 % or more', () => {
+  const run = mockRun({ seed: 10, due: 100, carried: 10, night: 1 });
   withPhone(run, (p) => {
-    const low = p.talk();                // Harmony 3: no blessing
-    assert.equal(run.log.buffs.length, 0);
-    assert.deepEqual(low.map((l) => l.key), ['phone.talk.h3.1', 'phone.talk.h3.2']);
-    p.onEvening();                       // warm: Harmony 4, a new Evening
-    const first = p.talk();
-    assert.equal(run.log.buffs.length, 1, 'the first talk grants the blessing');
-    assert.equal(run.log.buffs[0].id, 'blessed');
-    assert.deepEqual(run.log.buffs[0].o.source, { kind: 'phone', id: 'spouse' });
-    assert.ok(first.some((l) => l.key === 'phone.talk.bless'));
+    p.onEvening();                       // 10 % over: neither warm nor thin
+    assert.equal(p.harmony(), 3);
+    const lines = p.talk();
+    assert.deepEqual(lines.map((l) => l.key), ['phone.talk.h3.1', 'phone.talk.h3.2']);
+    assert.equal(p.harmony(), 4, 'the first talk of a Night with a margin gives +1');
     p.talk();
     p.talk();
-    assert.equal(run.log.buffs.length, 1, 'no second blessing in the same Evening');
-    p.onEvening();                       // another Evening: the next first talk grants it again
+    assert.equal(p.harmony(), 4, 'at most once a Night');
+    run.st.night = 2;
+    p.onEvening();
     p.talk();
-    assert.equal(run.log.buffs.length, 2);
+    assert.equal(p.harmony(), 5, 'the next Night gives its own warmth');
+    assert.equal(run.log.buffs.length, 0, 'talking grants no buff; the dream does');
   });
+});
+
+test('talk: a thin Night (under 5 %) gives no warmth', () => {
+  const run = mockRun({ seed: 10, due: 100, carried: 4, night: 1 });
+  withPhone(run, (p) => {
+    p.onEvening();                       // 4 % over: thin, so −1 Harmony and +1 Heat
+    assert.equal(p.harmony(), 2);
+    p.talk();
+    assert.equal(p.harmony(), 2, 'no warmth on a thin Night');
+    assert.equal(p.heat(), 1);
+  });
+});
+
+test('dreamTier: Harmony sets the tier (4+ good, 2-3 plain, 0-1 cold); calm moves it one step at most', () => {
+  assert.equal(PH.dreamTier(4, 0.5, 0.9), 'good');
+  assert.equal(PH.dreamTier(5, 0.5, 0.9), 'good');
+  assert.equal(PH.dreamTier(3, 0.5, 0.9), 'plain');
+  assert.equal(PH.dreamTier(2, 0.5, 0.9), 'plain');
+  assert.equal(PH.dreamTier(1, 0.5, 0.9), 'cold');
+  assert.equal(PH.dreamTier(0, 0.5, 0.9), 'cold');
+  // a frightened head sours the dream half the time, never below cold
+  assert.equal(PH.dreamTier(4, 0.1, 0.2), 'plain');
+  assert.equal(PH.dreamTier(4, 0.1, 0.7), 'good');
+  assert.equal(PH.dreamTier(0, 0.1, 0.2), 'cold');
+  // a quiet head lifts it a fifth of the time, never above good
+  assert.equal(PH.dreamTier(2, 0.9, 0.1), 'good');
+  assert.equal(PH.dreamTier(2, 0.9, 0.5), 'plain');
+  assert.equal(PH.dreamTier(5, 0.9, 0.1), 'good');
+});
+
+test('the Night closes on the bed: a good dream grants blessed, a cold one restless, a plain one nothing', () => {
+  // replyNight is this Night, so the quiet-Night rule does not move Harmony before the dream is rolled
+  for (const [harmony, tier, buff] of [[5, 'good', 'blessed'], [3, 'plain', null], [1, 'cold', 'restless']]) {
+    const run = mockRun({ seed: 31, night: 4 });
+    withPhone(run, (p) => {
+      p.restore({ harmony, replyNight: 4 });
+      EV.bus.emit('home:stage', { stage: 'sleep' });
+      const d = PH.dreamOf(p);
+      assert.equal(d.tier, tier, `harmony ${harmony}`);
+      assert.equal(d.night, 4);
+      assert.ok(d.key.startsWith(`phone.dream.${tier}.`), d.key);
+      assert.deepEqual(run.log.buffs.map((b) => b.id), buff ? [buff] : []);
+    });
+  }
+});
+
+test('calm moves the dream by seeded rolls: a frightened head sours about half the good dreams, a quiet one lifts about a fifth', () => {
+  let soured = 0, lifted = 0;
+  const N = 200;
+  for (let seed = 1; seed <= N; seed++) {
+    const scared = mockRun({ seed, night: 4, dread: 0.9 });   // calm 0.1
+    withPhone(scared, (p) => {
+      p.restore({ harmony: 4, replyNight: 4 });
+      EV.bus.emit('home:stage', { stage: 'sleep' });
+      if (PH.dreamOf(p).tier !== 'good') soured++;
+    });
+    const quiet = mockRun({ seed, night: 4, dread: 0.1 });    // calm 0.9
+    withPhone(quiet, (p) => {
+      p.restore({ harmony: 2, replyNight: 4 });
+      EV.bus.emit('home:stage', { stage: 'sleep' });
+      if (PH.dreamOf(p).tier === 'good') lifted++;
+    });
+  }
+  assert.ok(soured > 60 && soured < 140, `soured ${soured} of ${N}`);
+  assert.ok(lifted > 20 && lifted < 70, `lifted ${lifted} of ${N}`);
+});
+
+test('a quiet Night costs one Harmony at the bed; a spouse reply or a talk on the Night keeps it', () => {
+  // find a seed with a spouse message in Night 2
+  let seed = 0;
+  for (let s = 1; s <= 300 && !seed; s++) {
+    const r = mockRun({ seed: s, count: 3, night: 2, paid: 0, coins: 500, due: 100 });
+    const got = withPhone(r, (p) => playNight(p, r, { paidAt: () => 0 }));
+    if (got.some((m) => m.thread === 'spouse')) seed = s;
+  }
+  assert.ok(seed > 0, 'a spouse message exists');
+  // quiet: nothing answered, nothing said
+  const quiet = mockRun({ seed, count: 3, night: 2, paid: 0, coins: 500, due: 100 });
+  withPhone(quiet, (p) => {
+    playNight(p, quiet, { paidAt: () => 0 });
+    const h0 = p.harmony();
+    EV.bus.emit('home:stage', { stage: 'sleep' });
+    assert.equal(p.harmony(), h0 - 1, 'a quiet Night drops one');
+  });
+  // answered: the reply is a word that moves nothing (index 1 is 0 Harmony for every spouse message)
+  const answered = mockRun({ seed, count: 3, night: 2, paid: 0, coins: 500, due: 100 });
+  withPhone(answered, (p) => {
+    playNight(p, answered, { paidAt: () => 0 });
+    const m = p.messages().find((x) => x.thread === 'spouse');
+    assert.equal(p.reply(m.id, 1), true);
+    const h1 = p.harmony();
+    EV.bus.emit('home:stage', { stage: 'sleep' });
+    assert.equal(p.harmony(), h1, 'a reply keeps Harmony at the bed');
+  });
+  // talked: a talk on the Night keeps it too
+  const talked = mockRun({ seed, count: 3, night: 2, paid: 0, coins: 500, due: 100 });
+  withPhone(talked, (p) => {
+    p.talk();
+    const h1 = p.harmony();
+    EV.bus.emit('home:stage', { stage: 'sleep' });
+    assert.equal(p.harmony(), h1, 'a talk keeps Harmony at the bed');
+  });
+});
+
+test('dream lines exist in EN and TR for every tier, and the blessing line is gone', () => {
+  for (const tier of ['good', 'plain', 'cold']) {
+    for (let n = 1; n <= PH.DREAM_VARIANTS; n++) {
+      assert.ok(`dream.${tier}.${n}` in STR.en, `en dream.${tier}.${n}`);
+      assert.ok(`dream.${tier}.${n}` in STR.tr, `tr dream.${tier}.${n}`);
+    }
+  }
+  assert.ok(!('talk.bless' in STR.en) && !('talk.bless' in STR.tr));
 });
 
 // ── save and restore ─────────────────────────────────────────────────────────────────────────────
@@ -397,14 +508,13 @@ test('the Collector has at least eight lines, escalating in four stages, and bot
   }
 });
 
-test('talk lines exist for every Harmony, and the blessing line exists', () => {
+test('talk lines exist for every Harmony', () => {
   for (let h = 0; h <= 5; h++) {
     for (const n of [1, 2]) {
       assert.ok(`talk.h${h}.${n}` in STR.en, `en talk.h${h}.${n}`);
       assert.ok(`talk.h${h}.${n}` in STR.tr, `tr talk.h${h}.${n}`);
     }
   }
-  assert.ok('talk.bless' in STR.en && 'talk.bless' in STR.tr);
 });
 
 test('the English and Turkish tables have the same keys, with a value for each', () => {
@@ -440,6 +550,15 @@ test('buffs: blessed is shifts n=1 with luck clamped per machine (never above a 
   for (const d of [bl, fv]) {
     assert.ok(d.strings.en.name && d.strings.en.desc && d.strings.tr.name && d.strings.tr.desc, `${d.id} needs EN and TR`);
   }
+});
+
+test('buffs: restless is a one-Watch curse of −1 luck, with EN and TR text', () => {
+  const rs = BUFFS.BUFF_DATA.find((d) => d.id === 'restless');
+  assert.ok(rs, 'restless exists');
+  assert.equal(rs.kind, 'debuff');
+  assert.deepEqual(rs.duration, { kind: 'shifts', n: 1 });
+  assert.deepEqual(rs.effects, [{ hook: 'luck', op: 'add', value: -1 }]);
+  assert.ok(rs.strings.en.name && rs.strings.en.desc && rs.strings.tr.name && rs.strings.tr.desc);
 });
 
 test('replyCoinCost is zero for words and the stored cost for a send reply', () => {

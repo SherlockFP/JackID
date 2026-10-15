@@ -1,0 +1,17 @@
+/* THE EVENING card (wave 69): while the run is at home (`.hud.evening-on`, set by hud.ts), the pit's right stack and its
+   modifier rows give way to one compact card: the objective, Harmony as hearts, Heat as pips (docs/WAVE69_HOME.md §2). */
+.hud.evening-on .hud-rs > :not(.hud-evening) { display: none !important; }
+.hud.evening-on .hud-tc .lamps, .hud.evening-on .pulls, .hud.evening-on .charms { display: none !important; }
+
+.hud .hud-evening { display: none; position: relative; flex-direction: column; align-items: flex-end; gap: calc(3 * var(--u));
+  padding: calc(4 * var(--u)) calc(6 * var(--u)); background: rgba(0, 0, 0, .6); border: calc(1 * var(--u)) solid var(--bone); }
+.hud.evening-on .hud-evening { display: flex; }
+.hud .hud-evening .ev-title { font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1; color: var(--shine); }
+.hud .hud-evening .ev-obj { font-size: calc(8 * var(--u)); line-height: 1.2; color: var(--ivory); text-align: right;
+  white-space: normal; max-width: calc(200 * var(--u)); }
+.hud .hud-evening .ev-row { position: relative; display: flex; align-items: center; gap: calc(3 * var(--u)); }
+.hud .hud-evening .ev-row .lbl { min-width: calc(44 * var(--u)); text-align: right; }
+.hud .hud-evening .pip { position: relative; display: inline-block; font-size: calc(10 * var(--u)); line-height: 1; color: #3a3228; }
+.hud .hud-evening .pip.heat { width: calc(6 * var(--u)); height: calc(6 * var(--u)); background: #3a3228; box-shadow: 0 0 0 calc(1 * var(--u)) #000; }
+.hud .hud-evening .pip.harm.on { color: #ff6a7a; }
+.hud .hud-evening .pip.heat.on { background: var(--signal); }

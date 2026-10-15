@@ -6,6 +6,11 @@
  * Messages arrive during Watches only (shift phase 'play'). Every roll is a fresh stream, hashSeed(run seed, Night, Watch,
  * 'msg.<thread>'), so a seeded run and a bench replay get the same phone. A reply applies once; coins go through `run.spend`;
  * Harmony (spouse, 0..5, start 3) and Heat (Collector, 0..6, start 0) are clamped. Time is sim seconds from `tick(dt)`.
+ *
+ * The Night closes on the bed (`home:stage` 'sleep', Design pillar 7: one mechanic, many readings). Closing it costs one
+ * Harmony when no spouse reply and no talk came that Night, and rolls the Night's dream from Harmony and calm (1 − dread):
+ * a good dream grants `blessed`, a cold one grants `restless`, a plain one nothing. Talking gives warmth only (+1 Harmony at
+ * most once a Night, and only if the Night was paid with a margin of at least 5 %).
  */
 import { bus } from '@/core/events';
 import { log } from '@/core/log';
@@ -31,8 +36,14 @@ export const COLLECTOR_STAGES = 4;
 /** Quota margin of a paid Night: at least this share above the quota is warm, under MARGIN_THIN is thin. */
 export const MARGIN_WARM = 0.25;
 export const MARGIN_THIN = 0.05;
-/** The first talk of an Evening at this Harmony or more grants the blessing. */
-export const BLESS_HARMONY = 4;
+/** A talk at home gives warmth (+1 Harmony, once a Night) only when the Night's margin is at least this share. */
+export const MARGIN_TALK = MARGIN_THIN;
+/** The dream: Harmony at or above DREAM_GOOD dreams well, at or below DREAM_COLD dreams cold, the rest plain. */
+export const DREAM_GOOD = 4;
+export const DREAM_COLD = 1;
+/** Calm (1 − dread) below CALM_LOW can sour a dream one tier (seeded, half the time); at CALM_HIGH it can lift one (a fifth). */
+export const CALM_LOW = 0.3;
+export const CALM_HIGH = 0.8;
 /** The phone keeps this many messages (oldest drop off). */
 const MAX_MESSAGES = 40;
 
@@ -69,6 +80,8 @@ export const COLLECTOR_REPLIES: readonly { key: string; heat: number }[] = [
 ];
 /** Collector message text variants per stage: keys `phone.co.s<stage>.<variant>`. */
 export const COLLECTOR_VARIANTS = 3;
+/** Dream text variants per tier: keys `phone.dream.<tier>.<n>` (n = 1..DREAM_VARIANTS). */
+export const DREAM_VARIANTS = 3;
 
 const SPOUSE_BY_TEXT: ReadonlyMap<string, SpouseDef> = new Map(SPOUSE_MESSAGES.map((d) => [`phone.sp.${d.id}.t`, d]));
 
@@ -89,6 +102,31 @@ export function replyCoinCost(msg: PhoneMessage, choice: number): number {
   return Math.max(0, Number(msg.vars?.cost ?? 0));
 }
 
+// ── the dream (the Night's close) ────────────────────────────────────────────────────────────────────────────────────
+export type DreamTier = 'good' | 'plain' | 'cold';
+/** The Night's dream: its tier, its text key (`phone.dream.<tier>.<n>`) and the Night it closed. */
+export interface Dream { night: number; tier: DreamTier; key: string }
+const DREAM_TIERS: readonly DreamTier[] = ['cold', 'plain', 'good'];
+
+/**
+ * The tier of a dream from Harmony and calm (1 − dread, 0..1), with `roll` a seeded draw in [0, 1). Harmony sets the tier
+ * (≥ DREAM_GOOD good, ≤ DREAM_COLD cold, else plain). Calm moves it one step at most: a frightened head (calm < CALM_LOW) sours
+ * the dream half the time, a quiet one (calm ≥ CALM_HIGH) lifts it a fifth of the time.
+ */
+export function dreamTier(harmony: number, calm: number, roll: number): DreamTier {
+  let i = harmony >= DREAM_GOOD ? 2 : harmony <= DREAM_COLD ? 0 : 1;
+  if (calm < CALM_LOW && roll < 0.5) i = Math.max(0, i - 1);
+  else if (calm >= CALM_HIGH && roll < 0.2) i = Math.min(2, i + 1);
+  return DREAM_TIERS[i];
+}
+
+/** The Night's dream of a phone (null before the first Night closes, or when it is not a phone of this layer). */
+const DREAMS = new WeakMap<object, () => Dream | null>();
+export function dreamOf(phone: HomePhoneApi | null | undefined): Dream | null {
+  if (!phone) return null;
+  return DREAMS.get(phone)?.() ?? null;
+}
+
 // ── state ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 interface Plan { thread: PhoneThread; night: number; watch: number; last: boolean; at: number; pick: number }
 interface State {
@@ -101,8 +139,15 @@ interface State {
   collectorSent: number;
   /** Heat moved since the last Evening (the quiet-Night rule). */
   heatMoved: boolean;
-  /** The first talk of this Evening has happened. */
-  talked: boolean;
+  /** The quota margin of the Night in its Evening (0 when unpaid): gates the talk's warmth. */
+  margin: number;
+  /** The Night a talk last gave its warmth (0 = none): at most one per Night. */
+  warmNight: number;
+  /** The Night a talk last happened in (0 = none), and the Night a spouse reply last came in (0 = none): the quiet-Night rule. */
+  talkNight: number;
+  replyNight: number;
+  /** The dream of the last Night closed on the bed, or null. */
+  dream: Dream | null;
   /** A play Watch is running: plans are live and `elapsed` counts its sim seconds. */
   playing: boolean;
   watchKey: string;
@@ -112,8 +157,8 @@ interface State {
 
 function freshState(): State {
   return {
-    harmony: HARMONY_START, heat: 0, msgs: [], spouseNight: 0, collectorSent: 0, heatMoved: false, talked: false,
-    playing: false, watchKey: '', elapsed: 0, plans: [],
+    harmony: HARMONY_START, heat: 0, msgs: [], spouseNight: 0, collectorSent: 0, heatMoved: false, margin: 0, warmNight: 0,
+    talkNight: 0, replyNight: 0, dream: null, playing: false, watchKey: '', elapsed: 0, plans: [],
   };
 }
 
@@ -146,6 +191,13 @@ function readPlan(x: unknown): Plan | null {
     thread: o.thread, night: intIn(o.night, 1, 999, 1), watch: intIn(o.watch, 0, 99, 0), last: o.last === true,
     at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, pick: intIn(o.pick, 0, 999, 0),
   };
+}
+
+function readDream(x: unknown): Dream | null {
+  if (!x || typeof x !== 'object') return null;
+  const o = x as Record<string, unknown>;
+  if ((o.tier !== 'good' && o.tier !== 'plain' && o.tier !== 'cold') || typeof o.key !== 'string') return null;
+  return { night: intIn(o.night, 0, 999, 0), tier: o.tier, key: o.key };
 }
 
 // ── the model ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -244,12 +296,31 @@ export function createPhone(run: DebtRun): HomePhoneApi {
     } else deliverCollector(p);
   }
 
+  /**
+   * The Night closes on the bed. A quiet Night (no spouse reply and no talk) costs one Harmony; then the Night's dream is rolled
+   * from Harmony and calm (1 − dread): a good dream grants `blessed`, a cold one `restless`, a plain one nothing.
+   */
+  function closeNight(): void {
+    if (disposed) return;
+    const night = run.night();
+    if (st.replyNight !== night && st.talkNight !== night) st.harmony = clamp(st.harmony - 1, 0, HARMONY_MAX);
+    const r = createRng(hashSeed(seed, night, 'home.dream'));
+    const roll = r.next();
+    const n = r.int(1, DREAM_VARIANTS);
+    const calm = 1 - clamp(run.dread(), 0, 1);
+    const tier = dreamTier(st.harmony, calm, roll);
+    st.dream = { night, tier, key: `phone.dream.${tier}.${n}` };
+    if (tier === 'good') run.buffs.add('blessed', { source: { kind: 'phone', id: 'spouse' } });
+    else if (tier === 'cold') run.buffs.add('restless', { source: { kind: 'phone', id: 'spouse' } });
+  }
+
   unsubs.push(bus.on('shift:phase', ({ phase }) => {
     if (phase === 'play') beginWatch();
     else if (phase === 'closing' || phase === 'settle' || phase === 'collection' || phase === 'intermission' || phase === 'over') endWatch();
   }));
+  unsubs.push(bus.on('home:stage', ({ stage }) => { if (stage === 'sleep') closeNight(); }));
 
-  return {
+  const api: HomePhoneApi = {
     tick(dt: number): void {
       if (disposed) return;
       // The phase event is the normal start; a phone created mid-Watch catches up on its first tick.
@@ -287,6 +358,7 @@ export function createPhone(run: DebtRun): HomePhoneApi {
       if (coins > 0 && !run.spend('coin', coins, 'phone.reply')) return false;   // not enough in the pocket: nothing applies
       st.harmony = clamp(st.harmony + harmony, 0, HARMONY_MAX);
       if (heat) bumpHeat(heat);
+      if (msg.thread === 'spouse') st.replyNight = msg.night;
       msg.answered = choice;
       msg.read = true;
       bus.emit('msg:reply', { id, thread: msg.thread, choice });
@@ -299,9 +371,11 @@ export function createPhone(run: DebtRun): HomePhoneApi {
 
     onEvening(): void {
       const due = run.debt().due;
+      st.margin = 0;
       if (due > 0) {
         // The Night's surplus stays in the ledger until the next Night opens; `debt().paid` has been reset by Dawn.
         const margin = Math.max(0, run.nightLedger().carried) / due;
+        st.margin = margin;
         if (margin >= MARGIN_WARM) st.harmony = clamp(st.harmony + 1, 0, HARMONY_MAX);
         else if (margin < MARGIN_THIN) {
           st.harmony = clamp(st.harmony - 1, 0, HARMONY_MAX);
@@ -311,29 +385,29 @@ export function createPhone(run: DebtRun): HomePhoneApi {
       // A quiet Night (no Heat change at all, this Evening's margin included) cools off by one.
       if (!st.heatMoved && st.heat > 0) st.heat = clamp(st.heat - 1, 0, HEAT_MAX);
       st.heatMoved = false;
-      st.talked = false;
     },
 
     talk(): Array<{ key: string; vars?: Record<string, string | number> }> {
       const h = st.harmony;
+      const night = run.night();
       const lines: Array<{ key: string; vars?: Record<string, string | number> }> = [
         { key: `phone.talk.h${h}.1` },
         { key: `phone.talk.h${h}.2` },
       ];
-      if (!st.talked) {
-        st.talked = true;
-        if (h >= BLESS_HARMONY) {
-          run.buffs.add('blessed', { source: { kind: 'phone', id: 'spouse' } });
-          lines.push({ key: 'phone.talk.bless' });
-        }
+      st.talkNight = night;
+      // warmth only: +1 Harmony at most once a Night, and only when the Night was paid with a real margin
+      if (st.margin >= MARGIN_TALK && st.warmNight !== night) {
+        st.warmNight = night;
+        st.harmony = clamp(st.harmony + 1, 0, HARMONY_MAX);
       }
       return lines;
     },
 
     snapshot(): PhoneSave | undefined {
       const save: PhoneSave = {
-        v: 1, harmony: st.harmony, heat: st.heat, msgs: st.msgs, spouseNight: st.spouseNight,
-        collectorSent: st.collectorSent, heatMoved: st.heatMoved, talked: st.talked, playing: st.playing,
+        v: 2, harmony: st.harmony, heat: st.heat, msgs: st.msgs, spouseNight: st.spouseNight,
+        collectorSent: st.collectorSent, heatMoved: st.heatMoved, margin: st.margin, warmNight: st.warmNight,
+        talkNight: st.talkNight, replyNight: st.replyNight, dream: st.dream, playing: st.playing,
         watchKey: st.watchKey, elapsed: st.elapsed, plans: st.plans,
       };
       return JSON.parse(JSON.stringify(save)) as PhoneSave;
@@ -348,7 +422,11 @@ export function createPhone(run: DebtRun): HomePhoneApi {
         next.spouseNight = intIn(s.spouseNight, 0, 999, 0);
         next.collectorSent = intIn(s.collectorSent, 0, 999, 0);
         next.heatMoved = s.heatMoved === true;
-        next.talked = s.talked === true;
+        next.margin = typeof s.margin === 'number' && Number.isFinite(s.margin) ? clamp(s.margin, 0, 1e6) : 0;
+        next.warmNight = intIn(s.warmNight, 0, 999, 0);
+        next.talkNight = intIn(s.talkNight, 0, 999, 0);
+        next.replyNight = intIn(s.replyNight, 0, 999, 0);
+        next.dream = readDream(s.dream);
         next.playing = s.playing === true;
         next.watchKey = typeof s.watchKey === 'string' ? s.watchKey : '';
         next.elapsed = typeof s.elapsed === 'number' && Number.isFinite(s.elapsed) ? Math.max(0, s.elapsed) : 0;
@@ -365,4 +443,6 @@ export function createPhone(run: DebtRun): HomePhoneApi {
       }
     },
   };
+  DREAMS.set(api, () => st.dream);
+  return api;
 }

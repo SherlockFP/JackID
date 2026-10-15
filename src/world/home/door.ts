@@ -1,22 +1,26 @@
 /**
  * THE FRONT DOOR (world/home): the hinged leaf with its peephole, knob, chain on a track and keeper, the light crack under the
  * leaf (the hallway's light) and the visitor's shadow across it (off until a visitor is set). The leaf is a solid collider
- * while it is shut. Its moving parts sit under the caller's `dyn` group (kit.finalize never merges them).
+ * while it swings: its footprint is re-set at every angle (config `leafFootprint`), so the leaf blocks the player wherever it
+ * stands. Its moving parts sit under the caller's `dyn` group (kit.finalize never merges them).
  */
 import * as THREE from 'three';
 import type { KitX } from '@/kit';
 import { app } from '@/core/app';
-import type { TweenHandle } from '@/core/tween';
+import type { TweenHandle, TweenSystem } from '@/core/tween';
 import type { CollisionWorld } from '../types';
-import { at, DOOR_COLLIDE_Z, DOOR_H, DOOR_HINGE_X, DOOR_OPEN_RAD, DOOR_X0, DOOR_X1, DOOR_Z } from './config';
+import { at, DOOR_H, DOOR_HINGE_X, DOOR_OPEN_RAD, DOOR_X0, DOOR_X1, DOOR_Z, LEAF_W, leafFootprint } from './config';
 
 /** Chain geometry on the leaf (local metres, the inside face of the leaf is at z ≈ -0.035). */
 const CHAIN_Y = 1.42;
 const CHAIN_LINKS = 6;
+const LINK_LEN = 0.05;
 const SLIDE_ON_X = 0.36;   // the slide pulled out along the track, the chain taut to the keeper
 const SLIDE_OFF_X = 0.74;  // the slide parked at the track's end, the chain hanging
 const KEEPER_X = 0.88;     // the keeper plate on the leaf's free edge
-const PEEP_Y = 1.55;
+const SAG_DROP = 0.34;     // the slack chain hangs this far below the slide (m)
+const SAG_BOW = 0.07;      // and bows this far sideways at its middle (m)
+const LINK_Z = -0.07;
 
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 
@@ -26,11 +30,12 @@ export class HomeDoor {
   private readonly slide: THREE.Object3D;
   private readonly links: THREE.Object3D[] = [];
   private readonly shadow: THREE.Object3D;
-  private readonly collider: number;
+  private collider = -1;
   private amt = 0;
   private tw: TweenHandle | null = null;
 
-  constructor(private readonly o: { kit: KitX; dyn: THREE.Group; collision: CollisionWorld | null }) {
+  /** `tweens` defaults to the sim clock (`app.tweens.sim`): the swing freezes with the game and follows the fixed step. */
+  constructor(private readonly o: { kit: KitX; dyn: THREE.Group; collision: CollisionWorld | null; tweens?: TweenSystem }) {
     const kit = o.kit;
     const leafMat = kit.mat({ color: 0x3f3a32 });
     const brass = kit.pal.brass;
@@ -40,11 +45,11 @@ export class HomeDoor {
     this.pivot = kit.group('home:door');
     this.pivot.position.set(...at(DOOR_HINGE_X, 0, DOOR_Z));
     const leafH = DOOR_H - 0.05;
-    kit.box(0.9, leafH, 0.06, leafMat, { pos: [0.45, 0.02 + leafH / 2, 0], parent: this.pivot });
+    kit.box(LEAF_W, leafH, 0.06, leafMat, { pos: [LEAF_W / 2, 0.02 + leafH / 2, 0], parent: this.pivot });
 
     // peephole (brass ring, dark lens) on the inside face; the knob and its rose below it
-    kit.cyl(0.02, 0.02, 0.012, brass, { pos: [0.45, PEEP_Y, -0.035], rot: [90, 0, 0], parent: this.pivot, seg: 8 });
-    kit.cyl(0.011, 0.011, 0.01, lensMat, { pos: [0.45, PEEP_Y, -0.044], rot: [90, 0, 0], parent: this.pivot, seg: 6 });
+    kit.cyl(0.02, 0.02, 0.012, brass, { pos: [0.45, 1.55, -0.035], rot: [90, 0, 0], parent: this.pivot, seg: 8 });
+    kit.cyl(0.011, 0.011, 0.01, lensMat, { pos: [0.45, 1.55, -0.044], rot: [90, 0, 0], parent: this.pivot, seg: 6 });
     kit.cyl(0.035, 0.035, 0.014, brass, { pos: [0.78, 1.0, -0.035], rot: [90, 0, 0], parent: this.pivot, seg: 8 });
     kit.sphere(0.034, brass, { pos: [0.78, 1.0, -0.062], parent: this.pivot, wSeg: 6, hSeg: 5 });
 
@@ -53,7 +58,7 @@ export class HomeDoor {
     kit.box(0.04, 0.07, 0.03, brass, { pos: [KEEPER_X, CHAIN_Y, -0.05], parent: this.pivot });
     this.slide = kit.box(0.06, 0.05, 0.03, brass, { pos: [SLIDE_OFF_X, CHAIN_Y, -0.065], parent: this.pivot });
     for (let i = 0; i < CHAIN_LINKS; i++) {
-      this.links.push(kit.box(0.05, 0.012, 0.012, chrome, { pos: [SLIDE_OFF_X, CHAIN_Y, -0.07], parent: this.pivot }));
+      this.links.push(kit.box(LINK_LEN, 0.012, 0.012, chrome, { pos: [SLIDE_OFF_X, CHAIN_Y, LINK_Z], parent: this.pivot }));
     }
 
     // the light crack under the leaf, and the shadow a visitor throws across it (hidden in wave 69)
@@ -65,17 +70,6 @@ export class HomeDoor {
 
     o.dyn.add(this.pivot);
     this.layoutChain(false);
-
-    // the shut leaf blocks the opening; the collider is taken away while the leaf swings clear of the frame
-    let id = -1;
-    if (o.collision) {
-      const box = new THREE.Box3(
-        new THREE.Vector3(...at(DOOR_X0, 0, DOOR_COLLIDE_Z[0])),
-        new THREE.Vector3(...at(DOOR_X1, DOOR_H, DOOR_COLLIDE_Z[1])),
-      );
-      id = o.collision.addStatic(box, 'solid');
-    }
-    this.collider = id;
     this.setAmt(0);
   }
 
@@ -85,11 +79,12 @@ export class HomeDoor {
     const from = this.amt;
     this.tw?.cancel();
     this.tw = null;
-    if (dur <= 0 || !app.tweens) {
+    const sys = this.o.tweens ?? app.tweens?.sim;
+    if (dur <= 0 || !sys) {
       this.setAmt(to);
       return Promise.resolve();
     }
-    const h = app.tweens.sim.run(dur, (k) => { this.setAmt(from + (to - from) * k); }, { ease: 'inOutQuad' });
+    const h = sys.run(dur, (k) => { this.setAmt(from + (to - from) * k); }, { ease: 'inOutQuad' });
     this.tw = h;
     return h.promise;
   }
@@ -108,29 +103,50 @@ export class HomeDoor {
     this.tw?.cancel();
     this.tw = null;
     if (this.collider >= 0) this.o.collision?.remove(this.collider);
+    this.collider = -1;
     this.o.dyn.remove(this.pivot);
   }
 
   private setAmt(v: number): void {
     this.amt = clamp01(v);
     this.pivot.rotation.y = this.amt * DOOR_OPEN_RAD;
-    if (this.collider >= 0) this.o.collision?.setEnabled(this.collider, this.amt < 0.5);
+    this.syncCollider();
   }
 
+  /** The collider follows the leaf: one solid box, the leaf's footprint at the current swing (re-set each time it moves). */
+  private syncCollider(): void {
+    const col = this.o.collision;
+    if (!col) return;
+    if (this.collider >= 0) col.remove(this.collider);
+    const [x0, z0, x1, z1] = leafFootprint(this.amt * DOOR_OPEN_RAD);
+    const box = new THREE.Box3(new THREE.Vector3(...at(x0, 0, z0)), new THREE.Vector3(...at(x1, DOOR_H, z1)));
+    this.collider = col.addStatic(box, 'solid');
+  }
+
+  /**
+   * The chain. Taut: the links run in a straight line from the slide to the keeper. Slack: the slide hangs and the links
+   * follow a shallow sag below it, each turned along the curve so the chain reads as hanging, not as a rod.
+   */
   private layoutChain(on: boolean): void {
     const sx = on ? SLIDE_ON_X : SLIDE_OFF_X;
-    this.slide.position.set(sx, CHAIN_Y, -0.065);
+    this.slide.position.set(sx, CHAIN_Y, LINK_Z + 0.005);
     const n = this.links.length;
+    // link centres along the chain: t = 0 at the slide, 1 at the keeper (taut) or the sag's lowest end (slack)
+    const point = (t: number): [number, number] => on
+      ? [sx + (KEEPER_X - sx) * t, CHAIN_Y]
+      : [sx + SAG_BOW * Math.sin(Math.PI * t), CHAIN_Y - SAG_DROP * t];
+    let prev = point(0);
     for (let i = 0; i < n; i++) {
+      const t = (i + 0.5) / n;
+      const [px, py] = point(t);
       const link = this.links[i];
-      if (on) {
-        const k = (i + 0.5) / n;
-        link.position.set(sx + (KEEPER_X - sx) * k, CHAIN_Y, -0.07);
-        link.rotation.set(0, 0, 0);
-      } else {
-        link.position.set(sx, CHAIN_Y - 0.05 * (i + 1), -0.07);
-        link.rotation.set(0, 0, Math.PI / 2);
-      }
+      // a link's length follows its chord, so the chain has no gaps taut and no slack gaps either
+      const [ex, ey] = point((i + 1) / n);
+      const chord = Math.hypot(ex - prev[0], ey - prev[1]);
+      link.position.set(px, py, LINK_Z);
+      link.rotation.set(0, 0, Math.atan2(ey - prev[1], ex - prev[0]));
+      link.scale.set(chord / LINK_LEN, 1, 1);
+      prev = [ex, ey];
     }
   }
 }

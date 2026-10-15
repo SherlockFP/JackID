@@ -11,7 +11,8 @@ import { createRng } from '@/core/rng';
 import { pendant } from '../lights';
 import type { LightHint } from '../sys/arch';
 import {
-  at, BED, CEIL, DOOR_H, DOOR_X0, DOOR_X1, EMPTY_SEAT, HALL_X0, HALL_X1, HALL_Z1, HOME_ZONE, LIGHT, SPOUSE_SEAT, TABLE,
+  at, BED, CEIL, DOOR_H, DOOR_X0, DOOR_X1, EMPTY_SEAT, HALL_X0, HALL_X1, HALL_Z1, HOME_ZONE, LIGHT, SOUTH_WALL_SOLIDS,
+  SPOUSE_SEAT, TABLE,
   WIN_X0, WIN_X1, WIN_Y0, WIN_Y1,
 } from './config';
 
@@ -75,9 +76,7 @@ export function buildRoom(c: RoomCtx): RoomParts {
   slab(WIN_X1, 0, -2.8, 3.3, CEIL, -2.5, wall, true);
   slab(WIN_X0, 0, -2.8, WIN_X1, WIN_Y0, -2.5, wall, true);
   slab(WIN_X0, WIN_Y1, -2.8, WIN_X1, CEIL, -2.5, wall, true);
-  slab(-3.3, 0, 2.5, DOOR_X0, CEIL, 2.8, wall, true);
-  slab(DOOR_X1, 0, 2.5, 3.3, CEIL, 2.8, wall, true);
-  slab(DOOR_X0, DOOR_H, 2.5, DOOR_X1, CEIL, 2.8, wall, true);
+  for (const s of SOUTH_WALL_SOLIDS) slab(s[0], s[1], s[2], s[3], s[4], s[5], wall, true);
   slab(HALL_X0 - 0.3, 0, 2.8, HALL_X0, CEIL, HALL_Z1 + 0.3, wall, true);
   slab(HALL_X1, 0, 2.8, HALL_X1 + 0.3, CEIL, HALL_Z1 + 0.3, wall, true);
   slab(HALL_X0 - 0.3, 0, HALL_Z1, HALL_X1 + 0.3, CEIL, HALL_Z1 + 0.3, wall, true);
@@ -187,9 +186,12 @@ export function buildRoom(c: RoomCtx): RoomParts {
   kit.cyl(0.012, 0.012, 0.07, brass, { pos: at(-2.2, 1.7, 2.46), rot: [90, 0, 0], parent: shell, seg: 6 });
   kit.box(0.42, 0.72, 0.1, coat, { pos: at(-2.2, 1.3, 2.4), parent: shell });
 
-  // ── the light switch by the door: the plate on the wall, the lever in `dyn` ─────────────────────
+  // ── the light switch by the door: the plate on the wall, the lever and the pilot plate in `dyn` ─────
+  // the pilot is a small plate above the lever: warm and lit when the ceiling light is on, dark when it is off
   kit.box(0.12, 0.18, 0.02, cream, { pos: at(0.7, 1.2, 2.49), parent: shell });
   const lever = kit.box(0.03, 0.06, 0.02, kit.mat({ color: kit.pal.white }), { pos: at(0.7, 1.2, 2.47), parent: dyn });
+  const pilotOn = kit.box(0.04, 0.03, 0.012, kit.mat({ color: 0xffd27a, lit: false }), { pos: at(0.7, 1.31, 2.468), parent: dyn });
+  const pilotOff = kit.box(0.04, 0.03, 0.012, kit.mat({ color: 0x2a2622, lit: false }), { pos: at(0.7, 1.31, 2.468), parent: dyn });
 
   // ── the lights ────────────────────────────────────────────────────────────────────────────────
   const ceilingLamp = kit.lamp({ r: 0.2, color: LIGHT.ceiling.color, shape: 'dome' });
@@ -226,6 +228,8 @@ export function buildRoom(c: RoomCtx): RoomParts {
       ceilingLamp.setOn(on);
       pend.setOn(on);
       lever.rotation.x = on ? -0.45 : 0.45;
+      pilotOn.visible = on;
+      pilotOff.visible = !on;
     },
   };
 }

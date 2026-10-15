@@ -8,8 +8,9 @@ import { load, closeVite } from './_vite.mjs';
 
 after(closeVite);
 
-let RUN, REG, EV, SAVE, EVE, STR;
+let RUN, REG, EV, SAVE, EVE, STR, PHONE;
 before(async () => {
+  PHONE = await load('src/game/home/phone.ts');
   RUN = await load('src/game/run.ts');
   REG = await load('src/machines/_base/registry.ts');
   EV = await load('src/core/events.ts');
@@ -409,5 +410,21 @@ test('the Evening strings: EN and TR hold the same keys, the window has four lin
   assert.equal(STR.default.tr.lever, 'ASANSÖRE BİN');
   assert.equal(STR.default.en.peephole, 'The hall is empty.');
   assert.equal(STR.default.tr.peephole, 'Koridor boş.');
+});
+
+test('the bed closes the Night with a dream: rolled once by the phone, and a quiet Night costs one Harmony', () => {
+  const run = home(808);
+  const phone = run.homePhone();
+  assert.equal(PHONE.dreamOf(phone), null, 'no dream before the first bed');
+  const h0 = phone.harmony();
+  passNight(run);                       // a paid Dawn, the lift, the Evening, the bed (no Watch: no spouse reply, no talk)
+  const d = PHONE.dreamOf(phone);
+  assert.ok(d, 'the bed rolled a dream');
+  assert.equal(d.night, 1, 'the dream belongs to the Night that closed');
+  assert.ok(['good', 'plain', 'cold'].includes(d.tier), d.tier);
+  assert.ok(d.key.startsWith(`phone.dream.${d.tier}.`), d.key);
+  // a Dawn paid to exactly the quota has no margin: the Evening's thin-margin rule takes one, the quiet Night (no reply, no talk) one more
+  assert.equal(phone.harmony(), Math.max(0, h0 - 2), 'a thin Evening and a quiet Night each drop one Harmony');
+  run.dispose();
 });
 

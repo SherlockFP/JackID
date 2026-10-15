@@ -264,7 +264,8 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     if (summaryDue && !choiceUp) { summaryDue = false; showSummary(s); }
     // seated (or walking up to a seat, or in machine mode): the hint never sits over the Pawn or terminal view
     const seated = app.player?.seat != null || s.world.seat != null || app.input.mode === 'machine';
-    const show = inter && !s.run.topsideOpen && !seated && !paused && !ending;
+    // at home (THE EVENING, wave 69) the pit's Mola hint is gone: the apartment's card (hud.ts) carries the read-out
+    const show = inter && !s.run.topsideOpen && !seated && !paused && !ending && s.run.homeStage() === null;
     // one line in every Mola (wave 45): the lever is never gated on the quota, so the line names the same three steps every time
     interHint?.set(show ? t('run.mola') + terminalBearing(s) : null);
   };

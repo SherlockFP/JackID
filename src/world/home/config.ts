@@ -36,8 +36,56 @@ export const DOOR_H = 2.2;
 export const DOOR_HINGE_X = -1.05;
 export const DOOR_Z = 2.62;
 export const DOOR_OPEN_RAD = 1.45;
-/** The shut leaf's collider band (world z). */
-export const DOOR_COLLIDE_Z: readonly [number, number] = [2.56, 2.68];
+/** The leaf is 0.9 m wide. Its collider is the plan footprint of the leaf at its swing angle, padded for the thickness. */
+export const LEAF_W = 0.9;
+const LEAF_PAD = 0.04;
+
+/**
+ * The leaf's plan footprint [x0, z0, x1, z1] (plan metres) at a swing of `rad` into the room. The hinge is the
+ * fixed end, the tip sweeps toward -z (north, into the room). At rad 0 it covers the shut leaf in the south wall's opening.
+ */
+export function leafFootprint(rad: number): [number, number, number, number] {
+  const tx = DOOR_HINGE_X + LEAF_W * Math.cos(rad);
+  const tz = DOOR_Z - LEAF_W * Math.sin(rad);
+  return [
+    Math.min(DOOR_HINGE_X, tx) - LEAF_PAD, Math.min(DOOR_Z, tz) - LEAF_PAD,
+    Math.max(DOOR_HINGE_X, tx) + LEAF_PAD, Math.max(DOOR_Z, tz) + LEAF_PAD,
+  ];
+}
+
+/** The peephole lens: 0.45 m out from the hinge on the leaf, at eye height, on the room face of the leaf. */
+export const PEEP = { x: DOOR_HINGE_X + 0.45, y: 1.55 } as const;
+/**
+ * The peephole look's camera: in the door's plane, 0.02 m behind the lens, facing out (south). The lens and the leaf's room
+ * face are then behind the camera and the leaf's outer face is culled from inside, so the view runs through the opening to
+ * the hall (the wave 70 visitors stand there). The camera sits outside the room zone, which is right: it looks out.
+ */
+export const PEEP_EYE_Z = DOOR_Z - 0.02;
+
+/**
+ * The stations on the room side of the south wall (plan boxes [x0, y0, z0, x1, y1, z1]). Each sits in the room, in front of
+ * the wall face (z 2.5) and the shut leaf (z 2.58), so a ray from the room reaches it before either occludes it.
+ * The interaction ray grows every box 0.5 m down and 0.3 m up, so the boxes' depth matters: the peephole is shallow (z 2.3
+ * .. 2.5) so its slack stops above the door's reach. A steep look down at the centre then passes the peephole's depth
+ * below its slack and takes the low door. The door takes the low leaf, the chain the track (reached just off-centre, where
+ * the peephole column does not cover it). Priorities are set in index.ts: peephole > door > chain.
+ */
+export const WALL_STATIONS = {
+  peephole: [PEEP.x - 0.14, 1.42, 2.3, PEEP.x + 0.14, 1.7, 2.5],
+  door: [DOOR_X0, 0, 2.0, DOOR_X1, 0.8, 2.5],
+  chain: [DOOR_X0 + 0.1, 1.3, 2.0, DOOR_X1 - 0.1, 1.55, 2.5],
+  switch: [0.45, 0.95, 2.1, 0.95, 1.45, 2.5],
+} as const;
+
+/** The interaction priorities of the door-side stations (higher wins an overlap, index.ts). */
+export const STATION_PRIORITY = { peephole: 5, door: 4, chain: 3, switch: 3 } as const;
+
+/** The south wall's solid pieces (plan boxes): both sides of the 1 m opening and the lintel above it. */
+export const SOUTH_WALL_SOLIDS = [
+  [-3.3, 0, 2.5, DOOR_X0, CEIL, 2.8],
+  [DOOR_X1, 0, 2.5, 3.3, CEIL, 2.8],
+  [DOOR_X0, DOOR_H, 2.5, DOOR_X1, CEIL, 2.8],
+] as const;
 
 /** The window: a 2.0 x 1.2 m opening in the north wall. */
 export const WIN_X0 = -1.6;
@@ -76,7 +124,7 @@ export const ANCHOR_PLAN = {
   spawn: { p: [-0.6, 0, 1.7], yaw: 0 },
   bed: { p: [-2.0, 0.5, -0.6], yaw: 0 },
   door: { p: [-1.0, 1.05, 2.4], yaw: 0 },
-  peephole: { p: [-0.6, 1.55, 2.05], yaw: Math.PI },
+  peephole: { p: [PEEP.x, PEEP.y, PEEP_EYE_Z], yaw: Math.PI },
   hall: { p: [-0.6, 0, 3.9], yaw: 0 },
   switch: { p: [0.7, 1.2, 2.2], yaw: 0 },
   phone: { p: [2.2, 1.3, -2.45], yaw: 0 },

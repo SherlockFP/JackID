@@ -63,7 +63,7 @@ export default {
     'co.s3.2': 'Our men are on the stairs. We are on our way.',
     'co.reply.pay': "I'll pay.",
     'co.reply.time': 'I need time.',
-    // ── the talk at home, by Harmony (0..5); the blessing line follows the first talk at 4 or more ──
+    // ── the talk at home, by Harmony (0..5); talking gives warmth only (see phone.ts) ──
     'talk.h0.1': 'Nobody answers. The chair is pushed in and the lamp is off.',
     'talk.h0.2': 'There is one cup in the sink, still wet, and nobody to explain it.',
     'talk.h1.1': "She says she's fine. She does not look up from the sink.",
@@ -76,7 +76,16 @@ export default {
     'talk.h4.2': 'She says whatever the House takes, it does not get this kitchen.',
     'talk.h5.1': 'She takes your hand under the table. It is warm, and it stays.',
     'talk.h5.2': 'She says the kid drew the house again, with every light on. Keep going.',
-    'talk.bless': 'Before you leave she touches your forehead. Her faith holds until the next Watch.',
+    // ── the dream, rolled when the Night closes on the bed (tier by Harmony and calm; the banner shows it) ──
+    'dream.good.1': 'You dreamed the lift rose forever and opened on your own kitchen.',
+    'dream.good.2': 'You dreamed the kid drew you with every window lit. You woke smiling.',
+    'dream.good.3': 'You dreamed of a street that knew your name and let you pass.',
+    'dream.plain.1': 'You dreamed of the Pit, only the lights, never the numbers.',
+    'dream.plain.2': 'You dreamed of counting coins in a dark room. Nothing came of it.',
+    'dream.plain.3': 'You dreamed of the stairs and woke before the top.',
+    'dream.cold.1': 'You dreamed of a chair pushed in, and a lamp switched off behind you.',
+    'dream.cold.2': 'You dreamed of knocking, and no one answering from inside.',
+    'dream.cold.3': 'You dreamed the phone rang on and on, and your mouth would not open.',
     // ── UI ──
     'thread.spouse': 'SPOUSE',
     'thread.collector': 'THE COLLECTOR',
@@ -163,7 +172,16 @@ export default {
     'talk.h4.2': 'Ev ne alırsa alsın, bu mutfağı alamayacak, diyor.',
     'talk.h5.1': 'Masanın altından elini tutuyor. Sıcak, ve kalıyor.',
     'talk.h5.2': 'Küçük evi yine çizmiş, bütün ışıklar açık. Devam et, diyor.',
-    'talk.bless': 'Gitmeden önce alnına dokunuyor. İnancı bir sonraki nöbete kadar sürecek.',
+    // ── rüya, yatağa girilince kurulur (uyuma ve sakinliğe göre; banner gösterir) ──
+    'dream.good.1': 'Rüyanda asansör sonsuza kadar yükseldi ve kendi mutfağında açıldı.',
+    'dream.good.2': 'Rüyanda küçük kız seni bütün pencereleri yanık çizmiş. Gülümseyerek uyandın.',
+    'dream.good.3': 'Rüyanda seni tanıyan bir sokak vardı ve geçmene izin verdi.',
+    'dream.plain.1': 'Rüyanda Çukuru gördün, yalnızca ışıklarını, sayıları değil.',
+    'dream.plain.2': 'Karanlık bir odada jeton sayıyordun. Bir şey çıkmadı.',
+    'dream.plain.3': 'Rüyanda merdivenleri gördün, tepeye varmadan uyandın.',
+    'dream.cold.1': 'Rüyanda masadaki bir sandalye itildi, arkandan bir lamba söndü.',
+    'dream.cold.2': 'Rüyanda kapı çalındı, içeriden kimse cevap vermedi.',
+    'dream.cold.3': 'Rüyanda telefon çalıp durdu, ağzın açılmadı.',
     // ── arayüz ──
     'thread.spouse': 'EŞİM',
     'thread.collector': 'TAHSİLDAR',

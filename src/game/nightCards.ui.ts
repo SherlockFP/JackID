@@ -41,9 +41,6 @@ let activePick: ((card: string) => boolean) | null = null;
 const calmOn = (): boolean => !!app?.save?.data?.settings?.calm;
 const reduceMotion = (): boolean => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-/** Unpaid tithe booked since the last Dawn receipt: the `run:tithe` shortfalls of the missed Watches. */
-interface TitheBook { unpaid: number }
-
 /** The numbers of one preview line: a multiplier takes the language's decimal mark (1.3 / 1,3). */
 function previewVars(vars: Record<string, number>): Record<string, string | number> {
   const comma = lang() === 'tr';
@@ -65,7 +62,6 @@ function cheapestBet(): number {
 export function mountNightCardsUi(run: DebtRun): () => void {
   run.setNightCardGate(true);   // the lever now waits for a pick or this panel's timer
   const ui = app.ui as UIOverlayX;
-  const book: TitheBook = { unpaid: 0 };
   const chip = h('div', 'nc-chip', app.ui.root);   // inside #ui so it follows the UI scale (--u)
   chip.hidden = true;
   const refreshChip = (): void => {
@@ -74,12 +70,9 @@ export function mountNightCardsUi(run: DebtRun): () => void {
     if (c) chip.textContent = t('nightcard.chip', { name: t(`nightcard.${c.id}.name`) });
   };
   const offs: Unsub[] = [];
-  offs.push(bus.on('run:tithe', (e) => {
-    if (e.pid === run.selfId && e.state === 'missed') book.unpaid += e.shortfall;
-  }));
   offs.push(bus.on('run:nightcard', (e) => {
     if (e.pid !== run.selfId) return;
-    if (e.state === 'offer') { showCards(run, book, chip, refreshChip); return; }
+    if (e.state === 'offer') { showCards(run, chip, refreshChip); return; }
     // A pick flies its card to the chip, and the panel closes when it lands (activePick). Any other state closes at once.
     if (e.state === 'picked' && e.card && activePick?.(e.card)) return;
     app.ui.closePanel(PANEL);   // the held toasts show now
@@ -88,7 +81,7 @@ export function mountNightCardsUi(run: DebtRun): () => void {
     if (e.state === 'auto' && e.card) ui.toast(t('nightcard.timeout', { card: t(`nightcard.${e.card}.name`) }), 'warn', 3);
   }));
   refreshChip();
-  if (run.nightCardOffer()) showCards(run, book, chip, refreshChip);
+  if (run.nightCardOffer()) showCards(run, chip, refreshChip);
   return () => {
     app.ui.closePanel(PANEL);
     for (const off of offs.splice(0)) off();
@@ -97,7 +90,7 @@ export function mountNightCardsUi(run: DebtRun): () => void {
 }
 
 /** The card panel: modal (the veil blocks the walk), no Esc (a card must be kept), keys 1-2 captured before the game sees them. */
-function showCards(run: DebtRun, book: TitheBook, chip: HTMLElement, refreshChip: () => void): void {
+function showCards(run: DebtRun, chip: HTMLElement, refreshChip: () => void): void {
   const offer = run.nightCardOffer();
   if (!offer) return;
   const ui = app.ui as UIOverlayX;
@@ -106,12 +99,9 @@ function showCards(run: DebtRun, book: TitheBook, chip: HTMLElement, refreshChip
     const id = ids[i];
     if (id) run.pickNightCard(id);
   };
-  // The receipt is the Night that just settled (the offer's Night is the next one): its quota, what it paid in (the quota plus the
-  // surplus Dawn returned, `ledger.carried`), its interest and the tithes it missed. The books reset when the next Night opens.
-  const books = run.nightLedger();
-  const due = run.bank().due;
-  const receipt = { n: offer.night, due, paid: due + books.carried, interest: books.interest, tithe: book.unpaid };
-  book.unpaid = 0;
+  // The receipt is the Night that just settled, read from the one snapshot Dawn took before its books reset (`run.dawnReceipt`).
+  // The panel never reads the live bank or ledger here: those belong to the next Night once it opens.
+  const receipt = run.dawnReceipt();   // null before the first paid Dawn: the panel then shows the offer alone
   const cheap = cheapestBet();
   const reduce = reduceMotion();
   const calm = calmOn();
@@ -123,22 +113,28 @@ function showCards(run: DebtRun, book: TitheBook, chip: HTMLElement, refreshChip
     modalPanel(host, { escClose: false, dim: true });
     const box = h('div', 'nc-box', root);
     // The Dawn receipt, on top: last Night's settlement counts up (about 1.5 s, a coin tick while it rolls).
-    const rec = h('div', 'nc-receipt', box);
-    h('div', 'nc-rec-title', rec, t('nightcard.receipt.title', { n: receipt.n }));
-    const grid = h('div', 'nc-rec-grid', rec);
-    const rows = [
-      { to: receipt.due, key: 'nightcard.receipt.due' },
-      { to: receipt.paid, key: 'nightcard.receipt.paid' },
-      { to: receipt.interest, key: 'nightcard.receipt.interest' },
-      { to: receipt.tithe, key: 'nightcard.receipt.tithe' },
-    ].map((r) => {
-      const line = h('div', 'nc-rec-row', grid);
-      h('span', 'nc-rec-k', line, t(r.key));
-      return { to: r.to, v: h('span', 'nc-rec-v', line, fmtCoins(0)) };
-    });
+    const rows: { to: number; v: HTMLElement }[] = [];
+    if (receipt) {
+      const rec = h('div', 'nc-receipt', box);
+      h('div', 'nc-rec-title', rec, t('nightcard.receipt.title', { n: receipt.night }));
+      const grid = h('div', 'nc-rec-grid', rec);
+      const lines = [
+        { to: receipt.due, key: 'nightcard.receipt.due' },
+        { to: receipt.paid, key: 'nightcard.receipt.paid' },
+        { to: receipt.interest, key: 'nightcard.receipt.interest' },
+        { to: receipt.tithe, key: 'nightcard.receipt.tithe' },
+      ];
+      for (const r of lines) {
+        const line = h('div', 'nc-rec-row', grid);
+        h('span', 'nc-rec-k', line, t(r.key));
+        rows.push({ to: r.to, v: h('span', 'nc-rec-v', line, fmtCoins(0)) });
+        // The quota grew inside the Night by the missed tithes: say so under the quota, with the amount.
+        if (r.key === 'nightcard.receipt.due' && receipt.tithe > 0) h('div', 'nc-rec-sub', line, t('nightcard.receipt.titheAdd', { n: fmtCoins(receipt.tithe) }));
+      }
+    }
     let rolled = 0;
     let lastStep = -1;
-    addTicker((dt) => {
+    if (receipt) addTicker((dt) => {
       if (!alive) return false;
       rolled = Math.min(RECEIPT_SEC, rolled + dt);
       const k = rolled / RECEIPT_SEC;

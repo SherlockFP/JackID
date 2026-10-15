@@ -59,3 +59,4 @@ import './hudJuice.test.mjs';
 import './juice.wave7.test.mjs';
 import './juiceB.test.mjs';
 import './phone.test.mjs';
+import './dawnReceipt.test.mjs';

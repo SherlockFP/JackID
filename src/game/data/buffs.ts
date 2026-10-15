@@ -76,8 +76,15 @@ export const BUFF_DATA: BuffDef[] = [
     id: 'blessed', kind: 'buff', scope: 'player', icon: 'icon.star', maxStacks: 1,
     duration: { kind: 'shifts', n: 1 }, reapply: 'refresh', tags: ['home', 'blessing'],
     effects: BLESSED_LUCK,
-    strings: S({ name: 'Blessed', desc: 'Her faith, kept for the next Watch: +2 luck on each machine, capped per machine.' },
-      { name: 'Kutsanmış', desc: 'Eşinin inancı bir sonraki nöbete kadar: makine başına +2 şans, makine başına sınırlı.' }),
+    strings: S({ name: 'Blessed', desc: 'A good dream, kept for the next Watch: +2 luck on each machine, capped per machine.' },
+      { name: 'Kutsanmış', desc: 'İyi bir rüya, bir sonraki nöbete kadar: makine başına +2 şans, makine başına sınırlı.' }),
+  },
+  {
+    id: 'restless', kind: 'debuff', scope: 'player', icon: 'icon.moon', maxStacks: 1,
+    duration: { kind: 'shifts', n: 1 }, reapply: 'refresh', tags: ['home', 'curse'],
+    effects: [{ hook: 'luck', op: 'add', value: -1 }],
+    strings: S({ name: 'Restless', desc: 'A cold dream still with you: −1 luck on each machine for the next Watch.' },
+      { name: 'Huzursuz', desc: 'Soğuk bir rüya hâlâ üstünde: bir sonraki nöbette her makinede −1 şans.' }),
   },
   {
     id: 'favoured', kind: 'buff', scope: 'player', icon: 'icon.star', maxStacks: 1,
