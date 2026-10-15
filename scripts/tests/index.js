@@ -43,3 +43,5 @@ import './run.wave42.test.mjs';
 import './houseMood.test.mjs';
 import './draft.test.mjs';
 import './run.mola.test.mjs';
+import './stakes.test.mjs';
+import './daily.test.mjs';

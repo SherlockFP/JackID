@@ -5,6 +5,7 @@
 import { fmtCoins, fmtNum, fmtTime, has, t } from '@/core/i18n';
 import { uiSfx, h } from '@/core/ui/widgets';
 import type { RunSummary } from '@/net/protocol';
+import { dailyLine } from '@/game/daily';
 import './results.css';
 import './resultsFit.css';
 
@@ -34,6 +35,19 @@ const won = (r: RunSummary['result']): boolean => r === 'escaped' || r === 'won'
  *  - bestMachine: machine id of the biggest win; topCharm: charm id with the most procs.
  */
 export interface ResultsPost { short: number; pullsLeft: number; bestMachine?: string | null; topCharm?: string | null }
+
+/** Stake and daily tag the run adds to its summary (run.ts endRun). Not in RunSummary yet, so the receipt reads them through this. */
+export interface RunTag { stake?: number; daily?: { date: string; night: number } }
+
+/** Copies `text` to the clipboard. False when the browser refuses (the line stays selectable on the receipt). */
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const machineLabel = (id: string): string => (has(`m.${id}.name`) ? t(`m.${id}.name`) : id);
 const charmLabel = (id: string): string => (has(`charm.${id}.name`) ? t(`charm.${id}.name`) : id);
@@ -89,7 +103,11 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
     [t('hud.results.stat.nightsPaid'), fmtNum(stat('nightsPaid'))],
     ...statLines(s.stats),
   ];
+  const tag = s as RunSummary & RunTag;
+  if (tag.stake !== undefined && tag.stake > 0) rows.push([t('hud.results.stake'), String(tag.stake)]);
   if (s.obols !== undefined) rows.push([t('hud.results.obols'), `+${fmtNum(s.obols)}`]);
+  const daily = tag.daily;
+  const dailyText = daily ? dailyLine(daily.date, daily.night, s.obols ?? 0) : '';
 
   const body = h('div', 'rcp-body', paper);
   const lines: HTMLElement[] = rows.map(([k, v]) => {
@@ -102,6 +120,13 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
   if (post) {
     const row = h('div', 'rcp-line wide', body);
     h('span', 'k', row, post);
+    h('span', 'v', row);
+    lines.push(row);
+  }
+  if (dailyText) {
+    // The copyable daily line: the player can also select it by hand.
+    const row = h('div', 'rcp-line wide', body);
+    h('span', 'k', row, dailyText);
     h('span', 'v', row);
     lines.push(row);
   }
@@ -123,6 +148,12 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
   const again = h('button', 'rcp-btn', btns, t('hud.results.again'));
   const foundations = h('button', 'rcp-btn', btns, t('found.title'));
   const menu = h('button', 'rcp-btn', btns, t('hud.results.menu'));
+  if (dailyText) {
+    const copy = h('button', 'rcp-btn', btns, t('daily.copy'));
+    copy.addEventListener('click', () => {
+      void copyText(dailyText).then((ok) => { copy.textContent = t(ok ? 'daily.copied' : 'daily.copyFail'); });
+    });
+  }
   again.addEventListener('click', () => o.onAgain());
   foundations.addEventListener('click', () => o.onFoundations());
   menu.addEventListener('click', () => o.onMenu());

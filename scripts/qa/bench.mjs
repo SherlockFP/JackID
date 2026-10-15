@@ -506,10 +506,11 @@ function watchRec(ctx, st, ev) {
 }
 
 /**
- * `auto:night`: a sensible bot plays one Night. Per Watch: deposit 40 % of the pocket (20 % when refused) while quota is
- * owed; shop the cheapest affordable shelf; lever (starts the Watch). In play: 1 bet on odd Watches, 2 on even ones,
- * rotating over the open machines; then the Bell (unused pulls keep the rebate). A broke pocket withdraws the bank first.
- * Each Watch's state (pocket, bank, quota, floor event) is printed once, when it reaches the Bell. `untilEvent`
+ * `auto:night`: a sensible bot plays one Night. Per Watch: shop the cheapest affordable shelf in the intermission, then
+ * lever (starts the Watch). In play: 1 bet on odd Watches, 2 on even ones, rotating over the open machines. Once the bets
+ * are in, the bot deposits 40 % of the pocket (20 % when refused) while quota is owed, so the Watch's winnings are banked
+ * before the Bell; then the Bell (unused pulls keep the rebate). A broke pocket withdraws the bank first.
+ * Each Watch's state (pocket, bank, quota, floor event) is printed once, at its Bell. `untilEvent`
  * (`auto:night:event`) stops at the first Watch that has a floor event, so the event can be shot; a later auto:night carries on.
  * Ends when the Night rolls over (OPEN THE FLOOR), the run is over, or it reaches the top. Each action is its own record
  * (`auto: true`), in order, before the summary record.
@@ -519,12 +520,20 @@ async function autoNight(ctx, rec, untilEvent = false) {
   const t0 = Date.now();
   const auto = (o) => ({ ...o, auto: true });
   // Per-Watch bookkeeping lives on the run, so a second auto:night step carries on where an event stop left the Watch.
-  const bot = (ctx.bot ??= { betsTried: new Map(), handled: new Set(), logged: new Set(), evStop: new Set(), rot: 0 });
+  const bot = (ctx.bot ??= { betsTried: new Map(), handled: new Set(), banked: new Set(), logged: new Set(), evStop: new Set(), rot: 0 });
   const n0 = (await readState(ctx)).night;
   const count = { deposits: 0, shops: 0, bets: 0, bells: 0 };
   const events = [];                    // ids of the floor events of the Watches this call reached
   let leverFails = 0, loops = 0, end = null, st = null;
-  /** This Watch's deposit: 40 % of the pocket while quota is owed (20 % when the terminal refuses it). Once per Watch. */
+  /** A Watch's state, printed once (at its Bell, so the pocket is the one the Watch ends with). */
+  const logWatchOnce = async (key) => {
+    if (bot.logged.has(key)) return;
+    bot.logged.add(key);
+    const ev = await evalJson(ctx.cdp, EVENT_JS);
+    watchRec(ctx, await readState(ctx), ev);
+    if (ev) events.push(ev.id);
+  };
+  /** This Watch's deposit: 40 % of the pocket while quota is owed (20 % when the terminal refuses it). Once per Watch, after the bets. */
   const depositFor = async (s) => {
     if (!(s.quotaLeft > 0 && s.pocket > 0)) return;
     for (const pct of [0.4, 0.2]) {
@@ -551,18 +560,12 @@ async function autoNight(ctx, rec, untilEvent = false) {
     }
     // The first Watch of a Night starts with the intro (no intermission before it): its deposit is taken in the Bell or play.
     if (st.phase === 'bell' || st.phase === 'play' || st.phase === 'lastCall') {
-      // --event: stop at the Watch's floor event (no cutscene up, so its banner and HUD timer are on screen), before the deposit.
+      // --event: stop at the Watch's floor event (no cutscene up, so its banner and HUD timer are on screen), before the bets.
       if (untilEvent && !bot.evStop.has(key) && st.intro == null) {
         const ev = await evalJson(ctx.cdp, EVENT_JS);
         if (ev) { bot.evStop.add(key); events.push(ev.id); end = 'event'; break; }
       }
-      if (!bot.handled.has(key)) { bot.handled.add(key); await depositFor(st); continue; }
-      if (!bot.logged.has(key)) {
-        bot.logged.add(key);
-        const ev = await evalJson(ctx.cdp, EVENT_JS);
-        watchRec(ctx, await readState(ctx), ev);
-        if (ev) events.push(ev.id);
-      }
+      if (st.phase === 'bell') await logWatchOnce(key);   // the Bell is already rung (not by this bot's own play)
     }
     if (st.phase === 'intermission') {
       if (st.nightDone) {                               // the Night is paid: OPEN THE FLOOR (the lever)
@@ -574,7 +577,6 @@ async function autoNight(ctx, rec, untilEvent = false) {
       }
       if (!bot.handled.has(key)) {
         bot.handled.add(key);
-        await depositFor(st);
         const pick = await shopPick(ctx);
         if (pick) {
           const r = await exec(ctx, auto({ kind: 'pawnbuy', slot: pick.slot, text: `pawn:buy:${pick.slot}` }));
@@ -602,6 +604,9 @@ async function autoNight(ctx, rec, untilEvent = false) {
         if (r.ok) count.bets++;
         continue;
       }
+      // the bets are in: bank the Watch's winnings (deposit, once per Watch), then print the Watch and ring the Bell
+      if (!bot.banked.has(key)) { bot.banked.add(key); await depositFor(st); continue; }
+      await logWatchOnce(key);
       if (st.seated != null) await exec(ctx, auto({ kind: 'stand', text: 'stand' }));
       const r = await exec(ctx, auto({ kind: 'bell', text: 'bell' }));
       if (r.ok) count.bells++; else await sleep(300);
@@ -615,7 +620,7 @@ async function autoNight(ctx, rec, untilEvent = false) {
   rec.loops = loops;
   rec.events = events;
   Object.assign(rec, count);
-  rec.ok = end === 'night paid' || end === 'topside' || end === 'event';
+  rec.ok = end === 'night paid' || end === 'topside' || end === 'event' || end === 'run over';
   if (!rec.ok) rec.reason = end;
 }
 
@@ -769,6 +774,8 @@ async function exec(ctx, s) {
 async function driveRun(ctx, steps) {
   await evaluate(ctx.cdp, BET_TAP_JS);
   for (const s of steps) {
+    // auto:night after the run is over has no Night left to play: skipped (no record, no refused line)
+    if (s.kind === 'auto' && (await readState(ctx).then((st) => st.over, () => false))) { log(`run ${s.text}: skipped (the run is over)`); continue; }
     await exec(ctx, s);
     if (ctx.res.reloads) { ctx.run.aborted = `the page reloaded after "${s.text}" (the run is invalid, see viteEvents)`; break; }
   }

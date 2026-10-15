@@ -91,7 +91,9 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     ?? createRun({
       seed: params.seed, mode: playableMode(params.mode), save: app.save, banner,
       // Only the starting kit travels from the menu for now; the MP lobby config is not applied here yet.
-      cfg: params.config?.kit ? { kit: params.config.kit } : undefined,
+      cfg: params.config?.kit || params.config?.stake || params.config?.daily
+        ? { kit: params.config.kit, stake: params.config.stake, daily: params.config.daily }
+        : undefined,
     });
   app.run = run;
   if (!params.resume && !params.online) mountDraftUi(run);

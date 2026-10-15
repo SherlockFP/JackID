@@ -55,6 +55,8 @@ import { paceOf, oddsLine, type OddsLine } from './pace';
 import { profileOf } from './data/machineProfiles';
 import { bossFor, type BossNight } from './bosses';
 import { applyKit, kitById } from './data/kits';
+import { DAILY_STAKE, dailyBetter, dailyKit, dailySeed, dayKey, isDayKey, type DailyBest } from './daily';
+import { clampStake, isStakeClear, recordStakeClear, stakeBossFor, stakeEffects, type StakeEffects } from './stakes';
 import { BOSS_REWARD, BOSS_TEMPLATES } from './data/bosses';
 import { SOUL_MARKS_PER_RUN, type DuelEndReport, type DuelRunHooks } from './duels/stakes';
 import { bossRivalFor, rivalById, type RivalId } from './story/duels/rivals';
@@ -754,15 +756,21 @@ class Run implements DebtRun {
 
   constructor(opts: RunOpts, resume: RunSave | null) {
     this.mode = playableMode(opts.mode);
-    this.seed = opts.seed;
     this.rules = rulesFor(this.mode);
+    // Daily run (daily.ts): the seed, kit and stake come from the UTC day, whatever the menu passed. A resumed run keeps its day.
+    const cfgDay = (opts.cfg as { dailyDay?: unknown } | undefined)?.dailyDay;
+    const dayOfRun = opts.cfg?.daily === true && this.rules.quota ? (isDayKey(cfgDay) ? cfgDay : dayKey()) : null;
+    const seed = dayOfRun !== null ? dailySeed(dayOfRun) : opts.seed;
+    this.seed = seed;
     this.save = opts.save ?? null;
     this.banner = opts.banner;
-    this.rng = createRng(opts.seed);
+    this.rng = createRng(seed);
     this.config = {
       startWallet: this.rules.startWallet, deadlines: BASE_RUN_NIGHTS, difficulty: 'normal', friendlyGive: false,
-      realtimeShift: this.rules.timed, shiftSeconds: nightDef(0).clock, sharedBank: false, stake: 0, modifiers: [],
+      realtimeShift: this.rules.timed, shiftSeconds: nightDef(0).clock, sharedBank: false, modifiers: [],
       daily: false, randomLineup: true, collateral: false, botFill: false, ...opts.cfg,
+      stake: clampStake(opts.cfg?.stake),
+      ...(dayOfRun !== null ? { daily: true, dailyDay: dayOfRun, kit: dailyKit(dayOfRun), stake: DAILY_STAKE } : {}),
     };
 
     const nd = nightDef(0);
@@ -808,7 +816,7 @@ class Run implements DebtRun {
     // tycoon, buffs, night events and totems (BRIEF addenda 1–3, 8). Each registers its providers on `mods`.
     this.tycoonSys = createTycoon({
       run: () => this,
-      seed: opts.seed,
+      seed,
       isHost: () => true,
       machines: () => this.worldLink?.machines() ?? [],
       tradeOpen: () => this.tradeOpen(),
@@ -837,7 +845,7 @@ class Run implements DebtRun {
     this.buffSys = createBuffSystem({
       selfId: this.selfId,
       isHost: true,
-      rng: createRng(hashSeed('buffs', opts.seed)),
+      rng: createRng(hashSeed('buffs', seed)),
       run: () => this,
       now: () => Math.round(this.elapsed * 1000),
       // buffs change outside the boundary actions (timers, auras, round spends): mark the save dirty, `tick` writes it
@@ -901,7 +909,7 @@ class Run implements DebtRun {
     this.itemSys = createItemSystem({
       selfId: this.selfId,
       isHost: true,
-      rng: createRng(hashSeed('totems', opts.seed)),
+      rng: createRng(hashSeed('totems', seed)),
       run: () => this,
       now: () => Math.round(this.elapsed * 1000),
       allied: (a, b) => a === b,
@@ -1224,7 +1232,7 @@ class Run implements DebtRun {
   interestPct(): number { return ratePercent(this.liveRate()); }
 
   /** Settle's rate: schedule rate + `x.econ.interestAdd` bonuses, floored at 0. One source for Settle, the rescue and the text. */
-  private liveRate(): number { return interestRate(nightDef(this.index).interest, this.mod('x.econ.interestAdd', RUN_MACHINE, 0)); }
+  private liveRate(): number { return interestRate(nightDef(this.index).interest, this.mod('x.econ.interestAdd', RUN_MACHINE, 0) + this.stakeFx().interestAdd); }
 
   balance(cur: CurrencyId, _pid?: PlayerId): number {
     if (cur === 'coin') return this.coins;
@@ -1800,7 +1808,12 @@ class Run implements DebtRun {
     this.enter('over', 0);
     if (this.quotaMode && (result === 'escaped' || (result as string) === 'won')) this.tycoonSys.recordWin(this.index + 1);
     const bonus = this.currencies.get('obol') ?? 0;   // Obols from Wash lockers and the Back Office (wave 24)
-    const obols = this.quotaMode ? Math.round(this.runObols(result, ending) * this.obolMult) + (ending === 'descend' ? 0 : bonus) : undefined;
+    const stake = this.stakeFx();
+    const obols = this.quotaMode ? Math.round(this.runObols(result, ending) * this.obolMult * stake.obolMult) + (ending === 'descend' ? 0 : bonus) : undefined;
+    const nightNo = this.index + 1;
+    const day = this.dailyDayOf();
+    const kit = this.config.kit ?? 'pauper';
+    const cleared = this.quotaMode && isStakeClear(result, nightNo);
     const summary: RunSummary = {
       mode: this.mode, seed: this.seed, result, floor: this.index + 1, deadlines: this.index + 1, maxWallet: this.maxWallet,
       rounds: this.rounds, biggestWin: this.biggest, durationSec: Math.round(this.elapsed),
@@ -1808,6 +1821,9 @@ class Run implements DebtRun {
       stats: { ...this.stats },
       ...(ending ? { ending } : {}),
       ...(obols !== undefined ? { obols } : {}),
+      // Stakes and the daily tag: the receipt reads them (results.ts); RunSummary has no fields for them yet.
+      ...(this.quotaMode ? { stake: stake.stake } : {}),
+      ...(day !== null ? { daily: { date: day, night: nightNo } } : {}),
       post: this.postMortem(),
     };
     this.emit('run:end', { summary });
@@ -1818,6 +1834,11 @@ class Run implements DebtRun {
         d.resume = null;
         d.history = [...d.history, summary].slice(-20);
         if (banked) d.meta = banked;
+        if (cleared) d.stakeCleared = recordStakeClear(d.stakeCleared, kit, stake.stake);
+        if (day !== null) {
+          const rec: DailyBest = { date: day, seed: this.seed, kit, night: nightNo, obols: obols ?? 0, result };
+          if (dailyBetter(d.dailyBest?.[day], rec)) d.dailyBest = { ...(d.dailyBest ?? {}), [day]: rec };
+        }
       });
       this.save.flush();
     }
@@ -1848,7 +1869,7 @@ class Run implements DebtRun {
   private circuitLive(): boolean { return this.quotaMode && this.rules.timed && this.inWatch(); }
 
   private tiltGrace(machineId: MachineId, mid: InstanceId, q: ModQuery): number {
-    let g = this.mod('x.tilt.grace', machineId, 0, q);
+    let g = this.mod('x.tilt.grace', machineId, 0, q) + this.stakeFx().tiltGrace;
     const first = this.circ.firstPlayed();
     if (first !== null && first !== mid) {
       g -= RED_THREAD_GRACE * (this.charmBox.list(this.selfId).find((c) => c.id === 'red_thread')?.stacks ?? 0);
@@ -1982,6 +2003,8 @@ class Run implements DebtRun {
       const def = registry.get(m.machineId)?.def;
       const cat = def?.category;
       if (cat === undefined || cat === 'system' || cat === 'party') continue;
+      // The duel tables (Hollow Door lords, TALLY rivals) live behind doors and story beats: a Lamp there is unreachable.
+      if (m.machineId === 'lordstable' || m.machineId === 'tallytable') continue;
       if (this.tycoonSys.staffAt(m.instance).length > 0) continue;        // staffed machines never take a Lamp
       const c: LampCandidate = { mid: m.instance, machineId: m.machineId, minBet: def?.minBet ?? 0 };
       if (lampEligible(c, pocket)) cands.push(c);
@@ -1995,7 +2018,7 @@ class Run implements DebtRun {
     const rng = createRng(hashSeed('lamps', this.seed, this.index, this.watch));
     const lamps = this.night() >= LAMP_FIRST_NIGHT;
     const hot = Math.max(0, hotLampCount(this.night()) + Math.round(this.mod('x.lamp.hotCount', RUN_MACHINE, 0)));
-    const cold = coldLampCount(this.night(), Math.round(this.mod('x.lamp.coldCount', RUN_MACHINE, 0)));
+    const cold = coldLampCount(this.night(), Math.round(this.mod('x.lamp.coldCount', RUN_MACHINE, 0)) + this.stakeFx().coldLamps);
     // No candidate can take a Lamp at this pocket, though some readable machine would: the banner says the pocket is too low.
     const pocketShort = lamps && hot + cold > 0 && cands.length === 0 && this.lampCandidates(Number.POSITIVE_INFINITY).length > 0;
     this.circ.startWatch(rng, cands, {
@@ -2019,7 +2042,7 @@ class Run implements DebtRun {
     const holdings = this.tycoonSys.holdings();
     const rate = this.mod('x.tycoon.assessRate', RUN_MACHINE, 0.08);
     let due = quotaFor(this.index, { discount: this.discount, holdings, assessRate: rate, wealth: this.houseWealth });
-    due = Math.round(due * this.mod('quota.mult', RUN_MACHINE, 1));
+    due = Math.round(due * this.mod('quota.mult', RUN_MACHINE, 1) * this.stakeFx().quotaMult);   // stake 2 (×1.08) rides with the quota mods
     due = Math.max(0, Math.round(due + this.mod('quota.add', RUN_MACHINE, 0) + this.loanQuota));
     if (this.index === BASE_RUN_NIGHTS - 1) due = Math.round(due * this.mod('x.quota.night8', RUN_MACHINE, 1));
     if (this.index < this.forgiveUntil) due = 0;   // a Lord's writ forgave this Night (Hollow Door)
@@ -2336,7 +2359,8 @@ class Run implements DebtRun {
       watch: () => (this.nightDone && !this.topside ? 0 : this.watch),
       floor: () => this.floorMachines(),
       open: () => this.shopOpen(),
-      si: () => nightDef(this.index).si,
+      // Stake 1 (×1.10): the Pawn scales its price by SI, so the stake rides on SI (the shelf's 60 % quota ceiling still caps Commons).
+      si: () => nightDef(this.index).si * this.stakeFx().pawnPriceMult,
       quota: () => nightQuota(this.nightDone && !this.topside ? this.index + 1 : this.index),
       held: () => this.charmBox.list(this.selfId).map((s) => s.id),
       canTake: (id) => {
@@ -2346,9 +2370,11 @@ class Run implements DebtRun {
       pegsFree: () => this.pegs() - this.charmBox.pegsUsed(this.selfId),
       wallet: () => this.coins,
       tickets: () => this.tickets,
-      spendTickets: (n) => {
-        if (n < 0 || this.tickets < n) return false;
-        this.tickets -= n;
+      spendTickets: (n, why) => {
+        // Stake 4: each paid Pawn reroll costs one Ticket more (the shelf's rerollCost label does not show it yet).
+        const cost = n + (why === 'pawn:reroll' ? this.stakeFx().rerollTickets : 0);
+        if (cost < 0 || this.tickets < cost) return false;
+        this.tickets -= cost;
         this.notify();
         this.persistSoon();
         return true;
@@ -2454,7 +2480,24 @@ class Run implements DebtRun {
 
   /** The Night's boss (null off boss Nights and outside the debt run). */
   private bossToday(): BossNight | null {
-    return this.quotaMode ? bossFor(this.seed, this.night()) : null;
+    return this.quotaMode ? this.bossOn(this.night()) : null;
+  }
+
+  /** The boss of a Night (1-based): the seed's boss, or the stake-6 boss on Night 5. */
+  private bossOn(night: number): BossNight | null {
+    return bossFor(this.seed, night) ?? stakeBossFor(this.seed, night, this.stakeLevel());
+  }
+
+  /** The stake this run plays (cfg.stake, clamped). */
+  private stakeLevel(): number { return clampStake(this.config.stake); }
+
+  /** Effects of this run's stake (stakes.ts). Read at every place a stake changes a number. */
+  private stakeFx(): StakeEffects { return stakeEffects(this.stakeLevel()); }
+
+  /** The UTC day of a daily run, or null. Kept in the config, so a resumed daily run keeps its day. */
+  private dailyDayOf(): string | null {
+    const c = this.config as RunConfig & { dailyDay?: unknown };
+    return c.daily && isDayKey(c.dailyDay) ? c.dailyDay : null;
   }
 
   /** Registers the Night's boss and zeroes the random event chance on boss Nights. */
@@ -2743,7 +2786,7 @@ class Run implements DebtRun {
   /** Dawn card: names tomorrow's boss (if the Night was paid and a boss follows). */
   private announceNextBoss(): void {
     if (!this.banner || !this.quotaMode || this.debtPaid < this.quota.due) return;
-    const next = bossFor(this.seed, this.night() + 1);
+    const next = this.bossOn(this.night() + 1);
     if (!next) return;
     registerBossStrings();
     const p = { suit: (next.suit ?? '').toUpperCase(), name: t(`event.${next.id}.name`) };

@@ -113,6 +113,8 @@ export const def: MachineDef = {
       swapOut: 'THIS ONE LEAVES  ·  SELL BACK {n}',
       noDesc: 'No description.',
       closedNext: 'Window opens in Mola',
+      windowOpen: 'PAWN WINDOW OPEN',
+      windowClosed: 'PAWN WINDOW CLOSED',
       stArm: '{key} again to buy · {price}',
       stArmSub: 'Second press within {s} s',
       cConfirm: 'CONFIRM',
@@ -163,6 +165,8 @@ export const def: MachineDef = {
       swapOut: 'BU ÇIKAR  ·  GERİ SATIŞ {n}',
       noDesc: 'Açıklama yok.',
       closedNext: "Pencere Mola'da açılır",
+      windowOpen: 'REHİN PENCERESİ AÇIK',
+      windowClosed: 'REHİN PENCERESİ KAPALI',
       stArm: '{key} TEKRAR BAS · {price}',
       stArmSub: '{s} sn içinde ikinci kez bas',
       cConfirm: 'ONAYLA',
@@ -203,6 +207,8 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   private offBlock: (() => void) | null = null;
   private offHint: (() => void) | null = null;
   private readonly onResize = (): void => this.fitPose();
+  /** The window's state at the last tick (null until the first one): a change is the Mola signal (toast and chime). */
+  private pawnWasOpen: boolean | null = null;
 
   protected createModel(kit: KitX): MachineModel<CharmVendorParts> {
     return buildModel(kit, this.modelOpts);
@@ -232,12 +238,23 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       this.swap = null;
       this.toast(this.t('closedNext'), 'warn');
     }
+    this.announceWindow();
     const target = this.open() ? 0 : -SHUTTER_DROP;
     const sh = this.parts.shutter;
     sh.position.y += (target - sh.position.y) * Math.min(1, dt * 6);
     this.idle += dt;
     if (this.armed) { this.armed.left -= dt; if (this.armed.left <= 0) this.armed = null; }
     this.refresh(false);
+  }
+
+  /** The window opened or shut since the last tick: a toast and a chime (the closing chime is lower). The first tick only records the state. */
+  private announceWindow(): void {
+    const now = this.open();
+    const was = this.pawnWasOpen;
+    this.pawnWasOpen = now;
+    if (was === null || now === was) return;
+    this.ctx.ui.toast(this.t(now ? 'windowOpen' : 'windowClosed'), now ? 'good' : 'warn');
+    this.sfx('chime', now ? undefined : { pitch: -4 });
   }
 
   frame(dt: number, t: number): void {

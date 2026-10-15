@@ -588,9 +588,9 @@ export function createMenuState(): AppStateHandler<'menu'> {
           leaving = true;
           // Starting-kit picker (WAVE8 item 6) sits between the burst and the run. Its pick travels as `RunConfig.kit`.
           const seed = hashSeed('run', randomSeed());
-          openKitPicker((kit) => {
-            // Only the kit id travels here; session.ts hands it to createRun, which fills the rest of the defaults.
-            void app.go('ingame', { mode: 'debt', seed, online: false, config: { kit } });
+          openKitPicker((kit, pick) => {
+            // Kit, stake and the daily flag travel here; session.ts hands them to createRun, which fills the rest of the defaults.
+            void app.go('ingame', { mode: 'debt', seed, online: false, config: { kit, stake: pick?.stake, daily: pick?.daily } });
           });
         }
       }

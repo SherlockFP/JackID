@@ -23,3 +23,22 @@
   background: var(--shine, #efd67b); border: 2px solid #000; }
 .kp-start-btn:disabled { opacity: .4; cursor: not-allowed; }
 .kp-start-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* Stakes (stakes.ts): a sticker with the best cleared stake on each card, the chip row, and the daily run toggle. */
+.kp-kit { position: relative; }
+.kp-kit.dim { opacity: .35; }
+.kp-sticker { position: absolute; top: -9px; right: 6px; padding: 2px 5px; font-family: var(--f-head, monospace); font-size: 8px;
+  color: #120c06; background: var(--shine, #efd67b); border: 1px solid #000; transform: rotate(4deg); }
+.kp-stakes { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.kp-stakes-label { margin-right: 6px; font-family: var(--f-head, monospace); font-size: 9px; color: var(--bone, #c5bda5); }
+.kp-stake { width: 32px; height: 32px; font-family: var(--f-head, monospace); font-size: 11px; cursor: pointer; color: var(--ivory, #e6dec5);
+  background: #1d1712; border: 2px solid #3a2e24; box-sizing: border-box; }
+.kp-stake.sel { border-color: var(--shine, #efd67b); background: #2a2016; color: var(--shine, #efd67b); }
+.kp-stake.locked { color: #6a6054; filter: grayscale(1); cursor: not-allowed; border-style: dashed; }
+.kp-stake.fixed { cursor: default; }
+.kp-stake:disabled { opacity: .5; }
+.kp-stake:focus-visible { outline: 2px solid var(--shine, #efd67b); outline-offset: 2px; }
+.kp-stake-info, .kp-daily-info { margin: 8px 0 0; font-size: 16px; line-height: 1.2; color: var(--bone, #c5bda5); }
+.kp-daily-btn { font-family: var(--f-head, monospace); font-size: 10px; padding: 8px 12px; cursor: pointer; color: var(--ivory, #e6dec5);
+  background: #1d1712; border: 2px solid #3a2e24; }
+.kp-daily-btn[aria-pressed="true"] { border-color: var(--shine, #efd67b); color: var(--shine, #efd67b); }
+.kp-daily-btn:focus-visible { outline: 2px solid var(--shine, #efd67b); outline-offset: 2px; }

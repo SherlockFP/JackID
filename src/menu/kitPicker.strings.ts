@@ -3,7 +3,7 @@ export default {
   prefix: 'kitpick.',
   en: {
     'title': 'CHOOSE A KIT',
-    'hint': 'ARROWS choose · ENTER starts · click a kit to select it',
+    'hint': 'ARROWS choose · [ ] stake · ENTER starts · click a kit to select it',
     'start': 'START',
     'obols': 'OBOLS {n}',
     'free': 'FREE',
@@ -25,7 +25,7 @@ export default {
   },
   tr: {
     'title': 'BİR KİT SEÇ',
-    'hint': 'OKLAR seçer · ENTER başlatır · kite tıklayarak da seçebilirsin',
+    'hint': 'OKLAR seçer · [ ] bahis · ENTER başlatır · kite tıklayarak da seçebilirsin',
     'start': 'BAŞLA',
     'obols': 'OBOL {n}',
     'free': 'ÜCRETSİZ',

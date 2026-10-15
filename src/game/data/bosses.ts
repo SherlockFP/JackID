@@ -23,6 +23,10 @@ export const BOSS_POOLS: Readonly<Record<number, readonly BossId[]>> = {
   8: ['glass_night'],
 };
 
+/** Stake 6 (see `game/stakes.ts`): a boss on this Night too, drawn from `BOSS_STAKE_POOL` with its own seed key. */
+export const BOSS_STAKE_NIGHT = 5;
+export const BOSS_STAKE_POOL: readonly BossId[] = ['short_fuse', 'frozen_ledger', 'pennies'];
+
 export interface BossTemplate {
   id: string;
   icon: string;

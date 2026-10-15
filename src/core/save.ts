@@ -7,6 +7,7 @@ import type { Hex, MachineId } from './types';
 import { DEFAULT_SETTINGS, cloneSettings, sanitizeSettings, type Settings } from './settings';
 import type { RunSnapshot, RunSummary } from '@/net/protocol';
 import type { MetaState } from '@/game/types';
+import type { DailyBest } from '@/game/daily';
 import { bus } from './events';
 import { log } from './log';
 import { randomSeed } from './rng';
@@ -35,6 +36,10 @@ export interface SaveData {
   recent: RecentPlayer[];            // last 30 co-players
   /** Lifetime count of Hollow Doors opened (the secret portal, once per run). Optional: older saves have none. */
   hollowSeen?: number;
+  /** Stakes (game/stakes.ts): the highest stake cleared per kit id. Optional: older saves have none. */
+  stakeCleared?: Record<string, number>;
+  /** Daily run (game/daily.ts): the best result per UTC day, `YYYY-MM-DD`. Optional: older saves have none. */
+  dailyBest?: Record<string, DailyBest>;
 }
 
 export interface SaveStore {
@@ -58,6 +63,19 @@ const strArr = (v: unknown, max: number): string[] => (Array.isArray(v) ? v.filt
 function numRecord(v: unknown): Record<string, number> {
   const out: Record<string, number> = {};
   if (v && typeof v === 'object') for (const [k, x] of Object.entries(v as Record<string, unknown>)) if (typeof x === 'number' && isFinite(x)) out[k] = x;
+  return out;
+}
+
+/** Daily bests, kept only when the key is a `YYYY-MM-DD` day and the entry has its numbers. */
+function dailyBestOf(v: unknown): Record<string, DailyBest> {
+  const out: Record<string, DailyBest> = {};
+  if (!v || typeof v !== 'object') return out;
+  for (const [day, e] of Object.entries(v as Record<string, unknown>)) {
+    const x = e as Partial<DailyBest> | null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !x || typeof x !== 'object') continue;
+    if (typeof x.seed !== 'number' || typeof x.night !== 'number' || typeof x.obols !== 'number') continue;
+    out[day] = { date: day, seed: x.seed, kit: typeof x.kit === 'string' ? x.kit : '', night: x.night, obols: x.obols, result: typeof x.result === 'string' ? x.result : '' };
+  }
   return out;
 }
 
@@ -100,6 +118,8 @@ export function migrateSave(raw: unknown): SaveData {
   d.achievements = strArr(r.achievements, 500);
   if (Array.isArray(r.recent)) d.recent = (r.recent as RecentPlayer[]).filter((x) => x && typeof x.cid === 'string').slice(-30);
   if (typeof r.hollowSeen === 'number' && isFinite(r.hollowSeen) && r.hollowSeen >= 0) d.hollowSeen = Math.floor(r.hollowSeen);
+  d.stakeCleared = numRecord(r.stakeCleared);
+  d.dailyBest = dailyBestOf(r.dailyBest);
   return d;
 }
 
