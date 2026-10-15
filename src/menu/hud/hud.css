@@ -181,3 +181,15 @@
 @keyframes hud-hop { 0% { transform: translateY(0); } 40% { transform: translateY(calc(-2 * var(--u))); } 100% { transform: translateY(0); } }
 @keyframes hud-glow { 0% { filter: brightness(1.8); } 100% { filter: none; } }
 @media (prefers-reduced-motion: reduce) { .hud * { animation: none !important; } }
+
+/* Dawn (inGameState.ts adds .dawn-toast to the #ui root while the Night summary toast is up): the toast column starts under the
+   right stack's bottom edge (--hud-rs-b), so the NEXT NIGHT line and the summary never sit on each other. */
+.px-root.dawn-toast .px-toasts { top: calc(var(--hud-rs-b, var(--hud-top-h, calc(52 * var(--u)))) + 6 * var(--u)); }
+
+/* SPOTLIGHT chip (wave 55, in the right stack): .hb is nowrap, so a long chip ran left under the centre plate (the top banner).
+   It wraps inside the right column instead; the column's max-width (above) keeps it clear of the plate. */
+.hud .hud-rs .hb.spotlight { white-space: normal; max-width: 100%; text-align: right; justify-content: flex-end; overflow-wrap: anywhere; }
+
+/* Interact prompt ([E] ...) in the walk view: lifted above the machine's face and its label plate, where it sat on the plate
+   (ui.css puts it at 50% + 12u). The seated view hides it (ui.css .px-root.seated). */
+.px-root:not(.seated) .px-prompt { bottom: calc(50% + 72 * var(--u)); }

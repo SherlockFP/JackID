@@ -78,6 +78,8 @@
 // Also modelled: House Favour (x1.25 / 1.15 / 1.07 on Nights 1-3), the Witching Watch +5 %, the activity float (never bet into the
 // 3 pulls the next Watches need). --no-favour switches Favour off; --trace N prints the first N runs Night by Night.
 //
+// DIRECTOR (house notice cap): the notice share is 1.0 (was 1.2) and one Night's notice raise is capped at 1.6 x the ladder
+// (Night 6 went 576 -> 1300 at 1.2). `--notice-share 1.2 --notice-cap 0` reproduces the table before this change.
 // WAVE 47 (director, late snowball): the ladder steps up to 3x from Night 4 (504, 1510, 4520, 13500 from N5), and HOUSE TAKES NOTICE
 // (schedule.ts houseNoticeQuota): from Night 5 the quota is at least 1.9 x the wealth (pocket + banked) read at the Dawn before, before
 // that Dawn pays. The sim now runs a per-run quota: the table's quota column is the median quota of the runs that reached the Night, and
@@ -196,6 +198,8 @@ const NO_MOOD = args.includes('--no-mood');
 // read at the Dawn before. --notice-share 0 switches it off; --notice-from / --notice-share try other values.
 const HN_FROM = Number(argVal('--notice-from', SCH.HOUSE_NOTICE_FROM));
 const HN_SHARE = Number(argVal('--notice-share', SCH.HOUSE_NOTICE_SHARE));
+// the notice raise is capped at HN_CAP x the ladder value of the Night (director: 1.6). --notice-cap 0 switches the cap off.
+const HN_CAP = Number(argVal('--notice-cap', SCH.HOUSE_NOTICE_CAP));
 // per bot: the quota each Night started with (all runs that reached it), and per run the quota and pocket of each paid Night
 const QSEEN = Array.from({ length: 8 }, () => []);
 const CHD = await load('src/game/data/charms.ts');
@@ -714,7 +718,7 @@ function playRun(bot, runIdx) {
     if (idx + 1 < SCH.BASE_RUN_NIGHTS && !NO_FLOAT) { const top = ECO.houseFloatTopUp(S.pocket, idx + 1); S.pocket += top; FLOAT_PAID[idx + 1] += top; }
     // Dawn visit: the Pawn shows the next Night's stock (priced at this Night's SI).
     if (idx + 1 < SCH.BASE_RUN_NIGHTS) {
-      nextQuota = SCH.houseNoticeQuota(idx + 2, dueOf(NIGHTS[idx + 1]), wealthAtDawn, HN_SHARE, HN_FROM);
+      nextQuota = SCH.houseNoticeQuota(idx + 2, dueOf(NIGHTS[idx + 1]), wealthAtDawn, HN_SHARE, HN_FROM, HN_CAP);
       S.shopNight = idx + 1; S.shopWatch = 0; shop(S, bot, nextQuota, hum.rng);
     }
   }

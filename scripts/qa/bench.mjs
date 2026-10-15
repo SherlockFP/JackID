@@ -183,6 +183,8 @@ export function parseRunSteps(text) {
 
 /** The start config from the kit/stake/daily steps (applied at run start, not steps), or null when there are none. */
 const START_KINDS = new Set(['kit', 'stake', 'daily']);
+/** Steps that only read or wait: they do not change the Night, so auto:night's next-step look skips them. */
+const READ_ONLY_KINDS = new Set(['state', 'shot', 'events', 'wait', 'banner']);
 export function startSpecOf(parsed) {
   const cfg = parsed.filter((s) => START_KINDS.has(s.kind));
   if (!cfg.length) return null;
@@ -390,12 +392,18 @@ function noteRefusal(rec, before, now) {
 }
 
 /**
- * Page JS helper: the watch tithe, the house cut the owned machines have paid tonight (run.nightLedger().cut, paid at each Watch
- * settle, see run.ts payHouseCut). Null when the build has no ledger. Read into the state record as `tithe`.
+ * Page JS helpers: `houseCutOf` is the house cut the owned machines have paid tonight (run.nightLedger().cut, paid at each Watch
+ * settle, see run.ts payHouseCut), null when the build has no ledger; it is read into the state record as `houseCut`.
+ * `watchTitheOf` is the Watch tithe (run.watchTithe(): { on, target, earned, met, shortfall }), null when the build has none;
+ * it is read into the state record as `tithe`.
  */
-const TITHE_FN_JS = `function titheOf(r) {
+const TITHE_FN_JS = `function houseCutOf(r) {
   const l = typeof r.nightLedger === 'function' ? r.nightLedger() : null;
   return l && Number.isFinite(l.cut) ? l.cut : null;
+}
+function watchTitheOf(r) {
+  const t = typeof r.watchTithe === 'function' ? r.watchTithe() : null;
+  return t ? { on: t.on === true, target: t.target, earned: t.earned, met: t.met === true, shortfall: t.shortfall } : null;
 }`;
 
 /** The Dawn projection body (uses `r`): the bank at Dawn if the Night plays on, the gap to the quota, the float to keep. */
@@ -457,7 +465,7 @@ const NIGHT_CARD_OFFER_JS = `(async () => {
   });
   // The Dawn projection (the same read as the state record's dawn): met says the bank covers the quota at Dawn (the ahead/behind switch).
   const dawn = await (async () => { ${DAWN_BODY} })();
-  return { missing: false, night: o.night, have: b.pocket + b.balance, quotaBase, cards, dawn, tithe: titheOf(r) };
+  return { missing: false, night: o.night, have: b.pocket + b.balance, quotaBase, cards, dawn, houseCut: houseCutOf(r) };
 })()`;
 
 /** Page JS: takes the offered card `id` (run.pickNightCard takes the id, not the index). Resolves to true when the run accepts it. */
@@ -583,7 +591,8 @@ const RUN_STATE_JS = `(async () => {
     starterOffer: r.starterDraft()?.candidates.map((d) => d.id) ?? null, starterLeft: r.starterDraft()?.left ?? null,
     charms: r.charms().map((c) => (c.stacks > 1 ? c.id + " x" + c.stacks : c.id)),
     spotlight: spotlightOf(r),                     // Machine of the Night: { machineId, night, plays, progress }, or null
-    tithe: titheOf(r),                             // the watch tithe: the house cut paid tonight so far (run.nightLedger().cut), or null
+    tithe: watchTitheOf(r),                        // the Watch tithe (run.watchTithe()): { on, target, earned, met, shortfall }, or null
+    houseCut: houseCutOf(r),                       // the house cut paid tonight so far (run.nightLedger().cut), or null
     dawn: await (async () => { ${DAWN_BODY} })(),  // the Dawn projection the deposits aim at (pace.ts dawnPlan)
   };
 })()`;
@@ -706,8 +715,26 @@ const AUTO_MAX_MS = 15 * 60_000;   // auto:night stops after this much wall time
 const AUTO_MAX_LOOPS = 4000;
 const AUTO_LEVER_FAILS = 6;        // lever refused this many times in a row: the Night cannot move on
 
-/** Reads the debt-run state (RUN_STATE_JS). */
-const readState = (ctx) => evalJson(ctx.cdp, RUN_STATE_JS);
+/** How long the first Night 1 read waits for the Starter Draft to open (its timer is slow in a headless run). */
+const STARTER_WAIT_MS = 6000;
+
+/**
+ * Reads the debt-run state (RUN_STATE_JS). The Starter Draft opens a moment after the run starts, so on Night 1 with no charm
+ * yet, the first read waits (once per run, up to STARTER_WAIT_MS) until `starterOffer` is non-null. A later read with the
+ * draft taken (or no draft on this build) does not wait; a draft that never opens reads null after the wait.
+ */
+async function readState(ctx) {
+  let st = await evalJson(ctx.cdp, RUN_STATE_JS);
+  if (!ctx.starterWaited && st.starterOffer == null && !st.over && st.night === 1 && (st.charms ?? []).length === 0) {
+    ctx.starterWaited = true;
+    const t0 = Date.now();
+    while (st.starterOffer == null && !st.over && Date.now() - t0 < STARTER_WAIT_MS) {
+      await sleep(200);
+      st = await evalJson(ctx.cdp, RUN_STATE_JS);
+    }
+  }
+  return st;
+}
 
 const seatedIs = (ctx, want, ms) => waitFor(
   async () => (await evaluate(ctx.cdp, 'window.jackid.app.player?.seat != null')) === want, ms, want ? 'a seat' : 'standing up');
@@ -866,11 +893,13 @@ const evText = (ev) => (ev ? `${ev.id} (${Math.ceil(ev.leftS)} s${ev.pulls == nu
 
 /** One per-Watch line: pocket, bank, quota and the floor event. Logged, and kept as an `auto: true` record in run.steps. */
 function watchRec(ctx, st, ev) {
+  const t = st.tithe ?? null;
+  const tithe = t ? (t.on ? `${t.earned}/${t.target}${t.met ? ' met' : ` short ${t.shortfall}`}` : 'off') : null;
   ctx.run.steps.push({
     step: `watch ${st.night}-${st.watch}`, ok: true, auto: true, night: st.night, watch: st.watch, pocket: st.pocket,
-    bank: st.bank, quotaDue: st.quotaDue, quotaLeft: st.quotaLeft, tithe: st.tithe ?? null, event: ev?.id ?? null,
+    bank: st.bank, quotaDue: st.quotaDue, quotaLeft: st.quotaLeft, tithe: t, houseCut: st.houseCut ?? null, event: ev?.id ?? null,
   });
-  log(`watch N${st.night} W${st.watch}: pocket ${st.pocket}, bank ${st.bank}, quota due ${st.quotaDue} left ${st.quotaLeft}, tithe ${st.tithe ?? '-'}, event ${evText(ev)}`);
+  log(`watch N${st.night} W${st.watch}: pocket ${st.pocket}, bank ${st.bank}, quota due ${st.quotaDue} left ${st.quotaLeft}, tithe ${tithe ?? '-'}, house cut ${st.houseCut ?? '-'}, event ${evText(ev)}`);
 }
 
 /**
@@ -1272,7 +1301,9 @@ async function driveRun(ctx, steps) {
       log(`run over: skipped ${skipped.length} remaining step(s) (${skipped.join('; ')})`);
       break;
     }
-    ctx.next = steps[i + 1] ?? null;   // auto:night looks here: a following nightcard step picks the Dawn offer, not the bot
+    // auto:night looks here: a following nightcard step picks the Dawn offer, not the bot. Read-only steps (state, shot, events,
+    // wait, banner) between them do not count, so `auto:night;state;nightcard:best` still hands the offer to the step.
+    ctx.next = steps.slice(i + 1).find((x) => !READ_ONLY_KINDS.has(x.kind)) ?? null;
     await exec(ctx, steps[i]);
     if (ctx.res.reloads) { ctx.run.aborted = `the page reloaded after "${steps[i].text}" (the run is invalid, see viteEvents)`; break; }
   }

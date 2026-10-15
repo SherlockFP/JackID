@@ -192,11 +192,17 @@ export function assessmentFor(index: number, holdings: number, rate = 0.08): num
  * quota is its ladder value (288, the 2x cap), so the late Nights are tuned by the share alone. Human bot with the Watch tithe,
  * 2000 runs, seed 20261013: reach N1 94, N2 82, N3 60, N4 44, N5 37, N6 28, N7 24, N8 16 %.
  */
+/**
+ * Director (house notice cap): the share is 1.0 (was 1.2). Night 6 went 576 -> 1300 (2.25x) at 1.2, so one notice raise may not
+ * exceed HOUSE_NOTICE_CAP x the ladder value of that Night (1.6x). `cap` 0 switches the cap off (the sim's --notice-cap 0).
+ */
 export const HOUSE_NOTICE_FROM = 6;
-export const HOUSE_NOTICE_SHARE = 1.2;
-export function houseNoticeQuota(no: number, ladderQuota: number, wealth: number, share = HOUSE_NOTICE_SHARE, from = HOUSE_NOTICE_FROM): number {
+export const HOUSE_NOTICE_SHARE = 1.0;
+export const HOUSE_NOTICE_CAP = 2.2;   // director: 1.6 left late survivors 10-24x richer than the quota; 2.2 keeps the 1300-style cliff out
+export function houseNoticeQuota(no: number, ladderQuota: number, wealth: number, share = HOUSE_NOTICE_SHARE, from = HOUSE_NOTICE_FROM, cap = HOUSE_NOTICE_CAP): number {
   if (share <= 0 || no < from || wealth <= 0) return ladderQuota;
-  return Math.max(ladderQuota, sig(share * wealth, 3));
+  const floor = sig(share * wealth, 3);
+  return Math.max(ladderQuota, cap > 0 ? Math.min(floor, sig(cap * ladderQuota, 3)) : floor);
 }
 /**
  * Largest allowed step of the ladder into a Night (quota / quota of the Night before). 2x up to Night 3, 3x from Night 4 (wave 47):

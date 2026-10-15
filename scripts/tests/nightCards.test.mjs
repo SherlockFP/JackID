@@ -53,13 +53,13 @@ test('the card face shows the concrete result for its Night (N2 quota 36): RUSH 
   assert.deepEqual(pv('double_down'), [{ key: 'quota', vars: { from: 36, to: 54 } }, { key: 'payout', vars: { x: 1.3 } }]);
   assert.deepEqual(pv('lean_night'), [{ key: 'pulls', vars: { from: 7, to: 5 } }, { key: 'payout', vars: { x: 1.2 } }]);
   assert.deepEqual(pv('high_table'), [{ key: 'payout', vars: { x: 1.25 } }, { key: 'minBet', vars: { x: 2 } }]);
-  assert.deepEqual(pv('quiet_night'), [{ key: 'interest', vars: { from: 50, to: 55 } }, { key: 'noFloor', vars: {} }]);
-  assert.deepEqual(pv('bankers_night'), [{ key: 'interest', vars: { from: 50, to: 60 } }, { key: 'pawnShut', vars: {} }]);
+  assert.deepEqual(pv('quiet_night'), [{ key: 'payout', vars: { x: 0.95 } }, { key: 'interest', vars: { from: 50, to: 55 } }, { key: 'noFloor', vars: {} }]);
+  assert.deepEqual(pv('bankers_night'), [{ key: 'payout', vars: { x: 0.9 } }, { key: 'interest', vars: { from: 50, to: 55 } }, { key: 'pawnShut', vars: {} }]);
   assert.deepEqual(pv('payday_night'), [{ key: 'quota', vars: { from: 36, to: 41 } }, { key: 'flat', vars: { n: 10 } }]);
-  assert.deepEqual(pv('grace'), [{ key: 'grace', vars: { from: 4, to: 7 } }]);
-  assert.deepEqual(pv('charm_fair'), [{ key: 'shelves', vars: { n: 2 } }, { key: 'discount', vars: { pct: 20 } }]);
-  assert.deepEqual(pv('lamp_festival'), [{ key: 'hot', vars: { from: 1, to: 2 } }, { key: 'cold', vars: { from: 1, to: 0 } }]);
-  assert.deepEqual(pv('lamp_festival', 0), [{ key: 'hot', vars: { from: 1, to: 2 } }], 'no COLD lamp to remove on Night 1');
+  assert.deepEqual(pv('grace'), [{ key: 'payout', vars: { x: 0.95 } }, { key: 'grace', vars: { from: 4, to: 7 } }]);
+  assert.deepEqual(pv('charm_fair'), [{ key: 'quota', vars: { from: 36, to: 40 } }, { key: 'shelves', vars: { n: 2 } }, { key: 'discount', vars: { pct: 20 } }]);
+  assert.deepEqual(pv('lamp_festival'), [{ key: 'quota', vars: { from: 36, to: 40 } }, { key: 'hot', vars: { from: 1, to: 2 } }, { key: 'cold', vars: { from: 1, to: 0 } }]);
+  assert.deepEqual(pv('lamp_festival', 0), [{ key: 'quota', vars: { from: 24, to: 26 } }, { key: 'hot', vars: { from: 1, to: 2 } }], 'no COLD lamp to remove on Night 1');
   for (const d of NC.NIGHT_CARDS) {
     for (let idx = 0; idx < 8; idx++) {
       const lines = pv(d.id, idx);
@@ -156,12 +156,28 @@ test('each card folds its declared effect through the pipeline', () => {
   assert.equal(foldHook([card('lean_night')], 'x.run.pullsAdd', 7), 5, 'LEAN: 2 fewer pulls');
   assert.equal(foldHook([card('high_table')], 'payout.mult', 1), 1.25);
   assert.equal(foldHook([card('quiet_night')], 'x.econ.interestAdd', 0), 0.05, 'QUIET: +5 points');
-  assert.equal(foldHook([card('bankers_night')], 'x.econ.interestAdd', 0), 0.1, 'BANKER: +10 points');
+  assert.equal(foldHook([card('quiet_night')], 'payout.mult', 1), 0.95, 'QUIET: payouts x0.95 (its cost)');
+  assert.equal(foldHook([card('bankers_night')], 'x.econ.interestAdd', 0), 0.05, 'BANKER: +5 points (director: not +10)');
+  assert.equal(foldHook([card('bankers_night')], 'payout.mult', 1), 0.9, 'BANKER: payouts x0.9 (its cost)');
+  assert.equal(foldHook([card('charm_fair')], 'quota.mult', 1), 1.1, 'CHARM FAIR: quota x1.1 (its cost)');
+  assert.equal(foldHook([card('lamp_festival')], 'quota.mult', 1), 1.1, 'LAMP FESTIVAL: quota x1.1 (its cost)');
+  assert.equal(foldHook([card('grace')], 'payout.mult', 1), 0.95, 'GRACE: payouts x0.95 (its cost)');
   assert.equal(foldHook([card('charm_fair')], 'x.pawn.slots', 0), 2, 'CHARM FAIR: +2 shelves');
   assert.equal(foldHook([card('charm_fair')], 'shop.discount', 0), 0.2, 'CHARM FAIR: -20 % prices');
   assert.equal(foldHook([card('payday_night')], 'payout.flat', 0), 10);
   assert.equal(foldHook([card('payday_night')], 'quota.mult', 1), 1.15);
   assert.equal(foldHook([card('grace')], 'x.tilt.grace', 0), 3, 'GRACE: +3 tilt grace');
+});
+
+test('every card has a real cost beside its boon: a quota or payout up, a payout down, a Watch, pull or bet floor cost, interest down or the Pawn shut', () => {
+  const costOf = (d) => {
+    const fx = NC.nightCardFx(d.id);
+    return d.effects.some((e) => (e.hook === 'quota.mult' && e.value > 1) || (e.hook === 'payout.mult' && e.value < 1)
+      || (e.hook === 'payout.mult' && e.value > 1) || (e.hook === 'x.run.pullsAdd' && e.value < 0)
+      || (e.hook === 'x.econ.interestAdd' && e.value < 0))
+      || fx.watchAdd < 0 || fx.minBetMult > 1 || fx.pawnClosed;
+  };
+  for (const d of NC.NIGHT_CARDS) assert.ok(costOf(d), `${d.id} has a cost`);
 });
 
 test('the switches of each card are the ones the run reads', () => {

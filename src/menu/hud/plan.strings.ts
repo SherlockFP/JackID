@@ -12,7 +12,7 @@ export default {
     'next': 'NEXT WATCH {w}/{n}',
     'night': 'NEXT NIGHT {q} (×{k})',
     'paid': 'PAID · SURPLUS {n}',
-    'tithe': 'TITHE {e}/{n}',
+    'tithe': 'WATCH TITHE {e}/{n}',
   },
   tr: {
     'bank': 'ŞAFAK {p}/{q}',
@@ -21,6 +21,6 @@ export default {
     'next': 'SONRAKİ V{w}/{n}',
     'night': 'SONRAKİ GECE {q} (×{k})',
     'paid': 'ÖDENDİ · FAZLA {n}',
-    'tithe': 'ÖŞÜR {e}/{n}',
+    'tithe': 'NÖBET ÖŞÜR {e}/{n}',
   },
 };

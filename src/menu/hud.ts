@@ -86,6 +86,13 @@ export function createHud(): Hud {
   const on = <K extends keyof GameEvents>(type: K, fn: (p: GameEvents[K]) => void): void => {
     disposers.push(bus.on(type, fn));
   };
+  // Watch tithe (wave 58): the Settle's result as a toast in play (src/menu/hud/tithe.strings.ts). run.ts emits this event just
+  // before its own banner with the same news, so the toast claims the news first and the banner's repeat is dropped.
+  on('run:tithe', (e) => {
+    if (e.pid !== self()) return;
+    if (e.state === 'met') ui().toast(t('hud.tithe.met', { n: e.tickets }), 'good', 4);
+    else ui().toast(t('hud.tithe.missed', { n: fmtCoins(e.shortfall) }), 'bad', 4.5);
+  });
   // The seat HUD's STAKE / POCKET readout reads the local player and pocket from the run while this HUD is up.
   SeatHud.stakeSource = () => {
     const r = app.run;
@@ -592,8 +599,8 @@ export function createHud(): Hud {
     setCls(planTithe, 'hidden', !titheOn);
     if (titheOn) {
       setText(planTithe, t('hud.plan.tithe', { n: titheN, e: titheE }));
-      // Green once the Watches have paid the tithe in play; the plan's own text colour before that.
-      planTithe.style.color = titheE >= titheN ? 'var(--green)' : '';
+      // Green once the Watch has paid the tithe in play; amber while it is still a target (the plan's own colour read as a note).
+      planTithe.style.color = titheE >= titheN ? 'var(--green)' : '#ffd34a';
     }
     setCls(plan, 'ok', p.met);
     setCls(plan, 'gap', !p.met);

@@ -1753,8 +1753,7 @@ class Run implements DebtRun {
     }
     if (r.tickets > 0) this.earn('ticket', r.tickets, 'tithe');
     this.emit('run:tithe', { pid: this.selfId, state: r.state, watch, target: r.target, earned: r.earned, shortfall: r.shortfall, tickets: r.tickets });
-    if (r.state === 'met') this.banner?.(t('tithe.met', { tickets: r.tickets }), { color: '#ffd34a', hold: 3, size: 16 });
-    else this.banner?.(t('tithe.missed', { n: r.shortfall }), { color: '#ff7a5a', hold: 4, size: 16 });
+    // The HUD shows the met / missed toast from `run:tithe` (menu/hud.ts); no second banner here.
   }
 
   // ─â”€ tycoon: owned machines (wave 28) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─

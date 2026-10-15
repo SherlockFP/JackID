@@ -57,18 +57,22 @@ export interface NightCardDef {
   fx: Partial<NightCardFx>;
 }
 
-/** The deck. Ten cards, each with a distinct decision. Order is the data order (the seeded offer shuffles it). */
+/**
+ * The deck. Ten cards, each with a distinct decision. Every card carries a real cost (a quota or payout line, or a Watch, a pull
+ * or a bet floor) next to its boon; the tone tags the trade. BANKER'S NIGHT: interest +5 pts, the Pawn shut, payouts x0.9 (director:
+ * it was taken in 4 of 5 Dawns at +10 pts with no cost). Order is the data order (the seeded offer shuffles it).
+ */
 export const NIGHT_CARDS: readonly NightCardDef[] = [
   { id: 'rush_night', tone: 'mixed', effects: [{ hook: 'quota.mult', op: 'mult', value: 0.75 }], fx: { watchAdd: -1 } },
   { id: 'double_down', tone: 'risk', effects: [{ hook: 'quota.mult', op: 'mult', value: 1.5 }, { hook: 'payout.mult', op: 'mult', value: 1.3 }], fx: {} },
-  { id: 'quiet_night', tone: 'boon', effects: [{ hook: 'x.econ.interestAdd', op: 'add', value: 0.05 }], fx: { noFloorEvents: true } },
-  { id: 'lamp_festival', tone: 'mixed', effects: [], fx: { hotLamps: 2, noColdLamps: true } },
+  { id: 'quiet_night', tone: 'mixed', effects: [{ hook: 'x.econ.interestAdd', op: 'add', value: 0.05 }, { hook: 'payout.mult', op: 'mult', value: 0.95 }], fx: { noFloorEvents: true } },
+  { id: 'lamp_festival', tone: 'mixed', effects: [{ hook: 'quota.mult', op: 'mult', value: 1.1 }], fx: { hotLamps: 2, noColdLamps: true } },
   { id: 'lean_night', tone: 'risk', effects: [{ hook: 'x.run.pullsAdd', op: 'add', value: -2 }, { hook: 'payout.mult', op: 'mult', value: 1.2 }], fx: {} },
   { id: 'high_table', tone: 'risk', effects: [{ hook: 'payout.mult', op: 'mult', value: 1.25 }], fx: { minBetMult: 2 } },
-  { id: 'bankers_night', tone: 'mixed', effects: [{ hook: 'x.econ.interestAdd', op: 'add', value: 0.1 }], fx: { pawnClosed: true } },
-  { id: 'charm_fair', tone: 'boon', effects: [{ hook: 'x.pawn.slots', op: 'add', value: 2 }, { hook: 'shop.discount', op: 'add', value: 0.2 }], fx: {} },
+  { id: 'bankers_night', tone: 'mixed', effects: [{ hook: 'x.econ.interestAdd', op: 'add', value: 0.05 }, { hook: 'payout.mult', op: 'mult', value: 0.9 }], fx: { pawnClosed: true } },
+  { id: 'charm_fair', tone: 'boon', effects: [{ hook: 'x.pawn.slots', op: 'add', value: 2 }, { hook: 'shop.discount', op: 'add', value: 0.2 }, { hook: 'quota.mult', op: 'mult', value: 1.1 }], fx: {} },
   { id: 'payday_night', tone: 'mixed', effects: [{ hook: 'payout.flat', op: 'add', value: 10 }, { hook: 'quota.mult', op: 'mult', value: 1.15 }], fx: {} },
-  { id: 'grace', tone: 'boon', effects: [{ hook: 'x.tilt.grace', op: 'add', value: 3 }], fx: {} },
+  { id: 'grace', tone: 'mixed', effects: [{ hook: 'x.tilt.grace', op: 'add', value: 3 }, { hook: 'payout.mult', op: 'mult', value: 0.95 }], fx: {} },
 ];
 
 const BY_ID: ReadonlyMap<string, NightCardDef> = new Map(NIGHT_CARDS.map((d) => [d.id, d]));

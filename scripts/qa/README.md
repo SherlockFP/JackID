@@ -169,7 +169,7 @@ Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` 
 | `banner:<ms>` | polls the page for the live event's announce line (up to `ms`), records `waited`, and shoots `banner-seen.png` when it shows. On a miss it records what `.t-banner` holds |
 | `shot:<name>` | screenshot to `<shots>/<name>.png` (needs `--shots`) |
 | `wait:<ms>` | pauses |
-| `state` | records the state in `run.states` and logs it: `phase`, `night` (1-based), `watch` (1-based), `pocket`, `bank` (the balance), `withdrawable`, `quotaDue`, `quotaLeft`, `pullsLeft`, `pulls`, `minBet`, `nightDone`, `topside`, `over`, `seated` (the machine instance id or null), `intro` (the cutscene id or null), `starterOffer` (the three charm ids while the Starter Draft is open, else null), `starterLeft` (its timer, sim s), `charms` (the owned charm ids, `id xN` when stacked), `lamps` (`{ hot, cold }`: each lit Lamp as `{ instance, machineId, zone }`, the zone of its slot; empty between Watches), `event` (the live floor event as `{ id, leftS, pulls }`, or null), `nightCard` (the Night Card picked for this Night, or null), `nightCardOffer` (the offered Night Card ids while the offer is open, else null), `tithe` (the watch tithe: the house cut paid tonight so far, `run.nightLedger().cut`, or null) |
+| `state` | records the state in `run.states` and logs it: `phase`, `night` (1-based), `watch` (1-based), `pocket`, `bank` (the balance), `withdrawable`, `quotaDue`, `quotaLeft`, `pullsLeft`, `pulls`, `minBet`, `nightDone`, `topside`, `over`, `seated` (the machine instance id or null), `intro` (the cutscene id or null), `starterOffer` (the three charm ids while the Starter Draft is open, else null), `starterLeft` (its timer, sim s), `charms` (the owned charm ids, `id xN` when stacked), `lamps` (`{ hot, cold }`: each lit Lamp as `{ instance, machineId, zone }`, the zone of its slot; empty between Watches), `event` (the live floor event as `{ id, leftS, pulls }`, or null), `nightCard` (the Night Card picked for this Night, or null), `nightCardOffer` (the offered Night Card ids while the offer is open, else null), `tithe` (the Watch tithe, `run.watchTithe()`: `{ on, target, earned, met, shortfall }`, or null) and `houseCut` (the house cut paid tonight so far, `run.nightLedger().cut`, or null) |
 | `kit:<id>` | start config, not a step: the starting kit (`kits.ts` id, e.g. `kit:rotator`). Applied when the run starts, through the same `config` the kit picker passes to `app.go('ingame', …)` (`src/menu/menuState.ts` → `session.ts` → `createRun`). Unknown kit: the run is not started (error) |
 | `stake:<n>` | start config, not a step: the stake 0-7 (`STAKE_MAX`), applied the same way. The picker's unlock rules are not enforced (the QA profile is fresh, so every stake above 0 would be locked); the start record's `gated.kit` / `gated.stake` say whether the picker would have held it back |
 | `daily` | start config, not a step: the day's run, as the picker's daily toggle (today's kit, stake 3, the UTC day's seed; `run.ts` fixes the seed and kit). Cannot be combined with `kit:` or `stake:` |
@@ -196,11 +196,11 @@ Practical notes: `goto` needs the machine on the floor (the `coinflip`, `hilo`, 
 - **Push-your-luck**: coinflip flips (`Space`); after a win it rides once (`KeyR`) while the pot is under x3.6, then collects at x3.6 (`KeyQ`). bigone spins (`Space`); a line win leaves a chase offer, which it takes (`KeyG`) only at 1 in 3 or better (`CHASE_P` from `bigone/rules.ts`), else collects (`Space`). The other recipes are the key sequences of `BOT_RECIPE` (hilo, scratch) or `BOT_RECIPE_GENERIC` (one spin, then `KeyQ`).
 - **Deposit**: once per Watch, after the bets. The amount is the gap to the Dawn projection (`dawnPlan`, pace.ts: the bank at Dawn against the quota) or 40 % of the pocket when that is more, never below the float (`run.depositFloor()`). A refusal retries at half.
 - **Shop**: in the Intermission, the Pawn Window shelf that is clean (not cursed, no swap), costs at most 30 % of the pocket, and either completes an archetype set or shares an archetype with a held charm (`charms/sets.ts`). A set completion comes first, then the cheapest. Buys with `pawn:buy`, then `stand`.
-- **Night Card**: a paid Dawn opens a two-card offer (`nightCardOffer`, the lever waits on it). The bot stops there (`end: "night card"`) when the next step in the list is `nightcard:<n|best>`, which then picks. With no such next step it picks the best card itself (`nightcard:best`, the highest expected value, see **Night Card choice**). The stop record carries the offer: `offer` (the ids), `cards` (with their preview lines) and `have` (pocket + bank). An offer open at a later step is handled the same way.
+- **Night Card**: a paid Dawn opens a two-card offer (`nightCardOffer`, the lever waits on it). The bot stops there (`end: "night card"`) when the next step in the list is `nightcard:<n|best>`, which then picks. Read-only steps (`state`, `shot`, `events`, `wait`, `banner`) between the two do not count, so `auto:night;state;nightcard:best` hands over the offer too. With no such next step it picks the best card itself (`nightcard:best`, the highest expected value, see **Night Card choice**). The stop record carries the offer: `offer` (the ids), `cards` (with their preview lines) and `have` (pocket + bank). An offer open at a later step is handled the same way.
 - **Lever**: starts the Watch (`lever`); after a paid Night it opens the floor.
 - **Withdraw**: a pocket below the cheapest bet pulls the whole bank back out first.
 - **Bell**: rings the Bell (`bell`) once the Watch's bets are placed, after `stand`. Unused pulls keep the rebate. A Watch whose pulls run out closes by itself.
-- **Per-Watch line**: once a Watch reaches its Bell (after its deposit), it logs `watch N<night> W<watch>: pocket, bank, quota due/left, event` to stderr and adds a record `{ step: "watch N-W", auto: true, pocket, bank, quotaDue, quotaLeft, tithe, event }` to `run.steps`. `tithe` is the house cut so far tonight, `event` the floor event id or null.
+- **Per-Watch line**: once a Watch reaches its Bell (after its deposit), it logs `watch N<night> W<watch>: pocket, bank, quota due/left, event` to stderr and adds a record `{ step: "watch N-W", auto: true, pocket, bank, quotaDue, quotaLeft, tithe, houseCut, event }` to `run.steps`. `tithe` is the Watch tithe (`run.watchTithe()`, see the state record), `houseCut` the house cut so far tonight, `event` the floor event id or null.
 
 The bet record is `bot:bet:<machine>` with `instance`, `bold`, `stake` (`bold` or `min`) and `bets` (the stake attempts). `pulls` is `[before, after]`; `ok` is whether a pull was spent. The `state` record adds `spotlight` (`{ machineId, night, plays, progress }` or null), `lamps` (the lit Hot and Cold Lamps) and `dawn` (`{ due, balance, settles, projected, gap, met, float }`, the Dawn projection).
 
@@ -208,7 +208,7 @@ The bot keeps its per-Watch bookkeeping on the run, so a bot step split by `auto
 
 ### Starter Draft and floor events: a worked check
 
-The Starter Draft opens before the first pull of Night 1 and holds the Bell until a card is taken. Pick card 2 and check the charm:
+The Starter Draft opens before the first pull of Night 1 and holds the Bell until a card is taken. The first state read on Night 1 with no charm yet waits (once per run, up to 6 s) until `starterOffer` is non-null, so an early `state` does not read a draft that has not opened yet. Pick card 2 and check the charm:
 
 ```
 node scripts/qa/bench.mjs --run "shot:starter-offer;play:Digit2;wait:400;state;shot:starter-picked" --seed 1 --shots <dir>
@@ -252,8 +252,9 @@ A tie keeps card 1. The record keeps `best` (1 or 2), `mode`, `why` (the reason 
 and each card's `ev` and `payoutX`. The proxies (0.25, 4 wins, the weights) are QA choices, not game numbers. Read the printed
 lines before trusting the pick; it is a bot choice for QA, not a strategy.
 
-The state record's `tithe` is the watch tithe so far tonight: the house cut the owned machines have paid at each Watch settle
-(`run.nightLedger().cut`), or null on a build without a ledger. The per-Watch line and record carry it too.
+The state record's `tithe` is the Watch tithe (`run.watchTithe()`: `{ on, target, earned, met, shortfall }`, `on` false outside a
+tithe Watch), and `houseCut` is the house cut the owned machines have paid tonight at each Watch settle (`run.nightLedger().cut`).
+Either is null on a build without that API. The per-Watch line and record carry both.
 
 ## Intro skip
 

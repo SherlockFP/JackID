@@ -16,18 +16,21 @@ import { archetypeOf } from './draft';
 const PANEL = 'starter-draft';
 /** Keys that take a card, by card index. */
 const KEYS = ['1', '2', '3'];
+/** A ui banner (ui.ts `.px-bw` in the banner layer) is on screen: the title card of the Night, read from the DOM (ui.ts keeps no getter). */
+const titleCardUp = (): boolean => typeof document !== 'undefined' && document.querySelector('.px-bwl .px-bw') !== null;
 
 export function mountDraftUi(run: DebtRun): () => void {
   const offs: Unsub[] = [];
   // Every Settle's interest is a coin sound (the bank's work, heard as well as read).
   offs.push(bus.on('run:interest', (e) => { if (e.pid === run.selfId) uiSfx('coin', 0.8); }));
   offs.push(bus.on('run:draft', (e) => { if (e.pid === run.selfId) app.ui.closePanel(PANEL); }));
-  // The offer waits for the opening cutscenes (intro, Collector) to finish, then a short beat, so it never covers them.
+  // The offer waits for the opening cutscenes (intro, Collector) and the Night's title card ("1. GECE", a ui banner) to finish,
+  // then a short beat, so it never covers them and the card never sits on the heading.
   let quiet = 0;
   let done = false;
   addTicker((dt) => {
     if (done) return false;
-    if (app.cutscene.playing) { quiet = 0; return true; }
+    if (app.cutscene.playing || titleCardUp()) { quiet = 0; return true; }
     quiet += dt;
     if (quiet < 0.6) return true;
     done = true;

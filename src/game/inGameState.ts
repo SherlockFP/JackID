@@ -204,6 +204,10 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       n: L.night, carry: Math.round(L.carried), float: Math.round(L.float), cut: Math.round(L.cut),
       tickets: Math.round(L.tickets), int: Math.round(L.interest),
     });
+    // Dawn: the summary toast hangs under the right stack (the NEXT NIGHT line sits there), not on top of it (hud.css `.dawn-toast`).
+    const root = (app.ui as UIOverlayX).hudLayer.parentElement;
+    root?.classList.add('dawn-toast');
+    app.timers.ui.after(SUMMARY_TOAST_S, () => root?.classList.remove('dawn-toast'));
     (app.ui as UIOverlayX).toast(text, 'good', SUMMARY_TOAST_S);
   };
 
