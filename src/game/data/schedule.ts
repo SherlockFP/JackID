@@ -227,10 +227,12 @@ export function quotaFor(index: number, o: { discount?: number; coopScale?: numb
 export type OvershootMarkTier = OvershootTier & { restoreMark?: boolean };
 
 /**
- * Overpay tiers on `r = deposit ÷ quota` (GDD §2.6.5). Cumulative; each tier is awarded once per Night.
+ * Overpay tiers on `r = principal ÷ quota` (GDD §2.6.5). Cumulative; each tier is awarded once per Night. The principal is the
+ * pocket coins put in this Night (interest left out, `run.ts` principalNow), so the tiers are earned by play (decision D1).
  * The two top tiers (Overshoot depth) sit above golden: JACKPOT SEAL (3x) pays 5 Tickets and a Legendary charm to pick
- * from two; HOUSE ENVY (4x) restores a lost Soul Mark, or pays 3 Obols when the card is full. Coins above the quota are
- * locked until Dawn (`run.ts` overshootLocked), so the top tiers cost real liquidity.
+ * from two (a Rare pair before Night 5, when the Legendary pool is empty); HOUSE ENVY (4x) restores a lost Soul Mark, or pays
+ * 3 Obols when the card is full. Coins above the quota are sealed until Dawn (`run.ts` overshootLocked): BREAK SEAL takes them
+ * out and forfeits every tier of the Night (decision D2), so the top tiers cost real liquidity.
  */
 export const OVERSHOOT_TIERS: readonly OvershootMarkTier[] = [
   { id: 'gratuity', ratio: 1.1, reward: { currencies: { coin: 0, ticket: 2, obol: 0 }, text: 'game.overshoot.gratuity' } },

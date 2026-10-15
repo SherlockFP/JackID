@@ -51,6 +51,7 @@ import { lordsHooks } from '@/machines/lordstable';
 import { hollowDoor } from '@/world/hollow';
 import { mountDraftUi } from '@/game/draft.ui';
 import { mountNightCardsUi } from '@/game/nightCards.ui';
+import { mountOverpayUi } from '@/game/overpay.ui';
 
 export interface DebtSession {
   readonly world: WorldHost;
@@ -99,6 +100,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   app.run = run;
   if (!params.resume && !params.online) mountDraftUi(run);
   if (!params.online) mountNightCardsUi(run);
+  mountOverpayUi(run);
   const self = run.selfId;
   // The Lords' table (the Hollow Door): the duel's end becomes run effects, its spent Tickets come off the run, and the door seals.
   lordsHooks.apply = (end) => {

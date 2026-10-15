@@ -1,5 +1,6 @@
-// Overshoot depth: the two top overpay tiers (JACKPOT SEAL at 3x, HOUSE ENVY at 4x), the overshoot lock (coins above the
-// quota cannot leave until Dawn, but they still earn interest at each Settle), and that Dawn returns the surplus.
+// Overshoot depth: the two top overpay tiers (JACKPOT SEAL at 3x, HOUSE ENVY at 4x), the seal (coins above the quota cannot
+// leave until Dawn, but they still earn interest at each Settle; BREAK SEAL takes them out and forfeits the tiers), that the
+// tiers read the principal (the coins put in, not interest: D1), and that Dawn returns the surplus.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { load, closeVite } from './_vite.mjs';
@@ -184,4 +185,120 @@ test('Dawn returns the surplus: the overpay and the interest it earned go back t
   assert.equal(run.debtPaid, 0, 'the next quota starts from zero');
   assert.equal(run.overshootLocked(), false, 'the lock lifts with the Night');
   run.dispose();
+});
+
+/** Puts `amount` coins into the bank from the pocket (the real deposit path, so the principal is the player's own cash). */
+const fund = (run, amount) => { run.coins += amount; assert.ok(run.deposit(amount, true)); };
+
+test('D1: the overpay tiers ignore interest: a bank that the Settle interest carries past 1.5x claims no tier at Dawn', () => {
+  const run = RUN.createRun({ seed: 80, mode: 'debt' });
+  const due = run.quota.due;
+  fund(run, due);                              // exactly the quota put in by hand: the principal is the quota
+  run.watchPulls = 3;
+  run.settleWatch();                           // the interest lifts the bank well past the uncommon tier
+  assert.ok(run.debtPaid >= Math.ceil(1.5 * due), 'the bank alone would read as uncommon');
+  assert.equal(run.overshootView().balance, due, 'the tiers read the principal, not the bank');
+  assert.equal(run.overshootView().tier, null, 'so no tier is reached');
+  const tickets = run.balance('ticket');
+  run.dawn();
+  assert.deepEqual(run.quota.claimed, [], 'Dawn claims nothing');
+  assert.equal(run.balance('ticket'), tickets, 'no Gratuity either');
+  assert.equal(run.overpayOffer(), null, 'and no charm choice');
+  run.dispose();
+});
+
+test('D1: the principal is the pocket cash put in: a 1.5x deposit earns uncommon with the interest on top', () => {
+  const run = RUN.createRun({ seed: 83, mode: 'debt' });
+  const due = run.quota.due;
+  fund(run, Math.ceil(1.5 * due));
+  run.watchPulls = 3;
+  run.settleWatch();
+  assert.equal(run.overshootView().balance, Math.ceil(1.5 * due), 'the principal stays the coins put in');
+  assert.equal(run.overshootView().tier, 'uncommon');
+  run.dawn();
+  assert.ok(run.quota.claimed.some((c) => c.id === 'uncommon'), 'Dawn pays the tier on the principal');
+  run.dispose();
+});
+
+test('D2: BREAK SEAL releases the coins above the quota and forfeits every overpay tier of the Night', () => {
+  const run = RUN.createRun({ seed: 81, mode: 'debt' });
+  const due = run.quota.due;
+  fund(run, 3 * due);                          // a 3x overpay: JACKPOT SEAL would pay at Dawn
+  assert.equal(run.overshootLocked(), true, 'the seal holds the coins above the quota');
+  assert.equal(run.withdraw(1), 0, 'WITHDRAW is refused');
+  assert.equal(run.lastRefusal(), 'locked');
+  assert.equal(run.bank().sealed, true);
+  assert.equal(run.bank().sealCoins, 2 * due, 'the seal holds everything above the quota');
+  const tickets = run.balance('ticket');
+  const pocket = run.coins;
+  assert.equal(run.breakSeal(), 2 * due, 'BREAK SEAL moves the held coins to the pocket');
+  assert.equal(run.coins, pocket + 2 * due, 'the pocket has them');
+  assert.equal(run.overshootLocked(), false, 'the seal is broken for the Night');
+  assert.equal(run.bank().sealBroken, true);
+  assert.equal(run.overshootView(), null, 'no overshoot is left to chase');
+  run.dawn();
+  assert.deepEqual(run.quota.claimed, [], 'the Dawn pays no overpay tier: they are forfeit');
+  assert.equal(run.balance('ticket'), tickets, 'no JACKPOT SEAL Tickets');
+  assert.equal(run.overpayOffer(), null, 'and no charm choice');
+  run.dispose();
+});
+
+test('D2: a Watch with an empty pocket is never a dead end: the broke help offers the seal, and BREAK SEAL funds the pocket', () => {
+  const run = RUN.createRun({ seed: 82, mode: 'debt' });
+  const due = run.quota.due;
+  run.coins = due + 60;                        // every coin went in: the pocket is empty, the seal holds 60
+  assert.ok(run.deposit(due + 60, true));
+  run.phase = 'play';
+  run.pullCount = 5;
+  run.tickets = 0;
+  assert.equal(run.coins, 0);
+  const help = run.brokeHelp();
+  assert.ok(help, 'an empty pocket is broke');
+  assert.equal(help.steps.find((s) => s.id === 'bank')?.coins, 60, 'the bank step counts the sealed coins');
+  assert.equal(run.withdraw(10), 0, 'WITHDRAW alone is refused by the seal');
+  assert.equal(run.breakSeal(), 60, 'BREAK SEAL takes them out');
+  assert.equal(run.coins, 60, 'the pocket can play again');
+  assert.equal(run.brokeHelp(), null, 'so the broke help goes');
+  run.dispose();
+});
+
+test('D2: with the seal broken the coins above the quota are free to WITHDRAW, and BREAK SEAL is refused once nothing is held', () => {
+  const run = RUN.createRun({ seed: 84, mode: 'debt' });
+  const due = run.quota.due;
+  fund(run, due + 30);
+  assert.equal(run.breakSeal(), 30);
+  assert.equal(run.breakSeal(), 0, 'nothing left to break: refused');
+  assert.equal(run.lastRefusal(), 'noSeal');
+  fund(run, 20);                               // the broken seal does not come back for the Night
+  assert.equal(run.withdraw(20), 20, 'WITHDRAW takes them back out');
+  run.dispose();
+});
+
+test('D1/D2 save: the interest split and a broken seal survive a save and a resume (the forfeit cannot be undone by reloading)', () => {
+  const run = RUN.createRun({ seed: 85, mode: 'debt' });
+  const due = run.quota.due;
+  fund(run, due + 50);
+  run.watchPulls = 3;
+  run.settleWatch();                           // interest on top of the principal
+  const principal = run.overshootView().balance;
+  assert.equal(principal, due + 50, 'the principal excludes the interest');
+  assert.ok(run.breakSeal() > 0, 'the seal breaks');
+  const store = { data: {}, update(fn) { fn(this.data); } };
+  store.data.resume = JSON.parse(JSON.stringify(run.snapshot()));
+  const back = RUN.resumeRun(store);
+  assert.ok(back, 'the save resumes');
+  assert.equal(back.bank().sealBroken, true, 'the broken seal is kept');
+  assert.equal(back.overshootView(), null, 'so are the forfeited tiers');
+  assert.equal(back.bank().balance, run.bank().balance, 'the bank is the same');
+  back.dispose();
+  run.dispose();
+});
+
+test('D4: the JACKPOT SEAL label says what the pool pays: LEGENDARY is RARE before Night 5 (EN and TR)', async () => {
+  const PLAN = await load('src/menu/hud/plan.strings.ts');
+  const en = PLAN.default.en['ov.seal'];
+  const tr = PLAN.default.tr['ov.seal'];
+  assert.match(en, /LEGENDARY \(RARE before Night 5\)/, 'the label names the Rare fallback');
+  assert.match(tr, /NADİR/, 'the Turkish label names the Rare fallback');
+  assert.deepEqual(Object.keys(PLAN.default.en).sort(), Object.keys(PLAN.default.tr).sort(), 'EN and TR keep the same keys');
 });

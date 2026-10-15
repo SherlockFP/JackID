@@ -1,5 +1,5 @@
 /**
- * Watch checkpoints (wave 58, director): the WATCH TITHE. From Night 3 every quota Watch has its own mini-target: 20 % of the
+ * Watch checkpoints (wave 58, director): the WATCH TITHE. From Night 3 every quota Watch has its own mini-target: 12 % of the
  * Night's quota, EARNED IN PLAY during that Watch. Earned = net winnings (credited wins less the stakes played), never deposits,
  * withdrawals or interest. Met at the Watch's Settle: +1 Ticket. Missed: the shortfall is added to tonight's quota (run.ts folds
  * `addedQuota()` into the quota formula), so a Night paid early in Watch 1 still has to be played through.

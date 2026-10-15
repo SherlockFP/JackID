@@ -61,6 +61,10 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   /** Free-roam Intermission: the HUD hint line and the paid-Night bookkeeping for the summary toast. */
   let interHint: InterHint | null = null;
   let wasPaid = false;
+  /** The paid-Night summary is due and waits for the Dawn Night Card offer to close (see syncHint). */
+  let summaryDue = false;
+  /** This session is online: no Night Card panel is mounted there (nightCards.ui is solo only), so the offer never holds the summary. */
+  let online = false;
   let storyOff: (() => void) | null = null;
   let offs: Array<() => void> = [];
   /** Online: Esc opens the card but the sim keeps running (no `app.simPaused`). */
@@ -240,8 +244,14 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     const timed = s.run.rules.timed && !s.run.over;
     const inter = timed && s.run.shift.phase === 'intermission';
     const paid = timed && nightPaid(s.run);
-    if (paid && !wasPaid) showSummary(s);
+    if (paid && !wasPaid) summaryDue = true;
     wasPaid = paid;
+    if (!paid) summaryDue = false;
+    // The summary toast layer sits above the panels (ui.css: toasts z 5, panels z 4), so it waits while a Dawn choice modal is up:
+    // the Night Card offer (solo only: no panel online, where it times out unseen) or the overshoot charm pick (every session).
+    // Each closes on a pick or its own timer, and the summary then shows once.
+    const choiceUp = (!online && !!s.run.nightCardOffer()) || !!s.run.overpayOffer();
+    if (summaryDue && !choiceUp) { summaryDue = false; showSummary(s); }
     // seated (or walking up to a seat, or in machine mode): the hint never sits over the Pawn or terminal view
     const seated = app.player?.seat != null || s.world.seat != null || app.input.mode === 'machine';
     const show = inter && !s.run.topsideOpen && !seated && !paused && !ending;
@@ -330,6 +340,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
         setPaused(!paused);
       }));
       if (params.bench && import.meta.env.DEV) return enterBench(params.bench, params.seed);
+      online = !!params.online;
       session = startDebtSession(params, scene);
       // seat HUDs ask the run whether the floor is open (a closed floor says FLOOR CLOSED, not PRESS SPIN)
       SeatHud.floorOpen = () => {

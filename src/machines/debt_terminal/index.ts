@@ -64,7 +64,7 @@ type Ev =
 /** `DebtRun` controls the terminal reaches through the run (absent on the bench stub). */
 type FloorCtl = { openFloor?(): boolean; startWatch?(): boolean };
 type BellCtl = { ringBell?(): boolean };
-type BankCtl = { bank?(): BankView; withdraw?(n: number): number; withdrawPreview?(n: number): WithdrawPreview };
+type BankCtl = { bank?(): BankView; withdraw?(n: number): number; breakSeal?(): number; withdrawPreview?(n: number): WithdrawPreview };
 /** The run's deposit gate (decision 3): the reason a deposit is refused, or null. Absent on the bench stub. */
 type DepositCtl = { depositRefusal?(amount: number, confirmAll?: boolean): DepositRefusal | null };
 
@@ -170,6 +170,14 @@ export const def: MachineDef = {
       q_next: 'NEXT BELL INTEREST +{n}', q_reward: 'NEXT REWARD AT {p}', q_settle: 'PRESS QUOTA AGAIN: SETTLE',
       wdDone: 'Took {n} coins out. You lose {i} interest per Bell.', wdDoneFree: 'Took {n} coins out.',
       wdClosed: 'WITHDRAW IS CLOSED NOW', wdNone: 'NOTHING TO WITHDRAW', pickFirst: 'PICK DEPOSIT OR WITHDRAW',
+      // THE SEAL (decision D2): the coins above the quota wait for Dawn; BREAK (the ALL cap in WITHDRAW) takes them out
+      k_seal: 'BREAK', nSealed: 'SEALED',
+      stSealed: 'THE SEAL HOLDS THE OVERPAY', stSealedSub: 'BREAK takes it out and forfeits the overpay rewards',
+      c_sealHead: 'SEAL HOLDS', c_sealWait: 'ABOVE THE QUOTA UNTIL DAWN', c_sealCost: 'BREAK = OVERPAY REWARDS LOST',
+      sealConfirm: "Breaking the seal forfeits tonight's overshoot rewards. Press BREAK again to confirm",
+      sealDone: "Seal broken: {n} coins back in your pocket. Tonight's overshoot rewards are forfeit",
+      locked: "Sealed: {n} above the quota wait for Dawn. BREAK takes them out and forfeits the overshoot",
+      q_forfeit: 'OVERSHOOT FORFEIT: SEAL BROKEN',
     },
     tr: {
       name: 'Banka Terminali',
@@ -256,6 +264,14 @@ export const def: MachineDef = {
       q_next: 'SONRAKİ ZİL FAİZİ +{n}', q_reward: 'SONRAKİ ÖDÜL: {p}', q_settle: 'KOTAYA TEKRAR BAS: KAPAT',
       wdDone: '{n} jeton çektin. Her Zil’de {i} faiz kaybedersin.', wdDoneFree: '{n} jeton çektin.',
       wdClosed: 'ÇEKME ŞİMDİ KAPALI', wdNone: 'ÇEKİLECEK BİR ŞEY YOK', pickFirst: 'ÖNCE YATIR YA DA ÇEK SEÇ',
+      // MÜHÜR (decision D2): kotanın üstündeki jetonlar Şafağa kadar bekler; KIR (ÇEK'te HEPSİ tuşu) onları çeker
+      k_seal: 'KIR', nSealed: 'MÜHÜRLÜ',
+      stSealed: 'MÜHÜR FAZLAYI TUTUYOR', stSealedSub: 'KIR fazlayı çeker, aşım ödülleri kaybolur',
+      c_sealHead: 'MÜHÜR TUTUYOR', c_sealWait: 'KOTANIN ÜSTÜ ŞAFAĞA KADAR', c_sealCost: 'KIRARSAN AŞIM ÖDÜLLERİ GİDER',
+      sealConfirm: "Mührü kırmak bu gecenin aşım ödüllerini kaybettirir. Onaylamak için KIR'a tekrar bas",
+      sealDone: "Mühür kırıldı: {n} jeton cebine döndü. Bu gecenin aşım ödülleri kaybedildi",
+      locked: "Mühürlü: kotanın üstündeki {n} jeton Şafağa kadar bekler. KIR onları çeker, aşım ödülleri gider",
+      q_forfeit: 'AŞIM KAYBI: MÜHÜR KIRILDI',
     },
   },
 };
@@ -281,6 +297,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private keyArm: { key: KeyId; amount: number; left: number } | null = null;
   /** Seconds an armed END WATCH stays armed (the second press ends the Watch). */
   private bellArm = 0;
+  /** Seconds an armed BREAK (the seal) stays armed: the first press names the forfeit, the second within the window breaks the seal. */
+  private sealArm = 0;
   /** Seconds the Watch has been closing (the run's `closing` phase, counted from the frame time). */
   private closingFor = 0;
   /** Phase last seen by `refresh`: a change clears the typed amount. */
@@ -375,6 +393,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   tick(dt: number): void {
     if (this.keyArm) { this.keyArm.left -= dt; if (this.keyArm.left <= 0) this.keyArm = null; }
     if (this.bellArm > 0) this.bellArm = Math.max(0, this.bellArm - dt);
+    if (this.sealArm > 0) this.sealArm = Math.max(0, this.sealArm - dt);
     // The Watch's closing countdown (a Bell or the play clock ends the Watch): the lever's wait, read from the frame time.
     this.closingFor = this.ctx.run.shift?.phase === 'closing' ? this.closingFor + dt : 0;
     this.fitIfBandMoved();
@@ -413,6 +432,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     this.entry = '';
     this.keyArm = null;
     this.bellArm = 0;
+    this.sealArm = 0;
   }
 
   onLang(): void {
@@ -567,6 +587,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     if (!run.withdraw) { this.refuse('wdClosed'); return; }
     const bank = this.bk();
     if (!bank.open) { this.refuse('wdClosed'); return; }
+    if (bank.sealed) { this.pressSeal(key, bank); return; }   // the seal holds the overpay: only BREAK (ALL) moves it
     if (bank.withdrawable <= 0) { this.refuse('wdNone'); return; }
     let amount: number;
     if (key === 'enter') {
@@ -585,6 +606,35 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
         if (got <= 0) { this.ctx.ui.toast(this.t('denied'), 'bad'); return; }
         this.ctx.ui.toast(pv.interestLost > 0 ? this.t('wdDone', { n: fmtNum(got), i: fmtNum(pv.interestLost) }) : this.t('wdDoneFree', { n: fmtNum(got) }), 'sys');
       } : undefined,
+    );
+    this.refresh(true);
+  }
+
+  /**
+   * THE SEAL (decision D2): the coins above the quota wait for Dawn. Only BREAK (the ALL cap in WITHDRAW) takes them out, and it
+   * is two presses: the first names the forfeit (the overpay rewards of tonight), the second within ALL_CONFIRM_SEC breaks it.
+   * Every other amount key is refused with the seal's own line.
+   */
+  private pressSeal(key: KeyId, bank: BankView): void {
+    const armed = this.sealArm > 0;                  // read before clearEntry() disarms it
+    const held = bank.sealCoins ?? 0;
+    this.clearEntry();
+    if (key !== 'all' || held <= 0) { this.refuse('locked', { n: fmtNum(held) }); return; }
+    if (!armed) {
+      this.sealArm = ALL_CONFIRM_SEC;
+      this.sfx('error');
+      this.ctx.ui.toast(this.t('sealConfirm'), 'warn');
+      this.refresh(true);
+      return;
+    }
+    const run = this.bankRun();
+    void this.emit(
+      { k: 'wd', key: 'all', amount: held, ok: true, lost: 0 },
+      () => {
+        const got = run.breakSeal?.() ?? 0;
+        if (got <= 0) { this.runRefused(this.runWhy()); return; }
+        this.ctx.ui.toast(this.t('sealDone', { n: fmtNum(got) }), 'sys');
+      },
     );
     this.refresh(true);
   }
@@ -668,6 +718,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
         this.refuseDeposit(why, this.ctx.run.depositFloor?.() ?? 0);
         return;
       case 'settling': this.refuse('settling', { s: (this.bk().settleLeft ?? 0).toFixed(1) }); return;
+      case 'locked': this.refuse('locked', { n: fmtNum(this.bk().sealCoins ?? 0) }); return;   // the seal holds the coins above the quota
+      case 'noSeal': this.refuse('wdNone'); return;
       case 'watchEnding': this.closingWait(); return;
       case 'watchRunning': case 'belling': case 'noWatch': case 'nightUnpaid': case 'quotaShort': case 'nightCard':
         this.refuse(why);
@@ -822,10 +874,11 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     // a new Night or the paid screen must not keep a stale count-up value
     if (paid !== this.lastPaid || night !== this.lastNight) { this.lastPaid = paid; this.lastNight = night; this.shownDep = bank.balance; }
     const key = [q.due, this.shownDep, q.base, q.assessment, this.entry, this.cursor, this.mode, bank.pocket, bank.withdrawable, bank.interestNext,
-      bank.pullsToQualify, bank.open ? 1 : 0, q.met ? 1 : 0, paid ? 1 : 0, phase, night, this.ctx.run.depositFloor?.() ?? 0].join('|');
+      bank.pullsToQualify, bank.open ? 1 : 0, q.met ? 1 : 0, paid ? 1 : 0, phase, night, this.ctx.run.depositFloor?.() ?? 0,
+      bank.sealed ? 1 : 0, bank.sealCoins ?? 0, bank.sealBroken ? 1 : 0, bank.principal ?? 0].join('|');
     if (!force && key === this.lastKey) return;
     this.lastKey = key;
-    this.lightKeys();
+    this.lightKeys(bank.sealed === true && this.mode === 'wd');
 
     this.parts.leds.quota.set(String(fmtNum(paid ? 0 : q.due)).padStart(10, ' '));
     this.parts.leds.deposit.set(String(fmtNum(this.shownDep)).padStart(10, ' '));
@@ -914,7 +967,14 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       const floor = this.ctx.run.depositFloor?.() ?? 0;
       if (floor > 0) label(this.t('c_float', { n: fmtNum(floor) }), 12, 346, cyan, 30);
     } else if (this.mode === 'wd') {
-      if (!bank.open || bank.withdrawable <= 0) {
+      if (bank.sealed) {
+        // THE SEAL (decision D2): what BREAK would take out, how long it waits, and what taking it out costs
+        label(this.t('c_sealHead'), 12, 140, red, 36);
+        const sv = fmtNum(bank.sealCoins ?? 0);
+        s.text(sv, RIGHT, 168, { font: 'ps2p', size: fit(sv, 64, 490), color: hot, align: 'right' });
+        label(this.t('c_sealWait'), 12, 234, amber, 32);
+        label(this.t('c_sealCost'), 12, 270, red, 32);
+      } else if (!bank.open || bank.withdrawable <= 0) {
         label(this.t(!bank.open ? 'c_wdClosed' : 'c_wdEmpty'), 256, 200, red, 40, 'center');
       } else {
         const pw = this.wdPreview(amt);
@@ -940,8 +1000,10 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       label(this.t('q_base', { b: fmtNum(q.base), a: fmtNum(q.assessment) }) + (extra > 0 ? `  ${this.t('q_loan', { l: fmtNum(extra) })}` : ''), 12, 226, dim, 32);
       label(this.t('q_bank', { b: fmtNum(bank.balance), p: pct(ratioOf(bank.balance, q.due)) }), 12, 260, amber, 34);
       if (bank.ratePct > 0) label(this.t('q_next', { n: fmtNum(bank.interestNext) }), 12, 294, hot, 34);
-      const next = nextTier(this.tiers(), ratioOf(this.shownDep, q.due));
-      if (q.met) label(this.t('q_settle'), 12, 332, green, 36);
+      // the reward is read off the overpay principal (decision D1); a broken seal has no overpay left to chase
+      const next = bank.sealBroken ? null : nextTier(this.tiers(), ratioOf(bank.principal ?? this.shownDep, q.due));
+      if (bank.sealBroken) label(this.t('q_forfeit'), 12, 332, red, 28);
+      else if (q.met) label(this.t('q_settle'), 12, 332, green, 36);
       else if (next !== null) label(this.t('q_reward', { p: pct(next.ratio) }), 12, 332, '#e0a040', 34);
     }
     // status line
@@ -952,12 +1014,14 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   }
 
   /** The keypad cursor is the one lit cap plus a gold frame on its cell; the active action's cap stays lit too. */
-  private lightKeys(): void {
+  private lightKeys(sealed: boolean): void {
     const cur = KEYS[this.cursor];
     for (const id of KEYS) this.parts.keys.buttons[id]?.setLit(id === cur || id === this.mode);
     this.parts.keyCursor.position.set(KEY_POS[cur].x, 0, KEY_POS[cur].z);
     // REST means "what the quota still needs" on DEPOSIT and "enough to play on" on WITHDRAW
     this.parts.keyLabels.rest?.setText({ key: this.mode === 'wd' ? 'm.debt_terminal.k_play' : 'm.debt_terminal.k_rest' });
+    // ALL is BREAK while the seal holds the overpay in WITHDRAW (decision D2): the cap names the press that breaks it
+    this.parts.keyLabels.all?.setText({ key: sealed ? 'm.debt_terminal.k_seal' : 'm.debt_terminal.k_all' });
   }
 
   private drawReceipt(kind: 'dep' | 'wd', amount: number, bank: number, due: number): void {
@@ -1007,7 +1071,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     if (paid) sh.state({ k: 'm.debt_terminal.stPaid' }, 'good', { k: 'm.debt_terminal.stPaidSub' });
     else if (q.due <= 0) sh.state({ k: 'm.debt_terminal.stNone' }, 'neutral');
     else if (this.mode === 'wd') {
-      if (bank.open && bank.withdrawable > 0) sh.state({ k: 'm.debt_terminal.stWithdraw' }, 'cyan', { k: 'm.debt_terminal.stWithdrawSub', v: { n: fmtCoins(bank.withdrawable) } });
+      if (bank.sealed) sh.state({ k: 'm.debt_terminal.stSealed' }, 'warn', { k: 'm.debt_terminal.stSealedSub' });
+      else if (bank.open && bank.withdrawable > 0) sh.state({ k: 'm.debt_terminal.stWithdraw' }, 'cyan', { k: 'm.debt_terminal.stWithdrawSub', v: { n: fmtCoins(bank.withdrawable) } });
       else sh.state({ k: 'm.debt_terminal.stWdNone' }, 'warn', { k: 'm.debt_terminal.stWdNoneSub' });
     } else if (this.mode === 'quota') sh.state({ k: 'm.debt_terminal.stQuota' }, q.met ? 'good' : 'gold', { k: 'm.debt_terminal.stQuotaSub', v: { n: fmtCoins(left) } });
     else if (inter) sh.state({ k: 'm.debt_terminal.stBell' }, 'gold', { k: 'm.debt_terminal.stBellSub' });
@@ -1025,9 +1090,11 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
         { label: { k: 'm.debt_terminal.nBank' }, value: fmtCoins(bank.balance), tone: 'cyan' },
         { label: { k: 'm.debt_terminal.nLeft' }, value: fmtCoins(left), tone: left > 0 ? 'warn' : 'good' },
         { label: { k: 'm.debt_terminal.nWallet' }, value: fmtCoins(wallet), tone: 'neutral' },
-        this.mode === 'wd'
-          ? { label: { k: 'm.debt_terminal.nCanTake' }, value: fmtCoins(bank.withdrawable), tone: 'gold' }
-          : { label: { k: 'm.debt_terminal.nAmount' }, value: this.entry === '' ? '-' : fmtCoins(customAmount(this.entry)), tone: 'gold' },
+        this.mode === 'wd' && bank.sealed
+          ? { label: { k: 'm.debt_terminal.nSealed' }, value: fmtCoins(bank.sealCoins ?? 0), tone: 'warn' }
+          : this.mode === 'wd'
+            ? { label: { k: 'm.debt_terminal.nCanTake' }, value: fmtCoins(bank.withdrawable), tone: 'gold' }
+            : { label: { k: 'm.debt_terminal.nAmount' }, value: this.entry === '' ? '-' : fmtCoins(customAmount(this.entry)), tone: 'gold' },
       ];
     sh.numbers(nums);
 

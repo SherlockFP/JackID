@@ -99,6 +99,10 @@ export function mountLedger(host: HTMLElement, api: TycoonApi, instance: Instanc
 
   const stage = new Stage3D();
   dimVeil(stage, 0.35);
+  // The HUD's PULLS strip hides while the book is up (hud.css `:has(.tyc-ledger-host)`): it sat over the foot of the MODS pages.
+  // The class goes with the stage, so a close (or a host removed under the book) gives the strip back.
+  host.classList.add('tyc-ledger-host');
+  stage.own(() => host.classList.remove('tyc-ledger-host'));
   stage.own(api.onChange(() => render()));
   if (mods) stage.own(mods.onChange(() => render()));
 

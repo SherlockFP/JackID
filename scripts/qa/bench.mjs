@@ -25,6 +25,8 @@ const STAKE_MAX = 7;       // stakes.ts STAKE_MAX
 const CHROME = process.env.QA_CHROME || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const DEFAULT_HOLD_MS = 80;
 const READY_TIMEOUT_MS = 120_000;
+/** Page loads after the first one in the current run (module-level, so the CLI can name a reload that failed a run). */
+let pageReloads = 0;
 const WIN = process.platform === 'win32';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => process.stderr.write(`[qa] ${a.join(' ')}\n`);
@@ -693,6 +695,20 @@ const instJs = (id, body) => `(() => { const m = window.jackid.app.world?.machin
 const CF_STATE_JS = (id) => instJs(id, `{ pending: Boolean(m.roundOpen && !m.busy && m.state?.pot > 0), pot: m.state?.pot ?? 0, bet: m.roundBet ?? 0 }`);
 const BIGONE_STATE_JS = (id) => instJs(id, `{ offer: Boolean(m.offer) }`);
 /**
+ * Waits until the machine's round is over: `busy` (a flip, its toss, the balance and the present) or bigone's `inRound`.
+ * A fixed sleep read the coin mid-toss. `pending` is false while busy, so a win read as "pot 0" and its ride or collect was
+ * skipped. Measured: a coinflip flip stays busy ~2.7 s on a loss and ~3.1 s on a win; the bot checked at 2.6 s.
+ * `start`: wait up to 1.2 s first for the round to begin (a refused press never begins one, so that wait is then the cost).
+ */
+async function waitRoundIdle(cdp, instance, { start = false, maxMs = 12000 } = {}) {
+  const t0 = Date.now();
+  const busy = async () => (await evaluate(cdp, instJs(instance, '(m.busy === true) || (m.inRound === true)'))) === true;
+  if (start) while (Date.now() - t0 < 1200 && !(await busy())) await sleep(40);
+  let saw = false;
+  while (Date.now() - t0 < maxMs && (await busy())) { saw = true; await sleep(60); }
+  if (saw) await sleep(120);                 // the frame after the last write (pot, history, wallet)
+}
+/**
  * Page JS: the floor machines the bot may bet on now (placed, unlocked, eligible), each with its tilt (`lit`: full-value pulls
  * left, 0..4; Hot machines ignore Tilt), whether it is a Hot Lamp, whether it is the spotlight kind, and `keep`: the stake
  * digits it leaves to the presets (7 SAFE, 8 BOLD, 9 BIG; all false for a machine that never stakes).
@@ -1120,8 +1136,11 @@ async function autoNight(ctx, rec, stopAt = null) {
         end = 'quota met';
         break;
       }
-      if (st.phase === 'bell') await logWatchOnce(key);   // the Bell is already rung (not by this bot's own play)
     }
+    // The Watch line of a Watch the game closes by itself (clock or pulls out). 'closing' is the last phase before the
+    // settle, so the Watch tithe is still open there. 'bell' is the 2 s START cue (run.ts BELL_SEC, before any bet): a line
+    // logged there reads the Watch at its start (tithe 0, pocket before the bets), and the Bell's own line then never runs.
+    if (st.phase === 'closing') await logWatchOnce(key);
     if (st.phase === 'intermission') {
       if (st.nightCardOffer) {
         // A paid Dawn opened a Night Card offer (the lever waits on it). The bot pauses here: when the script's next step is
@@ -1213,6 +1232,7 @@ async function setStake(cdp, stake) {
 
 async function botRound(ctx, s, rec) {
   const { cdp } = ctx;
+  await waitRoundIdle(cdp, s.instance);     // a round still in the air (an earlier bet on this machine) takes the keys away
   await pressKey(cdp, TIP_KEY, 60);
   await sleep(300);
   await setStake(cdp, s.stake);
@@ -1224,15 +1244,15 @@ async function botRound(ctx, s, rec) {
   rec.stakeOk = set ? (s.stake === 'min' ? set.bet === set.minBet : set.bet === set.presets?.[s.stake]) : null;
   if (s.machine === 'coinflip') {
     await pressKey(cdp, 'Space', 120);
-    await sleep(2600);
+    await waitRoundIdle(cdp, s.instance, { start: true });   // the flip is in the air until its present ends (see waitRoundIdle)
     let st = await evalJson(cdp, CF_STATE_JS(s.instance));
-    if (!st?.pending) decide(ctx, 'flip', `no win to ride or collect (${st ? 'pot 0' : 'machine not found'})`);
+    if (!st?.pending) decide(ctx, 'flip', st ? `no win to ride or collect (pot ${st.pot})` : 'machine not found');   // was a literal "pot 0" for any pot
     if (st?.pending) {
       const x = Math.round((st.pot / Math.max(1, st.bet)) * 10) / 10;
       if (x < COINFLIP_COLLECT_AT) {
         decide(ctx, 'ride', `won x${x} on coinflip: ride once for x${COINFLIP_COLLECT_AT}`);
         await pressKey(cdp, 'KeyR', 120);
-        await sleep(2600);
+        await waitRoundIdle(cdp, s.instance, { start: true });
         st = await evalJson(cdp, CF_STATE_JS(s.instance));
         if (!st?.pending) decide(ctx, 'ride lost', 'the ride flip lost the pot');
       }
@@ -1240,14 +1260,14 @@ async function botRound(ctx, s, rec) {
       if (st?.pending) {
         decide(ctx, 'collect', `pot x${Math.round((st.pot / Math.max(1, st.bet)) * 10) / 10} (target x${COINFLIP_COLLECT_AT})`);
         await pressKey(cdp, 'KeyQ', 120);
-        await sleep(500);
+        await waitRoundIdle(cdp, s.instance, { start: true });
       }
     }
     return;
   }
   if (s.machine === 'bigone') {
     await pressKey(cdp, 'Space', 120);
-    await sleep(3200);
+    await waitRoundIdle(cdp, s.instance, { start: true });
     const st = await evalJson(cdp, BIGONE_STATE_JS(s.instance));
     if (!st?.offer) decide(ctx, 'spin', 'no line win, so no chase offer');
     if (st?.offer) {
@@ -1255,13 +1275,13 @@ async function botRound(ctx, s, rec) {
       if (chaseP >= 1 / 3 - 1e-9) {
         decide(ctx, 'chase', `line win on bigone: chase at 1 in ${Math.round(1 / chaseP)} (x3 the pot), 1 in 3 or better`);
         await pressKey(cdp, 'KeyG', 120);
-        await sleep(2600);
+        await waitRoundIdle(cdp, s.instance, { start: true });
       } else decide(ctx, 'collect', `chase at 1 in ${Math.round(1 / chaseP)} is under 1 in 3`);
       const after = await evalJson(cdp, BIGONE_STATE_JS(s.instance));
       if (after?.offer) {
         decide(ctx, 'collect', 'the chase offer is still open: collect the pot');
         await pressKey(cdp, 'Space', 120);
-        await sleep(500);
+        await waitRoundIdle(cdp, s.instance, { start: true });
       }
     }
     return;
@@ -1539,7 +1559,9 @@ export async function runBench(opts = {}) {
   try {
     // 1) Vite dev server on a free port.
     vport = await freePort();
+    // vite.bench.config.mjs = the root config with HMR and the src watcher off: an edit made mid-run must not reload the page
     vite = spawn(process.execPath, [join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'),
+      '--config', join(ROOT, 'scripts', 'qa', 'vite.bench.config.mjs'),
       '--host', '127.0.0.1', '--port', String(vport), '--strictPort'],
     { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
     const viteTail = [];
@@ -1579,7 +1601,7 @@ export async function runBench(opts = {}) {
     await cdp.open();
     let loads = 0;
     cdp.on((method, p) => {
-      if (method === 'Page.frameNavigated' && !p.frame?.parentId) { loads++; if (loads > 1) res.reloads = loads - 1; }
+      if (method === 'Page.frameNavigated' && !p.frame?.parentId) { loads++; if (loads > 1) { res.reloads = loads - 1; pageReloads = res.reloads; } }
       let text = null;
       if (method === 'Runtime.consoleAPICalled' && p.type === 'error') text = p.args.map((a) => a.value ?? a.description ?? '').join(' ');
       else if (method === 'Runtime.exceptionThrown') text = p.exceptionDetails?.exception?.description ?? p.exceptionDetails?.text ?? 'exception';
@@ -1809,6 +1831,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     } catch (e) {
       code = 1;
       out = { error: String(e?.message ?? e) };
+      // a page reload (vite full reload, dependency re-optimise) makes most errors read as a missing bench hook: name it
+      if (pageReloads) out.error = `the page reloaded ${pageReloads}x during the run (the veil came back): the run is invalid, rerun it. Was: ${out.error}`;
     }
     process.stdout.write(JSON.stringify(out, null, 2) + '\n', () => process.exit(code));
   })();

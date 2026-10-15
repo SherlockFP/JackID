@@ -5,7 +5,9 @@
  * The model, in one paragraph. Coins in the bank count toward tonight's quota and earn interest at every Settle (the end of a
  * Watch) until Dawn. Deposits keep working after the quota is met: the surplus stays in the bank and keeps earning, and Dawn
  * returns `bank - quota` to the pocket (no early release, director decision 2). WITHDRAW takes coins back to the pocket at any
- * time before the Watch is settled. A withdrawn coin stops counting and stops earning, and a coin that went out and came back in
+ * time before the Watch is settled, except the coins above the quota: the SEAL holds those until Dawn (`sealCoins`, decision D2),
+ * and BREAK SEAL takes them out at the price of the overpay tiers. The tiers read the principal (pocket coins), not interest (D1).
+ * A withdrawn coin stops counting and stops earning, and a coin that went out and came back in
  * the same Watch (`churn`) earns nothing that Watch, so the bank cannot be used as a free pocket-shuffle. Only coins that really
  * came from the pocket plus interest can be withdrawn: quota credit that never was cash (deposit bonus, phone credit, a kit's
  * pre-deposit: `granted`) stays in the bank.
@@ -25,6 +27,11 @@ export interface BankInput {
   watchPulls: number;
   /** Coins that went out and came back in this Watch: they earn nothing until the next Watch. */
   churn: number;
+  /**
+   * The overpay principal: the pocket coins put in this Night and not taken back out (interest and quota credit left out). The
+   * overpay tiers read it (director decision D1). Optional: absent = `debtPaid`, the whole bank.
+   */
+  principal?: number;
 }
 
 /** Coins counted in the bank (quota credit included). What a WITHDRAW can touch is `withdrawable`. */
@@ -35,6 +42,16 @@ export function bankBalance(i: Pick<BankInput, 'debtPaid'>): number {
 /** Coins a withdraw may take now (balance minus the quota credit that never was cash). */
 export function withdrawable(i: Pick<BankInput, 'debtPaid' | 'granted'>): number {
   return Math.max(0, bankBalance(i) - Math.max(0, Math.floor(i.granted)));
+}
+
+/**
+ * The coins the SEAL holds: the bank above tonight's quota that a WITHDRAW could take (0 when there is no quota). A seal is only
+ * a lock on these coins: they keep earning interest, and BREAK SEAL takes them out at the price of the overpay tiers (decision D2).
+ */
+export function sealCoins(i: Pick<BankInput, 'debtPaid' | 'granted' | 'due'>): number {
+  const due = Math.max(0, Math.floor(i.due));
+  if (due <= 0) return 0;
+  return Math.min(Math.max(0, bankBalance(i) - due), withdrawable(i));
 }
 
 /** Coins that went out and back in the same Watch: min(withdrawn, redeposited). */
@@ -88,8 +105,10 @@ export function previewWithdraw(i: BankInput, amount: number): WithdrawPreview {
   const bankAfter = bank - coins;
   const after: BankInput = { ...i, debtPaid: bankAfter };
   const lostRaw = interestNext(i) - interestNext(after);
-  const before = tierReached(i.debtPaid, i.due);
-  const now = tierReached(bankAfter, i.due);
+  // the overpay tiers read the principal: a withdraw takes principal first, and only then the interest it earned
+  const principal = Math.max(0, Math.floor(i.principal ?? i.debtPaid));
+  const before = tierReached(principal, i.due);
+  const now = tierReached(Math.max(0, principal - coins), i.due);
   const rank = (id: string | null): number => (id === null ? -1 : OVERSHOOT_TIERS.findIndex((t) => t.id === id));
   return {
     coins,

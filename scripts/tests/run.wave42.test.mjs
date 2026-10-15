@@ -28,14 +28,16 @@ test('decision 1: the interest falls one step per Night (0.55 … 0.20), Overdra
 
 test('decision 2: SETTLE is 1.5 s, the bank is open through it, and the lever (the next Watch) waits for it to end', () => {
   const run = RUN.createRun({ seed: 201, mode: 'debt' });
+  // Under the quota, even with the Settle interest on top: the seal holds nothing, so WITHDRAW is free (the seal rule is below)
   run.coins = 80;
-  assert.ok(run.deposit(20, true));
+  assert.ok(run.deposit(Math.floor(run.quota.due / 3), true));
   run.phase = 'closing';
   run.watchPulls = 2;
   run.settleWatch();
   assert.equal(run.shift.phase, 'settle');
   assert.equal(run.bank().settleLeft, 1.5, 'the countdown starts at 1.5 s');
   assert.equal(run.bank().open, true, 'WITHDRAW is open in Settle');
+  assert.equal(run.bank().sealed, false, 'no seal under the quota');
   assert.equal(run.depositRefusal(5), null, 'a deposit goes in during Settle');
   assert.equal(run.withdraw(5), 5, 'and a withdraw comes out');
   assert.equal(run.startWatch(), false, 'the next Watch cannot start during Settle');
@@ -45,6 +47,29 @@ test('decision 2: SETTLE is 1.5 s, the bank is open through it, and the lever (t
   run.tick(0.6);
   assert.equal(run.shift.phase, 'intermission', 'the Settle ends at 1.5 s, the next stop is the intermission');
   assert.equal(run.bank().settleLeft, 0, 'no countdown outside Settle');
+  run.dispose();
+});
+
+test('decision 2 (the seal rule): in Settle the coins above the quota stay sealed; WITHDRAW is refused, BREAK SEAL takes them out and forfeits the overpay', () => {
+  const run = RUN.createRun({ seed: 204, mode: 'debt' });
+  const due = run.quota.due;
+  run.coins = due + 40;
+  assert.ok(run.deposit(due + 40, true));
+  run.phase = 'closing';
+  run.watchPulls = 2;
+  run.settleWatch();                         // the Settle interest joins the sealed coins (they keep earning)
+  assert.equal(run.shift.phase, 'settle');
+  assert.equal(run.bank().open, true, 'the bank is open through Settle');
+  assert.equal(run.bank().sealed, true, 'and the seal holds the coins above the quota');
+  assert.equal(run.withdraw(1), 0, 'WITHDRAW is refused by the seal');
+  assert.equal(run.lastRefusal(), 'locked', 'with the seal reason, not a generic one');
+  const held = run.bank().sealCoins;
+  assert.ok(held > 40, 'the seal holds the 40 and the interest on them');
+  assert.equal(run.breakSeal(), held, 'BREAK SEAL takes exactly the held coins');
+  assert.equal(run.bank().sealed, false, 'and the seal is gone for the Night');
+  assert.equal(run.bank().sealBroken, true, 'the overpay tiers are forfeit');
+  assert.equal(run.overshootView(), null, 'no overshoot line is left to chase');
+  assert.equal(run.startWatch(), false, 'the lever still waits for Settle to end');
   run.dispose();
 });
 

@@ -115,6 +115,9 @@ const r = await runBench({ machine: 'bigone', script: 'Space:150,wait:3000', rou
 - Keep the machine's own timing in mind: `wait:` must be longer than one round, or the next press will
   land while the machine is still busy.
 - Each run boots a fresh Vite server, so the first run takes a few seconds longer.
+- The Vite server runs `scripts/qa/vite.bench.config.mjs`: the root config with HMR off and `src/` and `scripts/` not watched. An edit made while a run is up cannot reload the page (that used to fail the run with a bare "reading 'seated'" error).
+- A bot round waits for the machine to go idle (`waitRoundIdle` in `bench.mjs`: `busy`, or bigone's `inRound`) instead of a fixed sleep. Measured: a coinflip flip is busy about 2.9 s after the press on a loss and 3.3 s on a win, so a 2.6 s sleep read a win as "no pot" and skipped its ride. A press that lands while the machine is busy is dropped by the machine.
+- The per-Watch line is logged in phase `closing` (the last phase before the settle, when the Watch tithe is still open) or at the bot's own Bell, not at `bell` (the 2 s start cue of each Watch, before any bet).
 - A page reload mid-run (the boot veil comes back, the screen goes black) fails the run with `the page reloaded during
   round N`. `reloads` counts them, and `viteEvents` keeps any Vite optimiser or HMR line seen during the run.
 

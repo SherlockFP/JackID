@@ -52,7 +52,7 @@ test('quota met (decision 2): a deposit after the quota is met is banked, not pa
   assert.equal(run.coins, 700, 'nothing is paid back at the deposit');
   assert.equal(run.debtPaid, due + 200, 'the bank holds the whole deposit');
   assert.equal(run.quota.deposited, due + 200);
-  assert.equal(run.quota.overshoot, 200, 'overshoot (and so the tiers) read the bank');
+  assert.equal(run.quota.overshoot, 200, 'the quota overshoot is the bank above the quota (the overpay tiers read the principal: overshoot.test D1)');
   assert.ok(run.quota.met);
   assert.deepEqual(pocket, [], 'no surplus reaches the pocket before Dawn');
   run.dawn();

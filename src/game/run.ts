@@ -45,7 +45,7 @@ import {
 } from './economy';
 import { clearClockHolds, clockHeld, holdClock, releaseClock, tickClockHold } from './clockHold';
 import { createRescue, rescueTerms, brokeSteps, type BrokeHelp, type RescueLine } from './rescue';
-import { bankBalance, churnOf, interestBase, interestNext, previewWithdraw, pullsToQualify, tierReached, withdrawable, type BankInput, type WithdrawPreview } from './bank';
+import { bankBalance, churnOf, interestBase, interestNext, previewWithdraw, pullsToQualify, sealCoins, tierReached, withdrawable, type BankInput, type WithdrawPreview } from './bank';
 import { bestBetFloor, depositRoom, pocketDead, watchFloat } from './float';
 import { Charms, PEG_CAP_RUN, allCharmDefs, choiceOffer, charmDef } from './charms/engine';
 import { Pawn, sellRefund, type PawnSnapshot } from './shop';
@@ -161,10 +161,18 @@ export interface BankView {
   pullsLeft: number;
   /** The cheapest bet on the floor. */
   minBet: number;
+  /** The overpay principal (pocket coins put in this Night, interest left out): the figure the overpay tiers read (decision D1). */
+  principal?: number;
+  /** The SEAL holds the coins above the quota until Dawn: WITHDRAW is refused, and BREAK SEAL takes them out (see `DebtRun.breakSeal`). */
+  sealed?: boolean;
+  /** Coins the seal holds (0 when not sealed). */
+  sealCoins?: number;
+  /** Tonight's seal was broken at the terminal: the overpay tiers are forfeit for this Night. */
+  sealBroken?: boolean;
 }
-/** OVERSHOOT (the NIGHT PLAN line): the bank against the overpay tiers, read live in a Watch. See `DebtRun.overshootView()`. */
+/** OVERSHOOT (the NIGHT PLAN line): the overpay principal against the overpay tiers, read live in a Watch. See `DebtRun.overshootView()`. */
 export interface OvershootView {
-  /** Coins counted toward tonight's quota (the bank balance, floored). */
+  /** The overpay principal (pocket coins put in this Night, interest and quota credit left out). Not the bank balance: the tiers read it. */
   balance: number;
   /** Tonight's quota. */
   due: number;
@@ -359,7 +367,7 @@ export interface RunExt {
   /** The Watch's float, fixed when it was first read. Optional: older saves recompute it. */
   watchFloat?: number;
   /** Bank (wave 27): non-cash quota credit, and this Watch's withdrawn / deposited coins (the churn rule). Optional: older saves have none. */
-  bank?: { granted: number; wd: number; dep: number };
+  bank?: { granted: number; wd: number; dep: number; interest?: number; broken?: boolean };
   /** Special rooms (wave 24): Wing Keys, the Manager's Key, the Boiler / locker state and the run's bonus Obols. Optional: older saves have none. */
   wingKeys?: number;
   managerKey?: boolean;
@@ -478,6 +486,11 @@ export interface DebtRun extends RunApi {
    * moved (0 = refused). Withdrawn coins stop counting toward the quota and stop earning interest.
    */
   withdraw(amount: number): number;
+  /**
+   * BREAK SEAL (decision D2): take the coins the seal holds (above the quota) back to the pocket. It forfeits tonight's overshoot
+   * rewards. Returns the coins moved (0 = refused: no seal, or not a WITHDRAW window).
+   */
+  breakSeal?(): number;
   /** The broke-start help: the ordered ways out when the pocket cannot cover the cheapest bet (null while the pocket can play). */
   brokeHelp(): BrokeHelp | null;
   /** Buy +1 pull for 3 Tickets (max +2 per Watch). */
@@ -720,6 +733,13 @@ class Run implements DebtRun {
    * Director wave 41: nothing leaves it before Dawn, so the surplus above the quota keeps earning until then.
    */
   private debtPaid = 0;
+  /**
+   * Interest the bank has earned this Night (each Settle adds it). The overpay principal is the bank minus the quota credit minus
+   * this (`principalNow`): the tiers are earned by play, not by interest (decision D1). Reset at Dawn.
+   */
+  private nightInterest = 0;
+  /** BREAK SEAL (decision D2): tonight's seal was broken at the terminal, which forfeits the overpay tiers for this Night. Reset at Dawn. */
+  private sealBroken = false;
   private pullCount = 0;
   private pullsMax = 0;
   private watchPulls = 0;
@@ -743,7 +763,7 @@ class Run implements DebtRun {
   private ropeUsed = false;
   /** Rescue loans (wave 13): quota added tonight, calls used tonight, seconds until the line may ring again. */
   private loanQuota = 0;
-  /** Watch tithe (wave 58): per-Watch net winnings against 20 % of the Night quota; missed tithes add to tonight's quota. */
+  /** Watch tithe (wave 58): per-Watch net winnings against 12 % of the Night quota; missed tithes add to tonight's quota. */
   private readonly tithe = new WatchTithe();
   private rescuesUsed = 0;
   private rescueCool = 0;
@@ -1445,7 +1465,7 @@ class Run implements DebtRun {
     this.watchDeposits = 0;
     this.watchFloatSnap = null;                 // the new Watch's float is read afresh (once) on its first deposit or screen
     this.watchWd = 0; this.watchDepCoins = 0;
-    this.tithe.begin(nd.no, isOvertime);   // Watch tithe (wave 58): this Watch's target is 20 % of the Night quota, from Night 3
+    this.tithe.begin(nd.no, isOvertime);   // Watch tithe (wave 58): this Watch's target is 12 % of the Night quota, from Night 3
     this.shiftState.duration = this.clockLen;
     this.shiftState.lastCallSec = this.lastCallSec;
     this.shiftState.segment = { index: this.watch, count: this.watches };
@@ -1566,17 +1586,36 @@ class Run implements DebtRun {
   }
 
   /**
-   * OVERSHOOT LOCK (Overshoot depth): while the bank holds more than tonight's quota, the coins above the quota cannot leave
-   * until Dawn. Every coin that would leave is taken from the top of the bank, so the whole WITHDRAW is refused (the quota
-   * stays covered). Deposits still go in, and the locked coins still earn interest at each Settle.
+   * THE SEAL (Overshoot depth, decision D2): while the bank holds more than tonight's quota, the coins above the quota cannot leave
+   * until Dawn. A WITHDRAW that asks for them is refused as a whole ('locked'). They keep earning interest at each Settle, and
+   * BREAK SEAL (`breakSeal`) takes them out at the price of tonight's overpay tiers (`sealBroken`). Deposits still go in.
    */
   overshootLocked(): boolean {
-    return this.quotaMode && !this.nightDone && this.quota.due > 0 && Math.floor(this.debtPaid) > Math.floor(this.quota.due);
+    return this.quotaMode && !this.nightDone && !this.sealBroken && this.sealHeld() > 0;
+  }
+
+  /** The coins the seal holds now: the bank above tonight's quota that a WITHDRAW could take (`bank.ts` sealCoins). */
+  private sealHeld(): number {
+    return sealCoins({ debtPaid: this.debtPaid, granted: this.bankGranted, due: this.quota.due });
+  }
+
+  /** The seal is on and a WITHDRAW window is open (the terminal shows it and BREAK SEAL works). */
+  private sealedNow(): boolean {
+    return this.withdrawOpen() && this.overshootLocked();
   }
 
   /** The coins WITHDRAW may take now: none while the Watch is shut or the overshoot is locked. */
   private bankWithdrawable(): number {
     return this.withdrawOpen() && !this.overshootLocked() ? withdrawable(this.bankInput()) : 0;
+  }
+
+  /**
+   * The overpay principal (decision D1): the bank minus the quota credit that never was cash minus the interest earned this Night.
+   * Pocket coins put in count, and interest does not, so the tiers are earned by play. Withdrawals take principal first (`takeOut`).
+   */
+  private principalNow(): number {
+    const balance = Math.max(0, Math.floor(this.debtPaid));
+    return Math.min(balance, Math.max(0, balance - Math.floor(this.bankGranted) - Math.floor(this.nightInterest)));
   }
 
   private bankInput(): BankInput {
@@ -1609,16 +1648,22 @@ class Run implements DebtRun {
       settleLeft: this.phase === 'settle' ? Math.max(0, this.phaseLeft) : 0,
       pullsLeft: Number.isFinite(this.pullCount) ? this.pullCount : 0,
       minBet: this.cheapestBet(),
+      principal: this.principalNow(),
+      sealed: this.sealedNow(),
+      sealCoins: this.sealedNow() ? this.sealHeld() : 0,
+      sealBroken: this.sealBroken,
     };
   }
 
   /**
-   * OVERSHOOT view: the bank balance against the overpay tiers (the same comparison the Dawn grant uses, `balance ÷ due`).
-   * `target` is the first whole coin count at a tier's ratio, so the HUD reads "balance/target" and the coins to go.
+   * OVERSHOOT view: the overpay principal against the overpay tiers (the same comparison the Dawn grant uses, `principal ÷ due`).
+   * `target` is the first whole coin count at a tier's ratio, so the HUD reads "principal/target" and the coins to go. Null once a
+   * broken seal has forfeited the tiers for the Night (there is no overshoot left to chase).
    */
-  overshootView(): OvershootView {
+  overshootView(): OvershootView | null {
+    if (this.sealBroken) return null;
     const due = Math.max(0, Math.floor(this.quota.due));
-    const balance = bankBalance(this.bankInput());
+    const balance = this.principalNow();
     const id = tierReached(balance, due);
     const reached = id === null ? -1 : OVERSHOOT_TIERS.findIndex((t) => t.id === id);
     const nextTier = OVERSHOOT_TIERS[reached + 1];
@@ -1630,7 +1675,7 @@ class Run implements DebtRun {
   }
 
   withdrawPreview(amount: number): WithdrawPreview {
-    const i = this.bankInput();
+    const i = { ...this.bankInput(), principal: this.sealBroken ? 0 : this.principalNow() };
     const open = this.withdrawOpen() && !this.overshootLocked();
     return previewWithdraw(open ? i : { ...i, granted: Number.MAX_SAFE_INTEGER }, amount);
   }
@@ -1638,11 +1683,31 @@ class Run implements DebtRun {
   withdraw(amount: number): number {
     if (!this.withdrawOpen()) return 0;
     const want = Math.floor(Number.isFinite(amount) ? amount : 0);
-    // The overshoot lock refuses the whole ask. The reason reads 'locked' (RefusalReason has no overshoot code yet).
+    // The seal refuses the whole ask: 'locked' has its own line on the terminal. BREAK SEAL is the way to take the overpay out.
     if (want > 0 && this.overshootLocked()) { this.refuse('locked'); return 0; }
+    return this.takeOut(want);
+  }
+
+  /**
+   * BREAK SEAL (decision D2): the coins above the quota go back to the pocket now, and tonight's overpay tiers are forfeit
+   * (`sealBroken`), so the Watch can always act. Returns the coins moved (0 = refused: no seal to break).
+   */
+  breakSeal(): number {
+    if (!this.withdrawOpen()) return 0;
+    const held = this.sealHeld();
+    if (!this.overshootLocked() || held <= 0) { this.refuse('noSeal'); return 0; }
+    this.sealBroken = true;
+    return this.takeOut(held);
+  }
+
+  /** Moves up to `want` coins from the bank to the pocket (what the bank can give back): the one place a WITHDRAW lands. */
+  private takeOut(want: number): number {
     const amt = Math.min(want, withdrawable(this.bankInput()));
     if (amt <= 0) return 0;
     this.refusal = null;
+    // principal first, then the interest it earned: a coin taken out of the bank stops being principal before it stops being interest
+    const fromInterest = Math.max(0, amt - this.principalNow());
+    this.nightInterest = Math.max(0, this.nightInterest - fromInterest);
     this.debtPaid = bankBalance(this.bankInput()) - amt;
     this.watchWd += amt;
     this.stats.deposited = Math.max(0, (this.stats.deposited ?? 0) - amt);
@@ -1673,7 +1738,8 @@ class Run implements DebtRun {
     return {
       pocket: Math.floor(this.coins), minBet, pullsLeft: between ? nightDef(this.index).pulls : this.pullCount,
       steps: brokeSteps({
-        bank: this.bankWithdrawable(),
+        // a sealed bank still has a way out: BREAK SEAL takes the coins above the quota (the terminal's second press)
+        bank: this.sealedNow() ? this.sealHeld() : this.bankWithdrawable(),
         tickets: this.tickets, ticketCoins: 5 * si,
         phoneRinging: ringing, loan: loan ?? undefined,
         bell: playing,
@@ -1777,6 +1843,7 @@ class Run implements DebtRun {
         earned = interest;
         if (interest > 0) {
           this.debtPaid += interest;
+          this.nightInterest += interest;      // not overpay principal (decision D1)
           this.stats.interest = (this.stats.interest ?? 0) + interest;
           this.ledger.interest += interest;
           this.emit('run:deposit', { pid, amount: interest, paid: this.debtPaid, due: this.quota.due });
@@ -1894,9 +1961,10 @@ class Run implements DebtRun {
     const wealth = this.coins + this.debtPaid;
     this.houseWealth = wealth;
 
-    const ratio = due > 0 ? this.debtPaid / due : 1;
+    // The tiers read the overpay principal (decision D1), and a broken seal forfeits them all for the Night (decision D2).
+    const ratio = due > 0 ? this.principalNow() / due : 1;
     for (const tier of OVERSHOOT_TIERS) {
-      if (ratio >= tier.ratio && !this.quota.claimed.some((c) => c.id === tier.id)) {
+      if (!this.sealBroken && ratio >= tier.ratio && !this.quota.claimed.some((c) => c.id === tier.id)) {
         const claim: OvershootClaim = { id: tier.id, at: Math.round(this.elapsed * 1000) };
         this.quota.claimed.push(claim);
         this.grantTier(tier);
@@ -1912,6 +1980,8 @@ class Run implements DebtRun {
     const surplus = Math.max(0, this.debtPaid - due);
     this.debtPaid = 0;
     this.bankGranted = 0;
+    this.nightInterest = 0;
+    this.sealBroken = false;
     if (surplus > 0) {
       this.ledger.carried += surplus;
       this.earn('coin', surplus, 'dawn:surplus');
@@ -2214,7 +2284,7 @@ class Run implements DebtRun {
       mult: this.mod('quota.mult', RUN_MACHINE, 1), add: this.mod('quota.add', RUN_MACHINE, 0), night8: this.mod('x.quota.night8', RUN_MACHINE, 1),
     };
     const due = this.dueOf(this.index, { ...p, tithe: this.tithe.addedQuota() });
-    // The Watch tithe's basis: the Night quota without the rescue loans and the tithes (20 % of it is each Watch's target).
+    // The Watch tithe's basis: the Night quota without the rescue loans and the tithes (12 % of it is each Watch's target).
     this.tithe.setNightQuota(this.dueOf(this.index, { ...p, loan: 0, tithe: 0 }));
     this.quota.base = nd.base;
     this.quota.assessment = assessmentFor(this.index, holdings, rate);
@@ -2255,9 +2325,9 @@ class Run implements DebtRun {
     let wealth = this.houseWealth;
     if (dawnNow) {
       wealth = this.coins + this.debtPaid;
-      const ratio = this.quota.due > 0 ? this.debtPaid / this.quota.due : 1;
+      const ratio = this.quota.due > 0 ? this.principalNow() / this.quota.due : 1;
       for (const tier of OVERSHOOT_TIERS) {
-        if (ratio >= tier.ratio && !this.quota.claimed.some((c) => c.id === tier.id)) discount += tier.reward.nextQuotaDiscount ?? 0;
+        if (!this.sealBroken && ratio >= tier.ratio && !this.quota.claimed.some((c) => c.id === tier.id)) discount += tier.reward.nextQuotaDiscount ?? 0;
       }
       discount = Math.min(0.15, discount);
     }
@@ -3096,7 +3166,7 @@ class Run implements DebtRun {
       rescue: { quota: this.loanQuota, used: this.rescuesUsed },
       watchDep: this.watchDeposits,
       watchFloat: this.watchFloatSnap ?? undefined,
-      bank:{ granted: this.bankGranted, wd: this.watchWd, dep: this.watchDepCoins },
+      bank:{ granted: this.bankGranted, wd: this.watchWd, dep: this.watchDepCoins, interest: this.nightInterest, broken: this.sealBroken },
       wingKeys: this.wingKeys, managerKey: this.managerKey, rooms: { ...this.rooms, lockers: [...this.rooms.lockers] }, bonusObols: this.currencies.get('obol') ?? 0,
       soulMarks: this.soulMarkCount, markEscrow: this.markEscrow, bossDuel: this.bossDuelNight, pledged: [...this.pledged],
       ...(this.endingPathId ? { endingPath: this.endingPathId } : {}),
@@ -3456,6 +3526,9 @@ class Run implements DebtRun {
     this.watchFloatSnap = typeof e.watchFloat === 'number' && Number.isFinite(e.watchFloat) ? Math.max(0, Math.floor(e.watchFloat)) : null;
     this.bankGranted = Math.max(0, Math.floor(e.bank?.granted ?? 0));
     this.watchWd = Math.max(0, Math.floor(e.bank?.wd ?? 0)); this.watchDepCoins = Math.max(0, Math.floor(e.bank?.dep ?? 0));
+    // older saves have no interest split: their whole bank reads as principal (the pre-D1 rule)
+    this.nightInterest = Math.max(0, Math.floor(e.bank?.interest ?? 0));
+    this.sealBroken = e.bank?.broken === true;
     this.wingKeys = Math.max(0, Math.floor(e.wingKeys ?? 0)); this.managerKey = e.managerKey === true;
     this.rooms = restoreRooms(e.rooms);
     if ((e.bonusObols ?? 0) > 0) this.currencies.set('obol', e.bonusObols ?? 0);

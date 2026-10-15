@@ -56,7 +56,9 @@ export type DepositRefusal = 'notQuota' | 'closed' | 'nightPaid' | 'nothing' | '
  * (`DepositRefusal`) and the rest of the run's refusals (the Pawn window, the lever and the Bell, the settle, the quota).
  */
 export type RefusalReason = 'funds' | 'pulls' | 'phase' | 'limit' | 'confirm' | 'locked' | DepositRefusal
-  | 'shopShut' | 'watchRunning' | 'watchEnding' | 'belling' | 'settling' | 'noWatch' | 'nightUnpaid' | 'quotaShort' | 'nightCard';
+  | 'shopShut' | 'watchRunning' | 'watchEnding' | 'belling' | 'settling' | 'noWatch' | 'nightUnpaid' | 'quotaShort' | 'nightCard'
+  /** `locked`: a WITHDRAW the seal holds (coins above the quota wait for Dawn; BREAK SEAL takes them). `noSeal`: nothing to break. */
+  | 'noSeal';
 
 /** Catalogue range × SI × Cap (TECH §11.5). `ladder` = the bet steps `stepBet()` walks. */
 export interface BetLimits { min: number; max: number; ladder: number[] }
