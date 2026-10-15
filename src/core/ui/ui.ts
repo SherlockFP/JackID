@@ -78,6 +78,8 @@ const BW: Record<BwKey, BwCfg> = {
 const bwKey = (tier: string): BwKey => (tier === 'jackpot' || tier === 'mega' || tier === 'huge' || tier === 'big' ? tier : 'mini');
 const DISSOLVE_MS = 400;
 const BW_SKIP_AFTER_MS = 800;
+/** Quiet time between two banners (after one dissolves), so the next title card reads on its own. */
+const BANNER_GAP_MS = 350;
 
 const settingsNow = (): Settings | undefined => app?.save?.data?.settings;
 const eat = (e: Event): void => { e.preventDefault(); e.stopImmediatePropagation(); };
@@ -225,7 +227,12 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
       }
     }
     const b = computeBlocking();
-    if (b !== blockedLast) { blockedLast = b; bus.emit('ui:blocking', { blocking: b }); }
+    if (b !== blockedLast) {
+      blockedLast = b;
+      bwLayer.classList.toggle('held', b);      // a banner in flight is out of sight while a modal is open (ui.css .px-bwl.held)
+      bus.emit('ui:blocking', { blocking: b });
+      if (!b) pumpBw();                         // the banners queued behind the modal come on now
+    }
   }
   initWidgets(root, syncBlocking);
 
@@ -377,10 +384,15 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
   const bwQueue: BwJob[] = [];
   let bwActive: { skip(): void; skippableAt: number } | null = null;
   function pumpBw(): void {
-    if (bwActive || !bwQueue.length) return;
+    // No banner starts over an open modal (draft, night cards, deal sheet): the queue waits until it closes (syncBlocking).
+    if (bwActive || !bwQueue.length || computeBlocking()) return;
     const job = bwQueue.shift()!;
     bwActive = { skip() { /* replaced by run() */ }, skippableAt: Infinity };
-    job.run().catch((e) => log.error('ui', 'banner', e)).finally(() => { bwActive = null; job.resolve(); pumpBw(); });
+    // One banner at a time, with a short breath between them: the next title card never lands on the one still dissolving.
+    job.run().catch((e) => log.error('ui', 'banner', e)).finally(() => {
+      job.resolve();
+      window.setTimeout(() => { bwActive = null; pumpBw(); }, BANNER_GAP_MS);
+    });
   }
   function enqueueBw(run: () => Promise<void>): Promise<void> {
     return new Promise<void>((resolve) => {
@@ -416,6 +428,15 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     setTimeout(res, DISSOLVE_MS + 100);
   });
   const wait = (ms: number): Promise<void> => new Promise<void>((r) => setTimeout(r, ms));
+  /** A banner's hold: time while a modal is open does not count, so the banner waits out of sight and resumes after it. */
+  async function heldWait(ms: number): Promise<void> {
+    let left = ms;
+    while (left > 0) {
+      const step = Math.min(left, 100);
+      await wait(step);
+      if (!computeBlocking()) left -= step;
+    }
+  }
 
   async function runBigWin(amount: number, tier: WinTier, title: string): Promise<void> {
     const key = bwKey(tier);
@@ -491,7 +512,7 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     const titleEl = h('div', 'title', stage);
     dropLetters(titleEl, upper(text), !!o.wave);
     uiSfx('stamp', 0.6);
-    await wait((o.hold ?? 1.5) * 1000 + Array.from(text).length * 40 + 240);
+    await heldWait((o.hold ?? 1.5) * 1000 + Array.from(text).length * 40 + 240);
     await dissolve(wrap);
     wrap.remove();
   }

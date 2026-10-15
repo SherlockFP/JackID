@@ -84,6 +84,8 @@ import draftStrings from './draft.strings';
 import runStrings from './run.strings';
 import { STARTER_TIMEOUT_SEC, starterOffer } from './draft';
 import { houseMoodProvider } from './houseMood';
+import { NightCards, type NightCardDef, type NightCardSave } from './nightCards';
+import nightCardStrings from './nightCards.strings';
 import { WatchEvents, type WatchEventSave } from './watchEvents';
 import type { EventBannerShow } from './buffs/banner';
 import type { IdleReport, TycoonState } from '@/game/types';
@@ -229,6 +231,9 @@ declare module '@/core/events' {
     'run:draft': { pid: PlayerId; state: 'picked' | 'auto'; charm: string };
     /** The Settle paid interest into the bank: `amount` coins at `pct` whole percent (the coin sound and the toast). */
     'run:interest': { pid: PlayerId; amount: number; pct: number };
+    /** Night Cards (director): the Dawn offer opened (`offer`), a card kept (`picked`) or auto-picked (`auto`), and the Night that
+     *  starts with its card (`started`). `card` is the card id, or null for `offer`. */
+    'run:nightcard': { pid: PlayerId; state: 'offer' | 'picked' | 'auto' | 'started'; card: string | null };
   }
 }
 /** `lastRefusal()` after a first press on a stake above half the pocket (see `RunStakeConfirmEvent`). Not in `RefusalReason` yet. */
@@ -238,6 +243,7 @@ export const STAKE_CONFIRM_REASON: RefusalReason = 'confirm';
 registerStrings(pullsStrings.prefix, { en: pullsStrings.en, tr: pullsStrings.tr });
 registerStrings(bankStrings.prefix, { en: bankStrings.en, tr: bankStrings.tr });
 registerStrings(draftStrings.prefix, { en: draftStrings.en, tr: draftStrings.tr });
+registerStrings(nightCardStrings.prefix, { en: nightCardStrings.en, tr: nightCardStrings.tr });
 registerStrings(runStrings.prefix, { en: runStrings.en, tr: runStrings.tr });
 
 let bossStringsDone = false;
@@ -341,6 +347,8 @@ export interface RunExt {
   hollowRefused?: boolean;
   /** Starter Draft (draft wave): the offer and whether it is still open. Optional: older saves have none. */
   starter?: StarterState;
+  /** Night Cards (director): the open Dawn offer and the card kept for the next Night. Optional: older saves have none. */
+  nightCards?: NightCardSave;
   /** Per-Watch floor event (wave 43): the live event and its time left. Optional: a save between Watches has none. */
   watchEvent?: WatchEventSave | null;
 }
@@ -400,6 +408,14 @@ export interface DebtRun extends RunApi {
   starterDraft(): { candidates: CharmDef[]; left: number } | null;
   /** Take one starter charm: closes the offer and lets the Bell strike. False when closed or the id is not on offer. */
   pickStarter(charmId: string): boolean;
+  /** Night Cards: the open Dawn offer (two cards, seconds left), or null. OPEN THE FLOOR settles it with its first card. */
+  nightCardOffer(): { candidates: NightCardDef[]; left: number; night: number } | null;
+  /** Keep one card of the open offer for the next Night. False when closed or the id is not on offer. */
+  pickNightCard(cardId: string): boolean;
+  /** The Night Card panel is on screen: OPEN THE FLOOR waits for a pick (or the panel's timer) instead of taking card 1. */
+  setNightCardGate(on: boolean): void;
+  /** The card kept for the Night in progress, or null. */
+  nightCard(): NightCardDef | null;
   /** Intermission → Bell (the BELL ROPE). */
   startWatch(): boolean;
   /** Night intermission → next Night (OPEN THE FLOOR). Refused while the Topside choice is open. */
@@ -744,6 +760,8 @@ class Run implements DebtRun {
   private overpays: PendingOverpay[] = [];
   /** Starter Draft (draft wave): null until `openStarterDraft`. Holds the Bell while open. */
   private starter: StarterState | null = null;
+  /** Night Cards (director): the Dawn offer and the card kept for the next Night. Provider registered in the constructor. */
+  private readonly nightCards: NightCards;
   /** Per-Watch floor event (wave 43): rolled at each Bell, ticked on the Watch clock, saved mid-Watch. */
   private readonly watchEv: WatchEvents;
   // bounty board (ContractsApi): defs registered by the device catalogue, offers and slips for this run
@@ -809,6 +827,8 @@ class Run implements DebtRun {
     this.modsImpl.register(this.makeCircuitProvider());
     this.watchEv = new WatchEvents({ isHot: (m) => this.circ.isHot(m), touch: () => this.modsImpl.touch() });
     this.modsImpl.register(this.watchEv);
+    this.nightCards = new NightCards(() => this.index, this.seed, () => this.modsImpl.touch());
+    this.modsImpl.register(this.nightCards);
 
     this.pools.set('net', { id: 'net', value: START.jackpotSeed, seed: START.jackpotSeed, feed: NETWORK_FEED, drip: 0, scope: 'network', lastWin: null });
 
@@ -981,9 +1001,11 @@ class Run implements DebtRun {
     let ceiling = def.maxBet * si * capMult;
     // Night 1 stake safety: one wrong press cannot end the run, so the top stake is a third of the starting pocket.
     if (this.quotaMode && this.index === 0) ceiling = Math.min(ceiling, Math.max(def.minBet, night1StakeCap(START.pocket)));
-    const ladder = (def.betSteps ?? bettingLadder(def.minBet, ceiling)).filter((v) => v >= def.minBet && v <= ceiling);
-    const max = snapDown(ceiling, ladder) || def.minBet;
-    return { min: def.minBet, max, ladder };
+    // Night Cards: HIGH TABLE doubles the floor (never above the ceiling, so the ladder keeps one stake).
+    const minBet = Math.min(def.minBet * this.nightCards.fx().minBetMult, Math.max(def.minBet, ceiling));
+    const ladder = (def.betSteps ?? bettingLadder(minBet, ceiling)).filter((v) => v >= minBet && v <= ceiling);
+    const max = snapDown(ceiling, ladder) || minBet;
+    return { min: minBet, max, ladder };
   }
 
   payoutFactor(machineId: MachineId, instanceId: InstanceId): number {
@@ -1303,6 +1325,9 @@ class Run implements DebtRun {
     tickClockHold(dt);
     this.itemSys.tick(dt);
     if (this.duelAfter.length) this.tickDuelAfter(dt);
+    // Night Cards: the Dawn offer's 20 s timer runs in intermission too (OPEN THE FLOOR settles it early with the first card).
+    const autoCard = this.nightCards.tick(dt);
+    if (autoCard) { this.emit('run:nightcard', { pid: this.selfId, state: 'auto', card: autoCard }); this.notify(); this.persist(); }
     if (this.phase === 'play' || this.phase === 'lastCall') this.tycoonSys.tick(dt);
     if (!this.rules.timed) return;
     switch (this.phase) {
@@ -1342,7 +1367,7 @@ class Run implements DebtRun {
     const isOvertime = this.watch === this.overtimeIdx;
     this.ensureBoss(); // before the clock and pull mods are read below
     // the Watch's floor event (wave 43) rolls before the clock and pull mods are read (cold_snap and the clock/pull effects)
-    this.watchEv.begin(this.rng, this.index + 1, this.watch, !!this.bossToday());
+    this.watchEv.begin(this.rng, this.index + 1, this.watch, !!this.bossToday() || this.nightCards.fx().noFloorEvents);
     this.coolBoiler();
     this.boughtThisWatch = 0;
     this.clockLen = isOvertime ? OVERTIME_SEC : Math.max(10, Math.round(this.mod('x.run.clockAdd', RUN_MACHINE, nd.clock)));
@@ -1372,7 +1397,12 @@ class Run implements DebtRun {
     if (this.ended || !this.quotaMode || this.topside) return this.refuse('noWatch');
     if (this.phase !== 'intermission') return this.refuse(this.phaseRefusal());
     if (!this.nightDone) return this.refuse('nightUnpaid');
+    // Night Cards: with the panel on screen the lever waits for a pick (the panel's own timer still auto-picks, so nothing
+    // soft-locks). Headless runs and tests have no panel: there an open offer is settled by its first card.
+    if (this.nightCardGate && this.nightCardOffer()) return this.refuse('nightCard');
     this.refusal = null;
+    const settled = this.nightCards.settle();
+    if (settled) this.emit('run:nightcard', { pid: this.selfId, state: 'auto', card: settled });
     // Ascent: the pit rises one floor. The Elevator Token pays 5 % of the pocket (max 300 × SI).
     if (this.charmBox.has(this.selfId, 'elevator_token')) {
       const gain = Math.min(Math.floor(this.coins * 0.05), 300 * nightDef(this.index).si);
@@ -1381,7 +1411,7 @@ class Run implements DebtRun {
     this.index += 1;
     this.ledger = { night: this.index + 1, float: 0, interest: 0, tickets: 0, cut: 0, carried: 0 };   // a new Night's books start empty (before its float)
     const nd = nightDef(this.index);
-    this.watches = nd.watches;
+    this.watches = Math.max(1, nd.watches + this.nightCards.fx().watchAdd);   // Night Cards: RUSH NIGHT drops a Watch
     this.watch = 0;
     this.overtimeIdx = -1;
     this.nightDone = false;
@@ -1394,10 +1424,15 @@ class Run implements DebtRun {
     this.shiftState.index = this.index;
     this.shiftState.floor = this.index + 1;
     this.shiftState.stake = nd.si;
-    this.shiftState.segment = { index: 0, count: nd.watches };
+    this.shiftState.segment = { index: 0, count: this.watches };
     this.houseFloat();
     this.recomputeQuota();
     this.prepareBoss();
+    const keptCard = this.nightCards.started();   // Night Cards: the card kept at the Dawn before this Night, if any
+    if (keptCard) {
+      this.banner?.(t('nightcard.started', { name: t(`nightcard.${keptCard.id}.name`) }), { color: '#ff7a5a', hold: 4, size: 16 });
+      this.emit('run:nightcard', { pid: this.selfId, state: 'started', card: keptCard.id });
+    }
     this.enter('intermission', 0);
     this.persist();
     return true;
@@ -1445,7 +1480,7 @@ class Run implements DebtRun {
    * player can still shop while the Watch ends). Not in Bell, play, Settle or Dawn.
    */
   private shopOpen(): boolean {
-    return (this.phase === 'intermission' || this.phase === 'closing') && !this.ended;
+    return (this.phase === 'intermission' || this.phase === 'closing') && !this.ended && !this.nightCards.fx().pawnClosed;
   }
 
   /**
@@ -1756,6 +1791,8 @@ class Run implements DebtRun {
     this.syncQuota();
     this.nightDone = true;
     if (nightDef(this.index).no === BASE_RUN_NIGHTS) this.topside = true;
+    // Night Cards: every paid Dawn with a Night after it (from Night 1 on) opens the two-card offer for that Night.
+    if (!this.topside && this.nightCards.openOffer(this.index + 1)) this.emit('run:nightcard', { pid: this.selfId, state: 'offer', card: null });
     this.enter('intermission', 0);
     this.emit('quota:update', { quota: this.quota });
     this.persist();
@@ -2017,8 +2054,9 @@ class Run implements DebtRun {
     const cands = this.lampCandidates();
     const rng = createRng(hashSeed('lamps', this.seed, this.index, this.watch));
     const lamps = this.night() >= LAMP_FIRST_NIGHT;
-    const hot = Math.max(0, hotLampCount(this.night()) + Math.round(this.mod('x.lamp.hotCount', RUN_MACHINE, 0)));
-    const cold = coldLampCount(this.night(), Math.round(this.mod('x.lamp.coldCount', RUN_MACHINE, 0)) + this.stakeFx().coldLamps);
+    const lampFx = this.nightCards.fx();   // Night Cards: LAMP FESTIVAL sets 2 HOT and no COLD for its Night
+    const hot = Math.max(0, (lampFx.hotLamps ?? hotLampCount(this.night())) + Math.round(this.mod('x.lamp.hotCount', RUN_MACHINE, 0)));
+    const cold = lampFx.noColdLamps ? 0 : coldLampCount(this.night(), Math.round(this.mod('x.lamp.coldCount', RUN_MACHINE, 0)) + this.stakeFx().coldLamps);
     // No candidate can take a Lamp at this pocket, though some readable machine would: the banner says the pocket is too low.
     const pocketShort = lamps && hot + cold > 0 && cands.length === 0 && this.lampCandidates(Number.POSITIVE_INFINITY).length > 0;
     this.circ.startWatch(rng, cands, {
@@ -2854,6 +2892,7 @@ class Run implements DebtRun {
       ...(this.endingPathId ? { endingPath: this.endingPathId } : {}),
       hollow: { ...this.hollow }, forgiveUntil: this.forgiveUntil, houseWealth: this.houseWealth, obolMult: this.obolMult, hollowRefused: this.hollowRefused,
       ...(this.starter ? { starter: { ids: [...this.starter.ids], open: this.starter.open, left: this.starter.left } } : {}),
+      ...(this.nightCards.snapshot() ? { nightCards: this.nightCards.snapshot() as NightCardSave } : {}),
       ...(this.watchEv.snapshot() ? { watchEvent: this.watchEv.snapshot() } : {}),
     };
     return {
@@ -2948,6 +2987,22 @@ class Run implements DebtRun {
   pickStarter(charmId: string): boolean {
     return this.takeStarter(charmId, 'picked');
   }
+
+  // ─ Night Cards (director): the Dawn offer, the card kept for the next Night ─
+  nightCardOffer(): { candidates: NightCardDef[]; left: number; night: number } | null { return this.nightCards.offerView(); }
+
+  private nightCardGate = false;
+  setNightCardGate(on: boolean): void { this.nightCardGate = on; }
+
+  pickNightCard(cardId: string): boolean {
+    if (!this.nightCards.pick(cardId)) return false;
+    this.emit('run:nightcard', { pid: this.selfId, state: 'picked', card: cardId });
+    this.notify();
+    this.persist();
+    return true;
+  }
+
+  nightCard(): NightCardDef | null { return this.nightCards.current(); }
 
   /** Takes one starter charm (the player's pick, or the timer's first card that fits). Closes the offer. */
   private takeStarter(charmId: string, state: 'picked' | 'auto'): boolean {
@@ -3176,6 +3231,7 @@ class Run implements DebtRun {
     this.obolMult = typeof e.obolMult === 'number' && e.obolMult > 0 ? e.obolMult : 1;
     this.hollowRefused = e.hollowRefused === true;
     this.starter = restoredStarter(e.starter);
+    this.nightCards.restore(e.nightCards);
     this.watchEv.restore(e.watchEvent);
     this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);
     this.watchDeposits = Math.max(0, e.watchDep ?? 0);

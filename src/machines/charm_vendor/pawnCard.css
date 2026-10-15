@@ -1,7 +1,9 @@
 /* Pawn Window: the selected charm's card (name, rarity, effect text). DOM, so the text is crisp. Mounted inside #ui. */
 .pawn-card {
   --su: var(--u, 4px); --rc: #ffd040;
-  position: absolute; right: calc(var(--su) * 3); top: 21%; width: min(calc(var(--su) * 104), 46%);
+  /* Left column, under the top band and the rules chip: the right HUD stack (quota, PAYOUT, NIGHT PLAN) and the seat toasts
+     keep the right edge, so the card never sits on them at 1280x720 or 1024x768 (--hud-top-h is set by hud.ts). */
+  position: absolute; left: calc(var(--su) * 3); right: auto; top: max(21%, calc(var(--hud-top-h, 0px) + 60 * var(--su))); width: min(calc(var(--su) * 104), 46%);
   display: none; pointer-events: none; box-sizing: border-box;
   padding: calc(var(--su) * 3) calc(var(--su) * 4);
   background: rgba(6, 9, 6, 0.93); border: calc(var(--su) * 1.5) solid var(--rc); box-shadow: 0 0 0 calc(var(--su) * 0.75) #000;
@@ -30,12 +32,12 @@
   font-size: calc(var(--su) * 9); line-height: 1.12; color: #ffd040;
 }
 .pawn-card .pc-note { margin-top: calc(var(--su) * 2); font-size: calc(var(--su) * 8); line-height: 1.1; color: #c8a4ff; }
-@media (max-width: 760px) { .pawn-card { top: 24%; width: 52%; } }
+@media (max-width: 760px) { .pawn-card { width: 52%; } }
 
 /* STAMPS tab: the CHARMS | STAMPS strip over the card, the effect lines and the level pips. */
 .pawn-tabs {
   --su: var(--u, 4px);
-  position: absolute; right: calc(var(--su) * 3); top: 21%; transform: translateY(-100%); width: min(calc(var(--su) * 104), 46%);
+  position: absolute; left: calc(var(--su) * 3); right: auto; top: max(21%, calc(var(--hud-top-h, 0px) + 60 * var(--su))); transform: translateY(-100%); width: min(calc(var(--su) * 104), 46%);
   display: none; pointer-events: none; box-sizing: border-box; gap: calc(var(--su) * 1.5);
   font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 4.5); line-height: 1;
 }
@@ -51,4 +53,4 @@
 .pawn-card .pc-pips .p.own { background: var(--rc); }
 .pawn-card .pc-pips .p.next { background: repeating-linear-gradient(45deg, var(--rc) 0 calc(var(--su) * 1.5), transparent calc(var(--su) * 1.5) calc(var(--su) * 3)); }
 .pawn-card .pc-pips .p.free { opacity: 0.45; }
-@media (max-width: 760px) { .pawn-tabs { top: 24%; width: 52%; } }
+@media (max-width: 760px) { .pawn-tabs { width: 52%; } }

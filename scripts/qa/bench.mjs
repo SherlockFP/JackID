@@ -96,6 +96,8 @@ export function parseScript(text) {
  * `--run "<steps>"`: a real debt run's steps, separated by `;` (commas stay inside a play step, so its keys use the
  * parseScript list syntax). Steps (see scripts/qa/README.md, "Debt-run driver"):
  *   goto:<machineId>   teleport in front of the floor machine, face it, press E (devtools occupy as the fallback)
+ *   goto:hot           the same, for the Hot cabinet (the first Hot Lamp lit now, run.circuit.lamps().hot[0])
+ *   nightcard:<1|2>    pick Night Card <1|2> of the offer (run.pickNightCard, 1-based; the offer is run.nightCardOffer())
  *   play:<keys>xN      press the keys (parseScript syntax, e.g. play:Space:150,wait:300x3), N times (default 1)
  *   stand              stand up from the seat
  *   bank:deposit:<n>   Debt Terminal deposit of n coins (run.deposit)
@@ -130,6 +132,9 @@ export function parseRunSteps(text) {
     if (m0) { out.push({ kind: 'shot', name: m0[1], text: tok }); continue; }
     m0 = /^banner:(\d+)$/.exec(tok);
     if (m0) { out.push({ kind: 'banner', ms: Number(m0[1]), text: tok }); continue; }
+      if (tok === 'goto:hot') { out.push({ kind: 'goto', hot: true, text: tok }); continue; }
+    m0 = /^nightcard:([12])$/.exec(tok);
+    if (m0) { out.push({ kind: 'nightcard', n: Number(m0[1]), text: tok }); continue; }
     let m = /^goto:([a-z][a-z0-9_]*)$/.exec(tok);
     if (m) { out.push({ kind: 'goto', machine: m[1], text: tok }); continue; }
     m = /^pawn:buy:(\d+)$/.exec(tok);
@@ -161,7 +166,7 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | auto:night | auto:night:event | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | auto:night | auto:night:event | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
   const once = (kind) => {
@@ -383,11 +388,19 @@ function noteRefusal(rec, before, now) {
 }
 
 /** Page JS: the debt run's state, for `state`, the step records and the auto:night loop. Watch and Night are 1-based. */
-const RUN_STATE_JS = `(() => {
+const RUN_STATE_JS = `(async () => {
   const a = window.jackid.app, r = a.run;
   if (!r) return { over: true, run: null };   // the run is gone: the menu took the screen back
   const b = r.bank(), pulls = r.pulls();
+  // Lamps: each lit Hot / Cold instance with its machine id and the zone its slot sits in (the Bell's roll, circuit.ts).
+  const lv = r.circuit?.lamps?.() ?? { hot: [], cold: [] };
+  const lampOf = (list) => list.map((e) => ({ instance: e.mid, machineId: e.machineId, zone: a.world?.slot?.(e.mid)?.zone ?? null }));
+  const ev = (await import('/src/game/watchEvents.ts')).watchEventView();   // the live floor event, or null
   return {
+    lamps: { hot: lampOf(lv.hot), cold: lampOf(lv.cold) },
+    event: ev ? { id: ev.id, leftS: ev.leftS, pulls: ev.pulls } : null,
+    nightCard: r.nightCard?.() ?? null,            // the Night Card picked for this Night (id), or null
+    nightCardOffer: r.nightCardOffer?.() ?? null,  // the two offered card ids while the offer is open, else null
     phase: r.shift.phase, night: r.night(), watch: typeof r.watch === 'number' ? r.watch + 1 : null,
     pocket: b.pocket, bank: b.balance, withdrawable: b.withdrawable, quotaDue: b.due, quotaLeft: b.left,
     pullsLeft: b.pullsLeft, pulls: Number.isFinite(pulls) ? pulls : null, minBet: b.minBet,
@@ -402,11 +415,22 @@ const RUN_STATE_JS = `(() => {
  * Page JS: teleports the player in front of the first unlocked floor machine of `machineId` and faces it. The front is
  * the machine's +Z (rotY turns it), `0.9 m + its interact depth` out, the stand-up distance of the bench room.
  */
-const goToJs = (machineId) => `(() => {
-  const a = window.jackid.app, w = a.world, id = ${JSON.stringify(machineId)};
+const goToJs = (sel) => `(() => {
+  const a = window.jackid.app, w = a.world, sel = ${JSON.stringify(sel)};
   if (!w || !a.player) return { ok: false, reason: 'no debt run on screen' };
-  const m = w.machines().find((x) => x.def.id === id && !w.isLocked(x.id));
-  if (!m) return { ok: false, reason: 'no unlocked "' + id + '" on the floor (not placed, or locked this Night)' };
+  let m;
+  if (sel.hot) {
+    // The Hot cabinet: the first Hot Lamp lit now (the Bell's roll). It must be on the floor and unlocked.
+    const hot = a.run?.circuit?.lamps?.().hot ?? [];
+    if (!hot.length) return { ok: false, reason: 'no Hot lamp is lit now (the Lamps light at each Bell)' };
+    const want = hot[0];
+    m = w.machines().find((x) => x.id === want.mid);
+    if (!m) return { ok: false, reason: 'the Hot cabinet (' + want.machineId + ') is not on the floor' };
+    if (w.isLocked(m.id)) return { ok: false, reason: 'the Hot cabinet (' + want.machineId + ') is locked this Night' };
+  } else {
+    m = w.machines().find((x) => x.def.id === sel.machine && !w.isLocked(x.id));
+    if (!m) return { ok: false, reason: 'no unlocked "' + sel.machine + '" on the floor (not placed, or locked this Night)' };
+  }
   const slot = w.slot(m.id);
   const th = ((slot?.rotY ?? 0) * Math.PI) / 180;
   const d = 0.9 + (m.model?.interact?.max?.[2] ?? 0.5);
@@ -414,7 +438,7 @@ const goToJs = (machineId) => `(() => {
   const v = a.camera.position.clone();
   v.set(fx, a.player.pos.y, fz);
   a.player.teleport(v, th);
-  return { ok: true, instance: m.id, at: [Math.round(fx * 100) / 100, Math.round(fz * 100) / 100] };
+  return { ok: true, instance: m.id, machineId: m.def.id, at: [Math.round(fx * 100) / 100, Math.round(fz * 100) / 100] };
 })()`;
 
 /** Page JS: the seat test for `machineId` (the unlocked instance on the floor, and whether the player sits at it). */
@@ -469,25 +493,32 @@ const readState = (ctx) => evalJson(ctx.cdp, RUN_STATE_JS);
 const seatedIs = (ctx, want, ms) => waitFor(
   async () => (await evaluate(ctx.cdp, 'window.jackid.app.player?.seat != null')) === want, ms, want ? 'a seat' : 'standing up');
 
-/** The `goto` step: teleport in front of the first unlocked floor machine, face it, press E (devtools occupy as the fallback). */
+/**
+ * The `goto` step: teleport in front of the first unlocked floor machine (`machine`, a machine id), or of the Hot cabinet
+ * (`{ hot: true }`), face it, press E (devtools occupy as the fallback).
+ */
 async function gotoMachine(ctx, machine, rec) {
   const { cdp } = ctx;
+  const sel = typeof machine === 'string' ? { machine } : { hot: true };
+  const label = typeof machine === 'string' ? machine : 'hot';
   if (await evaluate(cdp, 'window.jackid.app.player?.seat != null')) {
     await evaluate(cdp, '(window.jackid.app.world.standUp(), true)');
-    await seatedIs(ctx, false, 4000).catch(() => { throw new Error(`goto:${machine}: could not stand up first`); });
+    await seatedIs(ctx, false, 4000).catch(() => { throw new Error(`goto:${label}: could not stand up first`); });
   }
-  const tp = await evalJson(cdp, goToJs(machine));
-  if (!tp.ok) throw new Error(`goto:${machine}: ${tp.reason}`);
+  const tp = await evalJson(cdp, goToJs(sel));
+  if (!tp.ok) throw new Error(`goto:${label}: ${tp.reason}`);
   await sleep(400);                                     // the interact focus follows the new view
   await pressKey(cdp, 'KeyE', DEFAULT_HOLD_MS);
   rec.via = 'E';
   try { await seatedIs(ctx, true, 2500); } catch {
     await evaluate(cdp, `(window.jackid.app.world.occupy(${JSON.stringify(tp.instance)}), true)`);   // devtools fallback
     rec.via = 'occupy';
-    await seatedIs(ctx, true, 2500).catch(() => { throw new Error(`goto:${machine}: not seated (E and occupy both failed)`); });
+    await seatedIs(ctx, true, 2500).catch(() => { throw new Error(`goto:${label}: not seated (E and occupy both failed)`); });
   }
   rec.instance = tp.instance;
+  rec.machineId = tp.machineId;
   rec.at = tp.at;
+  if (sel.hot) rec.lamp = 'hot';
   // The seat is granted before the camera glides in; the keys of a seated machine only count once the input mode is 'machine'.
   await waitFor(async () => (await evaluate(cdp, 'window.jackid.app.input?.mode')) === 'machine', 2500, 'machine input').catch(() => { rec.inputMode = 'not machine'; });
 }
@@ -706,7 +737,28 @@ async function autoNight(ctx, rec, untilEvent = false) {
 async function runKind(ctx, s, rec) {
   const { cdp, run } = ctx;
   switch (s.kind) {
-    case 'goto': return gotoMachine(ctx, s.machine, rec);
+    case 'goto': return gotoMachine(ctx, s.hot ? { hot: true } : s.machine, rec);
+    case 'nightcard': {
+      // Night Card <n> (1-based) of the offer. The run contract: nightCardOffer() (ids or null), pickNightCard(n) (boolean).
+      rec.card = s.n;
+      const before = await evaluate(cdp, REFUSAL_JS);
+      const res = await evalJson(cdp, `(() => {
+        const r = window.jackid.app.run;
+        if (!r) return { missing: false, ok: false, offer: null };
+        if (typeof r.pickNightCard !== 'function') return { missing: true, ok: false, offer: null };
+        const offer = r.nightCardOffer?.() ?? null;
+        return { missing: false, ok: r.pickNightCard(${s.n}) === true, offer, card: offer?.[${s.n - 1}] ?? null };
+      })()`);
+      rec.offer = res.offer;
+      rec.id = res.card ?? null;
+      rec.ok = res.ok;
+      if (res.missing) { rec.ok = false; rec.reason = 'no Night Card on this build (run.pickNightCard is missing)'; return; }
+      if (!rec.ok) {
+        rec.reason = 'refused (no Night Card offer open, or the card is not in it)';
+        noteRefusal(rec, before, await evaluate(cdp, REFUSAL_JS));
+      }
+      return;
+    }
     case 'play':
       rec.bets = [];
       for (let i = 0; i < s.n; i++) {

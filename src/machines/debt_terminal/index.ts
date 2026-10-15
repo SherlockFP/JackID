@@ -154,6 +154,7 @@ export const def: MachineDef = {
       settling: "Settling — {s} s",
       noWatch: "No Watch is running right now",
       nightUnpaid: "Quota first: the floor opens once the Night is paid",
+      nightCard: "Pick tonight's Night Card first (1 / 2)",
       quotaShort: "Quota not met yet: settle once it is paid",
       c_float: 'keeps {n} in pocket (float)',
       allConfirm: "ALL empties your pocket. Press ALL again to confirm",
@@ -239,6 +240,7 @@ export const def: MachineDef = {
       settling: "Kapanıyor — {s} sn",
       noWatch: "Şu an çalışan bir nöbet yok",
       nightUnpaid: "Önce kota: gece ödenince kat açılır",
+      nightCard: "Önce bu gecenin Gece Kartını seç (1 / 2)",
       quotaShort: "Kota henüz tamam değil: ödenince kapat",
       c_float: 'cepte {n} kalır (yedek akçe)',
       allConfirm: "HEPSİ cebini boşaltır. Onaylamak için HEPSİ'ye tekrar bas",
@@ -660,7 +662,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
         this.refuseDeposit(why, this.ctx.run.depositFloor?.() ?? 0);
         return;
       case 'settling': this.refuse('settling', { s: (this.bk().settleLeft ?? 0).toFixed(1) }); return;
-      case 'watchRunning': case 'watchEnding': case 'belling': case 'noWatch': case 'nightUnpaid': case 'quotaShort':
+      case 'watchRunning': case 'watchEnding': case 'belling': case 'noWatch': case 'nightUnpaid': case 'quotaShort': case 'nightCard':
         this.refuse(why);
         return;
       default: this.refuse('denied');

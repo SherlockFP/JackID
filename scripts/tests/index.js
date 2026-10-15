@@ -45,3 +45,4 @@ import './draft.test.mjs';
 import './run.mola.test.mjs';
 import './stakes.test.mjs';
 import './daily.test.mjs';
+import './nightCards.test.mjs';
