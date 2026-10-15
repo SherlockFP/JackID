@@ -75,14 +75,14 @@
 // keeps the rotator but leaves the human N8 near 23 %; `--notice-from 4` drops N4 reach to 26 %. Rotator and banker fall off late at
 // 1.9 (rotator N8 about 0 %): a director call.
 // WAVE 46 (director, HOUSE MOOD): every settle's payout is multiplied by the Night's mood (houseMood.ts: N1 x1.12, N2 x1.07, N3 x1.03,
-// N4 x1.00, N5 x0.98, N6 x0.97, N7 x0.96, N8 x0.95); `--no-mood` switches it off. The quota ladder is 31, 42, 84, 168, 336, 576, 1150, 2300
+// N4 x1.00, N5 x0.98, N6 x0.97, N7 x0.96, N8 x0.95); `--no-mood` switches it off. The wave 46 quota ladder was 31, 42, 84, 168, 336, 576, 1150, 2300; the director's N2 change (wave 53) makes it 24, 36, 72, 144, 288, 576, 1152, 2304
 // (schedule.ts). Human 2000 runs (seed 20261013): reach 88.5 / 72 / 52 / 40 / 35 / 32 / 30 / 28 %; without the mood (`--no-mood`, the old
 // ladder) N1 86.8. N5 ~30 is not reachable under the 2x ladder cap (see schedule.ts, wave 46).
 // WAVE 42 (director): interest 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20 (schedule.ts), and the quota ladder 31, 44, 88, 176, 352,
 // 704, 1408, 2816 (each step at most 2x). Human 2000 runs (seed 20261013): reach 86 / 66 / 50 / 39 / 33 / 29 / 26 / 23 %. The
 // targets (N1 85, N2 ~70, N3 ~50, N5 ~30, N8 ~8-12) hold for N1-N3; N5 and N8 do not, and no ladder under the 2x cap can make them:
 // N5 <= 4 x N3 and N8 <= 64 x N2, and a quota of 20 000 at N8 still leaves ~20 % of runs reaching it (the survivors' pockets are far
-// above any quota the ladder allows). `--quotas 31,44,88,176,352,704,1408,2816` reproduces the table with the schedule as shipped.
+// above any quota the ladder allows). `--quotas 24,36,72,144,288,576,1152,2304` reproduces the table with the schedule as shipped (wave 53: N1 93.6, N2 81.8, N3 64.8, N4 50.5, N5 40.2 %).
 // The Pawn now always shows a charm at most max(8, 25 % of quota) and a stamp at most 30 % (decision 3); the floor shelf sells at that
 // cap. Settle is 1.5 s with the bank open (decision 2); the sim does not model the Settle clock.
 // WAVE 41 (director): Night 1 interest 0.50, Night 2 0.90 (schedule.ts). Human 2000 runs: 84.7 / 62.8 / 48.7 / 36.9 / 28.9 / 23.4 / 17.9 / 15.3.

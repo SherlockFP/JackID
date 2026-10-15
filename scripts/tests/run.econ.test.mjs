@@ -73,7 +73,8 @@ test('WAVE 47 ladder: no Night steps up more than its cap (2x up to N3, 3x from 
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
   for (let i = 1; i < q.length; i++) assert.ok(q[i] / q[i - 1] <= SCH.maxLadderStep(i + 1) + 1e-9, `N${i + 1} / N${i} = ${(q[i] / q[i - 1]).toFixed(2)} <= ${SCH.maxLadderStep(i + 1)}`);
   assert.deepEqual([SCH.maxLadderStep(2), SCH.maxLadderStep(3), SCH.maxLadderStep(4), SCH.maxLadderStep(8)], [2, 2, 3, 3]);
-  assert.deepEqual(q, [24, 42, 84, 168, 336, 672, 1344, 2688], 'the tuned ladder (wave 47, N1 teaching quota 24 by director; scripts/sim/run.mjs, 2000 human runs, seed 20261013)');
+  assert.deepEqual(q, [24, 36, 72, 144, 288, 576, 1152, 2304], 'the tuned ladder (director: N2 36, every step a 2x doubling; N1 teaching quota 24; scripts/sim/run.mjs, 2000 human runs, seed 20261013)');
+  for (let i = 1; i < q.length; i++) assert.ok(q[i] <= 2 * q[i - 1], `N${i + 1} is at most 2x N${i} (director: no step above 2x after Night 2)`);
 });
 
 test('WAVE 47 house takes notice: from Night 5 the quota is at least 1.2 x the wealth at Dawn; the ladder is the floor; off below Night 5 and at share 0', () => {
@@ -83,9 +84,9 @@ test('WAVE 47 house takes notice: from Night 5 the quota is at least 1.2 x the w
   assert.equal(SCH.houseNoticeQuota(5, 504, 100), 504, 'a poor run keeps the ladder value');
   assert.equal(SCH.houseNoticeQuota(5, 504, 1000), 1200, '1.2 x 1000 coins');
   assert.equal(SCH.houseNoticeQuota(5, 504, 1000, 0), 504, 'share 0 switches the rule off');
-  assert.equal(SCH.quotaFor(3, { wealth: 1e6 }), 168, 'quotaFor(index 3) is Night 4: no notice');
+  assert.equal(SCH.quotaFor(3, { wealth: 1e6 }), 144, 'quotaFor(index 3) is Night 4: no notice');
   assert.equal(SCH.quotaFor(4, { wealth: 1000 }), 1200, 'quotaFor(index 4) is Night 5 and takes the wealth floor');
-  assert.equal(SCH.quotaFor(4), 336, 'quotaFor without wealth is the ladder');
+  assert.equal(SCH.quotaFor(4), 288, 'quotaFor without wealth is the ladder');
 });
 
 test('WAVE 47 floor events: the same event is never rolled twice in a row within a Night (and the memory survives a save)', () => {

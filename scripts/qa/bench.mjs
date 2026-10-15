@@ -97,7 +97,7 @@ export function parseScript(text) {
  * parseScript list syntax). Steps (see scripts/qa/README.md, "Debt-run driver"):
  *   goto:<machineId>   teleport in front of the floor machine, face it, press E (devtools occupy as the fallback)
  *   goto:hot           the same, for the Hot cabinet (the first Hot Lamp lit now, run.circuit.lamps().hot[0])
- *   nightcard:<1|2>    pick Night Card <1|2> of the offer (run.pickNightCard, 1-based; the offer is run.nightCardOffer())
+ *   nightcard:<1|2>    pick Night Card <1|2> of the offer: the id at that index of run.nightCardOffer().candidates goes to run.pickNightCard(id)
  *   play:<keys>xN      press the keys (parseScript syntax, e.g. play:Space:150,wait:300x3), N times (default 1)
  *   stand              stand up from the seat
  *   bank:deposit:<n>   Debt Terminal deposit of n coins (run.deposit)
@@ -387,8 +387,34 @@ function noteRefusal(rec, before, now) {
   rec.reason = rec.refusalNew && now ? `refused (${now})` : (rec.reason ?? 'refused');
 }
 
+/**
+ * Page JS helper (inlined into the page scripts): the ids of the open Night Card offer, in offer order (card 1 first), or null
+ * when no offer is open. run.nightCardOffer() returns { candidates: NightCardDef[], left, night }, so the ids are read from it.
+ */
+const NIGHT_CARD_IDS_JS = `function nightCardIds(r) {
+  const o = r.nightCardOffer?.();
+  return o && Array.isArray(o.candidates) && o.candidates.length ? o.candidates.map((c) => c.id) : null;
+}`;
+
+/**
+ * Page JS: Night Card <n> (1-based) of the open offer. The offer's id at that index goes to run.pickNightCard(id) (it takes the
+ * id, not the index). Resolves to { missing, ok, offer (ids or null), card (the id picked or null) }.
+ */
+function pickNightCardJs(n) {
+  return `(() => {
+    ${NIGHT_CARD_IDS_JS}
+    const r = window.jackid.app.run;
+    if (!r) return { missing: false, ok: false, offer: null, card: null };
+    if (typeof r.pickNightCard !== 'function') return { missing: true, ok: false, offer: null, card: null };
+    const offer = nightCardIds(r);
+    const id = offer?.[${n - 1}] ?? null;
+    return { missing: false, ok: id != null && r.pickNightCard(id) === true, offer, card: id };
+  })()`;
+}
+
 /** Page JS: the debt run's state, for `state`, the step records and the auto:night loop. Watch and Night are 1-based. */
 const RUN_STATE_JS = `(async () => {
+  ${NIGHT_CARD_IDS_JS}
   const a = window.jackid.app, r = a.run;
   if (!r) return { over: true, run: null };   // the run is gone: the menu took the screen back
   const b = r.bank(), pulls = r.pulls();
@@ -399,8 +425,8 @@ const RUN_STATE_JS = `(async () => {
   return {
     lamps: { hot: lampOf(lv.hot), cold: lampOf(lv.cold) },
     event: ev ? { id: ev.id, leftS: ev.leftS, pulls: ev.pulls } : null,
-    nightCard: r.nightCard?.() ?? null,            // the Night Card picked for this Night (id), or null
-    nightCardOffer: r.nightCardOffer?.() ?? null,  // the two offered card ids while the offer is open, else null
+    nightCard: r.nightCard?.()?.id ?? null,        // the Night Card picked for this Night (id), or null
+    nightCardOffer: nightCardIds(r),               // the offered card ids while the offer is open, else null
     phase: r.shift.phase, night: r.night(), watch: typeof r.watch === 'number' ? r.watch + 1 : null,
     pocket: b.pocket, bank: b.balance, withdrawable: b.withdrawable, quotaDue: b.due, quotaLeft: b.left,
     pullsLeft: b.pullsLeft, pulls: Number.isFinite(pulls) ? pulls : null, minBet: b.minBet,
@@ -677,6 +703,15 @@ async function autoNight(ctx, rec, untilEvent = false) {
       if (st.phase === 'bell') await logWatchOnce(key);   // the Bell is already rung (not by this bot's own play)
     }
     if (st.phase === 'intermission') {
+      if (st.nightCardOffer) {
+        // A paid Dawn opened a Night Card offer (the lever waits on it). The bot pauses here: when the script's next step is
+        // nightcard:<n>, that step picks; otherwise the bot picks card 1 itself, and logs it.
+        if (ctx.next?.kind === 'nightcard') { end = 'night card'; break; }
+        const r = await exec(ctx, auto({ kind: 'nightcard', n: 1, text: 'nightcard:1' }));
+        log(`auto:night: Dawn Night Card offer ${JSON.stringify(st.nightCardOffer)}: the script did not pick one, auto-picked card 1 (${r.id ?? 'none'})`);
+        if (!r.ok) { end = 'night card refused'; break; }
+        continue;
+      }
       if (st.nightDone) {                               // the Night is paid: OPEN THE FLOOR (the lever)
         const r = await exec(ctx, auto({ kind: 'lever', text: 'lever' }));
         leverFails = r.ok ? 0 : leverFails + 1;
@@ -729,7 +764,7 @@ async function autoNight(ctx, rec, untilEvent = false) {
   rec.loops = loops;
   rec.events = events;
   Object.assign(rec, count);
-  rec.ok = end === 'night paid' || end === 'topside' || end === 'event' || end === 'run over';
+  rec.ok = end === 'night paid' || end === 'topside' || end === 'event' || end === 'run over' || end === 'night card';
   if (!rec.ok) rec.reason = end;
 }
 
@@ -742,13 +777,7 @@ async function runKind(ctx, s, rec) {
       // Night Card <n> (1-based) of the offer. The run contract: nightCardOffer() (ids or null), pickNightCard(n) (boolean).
       rec.card = s.n;
       const before = await evaluate(cdp, REFUSAL_JS);
-      const res = await evalJson(cdp, `(() => {
-        const r = window.jackid.app.run;
-        if (!r) return { missing: false, ok: false, offer: null };
-        if (typeof r.pickNightCard !== 'function') return { missing: true, ok: false, offer: null };
-        const offer = r.nightCardOffer?.() ?? null;
-        return { missing: false, ok: r.pickNightCard(${s.n}) === true, offer, card: offer?.[${s.n - 1}] ?? null };
-      })()`);
+      const res = await evalJson(cdp, pickNightCardJs(s.n));
       rec.offer = res.offer;
       rec.id = res.card ?? null;
       rec.ok = res.ok;
@@ -912,6 +941,7 @@ async function driveRun(ctx, steps) {
       log(`run over: skipped ${skipped.length} remaining step(s) (${skipped.join('; ')})`);
       break;
     }
+    ctx.next = steps[i + 1] ?? null;   // auto:night looks here: a following nightcard step picks the Dawn offer, not the bot
     await exec(ctx, steps[i]);
     if (ctx.res.reloads) { ctx.run.aborted = `the page reloaded after "${steps[i].text}" (the run is invalid, see viteEvents)`; break; }
   }

@@ -8,13 +8,22 @@ import './nightCards.css';
 import { app } from '@/core/app';
 import { bus } from '@/core/events';
 import type { Unsub } from '@/core/types';
-import { t } from '@/core/i18n';
+import { lang, t } from '@/core/i18n';
 import { addTicker, h, modalPanel } from '@/core/ui/widgets';
 import type { DebtRun } from './run';
+import { nightCardPreview } from './nightCards';
 
 const PANEL = 'night-cards';
 /** Keys that take a card, by card index. */
 const KEYS = ['1', '2'];
+
+/** The numbers of one preview line: a multiplier takes the language's decimal mark (1.3 / 1,3). */
+function previewVars(vars: Record<string, number>): Record<string, string | number> {
+  const comma = lang() === 'tr';
+  const out: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(vars)) out[k] = k === 'x' ? String(v).replace('.', comma ? ',' : '.') : v;
+  return out;
+}
 
 export function mountNightCardsUi(run: DebtRun): () => void {
   run.setNightCardGate(true);   // the lever now waits for a pick or this panel's timer
@@ -64,6 +73,9 @@ function showCards(run: DebtRun): void {
       h('span', 'nc-tone', card, t(`nightcard.tone.${def.tone}`));
       h('span', 'nc-name', card, t(`nightcard.${def.id}.name`));
       h('span', 'nc-desc', card, t(`nightcard.${def.id}.desc`));
+      // The concrete result for the coming Night (quota and Watches before → after, the payout multiplier, …).
+      const prev = nightCardPreview(def, offer.night).map((p) => t(`nightcard.prev.${p.key}`, previewVars(p.vars)));
+      h('span', 'nc-prev', card, prev.join(' · '));
       h('span', 'nc-take', card, t('nightcard.take'));
       card.addEventListener('click', () => take(i));
       return card;

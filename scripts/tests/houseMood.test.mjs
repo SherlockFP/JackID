@@ -59,9 +59,9 @@ test('a debt run in play folds House Favour and the mood into payout.mult (Night
   assert.ok(Math.abs(run.mod('payout.mult', 'bigone', 1) - 1.25 * 1.12) < 1e-9);
 });
 
-test('the quota ladder is the tuned one (24 teaching N1, 42, 84, 168, 336, 672, 1344, 2688) and each step is within its cap (2x to N3, 3x from N4)', () => {
+test('the quota ladder is the tuned one (24 teaching N1, 36 N2 by director, then doubling) and each step is within its cap (2x to N3, 3x from N4)', () => {
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
-  assert.deepEqual(q, [24, 42, 84, 168, 336, 672, 1344, 2688]);
+  assert.deepEqual(q, [24, 36, 72, 144, 288, 576, 1152, 2304]);
   for (let i = 1; i < q.length; i++) assert.ok(q[i] > q[i - 1] && q[i] <= SCH.maxLadderStep(i + 1) * q[i - 1], `N${i + 1} steps up, at most ${SCH.maxLadderStep(i + 1)}x`);
 });
 

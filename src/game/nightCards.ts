@@ -14,6 +14,7 @@
  */
 import { createRng, hashSeed } from '@/core/rng';
 import type { ModEffect, ModProvider, ModQuery, ModSource, ModSourceKind } from './modifiers.types';
+import { coldLampCount, hotLampCount, nightDef, quotaFor, ratePercent, TILT_FREE_PULLS } from './data/schedule';
 
 /** Cards offered at each Dawn. */
 export const NIGHT_CARD_OFFER_SIZE = 2;
@@ -90,6 +91,55 @@ export function nightCardFx(id: string | null): NightCardFx {
 export function nightCardOffer(seed: number, night: number): NightCardId[] {
   const rng = createRng(hashSeed('nightcards', seed, night));
   return rng.shuffle([...NIGHT_CARDS]).slice(0, NIGHT_CARD_OFFER_SIZE).map((d) => d.id);
+}
+
+/**
+ * One concrete change a card makes to the Night it rides: `key` names its `nightcard.prev.<key>` line, `vars` are the numbers
+ * the line reads (before and after, or the amount). The card face joins the lines with a separator.
+ */
+export interface NightCardPreviewLine {
+  key: 'quota' | 'watches' | 'pulls' | 'payout' | 'flat' | 'interest' | 'grace' | 'shelves' | 'discount' | 'hot' | 'cold' | 'noFloor' | 'minBet' | 'pawnShut';
+  vars: Record<string, number>;
+}
+
+/**
+ * The concrete result of `def` for the Night at `index` (0-based, the Night the card is for): every number it changes, before and
+ * after. Pure. The quota is the Night's ladder quota (`quotaFor` with no discount, Assessment or House notice), so the card's
+ * multiplier reads against the printed quota; the live due can add those three on top.
+ */
+export function nightCardPreview(def: NightCardDef, index: number): NightCardPreviewLine[] {
+  const nd = nightDef(index);
+  const quota = quotaFor(index);
+  const sum = (hook: ModEffect['hook'], op: ModEffect['op']): number => def.effects
+    .filter((e) => e.hook === hook && e.op === op).reduce((acc, e) => acc + e.value, 0);
+  const product = (hook: ModEffect['hook']): number => def.effects
+    .filter((e) => e.hook === hook && e.op === 'mult').reduce((acc, e) => acc * e.value, 1);
+  const fx = nightCardFx(def.id);
+  const lines: NightCardPreviewLine[] = [];
+  const qMult = product('quota.mult');
+  if (qMult !== 1) lines.push({ key: 'quota', vars: { from: quota, to: Math.round(quota * qMult) } });
+  if (fx.watchAdd !== 0) lines.push({ key: 'watches', vars: { from: nd.watches, to: Math.max(1, nd.watches + fx.watchAdd) } });
+  const pullsAdd = sum('x.run.pullsAdd', 'add');
+  if (pullsAdd !== 0) lines.push({ key: 'pulls', vars: { from: nd.pulls, to: Math.max(1, Math.round(nd.pulls + pullsAdd)) } });
+  const payout = product('payout.mult');
+  if (payout !== 1) lines.push({ key: 'payout', vars: { x: payout } });
+  const flat = sum('payout.flat', 'add');
+  if (flat !== 0) lines.push({ key: 'flat', vars: { n: flat } });
+  const interest = sum('x.econ.interestAdd', 'add');
+  if (interest !== 0) lines.push({ key: 'interest', vars: { from: ratePercent(nd.interest), to: ratePercent(Math.max(0, nd.interest + interest)) } });
+  const grace = sum('x.tilt.grace', 'add');
+  if (grace !== 0) lines.push({ key: 'grace', vars: { from: TILT_FREE_PULLS, to: TILT_FREE_PULLS + Math.round(grace) } });
+  const shelves = sum('x.pawn.slots', 'add');
+  if (shelves !== 0) lines.push({ key: 'shelves', vars: { n: shelves } });
+  const discount = sum('shop.discount', 'add');
+  if (discount !== 0) lines.push({ key: 'discount', vars: { pct: Math.round(discount * 100) } });
+  if (fx.hotLamps !== null && fx.hotLamps !== hotLampCount(nd.no)) lines.push({ key: 'hot', vars: { from: hotLampCount(nd.no), to: fx.hotLamps } });
+  const coldNow = coldLampCount(nd.no);
+  if (fx.noColdLamps && coldNow > 0) lines.push({ key: 'cold', vars: { from: coldNow, to: 0 } });
+  if (fx.noFloorEvents) lines.push({ key: 'noFloor', vars: {} });
+  if (fx.minBetMult !== 1) lines.push({ key: 'minBet', vars: { x: fx.minBetMult } });
+  if (fx.pawnClosed) lines.push({ key: 'pawnShut', vars: {} });
+  return lines;
 }
 
 /** A standing offer: the cards for `night`, and the seconds left before the first card is taken. */

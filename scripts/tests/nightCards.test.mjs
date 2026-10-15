@@ -45,6 +45,28 @@ test('the deck holds ten cards with distinct ids, one tone each, and strings in 
   }
 });
 
+test('the card face shows the concrete result for its Night (N2 quota 36): RUSH 36 -> 27 and 3 -> 2 Watches, DOUBLE DOWN 36 -> 54 and x1.3', () => {
+  const pv = (id, idx = 1) => NC.nightCardPreview(card(id), idx);
+  assert.deepEqual(pv('rush_night'), [{ key: 'quota', vars: { from: 36, to: 27 } }, { key: 'watches', vars: { from: 3, to: 2 } }]);
+  assert.deepEqual(pv('double_down'), [{ key: 'quota', vars: { from: 36, to: 54 } }, { key: 'payout', vars: { x: 1.3 } }]);
+  assert.deepEqual(pv('lean_night'), [{ key: 'pulls', vars: { from: 7, to: 5 } }, { key: 'payout', vars: { x: 1.2 } }]);
+  assert.deepEqual(pv('high_table'), [{ key: 'payout', vars: { x: 1.25 } }, { key: 'minBet', vars: { x: 2 } }]);
+  assert.deepEqual(pv('quiet_night'), [{ key: 'interest', vars: { from: 50, to: 55 } }, { key: 'noFloor', vars: {} }]);
+  assert.deepEqual(pv('bankers_night'), [{ key: 'interest', vars: { from: 50, to: 60 } }, { key: 'pawnShut', vars: {} }]);
+  assert.deepEqual(pv('payday_night'), [{ key: 'quota', vars: { from: 36, to: 41 } }, { key: 'flat', vars: { n: 10 } }]);
+  assert.deepEqual(pv('grace'), [{ key: 'grace', vars: { from: 4, to: 7 } }]);
+  assert.deepEqual(pv('charm_fair'), [{ key: 'shelves', vars: { n: 2 } }, { key: 'discount', vars: { pct: 20 } }]);
+  assert.deepEqual(pv('lamp_festival'), [{ key: 'hot', vars: { from: 1, to: 2 } }, { key: 'cold', vars: { from: 1, to: 0 } }]);
+  assert.deepEqual(pv('lamp_festival', 0), [{ key: 'hot', vars: { from: 1, to: 2 } }], 'no COLD lamp to remove on Night 1');
+  for (const d of NC.NIGHT_CARDS) {
+    for (let idx = 0; idx < 8; idx++) {
+      const lines = pv(d.id, idx);
+      assert.ok(lines.length >= 1, `${d.id} shows at least one line on Night ${idx + 1}`);
+      for (const p of lines) for (const lang of ['en', 'tr']) assert.ok(STR.default[lang][`prev.${p.key}`], `${lang} prev.${p.key}`);
+    }
+  }
+});
+
 test('the offer is deterministic: the same seed and Night give the same two distinct cards in the same order', () => {
   for (const seed of SEEDS) {
     for (const night of NIGHTS) {

@@ -39,6 +39,8 @@ const BUFF_REFRESH_S = 0.25;
 const PAYOUT_REFRESH_S = 0.25;
 /** Shift phases in which the run's payout.mult sources are live (the run's own inWatch set); Mola (`intermission`) shows a preview. */
 const PAYOUT_LIVE_PHASES: ReadonlySet<string> = new Set(['bell', 'play', 'lastCall', 'closing', 'settle']);
+/** The Bell's length in sim seconds (mirrors run.ts BELL_SEC); the top bar counts it down while the phase is `bell`. */
+const BELL_SEC = 2;
 /** The Hot Lamp's distance and arrow refresh this often while a Lamp is lit (the text itself is written on change only). */
 const CHASE_S = 0.2;
 
@@ -205,6 +207,7 @@ export function createHud(): Hud {
 
   let clockAlarmed = false;
   let lastPhase = '';
+  let bellLeft = 0;
 
   function addFeed(text: string, cls = ''): void {
     const el = h('div', `ln ${cls}`, feed, text);
@@ -393,11 +396,17 @@ export function createHud(): Hud {
     setText(staff, t('hud.staff.perMin', { n: money(Math.round(perMin)) }));
   }
 
-  function updateClock(): void {
+  function updateClock(dt: number): void {
     const r = app.run;
     const sh = r?.shift.state();
     const phase = sh?.phase ?? 'idle';
     const left = r ? r.shift.timeLeft() : 0;
+    // Bell: the Watch's start. The Starter Draft holds the Bell (its own timer shows instead); otherwise the Bell counts down its 2 s.
+    const bell = phase === 'bell';
+    if (bell && lastPhase !== 'bell') bellLeft = BELL_SEC;
+    const starter = bell ? (r as (typeof r & { starterDraft?: () => { left: number } | null }) | null)?.starterDraft?.() ?? null : null;
+    if (bell && !starter) bellLeft = Math.max(0, bellLeft - dt);
+    const bellN = Math.max(1, Math.ceil(starter ? starter.left : bellLeft));
     const lastCall = phase === 'lastCall';
     // Intermission (MOLA): the top line says what to do next, not the Watch clock.
     const interm = phase === 'intermission';
@@ -408,7 +417,7 @@ export function createHud(): Hud {
     const settleSec = settling ? Math.ceil((r as (typeof r & { bank?: () => BankView }) | null)?.bank?.()?.settleLeft ?? 0) : 0;
     setText(clockNum, interm || settling ? '' : mmss(left));
     // Closing (director wave 41): the last 3 s of a Watch, the deposits / withdrawals / Pawn still open, so the label says so.
-    setText(clockPhase, interm ? t('interm.topBar') : settling ? t('bank.settle', { s: settleSec }) : phase === 'closing' ? t('hud.clock.closing') : lastCall ? t('hud.clock.lastCall') : r?.window() === 'dawn' ? t('hud.clock.dawn') : t('hud.clock.watch'));
+    setText(clockPhase, interm ? t('interm.topBar') : settling ? t('bank.settle', { s: settleSec }) : bell ? t('hud.clock.bell', { s: bellN }) : phase === 'closing' ? t('hud.clock.closing') : lastCall ? t('hud.clock.lastCall') : r?.window() === 'dawn' ? t('hud.clock.dawn') : t('hud.clock.watch'));
     setText(clockWall, interm ? '' : t('hud.clock.wall', { n: wallClock(sh?.clock ?? 0) }));
     if (phase !== lastPhase) {
       if (lastCall && !clockAlarmed) {
@@ -714,7 +723,7 @@ export function createHud(): Hud {
     el: root,
     update(dt: number): void {
       updateWallet(dt);
-      updateClock();
+      updateClock(dt);
       updateQuota();
       updatePayout(dt);
       updatePlan();
