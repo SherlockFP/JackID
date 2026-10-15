@@ -46,3 +46,4 @@ import './run.mola.test.mjs';
 import './stakes.test.mjs';
 import './daily.test.mjs';
 import './nightCards.test.mjs';
+import './spotlight.test.mjs';

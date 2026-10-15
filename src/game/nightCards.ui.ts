@@ -73,8 +73,8 @@ function showCards(run: DebtRun): void {
       h('span', 'nc-tone', card, t(`nightcard.tone.${def.tone}`));
       h('span', 'nc-name', card, t(`nightcard.${def.id}.name`));
       h('span', 'nc-desc', card, t(`nightcard.${def.id}.desc`));
-      // The concrete result for the coming Night (quota and Watches before → after, the payout multiplier, …).
-      const prev = nightCardPreview(def, offer.night).map((p) => t(`nightcard.prev.${p.key}`, previewVars(p.vars)));
+      // The concrete result for the coming Night (exact quota and Watches before → after, the payout multiplier, …).
+      const prev = nightCardPreview(def, offer.night, (m) => run.nextQuotaPreview(m)?.due ?? null).map((p) => t(`nightcard.prev.${p.key}`, previewVars(p.vars)));
       h('span', 'nc-prev', card, prev.join(' · '));
       h('span', 'nc-take', card, t('nightcard.take'));
       card.addEventListener('click', () => take(i));

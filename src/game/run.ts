@@ -86,6 +86,7 @@ import { STARTER_TIMEOUT_SEC, starterOffer } from './draft';
 import { houseMoodProvider } from './houseMood';
 import { NightCards, type NightCardDef, type NightCardSave } from './nightCards';
 import nightCardStrings from './nightCards.strings';
+import { Spotlight, isSpotlightEligible, spotlightStartLine, type SpotlightSave, type SpotlightView } from './spotlight';
 import { WatchEvents, type WatchEventSave } from './watchEvents';
 import type { EventBannerShow } from './buffs/banner';
 import type { IdleReport, TycoonState } from '@/game/types';
@@ -118,6 +119,18 @@ export interface NightLedger { night: number; float: number; interest: number; t
 export type RunRefusal = RefusalReason;
 export type { DepositRefusal } from '@/game/types';
 /** The bank as the Debt Terminal shows it (wave 27). */
+/** NEXT NIGHT (wave 55): the exact quota of the Night after the paid one; see `DebtRun.nextQuotaPreview`. */
+export interface NextQuotaPreview {
+  /** The Night's number (1-based). */
+  night: number;
+  /** Its exact quota, the number the run will read when that Night opens. */
+  due: number;
+  /** The step from tonight's quota (due ÷ tonight's, one decimal). */
+  k: number;
+  /** True in the Dawn collection, before the payment: the numbers are projected from the Dawn's wealth. */
+  projected: boolean;
+}
+
 export interface BankView {
   /** Coins counted toward tonight's quota. */
   balance: number;
@@ -351,6 +364,8 @@ export interface RunExt {
   nightCards?: NightCardSave;
   /** Per-Watch floor event (wave 43): the live event and its time left. Optional: a save between Watches has none. */
   watchEvent?: WatchEventSave | null;
+  /** Machine of the Night (wave 55): this Night's spotlight and the kind spotlit last Night. Optional: older saves have none. */
+  spotlight?: SpotlightSave;
 }
 /** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
 interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
@@ -429,6 +444,8 @@ export interface DebtRun extends RunApi {
   ringBell(): boolean;
   /** The bank in numbers (Debt Terminal DEPOSIT / WITHDRAW / QUOTA screens). */
   bank(): BankView;
+  /** NEXT NIGHT: the exact quota of the Night after the paid one (null while a Night runs). `extraMult` previews a card (1 = none). */
+  nextQuotaPreview(extraMult?: number): NextQuotaPreview | null;
   /** What `withdraw(amount)` would do, without doing it (what the player gives up). */
   withdrawPreview(amount: number): WithdrawPreview;
   /**
@@ -764,6 +781,8 @@ class Run implements DebtRun {
   private readonly nightCards: NightCards;
   /** Per-Watch floor event (wave 43): rolled at each Bell, ticked on the Watch clock, saved mid-Watch. */
   private readonly watchEv: WatchEvents;
+  /** Machine of the Night (wave 55): one floor kind per Night pays x1.25 and drops a Ticket every 5th play. */
+  private readonly spotlight: Spotlight;
   // bounty board (ContractsApi): defs registered by the device catalogue, offers and slips for this run
   private readonly contractDefs = new Map<string, ContractDef>();
   private contractList: ContractState[] = [];
@@ -829,6 +848,8 @@ class Run implements DebtRun {
     this.modsImpl.register(this.watchEv);
     this.nightCards = new NightCards(() => this.index, this.seed, () => this.modsImpl.touch());
     this.modsImpl.register(this.nightCards);
+    this.spotlight = new Spotlight(this.seed, () => this.modsImpl.touch());
+    this.modsImpl.register(this.spotlight);
 
     this.pools.set('net', { id: 'net', value: START.jackpotSeed, seed: START.jackpotSeed, feed: NETWORK_FEED, drip: 0, scope: 'network', lastWin: null });
 
@@ -1042,6 +1063,8 @@ class Run implements DebtRun {
       this.plays.set(src.machineId, (this.plays.get(src.machineId) ?? 0) + 1);
       this.countTilt(src.mid, src.machineId, pullCost);
       this.emit('machine:round', { mid: src.mid, machineId: src.machineId, pid: this.selfId, bet: amount });
+      const tk = this.spotlight.round(src.machineId);   // Machine of the Night: every 5th play on the spotlight pays a Ticket
+      if (tk > 0) this.earn('ticket', tk, 'spotlight');
     }
     this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: -cost, reason: `bet:${src.machineId}` });
     if (!this.rules.unlimitedPulls) {
@@ -1433,6 +1456,11 @@ class Run implements DebtRun {
       this.banner?.(t('nightcard.started', { name: t(`nightcard.${keptCard.id}.name`) }), { color: '#ff7a5a', hold: 4, size: 16 });
       this.emit('run:nightcard', { pid: this.selfId, state: 'started', card: keptCard.id });
     }
+    // Machine of the Night (wave 55): one open floor kind is this Night's spotlight; the banner names it.
+    const spot = this.spotlight.begin(this.index, (this.worldLink?.machines() ?? [])
+      .filter((m) => !this.worldLink?.locked?.(m.instance) && isSpotlightEligible(m.machineId, registry.get(m.machineId)?.def.category))
+      .map((m) => ({ machineId: m.machineId, instance: m.instance })));
+    if (spot) this.banner?.(spotlightStartLine(spot, machineName(spot.machineId)), { color: '#ffd34a', hold: 4, size: 16 });
     this.enter('intermission', 0);
     this.persist();
     return true;
@@ -1791,6 +1819,7 @@ class Run implements DebtRun {
     this.syncQuota();
     this.nightDone = true;
     if (nightDef(this.index).no === BASE_RUN_NIGHTS) this.topside = true;
+    this.spotlight.end();   // Machine of the Night: the Night is over, the spotlight and its x1.25 end
     // Night Cards: every paid Dawn with a Night after it (from Night 1 on) opens the two-card offer for that Night.
     if (!this.topside && this.nightCards.openOffer(this.index + 1)) this.emit('run:nightcard', { pid: this.selfId, state: 'offer', card: null });
     this.enter('intermission', 0);
@@ -2079,16 +2108,71 @@ class Run implements DebtRun {
     const nd = nightDef(this.index);
     const holdings = this.tycoonSys.holdings();
     const rate = this.mod('x.tycoon.assessRate', RUN_MACHINE, 0.08);
-    let due = quotaFor(this.index, { discount: this.discount, holdings, assessRate: rate, wealth: this.houseWealth });
-    due = Math.round(due * this.mod('quota.mult', RUN_MACHINE, 1) * this.stakeFx().quotaMult);   // stake 2 (×1.08) rides with the quota mods
-    due = Math.max(0, Math.round(due + this.mod('quota.add', RUN_MACHINE, 0) + this.loanQuota));
-    if (this.index === BASE_RUN_NIGHTS - 1) due = Math.round(due * this.mod('x.quota.night8', RUN_MACHINE, 1));
-    if (this.index < this.forgiveUntil) due = 0;   // a Lord's writ forgave this Night (Hollow Door)
+    const due = this.dueOf(this.index, {
+      discount: this.discount, holdings, rate, wealth: this.houseWealth, loan: this.loanQuota,
+      mult: this.mod('quota.mult', RUN_MACHINE, 1), add: this.mod('quota.add', RUN_MACHINE, 0), night8: this.mod('x.quota.night8', RUN_MACHINE, 1),
+    });
     this.quota.base = nd.base;
     this.quota.assessment = assessmentFor(this.index, holdings, rate);
     this.quota.due = due;
     this.metFired = false;
     this.syncQuota();
+  }
+
+  /**
+   * The one quota formula (recomputeQuota and nextQuotaPreview share it): the ladder with the discount, Assessment and House
+   * notice (`quotaFor`), × the quota multiplier and the stake, + the quota adds and any rescue loans, the Night 8 multiplier,
+   * and 0 for a Night a Lord's writ forgave.
+   */
+  private dueOf(index: number, p: { discount: number; holdings: number; rate: number; wealth: number; loan: number; mult: number; add: number; night8: number }): number {
+    let due = quotaFor(index, { discount: p.discount, holdings: p.holdings, assessRate: p.rate, wealth: p.wealth });
+    due = Math.round(due * p.mult * this.stakeFx().quotaMult);   // stake 2 (×1.08) rides with the quota mods
+    due = Math.max(0, Math.round(due + p.add + p.loan));
+    if (index === BASE_RUN_NIGHTS - 1) due = Math.round(due * p.night8);
+    if (index < this.forgiveUntil) due = 0;   // a Lord's writ forgave this Night (Hollow Door)
+    return due;
+  }
+
+  /**
+   * NEXT NIGHT (wave 55): the exact quota of the Night after the paid one, as recomputeQuota will read it when that Night opens:
+   * the ladder with the next discount, Assessment and the House notice, the quota multipliers of the charms, and the card kept for
+   * that Night. `extraMult` previews a card not yet kept (1 = none). In the Dawn collection the Night is still unpaid, so the numbers
+   * are projected from the wealth the Dawn will read (`projected`); from the Dawn's payment on they are read as the run holds them.
+   * `k` is the step from tonight's quota. Null while a Night is running, after the last base Night, or once the run has ended.
+   */
+  nextQuotaPreview(extraMult = 1): NextQuotaPreview | null {
+    if (!this.quotaMode || this.ended || this.topside || nightDef(this.index).no >= BASE_RUN_NIGHTS) return null;
+    const dawnNow = this.phase === 'collection' && !this.nightDone;
+    if (!this.nightDone && !dawnNow) return null;
+    const idx = this.index + 1;
+    // The Dawn's own reads: the wealth it floors the quota with, and the discount its overshoot tiers would add (before the reset).
+    let discount = this.nextDiscount;
+    let wealth = this.houseWealth;
+    if (dawnNow) {
+      wealth = this.coins + this.debtPaid;
+      const ratio = this.quota.due > 0 ? this.debtPaid / this.quota.due : 1;
+      for (const tier of OVERSHOOT_TIERS) {
+        if (ratio >= tier.ratio && !this.quota.claimed.some((c) => c.id === tier.id)) discount += tier.reward.nextQuotaDiscount ?? 0;
+      }
+      discount = Math.min(0.15, discount);
+    }
+    // Multipliers: every quota.mult of the mod pipeline except the paid Night's card (it ends with its Night), plus the card kept for
+    // the next Night and the previewed one. The fold is the pipeline's own (foldEffects), so the clamp matches.
+    const common = this.explain('quota.mult', RUN_MACHINE, 1).steps
+      .filter((s) => !s.source.id.startsWith('nightcard.'))
+      .map((s) => ({ op: s.op, value: s.value }));
+    const kept = this.nightCards.keptFor(idx);
+    const keptEffs = (kept?.effects ?? []).filter((e) => e.hook === 'quota.mult').map((e) => ({ op: e.op, value: e.value }));
+    const mult = foldEffects('quota.mult', 1, [...common, ...keptEffs, { op: 'mult', value: extraMult }]);
+    const holdings = this.tycoonSys.holdings();
+    const rate = this.mod('x.tycoon.assessRate', RUN_MACHINE, 0.08);
+    const due = this.dueOf(idx, {
+      discount, holdings, rate, wealth, loan: 0,
+      mult, add: this.mod('quota.add', RUN_MACHINE, 0), night8: this.mod('x.quota.night8', RUN_MACHINE, 1),
+    });
+    const tonight = this.quota.due;
+    const k = tonight > 0 ? Math.round((due / tonight) * 10) / 10 : 1;
+    return { night: nightDef(idx).no, due, k, projected: dawnNow };
   }
 
   private syncQuota(): void {
@@ -2894,6 +2978,7 @@ class Run implements DebtRun {
       ...(this.starter ? { starter: { ids: [...this.starter.ids], open: this.starter.open, left: this.starter.left } } : {}),
       ...(this.nightCards.snapshot() ? { nightCards: this.nightCards.snapshot() as NightCardSave } : {}),
       ...(this.watchEv.snapshot() ? { watchEvent: this.watchEv.snapshot() } : {}),
+      ...(this.spotlight.snapshot() ? { spotlight: this.spotlight.snapshot() as SpotlightSave } : {}),
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -3003,6 +3088,9 @@ class Run implements DebtRun {
   }
 
   nightCard(): NightCardDef | null { return this.nightCards.current(); }
+
+  /** Machine of the Night (wave 55): this Night's spotlight for the HUD chip, or null. */
+  spotlightView(): SpotlightView | null { return this.spotlight.current(); }
 
   /** Takes one starter charm (the player's pick, or the timer's first card that fits). Closes the offer. */
   private takeStarter(charmId: string, state: 'picked' | 'auto'): boolean {
@@ -3233,6 +3321,7 @@ class Run implements DebtRun {
     this.starter = restoredStarter(e.starter);
     this.nightCards.restore(e.nightCards);
     this.watchEv.restore(e.watchEvent);
+    this.spotlight.restore(e.spotlight);
     this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);
     this.watchDeposits = Math.max(0, e.watchDep ?? 0);
     this.watchFloatSnap = typeof e.watchFloat === 'number' && Number.isFinite(e.watchFloat) ? Math.max(0, Math.floor(e.watchFloat)) : null;

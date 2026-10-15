@@ -297,3 +297,11 @@ export function obolsFor(o: { deposited: number; outcome: ObolOutcome; edge?: nu
   const v = base * OBOL_OUTCOME_MULT[o.outcome] * (1 + 0.1 * Math.max(0, o.edge ?? 0)) * Math.max(0, o.gain ?? 1);
   return Math.max(0, Math.floor(v + 1e-9));
 }
+
+/* ── MACHINE OF THE NIGHT (wave 55, spotlight.ts): one open machine per Night pays more and drops Tickets ───────────── */
+/** Payout multiplier on the spotlight machine (its own `payout.mult` source, scoped to that machine). */
+export const SPOTLIGHT_MULT = 1.25;
+/** Every this many plays on the spotlight machine (in one Night) awards Tickets. */
+export const SPOTLIGHT_TICKET_EVERY = 5;
+/** Tickets awarded on each such play. */
+export const SPOTLIGHT_TICKETS = 1;

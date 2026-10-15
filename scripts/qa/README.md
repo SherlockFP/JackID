@@ -150,7 +150,7 @@ Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` 
 | --- | --- |
 | `goto:<machineId>` | teleports the player in front of the first unlocked floor machine of that id (the machine's front, facing it), presses `E` (the real sit path). If that does not seat, it falls back to the devtools `world.occupy()`. Fails the step when the machine is not on the floor or locked. `via` says which path sat the player. Waits for the input mode to be `machine` (`inputMode` when it never is) |
 | `goto:hot` | the same, for the Hot cabinet: the first Hot Lamp lit now (`run.circuit.lamps().hot[0]`, lit at each Bell). Fails when no Hot lamp is lit or the cabinet is locked. `machineId` and `lamp: "hot"` say which machine it was |
-| `nightcard:<1\|2>` | picks Night Card 1 or 2 of the offer: the id at that index of `run.nightCardOffer().candidates` goes to `run.pickNightCard(id)` (it takes the id). `offer` lists the offered ids, `id` the one picked. Fails with `no Night Card on this build` when the run has no `pickNightCard` |
+| `nightcard:<1\|2\|best>` | picks Night Card 1 or 2 of the offer, or `best` (see **Night Card choice** below): the id at that index of `run.nightCardOffer().candidates` goes to `run.pickNightCard(id)` (it takes the id). `offer` lists the offered ids, `cards` each card with its preview (`index`, `id`, `tone`, `text`, `lines`, `quotaTo`, `ratio`), `index` and `id` the one picked, and for `best` only, `best` the card the heuristic chose (1 or 2). Prints the offer. Fails with `no Night Card on this build` when the run has no `pickNightCard`, and is refused (no offer open) when none is up |
 | `play:<keys>xN` | presses the keys N times (default 1). Keys use the script syntax (`Space:150,wait:300`). The `x` suffix ends the step: `play:Space:150,wait:300x3` repeats both |
 | `stand` | stands up from the seat (`world.standUp()`), then waits until the seat is free |
 | `bank:deposit:<n>` | a Debt Terminal deposit of n coins (`run.deposit(n)`). `ok:false` when the run refuses it (pocket floor, quota room, not a quota Watch) |
@@ -191,7 +191,7 @@ Practical notes: `goto` needs the machine on the floor (the `coinflip`, `hilo`, 
 - **Deposit**: 40 % of the pocket while quota is owed (20 % when the terminal refuses it). Taken in the Intermission, or in the Bell or play for the first Watch of a Night (which has no Intermission before it).
 - **Withdraw**: a pocket below the cheapest bet pulls the whole bank back out first.
 - **Shop**: in the Intermission, the cheapest shelf that is not cursed, needs no swap, and costs at most 30 % of the pocket (`pawn:buy`, then `stand`).
-- **Night Card**: a paid Dawn opens a two-card offer (`nightCardOffer`, the lever waits on it). The bot stops there (`end: "night card"`) when the next step in the list is `nightcard:<n>`, which then picks. With no such next step it picks card 1 itself and logs `auto-picked card 1 (<id>)`. An offer open at a later step is handled the same way.
+- **Night Card**: a paid Dawn opens a two-card offer (`nightCardOffer`, the lever waits on it). The offer is printed (one line per card: its preview, the quota it leaves against pocket + bank). The bot stops there (`end: "night card"`) when the next step in the list is `nightcard:<n|best>`, which then picks. The stop record carries the offer: `offer` (the ids), `cards` (with their preview lines) and `have` (pocket + bank). With no such next step it picks card 1 itself and logs `auto-picked card 1 (<id>)`. An offer open at a later step is handled the same way.
 - **Lever**: starts the Watch (`lever`); after a paid Night it opens the floor.
 - **Bets**: 1 bet on odd Watches, 2 on even ones, rotating over the open machines of `BOT_MACHINES` (`coinflip`, `hilo`, `scratch`, `bigone`; the ones placed and unlocked now). Each bet is a `bot:bet:<id>` record: `goto`, `Digit0` (closes the tip), the stake walked down to the minimum (`KeyZ` 8 times), the machine's recipe (`BOT_RECIPE`: `Space` to play, `KeyQ` to collect, `Digit1` the hilo guess). `pulls` is `[before, after]`; `ok` is whether a pull was spent.
 - **Bell**: rings the Bell (`bell`) once the Watch's bets are placed, after `stand`. Unused pulls keep the rebate. A Watch whose pulls run out closes by itself.
@@ -216,6 +216,21 @@ node scripts/qa/bench.mjs --run "play:Digit2;wait:300;auto:night:event;events;sh
 Seed 1 has its first event on Watch 3 (`draft`). Seed 2 has one on Watch 1 (`tilt_switch`). A Watch 1 event fires its announce before the first step (no `event:start` reaches a listener installed after the room settles), so `banner:` cannot catch that line. Later Watches can be checked with `banner:<ms>`.
 
 The recipes are approximate key sequences, not a strategy. A bet that does not spend a pull is recorded `ok:false` with `reason`. The summary record is `auto:night`: `night` (`[from, to]`), `end` (`night paid`, `run over`, `topside`, `lever refused`, `night card`, `night card refused`, `page reloaded`, `time budget`, `loop budget`), `deposits`, `shops`, `bets`, `bells`, `loops`. `ok` is true for `night paid`, `topside` and `night card` (the pause).
+
+### Night Card choice (`nightcard:best`)
+
+A Dawn offer is two Night Cards. Each card's preview is the concrete change it makes to the coming Night (`nightCardPreview`: the
+quota before and after, the Watches, the payout, and so on). To pick by the numbers, script the stop and the pick:
+
+```
+node scripts/qa/bench.mjs --run "auto:night;nightcard:best;auto:night;state" --seed 1 --shots <dir>
+```
+
+`auto:night` stops at the Dawn offer (`end: "night card"`) and prints both cards. `nightcard:best` then picks the card whose
+**coming quota** is lowest against **pocket + bank** (`ratio` = quota after the card / max(1, pocket + bank)). It is a simple
+heuristic: it reads only the quota line of the preview, so it ignores Watches, payouts and charms. Pocket + bank is the same for
+both cards, so this is the card that leaves the lowest quota. A tie keeps card 1. Its record's `best` is the card picked (1 or 2).
+Read the printed lines before trusting it; it is a bot choice for QA, not a strategy.
 
 ## Intro skip
 

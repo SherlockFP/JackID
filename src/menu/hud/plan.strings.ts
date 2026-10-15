@@ -7,6 +7,7 @@ export default {
     'pocket': 'POCKET {p} — deposit to count',
     'ends': 'WATCH {w}/{n} · {p} PULLS · {c} · BELL',
     'next': 'NEXT WATCH {w}/{n}',
+    'night': 'NEXT NIGHT: quota {q} (×{k})',
   },
   tr: {
     'head': 'KOTA {q} · ŞAFAK',
@@ -14,5 +15,6 @@ export default {
     'pocket': 'CEP {p} — yatır, kotaya sayılsın',
     'ends': 'VARDİYA {w}/{n} · {p} ÇEKİŞ · {c} · ZİL',
     'next': 'SONRAKİ VARDİYA {w}/{n}',
+    'night': 'SONRAKİ GECE: kota {q} (×{k})',
   },
 };

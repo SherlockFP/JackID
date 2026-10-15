@@ -104,12 +104,12 @@ export interface NightCardPreviewLine {
 
 /**
  * The concrete result of `def` for the Night at `index` (0-based, the Night the card is for): every number it changes, before and
- * after. Pure. The quota is the Night's ladder quota (`quotaFor` with no discount, Assessment or House notice), so the card's
- * multiplier reads against the printed quota; the live due can add those three on top.
+ * after. `dueWith(m)` is the Night's exact quota with the card's quota multiplier `m` folded in (the run's own read, see
+ * `DebtRun.nextQuotaPreview`); null or no reader falls back to the ladder quota. The card's quota line reads that exact due.
  */
-export function nightCardPreview(def: NightCardDef, index: number): NightCardPreviewLine[] {
+export function nightCardPreview(def: NightCardDef, index: number, dueWith?: (mult: number) => number | null): NightCardPreviewLine[] {
   const nd = nightDef(index);
-  const quota = quotaFor(index);
+  const ladder = quotaFor(index);
   const sum = (hook: ModEffect['hook'], op: ModEffect['op']): number => def.effects
     .filter((e) => e.hook === hook && e.op === op).reduce((acc, e) => acc + e.value, 0);
   const product = (hook: ModEffect['hook']): number => def.effects
@@ -117,7 +117,11 @@ export function nightCardPreview(def: NightCardDef, index: number): NightCardPre
   const fx = nightCardFx(def.id);
   const lines: NightCardPreviewLine[] = [];
   const qMult = product('quota.mult');
-  if (qMult !== 1) lines.push({ key: 'quota', vars: { from: quota, to: Math.round(quota * qMult) } });
+  if (qMult !== 1) {
+    const from = dueWith?.(1) ?? ladder;
+    const to = dueWith?.(qMult) ?? Math.round(ladder * qMult);
+    lines.push({ key: 'quota', vars: { from, to } });
+  }
   if (fx.watchAdd !== 0) lines.push({ key: 'watches', vars: { from: nd.watches, to: Math.max(1, nd.watches + fx.watchAdd) } });
   const pullsAdd = sum('x.run.pullsAdd', 'add');
   if (pullsAdd !== 0) lines.push({ key: 'pulls', vars: { from: nd.pulls, to: Math.max(1, Math.round(nd.pulls + pullsAdd)) } });
@@ -224,8 +228,13 @@ export class NightCards implements ModProvider {
 
   /** The card kept for the Night in progress, or null. */
   current(): NightCardDef | null {
+    return this.keptFor(this.index());
+  }
+
+  /** The card kept for the Night at `night` (0-based index), or null. A kept card applies only to its own Night. */
+  keptFor(night: number): NightCardDef | null {
     const k = this.kept;
-    if (!k || k.night !== this.index()) return null;
+    if (!k || k.night !== night) return null;
     return nightCardDef(k.id) ?? null;
   }
 

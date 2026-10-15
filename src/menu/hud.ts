@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import { app } from '@/core/app';
 import { bus, type GameEvents } from '@/core/events';
-import { fmtCoins, has, t } from '@/core/i18n';
+import { fmtCoins, has, lang, t } from '@/core/i18n';
 import type { Action } from '@/core/input/types';
 import type { HudAnchorId } from '@/core/ui/types';
 import { claimAnnounce, type UIOverlayX } from '@/core/ui/ui';
@@ -19,7 +19,7 @@ import { COLORS, h, uiSfx } from '@/core/ui/widgets';
 import { circuitView, lampLabel, type LampEntry, type LampView } from '@/game/circuit';
 import { dawnPlan } from '@/game/pace';
 import { watchEventView } from '@/game/watchEvents';
-import type { BankView } from '@/game/run';
+import type { BankView, NextQuotaPreview } from '@/game/run';
 import { inUnderneath } from '@/world/hollow';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { InstanceId, PlayerId } from '@/core/types';
@@ -28,6 +28,7 @@ import { createProcPops, goldBurst, pegBadge, pegLabel, playProcTick, renderSetC
 import { charmDef } from '@/game/charms/engine';
 import { activeSets } from '@/game/charms/sets';
 import { houseMoodPreviewParts, payoutChip, type PayoutPart } from '@/game/houseMood';
+import { spotlightChip, type SpotlightView } from '@/game/spotlight';
 import './hud/hud.css';
 import { nightPaid } from '@/machines/debt_terminal/night';
 import { SeatHud } from '@/machines/_base/seatHud';
@@ -98,6 +99,7 @@ export function createHud(): Hud {
   // The right stack (quota, PAYOUT, NIGHT PLAN, EMPIRE, buffs, phone) is one column of its own, not part of the band's height:
   // a tall stack then never pushes the feed or the seat banners down.
   const topR = h('div', 'hud-rs', root);
+  disposers.push(mountSpotlightChip(topR));
   // The seat HUD's state banner and tooltip stack under this band: it reads `--hud-top-h` (seatHud.css) from the #ui root.
   const host = ui().hudLayer.parentElement;
   const setTopH = (): void => { host?.style.setProperty('--hud-top-h', `${top.offsetTop + top.offsetHeight}px`); };
@@ -155,6 +157,9 @@ export function createHud(): Hud {
   // NIGHT PLAN (under the quota), four lines: the Night's due, the bank and its projection at Dawn (banked coins only), the
   // pocket (to deposit, so it counts), and the Watch with how it ends (pulls, clock, the Bell). Between Watches the last line names the next one.
   const plan = h('div', 'plan hidden', topR);
+  // NEXT NIGHT (wave 55): at Dawn and in Mola the plan shows this line alone, the exact quota of the coming Night.
+  const planNext = h('span', 'pn hidden', plan);
+  planNext.style.cssText = 'font-weight:700;font-size:calc(12 * var(--u));line-height:1.25';
   const planHead = h('span', 'ph', plan);
   const planBank = h('span', 'pb', plan);
   const planPocket = h('span', 'pk', plan);
@@ -526,6 +531,11 @@ export function createHud(): Hud {
     const seg = sh?.segment;
     // The bank view is on the real run (DebtRun), not on the RunApi facade: probe it as `empire()` is probed above.
     const bank = (r as (typeof r & { bank?: () => BankView }) | null)?.bank?.();
+    // Dawn and Mola (wave 55): the NEXT NIGHT line, the exact quota of the coming Night, replaces the Watch plan.
+    const next = r && (r.window() === 'dawn' || nightPaid(r))
+      ? (r as (typeof r & { nextQuotaPreview?: () => NextQuotaPreview | null }) | null)?.nextQuotaPreview?.() ?? null
+      : null;
+    if (r && next && bank) { showNextNight(next, bank.pocket, bank.balance); return; }
     const show = !!r && !!q && !!seg && !!bank && q.due > 0 && r.window() === 'watch' && !nightPaid(r);
     setCls(plan, 'hidden', !show);
     if (!r || !q || !seg || !bank || !show) return;
@@ -543,6 +553,10 @@ export function createHud(): Hud {
     const key = `${due}|${watch}|${seg.count}|${bank.balance}|${pocket}|${interm}|${p.projected}|${p.gap}|${pullsTxt}|${clock}`;
     if (key === planKey) return;
     planKey = key;
+    setCls(planNext, 'hidden', true);
+    setCls(planHead, 'hidden', false);
+    setCls(planBank, 'hidden', false);
+    setCls(planEnds, 'hidden', false);
     setText(planHead, t('hud.plan.head', { q: money(due) }));
     setCls(plan, 'ok', p.met);
     setCls(plan, 'gap', !p.met);
@@ -553,6 +567,28 @@ export function createHud(): Hud {
     setText(planEnds, interm
       ? t('hud.plan.next', { w: watch, n: seg.count })
       : t('hud.plan.ends', { w: watch, n: seg.count, p: pullsTxt, c: clock }));
+  }
+
+  /**
+   * NEXT NIGHT (wave 55): at Dawn and in Mola the NIGHT PLAN is this one line, the exact quota of the coming Night and its step
+   * from tonight's (×k). It turns red when the quota is above what the player holds: pocket + 2 × bank. A projected Dawn (not yet
+   * paid) reads the same way. Written on change only.
+   */
+  function showNextNight(next: NextQuotaPreview, pocketRaw: number, bankRaw: number): void {
+    const pocket = Math.max(0, Math.floor(pocketRaw));
+    const banked = Math.max(0, Math.floor(bankRaw));
+    const red = next.due > pocket + 2 * banked;
+    const key = `N|${next.night}|${next.due}|${next.k}|${red}|${next.projected}`;
+    setCls(plan, 'hidden', false);
+    if (key === planKey) return;
+    planKey = key;
+    const k = next.k.toFixed(1).replace('.', lang() === 'tr' ? ',' : '.');
+    setCls(plan, 'ok', false);
+    setCls(plan, 'gap', red);
+    setCls(planNext, 'hidden', false);
+    planNext.style.color = red ? '#ff5a4a' : '';
+    setText(planNext, t('hud.plan.night', { q: money(next.due), k }));
+    for (const el of [planHead, planBank, planPocket, planEnds]) setCls(el, 'hidden', true);
   }
 
   function updateEmpire(): void {
@@ -756,4 +792,26 @@ export function createHud(): Hud {
       root.remove();
     },
   };
+}
+
+/**
+ * SPOTLIGHT chip (wave 55): the Night's spotlight machine, its x1.25 and the plays toward the next Ticket, in the right stack.
+ * Driven by the `spotlight:change` event (null hides it). On mount it reads the run's current spotlight, when the run exposes one.
+ */
+export function mountSpotlightChip(parent: HTMLElement): () => void {
+  const chip = h('div', 'hb spotlight hidden', parent);
+  chip.style.color = '#ffd34a';
+  let key = '';
+  const show = (v: SpotlightView | null): void => {
+    if (!v) { setCls(chip, 'hidden', true); key = ''; return; }
+    const text = spotlightChip(v, machineName(v.machineId));
+    setCls(chip, 'hidden', false);
+    if (text === key) return;
+    key = text;
+    setText(chip, text);
+  };
+  const off = bus.on('spotlight:change', show);
+  const run = app.run as (typeof app.run & { spotlightView?: () => SpotlightView | null }) | undefined;
+  show(run?.spotlightView?.() ?? null);
+  return () => { off(); chip.remove(); };
 }
