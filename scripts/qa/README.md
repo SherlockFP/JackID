@@ -150,7 +150,7 @@ Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` 
 | --- | --- |
 | `goto:<machineId>` | teleports the player in front of the first unlocked floor machine of that id (the machine's front, facing it), presses `E` (the real sit path). If that does not seat, it falls back to the devtools `world.occupy()`. Fails the step when the machine is not on the floor or locked. `via` says which path sat the player. Waits for the input mode to be `machine` (`inputMode` when it never is) |
 | `goto:hot` | the same, for the Hot cabinet: the first Hot Lamp lit now (`run.circuit.lamps().hot[0]`, lit at each Bell). Fails when no Hot lamp is lit or the cabinet is locked. `machineId` and `lamp: "hot"` say which machine it was |
-| `nightcard:<1\|2\|best>` | picks Night Card 1 or 2 of the offer, or `best` (see **Night Card choice** below): the id at that index of `run.nightCardOffer().candidates` goes to `run.pickNightCard(id)` (it takes the id). `offer` lists the offered ids, `cards` each card with its preview (`index`, `id`, `tone`, `text`, `lines`, `quotaTo`, `ratio`), `index` and `id` the one picked, and for `best` only, `best` the card the heuristic chose (1 or 2). Prints the offer. Fails with `no Night Card on this build` when the run has no `pickNightCard`, and is refused (no offer open) when none is up |
+| `nightcard:<1\|2\|best>` | picks Night Card 1 or 2 of the offer, or `best` (see **Night Card choice** below): the id at that index of `run.nightCardOffer().candidates` goes to `run.pickNightCard(id)` (it takes the id). `offer` lists the offered ids, `cards` each card with its preview (`index`, `id`, `tone`, `text`, `lines`, `quotaTo`, `ratio`, `payoutX`, `ev`), `index` and `id` the one picked, and for `best` only, `best` the card the heuristic chose (1 or 2), `mode` (`ahead` / `behind` / `unknown`) and `why` (the reason) | Prints the offer. Fails with `no Night Card on this build` when the run has no `pickNightCard`, and is refused (no offer open) when none is up |
 | `play:<keys>xN` | presses the keys N times (default 1). Keys use the script syntax (`Space:150,wait:300`). The `x` suffix ends the step: `play:Space:150,wait:300x3` repeats both |
 | `stand` | stands up from the seat (`world.standUp()`), then waits until the seat is free |
 | `bank:deposit:<n>` | a Debt Terminal deposit of n coins (`run.deposit(n)`). `ok:false` when the run refuses it (pocket floor, quota room, not a quota Watch) |
@@ -166,7 +166,7 @@ Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` 
 | `banner:<ms>` | polls the page for the live event's announce line (up to `ms`), records `waited`, and shoots `banner-seen.png` when it shows. On a miss it records what `.t-banner` holds |
 | `shot:<name>` | screenshot to `<shots>/<name>.png` (needs `--shots`) |
 | `wait:<ms>` | pauses |
-| `state` | records the state in `run.states` and logs it: `phase`, `night` (1-based), `watch` (1-based), `pocket`, `bank` (the balance), `withdrawable`, `quotaDue`, `quotaLeft`, `pullsLeft`, `pulls`, `minBet`, `nightDone`, `topside`, `over`, `seated` (the machine instance id or null), `intro` (the cutscene id or null), `starterOffer` (the three charm ids while the Starter Draft is open, else null), `starterLeft` (its timer, sim s), `charms` (the owned charm ids, `id xN` when stacked), `lamps` (`{ hot, cold }`: each lit Lamp as `{ instance, machineId, zone }`, the zone of its slot; empty between Watches), `event` (the live floor event as `{ id, leftS, pulls }`, or null), `nightCard` (the Night Card picked for this Night, or null), `nightCardOffer` (the offered Night Card ids while the offer is open, else null) |
+| `state` | records the state in `run.states` and logs it: `phase`, `night` (1-based), `watch` (1-based), `pocket`, `bank` (the balance), `withdrawable`, `quotaDue`, `quotaLeft`, `pullsLeft`, `pulls`, `minBet`, `nightDone`, `topside`, `over`, `seated` (the machine instance id or null), `intro` (the cutscene id or null), `starterOffer` (the three charm ids while the Starter Draft is open, else null), `starterLeft` (its timer, sim s), `charms` (the owned charm ids, `id xN` when stacked), `lamps` (`{ hot, cold }`: each lit Lamp as `{ instance, machineId, zone }`, the zone of its slot; empty between Watches), `event` (the live floor event as `{ id, leftS, pulls }`, or null), `nightCard` (the Night Card picked for this Night, or null), `nightCardOffer` (the offered Night Card ids while the offer is open, else null), `tithe` (the watch tithe: the house cut paid tonight so far, `run.nightLedger().cut`, or null) |
 | `kit:<id>` | start config, not a step: the starting kit (`kits.ts` id, e.g. `kit:rotator`). Applied when the run starts, through the same `config` the kit picker passes to `app.go('ingame', …)` (`src/menu/menuState.ts` → `session.ts` → `createRun`). Unknown kit: the run is not started (error) |
 | `stake:<n>` | start config, not a step: the stake 0-7 (`STAKE_MAX`), applied the same way. The picker's unlock rules are not enforced (the QA profile is fresh, so every stake above 0 would be locked); the start record's `gated.kit` / `gated.stake` say whether the picker would have held it back |
 | `daily` | start config, not a step: the day's run, as the picker's daily toggle (today's kit, stake 3, the UTC day's seed; `run.ts` fixes the seed and kit). Cannot be combined with `kit:` or `stake:` |
@@ -193,11 +193,11 @@ Practical notes: `goto` needs the machine on the floor (the `coinflip`, `hilo`, 
 - **Push-your-luck**: coinflip flips (`Space`); after a win it rides once (`KeyR`) while the pot is under x3.6, then collects at x3.6 (`KeyQ`). bigone spins (`Space`); a line win leaves a chase offer, which it takes (`KeyG`) only at 1 in 3 or better (`CHASE_P` from `bigone/rules.ts`), else collects (`Space`). The other recipes are the key sequences of `BOT_RECIPE` (hilo, scratch) or `BOT_RECIPE_GENERIC` (one spin, then `KeyQ`).
 - **Deposit**: once per Watch, after the bets. The amount is the gap to the Dawn projection (`dawnPlan`, pace.ts: the bank at Dawn against the quota) or 40 % of the pocket when that is more, never below the float (`run.depositFloor()`). A refusal retries at half.
 - **Shop**: in the Intermission, the Pawn Window shelf that is clean (not cursed, no swap), costs at most 30 % of the pocket, and either completes an archetype set or shares an archetype with a held charm (`charms/sets.ts`). A set completion comes first, then the cheapest. Buys with `pawn:buy`, then `stand`.
-- **Night Card**: a paid Dawn opens a two-card offer (`nightCardOffer`, the lever waits on it). The bot stops there (`end: "night card"`) when the next step in the list is `nightcard:<n|best>`, which then picks. With no such next step it picks the best card itself (`nightcard:best`, the lowest coming quota). The stop record carries the offer: `offer` (the ids), `cards` (with their preview lines) and `have` (pocket + bank). An offer open at a later step is handled the same way.
+- **Night Card**: a paid Dawn opens a two-card offer (`nightCardOffer`, the lever waits on it). The bot stops there (`end: "night card"`) when the next step in the list is `nightcard:<n|best>`, which then picks. With no such next step it picks the best card itself (`nightcard:best`, the highest expected value, see **Night Card choice**). The stop record carries the offer: `offer` (the ids), `cards` (with their preview lines) and `have` (pocket + bank). An offer open at a later step is handled the same way.
 - **Lever**: starts the Watch (`lever`); after a paid Night it opens the floor.
 - **Withdraw**: a pocket below the cheapest bet pulls the whole bank back out first.
 - **Bell**: rings the Bell (`bell`) once the Watch's bets are placed, after `stand`. Unused pulls keep the rebate. A Watch whose pulls run out closes by itself.
-- **Per-Watch line**: once a Watch reaches its Bell (after its deposit), it logs `watch N<night> W<watch>: pocket, bank, quota due/left, event` to stderr and adds a record `{ step: "watch N-W", auto: true, pocket, bank, quotaDue, quotaLeft, event }` to `run.steps`. `event` is the floor event id or null.
+- **Per-Watch line**: once a Watch reaches its Bell (after its deposit), it logs `watch N<night> W<watch>: pocket, bank, quota due/left, event` to stderr and adds a record `{ step: "watch N-W", auto: true, pocket, bank, quotaDue, quotaLeft, tithe, event }` to `run.steps`. `tithe` is the house cut so far tonight, `event` the floor event id or null.
 
 The bet record is `bot:bet:<machine>` with `instance`, `bold`, `stake` (`bold` or `min`) and `bets` (the stake attempts). `pulls` is `[before, after]`; `ok` is whether a pull was spent. The `state` record adds `spotlight` (`{ machineId, night, plays, progress }` or null), `lamps` (the lit Hot and Cold Lamps) and `dawn` (`{ due, balance, settles, projected, gap, met, float }`, the Dawn projection).
 
@@ -230,11 +230,27 @@ quota before and after, the Watches, the payout, and so on). To pick by the numb
 node scripts/qa/bench.mjs --run "auto:night;nightcard:best;auto:night;state" --seed 1 --shots <dir>
 ```
 
-`auto:night` stops at the Dawn offer (`end: "night card"`) and prints both cards. `nightcard:best` then picks the card whose
-**coming quota** is lowest against **pocket + bank** (`ratio` = quota after the card / max(1, pocket + bank)). It is a simple
-heuristic: it reads only the quota line of the preview, so it ignores Watches, payouts and charms. Pocket + bank is the same for
-both cards, so this is the card that leaves the lowest quota. A tie keeps card 1. Its record's `best` is the card picked (1 or 2).
-Read the printed lines before trusting it; it is a bot choice for QA, not a strategy.
+`auto:night` stops at the Dawn offer (`end: "night card"`) and prints both cards. `nightcard:best` picks the card with the
+**highest expected value** (`EV`, `CARD_EV` and `summarizeOffer` in `bench.mjs`). Every term is a ratio of **pocket + bank** (`have`):
+
+- `gain`: the payout multiplier (the preview's `payout` x `pulls` after/before) minus 1, times 0.25 (the share of the bank a Night's
+  payouts move), plus the flat payout (`flat` coins x 4 wins) over `have`.
+- `dQuota`: (the quota the card leaves - the Night's base quota) / `have`. A lower quota is a gain, a higher one a cost.
+- `short`: the quota the card leaves above `have` / `have`, the part the pocket and bank cannot cover.
+
+The mode comes from the Dawn projection (`dawn`, the state record's, the bank at Dawn against the quota):
+
+- **ahead** (`dawn.met`, the bank covers the quota at Dawn): risk-on. Weights pay 1, quota 0.25, short 1, so a payout card wins
+  over a quota one.
+- **behind** (or no projection, `unknown`, which scores with these weights too): quota-lowering. Weights pay 0.25, quota 1, short 2,
+  so a card that lowers the quota (RUSH NIGHT) wins over a payout card.
+
+A tie keeps card 1. The record keeps `best` (1 or 2), `mode`, `why` (the reason in words, also logged as `why:` under the offer)
+and each card's `ev` and `payoutX`. The proxies (0.25, 4 wins, the weights) are QA choices, not game numbers. Read the printed
+lines before trusting the pick; it is a bot choice for QA, not a strategy.
+
+The state record's `tithe` is the watch tithe so far tonight: the house cut the owned machines have paid at each Watch settle
+(`run.nightLedger().cut`), or null on a build without a ledger. The per-Watch line and record carry it too.
 
 ## Intro skip
 

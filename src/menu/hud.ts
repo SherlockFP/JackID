@@ -164,6 +164,8 @@ export function createHud(): Hud {
   const planBank = h('span', 'pb', plan);
   const planPocket = h('span', 'pk', plan);
   const planEnds = h('span', 'pe', plan);
+  // WATCH TITHE (Night 3 on): the Watch tithe line, green once met. Shown only while run.watchTithe() reports it active.
+  const planTithe = h('span', 'pt hidden', plan);
   let planKey = '';
   // The NIGHT PLAN counts Settles from the run's segment, which still names the settled Watch during its intermission. These
   // two remember which Watch settled last in which Night, so the Night's first intermission (no Watch settled yet) counts all of them.
@@ -544,6 +546,12 @@ export function createHud(): Hud {
     if (r && next && bank) { showNextNight(next, bank.pocket, bank.balance); return; }
     const show = !!r && !!q && !!seg && !!bank && q.due > 0 && r.window() === 'watch' && !nightPaid(r);
     setCls(plan, 'hidden', !show);
+    // The Watch tithe (wave 7 controls lane): optional, so the plan builds before that lane lands.
+    // run.watchTithe() reports { on, target, earned, met, shortfall } (src/game/checkpoints.ts).
+    const tithe = (r as (typeof r & { watchTithe?: () => { on: boolean; earned: number; target: number } | null }) | null)?.watchTithe?.() ?? null;
+    const titheN = tithe?.on ? Math.floor(tithe.target) : 0;
+    const titheE = tithe?.on ? Math.max(0, Math.floor(tithe.earned)) : 0;
+    const titheOn = titheN > 0;
     if (!r || !q || !seg || !bank || !show) return;
     const due = Math.max(0, Math.floor(q.due));
     // Watches already settled this Night: in a Watch the current one is not yet; at an intermission the segment still names the
@@ -558,13 +566,19 @@ export function createHud(): Hud {
     const pulls = r.pulls(self());
     const pullsTxt = Number.isFinite(pulls) ? String(Math.max(0, Math.floor(pulls))) : '∞';
     const clock = mmss(r.shift.timeLeft());
-    const key = `${due}|${watch}|${seg.count}|${bank.balance}|${pocket}|${interm}|${p.projected}|${p.gap}|${pullsTxt}|${clock}`;
+    const key = `${due}|${watch}|${seg.count}|${bank.balance}|${pocket}|${interm}|${p.projected}|${p.gap}|${pullsTxt}|${clock}|${titheE}/${titheN}`;
     if (key === planKey) return;
     planKey = key;
     setCls(planNext, 'hidden', true);
     setCls(planHead, 'hidden', false);
     setCls(planBank, 'hidden', false);
     setCls(planEnds, 'hidden', false);
+    setCls(planTithe, 'hidden', !titheOn);
+    if (titheOn) {
+      setText(planTithe, t('hud.plan.tithe', { n: titheN, e: titheE }));
+      // Green once the Watches have paid the tithe in play; the plan's own text colour before that.
+      planTithe.style.color = titheE >= titheN ? 'var(--green)' : '';
+    }
     setText(planHead, t('hud.plan.head', { q: money(due) }));
     setCls(plan, 'ok', p.met);
     setCls(plan, 'gap', !p.met);
@@ -600,7 +614,7 @@ export function createHud(): Hud {
     setCls(planNext, 'hidden', false);
     planNext.style.color = red ? '#ff5a4a' : '';
     setText(planNext, t('hud.plan.night', { q: money(next.due), k }));
-    for (const el of [planHead, planBank, planPocket, planEnds]) setCls(el, 'hidden', true);
+    for (const el of [planHead, planBank, planPocket, planEnds, planTithe]) setCls(el, 'hidden', true);
   }
 
   function updateEmpire(): void {

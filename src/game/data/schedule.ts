@@ -186,7 +186,13 @@ export function assessmentFor(index: number, holdings: number, rate = 0.08): num
  * the quota). The ladder stays the floor, so the rule only bites a run that is rich: its threshold is the ladder value itself.
  * `share` 0 switches it off. Pure: the caller passes the wealth it read at Dawn.
  */
-export const HOUSE_NOTICE_FROM = 5;
+/**
+ * Wave 58 (director, Watch tithe): the notice starts at Night 6 (was 5), share unchanged at 1.2. With the notice on Night 5 its
+ * wealth floor (~900 at N5) sets N5 and N8 with one share, and no share hits both N5 ~35 % and N8 12-18 %. From Night 6 the N5
+ * quota is its ladder value (288, the 2x cap), so the late Nights are tuned by the share alone. Human bot with the Watch tithe,
+ * 2000 runs, seed 20261013: reach N1 94, N2 82, N3 60, N4 44, N5 37, N6 28, N7 24, N8 16 %.
+ */
+export const HOUSE_NOTICE_FROM = 6;
 export const HOUSE_NOTICE_SHARE = 1.2;
 export function houseNoticeQuota(no: number, ladderQuota: number, wealth: number, share = HOUSE_NOTICE_SHARE, from = HOUSE_NOTICE_FROM): number {
   if (share <= 0 || no < from || wealth <= 0) return ladderQuota;

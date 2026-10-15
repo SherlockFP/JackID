@@ -9,6 +9,7 @@ export default {
     'next': 'NEXT WATCH {w}/{n}',
     'night': 'NEXT NIGHT: quota {q} (×{k})',
     'paid': 'NIGHT PAID ✓ — surplus {n} returns at Dawn',
+    'tithe': 'WATCH TITHE: earn {n} in play · {e}/{n}',
   },
   tr: {
     'head': 'KOTA {q} · ŞAFAK',
@@ -18,5 +19,6 @@ export default {
     'next': 'SONRAKİ VARDİYA {w}/{n}',
     'night': 'SONRAKİ GECE: kota {q} (×{k})',
     'paid': 'GECE ÖDENDİ ✓ — fazla {n} Şafak’ta geri döner',
+    'tithe': 'VARDİYA ÖŞÜRÜ: oyunda {n} kazan · {e}/{n}',
   },
 };

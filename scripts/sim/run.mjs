@@ -4,6 +4,12 @@
 //   node scripts/sim/run.mjs                         2000 runs per bot, 10 % of pocket per pull (rotator, banker)
 //   node scripts/sim/run.mjs --runs 500 --bots rotator
 //   node scripts/sim/run.mjs --bet-frac 0.2          stake fraction for rotator and banker
+//   node scripts/sim/run.mjs --no-tithe              the game before the Watch tithe (checkpoints.ts)
+// WAVE 58 (director, Watch tithe): from Night 3 each quota Watch must earn 20 % of the Night quota in play (net wins less stakes;
+// a bot banked on the quota keeps playing until it has). Met pays a Ticket; missed adds the shortfall to the quota. The `tithe`
+// line is met % per Night and the mean shortfall a missed Watch added. Notice moved to Night 6 (schedule.ts). Human 2000 runs
+// (seed 20261013): reach 94 / 82 / 60 / 44 / 37 / 28 / 24 / 16 % (`--no-tithe` on the same schedule: 94 / 82 / 66 / 52 / 45 / 36 / 29 / 27);
+// seeds 1 and 99 within 2 points. The tithe is the late tension: a strong run that deposits the quota in Watch 1 still plays on.
 //   node scripts/sim/run.mjs --no-charms             nobody visits the Pawn (the old "reach depends only on quota vs pocket" sim)
 //   node scripts/sim/run.mjs --scale-ladder          proposal: bet steps scaled by the Night's stake index (SI)
 //   node scripts/sim/run.mjs --json out.json         also write the table as JSON
@@ -171,6 +177,9 @@ const BOUGHT = new Map();
 // Tuning overrides (comma lists of 8 values, one per Night). Without them the schedule.ts numbers are used.
 const list = (name) => { const v = argVal(name, ''); return v ? v.split(',').map(Number) : null; };
 const SCH = await load('src/game/data/schedule.ts');
+const CKP = await load('src/game/checkpoints.ts');   // Watch tithe (wave 58): 20 % of the Night quota earned in play each Watch, from Night 3
+const NO_TITHE = args.includes('--no-tithe');       // the old game: no Watch tithe
+const TITH = { on: new Array(8).fill(0), met: new Array(8).fill(0), short: new Array(8).fill(0) };   // per Night, all runs
 const PROG = await load('src/game/progression.ts');
 const CIR = await load('src/game/circuit.ts');
 const ECO = await load('src/game/economy.ts');
@@ -528,6 +537,11 @@ function playRun(bot, runIdx) {
       let pulls = nd.pulls + fx0.pullsAdd;
       const pullsMax = pulls;
       let watchPulls = 0;
+      // Watch tithe (run.ts startWatch / settleWatch): net winnings (credited wins less stakes) against 20 % of the Night quota.
+      const tTarget = CKP.titheTarget(nightQuota);
+      const tithOn = !NO_TITHE && CKP.titheApplies(nd.no, false) && tTarget > 0;
+      let tWon = 0;
+      let tStaked = 0;
       S.cs.cuckoo = S.held.includes('cuckoo_feather');
       if (S.held.includes('brass_alarm')) S.pocket += 4 * nd.si;
       if (S.held.includes('porcelain_pig')) S.pocket += Math.min(Math.floor(S.pocket * 0.04), 40 * nd.si);
@@ -570,7 +584,9 @@ function playRun(bot, runIdx) {
         const hotPick = circ.isHot(pick.mid);
         // Banked: the quota is covered and the pick is not Hot, so play has no edge (RTP below 1). Keep only the minimum
         // pulls the activity clause needs for interest (3 per Watch), each at the minimum stake, then stop.
-        const banked = !isCamp(bot) && S.debt >= due && !hotPick;
+        // With a tithe the banked player keeps playing until its net winnings reach the target (the tithe is still owed).
+        const titheDone = !tithOn || Math.max(0, tWon - tStaked) >= tTarget;
+        const banked = !isCamp(bot) && S.debt >= due && !hotPick && titheDone;
         if (banked && watchPulls >= SCH.ACTIVITY_MIN_PULLS) break;
         // Rescue: pocket empty, quota unmet, Watches left -> the Collector's loan (+N coins now, quota +1.5N). The bots only take it
         // when the deposit's interest alone will not reach the quota.
@@ -599,6 +615,7 @@ function playRun(bot, runIdx) {
         // Activity float: after the 3 pulls interest needs, never bet into the coins the next Watches' 3 pulls each need.
         if (!isCamp(bot) && watchPulls >= SCH.ACTIVITY_MIN_PULLS && S.pocket - bet < (nd.watches - w - 1) * SCH.ACTIVITY_MIN_PULLS * defs[pick.machineId].minBet) break;
         S.pocket -= bet;
+        tStaked += bet;
         const wasLast = pullsMax - pulls >= Math.floor(pullsMax * 0.87);
         pulls -= 1;
         watchPulls += 1;
@@ -613,6 +630,7 @@ function playRun(bot, runIdx) {
         const witch = SCH.isWitchingWatch(nd.watches, w) ? 0.05 : 0;
         const credited = ECO.settlePayout({ gross, bet, A: cf.A + witch, M: lampF * tiltF * cf.M * (NO_FAVOUR ? 1 : nd.favour) * (NO_MOOD ? 1 : moodOf(idx)), flat: 0, quota: due, limitMult: fx0.limitMult }).credited;
         S.pocket += credited;
+        tWon += credited;
         TOT.wagered += bet; TOT.credited += credited; TOT.plays += 1;
         NIGHT_RTP.wagered[idx] += bet; NIGHT_RTP.credited[idx] += credited;
 
@@ -631,6 +649,15 @@ function playRun(bot, runIdx) {
           const need = due - S.debt;
           if (need > 0 && S.pocket >= need) { S.pocket -= need; S.debt += Math.floor(need * (1 + fx0.depositBonus)); }
         }
+      }
+
+      // Watch tithe settle (run.ts settleWatch): met pays a Ticket; missed adds the shortfall to tonight's quota. The Settle still
+      // takes deposits in the game, so the pay-up below (the last Watch) covers the shortfall when the pocket can.
+      if (tithOn) {
+        const earnedT = Math.max(0, Math.floor(tWon - tStaked));
+        TITH.on[idx] += 1;
+        if (earnedT >= tTarget) { S.tickets = Math.min(SCH.TICKET_CAP, S.tickets + CKP.TITHE_TICKETS); TITH.met[idx] += 1; }
+        else { due += tTarget - earnedT; TITH.short[idx] += tTarget - earnedT; }
       }
 
       if (!isCamp(bot) && (!humanLike(bot) || w === nd.watches - 1)) {
@@ -830,6 +857,7 @@ for (const bot of BOTS) {
   TOT.wagered = 0; TOT.credited = 0; TOT.plays = 0; TOT.loans = 0; TOT.runsWithLoan = 0;
   NIGHT_RTP.wagered.fill(0); NIGHT_RTP.credited.fill(0);
   CHARM_COUNT.sum.fill(0); CHARM_COUNT.n.fill(0); BOUGHT.clear(); FLOAT_PAID.fill(0);
+  TITH.on.fill(0); TITH.met.fill(0); TITH.short.fill(0);
   const reached = new Array(SCH.BASE_RUN_NIGHTS).fill(0);
   const pockets = Array.from({ length: SCH.BASE_RUN_NIGHTS }, () => []);
   const quotas = Array.from({ length: SCH.BASE_RUN_NIGHTS }, () => []);
@@ -854,6 +882,8 @@ for (const bot of BOTS) {
   results[bot] = rows;
   results[bot + '_rtp'] = TOT.wagered ? +(TOT.credited / TOT.wagered).toFixed(4) : 0;
   results[bot + '_quotaIntPct'] = allDue ? +(100 * allFund / allDue).toFixed(1) : 0;
+  // Watch tithe (wave 58): N3..N8, the share of tithe Watches met and the mean shortfall a missed one added (coins, all runs).
+  if (!NO_TITHE) console.log(`${bot.padEnd(8)} tithe N3..N8 met% ${TITH.on.slice(2).map((n, i) => (n ? String(Math.round(100 * TITH.met[i + 2] / n)).padStart(3) : '  -')).join(' ')}  shortfall/Watch ${TITH.on.slice(2).map((n, i) => (n ? Math.round(TITH.short[i + 2] / n) : 0)).join(' ')}`);
   if (BRIEF) { console.log(`${bot.padEnd(8)} reach% ${rows.map((r) => String(Math.round(r.reachPct)).padStart(3)).join(' ')}  pocket ${rows.map((r) => fmtCoins(r.medianPocket)).join(' ')}  quota ${rows.map((r) => fmtCoins(r.quota)).join(' ')}  pocket/quota ${rows.map((r) => r.pqRatio).join(' ')}  charms ${rows.map((r) => r.charms).join(' ')}  int% ${rows.map((r) => r.intPct).join(' ')}  quota-int ${results[bot + '_quotaIntPct']}%  rtp ${results[bot + '_rtp']}`); continue; }
   console.log(`\n${bot}  (${RUNS} runs, ${((Date.now() - t0) / 1000).toFixed(1)} s${SCALE_LADDER ? ', ladder scaled by SI' : ''}${NO_CHARMS ? ', no charms' : ''}${isCamp(bot) ? '' : `, stake ${BET_FRAC * 100} % of pocket`})`);
   if (bot === 'human' && !NO_TYCOON) console.log(`tycoon: runs that owned a machine ${TYC.runs}/${RUNS} (avg owned ${(TYC.ownedEnd / Math.max(1, TYC.runs)).toFixed(1)}); per run N1..N8 bought [${TYC.bought.map((x) => (x / RUNS).toFixed(2)).join(' ')}], coins spent [${TYC.price.map((x) => Math.round(x / RUNS)).join(' ')}], house cut [${TYC.cut.map((x) => Math.round(x / RUNS)).join(' ')}]`);

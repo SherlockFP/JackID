@@ -77,15 +77,17 @@ test('WAVE 47 ladder: no Night steps up more than its cap (2x up to N3, 3x from 
   for (let i = 1; i < q.length; i++) assert.ok(q[i] <= 2 * q[i - 1], `N${i + 1} is at most 2x N${i} (director: no step above 2x after Night 2)`);
 });
 
-test('WAVE 47 house takes notice: from Night 5 the quota is at least 1.2 x the wealth at Dawn; the ladder is the floor; off below Night 5 and at share 0', () => {
-  assert.equal(SCH.HOUSE_NOTICE_FROM, 5);
+test('WAVE 47 house takes notice: from Night 6 (wave 58; was 5) the quota is at least 1.2 x the wealth at Dawn; the ladder is the floor; off below Night 6 and at share 0', () => {
+  assert.equal(SCH.HOUSE_NOTICE_FROM, 6, 'wave 58: the notice starts at Night 6 (Night 5 is set by its ladder, see schedule.ts)');
   assert.equal(SCH.HOUSE_NOTICE_SHARE, 1.2, 'director decision: 1.2 (not 1.9)');
   assert.equal(SCH.houseNoticeQuota(4, 168, 1e6), 168, 'no notice before Night 5');
-  assert.equal(SCH.houseNoticeQuota(5, 504, 100), 504, 'a poor run keeps the ladder value');
-  assert.equal(SCH.houseNoticeQuota(5, 504, 1000), 1200, '1.2 x 1000 coins');
-  assert.equal(SCH.houseNoticeQuota(5, 504, 1000, 0), 504, 'share 0 switches the rule off');
+  assert.equal(SCH.houseNoticeQuota(5, 504, 1e6), 504, 'no notice on Night 5 (wave 58)');
+  assert.equal(SCH.houseNoticeQuota(6, 504, 100), 504, 'a poor run keeps the ladder value');
+  assert.equal(SCH.houseNoticeQuota(6, 504, 1000), 1200, '1.2 x 1000 coins');
+  assert.equal(SCH.houseNoticeQuota(6, 504, 1000, 0), 504, 'share 0 switches the rule off');
   assert.equal(SCH.quotaFor(3, { wealth: 1e6 }), 144, 'quotaFor(index 3) is Night 4: no notice');
-  assert.equal(SCH.quotaFor(4, { wealth: 1000 }), 1200, 'quotaFor(index 4) is Night 5 and takes the wealth floor');
+  assert.equal(SCH.quotaFor(4, { wealth: 1000 }), 288, 'quotaFor(index 4) is Night 5: the ladder, no wealth floor');
+  assert.equal(SCH.quotaFor(5, { wealth: 1000 }), 1200, 'quotaFor(index 5) is Night 6 and takes the wealth floor');
   assert.equal(SCH.quotaFor(4), 288, 'quotaFor without wealth is the ladder');
 });
 

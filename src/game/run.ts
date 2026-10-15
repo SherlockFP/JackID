@@ -86,6 +86,8 @@ import { STARTER_TIMEOUT_SEC, starterOffer } from './draft';
 import { houseMoodProvider } from './houseMood';
 import { NightCards, type NightCardDef, type NightCardSave } from './nightCards';
 import nightCardStrings from './nightCards.strings';
+import { WatchTithe, type TitheResult, type TitheSave, type TitheView } from './checkpoints';
+import checkpointStrings from './checkpoints.strings';
 import { Spotlight, isSpotlightEligible, spotlightStartLine, type SpotlightSave, type SpotlightView } from './spotlight';
 import { WatchEvents, type WatchEventSave } from './watchEvents';
 import type { EventBannerShow } from './buffs/banner';
@@ -247,6 +249,8 @@ declare module '@/core/events' {
     /** Night Cards (director): the Dawn offer opened (`offer`), a card kept (`picked`) or auto-picked (`auto`), and the Night that
      *  starts with its card (`started`). `card` is the card id, or null for `offer`. */
     'run:nightcard': { pid: PlayerId; state: 'offer' | 'picked' | 'auto' | 'started'; card: string | null };
+    /** Watch tithe (wave 58): a quota Watch's Settle. `met` pays `tickets`; `missed` adds `shortfall` to tonight's quota. */
+    'run:tithe': { pid: PlayerId; state: 'met' | 'missed'; watch: number; target: number; earned: number; shortfall: number; tickets: number };
   }
 }
 /** `lastRefusal()` after a first press on a stake above half the pocket (see `RunStakeConfirmEvent`). Not in `RefusalReason` yet. */
@@ -257,6 +261,7 @@ registerStrings(pullsStrings.prefix, { en: pullsStrings.en, tr: pullsStrings.tr 
 registerStrings(bankStrings.prefix, { en: bankStrings.en, tr: bankStrings.tr });
 registerStrings(draftStrings.prefix, { en: draftStrings.en, tr: draftStrings.tr });
 registerStrings(nightCardStrings.prefix, { en: nightCardStrings.en, tr: nightCardStrings.tr });
+registerStrings(checkpointStrings.prefix, { en: checkpointStrings.en, tr: checkpointStrings.tr });
 registerStrings(runStrings.prefix, { en: runStrings.en, tr: runStrings.tr });
 
 let bossStringsDone = false;
@@ -366,6 +371,8 @@ export interface RunExt {
   watchEvent?: WatchEventSave | null;
   /** Machine of the Night (wave 55): this Night's spotlight and the kind spotlit last Night. Optional: older saves have none. */
   spotlight?: SpotlightSave;
+  /** Watch tithe (wave 58): this Watch's net winnings and the tithe's quota adds. Optional: older saves have none. */
+  tithe?: TitheSave;
 }
 /** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
 interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
@@ -444,6 +451,8 @@ export interface DebtRun extends RunApi {
   ringBell(): boolean;
   /** The bank in numbers (Debt Terminal DEPOSIT / WITHDRAW / QUOTA screens). */
   bank(): BankView;
+  /** Watch tithe (wave 58): this Watch's target, net winnings so far, met and the shortfall (`on` false outside a tithe Watch). */
+  watchTithe(): TitheView;
   /** NEXT NIGHT: the exact quota of the Night after the paid one (null while a Night runs). `extraMult` previews a card (1 = none). */
   nextQuotaPreview(extraMult?: number): NextQuotaPreview | null;
   /** What `withdraw(amount)` would do, without doing it (what the player gives up). */
@@ -715,6 +724,8 @@ class Run implements DebtRun {
   private ropeUsed = false;
   /** Rescue loans (wave 13): quota added tonight, calls used tonight, seconds until the line may ring again. */
   private loanQuota = 0;
+  /** Watch tithe (wave 58): per-Watch net winnings against 20 % of the Night quota; missed tithes add to tonight's quota. */
+  private readonly tithe = new WatchTithe();
   private rescuesUsed = 0;
   private rescueCool = 0;
   private rescueScan = 0;
@@ -754,6 +765,7 @@ class Run implements DebtRun {
       const a = Math.floor(amount);
       if (!(a > 0) || this.ended || !this.spend('coin', a, `gamble:${reason}`)) return false;
       this.stats.wagered = (this.stats.wagered ?? 0) + a;
+      this.tithe.played(0, a);
       return true;
     },
     credit: (amount, _src, reason: GambleReason) => {
@@ -761,6 +773,7 @@ class Run implements DebtRun {
       if (!(a > 0) || this.ended) return 0;
       this.earn('coin', a, `gamble:${reason}`);
       this.stats.paid = (this.stats.paid ?? 0) + a;
+      this.tithe.played(a, 0);
       this.biggest = Math.max(this.biggest, a);
       return a;
     },
@@ -1054,6 +1067,7 @@ class Run implements DebtRun {
     if (pullCost > 0) this.watchEv.onPull(src.mid);
     this.coins -= cost;
     this.stats.wagered = (this.stats.wagered ?? 0) + cost;
+    this.tithe.played(0, cost);
     if (this.quotaMode) this.feedJackpot('net', Math.floor(amount * NETWORK_FEED));
     this.lastBet.set(src.mid, amount);
     if (!this.openRounds.has(src.mid)) {
@@ -1113,6 +1127,7 @@ class Run implements DebtRun {
     this.coins += credited;
     this.maxWallet = Math.max(this.maxWallet, this.coins);
     this.stats.paid = (this.stats.paid ?? 0) + credited;
+    this.tithe.played(credited, 0);
     if (credited > this.biggest) this.bestMachine = src.machineId;
     this.biggest = Math.max(this.biggest, credited);
     this.stats.biggest = this.biggest;
@@ -1403,6 +1418,7 @@ class Run implements DebtRun {
     this.watchDeposits = 0;
     this.watchFloatSnap = null;                 // the new Watch's float is read afresh (once) on its first deposit or screen
     this.watchWd = 0; this.watchDepCoins = 0;
+    this.tithe.begin(nd.no, isOvertime);   // Watch tithe (wave 58): this Watch's target is 20 % of the Night quota, from Night 3
     this.shiftState.duration = this.clockLen;
     this.shiftState.lastCallSec = this.lastCallSec;
     this.shiftState.segment = { index: this.watch, count: this.watches };
@@ -1444,6 +1460,7 @@ class Run implements DebtRun {
     this.nextDiscount = 0;
     this.quota.claimed = [];
     this.loanQuota = 0; this.rescuesUsed = 0; this.rescueCool = 0;
+    this.tithe.newNight();
     this.shiftState.index = this.index;
     this.shiftState.floor = this.index + 1;
     this.shiftState.stake = nd.si;
@@ -1528,6 +1545,10 @@ class Run implements DebtRun {
     };
   }
 
+  watchTithe(): TitheView {
+    return this.tithe.view();
+  }
+
   bank(): BankView {
     const i = this.bankInput();
     const due = Math.max(0, Math.floor(this.quota.due));
@@ -1536,7 +1557,8 @@ class Run implements DebtRun {
       withdrawable: this.withdrawOpen() ? withdrawable(i) : 0,
       pocket: Math.floor(this.coins),
       due,
-      left: Math.max(0, due - Math.floor(this.debtPaid)),
+      // A paid Night owes nothing: after Dawn the books are reset (debtPaid 0) but the quota still reads the paid Night.
+      left: this.nightDone ? 0 : Math.max(0, due - Math.floor(this.debtPaid)),
       ratePct: ratePercent(i.rate),
       interestNext: interestNext(i),
       interestAt: (balance: number) => interestFor(interestBase(balance, i.churn), due, i.rate),
@@ -1711,10 +1733,28 @@ class Run implements DebtRun {
       this.pullCount = 0;
       this.emit('pulls:change', { pid, pulls: 0 });
     }
+    // Watch tithe (wave 58): before the quota is read again, so a missed tithe's shortfall is part of tonight's quota.
+    const tithe = this.tithe.settle();
+    if (tithe) this.settleTithe(tithe, this.watch);
     this.syncQuota();
     this.checkMet();
     this.emit('quota:update', { quota: this.quota });
     this.persist();
+  }
+
+  /**
+   * Watch tithe (wave 58): the Settle's outcome. Met pays its Ticket. Missed adds the shortfall to tonight's quota, and the quota
+   * met flag is read again so a Night already paid is short by the shortfall (the Night is not lost, only the pocket must pay it).
+   */
+  private settleTithe(r: TitheResult, watch: number): void {
+    if (r.shortfall > 0) {
+      this.quota.due += r.shortfall;
+      this.metFired = this.debtPaid >= this.quota.due;
+    }
+    if (r.tickets > 0) this.earn('ticket', r.tickets, 'tithe');
+    this.emit('run:tithe', { pid: this.selfId, state: r.state, watch, target: r.target, earned: r.earned, shortfall: r.shortfall, tickets: r.tickets });
+    if (r.state === 'met') this.banner?.(t('tithe.met', { tickets: r.tickets }), { color: '#ffd34a', hold: 3, size: 16 });
+    else this.banner?.(t('tithe.missed', { n: r.shortfall }), { color: '#ff7a5a', hold: 4, size: 16 });
   }
 
   // ─â”€ tycoon: owned machines (wave 28) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
@@ -2108,10 +2148,13 @@ class Run implements DebtRun {
     const nd = nightDef(this.index);
     const holdings = this.tycoonSys.holdings();
     const rate = this.mod('x.tycoon.assessRate', RUN_MACHINE, 0.08);
-    const due = this.dueOf(this.index, {
+    const p = {
       discount: this.discount, holdings, rate, wealth: this.houseWealth, loan: this.loanQuota,
       mult: this.mod('quota.mult', RUN_MACHINE, 1), add: this.mod('quota.add', RUN_MACHINE, 0), night8: this.mod('x.quota.night8', RUN_MACHINE, 1),
-    });
+    };
+    const due = this.dueOf(this.index, { ...p, tithe: this.tithe.addedQuota() });
+    // The Watch tithe's basis: the Night quota without the rescue loans and the tithes (20 % of it is each Watch's target).
+    this.tithe.setNightQuota(this.dueOf(this.index, { ...p, loan: 0, tithe: 0 }));
     this.quota.base = nd.base;
     this.quota.assessment = assessmentFor(this.index, holdings, rate);
     this.quota.due = due;
@@ -2124,11 +2167,12 @@ class Run implements DebtRun {
    * notice (`quotaFor`), × the quota multiplier and the stake, + the quota adds and any rescue loans, the Night 8 multiplier,
    * and 0 for a Night a Lord's writ forgave.
    */
-  private dueOf(index: number, p: { discount: number; holdings: number; rate: number; wealth: number; loan: number; mult: number; add: number; night8: number }): number {
+  private dueOf(index: number, p: { discount: number; holdings: number; rate: number; wealth: number; loan: number; mult: number; add: number; night8: number; tithe: number }): number {
     let due = quotaFor(index, { discount: p.discount, holdings: p.holdings, assessRate: p.rate, wealth: p.wealth });
     due = Math.round(due * p.mult * this.stakeFx().quotaMult);   // stake 2 (×1.08) rides with the quota mods
     due = Math.max(0, Math.round(due + p.add + p.loan));
     if (index === BASE_RUN_NIGHTS - 1) due = Math.round(due * p.night8);
+    due = Math.round(due + p.tithe);   // the shortfalls of the missed Watch tithes (added as they are, after the multipliers)
     if (index < this.forgiveUntil) due = 0;   // a Lord's writ forgave this Night (Hollow Door)
     return due;
   }
@@ -2168,7 +2212,7 @@ class Run implements DebtRun {
     const rate = this.mod('x.tycoon.assessRate', RUN_MACHINE, 0.08);
     const due = this.dueOf(idx, {
       discount, holdings, rate, wealth, loan: 0,
-      mult, add: this.mod('quota.add', RUN_MACHINE, 0), night8: this.mod('x.quota.night8', RUN_MACHINE, 1),
+      mult, add: this.mod('quota.add', RUN_MACHINE, 0), night8: this.mod('x.quota.night8', RUN_MACHINE, 1), tithe: 0,
     });
     const tonight = this.quota.due;
     const k = tonight > 0 ? Math.round((due / tonight) * 10) / 10 : 1;
@@ -2457,6 +2501,7 @@ class Run implements DebtRun {
     p.lastWin = { pid: this.selfId, amount: paid, at: Math.round(this.elapsed * 1000), mid: src.mid, machineId: src.machineId };
     p.value = p.seed;
     this.coins += paid;
+    this.tithe.played(paid, 0);   // a jackpot is a win in play (the Watch tithe counts it)
     this.emit('jackpot:win', { pool: id, pid: this.selfId, amount: paid, mid: src.mid, machineId: src.machineId });
     this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: paid, reason: `jackpot:${id}` });
     this.poolChanged(p);
@@ -2979,6 +3024,7 @@ class Run implements DebtRun {
       ...(this.nightCards.snapshot() ? { nightCards: this.nightCards.snapshot() as NightCardSave } : {}),
       ...(this.watchEv.snapshot() ? { watchEvent: this.watchEv.snapshot() } : {}),
       ...(this.spotlight.snapshot() ? { spotlight: this.spotlight.snapshot() as SpotlightSave } : {}),
+      ...(this.tithe.snapshot() ? { tithe: this.tithe.snapshot() as TitheSave } : {}),
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -3322,6 +3368,7 @@ class Run implements DebtRun {
     this.nightCards.restore(e.nightCards);
     this.watchEv.restore(e.watchEvent);
     this.spotlight.restore(e.spotlight);
+    this.tithe.restore(e.tithe);
     this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);
     this.watchDeposits = Math.max(0, e.watchDep ?? 0);
     this.watchFloatSnap = typeof e.watchFloat === 'number' && Number.isFinite(e.watchFloat) ? Math.max(0, Math.floor(e.watchFloat)) : null;

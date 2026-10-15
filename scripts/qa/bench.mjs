@@ -98,7 +98,8 @@ export function parseScript(text) {
  *   goto:<machineId>   teleport in front of the floor machine, face it, press E (devtools occupy as the fallback)
  *   goto:hot           the same, for the Hot cabinet (the first Hot Lamp lit now, run.circuit.lamps().hot[0])
  *   nightcard:<1|2>    pick Night Card <1|2> of the offer: the id at that index of run.nightCardOffer().candidates goes to run.pickNightCard(id)
- *   nightcard:best     pick the card whose coming quota is lowest against pocket+bank (see summarizeOffer); ties keep card 1
+ *   nightcard:best     pick the card with the highest expected value (CARD_EV, summarizeOffer): risk-on (payouts) when ahead of the
+ *                      Dawn projection, quota-lowering when behind; logs the reason; ties keep card 1
  *   play:<keys>xN      press the keys (parseScript syntax, e.g. play:Space:150,wait:300x3), N times (default 1)
  *   stand              stand up from the seat
  *   bank:deposit:<n>   Debt Terminal deposit of n coins (run.deposit)
@@ -389,6 +390,26 @@ function noteRefusal(rec, before, now) {
 }
 
 /**
+ * Page JS helper: the watch tithe, the house cut the owned machines have paid tonight (run.nightLedger().cut, paid at each Watch
+ * settle, see run.ts payHouseCut). Null when the build has no ledger. Read into the state record as `tithe`.
+ */
+const TITHE_FN_JS = `function titheOf(r) {
+  const l = typeof r.nightLedger === 'function' ? r.nightLedger() : null;
+  return l && Number.isFinite(l.cut) ? l.cut : null;
+}`;
+
+/** The Dawn projection body (uses `r`): the bank at Dawn if the Night plays on, the gap to the quota, the float to keep. */
+const DAWN_BODY = `
+  const { dawnPlan } = await import('/src/game/pace.ts');
+  const { nightDef } = await import('/src/game/data/schedule.ts');
+  const b = r.bank();
+  const settles = Math.max(0, nightDef(r.night() - 1).watches - ((typeof r.watch === 'number' ? r.watch : 0) + 1));
+  const p = dawnPlan({ due: b.due, balance: b.balance, settles, interestAt: b.interestAt });
+  return { due: b.due, balance: b.balance, settles, projected: p.projected, gap: p.gap, met: p.met, float: r.depositFloor() };`;
+/** Page JS: the Dawn projection of the open run (null without one). */
+const DAWN_JS = `(async () => { const r = window.jackid.app.run; if (!r) return null; ${DAWN_BODY} })()`;
+
+/**
  * Page JS helper (inlined into the page scripts): the ids of the open Night Card offer, in offer order (card 1 first), or null
  * when no offer is open. run.nightCardOffer() returns { candidates: NightCardDef[], left, night }, so the ids are read from it.
  */
@@ -405,7 +426,8 @@ const NIGHT_CARD_IDS_JS = `function nightCardIds(r) {
  * `quotaTo` (the coming quota the card leaves: its quota line's `to`, else quotaBase).
  */
 const NIGHT_CARD_OFFER_JS = `(async () => {
-  const none = { missing: false, night: null, have: null, quotaBase: null, cards: null };
+  ${TITHE_FN_JS}
+  const none ={ missing: false, night: null, have: null, quotaBase: null, cards: null };
   const r = window.jackid.app.run;
   if (!r) return none;
   if (typeof r.pickNightCard !== 'function') return { ...none, missing: true };
@@ -433,7 +455,9 @@ const NIGHT_CARD_OFFER_JS = `(async () => {
       quotaTo: q ? q.vars.to : (dueWith(1) ?? quotaBase),
     };
   });
-  return { missing: false, night: o.night, have: b.pocket + b.balance, quotaBase, cards };
+  // The Dawn projection (the same read as the state record's dawn): met says the bank covers the quota at Dawn (the ahead/behind switch).
+  const dawn = await (async () => { ${DAWN_BODY} })();
+  return { missing: false, night: o.night, have: b.pocket + b.balance, quotaBase, cards, dawn, tithe: titheOf(r) };
 })()`;
 
 /** Page JS: takes the offered card `id` (run.pickNightCard takes the id, not the index). Resolves to true when the run accepts it. */
@@ -446,29 +470,81 @@ function pickNightCardJs(id) {
 }
 
 /**
- * The open offer as the harness records it: each card with its index, id, tone, preview (`text`, `lines`), `quotaTo` and
- * `ratio` (quotaTo / pocket+bank, 2 dp). `best` is the nightcard:best pick, the 1-based card that leaves the lowest coming
- * quota against pocket+bank. Since pocket+bank is the same for both cards, that is the lowest quotaTo; a tie keeps card 1.
- * Returns null without an offer.
+ * nightcard:best scoring (v2, expected value). Every term is a ratio of the bank (pocket + bank = `have`), so the weights are
+ * unitless. The EV of a card is
+ *   pay * gain - quota * dQuota - short * short
+ * gain   = (payout x effective) - 1, times payoutShare (the share of the bank a Night's payouts move), plus the flat payout
+ *          (flat coins x winsPerNight, the wins a Night pays) over `have`. effective = payout x (pulls after / pulls before).
+ * dQuota = (quota the card leaves - the Night's base quota) / have: a lower quota is a gain, a higher one a cost.
+ * short  = the quota the card leaves above `have` / have: quota the pocket+bank cannot cover.
+ * Ahead of the Dawn projection (dawn.met: the bank covers the quota at Dawn): risk-on, payouts count and quota growth is cheap.
+ * Behind it (or with no projection): quota-lowering, the quota counts and payouts cost little.
+ */
+const CARD_EV = {
+  payoutShare: 0.25,
+  winsPerNight: 4,
+  ahead: { pay: 1, quota: 0.25, short: 1 },
+  behind: { pay: 0.25, quota: 1, short: 2 },
+};
+
+const round = (x, d) => Math.round(x * 10 ** d) / 10 ** d;
+
+/** One card's EV terms under `mode` ('ahead' | 'behind' | 'unknown'). `unknown` scores with the behind weights. */
+function cardEV(c, offer, mode) {
+  const have = Math.max(1, offer.have ?? 0);
+  const w = mode === 'ahead' ? CARD_EV.ahead : CARD_EV.behind;
+  const find = (key) => c.lines?.find((p) => p.key === key)?.vars ?? null;
+  const payout = find('payout'), flat = find('flat'), pulls = find('pulls');
+  const effX = (payout ? payout.x : 1) * (pulls && pulls.from > 0 ? pulls.to / pulls.from : 1);
+  const gain = (effX - 1) * CARD_EV.payoutShare + (flat ? (flat.n * CARD_EV.winsPerNight) / have : 0);
+  const dQuota = (c.quotaTo - offer.quotaBase) / have;
+  const short = Math.max(0, c.quotaTo - have) / have;
+  return { effX, ev: w.pay * gain - w.quota * dQuota - w.short * short };
+}
+
+/**
+ * The open offer as the harness records it: each card with its index, id, tone, preview (`text`, `lines`), `quotaTo`, `ratio`
+ * (quotaTo / pocket+bank, 2 dp), `payoutX` (the effective payout, see CARD_EV) and `ev`. `mode` is ahead / behind / unknown (the
+ * Dawn projection). `best` is the nightcard:best pick, the 1-based card with the highest EV; a tie keeps card 1. `reason` says
+ * why, in words. Returns null without an offer.
  */
 function summarizeOffer(offer) {
   if (!offer?.cards?.length) return null;
   const have = offer.have ?? 0;
-  const cards = offer.cards.map((c, i) => ({
-    index: i + 1, id: c.id, tone: c.tone, text: c.text, lines: c.lines, quotaTo: c.quotaTo,
-    ratio: Math.round((c.quotaTo / Math.max(1, have)) * 100) / 100,
-  }));
+  const dawn = offer.dawn ?? null;
+  const mode = dawn ? (dawn.met ? 'ahead' : 'behind') : 'unknown';
+  const scored = offer.cards.map((c, i) => {
+    const e = cardEV(c, offer, mode);
+    return {
+      index: i + 1, id: c.id, tone: c.tone, text: c.text, lines: c.lines, quotaTo: c.quotaTo,
+      ratio: round(c.quotaTo / Math.max(1, have), 2), payoutX: round(e.effX, 2), ev: round(e.ev, 3),
+    };
+  });
   let best = 0;
-  for (let i = 1; i < cards.length; i++) if (cards[i].quotaTo < cards[best].quotaTo) best = i;
-  return { night: offer.night, have, quotaBase: offer.quotaBase, ids: cards.map((c) => c.id), cards, best: best + 1 };
+  for (let i = 1; i < scored.length; i++) if (scored[i].ev > scored[best].ev + 1e-9) best = i;
+  const b = scored[best];
+  const tie = scored.some((c, i) => i !== best && Math.abs(c.ev - b.ev) < 1e-9);
+  const head = mode === 'ahead'
+    ? `ahead of Dawn (projected ${dawn.projected} >= due ${dawn.due}): risk-on`
+    : mode === 'behind'
+      ? `behind Dawn (projected ${dawn.projected} < due ${dawn.due}, gap ${dawn.gap}): quota-lowering`
+      : 'no Dawn projection: quota-lowering (behind weights)';
+  const others = scored.filter((_, i) => i !== best).map((c) => `${c.index} ${c.id} EV ${c.ev}`).join(', ');
+  const reason = `${head}; card ${b.index} ${b.id} (EV ${b.ev}, payout x${b.payoutX}, quota ${b.quotaTo} vs base ${offer.quotaBase})`
+    + (tie ? '; tie, card 1 kept' : ` over ${others}`);
+  return {
+    night: offer.night, have, quotaBase: offer.quotaBase, ids: scored.map((c) => c.id), cards: scored,
+    best: best + 1, mode, reason, dawn,
+  };
 }
 
-/** Prints an offer summary: one line per card (its preview, the quota it leaves against pocket+bank), the best one marked. */
+/** Prints an offer summary: one line per card (its preview, EV, the quota it leaves against pocket+bank), the best one marked, and the reason. */
 function logOffer(sum, tag) {
-  log(`${tag}: Night ${sum.night + 1} Dawn offer, pocket+bank ${sum.have}, quota ${sum.quotaBase}`);
+  log(`${tag}: Night ${sum.night + 1} Dawn offer, pocket+bank ${sum.have}, quota ${sum.quotaBase}, mode ${sum.mode}`);
   for (const c of sum.cards) {
-    log(`  ${c.index} ${c.id} [${c.tone}] quota ${c.quotaTo} (${c.ratio}x pocket+bank) | ${c.text}${c.index === sum.best ? '  <- best' : ''}`);
+    log(`  ${c.index} ${c.id} [${c.tone}] EV ${c.ev} quota ${c.quotaTo} (${c.ratio}x pocket+bank) | ${c.text}${c.index === sum.best ? '  <- best' : ''}`);
   }
+  log(`  why: ${sum.reason}`);
 }
 
 /** The open offer's summary (summarizeOffer), or null when no offer is open. */
@@ -482,21 +558,11 @@ const SPOTLIGHT_FN_JS = `function spotlightOf(r) {
   return s ? { machineId: s.machineId, night: s.night, plays: s.plays, progress: s.progress } : null;
 }`;
 
-/** The Dawn projection body (uses `r`): the bank at Dawn if the Night plays on, the gap to the quota, the float to keep. */
-const DAWN_BODY = `
-  const { dawnPlan } = await import('/src/game/pace.ts');
-  const { nightDef } = await import('/src/game/data/schedule.ts');
-  const b = r.bank();
-  const settles = Math.max(0, nightDef(r.night() - 1).watches - ((typeof r.watch === 'number' ? r.watch : 0) + 1));
-  const p = dawnPlan({ due: b.due, balance: b.balance, settles, interestAt: b.interestAt });
-  return { due: b.due, balance: b.balance, settles, projected: p.projected, gap: p.gap, met: p.met, float: r.depositFloor() };`;
-/** Page JS: the Dawn projection of the open run (null without one). */
-const DAWN_JS = `(async () => { const r = window.jackid.app.run; if (!r) return null; ${DAWN_BODY} })()`;
-
 /** Page JS: the debt run's state, for `state`, the step records and the auto:night loop. Watch and Night are 1-based. */
 const RUN_STATE_JS = `(async () => {
   ${NIGHT_CARD_IDS_JS}
   ${SPOTLIGHT_FN_JS}
+  ${TITHE_FN_JS}
   const a = window.jackid.app, r = a.run;
   if (!r) return { over: true, run: null };   // the run is gone: the menu took the screen back
   const b = r.bank(), pulls = r.pulls();
@@ -517,6 +583,7 @@ const RUN_STATE_JS = `(async () => {
     starterOffer: r.starterDraft()?.candidates.map((d) => d.id) ?? null, starterLeft: r.starterDraft()?.left ?? null,
     charms: r.charms().map((c) => (c.stacks > 1 ? c.id + " x" + c.stacks : c.id)),
     spotlight: spotlightOf(r),                     // Machine of the Night: { machineId, night, plays, progress }, or null
+    tithe: titheOf(r),                             // the watch tithe: the house cut paid tonight so far (run.nightLedger().cut), or null
     dawn: await (async () => { ${DAWN_BODY} })(),  // the Dawn projection the deposits aim at (pace.ts dawnPlan)
   };
 })()`;
@@ -801,9 +868,9 @@ const evText = (ev) => (ev ? `${ev.id} (${Math.ceil(ev.leftS)} s${ev.pulls == nu
 function watchRec(ctx, st, ev) {
   ctx.run.steps.push({
     step: `watch ${st.night}-${st.watch}`, ok: true, auto: true, night: st.night, watch: st.watch, pocket: st.pocket,
-    bank: st.bank, quotaDue: st.quotaDue, quotaLeft: st.quotaLeft, event: ev?.id ?? null,
+    bank: st.bank, quotaDue: st.quotaDue, quotaLeft: st.quotaLeft, tithe: st.tithe ?? null, event: ev?.id ?? null,
   });
-  log(`watch N${st.night} W${st.watch}: pocket ${st.pocket}, bank ${st.bank}, quota due ${st.quotaDue} left ${st.quotaLeft}, event ${evText(ev)}`);
+  log(`watch N${st.night} W${st.watch}: pocket ${st.pocket}, bank ${st.bank}, quota due ${st.quotaDue} left ${st.quotaLeft}, tithe ${st.tithe ?? '-'}, event ${evText(ev)}`);
 }
 
 /**
@@ -897,7 +964,7 @@ async function autoNight(ctx, rec, untilEvent = false) {
         // nightcard:<n|best>, that step picks; otherwise the bot picks the best card itself (nightcard:best), and logs it.
         offer = await offerSummary(ctx.cdp);
         if (ctx.next?.kind === 'nightcard') { end = 'night card'; break; }   // the next nightcard step prints the offer and picks
-        decide(ctx, 'night card', `Dawn offer ${JSON.stringify(st.nightCardOffer)}: the lowest coming quota (nightcard:best)`);
+        decide(ctx, 'night card', `Dawn offer ${JSON.stringify(st.nightCardOffer)}: the highest expected value (nightcard:best)`);
         const r = await exec(ctx, auto({ kind: 'nightcard', best: true, text: 'nightcard:best' }));
         if (!r.ok) { end = 'night card refused'; break; }
         continue;
@@ -1030,8 +1097,9 @@ async function runKind(ctx, s, rec) {
   switch (s.kind) {
     case 'goto': return gotoMachine(ctx, s.hot ? { hot: true } : s.machine, rec);
     case 'nightcard': {
-      // Night Card <n> (1-based), or `best` (the lowest coming quota against pocket+bank). The offer's id at that index goes to
-      // run.pickNightCard(id). The record keeps the offer: `offer` (the ids), `cards` (each with its preview lines), `index`, `id`.
+      // Night Card <n> (1-based), or `best` (the highest expected value, see CARD_EV and summarizeOffer). The offer's id at that
+      // index goes to run.pickNightCard(id). The record keeps the offer: `offer` (the ids), `cards` (each with its preview lines
+      // and EV), `index`, `id`; for `best` also `best`, `mode` (ahead / behind / unknown) and `why` (the reason).
       rec.card = s.best ? 'best' : s.n;
       const before = await evaluate(cdp, REFUSAL_JS);
       const o = await evalJson(cdp, NIGHT_CARD_OFFER_JS);
@@ -1041,7 +1109,7 @@ async function runKind(ctx, s, rec) {
       rec.cards = sum?.cards ?? null;
       if (sum) logOffer(sum, `nightcard:${s.best ? 'best' : s.n}`);
       const card = sum ? sum.cards[(s.best ? sum.best : s.n) - 1] ?? null : null;
-      if (s.best) rec.best = sum?.best ?? null;
+      if (s.best) { rec.best = sum?.best ?? null; rec.mode = sum?.mode ?? null; rec.why = sum?.reason ?? null; }
       rec.index = card?.index ?? null;
       rec.id = card?.id ?? null;
       rec.ok = card ? (await evalJson(cdp, pickNightCardJs(card.id))) === true : false;
