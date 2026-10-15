@@ -10,7 +10,9 @@
   display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; column-gap: calc(8 * var(--u)); }
 .hud .hud-tl, .hud .hud-tc, .hud .hud-tr { display: flex; flex-direction: column; min-width: 0; }
 .hud .hud-tl { align-items: flex-start; gap: calc(2 * var(--u)); }
-.hud .hud-tc { align-items: center; gap: calc(3 * var(--u)); }
+/* the centre stack sits on its own dark plate, so the clock and its lines read clearly over the machine's sign and marquee behind */
+.hud .hud-tc { align-items: center; gap: calc(3 * var(--u)); padding: calc(2 * var(--u)) calc(8 * var(--u)); background: rgba(0, 0, 0, .6);
+  box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark); }
 .hud .hud-tr { align-items: flex-end; }
 .hud .hud-top .hb { position: relative; left: auto; top: auto; right: auto; transform: none; }
 
@@ -68,6 +70,20 @@
 .hud .plan span.hidden { display: none; }
 .hud .plan.ok .pb { color: var(--green); }
 .hud .plan.gap .pb { color: var(--signal); }
+
+/* PAYOUT chip (wave 47, hud.ts updatePayout): under the quota, a wrapping line of text on a dark plate. 16px+ and high contrast;
+   the total and each part are coloured by sign (green up, coral down, ivory flat). */
+.hud .payout { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; column-gap: calc(4 * var(--u)); row-gap: calc(1 * var(--u));
+  max-width: min(46vw, calc(320 * var(--u))); margin-top: calc(3 * var(--u)); padding: calc(3 * var(--u)) calc(6 * var(--u));
+  background: rgba(0, 0, 0, .85); box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark);
+  font-family: var(--f-body); font-size: max(18px, calc(9 * var(--u))); line-height: 1.15; letter-spacing: .03em;
+  text-align: right; text-shadow: none; }
+.hud .payout span { white-space: nowrap; }
+.hud .payout .sep { color: #a39b86; }
+.hud .payout .up { color: #8fe08a; }
+.hud .payout .down { color: #ff7a6a; }
+.hud .payout .flat { color: #ece4d0; }
+.hud .payout .tot { font-size: 1.1em; }
 
 /* right edge: buffs */
 /* top: never above the top band's bottom edge (--hud-top-h), so the NIGHT PLAN panel under the quota is not covered */

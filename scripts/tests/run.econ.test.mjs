@@ -6,7 +6,7 @@ import { load, closeVite } from './_vite.mjs';
 
 after(closeVite);
 
-let SCH, ECO, RUN, REG, SH, R, E, CH, HOLD, RES, EV;
+let SCH, ECO, RUN, REG, SH, R, E, CH, HOLD, RES, EV, WE;
 before(async () => {
   SCH = await load('src/game/data/schedule.ts');
   ECO = await load('src/game/economy.ts');
@@ -19,10 +19,11 @@ before(async () => {
   HOLD = await load('src/game/clockHold.ts');
   RES = await load('src/game/rescue.ts');
   EV = await load('src/core/events.ts');
+  WE = await load('src/game/watchEvents.ts');
   REG.load();
 });
 
-// ── the ladder ───────────────────────────────────────────────────────────────────────────────────────
+// â”€â”€ the ladder â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€─
 test('quota ladder: strictly increasing night over night, N1 just above the Pauper pocket', () => {
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
   for (let i = 1; i < q.length; i++) assert.ok(q[i] > q[i - 1], `N${i + 1} (${q[i]}) must exceed N${i} (${q[i - 1]})`);
@@ -30,7 +31,7 @@ test('quota ladder: strictly increasing night over night, N1 just above the Paup
   for (let i = 1; i < SCH.BASE_RUN_NIGHTS + 4; i++) assert.ok(SCH.quotaFor(i) > SCH.quotaFor(i - 1), `Overdrawn ladder keeps rising at ${i + 1}`);
 });
 
-// ── economy helpers ──────────────────────────────────────────────────────────────────────────────────
+// â”€â”€ economy helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 test('Night 1 stake cap is a third of the starting pocket and never below 1', () => {
   assert.equal(ECO.night1StakeCap(30), 10);
   assert.equal(ECO.night1StakeCap(2), 1);
@@ -67,14 +68,63 @@ test('WAVE 23 rescueTerms: the quota penalty is at most 1.3 x the cash given, an
   assert.deepEqual(RES.rescueTerms(196), { coins: 49, quota: 63 });
 });
 
-// ── WAVE 23 quota ladder smoothing (flow-fixes) ──────────────────────────────────────────────────────
-test('WAVE 42 ladder: no Night steps up more than 2x (director decision 1: the cap that keeps N2 and N3 near the human bot targets)', () => {
+// â”€â”€ WAVE 23 quota ladder smoothing (flow-fixes) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+test('WAVE 47 ladder: no Night steps up more than its cap (2x up to N3, 3x from N4); the tuned late ladder is pinned', () => {
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
-  for (let i = 1; i < q.length; i++) assert.ok(q[i] / q[i - 1] <= 2 + 1e-9, `N${i + 1} / N${i} = ${(q[i] / q[i - 1]).toFixed(2)} <= 2`);
-  assert.deepEqual(q, [31, 42, 84, 168, 336, 576, 1150, 2300], 'the tuned ladder (wave 46 with HOUSE MOOD, scripts/sim/run.mjs, 2000 human runs with 5-15 % stakes)');
+  for (let i = 1; i < q.length; i++) assert.ok(q[i] / q[i - 1] <= SCH.maxLadderStep(i + 1) + 1e-9, `N${i + 1} / N${i} = ${(q[i] / q[i - 1]).toFixed(2)} <= ${SCH.maxLadderStep(i + 1)}`);
+  assert.deepEqual([SCH.maxLadderStep(2), SCH.maxLadderStep(3), SCH.maxLadderStep(4), SCH.maxLadderStep(8)], [2, 2, 3, 3]);
+  assert.deepEqual(q, [31, 42, 84, 168, 336, 672, 1344, 2688], 'the tuned ladder (wave 47, scripts/sim/run.mjs, 2000 human runs, seed 20261013)');
 });
 
-// ── the Watch clock hold ─────────────────────────────────────────────────────────────────────────────
+test('WAVE 47 house takes notice: from Night 5 the quota is at least 1.2 x the wealth at Dawn; the ladder is the floor; off below Night 5 and at share 0', () => {
+  assert.equal(SCH.HOUSE_NOTICE_FROM, 5);
+  assert.equal(SCH.HOUSE_NOTICE_SHARE, 1.2, 'director decision: 1.2 (not 1.9)');
+  assert.equal(SCH.houseNoticeQuota(4, 168, 1e6), 168, 'no notice before Night 5');
+  assert.equal(SCH.houseNoticeQuota(5, 504, 100), 504, 'a poor run keeps the ladder value');
+  assert.equal(SCH.houseNoticeQuota(5, 504, 1000), 1200, '1.2 x 1000 coins');
+  assert.equal(SCH.houseNoticeQuota(5, 504, 1000, 0), 504, 'share 0 switches the rule off');
+  assert.equal(SCH.quotaFor(3, { wealth: 1e6 }), 168, 'quotaFor(index 3) is Night 4: no notice');
+  assert.equal(SCH.quotaFor(4, { wealth: 1000 }), 1200, 'quotaFor(index 4) is Night 5 and takes the wealth floor');
+  assert.equal(SCH.quotaFor(4), 336, 'quotaFor without wealth is the ladder');
+});
+
+test('WAVE 47 floor events: the same event is never rolled twice in a row within a Night (and the memory survives a save)', () => {
+  // rollWatchEvent never returns the avoided id.
+  for (const d of WE.WATCH_EVENTS) {
+    const rng = R.createRng(20261013);
+    for (let k = 0; k < 400; k++) {
+      const r = WE.rollWatchEvent(rng.fork(`avoid.${d.id}.${k}`), 4, false, d.id);
+      if (r) assert.notEqual(r.def.id, d.id, `${d.id} avoided`);
+    }
+  }
+  // Consecutive Watches of one Night: no repeat. A new Night starts clean (the last event of the Night before may come back).
+  const rng = R.createRng(20261013);
+  const we = new WE.WatchEvents({ isHot: () => false, touch: () => {} });
+  let prev = null, prevNight = 0, pairs = 0;
+  for (let night = 1; night <= 800; night++) {
+    for (let w = 0; w < 4; w++) {
+      const def = we.begin(rng, night, w, false);
+      const id = def ? def.id : null;
+      if (id !== null && prev !== null && prevNight === night) { pairs++; assert.notEqual(id, prev, `Night ${night} Watch ${w + 1} repeated ${id}`); }
+      prev = id; prevNight = night;
+      we.end();
+    }
+  }
+  assert.ok(pairs > 500, `the seeded run rolled enough consecutive pairs to test (${pairs})`);
+  // The memory of the last event survives a save taken between Watches.
+  const a = new WE.WatchEvents({ isHot: () => false, touch: () => {} });
+  let first = null;
+  for (let w = 0; w < 50 && !first; w++) first = a.begin(R.createRng(5), 2, w, false);
+  a.end();
+  const s = a.snapshot();
+  assert.ok(s && s.id === null && s.last === first.id && s.lastNight === 2, 'the save keeps the last event of the Night');
+  const b = new WE.WatchEvents({ isHot: () => false, touch: () => {} });
+  b.restore(JSON.parse(JSON.stringify(s)));
+  assert.equal(b.snapshot().last, first.id, 'a reload restores the memory');
+  assert.equal(b.view(), null, 'and no event is live between Watches');
+});
+
+// â”€â”€ the Watch clock hold â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€─
 test('clock hold: holds for its time, release lets go, a forgotten hold expires', () => {
   HOLD.clearClockHolds();
   assert.equal(HOLD.clockHeld(), false);
@@ -118,7 +168,7 @@ test('the Watch clock stands still while the tutorial holds it, and runs again a
   run.dispose();
 });
 
-// ── stake safety ─────────────────────────────────────────────────────────────────────────────────────
+// â”€â”€ stake safety â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€─
 test('Night 1 caps the top stake at a third of the starting pocket; Night 2 does not', () => {
   const run = RUN.createRun({ seed: 3, mode: 'debt' });
   if (!REG.get('bigone')) { run.dispose(); return; }
@@ -165,7 +215,7 @@ test('the second press must repeat the same stake, and the arm lapses after 6 s'
   run.dispose();
 });
 
-// ── the rescue call ──────────────────────────────────────────────────────────────────────────────────
+// â”€â”€ the rescue call â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 test('rescue: pocket 0 with the quota unmet rings the Collector loan; taking it pays N now and adds 1.3 N to the quota', () => {
   const run = playing(11);
   const rings = [];
@@ -232,7 +282,7 @@ test('rescue line: ring, pick up, take; one option; save-safe numbers', () => {
   assert.equal(line.active(), false);
 });
 
-// ── the Pawn ─────────────────────────────────────────────────────────────────────────────────────────
+// â”€â”€ the Pawn â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€─
 function pawnOf(o = {}) {
   const h = { night: o.night ?? 0, watch: o.watch ?? 0, held: [], suits: o.suits ?? ['reels', 'cards', 'dice', 'wheels', 'drops', 'curios'] };
   const rng = R.createRng(o.seed ?? 1);
@@ -292,7 +342,7 @@ test('in a real run the Dawn shelf is already the next Night shelf and OPEN THE 
   run.dispose();
 });
 
-// ── Wave 20: live interest, the pocket-short lamp banner, distinct names for two lamps on one machine ────────
+// â”€â”€ Wave 20: live interest, the pocket-short lamp banner, distinct names for two lamps on one machine â”€â”€â”€â”€â”€â”€â”€â”€
 let CIRC, STR_TUT, STR_LAMPS;
 before(async () => {
   CIRC = await load('src/game/circuit.ts');

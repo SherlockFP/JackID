@@ -149,6 +149,12 @@ export const def: MachineDef = {
       watchClosed: "Watch closed: deposits open again between Watches",
       nothingDeposit: "Nothing to deposit: the pocket is empty",
       watchEnding: "Watch ending: the lever waits until it settles",
+      watchRunning: "Watch still running — ring the Bell first",
+      belling: "The Bell is already ringing",
+      settling: "Settling — {s} s",
+      noWatch: "No Watch is running right now",
+      nightUnpaid: "Quota first: the floor opens once the Night is paid",
+      quotaShort: "Quota not met yet: settle once it is paid",
       c_float: 'keeps {n} in pocket (float)',
       allConfirm: "ALL empties your pocket. Press ALL again to confirm",
       restConfirm: "REST: deposit {n}? Press REST again to confirm",
@@ -228,6 +234,12 @@ export const def: MachineDef = {
       watchClosed: "Nöbet kapandı: yatırma, nöbetler arasında yeniden açılır",
       nothingDeposit: "Yatırılacak bir şey yok: cep boş",
       watchEnding: "Nöbet bitiyor: kol, kapanana kadar bekler",
+      watchRunning: "Nöbet sürüyor — önce zili çal",
+      belling: "Zil zaten çalıyor",
+      settling: "Kapanıyor — {s} sn",
+      noWatch: "Şu an çalışan bir nöbet yok",
+      nightUnpaid: "Önce kota: gece ödenince kat açılır",
+      quotaShort: "Kota henüz tamam değil: ödenince kapat",
       c_float: 'cepte {n} kalır (yedek akçe)',
       allConfirm: "HEPSİ cebini boşaltır. Onaylamak için HEPSİ'ye tekrar bas",
       restConfirm: "KALAN: {n} yatırılsın mı? Onaylamak için KALAN'a tekrar bas",
@@ -535,7 +547,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     const dep = q.deposited + (ok ? amount : 0);
     void this.emit(
       { k: 'dep', key, amount, ok, dep },
-      ok ? () => { if (!run.deposit(amount, confirmAll)) this.ctx.ui.toast(this.t('denied'), 'bad'); } : undefined,
+      ok ? () => { if (!run.deposit(amount, confirmAll)) this.runRefused(this.runWhy()); } : undefined,
     );
     this.refresh(true);
   }
@@ -581,19 +593,17 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       const q = this.quota();
       const ok = q.met && this.ctx.run.shift.settleEarly();
       void this.emit({ k: 'lever', id, ok });
-      if (!ok) this.ctx.ui.toast(this.t(this.ctx.run.shift.phase === 'closing' ? 'watchEnding' : 'notYet'), 'warn');
+      if (!ok) this.runRefused(q.met ? this.runWhy() : 'quotaShort');
       return;
     }
     // The floor lever: OPEN THE FLOOR when the Night is paid, else RING THE BELL for the next Watch. Each call refuses
-    // without side effects when the phase does not match, so trying both in order is safe.
+    // without side effects (the run names the reason in `lastRefusal()`), so trying both in order is safe in any phase.
     const run = this.ctx.run as RunApi & FloorCtl;
     let how: 'floor' | 'bell' | null = null;
-    if (run.shift.phase === 'intermission') {
-      if (run.openFloor?.()) how = 'floor';
-      else if (run.startWatch?.()) how = 'bell';
-    }
+    if (run.openFloor?.()) how = 'floor';
+    else if (run.startWatch?.()) how = 'bell';
     void this.emit({ k: 'lever', id, ok: how !== null, bell: how === 'bell' });
-    if (how === null) { this.ctx.ui.toast(this.t('floorNo'), 'warn'); return; }
+    if (how === null) { this.runRefused(this.runWhy()); return; }
     if (how === 'floor') {
       const ui = this.ctx.ui as { banner?(text: string): Promise<void> };
       void ui.banner?.(this.t('nightN', { n: run.night() }));
@@ -615,7 +625,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       return;
     }
     this.bellArm = 0;
-    if (!run.ringBell()) { this.refuse('notYet'); return; }
+    if (!run.ringBell()) { this.runRefused(this.runWhy()); return; }
     this.sfx('lever');
     this.ctx.ui.toast(this.t('bellDone'), 'good');
   }
@@ -634,6 +644,26 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       case 'nightPaid': this.refuse('nightPaidNote'); return;
       case 'nothing': this.refuse('nothingDeposit'); return;
       case 'float': this.refuse('floorRefuse', { n: fmtNum(floor) }); return;
+    }
+  }
+
+  /** The reason the run last refused (`lastRefusal()`). Read right after the run's own call, which sets or clears it. */
+  private runWhy(): string | null { return this.ctx.run.lastRefusal(); }
+
+  /**
+   * A refused lever, Bell, settle or deposit: one line with the exact reason the run gave. A reason this terminal does not
+   * name (a bench stub, a code from another machine) falls back to DENIED.
+   */
+  private runRefused(why: string | null): void {
+    switch (why) {
+      case 'notQuota': case 'closed': case 'nightPaid': case 'nothing': case 'float':
+        this.refuseDeposit(why, this.ctx.run.depositFloor?.() ?? 0);
+        return;
+      case 'settling': this.refuse('settling', { s: (this.bk().settleLeft ?? 0).toFixed(1) }); return;
+      case 'watchRunning': case 'watchEnding': case 'belling': case 'noWatch': case 'nightUnpaid': case 'quotaShort':
+        this.refuse(why);
+        return;
+      default: this.refuse('denied');
     }
   }
 

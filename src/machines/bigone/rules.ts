@@ -1,13 +1,13 @@
-﻿/**
- * The Big One â€” pure rules (MACHINES Â§2). Shared by the live machine (`index.ts`) and the headless play contract
+/**
+ * The Big One — pure rules (MACHINES §2). Shared by the live machine (`index.ts`) and the headless play contract
  * (`playHeadless`: staff auto-play, balance sims), so the simulated RTP IS the live RTP.
  *
- * No three, kit, DOM or Math.random: every draw comes from the Rng passed in. Grid = 15 int cells, index rÂ·5 + c
+ * No three, kit, DOM or Math.random: every draw comes from the Rng passed in. Grid = 15 int cells, index r·5 + c
  * (r0 top, c0 left). Symbols 0..6 = MOTH TOOTH KEY CANDLE RING CROWN SUN, MAW = 7 (dead cell), GHOST = 8 (wild).
  *
- * Spin order (Â§2.3, RNG draws in this order): curse roll â†’ fill roll â†’ LUCKY 7 roll â†’ base grid (a held reel is laid down
- * first) â†’ GHOST injection â†’ coalesce (luck) â†’ teaser MAWs â†’ (EATEN: curse trio) â†’ hold â†’ LUCKY 7 sevens â†’ evaluate â†’
- * respin (losing spins only) â†’ payout. A LUCKY 7 round (`playRound`) then plays its free spins.
+ * Spin order (§2.3, RNG draws in this order): curse roll → fill roll → LUCKY 7 roll → base grid (a held reel is laid down
+ * first) → GHOST injection → coalesce (luck) → teaser MAWs → (EATEN: curse trio) → hold → LUCKY 7 sevens → evaluate →
+ * respin (losing spins only) → payout. A LUCKY 7 round (`playRound`) then plays its free spins.
  * Charm hooks use the `x.bigone.*` names the charm data already references (see `buildMods`).
  */
 import type { Rng } from '@/core/rng';
@@ -27,9 +27,9 @@ export const MAX_STAKE = 100;
 /** Hard ceiling on a line payout (x stake, jackpot claims exempt). The best stacked tally sits far below it. */
 export const MAX_LINE_MULT = 500;
 export const FULL_MULT = 40;
-/** FULL pays Ã—40 Ã— the symbol value (E[value] 1.44, about 1.4 % RTP), plus the meter. Odds 1 in 4 000 before `jackpot.mult`. */
+/** FULL pays ×40 × the symbol value (E[value] 1.44, about 1.4 % RTP), plus the meter. Odds 1 in 4 000 before `jackpot.mult`. */
 export const FULL_P = 1 / 4000;
-/** Meter seed = SEED_STAKES Ã— the ladder cap. */
+/** Meter seed = SEED_STAKES × the ladder cap. */
 export const SEED_STAKES = 50;
 export const FEED_DEFAULT = 0.01;
 export const WILD_CAP = 0.2;
@@ -73,7 +73,7 @@ const LINES = PATTERN_IDS.filter((p): p is LinePattern => p !== 'CLUSTER' && p !
 const at = (r: number, c: number): number => r * 5 + c;
 const rowCells = (r: number): number[] => [0, 1, 2, 3, 4].map((c) => at(r, c));
 
-/** Every instance of a line pattern as cell indices. Counts: TREY 9, QUAD 6, RAIL 3, PILLAR 5, SLASH 6, VALLEY 1 â€¦ */
+/** Every instance of a line pattern as cell indices. Counts: TREY 9, QUAD 6, RAIL 3, PILLAR 5, SLASH 6, VALLEY 1 … */
 function instancesOf(p: LinePattern): number[][] {
   const out: number[][] = [];
   switch (p) {
@@ -165,7 +165,7 @@ export type FeatureOf = (name: string) => boolean;
 
 /** Every charm / milestone input, folded once per spin. */
 export interface Mods {
-  /** Payout value per symbol 0..6 (base + add, Ã— mult). */
+  /** Payout value per symbol 0..6 (base + add, × mult). */
   values: number[];
   /** Draw weights, indexes 0..8 (MAW 7 is always 0). */
   weights: number[];
@@ -254,7 +254,7 @@ const isStrictSubset =(a: readonly number[], b: readonly number[]): boolean =>
 export interface Pay { pat: PatternId; sym: number; cells: number[]; raw: number }
 export interface Cluster { sym: number; cells: number[]; raw: number }
 
-/** Lines (absorbed as in Â§2.2), then CLUSTER flood fills (â‰¥ 7, never absorbed). `raw` = value Ã— mult (before stake). */
+/** Lines (absorbed as in §2.2), then CLUSTER flood fills (≥ 7, never absorbed). `raw` = value × mult (before stake). */
 export function evaluate(g: readonly number[], m: Mods): { pays: Pay[]; clusters: Cluster[]; raw: number } {
   const hits: Array<{ pat: LinePattern; sym: number; cells: number[] }> = [];
   for (const p of m.lines) {
@@ -360,7 +360,7 @@ export interface PlayIn {
   wardOn: boolean;
   /** Jackpot meter before this stake. */
   meter: number;
-  /** Ladder cap (meter seed = SEED_STAKES Ã— maxStake). */
+  /** Ladder cap (meter seed = SEED_STAKES × maxStake). */
   maxStake: number;
   /** Previous grid (used by a held reel). */
   prev: readonly number[];

@@ -1,15 +1,15 @@
-﻿/**
- * Coin Flip Booth â€” pure rules (base-machines WP, reference machine). Shared by the live machine (`index.ts`) and
+/**
+ * Coin Flip Booth — pure rules (base-machines WP, reference machine). Shared by the live machine (`index.ts`) and
  * the headless play contract (`playHeadless`: staff auto-play, balance sims, bench "Sim" button), so the simulated
  * RTP IS the live RTP.
  *
- * Rules: call heads, tails or the EDGE, stake S. A heads/tails win pays the first ladder step (Ã—1.9). After a win the
- * player may RIDE (re-stake the whole pot on the next flip, up the ladder Ã—1.9 â†’ Ã—3.6 â†’ Ã—7 â†’ Ã—13) or COLLECT at any
+ * Rules: call heads, tails or the EDGE, stake S. A heads/tails win pays the first ladder step (×1.9). After a win the
+ * player may RIDE (re-stake the whole pot on the next flip, up the ladder ×1.9 → ×3.6 → ×7 → ×13) or COLLECT at any
  * time. A loss ends the round. EDGE (1 in 60) stands the coin on its rim and pays ×54 of the flip's stake, then the
- * round closes. Luck (GDD Â§3.8.1): L % chance a losing flip is rerolled once (a negative L rerolls a win instead).
+ * round closes. Luck (GDD §3.8.1): L % chance a losing flip is rerolled once (a negative L rerolls a win instead).
  *
- * RTP: cashing out after the first heads/tails win returns `STEP_MULT[0] Ã— WIN_P` = 98 % (`playHeadless` is exactly
- * that). Riding further trades RTP for variance (â‰ˆ 92â€“96 % per cash-out rung); the EDGE call is a long shot (50 %).
+ * RTP: cashing out after the first heads/tails win returns `STEP_MULT[0] × WIN_P` = 98 % (`playHeadless` is exactly
+ * that). Riding further trades RTP for variance (≈ 92–96 % per cash-out rung); the EDGE call is a long shot (50 %).
  */
 import type { Rng } from '@/core/rng';
 import type { HeadlessPlay, ModHook } from '@/game/types';
@@ -23,13 +23,13 @@ export type Face = Side | 'E';
 
 /** Cumulative ladder: the pot after each win, in multiples of the bet. Index = the win number (0 = first win). */
 export const STEP_MULT: readonly number[] = [1.9, 3.6, 7, 13, 24.7];
-export const RIDE_CAP = 3;             // rides allowed after the first win â†’ the ladder tops out at STEP_MULT[3] = Ã—13
-export const MAX_RIDE_CAP = 4;         // hard ceiling with every hook/feature stacked â†’ Ã—24.7 on the ladder
-/** Heads/tails win chance per flip. Cashing out after the first win returns 0.98: 1.9 Ã— p = 0.98. */
+export const RIDE_CAP = 3;             // rides allowed after the first win → the ladder tops out at STEP_MULT[3] = ×13
+export const MAX_RIDE_CAP = 4;         // hard ceiling with every hook/feature stacked → ×24.7 on the ladder
+/** Heads/tails win chance per flip. Cashing out after the first win returns 0.98: 1.9 × p = 0.98. */
 export const WIN_P = 0.98 / STEP_MULT[0];
 /** EDGE call: the chance the coin stands on its rim (1 in 60). */
 export const EDGE_P = 1 / 60;
-/** EDGE call: pays this Ã— the flip's stake (the bet, or the pot when riding). */
+/** EDGE call: pays this × the flip's stake (the bet, or the pot when riding). */
 export const EDGE_MULT = 54; // 1/60 x 54 = 0.90 EV, a long shot that no longer drags RTP
 const P_MIN = 0.05, P_MAX = 0.9;
 const NEAR_MISS_P = 0.15;              // share of losses shown as an edge-teeter

@@ -25,7 +25,7 @@ import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game
 import type { InstanceId, PlayerId } from '@/core/types';
 import { initial, mmss, Roller, signed, wallClock } from './hud/fmt';
 import { createProcPops, goldBurst, pegBadge, pegLabel, playProcTick } from './hud/charmProc';
-import { houseMoodLine } from '@/game/houseMood';
+import { houseMoodPreviewParts, payoutChip, type PayoutPart } from '@/game/houseMood';
 import './hud/hud.css';
 import { nightPaid } from '@/machines/debt_terminal/night';
 import { SeatHud } from '@/machines/_base/seatHud';
@@ -34,6 +34,9 @@ const PHONE_SECONDS = 10;
 const FEED_LIFE = 6;
 const FEED_MAX = 4;
 const BUFF_REFRESH_S = 0.25;
+const PAYOUT_REFRESH_S = 0.25;
+/** Shift phases in which the run's payout.mult sources are live (the run's own inWatch set); Mola (`intermission`) shows a preview. */
+const PAYOUT_LIVE_PHASES: ReadonlySet<string> = new Set(['bell', 'play', 'lastCall', 'closing', 'settle']);
 /** The Hot Lamp's distance and arrow refresh this often while a Lamp is lit (the text itself is written on change only). */
 const CHASE_S = 0.2;
 
@@ -133,10 +136,11 @@ export function createHud(): Hud {
   const quotaBar = h('div', 'bar', quota);
   const quotaFill = h('i', '', quotaBar);
   const quotaShort = h('span', 'short', quota, '');
-  // HOUSE MOOD (wave 46): the Night's payout mood under the quota, coloured by its sign. Shown in the quota Watches only.
-  const moodLine = h('div', 'hb mood hidden', topR);
-  moodLine.style.cssText = 'margin-top:2px;padding:1px 8px;font-size:12px;letter-spacing:.06em;white-space:nowrap';
-  let moodKey = '';
+  // PAYOUT chip (wave 47): every global payout.mult source (House Favour, the House Mood, the Witching bonus, ...) under the quota.
+  // Shown in play, and in Mola as the next Watch's preview. Plain text on a dark plate, 14px+, each part coloured by its sign.
+  const payout = h('div', 'hb payout hidden', topR);
+  let payoutKey = '';
+  let payoutLeft = 0;
   // NIGHT PLAN (under the quota), four lines: the Night's due, the bank and its projection at Dawn (banked coins only), the
   // pocket (not counted), and the Watch with how it ends (pulls, clock, the Bell). Between Watches the last line names the next one.
   const plan = h('div', 'plan hidden', topR);
@@ -424,20 +428,62 @@ export function createHud(): Hud {
     setText(quotaShort, met || paid ? '' : t('hud.quota.short', { n: money(Math.max(0, due - dep)) }));
   }
 
-  /** HOUSE MOOD line under the quota (wave 46): shown in a quota Watch in play; written on change only. */
-  function updateMood(): void {
+  /** A source's name on the PAYOUT chip: the Night's own House sources by kind, a charm or buff by its name, else its id. */
+  function payoutSourceLabel(id: string, op: 'mult' | 'inc'): string {
+    if (id.startsWith('mood:')) return t('payout.mood');
+    if (id.startsWith('night:')) return op === 'inc' ? t('payout.witch') : t('payout.favour');
+    if (id.startsWith('watch.') && has(`event.watch.${id.slice(6)}.name`)) return t(`event.watch.${id.slice(6)}.name`);
+    if (has(`charm.${id}.name`)) return t(`charm.${id}.name`);
+    if (has(`buff.${id}.name`)) return t(`buff.${id}.name`);
+    return id.toUpperCase();
+  }
+
+  /**
+   * PAYOUT chip (wave 47): in play, the parts are the run's own payout.mult breakdown with no machine (the global sources); in Mola,
+   * the next Watch's preview (mood, House Favour, the Witching bonus). Re-read a few times a second; the DOM is written on change only.
+   */
+  function updatePayout(dt: number): void {
+    payoutLeft -= dt;
+    if (payoutLeft > 0) return;
+    payoutLeft = PAYOUT_REFRESH_S;
     const r = app.run;
     const q = r?.shift.quota();
-    const on = !!r && !!q && q.due > 0 && r.window() === 'watch';
-    const n = r ? r.night() : 0;
-    const key = `${on}|${n}`;
-    if (key === moodKey) return;
-    moodKey = key;
-    setCls(moodLine, 'hidden', !on);
-    if (!on) return;
-    const m = houseMoodLine(n - 1);
-    setText(moodLine, m.text);
-    moodLine.style.color = m.tone === 'generous' ? '#8fe08a' : m.tone === 'tight' ? '#ff7a6a' : '#c9c2b0';
+    const sh = r?.shift.state();
+    const seg = sh?.segment;
+    const phase = sh?.phase ?? 'idle';
+    const live = PAYOUT_LIVE_PHASES.has(phase);
+    const mola = phase === 'intermission';
+    if (!r || !q || !(q.due > 0) || !(live || (mola && seg))) {
+      setCls(payout, 'hidden', true);
+      payoutKey = '';
+      return;
+    }
+    let parts: PayoutPart[];
+    let label: string;
+    if (live) {
+      const br = r.explain('payout.mult', '', 1, { pid: self() });
+      parts = [];
+      for (const s of br.steps) {
+        if (s.op !== 'mult' && s.op !== 'inc') continue;
+        parts.push({ label: payoutSourceLabel(s.source.id, s.op), op: s.op, value: s.value });
+      }
+      label = t('payout.label');
+    } else {
+      // Mola: the segment still names the Watch just settled, so the next Watch is one on.
+      parts = houseMoodPreviewParts(r.night() - 1, seg?.count ?? 0, (seg?.index ?? 0) + 1);
+      label = t('payout.next');
+    }
+    const view = payoutChip(parts);
+    const key = `${label}|${view.totalText}|${view.totalTone}|${view.parts.map((p) => `${p.tone}:${p.text}`).join('|')}`;
+    setCls(payout, 'hidden', false);
+    if (key === payoutKey) return;
+    payoutKey = key;
+    payout.replaceChildren();
+    h('span', `tot ${view.totalTone}`, payout, `${label} ${view.totalText}`);
+    for (const p of view.parts) {
+      h('span', 'sep', payout, '·');
+      h('span', p.tone, payout, p.text);
+    }
   }
 
   /**
@@ -649,7 +695,7 @@ export function createHud(): Hud {
       updateWallet(dt);
       updateClock();
       updateQuota();
-      updateMood();
+      updatePayout(dt);
       updatePlan();
       updateEmpire();
       updateBuffs(dt);

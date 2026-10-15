@@ -89,7 +89,7 @@ test('fall: a run that falls with money in the bank reports the bank it lost (th
   run.dispose();
 });
 
-test('the Night ladder the Mola walks through is the tuned one (monotonic, each step at most 2x)', () => {
+test('the Night ladder the Mola walks through is monotonic, each step within its cap (2x to N3, 3x from N4)', () => {
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
-  for (let i = 1; i < q.length; i++) assert.ok(q[i] > q[i - 1] && q[i] <= 2 * q[i - 1], `N${i + 1} steps up, at most 2x`);
+  for (let i = 1; i < q.length; i++) assert.ok(q[i] > q[i - 1] && q[i] <= SCH.maxLadderStep(i + 1) * q[i - 1], `N${i + 1} steps up, at most ${SCH.maxLadderStep(i + 1)}x`);
 });

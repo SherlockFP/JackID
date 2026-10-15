@@ -1,18 +1,18 @@
-﻿/**
- * Scratch-Card Vendor (`scratch`) â€” Tier 1, solo. Pattern: `coinflip/index.ts`.
+/**
+ * Scratch-Card Vendor (`scratch`) — Tier 1, solo. Pattern: `coinflip/index.ts`.
  *
- * Flow. VEND (1â€“5 cards of one type, paid up front as one round) â†’ the cards slide out, one by one â†’ SCRATCH (drag
- * the coin over the active card: strokes, zones reveal at â‰¥ 55 % cleared; PIT PENNY is different: the player picks 3 spots
- * of 9, with one bonus pick after a pair, and the rest sweeps open once the picks are spent) â†’ REVEAL
- * (a card is done when every zone is open) â†’ SETTLE (the whole batch pays once, credited BEFORE the last reveal is
+ * Flow. VEND (1–5 cards of one type, paid up front as one round) → the cards slide out, one by one → SCRATCH (drag
+ * the coin over the active card: strokes, zones reveal at ≥ 55 % cleared; PIT PENNY is different: the player picks 3 spots
+ * of 9, with one bonus pick after a pair, and the rest sweeps open once the picks are spent) → REVEAL
+ * (a card is done when every zone is open) → SETTLE (the whole batch pays once, credited BEFORE the last reveal is
  * presented). Leaving with cards left auto-sweeps them and settles.
  *
  * Authority (the local occupant) rolls every card at vend (`rules.rollCard`) and drives the scratching: it emits
  * `stroke` (cosmetic), `zone` (reliable, a zone opened) and `done` (a card finished). Every peer presents them.
  *
- * Controls: 1â€“5 card type Â· â† / â†’ cycle type Â· wheel / Z / X quantity 1â€“5 Â· Space / Enter vend, or sweep the active
- * card when one is scratching Â· PIT PENNY: arrows move the spot cursor, Space / click scratches the spot Â· LMB drag
- * scratch Â· H prize tables Â· Leave (exit) auto-sweeps and settles.
+ * Controls: 1–5 card type · ← / → cycle type · wheel / Z / X quantity 1–5 · Space / Enter vend, or sweep the active
+ * card when one is scratching · PIT PENNY: arrows move the spot cursor, Space / click scratches the spot · LMB drag
+ * scratch · H prize tables · Leave (exit) auto-sweeps and settles.
  */
 import type * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
@@ -56,7 +56,7 @@ const RARITY_COL = [0, 0xc59c42, 0x63e6de, 0xff42a5];
 const LED_CREDIT = 0x6bff8a, LED_BET = 0x63e6de, LED_WIN = 0xffce5a;
 const FLUSH_S = 1 / 15;
 
-/** Stroke points are flat [x, y, x, y â€¦] in face pixels. */
+/** Stroke points are flat [x, y, x, y …] in face pixels. */
 function drawPolyline(g: CanvasRenderingContext2D, pts: number[]): void {
   if (pts.length < 2) return;
   brush(g, pts[0], pts[1]);
@@ -77,7 +77,7 @@ const zoneIds = (mask: number, count: number): number[] => {
 const zoneAt = (t: number, x: number, y: number): number =>
   zoneRects(t).findIndex((r) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h);
 
-/** The spot the cursor starts on (the centre of the 3 Ã— 3 PIT PENNY grid). */
+/** The spot the cursor starts on (the centre of the 3 × 3 PIT PENNY grid). */
 const SPOT_START = 4;
 /** PIT PENNY spot grid: 3 columns, so up / down move three spots. */
 const SPOT_COLS = 3;
@@ -90,7 +90,7 @@ export const def: MachineDef = {
   seats: 1,
   shared: false,
   minBet: 1, maxBet: 50, betSteps: [1, 2, 5, 10, 20, 50],
-  // top prize: BLOOD MOON Ã—1000 (Ã—2 with the milestone top-prize charm); DEEP END tops out at 100 Ã— 10 = Ã—1000
+  // top prize: BLOOD MOON ×1000 (×2 with the milestone top-prize charm); DEEP END tops out at 100 × 10 = ×1000
   maxPayoutMult: 2000,
   rtp: 0.859,
   tier: 1,
@@ -101,7 +101,7 @@ export const def: MachineDef = {
     'm.scratch.topPrizeMult': 'Multiplies the weight of the top prize row on every card (default 1, a loss gives way).',
     'm.scratch.extraCharmSpot': 'Multiplies the charm-stamp chance on every card (default 1).',
     'm.scratch.secondChance': 'Above 0: every 10 losing cards add one free PIT PENNY to the second-chance bin.',
-    'm.scratch.discount': 'Card price âˆ’N % (floor 1 coin). Default 0.',
+    'm.scratch.discount': 'Card price −N % (floor 1 coin). Default 0.',
     'm.scratch.xray': 'Above 0: one zone per card glows faintly before it is scratched.',
     luck: 'Luck: each losing card has a 0.5 % chance per point (cap 15 %) to be upgraded to the lowest prize.',
   },
@@ -143,7 +143,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     this.attractor.every('flick', 9, () => this.flickTube(), { first: 4 });
   }
 
-  // â”€â”€ attract: the tube dies now and then â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─â”€ attract: the tube dies now and then ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
   attract(dt: number, _time: number): void {
     this.attractor.update(dt);
   }
@@ -219,7 +219,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     super.standUp();
   }
 
-  // â”€â”€ input (local occupant) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─â”€ input (local occupant) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
@@ -308,7 +308,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     this.showHud();
   }
 
-  // â”€â”€ authority: vend, scratch, finish â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─â”€ authority: vend, scratch, finish ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
   /** Buys the queued card as soon as the shelf is free (no batch on show, no round open, no card under scratch). */
   private tryBuy(): void {
     if (!this.buyQueued || this.pend || this.busy || this.roundOpen || this.state.batch) return;
@@ -490,7 +490,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     };
   }
 
-  // â”€â”€ presentation: every peer, including the emitter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─â”€ presentation: every peer, including the emitter ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
   present(ev: Ev, pc: PresentCtx): void | Promise<void> {
     switch (ev.k) {
       case 'vend': return this.presentVend(ev, pc);
@@ -633,7 +633,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     if (!c.free || c.gross > 0) this.callResult(c.gross - (c.free ? 0 : c.price));
     const tier = juiceTier(c.gross, c.price, c.lucky ? ['lucky'] : []);
     if (c.gross > 0) {
-      fx.popText(plane, `Ã—${c.mult}`, GOLD, { dur: 1.1, rise: 0.3, scale: 1.1 + 0.1 * Math.min(4, Math.log10(c.mult + 1)), shake: c.mult >= 50 });
+      fx.popText(plane, `×${c.mult}`, GOLD, { dur: 1.1, rise: 0.3, scale: 1.1 + 0.1 * Math.min(4, Math.log10(c.mult + 1)), shake: c.mult >= 50 });
       fx.sparks(plane, 8 + Math.min(20, Math.round(Math.log10(c.mult + 1) * 6)), GOLD);
       this.sfx(tier === 'small' ? 'win1' : tier === 'medium' ? 'win2' : 'win3');
       if (c.mult >= 50) { this.sfx('jackpot', { vol: 0.8 }); fx.confetti(plane, 16); }
@@ -668,7 +668,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     if (this.isLocalOccupant) this.showHud();
   }
 
-  // â”€â”€ cosmetic, from the state only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─â”€ cosmetic, from the state only ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
   private textAdapter(): Text {
     const tex = this.ctx.kit.tex;
     return {
@@ -760,9 +760,9 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     else sh.state(this.tx('stReady'), 'gold', this.tx('stReadySub', { card: this.t(`c${s.sel}`) }));
     const nums: HudNumber[] = [
       { label: this.tx('nBet'), value: fmtCoins(s.batch ? s.bet : price * s.qty), tone: 'gold' },
-      { label: this.tx('nCards'), value: s.batch && p ? `${p.n - p.next}/${p.n}` : `Ã—${s.qty}`, tone: 'cyan' },
+      { label: this.tx('nCards'), value: s.batch && p ? `${p.n - p.next}/${p.n}` : `×${s.qty}`, tone: 'cyan' },
       { label: this.tx('nPrice'), value: fmtCoins(price), tone: 'neutral' },
-      { label: this.tx('nLast'), value: s.hist.length ? `Ã—${s.hist[0]}` : '-', tone: 'good' },
+      { label: this.tx('nLast'), value: s.hist.length ? `×${s.hist[0]}` : '-', tone: 'good' },
       { label: this.tx('nBalance'), value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
     ];
     if (spot) nums.splice(2, 0, { label: this.tx('nPicks'), value: String(picksLeft), tone: 'cyan' });
@@ -789,7 +789,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     sh.controls(ctrl);
   }
 
-  // â”€â”€ seat HUD helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─â”€ seat HUD helpers ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
   private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.${this.def.id}.${key}`, v } : { k: `m.${this.def.id}.${key}` }; }
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
@@ -814,7 +814,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
       this.tx('topOdds', { m: PRIZE_MULTS[sel][last], p: odds, card: this.t(`c${sel}`) }),
     ];
   }
-  /** Result callout for one finished card: net = prize âˆ’ price (a free card only ever wins). */
+  /** Result callout for one finished card: net = prize − price (a free card only ever wins). */
   private callResult(net: number): void {
     if (this.isLocalOccupant) this.seatHud?.result(net > 0 ? 'win' : net === 0 ? 'push' : 'lose', net);
   }

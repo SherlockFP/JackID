@@ -59,10 +59,10 @@ test('a debt run in play folds House Favour and the mood into payout.mult (Night
   assert.ok(Math.abs(run.mod('payout.mult', 'bigone', 1) - 1.25 * 1.12) < 1e-9);
 });
 
-test('the quota ladder is the tuned one (31, 42, 84, 168, 336, 576, 1150, 2300) and each step is at most 2x', () => {
+test('the quota ladder is the tuned one (31, 42, 84, 168, 336, 672, 1344, 2688) and each step is within its cap (2x to N3, 3x from N4)', () => {
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
-  assert.deepEqual(q, [31, 42, 84, 168, 336, 576, 1150, 2300]);
-  for (let i = 1; i < q.length; i++) assert.ok(q[i] > q[i - 1] && q[i] <= 2 * q[i - 1], `N${i + 1} steps up, at most 2x`);
+  assert.deepEqual(q, [31, 42, 84, 168, 336, 672, 1344, 2688]);
+  for (let i = 1; i < q.length; i++) assert.ok(q[i] > q[i - 1] && q[i] <= SCH.maxLadderStep(i + 1) * q[i - 1], `N${i + 1} steps up, at most ${SCH.maxLadderStep(i + 1)}x`);
 });
 
 const plain = (pocket, extra = {}) => SP.stakePresetAmounts({ pocket, min: 1, ladder: ECO.bettingLadder(1, 100), costOf: (v) => v, hsMult: 1, ...extra });

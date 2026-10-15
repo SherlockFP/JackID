@@ -139,7 +139,8 @@ export class Circuit {
 
   /**
    * Bell: rolls the Lamps. `bonusHot` machines are Hot on top of the roll (Grand Opening Ribbon: machines new this Watch).
-   * `lamps` false (before Night 2) clears them. Returns the new lamps.
+   * `lamps` false (below LAMP_FIRST_NIGHT) clears them. Lamps run from Night 1 (wave 18: the first Night needs a way out of a dry
+   * Watch), so run.ts passes true on every Night in play. Returns the new lamps.
    */
   startWatch(rng: Rng, cands: readonly LampCandidate[], o: { lamps: boolean; hot: number; cold: number; newIsHot: boolean; pocketShort?: boolean }): LampRoll {
     const current = new Set(cands.map((c) => c.mid));

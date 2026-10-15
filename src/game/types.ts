@@ -36,6 +36,8 @@ export * from './economy.types';
 export type WinTier = 'none' | 'push' | 'small' | 'medium' | 'big' | 'huge' | 'mega' | 'jackpot';
 /** Ascending order, for comparisons: `WIN_TIERS.indexOf(a) >= WIN_TIERS.indexOf(b)`. */
 export const WIN_TIERS: readonly WinTier[] = ['none', 'push', 'small', 'medium', 'big', 'huge', 'mega', 'jackpot'];
+/** Seconds the second press of a big stake stays valid after the first (economy.ts re-exports it; machines read it from here). */
+export const STAKE_CONFIRM_SEC = 6;
 // tierFor(gross, bet) (machines/_base/tiers.ts): 0 → none; ≤1× → push; <3× small; <10× medium; <50× big; <200× huge; else jackpot
 // 'mega' (v1.1, DECISIONS §G) has its own fx/jingle tier; tiers.ts thresholds for it follow the amended §2.13 comment.
 
@@ -46,8 +48,15 @@ export const WIN_TIERS: readonly WinTier[] = ['none', 'push', 'small', 'medium',
  */
 export type RunWindow = 'watch' | 'dawn';
 
-/** Why `run.bet()` / a play was refused (`run.lastRefusal()`). */
-export type RefusalReason = 'funds' | 'pulls' | 'phase' | 'limit' | 'confirm' | 'locked';
+/** Why a Debt Terminal deposit is refused (director decision 3): the terminal shows the matching line. */
+export type DepositRefusal = 'notQuota' | 'closed' | 'nightPaid' | 'nothing' | 'float';
+
+/**
+ * Why `run.bet()` / a play / a run action was refused (`run.lastRefusal()`): the bet and pulls codes, the deposit codes
+ * (`DepositRefusal`) and the rest of the run's refusals (the Pawn window, the lever and the Bell, the settle, the quota).
+ */
+export type RefusalReason = 'funds' | 'pulls' | 'phase' | 'limit' | 'confirm' | 'locked' | DepositRefusal
+  | 'shopShut' | 'watchRunning' | 'watchEnding' | 'belling' | 'settling' | 'noWatch' | 'nightUnpaid' | 'quotaShort';
 
 /** Catalogue range × SI × Cap (TECH §11.5). `ladder` = the bet steps `stepBet()` walks. */
 export interface BetLimits { min: number; max: number; ladder: number[] }

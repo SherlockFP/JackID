@@ -1,10 +1,10 @@
-﻿/**
- * Hi-Lo Ladder â€” pure rules (MACHINES_tables Â§11). No three, no DOM, no kit. Shared by the live machine (`index.ts`)
+/**
+ * Hi-Lo Ladder — pure rules (MACHINES_tables §11). No three, no DOM, no kit. Shared by the live machine (`index.ts`)
  * and the headless play contract (`playHeadless`: staff auto-play, balance sims), so the simulated RTP IS the live RTP.
  *
- * Rules: infinite deck, rank uniform A=1 â€¦ K=13 (suit cosmetic). Guess HIGHER-OR-SAME or LOWER-OR-SAME, or SKIP
+ * Rules: infinite deck, rank uniform A=1 … K=13 (suit cosmetic). Guess HIGHER-OR-SAME or LOWER-OR-SAME, or SKIP
  * (free, a new current card, max 1 per round). A guess with probability 1 is disabled (Higher on A, Lower on K).
- * Correct â†’ running multiplier Ã—= step multiplier m = floor(rtp / p, 2 decimals). Wrong â†’ bust.
+ * Correct → running multiplier ×= step multiplier m = floor(rtp / p, 2 decimals). Wrong → bust.
  * Luck (L %): a busting card is redrawn once with probability L/100 (tag `lucky`).
  * Every function consumes a FIXED number of draws, so a seed replays identically whatever the charms.
  */
@@ -17,14 +17,14 @@ export type Card = { rank: number; suit: Suit };
 
 export const RANKS = 13;
 export const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'];
-export const BASE_RTP = 0.99;          // per-step target (table Â§11.3)
+export const BASE_RTP = 0.99;          // per-step target (table §11.3)
 export const RTP_CAP = 1.02;           // hard ceiling with every charm stacked
 export const SKIPS_MAX = 1;            // free skips per round (base): one skip, so spending it is a real choice
 export const AUTO_COLLECT = 1000;      // running multiplier that cashes out automatically
 export const MAX_RUN = 13000;          // hard ceiling on the running multiplier (= def.maxPayoutMult)
 export const MIN_BET = 1, MAX_BET = 200;
 export const BET_STEPS = [1, 2, 5, 10, 25, 50, 100, 200];
-export const RUNGS = 12;               // ladder lamps; rung i lights at RUNG_AT[i] (top = Ã—500+)
+export const RUNGS = 12;               // ladder lamps; rung i lights at RUNG_AT[i] (top = ×500+)
 export const RUNG_AT: readonly number[] = [1.5, 2, 3, 4, 6, 8, 12, 16, 25, 50, 100, 500];
 /** Headless policy: collect after this many correct guesses. */
 export const HEADLESS_STEPS = 2;
@@ -32,15 +32,15 @@ export const HEADLESS_STEPS = 2;
 /** Charm / upgrade hooks this machine honours (documented in `def.modHooks`). */
 export const HOOK_SKIP = 'm.hilo.skipAdd' as ModHook;        // extra skips per round, int
 export const HOOK_RTP = 'm.hilo.stepRtpAdd' as ModHook;      // float added to 0.99 (cap 1.02)
-export const HOOK_SAFETY = 'm.hilo.safetyNet' as ModHook;    // â‰¥ 1 â†’ first bust per round refunds 50 % of the collect value
+export const HOOK_SAFETY = 'm.hilo.safetyNet' as ModHook;    // ≥ 1 → first bust per round refunds 50 % of the collect value
 export const HOOK_SAME = 'm.hilo.sameBonus' as ModHook;      // exact-rank hits multiply the step by 1 + x
-export const HOOK_START = 'm.hilo.startMult' as ModHook;     // ladder starts at Ã—(1 + x)
+export const HOOK_START = 'm.hilo.startMult' as ModHook;     // ladder starts at ×(1 + x)
 
 const RANK_TEXT = ['', 'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'] as const;
 export const rankText = (rank: number): string => RANK_TEXT[rank] ?? '?';
 export const clampLuck = (l: number): number => Math.min(100, Math.max(0, l));
 
-/** How many ranks win a guess: higher-or-same counts ranks â‰¥ current, lower-or-same counts ranks â‰¤ current. */
+/** How many ranks win a guess: higher-or-same counts ranks ≥ current, lower-or-same counts ranks ≤ current. */
 export function winRanks(rank: number, dir: Dir): number {
   return dir === 'hi' ? RANKS + 1 - rank : rank;
 }
@@ -59,7 +59,7 @@ export const clampRtp = (r: number): number => Math.min(RTP_CAP, Math.max(0, r))
 /** Running multiplier after a correct step (capped at MAX_RUN). */
 export const advance = (run: number, mult: number): number => Math.min(MAX_RUN, run * mult);
 
-/** Unbiased whole-coin payout of `stake Ã— mult` (the wallet is integer). Always consumes one draw. */
+/** Unbiased whole-coin payout of `stake × mult` (the wallet is integer). Always consumes one draw. */
 export function payoutOf(rng: Rng, stake: number, mult: number): number {
   const v = stake * mult;
   const base = Math.floor(v);

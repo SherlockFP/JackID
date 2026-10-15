@@ -102,10 +102,11 @@
 .px-root.seated .px-tut {
   top: calc(var(--seat-top-b, var(--hud-top-h, calc(52 * var(--u)))) + 4 * var(--u));
   max-width: min(28%, calc(150 * var(--u)));
-  padding: calc(2 * var(--u)) calc(4 * var(--u)) calc(3 * var(--u));
+  /* Bottom padding as the base box (5u): the last line ("… Hold ESC to skip") keeps its room, nothing clips it. */
+  padding: calc(2 * var(--u)) calc(4 * var(--u)) calc(5 * var(--u));
   font-size: calc(var(--fb) * 0.9);
 }
-.px-root.seated .px-tut .hint { margin-top: calc(1 * var(--u)); padding-bottom: 0; }
+.px-root.seated .px-tut .hint { margin-top: calc(1 * var(--u)); padding-bottom: calc(1 * var(--u)); }
 
 /* Wheel inset (roulette, WAVE 20): a small top-down view of the wheel while the ball runs. Top right, under the HUD band,
    off the centred seat banners; pointer-transparent. Built and drawn by machines/roulette/wheelInset.ts. */

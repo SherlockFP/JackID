@@ -52,12 +52,13 @@ export const WATCH_EVENTS: readonly WatchEventDef[] = [
 
 /**
  * The seeded roll for one Watch: `chance` first, then the weighted event, then its length. `blocked` (a boss Night, or any other
- * event holding the floor) rolls nothing. Pure: the caller passes a rng (the module never reads a global one).
+ * event holding the floor) rolls nothing. `avoid` is the event id of the Watch before, in the same Night: it is never rolled twice
+ * in a row (wave 47), so the pick is made from the rest. Pure: the caller passes a rng (the module never reads a global one).
  */
-export function rollWatchEvent(rng: Rng, nightNo: number, blocked = false): { def: WatchEventDef; secs: number } | null {
+export function rollWatchEvent(rng: Rng, nightNo: number, blocked = false, avoid: string | null = null): { def: WatchEventDef; secs: number } | null {
   if (blocked || nightNo < 1) return null;
   if (!rng.chance(WATCH_EVENT_CHANCE)) return null;
-  const pool = WATCH_EVENTS.filter((d) => nightNo >= (d.minNight ?? 1));
+  const pool = WATCH_EVENTS.filter((d) => nightNo >= (d.minNight ?? 1) && d.id !== avoid);
   if (pool.length === 0) return null;
   const def = rng.weighted(pool, pool.map((d) => d.weight));
   return { def, secs: rng.int(WATCH_EVENT_MIN_S, WATCH_EVENT_MAX_S) };
@@ -65,8 +66,11 @@ export function rollWatchEvent(rng: Rng, nightNo: number, blocked = false): { de
 
 /** What the HUD reads each frame. `leftS` is Watch-clock seconds; `pulls` is the Lucky Lamp budget (null when not pull-counted). */
 export interface WatchEventView { id: string; leftS: number; pulls: number | null }
-/** Save shape (optional on the run save: an older save has none). */
-export interface WatchEventSave { id: string; leftS: number; pulls: number | null }
+/**
+ * Save shape (optional on the run save: an older save has none). `id` is null between Watches: the save then keeps only the
+ * memory of the last rolled event (`last`, in Night `lastNight`), so a reload does not let the same event come back at once.
+ */
+export interface WatchEventSave { id: string | null; leftS: number; pulls: number | null; last?: string | null; lastNight?: number }
 
 export interface WatchEventHost {
   /** The Circuit's Hot test, for the pull budget (Lucky Lamp counts only pulls on HOT machines). */
@@ -84,16 +88,23 @@ export function watchEventView(): WatchEventView | null { return live?.view() ??
 export class WatchEvents implements ModProvider {
   readonly kind: ModSourceKind = 'event';
   private cur: { def: WatchEventDef; leftS: number; pulls: number | null } | null = null;
+  /** The event rolled at the previous Watch of this Night (null when that Watch had none): never rolled twice in a row. */
+  private last: string | null = null;
+  private lastNight = 0;
 
   constructor(private readonly host: WatchEventHost) {}
 
   /**
    * Watch start (before `startWatch`): ends any previous event, rolls this Watch's event and announces it. Returns the event or
-   * null. `blocked` is true on boss Nights (and while another floor event holds the Watch).
+   * null. `blocked` is true on boss Nights (and while another floor event holds the Watch). The previous Watch's event is kept
+   * out of the pick when it was in the same Night (wave 47).
    */
   begin(rng: Rng, nightNo: number, watchIdx: number, blocked = false): WatchEventDef | null {
     this.end();
-    const roll = rollWatchEvent(rng.fork(`watchEvent.${nightNo}.${watchIdx}`), nightNo, blocked);
+    const avoid = this.lastNight === nightNo ? this.last : null;
+    const roll = rollWatchEvent(rng.fork(`watchEvent.${nightNo}.${watchIdx}`), nightNo, blocked, avoid);
+    this.last = roll ? roll.def.id : null;
+    this.lastNight = nightNo;
     if (!roll) return null;
     this.cur = { def: roll.def, leftS: roll.secs, pulls: roll.def.pullBudget ?? null };
     live = this;
@@ -141,15 +152,20 @@ export class WatchEvents implements ModProvider {
     return c ? { id: c.def.id, leftS: Math.max(0, c.leftS), pulls: c.pulls } : null;
   }
 
+  /** The save: the live event, or (between Watches) only the memory of the last one. Null when there is nothing to keep. */
   snapshot(): WatchEventSave | null {
     const c = this.cur;
-    return c ? { id: c.def.id, leftS: c.leftS, pulls: c.pulls } : null;
+    if (!c && this.last === null) return null;
+    return { id: c ? c.def.id : null, leftS: c ? c.leftS : 0, pulls: c ? c.pulls : null, last: this.last, lastNight: this.lastNight };
   }
 
   /** Reload mid-Watch: the event resumes with its time left. Silent (no banner): the player already heard it. */
   restore(s: WatchEventSave | null | undefined): void {
-    const def = s ? WATCH_EVENTS.find((d) => d.id === s.id) : undefined;
-    if (!s || !def) return;
+    if (!s) return;
+    this.last = s.last ?? null;
+    this.lastNight = s.lastNight ?? 0;
+    const def = s.id !== null ? WATCH_EVENTS.find((d) => d.id === s.id) : undefined;
+    if (!def) return;
     this.cur = { def, leftS: s.leftS, pulls: s.pulls };
     live = this;
     this.host.touch();

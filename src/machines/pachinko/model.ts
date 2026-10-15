@@ -1,14 +1,14 @@
-﻿/**
- * Pachinko "Deep Rain" â€” procedural model (MACHINES_machines Â§8 cabinet + plan.json modelBrief).
+/**
+ * Pachinko "Deep Rain" — procedural model (MACHINES_machines §8 cabinet + plan.json modelBrief).
  *
- * Wall frame 0.60 Ã— 0.45 Ã— 1.62 m holding the machine (0.55 Ã— 0.30 Ã— 0.90 m, bottom at y 0.72), a low stool at
+ * Wall frame 0.60 × 0.45 × 1.62 m holding the machine (0.55 × 0.30 × 0.90 m, bottom at y 0.72), a low stool at
  * z +0.35 and nothing else in front. Origin = floor centre of the footprint, +Z = player side.
  *
- * The playfield is a Group (`parts.field`, origin = playfield bottom-left, X right, Y up, metres) tilted 10Â° back
+ * The playfield is a Group (`parts.field`, origin = playfield bottom-left, X right, Y up, metres) tilted 10° back
  * behind glass. The lane graph (`lanes.ts`) is the single source of pin and pocket positions: nails sit on its nodes
  * (minus those hidden by the LCD), pockets and the start pocket sit on its pocket positions.
  *
- * BUDGET: â‰¤ 1 300 tris, â‰¤ 14 draw calls (the static shell and the field art merge; animated parts are listed in
+ * BUDGET: ≤ 1 300 tris, ≤ 14 draw calls (the static shell and the field art merge; animated parts are listed in
  * `keep`). Nails are one InstancedMesh of tetrahedra (4 tris each).
  */
 import * as THREE from 'three';
@@ -23,7 +23,7 @@ export type PachinkoParts = {
   field: THREE.Object3D;
   /** Ball pool (64) in field coordinates. */
   balls: BallPool;
-  /** Two tulips (pivot at the tulip base), open 35Â° when caught. */
+  /** Two tulips (pivot at the tulip base), open 35° when caught. */
   tulips: [THREE.Object3D, THREE.Object3D];
   /** Two windmills (spinning vanes). */
   windmills: [THREE.Object3D, THREE.Object3D];
@@ -31,12 +31,12 @@ export type PachinkoParts = {
   startPocket: THREE.Object3D;
   /** Electric chu-lip flaps (pink), pivot at the lip. */
   eChu: THREE.Object3D;
-  /** Attacker plate (hinged at its bottom edge, opens 60Â°). */
+  /** Attacker plate (hinged at its bottom edge, opens 60°). */
   attacker: THREE.Object3D;
   screens: { lcd: ScreenSurface };
   /** Four digital-slot hold lamps under the LCD. */
   holdLamps: [LampPart, LampPart, LampPart, LampPart];
-  /** Chrome dial (rotation.z 0 â†’ âˆ’2.4 rad while pulled). */
+  /** Chrome dial (rotation.z 0 → −2.4 rad while pulled). */
   handle: THREE.Object3D;
   trays: { upper: THREE.Object3D; lower: THREE.Object3D };
   /** Side tube and jar (rust tint over time, visual only). */
@@ -143,7 +143,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PachinkoParts> 
     kit.box(0.004, 0.04, 0.003, 0xe8c060, { parent: windmills[i] });
   });
 
-  // LCD (160Ã—120 in the gold frame), hold lamps under it, ball pool
+  // LCD (160×120 in the gold frame), hold lamps under it, ball pool
   const lcd = kit.screen({ w: LCD.w, h: LCD.h, px: [160, 120], bezel: frameC });
   lcd.mesh.position.set(LCD.x, LCD.y, 0.012);
   field.add(lcd.mesh);

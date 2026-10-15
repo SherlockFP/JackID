@@ -1,4 +1,4 @@
-﻿// Entry point for `node --test scripts/tests`. Node 21+ no longer accepts a directory argument, so the directory
+// Entry point for `node --test scripts/tests`. Node 21+ no longer accepts a directory argument, so the directory
 // resolves to this file, which loads every suite into one run. `node --test` with no arguments also finds the
 // *.test.mjs files on its own; both forms run the same tests.
 import './rng.test.mjs';

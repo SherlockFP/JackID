@@ -17,13 +17,13 @@ before(async () => {
   REG.load();
 });
 
-test('decision 1: the interest falls one step per Night (0.55 … 0.20), Overdrawn Nights continue the slope, and the ladder is the tuned one', () => {
+test('decision 1: the interest falls one step per Night (0.55 … 0.20), Overdrawn Nights continue the slope, and the ladder is strictly rising within its step cap', () => {
   assert.deepEqual(SCH.BASE_NIGHTS.map((n) => n.interest), [0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2]);
   for (let no = 9; no <= 14; no++) {
     assert.ok(SCH.nightDef(no - 1).interest <= SCH.nightDef(no - 2).interest + 1e-9, `Overdrawn N${no} is not above N${no - 1}`);
   }
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
-  for (let i = 1; i < q.length; i++) assert.ok(q[i] > q[i - 1] && q[i] <= 2 * q[i - 1], `N${i + 1} steps up, at most 2x`);
+  for (let i = 1; i < q.length; i++) assert.ok(q[i] > q[i - 1] && q[i] <= SCH.maxLadderStep(i + 1) * q[i - 1], `N${i + 1} steps up, at most ${SCH.maxLadderStep(i + 1)}x`);
 });
 
 test('decision 2: SETTLE is 1.5 s, the bank is open through it, and the lever (the next Watch) waits for it to end', () => {

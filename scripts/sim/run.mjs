@@ -65,6 +65,13 @@
 // Also modelled: House Favour (x1.25 / 1.15 / 1.07 on Nights 1-3), the Witching Watch +5 %, the activity float (never bet into the
 // 3 pulls the next Watches need). --no-favour switches Favour off; --trace N prints the first N runs Night by Night.
 //
+// WAVE 47 (director, late snowball): the ladder steps up to 3x from Night 4 (504, 1510, 4520, 13500 from N5), and HOUSE TAKES NOTICE
+// (schedule.ts houseNoticeQuota): from Night 5 the quota is at least 1.9 x the wealth (pocket + banked) read at the Dawn before, before
+// that Dawn pays. The sim now runs a per-run quota: the table's quota column is the median quota of the runs that reached the Night, and
+// pocket/quota is the survivors' median pocket over the median quota. Human 2000 runs (seed 20261013): reach 89 / 72 / 52 / 40 / 25 / 21 /
+// 18 / 10 %, survivors' N8 pocket 33k vs quota 93k. `--notice-share 0 --quotas 31,42,84,168,336,576,1150,2300` reproduces wave 46; `--notice-share 0.6` (the first draft)
+// keeps the rotator but leaves the human N8 near 23 %; `--notice-from 4` drops N4 reach to 26 %. Rotator and banker fall off late at
+// 1.9 (rotator N8 about 0 %): a director call.
 // WAVE 46 (director, HOUSE MOOD): every settle's payout is multiplied by the Night's mood (houseMood.ts: N1 x1.12, N2 x1.07, N3 x1.03,
 // N4 x1.00, N5 x0.98, N6 x0.97, N7 x0.96, N8 x0.95); `--no-mood` switches it off. The quota ladder is 31, 42, 84, 168, 336, 576, 1150, 2300
 // (schedule.ts). Human 2000 runs (seed 20261013): reach 88.5 / 72 / 52 / 40 / 35 / 32 / 30 / 28 %; without the mood (`--no-mood`, the old
@@ -166,6 +173,12 @@ const SUITS = await load('src/game/suits.ts');
 const MT = await load('src/game/modifiers.types.ts');
 const HM = await load('src/game/houseMood.ts');   // HOUSE MOOD (wave 46): the Night's payout multiplier on every floor machine
 const NO_MOOD = args.includes('--no-mood');
+// HOUSE TAKES NOTICE (wave 47, schedule.ts houseNoticeQuota): the quota of a Night from HN_FROM on is at least HN_SHARE x the wealth
+// read at the Dawn before. --notice-share 0 switches it off; --notice-from / --notice-share try other values.
+const HN_FROM = Number(argVal('--notice-from', SCH.HOUSE_NOTICE_FROM));
+const HN_SHARE = Number(argVal('--notice-share', SCH.HOUSE_NOTICE_SHARE));
+// per bot: the quota each Night started with (all runs that reached it), and per run the quota and pocket of each paid Night
+const QSEEN = Array.from({ length: 8 }, () => []);
 const CHD = await load('src/game/data/charms.ts');
 const OVERRIDE = { quotas: list('--quotas'), interest: list('--interest'), pulls: list('--pulls'), si: list('--si'), favour: list('--favour') };
 const START_POCKET = Number(argVal('--start', SCH.START.pocket));
@@ -424,7 +437,8 @@ function shop(S, bot, due, rng) {
 function playRun(bot, runIdx) {
   const rng = RNG.createRng((SEED + runIdx * 7919) >>> 0);
   const circ = new CIR.Circuit();
-  const out = { paid: [], pocket: [], charms: [] };
+  const out = { paid: [], pocket: [], quota: [], charms: [] };
+  let nextQuota = dueOf(NIGHTS[0]);   // the quota of the next Night: the ladder, or the House's wealth floor (from HN_FROM)
   const S = {
     idx: 0, pocket: START_POCKET, tickets: 2, debt: 0, held: [], nightsPaid: 0, shopNight: 0, shopWatch: 0,
     cs: { rungs: 0, last: null, pressure: 0, charge: 0, wicks: 0, streak: 0, cuckoo: false, snow: 0 },
@@ -441,7 +455,9 @@ function playRun(bot, runIdx) {
   for (let idx = 0; idx < SCH.BASE_RUN_NIGHTS; idx++) {
     S.idx = idx;
     const nd = NIGHTS[idx];
-    let due = dueOf(nd);
+    const nightQuota = nextQuota;
+    QSEEN[idx].push(nightQuota);
+    let due = nightQuota;
     let loans = 0;
     S.cs.snow = 0; S.cs.wicks = 0;
 
@@ -484,7 +500,7 @@ function playRun(bot, runIdx) {
       shop(S, bot, due, hum.rng);
       if (bot === 'human' && !NO_TYCOON) {
         // tycoon: buy the cheapest covered machine while the pocket still covers the quota gap afterwards (max one per Bell)
-        const q0 = dueOf(nd);
+        const q0 = nightQuota;
         const cand = PROG.CORE_MACHINES.filter((id) => !owned.has(id) && PROG.unlockNightOf(id) > nd.no)
           .map((id) => ({ id, price: PROG.buyPrice(id, q0) })).sort((a, b) => a.price - b.price)[0];
         if (cand && cand.price <= TYC_FRAC * S.pocket && S.pocket - cand.price >= TYC_RESERVE * Math.max(0, due - S.debt)) {
@@ -609,7 +625,7 @@ function playRun(bot, runIdx) {
       }
 
       if (owned.size > 0) {
-        const q0 = dueOf(nd);
+        const q0 = nightQuota;
         let cut = 0;
         for (const id of owned) cut += PROG.houseCut(id, q0, PROG.ghostWager(id, q0, SEED + runIdx, idx, w));
         S.pocket += cut; TYC.cut[idx] += cut;
@@ -641,7 +657,10 @@ function playRun(bot, runIdx) {
       if (offer[0] && !isCamp(bot)) S.held.push(offer[0].id);
     }
     // Dawn settle (run.ts dawn()): the surplus above the quota (interest already in it) returns to the pocket.
+    // HOUSE TAKES NOTICE: the wealth read here (pocket + banked, before the quota is paid) sets the next Night's quota floor.
+    const wealthAtDawn = S.pocket + S.debt;
     S.pocket += Math.max(0, S.debt - due);
+    out.quota.push(nightQuota);
     S.debt = 0;
     S.nightsPaid += 1;
     out.paid.push(nd.no);
@@ -651,7 +670,10 @@ function playRun(bot, runIdx) {
     // Start of the next Night (openFloor): the House float tops the pocket up to F(n), free and not in the quota.
     if (idx + 1 < SCH.BASE_RUN_NIGHTS && !NO_FLOAT) { const top = ECO.houseFloatTopUp(S.pocket, idx + 1); S.pocket += top; FLOAT_PAID[idx + 1] += top; }
     // Dawn visit: the Pawn shows the next Night's stock (priced at this Night's SI).
-    if (idx + 1 < SCH.BASE_RUN_NIGHTS) { S.shopNight = idx + 1; S.shopWatch = 0; shop(S, bot, dueOf(NIGHTS[idx + 1]), hum.rng); }
+    if (idx + 1 < SCH.BASE_RUN_NIGHTS) {
+      nextQuota = SCH.houseNoticeQuota(idx + 2, dueOf(NIGHTS[idx + 1]), wealthAtDawn, HN_SHARE, HN_FROM);
+      S.shopNight = idx + 1; S.shopWatch = 0; shop(S, bot, nextQuota, hum.rng);
+    }
   }
   out.charms = S.held.length;
   if (owned.size > 0) { TYC.runs += 1; TYC.ownedEnd += owned.size; }
@@ -794,10 +816,12 @@ for (const bot of BOTS) {
   CHARM_COUNT.sum.fill(0); CHARM_COUNT.n.fill(0); BOUGHT.clear(); FLOAT_PAID.fill(0);
   const reached = new Array(SCH.BASE_RUN_NIGHTS).fill(0);
   const pockets = Array.from({ length: SCH.BASE_RUN_NIGHTS }, () => []);
+  const quotas = Array.from({ length: SCH.BASE_RUN_NIGHTS }, () => []);
+  QSEEN.forEach((a) => { a.length = 0; });
   Object.assign(N1, { stuckRuns: 0, stuckEvents: 0, byWithdraw: 0, byTickets: 0, byLoan: 0, molaAfford: 0, molaN: 0, paid: 0 }); N1.mola.length = 0; N1.dawn.length = 0;
   for (let r = 0; r < RUNS; r++) {
     const res = playRun(bot, r);
-    res.paid.forEach((no, k) => { reached[no - 1]++; pockets[no - 1].push(res.pocket[k]); });
+    res.paid.forEach((no, k) => { reached[no - 1]++; pockets[no - 1].push(res.pocket[k]); quotas[no - 1].push(res.quota[k]); });
   }
   const rows = [];
   let started = RUNS;
@@ -805,19 +829,19 @@ for (const bot of BOTS) {
     const paid = reached[i];
     const nightRtp = NIGHT_RTP.wagered[i] ? +(NIGHT_RTP.credited[i] / NIGHT_RTP.wagered[i]).toFixed(3) : 0;
     const charms = CHARM_COUNT.n[i] ? +(CHARM_COUNT.sum[i] / CHARM_COUNT.n[i]).toFixed(1) : 0;
-    rows.push({ night: i + 1, quota: dueOf(NIGHTS[i]), reachPct: +(100 * paid / RUNS).toFixed(1), condPct: +(100 * paid / Math.max(1, started)).toFixed(1), medianPocket: Math.round(median(pockets[i])), nightRtp, charms });
+    rows.push({ night: i + 1, quota: Math.round(median(QSEEN[i])), survQuota: Math.round(median(quotas[i])), reachPct: +(100 * paid / RUNS).toFixed(1), condPct: +(100 * paid / Math.max(1, started)).toFixed(1), medianPocket: Math.round(median(pockets[i])), pqRatio: quotas[i].length ? +(median(pockets[i]) / median(quotas[i])).toFixed(2) : 0, nightRtp, charms });
     started = paid;
   }
   results[bot] = rows;
   results[bot + '_rtp'] = TOT.wagered ? +(TOT.credited / TOT.wagered).toFixed(4) : 0;
-  if (BRIEF) { console.log(`${bot.padEnd(8)} reach% ${rows.map((r) => String(Math.round(r.reachPct)).padStart(3)).join(' ')}  pocket ${rows.map((r) => fmtCoins(r.medianPocket)).join(' ')}  charms ${rows.map((r) => r.charms).join(' ')}  rtp ${results[bot + '_rtp']}`); continue; }
+  if (BRIEF) { console.log(`${bot.padEnd(8)} reach% ${rows.map((r) => String(Math.round(r.reachPct)).padStart(3)).join(' ')}  pocket ${rows.map((r) => fmtCoins(r.medianPocket)).join(' ')}  quota ${rows.map((r) => fmtCoins(r.quota)).join(' ')}  pocket/quota ${rows.map((r) => r.pqRatio).join(' ')}  charms ${rows.map((r) => r.charms).join(' ')}  rtp ${results[bot + '_rtp']}`); continue; }
   console.log(`\n${bot}  (${RUNS} runs, ${((Date.now() - t0) / 1000).toFixed(1)} s${SCALE_LADDER ? ', ladder scaled by SI' : ''}${NO_CHARMS ? ', no charms' : ''}${isCamp(bot) ? '' : `, stake ${BET_FRAC * 100} % of pocket`})`);
   if (bot === 'human' && !NO_TYCOON) console.log(`tycoon: runs that owned a machine ${TYC.runs}/${RUNS} (avg owned ${(TYC.ownedEnd / Math.max(1, TYC.runs)).toFixed(1)}); per run N1..N8 bought [${TYC.bought.map((x) => (x / RUNS).toFixed(2)).join(' ')}], coins spent [${TYC.price.map((x) => Math.round(x / RUNS)).join(' ')}], house cut [${TYC.cut.map((x) => Math.round(x / RUNS)).join(' ')}]`);
   console.log(`realized RTP ${results[bot + '_rtp']}  plays/run ${(TOT.plays / RUNS).toFixed(1)}  rescue loans/run ${(TOT.loans / RUNS).toFixed(2)}`);
   console.log(`house float per run (N2..N8): ${FLOAT_PAID.slice(1).map((v) => (v / RUNS).toFixed(1)).join(' ')}${NO_FLOAT ? '  (off)' : ''}`);
-  console.log('Night  quota     reach%  cond%   median pocket (runs that paid)   realized RTP   charms held');
+  console.log('Night  quota     reach%  cond%   median pocket (runs that paid)   realized RTP   charms held   pocket/quota (survivors)');
   for (const row of rows) {
-    console.log(`N${String(row.night).padEnd(4)} ${fmtCoins(row.quota).padEnd(9)} ${String(row.reachPct).padStart(6)}  ${String(row.condPct).padStart(6)}   ${fmtCoins(row.medianPocket).padEnd(30)} ${String(row.nightRtp).padEnd(14)} ${row.charms}`);
+    console.log(`N${String(row.night).padEnd(4)} ${fmtCoins(row.quota).padEnd(9)} ${String(row.reachPct).padStart(6)}  ${String(row.condPct).padStart(6)}   ${fmtCoins(row.medianPocket).padEnd(30)} ${String(row.nightRtp).padEnd(14)} ${String(row.charms).padEnd(13)} ${row.pqRatio}`);
   }
   if (newbieLike(bot)) {
     const pc = (x) => (100 * x / Math.max(1, RUNS)).toFixed(1);

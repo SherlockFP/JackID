@@ -1,5 +1,5 @@
-﻿/**
- * Debt Run session (single player, TECH Â§8): builds the pit (`createWorld` places the registered machines into the GDD
+/**
+ * Debt Run session (single player, TECH §8): builds the pit (`createWorld` places the registered machines into the GDD
  * slots), the FPS player at the lobby spawn, the run (`createRun` / `resumeRun`) and the HUD, and drives them each step.
  * It also wires the live systems into the pit: the tycoon service-plate badges and the Upgrade Ledger (U), the totems
  * (B to place or pick up, their floor rings), the light-horror director with its ActorDirector (fed dread and time),
@@ -70,7 +70,7 @@ const LEDGER_PANEL = 'ingame-ledger';
 const TOTEM_REACH_M = 2.5;
 const BADGE_FALLBACK = new THREE.Vector3(0, 1.2, 0.7);
 const BADGE_POP_S = 0.45;
-/** Brighter Bulbs upgrade (GDD Â§6.2): âˆ’2 dread per level, read by the horror meter. */
+/** Brighter Bulbs upgrade (GDD §6.2): −2 dread per level, read by the horror meter. */
 const BULBS_UPGRADE = 'imp_brighter_bulbs';
 const isCursed = (id: string): boolean => charmDef(id)?.rarity === 'cursed';
 
@@ -114,7 +114,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   scene.background = new THREE.Color(LOBBY_FOG);
   scene.fog = makeFog(LOBBY_FOG, LOBBY_NEAR, app.save.data.settings.psx.drawDistance);
 
-  // Pit Deck: a seeded line-up for the flexible pads (WAVE8 item 8). `randomLineup: false` keeps the GDD Â§8.6 layout.
+  // Pit Deck: a seeded line-up for the flexible pads (WAVE8 item 8). `randomLineup: false` keeps the GDD §8.6 layout.
   const lineup = run.mode === 'free' && run.config.randomLineup !== false ? rosterFor(run.seed, rosterCandidates(), run.mode) : undefined;
   const world = createWorld({ mode: run.mode, seed: run.seed, assign: lineup }, app.camera);
   scene.add(world.root);
@@ -142,7 +142,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   // Night 1 onboarding: first run only (its own flag), Debt Run only, never a resumed or online run.
   const tutorial: Tutorial | null = !params.resume && !params.online && run.rules.timed ? startTutorial({ world, run }) : null;
 
-  // â”€â”€ tycoon: service-plate badges (on the slot group, DECISIONS C26) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─â”€ tycoon: service-plate badges (on the slot group, DECISIONS C26) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
   const badgeKeys = new Map<InstanceId, string>();
   const pops: Array<{ g: THREE.Object3D; k: number }> = [];
   const plateAt = new THREE.Vector3();
@@ -173,10 +173,10 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   }));
   offs.push(run.tycoon.onChange(() => { if (ready) syncAllBadges(); }));
 
-  // â”€â”€ totems: rings on the floor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─â”€ totems: rings on the floor ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
   const totemView = new TotemView(app.kit, world.root, (id) => run.totems.def(id));
 
-  // â”€â”€ Upgrade Ledger (U) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─â”€ Upgrade Ledger (U) ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
   let ledger: LedgerHandle | null = null;
   let ledgerOpen = false;
   const closeLedger = (): void => {
@@ -203,7 +203,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     });
   };
 
-  // â”€â”€ totems: B places the carried totem at your feet, or picks up the nearest placed one â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─â”€ totems: B places the carried totem at your feet, or picks up the nearest placed one ─â”€─â”€─â”€─â”€─â”€─â”€─
   const placeOrPickTotem = (): void => {
     const mine = run.totems.mine(self);
     const carried = mine.find((s) => s.pos === null);
@@ -223,7 +223,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     else app.ui.toast(t('ingame.totem.none'), 'warn');
   };
 
-  // â”€â”€ horror director + its ActorDirector (started at enter, fed dread and time, disposed at exit) â”€â”€â”€â”€â”€
+  // ─â”€ horror director + its ActorDirector (started at enter, fed dread and time, disposed at exit) ─â”€─â”€─
   const actors = createActorDirector({ kit: app.kit, scene: () => world.root });
   const settings = (): { calm: boolean; reduceFlashing: boolean; subtitles: boolean } => {
     const s = app.save.data.settings;
@@ -267,12 +267,12 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     if (id in EVENT_DREAD) horror.notify(id as DreadEventKind);
   }));
 
-  // â”€â”€ input: journal (J), upgrade ledger (U), totems (B) â€” walk mode only â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─â”€ input: journal (J), upgrade ledger (U), totems (B) — walk mode only ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€
   offs.push(app.input.on('journal', (down) => { if (down && app.input.mode === 'walk') openJournal(); }));
   offs.push(app.input.on('upgrade', (down) => { if (down && app.input.mode === 'walk') openLedger(); }));
   offs.push(app.input.on('place', (down) => { if (down && app.input.mode === 'walk') placeOrPickTotem(); }));
 
-  // â”€â”€ prompt, flush, ready â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ─â”€ prompt, flush, ready ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
   let promptKey = '';
   const updatePrompt = (): void => {
     const f = app.input.mode === 'walk' ? world.interact.focused : null;
@@ -331,7 +331,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     const mid = machineId as Parameters<typeof run.buyPriceOf>[0];
     const x: InteractableX = {
       id: `buy:${instance}`, box, priority: 10, maxDist: 3,
-      // the tarp always answers E: "BUY <name> Â· <price>" when buyable, otherwise the greyed "OPENS NIGHT n" plate line
+      // the tarp always answers E: "BUY <name> · <price>" when buyable, otherwise the greyed "OPENS NIGHT n" plate line
       enabled: () => world.seat == null,
       label: () => {
         const price = run.buyPriceOf(mid);

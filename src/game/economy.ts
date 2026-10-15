@@ -146,7 +146,7 @@ export function night1StakeCap(startPocket: number): number {
 /** A stake above this share of the current pocket needs a second press. */
 export const STAKE_CONFIRM_FRAC = 0.5;
 /** Seconds the second press stays valid after the first. */
-export const STAKE_CONFIRM_SEC = 6;
+export { STAKE_CONFIRM_SEC } from '@/game/types';
 /** True when `amount` is more than half the pocket and above the machine's minimum stake (the minimum never asks). */
 export function stakeNeedsConfirm(amount: number, pocket: number, minBet: number): boolean {
   return amount > minBet && amount > STAKE_CONFIRM_FRAC * Math.max(0, pocket);

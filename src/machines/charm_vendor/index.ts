@@ -112,7 +112,7 @@ export const def: MachineDef = {
       curseNote: 'Cursed: the house pays you to take it. It cannot be sold back.',
       swapOut: 'THIS ONE LEAVES  ·  SELL BACK {n}',
       noDesc: 'No description.',
-      closedNext: 'Window closed — buy at the next intermission',
+      closedNext: 'Window opens in Mola',
       stArm: '{key} again to buy · {price}',
       stArmSub: 'Second press within {s} s',
       cConfirm: 'CONFIRM',
@@ -159,7 +159,7 @@ export const def: MachineDef = {
       curseNote: 'Lanetli: ev seni almaya para öder. Geri satılamaz.',
       swapOut: 'BU ÇIKAR  ·  GERİ SATIŞ {n}',
       noDesc: 'Açıklama yok.',
-      closedNext: 'Pencere kapandı — bir sonraki Molada al',
+      closedNext: "Pencere Mola'da açılır",
       stArm: '{key} TEKRAR BAS · {price}',
       stArmSub: '{s} sn içinde ikinci kez bas',
       cConfirm: 'ONAYLA',
@@ -353,6 +353,13 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     this.commitBuy(pawn, i, slot, true, '');
   }
 
+  /** The line for a purchase the Pawn refused in the credit step: the window shut ("Window opens in Mola") or the Pawn's own reason. */
+  private buyRefusal(pawn: PawnApi, why: string): string {
+    if (!pawn.open()) return this.t('closedNext');
+    if (why === 'funds') return this.t('funds');
+    return tr(why === 'limit' ? 'shop.limit' : 'shop.fail');
+  }
+
   /** Emit the purchase; the wallet moves inside the credit step through `pawn.buy`, which also marks the slot sold. */
   private commitBuy(pawn: PawnApi, i: number, slot: PawnSlot, ok: boolean, why: string, replaceId?: string): void {
     const juice = buyJuice(slot.rarity, slot.cursed);
@@ -360,7 +367,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       { k: 'buy', i, charmId: slot.charmId, price: slot.price, juice, ok, why },
       ok ? () => {
         const r = pawn.buy(this.selfId, i, replaceId);
-        if (!r.ok) this.ctx.ui.toast(r.why === 'funds' ? this.t('funds') : tr(r.why === 'limit' ? 'shop.limit' : 'shop.fail'), 'bad');
+        if (!r.ok) this.ctx.ui.toast(this.buyRefusal(pawn, r.why), 'bad');
       } : undefined,
     );
   }

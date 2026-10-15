@@ -11,7 +11,7 @@
  */
 import type { InstanceId } from '@/core/types';
 import type { MachineAction } from '@/core/input/types';
-import { STAKE_CONFIRM_SEC } from '@/game/economy';
+import { STAKE_CONFIRM_SEC } from '@/game/types';
 
 export type StakePresetKey = 'safe' | 'bold' | 'big';
 /** Left to right on the HUD and in the key order 7, 8, 9. */
