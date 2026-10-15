@@ -129,15 +129,19 @@ with a single Space tap (see **Intro skip** below). Seed 7 fires on the player's
 ## Debt-run driver (`--run`)
 
 `--run "<steps>"` starts a real debt run (`/?skipmenu=1&seed=N`, the seed from `--seed`), skips the story intro, and runs the
-steps in order. Steps are separated by `;`. A `play` step's keys use the script syntax, so its commas stay inside it:
+steps in order. Steps are separated by `;`. A `play` step's keys use the script syntax, so its commas stay inside it. The
+`xN` repeat suffix belongs at the end of the whole `play` list:
 
 ```
-npm run qa -- --run "goto:coinflip;wait:600;state;play:Digit9,Space:120x2;wait:1500;state;stand;bank:deposit:5;state" --seed 1 --shots <dir>
+npm run qa -- --run "goto:coinflip;wait:600;state;play:Digit9,Space:120,wait:1500x2;state;stand;bank:deposit:5;state" --seed 1 --shots <dir>
+node scripts/qa/bench.mjs --run "auto:night;state" --seed 1 --shots <dir>
 ```
+
+Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` prints its banner on stdout before the JSON.
 
 | step | what it does |
 | --- | --- |
-| `goto:<machineId>` | teleports the player in front of the first unlocked floor machine of that id (the machine's front, facing it), presses `E` (the real sit path). If that does not seat, it falls back to the devtools `world.occupy()`. Fails the run when the machine is not on the floor or locked. `via` says which path sat the player |
+| `goto:<machineId>` | teleports the player in front of the first unlocked floor machine of that id (the machine's front, facing it), presses `E` (the real sit path). If that does not seat, it falls back to the devtools `world.occupy()`. Fails the step when the machine is not on the floor or locked. `via` says which path sat the player. Waits for the input mode to be `machine` (`inputMode` when it never is) |
 | `play:<keys>xN` | presses the keys N times (default 1). Keys use the script syntax (`Space:150,wait:300`). The `x` suffix ends the step: `play:Space:150,wait:300x3` repeats both |
 | `stand` | stands up from the seat (`world.standUp()`), then waits until the seat is free |
 | `bank:deposit:<n>` | a Debt Terminal deposit of n coins (`run.deposit(n)`). `ok:false` when the run refuses it (pocket floor, quota room, not a quota Watch) |
@@ -145,14 +149,30 @@ npm run qa -- --run "goto:coinflip;wait:600;state;play:Digit9,Space:120x2;wait:1
 | `lever` | the terminal lever the run accepts now: OPEN THE FLOOR (Night paid), else the Bell (Intermission), else SETTLE (quota met). `lever: null` when none is open |
 | `bell` | rings the Bell early (`run.ringBell()`): ends the Watch while playing or Last Call; unused pulls keep the ticket rebate. `ok:false` outside a playing Watch |
 | `pawn` | one Pawn Window reroll (`run.pawn.reroll()`, Intermission only) |
+| `pawn:buy:<slot>` | buys Pawn Window shelf `slot` (1-based, 1 to 6). Sits at the Pawn Window (`charm_vendor`) if not seated there, closes the tip, presses the shelf's key (`1`-`4`; `5` and `6` by `→` from shelf 4), then `Space` twice. `ok` is whether the shelf now reads sold. `charm`, `price`, `paid` say what it was. Intermission only (`reason` says so otherwise) |
+| `pawn:look` | sits at the Pawn Window and screenshots the seat view to `run-pawn-look-<n>.png` (with `--shots`). `shelves` lists the stock (`null` = sold or empty, `[]` outside an Intermission) |
+| `auto:night` | a bot plays one Night, see **Night bot** below. Its own actions are records with `auto: true` |
 | `wait:<ms>` | pauses |
-| `state` | records the state in `run.states` and logs it: `phase`, `night` (1-based), `watch` (1-based), `pocket`, `bank` (the balance), `withdrawable`, `quotaDue`, `quotaLeft`, `pullsLeft`, `pulls`, `over`, `seated` (the machine instance id or null), `intro` (the cutscene id or null) |
+| `state` | records the state in `run.states` and logs it: `phase`, `night` (1-based), `watch` (1-based), `pocket`, `bank` (the balance), `withdrawable`, `quotaDue`, `quotaLeft`, `pullsLeft`, `pulls`, `minBet`, `nightDone`, `topside`, `over`, `seated` (the machine instance id or null), `intro` (the cutscene id or null) |
 
-Each step is recorded in `run.steps` as `{ step, ok, ms, … }` (with `via`, `at`, `instance`, `amount`, `lever`, `state` or `reason` where they apply). Output is the same one JSON object; `run.intro` is `{ played, taps }`, and `run.shot` is `run-final.png` when `--shots` is set. `rounds` is 0 in this mode.
+Each step is recorded in `run.steps` as `{ step, ok, ms, … }`, in the order it ran (`via`, `at`, `instance`, `amount`, `lever`, `state`, `charm`, `price`, `paid`, `shelves`, `shot` where they apply). A failed step is kept: `ok:false` with `error` (a step that threw: the `goto` to a locked machine, a seat that does not take) or `reason` (a step the run refused). **The steps go on after a failed step.** `run.failed` counts the failed user steps. Only a page reload stops the list: `run.aborted` says so, the run is then invalid (see `viteEvents`), and the exit code is 1. Output is the same one JSON object; `run.intro` is `{ played, taps }`, and `run.shot` is `run-final.png` when `--shots` is set. `rounds` is 0 in this mode.
 
-The steps use the running app's own handles (`window.jackid.app`: `world`, `player`, `run`, `cutscene`, `camera`), so no hook is added to the game. A step that the run refuses is recorded with `ok:false` and the steps go on. A teleport or seat that fails fails the run. Keep in mind that the first sit at a machine shows a tip that the next key closes (`Digit9`, as above).
+The steps use the running app's own handles (`window.jackid.app`: `world`, `player`, `run`, `cutscene`, `camera`, `input`), so no hook is added to the game.
 
-Practical notes: `goto` needs the machine on the floor (the `coinflip`, `hilo`, `scratch`, `bigone`, `hotline`, `cashier` ids are placed for seed 1). The quota, the Bell and the Pawn only work in the right phase, so a full Night needs enough coins: `goto` plus `play` builds the pocket, and `lever` after a paid quota opens the floor.
+Practical notes: `goto` needs the machine on the floor (the `coinflip`, `hilo`, `scratch`, `bigone`, `hotline`, `cashier`, `charm_vendor` ids are placed for seed 1). The quota, the Bell, the Pawn and the deposits only work in the right phase, so a full Night needs enough coins: `goto` plus `play` builds the pocket, and `lever` after a paid quota opens the floor. The first Watch of a run starts with the intro (there is no Intermission before it, so the Pawn Window is closed for it). The first sit at a machine shows a tip that the next key closes; `Digit9` is unbound on these machines, so it closes the tip and does nothing else (the bot and the Pawn steps press it first).
+
+### Night bot (`auto:night`)
+
+`auto:night` plays one Night the way a sensible player would, for faster long runs. It stops when the Night rolls over (OPEN THE FLOOR), when the run ends, when it reaches the top, or after 15 minutes of wall time. Per Watch:
+
+- **Deposit**: 40 % of the pocket while quota is owed (20 % when the terminal refuses it). Taken in the Intermission, or in the Bell or play for the first Watch of a Night (which has no Intermission before it).
+- **Withdraw**: a pocket below the cheapest bet pulls the whole bank back out first.
+- **Shop**: in the Intermission, the cheapest shelf that is not cursed, needs no swap, and costs at most 30 % of the pocket (`pawn:buy`, then `stand`).
+- **Lever**: starts the Watch (`lever`); after a paid Night it opens the floor.
+- **Bets**: 1 bet on odd Watches, 2 on even ones, rotating over the open machines of `BOT_MACHINES` (`coinflip`, `hilo`, `scratch`, `bigone`; the ones placed and unlocked now). Each bet is a `bot:bet:<id>` record: `goto`, `Digit9` (closes the tip), the stake walked down to the minimum (`KeyZ` 8 times), the machine's recipe (`BOT_RECIPE`: `Space` to play, `KeyQ` to collect, `Digit1` the hilo guess). `pulls` is `[before, after]`; `ok` is whether a pull was spent.
+- **Bell**: rings the Bell (`bell`) once the Watch's bets are placed, after `stand`. Unused pulls keep the rebate. A Watch whose pulls run out closes by itself.
+
+The recipes are approximate key sequences, not a strategy. A bet that does not spend a pull is recorded `ok:false` with `reason`. The summary record is `auto:night`: `night` (`[from, to]`), `end` (`night paid`, `run over`, `topside`, `lever refused`, `page reloaded`, `time budget`, `loop budget`), `deposits`, `shops`, `bets`, `bells`, `loops`. `ok` is true for `night paid` and `topside`.
 
 ## Intro skip
 

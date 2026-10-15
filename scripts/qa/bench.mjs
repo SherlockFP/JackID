@@ -20,6 +20,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+const PAWN_SLOTS_MAX = 6;   // charm_vendor SLOTS_MAX: 4 shelves plus up to 2 Second Window extras
 const CHROME = process.env.QA_CHROME || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const DEFAULT_HOLD_MS = 80;
 const READY_TIMEOUT_MS = 120_000;
@@ -101,6 +102,9 @@ export function parseScript(text) {
  *   lever              the terminal lever the run accepts now: OPEN THE FLOOR, else the Bell, else SETTLE
  *   bell               ring the Bell early (run.ringBell: ends the Watch while playing or Last Call, unused pulls rebate)
  *   pawn               one Pawn Window reroll (Intermission only)
+ *   pawn:buy:<slot>    buy Pawn Window shelf <slot> (1-6, 1-based): sits there, the shelf key, Space twice
+ *   pawn:look          sit at the Pawn Window, screenshot the seat view (run-pawn-look-<n>.png)
+ *   auto:night         a bot plays one Night (deposit 40 %, shop, lever, rotating coin bets, Bell); see the README
  *   wait:<ms>          pause
  *   state              record pocket, bank, quota, night, watch, pulls, phase, seated (res.run.states)
  */
@@ -110,8 +114,17 @@ export function parseRunSteps(text) {
     const tok = raw.trim();
     if (!tok) continue;
     if (['stand', 'lever', 'bell', 'pawn', 'state'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
+    if (tok === 'pawn:look') { out.push({ kind: 'pawnlook', text: tok }); continue; }
+    if (tok === 'auto:night') { out.push({ kind: 'auto', text: tok }); continue; }
     let m = /^goto:([a-z][a-z0-9_]*)$/.exec(tok);
     if (m) { out.push({ kind: 'goto', machine: m[1], text: tok }); continue; }
+    m = /^pawn:buy:(\d+)$/.exec(tok);
+    if (m) {
+      const slot = Number(m[1]);
+      if (!(slot >= 1 && slot <= PAWN_SLOTS_MAX)) throw new Error(`bad shelf in "${tok}" (pawn:buy:<1-${PAWN_SLOTS_MAX}>, shelves 1-4 are the 1-4 keys)`);
+      out.push({ kind: 'pawnbuy', slot, text: tok });
+      continue;
+    }
     m = /^bank:deposit:(\d+)$/.exec(tok);
     if (m) { out.push({ kind: 'deposit', amount: Number(m[1]), text: tok }); continue; }
     m = /^bank:withdraw:(\d+)$/.exec(tok);
@@ -125,7 +138,7 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | play:<keys>xN | stand | bank:deposit:<n> | lever | bell | pawn | wait:<ms> | state)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | auto:night | wait:<ms> | state)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
   return out;
@@ -251,13 +264,14 @@ async function skipIntro(cdp) {
   return { played: started > 0, taps };
 }
 
-/** Page JS: the debt run's state, for `state` and the step records. Watch and Night are 1-based. */
+/** Page JS: the debt run's state, for `state`, the step records and the auto:night loop. Watch and Night are 1-based. */
 const RUN_STATE_JS = `(() => {
   const a = window.jackid.app, r = a.run, b = r.bank(), pulls = r.pulls();
   return {
     phase: r.shift.phase, night: r.night(), watch: typeof r.watch === 'number' ? r.watch + 1 : null,
     pocket: b.pocket, bank: b.balance, withdrawable: b.withdrawable, quotaDue: b.due, quotaLeft: b.left,
-    pullsLeft: b.pullsLeft, pulls: Number.isFinite(pulls) ? pulls : null,
+    pullsLeft: b.pullsLeft, pulls: Number.isFinite(pulls) ? pulls : null, minBet: b.minBet,
+    nightDone: r.nightPaid, topside: r.topsideOpen,
     over: r.over, seated: a.player?.seat?.mid ?? null, intro: a.cutscene.playing ?? null,
   };
 })()`;
@@ -281,85 +295,345 @@ const goToJs = (machineId) => `(() => {
   return { ok: true, instance: m.id, at: [Math.round(fx * 100) / 100, Math.round(fz * 100) / 100] };
 })()`;
 
-/** Runs the parsed --run steps against the debt run (see parseRunSteps). Each step is recorded in `run.steps`. */
-async function driveRun(cdp, steps, run) {
-  const seatedIs = (want, ms) => waitFor(async () => (await evaluate(cdp, 'window.jackid.app.player?.seat != null')) === want, ms, want ? 'a seat' : 'standing up');
-  for (const s of steps) {
-    const t0 = Date.now();
-    const rec = { step: s.text, ok: true };
-    switch (s.kind) {
-      case 'goto': {
-        if (await evaluate(cdp, 'window.jackid.app.player?.seat != null')) {
-          await evaluate(cdp, '(window.jackid.app.world.standUp(), true)');
-          await seatedIs(false, 4000).catch(() => { throw new Error(`goto:${s.machine}: could not stand up first`); });
-        }
-        const tp = await evalJson(cdp, goToJs(s.machine));
-        if (!tp.ok) throw new Error(`goto:${s.machine}: ${tp.reason}`);
-        await sleep(400);                                     // the interact focus follows the new view
-        await pressKey(cdp, 'KeyE', DEFAULT_HOLD_MS);
-        rec.via = 'E';
-        try { await seatedIs(true, 2500); } catch {
-          await evaluate(cdp, `(window.jackid.app.world.occupy(${JSON.stringify(tp.instance)}), true)`);   // devtools fallback
-          rec.via = 'occupy';
-          await seatedIs(true, 2500).catch(() => { throw new Error(`goto:${s.machine}: not seated (E and occupy both failed)`); });
-        }
-        rec.instance = tp.instance;
-        rec.at = tp.at;
-        break;
-      }
-      case 'play': {
-        for (let i = 0; i < s.n; i++) {
-          for (const k of s.keys) {
-            if (k.kind === 'wait') { await sleep(k.ms); continue; }
-            await pressKey(cdp, k.code, k.ms);
-          }
-        }
-        rec.n = s.n;
-        break;
-      }
-      case 'stand': {
-        await evaluate(cdp, '(window.jackid.app.world.standUp(), true)');
-        await seatedIs(false, 4000).catch(() => { rec.ok = false; rec.reason = 'still seated (the round may be settling)'; });
-        break;
-      }
-      case 'deposit':
-        rec.amount = s.amount;
-        rec.ok = (await evaluate(cdp, `window.jackid.app.run.deposit(${s.amount}) === true`)) === true;
-        if (!rec.ok) rec.reason = 'refused (pocket floor, quota room, or not a quota Watch)';
-        break;
-      case 'withdraw':
-        rec.amount = s.amount;
-        rec.ok = Number(await evaluate(cdp, `window.jackid.app.run.withdraw(${s.amount})`)) > 0;
-        if (!rec.ok) rec.reason = 'refused (window shut, or nothing in the bank)';
-        break;
-      case 'lever':
-        rec.lever = await evaluate(cdp, `(() => { const r = window.jackid.app.run; return r.openFloor() ? 'openFloor'
-          : r.startWatch() ? 'startWatch' : r.settleEarly() ? 'settleEarly' : null; })()`);
-        rec.ok = rec.lever !== null;
-        break;
-      case 'bell':
-        rec.ok = (await evaluate(cdp, 'window.jackid.app.run.ringBell() === true')) === true;
-        if (!rec.ok) rec.reason = 'refused (no Watch in play or Last Call, or the run ended)';
-        break;
-      case 'pawn':
-        rec.ok = (await evaluate(cdp, 'window.jackid.app.run.pawn.reroll() === true')) === true;
-        break;
-      case 'wait':
-        await sleep(s.ms);
-        break;
-      case 'state': {
-        const st = await evalJson(cdp, RUN_STATE_JS);
-        run.states.push(st);
-        rec.state = st;
-        log(`state: ${JSON.stringify(st)}`);
-        break;
-      }
-      default: throw new Error(`unknown run step ${s.kind}`);
-    }
-    rec.ms = Date.now() - t0;
-    run.steps.push(rec);
-    log(`run ${s.text}: ${rec.ok ? 'ok' : 'refused'} (${rec.ms} ms)`);
+/** Page JS: the seat test for `machineId` (the unlocked instance on the floor, and whether the player sits at it). */
+const SEAT_JS = (machineId) => `(() => {
+  const a = window.jackid.app, w = a.world, id = ${JSON.stringify(machineId)};
+  const m = w ? w.machines().find((x) => x.def.id === id && !w.isLocked(x.id)) : undefined;
+  return { instance: m ? m.id : null, seatedHere: Boolean(m) && a.player?.seat?.mid === m.id };
+})()`;
+
+/** Page JS: the Pawn Window's shelves (0-based; null = sold or empty), the wallet, the last refusal. */
+const PAWN_JS = `(() => {
+  const r = window.jackid.app.run, p = r.pawn, me = r.selfId;
+  return {
+    open: p.open(), wallet: r.wallet(), tickets: r.balance('ticket'), refusal: r.lastRefusal(),
+    mode: window.jackid.app.input?.mode ?? null,
+    stock: p.stock(me).map((s, i) => (s === null ? null : {
+      charmId: s.charmId, price: s.price, cursed: s.cursed, locked: s.locked, swap: p.needsSwap(me, i),
+    })),
+  };
+})()`;
+
+/** The floor machines the auto:night bot bets on, in rotation (the open ones only, see OPEN_BOT_JS). */
+const BOT_MACHINES = ['coinflip', 'hilo', 'scratch', 'bigone'];
+/** Page JS: the BOT_MACHINES that are placed and unlocked on the floor now, in rotation order. */
+const OPEN_BOT_JS = `(() => {
+  const w = window.jackid.app.world, ids = ${JSON.stringify(BOT_MACHINES)};
+  if (!w) return [];
+  const open = new Set(w.machines().filter((m) => !w.isLocked(m.id)).map((m) => m.def.id));
+  return ids.filter((id) => open.has(id));
+})()`;
+/**
+ * One coin bet per machine, as keys: close the first-sit tip (Digit9 is unbound on these machines, so it is a no-op
+ * otherwise), walk the stake down to the minimum (KeyZ), then place the bet and collect it (KeyQ).
+ */
+const BOT_RECIPE = {
+  coinflip: 'Space:120,wait:2600,KeyQ:120,wait:500',
+  hilo: 'Space:120,wait:1200,Digit1:120,wait:1500,KeyQ:120,wait:500',
+  scratch: 'Space:120,wait:1500,Space:120,wait:1800,KeyQ:120,wait:500',
+  bigone: 'Space:120,wait:3200,KeyQ:120,wait:500',
+};
+const BOT_MIN_STAKE = 'KeyZ:60,wait:120';
+const botKeys = (machine) => parseScript(`Digit9:60,wait:300,${Array(8).fill(BOT_MIN_STAKE).join(',')},${BOT_RECIPE[machine]}`);
+
+const AUTO_MAX_MS = 15 * 60_000;   // auto:night stops after this much wall time (the run is left where it is)
+const AUTO_MAX_LOOPS = 4000;
+const AUTO_LEVER_FAILS = 6;        // lever refused this many times in a row: the Night cannot move on
+
+/** Reads the debt-run state (RUN_STATE_JS). */
+const readState = (ctx) => evalJson(ctx.cdp, RUN_STATE_JS);
+
+const seatedIs = (ctx, want, ms) => waitFor(
+  async () => (await evaluate(ctx.cdp, 'window.jackid.app.player?.seat != null')) === want, ms, want ? 'a seat' : 'standing up');
+
+/** The `goto` step: teleport in front of the first unlocked floor machine, face it, press E (devtools occupy as the fallback). */
+async function gotoMachine(ctx, machine, rec) {
+  const { cdp } = ctx;
+  if (await evaluate(cdp, 'window.jackid.app.player?.seat != null')) {
+    await evaluate(cdp, '(window.jackid.app.world.standUp(), true)');
+    await seatedIs(ctx, false, 4000).catch(() => { throw new Error(`goto:${machine}: could not stand up first`); });
   }
+  const tp = await evalJson(cdp, goToJs(machine));
+  if (!tp.ok) throw new Error(`goto:${machine}: ${tp.reason}`);
+  await sleep(400);                                     // the interact focus follows the new view
+  await pressKey(cdp, 'KeyE', DEFAULT_HOLD_MS);
+  rec.via = 'E';
+  try { await seatedIs(ctx, true, 2500); } catch {
+    await evaluate(cdp, `(window.jackid.app.world.occupy(${JSON.stringify(tp.instance)}), true)`);   // devtools fallback
+    rec.via = 'occupy';
+    await seatedIs(ctx, true, 2500).catch(() => { throw new Error(`goto:${machine}: not seated (E and occupy both failed)`); });
+  }
+  rec.instance = tp.instance;
+  rec.at = tp.at;
+  // The seat is granted before the camera glides in; the keys of a seated machine only count once the input mode is 'machine'.
+  await waitFor(async () => (await evaluate(cdp, 'window.jackid.app.input?.mode')) === 'machine', 2500, 'machine input').catch(() => { rec.inputMode = 'not machine'; });
+}
+
+/** Seats the player at `machine` (the Pawn Window's steps), unless already seated there. */
+async function sitAt(ctx, machine, rec) {
+  const seat = await evalJson(ctx.cdp, SEAT_JS(machine));
+  if (!seat.instance) throw new Error(`${machine}: not on the floor (not placed, or locked this Night)`);
+  if (seat.seatedHere) { rec.via = 'already seated'; rec.instance = seat.instance; return; }
+  await gotoMachine(ctx, machine, rec);
+}
+
+/** Presses a parsed key list (parseScript output): keys held, waits in between. */
+async function playKeys(cdp, keys) {
+  for (const k of keys) {
+    if (k.kind === 'wait') await sleep(k.ms);
+    else await pressKey(cdp, k.code, k.ms);
+  }
+}
+
+/** `pawn:buy:<slot>`: the Pawn Window, shelf `slot` (1-based): the Digit key (5 and 6 by ArrowRight), Space twice. */
+async function pawnBuy(ctx, slot, rec) {
+  const { cdp } = ctx;
+  rec.slot = slot;
+  await sitAt(ctx, 'charm_vendor', rec);
+  await pressKey(cdp, 'Digit9', DEFAULT_HOLD_MS);       // closes the first-sit tip (a no-op otherwise)
+  await sleep(300);
+  const b = await evalJson(cdp, PAWN_JS);
+  if (!b.open) { rec.ok = false; rec.reason = 'window closed (it opens between Watches)'; return; }
+  if (slot > b.stock.length) { rec.ok = false; rec.reason = `the window has ${b.stock.length} shelves`; return; }
+  const s = b.stock[slot - 1];
+  if (!s) { rec.ok = false; rec.reason = 'nothing on that shelf (sold or empty)'; return; }
+  rec.charm = s.charmId;
+  rec.price = s.price;
+  rec.mode = b.mode;
+  if (b.mode !== 'machine') { rec.ok = false; rec.reason = `not at the window for input (input mode "${b.mode}"); no keys sent`; return; }
+  if (s.swap) { rec.ok = false; rec.reason = 'pegs full (a buy needs a swap pick; not bought)'; return; }
+  if (s.price > b.wallet) { rec.ok = false; rec.reason = 'not enough coins'; return; }
+  if (slot <= 4) await pressKey(cdp, `Digit${slot}`, DEFAULT_HOLD_MS);
+  else {
+    await pressKey(cdp, 'Digit4', DEFAULT_HOLD_MS);
+    for (let k = 4; k < slot; k++) { await sleep(150); await pressKey(cdp, 'ArrowRight', DEFAULT_HOLD_MS); }
+  }
+  await sleep(300);
+  await pressKey(cdp, 'Space', 120);                    // the first press shows the price
+  await sleep(350);
+  await pressKey(cdp, 'Space', 120);                    // the second, within 3 s, buys
+  await sleep(700);
+  const a = await evalJson(cdp, PAWN_JS);
+  rec.paid = b.wallet - a.wallet;
+  rec.ok = a.stock[slot - 1] === null;
+  if (!rec.ok) rec.reason = a.refusal ? `refused (${a.refusal})` : 'not bought';
+}
+
+/** `pawn:look`: sit at the Pawn Window, close the tip, screenshot the seat view (`run-pawn-look-<n>.png`). */
+async function pawnLook(ctx, rec) {
+  const { cdp } = ctx;
+  await sitAt(ctx, 'charm_vendor', rec);
+  await pressKey(cdp, 'Digit9', DEFAULT_HOLD_MS);       // the tip card would cover the window
+  await sleep(900);                                     // the camera glide into the seat
+  const b = await evalJson(cdp, PAWN_JS);
+  rec.open = b.open;
+  rec.wallet = b.wallet;
+  rec.shelves = b.stock.map((s) => (s === null ? null : `${s.charmId} ${s.price}${s.cursed ? ' (cursed)' : ''}`));
+  ctx.looks = (ctx.looks ?? 0) + 1;
+  if (ctx.shotsDir) rec.shot = await ctx.shoot(`run-pawn-look-${ctx.looks}.png`);
+}
+
+/** auto:night's shop pick: the cheapest clean shelf (not cursed, no swap) costing at most 30 % of the pocket. */
+async function shopPick(ctx) {
+  const b = await evalJson(ctx.cdp, PAWN_JS);
+  if (!b.open) return null;
+  let best = null;
+  b.stock.forEach((s, i) => {
+    if (!s || s.cursed || s.swap || s.price <= 0 || s.price > b.wallet * 0.3) return;
+    if (!best || s.price < best.price) best = { slot: i + 1, price: s.price };
+  });
+  return best;
+}
+
+/**
+ * `auto:night`: a sensible bot plays one Night. Per Watch: deposit 40 % of the pocket (20 % when refused) while quota is
+ * owed; shop the cheapest affordable shelf; lever (starts the Watch). In play: 1 bet on odd Watches, 2 on even ones,
+ * rotating over the open machines; then the Bell (unused pulls keep the rebate). A broke pocket withdraws the bank first.
+ * Ends when the Night rolls over (OPEN THE FLOOR), the run is over, or it reaches the top. Each action is its own record
+ * (`auto: true`), in order, before the summary record.
+ */
+async function autoNight(ctx, rec) {
+  const { res } = ctx;
+  const t0 = Date.now();
+  const auto = (o) => ({ ...o, auto: true });
+  const n0 = (await readState(ctx)).night;
+  const betsTried = new Map();          // `${night}:${watch}` -> bets attempted in that Watch
+  const handled = new Set();            // intermissions whose deposit and shop were tried
+  const count = { deposits: 0, shops: 0, bets: 0, bells: 0 };
+  let rot = 0, leverFails = 0, loops = 0, end = null, st = null;
+  /** This Watch's deposit: 40 % of the pocket while quota is owed (20 % when the terminal refuses it). Once per Watch. */
+  const depositFor = async (s) => {
+    if (!(s.quotaLeft > 0 && s.pocket > 0)) return;
+    for (const pct of [0.4, 0.2]) {
+      const amount = Math.floor(s.pocket * pct);
+      if (amount <= 0) return;
+      const r = await exec(ctx, auto({ kind: 'deposit', amount, text: `bank:deposit:${amount}` }));
+      if (r.ok) { count.deposits++; return; }
+    }
+  };
+  while (!end) {
+    if (++loops > AUTO_MAX_LOOPS) { end = 'loop budget'; break; }
+    if (Date.now() - t0 > AUTO_MAX_MS) { end = 'time budget'; break; }
+    if (res.reloads) { end = 'page reloaded'; break; }
+    st = await readState(ctx);
+    if (st.over) { end = 'run over'; break; }
+    if (st.topside) { end = 'topside'; break; }
+    if (st.night !== n0) { end = 'night paid'; break; }
+    const key = `${st.night}:${st.watch}`;
+
+    if (st.pocket < st.minBet && st.withdrawable > 0) {
+      const r = await exec(ctx, auto({ kind: 'withdraw', amount: st.withdrawable, text: `bank:withdraw:${st.withdrawable}` }));
+      if (!r.ok) await sleep(300);
+      continue;
+    }
+    // The first Watch of a Night starts with the intro (no intermission before it): its deposit is taken in the Bell or play.
+    if (st.phase === 'bell' || st.phase === 'play' || st.phase === 'lastCall') {
+      if (!handled.has(key)) { handled.add(key); await depositFor(st); continue; }
+    }
+    if (st.phase === 'intermission') {
+      if (st.nightDone) {                               // the Night is paid: OPEN THE FLOOR (the lever)
+        const r = await exec(ctx, auto({ kind: 'lever', text: 'lever' }));
+        leverFails = r.ok ? 0 : leverFails + 1;
+        if (leverFails >= AUTO_LEVER_FAILS) { end = 'lever refused'; break; }
+        if (!r.ok) await sleep(300);
+        continue;
+      }
+      if (!handled.has(key)) {
+        handled.add(key);
+        await depositFor(st);
+        const pick = await shopPick(ctx);
+        if (pick) {
+          const r = await exec(ctx, auto({ kind: 'pawnbuy', slot: pick.slot, text: `pawn:buy:${pick.slot}` }));
+          if (r.ok) count.shops++;
+          await exec(ctx, auto({ kind: 'stand', text: 'stand' }));
+        }
+        continue;
+      }
+      const r = await exec(ctx, auto({ kind: 'lever', text: 'lever' }));   // starts this Watch
+      leverFails = r.ok ? 0 : leverFails + 1;
+      if (leverFails >= AUTO_LEVER_FAILS) { end = 'lever refused'; break; }
+      if (!r.ok) await sleep(300);
+      continue;
+    }
+    if (st.phase === 'play' || st.phase === 'lastCall') {
+      const tried = betsTried.get(key) ?? 0;
+      const bets = st.watch % 2 === 1 ? 1 : 2;
+      if (tried < bets && (st.pulls ?? Infinity) > 0 && st.pocket >= st.minBet) {
+        betsTried.set(key, tried + 1);
+        const open = await evalJson(ctx.cdp, OPEN_BOT_JS);
+        if (open.length === 0) { betsTried.set(key, bets); continue; }   // nothing open to bet on: ring the Bell below
+        const machine = open[rot % open.length];
+        rot++;
+        const r = await exec(ctx, auto({ kind: 'bet', machine, text: `bot:bet:${machine}` }));
+        if (r.ok) count.bets++;
+        continue;
+      }
+      if (st.seated != null) await exec(ctx, auto({ kind: 'stand', text: 'stand' }));
+      const r = await exec(ctx, auto({ kind: 'bell', text: 'bell' }));
+      if (r.ok) count.bells++; else await sleep(300);
+      continue;
+    }
+    await sleep(300);                                   // bell, closing, settle, collection: the game moves on by itself
+  }
+  rec.night = [n0, st?.night ?? null];
+  rec.watch = st?.watch ?? null;
+  rec.end = end;
+  rec.loops = loops;
+  Object.assign(rec, count);
+  rec.ok = end === 'night paid' || end === 'topside';
+  if (!rec.ok) rec.reason = end;
+}
+
+/** Runs one parsed step (see parseRunSteps); the record `rec` is filled in as it goes. Throws on a step error. */
+async function runKind(ctx, s, rec) {
+  const { cdp, run } = ctx;
+  switch (s.kind) {
+    case 'goto': return gotoMachine(ctx, s.machine, rec);
+    case 'play':
+      for (let i = 0; i < s.n; i++) await playKeys(cdp, s.keys);
+      rec.n = s.n;
+      return;
+    case 'bet': {
+      const before = (await readState(ctx)).pulls;
+      await gotoMachine(ctx, s.machine, rec);
+      const mode = await evaluate(cdp, 'window.jackid.app.input?.mode');
+      if (mode !== 'machine') { rec.ok = false; rec.reason = `not at the machine for input (input mode "${mode}"); no keys sent`; return; }
+      await playKeys(cdp, botKeys(s.machine));
+      const after = (await readState(ctx)).pulls;
+      rec.machine = s.machine;
+      rec.pulls = [before, after];
+      rec.ok = before == null || after == null || after < before;
+      if (!rec.ok) rec.reason = 'no pull spent (refused, or the stake or pocket was short)';
+      return;
+    }
+    case 'stand':
+      await evaluate(cdp, '(window.jackid.app.world.standUp(), true)');
+      await seatedIs(ctx, false, 4000).catch(() => { rec.ok = false; rec.reason = 'still seated (the round may be settling)'; });
+      return;
+    case 'deposit':
+      rec.amount = s.amount;
+      rec.ok = (await evaluate(cdp, `window.jackid.app.run.deposit(${s.amount}) === true`)) === true;
+      if (!rec.ok) rec.reason = 'refused (pocket floor, quota room, or not a quota Watch)';
+      return;
+    case 'withdraw':
+      rec.amount = s.amount;
+      rec.ok = Number(await evaluate(cdp, `window.jackid.app.run.withdraw(${s.amount})`)) > 0;
+      if (!rec.ok) rec.reason = 'refused (window shut, or nothing in the bank)';
+      return;
+    case 'lever':
+      rec.lever = await evaluate(cdp, `(() => { const r = window.jackid.app.run; return r.openFloor() ? 'openFloor'
+        : r.startWatch() ? 'startWatch' : r.settleEarly() ? 'settleEarly' : null; })()`);
+      rec.ok = rec.lever !== null;
+      return;
+    case 'bell':
+      rec.ok = (await evaluate(cdp, 'window.jackid.app.run.ringBell() === true')) === true;
+      if (!rec.ok) rec.reason = 'refused (no Watch in play or Last Call, or the run ended)';
+      return;
+    case 'pawn':
+      rec.ok = (await evaluate(cdp, 'window.jackid.app.run.pawn.reroll() === true')) === true;
+      return;
+    case 'pawnbuy': return pawnBuy(ctx, s.slot, rec);
+    case 'pawnlook': return pawnLook(ctx, rec);
+    case 'auto': return autoNight(ctx, rec);
+    case 'wait':
+      await sleep(s.ms);
+      return;
+    case 'state': {
+      const st = await readState(ctx);
+      run.states.push(st);
+      rec.state = st;
+      log(`state: ${JSON.stringify(st)}`);
+      return;
+    }
+    default: throw new Error(`unknown run step ${s.kind}`);
+  }
+}
+
+/**
+ * Runs one step as a record in `run.steps` (pushed first, so a macro's own records follow it). A step that throws
+ * (a goto to a locked machine, a seat that does not take) is recorded with `ok: false` and `error`; the caller goes on.
+ */
+async function exec(ctx, s) {
+  const t0 = Date.now();
+  const rec = { step: s.text, ok: true };
+  if (s.auto) rec.auto = true;
+  ctx.run.steps.push(rec);
+  try { await runKind(ctx, s, rec); } catch (e) { rec.ok = false; rec.error = String(e?.message ?? e); }
+  rec.ms = Date.now() - t0;
+  log(`run ${s.text}: ${rec.error ? `error (${rec.error})` : rec.ok ? 'ok' : 'refused'} (${rec.ms} ms)`);
+  return rec;
+}
+
+/**
+ * Runs the parsed --run steps in order. Every step gets its record, failed ones included, and the steps go on. Only a
+ * page reload stops the list (`run.aborted`: the run is then invalid, see viteEvents).
+ */
+async function driveRun(ctx, steps) {
+  for (const s of steps) {
+    await exec(ctx, s);
+    if (ctx.res.reloads) { ctx.run.aborted = `the page reloaded after "${s.text}" (the run is invalid, see viteEvents)`; break; }
+  }
+  ctx.run.failed = ctx.run.steps.filter((r) => r.ok === false && !r.auto).length;
 }
 
 /**
@@ -486,7 +760,7 @@ export async function runBench(opts = {}) {
     res.state = await stateOf();
     log(`in game (${res.state}), ${res.framesPerSec} fps`);
     if (runSteps) {                                       // --run: the intro is skipped with a Space tap before any step
-      res.run = { intro: await skipIntro(cdp), steps: [], states: [], shot: null };
+      res.run = { intro: await skipIntro(cdp), steps: [], states: [], shot: null, failed: 0, aborted: null };
       log(`intro: played ${res.run.intro.played}, Space taps ${res.run.intro.taps}`);
     }
 
@@ -540,7 +814,7 @@ export async function runBench(opts = {}) {
 
     // 3e) --run: the debt-run steps (no rounds). The final screenshot is run-final.png.
     if (runSteps) {
-      await driveRun(cdp, runSteps, res.run);
+      await driveRun({ cdp, res, run: res.run, shoot, shotsDir, looks: 0 }, runSteps);
       if (shotsDir) res.run.shot = await shoot('run-final.png');
     }
 
@@ -652,6 +926,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       if (o.help || (!o.machine && !o.world && o.run === undefined)) { process.stderr.write(USAGE + '\n'); process.exit(o.help ? 0 : 2); }
       const result = await runBench(o);
       process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+      if (result.run?.aborted) code = 1;                 // steps that failed are in the JSON; a reload invalidates the run
     } catch (e) {
       code = 1;
       process.stdout.write(JSON.stringify({ error: String(e?.message ?? e) }, null, 2) + '\n');

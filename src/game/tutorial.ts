@@ -252,18 +252,34 @@ function startSteps(host: TutorialHost): Tutorial | null {
     ringMat.opacity = 0.45 + 0.2 * Math.sin(total * 3);
   };
 
+  /** Hides the box, the target marker and the clock hold. The step and its timer wait (they resume with the next Watch). */
+  const hide = (): void => {
+    el.style.display = 'none';
+    showTarget(null);
+    releaseClock('tutorial');
+    placeFeed();
+  };
+
   return {
     update(dt: number): void {
       if (disposed) return;
       // THE UNDERNEATH pauses the tutorial: its box and target marker hide, and no step, timer or skip moves until the player is back up.
       if (inUnderneath()) { el.style.display = 'none'; showTarget(null); releaseClock('tutorial'); return; }
-      total += dt;
-      age += dt;
 
       // Esc held for SKIP_HOLD_S skips (the pause card may open from the same press; Esc closes it as usual).
       if (holdFrom !== null && performance.now() - holdFrom >= SKIP_HOLD_S * 1000) { skip(); return; }
       // Leaving Night 1 ends the tutorial.
       if (run.night() !== 1) { finish(); return; }
+
+      // Only a Watch shows the steps. In the intermission (Mola) only the pawn step shows (the charm window). The Bell's
+      // countdown, the settle, and Dawn hide the box; the step waits and resumes with the next Watch.
+      const phase = run.shift.state().phase;
+      const playing = phase === 'play' || phase === 'lastCall';
+      const pawnInMola = phase === 'intermission' && STEPS[idx]?.key === 'pawn';
+      if (!playing && !pawnInMola) { hide(); return; }
+
+      total += dt;
+      age += dt;
 
       // Advance through the steps that are complete this frame (a skip past several is allowed).
       while (idx < STEPS.length && complete(STEPS[idx])) {

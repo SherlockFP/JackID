@@ -127,12 +127,11 @@ export function createHud(): Hud {
   const quotaBar = h('div', 'bar', quota);
   const quotaFill = h('i', '', quotaBar);
   const quotaShort = h('span', 'short', quota, '');
-  // NIGHT PLAN (under the quota): the Night's due, the Watch count, the bank's per-Watch interest, the projection at Dawn
-  // (banked coins only), the pocket on its own line, and how this Watch ends (pulls, clock, the Bell).
+  // NIGHT PLAN (under the quota), four lines: the Night's due, the bank and its projection at Dawn (banked coins only), the
+  // pocket (not counted), and the Watch with how it ends (pulls, clock, the Bell). Between Watches the last line names the next one.
   const plan = h('div', 'plan hidden', topR);
   const planHead = h('span', 'ph', plan);
   const planBank = h('span', 'pb', plan);
-  const planProj = h('span', 'pp', plan);
   const planPocket = h('span', 'pk', plan);
   const planEnds = h('span', 'pe', plan);
   let planKey = '';
@@ -425,34 +424,30 @@ export function createHud(): Hud {
     setCls(plan, 'hidden', !show);
     if (!r || !q || !seg || !bank || !show) return;
     const due = Math.max(0, Math.floor(q.due));
-    // Intermission: the segment still names the Watch just settled, so the line names the next one.
+    // Intermission: the segment still names the Watch just settled, so the last line names the next one.
     const interm = sh?.phase === 'intermission';
     const watch = interm ? seg.index + 2 : seg.index + 1;
     const settles = interm ? seg.count - seg.index - 1 : seg.count - seg.index;
     const p = dawnPlan({ due, balance: bank.balance, settles, interestAt: bank.interestAt });
     const pocket = Math.max(0, Math.floor(bank.pocket));
-    // The Watch ends at 0 pulls, at the clock, or at the Bell (the Debt Terminal). Not shown between Watches.
+    // The Watch ends at 0 pulls, at the clock, or at the Bell (the Debt Terminal).
     const pulls = r.pulls(self());
     const pullsTxt = Number.isFinite(pulls) ? String(Math.max(0, Math.floor(pulls))) : '∞';
     const clock = mmss(r.shift.timeLeft());
-    const ends = !interm;
-    const key = `${due}|${watch}|${seg.count}|${bank.balance}|${bank.ratePct}|${pocket}|${interm}|${p.projected}|${pullsTxt}|${clock}`;
+    const key = `${due}|${watch}|${seg.count}|${bank.balance}|${pocket}|${interm}|${p.projected}|${p.gap}|${pullsTxt}|${clock}`;
     if (key === planKey) return;
     planKey = key;
-    setText(planHead, t(interm ? 'hud.plan.headNext' : 'hud.plan.head', { q: money(due), w: watch, n: seg.count }));
-    setText(planBank, bank.ratePct > 0
-      ? t('hud.plan.bank', { b: money(bank.balance), r: bank.ratePct })
-      : t('hud.plan.bankFlat', { b: money(bank.balance) }));
-    const met = bank.left <= 0;
-    setCls(plan, 'ok', met || p.met);
-    setCls(plan, 'gap', !met && !p.met);
-    setText(planProj, met ? t('hud.plan.met')
-      : p.met ? t('hud.plan.proj', { p: money(p.projected) })
-      : t('hud.plan.projShort', { p: money(p.projected), g: money(p.gap) }));
+    setText(planHead, t('hud.plan.head', { q: money(due) }));
+    setCls(plan, 'ok', p.met);
+    setCls(plan, 'gap', !p.met);
+    setText(planBank, p.met
+      ? t('hud.plan.bank', { b: money(bank.balance), p: money(p.projected) })
+      : t('hud.plan.bankShort', { b: money(bank.balance), p: money(p.projected), g: money(p.gap) }));
     setCls(planPocket, 'hidden', pocket <= 0);
     setText(planPocket, t('hud.plan.pocket', { p: money(pocket) }));
-    setCls(planEnds, 'hidden', !ends);
-    setText(planEnds, t('hud.plan.ends', { p: pullsTxt, c: clock }));
+    setText(planEnds, interm
+      ? t('hud.plan.next', { w: watch, n: seg.count })
+      : t('hud.plan.ends', { w: watch, n: seg.count, p: pullsTxt, c: clock }));
   }
 
   function updateEmpire(): void {
