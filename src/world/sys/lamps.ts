@@ -4,6 +4,9 @@
  *   Hot  warm amber, strong breathing (about 0.4 Hz, ±45 %), a halo over the cabinet, a tall beam above it, and a
  *        floating "HOT ×1.5" tag over the beam (grows with distance, never breathes).
  *   Cold clear dim blue, steady, a halo and a short faint column.
+ * Machine of the Night (`spotlight:change`, payload null = none) lights each spotlight instance with a gold halo, a tall gold
+ * beam and a floating "SPOTLIGHT ×1.25" tag (same beam and tag code as the Hot lamp). It is light and beam only, no pool
+ * light, so the pool's six slots still belong to the Lamps. It never breathes.
  * The lights live in the shared LightPool (world/sys/lightPool), so the pool's six slots still decide what is real.
  * The halo and beam are additive sprites / open cylinders parented to the pool's scene root (no picking, no shadows).
  * Reduce flashing shrinks the breathing to a quarter. Seeded or timed only; no randomness.
@@ -13,11 +16,14 @@ import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
 import type { Hex, InstanceId, Unsub } from '@/core/types';
 import { HOT_MULT } from '@/game/circuit';
+import { SPOTLIGHT_MULT } from '@/game/data/schedule';
+import '@/game/spotlight';   // registers the spotlight strings (the tag's "SPOTLIGHT" word)
 import type { LightPool } from './lightPool';
 import { app } from '@/core/app';
 
 const HOT_COLOR: Hex = 0xffa040;
 const COLD_COLOR: Hex = 0x4a7dff;
+const SPOT_COLOR: Hex = 0xffdf5a;
 const HOT_BASE = 3.6;
 const COLD_BASE = 1.1;
 const HOT_RANGE = 9;
@@ -30,7 +36,16 @@ const BEAM_H = 3.2;
 const TAG_Y = 1.1;
 const TAG_W = 1.9;
 const TAG_H = 0.57;
+/** The spotlight's tag sits above the Hot tag, so one slot can carry both without them overlapping. */
+const SPOT_TAG_Y = TAG_Y + 0.8;
+/** The spotlight's halo world size at the near end (the Hot halo is 2.4, the Cold 1.2). */
+const SPOT_SIZE = 2.0;
 const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
+
+/** A tag's plate: background, border and type colours. */
+interface TagLook { bg: string; edge: string; ink: string }
+const HOT_LOOK: TagLook = { bg: 'rgba(18,9,3,0.88)', edge: '#ffa040', ink: '#ffd08a' };
+const SPOT_LOOK: TagLook = { bg: 'rgba(20,16,4,0.88)', edge: '#ffdf5a', ink: '#fff1b8' };
 
 export interface LampGlowOpts {
   pool: Pick<LightPool, 'add' | 'api' | 'lights'>;
@@ -43,13 +58,15 @@ export interface LampGlowOpts {
 export interface LampGlow {
   /** Per frame: breathing levels for the live Hot lamps. */
   update(dt: number): void;
-  /** Removes every light, halo and beam, and the bus subscription. */
+  /** Removes every light, halo and beam, and the bus subscriptions. */
   dispose(): void;
 }
 
+type GlowKind = 'hot' | 'cold' | 'spot';
 interface Glow { sprite: THREE.Sprite; sm: THREE.SpriteMaterial; beam: THREE.Mesh; bm: THREE.MeshBasicMaterial; size: number }
 interface Tag { sprite: THREE.Sprite; sm: THREE.SpriteMaterial; tex: THREE.CanvasTexture }
 interface Live { owner: string; hot: boolean; off: () => void; phase: number; glow: Glow | null; tag: Tag | null; at: THREE.Vector3 }
+interface Spot { glow: Glow | null; tag: Tag | null; at: THREE.Vector3 }
 
 /** Shared textures and column geometry, made on first use (needs a DOM canvas; absent in node, the glow is then light only). */
 interface Shared { halo: THREE.CanvasTexture; beam: THREE.CanvasTexture; hotCol: THREE.CylinderGeometry; coldCol: THREE.CylinderGeometry }
@@ -94,27 +111,31 @@ function sharedGlow(): Shared | null {
 
 export function createLampGlow(o: LampGlowOpts): LampGlow {
   const live: Live[] = [];
+  const spots: Spot[] = [];
+  let spotKey = '';
   let clock = 0;
   let serial = 0;
 
-  const makeGlow = (host: THREE.Object3D, x: number, y: number, z: number, hot: boolean): Glow | null => {
+  const makeGlow = (host: THREE.Object3D, x: number, y: number, z: number, kind: GlowKind): Glow | null => {
     const sh = sharedGlow();
     if (!sh) return null;
+    const color = kind === 'hot' ? HOT_COLOR : kind === 'cold' ? COLD_COLOR : SPOT_COLOR;
+    const column = kind === 'cold' ? sh.coldCol : sh.hotCol;
     const sm = new THREE.SpriteMaterial({
-      map: sh.halo, color: hot ? HOT_COLOR : COLD_COLOR, transparent: true, depthWrite: false,
+      map: sh.halo, color, transparent: true, depthWrite: false,
       blending: THREE.AdditiveBlending, opacity: 0,
     });
     const sprite = new THREE.Sprite(sm);
-    const size = hot ? 2.4 : 1.2;
+    const size = kind === 'hot' ? 2.4 : kind === 'spot' ? SPOT_SIZE : 1.2;
     sprite.scale.set(size, size, 1);
     sprite.position.set(x, y + MOUNT_Y - 0.1, z);
     sprite.raycast = () => undefined;
     const bm = new THREE.MeshBasicMaterial({
-      map: sh.beam, color: hot ? HOT_COLOR : COLD_COLOR, transparent: true, depthWrite: false,
+      map: sh.beam, color, transparent: true, depthWrite: false,
       blending: THREE.AdditiveBlending, opacity: 0, side: THREE.DoubleSide, fog: false,
     });
-    const beam = new THREE.Mesh(hot ? sh.hotCol : sh.coldCol, bm);
-    beam.position.set(x, y + MOUNT_Y + (hot ? BEAM_H : BEAM_H * 0.6) / 2, z);
+    const beam = new THREE.Mesh(column, bm);
+    beam.position.set(x, y + MOUNT_Y + column.parameters.height / 2, z);
     beam.raycast = () => undefined;
     host.add(sprite, beam);
     return { sprite, sm, beam, bm, size };
@@ -128,17 +149,16 @@ export function createLampGlow(o: LampGlowOpts): LampGlow {
     g.bm.dispose();
   };
 
-  /** The tag: a dark plate with the Hot multiplier, read in the current language when the Lamps are lit (each Bell). */
-  const makeTag = (host: THREE.Object3D, x: number, y: number, z: number): Tag | null => {
+  /** A floating tag: a dark plate with the label, `dy` metres above the lamp mount. The label is read in the current language when the lamp is lit. */
+  const makeTag = (host: THREE.Object3D, x: number, y: number, z: number, label: string, look: TagLook, dy: number): Tag | null => {
     if (!sharedGlow()) return null;
-    const label = t('circuit.hot', { x: HOT_MULT });
     const tex = canvasTex(320, 96, (g) => {
-      g.fillStyle = 'rgba(18,9,3,0.88)';
+      g.fillStyle = look.bg;
       g.fillRect(0, 0, 320, 96);
-      g.strokeStyle = '#ffa040';
+      g.strokeStyle = look.edge;
       g.lineWidth = 6;
       g.strokeRect(3, 3, 314, 90);
-      g.fillStyle = '#ffd08a';
+      g.fillStyle = look.ink;
       g.textAlign = 'center';
       g.textBaseline = 'middle';
       // shrink the type to fit the plate (Turkish runs longer than English)
@@ -150,7 +170,7 @@ export function createLampGlow(o: LampGlowOpts): LampGlow {
     const sm = new THREE.SpriteMaterial({ map: tex, color: 0xffffff, transparent: true, depthWrite: false, fog: false });
     const sprite = new THREE.Sprite(sm);
     sprite.scale.set(TAG_W, TAG_H, 1);
-    sprite.position.set(x, y + MOUNT_Y + TAG_Y, z);
+    sprite.position.set(x, y + MOUNT_Y + dy, z);
     sprite.raycast = () => undefined;
     host.add(sprite);
     return { sprite, sm, tex };
@@ -168,6 +188,11 @@ export function createLampGlow(o: LampGlowOpts): LampGlow {
     live.length = 0;
   };
 
+  const clearSpots = (): void => {
+    for (const s of spots) { dropGlow(s.glow); dropTag(s.tag); }
+    spots.length = 0;
+  };
+
   const add = (mid: InstanceId, hot: boolean): void => {
     const p = o.at(mid);
     if (!p) return;
@@ -182,9 +207,21 @@ export function createLampGlow(o: LampGlowOpts): LampGlow {
     });
     // the scene root the pool's lights hang from (the halo and beam go there too)
     const host = o.pool.lights[0]?.parent ?? null;
-    const glow = host ? makeGlow(host, p.x, p.y, p.z, hot) : null;
-    const tag = host && hot ? makeTag(host, p.x, p.y, p.z) : null;
+    const glow = host ? makeGlow(host, p.x, p.y, p.z, hot ? 'hot' : 'cold') : null;
+    const tag = host && hot ? makeTag(host, p.x, p.y, p.z, t('circuit.hot', { x: HOT_MULT }), HOT_LOOK, TAG_Y) : null;
     live.push({ owner, hot, off: offLight, phase: (serial++ * 0.618) % 1, glow, tag, at: new THREE.Vector3(p.x, p.y + MOUNT_Y, p.z) });
+  };
+
+  /** A spotlight instance: gold halo and beam plus the "SPOTLIGHT ×1.25" tag. No pool light. */
+  const addSpot = (mid: InstanceId): void => {
+    const p = o.at(mid);
+    if (!p) return;
+    const host = o.pool.lights[0]?.parent ?? null;
+    if (!host) return;
+    const glow = makeGlow(host, p.x, p.y, p.z, 'spot');
+    const label = `${t('spotlight.payout')} ×${SPOTLIGHT_MULT.toFixed(2)}`;
+    const tag = makeTag(host, p.x, p.y, p.z, label, SPOT_LOOK, SPOT_TAG_Y);
+    spots.push({ glow, tag, at: new THREE.Vector3(p.x, p.y + MOUNT_Y, p.z) });
   };
 
   const unsub: Unsub = bus.on('circuit:lamps', (e) => {
@@ -193,9 +230,19 @@ export function createLampGlow(o: LampGlowOpts): LampGlow {
     for (const m of e.cold) add(m.mid, false);
   });
 
+  const unsubSpot: Unsub = bus.on('spotlight:change', (v) => {
+    // a re-announce of the same Night's spotlight (each play) keeps the beams; only a new pick rebuilds them
+    const key = v ? `${v.night}:${v.machineId}:${v.instances.join(',')}` : '';
+    if (key === spotKey) return;
+    spotKey = key;
+    clearSpots();
+    if (!v) return;
+    for (const mid of v.instances) addSpot(mid);
+  });
+
   return {
     update(dt: number): void {
-      if (live.length === 0) return;
+      if (live.length === 0 && spots.length === 0) return;
       clock += dt;
       const amp = o.reduced() ? 0.25 : 1;
       const cam = app.camera as THREE.Object3D | undefined;
@@ -222,10 +269,23 @@ export function createLampGlow(o: LampGlowOpts): LampGlow {
           }
         }
       }
+      // the spotlight is steady (no breathing, so nothing flashes); it only grows and brightens with distance
+      for (const sp of spots) {
+        const far = cp ? clamp01((sp.at.distanceTo(cp) - 5) / 25) : 0;
+        if (sp.tag) sp.tag.sprite.scale.set(TAG_W * (1 + 0.6 * far), TAG_H * (1 + 0.6 * far), 1);
+        if (sp.glow) {
+          sp.glow.sm.opacity = Math.min(1, 0.5 + 0.3 * far);
+          sp.glow.bm.opacity = Math.min(1, 0.28 + 0.3 * far);
+          sp.glow.sprite.scale.setScalar(sp.glow.size * (1 + 1.0 * far));
+        }
+      }
     },
     dispose(): void {
       unsub();
+      unsubSpot();
       clear();
+      clearSpots();
+      spotKey = '';
     },
   };
 }

@@ -46,7 +46,9 @@ test('the deck holds ten cards with distinct ids, one tone each, and strings in 
 });
 
 test('the card face shows the concrete result for its Night (N2 quota 36): RUSH 36 -> 27 and 3 -> 2 Watches, DOUBLE DOWN 36 -> 54 and x1.3', () => {
-  const pv = (id, idx = 1) => NC.nightCardPreview(card(id), idx);
+  // A stub exact reader (the ladder quota x the card's multiplier): this test checks the line formats; the parity test below
+  // checks the numbers against a real run.
+  const pv = (id, idx = 1) => NC.nightCardPreview(card(id), idx, (m) => Math.round(SCH.quotaFor(idx) * m));
   assert.deepEqual(pv('rush_night'), [{ key: 'quota', vars: { from: 36, to: 27 } }, { key: 'watches', vars: { from: 3, to: 2 } }]);
   assert.deepEqual(pv('double_down'), [{ key: 'quota', vars: { from: 36, to: 54 } }, { key: 'payout', vars: { x: 1.3 } }]);
   assert.deepEqual(pv('lean_night'), [{ key: 'pulls', vars: { from: 7, to: 5 } }, { key: 'payout', vars: { x: 1.2 } }]);
@@ -63,6 +65,59 @@ test('the card face shows the concrete result for its Night (N2 quota 36): RUSH 
       const lines = pv(d.id, idx);
       assert.ok(lines.length >= 1, `${d.id} shows at least one line on Night ${idx + 1}`);
       for (const p of lines) for (const lang of ['en', 'tr']) assert.ok(STR.default[lang][`prev.${p.key}`], `${lang} prev.${p.key}`);
+    }
+  }
+});
+
+test('no exact quota read means no quota line: the card never shows a ladder guess', () => {
+  const lines = NC.nightCardPreview(card('double_down'), 1);
+  assert.equal(lines.some((p) => p.key === 'quota'), false, 'no reader, no quota line');
+  assert.deepEqual(lines, [{ key: 'payout', vars: { x: 1.3 } }]);
+  assert.equal(NC.nightCardPreview(card('double_down'), 1, () => null).some((p) => p.key === 'quota'), false, 'a null read, no quota line');
+});
+
+/** A run at the Dawn that opens Night index `idx + 1`: Nights 1..idx paid at `over` x their quota (their first card settles). */
+function dawnRun(seed, idx, over) {
+  const run = RUN.createRun({ seed, mode: 'debt' });
+  for (let i = 0; i <= idx; i++) {
+    run.debtPaid = Math.ceil(run.quota.due * over);
+    run.syncQuota();
+    run.phase = 'collection';
+    run.dawn();
+    if (i < idx) assert.equal(run.openFloor(), true, `Night ${i + 1} opens`);
+  }
+  return run;
+}
+
+/** One real offer per card: the first (seed, Night 1-7) whose seeded offer holds it. */
+function offerCasePerCard() {
+  const found = new Map();
+  for (let seed = 1; seed <= 300 && found.size < IDS.length; seed++) {
+    for (const night of NIGHTS.slice(0, 7)) {
+      for (const id of NC.nightCardOffer(seed, night)) if (!found.has(id)) found.set(id, { seed, night });
+    }
+  }
+  return found;
+}
+
+test('preview parity: each card preview quota is the quota its Night opens with (real Dawns and offers, paid 1x and 1.6x)', () => {
+  const cases = offerCasePerCard();
+  assert.equal(cases.size, IDS.length, 'every card is offered on Nights 1-7 of some seed');
+  for (const [id, { seed, night }] of cases) {
+    for (const over of [1, 1.6]) {
+      const where = `${id} seed ${seed} Night ${night} paid x${over}`;
+      const r = dawnRun(seed, night - 1, over);
+      const o = r.nightCardOffer();
+      assert.ok(o && o.night === night && o.candidates.some((d) => d.id === id), `${where}: on offer`);
+      const lines = NC.nightCardPreview(card(id), o.night, (m) => r.nextQuotaPreview(m)?.due ?? null);
+      const q = lines.find((p) => p.key === 'quota');
+      const baseline = r.nextQuotaPreview(1)?.due;
+      assert.ok(Number.isFinite(baseline) && baseline > 0, `${where}: a plain quota read`);
+      if (q) assert.equal(q.vars.from, baseline, `${where}: the card's from is the plain quota`);
+      assert.equal(r.pickNightCard(id), true, `${where}: picked`);
+      assert.equal(r.openFloor(), true, `${where}: the floor opens`);
+      assert.equal(r.quota.due, q ? q.vars.to : baseline, `${where}: the quota the Night opens with`);
+      r.dispose();
     }
   }
 });

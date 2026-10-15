@@ -41,6 +41,7 @@ import { fmtCoins, fmtNum } from '@/core/i18n';
 import type { OvershootTier, QuotaState, RunApi } from '@/game/types';
 import type { BankView, DepositRefusal } from '@/game/run';
 import type { WithdrawPreview } from '@/game/bank';
+import { closingSeconds } from '@/game/data/schedule';
 import { nightPaid } from './night';
 import { bandFromPx, CONTROL_MARGIN, frameConsole, type Vec3 } from './fit';
 
@@ -148,7 +149,7 @@ export const def: MachineDef = {
       notQuota: "Not a quota Watch: nothing to deposit toward tonight",
       watchClosed: "Watch closed: deposits open again between Watches",
       nothingDeposit: "Nothing to deposit: the pocket is empty",
-      watchEnding: "Watch ending: the lever waits until it settles",
+      watchEnding: "The Watch is closing — lever in {s} s",
       watchRunning: "Watch still running — ring the Bell first",
       belling: "The Bell is already ringing",
       settling: "Settling — {s} s",
@@ -234,7 +235,7 @@ export const def: MachineDef = {
       notQuota: "Kota nöbeti değil: bu gece için yatıracak bir şey yok",
       watchClosed: "Nöbet kapandı: yatırma, nöbetler arasında yeniden açılır",
       nothingDeposit: "Yatırılacak bir şey yok: cep boş",
-      watchEnding: "Nöbet bitiyor: kol, kapanana kadar bekler",
+      watchEnding: "Nöbet kapanıyor — kol {s} sn sonra",
       watchRunning: "Nöbet sürüyor — önce zili çal",
       belling: "Zil zaten çalıyor",
       settling: "Kapanıyor — {s} sn",
@@ -279,6 +280,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private keyArm: { key: KeyId; amount: number; left: number } | null = null;
   /** Seconds an armed END WATCH stays armed (the second press ends the Watch). */
   private bellArm = 0;
+  /** Seconds the Watch has been closing (the run's `closing` phase, counted from the frame time). */
+  private closingFor = 0;
   /** Phase last seen by `refresh`: a change clears the typed amount. */
   private lastPhase = '';
   /** Band the pose was last fitted to (the seat bar moves with its stack), so the framing follows it. */
@@ -371,6 +374,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   tick(dt: number): void {
     if (this.keyArm) { this.keyArm.left -= dt; if (this.keyArm.left <= 0) this.keyArm = null; }
     if (this.bellArm > 0) this.bellArm = Math.max(0, this.bellArm - dt);
+    // The Watch's closing countdown (a Bell or the play clock ends the Watch): the lever's wait, read from the frame time.
+    this.closingFor = this.ctx.run.shift?.phase === 'closing' ? this.closingFor + dt : 0;
     this.fitIfBandMoved();
     this.refresh(false);
   }
@@ -662,11 +667,21 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
         this.refuseDeposit(why, this.ctx.run.depositFloor?.() ?? 0);
         return;
       case 'settling': this.refuse('settling', { s: (this.bk().settleLeft ?? 0).toFixed(1) }); return;
-      case 'watchRunning': case 'watchEnding': case 'belling': case 'noWatch': case 'nightUnpaid': case 'quotaShort': case 'nightCard':
+      case 'watchEnding': this.closingWait(); return;
+      case 'watchRunning': case 'belling': case 'noWatch': case 'nightUnpaid': case 'quotaShort': case 'nightCard':
         this.refuse(why);
         return;
       default: this.refuse('denied');
     }
+  }
+
+  /**
+   * A lever press while the Watch is closing (right after a Bell): not an error, the lever simply waits for the close. One soft
+   * line with the seconds left (the closing lasts `closingSeconds()`), no error sound.
+   */
+  private closingWait(): void {
+    const s = Math.max(1, Math.ceil(closingSeconds() - this.closingFor));
+    this.ctx.ui.toast(this.t('watchEnding', { s }), 'info');
   }
 
   // ── presentation (every peer) ───────────────────────────────────────────────────────────────────

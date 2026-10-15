@@ -14,7 +14,7 @@
  */
 import { createRng, hashSeed } from '@/core/rng';
 import type { ModEffect, ModProvider, ModQuery, ModSource, ModSourceKind } from './modifiers.types';
-import { coldLampCount, hotLampCount, nightDef, quotaFor, ratePercent, TILT_FREE_PULLS } from './data/schedule';
+import { coldLampCount, hotLampCount, nightDef, ratePercent, TILT_FREE_PULLS } from './data/schedule';
 
 /** Cards offered at each Dawn. */
 export const NIGHT_CARD_OFFER_SIZE = 2;
@@ -104,12 +104,12 @@ export interface NightCardPreviewLine {
 
 /**
  * The concrete result of `def` for the Night at `index` (0-based, the Night the card is for): every number it changes, before and
- * after. `dueWith(m)` is the Night's exact quota with the card's quota multiplier `m` folded in (the run's own read, see
- * `DebtRun.nextQuotaPreview`); null or no reader falls back to the ladder quota. The card's quota line reads that exact due.
+ * after. `dueWith(m)` is the Night's exact quota with the card's quota multiplier `m` folded in: the run's own read
+ * (`DebtRun.nextQuotaPreview(m)?.due`), the same number the Night opens with. There is no ladder estimate: without an exact read
+ * (no reader, or the run gives none) the quota line is left out rather than shown wrong.
  */
 export function nightCardPreview(def: NightCardDef, index: number, dueWith?: (mult: number) => number | null): NightCardPreviewLine[] {
   const nd = nightDef(index);
-  const ladder = quotaFor(index);
   const sum = (hook: ModEffect['hook'], op: ModEffect['op']): number => def.effects
     .filter((e) => e.hook === hook && e.op === op).reduce((acc, e) => acc + e.value, 0);
   const product = (hook: ModEffect['hook']): number => def.effects
@@ -118,9 +118,9 @@ export function nightCardPreview(def: NightCardDef, index: number, dueWith?: (mu
   const lines: NightCardPreviewLine[] = [];
   const qMult = product('quota.mult');
   if (qMult !== 1) {
-    const from = dueWith?.(1) ?? ladder;
-    const to = dueWith?.(qMult) ?? Math.round(ladder * qMult);
-    lines.push({ key: 'quota', vars: { from, to } });
+    const from = dueWith?.(1) ?? null;
+    const to = dueWith?.(qMult) ?? null;
+    if (from !== null && to !== null) lines.push({ key: 'quota', vars: { from, to } });
   }
   if (fx.watchAdd !== 0) lines.push({ key: 'watches', vars: { from: nd.watches, to: Math.max(1, nd.watches + fx.watchAdd) } });
   const pullsAdd = sum('x.run.pullsAdd', 'add');

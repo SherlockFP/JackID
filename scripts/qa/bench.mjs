@@ -108,7 +108,7 @@ export function parseScript(text) {
  *   pawn               one Pawn Window reroll (Intermission only)
  *   pawn:buy:<slot>    buy Pawn Window shelf <slot> (1-6, 1-based): sits there, the shelf key, Space twice
  *   pawn:look          sit at the Pawn Window, screenshot the seat view (run-pawn-look-<n>.png)
- *   auto:night         a bot plays one Night (deposit 40 %, shop, lever, rotating coin bets, Bell); prints each Watch's state
+ *   auto:night         a bot plays one Night like a sensible human (Hot first, spotlight, Tilt rotation, push-your-luck, Dawn deposits, Mola); logs each decision
  *   auto:night:event   the same, but stops at the first Watch with a floor event (shot it, then auto:night carries on)
  *   events             record and print the live floor event (watchEvents.ts watchEventView), null between Watches
  *   shot:<name>        screenshot to <shots>/<name>.png (needs --shots)
@@ -422,13 +422,15 @@ const NIGHT_CARD_OFFER_JS = `(async () => {
     for (const [k, x] of Object.entries(v)) out[k] = k === 'x' ? String(x).replace('.', comma ? ',' : '.') : x;
     return out;
   };
+  // The exact read the game's own panel uses (ladder + discount + assessment + House notice + the card's multiplier).
+  const dueWith = (m) => r.nextQuotaPreview?.(m)?.due ?? null;
   const cards = o.candidates.map((def) => {
-    const lines = nightCardPreview(def, o.night);
+    const lines = nightCardPreview(def, o.night, dueWith);
     const q = lines.find((p) => p.key === 'quota');
     return {
       id: def.id, tone: def.tone, lines,
       text: lines.map((p) => t('nightcard.prev.' + p.key, vars(p.vars))).join(' · '),
-      quotaTo: q ? q.vars.to : quotaBase,
+      quotaTo: q ? q.vars.to : (dueWith(1) ?? quotaBase),
     };
   });
   return { missing: false, night: o.night, have: b.pocket + b.balance, quotaBase, cards };
@@ -474,9 +476,27 @@ async function offerSummary(cdp) {
   return summarizeOffer(await evalJson(cdp, NIGHT_CARD_OFFER_JS));
 }
 
+/** Page JS helper: the Machine of the Night for the state record (null between Nights). */
+const SPOTLIGHT_FN_JS = `function spotlightOf(r) {
+  const s = r.spotlightView?.();
+  return s ? { machineId: s.machineId, night: s.night, plays: s.plays, progress: s.progress } : null;
+}`;
+
+/** The Dawn projection body (uses `r`): the bank at Dawn if the Night plays on, the gap to the quota, the float to keep. */
+const DAWN_BODY = `
+  const { dawnPlan } = await import('/src/game/pace.ts');
+  const { nightDef } = await import('/src/game/data/schedule.ts');
+  const b = r.bank();
+  const settles = Math.max(0, nightDef(r.night() - 1).watches - ((typeof r.watch === 'number' ? r.watch : 0) + 1));
+  const p = dawnPlan({ due: b.due, balance: b.balance, settles, interestAt: b.interestAt });
+  return { due: b.due, balance: b.balance, settles, projected: p.projected, gap: p.gap, met: p.met, float: r.depositFloor() };`;
+/** Page JS: the Dawn projection of the open run (null without one). */
+const DAWN_JS = `(async () => { const r = window.jackid.app.run; if (!r) return null; ${DAWN_BODY} })()`;
+
 /** Page JS: the debt run's state, for `state`, the step records and the auto:night loop. Watch and Night are 1-based. */
 const RUN_STATE_JS = `(async () => {
   ${NIGHT_CARD_IDS_JS}
+  ${SPOTLIGHT_FN_JS}
   const a = window.jackid.app, r = a.run;
   if (!r) return { over: true, run: null };   // the run is gone: the menu took the screen back
   const b = r.bank(), pulls = r.pulls();
@@ -496,8 +516,11 @@ const RUN_STATE_JS = `(async () => {
     over: r.over, seated: a.player?.seat?.mid ?? null, intro: a.cutscene.playing ?? null,
     starterOffer: r.starterDraft()?.candidates.map((d) => d.id) ?? null, starterLeft: r.starterDraft()?.left ?? null,
     charms: r.charms().map((c) => (c.stacks > 1 ? c.id + " x" + c.stacks : c.id)),
+    spotlight: spotlightOf(r),                     // Machine of the Night: { machineId, night, plays, progress }, or null
+    dawn: await (async () => { ${DAWN_BODY} })(),  // the Dawn projection the deposits aim at (pace.ts dawnPlan)
   };
 })()`;
+
 
 /**
  * Page JS: teleports the player in front of the first unlocked floor machine of `machineId` and faces it. The front is
@@ -515,6 +538,9 @@ const goToJs = (sel) => `(() => {
     m = w.machines().find((x) => x.id === want.mid);
     if (!m) return { ok: false, reason: 'the Hot cabinet (' + want.machineId + ') is not on the floor' };
     if (w.isLocked(m.id)) return { ok: false, reason: 'the Hot cabinet (' + want.machineId + ') is locked this Night' };
+  } else if (sel.instance) {
+    m = w.machines().find((x) => x.id === sel.instance && !w.isLocked(x.id));
+    if (!m) return { ok: false, reason: 'the chosen machine (' + sel.instance + ') is not open now' };
   } else {
     m = w.machines().find((x) => x.def.id === sel.machine && !w.isLocked(x.id));
     if (!m) return { ok: false, reason: 'no unlocked "' + sel.machine + '" on the floor (not placed, or locked this Night)' };
@@ -548,28 +574,66 @@ const PAWN_JS = `(() => {
   };
 })()`;
 
-/** The floor machines the auto:night bot bets on, in rotation (the open ones only, see OPEN_BOT_JS). */
-const BOT_MACHINES = ['coinflip', 'hilo', 'scratch', 'bigone'];
-/** Page JS: the BOT_MACHINES that are placed and unlocked on the floor now, in rotation order. */
-const OPEN_BOT_JS = `(() => {
-  const w = window.jackid.app.world, ids = ${JSON.stringify(BOT_MACHINES)};
-  if (!w) return [];
-  const open = new Set(w.machines().filter((m) => !w.isLocked(m.id)).map((m) => m.def.id));
-  return ids.filter((id) => open.has(id));
-})()`;
 /**
- * One coin bet per machine, as keys: close the first-sit tip (Digit0, a neutral key: Digit7/8/9 are the SAFE/BOLD/BIG stake
- * presets, and Digit9 would arm BIG), walk the stake down to the minimum (KeyZ), then place the bet and collect it (KeyQ).
+ * The bot's machine recipes (keys after the stake is set). Digit0 closes a first-sit tip (a neutral key: Digit7/8/9 are the
+ * SAFE/BOLD/BIG stake presets, and Digit9 would arm BIG). coinflip and bigone decide mid-round (botRound), the rest are keys.
  */
 const BOT_RECIPE = {
-  coinflip: 'Space:120,wait:2600,KeyQ:120,wait:500',
   hilo: 'Space:120,wait:1200,Digit1:120,wait:1500,KeyQ:120,wait:500',
   scratch: 'Space:120,wait:1500,Space:120,wait:1800,KeyQ:120,wait:500',
-  bigone: 'Space:120,wait:3200,KeyQ:120,wait:500',
 };
+/** Any other machine the bot bets on (a slot or lottery kind, or the spotlight): one spin, then collect. */
+const BOT_RECIPE_GENERIC = 'Space:120,wait:2000,KeyQ:120,wait:500';
+/** Machine kinds the bot may bet on besides the spotlight (the rest of the floor is not played: tables, the Pawn, the phone). */
+const BOT_CATEGORIES = new Set(['slot', 'lottery']);
 const BOT_MIN_STAKE = 'KeyZ:60,wait:120';
 const TIP_KEY = 'Digit0';   // the neutral press that closes a first-sit tip (any key does; not a stake preset)
-const botKeys = (machine) => parseScript(`${TIP_KEY}:60,wait:300,${Array(8).fill(BOT_MIN_STAKE).join(',')},${BOT_RECIPE[machine]}`);
+const BOLD_MIN_MULT = 14;   // BOLD (Digit8, ~15 % of the pocket) only when the pocket holds at least this many minimum bets
+const COINFLIP_COLLECT_AT = 3.6;   // coinflip: ride the first win once, collect at x3.6 (STEP_MULT[1] in coinflip/rules.ts)
+/** Machine instance state for the coinflip and bigone decisions (their fields are read at runtime, not in the page API). */
+const instJs = (id, body) => `(() => { const m = window.jackid.app.world?.machines().find((x) => x.id === ${JSON.stringify(id)}); return m ? (${body}) : null; })()`;
+const CF_STATE_JS = (id) => instJs(id, `{ pending: Boolean(m.roundOpen && !m.busy && m.state?.pot > 0), pot: m.state?.pot ?? 0, bet: m.roundBet ?? 0 }`);
+const BIGONE_STATE_JS = (id) => instJs(id, `{ offer: Boolean(m.offer) }`);
+/**
+ * Page JS: the floor machines the bot may bet on now (placed, unlocked, eligible), each with its tilt (`lit`: full-value pulls
+ * left, 0..4; Hot machines ignore Tilt), whether it is a Hot Lamp, and whether it is the spotlight kind.
+ */
+const BOT_CANDS_JS = `(async () => {
+  const a = window.jackid.app, r = a.run, w = a.world;
+  if (!r || !w) return [];
+  const { isSpotlightEligible } = await import('/src/game/spotlight.ts');
+  const hot = new Set((r.circuit?.lamps?.().hot ?? []).map((e) => e.mid));
+  const spot = r.spotlightView?.()?.machineId ?? null;
+  const known = ${JSON.stringify(['coinflip', 'bigone', ...Object.keys(BOT_RECIPE)])};
+  const cats = ${JSON.stringify([...BOT_CATEGORIES])};
+  return w.machines().filter((m) => !w.isLocked(m.id) && isSpotlightEligible(m.def.id, m.def.category)
+      && (known.includes(m.def.id) || cats.includes(m.def.category) || m.def.id === spot))
+    .map((m) => {
+      const t = r.circuit?.tilt?.(m.id) ?? null;
+      return { instance: m.id, machineId: m.def.id, lit: t ? t.lit : 4, hot: hot.has(m.id), spot: m.def.id === spot };
+    });
+})()`;
+/** Node: the one machine the bot bets on next, and why. Hot first (BOLD when the pocket allows), then the spotlight, then the least-tilted. */
+function pickBet(cands, bot, key, st) {
+  const ok = cands.filter((c) => (bot.fails.get(c.instance) ?? 0) < 2);   // two refusals in a row: not a machine the bot can play
+  if (!ok.length) return null;
+  const played = bot.played.get(key) ?? new Set();
+  const pool = ok.filter((c) => !played.has(c.instance));
+  const use = pool.length ? pool : ok;
+  const hot = use.find((c) => c.hot);
+  if (hot) return { c: hot, bold: st.pocket >= BOLD_MIN_MULT * st.minBet, why: 'Hot cabinet first (its Lamp is lit; Tilt does not apply)' };
+  const spot = use.find((c) => c.spot);
+  if (spot) return { c: spot, bold: false, why: `the spotlight ${spot.machineId} (x1.25 this Night)` };
+  const order = [...use].sort((x, y) => y.lit - x.lit || (bot.last.get(x.instance) ?? 0) - (bot.last.get(y.instance) ?? 0)
+    || (x.instance < y.instance ? -1 : 1));
+  const c = order[0];
+  return { c, bold: false, why: `rotate off Tilt: ${c.machineId} has ${c.lit} full-value pulls left` };
+}
+/** Node: writes one bot decision as a record (`auto: true`, with its reason) and logs it. */
+function decide(ctx, what, reason) {
+  ctx.run.steps.push({ step: `decide: ${what}`, ok: true, auto: true, reason });
+  log(`bot ${what}: ${reason}`);
+}
 
 const AUTO_MAX_MS = 15 * 60_000;   // auto:night stops after this much wall time (the run is left where it is)
 const AUTO_MAX_LOOPS = 4000;
@@ -587,8 +651,9 @@ const seatedIs = (ctx, want, ms) => waitFor(
  */
 async function gotoMachine(ctx, machine, rec) {
   const { cdp } = ctx;
-  const sel = typeof machine === 'string' ? { machine } : { hot: true };
-  const label = typeof machine === 'string' ? machine : 'hot';
+  // a string: the machine kind (first open one); { instance }: that floor instance; otherwise the Hot cabinet
+  const sel = typeof machine === 'string' ? { machine } : machine.instance ? { instance: machine.instance } : { hot: true };
+  const label = typeof machine === 'string' ? machine : machine.instance ?? 'hot';
   if (await evaluate(cdp, 'window.jackid.app.player?.seat != null')) {
     await evaluate(cdp, '(window.jackid.app.world.standUp(), true)');
     await seatedIs(ctx, false, 4000).catch(() => { throw new Error(`goto:${label}: could not stand up first`); });
@@ -675,16 +740,55 @@ async function pawnLook(ctx, rec) {
   if (ctx.shotsDir) rec.shot = await ctx.shoot(`run-pawn-look-${ctx.looks}.png`);
 }
 
-/** auto:night's shop pick: the cheapest clean shelf (not cursed, no swap) costing at most 30 % of the pocket. */
-async function shopPick(ctx) {
-  const b = await evalJson(ctx.cdp, PAWN_JS);
-  if (!b.open) return null;
+/**
+ * Page JS: the Mola shop pick. A shelf is bought when it is clean (not cursed, no swap), costs at most 30 % of the pocket, and
+ * either completes an archetype set (the set switches on with it) or shares an archetype with a held charm. A set completion
+ * comes first, then the cheapest. Resolves to { slot, charmId, price, why } (slot null with the reason when nothing qualifies).
+ */
+const SHOP_PICK_JS = `(async () => {
+  const r = window.jackid.app.run, p = r.pawn, me = r.selfId;
+  if (!p.open()) return { slot: null, why: 'the Pawn Window is shut' };
+  const { charmDef } = await import('/src/game/charms/engine.ts');
+  const { activeSets } = await import('/src/game/charms/sets.ts');
+  const { ENGINE_ARCHETYPES } = await import('/src/game/data/charmsEngines.ts');
+  const wallet = r.wallet();
+  const tagsOf = (id) => charmDef(id)?.tags;
+  const held = r.charms().map((c) => ({ id: c.id }));
+  const heldArch = new Set(held.flatMap((h) => (tagsOf(h.id) ?? []).filter((t) => ENGINE_ARCHETYPES.includes(t))));
+  const setsNow = activeSets(held, tagsOf).length;
   let best = null;
-  b.stock.forEach((s, i) => {
-    if (!s || s.cursed || s.swap || s.price <= 0 || s.price > b.wallet * 0.3) return;
-    if (!best || s.price < best.price) best = { slot: i + 1, price: s.price };
+  p.stock(me).forEach((s, i) => {
+    if (!s || s.cursed || p.needsSwap(me, i) || s.price <= 0 || s.price > wallet * 0.3) return;
+    const tags = tagsOf(s.charmId) ?? [];
+    const arch = tags.filter((t) => ENGINE_ARCHETYPES.includes(t));
+    const completes = activeSets([...held, { id: s.charmId }], tagsOf).length > setsNow;
+    const matches = arch.some((t) => heldArch.has(t));
+    if (!completes && !matches) return;
+    const cand = { slot: i + 1, charmId: s.charmId, price: s.price, completes, arch: arch[0] ?? null };
+    if (!best || (cand.completes && !best.completes) || (cand.completes === best.completes && cand.price < best.price)) best = cand;
   });
+  if (!best) return { slot: null, why: 'no affordable charm matches a held archetype or completes a set' };
+  best.why = best.completes ? 'completes the ' + best.arch + ' set' : 'shares the ' + best.arch + ' archetype with a held charm';
   return best;
+})()`;
+
+/**
+ * Page JS: the Starter Draft's pick for the bot: the first engine (archetype) charm on offer, since a set needs two of one
+ * archetype, else the first card. Resolves to { id, ok, why } (id null when no draft is open).
+ */
+const STARTER_PICK_JS = `(async () => {
+  const r = window.jackid.app.run, d = r?.starterDraft?.();
+  if (!d || !d.candidates?.length) return { id: null, ok: false, why: 'no starter draft open' };
+  const { ENGINE_ARCHETYPES } = await import('/src/game/data/charmsEngines.ts');
+  const arch = d.candidates.find((c) => (c.tags ?? []).some((t) => ENGINE_ARCHETYPES.includes(t)));
+  const pick = arch ?? d.candidates[0];
+  const why = arch ? 'an archetype charm (a set switches on with a second of it)' : 'the first card (no archetype on offer)';
+  return { id: pick.id, ok: r.pickStarter(pick.id) === true, why };
+})()`;
+
+/** auto:night's shop pick (SHOP_PICK_JS): the shelf to buy and the reason, or slot null with the reason. */
+async function shopPick(ctx) {
+  return evalJson(ctx.cdp, SHOP_PICK_JS);
 }
 
 /** The live floor event (watchEvents.ts `watchEventView`), or null between Watches. */
@@ -717,7 +821,12 @@ async function autoNight(ctx, rec, untilEvent = false) {
   const t0 = Date.now();
   const auto = (o) => ({ ...o, auto: true });
   // Per-Watch bookkeeping lives on the run, so a second auto:night step carries on where an event stop left the Watch.
-  const bot = (ctx.bot ??= { betsTried: new Map(), handled: new Set(), banked: new Set(), logged: new Set(), evStop: new Set(), rot: 0 });
+  const bot = (ctx.bot ??= {
+    betsTried: new Map(), handled: new Set(), banked: new Set(), logged: new Set(), evStop: new Set(),
+    played: new Map(),   // Watch key -> instances bet on in it
+    fails: new Map(),    // instance -> bets in a row that spent no pull
+    last: new Map(), seq: 0,   // instance -> the bet sequence number of its last bet (rotation ties)
+  });
   const n0 = (await readState(ctx)).night;
   const count = { deposits: 0, shops: 0, bets: 0, bells: 0 };
   const events = [];                    // ids of the floor events of the Watches this call reached
@@ -730,13 +839,23 @@ async function autoNight(ctx, rec, untilEvent = false) {
     watchRec(ctx, await readState(ctx), ev);
     if (ev) events.push(ev.id);
   };
-  /** This Watch's deposit: 40 % of the pocket while quota is owed (20 % when the terminal refuses it). Once per Watch, after the bets. */
-  const depositFor = async (s) => {
+  /**
+   * This Watch's deposit, once per Watch after the bets: enough to stay on the Dawn projection (the gap to the quota), and at
+   * least 40 % of the pocket, never into the float (the terminal's floor). A refusal retries at half.
+   */
+  const depositFor = async () => {
+    const s = await readState(ctx);
     if (!(s.quotaLeft > 0 && s.pocket > 0)) return;
-    for (const pct of [0.4, 0.2]) {
-      const amount = Math.floor(s.pocket * pct);
-      if (amount <= 0) return;
-      const r = await exec(ctx, auto({ kind: 'deposit', amount, text: `bank:deposit:${amount}` }));
+    const d = await evalJson(ctx.cdp, DAWN_JS);
+    const floor = d?.float ?? 0;
+    const room = Math.max(0, s.pocket - floor);
+    const want = Math.max(d?.gap ?? 0, Math.floor(s.pocket * 0.4));
+    const amount = Math.min(room, want);
+    if (amount <= 0) { decide(ctx, 'deposit', `none: the pocket ${s.pocket} is at the float ${floor}`); return; }
+    decide(ctx, 'deposit', `${amount} of pocket ${s.pocket}: Dawn projection ${d.projected} of quota ${d.due} (gap ${d.gap}), float ${floor} kept`);
+    for (const amt of [amount, Math.floor(amount / 2)]) {
+      if (amt <= 0) break;
+      const r = await exec(ctx, auto({ kind: 'deposit', amount: amt, text: `bank:deposit:${amt}` }));
       if (r.ok) { count.deposits++; return; }
     }
   };
@@ -749,6 +868,14 @@ async function autoNight(ctx, rec, untilEvent = false) {
     if (st.topside) { end = 'topside'; break; }
     if (st.night !== n0) { end = 'night paid'; break; }
     const key = `${st.night}:${st.watch}`;
+
+    if (st.starterOffer) {
+      // The Starter Draft holds the Bell until a card is taken (its timer is slow in a headless run): the bot takes one now.
+      const p = await evalJson(ctx.cdp, STARTER_PICK_JS);
+      if (p.ok) decide(ctx, 'starter', `take ${p.id}: ${p.why}`);
+      else await sleep(300);
+      continue;
+    }
 
     if (st.pocket < st.minBet && st.withdrawable > 0) {
       const r = await exec(ctx, auto({ kind: 'withdraw', amount: st.withdrawable, text: `bank:withdraw:${st.withdrawable}` }));
@@ -767,11 +894,11 @@ async function autoNight(ctx, rec, untilEvent = false) {
     if (st.phase === 'intermission') {
       if (st.nightCardOffer) {
         // A paid Dawn opened a Night Card offer (the lever waits on it). The bot pauses here: when the script's next step is
-        // nightcard:<n|best>, that step picks; otherwise the bot picks card 1 itself, and logs it. Either way the offer is printed.
+        // nightcard:<n|best>, that step picks; otherwise the bot picks the best card itself (nightcard:best), and logs it.
         offer = await offerSummary(ctx.cdp);
         if (ctx.next?.kind === 'nightcard') { end = 'night card'; break; }   // the next nightcard step prints the offer and picks
-        const r = await exec(ctx, auto({ kind: 'nightcard', n: 1, text: 'nightcard:1' }));
-        log(`auto:night: Dawn Night Card offer ${JSON.stringify(st.nightCardOffer)}: the script did not pick one, auto-picked card 1 (${r.id ?? 'none'})`);
+        decide(ctx, 'night card', `Dawn offer ${JSON.stringify(st.nightCardOffer)}: the lowest coming quota (nightcard:best)`);
+        const r = await exec(ctx, auto({ kind: 'nightcard', best: true, text: 'nightcard:best' }));
         if (!r.ok) { end = 'night card refused'; break; }
         continue;
       }
@@ -785,11 +912,12 @@ async function autoNight(ctx, rec, untilEvent = false) {
       if (!bot.handled.has(key)) {
         bot.handled.add(key);
         const pick = await shopPick(ctx);
-        if (pick) {
+        if (pick.slot) {
+          decide(ctx, 'shop', `buy ${pick.charmId} (slot ${pick.slot}, ${pick.price} coins): ${pick.why}`);
           const r = await exec(ctx, auto({ kind: 'pawnbuy', slot: pick.slot, text: `pawn:buy:${pick.slot}` }));
           if (r.ok) count.shops++;
           await exec(ctx, auto({ kind: 'stand', text: 'stand' }));
-        }
+        } else decide(ctx, 'shop', `no buy: ${pick.why}`);
         continue;
       }
       const r = await exec(ctx, auto({ kind: 'lever', text: 'lever' }));   // starts this Watch
@@ -803,16 +931,19 @@ async function autoNight(ctx, rec, untilEvent = false) {
       const bets = st.watch % 2 === 1 ? 1 : 2;
       if (tried < bets && (st.pulls ?? Infinity) > 0 && st.pocket >= st.minBet) {
         bot.betsTried.set(key, tried + 1);
-        const open = await evalJson(ctx.cdp, OPEN_BOT_JS);
-        if (open.length === 0) { bot.betsTried.set(key, bets); continue; }   // nothing open to bet on: ring the Bell below
-        const machine = open[bot.rot % open.length];
-        bot.rot++;
-        const r = await exec(ctx, auto({ kind: 'bet', machine, text: `bot:bet:${machine}` }));
-        if (r.ok) count.bets++;
+        const pick = pickBet(await evalJson(ctx.cdp, BOT_CANDS_JS), bot, key, st);
+        if (!pick) { bot.betsTried.set(key, bets); decide(ctx, 'bet', 'no open machine to play: ring the Bell'); continue; }
+        const { c } = pick;
+        if (!bot.played.has(key)) bot.played.set(key, new Set());
+        bot.played.get(key).add(c.instance);
+        bot.last.set(c.instance, ++bot.seq);
+        decide(ctx, `bet ${c.machineId}${pick.bold ? ' (BOLD)' : ''}`, pick.why);
+        const r = await exec(ctx, auto({ kind: 'bet', instance: c.instance, machine: c.machineId, bold: pick.bold, text: `bot:bet:${c.machineId}` }));
+        if (r.ok) { count.bets++; bot.fails.set(c.instance, 0); } else bot.fails.set(c.instance, (bot.fails.get(c.instance) ?? 0) + 1);
         continue;
       }
       // the bets are in: bank the Watch's winnings (deposit, once per Watch), then print the Watch and ring the Bell
-      if (!bot.banked.has(key)) { bot.banked.add(key); await depositFor(st); continue; }
+      if (!bot.banked.has(key)) { bot.banked.add(key); await depositFor(); continue; }
       await logWatchOnce(key);
       if (st.seated != null) await exec(ctx, auto({ kind: 'stand', text: 'stand' }));
       const r = await exec(ctx, auto({ kind: 'bell', text: 'bell' }));
@@ -830,6 +961,67 @@ async function autoNight(ctx, rec, untilEvent = false) {
   Object.assign(rec, count);
   rec.ok = end === 'night paid' || end === 'topside' || end === 'event' || end === 'run over' || end === 'night card';
   if (!rec.ok) rec.reason = end;
+}
+
+/**
+ * One bot bet, seated at the machine: close the tip, set the stake (BOLD on Digit8, or walked down to the minimum with KeyZ),
+ * then the machine's round. Push-your-luck decisions read the machine's state between keys:
+ *  - coinflip: flip; after a win, ride once while the pot is under x3.6 (COINFLIP_COLLECT_AT), then collect (KeyQ).
+ *  - bigone: spin; a line win leaves a CHASE offer: chase (KeyG) only when CHASE_P is 1 in 3 or better, else collect (Space).
+ *  - hilo, scratch and the rest: the recipe keys (BOT_RECIPE / BOT_RECIPE_GENERIC), then collect.
+ */
+async function botRound(ctx, s, rec) {
+  const { cdp } = ctx;
+  await pressKey(cdp, TIP_KEY, 60);
+  await sleep(300);
+  if (s.bold) { await pressKey(cdp, 'Digit8', DEFAULT_HOLD_MS); await sleep(300); }
+  else await playKeys(cdp, parseScript(Array(8).fill(BOT_MIN_STAKE).join(',')));
+  rec.stake = s.bold ? 'bold' : 'min';
+  if (s.machine === 'coinflip') {
+    await pressKey(cdp, 'Space', 120);
+    await sleep(2600);
+    let st = await evalJson(cdp, CF_STATE_JS(s.instance));
+    if (!st?.pending) decide(ctx, 'flip', `no win to ride or collect (${st ? 'pot 0' : 'machine not found'})`);
+    if (st?.pending) {
+      const x = Math.round((st.pot / Math.max(1, st.bet)) * 10) / 10;
+      if (x < COINFLIP_COLLECT_AT) {
+        decide(ctx, 'ride', `won x${x} on coinflip: ride once for x${COINFLIP_COLLECT_AT}`);
+        await pressKey(cdp, 'KeyR', 120);
+        await sleep(2600);
+        st = await evalJson(cdp, CF_STATE_JS(s.instance));
+        if (!st?.pending) decide(ctx, 'ride lost', 'the ride flip lost the pot');
+      }
+      st = await evalJson(cdp, CF_STATE_JS(s.instance));
+      if (st?.pending) {
+        decide(ctx, 'collect', `pot x${Math.round((st.pot / Math.max(1, st.bet)) * 10) / 10} (target x${COINFLIP_COLLECT_AT})`);
+        await pressKey(cdp, 'KeyQ', 120);
+        await sleep(500);
+      }
+    }
+    return;
+  }
+  if (s.machine === 'bigone') {
+    await pressKey(cdp, 'Space', 120);
+    await sleep(3200);
+    const st = await evalJson(cdp, BIGONE_STATE_JS(s.instance));
+    if (!st?.offer) decide(ctx, 'spin', 'no line win, so no chase offer');
+    if (st?.offer) {
+      const chaseP = await evalJson(cdp, `(async () => (await import('/src/machines/bigone/rules.ts')).CHASE_P)()`);
+      if (chaseP >= 1 / 3 - 1e-9) {
+        decide(ctx, 'chase', `line win on bigone: chase at 1 in ${Math.round(1 / chaseP)} (x3 the pot), 1 in 3 or better`);
+        await pressKey(cdp, 'KeyG', 120);
+        await sleep(2600);
+      } else decide(ctx, 'collect', `chase at 1 in ${Math.round(1 / chaseP)} is under 1 in 3`);
+      const after = await evalJson(cdp, BIGONE_STATE_JS(s.instance));
+      if (after?.offer) {
+        decide(ctx, 'collect', 'the chase offer is still open: collect the pot');
+        await pressKey(cdp, 'Space', 120);
+        await sleep(500);
+      }
+    }
+    return;
+  }
+  await playKeys(cdp, parseScript(BOT_RECIPE[s.machine] ?? BOT_RECIPE_GENERIC));
 }
 
 /** Runs one parsed step (see parseRunSteps); the record `rec` is filled in as it goes. Throws on a step error. */
@@ -871,11 +1063,11 @@ async function runKind(ctx, s, rec) {
       return;
     case 'bet': {
       const before = (await readState(ctx)).pulls;
-      await gotoMachine(ctx, s.machine, rec);
+      await gotoMachine(ctx, { instance: s.instance }, rec);
       const mode = await evaluate(cdp, 'window.jackid.app.input?.mode');
       if (mode !== 'machine') { rec.ok = false; rec.reason = `not at the machine for input (input mode "${mode}"); no keys sent`; return; }
       const n0 = await evaluate(cdp, BET_COUNT_JS);
-      await playKeys(cdp, botKeys(s.machine));
+      await botRound(ctx, s, rec);
       rec.bets = await evalJson(cdp, betsFrom(n0));
       const after = (await readState(ctx)).pulls;
       rec.machine = s.machine;
