@@ -199,7 +199,7 @@ function startSteps(host: TutorialHost): Tutorial | null {
       case 'spin': {
         return t('econ.spinAny', { key: keyLabel('m.primary') });
       }
-      case 'deposit': return t('tut.deposit', { rate: run.interestPct() });
+      case 'deposit': return t('tut.deposit', { rate: run.interestPct(), n: run.shift.state().segment?.count ?? 3 });
       default: return t(`tut.${s.key}`);
     }
   };

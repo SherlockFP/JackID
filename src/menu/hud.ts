@@ -17,6 +17,8 @@ import type { HudAnchorId } from '@/core/ui/types';
 import { claimAnnounce, type UIOverlayX } from '@/core/ui/ui';
 import { COLORS, h, uiSfx } from '@/core/ui/widgets';
 import { circuitView, lampLabel, type LampEntry, type LampView } from '@/game/circuit';
+import { dawnPlan } from '@/game/pace';
+import type { BankView } from '@/game/run';
 import { inUnderneath } from '@/world/hollow';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { InstanceId, PlayerId } from '@/core/types';
@@ -125,6 +127,12 @@ export function createHud(): Hud {
   const quotaBar = h('div', 'bar', quota);
   const quotaFill = h('i', '', quotaBar);
   const quotaShort = h('span', 'short', quota, '');
+  // NIGHT PLAN (under the quota): the Night's due, the Watch count, the bank's per-Watch interest and the projection at Dawn.
+  const plan = h('div', 'plan hidden', topR);
+  const planHead = h('span', 'ph', plan);
+  const planBank = h('span', 'pb', plan);
+  const planProj = h('span', 'pp', plan);
+  let planKey = '';
   // EMPIRE chip (tycoon): machines you bought and the house cut they pay per Watch. Hidden until the first purchase.
   const empire = h('div', 'hb empire hidden', topR);
   empire.style.cssText = 'margin-top:4px;padding:2px 8px;color:#ffd34a;font-size:12px;letter-spacing:.06em;white-space:nowrap';
@@ -399,6 +407,41 @@ export function createHud(): Hud {
     setText(quotaShort, met || paid ? '' : t('hud.quota.short', { n: money(Math.max(0, due - dep)) }));
   }
 
+  /**
+   * NIGHT PLAN: shown in the Watches (not at Dawn, not once the Night is paid). The projection is the bank compounded over the
+   * Settles still to come, plus the pocket. Written on change only; green when it covers the quota, red with the gap otherwise.
+   */
+  function updatePlan(): void {
+    const r = app.run;
+    const q = r?.shift.quota();
+    const sh = r?.shift.state();
+    const seg = sh?.segment;
+    // The bank view is on the real run (DebtRun), not on the RunApi facade: probe it as `empire()` is probed above.
+    const bank = (r as (typeof r & { bank?: () => BankView }) | null)?.bank?.();
+    const show = !!r && !!q && !!seg && !!bank && q.due > 0 && r.window() === 'watch' && !nightPaid(r);
+    setCls(plan, 'hidden', !show);
+    if (!r || !q || !seg || !bank || !show) return;
+    const due = Math.max(0, Math.floor(q.due));
+    // Intermission: the segment still names the Watch just settled, so the line names the next one.
+    const interm = sh?.phase === 'intermission';
+    const watch = interm ? seg.index + 2 : seg.index + 1;
+    const settles = interm ? seg.count - seg.index - 1 : seg.count - seg.index;
+    const p = dawnPlan({ due, balance: bank.balance, pocket: bank.pocket, settles, interestAt: bank.interestAt });
+    const key = `${due}|${watch}|${seg.count}|${bank.balance}|${bank.ratePct}|${bank.pocket}|${interm}|${p.projected}`;
+    if (key === planKey) return;
+    planKey = key;
+    setText(planHead, t(interm ? 'hud.plan.headNext' : 'hud.plan.head', { q: money(due), w: watch, n: seg.count }));
+    setText(planBank, bank.ratePct > 0
+      ? t('hud.plan.bank', { b: money(bank.balance), r: bank.ratePct })
+      : t('hud.plan.bankFlat', { b: money(bank.balance) }));
+    const met = bank.left <= 0;
+    setCls(plan, 'ok', met || p.met);
+    setCls(plan, 'gap', !met && !p.met);
+    setText(planProj, met ? t('hud.plan.met')
+      : p.met ? t('hud.plan.proj', { p: money(p.projected) })
+      : t('hud.plan.projShort', { p: money(p.projected), g: money(p.gap) }));
+  }
+
   function updateEmpire(): void {
     const r = app.run as (typeof app.run & { empire?: () => { count: number; perWatch: number } }) | null;
     const e = r?.empire?.();
@@ -555,6 +598,7 @@ export function createHud(): Hud {
       updateWallet(dt);
       updateClock();
       updateQuota();
+      updatePlan();
       updateEmpire();
       updateBuffs(dt);
       updatePulls();

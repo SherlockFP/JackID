@@ -57,8 +57,19 @@
 .hud .quota.met .num { color: var(--green); }
 .hud .quota .short { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--amber); }
 
+/* NIGHT PLAN: under the quota in the top-right column (hud.ts updatePlan). Plain text lines, right-aligned, wraps rather than clips. */
+.hud .plan { display: flex; flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u)); margin-top: calc(3 * var(--u));
+  max-width: min(44vw, calc(200 * var(--u))); padding: calc(2 * var(--u)) calc(4 * var(--u)); background: rgba(0, 0, 0, .5);
+  box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark); text-align: right; }
+.hud .plan span { display: block; font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1.35;
+  color: var(--bone); white-space: normal; overflow-wrap: anywhere; }
+.hud .plan .pp { color: var(--signal); }
+.hud .plan.ok .pp { color: var(--green); }
+.hud .plan.gap .pp { color: var(--signal); }
+
 /* right edge: buffs */
-.hud .buffs { right: calc(4 * var(--u)); top: calc(34 * var(--u)); flex-direction: column; align-items: flex-end; gap: calc(3 * var(--u)); }
+/* top: never above the top band's bottom edge (--hud-top-h), so the NIGHT PLAN panel under the quota is not covered */
+.hud .buffs { right: calc(4 * var(--u)); top: max(calc(34 * var(--u)), calc(var(--hud-top-h, 0px) + 4 * var(--u))); flex-direction: column; align-items: flex-end; gap: calc(3 * var(--u)); }
 .hud .ico { position: relative; width: calc(12 * var(--u)); height: calc(12 * var(--u)); background: var(--coal);
   box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass); display: inline-flex; align-items: center; justify-content: center;
   font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--ivory); }

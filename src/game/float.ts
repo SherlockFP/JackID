@@ -1,18 +1,25 @@
 /**
- * Cash starvation rules (wave 14). Pure functions: `run.ts` applies them, the Debt Terminal shows them, the tests check them.
+ * Cash starvation rules (wave 14, float fixed in wave 38). Pure functions: `run.ts` applies them, the Debt Terminal shows them,
+ * the tests check them.
  *
  * - A pocket is DEAD when it cannot cover the cheapest bet on the floor (`pocketDead`). The run then rings the rescue call.
- * - The FIRST deposit of each Watch leaves a float in the pocket: `floorFor` coins (the smaller of 30 % of the pocket and
- * 2 × the cheapest bet). The float stops a player who empties the pocket on the first deposit from being stuck with nothing
- * to play. Only ALL, once the player confirms it, goes below the float.
+ * - THE FLOAT: every deposit of a Watch keeps `watchFloat` coins (2 × the cheapest bet) in the pocket. It is computed ONCE per
+ * Watch (`run.ts` caches it) and never shrinks as the pocket shrinks, so the number the terminal shows is the number that holds.
+ * Only ALL, once the player confirms it, goes below the float.
  */
 
-/** Share of the pocket kept as float on the first deposit of a Watch. */
-export const FLOAT_FRAC = 0.3;
-/** Float ceiling in cheapest bets (the float never exceeds this many bets). */
+/** Float in cheapest bets: a Watch keeps this many bets of play in the pocket. */
 export const FLOAT_MIN_BETS = 2;
 /** Seconds an armed ALL stays armed: the second press within this window confirms it. */
 export const ALL_CONFIRM_SEC = 6;
+
+/** The float of a Watch: 2 × the cheapest bet (never below 2 coins). Independent of the pocket: compute it once per Watch. */
+export function watchFloat(minBet: number): number {
+  return FLOAT_MIN_BETS * bestBetFloor(minBet);
+}
+
+/** Share of the pocket the pre-wave-38 float took (legacy: `economy.depositFloatFor` still reads `floorFor`). Not used by the run. */
+export const FLOAT_FRAC = 0.3;
 
 /** The cheapest bet a pocket must cover to keep playing (never below 1 coin). */
 export function bestBetFloor(minBet: number): number {

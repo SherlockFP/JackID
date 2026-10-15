@@ -38,6 +38,8 @@ import { playHeadless } from './rules';
 
 /** The capsule in play: the tier it is at now (a trade moves it up), its content and the pity bookkeeping. */
 interface Pending { tier: TierId; content: Content; dudIdx: number; forced: boolean; threshold: number; count: number }
+/** Keys that still act when they also close the first-sit tip (the rules card and other keys only close). */
+const TIP_PASS_KEYS: ReadonlySet<string> = new Set(['primary', 'confirm', 'alt', 'n1', 'n2', 'n3', 'left', 'right']);
 /** Settlement fields the credit step fills in (read by the presentation of the result). */
 interface Settle { coins: number; granted: boolean; fallback: boolean; net: number }
 
@@ -180,7 +182,12 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down || e.repeat) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or contents card
+    if (this.seatHud?.blocking) {
+      // any key closes a tip or contents card; on the first-sit tip a play key is not swallowed (it also acts)
+      const firstTip = this.seatHud.tipOpen;
+      this.seatHud.dismiss();
+      if (!firstTip || !TIP_PASS_KEYS.has(e.action)) return;
+    }
     switch (e.action) {
       case 'n1': this.selectTier(0); return;
       case 'n2': this.selectTier(1); return;
@@ -303,7 +310,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     this.inHand = false;
     this.twistOn = false;
     const c = p.content;
-    const decide = tradeOpen(p.tier, c, this.stakeIndex, this.discount());
+    const decide = tradeOpen(p.tier, c, this.stakeIndex, this.discount()) && this.tradeFits(p, this.stakeIndex);
     const ev: Extract<Ev, { k: 'open' }> = {
       k: 'open', tier: p.tier, kind: c.kind, rarity: c.rarity, charmId: c.charmId, dupe: c.dupe,
       coins: payoutOf(c), granted: false, fallback: false, dudIdx: p.dudIdx, forced: p.forced, pity: p.count,
@@ -333,6 +340,15 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   }
 
   /**
+   * The trade's debit is an extra stake on the round, so it must pass the machine's stake ceiling (`run.bet` refuses a
+   * stake above `betLimits().max`, e.g. the Night 1 cap). A trade the ceiling would refuse is not offered: the shown
+   * cost is always the amount debited.
+   */
+  private tradeFits(p: Pending, si: number): boolean {
+    return tradeCost(p.tier, p.content, si, this.discount()) <= this.ctx.run.betLimits(this.def.id, this.id).max;
+  }
+
+  /**
    * TRADE UP: the prize is credited toward a sealed capsule of the next tier. The player pays the difference (added to
    * the open round), the sealed capsule is rolled and opens at once inside the same decision window.
    */
@@ -341,7 +357,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     if (!p || !this.decision) return;
     const si = this.stakeIndex;
     const nt = nextTierOf(p.tier);
-    if (nt === null || !tradeOpen(p.tier, p.content, si, this.discount())) { this.sfx('buzzer'); return; }
+    if (nt === null || !tradeOpen(p.tier, p.content, si, this.discount()) || !this.tradeFits(p, si)) { this.sfx('buzzer'); return; }
     const cost = tradeCost(p.tier, p.content, si, this.discount());
     if (!this.addStake(cost)) return;              // base toasted and buzzed (funds)
     this.decision = false;

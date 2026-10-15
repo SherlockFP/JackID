@@ -275,14 +275,18 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     for (let s = 0; s < 2; s++) {
       this.tok[s] = Math.min(TRAY_TOKEN_RATE, this.tok[s] + dt * TRAY_TOKEN_RATE);
       if (this.open[s] && now - this.lastDrop[s] >= 10_000) this.closeBlock(s);
-      const pid = this.seats[s];
-      if (!this.open[s] && pid !== null && !isBot(pid) && this.hostState.tray[s] > 0) {
-        const coins = Math.round(this.hostState.tray[s] * this.D);
-        this.hostState.tray[s] = 0;
-        this.paySeat(s, coins, { bet: coins }, pid);
-        void this.emit({ k: 'scav', st: s, coins });
-      }
+      // No House scavenge while a player is seated: the tray stays at risk (THUMP needs it) and is cashed out on leaving.
     }
+  }
+
+  /** Cash-out of a leaver's tray (the house no longer skims it mid-seat). Bots keep theirs; a block close already paid it. */
+  private cashOutTray(seat: number, pid: PlayerId): void {
+    const units = this.hostState.tray[seat];
+    if (units <= 0 || isBot(pid)) return;
+    const coins = Math.round(units * this.D);
+    this.hostState.tray[seat] = 0;
+    this.paySeat(seat, coins, { bet: coins }, pid);
+    void this.emit({ k: 'scav', st: seat, coins });
   }
 
   // ── seats ───────────────────────────────────────────────────────────────────────────────────────────
@@ -316,7 +320,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
   }
 
   onRelease(pid: PlayerId, seat: number, local: boolean): void {
-    if (this.isHost) this.closeBlock(seat, pid);
+    if (this.isHost) { this.closeBlock(seat, pid); this.cashOutTray(seat, pid); }
     this.firing = false;
     this.paintLamps();
     if (local) this.showHud();

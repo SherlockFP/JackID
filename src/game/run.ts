@@ -40,13 +40,13 @@ import {
   type CircuitSave, type CircuitView, type LampCandidate, type LampView, type TiltView,
 } from './circuit';
 import {
-  PAYOUT_GUARD, RESCUE_MAX_PER_NIGHT, STAKE_CONFIRM_SEC, bettingLadder, charmPrice, depositFloatFor, houseFloatTopUp, night1StakeCap, settlePayout, snapDown,
+  PAYOUT_GUARD, RESCUE_MAX_PER_NIGHT, STAKE_CONFIRM_SEC, bettingLadder, charmPrice, houseFloatTopUp, night1StakeCap, settlePayout, snapDown,
   stakeNeedsConfirm, type PayoutResult, type RescueLoan,
 } from './economy';
 import { clearClockHolds, clockHeld, holdClock, releaseClock, tickClockHold } from './clockHold';
 import { createRescue, rescueTerms, brokeSteps, type BrokeHelp, type RescueLine } from './rescue';
 import { bankBalance, churnOf, interestBase, interestNext, previewWithdraw, pullsToQualify, withdrawable, type BankInput, type WithdrawPreview } from './bank';
-import { bestBetFloor, depositRoom, pocketDead } from './float';
+import { bestBetFloor, depositRoom, pocketDead, watchFloat } from './float';
 import { Charms, PEG_CAP_RUN, allCharmDefs, choiceOffer, charmDef } from './charms/engine';
 import { Pawn, sellRefund, type PawnSnapshot } from './shop';
 import { StampBook, setActiveStampBook, type StampSnapshot } from './stamps';
@@ -76,6 +76,7 @@ import {
   collectorPrice, dawnKeys, managerKeyDrop, openLocker as rollLocker, restoreRooms, roomsProvider, roomsStart,
   type LockerOpen, type LockerResult, type RoomsState,
 } from './rooms';
+import pullsStrings from './pulls.strings';
 import type { EventBannerShow } from './buffs/banner';
 import type { IdleReport, TycoonState } from '@/game/types';
 
@@ -204,6 +205,9 @@ declare module '@/core/events' {
 /** `lastRefusal()` after a first press on a stake above half the pocket (see `RunStakeConfirmEvent`). Not in `RefusalReason` yet. */
 export const STAKE_CONFIRM_REASON: RefusalReason = 'confirm';
 
+/** Pull grant toasts (`pulls.grant`, `pulls.r.*`). Registered here too so headless tests see them without the main.ts glob. */
+registerStrings(pullsStrings.prefix, { en: pullsStrings.en, tr: pullsStrings.tr });
+
 let bossStringsDone = false;
 /** Boss names and texts to `event.<id>.name|desc|announce` (the banner and HUD read them like any Night event). Once. */
 function registerBossStrings(): void {
@@ -278,8 +282,10 @@ export interface RunExt {
   allIn?: number;
   /** Rescue loans taken tonight: quota added and calls used. Optional: older saves have none. */
   rescue?: { quota: number; used: number };
-  /** Deposits made this Watch (the first one keeps the float). Optional: older saves have none. */
+  /** Deposits made this Watch (every one keeps the float). Optional: older saves have none. */
   watchDep?: number;
+  /** The Watch's float, fixed when it was first read. Optional: older saves recompute it. */
+  watchFloat?: number;
   /** Bank (wave 27): non-cash quota credit, and this Watch's withdrawn / deposited coins (the churn rule). Optional: older saves have none. */
   bank?: { granted: number; wd: number; dep: number };
   /** Special rooms (wave 24): Wing Keys, the Manager's Key, the Boiler / locker state and the run's bonus Obols. Optional: older saves have none. */
@@ -603,8 +609,10 @@ class Run implements DebtRun {
   private pullCount = 0;
   private pullsMax = 0;
   private watchPulls = 0;
-  /** Debt Terminal deposits made this Watch: the first one leaves a float in the pocket (see `float.ts`). */
+  /** Debt Terminal deposits made this Watch: every one keeps the float in the pocket (see `float.ts`). */
   private watchDeposits = 0;
+  /** The float of this Watch, computed once (`depositFloor`) and reset at Watch start. Null until the first read. */
+  private watchFloatSnap: number | null = null;
   /** Bank (wave 27): quota credit that never was pocket cash (cannot be withdrawn), and this Watch's coin flow for the churn rule. */
   private bankGranted = 0;
   private watchWd = 0;
@@ -785,6 +793,7 @@ class Run implements DebtRun {
           if (!Number.isFinite(this.pullCount)) return;
           this.pullCount = Math.max(0, this.pullCount + n);
           this.emit('pulls:change', { pid: this.selfId, pulls: this.pullCount });
+          this.pullToast(n, 'phone');
           this.notify(); this.persist();
         },
         creditQuota: (c) => {
@@ -1022,9 +1031,13 @@ class Run implements DebtRun {
   }
   private minBetCache = 0;
 
-  /** Coins the next Debt Terminal deposit must leave in the pocket: the float, on every deposit of a Watch (not just the first). */
+  /**
+   * Coins every Debt Terminal deposit of this Watch leaves in the pocket: 2 × the cheapest bet, computed once per Watch (cached
+   * until the next Watch starts). It does not follow the pocket down, so the terminal's "keeps N" is the number that holds.
+   */
   depositFloor(): number {
-    return depositFloatFor(this.index, this.coins, this.cheapestBet());
+    if (this.watchFloatSnap === null) this.watchFloatSnap = watchFloat(this.cheapestBet());
+    return this.watchFloatSnap;
   }
 
   /**
@@ -1241,8 +1254,10 @@ class Run implements DebtRun {
     this.lastCallSec = lastCallSeconds(this.isLastWatch());
     this.pullsMax = isOvertime ? OVERTIME_PULLS : Math.max(1, Math.round(this.mod('x.run.pullsAdd', RUN_MACHINE, nd.pulls)));
     this.pullCount = this.pullsMax;
+    this.pullToast(this.pullsMax, 'watch');
     this.watchPulls = 0;
     this.watchDeposits = 0;
+    this.watchFloatSnap = null;                 // the new Watch's float is read afresh (once) on its first deposit or screen
     this.watchWd = 0; this.watchDepCoins = 0;
     this.shiftState.duration = this.clockLen;
     this.shiftState.lastCallSec = this.lastCallSec;
@@ -1404,6 +1419,7 @@ class Run implements DebtRun {
     this.boughtThisWatch += 1;
     this.pullCount += 1;
     this.emit('pulls:change', { pid: this.selfId, pulls: this.pullCount });
+    this.pullToast(1, 'bought');
     this.notify();
     this.persist();
     return true;
@@ -2090,6 +2106,11 @@ class Run implements DebtRun {
     this.persist();
   }
   private toast(key: string): void { this.banner?.(t(key), { color: '#c9a0ff', hold: 3, size: 8 }); }
+  /** Every pull grant says what it was: "+N pulls · reason" (wave 38). Losses and unknown counts stay silent. */
+  private pullToast(n: number, reason: 'phone' | 'bought' | 'watch'): void {
+    if (!this.banner || !Number.isFinite(n) || n <= 0) return;
+    this.banner(t('pulls.grant', { n: Math.floor(n), reason: t(`pulls.r.${reason}`) }), { color: '#9fe8ff', hold: 3, size: 8 });
+  }
 
   /** Emit on the bus, then let owned charms react to the same event. */
   private emit<K extends keyof GameEvents>(key: K, payload: GameEvents[K]): void {
@@ -2639,7 +2660,8 @@ class Run implements DebtRun {
       hotline: this.hotline.snapshot(),
       rescue: { quota: this.loanQuota, used: this.rescuesUsed },
       watchDep: this.watchDeposits,
-      bank: { granted: this.bankGranted, wd: this.watchWd, dep: this.watchDepCoins },
+      watchFloat: this.watchFloatSnap ?? undefined,
+      bank:{ granted: this.bankGranted, wd: this.watchWd, dep: this.watchDepCoins },
       wingKeys: this.wingKeys, managerKey: this.managerKey, rooms: { ...this.rooms, lockers: [...this.rooms.lockers] }, bonusObols: this.currencies.get('obol') ?? 0,
       soulMarks: this.soulMarkCount, markEscrow: this.markEscrow, bossDuel: this.bossDuelNight, pledged: [...this.pledged],
       ...(this.endingPathId ? { endingPath: this.endingPathId } : {}),
@@ -2906,6 +2928,7 @@ class Run implements DebtRun {
     this.hollowRefused = e.hollowRefused === true;
     this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);
     this.watchDeposits = Math.max(0, e.watchDep ?? 0);
+    this.watchFloatSnap = typeof e.watchFloat === 'number' && Number.isFinite(e.watchFloat) ? Math.max(0, Math.floor(e.watchFloat)) : null;
     this.bankGranted = Math.max(0, Math.floor(e.bank?.granted ?? 0));
     this.watchWd = Math.max(0, Math.floor(e.bank?.wd ?? 0)); this.watchDepCoins = Math.max(0, Math.floor(e.bank?.dep ?? 0));
     this.wingKeys = Math.max(0, Math.floor(e.wingKeys ?? 0)); this.managerKey = e.managerKey === true;

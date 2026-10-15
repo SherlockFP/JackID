@@ -229,6 +229,8 @@ export class SeatHud {
   get visible(): boolean { return this.shown; }
   /** A tip or rules card is open: route the next action to `dismiss()`. */
   get blocking(): boolean { return this.card !== 'none'; }
+  /** The open card is the first-sit tip (not the rules card): a machine may let its play key through as well. */
+  get tipOpen(): boolean { return this.card === 'tip'; }
   get rulesOpen(): boolean { return this.card === 'rules'; }
 
   /** Seated: show the overlay. */
@@ -423,7 +425,10 @@ export class SeatHud {
         g.fillStyle = BRASS; g.fillRect(0, 0, w, CARD_HEAD);
         put(g, title, w / 2, 8, INK, 'center');
         pages[c.page].forEach((r, i) => put(g, r, CARD_PAD, CARD_BODY_Y + i * 10));
-        put(g, hint, w / 2, h - 12, INK_SOFT, 'center');
+        if (kind === 'tip') {                                    // the first-sit tip says what to do: a brass strip with the key prompt
+          g.fillStyle = BRASS; g.fillRect(0, h - 17, w, 17);
+          put(g, hint, w / 2, h - 13, INK, 'center');
+        } else put(g, hint, w / 2, h - 12, INK_SOFT, 'center');
         if (pages.length > 1) {
           button(c, CARD_PAD, h - 26, 22, 13, '<', 'prev');
           button(c, w - CARD_PAD - 22, h - 26, 22, 13, '>', 'next');

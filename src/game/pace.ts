@@ -59,6 +59,26 @@ export function requiredMultiplier(p: Pace, pullsPerPlay: number, bet: number): 
   return (p.perPull * Math.max(1, pullsPerPlay)) / bet;
 }
 
+/**
+ * The bank at Dawn if the player plays on: each remaining Settle adds `interestAt(balance)` (the Debt Terminal's own rule,
+ * `RunApi.bank().interestAt`, floor(min(balance, 2 × due) × rate)). Compounding, so an early deposit grows every Watch.
+ * The churn of the current Watch is ignored (it only lowers the figure), so this never overstates the bank.
+ */
+export function dawnBank(balance: number, settles: number, interestAt: (balance: number) => number): number {
+  let b = Math.max(0, Math.floor(balance));
+  for (let k = 0, n = Math.max(0, Math.floor(settles)); k < n; k++) b += Math.max(0, interestAt(b));
+  return b;
+}
+
+/** The NIGHT PLAN projection: the bank at Dawn plus the pocket (the wallet can still be deposited before Dawn). */
+export interface DawnPlan { projected: number; gap: number; met: boolean }
+
+export function dawnPlan(i: { due: number; balance: number; pocket: number; settles: number; interestAt: (balance: number) => number }): DawnPlan {
+  const projected = dawnBank(i.balance, i.settles, i.interestAt) + Math.max(0, Math.floor(i.pocket));
+  const gap = Math.max(0, Math.floor(i.due) - projected);
+  return { projected, gap, met: gap === 0 };
+}
+
 /** The odds fields of a machine profile (the rest is display-only). */
 export type OddsSource = Pick<MachineProfile, 'hit' | 'p2' | 'p5' | 'p10' | 'p25' | 'p100'>;
 

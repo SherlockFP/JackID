@@ -135,6 +135,7 @@ export const def: MachineDef = {
       tip2: "[{move}] MOVE  ·  [{press}] PRESS  ·  [{digits}] TYPE AN AMOUNT  ·  [{mode}] SWITCH",
       tip3: "Out of coins? WITHDRAW some. Quota met? [{settle}] SETTLE  ·  [{help}] RULES",
       floorKept: "Float kept: {n} coins stay in your pocket",
+      c_float: 'keeps {n} in pocket (float)',
       allConfirm: "ALL empties your pocket. Press ALL again to confirm",
       c_bank: 'BANK', c_pocket: 'POCKET', c_left: 'LEFT TO PAY', c_metBig: 'QUOTA MET', c_interest: 'BELL INTEREST',
       c_rate: '{r}% A WATCH, MAX +{c}', c_pulls: 'PLAY {n} MORE PULLS FOR IT', c_with: 'WITH THIS: +{n}',
@@ -204,6 +205,7 @@ export const def: MachineDef = {
       tip2: "[{move}] GEZ  ·  [{press}] BAS  ·  [{digits}] TUTAR YAZ  ·  [{mode}] DEĞİŞTİR",
       tip3: "Jetonun mu bitti? Biraz ÇEK. Kota tamam mı? [{settle}] KAPAT  ·  [{help}] KURALLAR",
       floorKept: "Yedek akçe: {n} jeton cepte kalır",
+      c_float: 'cepte {n} kalır (yedek akçe)',
       allConfirm: "HEPSİ cebini boşaltır. Onaylamak için HEPSİ'ye tekrar bas",
       c_bank: 'BANKA', c_pocket: 'CEP', c_left: 'ÖDENECEK', c_metBig: 'KOTA TAMAM', c_interest: 'ZİL FAİZİ',
       c_rate: 'VARDİYA BAŞI %{r}, EN FAZLA +{c}', c_pulls: 'İÇİN {n} ÇEKİŞ DAHA OYNA', c_with: 'BUNUNLA: +{n}',
@@ -485,8 +487,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
         amount = clampDeposit(Math.min(amountFor(key, wallet, left), left), wallet);
       }
     }
-    if (key === 'rest' && amount >= left && amount > room) confirmAll = true;  // paying the quota in full may use the float: nothing is left to play for
-    if (!confirmAll && amount > room) {                                        // the float stays in the pocket
+    if (!confirmAll && amount > room) {                                        // the float stays in the pocket, even for the last coins of the quota (only ALL goes below it)
       amount = room;
       if (amount <= 0) { this.refuse('floorKept'); return; }
       this.ctx.ui.toast(this.t('floorKept', { n: fmtNum(floor) }), 'sys');
@@ -703,7 +704,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     // a new Night or the paid screen must not keep a stale count-up value
     if (paid !== this.lastPaid || night !== this.lastNight) { this.lastPaid = paid; this.lastNight = night; this.shownDep = bank.balance; }
     const key = [q.due, this.shownDep, q.base, q.assessment, this.entry, this.cursor, this.mode, bank.pocket, bank.withdrawable, bank.interestNext,
-      bank.pullsToQualify, bank.open ? 1 : 0, q.met ? 1 : 0, paid ? 1 : 0, phase, night].join('|');
+      bank.pullsToQualify, bank.open ? 1 : 0, q.met ? 1 : 0, paid ? 1 : 0, phase, night, this.ctx.run.depositFloor?.() ?? 0].join('|');
     if (!force && key === this.lastKey) return;
     this.lastKey = key;
     this.lightKeys();
@@ -791,6 +792,9 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
         else label(this.t('c_rate', { r: bank.ratePct, c: fmtNum(bank.interestCap) }), 12, 270, dim, 30);
       }
       box(302);
+      // the float of this Watch: what every deposit leaves in the pocket (fixed for the Watch, see float.ts)
+      const floor = this.ctx.run.depositFloor?.() ?? 0;
+      if (floor > 0) label(this.t('c_float', { n: fmtNum(floor) }), 12, 346, cyan, 30);
     } else if (this.mode === 'wd') {
       if (!bank.open || bank.withdrawable <= 0) {
         label(this.t(!bank.open ? 'c_wdClosed' : 'c_wdEmpty'), 256, 200, red, 40, 'center');

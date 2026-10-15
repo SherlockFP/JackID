@@ -97,6 +97,7 @@ export function parseScript(text) {
  *   play:<keys>xN      press the keys (parseScript syntax, e.g. play:Space:150,wait:300x3), N times (default 1)
  *   stand              stand up from the seat
  *   bank:deposit:<n>   Debt Terminal deposit of n coins (run.deposit)
+ *   bank:withdraw:<n>  take n coins back from the bank into the pocket (run.withdraw, the broke path)
  *   lever              the terminal lever the run accepts now: OPEN THE FLOOR, else the Bell, else SETTLE
  *   pawn               one Pawn Window reroll (Intermission only)
  *   wait:<ms>          pause
@@ -112,6 +113,8 @@ export function parseRunSteps(text) {
     if (m) { out.push({ kind: 'goto', machine: m[1], text: tok }); continue; }
     m = /^bank:deposit:(\d+)$/.exec(tok);
     if (m) { out.push({ kind: 'deposit', amount: Number(m[1]), text: tok }); continue; }
+    m = /^bank:withdraw:(\d+)$/.exec(tok);
+    if (m) { out.push({ kind: 'withdraw', amount: Number(m[1]), text: tok }); continue; }
     m = /^wait:(\d+)$/.exec(tok);
     if (m) { out.push({ kind: 'wait', ms: Number(m[1]), text: tok }); continue; }
     m = /^play:(.+?)(?:x(\d+))?$/.exec(tok);
@@ -322,6 +325,11 @@ async function driveRun(cdp, steps, run) {
         rec.amount = s.amount;
         rec.ok = (await evaluate(cdp, `window.jackid.app.run.deposit(${s.amount}) === true`)) === true;
         if (!rec.ok) rec.reason = 'refused (pocket floor, quota room, or not a quota Watch)';
+        break;
+      case 'withdraw':
+        rec.amount = s.amount;
+        rec.ok = Number(await evaluate(cdp, `window.jackid.app.run.withdraw(${s.amount})`)) > 0;
+        if (!rec.ok) rec.reason = 'refused (window shut, or nothing in the bank)';
         break;
       case 'lever':
         rec.lever = await evaluate(cdp, `(() => { const r = window.jackid.app.run; return r.openFloor() ? 'openFloor'

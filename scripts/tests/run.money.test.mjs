@@ -464,18 +464,45 @@ test('Debt Terminal keypad: 3 x 3, the top row picks the action, REST turns into
   assert.equal(R.amountFor('dep', 100, 50), 0, 'a top-row key moves no coins');
 });
 
-test('Night 1 deposit float: the first deposit of a Watch keeps up to 9 coins (never above half the pocket), later Nights keep the plain float', () => {
-  assert.equal(ECO.depositFloatFor(0, 30, 1), 9, 'the 30-coin start keeps 9, not 2');
-  assert.equal(ECO.depositFloatFor(0, 12, 1), 6, 'never above half the pocket');
-  assert.equal(ECO.depositFloatFor(0, 0, 1), 0);
-  assert.equal(ECO.depositFloatFor(1, 30, 1), 2, 'Night 2 on: the plain float (2 cheapest bets)');
+test('float (wave 38): every Watch keeps 2 cheapest bets, fixed for the whole Watch: it does not shrink as the pocket shrinks', async () => {
+  const F = await load('src/game/float.ts');
+  assert.equal(F.watchFloat(1), 2, 'two 1-coin bets');
+  assert.equal(F.watchFloat(40), 80, 'two dear bets');
+  assert.equal(F.watchFloat(0), 2, 'never below 2 coins');
   const run = RUN.createRun({ seed: 67, mode: 'debt' });
-  assert.equal(run.depositFloor(), 9, 'the run reads it on the first deposit of the Watch');
+  run.quota.due = 1_000_000;                  // far above these deposits: no quota met, and a dead pocket does not ring the rescue loan
+  run.syncQuota();
+  const fl = run.depositFloor();
+  assert.equal(fl, F.watchFloat(run.cheapestBet()), 'the run reads the Watch float');
   run.coins = 30;
-  assert.equal(run.deposit(25), false, 'depositing past the float is refused without the confirmed ALL');
-  assert.ok(run.deposit(21));
-  assert.ok(run.depositFloor() > 0, 'later deposits of the Watch keep a float too');
+  assert.equal(run.depositFloor(), fl, 'the float does not move with the pocket');
+  assert.equal(run.deposit(30 - fl + 1), false, 'depositing past the float is refused without the confirmed ALL');
+  assert.equal(run.coins, 30, 'a refused deposit moves no coins');
+  assert.ok(run.deposit(30 - fl));
+  assert.equal(run.coins, fl, 'exactly the float is left in the pocket');
+  assert.equal(run.depositFloor(), fl, 'a later deposit of the Watch keeps the same float');
+  run.coins = 3 * fl;
+  assert.equal(run.depositFloor(), fl, 'the float is still the same when the pocket is larger');
   assert.equal(run.deposit(run.coins), false, 'a later deposit may not silently empty the pocket');
   assert.equal(run.deposit(run.coins, true), true, 'a confirmed later deposit goes below the float');
+  assert.equal(run.coins, 0);
+  run.dispose();
+});
+
+test('pulls (wave 38): a pull grant says "+N pulls · reason" on the banner; a loss stays silent', () => {
+  const shown = [];
+  const run = RUN.createRun({ seed: 68, mode: 'debt', banner: (text) => shown.push(text) });
+  run.phase = 'play';                          // a bought pull needs the play phase
+  run.tickets = 10;
+  assert.equal(run.buyPull(), true);
+  assert.ok(shown.some((s) => /\+1 pull\b/.test(s) && /Ticket/i.test(s)), `a bought pull is announced (${shown.join(' | ')})`);
+  const n = shown.length;
+  run.tickets = 0;
+  assert.equal(run.buyPull(), false, 'no Tickets, no pull');
+  assert.equal(shown.length, n, 'a refused purchase grants nothing and says nothing');
+  run.phase = 'intermission';                  // the Bell: a new Watch starts with its pull allowance
+  run.nightDone = false; run.topside = false;
+  assert.equal(run.startWatch(), true, 'the Watch starts from the Bell');
+  assert.ok(shown.some((s) => /\+\d+ pulls? · new Watch/.test(s)), `the Watch allowance is announced (${shown.join(' | ')})`);
   run.dispose();
 });

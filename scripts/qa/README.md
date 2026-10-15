@@ -141,6 +141,7 @@ npm run qa -- --run "goto:coinflip;wait:600;state;play:Digit9,Space:120x2;wait:1
 | `play:<keys>xN` | presses the keys N times (default 1). Keys use the script syntax (`Space:150,wait:300`). The `x` suffix ends the step: `play:Space:150,wait:300x3` repeats both |
 | `stand` | stands up from the seat (`world.standUp()`), then waits until the seat is free |
 | `bank:deposit:<n>` | a Debt Terminal deposit of n coins (`run.deposit(n)`). `ok:false` when the run refuses it (pocket floor, quota room, not a quota Watch) |
+| `bank:withdraw:<n>` | takes n coins back from the bank into the pocket (`run.withdraw(n)`, the broke path). `ok:false` when the window is shut or the bank is empty |
 | `lever` | the terminal lever the run accepts now: OPEN THE FLOOR (Night paid), else the Bell (Intermission), else SETTLE (quota met). `lever: null` when none is open |
 | `pawn` | one Pawn Window reroll (`run.pawn.reroll()`, Intermission only) |
 | `wait:<ms>` | pauses |
