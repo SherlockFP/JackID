@@ -13,8 +13,8 @@
  * the draw only (`fx/layer.ts`), so gameplay code never sees it. Actors, audio, screen FX, lights and subtitles are
  * applied by `actors.ts` / `effects.ts`. The run never touches `setTimeout` or DOM listeners: skipping follows the
  * `skip` action edges (`input.on('skip')`): a tap (press released before SKIP_HOLD) advances to the next subtitle line,
- * a hold of SKIP_HOLD skips the scene.
- * The skip hint is visible from t = 0 of every scene.
+ * a hold of SKIP_HOLD skips the scene. An `intro` scene skips on a single tap once INTRO_TAP_AFTER (1 s) has played.
+ * The skip hint is visible from t = 0 of every scene (an intro's from INTRO_TAP_AFTER).
  *
  * Multiplayer glue (the NET layer owns the messages):
  *  - the host calls `play(id, { startAt, seed })`; every peer does the same with the same `startAt`;
@@ -49,6 +49,7 @@ declare module '@/core/events' {
 }
 
 const SKIP_HOLD = 0.6;          // s, hold-to-skip; a press released sooner is a tap and skips at once
+const INTRO_TAP_AFTER = 1.0;    // s, an `intro` scene skips on a single tap once it has played this long (no hold needed)
 const SEEK_MIN = 0.05;          // s, a late start below this is just played
 const READY_WAIT = 2;           // s, SP: wait this long for mannequin meshes before starting
 const GATE_FAILSAFE = 90;       // s, online: a lost gate message must never soft-lock a client
@@ -340,8 +341,15 @@ class Run {
     const tap = this.keyDown && this.hold < SKIP_HOLD;
     this.keyDown = false;
     this.hold = 0;
-    if (tap) this.tapLine(app.simPaused);
+    if (!tap) return;
+    // An intro skips on one tap once INTRO_TAP_AFTER has passed (its hint shows then); earlier taps do nothing.
+    if (this.isIntro()) { if (this.introTapOpen() && this.canSkip(app.simPaused)) this.requestSkip(); return; }
+    this.tapLine(app.simPaused);
   }
+
+  /** The `intro` scene kind: one tap after INTRO_TAP_AFTER skips it (see onSkipKey). */
+  private isIntro(): boolean { return this.def.kind === 'intro'; }
+  private introTapOpen(): boolean { return this.t >= INTRO_TAP_AFTER; }
 
   /**
    * Tap: jump the timeline to the start of the next subtitle line. The cues in between are applied in seek mode (the
@@ -366,14 +374,16 @@ class Run {
     const live = this.canSkip(paused);
     if (this.keyDown && live) this.hold = Math.min(SKIP_HOLD, this.hold + dt);
     if (this.voted) a.ui.skipHint(1, t('cutscene.skipVote'));
-    else a.ui.skipHint(this.hold / SKIP_HOLD, this.skipPrompt());   // shown from the first frame of every scene
+    else if (this.isIntro() && !this.introTapOpen()) a.ui.skipHint(null);   // an intro's hint waits for its tap window
+    else a.ui.skipHint(this.hold / SKIP_HOLD, this.skipPrompt());   // shown from the first frame of every other scene
     if (this.keyDown && live && this.hold >= SKIP_HOLD) this.requestSkip();
   }
 
   /** The skip prompt text: "TAP <key>: next line · HOLD <key>: skip scene" (online: the vote wording). */
   private skipPrompt(): string {
     const key = app.input.keyLabel('skip');
-    return t(app.net.online ? 'cutscene.skip.online' : 'cutscene.skip.prompt', { key });
+    if (app.net.online) return t('cutscene.skip.online', { key });
+    return t(this.isIntro() ? 'cutscene.skip.intro' : 'cutscene.skip.prompt', { key });
   }
 
   /** SP: skip now. Online: cast a vote (`cutscene:skip`); the net calls `forceSkip()` when it passes. */

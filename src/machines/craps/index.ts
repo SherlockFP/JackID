@@ -748,7 +748,12 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
     const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
     const secs: Txt | undefined = left > 0 ? { k: 'm.craps.hSecs', v: { n: left } } : undefined;
     const who: Txt = mine ? { k: 'm.craps.hYouShoot' } : { k: 'm.craps.hShooter', v: { n: st.shooter + 1 } };
+    // PRESS offer: the chance to make the point before a 7 and the payout are on the banner before the press is taken
+    const pressable = open && st.point > 0 && this.myAmount('pass') > 0;
+    const pressedNow = st.point > 0 && this.myAmount(`press:${st.point}`) > 0;
+    const pressPct = st.point > 0 ? Math.round(pressChance(st.point) * 100) : 0;
     if (st.phase === 'comeout') sh.state({ k: 'm.craps.hComeout' }, mine ? 'good' : 'gold', secs ?? who);
+    else if (st.phase === 'point' && pressable && !pressedNow) sh.state({ k: 'm.craps.hPressOffer', v: { n: st.point, p: pressPct, key: this.k('n3') } }, 'gold', secs ?? who);
     else if (st.phase === 'point') sh.state({ k: 'm.craps.hPoint', v: { n: st.point } }, mine ? 'good' : 'warn', secs ?? who);
     else if (st.phase === 'busy') sh.state({ k: 'm.craps.hBusy' }, 'cyan');
     else if (st.phase === 'idle') sh.state({ k: 'm.craps.hWait' }, 'neutral');
@@ -762,14 +767,11 @@ export default class CrapsTable extends TableBase<CrapsParts, Ev, Snap, Act> {
     if (last !== undefined) nums.push({ label: { k: 'm.craps.hNLast' }, value: String(last), tone: last === 7 ? 'bad' : 'neutral' });
     nums.push({ label: { k: 'm.craps.hNWorking' }, value: tr(st.working[seat] ? 'm.craps.hOn' : 'm.craps.hOff'), tone: st.working[seat] ? 'good' : 'neutral' });
     // PRESS: the visible odds and payout on the point, or PRESSED once this point is pressed
-    const pressable = open && st.point > 0 && this.myAmount('pass') > 0;
-    const pressedNow = st.point > 0 && this.myAmount(`press:${st.point}`) > 0;
     if (pressable || pressedNow) {
       const [pa, pb] = pressRatio(st.point);
-      const pct = Math.round(pressChance(st.point) * 100);
       nums.push({
         label: { k: 'm.craps.hNPress' },
-        value: pressedNow ? { k: 'm.craps.hPressed' } : { k: 'm.craps.hPressVal', v: { p: pct, a: pa, b: pb } },
+        value: pressedNow ? { k: 'm.craps.hPressed' } : { k: 'm.craps.hPressVal', v: { p: pressPct, a: pa, b: pb } },
         tone: pressedNow ? 'gold' : 'cyan',
       });
     }

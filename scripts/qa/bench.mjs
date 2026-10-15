@@ -5,6 +5,7 @@
  *
  *   node scripts/qa/bench.mjs --machine bigone --script "Space:150,wait:3000" --rounds 3 --shots <dir>
  *   node scripts/qa/bench.mjs --world --seed 7 --js "<expr>" --probe "<expr>" --frames "300,1200" --shots <dir>
+ *   node scripts/qa/bench.mjs --run "goto:coinflip;play:Space:150x3;state" --seed 1 --shots <dir>   (debt-run driver)
  *
  * The boot veil is passed with a real mouse click (main.ts enters on a click, or on Enter/Space once the veil has focus).
  *
@@ -87,6 +88,43 @@ export function parseScript(text) {
     }
   }
   return steps;
+}
+
+/**
+ * `--run "<steps>"`: a real debt run's steps, separated by `;` (commas stay inside a play step, so its keys use the
+ * parseScript list syntax). Steps (see scripts/qa/README.md, "Debt-run driver"):
+ *   goto:<machineId>   teleport in front of the floor machine, face it, press E (devtools occupy as the fallback)
+ *   play:<keys>xN      press the keys (parseScript syntax, e.g. play:Space:150,wait:300x3), N times (default 1)
+ *   stand              stand up from the seat
+ *   bank:deposit:<n>   Debt Terminal deposit of n coins (run.deposit)
+ *   lever              the terminal lever the run accepts now: OPEN THE FLOOR, else the Bell, else SETTLE
+ *   pawn               one Pawn Window reroll (Intermission only)
+ *   wait:<ms>          pause
+ *   state              record pocket, bank, quota, night, watch, pulls, phase, seated (res.run.states)
+ */
+export function parseRunSteps(text) {
+  const out = [];
+  for (const raw of String(text ?? '').split(';')) {
+    const tok = raw.trim();
+    if (!tok) continue;
+    if (['stand', 'lever', 'pawn', 'state'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
+    let m = /^goto:([a-z][a-z0-9_]*)$/.exec(tok);
+    if (m) { out.push({ kind: 'goto', machine: m[1], text: tok }); continue; }
+    m = /^bank:deposit:(\d+)$/.exec(tok);
+    if (m) { out.push({ kind: 'deposit', amount: Number(m[1]), text: tok }); continue; }
+    m = /^wait:(\d+)$/.exec(tok);
+    if (m) { out.push({ kind: 'wait', ms: Number(m[1]), text: tok }); continue; }
+    m = /^play:(.+?)(?:x(\d+))?$/.exec(tok);
+    if (m) {
+      const n = m[2] === undefined ? 1 : Number(m[2]);
+      if (!(n >= 1)) throw new Error(`bad repeat in "${tok}" (play:<keys>xN, N >= 1)`);
+      out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
+      continue;
+    }
+    throw new Error(`bad --run step "${tok}" (goto:<id> | play:<keys>xN | stand | bank:deposit:<n> | lever | pawn | wait:<ms> | state)`);
+  }
+  if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
+  return out;
 }
 
 /** `--frames "300,1200"` → sorted, unique ms offsets after the last key. */
@@ -189,6 +227,128 @@ async function evaluate(cdp, expr) {
 }
 
 // ── the run ────────────────────────────────────────────────────────────────────────────────────────────────
+// ── --run: the debt-run driver ─────────────────────────────────────────────────────────────────────────────
+/** Skips the story intro with real Space taps: one tap (80 ms, a tap not a hold) each 1.2 s once it has played that long. */
+async function skipIntro(cdp) {
+  const t0 = Date.now();
+  let started = 0, lastTap = 0, taps = 0;
+  for (;;) {
+    const id = await evaluate(cdp, 'window.jackid.app.cutscene.playing ?? null');
+    if (id === 'intro') {
+      if (!started) started = Date.now();
+      if (taps < 8 && Date.now() - started >= 1200 && Date.now() - lastTap >= 1200) {
+        await pressKey(cdp, 'Space', DEFAULT_HOLD_MS);
+        lastTap = Date.now();
+        taps++;
+      }
+    } else if (started || Date.now() - t0 > 15_000) break;   // the intro is over (skipped or played out), or none came
+    await sleep(120);
+  }
+  return { played: started > 0, taps };
+}
+
+/** Page JS: the debt run's state, for `state` and the step records. Watch and Night are 1-based. */
+const RUN_STATE_JS = `(() => {
+  const a = window.jackid.app, r = a.run, b = r.bank(), pulls = r.pulls();
+  return {
+    phase: r.shift.phase, night: r.night(), watch: typeof r.watch === 'number' ? r.watch + 1 : null,
+    pocket: b.pocket, bank: b.balance, withdrawable: b.withdrawable, quotaDue: b.due, quotaLeft: b.left,
+    pullsLeft: b.pullsLeft, pulls: Number.isFinite(pulls) ? pulls : null,
+    over: r.over, seated: a.player?.seat?.mid ?? null, intro: a.cutscene.playing ?? null,
+  };
+})()`;
+
+/**
+ * Page JS: teleports the player in front of the first unlocked floor machine of `machineId` and faces it. The front is
+ * the machine's +Z (rotY turns it), `0.9 m + its interact depth` out, the stand-up distance of the bench room.
+ */
+const goToJs = (machineId) => `(() => {
+  const a = window.jackid.app, w = a.world, id = ${JSON.stringify(machineId)};
+  if (!w || !a.player) return { ok: false, reason: 'no debt run on screen' };
+  const m = w.machines().find((x) => x.def.id === id && !w.isLocked(x.id));
+  if (!m) return { ok: false, reason: 'no unlocked "' + id + '" on the floor (not placed, or locked this Night)' };
+  const slot = w.slot(m.id);
+  const th = ((slot?.rotY ?? 0) * Math.PI) / 180;
+  const d = 0.9 + (m.model?.interact?.max?.[2] ?? 0.5);
+  const fx = slot.pos[0] + d * Math.sin(th), fz = slot.pos[2] + d * Math.cos(th);
+  const v = a.camera.position.clone();
+  v.set(fx, a.player.pos.y, fz);
+  a.player.teleport(v, th);
+  return { ok: true, instance: m.id, at: [Math.round(fx * 100) / 100, Math.round(fz * 100) / 100] };
+})()`;
+
+/** Runs the parsed --run steps against the debt run (see parseRunSteps). Each step is recorded in `run.steps`. */
+async function driveRun(cdp, steps, run) {
+  const seatedIs = (want, ms) => waitFor(async () => (await evaluate(cdp, 'window.jackid.app.player?.seat != null')) === want, ms, want ? 'a seat' : 'standing up');
+  for (const s of steps) {
+    const t0 = Date.now();
+    const rec = { step: s.text, ok: true };
+    switch (s.kind) {
+      case 'goto': {
+        if (await evaluate(cdp, 'window.jackid.app.player?.seat != null')) {
+          await evaluate(cdp, '(window.jackid.app.world.standUp(), true)');
+          await seatedIs(false, 4000).catch(() => { throw new Error(`goto:${s.machine}: could not stand up first`); });
+        }
+        const tp = await evalJson(cdp, goToJs(s.machine));
+        if (!tp.ok) throw new Error(`goto:${s.machine}: ${tp.reason}`);
+        await sleep(400);                                     // the interact focus follows the new view
+        await pressKey(cdp, 'KeyE', DEFAULT_HOLD_MS);
+        rec.via = 'E';
+        try { await seatedIs(true, 2500); } catch {
+          await evaluate(cdp, `(window.jackid.app.world.occupy(${JSON.stringify(tp.instance)}), true)`);   // devtools fallback
+          rec.via = 'occupy';
+          await seatedIs(true, 2500).catch(() => { throw new Error(`goto:${s.machine}: not seated (E and occupy both failed)`); });
+        }
+        rec.instance = tp.instance;
+        rec.at = tp.at;
+        break;
+      }
+      case 'play': {
+        for (let i = 0; i < s.n; i++) {
+          for (const k of s.keys) {
+            if (k.kind === 'wait') { await sleep(k.ms); continue; }
+            await pressKey(cdp, k.code, k.ms);
+          }
+        }
+        rec.n = s.n;
+        break;
+      }
+      case 'stand': {
+        await evaluate(cdp, '(window.jackid.app.world.standUp(), true)');
+        await seatedIs(false, 4000).catch(() => { rec.ok = false; rec.reason = 'still seated (the round may be settling)'; });
+        break;
+      }
+      case 'deposit':
+        rec.amount = s.amount;
+        rec.ok = (await evaluate(cdp, `window.jackid.app.run.deposit(${s.amount}) === true`)) === true;
+        if (!rec.ok) rec.reason = 'refused (pocket floor, quota room, or not a quota Watch)';
+        break;
+      case 'lever':
+        rec.lever = await evaluate(cdp, `(() => { const r = window.jackid.app.run; return r.openFloor() ? 'openFloor'
+          : r.startWatch() ? 'startWatch' : r.settleEarly() ? 'settleEarly' : null; })()`);
+        rec.ok = rec.lever !== null;
+        break;
+      case 'pawn':
+        rec.ok = (await evaluate(cdp, 'window.jackid.app.run.pawn.reroll() === true')) === true;
+        break;
+      case 'wait':
+        await sleep(s.ms);
+        break;
+      case 'state': {
+        const st = await evalJson(cdp, RUN_STATE_JS);
+        run.states.push(st);
+        rec.state = st;
+        log(`state: ${JSON.stringify(st)}`);
+        break;
+      }
+      default: throw new Error(`unknown run step ${s.kind}`);
+    }
+    rec.ms = Date.now() - t0;
+    run.steps.push(rec);
+    log(`run ${s.text}: ${rec.ok ? 'ok' : 'refused'} (${rec.ms} ms)`);
+  }
+}
+
 /**
  * Runs `script` (see parseScript) `rounds` times against machine `machine` in a fresh bench room. Each round is one
  * pass of the script, followed by a screenshot when `shots` is set.
@@ -196,10 +356,12 @@ async function evaluate(cdp, expr) {
  *   errors:string[], shots:string[], state:string, framesPerSec:number, cleanup:object}>}
  */
 export async function runBench(opts = {}) {
-  const world = Boolean(opts.world);                 // a real debt run (`/?skipmenu=1`), not a bench room
+  const runSteps = opts.run === undefined ? null : parseRunSteps(opts.run);   // --run: a debt run driven by steps
+  const world = Boolean(opts.world) || runSteps !== null;   // a real debt run (`/?skipmenu=1`), not a bench room
   const machine = String(opts.machine ?? (world ? 'run' : ''));
   if (!/^[a-z][a-z0-9_]*$/.test(machine)) throw new Error('machine id required, e.g. "bigone" (or --world)');
-  if (world && opts.sit) throw new Error('--sit needs a bench room (drop --world)');
+  if (world && opts.sit) throw new Error('--sit needs a bench room (drop --world / --run)');
+  if (runSteps && (opts.walkView || opts.frames || opts.force !== undefined)) throw new Error('--run takes its own steps: drop --walk-view, --frames, --force');
   const steps = parseScript(opts.script ?? (opts.walkView ? 'KeyW:400,wait:600' : 'wait:1000'));
   const rounds = Math.max(1, Math.floor(Number(opts.rounds ?? 1)));
   const seed = Math.floor(Number(opts.seed ?? 1));
@@ -226,8 +388,8 @@ export async function runBench(opts = {}) {
 
   const res = {
     machine, seed, rounds: 0, roundLog: [], consoleErrors: 0, errors: [], shots: [], state: '', framesPerSec: 0,
-    mode: sit ? 'sit' : walkView ? 'walk-view' : 'walk', seated: false, playerMode: '', walkShot: null,
-    force: null, reloads: 0, viteEvents: [],          // page loads after the first one (the veil comes back): the run is then invalid
+    mode: runSteps ? 'run' : sit ? 'sit' : walkView ? 'walk-view' : 'walk', seated: false, playerMode: '', walkShot: null,
+    force: null, run: null, reloads: 0, viteEvents: [],          // page loads after the first one (the veil comes back): the run is then invalid
     cleanup: { vite: 'not started', chrome: 'not started', profile: 'not created', ports: 'n/a' },
   };
   let vite = null, chrome = null, cdp = null, profile = null, vport = 0, dport = 0, stopping = false;
@@ -310,6 +472,10 @@ export async function runBench(opts = {}) {
     if (res.framesPerSec <= 0) throw new Error('rendering did not advance (rAF frames stalled)');
     res.state = await stateOf();
     log(`in game (${res.state}), ${res.framesPerSec} fps`);
+    if (runSteps) {                                       // --run: the intro is skipped with a Space tap before any step
+      res.run = { intro: await skipIntro(cdp), steps: [], states: [], shot: null };
+      log(`intro: played ${res.run.intro.played}, Space taps ${res.run.intro.taps}`);
+    }
 
     const shoot = async (name) => {
       const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
@@ -359,9 +525,15 @@ export async function runBench(opts = {}) {
       await sleep(400);
     }
 
+    // 3e) --run: the debt-run steps (no rounds). The final screenshot is run-final.png.
+    if (runSteps) {
+      await driveRun(cdp, runSteps, res.run);
+      if (shotsDir) res.run.shot = await shoot('run-final.png');
+    }
+
     // 4) Rounds: one pass of the script per round, then a screenshot. With --sit, the wallet and wagered are read
     //    before and after each pass.
-    for (let r = 1; r <= rounds; r++) {
+    for (let r = 1; r <= (runSteps ? 0 : rounds); r++) {
       const before = await evaluate(cdp, 'window.__qaFrames');
       const m0 = sit ? await money() : null;
       const t0 = Date.now();
@@ -437,14 +609,14 @@ export async function runBench(opts = {}) {
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────
-const USAGE = 'usage: node scripts/qa/bench.mjs (--machine <id> | --world) [--script "Space:200,wait:1500,KeyX"] [--shots <dir>] '
+const USAGE = 'usage: node scripts/qa/bench.mjs (--machine <id> | --world | --run "<steps>") [--script "Space:200,wait:1500,KeyX"] [--shots <dir>] '
   + '[--frames "300,1200"] [--probe "<js>"] [--js "<js>"] [--rounds <n>] [--seed <n>] [--sit [--seat <n>] [--force "<id>:<state>"]] [--walk-view]';
 
 function parseArgs(argv) {
   const o = {};
   const flags = {
     '--machine': 'machine', '--script': 'script', '--shots': 'shots', '--rounds': 'rounds', '--seed': 'seed', '--seat': 'seat',
-    '--settle': 'settle', '--frames': 'frames', '--probe': 'probe', '--js': 'js', '--force': 'force',
+    '--settle': 'settle', '--frames': 'frames', '--probe': 'probe', '--js': 'js', '--force': 'force', '--run': 'run',
   };
   const switches = { '--sit': 'sit', '--walk-view': 'walkView', '--world': 'world' };
   for (let i = 0; i < argv.length; i++) {
@@ -464,7 +636,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     let code = 0;
     try {
       const o = parseArgs(process.argv.slice(2));
-      if (o.help || (!o.machine && !o.world)) { process.stderr.write(USAGE + '\n'); process.exit(o.help ? 0 : 2); }
+      if (o.help || (!o.machine && !o.world && o.run === undefined)) { process.stderr.write(USAGE + '\n'); process.exit(o.help ? 0 : 2); }
       const result = await runBench(o);
       process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     } catch (e) {

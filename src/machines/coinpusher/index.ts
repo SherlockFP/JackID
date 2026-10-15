@@ -47,6 +47,8 @@ export { playHeadless };
 type St = {
   shelf: number; tilt: [number, number]; walls: number; blk: [number, number]; pay: [number, number]; win: [number, number];
   heat: [number, number]; heatT: [number, number];
+  /** Each station's tray in units (the coins it would lose on a tilt); mirrored from the host, so THUMP can show the risk. */
+  tray: [number, number];
 };
 /** Host-only bookkeeping that must survive a save. The heat copy here is the authority the thump checks against. */
 type Host = { tray: [number, number]; tiltAt: [number, number]; wallsAt: number; lane: LaneTrack; heat: [number, number]; heatT: [number, number] };
@@ -55,9 +57,9 @@ type Act = { k: 'drop'; x: number } | { k: 'thump' };
 /** Fate of one coin as [station, lost 0/1, units]. */
 type FateTuple = [number, number, number];
 type Ev =
-  | { k: 'drop'; st: number; x: number; lost: number; to: number; u: number; gold: number; gate: string; prize: string; wal: number; fates: FateTuple[] }
+  | { k: 'drop'; st: number; x: number; lost: number; to: number; u: number; gold: number; gate: string; prize: string; wal: number; fates: FateTuple[]; tray: [number, number] }
   | { k: 'block'; st: number; n: number; pay: number; bet: number; tags: string[] }
-  | { k: 'thump'; st: number; heat: number; at: number; fates: FateTuple[] }
+  | { k: 'thump'; st: number; heat: number; at: number; fates: FateTuple[]; tray: [number, number] }
   | { k: 'tilt'; st: number; until: number; at: number; lost: number }
   | { k: 'scav'; st: number; coins: number };
 type DropEv = Extract<Ev, { k: 'drop' }>;
@@ -98,7 +100,7 @@ export const def: MachineDef = {
 
 export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act> {
   // ── public state (mirrored from events) ──
-  private st: St = { shelf: PILE_START, tilt: [0, 0], walls: 0, blk: [0, 0], pay: [0, 0], win: [0, 0], heat: [0, 0], heatT: [0, 0] };
+  private st: St = { shelf: PILE_START, tilt: [0, 0], walls: 0, blk: [0, 0], pay: [0, 0], win: [0, 0], heat: [0, 0], heatT: [0, 0], tray: [0, 0] };
   // ── host-only authority ──
   private gov: Gov = makeGov();
   private hostState: Host = { tray: [0, 0], tiltAt: [0, 0], wallsAt: 0, lane: { st: -1, n: 0 }, heat: [0, 0], heatT: [0, 0] };
@@ -146,7 +148,12 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     if (a === 'left') { this.leftHeld = e.down; return; }
     if (a === 'right') { this.rightHeld = e.down; return; }
     if (!e.down || e.repeat) return;
-    if (a === 'fast') { this.act({ k: 'thump' }); return; }
+    if (a === 'fast') {
+      // THUMP risks the tray (a tilt loses it): with an empty tray there is nothing to put at risk, so it is off
+      if (this.localSeat < 0 || this.st.tray[this.localSeat] <= 0) { this.sfx('buzzer', { vol: 0.4 }); this.toast(tr('m.coinpusher.noTray'), 'bad'); return; }
+      this.act({ k: 'thump' });
+      return;
+    }
     if (a === 'help') this.toast(`${tr('m.coinpusher.infoTitle')}: ${tr('m.coinpusher.infoBody')}`, 'sys');
   }
 
@@ -207,7 +214,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     const ev: DropEv = {
       k: 'drop', st: seat, x: aim, lost: r.coin.lost ? 1 : 0, to: r.coin.st, u: r.coin.units, gold: r.coin.gold ? 1 : 0,
       gate: r.kind ?? '', prize: r.prize ?? '', wal: r.kind === 'W' ? this.hostState.wallsAt : 0,
-      fates: r.fates.map((f): FateTuple => [f.st, f.lost ? 1 : 0, f.units]),
+      fates: r.fates.map((f): FateTuple => [f.st, f.lost ? 1 : 0, f.units]), tray: [...this.hostState.tray] as [number, number],
     };
     void this.emit(ev);
     if (this.cnt[seat] >= BLOCK) this.closeBlock(seat, pid);
@@ -236,6 +243,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
    */
   private hostThump(pid: PlayerId, seat: number, rid: number, now: number): void {
     if (now < this.hostState.tiltAt[seat]) { this.nak(pid, rid, 'm.coinpusher.tilted'); return; }
+    if (this.hostState.tray[seat] <= 0) { this.nak(pid, rid, 'm.coinpusher.noTray'); return; }   // nothing to risk: THUMP is off
     const heat = heatNow(this.hostState.heat[seat], this.hostState.heatT[seat], now);
     if (heat + 1 > THUMP_MAX - 1) {          // the pip that would go past the last safe one trips the alarm
       const lost = this.hostState.tray[seat];
@@ -258,7 +266,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     this.hostState.heatT[seat] = now;
     void this.emit({
       k: 'thump', st: seat, heat: heat + 1, at: now,
-      fates: fates.map((f): FateTuple => [f.st, f.lost ? 1 : 0, f.units]),
+      fates: fates.map((f): FateTuple => [f.st, f.lost ? 1 : 0, f.units]), tray: [...this.hostState.tray] as [number, number],
     });
   }
 
@@ -290,7 +298,8 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
 
   /**
    * Debug force (bench `--force coinpusher:<state>`, seated): `thump` puts the seated station on one heat pip (the next
-   * THUMP is safe), `danger` on THUMP_MAX - 1 (the next THUMP trips the tilt alarm). Host-local, like the other states.
+   * THUMP is safe), `danger` on THUMP_MAX - 1 (the next THUMP trips the tilt alarm). Both need a tray to risk (THUMP is off
+   * with an empty tray). Host-local, like the other states.
    */
   private debugState(state: string): boolean {
     const pips = state.trim().toLowerCase() === 'danger' ? THUMP_MAX - 1 : state.trim().toLowerCase() === 'thump' ? 1 : -1;
@@ -322,7 +331,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
   getSnapshot(forPid?: PlayerId): Snap {
     const s: St = {
       ...this.st, tilt: [...this.st.tilt], blk: [...this.st.blk], pay: [...this.st.pay], win: [...this.st.win],
-      heat: [...this.st.heat], heatT: [...this.st.heatT],
+      heat: [...this.st.heat], heatT: [...this.st.heatT], tray: [...this.st.tray],
     };
     const host = forPid === undefined;
     return {
@@ -338,7 +347,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
   applySnapshot(sn: Snap): void {
     this.st = {
       ...sn.s, tilt: [...sn.s.tilt], blk: [...sn.s.blk], pay: [...sn.s.pay], win: [...sn.s.win],
-      heat: [...(sn.s.heat ?? [0, 0])], heatT: [...(sn.s.heatT ?? [0, 0])],
+      heat: [...(sn.s.heat ?? [0, 0])], heatT: [...(sn.s.heatT ?? [0, 0])], tray: [...(sn.s.tray ?? [0, 0])],
     };
     if (sn.g) this.gov = { ...sn.g, acc: [...sn.g.acc], hist: sn.g.hist.map((p): [number, number] => [p[0], p[1]]) };
     if (sn.h) {
@@ -366,6 +375,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     const p = this.parts;
     const s = ev.st as StationIx;
     this.st.blk[s] = Math.min(BLOCK, this.st.blk[s] + 1);
+    this.st.tray = [ev.tray[0], ev.tray[1]];
     p.chutes[s].position.x = STATION_X[s] + ev.x * CHUTE_TRAVEL;
     if (pc.local) this.sfx('click', { vol: 0.35 });
     const slot = FLY_FIRST + (this.flyIx++ % FLY_COUNT);
@@ -481,6 +491,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     this.st.blk[s] = 0;
     this.st.win[s] = ev.pay;
     this.st.pay[s] = 0;
+    this.st.tray[s] = 0;                                  // the close settles the tray into the pay
     this.paintLeds();
     if (!pc.local) return;
     this.showHud();
@@ -495,6 +506,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     const s = ev.st as StationIx;
     this.st.heat[s] = ev.heat;
     this.st.heatT[s] = ev.at;
+    this.st.tray = [ev.tray[0], ev.tray[1]];
     this.kick = 1;
     this.sfx('thud', { vol: 0.8 });
     if (ev.heat > THUMP_MAX - 2) this.parts.tiltLamp.blink(4, 0.25);   // the next thump trips the alarm
@@ -515,6 +527,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     this.st.tilt[ev.st] = ev.until;
     this.st.blk[ev.st] = 0;
     this.st.pay[ev.st] = 0;
+    this.st.tray[ev.st] = 0;                              // the tilt loses the tray
     this.st.heat[ev.st] = 0;
     this.st.heatT[ev.st] = ev.at;
     this.parts.tiltLamp.blink(6, 3.0);
@@ -530,6 +543,7 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
   private pipsOf(s: number): number { return Math.min(THUMP_MAX, Math.ceil(this.heatOf(s) - 1e-6)); }
 
   private presentScav(ev: Extract<Ev, { k: 'scav' }>, pc: PresentCtx): void {
+    this.st.tray[ev.st] = 0;                              // the tray is paid out
     if (!pc.local) return;
     this.sfx('coinShower', { vol: 0.5 });
     void this.pourCoins(Math.min(40, Math.max(1, Math.round(ev.coins))));
@@ -604,17 +618,19 @@ export default class CoinPusher extends TableBase<CoinpusherParts, Ev, Snap, Act
     const s = this.localSeat;
     if (s < 0) return;
     const now = this.ctx.net.hostTime();
+    const risk = this.st.tray[s] > 0;                       // THUMP is offered only while the tray has something to lose
     const hints: HudHint[] = [
       { action: 'primary', label: tr('m.coinpusher.hintDrop') },
       { action: 'left', label: tr('m.coinpusher.hintAim') },
-      { action: 'fast', label: tr('m.coinpusher.hintThump') },
       { action: 'help', label: tr('m.coinpusher.hintInfo') },
       { action: 'exit', label: tr('m.coinpusher.hintLeave') },
     ];
+    if (risk) hints.splice(2, 0, { action: 'fast', label: tr('m.coinpusher.hintThump') });
     const stats: Array<{ label: string; value: string }> = [{ label: tr('m.coinpusher.block', { n: this.st.blk[s] }), value: '' }];
+    stats.push({ label: tr('m.coinpusher.trayRisk', { n: fmtCoins(Math.round(this.st.tray[s] * this.D)) }), value: '' });
     const heat = this.pipsOf(s);
     stats.push({ label: tr('m.coinpusher.heat', { n: heat, m: THUMP_MAX }), value: '' });
-    if (heat >= THUMP_MAX - 1) stats.push({ label: tr('m.coinpusher.tiltRisk'), value: '' });
+    if (heat >= THUMP_MAX - 1 && risk) stats.push({ label: tr('m.coinpusher.tiltRisk'), value: '' });
     if (now < this.st.tilt[s]) stats.push({ label: tr('m.coinpusher.tiltTimer', { n: Math.ceil((this.st.tilt[s] - now) / 1000) }), value: '' });
     this.hud({ bet: BLOCK * this.D, hints, stats });
   }

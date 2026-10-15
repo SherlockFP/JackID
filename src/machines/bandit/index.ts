@@ -574,7 +574,7 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
 
     // STATE: what the cabinet is doing. A waiting win shows the HI / LO odds and payouts for the next card.
     if (tilt) sh.state({ k: 'm.bandit.stTilt' }, 'bad', { k: 'm.bandit.stTiltSub' });
-    else if (odds) sh.state({ k: 'm.bandit.stGamble' }, 'gold', { k: 'm.bandit.stGambleSub', v: { hi: this.sideText(odds.hi), lo: this.sideText(odds.lo) } });
+    else if (odds) sh.state({ k: 'm.bandit.stGamble' }, 'gold', { k: 'm.bandit.stGambleSub', v: { hi: this.sideText(odds.hi), lo: this.sideText(odds.lo), tie: `${Math.round(odds.tie * 100)}%` } });
     else if (busy) sh.state({ k: 'm.bandit.stSpin' }, 'cyan');
     else sh.state({ k: 'm.bandit.stReady' }, 'gold', { k: 'm.bandit.stReadySub', v: { n: fmtCoins(this.bet) } });
 

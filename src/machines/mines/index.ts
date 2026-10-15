@@ -115,7 +115,7 @@ export const def: MachineDef = {
 export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
   private st: State = freshState();
   private secret: Commit | null = null;
-  private cursor = CELLS / 2;
+  private cursor = Math.floor(CELLS / 2);     // the centre tile (a fractional start made tile lookups undefined)
   private idle = 0;
   private leaving = false;
   private guardUp = false;
@@ -354,6 +354,7 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
   private async pickCell(cell: number): Promise<void> {
     const s = this.st;
     if (!this.roundOpen || this.busy || !s.open || !this.secret) return;
+    if (!Number.isInteger(cell) || cell < 0 || cell >= CELLS) return;   // only real tiles reach the reveal tweens
     if (isRevealed(this.board(), cell)) return;
     this.busy = true;
     this.idle = 0;

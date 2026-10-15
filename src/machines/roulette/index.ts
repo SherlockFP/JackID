@@ -264,10 +264,12 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     }
   }
 
-  /** Bench "force" state `ride`: the local seat gets a straight-up ride offer on No. 17 (solo tables, the host's own window). */
+  /** Bench "force" state `ride`: the local seat gets a straight-up ride offer on No. 17, and the next spin lands on 17
+   *  (solo tables, the host's own window): READY → spin wins the ride, so LET IT RIDE is offered at the next window. */
   private debugState(state: string): boolean {
     if (state.trim().toLowerCase() !== 'ride' || this.localSeat < 0 || this.disposed) return false;
     const hs = this.hs;
+    this.forcePocket = 17;
     hs.ride[this.localSeat] = [{ s: 'straight:17', a: 10 }];
     if (hs.phase === 'open') this.applyRides();
     return true;
@@ -350,7 +352,9 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
 
     // the luck reroll is for solo tables; refund mode (≥ 2 humans on the spin) draws once, no reroll
     const luck = active.length >= 2 ? 0 : this.luck();
-    const out = spin(this.hostRng, active.map((a) => a.bets), this.mods(), luck);
+    const forced = this.forcePocket ?? undefined;
+    this.forcePocket = null;
+    const out = spin(this.hostRng, active.map((a) => a.bets), this.mods(), luck, forced);
     active.forEach((a, i) => { this.paySeat(a.seat, out.seats[i].gross, { bet: a.stake }); });
 
     this.lastLock = active.find((a) => a.seat === this.localSeat)?.bets ?? [];
@@ -374,6 +378,8 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     });
   }
   private lastLock: Bet[] = [];
+  /** Debug force (bench "ride"): the next host spin lands on this pocket; consumed by the next LOCK. */
+  private forcePocket: number | null = null;
 
   // ── presentation (every peer) ─────────────────────────────────────────────────────────────────
   async present(ev: Ev, pc: PresentCtx): Promise<void> {

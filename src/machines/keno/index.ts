@@ -8,7 +8,7 @@
  * announce events. Presentation (every peer): LOCK bell → relay clacks, one lamp per number → tickets stamp hits
  * → tier celebration / pop text / near-miss beat.
  *
- * DOUBLE DOWN: after the tenth number a 3 s window opens. A ticket's owner may stake the same again (charged at once);
+ * DOUBLE DOWN: as the tenth number lights a 3.5 s window opens (the countdown starts with it). A ticket's owner may stake the same again (charged at once);
  * the second stake pays the paytable re-priced to the hits so far (`ddPays`, RTP-neutral). The last ten numbers and the
  * payouts follow the window. Only the first ten numbers leave the host before the decision.
  *
@@ -44,7 +44,7 @@ const PAYOUT_S = 2.5;
 const STEP_SHARED_MS = 450;    // 20 numbers = 9.0 s
 const STEP_SOLO_MS = 200;
 const STEP_DD_MS = 150;        // the last ten numbers after DOUBLE DOWN: 1.5 s
-const DD_S = 3;                // DOUBLE DOWN decision window, after the tenth number is on the board
+const DD_S = 3.5;              // DOUBLE DOWN decision window: opens as the tenth number lights; 3.5 s leaves ≥ 3 s after lag
 const GOLD = 0xffd040, GREEN = 0x7dff7a, CREAM = '#f3e7c4', DIM = '#3d6b4f';
 
 // CRT grid (160 × 120 canvas): 10 × 8 numbers under a header
@@ -300,7 +300,7 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
     void this.emit({ k: 'close', drawNo: hs.drawNo, t: this.ctx.net.hostTime() });
     void this.emit({ k: 'draw', drawNo: hs.drawNo, numbers: out.drawn.slice(0, DD_AFTER), stepMs });
     hs.dd = {
-      live, out, adj, stepMs, show: LOCK_S + (DD_AFTER * stepMs) / 1000, open: false, wait: DD_S,   // the bell, then ten numbers
+      live, out, adj, stepMs, show: LOCK_S + ((DD_AFTER - 1) * stepMs) / 1000, open: false, wait: DD_S,   // the bell, then ten numbers (the window opens on the tenth)
       keys: new Set(), doubled: new Set(), pays: new Map(),
     };
   }
@@ -445,7 +445,8 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
         this.sfx('chime', { pitch: Math.min(12, hits * 2), vol: 0.7 });
         relay.blink(6, 0.4);
       }
-      if (step) await this.wait(step);
+      // the first pass ends on the tenth number: the DOUBLE DOWN offer follows at once (no trailing gap)
+      if (step && !(from === 0 && i === DD_AFTER - 1)) await this.wait(step);
     }
   }
 

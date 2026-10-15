@@ -23,6 +23,7 @@ npm run qa -- --machine bigone --script "Space:150,wait:3000" --rounds 3 --shots
 | `--walk-view` | no sit. Press the script keys on foot, then screenshot the first-person view to `<machine>-walk.png` (needs `--shots`) |
 | `--frames "<ms,ms,...>"` | screenshots at exact offsets after the last key is released (`<machine>-f<ms>.png`, or `-round<N>-f<ms>.png`). Each shot waits for a rendered frame. Trailing `wait:` steps are part of this timeline. Needs `--shots` |
 | `--world` | a real debt run (`/?skipmenu=1&seed=N`) in the pit instead of a bench room. `--machine` is not needed |
+| `--run "<steps>"` | a real debt run driven by steps (`;`-separated), see **Debt-run driver** below. Implies `--world`. Takes no `--sit`, `--force`, `--frames`, `--walk-view` |
 | `--js "<expr>"` | run once after the room settles, before the rounds. The JSON value goes to `before`. `await` is allowed (`await import('/src/...')`) |
 | `--probe "<expr>"` | read after every round (after the frame shots), recorded in `roundLog[].probe`. `await` is allowed |
 
@@ -123,4 +124,34 @@ npm run qa -- --world --seed 7 --shots <dir> \
 
 Keys: `W` walks through the seam, `A/D/W/S` walk, `E` sits at a Lord station and at the table, `Space` pulls, `R` spins
 (one Ticket), `C` calls CHEAT. Digit9 closes the table's first-sit tip (it eats the next key). The intro tape is skipped
-with held Space. Seed 7 fires on the player's first pull (the run ends as a fall). Seed 1 is a Lord win.
+with a single Space tap (see **Intro skip** below). Seed 7 fires on the player's first pull (the run ends as a fall). Seed 1 is a Lord win.
+
+## Debt-run driver (`--run`)
+
+`--run "<steps>"` starts a real debt run (`/?skipmenu=1&seed=N`, the seed from `--seed`), skips the story intro, and runs the
+steps in order. Steps are separated by `;`. A `play` step's keys use the script syntax, so its commas stay inside it:
+
+```
+npm run qa -- --run "goto:coinflip;wait:600;state;play:Digit9,Space:120x2;wait:1500;state;stand;bank:deposit:5;state" --seed 1 --shots <dir>
+```
+
+| step | what it does |
+| --- | --- |
+| `goto:<machineId>` | teleports the player in front of the first unlocked floor machine of that id (the machine's front, facing it), presses `E` (the real sit path). If that does not seat, it falls back to the devtools `world.occupy()`. Fails the run when the machine is not on the floor or locked. `via` says which path sat the player |
+| `play:<keys>xN` | presses the keys N times (default 1). Keys use the script syntax (`Space:150,wait:300`). The `x` suffix ends the step: `play:Space:150,wait:300x3` repeats both |
+| `stand` | stands up from the seat (`world.standUp()`), then waits until the seat is free |
+| `bank:deposit:<n>` | a Debt Terminal deposit of n coins (`run.deposit(n)`). `ok:false` when the run refuses it (pocket floor, quota room, not a quota Watch) |
+| `lever` | the terminal lever the run accepts now: OPEN THE FLOOR (Night paid), else the Bell (Intermission), else SETTLE (quota met). `lever: null` when none is open |
+| `pawn` | one Pawn Window reroll (`run.pawn.reroll()`, Intermission only) |
+| `wait:<ms>` | pauses |
+| `state` | records the state in `run.states` and logs it: `phase`, `night` (1-based), `watch` (1-based), `pocket`, `bank` (the balance), `withdrawable`, `quotaDue`, `quotaLeft`, `pullsLeft`, `pulls`, `over`, `seated` (the machine instance id or null), `intro` (the cutscene id or null) |
+
+Each step is recorded in `run.steps` as `{ step, ok, ms, … }` (with `via`, `at`, `instance`, `amount`, `lever`, `state` or `reason` where they apply). Output is the same one JSON object; `run.intro` is `{ played, taps }`, and `run.shot` is `run-final.png` when `--shots` is set. `rounds` is 0 in this mode.
+
+The steps use the running app's own handles (`window.jackid.app`: `world`, `player`, `run`, `cutscene`, `camera`), so no hook is added to the game. A step that the run refuses is recorded with `ok:false` and the steps go on. A teleport or seat that fails fails the run. Keep in mind that the first sit at a machine shows a tip that the next key closes (`Digit9`, as above).
+
+Practical notes: `goto` needs the machine on the floor (the `coinflip`, `hilo`, `scratch`, `bigone`, `hotline`, `cashier` ids are placed for seed 1). The quota, the Bell and the Pawn only work in the right phase, so a full Night needs enough coins: `goto` plus `play` builds the pocket, and `lever` after a paid quota opens the floor.
+
+## Intro skip
+
+The debt run's story intro (`intro`) skips on a single Space tap once it has played for 1 s. The skip hint shows then: `TAP SPACE: skip intro` (Turkish: `SPACE DOKUN: girişi atla`). Earlier taps do nothing. The hold still skips any scene (`HOLD SPACE`), as before. Other scenes are unchanged: a tap advances a line, a hold skips the scene. The rule is in `src/core/cutscene/player.ts` (`INTRO_TAP_AFTER`). `--run` taps once per 1.2 s while the intro plays, so it works whichever wall-clock moment the intro starts.

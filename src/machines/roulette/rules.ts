@@ -168,8 +168,9 @@ export interface SpinOutcome {
 /**
  * One spin for every seat's layout. Luck (`luck` %, 0 in refund mode): if the whole table's net is a loss, a single
  * reroll with p = luck/100. Always consumes the same draws so a seed replays identically whatever the charms.
+ * `force` (debug only, the bench "ride" state): the ball lands on that pocket; the draws are still consumed.
  */
-export function spin(rng: Rng, layouts: readonly (readonly Bet[])[], m: Mods, luck: number): SpinOutcome {
+export function spin(rng: Rng, layouts: readonly (readonly Bet[])[], m: Mods, luck: number, force?: number): SpinOutcome {
   const first = drawPocket(rng, m.weights);
   const second = drawPocket(rng, m.weights);
   const gate = rng.next();
@@ -177,9 +178,9 @@ export function spin(rng: Rng, layouts: readonly (readonly Bet[])[], m: Mods, lu
   const dropMs = Math.round(rng.float(800, 1200));
   const bounces = rng.int(2, 5);
   const netOf = (p: number): number => layouts.reduce((acc, l) => { const s = settleBets(l, p, m); return acc + s.gross - s.stake; }, 0);
-  const rerolled = luck > 0 && netOf(first) < 0 && gate < luck / 100;
-  const pocket = rerolled ? second : first;
-  return { pocket, first, rerolled, seats: layouts.map((l) => settleBets(l, pocket, m)), orbitMs, dropMs, bounces };
+  const rerolled = force === undefined && luck > 0 && netOf(first) < 0 && gate < luck / 100;
+  const pocket = force ?? (rerolled ? second : first);
+  return { pocket, first: force ?? first, rerolled, seats: layouts.map((l) => settleBets(l, pocket, m)), orbitMs, dropMs, bounces };
 }
 
 /** Headless round for staff auto-play and balance sims: one red bet of `bet`, same rules as the live table. */

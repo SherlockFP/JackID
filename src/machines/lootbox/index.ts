@@ -6,8 +6,8 @@
  *
  * TRADE UP: a revealed prize that a higher tier can take in trade waits for a decision. KEEP (primary) settles it: coins
  * are paid, a charm is granted through `run.grantCharm(id)`. TRADE UP (alt, C) credits the prize toward a sealed
- * capsule of the next tier: the player pays the difference (`addStake`), the sealed capsule is rolled and sits in hand
- * until it is twisted open too. The round stays open across the decisions (ladder pattern); the stake is the sum.
+ * capsule of the next tier: the player pays the difference (`addStake`), the sealed capsule is rolled and opens at once,
+ * so its payout settles inside the same decision window. The round stays open across the decisions (ladder pattern); the stake is the sum.
  *
  * Rules and tables: rules.ts (pure, shared with `playHeadless`). Model: model.ts. Strings: strings.ts.
  *
@@ -334,7 +334,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
 
   /**
    * TRADE UP: the prize is credited toward a sealed capsule of the next tier. The player pays the difference (added to
-   * the open round), the sealed capsule is rolled now and waits in hand for its own twist.
+   * the open round), the sealed capsule is rolled and opens at once inside the same decision window.
    */
   private trade(): void {
     const p = this.pending;
@@ -351,6 +351,8 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     p.forced = false;
     this.inHand = false;
     void this.emit({ k: 'trade', tier: nt, cost, cap: this.cosmetic.int(0, 359) });
+    // the sealed capsule opens at once (its own decision, or a settled payout), so nothing is left to land later
+    this.openCapsule();
   }
 
   /** Credit step: pays the coins or grants the charm (a full peg board pays the reference price), then moves pity. */
@@ -435,7 +437,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
     this.refreshHud(true);
   }
 
-  /** TRADE UP: the sealed capsule of the next tier drops into hand in its own colour, then waits for its twist. */
+  /** TRADE UP: the sealed capsule of the next tier drops in its own colour, then opens (`openCapsule`, same round). */
   private async presentTrade(ev: Extract<Ev, { k: 'trade' }>, pc: PresentCtx): Promise<void> {
     const { capsuleTop, capsuleBottom, revealAnchor } = this.parts;
     const groups = [capsuleTop, capsuleBottom];

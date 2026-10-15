@@ -8,11 +8,13 @@ export default {
     skipVote: 'SKIP VOTE CAST…',
     'skip.prompt': 'TAP {key}: next line  ·  HOLD {key}: skip scene',
     'skip.online': 'HOLD {key}: vote to skip scene',
+    'skip.intro': 'TAP {key}: skip intro',
   },
   tr: {
     choose: 'SEÇ',
     skipVote: 'ATLAMA OYU VERİLDİ…',
     'skip.prompt': '{key} DOKUN: sonraki satır  ·  {key} BASILI TUT: sahneyi atla',
     'skip.online': '{key} BASILI TUT: sahneyi atlamak için oy ver',
+    'skip.intro': '{key} DOKUN: girişi atla',
   },
 };

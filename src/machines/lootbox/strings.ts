@@ -34,8 +34,8 @@ export const STRINGS: MachineStrings = {
     cKeep: 'KEEP', cTrade: 'TRADE UP',
     stDecide: 'KEEP OR TRADE UP', stDecideSub: 'Keep {v}, or pay {cost} for a sealed {tier} capsule ({odds}% rare or better)',
     nPrize: 'PRIZE', nTrade: 'TRADE', nSealed: 'SEALED', nRare: 'RARE+',
-    tradeDone: 'SEALED {tier}: TWIST IT OPEN',
-    tradeRule: 'TRADE UP: after a reveal, keep the prize or pay the difference to a sealed capsule of the next tier. Odds and average value are shown first.',
+    tradeDone: 'SEALED {tier}: OPENING',
+    tradeRule: 'TRADE UP: after a reveal, keep the prize or pay the difference to a sealed capsule of the next tier. It opens at once and pays out. Odds and average value are shown first.',
     tip4: 'After a reveal, {keep} keeps the prize. {trade} trades it up.',
   },
   tr: {
@@ -67,8 +67,8 @@ export const STRINGS: MachineStrings = {
     cKeep: 'SAKLA', cTrade: 'YUKARI TAKAS',
     stDecide: 'SAKLA VEYA YUKARI TAKAS', stDecideSub: '{v} sakla, ya da {cost} öde ve mühürlü {tier} kapsülü al (%{odds} nadir ve üstü)',
     nPrize: 'ÖDÜL', nTrade: 'TAKAS', nSealed: 'MÜHÜRLÜ', nRare: 'NADİR+',
-    tradeDone: 'MÜHÜRLÜ {tier}: BURUP AÇ',
-    tradeRule: 'YUKARI TAKAS: açılıştan sonra ödülü sakla ya da farkı ödeyip bir üst seviye mühürlü kapsül al. Olasılıklar ve ortalama değer önce gösterilir.',
+    tradeDone: 'MÜHÜRLÜ {tier}: AÇILIYOR',
+    tradeRule: 'YUKARI TAKAS: açılıştan sonra ödülü sakla ya da farkı ödeyip bir üst seviye mühürlü kapsül al. Kapsül hemen açılır ve ödülü öder. Olasılıklar ve ortalama değer önce gösterilir.',
     tip4: 'Açılıştan sonra {keep} ödülü saklar. {trade} onu yukarı takas eder.',
   },
 };

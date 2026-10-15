@@ -340,8 +340,9 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     this.pend = { n: cards.length, total: gross.reduce((a, b) => a + b, 0), next: 0, gross, zoneSent: cards.map(() => new Set<number>()), paid: total };
     this.busy = false;                                    // the round stays open: scratching is interactive
     this.stroking = false; this.strokeQ = [];
-    const forced = this.forcePair;
-    this.forcePair = false;
+    // the armed pair waits for a PIT PENNY batch (a LUCKY LADDER vend leaves it armed); it lands on that batch's first spot
+    const forced = this.forcePair && cards[0]?.t === 0;
+    if (forced) this.forcePair = false;
     const shown = this.emit({ k: 'vend', t: type, price, paid: total, freeUsed: freeN, cards });
     if (forced) void shown.then(() => this.revealForcedPair());   // after the vend presents: the batch exists then
   }
@@ -579,6 +580,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     this.refreshCard(ev.i);
     this.sfx('click', { vol: 0.6 });
     this.ctx.fx.sparks(this.parts.cardPlanes[ev.i], 3, GOLD);
+    if (this.isLocalOccupant) this.showHud();                 // picks left and the BUY THE THIRD control follow the revealed spots
     if (pc.fast) return;
     this.shimmer(ev.i, z);
     if (c.t === 0) {                                          // PIT PENNY: a pair among the picks, the card still open

@@ -17,7 +17,7 @@ export const STRINGS: MachineStrings = {
     // seat HUD (readability standard)
     goal: 'Land a winning combination on the centre line',
     hi: 'HI', lo: 'LO', sym_BLANK: 'BLANK', gCard: 'Card {card}', gWin: 'RIGHT · x{n}', gPush: 'EQUAL · PUSH', gLose: 'WRONG · POT LOST',
-    stGamble: 'HI OR LO ON THE NEXT CARD', stGambleSub: 'HI {hi} · LO {lo}', nPot: 'POT', nOn: 'ON THE TABLE',
+    stGamble: 'HI OR LO ON THE NEXT CARD', stGambleSub: 'HI {hi} · LO {lo} · PUSH {tie}', nPot: 'POT', nOn: 'ON THE TABLE',
     cHi: 'HI', cLo: 'LO', cTake: 'COLLECT',
     stReady: 'PULL THE LEVER', stReadySub: 'STAKE {n}', stSpin: 'REELS SPINNING',
     stTilt: 'TILT · CABINET LOCKED', stTiltSub: 'Wait for it to reset',
@@ -46,7 +46,7 @@ export const STRINGS: MachineStrings = {
     // seat HUD (readability standard)
     goal: 'Ortadaki hatta kazandıran bir kombinasyon yakala',
     hi: 'ÜST', lo: 'ALT', sym_BLANK: 'BOŞ', gCard: 'Kart {card}', gWin: 'DOĞRU · x{n}', gPush: 'EŞİT · BERABERE', gLose: 'YANLIŞ · POT KAYBEDİLDİ',
-    stGamble: 'SONRAKİ KARTTA ÜST YA DA ALT', stGambleSub: 'ÜST {hi} · ALT {lo}', nPot: 'POT', nOn: 'MASADAKİ',
+    stGamble: 'SONRAKİ KARTTA ÜST YA DA ALT', stGambleSub: 'ÜST {hi} · ALT {lo} · BERABERE {tie}', nPot: 'POT', nOn: 'MASADAKİ',
     cHi: 'ÜST', cLo: 'ALT', cTake: 'AL',
     stReady: 'KOLU ÇEK', stReadySub: 'BAHİS {n}', stSpin: 'MAKARALAR DÖNÜYOR',
     stTilt: 'SARSINTI · MAKİNE KİLİTLİ', stTiltSub: 'Sıfırlanmasını bekle',
