@@ -600,6 +600,8 @@ function playRun(bot, runIdx) {
         S.pocket += cut; TYC.cut[idx] += cut;
       }
       if (watchPulls >= SCH.ACTIVITY_MIN_PULLS && rate > 0) S.debt += SCH.interestFor(S.debt, due, rate);
+      // settle (run.ts settleWatch): the unused pulls of an active Watch pay Tickets, whether the clock, the quota or the Bell ended it
+      if (watchPulls >= SCH.ACTIVITY_MIN_PULLS && pulls > 0) S.tickets = Math.min(SCH.TICKET_CAP, S.tickets + pulls);
       if (TRACE && runIdx < TRACE && idx < 2) console.log(`   N${nd.no} W${w + 1} end: pulls ${watchPulls} debt ${S.debt} pocket ${S.pocket}`);
       if (idx === 0 && w === 0 && newbieLike(bot)) {
         // Mola after the first Watch: the surplus above the quota (if the interest met it) goes back to the pocket at once

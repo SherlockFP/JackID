@@ -1,11 +1,11 @@
-/**
- * Coin Flip Booth (`coinflip`) — THE reference machine (base-machines WP). Copy this pattern.
+﻿/**
+ * Coin Flip Booth (`coinflip`) â€” THE reference machine (base-machines WP). Copy this pattern.
  *
  * What it demonstrates
  *  - the logic / present split: `flip()` rolls on the authority (the local occupant), packs the FULL outcome into an
  *    event and `emit`s it; `present()` is the only place state changes and animation happens, on every peer;
  *  - a multi-step round (streak ladder): the stake is paid once, a win keeps the round OPEN with a pot, the player
- *    rides (re-stakes the pot, free) up the ladder ×1.9 → ×3.6 → ×7 → ×13 or COLLECTS; leaving collects; a loss settles 0;
+ *    rides (re-stakes the pot, free) up the ladder Ã—1.9 â†’ Ã—3.6 â†’ Ã—7 â†’ Ã—13 or COLLECTS; leaving collects; a loss settles 0;
  *  - a tension beat on EVERY flip: the coin balances on its edge in slow motion, then falls (or stands, for an EDGE hit);
  *  - juice: anticipation (squash + button + marquee), a slow-motion toss with a glint trail, the edge balance, a near-miss
  *    tease, a count-up of the pot on every win, shake + light + sound scaled by the rung, tiered collect and a jackpot
@@ -15,9 +15,9 @@
  *    feature flag `coinflip.extraRide`; attract mode (alternating lamps, an occasional hop of the coin);
  *  - `playHeadless` (shared rules) for staff auto-play and the bench "Sim" button.
  *
- * Controls: 1/2 or ←/→ call heads/tails · 3 calls the EDGE (1 in 60, pays ×54; E is Leave) · Space flip · after a win:
- * R ride up the ladder · Space or Q collect · Z/X bet. Round life-cycle: `beginRound` (stake) → `emit(flip)` → loss:
- * `settle(0)` · win: pot pending (busy=false) → `emit(flip)` again for a ride, or `emit(collect)` + `settle(pot)`.
+ * Controls: 1/2 or â†/â†’ call heads/tails Â· 3 calls the EDGE (1 in 60, pays Ã—54; E is Leave) Â· Space flip Â· after a win:
+ * R ride up the ladder Â· Space or Q collect Â· Z/X bet. Round life-cycle: `beginRound` (stake) â†’ `emit(flip)` â†’ loss:
+ * `settle(0)` Â· win: pot pending (busy=false) â†’ `emit(flip)` again for a ride, or `emit(collect)` + `settle(pot)`.
  */
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
@@ -51,7 +51,7 @@ const ARC = 0.36;                    // toss height above the dish (m)
 const BAL_DUR = 0.75;                // the edge balance (sim s), longer for an EDGE call
 const BAL_DUR_EDGE = 0.95;
 const other = (s: Side): Side => (s === 'H' ? 'T' : 'H');
-/** Rest angle of a face: heads 0, tails π, the edge π/2 (the coin stands on its rim). */
+/** Rest angle of a face: heads 0, tails Ï€, the edge Ï€/2 (the coin stands on its rim). */
 const faceAng = (f: Face): number => (f === 'T' ? Math.PI : f === 'E' ? Math.PI / 2 : 0);
 
 export const def: MachineDef = {
@@ -61,7 +61,7 @@ export const def: MachineDef = {
   zone: 'well',
   seats: 1,
   shared: false,
-  minBet: 5, maxBet: 100, betSteps: [5, 10, 25, 50, 100],
+  minBet: 1, maxBet: 100, betSteps: [1, 2, 5, 10, 25, 50, 100],
   maxPayoutMult: maxPayoutMult(),
   rtp: 0.98,
   tier: 2,
@@ -90,7 +90,7 @@ export const def: MachineDef = {
       cRules: 'RULES', cLeave: 'LEAVE',
       edgeOdds: '1 IN 60', edgeWin: 'THE COIN STANDS ON ITS EDGE!',
       tip1: 'Pick heads or tails, then flip. The coin decides.',
-      tip2: '[{heads}] HEADS  ·  [{tails}] TAILS  ·  [{edge}] EDGE  ·  [{flip}] FLIP  ·  [{bet}] BET',
+      tip2: '[{heads}] HEADS  Â·  [{tails}] TAILS  Â·  [{edge}] EDGE  Â·  [{flip}] FLIP  Â·  [{bet}] BET',
       tip3: 'After a win: [{ride}] RIDE up the ladder, or [{collect}] COLLECT. [{help}] RULES.',
       rule1: 'Call heads or tails and flip. A win pays 1.9x your bet.',
       rule2: 'Ride to climb the ladder: 1.9x, 3.6x, 7x, 13x. Collect any time.',
@@ -100,29 +100,29 @@ export const def: MachineDef = {
       rule6: `EDGE (3): 1 in 60 the coin stands on its rim and pays ${EDGE_MULT}x the stake. Otherwise you lose.`,
     },
     tr: {
-      name: 'Yazı-Tura Kabini',
-      desc: 'Tura, yazı ya da kenar. Kazandıkça 13 kata kadar merdivende tırman, ya da kasayı al.',
-      heads: 'Tura', tails: 'Yazı', edge: 'Kenar', flip: 'At', ride: 'Devam', collect: 'Kasayı Al',
-      streak: 'SERİ {n}', pot: 'KASA {n}', potLabel: 'Kasa', h: 'T', t: 'Y', e: 'K',
+      name: 'YazÄ±-Tura Kabini',
+      desc: 'Tura, yazÄ± ya da kenar. KazandÄ±kÃ§a 13 kata kadar merdivende tÄ±rman, ya da kasayÄ± al.',
+      heads: 'Tura', tails: 'YazÄ±', edge: 'Kenar', flip: 'At', ride: 'Devam', collect: 'KasayÄ± Al',
+      streak: 'SERÄ° {n}', pot: 'KASA {n}', potLabel: 'Kasa', h: 'T', t: 'Y', e: 'K',
       // seat HUD (readability standard)
-      goal: 'Tura, yazı ya da kenar de. Kazanınca merdivende devam et ya da kasayı al.',
-      stPick: 'BİR YÜZ SEÇ, SONRA AT', stPickSub: 'Tahmini sen yap, sonucu para belirler',
-      stAir: 'HAVADA', stAirSub: 'Paranın kenarında dengelenişini izle',
-      stWon: 'KAZANDIN: DEVAM ET YA DA AL', stWonSub: 'x{n} için devam et, ya da kasayı al',
-      nStake: 'BAHSİN', nCall: 'TAHMİNİN', nChance: 'ŞANS', nPot: 'KASA', nNext: 'SONRAKİ',
-      nStreak: 'SERİ', nBalance: 'BAKİYE',
-      cHeads: 'TURA', cTails: 'YAZI', cEdge: 'KENAR', cFlip: 'AT', cRide: 'DEVAM', cCollect: 'KASAYI AL', cBet: 'BAHİS',
+      goal: 'Tura, yazÄ± ya da kenar de. KazanÄ±nca merdivende devam et ya da kasayÄ± al.',
+      stPick: 'BÄ°R YÃœZ SEÃ‡, SONRA AT', stPickSub: 'Tahmini sen yap, sonucu para belirler',
+      stAir: 'HAVADA', stAirSub: 'ParanÄ±n kenarÄ±nda dengeleniÅŸini izle',
+      stWon: 'KAZANDIN: DEVAM ET YA DA AL', stWonSub: 'x{n} iÃ§in devam et, ya da kasayÄ± al',
+      nStake: 'BAHSÄ°N', nCall: 'TAHMÄ°NÄ°N', nChance: 'ÅžANS', nPot: 'KASA', nNext: 'SONRAKÄ°',
+      nStreak: 'SERÄ°', nBalance: 'BAKÄ°YE',
+      cHeads: 'TURA', cTails: 'YAZI', cEdge: 'KENAR', cFlip: 'AT', cRide: 'DEVAM', cCollect: 'KASAYI AL', cBet: 'BAHÄ°S',
       cRules: 'KURALLAR', cLeave: 'AYRIL',
-      edgeOdds: '60’TA 1', edgeWin: 'PARA KENARINDA DURDU!',
-      tip1: 'Tura ya da yazı seç, sonra at. Sonucu para belirler.',
-      tip2: '[{heads}] TURA  ·  [{tails}] YAZI  ·  [{edge}] KENAR  ·  [{flip}] AT  ·  [{bet}] BAHİS',
-      tip3: 'Kazanınca [{ride}] DEVAM ile merdiveni tırman, ya da [{collect}] KASAYI AL. [{help}] KURALLAR.',
-      rule1: 'Tura ya da yazı seç ve at. Bilirsen bahsinin 1,9 katını alırsın.',
-      rule2: 'Devam edince merdiven yükselir: 1,9x, 3,6x, 7x, 13x. İstediğin an kasayı alabilirsin.',
-      rule3: 'Kaybettiğin atışta o atışa koyduğun tutar gider. Kasayla ayrılırsan elindeki kasa ödenir.',
-      rule4: 'Merdiven 13 katta biter ve kasa kendiliğinden ödenir.',
-      rule5: 'Tura ya da yazı atışının her birinde kazanma şansı yaklaşık {p}.',
-      rule6: `KENAR (3): 60 atıştan birinde para kenarında durur ve atılan tutarın ${EDGE_MULT} katını öder. Değilse kaybedersin.`,
+      edgeOdds: '60â€™TA 1', edgeWin: 'PARA KENARINDA DURDU!',
+      tip1: 'Tura ya da yazÄ± seÃ§, sonra at. Sonucu para belirler.',
+      tip2: '[{heads}] TURA  Â·  [{tails}] YAZI  Â·  [{edge}] KENAR  Â·  [{flip}] AT  Â·  [{bet}] BAHÄ°S',
+      tip3: 'KazanÄ±nca [{ride}] DEVAM ile merdiveni tÄ±rman, ya da [{collect}] KASAYI AL. [{help}] KURALLAR.',
+      rule1: 'Tura ya da yazÄ± seÃ§ ve at. Bilirsen bahsinin 1,9 katÄ±nÄ± alÄ±rsÄ±n.',
+      rule2: 'Devam edince merdiven yÃ¼kselir: 1,9x, 3,6x, 7x, 13x. Ä°stediÄŸin an kasayÄ± alabilirsin.',
+      rule3: 'KaybettiÄŸin atÄ±ÅŸta o atÄ±ÅŸa koyduÄŸun tutar gider. Kasayla ayrÄ±lÄ±rsan elindeki kasa Ã¶denir.',
+      rule4: 'Merdiven 13 katta biter ve kasa kendiliÄŸinden Ã¶denir.',
+      rule5: 'Tura ya da yazÄ± atÄ±ÅŸÄ±nÄ±n her birinde kazanma ÅŸansÄ± yaklaÅŸÄ±k {p}.',
+      rule6: `KENAR (3): 60 atÄ±ÅŸtan birinde para kenarÄ±nda durur ve atÄ±lan tutarÄ±n ${EDGE_MULT} katÄ±nÄ± Ã¶der. DeÄŸilse kaybedersin.`,
     },
   },
 };
@@ -147,7 +147,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     this.attractor.every('hop', 14, () => this.hop(), { first: 5 });
   }
 
-  // ── attract: lamps alternate, the coin hops now and then ────────────────────────────────────────
+  // â”€â”€ attract: lamps alternate, the coin hops now and then â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   attract(dt: number, time: number): void {
     const on = Math.floor(time * 1.5) % 2 === 0;
     if (on !== this.attractOn) {
@@ -199,7 +199,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
   }
 
   onLang(): void {
-    this.drawScreen();                              // the 96×48 display is drawn by us (kit `{ key }` labels redraw themselves)
+    this.drawScreen();                              // the 96Ã—48 display is drawn by us (kit `{ key }` labels redraw themselves)
     if (this.isLocalOccupant) this.showHud();
   }
 
@@ -209,7 +209,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     super.standUp();
   }
 
-  // ── input (local occupant) ───────────────────────────────────────────────────────────────────────
+  // â”€â”€ input (local occupant) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
@@ -255,7 +255,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
   /** The multiplier the next ride wins, as shown to the player. */
   private nextMult(): number { return STEP_MULT[Math.min(this.state.ride, STEP_MULT.length - 1)]; }
 
-  // ── authority-side logic: runs only on the local occupant ────────────────────────────────────────
+  // â”€â”€ authority-side logic: runs only on the local occupant â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   private async flip(ride: boolean): Promise<void> {
     if (this.busy) return;
     let stake: number, bet: number, idx: number;
@@ -318,7 +318,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     return r;
   }
 
-  // ── presentation: every peer, including the emitter ─────────────────────────────────────────────
+  // â”€â”€ presentation: every peer, including the emitter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   present(ev: Ev, pc: PresentCtx): void | Promise<void> {
     switch (ev.k) {
       case 'call': return this.presentCall(ev);
@@ -437,7 +437,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
       fx.sparks(dish, stands ? 40 : 10 + 4 * ev.ride, col);
       fx.glow(dish, col, stands ? 0.6 : 0.3 + 0.05 * ev.ride, 0.6);
       fx.lightPulse(dish, { color: col, mul: 1.2 + 0.2 * ev.ride, dur: 0.6 });
-      fx.popText(dish, `×${stands ? EDGE_MULT : STEP_MULT[ev.ride]}`, col, {
+      fx.popText(dish, `Ã—${stands ? EDGE_MULT : STEP_MULT[ev.ride]}`, col, {
         dur: 1.1, rise: 0.35, scale: 1.1 + 0.2 * ev.ride, shake: ev.ride > 0 || stands,
       });
       if (pc.local) fx.shake((stands ? 0.012 : 0.003 + 0.002 * ev.ride), stands ? 0.4 : 0.22);
@@ -484,7 +484,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     super.dispose();
   }
 
-  // ── late join / save ──────────────────────────────────────────────────────────────────────────────
+  // â”€â”€ late join / save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   getSnapshot(): State {
     return { ...this.state, history: [...this.state.history] };
   }
@@ -494,7 +494,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     this.refresh();
   }
 
-  // ── visuals ───────────────────────────────────────────────────────────────────────────────────────
+  // â”€â”€ visuals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   private idleChase(): void {
     const m = this.parts.marquee;
     if (this.state.pot > 0) m.chase('chase', 7);
@@ -514,7 +514,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     this.drawScreen();
   }
 
-  /** The 96×48 booth display: streak, last eight results, pot + ladder (`potShown` while it counts up). */
+  /** The 96Ã—48 booth display: streak, last eight results, pot + ladder (`potShown` while it counts up). */
   private drawScreen(potShown?: number): void {
     const s = this.state, cap = this.rideCap();
     this.parts.screen.draw((g, sc) => {

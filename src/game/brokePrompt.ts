@@ -30,6 +30,7 @@ function keyLabel(key: string): string {
 /** One numbered line of the card for a step. */
 export function stepLine(step: BrokeStep, tickets: number, phoneKey: string): string {
   switch (step.id) {
+    case 'bell': return t('hotline.broke.bell');
     case 'bank': return t('tut.broke.bank', { n: fmtCoins(step.coins) });
     case 'phone': return t('tut.broke.phone', { key: phoneKey });
     case 'cashier': return t('tut.broke.cashier', { n: fmtCoins(step.coins), tk: tickets });

@@ -9,6 +9,8 @@ export default {
     'proj': 'PROJECTED AT DAWN: {p} ✓',
     'projShort': 'PROJECTED AT DAWN: {p} · SHORT {g}',
     'met': 'QUOTA MET ✓',
+    'pocket': 'POCKET {p} (NOT COUNTED UNTIL DEPOSITED)',
+    'ends': 'WATCH ENDS: PULLS {p} · CLOCK {c} · OR RING THE BELL',
   },
   tr: {
     'head': 'KOTA {q} ŞAFAKTA ÖDENİR · VARDİYA {w} / {n}',
@@ -18,5 +20,7 @@ export default {
     'proj': 'ŞAFAKTA TAHMİN: {p} ✓',
     'projShort': 'ŞAFAKTA TAHMİN: {p} · EKSİK {g}',
     'met': 'KOTA TAMAM ✓',
+    'pocket': 'CEP {p} (YATIRILANA KADAR SAYILMAZ)',
+    'ends': 'VARDİYA BİTER: ÇEKİŞ {p} · SAAT {c} · VEYA ZİLİ ÇAL',
   },
 };

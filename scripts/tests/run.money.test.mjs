@@ -392,7 +392,7 @@ test('Bank: coins that go out and back in the same Watch earn no interest at the
   assert.equal(settleInterest(true), 0, 'the same coins that left and came back this Watch earn nothing');
 });
 
-test('Bank: the broke-start help lists the ways out in order: bank, phone, cashier, House loan', () => {
+test('Bank: the broke-start help lists the ways out in order: bell, bank, phone, cashier, House loan', () => {
   const run = RUN.createRun({ seed: 66, mode: 'debt' });
   assert.equal(run.brokeHelp(), null, 'a pocket that can play is not broke');
   run.coins = 40;
@@ -402,14 +402,14 @@ test('Bank: the broke-start help lists the ways out in order: bank, phone, cashi
   run.pullCount = 5;
   run.tickets = 2;
   let ids = run.brokeHelp().steps.map((s) => s.id);
-  assert.deepEqual(ids, ['bank', 'cashier', 'loan'], 'phone not ringing yet');
+  assert.deepEqual(ids, ['bell', 'bank', 'cashier', 'loan'], 'phone not ringing yet; the Bell is always the first way out while playing');
   run.checkRescue();
   const help = run.brokeHelp();
   ids = help.steps.map((s) => s.id);
-  assert.deepEqual(ids, ['bank', 'phone', 'cashier', 'loan'], 'the order the prompt prints');
-  assert.equal(help.steps[0].coins, 20, 'the bank step says how many coins can come back');
-  assert.equal(help.steps[2].coins, 10, 'two Tickets sell for 10 coins on Night 1');
-  assert.ok(help.steps[3].quota > 0, 'the loan names its quota price');
+  assert.deepEqual(ids, ['bell', 'bank', 'phone', 'cashier', 'loan'], 'the order the prompt prints');
+  assert.equal(help.steps[1].coins, 20, 'the bank step says how many coins can come back');
+  assert.equal(help.steps[3].coins, 10, 'two Tickets sell for 10 coins on Night 1');
+  assert.ok(help.steps[4].quota > 0, 'the loan names its quota price');
   // withdrawing takes the player out of the broke state and hangs up the Collector
   run.withdraw(10);
   assert.equal(run.brokeHelp(), null);
@@ -504,5 +504,38 @@ test('pulls (wave 38): a pull grant says "+N pulls · reason" on the banner; a l
   run.nightDone = false; run.topside = false;
   assert.equal(run.startWatch(), true, 'the Watch starts from the Bell');
   assert.ok(shown.some((s) => /\+\d+ pulls? · new Watch/.test(s)), `the Watch allowance is announced (${shown.join(' | ')})`);
+  run.dispose();
+});
+
+test('Bell (decision 1): END WATCH ends a playing Watch at once, between Watches it is refused, unused pulls keep the rebate', () => {
+  const run = RUN.createRun({ seed: 67, mode: 'debt' });
+  assert.equal(run.ringBell(), false, 'no Watch to end between Watches');
+  run.phase = 'play'; run.pullCount = 5; run.watchPulls = 3;
+  const tickets = run.balance('ticket');
+  assert.equal(run.ringBell(), true);
+  assert.equal(run.shift.phase, 'closing', 'the Watch is closing, never stuck in play');
+  assert.equal(run.ringBell(), false, 'a closing Watch cannot be ended twice');
+  run.settleWatch();
+  assert.equal(run.balance('ticket') - tickets, 5, 'the 5 unused pulls keep the usual Ticket rebate');
+  assert.equal(run.pulls(), 0);
+  run.dispose();
+  const late = RUN.createRun({ seed: 67, mode: 'debt' });
+  late.phase = 'lastCall'; late.pullCount = 2; late.watchPulls = 0;
+  assert.equal(late.ringBell(), true, 'Last Call can be ended too');
+  late.dispose();
+});
+
+test('Bell in the broke card: offered first while playing, never between Watches', async () => {
+  const RESC = await load('src/game/rescue.ts');
+  assert.deepEqual(RESC.brokeSteps({ bell: true, bank: 0, tickets: 0, ticketCoins: 5, phoneRinging: false }).map((s) => s.id), ['bell']);
+  assert.deepEqual(RESC.brokeSteps({ bank: 0, tickets: 0, ticketCoins: 5, phoneRinging: false }), [], 'no Bell step unless the Watch plays');
+  const run = RUN.createRun({ seed: 68, mode: 'debt' });
+  run.coins = 40;
+  assert.ok(run.deposit(20, true));
+  run.coins = 0;
+  run.phase = 'play'; run.pullCount = 4;
+  assert.equal(run.brokeHelp().steps[0].id, 'bell');
+  run.phase = 'intermission';
+  assert.ok(!(run.brokeHelp()?.steps ?? []).some((s) => s.id === 'bell'), 'between Watches the Bell is not offered');
   run.dispose();
 });

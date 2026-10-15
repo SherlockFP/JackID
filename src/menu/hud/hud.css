@@ -64,6 +64,8 @@
 .hud .plan span { display: block; font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1.35;
   color: var(--bone); white-space: normal; overflow-wrap: anywhere; }
 .hud .plan .pp { color: var(--signal); }
+.hud .plan span.pk, .hud .plan span.pe { opacity: .8; }
+.hud .plan span.hidden { display: none; }
 .hud .plan.ok .pp { color: var(--green); }
 .hud .plan.gap .pp { color: var(--signal); }
 

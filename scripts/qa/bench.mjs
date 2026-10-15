@@ -99,6 +99,7 @@ export function parseScript(text) {
  *   bank:deposit:<n>   Debt Terminal deposit of n coins (run.deposit)
  *   bank:withdraw:<n>  take n coins back from the bank into the pocket (run.withdraw, the broke path)
  *   lever              the terminal lever the run accepts now: OPEN THE FLOOR, else the Bell, else SETTLE
+ *   bell               ring the Bell early (run.ringBell: ends the Watch while playing or Last Call, unused pulls rebate)
  *   pawn               one Pawn Window reroll (Intermission only)
  *   wait:<ms>          pause
  *   state              record pocket, bank, quota, night, watch, pulls, phase, seated (res.run.states)
@@ -108,7 +109,7 @@ export function parseRunSteps(text) {
   for (const raw of String(text ?? '').split(';')) {
     const tok = raw.trim();
     if (!tok) continue;
-    if (['stand', 'lever', 'pawn', 'state'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
+    if (['stand', 'lever', 'bell', 'pawn', 'state'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
     let m = /^goto:([a-z][a-z0-9_]*)$/.exec(tok);
     if (m) { out.push({ kind: 'goto', machine: m[1], text: tok }); continue; }
     m = /^bank:deposit:(\d+)$/.exec(tok);
@@ -124,7 +125,7 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | play:<keys>xN | stand | bank:deposit:<n> | lever | pawn | wait:<ms> | state)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | play:<keys>xN | stand | bank:deposit:<n> | lever | bell | pawn | wait:<ms> | state)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
   return out;
@@ -335,6 +336,10 @@ async function driveRun(cdp, steps, run) {
         rec.lever = await evaluate(cdp, `(() => { const r = window.jackid.app.run; return r.openFloor() ? 'openFloor'
           : r.startWatch() ? 'startWatch' : r.settleEarly() ? 'settleEarly' : null; })()`);
         rec.ok = rec.lever !== null;
+        break;
+      case 'bell':
+        rec.ok = (await evaluate(cdp, 'window.jackid.app.run.ringBell() === true')) === true;
+        if (!rec.ok) rec.reason = 'refused (no Watch in play or Last Call, or the run ended)';
         break;
       case 'pawn':
         rec.ok = (await evaluate(cdp, 'window.jackid.app.run.pawn.reroll() === true')) === true;

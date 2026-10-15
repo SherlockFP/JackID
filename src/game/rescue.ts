@@ -126,7 +126,7 @@ export function createRescue(host: RescueHost): RescueLine {
 }
 
 // ── the broke-start help (wave 27, bank-econ): what to do when the pocket cannot cover the cheapest bet ───────────────
-export type BrokeId = 'bank' | 'phone' | 'cashier' | 'loan';
+export type BrokeId = 'bell' | 'bank' | 'phone' | 'cashier' | 'loan';
 /** One way out. `coins` is what it puts in the pocket (0 for the phone itself); `quota` is the loan's price. */
 export interface BrokeStep { id: BrokeId; coins: number; quota?: number }
 export interface BrokeHelp { pocket: number; minBet: number; pullsLeft: number; steps: BrokeStep[] }
@@ -139,15 +139,18 @@ export interface BrokeInput {
   /** A phone line is ringing (rescue or hotline). */
   phoneRinging: boolean;
   loan?: RescueLoan;
+  /** The Watch is playing (pulls left, play or Last Call): the Bell at the Debt Terminal can end it. */
+  bell?: boolean;
 }
 
 /**
- * The ordered ways out of an empty pocket, only the ones that exist: 1 withdraw from the bank, 2 answer the phone (P), 3 the
- * cashier (sell Tickets), 4 take the House loan (the Collector's rescue call, answered on the phone). The prompt prints them in
- * this order, so the cheapest to the player (their own coins first, the quota-raising loan last) comes first.
+ * The ordered ways out of an empty pocket, only the ones that exist: 0 ring the Bell (end this Watch, the bank keeps growing; always
+ * first while playing, decision 4), 1 withdraw from the bank, 2 answer the phone (P), 3 the cashier (sell Tickets), 4 take the House
+ * loan (the Collector's rescue call, answered on the phone). The prompt prints them in this order.
  */
 export function brokeSteps(i: BrokeInput): BrokeStep[] {
   const out: BrokeStep[] = [];
+  if (i.bell) out.push({ id: 'bell', coins: 0 });
   if (i.bank > 0) out.push({ id: 'bank', coins: Math.floor(i.bank) });
   if (i.phoneRinging) out.push({ id: 'phone', coins: 0 });
   if (i.tickets > 0 && i.ticketCoins > 0) out.push({ id: 'cashier', coins: Math.floor(i.tickets) * Math.floor(i.ticketCoins) });

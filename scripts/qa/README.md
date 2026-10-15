@@ -143,6 +143,7 @@ npm run qa -- --run "goto:coinflip;wait:600;state;play:Digit9,Space:120x2;wait:1
 | `bank:deposit:<n>` | a Debt Terminal deposit of n coins (`run.deposit(n)`). `ok:false` when the run refuses it (pocket floor, quota room, not a quota Watch) |
 | `bank:withdraw:<n>` | takes n coins back from the bank into the pocket (`run.withdraw(n)`, the broke path). `ok:false` when the window is shut or the bank is empty |
 | `lever` | the terminal lever the run accepts now: OPEN THE FLOOR (Night paid), else the Bell (Intermission), else SETTLE (quota met). `lever: null` when none is open |
+| `bell` | rings the Bell early (`run.ringBell()`): ends the Watch while playing or Last Call; unused pulls keep the ticket rebate. `ok:false` outside a playing Watch |
 | `pawn` | one Pawn Window reroll (`run.pawn.reroll()`, Intermission only) |
 | `wait:<ms>` | pauses |
 | `state` | records the state in `run.states` and logs it: `phase`, `night` (1-based), `watch` (1-based), `pocket`, `bank` (the balance), `withdrawable`, `quotaDue`, `quotaLeft`, `pullsLeft`, `pulls`, `over`, `seated` (the machine instance id or null), `intro` (the cutscene id or null) |

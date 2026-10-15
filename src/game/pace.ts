@@ -70,11 +70,14 @@ export function dawnBank(balance: number, settles: number, interestAt: (balance:
   return b;
 }
 
-/** The NIGHT PLAN projection: the bank at Dawn plus the pocket (the wallet can still be deposited before Dawn). */
+/**
+ * The NIGHT PLAN projection: the BANK at Dawn only. The pocket is not counted (a coin counts once it is deposited);
+ * the HUD shows the pocket on its own line.
+ */
 export interface DawnPlan { projected: number; gap: number; met: boolean }
 
-export function dawnPlan(i: { due: number; balance: number; pocket: number; settles: number; interestAt: (balance: number) => number }): DawnPlan {
-  const projected = dawnBank(i.balance, i.settles, i.interestAt) + Math.max(0, Math.floor(i.pocket));
+export function dawnPlan(i: { due: number; balance: number; settles: number; interestAt: (balance: number) => number }): DawnPlan {
+  const projected = dawnBank(i.balance, i.settles, i.interestAt);
   const gap = Math.max(0, Math.floor(i.due) - projected);
   return { projected, gap, met: gap === 0 };
 }

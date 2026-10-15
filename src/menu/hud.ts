@@ -127,11 +127,14 @@ export function createHud(): Hud {
   const quotaBar = h('div', 'bar', quota);
   const quotaFill = h('i', '', quotaBar);
   const quotaShort = h('span', 'short', quota, '');
-  // NIGHT PLAN (under the quota): the Night's due, the Watch count, the bank's per-Watch interest and the projection at Dawn.
+  // NIGHT PLAN (under the quota): the Night's due, the Watch count, the bank's per-Watch interest, the projection at Dawn
+  // (banked coins only), the pocket on its own line, and how this Watch ends (pulls, clock, the Bell).
   const plan = h('div', 'plan hidden', topR);
   const planHead = h('span', 'ph', plan);
   const planBank = h('span', 'pb', plan);
   const planProj = h('span', 'pp', plan);
+  const planPocket = h('span', 'pk', plan);
+  const planEnds = h('span', 'pe', plan);
   let planKey = '';
   // EMPIRE chip (tycoon): machines you bought and the house cut they pay per Watch. Hidden until the first purchase.
   const empire = h('div', 'hb empire hidden', topR);
@@ -426,8 +429,14 @@ export function createHud(): Hud {
     const interm = sh?.phase === 'intermission';
     const watch = interm ? seg.index + 2 : seg.index + 1;
     const settles = interm ? seg.count - seg.index - 1 : seg.count - seg.index;
-    const p = dawnPlan({ due, balance: bank.balance, pocket: bank.pocket, settles, interestAt: bank.interestAt });
-    const key = `${due}|${watch}|${seg.count}|${bank.balance}|${bank.ratePct}|${bank.pocket}|${interm}|${p.projected}`;
+    const p = dawnPlan({ due, balance: bank.balance, settles, interestAt: bank.interestAt });
+    const pocket = Math.max(0, Math.floor(bank.pocket));
+    // The Watch ends at 0 pulls, at the clock, or at the Bell (the Debt Terminal). Not shown between Watches.
+    const pulls = r.pulls(self());
+    const pullsTxt = Number.isFinite(pulls) ? String(Math.max(0, Math.floor(pulls))) : '∞';
+    const clock = mmss(r.shift.timeLeft());
+    const ends = !interm;
+    const key = `${due}|${watch}|${seg.count}|${bank.balance}|${bank.ratePct}|${pocket}|${interm}|${p.projected}|${pullsTxt}|${clock}`;
     if (key === planKey) return;
     planKey = key;
     setText(planHead, t(interm ? 'hud.plan.headNext' : 'hud.plan.head', { q: money(due), w: watch, n: seg.count }));
@@ -440,6 +449,10 @@ export function createHud(): Hud {
     setText(planProj, met ? t('hud.plan.met')
       : p.met ? t('hud.plan.proj', { p: money(p.projected) })
       : t('hud.plan.projShort', { p: money(p.projected), g: money(p.gap) }));
+    setCls(planPocket, 'hidden', pocket <= 0);
+    setText(planPocket, t('hud.plan.pocket', { p: money(pocket) }));
+    setCls(planEnds, 'hidden', !ends);
+    setText(planEnds, t('hud.plan.ends', { p: pullsTxt, c: clock }));
   }
 
   function updateEmpire(): void {

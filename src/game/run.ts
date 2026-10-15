@@ -359,6 +359,11 @@ export interface DebtRun extends RunApi {
   openFloor(): boolean;
   /** Pay the rest of the Night now (SETTLE lever). Needs `deposit ≥ quota`. */
   settleEarly(): boolean;
+  /**
+   * BELL (Debt Terminal, decision 1): end the Watch now, in play or Last Call. The unused pulls keep the usual settle rebate.
+   * Always allowed while playing, so a Watch is never stuck. False when the phase does not allow it.
+   */
+  ringBell(): boolean;
   /** The bank in numbers (Debt Terminal DEPOSIT / WITHDRAW / QUOTA screens). */
   bank(): BankView;
   /** What `withdraw(amount)` would do, without doing it (what the player gives up). */
@@ -1314,6 +1319,13 @@ class Run implements DebtRun {
     if (top > 0) { this.earn('coin', top, 'house:float'); this.ledger.float += Math.floor(top); }
   }
 
+  ringBell(): boolean {
+    if (this.ended || !this.quotaMode || !this.canPlay()) return false;
+    this.enter('closing', closingSeconds(this.isLastWatch()));
+    this.persist();
+    return true;
+  }
+
   settleEarly(): boolean {
     if (this.ended || !this.quotaMode || !this.canPlay()) return false;
     if (this.debtPaid < this.quota.due) return false;
@@ -1407,6 +1419,7 @@ class Run implements DebtRun {
         bank: this.withdrawOpen() ? withdrawable(this.bankInput()) : 0,
         tickets: this.tickets, ticketCoins: 5 * si,
         phoneRinging: ringing, loan: loan ?? undefined,
+        bell: playing,
       }),
     };
   }

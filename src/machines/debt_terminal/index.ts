@@ -18,7 +18,8 @@
  * Controls (seated, play pose is `mouse: 'pick'`): arrows move the keypad cursor · Space/Enter press the cell · LMB presses a cell ·
  * C (alt) cycles DEPOSIT > WITHDRAW > QUOTA · B (bet max) = ALL · 1–9 type a custom amount · Backspace removes a digit · BET UP (X) types
  * a 0 · R pulls SETTLE (only when the quota is met) · F pulls the floor lever: OPEN THE FLOOR once the Night is paid, RING THE BELL
- * between Watches.
+ * between Watches · Q ends the Watch early (END WATCH while playing; the first press asks, the second within 6 s ends it, the unused
+ * pulls keep the settle rebate; decision 1: a Watch is never stuck).
  *
  * Deposit rules: PRESS with digits typed commits the typed amount (not the highlighted cell). 10/25/50 %/REST never pass what is
  * still due; once the quota is met they refuse (no spam-depositing). ALL and a typed amount are the explicit overpay ladder. After
@@ -58,6 +59,7 @@ type Ev =
 
 /** `DebtRun` controls the terminal reaches through the run (absent on the bench stub). */
 type FloorCtl = { openFloor?(): boolean; startWatch?(): boolean };
+type BellCtl = { ringBell?(): boolean };
 type BankCtl = { bank?(): BankView; withdraw?(n: number): number; withdrawPreview?(n: number): WithdrawPreview };
 
 const GOLD = 0xffd040;
@@ -128,6 +130,9 @@ export const def: MachineDef = {
       cAmount: "AMOUNT",
       cBack: "BACK",
       cSettle: "SETTLE",
+      cEnd: "END WATCH",
+      bellConfirm: "End Watch with {n} pulls unused? Press {k} again to confirm",
+      bellDone: "Watch ended. The bank keeps growing.",
       cMode: "DEPOSIT / WITHDRAW / QUOTA",
       cRules: "RULES",
       cLeave: "LEAVE",
@@ -198,6 +203,9 @@ export const def: MachineDef = {
       cAmount: "TUTAR",
       cBack: "GERİ",
       cSettle: "KAPAT",
+      cEnd: "NÖBETİ BİTİR",
+      bellConfirm: "{n} pul kullanılmadan nöbet bitsin mi? Onaylamak için {k} tuşuna tekrar bas",
+      bellDone: "Nöbet bitti. Banka büyümeye devam eder.",
       cMode: "YATIR / ÇEK / KOTA",
       cRules: "KURALLAR",
       cLeave: "AYRIL",
@@ -239,6 +247,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private seatHud?: SeatHud;
   /** Seconds an armed ALL stays armed (the second press confirms the float breach). */
   private allArm = 0;
+  /** Seconds an armed END WATCH stays armed (the second press ends the Watch). */
+  private bellArm = 0;
   /** Phase last seen by `refresh`: a change clears the typed amount. */
   private lastPhase = '';
   /** Band the pose was last fitted to (the seat bar moves with its stack), so the framing follows it. */
@@ -330,6 +340,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
 
   tick(dt: number): void {
     if (this.allArm > 0) this.allArm = Math.max(0, this.allArm - dt);
+    if (this.bellArm > 0) this.bellArm = Math.max(0, this.bellArm - dt);
     this.fitIfBandMoved();
     this.refresh(false);
   }
@@ -365,6 +376,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private clearEntry(): void {
     this.entry = '';
     this.allArm = 0;
+    this.bellArm = 0;
   }
 
   onLang(): void {
@@ -405,6 +417,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       case 'clear': if (!e.repeat) { this.entry = backspace(this.entry); this.sfx('click'); this.refresh(true); } return;
       case 'double': if (!e.repeat) this.pullLever('settle'); return;
       case 'fast': if (!e.repeat) this.pullLever('floor'); return;
+      case 'collect': if (!e.repeat) this.ringBell(); return;
     }
   }
 
@@ -559,6 +572,26 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       const ui = this.ctx.ui as { banner?(text: string): Promise<void> };
       void ui.banner?.(this.t('nightN', { n: run.night() }));
     }
+  }
+
+  /**
+   * END WATCH (decision 1): ends the Watch now, in play or Last Call. The first press asks (the toast names the pulls left), the
+   * second within ALL_CONFIRM_SEC ends it. Nothing moves the coins: the bank keeps growing and unused pulls keep the rebate.
+   */
+  private ringBell(): void {
+    this.entry = '';                       // not clearEntry(): that would disarm the confirm just armed
+    const run = this.ctx.run as RunApi & BellCtl;
+    if (!run.ringBell) return;
+    if (this.bellArm <= 0) {
+      this.bellArm = ALL_CONFIRM_SEC;
+      this.sfx('click');
+      this.ctx.ui.toast(this.t('bellConfirm', { n: this.bk().pullsLeft, k: this.k('collect') }), 'warn');
+      return;
+    }
+    this.bellArm = 0;
+    if (!run.ringBell()) { this.refuse('notYet'); return; }
+    this.sfx('lever');
+    this.ctx.ui.toast(this.t('bellDone'), 'good');
   }
 
   /** A refused press: one sound and one line, no coins moved, nothing emitted. */
@@ -924,6 +957,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       if (this.entry !== '') ctrl.push({ key: this.k('clear'), label: { k: 'm.debt_terminal.cBack' }, action: 'clear' });
     }
     if (q.met && !inter) ctrl.push({ key: this.k('double'), label: { k: 'm.debt_terminal.cSettle' }, action: 'double', primary: true });
+    const phase = this.ctx.run.shift.phase;
+    if (phase === 'play' || phase === 'lastCall') ctrl.push({ key: this.k('collect'), label: { k: 'm.debt_terminal.cEnd' }, action: 'collect' });
     ctrl.push({ key: this.g('help'), label: { k: 'm.debt_terminal.cRules' }, action: 'help' });
     ctrl.push({ key: this.k('exit'), label: { k: 'm.debt_terminal.cLeave' }, action: 'exit' });
     sh.controls(ctrl);
