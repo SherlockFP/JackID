@@ -19,6 +19,11 @@ export default {
     'stat.rescue.loans': 'Loans taken',
     'stat.interest': 'Interest',
     'stat.deposited': 'Deposited',
+    'shot.title': 'SETTLED BY THE COLLECTOR',
+    'shot.sub': 'COLLECTOR\'S RECEIPT',
+    'shot.stamp': 'SETTLED',
+    'shot.debt': 'Debt left',
+    'shot.nights': 'Nights survived',
   },
   tr: {
     'post.short': 'Kotaya {x} eksik kaldın',
@@ -38,5 +43,10 @@ export default {
     'stat.rescue.loans': 'Alınan borç',
     'stat.interest': 'Faiz',
     'stat.deposited': 'Yatırılan',
+    'shot.title': 'TAHSİLDAR HESABI KAPATTI',
+    'shot.sub': 'TAHSİLDAR FİŞİ',
+    'shot.stamp': 'KAPANDI',
+    'shot.debt': 'Kalan borç',
+    'shot.nights': 'Atlatılan geceler',
   },
 };

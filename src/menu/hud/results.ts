@@ -80,10 +80,13 @@ function statLines(stats: Record<string, number> | undefined): Array<[string, st
 }
 
 export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
+  // A run the Collector closed at home (`ending: 'shot'`, a fall) has its own receipt: the debt left, the Nights survived and the
+  // biggest win. It is not the Sump's descent receipt.
+  const shot = s.ending === 'shot';
   const root = h('div', 'rcp');
   const paper = h('div', 'rcp-paper', root);
-  h('div', 'rcp-title', paper, t('hud.results.title'));
-  h('div', 'rcp-sub', paper, t('hud.results.sub'));
+  h('div', 'rcp-title', paper, t(shot ? 'hud.results.shot.title' : 'hud.results.title'));
+  h('div', 'rcp-sub', paper, t(shot ? 'hud.results.shot.sub' : 'hud.results.sub'));
   h('div', 'rcp-rule', paper);
 
   const me = s.players[0];
@@ -91,7 +94,18 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
   const st: Record<string, number> = s.stats ?? {};
   const stat = (k: (typeof FIXED_STATS)[number]): number => (typeof st[k] === 'number' && Number.isFinite(st[k]) ? st[k] : 0);
   // The third cell of a row is the figure that rolls up from 0 as its line prints (PEAK POCKET, PAID, BIGGEST).
-  const rows: Array<[string, string, number?]> = [
+  const debt = Math.max(0, Math.round(s.post?.short ?? 0));
+  const rows: Array<[string, string, number?]> = shot ? [
+    [t('hud.results.name'), name],
+    [t('hud.results.seed'), String(s.seed)],
+    [t('hud.results.shot.debt'), fmtCoins(debt, true), debt],
+    [t('hud.results.shot.nights'), fmtNum(stat('nightsPaid'))],
+    [t('hud.results.stat.biggest'), fmtCoins(s.biggestWin, true), s.biggestWin],
+    [t('hud.results.time'), fmtTime(s.durationSec)],
+    [t('hud.results.stat.paid'), fmtCoins(stat('paid'), true), stat('paid')],
+    [t('hud.results.stat.wagered'), fmtCoins(stat('wagered'), true)],
+    [t('hud.results.stat.rounds'), fmtNum(s.rounds)],
+  ] : [
     [t('hud.results.name'), name],
     [t('hud.results.seed'), String(s.seed)],
     [t('hud.results.result'), t(resultKey(s.result))],
@@ -128,7 +142,8 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
     }
     return row;
   });
-  const post = postLine((s as RunSummary & { post?: ResultsPost }).post);
+  // The debt line already says how far short the bank was: the Sump's post-mortem line is not printed on a Collector's receipt.
+  const post = shot ? '' : postLine((s as RunSummary & { post?: ResultsPost }).post);
   if (post) {
     const row = h('div', 'rcp-line wide', body);
     h('span', 'k', row, post);
@@ -155,7 +170,8 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
   }
 
   const winner = won(s.result);
-  const stamp = h('div', `rcp-stamp ${winner ? 'good' : 'bad'}`, paper, winner ? t('hud.results.stamp') : t(resultKey(s.result)));
+  const stampText = shot ? t('hud.results.shot.stamp') : winner ? t('hud.results.stamp') : t(resultKey(s.result));
+  const stamp = h('div', `rcp-stamp ${winner ? 'good' : 'bad'}`, paper, stampText);
   stamp.hidden = true;
   const btns = h('div', 'rcp-btns', root);
   const again = h('button', 'rcp-btn', btns, t('hud.results.again'));
@@ -178,12 +194,17 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
 
   async function print(): Promise<void> {
     if (done) return;
-    for (const ln of lines) {
-      if (skip) { lines.forEach((l) => { l.classList.add('on'); rolls.get(l)?.(true); }); break; }
-      ln.classList.add('on');
-      rolls.get(ln)?.(false);
-      uiSfx('click', 0.3);
-      await wait(LINE_S * 1000);
+    // A throw while a line prints (a roll, a click sound) must not leave the receipt half-printed with no stamp.
+    try {
+      for (const ln of lines) {
+        if (skip) { lines.forEach((l) => { l.classList.add('on'); rolls.get(l)?.(true); }); break; }
+        ln.classList.add('on');
+        try { rolls.get(ln)?.(false); } catch { /* a roll that fails leaves its figure as the plain line */ }
+        try { uiSfx('click', 0.3); } catch { /* the click is optional */ }
+        await wait(LINE_S * 1000);
+      }
+    } finally {
+      lines.forEach((l) => l.classList.add('on'));
     }
     done = true;
     stamp.hidden = false;

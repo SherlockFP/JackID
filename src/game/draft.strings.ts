@@ -33,8 +33,8 @@ export default {
     'arch.banker': 'KASA',
     'arch.whale': 'BALİNA',
     'arch.copycat': 'TAKLİT',
-    'interest': 'BANKA +{n} faiz (%{pct})',
-    'interest.short': 'BANKA +0 faiz (%{pct}): kazanmak için {k} çekiliş daha',
-    'interest.none': 'BANKA +0 faiz (%{pct})',
+    'interest': 'BANKA +{n} FAİZ (%{pct})',
+    'interest.short': 'BANKA +0 FAİZ (%{pct}): kazanmak için {k} çekiliş daha',
+    'interest.none': 'BANKA +0 FAİZ (%{pct})',
   },
 };

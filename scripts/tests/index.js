@@ -60,3 +60,5 @@ import './juice.wave7.test.mjs';
 import './juiceB.test.mjs';
 import './phone.test.mjs';
 import './dawnReceipt.test.mjs';
+import './knock.test.mjs';
+import './wave71Polish.test.mjs';

@@ -18,6 +18,13 @@ import { createRng, hashSeed } from '@/core/rng';
 import type { HomePhoneApi, PhoneMessage, PhoneSave, PhoneThread } from './contract';
 import type { DebtRun } from '../run';
 
+declare module '@/core/events' {
+  interface GameEvents {
+    /** The Collector's Heat moved (wave 71): the phone chip shows it. `why` names the input (time, thin, tithe, seal, loan, quiet, listener ...). */
+    'home:heat': { delta: number; heat: number; why: string };
+  }
+}
+
 // ── rules (numbers from the spec; tune here, nowhere else) ────────────────────────────────────────────────────────────
 export const HARMONY_START = 3;
 export const HARMONY_MAX = 5;
@@ -44,6 +51,8 @@ export const DREAM_COLD = 1;
 /** Calm (1 − dread) below CALM_LOW can sour a dream one tier (seeded, half the time); at CALM_HIGH it can lift one (a fifth). */
 export const CALM_LOW = 0.3;
 export const CALM_HIGH = 0.8;
+/** Missed Watch tithes in one Night: the first is free, each one beyond it adds a Heat. */
+export const TITHE_FREE_MISSES = 1;
 /** The phone keeps this many messages (oldest drop off). */
 const MAX_MESSAGES = 40;
 
@@ -153,12 +162,17 @@ interface State {
   watchKey: string;
   elapsed: number;
   plans: Plan[];
+  /** Missed Watch tithes in `titheNight` (wave 71): the second and later ones heat the Collector. */
+  titheNight: number;
+  titheMisses: number;
+  /** The Evening's visitor (wave 71, src/game/home/knock.ts owns the shape): saved with the phone, so a reload resumes the visit. */
+  visit: unknown;
 }
 
 function freshState(): State {
   return {
     harmony: HARMONY_START, heat: 0, msgs: [], spouseNight: 0, collectorSent: 0, heatMoved: false, margin: 0, warmNight: 0,
-    talkNight: 0, replyNight: 0, dream: null, playing: false, watchKey: '', elapsed: 0, plans: [],
+    talkNight: 0, replyNight: 0, dream: null, playing: false, watchKey: '', elapsed: 0, plans: [], titheNight: 0, titheMisses: 0, visit: null,
   };
 }
 
@@ -198,6 +212,21 @@ function readDream(x: unknown): Dream | null {
   const o = x as Record<string, unknown>;
   if ((o.tier !== 'good' && o.tier !== 'plain' && o.tier !== 'cold') || typeof o.key !== 'string') return null;
   return { night: intIn(o.night, 0, 999, 0), tier: o.tier, key: o.key };
+}
+
+// ── hooks for the knock lane (wave 71) ───────────────────────────────────────────────────────────────────────────────
+/** What the visitor machine (knock.ts) and the run reach on a phone beyond `HomePhoneApi`: Heat and Harmony nudges, the visit slice. */
+export interface PhoneHooks {
+  /** Moves Heat by `d` (clamped 0..HEAT_MAX); a gain marks the Night as not quiet. Emits `home:heat` when Heat really moved. */
+  heat(d: number, why: string): void;
+  harmony(d: number): void;
+  /** The visit's save slice (opaque here; knock.ts validates it). It is saved live: the object is read at snapshot time. */
+  visit(): unknown;
+  setVisit(v: unknown): void;
+}
+const HOOKS = new WeakMap<object, PhoneHooks>();
+export function hooksOf(phone: HomePhoneApi | null | undefined): PhoneHooks | null {
+  return phone ? HOOKS.get(phone) ?? null : null;
 }
 
 // ── the model ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -245,10 +274,12 @@ export function createPhone(run: DebtRun): HomePhoneApi {
     st.plans = [];
   }
 
-  function bumpHeat(d: number): void {
+  /** Heat moves by `d`. Only a GAIN spoils the quiet Night (a counter's relief must not); the chip hears every real move. */
+  function bumpHeat(d: number, why = 'time'): void {
     const before = st.heat;
     st.heat = clamp(st.heat + d, 0, HEAT_MAX);
-    if (st.heat !== before) st.heatMoved = true;
+    if (st.heat > before) st.heatMoved = true;
+    if (st.heat !== before) bus.emit('home:heat', { delta: st.heat - before, heat: st.heat, why });
   }
 
   function push(msg: PhoneMessage): void {
@@ -318,6 +349,15 @@ export function createPhone(run: DebtRun): HomePhoneApi {
     if (phase === 'play') beginWatch();
     else if (phase === 'closing' || phase === 'settle' || phase === 'collection' || phase === 'intermission' || phase === 'over') endWatch();
   }));
+  // Heat inputs from the run (wave 71): each missed Watch tithe beyond the first in a Night, and a rescue loan taken.
+  unsubs.push(bus.on('run:tithe', (e) => {
+    if (disposed || e.state !== 'missed') return;
+    const night = run.night();
+    if (st.titheNight !== night) { st.titheNight = night; st.titheMisses = 0; }
+    st.titheMisses += 1;
+    if (st.titheMisses > TITHE_FREE_MISSES) bumpHeat(1, 'tithe');
+  }));
+  unsubs.push(bus.on('run:rescue', (e) => { if (!disposed && e.state === 'taken') bumpHeat(1, 'loan'); }));
   unsubs.push(bus.on('home:stage', ({ stage }) => { if (stage === 'sleep') closeNight(); }));
 
   const api: HomePhoneApi = {
@@ -357,7 +397,7 @@ export function createPhone(run: DebtRun): HomePhoneApi {
       }
       if (coins > 0 && !run.spend('coin', coins, 'phone.reply')) return false;   // not enough in the pocket: nothing applies
       st.harmony = clamp(st.harmony + harmony, 0, HARMONY_MAX);
-      if (heat) bumpHeat(heat);
+      if (heat) bumpHeat(heat, 'time');
       if (msg.thread === 'spouse') st.replyNight = msg.night;
       msg.answered = choice;
       msg.read = true;
@@ -379,11 +419,11 @@ export function createPhone(run: DebtRun): HomePhoneApi {
         if (margin >= MARGIN_WARM) st.harmony = clamp(st.harmony + 1, 0, HARMONY_MAX);
         else if (margin < MARGIN_THIN) {
           st.harmony = clamp(st.harmony - 1, 0, HARMONY_MAX);
-          bumpHeat(1);
+          bumpHeat(1, 'thin');
         }
       }
       // A quiet Night (no Heat change at all, this Evening's margin included) cools off by one.
-      if (!st.heatMoved && st.heat > 0) st.heat = clamp(st.heat - 1, 0, HEAT_MAX);
+      if (!st.heatMoved && st.heat > 0) bumpHeat(-1, 'quiet');
       st.heatMoved = false;
     },
 
@@ -408,7 +448,8 @@ export function createPhone(run: DebtRun): HomePhoneApi {
         v: 2, harmony: st.harmony, heat: st.heat, msgs: st.msgs, spouseNight: st.spouseNight,
         collectorSent: st.collectorSent, heatMoved: st.heatMoved, margin: st.margin, warmNight: st.warmNight,
         talkNight: st.talkNight, replyNight: st.replyNight, dream: st.dream, playing: st.playing,
-        watchKey: st.watchKey, elapsed: st.elapsed, plans: st.plans,
+        watchKey: st.watchKey, elapsed: st.elapsed, plans: st.plans, titheNight: st.titheNight, titheMisses: st.titheMisses,
+        visit: st.visit,
       };
       return JSON.parse(JSON.stringify(save)) as PhoneSave;
     },
@@ -427,6 +468,9 @@ export function createPhone(run: DebtRun): HomePhoneApi {
         next.talkNight = intIn(s.talkNight, 0, 999, 0);
         next.replyNight = intIn(s.replyNight, 0, 999, 0);
         next.dream = readDream(s.dream);
+        next.titheNight = intIn(s.titheNight, 0, 999, 0);
+        next.titheMisses = intIn(s.titheMisses, 0, 99, 0);
+        next.visit = s.visit && typeof s.visit === 'object' ? s.visit : null;
         next.playing = s.playing === true;
         next.watchKey = typeof s.watchKey === 'string' ? s.watchKey : '';
         next.elapsed = typeof s.elapsed === 'number' && Number.isFinite(s.elapsed) ? Math.max(0, s.elapsed) : 0;
@@ -444,5 +488,11 @@ export function createPhone(run: DebtRun): HomePhoneApi {
     },
   };
   DREAMS.set(api, () => st.dream);
+  HOOKS.set(api, {
+    heat: (d, why) => { if (!disposed) bumpHeat(d, why); },
+    harmony: (d) => { if (!disposed) st.harmony = clamp(st.harmony + d, 0, HARMONY_MAX); },
+    visit: () => st.visit,
+    setVisit: (v) => { st.visit = v; },
+  });
   return api;
 }

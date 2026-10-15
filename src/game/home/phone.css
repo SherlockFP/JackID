@@ -9,8 +9,7 @@
   cursor: pointer; pointer-events: auto; user-select: none;
 }
 .px-phone-chip:hover, .px-phone-chip.open { box-shadow: inset 0 0 0 var(--u) var(--amber), 0 0 0 var(--u) var(--void); }
-.px-phone-chip-label { white-space: nowrap; }
-.px-phone-chip[hidden],
+.px-phone-chip-label { white-space: nowrap; }.px-phone-chip[hidden],
 .px-phone[hidden] { display: none !important; }
 
 /* the unread dot: a stepped blink, the same beat as the toast's shake */

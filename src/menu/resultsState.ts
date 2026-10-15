@@ -66,6 +66,9 @@ export function createResultsState(): AppStateHandler<'results'> {
       leaving = false;
       summary = params.summary;
       const host = (app.ui as UIOverlayX).root;
+      // Run end: the toasts of the floor and of the Evening (a pull grant, the Evening hint, the seized line) belong to the place we
+      // left. The receipt is the only news on this screen.
+      (app.ui as UIOverlayX).dismissToasts();
       overlay = document.createElement('div');
       overlay.className = 'hud-results';
       overlay.style.cssText = 'position:absolute;inset:0;z-index:50;pointer-events:auto;';

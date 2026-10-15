@@ -32,8 +32,8 @@ export default {
   tr: {
     'bank': 'ŞAFAK {p}/{q}',
     'pocket': 'CEP {p} · YATIR',
-    'ends': 'V{w}/{n} · {p} ÇEKİŞ · {c}',
-    'next': 'SONRAKİ V{w}/{n}',
+    'ends': 'NÖBET {w}/{n} · {p} ÇEKİŞ · {c}',
+    'next': 'SONRAKİ NÖBET {w}/{n}',
     'night': 'SONRAKİ GECE {q} (×{k})',
     'paid': 'ÖDENDİ · FAZLA {n}',
     'tithe': 'NET KAZANÇ {e}/{n}',

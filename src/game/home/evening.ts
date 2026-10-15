@@ -17,21 +17,26 @@ import { hashSeed } from '@/core/rng';
 import type { Unsub, V3 } from '@/core/types';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { h } from '@/core/ui/widgets';
+import { shakeDoor as worldShakeDoor, showVisitor } from '@/world/home';
 import type { WorldHost } from '@/world/world';
 import type { LocalPlayerHost } from '@/player/local';
 import { HOME_TIMING, type DebtRun } from '../run';
 import { HOME_AMBIENCE, HOME_ANCHORS, HOME_ORIGIN, HOME_SFX, type HomeStage, type HomeStation } from './contract';
-import { dreamOf } from './phone';
+import { dreamOf, hooksOf } from './phone';
+import { CRACK_AMOUNT, createVisit, newVisit, pickCharm, readVisit, rollVisit, tollOf, type KnockIO, type Visit, type VisitResult } from './knock';
+import { charmDef } from '../charms/engine';
 import strings from './evening.strings';
+import knockStrings from './knock.strings';
 
 registerStrings(strings.prefix, { en: strings.en, tr: strings.tr });
+registerStrings(knockStrings.prefix, { en: knockStrings.en, tr: knockStrings.tr });
 
 /** One step out of the lift gate on the casino floor (m). */
 const LIFT_STEP = 2.2;
 /** The body stands this far above the flat's floor line when placed (anchors may sit at eye height; gravity settles it). */
 const STAND_LIFT = 0.05;
 /** The peephole look (sim s): the camera eases to the eyehole, holds, and the player's own glide brings it back. */
-const PEEP_SEC = 2;
+const PEEP_SEC = 2.5;
 const PEEP_MOVE_SEC = 0.4;
 const PEEP_IN_SEC = 0.25;
 const PEEP_OUT_SEC = 0.35;
@@ -96,6 +101,10 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   let talkWait = 0;
   let talkMood: 'calm' | 'cheery' | 'sad' = 'calm';
   let peep: { el: HTMLDivElement; t: number } | null = null;
+  /** The Evening's visitor (wave 71): the machine over the state kept in the phone's save slice, null when none comes. */
+  let visit: Visit | null = null;
+  /** A walk input or an interaction since the last step (the Listener hears it). */
+  let movedFlag = false;
 
   const spousePresent = (): boolean => (run.homePhone()?.harmony() ?? 3) > 0;
 
@@ -176,11 +185,14 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     }
     unlock();
     world.home?.setSpouse(spousePresent());
+    movedFlag = false;
+    beginVisit(from === 'ride');
     ui().dismissToasts();   // the arrival hint is the only centre-top line of the Evening: stale toasts from the pit step aside
     ui().toast(t('evening.hint'), 'sys', 5);
   };
 
   const startSleep = (): void => {
+    endVisit();   // the auto-sleep can end an Evening with a visitor in the hall: an act still running is a fail
     wantLock = true;
     sfx(HOME_SFX.bed);
     fadeTo(1, T.sleep - 0.3);
@@ -190,6 +202,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
 
   const leaveHome = (from: HomeStage | null): void => {
     if (from === null) return;
+    endVisit();
     if (atHome) placeFloor();
     unlock();
     fadeTo(0, 0.9);
@@ -237,6 +250,100 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     }
   };
 
+  // ── the visitor (wave 71, src/game/home/knock.ts): sound first, light second ────────────────────────
+  const sfxAt = (name: string, o: { vol?: number; pitch?: number } = {}): void => {
+    try {
+      const pos = world.anchor(HOME_ANCHORS.hall) ?? undefined;
+      app.audio.play(name, { vol: o.vol, pitch: o.pitch, priority: 8, pos });
+    } catch { /* audio is optional */ }
+  };
+  /** The subtitle twin of a cue. Only with subtitles on: the cue itself is the sound or the light. */
+  const caption = (key: string): void => {
+    let subs = true;
+    try { subs = app.save.data.settings.subtitles !== false; } catch { /* default on */ }
+    if (subs) app.ui.subtitle(t(`knock.${key}`), '', 3);
+  };
+  const shakeDoor = (amp: number): void => {
+    if (calmish().calm) return;   // Calm Mode: no jolts
+    worldShakeDoor(amp, 0.3);
+    player.shake(0.01, 0.15);
+  };
+
+  /** A finished visit: Heat, Harmony, the toll from the pocket and the Picker's charm. Runs once per visit. */
+  const applyResult = (r: VisitResult): void => {
+    const hooks = hooksOf(run.homePhone());
+    if (r.heat) hooks?.heat(r.heat, r.kind);
+    if (r.harmony) { hooks?.harmony(r.harmony); ui().toast(t('knock.harmony'), 'info', 3.5); }
+    const toll = tollOf(r.tollPct, run.wallet(), run.debt().due);
+    if (toll > 0 && run.spend('coin', toll, 'knock.toll')) ui().toast(t('knock.toll', { n: toll }), 'warn', 3.5);
+    if (r.steal) {
+      const owned = run.charms().map((c) => ({ id: c.id, rarity: charmDef(c.id)?.rarity ?? 'common' }));
+      const id = pickCharm(run.seed, run.night(), owned);
+      if (id && run.loseCharm?.(id)) ui().toast(t('knock.stolen', { name: t(`charm.${id}.name`) }), 'warn', 4);
+    }
+    run.homeFlags({});   // the visit's outcome is in the pocket and the phone now: save them together
+  };
+
+  const io: KnockIO = {
+    footstep(i, n, leaving) {
+      const k = (i + 1) / n;
+      sfxAt('footstepConcrete', { vol: leaving ? 0.55 * (1 - k * 0.8) : 0.2 + 0.45 * k, pitch: leaving ? 0.95 : 0.9 + 0.1 * (i % 2) });
+      if (i === 0 && leaving) caption('leave');
+    },
+    shadow: (on) => {
+      world.home?.setDoorShadow(on);
+      showVisitor(on && visit ? visit.state.kind : null);   // the figure stands in the hall as long as his shadow is on the strip
+    },
+    knock() {
+      sfxAt(HOME_SFX.knock, { vol: 0.9 });
+      app.timers.sim.after(0.35, () => sfxAt(HOME_SFX.knock, { vol: 0.9 }));
+      app.timers.sim.after(0.7, () => sfxAt(HOME_SFX.knock, { vol: 1 }));
+    },
+    shove(i) {
+      sfxAt('doorSlam', { vol: 0.45 + 0.1 * i, pitch: 0.7 });
+      shakeDoor(0.6 + 0.2 * i);
+    },
+    chainRattle: () => sfx(HOME_SFX.chain, { vol: 0.9 }),
+    scrape: () => sfxAt(HOME_SFX.lockTurn, { vol: 0.6, pitch: 0.85 + 0.1 * (Math.floor(visit?.state.n ?? 0) % 3) }),
+    crack(open) { void world.home?.doorTo(open ? CRACK_AMOUNT : 0, open ? 0.15 : 0.4); },
+    caption,
+    resolve: applyResult,
+  };
+
+  /** Starts the Evening's visit: a roll for a fresh Evening, or the saved visit of a restored one. */
+  const beginVisit = (fresh: boolean): void => {
+    visit = null;
+    const phone = run.homePhone();
+    const hooks = hooksOf(phone);
+    if (!phone || !hooks) return;
+    if (fresh) {
+      const plan = rollVisit(run.seed, run.night(), phone.heat());
+      if (!plan) { hooks.setVisit(null); return; }
+      const st = newVisit(run.night(), plan, calmish().calm);
+      hooks.setVisit(st);
+      visit = createVisit(st, io);
+      return;
+    }
+    const st = readVisit(hooks.visit());
+    if (!st || st.night !== run.night() || st.phase === 'done') { hooks.setVisit(null); return; }
+    hooks.setVisit(st);
+    visit = createVisit(st, io);
+    visit.resume();   // caught mid-act: a fail; the door and the hall start over
+  };
+  const endVisit = (): void => {
+    visit?.abandon();
+    visit = null;
+  };
+
+  /** What the Listener hears: a walk input (the body moving or a key held), or any interaction. */
+  const heardMoving = (): boolean => {
+    let moving = player.speed > 0.2;
+    try { const m = app.input.move(); if (m.x !== 0 || m.z !== 0) moving = true; } catch { /* no input service in a bare world */ }
+    const v = movedFlag || moving;
+    movedFlag = false;
+    return v;
+  };
+
   // ── stations ───────────────────────────────────────────────────────────────────────────────────────
   const speak = (): void => {
     if (talk.length > 0) return;
@@ -277,7 +384,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     sfx(HOME_SFX.chain);
   };
 
-  /** A 2 s look through the eyehole: the camera goes to `home.peephole`, a hard-edged circle closes the screen, and the hall is empty. */
+  /** The look through the eyehole (2.5 s): the camera goes to the lens view, a hard-edged circle closes the screen. The world's own figure stands in the hall when he is there. */
   const peephole = (): void => {
     if (peep) return;
     const el = h('div', 'ev-peep', ui().hudLayer);
@@ -285,6 +392,8 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
       position: 'absolute', left: '0', top: '0', right: '0', bottom: '0', pointerEvents: 'none', zIndex: '3', opacity: '0',
       background: 'radial-gradient(circle at 50% 50%, rgba(0,0,0,0) 0, rgba(0,0,0,0) 16%, rgba(20,14,8,0.6) 21%, rgb(0,0,0) 27%)',
     } satisfies Partial<CSSStyleDeclaration>);
+    // a visitor shows once his shadow is on the strip (the act); before that, and after, the hall is empty
+    const there = visit?.acting() ? visit.state.kind : null;
     peep = { el, t: 0 };
     const a = world.anchor(HOME_ANCHORS.peephole);
     if (a) {
@@ -294,7 +403,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
       const to: V3 = [look.x, look.y, look.z];
       void player.cinematic([{ pos, look: to, dur: PEEP_MOVE_SEC }, { pos, look: to, dur: PEEP_SEC - PEEP_MOVE_SEC }]);
     }
-    say(t('evening.peephole'), '', PEEP_SEC + 0.6);
+    say(t(there ? `knock.peep.${there}` : 'evening.peephole'), '', PEEP_SEC + 0.6);
   };
   const tickPeep = (dt: number): void => {
     if (!peep) return;
@@ -311,8 +420,12 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
 
   const interact = (station: HomeStation): void => {
     if (run.over || run.homeStage() !== 'evening') return;   // the Evening is the only stage with a free hand
+    if (station !== 'peephole') movedFlag = true;   // the Listener hears every touch; the look costs only its time
     switch (station) {
-      case 'bed': run.homeSleep(); break;
+      case 'bed':
+        if (visit?.atDoor()) { ui().toast(t('knock.blocked'), 'warn', 2.5); break; }   // not with someone at the door
+        run.homeSleep();
+        break;
       case 'spouse': speak(); break;
       case 'switch': toggleLights(); break;
       case 'chain': toggleChain(); break;
@@ -336,9 +449,15 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
       tryLock();
       tickTalk(dt);
       tickPeep(dt);
+      if (visit && s.stage === 'evening') {
+        const moved = heardMoving();
+        visit.tick(dt, { lights: world.home?.lightsOn() ?? true, chain: world.home?.chainOn() ?? false, moved, looking: peep !== null });
+      }
     },
     dispose() {
       for (const off of offs.splice(0)) off();
+      world.home?.setDoorShadow(false);
+      showVisitor(null);
       wantLock = false; locked = false;   // the state that follows sets its own input mode
       talk = [];
       peep?.el.remove();

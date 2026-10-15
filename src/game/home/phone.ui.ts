@@ -236,6 +236,22 @@ export function mountPhoneUi(run: DebtRun): () => void {
     sig = '';
   }));
   offs.push(bus.on('msg:reply', () => { sig = ''; }));
+  // wave 71: every real Heat move shows as a small hard-edged toast over the chip for TOAST_S sim seconds
+  let heatToast: HTMLElement | null = null;
+  let heatStop: (() => void) | null = null;
+  offs.push(bus.on('home:heat', ({ delta }) => {
+    if (disposed || delta === 0) return;
+    heatStop?.();
+    heatToast?.remove();
+    const up = delta > 0;
+    const b = el('div', up ? 'px-phone-heat up' : 'px-phone-heat down', chip, t(up ? 'phone.ui.heat.up' : 'phone.ui.heat.down', { n: Math.abs(delta) }));
+    Object.assign(b.style, {
+      position: 'absolute', left: '0', bottom: 'calc(100% + 4px)', padding: '3px 6px', background: 'var(--panel)', whiteSpace: 'nowrap',
+      color: up ? 'var(--amber)' : 'var(--ivory)', pointerEvents: 'none', boxShadow: `inset 0 0 0 2px ${up ? 'var(--amber)' : 'var(--slate)'}`,
+    } satisfies Partial<CSSStyleDeclaration>);
+    heatToast = b;
+    heatStop = app.timers.sim.after(TOAST_S, () => { b.remove(); if (heatToast === b) heatToast = null; });
+  }));
   offs.push(bus.on('home:interact', ({ station }) => { if (station === 'phone') openPhone(); }));
 
   chip.addEventListener('click', () => { if (open) closePhone(); else openPhone(); });
@@ -245,6 +261,8 @@ export function mountPhoneUi(run: DebtRun): () => void {
   return () => {
     disposed = true;
     stopPoll();
+    heatStop?.();
+    heatToast?.remove();
     for (const off of offs.splice(0)) off();
     if (open) closePhone();
     chip.remove();

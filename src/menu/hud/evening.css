@@ -2,6 +2,8 @@
    modifier rows give way to one compact card: the objective, Harmony as hearts, Heat as pips (docs/WAVE69_HOME.md §2). */
 .hud.evening-on .hud-rs > :not(.hud-evening) { display: none !important; }
 .hud.evening-on .hud-tc .lamps, .hud.evening-on .pulls, .hud.evening-on .charms { display: none !important; }
+/* The pit's clock line ("00:00 ŞAFAK · GECE 1 · NÖBET 3/3") is the Watch's; at home there is no Watch, so the clock and the night line go. */
+.hud.evening-on .hud-tc .clock, .hud.evening-on .hud-tc .sub { display: none !important; }
 
 .hud .hud-evening { display: none; position: relative; flex-direction: column; align-items: flex-end; gap: calc(3 * var(--u));
   padding: calc(4 * var(--u)) calc(6 * var(--u)); background: rgba(0, 0, 0, .6); border: calc(1 * var(--u)) solid var(--bone); }

@@ -22,6 +22,9 @@ const SAG_DROP = 0.34;     // the slack chain hangs this far below the slide (m)
 const SAG_BOW = 0.07;      // and bows this far sideways at its middle (m)
 const LINK_Z = -0.07;
 
+/** The shake's peak yaw at strength 1 (rad): about 18 mm at the leaf's 0.9 m free edge (visible at the Evening's camera). */
+const SHAKE_RAD = 0.02;
+
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 
 export class HomeDoor {
@@ -33,6 +36,9 @@ export class HomeDoor {
   private collider = -1;
   private amt = 0;
   private tw: TweenHandle | null = null;
+  /** The shake's yaw offset (rad) on top of the swing, and its running tween. */
+  private shk = 0;
+  private shakeTw: TweenHandle | null = null;
 
   /** `tweens` defaults to the sim clock (`app.tweens.sim`): the swing freezes with the game and follows the fixed step. */
   constructor(private readonly o: { kit: KitX; dyn: THREE.Group; collision: CollisionWorld | null; tweens?: TweenSystem }) {
@@ -61,11 +67,19 @@ export class HomeDoor {
       this.links.push(kit.box(LINK_LEN, 0.012, 0.012, chrome, { pos: [SLIDE_OFF_X, CHAIN_Y, LINK_Z], parent: this.pivot }));
     }
 
-    // the light crack under the leaf, and the shadow a visitor throws across it (hidden in wave 69)
+    // the light crack under the leaf, and the two feet a visitor throws across it (hidden until a visitor is at the door)
     const crackMat = kit.mat({ color: 0xffcf8a, lit: false });
     const shadowMat = kit.mat({ color: 0x000000, lit: false });
     kit.box(DOOR_X1 - DOOR_X0, 0.012, 0.03, crackMat, { pos: at(-0.6, 0.006, 2.47), parent: o.dyn });
-    this.shadow = kit.box(0.36, 0.014, 0.034, shadowMat, { pos: at(-0.6, 0.007, 2.47), parent: o.dyn });
+    this.shadow = kit.group('home:door:feet');
+    // two feet side by side on the strip, centred in the opening (x -1.1 .. -0.1), toes pointing into the room (a sole and
+    // a toe nub each). Sized so they read from the room at the Evening's camera. lit: false so they stay dark on the crack.
+    const doorCx = (DOOR_X0 + DOOR_X1) / 2;
+    for (const fx of [-0.2, 0.2]) {
+      kit.box(0.12, 0.016, 0.05, shadowMat, { pos: at(doorCx + fx, 0.008, 2.47), parent: this.shadow });
+      kit.box(0.06, 0.016, 0.035, shadowMat, { pos: at(doorCx + fx, 0.008, 2.435), parent: this.shadow });
+    }
+    o.dyn.add(this.shadow);
     this.shadow.visible = false;
 
     o.dyn.add(this.pivot);
@@ -89,6 +103,29 @@ export class HomeDoor {
     return h.promise;
   }
 
+  /**
+   * A rattle of the shut leaf (shoves, a shoulder): a few millimetres of yaw, decaying, over `dur` sim seconds (default 0.25).
+   * `strength` 0..1 scales it (0.02 rad at 1, about 18 mm at the leaf's free edge). The leaf returns to its swing exactly.
+   */
+  shake(strength: number, dur = 0.25): void {
+    const sys = this.o.tweens ?? app.tweens?.sim;
+    const amp = clamp01(strength) * SHAKE_RAD;
+    this.shakeTw?.cancel();
+    this.shakeTw = null;
+    if (amp <= 0 || dur <= 0 || !sys) return;
+    const h = sys.run(dur, (k) => {
+      this.shk = amp * Math.sin(k * Math.PI * 6) * (1 - k);
+      this.applyRot();
+    }, { ease: 'linear' });
+    this.shakeTw = h;
+    void h.promise.then(() => {
+      if (this.shakeTw !== h) return;
+      this.shakeTw = null;
+      this.shk = 0;
+      this.applyRot();
+    });
+  }
+
   /** The chain on (taut from the track to the keeper, the door held to a crack) or off (slack, hanging). */
   setChain(on: boolean): void {
     this.layoutChain(on);
@@ -102,6 +139,8 @@ export class HomeDoor {
   dispose(): void {
     this.tw?.cancel();
     this.tw = null;
+    this.shakeTw?.cancel();
+    this.shakeTw = null;
     if (this.collider >= 0) this.o.collision?.remove(this.collider);
     this.collider = -1;
     this.o.dyn.remove(this.pivot);
@@ -109,8 +148,12 @@ export class HomeDoor {
 
   private setAmt(v: number): void {
     this.amt = clamp01(v);
-    this.pivot.rotation.y = this.amt * DOOR_OPEN_RAD;
+    this.applyRot();
     this.syncCollider();
+  }
+
+  private applyRot(): void {
+    this.pivot.rotation.y = this.amt * DOOR_OPEN_RAD + this.shk;
   }
 
   /** The collider follows the leaf: one solid box, the leaf's footprint at the current swing (re-set each time it moves). */

@@ -10,9 +10,9 @@ export default {
     'payout': 'SPOTLIGHT',
   },
   tr: {
-    'chip': 'SPOT: {name} {mult} · Bilete {left} oyun',
-    'chip.one': 'SPOT: {name} {mult} · Bilete 1 oyun',
-    'chip.other': 'SPOT: {name} {mult} · Bilete {left} oyun',
+    'chip': 'SPOTLIGHT: {name} {mult} · Bilete {left} oyun',
+    'chip.one': 'SPOTLIGHT: {name} {mult} · Bilete 1 oyun',
+    'chip.other': 'SPOTLIGHT: {name} {mult} · Bilete {left} oyun',
     'start': 'SPOTLIGHT: {name} {mult} öder, her {every}. oyunda bir Bilet',
     'ticket': 'SPOTLIGHT BİLETİ +{tickets}',
     'payout': 'SPOTLIGHT',

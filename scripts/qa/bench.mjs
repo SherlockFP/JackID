@@ -141,7 +141,13 @@ export function parseScript(text) {
  *   home:talk          the spouse: station `spouse` (the first talk each Evening at Harmony 4+ is the BLESSING); records the lines
  *   home:switch        the ceiling light: station `switch` (lights toggle); records the lights
  *   home:chain         the door chain: station `chain` (chain toggles); records the chain
- *   home:peep          the peephole: station `peephole` (the 2 s look through the door); waits the look out, records the stage
+ *   home:peep          the peephole: station `peephole` (the 2.5 s look through the door); waits the look out, records the stage
+ *                      and the visitor it showed (`visitor`: listener | leaner | picker, or null for an empty hall)
+ *   home:visit         waits (sim time, up to 45 s) until the Evening's visitor acts, has gone, or none comes; records `visitor`,
+ *                      `phase`, `k` (1, or 1.5 in Calm) and Heat. ok when the visitor is acting or none is coming (THE KNOCK, wave 71)
+ *   home:lights:<on|off>  sets the ceiling light to the state (the switch station only if it differs); records the lights
+ *   home:chain:<on|off>   the same for the door chain (plain `home:chain` toggles)
+ *   home:still:<ms>    stands still for ms of sim time (no input, no interaction): the Listener's counter. Read-only
  *   home:knock-check   logs the Home state (run.homeState() and world.home lights and chain); read-only, runs after the end too
  *   anchor:<name>      teleports the player to a named world anchor (world.anchor), facing where the anchor faces: visual checks
  *                      (anchor:home.peephole, anchor:home.spawn). Needs a debt run; the Home anchors need the apartment built
@@ -171,7 +177,17 @@ export function parseRunSteps(text) {
     if (!tok) continue;
     if (['stand', 'lever', 'bell', 'pawn', 'state', 'events'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
     // THE EVENING (wave 69): the lift, the apartment's stations and the phone
-    if (['home:lift', 'home:sleep', 'home:talk', 'home:switch', 'home:chain', 'home:peep', 'home:knock-check', 'home:miss', 'phone:open'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
+    if (['home:lift', 'home:sleep', 'home:talk', 'home:switch', 'home:chain', 'home:peep', 'home:knock-check', 'home:miss', 'home:visit', 'phone:open'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
+    // THE KNOCK (wave 71): set the lights or the chain to a state, and stand still
+    const mh = /^home:(lights|chain):(on|off)$/.exec(tok);
+    if (mh) { out.push({ kind: mh[1] === 'lights' ? 'home:lights' : 'home:chainset', on: mh[2] === 'on', text: tok }); continue; }
+    const mst = /^home:still:(\d+)$/.exec(tok);
+    if (mst) {
+      const ms = Number(mst[1]);
+      if (!(ms >= 1 && ms <= 120_000)) throw new Error(`bad wait in "${tok}" (home:still:<1-120000 ms>)`);
+      out.push({ kind: 'home:still', ms, text: tok });
+      continue;
+    }
     const ma = /^anchor:([A-Za-z][A-Za-z0-9_.-]{0,80})$/.exec(tok);
     if (ma) { out.push({ kind: 'anchor', name: ma[1], text: tok }); continue; }
     let mr = /^phone:reply:(\d+)$/.exec(tok);
@@ -224,7 +240,7 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:sleep | home:talk | home:switch | home:chain | home:peep | home:knock-check | home:miss | anchor:<name> | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:sleep | home:talk | home:switch | home:chain | home:chain:<on|off> | home:lights:<on|off> | home:still:<ms> | home:visit | home:peep | home:knock-check | home:miss | anchor:<name> | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
   const once = (kind) => {
@@ -240,7 +256,7 @@ export function parseRunSteps(text) {
 /** The start config from the kit/stake/daily steps (applied at run start, not steps), or null when there are none. */
 const START_KINDS = new Set(['kit', 'stake', 'daily']);
 /** Steps that only read or wait: they do not change the Night, so auto:night's next-step look skips them. */
-const READ_ONLY_KINDS = new Set(['state', 'shot', 'events', 'wait', 'banner', 'home:knock-check']);
+const READ_ONLY_KINDS = new Set(['state', 'shot', 'events', 'wait', 'banner', 'home:knock-check', 'home:still']);
 export function startSpecOf(parsed) {
   const cfg = parsed.filter((s) => START_KINDS.has(s.kind));
   if (!cfg.length) return null;
@@ -498,8 +514,21 @@ const FADE_CLEAR_JS = `(() => {
   const busy = el.getAnimations().some((x) => x.playState === 'running' || x.playState === 'pending');
   return !busy && (parseFloat(getComputedStyle(el).opacity) || 0) <= 0.01;
 })()`;
-/** Sim ms of the peephole look (evening.ts PEEP_SEC = 2 s), plus a margin, before the step reads the stage again. */
-const HOME_PEEP_MS = 2200;
+/** Sim ms of the peephole look (evening.ts PEEP_SEC = 2.5 s), plus a margin, before the step reads the stage again. */
+const HOME_PEEP_MS = 2700;
+/** Sim ms home:visit waits for the visitor: the latest arrival (25 s) plus the Calm approach (6.3 s) and a margin. */
+const VISIT_WAIT_MS = 45_000;
+/** Page JS: the Evening's visitor (the visit slice of the phone's snapshot), the lights and chain, Heat, Harmony, the pocket and the charm count. */
+const VISIT_JS = `(() => {
+  const a = window.jackid.app, r = a.run, p = r && r.homePhone ? r.homePhone() : null;
+  if (!p) return { has: false };
+  const v = (p.snapshot() || {}).visit || null, h = a.world && a.world.home;
+  return { has: true, night: r.night(), stage: r.homeStage ? r.homeStage() : null, over: r.over === true,
+    visit: v ? { kind: v.kind, phase: v.phase, night: v.night, k: v.k, t: v.t, hold: v.hold, pass: v.pass } : null,
+    lights: h ? h.lightsOn() : null, chain: h ? h.chainOn() : null, heat: p.heat(), harmony: p.harmony(), coins: r.wallet(), charms: r.charms().length };
+})()`;
+/** A visit that is still to come or at the door in this Night (the bed is blocked while it is). */
+const visitLive = (x) => !!(x && x.visit && x.visit.night === x.night && x.visit.phase !== 'done');
 /** Polls (100 ms of sim time each) the arrival fade gets after the bed before the step fails. */
 const FADE_POLLS_MAX = 300;
 /** Waits until the screen fade after the bed (the arrival in the casino) has cleared. False if it is still up at the cap. */
@@ -809,7 +838,9 @@ const HOME_PHONE_FN_JS = `function homePhoneOf(r) {
     const p = typeof r.homePhone === 'function' ? r.homePhone() : null;
     if (!p) return null;
     const ms = p.messages();
-    return { unread: p.unread(), harmony: p.harmony(), heat: p.heat(), messages: ms.length, answered: ms.filter((m) => m.answered !== null).length };
+    const v = (p.snapshot() || {}).visit || null;   // THE KNOCK (wave 71): the Evening's visitor, or null
+    return { unread: p.unread(), harmony: p.harmony(), heat: p.heat(), messages: ms.length, answered: ms.filter((m) => m.answered !== null).length,
+      visit: v ? { kind: v.kind, phase: v.phase, night: v.night, pass: v.pass } : null };
   } catch (e) { return null; }
 }`;
 const RUN_STATE_JS = `(async () => {
@@ -1354,12 +1385,13 @@ async function autoNight(ctx, rec, stopAt = null) {
     metStop: new Set(),  // Nights whose quota-met stop has been taken (auto:night:quota)
     wdRefused: new Set(),  // Watches whose withdraw to the float was refused (not retried in that Watch)
     evening: new Map(),    // Night -> bed presses in its Evening (the first also talks to the spouse)
+    visits: new Map(),     // Night -> bot passes at the Evening's visitor (THE KNOCK, wave 71)
   });
   // A call that starts on a paid Night (OPEN THE FLOOR waiting, the Dawn offer may still be open) opens the next Night and plays
   // it: its own rollover ends the call. Any other start plays the Night it is in (its paid state, then the rollover, ends it).
   const s0 = await readState(ctx);
   const n0 = s0.nightDone ? s0.night + 1 : s0.night;
-  const count = { deposits: 0, shops: 0, bets: 0, bells: 0, evenings: 0 };
+  const count = { deposits: 0, shops: 0, bets: 0, bells: 0, evenings: 0, visits: 0 };
   const events = [];                    // ids of the floor events of the Watches this call reached
   let leverFails = 0, loops = 0, end = null, st = null, offer = null;   // offer: the Dawn offer the bot saw (summarizeOffer)
   /** A Watch's state, printed once (at its Bell, so the pocket is the one the Watch ends with). */
@@ -1413,6 +1445,44 @@ async function autoNight(ctx, rec, stopAt = null) {
       // THE EVENING: the lift is a ride; at home the bot talks to the spouse once (the Harmony 4+ blessing) and goes to bed. The Night
       // rolls over when the sleep ends. The doom (a missed quota) is waited out: the run ends by itself.
       if (st.homeStage === 'evening') {
+        // THE KNOCK: a visitor to come or at the door blocks the bed. The bot reads who it is and passes the visit by the right counter
+        // (Listener: lights off and still; Leaner: chain on before the second shove; Picker: chain on and lights off), then waits him out.
+        const vz = await evalJson(ctx.cdp, VISIT_JS);
+        if (visitLive(vz) && (bot.visits.get(st.night) ?? 0) < 4) {
+          bot.visits.set(st.night, (bot.visits.get(st.night) ?? 0) + 1);
+          if ((bot.evening.get(st.night) ?? 0) === 0) {
+            bot.evening.set(st.night, 1);
+            await exec(ctx, auto({ kind: 'home:talk', text: 'home:talk' }));
+            count.evenings++;
+          }
+          const w = await exec(ctx, auto({ kind: 'home:visit', text: 'home:visit' }));
+          if (w.visitor && w.phase === 'act') {
+            const k = w.k ?? 1, kind = w.visitor;
+            decide(ctx, 'knock', `${kind} at the door (Heat ${w.heat}): ${kind === 'listener' ? 'lights off, stand still' : kind === 'leaner' ? 'chain on before the second shove' : 'chain on, lights off'}`);
+            if (process.env.QA_KNOCK_FAIL === '1') {
+              // QA_KNOCK_FAIL=1: the bot does nothing, so the fail path (toll, Heat, Harmony, the Picker's charm) can be walked headless
+              await exec(ctx, auto({ kind: 'home:still', ms: 200, text: 'home:still:200' }));
+            } else if (kind === 'listener') {
+              await exec(ctx, auto({ kind: 'home:lights', on: false, text: 'home:lights:off' }));
+              await exec(ctx, auto({ kind: 'home:still', ms: Math.ceil(8000 * k + 600), text: `home:still:${Math.ceil(8000 * k + 600)}` }));
+            } else if (kind === 'leaner') {
+              await exec(ctx, auto({ kind: 'home:chainset', on: true, text: 'home:chain:on' }));
+            } else {
+              await exec(ctx, auto({ kind: 'home:chainset', on: true, text: 'home:chain:on' }));
+              await exec(ctx, auto({ kind: 'home:lights', on: false, text: 'home:lights:off' }));
+            }
+            // wait him out (the verdict, then the steps going away): the bed opens when the visit is done
+            const tw = nowMs();
+            let vv = await evalJson(ctx.cdp, VISIT_JS);
+            while (visitLive(vv) && vv.stage === 'evening' && !vv.over && nowMs() - tw < 30_000) {
+              await sleep(200);
+              vv = await evalJson(ctx.cdp, VISIT_JS);
+            }
+            decide(ctx, 'knock', `${kind} done: ${vv.visit && vv.visit.pass ? 'PASSED' : 'failed'} (Heat ${w.heat} -> ${vv.heat}, pocket ${vv.coins}, charms ${vv.charms})`);
+            count.visits++;
+          }
+          continue;
+        }
         const tries = bot.evening.get(st.night) ?? 0;
         if (tries >= AUTO_LEVER_FAILS) { end = 'evening stuck'; break; }
         bot.evening.set(st.night, tries + 1);
@@ -1766,12 +1836,54 @@ async function runKind(ctx, s, rec) {
       const h0 = await evalJson(cdp, HOME_STAGE_JS);
       rec.night = h0?.night ?? null;
       if (!h0 || h0.stage !== 'evening') { rec.ok = false; rec.reason = `not in the Evening (home stage "${h0?.stage ?? 'none'}")`; return; }
+      const vp = await evalJson(cdp, VISIT_JS);
+      rec.visitor = vp?.visit && vp.visit.phase === 'act' ? vp.visit.kind : null;   // the lens shows him only once his shadow is on the strip
       await evaluate(cdp, homeEmitJs('peephole'));
       await sleep(HOME_PEEP_MS);
       const h1 = await evalJson(cdp, HOME_STAGE_JS);
       rec.stage = h1?.stage ?? null;
       rec.ok = rec.stage === 'evening';
       if (!rec.ok) rec.reason = `the look ended the Evening (stage ${rec.stage})`;
+      return;
+    }
+    case 'home:visit': {
+      // THE KNOCK: waits on sim time until the visitor acts (shadow on), has left, or none is coming this Evening.
+      let v = await evalJson(cdp, VISIT_JS);
+      if (!v.has || v.stage !== 'evening') { rec.ok = false; rec.reason = `not in the Evening (home stage "${v.stage ?? 'none'}")`; return; }
+      const t0 = nowMs();
+      while (visitLive(v) && v.visit.phase !== 'act' && v.visit.phase !== 'leave' && v.stage === 'evening' && !v.over && nowMs() - t0 < VISIT_WAIT_MS) {
+        await sleep(100);
+        v = await evalJson(cdp, VISIT_JS);
+      }
+      rec.visitor = visitLive(v) ? v.visit.kind : null;
+      rec.phase = v.visit && v.visit.night === v.night ? v.visit.phase : null;
+      rec.k = v.visit ? v.visit.k : null;
+      rec.heat = v.heat;
+      rec.waited = Math.round(nowMs() - t0);
+      rec.ok = !visitLive(v) || v.visit.phase === 'act' || v.visit.phase === 'leave';
+      if (!rec.ok) rec.reason = `the visitor did not act within ${VISIT_WAIT_MS} ms (phase ${rec.phase}, stage ${v.stage})`;
+      return;
+    }
+    case 'home:lights':
+    case 'home:chainset': {
+      const key = s.kind === 'home:lights' ? 'lights' : 'chain';
+      const v = await evalJson(cdp, VISIT_JS);
+      if (!v.has || v.stage !== 'evening') { rec.ok = false; rec.reason = `not in the Evening (home stage "${v.stage ?? 'none'}")`; return; }
+      if (v[key] === null) { rec.ok = false; rec.reason = 'no apartment built (world.home)'; return; }
+      rec.before = v[key];
+      if (v[key] !== s.on) await evaluate(cdp, homeEmitJs(key === 'lights' ? 'switch' : 'chain'));
+      const v1 = await evalJson(cdp, VISIT_JS);
+      rec[key] = v1[key];
+      rec.ok = v1[key] === s.on;
+      if (!rec.ok) rec.reason = `the ${key} did not reach ${s.on ? 'on' : 'off'}`;
+      return;
+    }
+    case 'home:still': {
+      // No input, no interaction: only sim time passes (the Listener's counter).
+      await sleep(s.ms);
+      const v = await evalJson(cdp, VISIT_JS);
+      rec.phase = v.visit && v.visit.night === v.night ? v.visit.phase : null;
+      rec.hold = v.visit ? v.visit.hold : null;
       return;
     }
     case 'home:knock-check': {

@@ -133,6 +133,10 @@ export function createHud(): Hud {
   };
   // Watch tithe (wave 58): the Settle's result as a toast in play (src/menu/hud/tithe.strings.ts). run.ts emits this event just
   // before its own banner with the same news, so the toast claims the news first and the banner's repeat is dropped.
+  // Home stages (wave 71 polish): leaving a place clears its toasts. The Evening clears its own arrival toasts (the lift start and the
+  // front door), so only the exits are swept here: the floor, the bed and the Collector's doom. A sweep on arrival would take the
+  // Evening's own hint, which is raised in the same emit.
+  on('home:stage', ({ stage }) => { if (stage === null || stage === 'sleep' || stage === 'doomed') ui().dismissToasts(); });
   on('run:tithe', (e) => {
     if (e.pid !== self()) return;
     if (e.state === 'met') ui().toast(t('hud.tithe.met', { n: e.tickets }), 'good', 4);

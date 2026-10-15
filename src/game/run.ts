@@ -69,7 +69,7 @@ import { createTycoon, type Tycoon } from './tycoon';
 import { createBuffSystem, type BuffSystem } from './buffs';
 import { createItemSystem, type ItemSystem } from './items';
 import { createHotline, type Hotline, type HotlineSave } from './hotline';
-import { createPhone } from './home/phone';
+import { createPhone, hooksOf } from './home/phone';
 import type { HomePhoneApi, HomeSave, HomeStage } from './home/contract';
 import {
   DOOR_FIRST_NIGHT, PHONE_HOUR, PHONE_MINUTE, initDoor, reveal as doorReveal, ring as doorRing, answer as doorAnswer, enter as doorEnter,
@@ -550,6 +550,8 @@ export interface DebtRun extends RunApi {
    * rewards. Returns the coins moved (0 = refused: no seal, or not a WITHDRAW window).
    */
   breakSeal?(): number;
+  /** A thief at the door (wave 71, the Picker): takes one owned charm away for nothing. Refuses a legendary or cursed charm. */
+  loseCharm?(id: string): boolean;
   /** The broke-start help: the ordered ways out when the pocket cannot cover the cheapest bet (null while the pocket can play). */
   brokeHelp(): BrokeHelp | null;
   /** Buy +1 pull for 3 Tickets (max +2 per Watch). */
@@ -1382,6 +1384,14 @@ class Run implements DebtRun {
   explain(hook: ModHook, machineId: MachineId, base: number, q?: ModQuery): ModBreakdown { return this.mods.explain(hook, machineId, base, q); }
   luck(machineId: MachineId, pid?: PlayerId): number { return this.mods.mod('luck', machineId, 0, { pid }); }
   charms(pid?: PlayerId): readonly CharmState[] { return this.charmBox.list(pid ?? this.selfId); }
+  loseCharm(id: string): boolean {
+    const def = charmDef(id);
+    if (!def || def.rarity === 'legendary' || def.rarity === 'cursed') return false;
+    if (!this.charmBox.remove(this.selfId, id)) return false;
+    this.notify();
+    this.persist();
+    return true;
+  }
 
   // ── pools and info ──────────────────────────────────────────────────────────────────────────────────
   jackpot(pool: string): number { return this.pools.get(pool)?.value ?? 0; }
@@ -1859,6 +1869,7 @@ class Run implements DebtRun {
     const held = this.sealHeld();
     if (!this.overshootLocked() || held <= 0) { this.refuse('noSeal'); return 0; }
     this.sealBroken = true;
+    hooksOf(this.hPhone)?.heat(1, 'seal');   // wave 71: breaking the seal heats the Collector
     return this.takeOut(held);
   }
 
