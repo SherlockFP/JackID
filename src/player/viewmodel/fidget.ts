@@ -1,10 +1,15 @@
 /**
  * Coin fidget (PLAYER): the Q trick layer over the first-person coin. Five tricks cycle on repeated presses (flip-catch,
  * knuckle walk, thumb spin, palm-to-palm toss, vanish and reappear). After ~8 s standing still a short knuckle walk plays
- * on its own. Tricks run only in walk mode with a coin in hand and the player standing still; movement, an interaction
- * key or another held item fades the trick out. Hand motion is written as additive deltas to the viewmodel poses
- * (`tick`, before `apply`) and the coin's world transform is set afterwards (`place`), so the coin follows the wrist.
- * Everything blends in and out with a smooth weight: no snapping. Amplitude follows settings.headBob and Calm.
+ * on its own. A Q press in walk mode with a coin in hand always starts a trick (also while walking); the idle roll needs
+ * the player standing still. An interaction key (E, F, G …: keys that take the hands away) or leaving walk mode fades the
+ * trick out. Hand motion is written as additive deltas to the viewmodel poses (`tick`, before `apply`) and the coin's
+ * world transform is set afterwards (`place`), so the coin follows the wrist. Everything blends in and out with a smooth
+ * weight: no snapping. Amplitude follows settings.headBob and Calm.
+ *
+ * Presses are latched from the input's own `on()` callbacks (fired when the key is dispatched, in the sim step). The
+ * viewmodel is updated once per rendered frame, after the sim steps have ended, and `input.pressed()` only lives inside
+ * one step, so polling it here never saw a Q press.
  */
 import * as THREE from 'three';
 import { app } from '@/core/app';
@@ -26,6 +31,8 @@ export interface Fidget {
   stop(): void;
   /** Immediately back to the held coin (item changed, viewmodel hidden, disposed). */
   reset(): void;
+  /** Unsubscribes from the input and resets (the viewmodel was disposed). */
+  dispose(): void;
 }
 
 type HandId = 'r' | 'l';
@@ -147,8 +154,8 @@ const TRICKS: Trick[] = [
 ];
 const IDLE_TRICK = 1;                           // the knuckle walk doubles as the idle roll (half amplitude)
 const IDLE_MIN_S = 8, IDLE_MAX_S = 12;
-/** Input that interrupts a trick (walk-layer actions that take the hands away). */
-const INTERRUPT: readonly string[] = ['interact', 'use', 'give', 'place', 'emote', 'ping', 'upgrade', 'talk', 'crouch'];
+/** Walk-layer key presses that take the hands away: they fade a running trick out. */
+const INTERRUPT: readonly string[] = ['interact', 'use', 'give', 'place', 'emote', 'ping', 'upgrade', 'talk'];
 
 /** Amplitude of the hand motion: settings.headBob (0.35..1 of the motion) and Calm (×0.6). */
 function amplitude(): number {
@@ -185,9 +192,24 @@ export function createFidget(right: FidgetHand, left: FidgetHand, coin: THREE.Ob
   let idleGap = IDLE_MIN_S;
   const idleRng = createRng(hashSeed('fidget'));   // seeded: idle tricks are reproducible
 
+  // presses latched by the input callbacks (see the header: `inp.pressed` is cleared before the frame's update)
+  let pressLatch = false;
+  let interruptLatch = false;
+  const offs: Array<() => void> = [];
+  const input = app?.input;
+  if (input) {
+    offs.push(input.on('fidget' as Action, (down) => { if (down) pressLatch = true; }));
+    for (const a of INTERRUPT) offs.push(input.on(a as Action, (down) => { if (down) interruptLatch = true; }));
+  }
+
   const start = (trick: number, idle: boolean): void => { cur = { trick, t: 0, idle, cut: false, prevK: 0 }; };
   const cut = (): void => { if (cur) cur.cut = true; queue = 0; };
   const sfx = (name: string, vol: number): void => { app?.audio?.play(name, { vol, priority: 3 }); };
+  const reset = (): void => {
+    cur = null; w = 0; queue = 0; standT = 0;
+    pressLatch = false; interruptLatch = false;
+    coin.visible = false;
+  };
 
   return {
     get busy() { return w > 0; },
@@ -195,19 +217,20 @@ export function createFidget(right: FidgetHand, left: FidgetHand, coin: THREE.Ob
     tick(dt, r, l, coinHeld) {
       const inp = app?.input;
       if (!inp) return;
+      const press = pressLatch; pressLatch = false;
+      const interrupt = interruptLatch; interruptLatch = false;
       const walking = inp.mode === 'walk';
       const mv = walking ? inp.move() : null;
       const moving = !!mv && (mv.x !== 0 || mv.z !== 0);
-      const interact = walking && INTERRUPT.some((a) => inp.pressed(a as Action));
-      const ok = walking && coinHeld && !moving && !interact;
+      const ok = walking && coinHeld && !interrupt;     // walk mode, a coin in hand, no key that takes the hands away
+      const still = ok && !moving;                      // only the idle roll asks for standing still
 
-      if (moving) standT = 0;
       if (!ok && cur && !cur.cut) cut();
-      if (ok && inp.pressed('fidget' as Action)) {
-        if (!cur) { start(next % TRICKS.length, false); next++; }
-        else if (!cur.cut) queue = Math.min(2, queue + 1);
+      if (ok && press) {
+        if (!cur || cur.cut) { start(next % TRICKS.length, false); next++; }     // a press during the fade-out starts a new trick
+        else queue = Math.min(2, queue + 1);
       }
-      if (ok && !cur) {
+      if (still && !cur) {
         standT += dt;
         if (standT >= idleGap) {
           standT = 0;
@@ -262,9 +285,11 @@ export function createFidget(right: FidgetHand, left: FidgetHand, coin: THREE.Ob
 
     stop() { cut(); },
 
-    reset() {
-      cur = null; w = 0; queue = 0; standT = 0;
-      coin.visible = false;
+    reset,
+
+    dispose() {
+      for (const off of offs.splice(0)) off();
+      reset();
     },
   };
 }

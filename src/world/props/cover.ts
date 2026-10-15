@@ -4,16 +4,16 @@
  * `world.slotGroup(instance).add(prop.root)`.
  *
  *   createCover(kit, { size, night })   a canvas sheet draped over a machine that has not opened yet, a strap and a plate
- *                                       "OPENS NIGHT n". `uncover()` lifts it at the Dawn the machine opens.
+ *                                       "OPENS NIGHT n". `setCovered(false)` lifts it at the Dawn the machine opens.
  *   createNewMarquee(kit, { size })     a two-sided "NEW" neon with chasing bulbs above a machine that opened this Night.
  *
  * Sizes follow `SLOT_DIMS`. The sheet is padded 6 cm past the footprint, so it also hides the chain overlay that
  * `MachineBase.setLocked` hangs at the front (z = depth/2 - 0.02).
  */
-import * as THREE from 'three';
 import type { KitX } from '@/kit';
 import type { SlotSize } from '@/core/types';
 import { SLOT_DIMS } from '@/core/types';
+import { disposeObject3D } from '@/core/dispose';
 import type { WorldProp } from '../types';
 import { Sched, easeInOutCubic, easeOutQuad } from './sched';
 
@@ -23,11 +23,19 @@ const PAD = 0.06;
 
 export interface CoverProp extends WorldProp {
   readonly covered: boolean;
+  /**
+   * True while a lift or drop tween is running. The tween only advances through `update(dt)`, so the owner must keep
+   * calling `update` on this cover until `busy` is false (the session's `frame()` loop does, while the cover is in its map).
+   */
+  readonly busy: boolean;
   /** Re-print the plate ("OPENS NIGHT n"). */
   setNight(n: number): void;
   /** Tycoon: the second plate line "E: BUY <price>" under "OPENS NIGHT n" (null hides it). */
   setPrice(price: string | null): void;
-  /** Lift the sheet (Dawn animation) or drop it back. `dur` 0 = instant. */
+  /**
+   * Lift the sheet (Dawn animation) or drop it back. `dur` 0 = instant. Resolves when the tween has finished. Calling it
+   * again with the same target while a tween runs returns that tween's promise (no second tween).
+   */
   setCovered(on: boolean, dur?: number): Promise<void>;
 }
 
@@ -74,36 +82,51 @@ export function createCover(kit: KitX, o: { size: SlotSize; night: number; id?: 
   let covered = true;
   let night = o.night;
   let priceText = '';
+  let pending: Promise<void> | null = null;
   const sched = new Sched();
   const api: CoverProp = {
     id: `cover:${o.id ?? o.size}`,
     root,
     get covered() { return covered; },
+    get busy() { return sched.busy; },
     setNight(n: number) { if (n === night) return; night = n; label.setText({ key: 'prop.cover.opens', vars: { n } }); },
     setPrice(price: string | null) {
       tag.mesh.visible = price !== null;
       if (price !== null && price !== priceText) { priceText = price; tag.setText({ key: 'prog.tag', vars: { price } }); }
     },
-    async setCovered(on: boolean, dur = 1.1) {
-      if (on === covered) return;
+    setCovered(on: boolean, dur = 1.1): Promise<void> {
+      if (on === covered) return pending ?? Promise.resolve();
+      // a tween still running (a quick toggle) lands on its final pose first, so two tweens never fight over the sheet
+      sched.finish();
       covered = on;
       if (on) root.visible = true;
-      if (dur <= 0) { sheet.scale.set(1, on ? 1 : 0.01, 1); plate.position.y = on ? py : -1; root.visible = on; return; }
+      if (dur <= 0) {
+        sheet.scale.set(1, on ? 1 : 0.01, 1); plate.position.y = on ? py : -1; root.visible = on;
+        pending = null;
+        return Promise.resolve();
+      }
       const s0 = sheet.scale.y, y0 = plate.position.y;
       const s1 = on ? 1 : 0.01, y1 = on ? py : py + 0.9;
-      await sched.run(dur, (k) => {
+      const p: Promise<void> = sched.run(dur, (k) => {
         // lifting: the plate floats up and the sheet slides off sideways-and-down (scaled flat)
         sheet.scale.y = s0 + (s1 - s0) * k;
         sheet.position.y = on ? 0 : Math.sin(k * Math.PI) * 0.15;
         plate.position.y = y0 + (y1 - y0) * k;
         plate.visible = on || k < 0.7;
-      }, on ? easeOutQuad : easeInOutCubic);
-      if (!on) root.visible = false;
+      }, on ? easeOutQuad : easeInOutCubic).then(() => {
+        if (!covered) root.visible = false;   // only the tween that ends uncovered hides the root
+        if (pending === p) pending = null;
+      });
+      pending = p;
+      return p;
     },
     update(dt: number) { sched.update(dt); },
     dispose() {
-      root.removeFromParent();
-      root.traverse((c) => { const m = c as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
+      // a lift still running ends at its final pose (the promise resolves, the owner can remove the root)
+      sched.finish();
+      pending = null;
+      // shared kit materials and geometry are left alone; the per-instance plate texture and its material go
+      disposeObject3D(root);
     },
   };
   return api;
@@ -161,8 +184,7 @@ export function createNewMarquee(kit: KitX, o: { size: SlotSize; id?: string }):
       board.position.y = TOP_Y[o.size] + 0.35 + Math.sin(t * 2.2) * 0.03;
     },
     dispose() {
-      root.removeFromParent();
-      root.traverse((c) => { const m = c as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
+      disposeObject3D(root);
     },
   };
   api.setOn(true);

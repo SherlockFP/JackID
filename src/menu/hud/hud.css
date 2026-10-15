@@ -37,7 +37,6 @@
 .hud .clock { display: flex; align-items: baseline; gap: calc(4 * var(--u)); white-space: nowrap; }
 .hud .clock .num { font-size: calc(16 * var(--u)); color: var(--ivory); }
 .hud .sub { display: flex; align-items: center; gap: calc(6 * var(--u)); white-space: nowrap; }
-.hud .sub .wall { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 .hud .clock.lastcall .num, .hud .clock.lastcall .phase { color: var(--signal); animation: hud-blink .5s steps(2, start) infinite; }
 /* Intermission (MOLA): the top line is a call to action, in the shine colour, and may wrap rather than clip */
 .hud .clock.interm { max-width: 100%; }
@@ -70,31 +69,34 @@
 /* NIGHT PLAN: under the quota in the top-right column (hud.ts updatePlan). Four plain text lines, right-aligned, one line each. */
 /* The panel is capped at its top-right grid cell (max-width 100%), and its lines wrap inside it: a long line never runs out of the
    plate over the centre column or the machine art. */
-.hud .plan { display: flex; flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u));
+/* Body font (VT323), smaller than the 8u headings: at 9u a line of ~24 characters is about a third of the right column at 1920x1080,
+   and the copy is kept short (plan.strings.ts), so no line wraps at 1280x720 or 1920x1080 (uiScale 0.75). */
+.hud .plan { display: flex; flex-direction: column; align-items: flex-end; gap: calc(1 * var(--u));
   max-width: 100%; box-sizing: border-box; padding: calc(2 * var(--u)) calc(4 * var(--u)); background: rgba(0, 0, 0, .5);
   box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark); text-align: right; }
-.hud .plan span { display: block; max-width: 100%; font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1.35;
-  color: var(--bone); white-space: normal; overflow-wrap: anywhere; }
+.hud .plan span { display: block; max-width: 100%; font-family: var(--f-body); font-size: max(14px, calc(9 * var(--u))); line-height: 1.1;
+  color: var(--bone); white-space: nowrap; }
 .hud .plan .pb { color: var(--signal); }
 .hud .plan span.pk, .hud .plan span.pe { opacity: .8; }
 .hud .plan span.hidden { display: none; }
 .hud .plan.ok .pb { color: var(--green); }
 .hud .plan.gap .pb { color: var(--signal); }
 
-/* PAYOUT chip (wave 47, hud.ts updatePayout): under the quota, a wrapping line of text on a dark plate. 16px+ and high contrast;
-   the total and each part are coloured by sign (green up, coral down, ivory flat). */
-.hud .payout { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; column-gap: calc(4 * var(--u)); row-gap: calc(1 * var(--u));
-  max-width: 100%; padding: calc(3 * var(--u)) calc(6 * var(--u));
+/* PAYOUT chip (wave 47, hud.ts updatePayout): one compact line on a dark plate, then a small note. The total and each part are
+   coloured by sign (green up, coral down, ivory flat). VT323 advances about 0.42 em a character; the longest line (Mola: the next
+   Watch's total and three parts, ~55 characters) fits the right column at 1920x1080 at 6u, so it does not wrap there. The note sits
+   under it at 0.8 of the size. */
+.hud .payout { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: baseline; column-gap: calc(3 * var(--u)); row-gap: 0;
+  max-width: 100%; padding: calc(2 * var(--u)) calc(3 * var(--u));
   background: rgba(0, 0, 0, .85); box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark);
-  font-family: var(--f-body); font-size: max(18px, calc(9 * var(--u))); line-height: 1.15; letter-spacing: .03em;
+  font-family: var(--f-body); font-size: max(14px, calc(6 * var(--u))); line-height: 1.1;
   text-align: right; text-shadow: none; }
 .hud .payout span { white-space: nowrap; }
 .hud .payout .sep { color: #a39b86; }
 .hud .payout .up { color: #8fe08a; }
 .hud .payout .down { color: #ff7a6a; }
 .hud .payout .flat { color: #ece4d0; }
-.hud .payout .tot { font-size: 1.1em; }
-.hud .payout .note { flex-basis: 100%; font-size: .8em; color: #d8cfb8; }
+.hud .payout .note { flex-basis: 100%; font-size: .8em; line-height: 1.1; color: #d8cfb8; }
 
 /* buffs: a wrapping row at the foot of the right stack (hud.ts puts it in .hud-rs after the EMPIRE chip) */
 .hud .buffs { flex-direction: row; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; gap: calc(3 * var(--u)); max-width: 100%; }

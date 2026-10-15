@@ -23,7 +23,7 @@ import type { BankView, NextQuotaPreview } from '@/game/run';
 import { inUnderneath } from '@/world/hollow';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { InstanceId, PlayerId } from '@/core/types';
-import { initial, mmss, Roller, signed, wallClock } from './hud/fmt';
+import { initial, mmss, Roller, signed } from './hud/fmt';
 import { createProcPops, goldBurst, pegBadge, pegLabel, playProcTick, renderSetChips } from './hud/charmProc';
 import { charmDef } from '@/game/charms/engine';
 import { activeSets } from '@/game/charms/sets';
@@ -126,9 +126,9 @@ export function createHud(): Hud {
   const clock = h('div', 'clock', topC);
   const clockNum = h('span', 'num', clock, '00:00');
   const clockPhase = h('span', 'phase', clock, '');
+  // One clock line (the Watch clock above); the night line under it. The wall-clock "SAAT" line was a duplicate and is gone.
   const sub = h('div', 'sub', topC);
   const night = h('span', 'night', sub, '');
-  const clockWall = h('span', 'wall', sub, '');
   // THE CIRCUIT: the Watch's Hot / Cold Lamps, shown while walking the floor
   const lampsEl = h('div', 'lamps hidden', topC);
   const lampHot = h('span', 'hot', lampsEl);
@@ -159,8 +159,9 @@ export function createHud(): Hud {
   const plan = h('div', 'plan hidden', topR);
   // NEXT NIGHT (wave 55): at Dawn and in Mola the plan shows this line alone, the exact quota of the coming Night.
   const planNext = h('span', 'pn hidden', plan);
-  planNext.style.cssText = 'font-weight:700;font-size:calc(12 * var(--u));line-height:1.25';
-  const planHead = h('span', 'ph', plan);
+  planNext.style.cssText = 'font-weight:700';
+  // Four lines at most: the bank against the Dawn quota, the pocket, the Watch (pulls, clock), the tithe. The quota itself is on the
+  // QUOTA line above, so no head line.
   const planBank = h('span', 'pb', plan);
   const planPocket = h('span', 'pk', plan);
   const planEnds = h('span', 'pe', plan);
@@ -429,7 +430,6 @@ export function createHud(): Hud {
     setText(clockNum, interm || settling ? '' : mmss(left));
     // Closing (director wave 41): the last 3 s of a Watch, the deposits / withdrawals / Pawn still open, so the label says so.
     setText(clockPhase, interm ? t('interm.topBar') : settling ? t('bank.settle', { s: settleSec }) : bell ? t('hud.clock.bell', { s: bellN }) : phase === 'closing' ? t('hud.clock.closing') : lastCall ? t('hud.clock.lastCall') : r?.window() === 'dawn' ? t('hud.clock.dawn') : t('hud.clock.watch'));
-    setText(clockWall, interm ? '' : t('hud.clock.wall', { n: wallClock(sh?.clock ?? 0) }));
     if (phase !== lastPhase) {
       if (lastCall && !clockAlarmed) {
         clockAlarmed = true;
@@ -570,7 +570,6 @@ export function createHud(): Hud {
     if (key === planKey) return;
     planKey = key;
     setCls(planNext, 'hidden', true);
-    setCls(planHead, 'hidden', false);
     setCls(planBank, 'hidden', false);
     setCls(planEnds, 'hidden', false);
     setCls(planTithe, 'hidden', !titheOn);
@@ -579,7 +578,6 @@ export function createHud(): Hud {
       // Green once the Watches have paid the tithe in play; the plan's own text colour before that.
       planTithe.style.color = titheE >= titheN ? 'var(--green)' : '';
     }
-    setText(planHead, t('hud.plan.head', { q: money(due) }));
     setCls(plan, 'ok', p.met);
     setCls(plan, 'gap', !p.met);
     // Green when the projection covers the quota, red otherwise (the plan classes below); one wording for both.
@@ -614,7 +612,7 @@ export function createHud(): Hud {
     setCls(planNext, 'hidden', false);
     planNext.style.color = red ? '#ff5a4a' : '';
     setText(planNext, t('hud.plan.night', { q: money(next.due), k }));
-    for (const el of [planHead, planBank, planPocket, planEnds, planTithe]) setCls(el, 'hidden', true);
+    for (const el of [planBank, planPocket, planEnds, planTithe]) setCls(el, 'hidden', true);
   }
 
   function updateEmpire(): void {

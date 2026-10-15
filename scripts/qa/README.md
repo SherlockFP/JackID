@@ -26,6 +26,8 @@ npm run qa -- --machine bigone --script "Space:150,wait:3000" --rounds 3 --shots
 | `--run "<steps>"` | a real debt run driven by steps (`;`-separated), see **Debt-run driver** below. Implies `--world`. Takes no `--sit`, `--force`, `--frames`, `--walk-view` |
 | `--js "<expr>"` | run once after the room settles, before the rounds. The JSON value goes to `before`. `await` is allowed (`await import('/src/...')`) |
 | `--probe "<expr>"` | read after every round (after the frame shots), recorded in `roundLog[].probe`. `await` is allowed |
+| `--query "<params>"` | extra boot query params, e.g. `--query "lang=tr"`. The language must be set at boot: the HUD caches its strings, so a `--js` setting would leave them in English |
+| `--size <W>x<H>` | the Chrome viewport (default `1280x720`), e.g. `--size 1920x1080` |
 
 Script tokens:
 

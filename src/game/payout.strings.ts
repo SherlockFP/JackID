@@ -14,9 +14,9 @@ export default {
     'label': 'ÖDEME',
     'next': 'SONRAKİ ÖDEME',
     'part': '{label} {pct}',
-    'mood': 'KASA HAVASI',
+    'mood': 'HAVA',
     'favour': 'GÖZDE',
-    'witch': 'CADI SAATİ',
+    'witch': 'CADI',
     'note': 'her kazanç bununla çarpılır',
   },
 };

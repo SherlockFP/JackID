@@ -104,6 +104,9 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
 
   protected createModel(kit: KitX): MachineModel<KenoParts> { return buildModel(kit, this.modelOpts); }
 
+  /** Lamp blinks (the lamp bank is instanced, so it has no kit ticker of its own). */
+  tick(dt: number): void { this.model?.parts?.lamps.update(dt); }
+
   init(): void {
     this.seatHud = new SeatHud(this.ctx.ui.root);
     this.hud(null);                                        // the seat HUD replaces the generic bottom bar

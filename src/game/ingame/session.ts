@@ -382,10 +382,11 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
         const c = createCover(app.kit as KitX, { size, night: unlockNightOf(mid, run.seed), id: m.id });
         g.add(c.root); covers.set(m.id, c);
         if (run.mode !== 'free') addBuyer(m.id, mid, c, g);
-      } else if (!locked && cov) {
-        covers.delete(m.id);
+      } else if (!locked && cov && cov.covered) {
+        // The lift is a tween driven by cov.update(dt) in frame(): the cover stays in `covers` until it has landed
+        // (deleting it first froze the tarp in place over the opened machine).
         buyers.get(m.id)?.(); buyers.delete(m.id);
-        void cov.setCovered(false, 1.2).then(() => { g.remove(cov.root); cov.dispose(); });
+        void cov.setCovered(false, 1.2).then(() => { covers.delete(m.id); g.remove(cov.root); cov.dispose(); });
       }
       const wantNew = !locked && run.mode !== 'free' && isNew(mid, night, run.seed);
       const mq = marquees.get(m.id);

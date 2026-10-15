@@ -15,6 +15,7 @@ import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import type { SeatDef } from '@/core/types';
 import { crispTexture } from '@/core/ui/textOverlay';
+import { buildLampBank, type GlowSpec, type LampBank, type LampSpec } from './lamps';
 
 export interface KenoDesk { screen: ScreenSurface; pen: THREE.Group; stool: THREE.Group }
 
@@ -32,6 +33,8 @@ export type KenoParts = {
   railMeters: LampPart[];
   seatLamps: LampPart[];
   armchairs: THREE.Object3D[];
+  /** The lamp bank behind the proxies above; `update(dt)` runs its blinks (called from the machine tick). */
+  lamps: LampBank;
 };
 
 // ── layout constants (metres, machine-local) ────────────────────────────────────────────────────
@@ -100,13 +103,11 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
   // ── relay brain cabinet (back right) ──
   kit.box(0.4, 1.1, 0.4, walnut, at(RELAY_X, 0.55, RELAY_Z));
   kit.box(0.42, 0.03, 0.42, pal.brass, at(RELAY_X, 1.1, RELAY_Z));
-  const relayLamps: LampPart[] = [];
+  // lamps: relay (20), rail (4), seat (4) live in one bank (3 draws), see ./lamps.ts
+  const lampSpecs: LampSpec[] = [];
   for (let i = 0; i < 20; i++) {
     const col = i % 5, row = Math.floor(i / 5);
-    const lamp = kit.lamp({ r: 0.022, color: LAMP_OFF, shape: 'dome' });
-    lamp.root.position.set(RELAY_X - 0.15 + col * 0.075, 0.45 + row * 0.15, RELAY_Z + 0.205);
-    root.add(lamp.root);
-    relayLamps.push(lamp);
+    lampSpecs.push({ pos: [RELAY_X - 0.15 + col * 0.075, 0.45 + row * 0.15, RELAY_Z + 0.205], r: 0.022, shape: 'dome', color: LAMP_OFF });
   }
   const drawNo = kit.ledPanel({ digits: 3, color: '#ffb347', h: 0.07 });
   drawNo.root.position.set(RELAY_X, 1.02, RELAY_Z + 0.205);
@@ -114,11 +115,14 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
 
   // ── desks: CRT ticket writer, light pen on a coiled cord, stool ──
   const desks: KenoDesk[] = [];
+  const glows: GlowSpec[] = [];
   const railMeters: LampPart[] = [];
   const seatLamps: LampPart[] = [];
   DESK_X.forEach((x, i) => {
     // own CRT (the kit monitor's scanline shader halves every other texel row, which wrecks 5 px digits): flat glass, linear + mips
-    const crt = { screen: kit.screen({ w: 0.3, h: 0.24, px: [160, 120], bezel: pal.black, glow: 0.4, scanlines: false }) };
+    // (no kit glow sprite: the desk glow is one more instance of the lamp bank's halo mesh, see `glows` below)
+    const crt = { screen: kit.screen({ w: 0.3, h: 0.24, px: [160, 120], bezel: pal.black, scanlines: false }) };
+    glows.push({ pos: [x, DESK_TOP + 0.145, DESK_Z - 0.1 - 0.004], w: 0.3, h: 0.24, color: 0x63e6de, opacity: 0.4 * 0.6 });
     crispTexture(crt.screen.tex, 4);                                  // linear + mips: the 80-number grid stays sharp when the desk fills the frame
     crt.screen.clear('#0b1a12');
     crt.screen.mesh.position.set(x, DESK_TOP + 0.145, DESK_Z - 0.1);   // glass bottom 1 cm above the desk top (the footer row lives there)
@@ -136,19 +140,16 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
     stool.position.set(x, 0, SEAT_Z);
     root.add(stool);
 
-    const rail = kit.lamp({ r: 0.02, color: LAMP_OFF, shape: 'flat' });
-    rail.root.position.set(x - 0.2, DESK_TOP + 0.03, DESK_Z + 0.22);
-    root.add(rail.root);
-    railMeters.push(rail);
-
-    const seat = kit.lamp({ r: 0.025, color: pal.neonCyan, shape: 'dome' });
-    seat.root.position.set(x, DESK_TOP + 0.2, DESK_Z - 0.23);
-    root.add(seat.root);
-    seatLamps.push(seat);
+    lampSpecs.push({ pos: [x - 0.2, DESK_TOP + 0.03, DESK_Z + 0.22], r: 0.02, shape: 'flat', color: LAMP_OFF });      // rail meter
+    lampSpecs.push({ pos: [x, DESK_TOP + 0.2, DESK_Z - 0.23], r: 0.025, shape: 'dome', color: pal.neonCyan });        // seat light
 
     // screen: the CRT canvas is owned by the monitor, we draw the number grid on it
     desks.push({ screen: crt.screen, pen, stool });
   });
+  const bank = buildLampBank(kit, root, lampSpecs, glows);
+  const relayLamps = bank.parts.slice(0, 20);
+  railMeters.push(...bank.parts.slice(20, 24));
+  seatLamps.push(...bank.parts.slice(24, 28));
 
   // ── wall board: number backdrop + 80 instanced lamps ──
   const boardScreen = kit.screen({ w: BOARD_W, h: BOARD_H, px: [160, 96], bezel: pal.black, glow: 0 });   // no halo sprite: it would widen the board past the footprint
@@ -199,9 +200,11 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
   light2.userData = { color: 0xffa000, intensity: 0.3, range: 1.5 };
   root.add(light2);
 
-  const parts: KenoParts = { desks, relayLamps, leds: { drawNo, next }, board, boardScreen, railMeters, seatLamps, armchairs };
+  const parts: KenoParts = { desks, relayLamps, leds: { drawNo, next }, board, boardScreen, railMeters, seatLamps, armchairs, lamps: bank };
+  // pens and stools are static (nothing in index.ts moves them), so they merge; only the CRT screens (own textures) and the
+  // animated board, LEDs and lights stay separate
   const keep: Array<THREE.Object3D | { root: THREE.Object3D }> = [
-    ...desks.map((d) => d.pen), ...desks.map((d) => d.stool), ...desks.map((d) => d.screen.mesh), ...relayLamps, ...railMeters, ...seatLamps,
+    ...desks.map((d) => d.screen.mesh),
     drawNo, next, board, boardScreen.mesh, light, light2, speaker, prompt, label, marqueeTop, servicePlate, boardCam,
   ];
   kit.finalize(root, { keep });

@@ -28,7 +28,8 @@
 
 /* bottom: key numbers, then the control bar */
 /* lifted above the HUD's PULLS coin row (hud.css: bottom 10u, about 20u tall), which it used to overlap */
-.shud-bottom { position: absolute; left: 0; right: 0; bottom: calc(var(--su) * 34); display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 2); }
+/* the pull-rate line ("1 PULL = 1 ROUND") sits on top of this stack: the gap keeps it clear of the key-number cards below it */
+.shud-bottom { position: absolute; left: 0; right: 0; bottom: calc(var(--su) * 34); display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 4); }
 .shud-nums { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--su) * 2); max-width: 96%; }
 .shud-num { padding: calc(var(--su) * 1.5) calc(var(--su) * 3); background: rgba(6, 9, 6, 0.9); border-top: calc(var(--su) * 1.5) solid #ffd040; min-width: calc(var(--su) * 30); text-align: center; }
 .shud-num-l { display: block; font-size: calc(var(--su) * 5.5); line-height: 1; color: #b8c0a8; }

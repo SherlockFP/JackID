@@ -2,8 +2,9 @@
  * DOM UI overlay (CORE-UI). Implements the frozen `UIOverlay` (ui/types.ts, TECH_SPEC §2.10, ART_BIBLE §10) on the
  * `#ui` element above the canvas. Keep `import './ui.css'` and the factory name `createUI`.
  *
- *  scale      pixel unit `--px` = a whole number of device pixels, `floor(innerHeight × dpr / 270)` (= the spec's
- *             `floor(innerHeight / 270)` CSS px at DPR 1; crisp at 125 % / 150 % too). Text scale and Reduce Flashing /
+ *  scale      pixel unit `--px` = `floor(innerHeight × dpr / 270)` device px × `settings.uiScale` (Settings > Access "UI
+ *             scale", 60–130 %, def 75 %; 100 % = the spec's `floor(innerHeight / 270)` CSS px at DPR 1). Live via
+ *             `settings:changed`. Text scale and Reduce Flashing /
  *             colour-blind flags follow `settings:changed`. Fonts: Press Start 2P headings, VT323 body (core/ui/ui.css).
  *  gameplay   prompt (+ crosshair brackets) · toasts · machine HUD strip · subtitles · phone `choice()` (number keys)
  *  juice      `bigWin()` banner (letters drop, rolling amount, rays, coins, flash/shake) · `banner()` · `fly()` numbers that
@@ -26,7 +27,7 @@ import { bus } from '../events';
 import { fmtCoins, fmtNum, t, upper } from '../i18n';
 import { clamp } from '../math';
 import { log } from '../log';
-import type { Settings } from '../settings';
+import { DEFAULT_SETTINGS, type Settings } from '../settings';
 import {
   COLORS, button, counter, focusFirst, frame, gloveCursors, h, initWidgets, keycap, navGroup, navItems, pixelIcon, textField,
   keyCaptureActive, tickWidgets, uiRng, uiSfx, type Button, type Counter, type IconName, type TextField,
@@ -187,8 +188,12 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     const H = window.innerHeight || 720;
     const dpr = window.devicePixelRatio || 1;
     lastH = H; lastDpr = dpr;
-    // One UI pixel = a whole number of DEVICE pixels (identical to floor(H / 270) CSS px at DPR 1; stays crisp at 125 % / 150 %).
-    const dev = Math.max(1, Math.floor((H * dpr) / 270));
+    // The 100 % unit is a whole number of DEVICE pixels, floor(H × DPR / 270) (= floor(H / 270) CSS px at DPR 1).
+    // The Settings > Access "UI scale" slider (uiScale, 60–130 %, def 75 %) multiplies it; at the default 75 % that is
+    // 1.5 px at 720p and 3 px at 1080p. Fractional units are fine: every size is N × --u and the whole overlay scales with it.
+    const us = clamp(settingsNow()?.uiScale ?? DEFAULT_SETTINGS.uiScale, 0.6, 1.3);
+    const base = Math.max(1, Math.floor((H * dpr) / 270));
+    const dev = Math.max(1, base * us);
     px = Math.round((dev / dpr) * 64) / 64;                    // CSS px, on Chrome's 1/64 layout grid
     const ts = clamp(settingsNow()?.textScale ?? 1, 1, 1.5);
     root.style.setProperty('--px', String(px));

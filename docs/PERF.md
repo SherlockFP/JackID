@@ -75,3 +75,51 @@ Machines that are in the spawn and Well views by the renderer numbers: WELL-02, 
 
 - Re-run the command above after each fix. Compare the `views` table (calls, tris, cpuMs) and `staticTopByTris` (the offenders).
 - Start point for this report: 3000 static calls, 338k static tris, worst view 1339 calls / 177k tris.
+
+## After: chip pool, Sump decor, machine merges (wave 7)
+
+Same command as above (`--world --seed 1`, 1280x720, headless). Output saved as `perf-after.json` in the QA scratchpad.
+
+Changes measured:
+- `src/kit/pools.ts` (`makeChips`, every kit chip pool): cylinder 12 to 8 segments (48 to 32 tris per chip). The draw count
+  follows the highest live chip id + 1, and `clear()` frees high to low so live ids pack low.
+- `src/world/props/decor.ts` (`buildSump`): default coins 700 to 350, coin cylinder 8 to 4 segments. `src/world/level.ts:246`
+  still passes `coinCount: 700`, so the Sump is still 700 coins in the pit until that line changes (about 5.6k tris).
+- `src/machines/keno/lamps.ts` moved to `src/kit/lamps.ts` (keno re-exports it; bigone imports the kit path). Keno lamps and
+  bigone LEDs, rays, tray, glass and decals are instanced or merged. Blackjack and craps mannequins set `lodDetail`.
+
+Views (before = recorded pre-edit run of the same probe, not re-measured here; the "after" column is this run):
+
+| view (yaw) | before calls / tris | after calls / tris | after cpu ms / frame ms |
+| --- | ---: | ---: | ---: |
+| Well centre, yaw 0 | 578 / 141.1k | 539 / 56.8k | 3.7 / 3.5 |
+| Well centre, yaw 90 | 1280 / 173.9k | 710 / 44.5k | 2.9 / 4.3 |
+| Well centre, yaw 180 | 1240 / 166.5k | 872 / 74.1k | 4.9 / 4.8 |
+| Well centre, yaw 270 | 1029 / 168.3k | 626 / 59.5k | 3.8 / 4.1 |
+| Spawn, yaw 90 | 1339 / 177.4k | 705 / 44.7k | 4.2 / 4.8 |
+| Spawn, yaw 0 | 675 / 146k (PERF.md) | 626 / 59.3k | 5.8 / 4.6 |
+| Spawn, yaw -90 | not in baseline | 614 / 59.4k | 5.1 / 8.3 |
+| Spawn, yaw -180 | not in baseline | 846 / 72.7k | 5.0 / 8.1 |
+| Jade Room, yaw 270 | 1061 / 160k (PERF.md) | 786 / 55.5k | 3.8 / 4.8 |
+| Boiler, yaw 90 | 758 / 91k (PERF.md) | 530 / 38.6k | 2.2 / 3.3 |
+
+Static totals (every visible mesh, 57 machines): **1948 calls, 146k tris** (before: 3000 / 338k). Machines 970 / 87.9k;
+non-machine 744 / 52.7k, of which `level:pit` is 589 / 49.8k. The per-machine rows are the fair comparison: LOD and gate
+visibility also changed the totals.
+
+Per machine (static, after; before from the table above):
+- WELL-02 roulette: 82 calls / 4.1k tris (before 82 / 32.9k; chip pool now idle at 0 tris).
+- FLR-07 keno: 39 calls / 8.4k (before 116 / 8.4k). Most likely the keno lamp bank (`keno/model.ts` and `kit/lamps.ts` are in the tree; not isolated by a run).
+- WELL-01 bigone: 28 calls / 8.4k (before 117 / 8.3k).
+- FLR-05 craps: 54 calls / 4.1k tris, with the stickman LOD hidden beyond 8 m (before 58 / 25.7k).
+- WELL-03 blackjack: 71 calls / 19.6k tris, mannequin LOD hidden beyond 8 m (before 71 / 25.4k).
+
+Caveats: frame ms is noisy in headless Chrome (one spawn view ran 11.6 to 18.7 across runs), so the CPU and call columns
+are the stable part. Absolute figures are about +/-10%. The 4-segment Sump coin has not been checked visually (the Sump is
+30 m below the floor, not in any bench room). Still open outside this change: the `level.ts:246` coin count.
+
+## After: multiplayer smoke
+
+`scripts/qa/mp.mjs` (default transport) passed all steps, both pages `ingame`, seat at WELL-01 (bigone), host saw 2 `mev`,
+host seat freed. The pit snapshot read 5 machines per side because it is taken before `world.ready`. It is not a floor
+comparison; see `docs/MP_SMOKE.md` for the open items.

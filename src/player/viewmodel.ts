@@ -7,9 +7,10 @@
  *
  * Holds (`hold`): coin (default), card, tonic, phone, ticket, ledger, gun (two-handed),
  * totem, or any `Object3D` the caller supplies (card fan, totem, scratch coin…). One-shot animations (`play`):
- * flip · drink · throw · point · punchCard · recoil · give. With a coin in hand and the player standing still, Q plays
- * a coin trick (`./viewmodel/fidget.ts`); after ~8 s of standing still a short knuckle walk plays on its own. `setHandLook` shows the unsettling finger-tax and
- * porcelain collateral looks. The facade feeds head-bob and look deltas through `drive()` once per frame.
+ * flip · drink · throw · point · punchCard · recoil · give. An empty hand holds a coin (the default). In walk mode with the
+ * coin in hand, Q plays a coin trick (`./viewmodel/fidget.ts`); after ~8 s of standing still a short knuckle walk plays
+ * on its own. `setHandLook` shows the unsettling finger-tax and porcelain collateral looks. The facade feeds head-bob
+ * and look deltas through `drive()` once per frame.
  */
 import * as THREE from 'three';
 import { psxMaterial } from '@/core/renderer/psxMaterial';
@@ -343,6 +344,7 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20): ViewmodelHost {
     get item() { return item; },
     setVisible(on) { visible = on; rig.visible = on; if (gun) gun.visible = on; if (!on) fidget.reset(); },
     hold(next, obj) {
+      if (next === 'none' && !obj) next = 'coin';           // an empty hand holds a coin: the Q tricks always have one
       fidget.reset();
       releaseItem();
       item = next;
@@ -433,7 +435,7 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20): ViewmodelHost {
     },
     dispose() {
       anim?.resolve(); anim = null;
-      fidget.reset();
+      fidget.dispose();
       disposeGeometries(trickCoin);
       releaseItem();
       right.dispose(); left.dispose();
@@ -441,6 +443,7 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20): ViewmodelHost {
       scene.clear();
     },
   };
+  vm.hold('coin');                                   // the hand starts with a coin (the Q tricks need one)
   setBase();
   copyPose(live.r, base.r); copyPose(live.l, base.l);
   return vm;

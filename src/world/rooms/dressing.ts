@@ -1,8 +1,11 @@
 /**
  * Room dressing (WAVE 24 §2): Jade (lacquer, lanterns, tile frieze, green fog), The Wash (drum washers, 12 numbered
- * lockers), The Boiler (rust, steam, pressure gauge, Vent lever), the Parlour's Collector's Chair (Nights 3–7), and the
+ * lockers, drains), The Boiler (rust, steam, pressure gauge, Vent lever), the Parlour's Collector's Chair (Nights 3–7), and the
  * Counting Room (ledgers, Ledger Wall, abacus). Also the lore note anchors `note.n15`–`note.n28` and the room anchors.
  * Reuses kit pieces; the only lights are fixture hints that join the pooled light list.
+ *
+ * Each room with geometry is its own group tagged `userData.roomInterior`; world.ts far-culls those by distance. The
+ * groups sit at the identity transform, so the placement is the same as when they were all one group.
  */
 import * as THREE from 'three';
 import type { KitX } from '@/kit';
@@ -61,8 +64,16 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
     anchors[id] = o;
   };
   const addInteract = (i: Interactable): void => { if (ctx.interact) unsubs.push(ctx.interact.add(i)); };
+  /** One room interior: a group under the dressing root, far-culled as a whole (see the header). */
+  const room = (name: string): THREE.Group => {
+    const g = kit.group(`rooms:${name}`);
+    g.userData.roomInterior = true;
+    root.add(g);
+    return g;
+  };
 
   // ── Jade Room (cards): lacquer, paper lanterns, tile frieze, green fog ─────────────────────────
+  const jade = room('jade');
   const frieze = tex.canvas(256, 32, (g, w, h) => {
     g.fillStyle = '#1d5e3e';
     g.fillRect(0, 0, w, h);
@@ -70,16 +81,16 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
     g.lineWidth = 2;
     for (let x = 0; x < w; x += 16) { g.strokeRect(x + 3, 6, 10, 20); g.strokeRect(x + 6, 10, 4, 12); }
   }, { wrap: 'repeat' });
-  kit.plane(19, 0.5, kit.mat({ color: 0xffffff, map: frieze }), { pos: [-21, 2.8, -15.84], parent: root });
-  kit.box(19.2, 0.06, 0.08, kit.mat({ color: JADE }), { pos: [-21, 2.55, -15.8], parent: root });
+  kit.plane(19, 0.5, kit.mat({ color: 0xffffff, map: frieze }), { pos: [-21, 2.8, -15.84], parent: jade });
+  kit.box(19.2, 0.06, 0.08, kit.mat({ color: JADE }), { pos: [-21, 2.55, -15.8], parent: jade });
   // jade lacquer dado along the south partition (the room side faces -z)
-  kit.plane(19, 1.2, kit.mat({ color: JADE }), { pos: [-21, 0.6, -2.16], rot: [0, 180, 0], parent: root, segW: 6, segH: 2 });
+  kit.plane(19, 1.2, kit.mat({ color: JADE }), { pos: [-21, 0.6, -2.16], rot: [0, 180, 0], parent: jade, segW: 6, segH: 2 });
   const lanterns: Array<[number, number]> = [[-27.5, -14.5], [-27.5, -5], [-13.5, -12], [-13.5, -4]];
   for (const [i, [x, z]] of lanterns.entries()) {
-    kit.cyl(0.006, 0.006, 0.43, kit.pal.black, { pos: [x, 2.985, z], parent: root, seg: 4 });
+    kit.cyl(0.006, 0.006, 0.43, kit.pal.black, { pos: [x, 2.985, z], parent: jade, seg: 4 });
     const lan = kit.lamp({ r: 0.17, color: 0xff4a2a, shape: 'dome' });
     lan.root.position.set(x, 2.6, z);
-    root.add(lan.root);
+    jade.add(lan.root);
     lights.push({ id: `cards:lantern${i}`, pos: [x, 2.5, z], color: 0xff5a3a, intensity: 0.9, range: 4, flicker: 'STEADY', zone: 'cards' });
   }
   const fogMat = new THREE.MeshBasicMaterial({ color: 0x3dff8f, transparent: true, opacity: 0.09, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -89,18 +100,19 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
     const fog = new THREE.Mesh(fogGeo, fogMat);
     fog.rotation.x = -Math.PI / 2;
     fog.position.set(-21, y, -9);
-    root.add(fog);
+    jade.add(fog);
   }
   marker(noteAnchorId(15), -23.5, 1.2, -15.2);
   marker(ROOM_ANCHOR_IDS.jadeLin, -13.4, 1.1, -5.6);
   marker(noteAnchorId(16), -13.4, 1.1, -5.6);
 
   // ── The Wash (laundry): drum washers, 12 numbered lockers, drains ────────────────────────────
+  const wash = room('wash');
   const enamel = kit.mat({ color: WHITE });
   const chromeMat = kit.mat({ color: CHROME });
   const glassMat = kit.mat({ color: 0x203040 });
   for (const x of [-27.6, -26.0]) {
-    const body = kit.box(0.9, 1.6, 0.8, enamel, { pos: [x, 0.8, -1.3], parent: root });
+    const body = kit.box(0.9, 1.6, 0.8, enamel, { pos: [x, 0.8, -1.3], parent: wash });
     statics.push({ box: boxAt(x - 0.45, 0, -1.7, x + 0.45, 1.6, -0.9), tag: 'solid' });
     kit.torus(0.3, 0.04, chromeMat, { pos: [0, 0.1, 0.41], parent: body });
     kit.cyl(0.27, 0.27, 0.02, glassMat, { pos: [0, 0.1, 0.4], rot: [90, 0, 0], parent: body });
@@ -114,19 +126,19 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
     steps.push((dt) => { drum.rotation.z -= dt * 2.4; });
   }
   for (const [x, z] of [[-13.2, -0.8], [-13.2, 8.6]] as Array<[number, number]>) {
-    const drain = kit.cyl(0.18, 0.18, 0.01, kit.pal.black, { pos: [x, 0.004, z], parent: root, seg: 12 });
+    const drain = kit.cyl(0.18, 0.18, 0.01, kit.pal.black, { pos: [x, 0.004, z], parent: wash, seg: 12 });
     drain.name = 'drain';
   }
   const lockerMat = kit.mat({ color: 0x5f7a6e });
   const doorMat = kit.mat({ color: 0x9fb5a8 });
   for (let n = 1; n <= LOCKER_COUNT; n++) {
     const z = lockerZ(n);
-    kit.box(0.5, 1.9, 0.36, lockerMat, { pos: [LOCKER_X, 0.95, z], parent: root });
-    kit.box(0.02, 1.7, 0.3, doorMat, { pos: [LOCKER_X - 0.26, 0.95, z], parent: root });
+    kit.box(0.5, 1.9, 0.36, lockerMat, { pos: [LOCKER_X, 0.95, z], parent: wash });
+    kit.box(0.02, 1.7, 0.3, doorMat, { pos: [LOCKER_X - 0.26, 0.95, z], parent: wash });
     const num = kit.label({ text: lockerLabel(n), w: 0.22, h: 0.16, color: 0x1a1a1a, bg: 0xe6dec5 });
     num.mesh.position.set(LOCKER_X - 0.27, 1.5, z);
     num.mesh.rotation.y = -Math.PI / 2;
-    root.add(num.mesh);
+    wash.add(num.mesh);
     statics.push({ box: boxAt(LOCKER_X - 0.25, 0, z - 0.18, LOCKER_X + 0.25, 1.9, z + 0.18), tag: 'solid' });
     const n0 = n;
     addInteract({
@@ -145,16 +157,17 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
   marker(noteAnchorId(19), -26.0, 1.65, -1.2);
 
   // ── The Boiler (boiler): rust pipes, steam, pressure gauge, Vent lever ───────────────────────
+  const boiler = room('boiler');
   const rust = kit.mat({ color: RUST });
-  kit.tube([[11.4, 3.1, -29.6], [29.6, 3.1, -29.6]], 0.09, rust, { parent: root });
-  kit.tube([[11.4, 2.5, -29.6], [29.6, 2.5, -29.6]], 0.06, rust, { parent: root });
-  kit.cyl(0.08, 0.08, 3.6, rust, { pos: [12.2, 1.8, -29.6], parent: root, seg: 8 });
+  kit.tube([[11.4, 3.1, -29.6], [29.6, 3.1, -29.6]], 0.09, rust, { parent: boiler });
+  kit.tube([[11.4, 2.5, -29.6], [29.6, 2.5, -29.6]], 0.06, rust, { parent: boiler });
+  kit.cyl(0.08, 0.08, 3.6, rust, { pos: [12.2, 1.8, -29.6], parent: boiler, seg: 8 });
   const steamSeeds: Array<{ sp: THREE.Sprite; x: number; z: number; ph: number }> = [];
   for (let i = 0; i < 5; i++) {
     const sp = kit.glow({ color: 0xd9e4dc, size: 1.6, intensity: 0.18 });
     const x = 15 + i * 3, z = -26 + (i % 2) * 6;
     sp.position.set(x, 0.5, z);
-    root.add(sp);
+    boiler.add(sp);
     steamSeeds.push({ sp, x, z, ph: i / 5 });
   }
   steps.push((_dt, time) => {
@@ -191,7 +204,7 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
   const gauge = kit.group('rooms:gauge');
   gauge.position.set(11.25, 1.9, -20.0);
   gauge.rotation.y = Math.PI / 2;
-  root.add(gauge);
+  boiler.add(gauge);
   kit.cyl(0.24, 0.24, 0.06, kit.pal.brass, { rot: [90, 0, 0], parent: gauge, seg: 16 });
   kit.plane(0.4, 0.4, kit.mat({ color: 0xffffff, map: dialTex }), { pos: [0, 0, 0.032], parent: gauge });
   const needle = new THREE.Group();
@@ -204,7 +217,7 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
   const lever = kit.lever({ length: 0.45, knob: RED, side: 'right' });
   lever.root.position.set(11.3, 1.2, -22.6);
   lever.root.rotation.y = Math.PI / 2;
-  root.add(lever.root);
+  boiler.add(lever.root);
   addInteract({
     id: 'rooms:vent',
     box: boxAt(11.05, 0.9, -23.0, 11.9, 1.7, -22.2),
@@ -243,14 +256,15 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
   });
 
   // ── The Counting Room (counting): ledgers, Ledger Wall, abacus ───────────────────────────────
+  const counting = room('counting');
   const wood = kit.mat({ color: 0x523119 });
-  kit.box(1.4, 0.06, 0.8, wood, { pos: [-22.5, 0.75, 16.5], parent: root });
+  kit.box(1.4, 0.06, 0.8, wood, { pos: [-22.5, 0.75, 16.5], parent: counting });
   statics.push({ box: boxAt(-23.2, 0, 16.1, -21.8, 0.8, 16.9), tag: 'solid' });
   for (const [dx, dz] of [[-0.62, -0.32], [0.62, -0.32], [-0.62, 0.32], [0.62, 0.32]] as Array<[number, number]>) {
-    kit.box(0.06, 0.72, 0.06, wood, { pos: [-22.5 + dx, 0.36, 16.5 + dz], parent: root });
+    kit.box(0.06, 0.72, 0.06, wood, { pos: [-22.5 + dx, 0.36, 16.5 + dz], parent: counting });
   }
   for (const [i, c] of [0x3a1a1a, 0x1f3a2a, 0x2a2a3a, 0x4a3a1a].entries()) {
-    kit.box(0.3, 0.05, 0.22, kit.mat({ color: c }), { pos: [-22.5, 0.805 + i * 0.05, 16.5], parent: root });
+    kit.box(0.3, 0.05, 0.22, kit.mat({ color: c }), { pos: [-22.5, 0.805 + i * 0.05, 16.5], parent: counting });
   }
   marker(ROOM_ANCHOR_IDS.countingLedger, -22.5, 0.95, 16.5);
   marker(noteAnchorId(24), -24.0, 0.95, 15.2);
@@ -269,9 +283,9 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
       g.fillRect(x + 2, h - 26, 7, 2);
     }
   });
-  kit.plane(3.0, 1.2, kit.mat({ color: 0xffffff, map: spines }), { pos: [-30.83, 1.7, 14.8], rot: [0, 90, 0], parent: root });
+  kit.plane(3.0, 1.2, kit.mat({ color: 0xffffff, map: spines }), { pos: [-30.83, 1.7, 14.8], rot: [0, 90, 0], parent: counting });
   for (const y of [1.0, 1.7, 2.4]) {
-    kit.box(0.36, 0.04, 3.0, wood, { pos: [-30.66, y, 14.8], parent: root });
+    kit.box(0.36, 0.04, 3.0, wood, { pos: [-30.66, y, 14.8], parent: counting });
   }
   addInteract({
     id: 'rooms:ledger',
@@ -284,13 +298,13 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
   });
 
   const abacusFrame = kit.mat({ color: 0x311910 });
-  kit.box(2.4, 1.0, 0.05, abacusFrame, { pos: [-22, 2.1, 12.22], parent: root });
+  kit.box(2.4, 1.0, 0.05, abacusFrame, { pos: [-22, 2.1, 12.22], parent: counting });
   const beadMat = kit.mat({ color: 0xb03a2a });
   const rodMat = kit.mat({ color: 0xc59c42 });
   for (const y of [2.4, 2.1, 1.8]) {
-    kit.cyl(0.015, 0.015, 2.2, rodMat, { pos: [-22, y, 12.25], rot: [0, 0, 90], parent: root, seg: 6 });
+    kit.cyl(0.015, 0.015, 2.2, rodMat, { pos: [-22, y, 12.25], rot: [0, 0, 90], parent: counting, seg: 6 });
     for (let k = 0; k < 9; k++) {
-      kit.cyl(0.05, 0.05, 0.04, beadMat, { pos: [-22 - 1.0 + k * 0.25, y, 12.27], rot: [90, 0, 0], parent: root, seg: 8 });
+      kit.cyl(0.05, 0.05, 0.04, beadMat, { pos: [-22 - 1.0 + k * 0.25, y, 12.27], rot: [90, 0, 0], parent: counting, seg: 8 });
     }
   }
   marker(ROOM_ANCHOR_IDS.countingAbacus, -22, 2.1, 12.4);

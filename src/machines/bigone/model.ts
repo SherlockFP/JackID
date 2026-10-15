@@ -26,6 +26,7 @@ import type { MachineModel } from '@/machines/_base/types';
 import type { BulbChainImpl } from '@/kit/lights';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { PATTERN_IDS } from './rules';
+import { buildLampBank, type LampBank, type LampSpec } from '@/kit/lamps';
 
 /** One drum of the five-reel window. `root` pivots on its axle (rotate X to spin); `strip` is the 32×512 painted symbol strip. */
 export type BigOneReel = { root: THREE.Group; drum: THREE.Mesh; strip: THREE.Texture; canvas: HTMLCanvasElement };
@@ -176,39 +177,41 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
   }
 
   // ── cell frames: 15 emissive frames over the window (index r·5 + c) ──
-  const cellFrames: THREE.Mesh[] = [];
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 5; c++) {
-      const f = kit.plane(0.26, 0.21, { color: pal.black, emissive: pal.neonYellow, emissiveIntensity: 0.26, lit: false, transparent: true, opacity: 0.5, additive: true }, {
-        pos: [REEL_X(c), CELL_ROW_Y(r), 0.685], parent: root, name: `cell${r * 5 + c}`,
-      });
-      cellFrames.push(f);
-    }
-  }
+  // The 15 cell frames are not drawn. Their material is `lit: false`, which drops the emissive the frames are lit with
+  // (kit materials.ts), so they rendered as black-on-additive, i.e. nothing: the seat view has no cell glow. Building no
+  // mesh keeps that look at 0 draws. `cellFrames[i].material.emissiveIntensity` (index.ts, setLevel) is kept as a store
+  // so the index contract still holds (0.26 idle, 0.85 lined up, 1.8 tallied). If a glow is wanted, it is a design change.
+  const cellLevel = new Array<number>(15).fill(0.26);
+  const cellFrames = cellLevel.map((_, i) => {
+    const mat = {
+      get emissiveIntensity(): number { return cellLevel[i]; },
+      set emissiveIntensity(v: number) { cellLevel[i] = v; },
+    };
+    return { name: `cell${i}`, material: mat } as unknown as THREE.Mesh;
+  });
 
   // ── payline lamps (6): three each side of the window ──
-  const paylineLamps: LampPart[] = [];
+  // Payline (6), pattern plate (15) and last-10 (10) lamps share one bank: 3 draws instead of 31 (see keno/lamps.ts).
+  const lampSpecs: LampSpec[] = [];
   for (let k = 0; k < 6; k++) {
     const side = k < 3 ? -1 : 1;
     const row = k % 3;
-    const lamp = kit.lamp({ r: 0.02, color: gold, shape: 'dome' });
-    lamp.root.position.set(side * 0.76, CELL_ROW_Y(row), 0.665);
-    root.add(lamp.root);
-    paylineLamps.push(lamp);
+    lampSpecs.push({ pos: [side * 0.76, CELL_ROW_Y(row), 0.665], r: 0.02, shape: 'dome', color: gold });
   }
-
-  // ── pattern lamps (one per PATTERN_IDS entry, 15) on the left brass plate: two columns of eight ──
-  const patternLamps: LampPart[] = [];
+  const patStart = lampSpecs.length;
   for (let col = 0; col < 2; col++) {
     for (let row = 0; row < 8; row++) {
-      if (patternLamps.length >= PATTERN_IDS.length) break;
-      const lamp = kit.lamp({ r: 0.018, color: pal.neonCyan, shape: 'flat' });
-      lamp.root.position.set(-0.925, 1.04 + row * 0.108, col === 0 ? -0.12 : 0.12);
-      lamp.root.rotation.y = -Math.PI / 2;
-      root.add(lamp.root);
-      patternLamps.push(lamp);
+      if (lampSpecs.length - patStart >= PATTERN_IDS.length) break;
+      lampSpecs.push({ pos: [-0.925, 1.04 + row * 0.108, col === 0 ? -0.12 : 0.12], r: 0.018, shape: 'flat', color: pal.neonCyan });
     }
   }
+  const last10Start = lampSpecs.length;
+  for (let i = 0; i < LAST10; i++) lampSpecs.push({ pos: [-0.72 + i * 0.09, 2.03, 0.665], r: 0.02, shape: 'dome', color: gold });
+  const lampBank: LampBank = buildLampBank(kit, root, lampSpecs, [], { renderDriven: true });
+  const paylineLamps = lampBank.parts.slice(0, patStart);
+  const patternLamps = lampBank.parts.slice(patStart, last10Start);
+  const last10 = lampBank.parts.slice(last10Start);
+
 
   // ── lever (right side) ──
   const lever = new THREE.Object3D();
@@ -233,22 +236,20 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
   buttonPanel.root.position.set(0, 1.06, 0.42);
   root.add(buttonPanel.root);
 
-  const ledRow = (n: number, x0: number, step: number, color: number): LampPart[] => {
-    const out: LampPart[] = [];
-    for (let i = 0; i < n; i++) {
-      const l = kit.lamp({ r: 0.011, color, shape: 'flat' });
-      l.root.position.set(x0 + i * step, 0.012, -0.15);
-      buttonPanel.root.add(l.root);
-      out.push(l);
-    }
-    return out;
+  // 27 panel LEDs: one bank under the (tilted) panel root, 2 draws
+  const ledSpecs: LampSpec[] = [];
+  const ledRange = (n: number, x0: number, step: number, color: number): [number, number] => {
+    const a = ledSpecs.length;
+    for (let i = 0; i < n; i++) ledSpecs.push({ pos: [x0 + i * step, 0.012, -0.15], r: 0.011, shape: 'flat', color });
+    return [a, ledSpecs.length];
   };
-  const leds = {
-    credit: ledRow(LEDS_CREDIT, -0.8, 0.04, pal.neonYellow),
-    bet: ledRow(LEDS_BET, -0.42, 0.04, pal.gold),
-    win: ledRow(LEDS_WIN, 0.15, 0.04, pal.neonPink),
-    jackpot: ledRow(LEDS_JACKPOT, 0.5, 0.04, pal.red),
-  };
+  const rCredit = ledRange(LEDS_CREDIT, -0.8, 0.04, pal.neonYellow);
+  const rBet = ledRange(LEDS_BET, -0.42, 0.04, pal.gold);
+  const rWin = ledRange(LEDS_WIN, 0.15, 0.04, pal.neonPink);
+  const rJackpot = ledRange(LEDS_JACKPOT, 0.5, 0.04, pal.red);
+  const ledBank = buildLampBank(kit, buttonPanel.root, ledSpecs, [], { renderDriven: true });
+  const ledPart = (r: [number, number]): LampPart[] => ledBank.parts.slice(r[0], r[1]);
+  const leds = { credit: ledPart(rCredit), bet: ledPart(rBet), win: ledPart(rWin), jackpot: ledPart(rJackpot) };
   const ledStrip = kit.lightStrip({ length: 1.7, color: pal.neonYellow, thickness: 0.012, segments: 24, axis: 'x' });
   ledStrip.root.position.set(0, 1.13, FRONT - 0.01);
   root.add(ledStrip.root);
@@ -258,13 +259,6 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
   screen.mesh.position.set(0, 2.3, 0.655);
   root.add(screen.mesh);
 
-  const last10: LampPart[] = [];
-  for (let i = 0; i < LAST10; i++) {
-    const l = kit.lamp({ r: 0.02, color: gold, shape: 'dome' });
-    l.root.position.set(-0.72 + i * 0.09, 2.03, 0.665);
-    root.add(l.root);
-    last10.push(l);
-  }
 
   const dialShape: Array<[number, number]> = [];
   for (let i = 0; i <= 12; i++) {
@@ -428,25 +422,16 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
 
   const keep: Array<THREE.Object3D | { root: THREE.Object3D }> = [
     ...reels.map((r) => r.root),
-    ...cellFrames,
-    ...paylineLamps.map((l) => l.root),
-    ...patternLamps.map((l) => l.root),
     lever,
     buttonPanel.root,
     ledStrip.root,
     hungerNeedle,
-    ...last10.map((l) => l.root),
     screen.mesh,
     crownBulbs.root,
     windowBulbs.root,
-    ...crownRays,
     medallion,
     topLid,
-    trayPart.root,
-    glass,
     glassCrack,
-    fogDecal,
-    palmDecal,
     label.mesh,
     light,
     light2,

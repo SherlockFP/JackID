@@ -27,7 +27,7 @@ function previewVars(vars: Record<string, number>): Record<string, string | numb
 
 export function mountNightCardsUi(run: DebtRun): () => void {
   run.setNightCardGate(true);   // the lever now waits for a pick or this panel's timer
-  const chip = h('div', 'nc-chip', document.body);
+  const chip = h('div', 'nc-chip', app.ui.root);   // inside #ui so it follows the UI scale (--u)
   chip.hidden = true;
   const refreshChip = (): void => {
     const c = run.nightCard();

@@ -22,7 +22,8 @@ export interface Settings {
   // ── v1 ──
   shake: number;                // 0..1 screen-shake multiplier (ART_BIBLE §9.6)
   textScale: number;            // 1..1.5 UI text scale
-  colorblind: boolean;          // shape-backed symbols/colours
+  uiScale: number;              // 0.6..1.3 overall UI size, 1 = 100 % (the unit `floor(H / 270)` px); def 0.75 (-25 %)
+  colorblind: boolean;         // shape-backed symbols/colours
   holdToConfirm: boolean;       // accessibility: dangerous actions need a hold
   proxVoice: { enabled: boolean; pushToTalk: boolean; volume: number };
   keybinds: Partial<Record<string, string[]>>;
@@ -54,6 +55,7 @@ export const DEFAULT_SETTINGS: Settings = {
   calm: false,
   shake: 1,
   textScale: 1,
+  uiScale: 0.75,
   colorblind: false,
   holdToConfirm: false,
   proxVoice: { enabled: false, pushToTalk: true, volume: 0.8 },
@@ -65,7 +67,7 @@ const RANGES: Record<string, [number, number]> = {
   mouseSens: [0.0005, 0.006], fov: [60, 95], headBob: [0, 1],
   'vol.master': [0, 1], 'vol.sfx': [0, 1], 'vol.ui': [0, 1], 'vol.music': [0, 1], 'vol.amb': [0, 1], 'vol.voice': [0, 1],
   'psx.jitter': [0, 1], 'psx.scanlines': [0, 1], 'psx.vignette': [0, 1],
-  shake: [0, 1], textScale: [1, 1.5], 'proxVoice.volume': [0, 1],
+  shake: [0, 1], textScale: [1, 1.5], uiScale: [0.6, 1.3], 'proxVoice.volume': [0, 1],
 };
 const ENUMS: Record<string, readonly (string | number)[]> = {
   lang: ['en', 'tr'], crosshair: ['dot', 'cross', 'none'],

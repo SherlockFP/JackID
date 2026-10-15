@@ -43,6 +43,13 @@ export class Sched {
 
   /** Drop every pending job without resolving (dispose). */
   clear(): void { this.jobs = []; }
+
+  /** Complete every pending job at once (k = 1) and resolve it. Used when a prop is disposed mid-tween. */
+  finish(): void {
+    const jobs = this.jobs;
+    this.jobs = [];
+    for (const j of jobs) { j.step(1); j.done(); }
+  }
 }
 
 /** Deterministic PRNG for prop dressing (coins, ledger seeds). Never Math.random. */

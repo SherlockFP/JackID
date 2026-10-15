@@ -1,24 +1,26 @@
-/** NIGHT PLAN panel (top-right, under the quota; src/menu/hud.ts `updatePlan`). Four short lines. Loaded by the `*.strings.ts` glob in main.ts. */
+/**
+ * NIGHT PLAN panel (top-right, under the quota; src/menu/hud.ts `updatePlan`). At most four short lines, one line each: the copy
+ * stays under ~24 characters so the panel never wraps at 1280x720 or 1920x1080 (uiScale 0.75). Only glyphs the HUD fonts have.
+ * Loaded by the `*.strings.ts` glob in main.ts.
+ */
 export default {
   prefix: 'hud.plan.',
   en: {
-    'head': 'QUOTA {q} · DAWN',
-    'bank': 'DAWN: bank {p} of {q} needed',
-    'pocket': 'POCKET {p} — deposit to count',
-    'ends': 'WATCH {w}/{n} · {p} PULLS · {c} · BELL',
+    'bank': 'DAWN {p}/{q}',
+    'pocket': 'POCKET {p} · DEPOSIT',
+    'ends': 'W{w}/{n} · {p} PULLS · {c}',
     'next': 'NEXT WATCH {w}/{n}',
-    'night': 'NEXT NIGHT: quota {q} (×{k})',
-    'paid': 'NIGHT PAID ✓ — surplus {n} returns at Dawn',
-    'tithe': 'WATCH TITHE: earn {n} in play · {e}/{n}',
+    'night': 'NEXT NIGHT {q} (×{k})',
+    'paid': 'PAID · SURPLUS {n}',
+    'tithe': 'TITHE {e}/{n}',
   },
   tr: {
-    'head': 'KOTA {q} · ŞAFAK',
-    'bank': 'ŞAFAK: banka {p} / {q} gerekli',
-    'pocket': 'CEP {p} — yatır, kotaya sayılsın',
-    'ends': 'VARDİYA {w}/{n} · {p} ÇEKİŞ · {c} · ZİL',
-    'next': 'SONRAKİ VARDİYA {w}/{n}',
-    'night': 'SONRAKİ GECE: kota {q} (×{k})',
-    'paid': 'GECE ÖDENDİ ✓ — fazla {n} Şafak’ta geri döner',
-    'tithe': 'VARDİYA ÖŞÜRÜ: oyunda {n} kazan · {e}/{n}',
+    'bank': 'ŞAFAK {p}/{q}',
+    'pocket': 'CEP {p} · YATIR',
+    'ends': 'V{w}/{n} · {p} ÇEKİŞ · {c}',
+    'next': 'SONRAKİ V{w}/{n}',
+    'night': 'SONRAKİ GECE {q} (×{k})',
+    'paid': 'ÖDENDİ · FAZLA {n}',
+    'tithe': 'ÖŞÜR {e}/{n}',
   },
 };

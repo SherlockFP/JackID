@@ -1290,7 +1290,11 @@ export async function runBench(opts = {}) {
   const startSpec = parsedRun ? startSpecOf(parsedRun) : null;                  // kit / stake / daily: applied at run start
   const runSteps = parsedRun ? parsedRun.filter((s) => !START_KINDS.has(s.kind)) : null;
   const world = Boolean(opts.world) || runSteps !== null;   // a real debt run (`/?skipmenu=1`), not a bench room
-  const machine = String(opts.machine ?? (world ? 'run' : ''));
+  const menu = Boolean(opts.menu);                          // `/`: the main menu; the script keys drive the die
+  if (menu && (world || opts.sit || opts.force !== undefined || opts.machine !== undefined)) {
+    throw new Error('--menu boots the main menu on its own: drop --machine, --world, --run, --sit, --force');
+  }
+  const machine = String(opts.machine ?? (world ? 'run' : menu ? 'menu' : ''));
   if (!/^[a-z][a-z0-9_]*$/.test(machine)) throw new Error('machine id required, e.g. "bigone" (or --world)');
   if (world && opts.sit) throw new Error('--sit needs a bench room (drop --world / --run)');
   if (runSteps && (opts.walkView || opts.frames || opts.force !== undefined)) throw new Error('--run takes its own steps: drop --walk-view, --frames, --force');
@@ -1347,12 +1351,14 @@ export async function runBench(opts = {}) {
     log(`vite on :${vport}`);
     await waitFor(async () => (await fetch(`http://127.0.0.1:${vport}/`)).ok, READY_TIMEOUT_MS, 'vite');
 
-    // 2) Headless Chrome: free debugging port, temp profile, 1280x720.
+    // 2) Headless Chrome: free debugging port, temp profile, 1280x720 (or --size WxH).
+    const [vw, vh] = opts.size ? String(opts.size).toLowerCase().split('x').map(Number) : [1280, 720];
+    if (!(vw > 0 && vh > 0)) throw new Error(`--size expects WxH, got ${opts.size}`);
     dport = await freePort();
     profile = mkdtempSync(join(tmpdir(), 'jackid-qa-'));
     chrome = spawn(CHROME, [
       '--headless=new', `--remote-debugging-port=${dport}`, '--remote-debugging-address=127.0.0.1',
-      `--user-data-dir=${profile}`, '--mute-audio', '--window-size=1280,720',
+      `--user-data-dir=${profile}`, '--mute-audio', `--window-size=${vw},${vh}`,
       '--no-first-run', '--no-default-browser-check', '--disable-extensions',
       '--enable-unsafe-swiftshader', '--disable-background-timer-throttling',
       '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
@@ -1381,10 +1387,12 @@ export async function runBench(opts = {}) {
     await cdp.send('Runtime.enable');
     await cdp.send('Log.enable');
     await cdp.send('Page.enable');
-    await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width: vw, height: vh, deviceScaleFactor: 1, mobile: false });
 
     // 3) Bench room: boot veil (Enter), then the game is on screen and rAF is advancing.
-    const url = world ? `/?skipmenu=1&seed=${seed}` : `/?bench=${machine}&seed=${seed}`;
+    // --query "lang=tr" appends extra boot params (bootParams: lang); the HUD caches its strings, so the language must be set at boot.
+    const extra = opts.query ? `&${String(opts.query).replace(/^[?&]+/, '')}` : '';
+    const url = menu ? `/?seed=${seed}${extra}` : world ? `/?skipmenu=1&seed=${seed}${extra}` : `/?bench=${machine}&seed=${seed}${extra}`;
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${vport}${url}` });
     await waitFor(() => evaluate(cdp, 'typeof window.jackid === "object"'), READY_TIMEOUT_MS, 'window.jackid');
     // --run start config (kit / stake / daily): wrapped before the veil is entered, so the run starts with it.
@@ -1398,7 +1406,18 @@ export async function runBench(opts = {}) {
       await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', code: 'Enter', key: 'Enter', windowsVirtualKeyCode: 13 });
       await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', code: 'Enter', key: 'Enter', windowsVirtualKeyCode: 13 });
     };
-    await waitFor(async () => { await enterVeil(); await sleep(700); return (await stateOf()).includes('ingame'); }, READY_TIMEOUT_MS, 'ingame state')
+    // --menu: the veil is dismissed by a real mouse press at its centre (the menu is already the state, so the Enter loop
+    // below would stop before the veil is gone); the veil then has to be off the page before the menu counts as ready.
+    const readyState = menu ? 'menu' : 'ingame';
+    const veilUp = () => evaluate(cdp, 'Boolean(document.querySelector(".veil"))');
+    const pressVeil = async () => {
+      if (!menu) return enterVeil();
+      if (!(await veilUp())) return;
+      for (const type of ['mousePressed', 'mouseReleased']) {
+        await cdp.send('Input.dispatchMouseEvent', { type, x: 640, y: 360, button: 'left', clickCount: 1 });
+      }
+    };
+    await waitFor(async () => { await pressVeil(); await sleep(700); return (await stateOf()).includes(readyState) && (!menu || !(await veilUp())); }, READY_TIMEOUT_MS, `${readyState} state`)
       .catch(async (e) => { throw new Error(`${e.message} (state: ${await stateOf().catch(() => '?')})`); });
     await sleep(1500);                                   // room settles: camera, first frames
     const f0 = await evaluate(cdp, 'window.__qaFrames');
@@ -1546,16 +1565,16 @@ export async function runBench(opts = {}) {
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────
-const USAGE = 'usage: node scripts/qa/bench.mjs (--machine <id> | --world | --run "<steps>") [--script "Space:200,wait:1500,KeyX"] [--shots <dir>] '
+const USAGE = 'usage: node scripts/qa/bench.mjs (--machine <id> | --world | --menu | --run "<steps>") [--script "Space:200,wait:1500,KeyX"] [--shots <dir>] '
   + '[--frames "300,1200"] [--probe "<js>"] [--js "<js>"] [--rounds <n>] [--seed <n>] [--sit [--seat <n>] [--force "<id>:<state>"]] [--walk-view]';
 
 function parseArgs(argv) {
   const o = {};
   const flags = {
     '--machine': 'machine', '--script': 'script', '--shots': 'shots', '--rounds': 'rounds', '--seed': 'seed', '--seat': 'seat',
-    '--settle': 'settle', '--frames': 'frames', '--probe': 'probe', '--js': 'js', '--force': 'force', '--run': 'run',
+    '--settle': 'settle', '--frames': 'frames', '--probe': 'probe', '--js': 'js', '--force': 'force', '--run': 'run', '--query': 'query', '--size': 'size',
   };
-  const switches = { '--sit': 'sit', '--walk-view': 'walkView', '--world': 'world' };
+  const switches = { '--sit': 'sit', '--walk-view': 'walkView', '--world': 'world', '--menu': 'menu' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') { o.help = true; continue; }
@@ -1575,7 +1594,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     let code = 0, out;
     try {
       const o = parseArgs(process.argv.slice(2));
-      if (o.help || (!o.machine && !o.world && o.run === undefined)) { process.stderr.write(USAGE + '\n'); process.exit(o.help ? 0 : 2); }
+      if (o.help || (!o.machine && !o.world && !o.menu && o.run === undefined)) { process.stderr.write(USAGE + '\n'); process.exit(o.help ? 0 : 2); }
       const result = await runBench(o);
       out = result;
       if (result.run?.aborted) code = 1;                 // steps that failed are in the JSON; a reload invalidates the run

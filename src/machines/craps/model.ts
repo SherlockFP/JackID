@@ -193,6 +193,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CrapsParts> {
   // ── the Hook: a porcelain-masked stickman behind the table, with his stick ──
   const hook = kit.mannequin({ style: 'porcelain', mask: 'mask_porcelain', height: 1.78, color: 0x1c1c1c, clip: 'Idle_Loop' });
   hook.root.position.set(-1.0, 0, -0.96);      // off to the left of the banner column: the seat camera sees him beside it, not behind it
+  hook.root.userData.lodDetail = true;         // a mannequin is ~14k tris (two meshes): the world hides it beyond 8 m
   root.add(hook.root);
   const stick = new THREE.Object3D();
   stick.position.set(-0.7, 1.02, -0.92);

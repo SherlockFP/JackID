@@ -17,7 +17,7 @@ const tr: StringTable = {
   'common.occupied': 'Dolu: {name}',
   'common.locked': '{n}. vadeye kadar kilitli',
   'common.notSeated': 'Burada oturmuyorsun',
-  'common.coinSuffix': ' j',
+  'common.coinSuffix': '¢',
   'common.coins.one': '{n} jeton',
   'common.coins.other': '{n} jeton',
   'common.yes': 'Evet',

@@ -243,7 +243,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   root.add(trapdoor.root);
   disposables.push(trapdoor);
 
-  const sump = buildSump(kit, tex, { pos: SUMP_POS, seed: ctx.seed ^ 0x51ab, coinCount: 700 });
+  const sump = buildSump(kit, tex, { pos: SUMP_POS, seed: ctx.seed ^ 0x51ab, coinCount: 350 });
   root.add(sump.root);
   disposables.push(sump);
   // the sump walls are solid; the floor is registered above

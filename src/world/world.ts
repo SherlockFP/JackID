@@ -17,7 +17,8 @@
  * atmosphere (zone-blended fog on the scene, hemisphere ambient, dread grade).
  *
  * Wing gating is per instance (§11.2): a closed zone locks its machines (`setLocked(true)`), solid gate colliders block the
- * doorway and the grille prop animates. `setZoneOpen(zone, true)` reverses it.
+ * doorway and the grille prop animates. Its machines are parked (slot hidden, no ticks) until it opens.
+ * `setZoneOpen(zone, true)` reverses it.
  *
  * Without WORLD-ARCH's files the world still runs: a plain hall, demo slots filled with the registered machines.
  */
@@ -34,6 +35,7 @@ import { log } from '@/core/log';
 import { clamp, damp, lerp } from '@/core/math';
 import { fmtCoins, t } from '@/core/i18n';
 import { psxUniforms } from '@/core/renderer/psxMaterial';
+import { farCull } from '@/core/renderer/farCull';
 import type { LocalPlayer } from '@/player/types';
 import type { LocalPlayerHost } from '@/player/local';
 import { createCollisionWorld, type CollisionHost } from './collision';
@@ -195,12 +197,17 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
     for (const z of app.run?.tycoon.state().zones ?? []) if (zoneOpen.has(z)) zoneOpen.set(z, true);
   } catch { /* optional */ }
 
+  const interiorRoots: THREE.Object3D[] = [];
   const level: LevelBuild | null = arch.buildLevel({
     mode, seed: opts.seed, slots: slotDefs, kit, tex: app.tex, collision, bench: !!benchDef,
     interact, lights: pool.api as WorldLights, isZoneOpen: (z) => zoneOpen.get(z) ?? true,
   });
   if (level) {
     root.add(level.root);
+    // Room interiors (rooms/dressing.ts tags each room group `roomInterior`) are far-culled by distance. Registered
+    // here, with the level already placed, so their bounds are read in pit space.
+    level.root.traverse((o) => { if (o.userData.roomInterior === true) { farCull.add(o); interiorRoots.push(o); } });
+    offs.push(() => { for (const o of interiorRoots) farCull.remove(o); });
     for (const s of level.statics ?? []) collision.addStatic(s.box, s.tag);
     for (const [name, obj] of Object.entries(level.anchors ?? {})) anchors.set(name, obj);
     for (const [id, p] of Object.entries(level.props ?? {})) props.set(id, p);
@@ -244,6 +251,9 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
     all: () => recs.values(),
   });
   const items = new ItemManager({ parent: root, interact, tweens: app.tweens.sim });
+  /** A machine behind a shut wing is parked: its slot is hidden and it does not tick until the wing opens. The seated
+   *  machine keeps running (closing a wing releases its seat anyway). */
+  const parked = (rec: SlotRec): boolean => rec.machine !== null && isClosed(rec) && router.seat?.mid !== rec.id;
 
   // ── slot content ──────────────────────────────────────────────────────────────────────────────
   const changeFns = new Set<(e: SlotChange) => void>();
@@ -589,9 +599,11 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
     for (const rec of recs.values()) {
       const m = rec.machine;
       const d = Math.max(0, rec.sphere.center.distanceTo(cp) - rec.sphere.radius);
-      const inRange = d < reach || seatedAt === rec.id;
+      const isParked = parked(rec);
+      const inRange = !isParked && (d < reach || seatedAt === rec.id);
       if (rec.group.visible !== inRange) rec.group.visible = inRange;
       if (!m) continue;
+      if (isParked) { m.visible = false; continue; }
       const attract = m.def.attractRadius ?? DEFAULT_ATTRACT_M;
       m.visible = rec.id === seatedAt || (inRange && d < attract && frustum.intersectsSphere(rec.sphere));
       const lod: 0 | 1 = rec.lod === 0 ? (d > LOD_FAR_M ? 1 : 0) : (d < LOD_NEAR_M ? 0 : 1);
@@ -751,7 +763,7 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
       interact.update(dt);
       for (const rec of recs.values()) {
         const m = rec.machine;
-        if (!m || !rec.ready) continue;
+        if (!m || !rec.ready || parked(rec)) continue;
         try { m._step(dt); } catch (e) { log.error('world', `${rec.id} tick`, e); }
       }
       lockClock += dt;

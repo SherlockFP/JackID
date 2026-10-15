@@ -202,7 +202,11 @@ function accessPage(c: Ctx): void {
   flag(c, 'reduceFlashing', t('settings.reduceFlashing'), S().reduceFlashing, (v) => put('reduceFlashing', v), t('settings.reduceFlashing.tip'));
 
   head(c, t('settings.sec.interface'));
-  slide(c, 'textScale', t('settings.textScale'), { min: 1, max: 1.5, step: 0.05, value: S().textScale, format: pct, apply: (v) => put('textScale', v) });
+  row(c, 'uiScale', t('settings.uiScale'), (slot) => slider(slot, {
+    min: 0.6, max: 1.3, step: 0.05, value: S().uiScale, format: pct,
+    onInput: (v) => put('uiScale', Math.round(v * 100) / 100),   // live: settings:changed re-measures the overlay unit
+  }), t('settings.uiScale.tip'));
+  slide(c, 'textScale',t('settings.textScale'), { min: 1, max: 1.5, step: 0.05, value: S().textScale, format: pct, apply: (v) => put('textScale', v) });
   row(c, 'crosshair', t('settings.crosshair'), (slot) => cycle<Settings['crosshair']>(slot, {
     options: (['dot', 'cross', 'none'] as const).map((v) => ({ value: v, label: t(`settings.crosshair.${v}`) })),
     value: S().crosshair, onChange: (v) => put('crosshair', v),

@@ -90,7 +90,7 @@ function chipSheet(ctx: KitCtx): THREE.Texture {
  * while the whole pool stays ONE draw call.
  */
 function makeChips(ctx: KitCtx, max: number): ChipPool {
-  const geo = new THREE.CylinderGeometry(CHIP_R, CHIP_R, CHIP_T, 12, 1);
+  const geo = new THREE.CylinderGeometry(CHIP_R, CHIP_R, CHIP_T, 8, 1);
   bakeShade(geo, { top: 1, bottom: 0.7 });
   {
     const pos = geo.getAttribute('position'), nor = geo.getAttribute('normal'), uv = geo.getAttribute('uv') as THREE.BufferAttribute;
@@ -122,8 +122,15 @@ function makeChips(ctx: KitCtx, max: number): ChipPool {
   const tokens = Array.from({ length: max }, () => ({}));
   const gen = new Uint32Array(max);                  // bumped by every move / remove: a cancelled move must not land later
   let count = 0;
-  for (let i = 0; i < max; i++) mesh.setMatrixAt(i, HIDDEN);
-  mesh.instanceMatrix.needsUpdate = true;
+  // Draw only up to the highest live id: `high` tracks it and `mesh.count` follows, so an idle table draws nothing.
+  // Ids are handed out lowest-first (`free` pops the low end; `clear` frees high to low), which keeps live chips packed
+  // at the bottom of the buffer. A matrix is always written before its id goes live (`write` in `add`/`move`/`remove`).
+  let high = -1;
+  const syncCount = (): void => {
+    while (high >= 0 && !active[high]) high--;
+    mesh.count = high + 1;
+  };
+  mesh.count = 0;
 
   const flush = (): void => { matSpan.flush(); idxSpan.flush(); };
   const write = (id: number): void => {
@@ -164,6 +171,8 @@ function makeChips(ctx: KitCtx, max: number): ChipPool {
       const id = free.pop();
       if (id === undefined) return -1;
       active[id] = 1; count++;
+      if (id > high) high = id;
+      syncCount();
       yaw[id] = rng.float(0, Math.PI * 2);
       idx.setX(id, Math.max(0, CHIP_VALUES.indexOf(v)));
       idxSpan.touch(id);
@@ -200,12 +209,14 @@ function makeChips(ctx: KitCtx, max: number): ChipPool {
       gen[id]++;
       detach(id);
       active[id] = 0; count--;
+      syncCount();
       write(id);
       flush();
       free.push(id);
     },
     clear() {
-      for (let i = 0; i < max; i++) if (active[i]) pool.remove(i);
+      // high to low: the lowest id is freed last, so it is the first one handed out again
+      for (let i = max - 1; i >= 0; i--) if (active[i]) pool.remove(i);
     },
     get count() { return count; },
   };

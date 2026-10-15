@@ -195,9 +195,9 @@ export function buildSump(kit: KitX, tex: TexGen, o: { pos: [number, number, num
   kit.cyl(0.12, 0.12, 12, kit.mat({ color: 0x6a4a30, map: tex.rust(0x6a4a30) }), { rot: [0, 0, 90], pos: [0, -3.6, -5.8], parent: root, seg: 8 });
   kit.cyl(0.2, 0.2, 12, kit.mat({ color: 0x5a3a24, map: tex.rust(0x5a3a24) }), { rot: [90, 0, 0], pos: [-5.7, -3.3, 0], parent: root, seg: 8 });
 
-  // coin mound Ø 6 m × 1.2 m, one instanced draw
-  const n = o.coinCount ?? 700;
-  const coinGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.012, 8);
+  // coin mound Ø 6 m × 1.2 m, one instanced draw (350 coins × 4 segments: half the old 700 × 8, see docs/PERF.md)
+  const n = o.coinCount ?? 350;
+  const coinGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.012, 4);
   const coinMat = kit.mat({ color: 0xc8a040, emissive: 0x3a2a08, emissiveIntensity: 0.4 });
   const coins = new THREE.InstancedMesh(coinGeo, coinMat, n);
   const rnd = lcg(o.seed ?? 7);

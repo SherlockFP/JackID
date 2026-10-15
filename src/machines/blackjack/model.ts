@@ -230,6 +230,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BlackjackParts
   pitBoss.root.position.set(-0.86, 0, -0.48);
   pitBoss.root.scale.setScalar(0.92);
   pitBoss.root.rotation.y = Math.atan2(1.05, 0.42);
+  pitBoss.root.userData.lodDetail = true;   // a mannequin is ~14k tris (two meshes): the world hides it beyond 8 m
   root.add(pitBoss.root);
 
   // light and anchors

@@ -6,6 +6,18 @@
  *  - Layers stack in DOM order (see the z-index table in ui.ts). Only panels, modals, buttons and the veil take pointer events.
  */
 
+/* ── fonts ────────────────────────────────────────────────────────────────────────────────── */
+/* The multiplication sign from the pixel face only (fontsource's Press Start 2P, latin subset, bundled by Vite from node_modules).
+   Used first in --f-body, so the body text's × is the pixel sign and every other glyph still comes from VT323. */
+@font-face {
+  font-family: 'JackID Mark';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('../../../node_modules/@fontsource/press-start-2p/files/press-start-2p-latin-400-normal.woff2') format('woff2');
+  unicode-range: U+00D7;
+}
+
 /* ── tokens ───────────────────────────────────────────────────────────────────────────────── */
 @property --lb { syntax: '<number>'; inherits: true; initial-value: 0; }
 .px-root {
@@ -15,8 +27,11 @@
   --fh: calc(8 * var(--u));
   --bar-h: calc(32 * var(--u));
   --lb: 0;
-  --f-head: 'Press Start 2P', 'VT323', monospace;
-  --f-body: 'VT323', 'Press Start 2P', monospace;
+  /* Glyph coverage (checked against the fontsource files): Press Start 2P has ¢ × · and the Turkish capitals İ Ş Ğ Ç Ö Ü; VT323
+     has ¢ · Ç Ö Ü but its × is a small x. The body stack takes × from the pixel face (JackID Mark, below), so × reads as a sign.
+     Arrows (→ ← ↗ …) are in neither font, so the stacks end in a symbol face (Windows: Segoe UI Symbol), before the generic one. */
+  --f-head: 'Press Start 2P', 'VT323', 'Segoe UI Symbol', monospace;
+  --f-body: 'JackID Mark', 'VT323', 'Segoe UI Symbol', monospace;
   --void: #080808;
   --black: #101019;
   --soot: #191921;
