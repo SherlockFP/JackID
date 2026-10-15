@@ -36,7 +36,7 @@ import type { ModHook } from '@/game/modifiers.types';
 import { linPoolAccepts } from '@/game/data/rooms';
 import {
   LOCK_TICKETS, MAX_LOCKS, REMOVE_CURSE_TICKETS, SLOTS, UNDER_COUNTER_INDEX,
-  type PawnApi, type PawnBuy, type PawnPreview, type PawnSlot, type SwapChoice,
+  type PawnApi, type PawnBuy, type PawnPreview, type PawnSlot as PawnSlotBase, type SwapChoice,
 } from '@/machines/charm_vendor/rules';
 
 /** Old Lin the Tile Reader's shelf: CARDS / MAHJONG charms only. Pass as `PawnHost.poolFilter` while the Jade Room vendor is in use. */
@@ -53,6 +53,11 @@ const MAX_SLOTS = SLOTS + SLOT_EXTRA_MAX;
 /** Director decision 3 (wave 42): every intermission offers a charm priced at most max(FLOOR_CHARM_MIN, FLOOR_CHARM_SHARE x quota). */
 export const FLOOR_CHARM_MIN = 8;
 export const FLOOR_CHARM_SHARE = 0.25;
+/** Wave 7: chance that a regular shelf offers an owned engine charm as EVOLVE (only when one can take a second stack). */
+export const EVOLVE_CHANCE = 0.35;
+
+/** A stock slot as the shelf shows it: `evolve` marks a second copy of an owned engine charm (one stack more, no peg). */
+export type PawnSlot = PawnSlotBase & { evolve: boolean };
 
 /** Dearest launch Common's base price: the anchor of the Pawn price scale (`pawnPriceScale`). Computed once. */
 let commonTopMemo: number | null = null;
@@ -124,7 +129,7 @@ export interface PawnHost {
 }
 
 /** `cap`: the floor shelf (decision 3) sells at this price at most; absent on every other shelf. */
-interface SlotState { id: string; locked: boolean; sold: boolean; cap?: number }
+interface SlotState { id: string; locked: boolean; sold: boolean; cap?: number; evo?: boolean }
 export interface PawnSnapshot {
   v: 1;
   /** `${night}:${watch}` of the visit the stock was drawn for; '' = never drawn. */
@@ -250,7 +255,9 @@ export class Pawn implements PawnApi {
     // Locked, unsold items stay on their shelf.
     for (let i = 0; i < Math.min(old.length, this.slots.length); i++) {
       const s = old[i];
-      if (s && s.locked && !s.sold && charmDef(s.id) && this.host.canTake(s.id)) this.slots[i] = { id: s.id, locked: true, sold: false };
+      if (s && s.locked && !s.sold && charmDef(s.id) && this.host.canTake(s.id)) {
+        this.slots[i] = { id: s.id, locked: true, sold: false, ...(s.evo ? { evo: true } : {}) };
+      }
     }
     const rng = this.host.rng().fork(`pawn:${this.host.night()}:${this.host.watch()}`);
     this.fill(rng, this.freeSlots());
@@ -335,8 +342,18 @@ export class Pawn implements PawnApi {
   private eligible(d: CharmDef, exclude: ReadonlySet<string>): boolean {
     const launch = this.host.launchOnly?.() ?? true;
     const filter = this.host.poolFilter?.() ?? null;
+    // An owned engine charm is offered only as EVOLVE (evolveCandidates), never as a plain copy.
+    if (ENGINE_CHARM_IDS.has(d.id) && this.host.held().includes(d.id)) return false;
     return !exclude.has(d.id) && this.host.canTake(d.id) && (!launch || LAUNCH_CHARM_IDS.has(d.id)) && (!filter || filter(d))
       && unlockedAt(d, this.host.night(), (c) => this.host.meta?.(c) ?? false);
+  }
+
+  /** EVOLVE offers: owned engine charms that can take a second stack and are not on a shelf already. */
+  private evolveCandidates(exclude: ReadonlySet<string>): CharmDef[] {
+    const launch = this.host.launchOnly?.() ?? true;
+    const filter = this.host.poolFilter?.() ?? null;
+    return this.heldDefs().filter((d) => ENGINE_CHARM_IDS.has(d.id) && !exclude.has(d.id) && this.host.canTake(d.id)
+      && (!launch || LAUNCH_CHARM_IDS.has(d.id)) && (!filter || filter(d)));
   }
 
   private heldDefs(): CharmDef[] {
@@ -353,7 +370,12 @@ export class Pawn implements PawnApi {
     const biasKey = (this.host.bias?.() ?? true) ? dominantKey(this.heldDefs()) : null;
     for (const i of idx) {
       let pick: CharmDef | undefined;
-      if (i === UNDER_COUNTER_INDEX) {
+      let evo = false;
+      const mine = i === UNDER_COUNTER_INDEX ? [] : this.evolveCandidates(exclude);
+      if (mine.length && rng.chance(EVOLVE_CHANCE)) {
+        pick = rng.pick(mine);
+        evo = true;
+      } else if (i === UNDER_COUNTER_INDEX) {
         const cursed = all.filter((d) => d.rarity === 'cursed' && this.eligible(d, exclude));
         const rare = all.filter((d) => (d.rarity === 'rare' || d.rarity === 'legendary') && this.eligible(d, exclude));
         const first = rng.chance(0.5) ? cursed : rare;
@@ -371,7 +393,7 @@ export class Pawn implements PawnApi {
             : rng.pick(pool);
         }
       }
-      if (pick) { this.slots[i] = { id: pick.id, locked: false, sold: false }; exclude.add(pick.id); }
+      if (pick) { this.slots[i] = { id: pick.id, locked: false, sold: false, ...(evo ? { evo: true } : {}) }; exclude.add(pick.id); }
     }
   }
 
@@ -405,7 +427,7 @@ export class Pawn implements PawnApi {
     this.sync();
     const held = this.heldDefs();
     const m = this.host.mostPlayed?.() ?? null;
-    return this.slots.map((s, i) => {
+    return this.slots.map((s, i): PawnSlot | null => {
       if (!s || s.sold || !this.host.canTake(s.id)) return null;
       const d = charmDef(s.id);
       if (!d) return null;
@@ -413,6 +435,7 @@ export class Pawn implements PawnApi {
       return {
         charmId: s.id, price, rarity: d.rarity, cursed: d.rarity === 'cursed', tag: d.tag, underCounter: i === UNDER_COUNTER_INDEX,
         locked: s.locked, fit: fitOf(d, held, m), bias: i === BIAS_SLOT, discounted: price > 0 && price < this.basePrice(d),
+        evolve: s.evo === true,
       };
     });
   }
@@ -570,7 +593,9 @@ export class Pawn implements PawnApi {
   snapshot(): PawnSnapshot {
     return {
       v: 1, key: this.key, rolls: this.rolls, paid: this.paid, visitFree: this.visitFree, firstUsed: this.firstUsed,
-      slots: this.slots.map((s) => (s ? { id: s.id, locked: s.locked, sold: s.sold, ...(s.cap !== undefined ? { cap: s.cap } : {}) } : null)),
+      slots: this.slots.map((s) => (s ? {
+        id: s.id, locked: s.locked, sold: s.sold, ...(s.cap !== undefined ? { cap: s.cap } : {}), ...(s.evo ? { evo: true } : {}),
+      } : null)),
     };
   }
 
@@ -587,7 +612,7 @@ export class Pawn implements PawnApi {
       const s = snap.slots[i];
       if (s && typeof s.id === 'string' && charmDef(s.id)) {
         const cap = typeof s.cap === 'number' && Number.isFinite(s.cap) ? Math.max(1, Math.floor(s.cap)) : undefined;
-        this.slots[i] = { id: s.id, locked: !!s.locked, sold: !!s.sold, ...(cap !== undefined ? { cap } : {}) };
+        this.slots[i] = { id: s.id, locked: !!s.locked, sold: !!s.sold, ...(cap !== undefined ? { cap } : {}), ...(s.evo ? { evo: true } : {}) };
       }
     }
     this.rev += 1;

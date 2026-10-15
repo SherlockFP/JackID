@@ -424,3 +424,98 @@ test('launch Rares: at least 3 unlocked on every Night (boss and under-the-count
     assert.ok(open.length >= 3, `Night ${night}: ${open.length} unlocked launch Rares`);
   }
 });
+
+// ── wave 7: evolution (second stack) ────────────────────────────────────────────────────────────
+const evo = (data = {}) => ({ ...data, evo: true });
+const onOf = (id) => E.ENGINE_BEHAVIOURS[id].on;
+
+test('evolution: every engine charm holds two stacks, the base catalogue is untouched', () => {
+  for (const d of D.CHARM_ENGINE_DATA) assert.equal(d.maxStacks, 2, `${d.id} maxStacks`);
+  for (const d of C.CHARM_DATA) assert.equal(d.maxStacks, undefined, `${d.id} has maxStacks`);
+});
+
+test('evolution: Suit Ladder+ is 0.16 per Rung, max 8; the base stays at 6', () => {
+  near(payoutOf(E.ENGINE_DYNAMIC_EFFECTS.suit_ladder(live(evo({ rungs: 8 })))).m, 1 + 0.16 * 8);
+  near(payoutOf(E.ENGINE_DYNAMIC_EFFECTS.suit_ladder(live({ rungs: 8 }))).m, 1 + 0.12 * 8);
+  const h = onOf('suit_ladder')['machine:result'];
+  const c = ctx(evo());
+  for (let i = 0; i < 12; i++) h(play({ tags: [['reels', 'cards', 'dice', 'wheels', 'drops', 'curios'][i % 6]] }), c);
+  assert.equal(c.data.rungs, 8);
+  const base = ctx({});
+  for (let i = 0; i < 12; i++) h(play({ tags: [['reels', 'cards', 'dice', 'wheels', 'drops', 'curios'][i % 6]] }), base);
+  assert.equal(base.data.rungs, 6);
+});
+
+test('evolution: Pressure Valve+ is 0.14 per Pressure, max 10', () => {
+  near(payoutOf(E.ENGINE_DYNAMIC_EFFECTS.pressure_valve(live(evo({ pressure: 10 })))).m, 1 + 0.14 * 10);
+  const h = onOf('pressure_valve')['machine:result'];
+  const c = ctx(evo());
+  for (let i = 0; i < 14; i++) h(play({ gross: 0 }), c);
+  assert.equal(c.data.pressure, 10);
+});
+
+test('evolution: Capacitor+ is 0.30 per charge, max 7; the Hot scope stays', () => {
+  const dyn = E.ENGINE_DYNAMIC_EFFECTS.capacitor;
+  const e = dyn(live(evo({ charge: 7 }), { circuit: circuit({ hot: ['hot1'] }) }));
+  near(e[0].value, 1 + 0.3 * 7);
+  assert.deepEqual(e[0].scope, { instances: ['hot1'] });
+  const h = onOf('capacitor')['machine:result'];
+  const c = ctx(evo(), { circuit: circuit({ cold: ['c1'], tilts: { c1: tilt({ cold: true, factor: 0.75 }) } }) });
+  for (let i = 0; i < 12; i++) h(play({ mid: 'c1' }), c);
+  assert.equal(c.data.charge, 7);
+});
+
+test('evolution: Lampwick+ adds +0.10 per wick (max six wicks, +0.60 at six)', () => {
+  const e = E.ENGINE_DYNAMIC_EFFECTS.lampwick(live(evo({ wicks: 6 })));
+  near(e[0].value, 0.6);
+  near(E.ENGINE_DYNAMIC_EFFECTS.lampwick(live({ wicks: 6 }))[0].value, 0.48);
+  const h = onOf('lampwick')['machine:result'];
+  const c = ctx(evo(), { circuit: circuit({ hot: ['h1'] }) });
+  for (let i = 0; i < 9; i++) h(play({ mid: 'h1', gross: 40 }), c);
+  assert.equal(c.data.wicks, 6);
+});
+
+test('evolution: Ticket Press+ is +3 % per 3 Tickets, capped at +20 %', () => {
+  const dyn = E.ENGINE_DYNAMIC_EFFECTS.ticket_press;
+  near(dyn(live(evo(), { tickets: 9 }))[0].value, 0.09);
+  near(dyn(live(evo(), { tickets: 60 }))[0].value, 0.2);
+  near(dyn(live({}, { tickets: 9 }))[0].value, 0.06);
+});
+
+test('evolution: Snowball Ledger+ counts up to four Watches (+4 % at most)', () => {
+  near(E.ENGINE_DYNAMIC_EFFECTS.snowball_ledger(live(evo({ watches: 4 })))[0].value, 0.04);
+  const h = onOf('snowball_ledger')['shift:phase'];
+  const c = ctx(evo(), { ratio: 0.3 });
+  for (let i = 0; i < 7; i++) h({ phase: 'settle', index: i }, c);
+  assert.equal(c.data.watches, 4);
+});
+
+test('evolution: Last Gasp+ ×1.6, Gilded Chip+ ×1.4 / ×0.8, False Ceiling+ House Limit ×2.9', () => {
+  const lastWatch = { segment: { index: 2, count: 3 } };
+  near(payoutOf(E.ENGINE_DYNAMIC_EFFECTS.last_gasp(live(evo(), { phase: 'lastCall', ...lastWatch }))).m, 1.6);
+  near(payoutOf(E.ENGINE_DYNAMIC_EFFECTS.gilded_chip(live(evo()), { ctx: { betFrac: 1 } })).m, 1.4);
+  near(payoutOf(E.ENGINE_DYNAMIC_EFFECTS.gilded_chip(live(evo()), { ctx: { betFrac: 0.2 } })).m, 0.8);
+  near(payoutOf(E.ENGINE_DYNAMIC_EFFECTS.gilded_chip(live({}), { ctx: { betFrac: 0.2 } })).m, 0.9);
+  // the declarative 2.4 plus the evolved correction gives 2.9
+  const base = E.ENGINE_DYNAMIC_EFFECTS.false_ceiling(live({}));
+  assert.deepEqual(base, []);
+  const corr = E.ENGINE_DYNAMIC_EFFECTS.false_ceiling(live(evo()));
+  near(2.4 * corr[0].value, 2.9);
+});
+
+test('evolution: Understudy+ copies the two most expensive targets, the base copies one', () => {
+  // Capacitor (42) and Pressure Valve (20) are owned; Pressure Valve has 3 Pressure.
+  const owned = [
+    { id: 'understudy', stacks: 1 },
+    { id: 'capacitor', stacks: 1, data: {} },
+    { id: 'pressure_valve', stacks: 1, data: { pressure: 3 } },
+  ];
+  const dyn = E.ENGINE_DYNAMIC_EFFECTS.understudy;
+  near(payoutOf(dyn(live({}, { charms: owned }))).m, 1);
+  near(payoutOf(dyn(live(evo(), { charms: owned }))).m, 1.3);
+});
+
+test('evolution: an evolved charm\'s bag is read by the engine, so Understudy copies the evolved target', () => {
+  const owned = [{ id: 'understudy', stacks: 1 }, { id: 'pressure_valve', stacks: 2, data: evo({ pressure: 10 }) }];
+  near(payoutOf(E.ENGINE_DYNAMIC_EFFECTS.understudy(live(evo(), { charms: owned }))).m, 1 + 0.14 * 10);
+});

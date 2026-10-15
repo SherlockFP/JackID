@@ -148,7 +148,7 @@ export function baseQuota(index: number): number { return nightDef(index).base; 
  * Floor event per Watch (wave 43): the chance each Watch from Night 1 rolls one short event (seeded, see `watchEvents.ts`).
  * Boss Nights roll none.
  */
-export const WATCH_EVENT_CHANCE = 0.6;
+export const WATCH_EVENT_CHANCE = 0.75;
 
 /**
  * Pawn price scale f(night) (Wave 20). A charm costs `def.price × SI × f`. f never raises a price: it is 1 until the dearest

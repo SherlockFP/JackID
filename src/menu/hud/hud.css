@@ -84,6 +84,7 @@
 .hud .payout .down { color: #ff7a6a; }
 .hud .payout .flat { color: #ece4d0; }
 .hud .payout .tot { font-size: 1.1em; }
+.hud .payout .note { flex-basis: 100%; font-size: .8em; color: #d8cfb8; }
 
 /* right edge: buffs */
 /* top: never above the top band's bottom edge (--hud-top-h), so the NIGHT PLAN panel under the quota is not covered */

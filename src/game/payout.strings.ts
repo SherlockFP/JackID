@@ -8,6 +8,7 @@ export default {
     'mood': 'MOOD',
     'favour': 'FAVOUR',
     'witch': 'WITCHING',
+    'note': 'every win is multiplied by this',
   },
   tr: {
     'label': 'ÖDEME',
@@ -16,5 +17,6 @@ export default {
     'mood': 'KASA HAVASI',
     'favour': 'GÖZDE',
     'witch': 'CADI SAATİ',
+    'note': 'her kazanç bununla çarpılır',
   },
 };

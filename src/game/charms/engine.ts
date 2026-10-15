@@ -11,8 +11,9 @@ import type { Rng } from '@/core/rng';
 import { CHARM_DATA, LAUNCH_CHARM_IDS, SUIT_SCALED_CHARMS } from '@/game/data/charms';
 import { BEHAVIOURS, DYNAMIC_EFFECTS as BASE_DYNAMIC, type DynamicEffects } from './behaviours';
 import { ENGINE_BEHAVIOURS, ENGINE_DYNAMIC_EFFECTS } from './engines';
-import { CHARM_ENGINE_DATA } from '@/game/data/charmsEngines';
+import { CHARM_ENGINE_DATA, ENGINE_CHARM_IDS } from '@/game/data/charmsEngines';
 import { rollRarity, type ShopRarity } from '@/game/economy';
+import { activeSets, SET_EFFECTS, type SetId } from './sets';
 
 /** Per-instant effects: base table plus the engine charms (wave 8). */
 const DYNAMIC_EFFECTS: Readonly<Record<string, DynamicEffects>> = { ...BASE_DYNAMIC, ...ENGINE_DYNAMIC_EFFECTS };
@@ -38,6 +39,11 @@ function bagOf(state: CharmState): Record<string, Json> {
   const fresh: Record<string, Json> = {};
   state.data = fresh;
   return fresh;
+}
+
+/** A charm at its second stack is evolved: its bag says so (the engine tunes and the peg read the flag). */
+function markEvolved(state: CharmState): void {
+  if ((state.stacks ?? 1) >= 2) bagOf(state).evo = true;
 }
 
 export interface CharmHost {
@@ -78,6 +84,7 @@ export class Charms implements ModProvider {
     if (existing) {
       if ((existing.stacks ?? 1) >= (def.maxStacks ?? 1)) return false;
       existing.stacks = (existing.stacks ?? 1) + 1;
+      markEvolved(existing);   // an evolution takes no peg
     } else {
       if (this.pegsUsed(pid) >= pegs) return false;
       const list = this.owned.get(pid) ?? [];
@@ -101,7 +108,11 @@ export class Charms implements ModProvider {
 
   /** Replace the whole owned set (save restore). Emits nothing. */
   restore(pid: PlayerId, states: readonly CharmState[]): void {
-    this.owned.set(pid, states.filter((s) => DEFS.has(s.id)).map((s) => ({ id: s.id, stacks: s.stacks ?? 1, data: s.data })));
+    this.owned.set(pid, states.filter((s) => DEFS.has(s.id)).map((s) => {
+      const state: CharmState = { id: s.id, stacks: s.stacks ?? 1, data: s.data };
+      markEvolved(state);
+      return state;
+    }));
     this.host.touch();
   }
 
@@ -131,7 +142,9 @@ export class Charms implements ModProvider {
       const scaled = SUIT_SCALED_CHARMS.has(state.id) && def.tag
         ? (def.effects ?? []).map((e) => ({ ...e, value: e.value * this.suitHeld(pid, def.tag as string) }))
         : (def.effects ?? []);
-      const effects = dyn ? [...scaled, ...dyn({ data: bagOf(state), run: this.host.run(), pid }, q)] : scaled;
+      const all = dyn ? [...scaled, ...dyn({ data: bagOf(state), run: this.host.run(), pid }, q)] : scaled;
+      // Engine charms tune themselves per evolution (their numbers already hold the second stack): no per-stack scaling.
+      const effects = ENGINE_CHARM_IDS.has(state.id) ? all.map((e) => ({ ...e, perStack: false })) : all;
       const src: ModSource = {
         kind: 'charm', id: state.id, owner: pid, stacks: state.stacks ?? 1, effects, order,
       };
@@ -140,6 +153,12 @@ export class Charms implements ModProvider {
         src.modify = (hook, machineId, value) => modify(hook, machineId, value, this.ctx(pid, state));
       }
       out.push(src);
+    });
+    // Archetype sets (sets.ts): each set switched on by two owned charms is one more source, after the charms.
+    const sets: readonly SetId[] = activeSets(list, (id) => DEFS.get(id)?.tags);
+    sets.forEach((set, i) => {
+      const effects = SET_EFFECTS[set];
+      if (effects.length) out.push({ kind: 'charm', id: `set.${set}`, owner: pid, stacks: 1, effects: [...effects], order: list.length + i });
     });
   }
 

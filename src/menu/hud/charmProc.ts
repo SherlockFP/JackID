@@ -4,13 +4,16 @@
  *  - `createProcPops(root)`: gold pop text ("×1.48") stacked near the top centre of the screen.
  *  - `pegBadge(id, data)`: the charm's `badge(data)` as short peg face text, "3/8" ('' = none).
  *  - `pegLabel(id, data)`: the full localised readout, "PRESSURE 3/8 · next win ×1.3" (for the peg's hover title).
+ *  - An evolved engine charm (its bag has `evo`, wave 7) shows a "+" on its peg and "EVOLVED" first in its label.
+ *  - `renderSetChips(root, sets)`: the active archetype sets (sets.ts) as small chips in the peg strip.
  */
 import { app } from '@/core/app';
 import { type I18nVars, lang, t } from '@/core/i18n';
 import type { Json } from '@/core/types';
 import { h } from '@/core/ui/widgets';
 import { charmDef } from '@/game/charms/engine';
-import { ENGINE_RATES } from '@/game/charms/engines';
+import { type EngineTune, isEvo, tuneOf } from '@/game/charms/engines';
+import { type SetId } from '@/game/charms/sets';
 
 const MAX_POPS = 4;
 const POP_LIFE_MS = 900;
@@ -27,20 +30,20 @@ export function playProcTick(tier: number): void {
 }
 
 /**
- * Engine counter readouts. `max` is the cap of the raw count; `next` is the multiplier the next win pays at count n,
- * `pct` the bonus percent at count n. Rates come from `ENGINE_RATES` so the label cannot drift from the payout.
+ * Engine counter readouts. `max` is the cap of the raw count (per tune: base or evolved); `next` is the multiplier the next
+ * win pays at count n, `pct` the bonus percent at count n. Rates come from the tune, so the label cannot drift from the payout.
  */
 interface Readout {
-  max: number;
-  next?: (n: number) => number;
-  pct?: (n: number) => number;
+  max: (tu: EngineTune) => number;
+  next?: (n: number, tu: EngineTune) => number;
+  pct?: (n: number, tu: EngineTune) => number;
 }
 const READOUTS: Readonly<Record<string, Readout>> = {
-  suit_ladder: { max: 6, next: (n) => 1 + ENGINE_RATES.rung * n },
-  pressure_valve: { max: 8, next: (n) => 1 + ENGINE_RATES.pressure * n },
-  capacitor: { max: 6, next: (n) => 1 + ENGINE_RATES.charge * n },
-  lampwick: { max: 6, pct: (n) => Math.round(ENGINE_RATES.wickHot * n * 100) },
-  snowball_ledger: { max: 3, pct: (n) => Math.round(ENGINE_RATES.watchInterest * n * 100) },
+  suit_ladder: { max: (tu) => tu.rungMax, next: (n, tu) => 1 + tu.rung * n },
+  pressure_valve: { max: (tu) => tu.pressureMax, next: (n, tu) => 1 + tu.pressure * n },
+  capacitor: { max: (tu) => tu.chargeMax, next: (n, tu) => 1 + tu.charge * n },
+  lampwick: { max: (tu) => tu.wickMax, pct: (n, tu) => Math.round(tu.wickHot * n * 100) },
+  snowball_ledger: { max: (tu) => tu.watchMax, pct: (n, tu) => Math.round(tu.watchInterest * n * 100) },
 };
 
 const bagOf = (data: Json | undefined): Record<string, Json> =>
@@ -58,28 +61,60 @@ function fmtX(m: number): string {
   return lang() === 'tr' ? s.replace('.', ',') : s;
 }
 
-/** Short peg face text from the charm's `badge(data)`: "3/8" for counters, "+16%" for wicks. '' when the charm shows none. */
+/**
+ * Short peg face text from the charm's `badge(data)`: "3/8" for counters, "+16%" for wicks. '' when the charm shows none.
+ * An evolved charm adds "+" after it ("3/10+"), or shows "+" alone when it has no count.
+ */
 export function pegBadge(id: string, data: Json | undefined): string {
-  const v = charmDef(id)?.badge?.(bagOf(data));
+  const bag = bagOf(data);
+  const text = pegCountText(id, charmDef(id)?.badge?.(bag), tuneOf(bag));
+  if (!isEvo(bag)) return text;
+  return text ? `${text}+` : '+';
+}
+
+function pegCountText(id: string, v: Json | null | undefined, tu: EngineTune): string {
   if (v === null || v === undefined || v === '' || v === 0) return '';
   if (typeof v !== 'number') return String(v);
   const r = READOUTS[id];
-  if (r?.pct) return `+${r.pct(v)}%`;
-  return r ? `${v}/${r.max}` : String(v);
+  if (r?.pct) return `+${r.pct(v, tu)}%`;
+  return r ? `${v}/${r.max(tu)}` : String(v);
 }
 
 /**
  * Full readable peg label for an engine counter, localised: "PRESSURE 3/8 · next win ×1.3", "WICKS 2/6 · Hot +16%".
- * '' when the charm has no live count (the peg then shows its initial). For the peg's hover title.
+ * '' when the charm has no live count (the peg then shows its initial). For the peg's hover title. An evolved charm
+ * leads with "EVOLVED"; without a count it reads "EVOLVED · <what the evolution does>".
  */
 export function pegLabel(id: string, data: Json | undefined): string {
+  const bag = bagOf(data);
+  const evo = isEvo(bag);
   const r = READOUTS[id];
   const n = countOf(id, data);
-  if (!r || n <= 0) return '';
-  const vars: I18nVars = { n, max: r.max };
-  if (r.next) vars.x = fmtX(r.next(n));
-  if (r.pct) vars.pct = r.pct(n);
-  return t(`hud.charm.peg.${id}`, vars);
+  if (!r || n <= 0) return evo ? `${t('hud.evo.label')} · ${t(`hud.evo.${id}`)}` : '';
+  const tu = tuneOf(bag);
+  const vars: I18nVars = { n, max: r.max(tu) };
+  if (r.next) vars.x = fmtX(r.next(n, tu));
+  if (r.pct) vars.pct = r.pct(n, tu);
+  const line = t(`hud.charm.peg.${id}`, vars);
+  return evo ? `${t('hud.evo.label')} · ${line}` : line;
+}
+
+/** A set's name as its chip shows it, localised ("Hot Set"). */
+export function setChipName(id: SetId): string { return t(`hud.set.${id}.name`); }
+
+/**
+ * Shows the active archetype sets as small chips in `root` (the strip of pegs), replacing the chips already there. A set
+ * off is simply not in `sets`, so its chip goes. Each chip's hover text is the set's bonus.
+ */
+export function renderSetChips(root: HTMLElement, sets: readonly SetId[]): void {
+  for (const old of root.querySelectorAll('.set-chip')) old.remove();
+  for (const s of sets) {
+    const chip = h('span', 'set-chip', root, setChipName(s));
+    chip.title = t(`hud.set.${s}.desc`);
+    chip.style.cssText = 'display:inline-block;margin:0 calc(var(--u) * 3) calc(var(--u) * 2) 0;padding:calc(var(--u) * 1) calc(var(--u) * 3);'
+      + 'font-size:calc(var(--u) * 7);line-height:1.2;color:#1b1206;background:#ffd23c;border:calc(var(--u) * 1) solid #000;'
+      + 'box-shadow:calc(var(--u) * 2) calc(var(--u) * 2) 0 #000;pointer-events:none;white-space:nowrap;';
+  }
 }
 
 /**

@@ -15,6 +15,9 @@ export type EngineArchetype = (typeof ENGINE_ARCHETYPES)[number];
 export const SUIT_FAMILY_TAGS = ['reels', 'cards', 'dice', 'wheels', 'drops', 'curios'] as const;
 export type SuitFamily = (typeof SUIT_FAMILY_TAGS)[number];
 
+/** Every engine charm can be evolved once: the Pawn offers a copy marked EVOLVE, and the second stack upgrades its numbers. */
+export const ENGINE_MAX_STACKS = 2;
+
 const fx = (hook: ModEffect['hook'], op: ModEffect['op'], value: number): ModEffect => ({ hook, op, value });
 
 function engine(
@@ -22,7 +25,7 @@ function engine(
   en: [string, string], tr: [string, string], effects: ModEffect[] = [],
 ): CharmDef {
   return {
-    id, rarity, price, icon: 'charm', unlock, tags: [archetype], effects,
+    id, rarity, price, icon: 'charm', unlock, tags: [archetype], effects, maxStacks: ENGINE_MAX_STACKS,
     strings: { en: { name: en[0], desc: en[1] }, tr: { name: tr[0], desc: tr[1] } },
   };
 }

@@ -142,7 +142,7 @@ export function createHud(): Hud {
   let payoutKey = '';
   let payoutLeft = 0;
   // NIGHT PLAN (under the quota), four lines: the Night's due, the bank and its projection at Dawn (banked coins only), the
-  // pocket (not counted), and the Watch with how it ends (pulls, clock, the Bell). Between Watches the last line names the next one.
+  // pocket (to deposit, so it counts), and the Watch with how it ends (pulls, clock, the Bell). Between Watches the last line names the next one.
   const plan = h('div', 'plan hidden', topR);
   const planHead = h('span', 'ph', plan);
   const planBank = h('span', 'pb', plan);
@@ -481,9 +481,11 @@ export function createHud(): Hud {
     payout.replaceChildren();
     h('span', `tot ${view.totalTone}`, payout, `${label} ${view.totalText}`);
     for (const p of view.parts) {
+      if (p.tone === 'flat') continue; // a zero part (MOOD 0%) adds nothing to the win: not shown
       h('span', 'sep', payout, '·');
       h('span', p.tone, payout, p.text);
     }
+    h('span', 'note', payout, t('payout.note'));
   }
 
   /**
@@ -517,9 +519,8 @@ export function createHud(): Hud {
     setText(planHead, t('hud.plan.head', { q: money(due) }));
     setCls(plan, 'ok', p.met);
     setCls(plan, 'gap', !p.met);
-    setText(planBank, p.met
-      ? t('hud.plan.bank', { b: money(bank.balance), p: money(p.projected) })
-      : t('hud.plan.bankShort', { b: money(bank.balance), p: money(p.projected), g: money(p.gap) }));
+    // Green when the projection covers the quota, red otherwise (the plan classes below); one wording for both.
+    setText(planBank, t('hud.plan.bank', { p: money(p.projected), q: money(due) }));
     setCls(planPocket, 'hidden', pocket <= 0);
     setText(planPocket, t('hud.plan.pocket', { p: money(pocket) }));
     setText(planEnds, interm
