@@ -4,7 +4,8 @@
  * the focused entry's description (and the credits / quit card when opened).
  * Roll the die with the arrow keys / WASD, the mouse wheel, or by dragging it; a click on the face toward the camera
  * (or Enter / Space) selects it. A face that is not toward the camera is rolled to on click.
- * When a run is saved, the QUIT face becomes CONTINUE RUN. Key I opens the credits (they have no face).
+ * When a run is saved, the QUIT face becomes CONTINUE RUN. The credits have no face: key I, or the CREDITS button under
+ * the SETTINGS face's text, opens them (a press closes them and returns to the die).
  * SETTINGS opens the full settings screen. PLAY runs the burst-out and enters the Debt Run (via the kit picker).
  *
  * Keep the factory name `createMenuState` (main.ts). Owner: MENU-3D.
@@ -18,6 +19,7 @@ import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
 import { hashSeed, randomSeed } from '@/core/rng';
 import { psxMaterial } from '@/core/renderer/psxMaterial';
+import { crispRaycaster, crispTexture, markCrisp, releaseCrisp } from '@/core/ui/textOverlay';
 import { openSettingsScreen } from '@/core/ui/settingsScreen';
 import { openKitPicker } from './kitPicker';
 import { openFoundations } from './foundations';
@@ -26,7 +28,7 @@ import { buildBackdrop, type Backdrop } from './menuBackdrop';
 import { buildCabinet, DIE_CENTER, type Cabinet } from './menuCabinet';
 import { MenuDie, easeOutBack, type DieHit } from './menuDie';
 import { MenuBurst } from './menuBurst';
-import { makeCanvasTex, paintDieFace, paintPanel, paintValueFace, type CanvasTex } from './menuArt';
+import { makeCanvasTex, paintDieFace, paintPanel, paintValueFace, PANEL_BUTTON, type CanvasTex, type PanelOpts } from './menuArt';
 
 // Face order = BoxGeometry groups (+X, -X, +Y, -Y, +Z, -Z): PLAY faces you, MULTIPLAYER is one roll right, SETTINGS left,
 // FREE CASINO up, QUIT down (CONTINUE RUN takes that face while a run is saved), FOUNDATIONS round the back.
@@ -37,9 +39,10 @@ type MainItem = typeof MAIN_FACES[number];
 /** What a main-die face shows: its entry, or CONTINUE RUN on the QUIT face while a run is saved. */
 type FaceItem = MainItem | 'continue';
 type SetItem = typeof SET_FACES[number];
-/** The 3D text panel under the glass: a 480 x 240 texture on a 3.2 x 1.6 m plane. It sits between the die's bottom
- *  edge (about y -1.2) and the casino floor, which hides anything below about y -2.9 at this depth. */
-const PANEL_PX = { w: 480, h: 240 };
+/** The 3D text panel under the glass: a 960 x 480 texture on a 3.2 x 1.6 m plane. It sits between the die's bottom
+ *  edge (about y -1.2) and the casino floor, which hides anything below about y -2.9 at this depth. The panel is drawn
+ *  in the crisp (native-resolution) pass, so the text is not smeared by the PSX low-res target. */
+const PANEL_PX = { w: 960, h: 480 };
 const PANEL_M = { w: 3.2, h: 1.6 };
 const PANEL_AT = new THREE.Vector3(0, -2.07, 1.31);   // in front of the cabinet's bottom bezel and the glass (GLASS_Z 1.16)
 /** The JACKID marquee (the cabinet paints it; its own plane stays hidden): 512 x 96 texture on the same aspect. */
@@ -65,19 +68,6 @@ interface Press { x: number; y: number; lastX: number; lastY: number; die: MenuD
 
 const easeOut = (k: number): number => 1 - Math.pow(1 - k, 3);
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
-
-function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number, px: number): string[] {
-  ctx.font = `${px}px "VT323", monospace`;
-  const out: string[] = [];
-  let line = '';
-  for (const word of text.split(' ')) {
-    const trial = line ? `${line} ${word}` : word;
-    if (ctx.measureText(trial).width <= maxW || !line) line = trial;
-    else { out.push(line); line = word; }
-  }
-  if (line) out.push(line);
-  return out;
-}
 
 export function createMenuState(): AppStateHandler<'menu'> {
   const scene = new THREE.Scene();
@@ -107,13 +97,14 @@ export function createMenuState(): AppStateHandler<'menu'> {
   titleMesh.position.copy(TITLE_AT);
   scene.add(titleMesh);
   const panel: CanvasTex = makeCanvasTex(PANEL_PX.w, PANEL_PX.h);
-  panel.tex.magFilter = THREE.LinearFilter;   // text is drawn smaller than its texture: nearest sampling drops strokes
-  panel.tex.minFilter = THREE.LinearFilter;
+  crispTexture(panel.tex);   // linear + mipmapped: the text is drawn smaller than its texture and must not shimmer
   const panelMesh = new THREE.Mesh(new THREE.PlaneGeometry(PANEL_M.w, PANEL_M.h), psxMaterial({ map: panel.tex, color: 0xffffff, lit: false }));
   panelMesh.position.copy(PANEL_AT);
-  scene.add(panelMesh);
+  // the panel lives in its own scene, drawn by the crisp pass (menuState's frame hands it to the renderer as the overlay)
+  const panelScene = new THREE.Scene();
+  panelScene.add(panelMesh);
 
-  const ray = new THREE.Raycaster();
+  const ray = crispRaycaster(new THREE.Raycaster());   // also hits the crisp panel (its CREDITS button)
   const ndc = new THREE.Vector2();
   const tweens: Tween[] = [];
   let phase: Phase = 'main';
@@ -124,6 +115,8 @@ export function createMenuState(): AppStateHandler<'menu'> {
   let hoverDie: MenuDie | null = null;
   let lastHoverSound = -1;
   let lastFocusKey = '';
+  let panelButton = false;                 // the panel now shows the CREDITS button (the SETTINGS face is in front)
+  let infoFrom: 'main' | 'settings' = 'main';   // the phase the credits / quit card came from
   let unsubSettings: (() => void) | null = null;
   let attached = false;
   let sub = false;                         // the Foundations screen is open over the menu
@@ -133,9 +126,12 @@ export function createMenuState(): AppStateHandler<'menu'> {
     tweens.push({ t: 0, dur, fn, done });
   };
 
+  /** The saved run the CONTINUE face offers. Besides the format tag it needs the Watch clock the restore reads
+   *  (`WatchClock.restore(e.clock)`): a hand-made or older save without it would throw on resume, so it is not offered. */
   const savedRun = (): RunSnapshot | null => {
-    const r = app.save.data.resume;
-    return r && (r as { ext?: { v?: number } }).ext?.v === 1 ? r : null;
+    const r = app.save.data.resume as (RunSnapshot & { ext?: { v?: unknown; clock?: { left?: unknown; total?: unknown } } }) | null;
+    const ext = r?.ext;
+    return r && ext?.v === 1 && typeof ext.clock?.left === 'number' && typeof ext.clock?.total === 'number' ? r : null;
   };
 
   const settings = () => app.save.data.settings;
@@ -188,15 +184,19 @@ export function createMenuState(): AppStateHandler<'menu'> {
     setDie.paint(i, (c, w, h) => paintValueFace(c, w, h, { label: t(`menu.face.${item}`), value: v.value, sub: v.sub, lit: false }));
   };
 
-  /** The text panel under the glass: a title, body lines and a hint line (an empty hint is left out). */
-  const paintInfo = (title: string, lines: string[], hint: string, bodyPx = 28): void => {
-    panel.paint((c, w, h) => paintPanel(c, w, h, { title, lines, hint, bodyPx, titlePx: 32, hintPx: 22 }));
+  /** The text panel under the glass (see paintPanel). Any panel without the button clears the CREDITS hit area. */
+  const paintInfo = (o: PanelOpts): void => {
+    panelButton = Boolean(o.button);
+    panel.paint((c, w, h) => paintPanel(c, w, h, o));
   };
 
-  /** The focused entry: its name, its description (up to three lines) and the control hint. */
+  /** The focused entry: its name, its description (two lines at most), the control hint and, on the SETTINGS face,
+   *  the CREDITS button (click it or press I). */
   const paintFocus = (item: string, descKey: string, hintKey: string): void => {
-    const lines = wrapLines(panel.ctx, t(descKey), PANEL_PX.w * 0.86, 28).slice(0, 3);
-    paintInfo(t(`menu.face.${item}`), lines, t(hintKey));
+    paintInfo({
+      title: t(`menu.face.${item}`), body: t(descKey), maxLines: 2, hint: t(hintKey),
+      button: item === 'settings' ? `${t('menu.face.credits')}  (${t('menu.key.credits')})` : undefined,
+    });
   };
 
   /** Description key of a main entry (PLAY says it replaces a saved run). */
@@ -246,7 +246,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
     cab.pullLever();
     cab.spinReels(1.4);
     app.audio.music.stinger('ascend');
-    paintInfo(t('menu.face.play'), [t('menu.burst.toast')], '');
+    paintInfo({ title: t('menu.face.play'), body: t('menu.burst.toast') });
     burst.start();
   };
 
@@ -316,25 +316,22 @@ export function createMenuState(): AppStateHandler<'menu'> {
     setDie.base.copy(DIE_CENTER);
   };
 
-  /** The credits or the quit card, on the 3D panel. Any press closes it (see onKey / onDown). */
+  /** The credits or the quit card, on the 3D panel. Any press closes it (see onKey / onDown); the card returns to the
+   *  die it came from (the credits open from the SETTINGS face, or with I from the main die). */
   const openInfo = (kind: 'credits' | 'quit'): void => {
-    if (phase !== 'main') return;
+    if (phase !== 'main' && phase !== 'settings') return;
+    infoFrom = phase;
     phase = 'info';
-    const credits = kind === 'credits';
-    paintInfo(
-      t(credits ? 'menu.credits.title' : 'menu.quit.title'),
-      credits ? t('menu.credits.body').split('|') : [t('menu.quit.body')],
-      t('menu.hint.info'),
-      credits ? 17 : 28,
-    );
+    paintInfo(kind === 'credits'
+      ? { title: t('menu.credits.title'), body: t('menu.credits.body').split('|'), bodyTop: 0.28, bodyH: 0.5, hint: t('menu.hint.info') }
+      : { title: t('menu.quit.title'), body: t('menu.quit.body'), hint: t('menu.hint.info') });
     sfx('chime');
   };
 
   const closeInfo = (): void => {
     if (phase !== 'info') return;
-    phase = 'busy';
     sfx('whoosh');
-    phase = 'main';
+    phase = infoFrom;
     lastFocusKey = '';
   };
 
@@ -411,7 +408,11 @@ export function createMenuState(): AppStateHandler<'menu'> {
       return;
     }
     if (phase !== 'main' && phase !== 'settings') return;
-    if (phase === 'main' && !e.repeat && !mainDie.rolling && k === 'KeyI') { e.preventDefault(); openCredits(); return; }
+    if (k === 'KeyI' && !e.repeat && ((phase === 'main' && !mainDie.rolling) || (phase === 'settings' && !setDie.rolling))) {
+      e.preventDefault();
+      openCredits();
+      return;
+    }
     if (nav) e.preventDefault();
     const enter = k === 'Enter' || k === 'NumpadEnter' || k === 'Space';
     if (phase === 'main') {
@@ -443,6 +444,16 @@ export function createMenuState(): AppStateHandler<'menu'> {
   const pickActive = (die: MenuDie): DieHit | null => {
     ray.setFromCamera(ndc, app.camera);
     return die.pick(ray.intersectObject(die.mesh, false));
+  };
+
+  /** True when the pointer is on the CREDITS button of the panel (the SETTINGS face is in front). Panel uv: y runs up. */
+  const creditsHit = (): boolean => {
+    if (!panelButton || (phase !== 'main' && phase !== 'settings')) return false;
+    ray.setFromCamera(ndc, app.camera);
+    const uv = ray.intersectObject(panelMesh, false)[0]?.uv;
+    if (!uv) return false;
+    const b = PANEL_BUTTON;
+    return Math.abs(uv.x - b.cx) <= b.w / 2 && Math.abs(1 - uv.y - b.cy) <= b.h / 2;
   };
 
   const onDown = (e: PointerEvent): void => {
@@ -480,7 +491,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
       if (face >= 0 && face !== lastHoverSound) sfx('hover', 0.5);
       lastHoverSound = face;
     }
-    app.canvas.style.cursor = hit ? 'pointer' : '';
+    app.canvas.style.cursor = hit || creditsHit() ? 'pointer' : '';
   };
 
   const onUp = (e: PointerEvent): void => {
@@ -492,6 +503,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
       return;
     }
     setNdc(e);
+    if (creditsHit()) { openCredits(); return; }
     const hit = p.hit ?? pickActive(p.die);
     if (!hit || (phase !== 'main' && phase !== 'settings')) return;
     if (p.die.rolling) return;
@@ -567,10 +579,12 @@ export function createMenuState(): AppStateHandler<'menu'> {
         if (key === 'lang' || key === 'vol' || key === 'psx' || key === 'mouseSens') repaintAll();
       });
       attach();
+      markCrisp(panelMesh);
       if (params?.toast) app.ui.toast(params.toast, 'warn');
     },
     exit() {
       detach();
+      releaseCrisp(panelMesh);
       unsubSettings?.();
       unsubSettings = null;
       press = null;
@@ -627,7 +641,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
       camY += (ndc.y * 0.22 - camY) * k;
       app.camera.position.set(camX, 0.12 + camY, dist);
       app.camera.lookAt(camX * 0.4, LOOK_Y, 0);
-      app.renderer.render(scene, app.camera);
+      app.renderer.render(scene, app.camera, { scene: panelScene, camera: app.camera });
     },
   };
 }

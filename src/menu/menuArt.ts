@@ -213,8 +213,74 @@ export function paintValueFace(ctx: CanvasRenderingContext2D, w: number, h: numb
   fitText(ctx, '< >', w / 2, h * 0.86, w * 0.5, w * 0.1, o.lit ? GOLD_HI : GOLD);
 }
 
-/** Left-context / info panel. Lines are already translated; `hint` sits at the bottom. */
-export function paintPanel(ctx: CanvasRenderingContext2D, w: number, h: number, o: { title: string; lines: string[]; hint?: string; bodyPx?: number; titlePx?: number; hintPx?: number; titleColor?: string }): void {
+/** The info panel's CREDITS button, as fractions of the panel (centre x / y, width / height). Painter and picker share it. */
+export const PANEL_BUTTON = { cx: 0.5, cy: 0.68, w: 0.5, h: 0.15 };
+
+/** What the info panel shows. Prose wraps to `maxLines` (the size shrinks to fit); a list keeps its lines. The body block
+ *  sits in `bodyTop..bodyTop+bodyH` (fractions of the panel height). `button` draws the CREDITS button, `hint` the controls line. */
+export interface PanelOpts {
+  title: string;
+  body?: string | string[];
+  /** Older name for a list body (menuCabinet's blank screens). `body` wins when both are given. */
+  lines?: string[];
+  maxLines?: number;
+  hint?: string;
+  button?: string;
+  bodyTop?: number;
+  bodyH?: number;
+}
+
+/** Greedy word wrap at pixel size `px` (VT323). */
+function wrapWords(ctx: CanvasRenderingContext2D, text: string, maxW: number, px: number): string[] {
+  ctx.font = `${px}px ${BODY}`;
+  const out: string[] = [];
+  let line = '';
+  for (const word of text.split(' ')) {
+    const trial = line ? `${line} ${word}` : word;
+    if (ctx.measureText(trial).width <= maxW || !line) line = trial;
+    else { out.push(line); line = word; }
+  }
+  if (line) out.push(line);
+  return out;
+}
+
+/** The largest size (at most `px0`) at which the body fits: lines within `maxW`, the block within `maxH`, prose within `maxLines`. */
+function fitBody(ctx: CanvasRenderingContext2D, body: string | string[], maxW: number, maxH: number, px0: number, maxLines?: number): { px: number; lines: string[] } {
+  for (let px = px0; px > 14; px -= 2) {
+    const lines = typeof body === 'string' ? wrapWords(ctx, body, maxW, px) : body;
+    ctx.font = `${px}px ${BODY}`;
+    const fits = lines.every((l) => ctx.measureText(l).width <= maxW)
+      && (maxLines === undefined || lines.length <= maxLines)
+      && lines.length * px * 1.25 <= maxH;
+    if (fits) return { px, lines };
+  }
+  return { px: 14, lines: typeof body === 'string' ? wrapWords(ctx, body, maxW, 14) : body };
+}
+
+/** A single line in the body face, shrunk until it fits `maxW`. */
+function fitLine(ctx: CanvasRenderingContext2D, text: string, maxW: number, px0: number): number {
+  let px = px0;
+  for (; px > 14; px -= 2) {
+    ctx.font = `${px}px ${BODY}`;
+    if (ctx.measureText(text).width <= maxW) break;
+  }
+  return px;
+}
+
+function drawButton(ctx: CanvasRenderingContext2D, w: number, h: number, label: string): void {
+  const b = PANEL_BUTTON;
+  const x = (b.cx - b.w / 2) * w, y = (b.cy - b.h / 2) * h, bw = b.w * w, bh = b.h * h;
+  ctx.fillStyle = '#2a0a12';
+  ctx.fillRect(x, y, bw, bh);
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = Math.max(3, h / 120);
+  ctx.strokeRect(x + 2, y + 2, bw - 4, bh - 4);
+  fitText(ctx, label, w / 2, b.cy * h, bw * 0.9, bh * 0.5, GOLD_HI);
+}
+
+/** Info panel under the glass (480 x 240 -> 960 x 480 texels; drawn in the crisp pass at native size). Title, body,
+ *  optional CREDITS button, one controls line at the bottom. Every size is fitted, so nothing runs off the frame. */
+export function paintPanel(ctx: CanvasRenderingContext2D, w: number, h: number, o: PanelOpts): void {
   const g = ctx.createLinearGradient(0, 0, 0, h);
   g.addColorStop(0, '#120812');
   g.addColorStop(1, '#050205');
@@ -223,16 +289,17 @@ export function paintPanel(ctx: CanvasRenderingContext2D, w: number, h: number, 
   ctx.fillStyle = 'rgba(255,200,90,0.05)';
   for (let y = 0; y < h; y += 4) ctx.fillRect(0, y, w, 1);
   frame(ctx, w, h, GOLD, w / 40);
-  // title and body sit clear of the inner frame line (about h / 8 down from the top edge)
-  fitText(ctx, o.title, w / 2, h * 0.2, w * 0.86, o.titlePx ?? h * 0.1, o.titleColor ?? GOLD_HI);
-  const px = o.bodyPx ?? Math.round(h * 0.12);
+  // the title and the body sit clear of the inner frame line (about 0.11 h in from each edge)
+  fitText(ctx, o.title, w / 2, h * 0.2, w * 0.86, h * 0.12, GOLD_HI);
+  const { px, lines } = fitBody(ctx, o.body ?? o.lines ?? [], w * 0.86, (o.bodyH ?? 0.27) * h, Math.round(h * 0.12), o.maxLines);
   const step = px * 1.25;
-  let y = h * 0.4;
-  for (const line of o.lines) {
+  let y = (o.bodyTop ?? 0.33) * h + step / 2;
+  for (const line of lines) {
     bodyText(ctx, line, w / 2, y, px, '#f2d9a0', 'center');
     y += step;
   }
-  if (o.hint) bodyText(ctx, o.hint, w / 2, h * 0.84, o.hintPx ?? Math.round(h * 0.07), '#8fd9ff', 'center');   // above the inner frame line
+  if (o.button) drawButton(ctx, w, h, o.button);
+  if (o.hint) bodyText(ctx, o.hint, w / 2, h * 0.835, fitLine(ctx, o.hint, w * 0.86, Math.round(h * 0.1)), '#8fd9ff', 'center');   // above the inner frame line
 }
 
 /** Marquee: the title in gold with a red halo that flickers. */

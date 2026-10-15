@@ -276,8 +276,14 @@ export function createHud(): Hud {
     const z = app.world?.slot(mid)?.zone;
     return z && has(`hud.zone.${z}`) ? t(`hud.zone.${z}`) : '';
   };
-  /** The HOT line: nearest Hot Lamp, its zone, distance and arrow, "+N" for the other Hot Lamps. '' when none. */
-  const hotLine = (list: LampEntry[]): string => {
+  /** The machine's short name for the HOT line: the name without its subtitle ("Blackjack (Yirmi Bir)" → "Blackjack"). */
+  const hotName = (e: LampEntry): string => {
+    const full = machineName(e.machineId);
+    const short = full.replace(/\s*[("«].*$/, '').trim() || full;
+    return lampLabel(short, e.dup);
+  };
+  /** The HOT line: nearest Hot Lamp, its zone (when asked), distance and arrow, "+N" for the other Hot Lamps. '' when none. */
+  const hotLine = (list: LampEntry[], withZone: boolean): string => {
     if (list.length === 0) return '';
     let best: { e: LampEntry; d: number; arrow: string } | null = null;
     for (const e of list) {
@@ -285,23 +291,31 @@ export function createHud(): Hud {
       if (b && (!best || b.d < best.d)) best = { e, ...b };
     }
     const lead = best?.e ?? list[0];
-    const where = lampZone(lead.mid);
+    const where = withZone ? lampZone(lead.mid) : '';
     const parts = [where
-      ? t('hud.lampChase.hotAt', { name: lampName(lead), where })
-      : t('hud.lampChase.hot', { name: lampName(lead) })];
+      ? t('hud.lampChase.hotAt', { name: hotName(lead), where })
+      : t('hud.lampChase.hot', { name: hotName(lead) })];
     if (best) parts.push(t('hud.lampChase.dist', { d: best.d, a: best.arrow }));
     if (list.length > 1) parts.push(`+${list.length - 1}`);
     return parts.join(' · ');
   };
   function renderLamps(): void {
     const v = lampsSeen;
-    const hot = hotLine(v.hot);
+    const hot = hotLine(v.hot, true);
     const cold = v.cold.length ? t('circuit.hud.cold', { name: lampList(v.cold) }) : '';
     setText(lampHot, hot);
     setText(lampCold, cold);
     const none = !hot && !cold && !!v.pocketShort;
     if (none) setText(lampHot, t('lamps.none'));
     setCls(lampsEl, 'hidden', voidOn || seated || (!hot && !cold && !none));
+    if (hot) fitHotLine(v.hot);
+  }
+  /** The HOT line stays one line in the top plate: when the line with its zone would wrap, the zone goes (the short name stays). */
+  function fitHotLine(list: LampEntry[]): void {
+    const wasHidden = lampsEl.classList.contains('hidden');
+    setCls(lampsEl, 'hidden', false);   // measured while shown; a hidden plate reads as zero width
+    if (lampHot.scrollWidth > lampHot.clientWidth + 1) setText(lampHot, hotLine(list, false));
+    setCls(lampsEl, 'hidden', wasHidden);
   }
   function showLamps(v: LampView): void {
     lampsSeen = v;
@@ -517,7 +531,10 @@ export function createHud(): Hud {
     if (key === payoutKey) return;
     payoutKey = key;
     payout.replaceChildren();
-    h('span', `tot ${view.totalTone}`, payout, `${label} ${view.totalText}`);
+    // The total's × sits in its own span: the pixel face's × rides high on the body line, so .mx drops it to the baseline (hud.css).
+    const tot = h('span', `tot ${view.totalTone}`, payout, `${label} `);
+    h('span', 'mx', tot, '×');
+    tot.append(view.totalText.replace('×', ''));
     for (const p of view.parts) {
       if (p.tone === 'flat') continue; // a zero part (MOOD 0%) adds nothing to the win: not shown
       h('span', 'sep', payout, '·');
