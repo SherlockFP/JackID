@@ -151,6 +151,7 @@ export const def: MachineDef = {
       watchEnding: "Watch ending: the lever waits until it settles",
       c_float: 'keeps {n} in pocket (float)',
       allConfirm: "ALL empties your pocket. Press ALL again to confirm",
+      restConfirm: "REST: deposit {n}? Press REST again to confirm",
       c_bank: 'BANK', c_pocket: 'POCKET', c_left: 'LEFT TO PAY', c_metBig: 'QUOTA MET', c_interest: 'BELL INTEREST',
       c_rate: '{r}% A WATCH, MAX +{c}', c_pulls: 'PLAY {n} MORE PULLS FOR IT', c_with: 'WITH THIS: +{n}',
       c_take: 'TAKE OUT', c_lose: 'YOU LOSE', c_loseInt: '-{n} INTEREST EVERY BELL', c_loseNone: 'NO INTEREST LOST',
@@ -229,6 +230,7 @@ export const def: MachineDef = {
       watchEnding: "Nöbet bitiyor: kol, kapanana kadar bekler",
       c_float: 'cepte {n} kalır (yedek akçe)',
       allConfirm: "HEPSİ cebini boşaltır. Onaylamak için HEPSİ'ye tekrar bas",
+      restConfirm: "KALAN: {n} yatırılsın mı? Onaylamak için KALAN'a tekrar bas",
       c_bank: 'BANKA', c_pocket: 'CEP', c_left: 'ÖDENECEK', c_metBig: 'KOTA TAMAM', c_interest: 'ZİL FAİZİ',
       c_rate: 'VARDİYA BAŞI %{r}, EN FAZLA +{c}', c_pulls: 'İÇİN {n} ÇEKİŞ DAHA OYNA', c_with: 'BUNUNLA: +{n}',
       c_take: 'ÇEKİLEN', c_lose: 'KAYBEDERSİN', c_loseInt: 'HER ZİLDE -{n} FAİZ', c_loseNone: 'FAİZ KAYBI YOK',
@@ -259,8 +261,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private lastNight = -1;
   /** Seat HUD overlay (created in init, shown while seated). */
   private seatHud?: SeatHud;
-  /** Seconds an armed ALL stays armed (the second press confirms the float breach). */
-  private allArm = 0;
+  /** An armed two-press deposit (ALL below the float, REST): the key, the amount it showed, and the seconds it stays armed. */
+  private keyArm: { key: KeyId; amount: number; left: number } | null = null;
   /** Seconds an armed END WATCH stays armed (the second press ends the Watch). */
   private bellArm = 0;
   /** Phase last seen by `refresh`: a change clears the typed amount. */
@@ -353,7 +355,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   }
 
   tick(dt: number): void {
-    if (this.allArm > 0) this.allArm = Math.max(0, this.allArm - dt);
+    if (this.keyArm) { this.keyArm.left -= dt; if (this.keyArm.left <= 0) this.keyArm = null; }
     if (this.bellArm > 0) this.bellArm = Math.max(0, this.bellArm - dt);
     this.fitIfBandMoved();
     this.refresh(false);
@@ -389,7 +391,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   /** The typed amount and the armed ALL are per visit and per press: nothing typed earlier may commit later (the stale 44). */
   private clearEntry(): void {
     this.entry = '';
-    this.allArm = 0;
+    this.keyArm = null;
     this.bellArm = 0;
   }
 
@@ -496,6 +498,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     const room = Math.max(0, wallet - floor);
     let amount: number;
     let confirmAll = false;
+    const armed = this.keyArm;                                                 // read before clearEntry() disarms it
     if (key === 'enter') {
       if (this.entry === '') { this.refuse('typeAmount'); return; }
       amount = clampDeposit(customAmount(this.entry), wallet);                 // a typed amount is explicit: it may overpay
@@ -506,13 +509,6 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       if (key === 'rest' && left <= 0) { this.clearEntry(); this.refuse('metNote'); return; }
       this.clearEntry();
       if (key === 'all') {
-        if (floor > 0 && this.allArm <= 0) {                                   // the first press arms it, the second confirms
-          this.allArm = ALL_CONFIRM_SEC;
-          this.sfx('error');
-          this.ctx.ui.toast(this.t('allConfirm'), 'warn');
-          this.refresh(true);
-          return;
-        }
         confirmAll = floor > 0;
         amount = wallet;
       } else {
@@ -526,6 +522,15 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       this.ctx.ui.toast(this.t('floorKept', { n: fmtNum(floor) }), 'sys');
     }
     if (amount <= 0) { this.refuseDeposit('nothing'); return; }
+    // ALL below the Watch's float and REST are two presses: the first arms the amount it shows, the second (same key, same
+    // amount, within ALL_CONFIRM_SEC) deposits it.
+    if ((key === 'rest' || confirmAll) && !(armed && armed.key === key && armed.amount === amount)) {
+      this.keyArm = { key, amount, left: ALL_CONFIRM_SEC };
+      this.sfx('error');
+      this.ctx.ui.toast(key === 'all' ? this.t('allConfirm') : this.t('restConfirm', { n: fmtNum(amount) }), 'warn');
+      this.refresh(true);
+      return;
+    }
     const ok = amount > 0 && this.ctx.run.canAfford(amount, this.selfId);
     const dep = q.deposited + (ok ? amount : 0);
     void this.emit(

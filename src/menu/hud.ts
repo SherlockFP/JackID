@@ -18,6 +18,7 @@ import { claimAnnounce, type UIOverlayX } from '@/core/ui/ui';
 import { COLORS, h, uiSfx } from '@/core/ui/widgets';
 import { circuitView, lampLabel, type LampEntry, type LampView } from '@/game/circuit';
 import { dawnPlan } from '@/game/pace';
+import { watchEventView } from '@/game/watchEvents';
 import type { BankView } from '@/game/run';
 import { inUnderneath } from '@/world/hollow';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
@@ -115,6 +116,10 @@ export function createHud(): Hud {
   const lampsEl = h('div', 'lamps hidden', topC);
   const lampHot = h('span', 'hot', lampsEl);
   const lampCold = h('span', 'cold', lampsEl);
+  // Watch floor event (wave 43): its name, the Minute timer and a Lucky Lamp's pulls, under the Lamps (reuses the lamps style)
+  const watchEl = h('div', 'lamps hidden', topC);
+  const watchTxt = h('span', 'ev', watchEl);
+  watchTxt.style.color = '#ffd060';
   let lampsSeen: LampView = { hot: [], cold: [] };
   /** True while the player is in THE UNDERNEATH: the pit's lamp lines stay hidden there. */
   let voidOn = false;
@@ -320,6 +325,7 @@ export function createHud(): Hud {
   on('quota:failed', () => { addFeed(t('hud.feed.quotaFailed'), 'red'); });
   on('event:start', ({ id }) => { feedNews(t('hud.feed.event', { name: t(`event.${id}.name`) }), 'gold'); });
   on('event:end', ({ id }) => { feedNews(t('hud.feed.eventEnd', { name: t(`event.${id}.name`) }), ''); });
+  on('event:start', ({ id }) => { if (id.startsWith('watch.')) uiSfx('popUp', 0.9); });   // a Watch floor event: its banner comes with a sound
   on('tycoon:milestone', ({ upgrade, level }) => {
     const name = has(`upg.${upgrade}.name`) ? t(`upg.${upgrade}.name`) : upgrade;
     addFeed(t('hud.feed.milestone', { name, n: level }), 'gold');
@@ -599,6 +605,15 @@ export function createHud(): Hud {
     renderLamps();
   }
 
+  /** Watch floor event: name, Minute timer, and a Lucky Lamp's pulls left. Hidden between Watches and on boss Nights. */
+  function updateWatchEvent(): void {
+    const v = watchEventView();
+    if (!v) { setCls(watchEl, 'hidden', true); return; }
+    const pulls = v.pulls !== null ? `  ${t('event.watch.hud.pulls', { n: v.pulls })}` : '';
+    setText(watchTxt, `${t(`event.watch.${v.id}.name`)}  ${mmss(v.leftS)}${pulls}`);
+    setCls(watchEl, 'hidden', false);
+  }
+
   function updateDread(): void {
     const d = app.run ? Math.max(0, Math.min(1, app.run.dread())) : 0;
     dread.style.opacity = String(Math.min(1, 0.35 * d));
@@ -618,6 +633,7 @@ export function createHud(): Hud {
       updatePhone(dt);
       updateVoid();
       updateLamps(dt);
+      updateWatchEvent();
       updateFeed(dt);
       updateDread();
     },

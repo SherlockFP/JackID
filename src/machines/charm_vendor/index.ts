@@ -112,6 +112,7 @@ export const def: MachineDef = {
       curseNote: 'Cursed: the house pays you to take it. It cannot be sold back.',
       swapOut: 'THIS ONE LEAVES  ·  SELL BACK {n}',
       noDesc: 'No description.',
+      closedNext: 'Window closed — buy at the next intermission',
       stArm: '{key} again to buy · {price}',
       stArmSub: 'Second press within {s} s',
       cConfirm: 'CONFIRM',
@@ -158,6 +159,7 @@ export const def: MachineDef = {
       curseNote: 'Lanetli: ev seni almaya para öder. Geri satılamaz.',
       swapOut: 'BU ÇIKAR  ·  GERİ SATIŞ {n}',
       noDesc: 'Açıklama yok.',
+      closedNext: 'Pencere kapandı — bir sonraki Molada al',
       stArm: '{key} TEKRAR BAS · {price}',
       stArmSub: '{s} sn içinde ikinci kez bas',
       cConfirm: 'ONAYLA',
@@ -219,7 +221,11 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   private tickets(): number { return this.ctx.run.balance('ticket', this.selfId); }
 
   tick(dt: number): void {
-    if (this.swap && !this.open()) this.swap = null;
+    if (!this.open() && (this.armed || this.swap)) {          // the window shut during a buy: say so now, not as a silent drop
+      this.armed = null;
+      this.swap = null;
+      this.toast(this.t('closedNext'), 'warn');
+    }
     const target = this.open() ? 0 : -SHUTTER_DROP;
     const sh = this.parts.shutter;
     sh.position.y += (target - sh.position.y) * Math.min(1, dt * 6);
@@ -323,7 +329,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
    */
   private buy(i: number): void {
     const pawn = this.pawn();
-    if (!pawn || !pawn.open()) { this.armed = null; void this.emit({ k: 'buy', i, charmId: '', price: 0, juice: 'plain', ok: false, why: 'closed' }); return; }
+    if (!pawn || !pawn.open()) { this.armed = null; void this.emit({ k: 'buy', i, charmId: '', price: 0, juice: 'plain', ok: false, why: 'closedNext' }); return; }
     const slot = pawn.stock(this.selfId)[i] ?? null;
     if (!slot) { this.armed = null; void this.emit({ k: 'buy', i, charmId: '', price: 0, juice: 'plain', ok: false, why: 'none' }); return; }
     if (pawn.needsSwap(this.selfId, i)) {                       // pegs full: choose the charm to replace first

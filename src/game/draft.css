@@ -1,0 +1,19 @@
+/* Starter Draft (draft wave): three charm cards before the first Bell. A full-screen veil; the cards wrap onto phone widths. */
+.sd-root { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;
+  background: rgba(4, 3, 2, .78); font-family: var(--f-body, monospace); color: var(--ivory, #e6dec5); }
+.sd-box { width: min(760px, 100%); max-height: 100%; overflow: auto; padding: 16px; box-sizing: border-box;
+  background: #14100c; border: 2px solid var(--amber, #e69431); box-shadow: 0 0 0 2px #000; }
+.sd-title { margin: 0 0 6px; font-family: var(--f-head, monospace); font-size: 12px; font-weight: normal; line-height: 1.4; color: var(--shine, #efd67b); }
+.sd-hint { margin: 0 0 14px; font-size: 18px; line-height: 1.2; color: var(--bone, #c5bda5); }
+.sd-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.sd-card { flex: 1 1 200px; min-width: 0; min-height: 180px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px;
+  box-sizing: border-box; font: inherit; color: inherit; text-align: left; cursor: pointer; background: #1d1712; border: 2px solid #3a2e24; }
+.sd-card:hover, .sd-card:focus-visible { border-color: var(--shine, #efd67b); background: #2a2016; outline: none; }
+.sd-key { font-family: var(--f-head, monospace); font-size: 10px; color: var(--amber, #e69431); }
+.sd-rarity { font-size: 16px; color: var(--bone, #c5bda5); }
+.sd-name { font-family: var(--f-head, monospace); font-size: 11px; line-height: 1.3; color: var(--ivory, #e6dec5); }
+.sd-desc { font-size: 17px; line-height: 1.15; color: var(--bone, #c5bda5); }
+.sd-arch { font-size: 16px; color: #9fe8ff; }
+.sd-take { margin-top: auto; font-family: var(--f-head, monospace); font-size: 10px; color: var(--shine, #efd67b); }
+.sd-timer { margin-top: 12px; font-size: 16px; color: var(--bone, #c5bda5); text-align: right; }
+@media (max-width: 560px) { .sd-card { flex-basis: 100%; min-height: 0; } }

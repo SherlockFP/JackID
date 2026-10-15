@@ -118,6 +118,12 @@ export function closingSeconds(_isLastWatch?: boolean): number { return CLOSING_
 export function baseQuota(index: number): number { return nightDef(index).base; }
 
 /**
+ * Floor event per Watch (wave 43): the chance each Watch from Night 1 rolls one short event (seeded, see `watchEvents.ts`).
+ * Boss Nights roll none.
+ */
+export const WATCH_EVENT_CHANCE = 0.6;
+
+/**
  * Pawn price scale f(night) (Wave 20). A charm costs `def.price Ã— SI Ã— f`. f never raises a price: it is 1 until the dearest
  * Common (`commonTop` base price Ã— SI) would cost more than PAWN_COMMON_QUOTA_SHARE of the Night's base quota, then it brings
  * that Common down to the share. The cheapest charm (a Common) is then at most ~30 % of the quota, and Rares / Legendaries
