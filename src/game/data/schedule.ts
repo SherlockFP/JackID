@@ -46,6 +46,13 @@ export interface NightDef {
  * N5 28-29 %. The pull count barely moves N4 reach (11 pulls: 32 %), so the quota is the lever.
  */
 /**
+ * Wave 46 (director, HOUSE MOOD): the payout mood (houseMood.ts: N1 x1.12 … N8 x0.95) pays the early Nights more, so the human bot
+ * reaches N1-N3 more often and the ladder is re-tuned for the same targets. Human bot, 2000 runs, seed 20261013: quota ladder
+ * 31, 42, 84, 168, 336, 576, 1150, 2300 gives reach N1 88.5 %, N2 72 %, N3 52 %, N4 40 %, N5 35 %, N6 32 %, N7 30 %, N8 28 %.
+ * N5 cannot reach ~30 % under the 2x cap: N5 <= 2 x N4 and N4 <= 2 x N3, so with N3 at 52 % N4 cannot fall below ~40 %, and N5
+ * stays ~35 %. A design call for the director (a higher N3 quota drops N3 under target).
+ */
+/**
  * Wave 42 (director decision 1): interest falls smoothly, one step per Night: 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20 (N1..N8),
  * monotonic, so no Night is a cliff. Overdrawn interest continues the slope (0.20 - 0.04 k, floor 0.04).
  * The quota ladder is then tuned for the same human bot (scripts/sim/run.mjs, 2000 runs, seed 20261013), each step <= 2x and
@@ -69,10 +76,10 @@ export interface NightDef {
  */
 export const BASE_NIGHTS: readonly NightDef[] = [
   { no: 1, floor: 'B7', name: 'first', base: 31, watches: 3, pulls: 7, clock: 150, interest: 0.55, favour: 1.25, si: 1, card: 0 },
-  { no: 2, floor: 'B6', name: 'second', base: 38, watches: 3, pulls: 7, clock: 150, interest: 0.50, favour: 1.15, si: 3, card: 3 },
-  { no: 3, floor: 'B5', name: 'third', base: 72, watches: 3, pulls: 8, clock: 165, interest: 0.45, favour: 1.07, si: 10, card: 3 },
-  { no: 4, floor: 'B4', name: 'fourth', base: 144, watches: 3, pulls: 9, clock: 165, interest: 0.40, favour: 1, si: 30, card: 4 },
-  { no: 5, floor: 'B3', name: 'fifth', base: 288, watches: 4, pulls: 8, clock: 180, interest: 0.35, favour: 1, si: 100, card: 4 },
+  { no: 2, floor: 'B6', name: 'second', base: 42, watches: 3, pulls: 7, clock: 150, interest: 0.50, favour: 1.15, si: 3, card: 3 },
+  { no: 3, floor: 'B5', name: 'third', base: 84, watches: 3, pulls: 8, clock: 165, interest: 0.45, favour: 1.07, si: 10, card: 3 },
+  { no: 4, floor: 'B4', name: 'fourth', base: 168, watches: 3, pulls: 9, clock: 165, interest: 0.40, favour: 1, si: 30, card: 4 },
+  { no: 5, floor: 'B3', name: 'fifth', base: 336, watches: 4, pulls: 8, clock: 180, interest: 0.35, favour: 1, si: 100, card: 4 },
   { no: 6, floor: 'B2', name: 'sixth', base: 576, watches: 4, pulls: 9, clock: 180, interest: 0.30, favour: 1, si: 300, card: 4 },
   { no: 7, floor: 'B1', name: 'seventh', base: 1150, watches: 4, pulls: 9, clock: 195, interest: 0.25, favour: 1, si: 1000, card: 4 },
   { no: 8, floor: 'G', name: 'final', base: 2300, watches: 4, pulls: 10, clock: 210, interest: 0.20, favour: 1, si: 3000, card: 5 },

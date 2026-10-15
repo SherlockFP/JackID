@@ -65,6 +65,10 @@
 // Also modelled: House Favour (x1.25 / 1.15 / 1.07 on Nights 1-3), the Witching Watch +5 %, the activity float (never bet into the
 // 3 pulls the next Watches need). --no-favour switches Favour off; --trace N prints the first N runs Night by Night.
 //
+// WAVE 46 (director, HOUSE MOOD): every settle's payout is multiplied by the Night's mood (houseMood.ts: N1 x1.12, N2 x1.07, N3 x1.03,
+// N4 x1.00, N5 x0.98, N6 x0.97, N7 x0.96, N8 x0.95); `--no-mood` switches it off. The quota ladder is 31, 42, 84, 168, 336, 576, 1150, 2300
+// (schedule.ts). Human 2000 runs (seed 20261013): reach 88.5 / 72 / 52 / 40 / 35 / 32 / 30 / 28 %; without the mood (`--no-mood`, the old
+// ladder) N1 86.8. N5 ~30 is not reachable under the 2x ladder cap (see schedule.ts, wave 46).
 // WAVE 42 (director): interest 0.55, 0.50, 0.45, 0.40, 0.35, 0.30, 0.25, 0.20 (schedule.ts), and the quota ladder 31, 44, 88, 176, 352,
 // 704, 1408, 2816 (each step at most 2x). Human 2000 runs (seed 20261013): reach 86 / 66 / 50 / 39 / 33 / 29 / 26 / 23 %. The
 // targets (N1 85, N2 ~70, N3 ~50, N5 ~30, N8 ~8-12) hold for N1-N3; N5 and N8 do not, and no ladder under the 2x cap can make them:
@@ -160,6 +164,8 @@ const SHOP = await load('src/game/shop.ts');
 const STAMPS = await load('src/game/stamps.ts');
 const SUITS = await load('src/game/suits.ts');
 const MT = await load('src/game/modifiers.types.ts');
+const HM = await load('src/game/houseMood.ts');   // HOUSE MOOD (wave 46): the Night's payout multiplier on every floor machine
+const NO_MOOD = args.includes('--no-mood');
 const CHD = await load('src/game/data/charms.ts');
 const OVERRIDE = { quotas: list('--quotas'), interest: list('--interest'), pulls: list('--pulls'), si: list('--si'), favour: list('--favour') };
 const START_POCKET = Number(argVal('--start', SCH.START.pocket));
@@ -575,7 +581,7 @@ function playRun(bot, runIdx) {
         const cf = charmFactors(S, pick, ctx);
         const gross = def.headless(rng, bet, hooksFor(S, pick.machineId)).gross;
         const witch = SCH.isWitchingWatch(nd.watches, w) ? 0.05 : 0;
-        const credited = ECO.settlePayout({ gross, bet, A: cf.A + witch, M: lampF * tiltF * cf.M * (NO_FAVOUR ? 1 : nd.favour), flat: 0, quota: due, limitMult: fx0.limitMult }).credited;
+        const credited = ECO.settlePayout({ gross, bet, A: cf.A + witch, M: lampF * tiltF * cf.M * (NO_FAVOUR ? 1 : nd.favour) * (NO_MOOD ? 1 : HM.houseMoodMult(idx)), flat: 0, quota: due, limitMult: fx0.limitMult }).credited;
         S.pocket += credited;
         TOT.wagered += bet; TOT.credited += credited; TOT.plays += 1;
         NIGHT_RTP.wagered[idx] += bet; NIGHT_RTP.credited[idx] += credited;

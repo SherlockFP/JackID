@@ -80,6 +80,7 @@ import pullsStrings from './pulls.strings';
 import bankStrings from './bank.strings';
 import draftStrings from './draft.strings';
 import { STARTER_TIMEOUT_SEC, starterOffer } from './draft';
+import { houseMoodProvider } from './houseMood';
 import { WatchEvents, type WatchEventSave } from './watchEvents';
 import type { EventBannerShow } from './buffs/banner';
 import type { IdleReport, TycoonState } from '@/game/types';
@@ -786,6 +787,8 @@ class Run implements DebtRun {
         if (effs.length) out.push({ kind: 'house', id: `night:${this.index + 1}`, owner: 0, effects: effs });
       },
     });
+    // HOUSE MOOD (wave 46): the Night's payout mood on every floor machine, in the same quota Watches as House Favour.
+    this.modsImpl.register(houseMoodProvider({ index: () => this.index, active: () => this.rules.quota && this.inWatch() }));
 
     this.circuit = this.makeCircuitView();
     this.modsImpl.register(this.makeCircuitProvider());

@@ -24,7 +24,8 @@ import { inUnderneath } from '@/world/hollow';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { InstanceId, PlayerId } from '@/core/types';
 import { initial, mmss, Roller, signed, wallClock } from './hud/fmt';
-import { createProcPops, goldBurst, pegBadge, playProcTick } from './hud/charmProc';
+import { createProcPops, goldBurst, pegBadge, pegLabel, playProcTick } from './hud/charmProc';
+import { houseMoodLine } from '@/game/houseMood';
 import './hud/hud.css';
 import { nightPaid } from '@/machines/debt_terminal/night';
 import { SeatHud } from '@/machines/_base/seatHud';
@@ -132,6 +133,10 @@ export function createHud(): Hud {
   const quotaBar = h('div', 'bar', quota);
   const quotaFill = h('i', '', quotaBar);
   const quotaShort = h('span', 'short', quota, '');
+  // HOUSE MOOD (wave 46): the Night's payout mood under the quota, coloured by its sign. Shown in the quota Watches only.
+  const moodLine = h('div', 'hb mood hidden', topR);
+  moodLine.style.cssText = 'margin-top:2px;padding:1px 8px;font-size:12px;letter-spacing:.06em;white-space:nowrap';
+  let moodKey = '';
   // NIGHT PLAN (under the quota), four lines: the Night's due, the bank and its projection at Dawn (banked coins only), the
   // pocket (not counted), and the Watch with how it ends (pulls, clock, the Bell). Between Watches the last line names the next one.
   const plan = h('div', 'plan hidden', topR);
@@ -163,7 +168,7 @@ export function createHud(): Hud {
   const charms = h('div', 'hb charms', root);
   const charmRow = h('div', 'charm-row', charms);
   let charmKey = '';
-  let pegs: Array<{ face: HTMLElement; base: string; text: string }> = [];
+  let pegs: Array<{ el: HTMLElement; face: HTMLElement; base: string; name: string; text: string; title: string }> = [];
   let lastWin = { idx: 0, at: Number.NEGATIVE_INFINITY };
   const procPops = createProcPops(root);
 
@@ -419,6 +424,22 @@ export function createHud(): Hud {
     setText(quotaShort, met || paid ? '' : t('hud.quota.short', { n: money(Math.max(0, due - dep)) }));
   }
 
+  /** HOUSE MOOD line under the quota (wave 46): shown in a quota Watch in play; written on change only. */
+  function updateMood(): void {
+    const r = app.run;
+    const q = r?.shift.quota();
+    const on = !!r && !!q && q.due > 0 && r.window() === 'watch';
+    const n = r ? r.night() : 0;
+    const key = `${on}|${n}`;
+    if (key === moodKey) return;
+    moodKey = key;
+    setCls(moodLine, 'hidden', !on);
+    if (!on) return;
+    const m = houseMoodLine(n - 1);
+    setText(moodLine, m.text);
+    moodLine.style.color = m.tone === 'generous' ? '#8fe08a' : m.tone === 'tight' ? '#ff7a6a' : '#c9c2b0';
+  }
+
   /**
    * NIGHT PLAN: shown in the Watches (not at Dawn, not once the Night is paid). The projection is the bank compounded over the
    * Settles still to come, plus the pocket. Written on change only; green when it covers the quota, red with the gap otherwise.
@@ -536,12 +557,15 @@ export function createHud(): Hud {
         const el = h('div', 'charm', charmRow);
         el.dataset.id = c.id;
         el.title = name;
-        pegs.push({ face: h('span', 'face', el, initial(name)), base: initial(name), text: '' });
+        pegs.push({ el, face: h('span', 'face', el, initial(name)), base: initial(name), name, text: '', title: '' });
       }
     }
     // Live counters: the face shows the charm's counter (3/6, +16%) when it has one, else its initial. Written on change only.
     for (let i = 0; i < pegs.length && i < list.length; i++) {
       const peg = pegs[i];
+      // The peg's hover title is the full readout ("PRESSURE 3/8 · next win ×1.3"), or the charm name when it has none.
+      const title = pegLabel(list[i].id, list[i].data) || peg.name;
+      if (title !== peg.title) { peg.title = title; peg.el.title = title; }
       const text = pegBadge(list[i].id, list[i].data) || peg.base;
       if (text === peg.text) continue;
       peg.text = text;
@@ -625,6 +649,7 @@ export function createHud(): Hud {
       updateWallet(dt);
       updateClock();
       updateQuota();
+      updateMood();
       updatePlan();
       updateEmpire();
       updateBuffs(dt);

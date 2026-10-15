@@ -38,5 +38,6 @@ import './hollow.test.mjs';
 import './run.hollow.test.mjs';
 import './run.wave41.test.mjs';
 import './run.wave42.test.mjs';
+import './houseMood.test.mjs';
 import './draft.test.mjs';
 import './run.mola.test.mjs';

@@ -26,6 +26,8 @@ const num = (v: Json | undefined): number => (typeof v === 'number' && isFinite(
 const mult = (value: number): ModEffect[] => [{ hook: 'payout.mult', op: 'mult', value }];
 const inc = (value: number): ModEffect[] => (value > 0 ? [{ hook: 'payout.mult', op: 'inc', value }] : []);
 const isWin = (p: { gross: number; bet: number }): boolean => p.gross > p.bet;
+/** Proc label for a payout multiplier, e.g. "×1.3" (two decimals at most). */
+const xLabel = (v: number): string => `×${Math.round(v * 100) / 100}`;
 
 /**
  * Stand-in for `suitOf` from `src/game/suits.ts` (that file has not landed). Reads the suit family from a play's
@@ -65,11 +67,14 @@ export const ENGINE_BEHAVIOURS: Readonly<Record<string, Behaviour>> = {
     badge: (d) => num(d.rungs) || null,
     on: {
       'machine:result': (p, c) => {
+        // The win's payout read the Rungs before this play, so the proc uses the count from before this handler moves them.
+        const before = num(c.data.rungs);
+        if (isWin(p) && before > 0) c.proc(before, xLabel(1 + ENGINE_RATES.rung * before));
         const suit = suitOfTags(p.tags) ?? suitOf(p.machineId)?.toLowerCase() ?? null;
         if (!suit) return;
         const last = c.data.last;
         if (typeof last === 'string') {
-          c.data.rungs = last === suit ? Math.max(0, num(c.data.rungs) - 3) : Math.min(6, num(c.data.rungs) + 1);
+          c.data.rungs = last === suit ? Math.max(0, before - 3) : Math.min(6, before + 1);
         }
         c.data.last = suit;
       },
@@ -80,7 +85,13 @@ export const ENGINE_BEHAVIOURS: Readonly<Record<string, Behaviour>> = {
     badge: (d) => num(d.pressure) || null,
     on: {
       'machine:result': (p, c) => {
-        c.data.pressure = isWin(p) ? 0 : Math.min(8, num(c.data.pressure) + 1);
+        const before = num(c.data.pressure);
+        if (isWin(p)) {
+          if (before > 0) c.proc(before, xLabel(1 + ENGINE_RATES.pressure * before));
+          c.data.pressure = 0;
+        } else {
+          c.data.pressure = Math.min(8, before + 1);
+        }
       },
     },
   },
@@ -92,7 +103,11 @@ export const ENGINE_BEHAVIOURS: Readonly<Record<string, Behaviour>> = {
         const tilt = circuitView(c.run)?.tilt(p.mid);
         if (!tilt) return;
         if (tilt.hot) {
-          if (isWin(p)) c.data.charge = 0;
+          if (isWin(p)) {
+            const charge = num(c.data.charge);
+            if (charge > 0) c.proc(charge, xLabel(1 + ENGINE_RATES.charge * charge));
+            c.data.charge = 0;
+          }
           return;
         }
         if (tilt.cold || tilt.factor < 1) c.data.charge = Math.min(6, num(c.data.charge) + 1);

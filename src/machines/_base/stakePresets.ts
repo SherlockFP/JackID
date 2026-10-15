@@ -2,7 +2,8 @@
  * Smart stakes (`_base`). Every seated machine starts on the SAFE preset, and the number keys pick a stake from the
  * pocket: 7 = SAFE (~5 %), 8 = BOLD (~15 %), 9 = BIG (~30 %, a second press confirms it, as a high stake does).
  *
- * Each preset is a target share of the pocket, snapped DOWN to the machine's bet ladder. The ladder already carries the
+ * Each preset is a target share of the pocket, rounded UP to the next affordable step of the machine's bet ladder (wave 46).
+ * SAFE never takes a stake of 1 from a 20-coin pocket up (the next step is taken). The ladder already carries the
  * run's stake limit (the Night 1 cap, SI), so a preset never offers a stake the run would refuse. A preset is never below
  * the machine minimum and is always affordable: under HIGH STAKES the x5 round also debits the extra x4 at the start.
  *
@@ -17,6 +18,8 @@ export type StakePresetKey = 'safe' | 'bold' | 'big';
 export const STAKE_PRESET_KEYS: readonly StakePresetKey[] = ['safe', 'bold', 'big'];
 /** Target share of the pocket for each preset (before the ladder snap). */
 export const STAKE_PRESET_SHARE: Readonly<Record<StakePresetKey, number>> = { safe: 0.05, bold: 0.15, big: 0.3 };
+/** From this pocket up, SAFE never takes a stake of 1 (wave 46). */
+export const SAFE_NOT_ONE_POCKET = 20;
 /** The machine action each preset key sends (the seated keymap binds these to Digit7 / Digit8 / Digit9). */
 export const STAKE_PRESET_ACTION: Readonly<Record<StakePresetKey, MachineAction>> = { safe: 'n7', bold: 'n8', big: 'n9' };
 /** BIG waits this long for its second press before it lapses (the same window as the high-stake confirm). */
@@ -67,23 +70,24 @@ export interface StakePresetInput {
 }
 
 /**
- * The three preset stakes for a pocket. Each is the largest affordable ladder step at or below its target share of the
- * pocket; when no affordable step reaches the target, the smallest affordable step (or the machine minimum) is used.
+ * The three preset stakes for a pocket. Each is the smallest affordable ladder step at or above its target share of the
+ * pocket (rounded up). When no affordable step reaches the target, the largest affordable step (or the machine minimum) is used.
  */
 export function stakePresetAmounts(i: StakePresetInput): Record<StakePresetKey, number> {
   const w = Math.max(0, i.pocket);
   const extraMult = Math.max(0, i.hsMult - 1);
   const need = (v: number): number => i.costOf(v) + extraMult * v;
   const ok = i.ladder.filter((v) => v >= i.min && need(v) <= w).sort((a, b) => a - b);
-  const pick = (target: number): number => {
-    let best = ok.length ? ok[0] : i.min;
-    for (const v of ok) if (v <= target) best = v;
-    return best;
+  // SAFE skips a stake of 1 from a 20-coin pocket up, when a bigger affordable step exists.
+  const safePool = w >= SAFE_NOT_ONE_POCKET && ok.some((v) => v > 1) ? ok.filter((v) => v > 1) : ok;
+  const pick = (target: number, pool: readonly number[]): number => {
+    for (const v of pool) if (v >= target) return v;
+    return pool.length ? pool[pool.length - 1] : i.min;
   };
   return {
-    safe: pick(w * STAKE_PRESET_SHARE.safe),
-    bold: pick(w * STAKE_PRESET_SHARE.bold),
-    big: pick(w * STAKE_PRESET_SHARE.big),
+    safe: pick(w * STAKE_PRESET_SHARE.safe, safePool),
+    bold: pick(w * STAKE_PRESET_SHARE.bold, ok),
+    big: pick(w * STAKE_PRESET_SHARE.big, ok),
   };
 }
 

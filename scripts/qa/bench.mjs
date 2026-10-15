@@ -272,6 +272,40 @@ async function skipIntro(cdp) {
   return { played: started > 0, taps };
 }
 
+/**
+ * Page JS: wraps the run's `bet()` once (idempotent) so every stake attempt is kept on `run.__qaBets` as
+ * `{ stake, machine, ok, refusal }`. The machines call `run.bet()` on the run object, so the wrapper sees every play.
+ */
+const BET_TAP_JS = `(() => {
+  const r = window.jackid.app.run;
+  if (!r) return false;
+  if (!r.__qaBets) {
+    const tap = (r.__qaBets = []);
+    const bet = r.bet.bind(r);
+    r.bet = (amount, src, o) => {
+      const ok = bet(amount, src, o);
+      tap.push({ stake: amount, machine: src?.machineId ?? null, ok, refusal: ok ? null : (r.lastRefusal?.() ?? null) });
+      return ok;
+    };
+  }
+  return true;
+})()`;
+/** Page JS: the run's last refusal (`run.lastRefusal()`), or null. It is not cleared by every step (see noteRefusal). */
+const REFUSAL_JS = '(window.jackid.app.run.lastRefusal?.() ?? null)';
+/** Page JS: the stake attempts recorded from index n on (see BET_TAP_JS). */
+const betsFrom = (n) => `(window.jackid.app.run.__qaBets ?? []).slice(${n})`;
+const BET_COUNT_JS = '(window.jackid.app.run.__qaBets ?? []).length';
+
+/**
+ * A refused step's refusal: `refusal` is the run's `lastRefusal()` after the step, `refusalNew` whether it changed during
+ * the step. The run keeps its last refusal until the next accepted bet (or buy), so an unchanged value may be stale.
+ */
+function noteRefusal(rec, before, now) {
+  rec.refusal = now;
+  rec.refusalNew = now !== before;
+  rec.reason = rec.refusalNew && now ? `refused (${now})` : (rec.reason ?? 'refused');
+}
+
 /** Page JS: the debt run's state, for `state`, the step records and the auto:night loop. Watch and Night are 1-based. */
 const RUN_STATE_JS = `(() => {
   const a = window.jackid.app, r = a.run, b = r.bank(), pulls = r.pulls();
@@ -590,7 +624,12 @@ async function runKind(ctx, s, rec) {
   switch (s.kind) {
     case 'goto': return gotoMachine(ctx, s.machine, rec);
     case 'play':
-      for (let i = 0; i < s.n; i++) await playKeys(cdp, s.keys);
+      rec.bets = [];
+      for (let i = 0; i < s.n; i++) {
+        const n0 = await evaluate(cdp, BET_COUNT_JS);
+        await playKeys(cdp, s.keys);
+        rec.bets.push(...(await evalJson(cdp, betsFrom(n0))));
+      }
       rec.n = s.n;
       return;
     case 'bet': {
@@ -598,7 +637,9 @@ async function runKind(ctx, s, rec) {
       await gotoMachine(ctx, s.machine, rec);
       const mode = await evaluate(cdp, 'window.jackid.app.input?.mode');
       if (mode !== 'machine') { rec.ok = false; rec.reason = `not at the machine for input (input mode "${mode}"); no keys sent`; return; }
+      const n0 = await evaluate(cdp, BET_COUNT_JS);
       await playKeys(cdp, botKeys(s.machine));
+      rec.bets = await evalJson(cdp, betsFrom(n0));
       const after = (await readState(ctx)).pulls;
       rec.machine = s.machine;
       rec.pulls = [before, after];
@@ -610,28 +651,49 @@ async function runKind(ctx, s, rec) {
       await evaluate(cdp, '(window.jackid.app.world.standUp(), true)');
       await seatedIs(ctx, false, 4000).catch(() => { rec.ok = false; rec.reason = 'still seated (the round may be settling)'; });
       return;
-    case 'deposit':
+    case 'deposit': {
       rec.amount = s.amount;
+      const before = await evaluate(cdp, REFUSAL_JS);
       rec.ok = (await evaluate(cdp, `window.jackid.app.run.deposit(${s.amount}) === true`)) === true;
-      if (!rec.ok) rec.reason = 'refused (pocket floor, quota room, or not a quota Watch)';
+      if (!rec.ok) {
+        rec.reason = 'refused (pocket floor, quota room, or not a quota Watch)';
+        noteRefusal(rec, before, await evaluate(cdp, REFUSAL_JS));
+      }
       return;
-    case 'withdraw':
+    }
+    case 'withdraw': {
       rec.amount = s.amount;
+      const before = await evaluate(cdp, REFUSAL_JS);
       rec.ok = Number(await evaluate(cdp, `window.jackid.app.run.withdraw(${s.amount})`)) > 0;
-      if (!rec.ok) rec.reason = 'refused (window shut, or nothing in the bank)';
+      if (!rec.ok) {
+        rec.reason = 'refused (window shut, or nothing in the bank)';
+        noteRefusal(rec, before, await evaluate(cdp, REFUSAL_JS));
+      }
       return;
-    case 'lever':
+    }
+    case 'lever': {
+      const before = await evaluate(cdp, REFUSAL_JS);
       rec.lever = await evaluate(cdp, `(() => { const r = window.jackid.app.run; return r.openFloor() ? 'openFloor'
         : r.startWatch() ? 'startWatch' : r.settleEarly() ? 'settleEarly' : null; })()`);
       rec.ok = rec.lever !== null;
+      if (!rec.ok) noteRefusal(rec, before, await evaluate(cdp, REFUSAL_JS));
       return;
-    case 'bell':
+    }
+    case 'bell': {
+      const before = await evaluate(cdp, REFUSAL_JS);
       rec.ok = (await evaluate(cdp, 'window.jackid.app.run.ringBell() === true')) === true;
-      if (!rec.ok) rec.reason = 'refused (no Watch in play or Last Call, or the run ended)';
+      if (!rec.ok) {
+        rec.reason = 'refused (no Watch in play or Last Call, or the run ended)';
+        noteRefusal(rec, before, await evaluate(cdp, REFUSAL_JS));
+      }
       return;
-    case 'pawn':
+    }
+    case 'pawn': {
+      const before = await evaluate(cdp, REFUSAL_JS);
       rec.ok = (await evaluate(cdp, 'window.jackid.app.run.pawn.reroll() === true')) === true;
+      if (!rec.ok) noteRefusal(rec, before, await evaluate(cdp, REFUSAL_JS));
       return;
+    }
     case 'pawnbuy': return pawnBuy(ctx, s.slot, rec);
     case 'pawnlook': return pawnLook(ctx, rec);
     case 'auto': return autoNight(ctx, rec, s.untilEvent === true);
@@ -704,6 +766,7 @@ async function exec(ctx, s) {
  * page reload stops the list (`run.aborted`: the run is then invalid, see viteEvents).
  */
 async function driveRun(ctx, steps) {
+  await evaluate(ctx.cdp, BET_TAP_JS);
   for (const s of steps) {
     await exec(ctx, s);
     if (ctx.res.reloads) { ctx.run.aborted = `the page reloaded after "${s.text}" (the run is invalid, see viteEvents)`; break; }
