@@ -25,7 +25,13 @@ const modalUp = (): boolean => typeof document !== 'undefined' && document.query
  * those late: one long step fires one hold tick per call, so a card can outlive its wait. A normal card clears in about 3 s, so the
  * gate gives up on a card after this and the offer opens (a modal hides any banner under it, and the card resumes after).
  */
-const CARD_HOLD_CAP_SEC = 8;
+const CARD_HOLD_CAP_SEC = 20;
+/**
+ * Sim seconds after the HUD mounts before a FRESH offer may open. The run's intro cutscene starts a beat after the HUD,
+ * and a bare quiet countdown won that race: the cards popped over the intro. A resumed save's already-open offer is not
+ * held (it shows at once). The cutscene / title-card / modal gates above still hold the offer after this grace.
+ */
+const INTRO_GRACE_SEC = 6;
 
 export function mountDraftUi(run: DebtRun): () => void {
   const offs: Unsub[] = [];
@@ -38,6 +44,7 @@ export function mountDraftUi(run: DebtRun): () => void {
   // Mola). An open offer (a resumed save) shows at once.
   let quiet = 0;
   let cardHeld = 0;
+  let age = 0;
   let shown = false;
   let done = false;
   addTicker((dt) => {
@@ -45,15 +52,18 @@ export function mountDraftUi(run: DebtRun): () => void {
     // Nothing left to offer: taken (or timed out), or the run left Night 1.
     if (!run.starterPending() && run.starterDraft() === null) { done = true; return false; }
     if (shown) return true;
+    age += dt;
     if (app.cutscene.playing || modalUp()) { quiet = 0; cardHeld = 0; return true; }
     if (titleCardUp()) {
       // A card holds the offer for at most CARD_HOLD_CAP_SEC of its own sim time; past that the quiet beat runs over it.
       cardHeld += dt;
       if (cardHeld < CARD_HOLD_CAP_SEC) { quiet = 0; return true; }
     } else cardHeld = 0;
+    const open = run.starterDraft() !== null;
+    if (!open && age < INTRO_GRACE_SEC) return true;   // the opening cutscenes own the first seconds
     quiet += dt;
     if (quiet < 0.6) return true;
-    if (run.starterDraft() !== null || run.openStarterDraft()) { shown = true; showCards(run); }
+    if (open || run.openStarterDraft()) { shown = true; showCards(run); }
     return true;
   });
   return () => {

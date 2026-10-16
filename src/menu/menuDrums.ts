@@ -109,8 +109,10 @@ export function buildDrums(): Drums {
   const strip = stripTex();
   texes.push(strip);
   // Side drums: the frame's left and right edges, close to the camera (camera sits at about z 8.5).
-  addDrum({ radius: 1.85, length: 13, axis: 'y', at: new THREE.Vector3(-4.55, 0.1, 3.9), speed: 0.10, tex: strip, backer: true });
-  addDrum({ radius: 1.85, length: 13, axis: 'y', at: new THREE.Vector3(4.55, 0.1, 3.9), speed: -0.085, tex: strip, backer: true });
+  // The drums frame the view from the edges (each covers roughly the outer sixth of a 16:9 screen) — pulled back and
+  // smaller than the first pass, which parked 1.85 m drums at 4.6 m from the camera and ate half the frame.
+  addDrum({ radius: 1.5, length: 10, axis: 'y', at: new THREE.Vector3(-5.6, 0.4, 2.6), speed: 0.10, tex: strip, backer: true });
+  addDrum({ radius: 1.5, length: 10, axis: 'y', at: new THREE.Vector3(5.6, 0.4, 2.6), speed: -0.085, tex: strip, backer: true });
   // Top drum: runs across the top of the frame like the machine's header reel.
   addDrum({ radius: 1.5, length: 13, axis: 'x', at: new THREE.Vector3(0, 3.6, 3.3), speed: 0.06, tex: strip });
 
