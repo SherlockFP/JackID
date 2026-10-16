@@ -25,10 +25,11 @@ import { openKitPicker } from './kitPicker';
 import { openFoundations } from './foundations';
 import { createMetaPrestige } from './foundations.logic';
 import { buildBackdrop, type Backdrop } from './menuBackdrop';
+import { buildDrums, type Drums } from './menuDrums';
 import { buildCabinet, DIE_CENTER, type Cabinet } from './menuCabinet';
 import { MenuDie, easeOutBack, type DieHit } from './menuDie';
 import { MenuBurst } from './menuBurst';
-import { makeCanvasTex, paintDieFace, paintPanel, paintValueFace, PANEL_BUTTON, type CanvasTex, type PanelOpts } from './menuArt';
+import { makeCanvasTex, paintDieFace, paintPanel, paintValueFace, panelText, PANEL_BUTTON, type CanvasTex, type PanelOpts } from './menuArt';
 
 // Face order = BoxGeometry groups (+X, -X, +Y, -Y, +Z, -Z): PLAY faces you, MULTIPLAYER is one roll right, SETTINGS left,
 // FREE CASINO up, QUIT down (CONTINUE RUN takes that face while a run is saved), FOUNDATIONS round the back.
@@ -42,9 +43,9 @@ type SetItem = typeof SET_FACES[number];
 /** The 3D text panel under the glass: a 960 x 480 texture on a 3.2 x 1.6 m plane. It sits between the die's bottom
  *  edge (about y -1.2) and the casino floor, which hides anything below about y -2.9 at this depth. The panel is drawn
  *  in the crisp (native-resolution) pass, so the text is not smeared by the PSX low-res target. */
-const PANEL_PX = { w: 960, h: 480 };
-const PANEL_M = { w: 3.2, h: 1.6 };
-const PANEL_AT = new THREE.Vector3(0, -2.07, 1.31);   // in front of the cabinet's bottom bezel and the glass (GLASS_Z 1.16)
+const PANEL_PX = { w: 1120, h: 480 };
+const PANEL_M = { w: 4.48, h: 1.92 };
+const PANEL_AT = new THREE.Vector3(0, -2.32, 1.31);   // in front of the cabinet's bottom bezel and the glass (GLASS_Z 1.16)
 /** The JACKID marquee (the cabinet paints it; its own plane stays hidden): 512 x 96 texture on the same aspect. */
 const TITLE_AT = new THREE.Vector3(0, 2.75, 0.78);
 const TITLE_M = { w: 4.2, h: 4.2 * 96 / 512 };
@@ -80,6 +81,10 @@ export function createMenuState(): AppStateHandler<'menu'> {
 
   const backdrop: Backdrop = buildBackdrop();
   scene.add(backdrop.root);
+
+  // Giant reel drums close to the camera (left / right / top): the menu is read from inside the machine.
+  const drums: Drums = buildDrums();
+  scene.add(drums.root);
 
   const mainDie = new MenuDie(MAIN_DIE_SIZE);
   mainDie.base.copy(DIE_CENTER);
@@ -548,8 +553,8 @@ export function createMenuState(): AppStateHandler<'menu'> {
   /** Far enough that the whole cabinet (5.1 m tall, 5.4 m wide) and its marquee fit the frame. */
   const cameraDistance = (): number => {
     const tanV = Math.tan((CAM_FOV * Math.PI) / 360);
-    const byHeight = 1.2 + 3.45 / tanV;
-    const byWidth = 1.2 + CAB_HALF_WIDTH / (tanV * Math.max(0.2, app.camera.aspect || 1));
+    const byHeight = 1.15 + 3.45 / tanV;
+    const byWidth = 1.15 + CAB_HALF_WIDTH / (tanV * Math.max(0.2, app.camera.aspect || 1));
     return Math.max(byHeight, byWidth);
   };
 
@@ -611,6 +616,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
       setDie.update(dt);
       cab.update(dt, time);
       backdrop.update(dt, time);
+      drums.update(dt, time);
       // the panel under the glass follows the die once it stops rolling: the focused entry and its controls
       const onSet = setDie.root.visible && phase !== 'main';
       const die = onSet ? setDie : mainDie;

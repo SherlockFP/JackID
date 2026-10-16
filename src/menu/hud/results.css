@@ -15,14 +15,20 @@
 .rcp-line.on { opacity: 1; transform: none; }
 .rcp-line .k { color: #5a525a; }
 .rcp-line .v { text-align: right; font-variant-numeric: tabular-nums; }
-/* The stamp sits in the paper's top-right corner, clear of the title block and of the ROUNDS / stat rows (it used to land
-   at 40%, over the ROUNDS line). It hangs a little past the corner, like a real rubber stamp. */
-.rcp-stamp { position: absolute; right: calc(6 * var(--u)); top: calc(-4 * var(--u)); transform: rotate(-12deg); padding: calc(2 * var(--u)) calc(6 * var(--u));
-  border: calc(2 * var(--u)) solid #c52129; color: #c52129; font-family: var(--f-head); font-size: calc(8 * var(--u)); letter-spacing: 1px; }
-.rcp-stamp.good { border-color: #2e7d46; color: #2e7d46; }
+/* The stamp: the run's verdict as a rubber stamp, landed under the last printed rows and hanging a little past the paper's
+   bottom-right corner. It is in the flow (its slot is reserved from the first frame, `visibility` in results.ts) and sized to be
+   read at a glance; the old top-right spot overlapped the long Collector title and was too small to carry WON/LOST on its own. */
+.rcp-stamp { display: block; width: fit-content; margin: calc(9 * var(--u)) calc(-6 * var(--u)) calc(-4 * var(--u)) auto; transform: rotate(-12deg);
+  padding: calc(2.5 * var(--u)) calc(7 * var(--u)); text-align: center;
+  border: calc(2.5 * var(--u)) solid #c52129; color: #c52129; font-family: var(--f-head); font-size: calc(9 * var(--u)); letter-spacing: 1px; }
+.rcp-stamp.good { border-color: #226b3c; color: #226b3c; }
 /* a loss: the red stamp, named so it is the same red as the default (lose sound in results.ts) */
 .rcp-stamp.bad { border-color: #c52129; color: #c52129; }
 .rcp-stamp.thud { animation: rcp-thud .25s cubic-bezier(.2, 1.6, .4, 1); }
+/* The verdict row (RESULT …): bold and tinted like the stamp, so the outcome reads across the room. */
+.rcp-line.res { font-size: calc(11 * var(--u)); font-weight: 700; }
+.rcp-line.res.good .v { color: #226b3c; }
+.rcp-line.res.bad .v { color: #b3201c; }
 .rcp-btns { flex: 0 0 auto; display: flex; flex-wrap: wrap; justify-content: center; gap: calc(8 * var(--u)); margin: calc(4 * var(--u)) auto 0; }
 .rcp-btn { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--shine); background: var(--coal);
   border: calc(1 * var(--u)) solid var(--brass); padding: calc(6 * var(--u)) calc(10 * var(--u)); cursor: pointer; }

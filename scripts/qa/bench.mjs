@@ -641,9 +641,13 @@ const DAWN_BODY = `
   const { dawnPlan } = await import('/src/game/pace.ts');
   const { nightDef } = await import('/src/game/data/schedule.ts');
   const b = r.bank();
-  const settles = Math.max(0, nightDef(r.night() - 1).watches - ((typeof r.watch === 'number' ? r.watch : 0) + 1));
+  const nd = nightDef(r.night() - 1);
+  // Settles still to come, the open Watch's own settle included (the game's own NIGHT PLAN line does the same, menu/hud.ts:
+  // during a Watch the current settle has not paid yet). Counting one less projected a phantom gap and over-deposited.
+  const settles = Math.max(0, nd.watches - (typeof r.watch === 'number' ? r.watch : 0));
   const p = dawnPlan({ due: b.due, balance: b.balance, settles, interestAt: b.interestAt });
-  return { due: b.due, balance: b.balance, settles, projected: p.projected, gap: p.gap, met: p.met, float: r.depositFloor() };`;
+  return { due: b.due, balance: b.balance, settles, projected: p.projected, gap: p.gap, met: p.met, float: r.depositFloor(),
+    lastWatch: (typeof r.watch === 'number' ? r.watch : 0) >= nd.watches - 1 }`;
 /** Page JS: the Dawn projection of the open run (null without one). */
 const DAWN_JS = `(async () => { const r = window.jackid.app.run; if (!r) return null; ${DAWN_BODY} })()`;
 
@@ -952,7 +956,7 @@ const BOT_RECIPE_GENERIC = 'Space:120,wait:2000,KeyQ:120,wait:500';
 const BOT_CATEGORIES = new Set(['slot', 'lottery']);
 const BOT_MIN_STAKE = 'KeyZ:60,wait:120';
 const TIP_KEY = 'Digit0';   // the neutral press that closes a first-sit tip (any key does; not a stake preset)
-const BOLD_MIN_MULT = 14;   // BOLD (Digit8, ~15 % of the pocket) only when the pocket holds at least this many minimum bets
+const BOLD_MIN_MULT = 8;    // BOLD (Digit8, ~15 % of the pocket) on the +EV spots when the pocket holds at least this many minimum bets
 const BIG_MIN_MULT = 20;    // BIG (Digit9, ~30 % of the pocket) only from this many minimum bets up
 const PUSH_BIG_ROLL = 0.2;  // BIG on a push-your-luck bet when a seeded roll comes under this (about 1 bet in 5)
 const BOT_FLOAT_MIN_BETS = 3;   // the bot's pocket float: 3 x the cheapest minimum bet, Night Card multipliers included (the game's own float is 2 x)
@@ -1069,9 +1073,10 @@ async function pushRule(ctx, machineId) {
  * Node: the stake for one bet, with its reason (the caller logs it). SAFE by default. BOLD on the Hot cabinet, on the spotlight,
  * or while ahead of the Dawn projection (dawn.met), when the pocket holds BOLD_MIN_MULT minimum bets. BIG only on a
  * push-your-luck machine (PUSH_MACHINES) whose rule is live, on an occasional seeded roll (PUSH_BIG_ROLL), from BIG_MIN_MULT
- * minimum bets up. A digit the machine keeps for itself, a pocket under the multiple, or a preset that would leave the pocket
+ * minimum bets up, and only while ahead of the Dawn projection (a 30 % punt behind the quota is what banked the runs to death).
+ * A digit the machine keeps for itself, a pocket under the multiple, or a preset that would leave the pocket
  * under one cheapest minimum bet (keepsMinAfter), takes the next step down (BIG, BOLD, SAFE, then the minimum walked down with
- * KeyZ). Resolves to { stake: 'big' | 'bold' | 'safe' | 'min', why }.
+ * KeyZ). Resolves to { stake: 'big' | 'bold' | 'safe' | 'min', why, target }.
  */
 async function pickStake(ctx, c, st) {
   const keep = c.keep ?? {};
@@ -1084,12 +1089,14 @@ async function pickStake(ctx, c, st) {
   };
   const fits = { big: presetOk('big') && mins >= BIG_MIN_MULT, bold: presetOk('bold') && mins >= BOLD_MIN_MULT, safe: presetOk('safe'), min: true };
   let want = 'safe', why = 'SAFE by default';
-  if (PUSH_MACHINES.has(c.machineId) && fits.big) {
+  if (PUSH_MACHINES.has(c.machineId) && fits.big && st.dawn?.met) {
+    // The BIG punt (30 % of the pocket) only while ahead of the Dawn projection: a 10-coin swing behind the quota is what
+    // starved the bankroll in the failing runs. Behind it the bot protects the bankroll and sizes SAFE / BOLD only.
     const rule = await pushRule(ctx, c.machineId);
     if (rule.live) {
       ctx.rng ??= seededRng(ctx.seed ?? 1);
       const roll = ctx.rng();
-      if (roll < PUSH_BIG_ROLL) { want = 'big'; why = `push-your-luck rule (${rule.why}), occasional roll ${roll.toFixed(2)} under ${PUSH_BIG_ROLL}`; }
+      if (roll < PUSH_BIG_ROLL) { want = 'big'; why = `ahead of the Dawn projection, push-your-luck rule (${rule.why}), occasional roll ${roll.toFixed(2)} under ${PUSH_BIG_ROLL}`; }
     }
   }
   if (want === 'safe') {
@@ -1107,8 +1114,15 @@ async function pickStake(ctx, c, st) {
           : 'pocket under its multiple';
     why += `; ${want.toUpperCase()} not taken (${cause}), ${stake.toUpperCase()} instead`;
   }
-  if (stake === 'min') why += '; no preset digit here, so the stake walks down to the minimum';
-  return { stake, why };
+  // `min` walks the stake down with KeyZ to the ladder's bottom (a stake of 1), which pins the bet at 1 even when the pocket
+  // is large — every machine that keeps its own preset digits (stakePresets.ts STAKE_KEY_OWNERS) falls through to it. When the
+  // wanted tier's preset fits the pocket (same test, minus the digit), `target` steps the stake back up to it with KeyX.
+  const wantAmount = c.presets?.[want] ?? null;
+  const target = stake === 'min' && wantAmount != null && wantAmount > (c.min ?? 0) && keepsMinAfter(st, wantAmount) ? wantAmount : null;
+  if (stake === 'min') why += target != null
+    ? `; no preset digit here, so the stake walks down and steps back up to ${target} (the ${want.toUpperCase()} share)`
+    : '; no preset digit here, so the stake walks down to the minimum';
+  return { stake, why, target };
 }
 
 /** Node: writes one bot decision as a record (`auto: true`, with its reason) and logs it. */
@@ -1384,6 +1398,7 @@ async function autoNight(ctx, rec, stopAt = null) {
     last: new Map(), seq: 0,   // instance -> the bet sequence number of its last bet (rotation ties)
     metStop: new Set(),  // Nights whose quota-met stop has been taken (auto:night:quota)
     wdRefused: new Set(),  // Watches whose withdraw to the float was refused (not retried in that Watch)
+    wdTaken: new Set(),    // Watches that withdrew (their deposit is skipped: the round trip churns the interest base)
     evening: new Map(),    // Night -> bed presses in its Evening (the first also talks to the spouse)
     visits: new Map(),     // Night -> bot passes at the Evening's visitor (THE KNOCK, wave 71)
   });
@@ -1403,17 +1418,24 @@ async function autoNight(ctx, rec, stopAt = null) {
     if (ev) events.push(ev.id);
   };
   /**
-   * This Watch's deposit, once per Watch after the bets: only what is needed, never into the float (botFloor, 3 x the cheapest
-   * minimum bet, or the game's own float when higher). While quota is owed: the Dawn gap (the coins the projection still
-   * lacks). Once met: the gap to the next OVERSHOOT tier (run.overshootView), only when the pocket above the float covers it.
+   * This Watch's deposit, once per Watch after the bets: only what is needed, never into the working float. The float is
+   * enforced BEFORE the deposit: botFloor (BOT_FLOAT_MIN_BETS = 3 x the cheapest minimum bet, or the game's own float when
+   * higher) always, plus — until the Night's last Watch — half the pocket, so the bot never banks away the coins the next
+   * Watch's bets come from (a pocket banked down to the floor can only make 1-coin bets and cannot grow into the quota).
+   * The last Watch banks the rest above botFloor: its money is done working. While quota is owed: the Dawn gap (the coins the
+   * projection still lacks). Once met: the gap to the next OVERSHOOT tier (run.overshootView), only when the pocket above the
+   * float covers it. A Watch that already withdrew is not deposited in (the round trip churns the interest base).
    * A refusal retries at half.
    */
   const depositFor = async () => {
     const s = await readState(ctx);
     if (!(s.pocket > 0)) return;
+    const key = `${s.night}:${s.watch}`;
+    if (bot.wdTaken.has(key)) { decide(ctx, 'deposit', `none: this Watch already withdrew (a deposit back on top churns the interest base); pocket kept`); return; }
     const d = await evalJson(ctx.cdp, DAWN_JS);
     const floor = botFloor(s, d?.float ?? 0);
-    const room = Math.max(0, s.pocket - floor);
+    const keep = Math.max(floor, d?.lastWatch ? 0 : Math.ceil(s.pocket / 2));
+    const room = Math.max(0, s.pocket - keep);
     let need, why;
     if (s.quotaLeft > 0) {
       need = d ? d.gap : s.quotaLeft;
@@ -1425,8 +1447,8 @@ async function autoNight(ctx, rec, stopAt = null) {
       else { need = 0; why = `quota met, ${next.id} needs ${next.gap} above the float, pocket room ${room}: keep playing`; }
     }
     const amount = Math.min(room, need);
-    if (amount <= 0) { decide(ctx, 'deposit', `none: ${why}; float ${floor} kept`); return; }
-    decide(ctx, 'deposit', `${amount} of pocket ${s.pocket}: ${why}, float ${floor} kept`);
+    if (amount <= 0) { decide(ctx, 'deposit', `none: ${why}; float ${keep} kept`); return; }
+    decide(ctx, 'deposit', `${amount} of pocket ${s.pocket}: ${why}, float ${keep} kept`);
     for (const amt of [amount, Math.floor(amount / 2)]) {
       if (amt <= 0) break;
       const r = await exec(ctx, auto({ kind: 'deposit', amount: amt, text: `bank:deposit:${amt}` }));
@@ -1515,12 +1537,18 @@ async function autoNight(ctx, rec, stopAt = null) {
 
     if (!canBet(st) && st.withdrawable > 0 && !bot.wdRefused.has(key)) {
       // Withdraw to the float, before any bet: the pocket is under two cheapest minimum bets (one to bet, one to keep). Not the
-      // whole bank (the bank is what the quota counts, so a full withdraw and redeposit churns). A refused withdraw is not retried
-      // in this Watch. A sealed bank reads withdrawable 0 and is left alone.
+      // whole bank (the bank is what the quota counts, so a full withdraw and redeposit churns). Never on the Night's last
+      // Watch: its money is done working, and a withdrawal there just takes coins off the quota (and churns any deposit back).
+      // A refused withdraw is not retried in this Watch. A sealed bank reads withdrawable 0 and is left alone.
       const d = await evalJson(ctx.cdp, DAWN_JS);
+      if (d?.lastWatch) {
+        bot.wdRefused.add(key);
+        decide(ctx, 'withdraw', `none: the last Watch of Night ${st.night} — the pocket's money is done working, so it stays in the bank`);
+        continue;
+      }
       const amount = Math.min(st.withdrawable, botFloor(st, d?.float ?? 0) - st.pocket);
       const r = await exec(ctx, auto({ kind: 'withdraw', amount, text: `bank:withdraw:${amount}` }));
-      if (!r.ok) { bot.wdRefused.add(key); await sleep(300); }
+      if (!r.ok) { bot.wdRefused.add(key); await sleep(300); } else bot.wdTaken.add(key);
       continue;
     }
     // The first Watch of a Night starts with the intro (no intermission before it): its deposit is taken in the Bell or play.
@@ -1597,7 +1625,7 @@ async function autoNight(ctx, rec, stopAt = null) {
         bot.played.get(key).add(c.instance);
         bot.last.set(c.instance, ++bot.seq);
         decide(ctx, `bet ${c.machineId} (${stake.stake.toUpperCase()})`, `${pick.why}; stake ${stake.stake.toUpperCase()}: ${stake.why}`);
-        const r = await exec(ctx, auto({ kind: 'bet', instance: c.instance, machine: c.machineId, stake: stake.stake, stakeWhy: stake.why, minBet: c.min ?? null, night: st.night, text: `bot:bet:${c.machineId}` }));
+        const r = await exec(ctx, auto({ kind: 'bet', instance: c.instance, machine: c.machineId, stake: stake.stake, stakeWhy: stake.why, target: stake.target ?? null, minBet: c.min ?? null, night: st.night, text: `bot:bet:${c.machineId}` }));
         if (r.ok) { count.bets++; bot.fails.set(c.instance, 0); } else bot.fails.set(c.instance, (bot.fails.get(c.instance) ?? 0) + 1);
         continue;
       }
@@ -1644,22 +1672,25 @@ async function botRound(ctx, s, rec) {
   await pressKey(cdp, TIP_KEY, 60);
   await sleep(300);
   await setStake(cdp, s.stake);
-  if (s.stake === 'min' && s.minBet > 0) {
-    // The walk-down stops at the ladder's bottom (the machine's own minBet). A Night Card floor (betLimits.min, HIGH TABLE) can lift
-    // the run's minimum above it, and the run refuses a bet under that minimum ('limit'). Step up with KeyX to the minimum, as a player does.
-    for (let i = 0; i < 4; i++) {
+  if (s.stake === 'min') {
+    // The walk-down stops at the ladder's bottom (a stake of 1). Step up with KeyX to the target, as a player does: the run's
+    // own minimum (betLimits.min, a Night Card floor — HIGH TABLE — can lift it above the machine's, and a bet under it is
+    // refused as 'limit') and, above that, pickStake's `target` (the wanted tier's preset share on a machine that keeps its
+    // preset digits: without it the bet is pinned at 1 whatever the pocket).
+    const target = Math.max(s.minBet ?? 0, s.target ?? 0);
+    for (let i = 0; i < 8 && target > 0; i++) {
       const cur = await evalJson(cdp, instJs(s.instance, '(m.bet ?? null)'));
-      if (cur == null || cur >= s.minBet) break;
+      if (cur == null || cur >= target) break;
       await pressKey(cdp, 'KeyX', DEFAULT_HOLD_MS);
       await sleep(300);
     }
   }
   rec.stake = s.stake;
   rec.stakeWhy = s.stakeWhy;
-  // The stake the machine holds now (MachineBase.bet) against the one asked for: a preset's amount, or the minimum (betLimits.min).
+  // The stake the machine holds now (MachineBase.bet) against the one asked for: a preset's amount, or the minimum walk-up target.
   const set = await evalJson(cdp, instJs(s.instance, `{ bet: m.bet ?? null, minBet: m.def?.minBet ?? null, presets: typeof m.stakePresets === 'function' ? m.stakePresets() : null }`));
   rec.bet = set?.bet ?? null;
-  rec.stakeOk = set ? (s.stake === 'min' ? set.bet === (s.minBet ?? set.minBet) : set.bet === set.presets?.[s.stake]) : null;
+  rec.stakeOk = set ? (s.stake === 'min' ? set.bet === Math.max(s.minBet ?? set.minBet, s.target ?? 0) : set.bet === set.presets?.[s.stake]) : null;
   if (s.machine === 'coinflip') {
     await pressKey(cdp, 'Space', 120);
     await waitRoundIdle(cdp, s.instance, { start: true });   // the flip is in the air until its present ends (see waitRoundIdle)

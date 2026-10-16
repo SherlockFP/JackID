@@ -5,7 +5,7 @@
 //   node scripts/sim/run.mjs --runs 500 --bots rotator
 //   node scripts/sim/run.mjs --bet-frac 0.2          stake fraction for rotator and banker
 //   node scripts/sim/run.mjs --no-tithe              the game before the Watch tithe (checkpoints.ts)
-// WAVE 58 (director, Watch tithe): from Night 3 each quota Watch must earn 20 % of the Night quota in play (net wins less stakes;
+// WAVE 58 (director, Watch tithe): from Night 3 each quota Watch must earn 12 % of the Night quota in play (net wins less stakes;
 // a bot banked on the quota keeps playing until it has). Met pays a Ticket; missed adds the shortfall to the quota. The `tithe`
 // line is met % per Night and the mean shortfall a missed Watch added. Notice moved to Night 6 (schedule.ts). Human 2000 runs
 // (seed 20261013): reach 94 / 82 / 60 / 44 / 37 / 28 / 24 / 16 % (`--no-tithe` on the same schedule: 94 / 82 / 66 / 52 / 45 / 36 / 29 / 27);

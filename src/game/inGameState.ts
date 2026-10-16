@@ -246,7 +246,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     if (!Number.isFinite(best)) return '';
     cam.getWorldDirection(termFwd);
     const lateral = -termFwd.z * (bx - p.pos.x) + termFwd.x * (bz - p.pos.z);
-    return ` ${lateral >= 0 ? '▶' : '◀'} ${Math.round(best)}m`;
+    return ` ${lateral >= 0 ? '▶' : '◀'} ${Math.round(best)} m`;
   };
 
   const syncHint = (s: DebtSession): void => {
