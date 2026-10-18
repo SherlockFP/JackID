@@ -213,6 +213,11 @@ export function paintValueFace(ctx: CanvasRenderingContext2D, w: number, h: numb
   fitText(ctx, '< >', w / 2, h * 0.86, w * 0.5, w * 0.1, o.lit ? GOLD_HI : GOLD);
 }
 
+/** One centred line of the panel's body face, shrunk until it fits `maxW`. */
+export function panelText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, px0: number, color: string): void {
+  fitText(ctx, text, x, y, maxW, px0, color, 'center');
+}
+
 /** The info panel's CREDITS button, as fractions of the panel (centre x / y, width / height). Painter and picker share it. */
 export const PANEL_BUTTON = { cx: 0.5, cy: 0.68, w: 0.5, h: 0.15 };
 
@@ -246,7 +251,7 @@ function wrapWords(ctx: CanvasRenderingContext2D, text: string, maxW: number, px
 
 /** The largest size (at most `px0`) at which the body fits: lines within `maxW`, the block within `maxH`, prose within `maxLines`. */
 function fitBody(ctx: CanvasRenderingContext2D, body: string | string[], maxW: number, maxH: number, px0: number, maxLines?: number): { px: number; lines: string[] } {
-  for (let px = px0; px > 14; px -= 2) {
+  for (let px = px0; px > 16; px -= 2) {
     const lines = typeof body === 'string' ? wrapWords(ctx, body, maxW, px) : body;
     ctx.font = `${px}px ${BODY}`;
     const fits = lines.every((l) => ctx.measureText(l).width <= maxW)
@@ -254,7 +259,7 @@ function fitBody(ctx: CanvasRenderingContext2D, body: string | string[], maxW: n
       && lines.length * px * 1.25 <= maxH;
     if (fits) return { px, lines };
   }
-  return { px: 14, lines: typeof body === 'string' ? wrapWords(ctx, body, maxW, 14) : body };
+  return { px: 16, lines: typeof body === 'string' ? wrapWords(ctx, body, maxW, 16) : body };
 }
 
 /** A single line in the body face, shrunk until it fits `maxW`. */
@@ -290,8 +295,8 @@ export function paintPanel(ctx: CanvasRenderingContext2D, w: number, h: number, 
   for (let y = 0; y < h; y += 4) ctx.fillRect(0, y, w, 1);
   frame(ctx, w, h, GOLD, w / 40);
   // the title and the body sit clear of the inner frame line (about 0.11 h in from each edge)
-  fitText(ctx, o.title, w / 2, h * 0.2, w * 0.86, h * 0.12, GOLD_HI);
-  const { px, lines } = fitBody(ctx, o.body ?? o.lines ?? [], w * 0.86, (o.bodyH ?? 0.27) * h, Math.round(h * 0.12), o.maxLines);
+  fitText(ctx, o.title, w / 2, h * 0.185, w * 0.9, h * 0.14, GOLD_HI);
+  const { px, lines } = fitBody(ctx, o.body ?? o.lines ?? [], w * 0.9, (o.bodyH ?? 0.3) * h, Math.round(h * 0.16), o.maxLines);
   const step = px * 1.25;
   let y = (o.bodyTop ?? 0.33) * h + step / 2;
   for (const line of lines) {
@@ -299,7 +304,33 @@ export function paintPanel(ctx: CanvasRenderingContext2D, w: number, h: number, 
     y += step;
   }
   if (o.button) drawButton(ctx, w, h, o.button);
-  if (o.hint) bodyText(ctx, o.hint, w / 2, h * 0.835, fitLine(ctx, o.hint, w * 0.86, Math.round(h * 0.1)), '#8fd9ff', 'center');   // above the inner frame line
+  if (o.hint) bodyText(ctx, o.hint, w / 2, h * 0.845, fitLine(ctx, o.hint, w * 0.9, Math.round(h * 0.14)), '#8fd9ff', 'center');   // above the inner frame line
+}
+
+/** A neighbour peek (the menu facets that roll in from the sides): dark enamel, gold frame, the hero entry with
+ *  its roll chevron in the middle and the up / down neighbours as small dim rows. `dir` is the roll direction. */
+export function paintPeek(ctx: CanvasRenderingContext2D, w: number, h: number, o: { hero: string; up: string; down: string; dir: 'left' | 'right' }): void {
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#2a0a14');
+  g.addColorStop(1, '#0d0409');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  frame(ctx, w, h, GOLD, w / 12);
+  const out = o.dir === 'left' ? -1 : 1;
+  // hero row: chevron pointing the roll direction, then the entry
+  const cy = h * 0.5;
+  ctx.fillStyle = GOLD_HI;
+  ctx.beginPath();
+  const ax = w / 2 - out * w * 0.3, s = w * 0.09;
+  ctx.moveTo(ax + out * s, cy - s * 1.2);
+  ctx.lineTo(ax - out * s * 0.6, cy);
+  ctx.lineTo(ax + out * s, cy + s * 1.2);
+  ctx.closePath();
+  ctx.fill();
+  fitText(ctx, o.hero, w / 2 + out * w * 0.06, cy, w * 0.58, Math.round(w * 0.2), '#fff0c8');
+  // the up / down neighbours, dim, so the whole die is advertised
+  fitText(ctx, `^ ${o.up}`, w / 2, h * 0.17, w * 0.82, Math.round(w * 0.13), '#c9a86a');
+  fitText(ctx, `v ${o.down}`, w / 2, h * 0.83, w * 0.82, Math.round(w * 0.13), '#c9a86a');
 }
 
 /** Marquee: the title in gold with a red halo that flickers. */

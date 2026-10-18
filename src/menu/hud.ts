@@ -199,8 +199,10 @@ export function createHud(): Hud {
   // One clock line (the Watch clock above); the night line under it. The wall-clock "SAAT" line was a duplicate and is gone.
   const sub = h('div', 'sub', topC);
   const night = h('span', 'night', sub, '');
-  // THE CIRCUIT: the Watch's Hot / Cold Lamps, shown while walking the floor
-  const lampsEl = h('div', 'lamps hidden', topC);
+  // THE CIRCUIT: the Watch's Hot / Cold Lamps. Deferred out of the centre column (legibility pass): the chase line is a
+  // long, live line and the centre keeps one slot per message kind (phase / event / toasts / banner / prompt). It reads just
+  // as well under the wallet at the top left, and its news already has a feed line (`circuit.feed.hot`).
+  const lampsEl = h('div', 'lamps hidden', topL);
   const lampHot = h('span', 'hot', lampsEl);
   const lampCold = h('span', 'cold', lampsEl);
   // Watch floor event (wave 43): its name, the Minute timer and a Lucky Lamp's pulls, under the Lamps (reuses the lamps style)
@@ -235,6 +237,9 @@ export function createHud(): Hud {
   const quotaFill = h('i', '', quotaBar);
   for (const m of [25, 50, 75]) h('b', 'mark', quotaBar).style.left = `${m}%`;
   const quotaShort = h('span', 'short', quota, '');
+  // Legibility pass: the quota is the run's goal, so it takes the top slot of the right stack (before the spotlight chip and
+  // THE EVENING card). hud.css gives it the biggest number and the widest bar on screen.
+  topR.prepend(quota);
   // The quota figure rolls toward the deposited amount (Roller, as the wallet). The fill's last percent and the Night it was read in
   // decide the 25 / 50 / 75 / 100 % ticks: a Night's first read is silent.
   const quotaRoll = new Roller();
@@ -1101,7 +1106,8 @@ export function createHud(): Hud {
     cam.getWorldDirection(boothFwd);
     const dx = bx - p.pos.x, dz = bz - p.pos.z;
     const lateral = -boothFwd.z * dx + boothFwd.x * dz;
-    return `${lateral >= 0 ? '→' : '←'} ${Math.round(best)}m`;
+    // Metres, spaced like the lamp chase (`hud.lampChase.dist`), so "12 m" cannot read as twelve minutes.
+    return `${lateral >= 0 ? '→' : '←'} ${Math.round(best)} m`;
   }
 
   function updateFeed(dt: number): void {

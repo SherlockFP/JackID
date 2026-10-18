@@ -108,17 +108,18 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
   ] : [
     [t('hud.results.name'), name],
     [t('hud.results.seed'), String(s.seed)],
+    // The verdict row: bold and tinted (the stamp carries the same word at a glance).
     [t('hud.results.result'), t(resultKey(s.result))],
-    [t('hud.results.floor'), fmtNum(s.floor)],
+    // FLOOR and DEADLINES are both index + 1 on the summary, so they printed the same number twice: one "Nights survived" row
+    // (the Nights actually paid, as on the Collector's receipt) reads cleaner than the pair.
+    [t('hud.results.shot.nights'), fmtNum(stat('nightsPaid'))],
+    [t('hud.results.stat.biggest'), fmtCoins(s.biggestWin, true), s.biggestWin],
     [t('hud.results.time'), fmtTime(s.durationSec)],
     [t('hud.results.maxWallet'), fmtCoins(s.maxWallet, true), s.maxWallet],
-    [t('hud.results.deadlines'), fmtNum(s.deadlines)],
     [t('hud.results.stat.rounds'), fmtNum(s.rounds)],
     [t('hud.results.stat.wagered'), fmtCoins(stat('wagered'), true)],
     [t('hud.results.stat.paid'), fmtCoins(stat('paid'), true), stat('paid')],
-    [t('hud.results.stat.biggest'), fmtCoins(s.biggestWin, true), s.biggestWin],
     [t('hud.results.stat.wins'), fmtNum(stat('wins'))],
-    [t('hud.results.stat.nightsPaid'), fmtNum(stat('nightsPaid'))],
     ...statLines(s.stats),
   ];
   const tag = s as RunSummary & RunTag;
@@ -128,10 +129,13 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
   const dailyText = daily ? dailyLine(daily.date, daily.night, s.obols ?? 0) : '';
 
   const body = h('div', 'rcp-body', paper);
+  const winner = won(s.result);
   /** A rolled line's roll: starts when the line prints, or lands at once when the print is skipped. */
   const rolls = new Map<HTMLElement, (instant: boolean) => void>();
   const lines: HTMLElement[] = rows.map(([k, v, roll]) => {
     const row = h('div', 'rcp-line', body);
+    // The RESULT row is the verdict at reading distance: bold, and tinted the way the stamp is tinted.
+    if (k === t('hud.results.result')) row.classList.add('res', winner ? 'good' : 'bad');
     h('span', 'k', row, k);
     if (roll === undefined) {
       h('span', 'v', row, v);
@@ -169,10 +173,10 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
     }
   }
 
-  const winner = won(s.result);
-  const stampText = shot ? t('hud.results.shot.stamp') : winner ? t('hud.results.stamp') : t(resultKey(s.result));
+  const stampText = shot ? t('hud.results.shot.stamp') : t(resultKey(s.result));
   const stamp = h('div', `rcp-stamp ${winner ? 'good' : 'bad'}`, paper, stampText);
-  stamp.hidden = true;
+  // The stamp's slot is reserved from the start (visibility, not `hidden`) so the paper does not jump when the stamp lands.
+  stamp.style.visibility = 'hidden';
   const btns = h('div', 'rcp-btns', root);
   const again = h('button', 'rcp-btn', btns, t('hud.results.again'));
   const foundations = h('button', 'rcp-btn', btns, t('found.title'));
@@ -207,7 +211,7 @@ export function buildReceipt(s: RunSummary, o: ReceiptOpts): Receipt {
       lines.forEach((l) => l.classList.add('on'));
     }
     done = true;
-    stamp.hidden = false;
+    stamp.style.visibility = 'visible';
     stamp.classList.add('thud');
     // The stamp is the result: a win flashes gold and plays the win stinger; a loss plays the lose sound under its red stamp.
     if (winner) {

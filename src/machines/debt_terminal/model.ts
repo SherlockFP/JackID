@@ -49,13 +49,14 @@ export const W = 1.2, D = 0.9, H = 2.4;
 const COUNTER_TOP = 1.07;
 const KEYPAD_Z = 0.18;
 
-/** Keypad layout: 3 columns × 3 rows, cells named by `rules.KEYS`. Caps are KEY_W × KEY_H on a 0.22 × 0.12 pitch. */
+/** Keypad layout: 3 columns × 3 rows, cells named by `rules.KEYS`. Caps are KEY_W × KEY_H on a 0.16 × 0.09 pitch.
+ *  The caps were 0.2 × 0.1 on a 0.22 × 0.12 pitch — oversized against the counter and crowding the plate edge. */
 export const KEY_POS: Record<(typeof KEYS)[number], { x: number; z: number }> = {
-  dep: { x: -0.22, z: -0.12 }, wd: { x: 0, z: -0.12 }, quota: { x: 0.22, z: -0.12 },
-  p10: { x: -0.22, z: 0 }, p25: { x: 0, z: 0 }, p50: { x: 0.22, z: 0 },
-  all: { x: -0.22, z: 0.12 }, rest: { x: 0, z: 0.12 }, enter: { x: 0.22, z: 0.12 },
+  dep: { x: -0.16, z: -0.09 }, wd: { x: 0, z: -0.09 }, quota: { x: 0.16, z: -0.09 },
+  p10: { x: -0.16, z: 0 }, p25: { x: 0, z: 0 }, p50: { x: 0.16, z: 0 },
+  all: { x: -0.16, z: 0.09 }, rest: { x: 0, z: 0.09 }, enter: { x: 0.16, z: 0.09 },
 };
-export const KEY_W = 0.2, KEY_H = 0.1;
+export const KEY_W = 0.14, KEY_H = 0.072;
 /** Top of a keypad cap in panel space (`kit.buttonPanel`: plate 0.012 + cap 0.03). */
 const CAP_TOP = 0.042;
 

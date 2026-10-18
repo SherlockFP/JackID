@@ -13,9 +13,12 @@
   align-items: start; column-gap: 0; }
 .hud .hud-tl, .hud .hud-tc { display: flex; flex-direction: column; min-width: 0; }
 .hud .hud-tl { grid-column: 1; align-items: flex-start; gap: calc(2 * var(--u)); }
-/* the centre stack sits on its own dark plate, so the clock and its lines read clearly over the machine's sign and marquee behind */
-.hud .hud-tc { grid-column: 2; align-items: center; gap: calc(3 * var(--u)); padding: calc(2 * var(--u)) calc(8 * var(--u)); background: rgba(0, 0, 0, .6);
-  box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark); }
+/* The centre stack: every line sits in its own dark slot plate (legibility pass), stacked with a gap, so the clock, the night
+   line, the lamp chase and the floor-event line never read as one pile over the machine's sign and marquee behind. Long lines
+   (the Mola call, the lamp chase) wrap inside their slot instead of running past it. */
+.hud .hud-tc { grid-column: 2; align-items: center; gap: calc(2 * var(--u)); padding: calc(2 * var(--u)) calc(4 * var(--u)); }
+.hud .hud-tc > * { max-width: 100%; padding: calc(1 * var(--u)) calc(4 * var(--u)); background: rgba(8, 8, 12, .78);
+  box-shadow: 0 0 0 calc(1 * var(--u)) #000; }
 /* the right stack: quota, PAYOUT, NIGHT PLAN, EMPIRE, buffs, the phone chip. One column, one gap, right-aligned.
    Its width is what is left to the right of the centre track: half the HUD box minus the track's half, minus the 4u inset and a 4u gap.
    Percentages, not vw: the HUD box is the #ui root, which can be narrower than the window. */
@@ -39,16 +42,18 @@
 .hud .sub { display: flex; align-items: center; gap: calc(6 * var(--u)); white-space: nowrap; }
 .hud .clock.lastcall .num, .hud .clock.lastcall .phase { color: var(--signal); animation: hud-blink .5s steps(2, start) infinite; }
 /* Intermission (MOLA): the top line is a call to action, in the shine colour, and may wrap rather than clip */
-.hud .clock.interm { max-width: 100%; }
-/* one line: the Mola line (up to ~47 characters, pixel face at 1em a character) is set at 6u so it fits the centre plate (320u less its padding). */
-.hud .clock.interm .phase { color: var(--shine); white-space: nowrap; font-size: calc(6 * var(--u)); text-align: center; line-height: 1.2; }
+.hud .clock.interm { max-width: 100%; flex-wrap: wrap; justify-content: center; }
+/* one line when it fits (the Mola line, ~47 characters at 6u), and a clean two-line wrap inside its slot when it does not. */
+.hud .clock.interm .phase { color: var(--shine); white-space: normal; max-width: 100%; font-size: calc(6 * var(--u)); text-align: center; line-height: 1.2; }
 .hud .phase { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 .hud .night { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 /* THE CIRCUIT: Hot / Cold Lamps line under the night line (walk mode) */
-/* WAVE 23: two stacked lines (HOT above COLD) in flow under the Night / Watch line, so nothing overlaps it and nothing is cut. */
+/* WAVE 23: two stacked lines (HOT above COLD) in flow under the Night / Watch line, so nothing overlaps it and nothing is cut.
+   Legibility pass: the chase line sits in the top-LEFT column (hud.ts), left-aligned and capped so it never enters the centre. */
 .hud .lamps { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(2 * var(--u));
   max-width: min(60vw, calc(300 * var(--u)));
   font-family: var(--f-head); font-size: calc(8 * var(--u)); line-height: 1.2; white-space: nowrap; text-align: center; }
+.hud .hud-tl .lamps { align-items: flex-start; text-align: left; max-width: calc(220 * var(--u)); }
 /* WAVE 23: HOT and COLD stack on their own lines and are never cut with an ellipsis; a long name wraps instead. */
 .hud .lamps span { display: block; max-width: 100%; overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; }
 .hud .lamps .hot { color: #ff5a3a; }
@@ -57,9 +62,14 @@
 /* the HOT line is one line (hud.ts fitHotLine drops the zone when it would wrap); a last resort clips with an ellipsis */
 .hud .lamps .hot { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* top-right: quota */
-.hud .quota { flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u)); }
-.hud .quota .num { font-size: calc(16 * var(--u)); }
+/* top-right: quota. THE goal at a glance (legibility pass): the largest number in the HUD, on its own brass-ringed plate at
+   the top of the right stack, with the progress bar under it (amber fill, pale ghost, quarter marks) and the shortfall line. */
+.hud .quota { flex-direction: column; align-items: flex-end; gap: calc(3 * var(--u));
+  padding: calc(3 * var(--u)) calc(5 * var(--u)); background: rgba(8, 8, 12, .82);
+  box-shadow: 0 0 0 calc(1 * var(--u)) var(--void), 0 0 0 calc(2 * var(--u)) var(--brass); }
+.hud .quota .lbl { font-size: calc(10 * var(--u)); color: var(--shine); letter-spacing: .08em; }
+.hud .quota .num { font-size: calc(22 * var(--u)); color: var(--ivory); }
+.hud .quota .bar { width: calc(110 * var(--u)); height: calc(7 * var(--u)); box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark); }
 .hud .bar { position: relative; width: calc(64 * var(--u)); height: calc(4 * var(--u)); background: #000;
   box-shadow: 0 0 0 calc(1 * var(--u)) var(--brass-dark); }
 .hud .bar i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--amber); }
@@ -71,7 +81,7 @@
 .hud .quota.short.late .bar i:not(.gh) { background: var(--signal); animation: hud-blink .5s steps(2, start) infinite; }
 .hud .quota .int { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--bone); }
 .hud .quota.met .num { color: var(--green); }
-.hud .quota .short { font-family: var(--f-head); font-size: calc(8 * var(--u)); color: var(--amber); }
+.hud .quota .short { font-family: var(--f-head); font-size: calc(9 * var(--u)); color: var(--amber); }
 
 /* HEAT meter under the quota (hud.ts updateHeat): a thin bar, amber to red, blinking above 75 */
 .hud .heat { flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u)); }
@@ -151,9 +161,10 @@
 /* feed, phone, dread */
 /* news feed: under the tutorial box (upper-left), which sits under the top band (--hud-top-h) */
 /* WAVE 20: never under the tutorial box (tutorial.ts sets --tut-b to its bottom edge while it is up), so its hint line is clear */
+/* Legibility pass: capped at 34 % so a feed line can never run into the centre column's slots (phase / event / toasts). */
 .hud .feed { position: absolute; left: calc(4 * var(--u));
   top: max(calc(var(--hud-top-h, calc(52 * var(--u))) + 96 * var(--u)), calc(var(--tut-b, 0px) + 6 * var(--u)));
-  display: flex; flex-direction: column; gap: calc(2 * var(--u)); width: 45%; }
+  display: flex; flex-direction: column; gap: calc(2 * var(--u)); width: 34%; }
 .hud .feed .ln { font-size: calc(16 * var(--u)); color: var(--bone); transition: opacity .6s linear; }
 .hud .feed .ln.old { opacity: 0; }
 .hud .feed .ln.gold { color: var(--shine); }

@@ -12,6 +12,16 @@ export const SYMBOL_BG = '#2a1a14';
 
 import { GHOST, MAW } from './rules';
 
+/**
+ * Per-symbol cell chip (32x32 minus a 2 px gutter): a deep hue so each symbol reads as its own colour
+ * at reel size, and a border that encodes the value class — gold for the paying premiums (RING/CROWN/SUN),
+ * dark for the commons, none for the MAW (a dead cell must read as dark/empty).
+ */
+const CHIP_BG = ['#20303c', '#2e2c1e', '#3a1c12', '#12333a', '#2c2148', '#3c1c34', '#141e3c', '#1c0a0a', '#123038'];
+const CHIP_EDGE = ['#0a0806', '#0a0806', '#0a0806', '#0a0806', '#c8a040', '#c8a040', '#e8c060', '#000000', '#0a2028'];
+/** 1 px ink outline for the pale glyphs (MOTH, TOOTH, CANDLE) so they stop reading as one white blob. */
+const INK = '#140c08';
+
 const TAU = Math.PI * 2;
 /** Wing height per frame (1 = open): flap = open, half, closed, half. */
 const FLAP = [1, 0.6, 0.35, 0.6];
@@ -32,13 +42,22 @@ export function paintSymbol(g: CanvasRenderingContext2D, sym: number, x: number,
   const f = frame & 3;
   g.save();
   g.translate(x, y);
+  // the cell chip: value-graded background + edge
+  if (sym >= 0 && sym < CHIP_BG.length) {
+    g.fillStyle = CHIP_BG[sym];
+    g.fillRect(2, 2, 28, 28);
+    g.strokeStyle = CHIP_EDGE[sym];
+    g.lineWidth = 1;
+    g.strokeRect(2.5, 2.5, 27, 27);
+  }
   switch (sym) {
-    case 0: { // MOTH: grey body, two wings (flapping), eye-spots
+    case 0: { // MOTH: cool grey body, two wings (flapping), eye-spots
       const flap = FLAP[f];
-      g.fillStyle = '#B8B0A0';
-      g.beginPath(); g.ellipse(16, 16, 3, 10, 0, 0, TAU); g.fill();
-      g.beginPath(); g.ellipse(8, 13, 7, 6 * flap, -0.3, 0, TAU); g.fill();
-      g.beginPath(); g.ellipse(24, 13, 7, 6 * flap, 0.3, 0, TAU); g.fill();
+      g.strokeStyle = INK; g.lineWidth = 1;
+      g.fillStyle = '#C2C8D4';
+      g.beginPath(); g.ellipse(16, 16, 3, 10, 0, 0, TAU); g.fill(); g.stroke();
+      g.beginPath(); g.ellipse(8, 13, 7, 6 * flap, -0.3, 0, TAU); g.fill(); g.stroke();
+      g.beginPath(); g.ellipse(24, 13, 7, 6 * flap, 0.3, 0, TAU); g.fill(); g.stroke();
       g.fillStyle = '#3A2A20';
       g.beginPath(); g.ellipse(8, 13, 2, 2 * flap, 0, 0, TAU); g.fill();
       g.beginPath(); g.ellipse(24, 13, 2, 2 * flap, 0, 0, TAU); g.fill();
@@ -51,9 +70,12 @@ export function paintSymbol(g: CanvasRenderingContext2D, sym: number, x: number,
       g.fillRect(8, 19, 6, 9); g.fillRect(18, 19, 6, 9);
       g.fillStyle = '#F2EAD0';
       g.fillRect(14, 19, 4, 4);
+      g.strokeStyle = INK; g.lineWidth = 1;
+      g.strokeRect(7.5, 6.5, 17, 13);
+      g.strokeRect(8.5, 19.5, 5, 8); g.strokeRect(18.5, 19.5, 5, 8);
       break;
-    case 2: // KEY: rusty bow, shaft, teeth
-      g.fillStyle = '#A0522D';
+    case 2: // KEY: copper bow, shaft, teeth
+      g.fillStyle = '#C87038';
       g.beginPath(); g.arc(9, 16, 6, 0, TAU); g.fill();
       g.fillStyle = '#2a1a14';
       g.beginPath(); g.arc(9, 16, 2.5, 0, TAU); g.fill();
@@ -62,10 +84,12 @@ export function paintSymbol(g: CanvasRenderingContext2D, sym: number, x: number,
       g.fillRect(22, 18, 3, 4); g.fillRect(27, 18, 3, 6);
       break;
     case 3: { // CANDLE: wax body, flickering flame
+      g.strokeStyle = INK; g.lineWidth = 1;
       g.fillStyle = '#E8D8B0';
       g.fillRect(11, 13, 10, 17);
+      g.strokeRect(11.5, 13.5, 9, 16);
       g.fillStyle = f === 2 ? '#FFC24A' : '#FFB000';
-      g.beginPath(); g.ellipse(16, 9, 3, FLAME[f], 0, 0, TAU); g.fill();
+      g.beginPath(); g.ellipse(16, 9, 3, FLAME[f], 0, 0, TAU); g.fill(); g.stroke();
       g.fillStyle = '#FFF2B0';
       g.fillRect(15, 8, 2, 3);
       break;

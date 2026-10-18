@@ -306,18 +306,20 @@
 .px-subtitle .txt { display: block; font-family: var(--f-body); font-size: var(--fb); line-height: 1.1; color: var(--ivory); overflow-wrap: anywhere; }
 
 /* Night 1 tutorial prompt (tutorial.ts): upper-left, under the HUD top band (--hud-top-h, set by hud.ts) and the rules chip.
-   It never reaches the bottom: the odds line and the STAKE / POCKET panel of the seat HUD stay clear of it. */
+   It never reaches the bottom: the odds line and the STAKE / POCKET panel of the seat HUD stay clear of it.
+   Legibility pass: narrower (so it stays out of the centre column and off the machine's sign) and it wraps at word
+   boundaries — "intermission" was being broken mid-word ("intermissio") by the old anywhere wrap. */
 .px-tut {
   position: absolute; left: calc(4 * var(--u)); top: calc(var(--hud-top-h, calc(52 * var(--u))) + 22 * var(--u)); bottom: auto; z-index: 2;
   /* Narrow enough to stay clear of the centred debt CRT and the console (fitPose), and ends above the centre line so the
      world prompt (centre, up) never sits under it. The capture hint (top centre) is not in the way: the tutorial is upper-left. */
-  max-width: min(34%, calc(200 * var(--u)));
+  max-width: min(26%, calc(160 * var(--u)));
   /* No height cap and no clip: the box grows to its text, so the last line ("… Hold ESC to skip") is never cut off.
      The bottom padding leaves room under the hint line for its descenders and the box's own inset edge. */
   padding: calc(3 * var(--u)) calc(5 * var(--u)) calc(5 * var(--u));
   background: rgba(14, 11, 8, 0.8); box-shadow: inset 0 0 0 var(--u) var(--brass);
-  font-family: var(--f-body); font-size: var(--fb); line-height: 1.05; color: var(--ivory); pointer-events: none;
-  overflow-wrap: anywhere;
+  font-family: var(--f-body); font-size: var(--fb); line-height: 1.15; color: var(--ivory); pointer-events: none;
+  overflow-wrap: break-word; word-break: normal; hyphens: none;
 }
 .px-tut .hint { margin-top: calc(2 * var(--u)); padding-bottom: calc(1 * var(--u)); font-family: var(--f-head); font-size: var(--fh); line-height: 1.2; color: var(--grout); }
 /* --mh-h = measured height of the machine HUD (ui.ts), so subtitles / skip ring always sit above it, even when hints wrap */
@@ -412,8 +414,8 @@
 /* ── toasts (ART §10.7) ───────────────────────────────────────────────────────────────────── */
 /* Top-centre stack sits UNDER the HUD top band (--hud-top-h, set by hud.ts): it used to land on the title strip. */
 .px-toasts {
-  position: absolute; top: calc(var(--hud-top-h, calc(8 * var(--u))) + 4 * var(--u)); left: 50%; transform: translateX(-50%); z-index: 5;
-  display: flex; flex-direction: column; align-items: center; gap: calc(2 * var(--u));
+  position: absolute; top: calc(var(--hud-top-h, calc(8 * var(--u))) + 6 * var(--u)); left: 50%; transform: translateX(-50%); z-index: 5;
+  display: flex; flex-direction: column; align-items: center; gap: calc(3 * var(--u));
   width: calc(168 * var(--u)); max-width: calc(100% - 16 * var(--u));
 }
 /* Seated: toasts anchor to the upper right, away from the seat's central view (the machine, the reels, the stake lane). */
@@ -422,16 +424,21 @@
   transform: none; align-items: flex-end; width: min(calc(120 * var(--u)), 40%);
 }
 .px-root.seated .px-toast { width: auto; max-width: 100%; }
+/* Legibility pass (HUD lane): an opaque plate with a hard ring, so the machine sign and marquee behind never bleed through
+   the news; the text wraps at word boundaries (break-word, not anywhere) and grows to a second line rather than clipping. */
 .px-toast {
   --tc: var(--grout);
   position: relative; display: flex; align-items: center; gap: calc(3 * var(--u)); width: 100%;
   min-height: calc(14 * var(--u)); padding: calc(2 * var(--u)) calc(4 * var(--u)) calc(2 * var(--u)) calc(6 * var(--u));
-  background: var(--panel); font-family: var(--f-body); font-size: var(--fb); line-height: 1; color: var(--ivory);
+  background: #0d0d15; box-shadow: 0 0 0 calc(1 * var(--u)) var(--void), 0 0 0 calc(2 * var(--u)) var(--brass-dark);
+  font-family: var(--f-body); font-size: var(--fb); line-height: 1.1; color: var(--ivory);
 }
 .px-toast .bar { position: absolute; left: 0; top: 0; bottom: 0; width: calc(3 * var(--u)); background: var(--tc); }
 .px-toast .ico { flex: 0 0 auto; }
-.px-toast .txt { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-.px-toast .cnt { flex: 0 0 auto; font-family: var(--f-head); font-size: var(--fh); line-height: 1; color: var(--shine); }
+.px-toast .txt { flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; word-break: normal; hyphens: none; }
+/* The merge counter ("x2": the same news shown twice within the merge window) meant nothing to the player, so it is dropped:
+   one news item, one display (the repo's announce rule). Counting still happens in ui.ts; only the badge is hidden. */
+.px-toast .cnt { display: none; }
 .px-toast.k-info { --tc: var(--ivory); }
 .px-toast.k-good { --tc: var(--green); }
 .px-toast.k-bad { --tc: var(--signal); }
@@ -474,6 +481,12 @@
 .px-bw .Br { flex-basis: 100%; height: 0; }
 .px-bw .Wd { display: inline-flex; white-space: nowrap; }
 .px-bw .L { display: inline-block; }
+/* Legibility pass (HUD lane): a t-banner's letters drop in 40 ms apart (ui.ts dropLetters), so any frame taken during the
+   drop read as a line cut mid-word ("DEPOSITED 1 TO THE BANK · P..."). The letters keep their drop, but they are visible
+   from the start (author !important beats the WAAPI opacity), so the news is never half-written. And the banner gets its own
+   slot band under the interact prompt (ui.ts pins t-banners at 22%, which landed on the toast stack and the machine face). */
+.px-bw.t-banner { top: 44% !important; }
+.px-bw.t-banner .L { opacity: 1 !important; }
 .px-bw .W { display: inline-block; white-space: pre; }
 .px-bw .W.wave { animation: px-wave 0.5s steps(4, end) infinite; animation-delay: calc(var(--i, 0) * -0.06s); }
 @keyframes px-wave { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(calc(-3 * var(--u))); } }

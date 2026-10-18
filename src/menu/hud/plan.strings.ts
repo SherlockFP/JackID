@@ -8,7 +8,7 @@
 export default {
   prefix: 'hud.plan.',
   en: {
-    'bank': 'DAWN {p}/{q}',
+    'bank': 'PROJECTED AT DAWN {p}/{q}',
     'bankNow': 'BANKED {p}/{q}',
     'pocket': 'POCKET {p} · DEPOSIT',
     'ends': 'W{w}/{n} · {p} PULLS · {c}',
@@ -31,7 +31,7 @@ export default {
     'overForfeit': 'OVERSHOOT FORFEIT TONIGHT',
   },
   tr: {
-    'bank': 'ŞAFAK {p}/{q}',
+    'bank': 'ŞAFAKTA PROJE {p}/{q}',
     'bankNow': 'BANKADA {p}/{q}',
     'pocket': 'CEP {p} · YATIR',
     'ends': 'NÖBET {w}/{n} · {p} ÇEKİŞ · {c}',

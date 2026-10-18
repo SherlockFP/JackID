@@ -159,6 +159,11 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
     });
     strip.colorSpace = THREE.NoColorSpace;
     strip.magFilter = THREE.NearestFilter;
+    // Pixel-art strips must stay crisp at every distance: the default mipmapped linear min filter bleeds symbol cells
+    // into each other on the curved drum (colour smears, stripes). Nearest + no mips keeps the 32 px cells hard.
+    strip.minFilter = THREE.NearestFilter;
+    strip.generateMipmaps = false;
+    strip.needsUpdate = true;
     const drum = kit.cyl(REEL_R, REEL_R, REEL_W, kit.mat({ map: strip, lit: false }), { seg: 16, parent: rootR, name: `drum${i}` });
     drum.rotation.z = Math.PI / 2;
     // remap UVs so u = across the reel axis (32 px wide), v = around the drum (512 px = 16 facets × 32)

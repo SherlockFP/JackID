@@ -159,6 +159,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   private seatHud?: SeatHud;
   private attractStep = -1;
   private inRound = false;
+  /** True only while the reels are physically turning: the seat HUD must not say REELS TURNING over a shown result. */
+  private reelsTurning = false;
   /** The stake of the last settled spin: the WIN line on the top screen shows its net against this. */
   private lastStake = 0;
   /** Last painted key per cell (-1 = repaint) for the render-rate symbol frames. */
@@ -457,8 +459,11 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     if (!pc.fast) {
       this.sfx('reelStart');
       const spinLoop = this.ctx.audio.play('reelLoop', { loop: true, param: 0.6, vol: 0.7 });
+      this.reelsTurning = true;
       await Promise.all([0, 1, 2, 3, 4].map((i) => this.spinReel(i, STOP_T[i] * FREE_SPEED)));
+      this.reelsTurning = false;
       spinLoop?.stop(0.06);
+      if (this.isLocalOccupant) this.showHud();
     }
     s.gross = ev.amount;
     if (ev.win) this.lightCells(ev.line, 2);
@@ -540,8 +545,11 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       runs.push(this.spinReel(i, stopOf(i), i === tReel));
     }
     if (tReel >= 0) void this.teaseShow(ev, tReel, stopOf(tReel - 1), crawl);
+    this.reelsTurning = true;
     await Promise.all(runs);
+    this.reelsTurning = false;
     spinLoop?.stop(0.06);
+    if (this.isLocalOccupant) this.showHud();
     for (const c of ev.coalesced) this.flashCell(c);
     this.drawScreen();
   }
@@ -897,13 +905,13 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       g.fillRect(0, 0, sc.w, sc.h);
       sc.text(`${this.t('jackpot')} ${fmtCoins(Math.floor(s.meter))}`, 80, 3, { font: 'px5', color: '#ffd040', align: 'center' });
       if (shown !== undefined) {
-        sc.text(`+${fmtCoins(shown)}`, 80, 13, { font: 'px5', color: '#ffd040', align: 'center' });
+        sc.text(`+${fmtCoins(shown)}`, 80, 11, { font: 'px5', scale: 2, color: '#ffd040', align: 'center' });
       } else if (s.last10[0] === 2) {
-        sc.text(this.t('eaten'), 80, 13, { font: 'px5', color: '#ff3040', align: 'center' });
+        sc.text(this.t('eaten'), 80, 11, { font: 'px5', scale: 2, color: '#ff3040', align: 'center' });
       } else if (s.gross > 0) {
-        sc.text(this.t('win', { n: fmtCoins(Math.max(0, this.netOf(s.gross, this.lastStake, this.isLocalOccupant))) }), 80, 13, { font: 'px5', color: '#ffd040', align: 'center' });
+        sc.text(this.t('win', { n: fmtCoins(Math.max(0, this.netOf(s.gross, this.lastStake, this.isLocalOccupant))) }), 80, 11, { font: 'px5', scale: 2, color: '#ffd040', align: 'center' });
       } else {
-        sc.text(`${this.t('bet')} ${fmtCoins(this.bet)}`, 80, 13, { font: 'px5', color: '#4a8a4a', align: 'center' });
+        sc.text(`${this.t('bet')} ${fmtCoins(this.bet)}`, 80, 11, { font: 'px5', scale: 2, color: '#4a8a4a', align: 'center' });
       }
       g.fillStyle = '#3a1010';
       g.fillRect(20, 24, 120, 4);
@@ -957,7 +965,9 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     this.parts.screens.top.draw((g, sc) => {
       g.fillStyle = '#120406';
       g.fillRect(0, 0, sc.w, sc.h);
-      sc.text(line, 80, 20, { font: 'px5', color: '#ffb0b0', align: 'center' });
+      // the caption is the screen's headline: scale it up while it fits the 160 px screen
+      const scale = px5Width(line) * 2 <= 152 ? 2 : 1;
+      sc.text(line, 80, scale === 2 ? 18 : 20, { font: 'px5', scale, color: '#ffb0b0', align: 'center' });
     });
   }
 
@@ -1013,7 +1023,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     // STATE: a chase on offer, auto, spinning, a held reel, or ready for the next spin
     if (this.offer) sh.state({ k: 'm.bigone.stChase', v: { n: fmtCoins(this.offer.pot) } }, 'gold', { k: 'm.bigone.stChaseSub', v: { n: Math.round(1 / CHASE_P) } });
     else if (this.autoLeft > 0) sh.state({ k: 'm.bigone.stAuto', v: { n: this.autoLeft } }, 'cyan', { k: 'm.bigone.stAutoSub' });
-    else if (busy) sh.state({ k: 'm.bigone.stSpinning' }, 'cyan');
+    else if (busy && this.reelsTurning) sh.state({ k: 'm.bigone.stSpinning' }, 'cyan');
+    else if (busy) sh.state({ k: 'm.bigone.stReady' }, 'gold', { k: 'm.bigone.stReadySub', v: { n: fmtCoins(this.bet) } });
     else if (s.hold >= 0) sh.state({ k: 'm.bigone.stHold', v: { n: s.hold + 1 } }, 'good', { k: 'm.bigone.stHoldSub', v: { c: fmtCoins(Math.ceil(this.bet * HOLD_COST)) } });
     else if (!SeatHud.floorOpen()) sh.floorClosed();
     else sh.state({ k: 'm.bigone.stReady' }, 'gold', { k: 'm.bigone.stReadySub', v: { n: fmtCoins(this.bet) } });

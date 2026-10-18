@@ -1,3 +1,7 @@
 node_modules
 dist
 vendor-archives
+
+# QA harness output (screenshots, bench logs) — local evidence, not source
+shots/
+scripts/qa/out/
