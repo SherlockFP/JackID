@@ -159,7 +159,7 @@ export interface Visit {
   /** The act is running or done: a bot may wait for `acting() || finished()`. */
   acting(): boolean;
   finished(): boolean;
-  /** The Evening ends with the visit still open (auto-sleep): the act, if running, is a fail; the shadow goes. */
+  /** The Evening ends or the bed is used with the visit still open: a planned, arriving or acting visit is a fail (Heat and toll); the shadow goes. */
   abandon(): void;
   /** After a restore: a visit caught mid-act resolves as a fail, a leaving visitor is gone, a walk in the hall starts over. */
   resume(): void;
@@ -194,9 +194,11 @@ export function createVisit(st: VisitState, io: KnockIO): Visit {
   const go = (phase: VisitPhase): void => { st.phase = phase; st.t = 0; st.n = 0; };
 
   const finish = (pass: boolean): void => {
+    // the phase moves first: a save written inside the verdict (the Picker's charm, the phone's Heat) records 'leave', so a
+    // reload cannot resolve the same visit twice (w72 knock-save-restore-verdict-window)
     st.pass = pass;
-    io.resolve(resultOf(st.kind, pass));
     go('leave');
+    io.resolve(resultOf(st.kind, pass));
   };
 
   const leaver = (): void => {
@@ -290,7 +292,9 @@ export function createVisit(st: VisitState, io: KnockIO): Visit {
 
     abandon() {
       if (st.phase === 'done') return;
-      if (st.phase === 'act') { st.pass = false; io.resolve(resultOf(st.kind, false)); }
+      // Asleep before the visitor came (planned, wait) or on the stairs (steps) is a fail too: the visit arrives to a sleeping
+      // flat. Without this an early bed cancelled the visit with no Heat and no toll (w72 knock-bed-dodges-visit).
+      if (st.phase === 'wait' || st.phase === 'steps' || st.phase === 'act') { st.pass = false; io.resolve(resultOf(st.kind, false)); }
       leaver();
       go('done');
     },

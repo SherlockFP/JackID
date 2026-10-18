@@ -97,6 +97,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   const run = (params.resume ? resumeRun(app.save, { banner, home }) : null)
     ?? createRun({
       seed: params.seed, mode: playableMode(params.mode), save: app.save, banner, home,
+      // THE PROLOGUE (wave 72): a fresh solo run opens in the apartment before Night 1 Watch 1.
+      prologue: !params.resume && !params.online,
       // Only the starting kit travels from the menu for now; the MP lobby config is not applied here yet.
       cfg: params.config?.kit || params.config?.stake || params.config?.daily
         ? { kit: params.config.kit, stake: params.config.stake, daily: params.config.daily }
@@ -351,7 +353,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     const x: InteractableX = {
       id: `buy:${instance}`, box, priority: 10, maxDist: 3,
       // the tarp always answers E: "BUY <name> · <price>" when buyable, otherwise the greyed "OPENS NIGHT n" plate line
-      enabled: () => world.seat == null,
+      // (a machine parked behind a shut wing has no visible sheet, so its BUY prompt stays off until the wing opens)
+      enabled: () => world.seat == null && world.isZoneOpen(world.slot(instance)?.zone ?? 'well'),
       label: () => {
         const price = run.buyPriceOf(mid);
         return price > 0 ? t('cover.buy', { name: machineName(mid), price: fmtCoins(price) }) : opensText(mid, run.seed);

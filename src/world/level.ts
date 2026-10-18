@@ -14,7 +14,7 @@ import type { GateDef, LevelBuild, LevelCtx, LightHint, SpawnPoint } from './sys
 import type { WorldProp } from './types';
 import { ZONES } from './layout';
 import { bareBulb, chandelier, flickerLevel, pendant, sconce, tube } from './lights';
-import { buildColumn, buildGrille, buildVelvetCurtain, buildManagementDoor, buildSump, buildFurnace, buildCollectorChair, buildXPlate, disposeTree, type GateProp } from './props/decor';
+import { buildColumn, buildGrille, buildVelvetCurtain, buildManagementDoor, buildSump, buildFurnace, buildCollectorChair, buildXPlate, disposeTree, SUMP_HALF, SUMP_WALL_H, SUMP_WALL_T, type GateProp } from './props/decor';
 import { createClock, type WallClock } from './props/clock';
 import { createTrapdoor, type Trapdoor } from './props/trapdoor';
 import { createElevator, type Elevator } from './props/elevator';
@@ -248,13 +248,17 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   root.add(sump.root);
   disposables.push(sump);
   // the sump walls are solid; the floor is registered above
-  statics.push({ box: box3(SUMP_POS[0] - 6.15, -30, SUMP_POS[2] - 6.15, SUMP_POS[0] + 6.15, -26, SUMP_POS[2] - 6), tag: 'solid' });
-  statics.push({ box: box3(SUMP_POS[0] - 6.15, -30, SUMP_POS[2] + 6, SUMP_POS[0] + 6.15, -26, SUMP_POS[2] + 6.15), tag: 'solid' });
-  statics.push({ box: box3(SUMP_POS[0] - 6.15, -30, SUMP_POS[2] - 6, SUMP_POS[0] - 6, -26, SUMP_POS[2] + 6), tag: 'solid' });
-  statics.push({ box: box3(SUMP_POS[0] + 6, -30, SUMP_POS[2] - 6, SUMP_POS[0] + 6.15, -26, SUMP_POS[2] + 6), tag: 'solid' });
+  // (the same SUMP_* constants size the drawn walls in props/decor.ts, so the colliders sit exactly on them)
+  {
+    const o = SUMP_HALF + SUMP_WALL_T, y1 = SUMP_POS[1] + SUMP_WALL_H, [cx, y0, cz] = SUMP_POS;
+    statics.push({ box: box3(cx - o, y0, cz - o, cx + o, y1, cz - SUMP_HALF), tag: 'solid' });
+    statics.push({ box: box3(cx - o, y0, cz + SUMP_HALF, cx + o, y1, cz + o), tag: 'solid' });
+    statics.push({ box: box3(cx - o, y0, cz - SUMP_HALF, cx - SUMP_HALF, y1, cz + SUMP_HALF), tag: 'solid' });
+    statics.push({ box: box3(cx + SUMP_HALF, y0, cz - SUMP_HALF, cx + o, y1, cz + SUMP_HALF), tag: 'solid' });
+  }
   const sumpLamps: Array<[number, number]> = [[-5.4, 5.4], [5.4, 5.4], [-5.4, -5.4], [5.4, -5.4]];
   for (const [i, [lx, lz]] of sumpLamps.entries()) {
-    lights.push({ id: `sump:cage${i}`, pos: [SUMP_POS[0] + lx, -27, SUMP_POS[2] + lz], color: 0xffb45a, intensity: 0.9, range: 6, flicker: 'DYING', zone: 'sump' });
+    lights.push({ id: `sump:cage${i}`, pos: [SUMP_POS[0] + lx, -27, SUMP_POS[2] + lz], color: 0xffb45a, intensity: 1.3, range: 8, flicker: 'DYING' });   // no zone: it resolves to the lobby above (the Sump is not a zone)
   }
   const exit = kit.neon({ text: { key: 'prop.sign.exit' }, h: 0.45, color: 0xff3a2a, flicker: 0.4 });
   exit.root.position.set(SUMP_POS[0], -26.8, SUMP_POS[2] + 5.95);
@@ -448,11 +452,49 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     p.mesh.rotation.y = (rot * Math.PI) / 180;
     root.add(p.mesh);
   };
-  plaque('prop.sign.cashier', 1.6, 0.4, 6, 2.6, 19.8, 180, 0xffe0a0);
+  plaque('prop.sign.cashier', 1.6, 0.4, 6, 2.9, 19.7, 180, 0xffe0a0);
   plaque('prop.sign.charm', 1.6, 1.0, -9, 1.4, 19.84, 180, 0xffe0a0);
   plaque('prop.sign.lift', 0.5, 0.25, -6.4, 1.6, -29.8, 0, 0xffb000);
   plaque('prop.sign.parlour', 2.6, 0.35, 10.8, 3.7, 16, 270, 0xff8a8a);
-  plaque('prop.sign.keno', 3.0, 1.8, -20, 2.8, -1.84, 0, 0xffe0a0);
+  plaque('prop.sign.keno', 2.0, 1.2, -20, 3.3, -1.84, 0, 0xffe0a0);   // smaller and higher: it used to fill the view at LAU-02 and cover the buy prompt
+
+  // ── Wave 72: the lit route from the lift past the terminal to the Big One, a key light per area, a neon sign per area ──
+  lights.push({ id: 'route:lift', pos: [-4, 2.8, -27.2], color: 0xffe0a0, intensity: 1.3, range: 6, flicker: 'STEADY' });
+  lights.push({ id: 'route:term', pos: [-1.5, 3.0, -25], color: 0xffc861, intensity: 1.2, range: 6, flicker: 'STEADY' });
+  lights.push({ id: 'route:mouth', pos: [0, 3.4, -20.5], color: 0xffc861, intensity: 1.2, range: 7, flicker: 'STEADY' });
+  lights.push({ id: 'route:well', pos: [0, 3.6, -14], color: 0xffd98a, intensity: 1.2, range: 7, flicker: 'STEADY' });
+  lights.push({ id: 'well:flankW', pos: [-8, 3.2, -8], color: 0xff9a5a, intensity: 0.9, range: 6, flicker: 'STEADY' });
+  lights.push({ id: 'well:flankE', pos: [8, 3.2, -8], color: 0xff9a5a, intensity: 0.9, range: 6, flicker: 'STEADY' });
+  lights.push({ id: 'lobby:stage', pos: [0, 3.4, 11], color: 0xffe2a0, intensity: 1.3, range: 9, flicker: 'STEADY' });
+  lights.push({ id: 'lobby:vendorW', pos: [-6, 2.8, 17], color: 0xfff2c0, intensity: 0.9, range: 5, flicker: 'STEADY' });
+  lights.push({ id: 'lobby:vendorE', pos: [6, 2.8, 17], color: 0xfff2c0, intensity: 0.9, range: 5, flicker: 'STEADY' });
+  lights.push({ id: 'midway:key', pos: [-21, 2.8, -23], color: 0xff6aa8, intensity: 0.9, range: 7, flicker: 'STEADY', zone: 'midway' });
+  lights.push({ id: 'cards:key', pos: [-21, 2.6, -9], color: 0x9affb0, intensity: 0.9, range: 7, flicker: 'STEADY', zone: 'cards' });
+  lights.push({ id: 'boiler:key', pos: [20, 2.6, -22], color: 0xff8a50, intensity: 0.9, range: 7, flicker: 'STEADY', zone: 'boiler' });
+  lights.push({ id: 'wheels:key', pos: [21, 3.0, 3], color: 0xffa060, intensity: 0.9, range: 7, flicker: 'STEADY', zone: 'wheels' });
+  lights.push({ id: 'parlour:sconce', pos: [14.5, 1.9, 16], color: 0xffb070, intensity: 0.9, range: 5, flicker: 'CANDLE', zone: 'parlour' });
+  lights.push({ id: 'parlour:lamp', pos: [24, 2.0, 16.5], color: 0xffb070, intensity: 0.8, range: 5, flicker: 'CANDLE', zone: 'parlour' });
+  lights.push({ id: 'counting:lamp', pos: [-20, 2.0, 15.5], color: 0xffcf7a, intensity: 0.8, range: 5, flicker: 'CANDLE', zone: 'counting' });
+  {
+    // one neon per area: ARRIVALS over the Mouth starters, THE WELL on both Well walls, THE LOBBY on both Lobby walls, BACK OF HOUSE above the Mouth wings
+    const area = (id: string, key: string, h: number, color: number, pos: V3, yaw: number): void => {
+      const n = kit.neon({ text: { key }, h, color, flicker: 0.1 });
+      n.root.position.set(pos[0], pos[1], pos[2]);
+      n.root.rotation.y = yaw;
+      n.setOn(true);
+      root.add(n.root);
+      const nx = Math.sin(yaw) * 0.8, nz = Math.cos(yaw) * 0.8;   // the light stands a little in front of the sign
+      lights.push({ id: `sign:${id}`, pos: [pos[0] + nx, pos[1] - 0.3, pos[2] + nz], color, intensity: 0.8, range: 6, flicker: 'STEADY' });
+    };
+    const E = Math.PI / 2;   // faces +x (a sign on a west wall); -E faces -x (an east wall)
+    area('arrivals', 'prop.sign.arrivals', 0.5, 0xffb347, [-8.5, 3.5, -29.75], 0);
+    area('wellW', 'prop.sign.well', 0.7, 0xffd070, [-10.75, 5.4, -9], E);
+    area('wellE', 'prop.sign.well', 0.7, 0xffd070, [10.75, 5.4, -9], -E);
+    area('lobbyW', 'prop.sign.lobby', 0.5, 0xff9a5a, [-10.75, 3.5, 11], E);
+    area('lobbyE', 'prop.sign.lobby', 0.5, 0xff9a5a, [10.75, 3.5, 7.5], -E);
+    area('bohW', 'prop.sign.backOfHouse', 0.45, 0xff5a7a, [-10.75, 4.4, -23], E);
+    area('bohE', 'prop.sign.backOfHouse', 0.45, 0xff5a7a, [10.75, 4.4, -23], -E);
+  }
 
   // ── spawns (GDD §8.8): SP-0 first, then the burst arc; mouth rows; lift car; trapdoor ghost ──
   const spawns: Partial<Record<'solo' | 'mouth' | 'lift' | 'ghost', SpawnPoint[]>> = {
@@ -480,7 +522,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   anchors['duel.parlour'] = marker(26.3, 1.1, 18.6);
   anchors['duel.cards'] = marker(-16, 1.1, -9);
   anchors['duel.boiler'] = marker(22, 1.1, -17.05);
-  anchors['duel.laundry'] = marker(-24.5, 1.1, 5);
+  anchors['duel.laundry'] = marker(-18, 1.1, 4.5);   // Mimosa's table LAU-10 (not the bingo cage LAU-01)
   anchors['duel.counting'] = marker(-20, 1.1, 18.95);
   anchors['duel.bench'] = anchors['duel.parlour'];
 

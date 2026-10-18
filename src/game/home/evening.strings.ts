@@ -13,6 +13,9 @@ export default {
     'window.2': 'The street is empty. One light still burns down in the Pit.',
     'window.3': 'Your reflection looks tired. Behind it, the dark.',
     'window.4': 'A siren, somewhere. It does not stop here.',
+    // THE PROLOGUE (wave 72): the objective after the spouse and the call, and the bed's answer before the lift
+    'prologue.objective': 'Take the lift down.',
+    'prologue.notYet': 'Not yet. The lift first.',
   },
   tr: {
     'lever': 'ASANSÖRE BİN',
@@ -26,5 +29,7 @@ export default {
     'window.2': 'Sokak bomboş. Çukurda bir ışık hâlâ yanıyor.',
     'window.3': 'Yansıman yorgun görünüyor. Arkasında karanlık var.',
     'window.4': 'Uzaktan bir siren sesi. Buraya uğramıyor.',
+    'prologue.objective': 'Asansörle aşağı in.',
+    'prologue.notYet': 'Henüz değil. Önce asansör.',
   },
 };

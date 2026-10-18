@@ -8,6 +8,7 @@
  */
 import * as THREE from 'three';
 import type { KitX } from '@/kit';
+import type { MannequinOpts } from '@/kit/types';
 import type { TexGen } from '@/core/texgen/types';
 import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
@@ -87,7 +88,9 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
   activeDoor = door;
 
   // the spouse sits at the kitchen table, facing the door; the mannequin is skinned, so it stays out of `shell`
-  const spouse = o.kit.mannequin({ color: 0x5a4a52, jointColor: 0x2a2226, style: 'plain', clip: 'Sitting_Idle_Loop', height: 1.68 });
+  // the spouse's dark look keeps a warm amber rim (mannequinLook NPC rim)
+  const spouseOpts: MannequinOpts & { rim: number } = { color: 0x5a4a52, jointColor: 0x2a2226, style: 'plain', clip: 'Sitting_Idle_Loop', height: 1.68, rim: 0xd9913a };
+  const spouse = o.kit.mannequin(spouseOpts);
   spouse.root.position.set(...at(SPOUSE_SEAT.x, 0, SPOUSE_SEAT.z));
   root.add(spouse.root);
 

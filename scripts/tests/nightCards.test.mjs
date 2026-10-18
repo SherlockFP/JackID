@@ -93,7 +93,7 @@ function dawnRun(seed, idx, over) {
 function offerCasePerCard() {
   const found = new Map();
   for (let seed = 1; seed <= 300 && found.size < IDS.length; seed++) {
-    for (const night of NIGHTS.slice(0, 7)) {
+    for (const night of NIGHTS.slice(1, 7)) {
       for (const id of NC.nightCardOffer(seed, night)) if (!found.has(id)) found.set(id, { seed, night });
     }
   }
@@ -102,7 +102,7 @@ function offerCasePerCard() {
 
 test('preview parity: each card preview quota is the quota its Night opens with (real Dawns and offers, paid 1x and 1.6x)', () => {
   const cases = offerCasePerCard();
-  assert.equal(cases.size, IDS.length, 'every card is offered on Nights 1-7 of some seed');
+  assert.equal(cases.size, IDS.length, 'every card is offered on Nights 2-7 of some seed (the first offer is the Night 2 Dawn)');
   for (const [id, { seed, night }] of cases) {
     for (const over of [1, 1.6, 2.2]) {   // 2.2 takes the golden overshoot (-5 % next quota)
       const where = `${id} seed ${seed} Night ${night} paid x${over}`;
@@ -262,6 +262,11 @@ test('the real Dawn over 200 seeds x Nights 1-7: the offer is one safe and one r
       r.phase = 'collection';
       r.dawn();
       const where = `seed ${seed} night ${night} paid x${over}`;
+      if (night === 1) {   // no offer on the Night 1 Dawn: the floor opens with no card
+        assert.equal(r.nightCardOffer(), null, `${where}: no offer`);
+        assert.equal(r.openFloor(), true, `${where}: the floor opens`);
+        continue;
+      }
       const o = r.nightCardOffer();
       assert.ok(o && o.night === night, `${where}: the offer is open`);
       assert.deepEqual(o.candidates.map((d) => d.id), NC.nightCardOffer(seed, night), `${where}: the seeded pair`);
@@ -305,7 +310,7 @@ test('HIGH TABLE moves no quota: its Night opens at the plain read, which alread
   let checked = 0;
   let discounted = 0;
   for (const seed of SEEDS.slice(0, 80)) {
-    const r = dawnRun(seed, 0, 2.2);
+    const r = dawnRun(seed, 1, 2.2);   // the Dawn of Night 2: the first offer
     const o = r.nightCardOffer();
     if (o?.candidates.some((d) => d.id === 'high_table')) {
       const plain = r.nextQuotaPreview(1)?.due;
@@ -335,12 +340,13 @@ test('the class keeps one card per Night: an offer opens once, a pick closes it,
   let touches = 0;
   const nc = new NC.NightCards(() => idx, 42, () => { touches += 1; });
   assert.equal(nc.pending(), false);
-  assert.equal(nc.openOffer(1), true);
-  assert.equal(nc.openOffer(1), false, 'an open offer does not reopen');
+  assert.equal(nc.openOffer(1), false, 'no offer on the Night 1 Dawn (FIRST_OFFER_NIGHT is 2)');
+  assert.equal(nc.openOffer(2), true);
+  assert.equal(nc.openOffer(2), false, 'an open offer does not reopen');
   assert.equal(nc.pending(), true);
   const view = nc.offerView();
   assert.equal(view.candidates.length, 2);
-  assert.equal(view.night, 1);
+  assert.equal(view.night, 2);
   assert.equal(nc.pick('not_a_card'), false, 'an id not on offer is refused');
   const notOffered = IDS.find((id) => !view.candidates.some((d) => d.id === id));
   assert.equal(nc.pick(notOffered), false);
@@ -348,22 +354,22 @@ test('the class keeps one card per Night: an offer opens once, a pick closes it,
   assert.equal(nc.pick(first), true);
   assert.equal(nc.pending(), false);
   assert.equal(nc.pick(view.candidates[1].id), false, 'the offer is closed after one pick');
-  assert.equal(nc.openOffer(1), false, 'a Night offered once is never offered again');
-  assert.equal(nc.openOffer(2), true, 'the next Dawn offers the next Night');
+  assert.equal(nc.openOffer(2), false, 'a Night offered once is never offered again');
+  assert.equal(nc.openOffer(3), true, 'the next Dawn offers the next Night');
   assert.ok(touches >= 1, 'a pick invalidates the mod cache');
 });
 
 test('the card applies to its Night only: provider effects and the current card follow the index', () => {
   let idx = 0;
   const nc = new NC.NightCards(() => idx, 7, () => {});
-  nc.openOffer(1);
+  nc.openOffer(2);
   const first = nc.offerView().candidates[0].id;
   nc.pick(first);
   const out = [];
   nc.collect({}, out);
   assert.equal(out.length, 0, 'not yet: the Night still runs its previous index');
   assert.equal(nc.current(), null);
-  idx = 1;
+  idx = 2;   // the card from the Night 2 Dawn rides Night 3 (index 2)
   const started = nc.started();
   assert.equal(started?.id, first);
   assert.equal(nc.fx().watchAdd, NC.nightCardFx(first).watchAdd);
@@ -375,7 +381,7 @@ test('the card applies to its Night only: provider effects and the current card 
   } else {
     assert.equal(out.length, 0, 'a switch-only card adds no pipeline effect');
   }
-  idx = 2;
+  idx = 3;
   assert.equal(nc.current(), null, 'the next Night has no card');
   assert.deepEqual(nc.fx(), NC.NEUTRAL_NIGHT_CARD_FX);
 });
@@ -383,13 +389,13 @@ test('the card applies to its Night only: provider effects and the current card 
 test('the 20 s timer auto-picks the first card when the player does not', () => {
   let idx = 0;
   const nc = new NC.NightCards(() => idx, 99, () => {});
-  nc.openOffer(1);
+  nc.openOffer(2);
   const ids = nc.offerView().candidates.map((d) => d.id);
   assert.equal(nc.tick(NC.NIGHT_CARD_TIMEOUT_SEC - 1), null, 'still open');
   assert.equal(nc.offerView().left > 0, true);
   assert.equal(nc.tick(2), ids[0], 'the first card is kept when the timer runs out');
   assert.equal(nc.pending(), false);
-  idx = 1;
+  idx = 2;
   assert.equal(nc.current()?.id, ids[0]);
 });
 
@@ -397,7 +403,7 @@ test('the offer and the kept card survive a save and a reload', () => {
   let idx = 0;
   const a = new NC.NightCards(() => idx, 5, () => {});
   assert.equal(a.snapshot(), null, 'nothing to save before a Dawn');
-  a.openOffer(1);
+  a.openOffer(2);
   a.tick(7);
   const ids = a.offerView().candidates.map((d) => d.id);
   const save = JSON.parse(JSON.stringify(a.snapshot()));
@@ -405,12 +411,12 @@ test('the offer and the kept card survive a save and a reload', () => {
   b.restore(save);
   assert.deepEqual(b.offerView().candidates.map((d) => d.id), ids);
   assert.ok(Math.abs(b.offerView().left - (NC.NIGHT_CARD_TIMEOUT_SEC - 7)) < 1e-9, 'the timer resumes where it stopped');
-  assert.equal(b.openOffer(1), false, 'a reload cannot reopen the same Dawn');
+  assert.equal(b.openOffer(2), false, 'a reload cannot reopen the same Dawn');
   assert.equal(b.pick(ids[1]), true);
-  const c = new NC.NightCards(() => 1, 5, () => {});
+  const c = new NC.NightCards(() => 2, 5, () => {});
   c.restore(JSON.parse(JSON.stringify(b.snapshot())));
   assert.equal(c.pending(), false);
-  idx = 1;
+  idx = 2;
   assert.equal(c.current()?.id, ids[1], 'the kept card is still on the Night after a reload');
   const junk = new NC.NightCards(() => 0, 5, () => {});
   junk.restore({ offer: { night: 1, ids: ['nope'], left: 3 }, kept: { night: 1, id: 'nope' } });
@@ -418,7 +424,7 @@ test('the offer and the kept card survive a save and a reload', () => {
   assert.equal(junk.current(), null);
 });
 
-test('the Dawn hook opens one offer per paid Dawn from Night 1 on; the pick applies to Night 2', () => {
+test('the Dawn hook opens one offer per paid Dawn from Night 2 on; the pick applies to Night 3', () => {
   const run = RUN.createRun({ seed: 311, mode: 'debt' });
   const seen = [];
   const off = EV.bus.on('run:nightcard', (e) => { seen.push(e.state); });
@@ -428,11 +434,17 @@ test('the Dawn hook opens one offer per paid Dawn from Night 1 on; the pick appl
   run.syncQuota();
   run.phase = 'collection';
   run.dawn();
+  assert.equal(run.nightCardOffer(), null, 'the Dawn of Night 1 opens no offer (the first is the Night 2 Dawn)');
+  assert.equal(run.openFloor(), true, 'Night 1 opens with no card');
+  run.debtPaid = run.quota.due;
+  run.syncQuota();
+  run.phase = 'collection';
+  run.dawn();
   const offer = run.nightCardOffer();
-  assert.ok(offer, 'the Dawn of Night 1 opens the offer for Night 2');
-  assert.equal(offer.night, 1);
+  assert.ok(offer, 'the Dawn of Night 2 opens the offer for Night 3');
+  assert.equal(offer.night, 2);
   assert.equal(offer.candidates.length, 2);
-  assert.deepEqual(offer.candidates.map((d) => d.id), NC.nightCardOffer(311, 1).map((id) => NC.nightCardDef(id).id));
+  assert.deepEqual(offer.candidates.map((d) => d.id), NC.nightCardOffer(311, 2).map((id) => NC.nightCardDef(id).id));
   assert.equal(run.pickNightCard('not_a_card'), false);
   const keep = offer.candidates[0].id;
   assert.equal(run.pickNightCard(keep), true);
@@ -440,42 +452,52 @@ test('the Dawn hook opens one offer per paid Dawn from Night 1 on; the pick appl
   assert.equal(run.nightCardOffer(), null);
   assert.equal(run.nightCard(), null, 'the card is not in play before its Night');
   assert.equal(run.openFloor(), true, 'OPEN THE FLOOR works once the card is kept');
-  assert.equal(run.index, 1);
+  assert.equal(run.index, 2);
   assert.equal(run.nightCard()?.id, keep);
   const fx = NC.nightCardFx(keep);
-  assert.equal(run.watches, Math.max(1, SCH.nightDef(1).watches + fx.watchAdd), 'the switch reaches the Watch count');
+  assert.equal(run.watches, Math.max(1, SCH.nightDef(2).watches + fx.watchAdd), 'the switch reaches the Watch count');
   off();
   assert.ok(seen.includes('offer') && seen.includes('picked') && seen.includes('started'), `events ${seen.join(',')}`);
   run.dispose();
 });
 
-test('OPEN THE FLOOR with the offer still open settles it with the first card (the Night never waits on an answer)', () => {
+test('OPEN THE FLOOR with the offer still open settles it with the safe card (the Night never waits on an answer)', () => {
   const run = RUN.createRun({ seed: 314, mode: 'debt' });
   run.index = 0;
   run.debtPaid = run.quota.due;
   run.syncQuota();
   run.phase = 'collection';
   run.dawn();
-  const first = run.nightCardOffer().candidates[0].id;
+  assert.equal(run.openFloor(), true, 'Night 1 opens (no offer on its Dawn)');
+  run.debtPaid = run.quota.due;
+  run.syncQuota();
+  run.phase = 'collection';
+  run.dawn();
+  const first = run.nightCardOffer().candidates.find((d) => d.tone !== 'risk').id;   // the timer and OPEN THE FLOOR take the safe card
   assert.equal(run.openFloor(), true, 'the floor opens');
   assert.equal(run.nightCardOffer(), null, 'the offer is closed');
-  assert.equal(run.nightCard()?.id, first, 'the first card rides the Night');
-  assert.equal(run.index, 1);
+  assert.equal(run.nightCard()?.id, first, 'the safe card rides the Night');
+  assert.equal(run.index, 2);
   run.dispose();
 });
 
-test('the Dawn offer auto-picks after its 20 s and the floor opens without the player', () => {
+test('the Dawn offer auto-picks its safe card after 20 s and the floor opens without the player', () => {
   const run = RUN.createRun({ seed: 312, mode: 'debt' });
   run.index = 0;
   run.debtPaid = run.quota.due;
   run.syncQuota();
   run.phase = 'collection';
   run.dawn();
-  const first = run.nightCardOffer().candidates[0].id;
+  assert.equal(run.openFloor(), true, 'Night 1 opens (no offer on its Dawn)');
+  run.debtPaid = run.quota.due;
+  run.syncQuota();
+  run.phase = 'collection';
+  run.dawn();
+  const first = run.nightCardOffer().candidates.find((d) => d.tone !== 'risk').id;   // the timer and OPEN THE FLOOR take the safe card
   run.tick(NC.NIGHT_CARD_TIMEOUT_SEC + 1);
   assert.equal(run.nightCardOffer(), null, 'the timer closed the offer');
   assert.equal(run.openFloor(), true);
-  assert.equal(run.nightCard()?.id, first, 'the first card was kept');
+  assert.equal(run.nightCard()?.id, first, 'the safe card was kept');
   run.dispose();
 });
 

@@ -9,6 +9,7 @@ export default {
   prefix: 'hud.plan.',
   en: {
     'bank': 'DAWN {p}/{q}',
+    'bankNow': 'BANKED {p}/{q}',
     'pocket': 'POCKET {p} · DEPOSIT',
     'ends': 'W{w}/{n} · {p} PULLS · {c}',
     'next': 'NEXT WATCH {w}/{n}',
@@ -31,6 +32,7 @@ export default {
   },
   tr: {
     'bank': 'ŞAFAK {p}/{q}',
+    'bankNow': 'BANKADA {p}/{q}',
     'pocket': 'CEP {p} · YATIR',
     'ends': 'NÖBET {w}/{n} · {p} ÇEKİŞ · {c}',
     'next': 'SONRAKİ NÖBET {w}/{n}',

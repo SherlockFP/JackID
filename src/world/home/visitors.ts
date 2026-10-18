@@ -12,7 +12,7 @@
  */
 import * as THREE from 'three';
 import type { KitX } from '@/kit';
-import type { MannequinActor } from '@/kit/types';
+import type { MannequinActor, MannequinOpts } from '@/kit/types';
 import { at, DOOR_H, DOOR_HINGE_X, DOOR_Z } from './config';
 
 /** The three visitors of the knock (docs/WAVE71_KNOCK). */
@@ -31,13 +31,15 @@ interface VisitorSpec {
   readonly z: number;
   /** Whether the head turns to the door (the Listener's tilt). */
   readonly lookAtDoor: boolean;
+  /** Dark NPC rim colour (mannequinLook): cold cyan for the listener and leaner, violet for the picker. */
+  readonly rim: number;
 }
 
 /** The three silhouettes. The hall anchor is at x -0.6, z 3.9; the door's outer face is at z 2.8. */
 const SPEC: Record<HomeVisitor, VisitorSpec> = {
-  listener: { height: 1.8, color: 0x7a7a80, jointColor: 0x2a2a2e, style: 'plain', clip: 'Idle_Loop', speed: 0, x: -0.6, z: 3.5, lookAtDoor: true },
-  leaner: { height: 1.95, color: 0x6b4424, jointColor: 0x2a1a10, style: 'plain', clip: 'Push_Loop', speed: 0.6, x: -0.6, z: 3.0, lookAtDoor: false },
-  picker: { height: 1.66, color: 0x1a1a1e, jointColor: 0x0a0a0c, style: 'shadow', clip: 'Crouch_Idle_Loop', speed: 1, x: DOOR_HINGE_X + 0.78, z: 3.05, lookAtDoor: false },
+  listener: { height: 1.8, color: 0x7a7a80, jointColor: 0x2a2a2e, style: 'plain', clip: 'Idle_Loop', speed: 0, x: -0.6, z: 3.5, lookAtDoor: true, rim: 0x6fd8e0 },
+  leaner: { height: 1.95, color: 0x6b4424, jointColor: 0x2a1a10, style: 'plain', clip: 'Push_Loop', speed: 0.6, x: -0.6, z: 3.0, lookAtDoor: false, rim: 0x6fd8e0 },
+  picker: { height: 1.66, color: 0x1a1a1e, jointColor: 0x0a0a0c, style: 'shadow', clip: 'Crouch_Idle_Loop', speed: 1, x: DOOR_HINGE_X + 0.78, z: 3.05, lookAtDoor: false, rim: 0x9a6bd6 },
 };
 
 /** The Listener's head turns to this point on the door (world space): the leaf's upper half, at the peephole's side. */
@@ -52,7 +54,8 @@ export class HallVisitors {
   constructor(kit: KitX, parent: THREE.Group) {
     const build = (type: HomeVisitor): [MannequinActor, THREE.Group] => {
       const s = SPEC[type];
-      const actor = kit.mannequin({ color: s.color, jointColor: s.jointColor, style: s.style, clip: s.clip, height: s.height });
+      const opts: MannequinOpts & { rim: number } = { color: s.color, jointColor: s.jointColor, style: s.style, clip: s.clip, height: s.height, rim: s.rim };
+      const actor = kit.mannequin(opts);
       actor.root.name = `home:visitor:${type}`;
       actor.root.position.set(...at(s.x, 0, s.z));
       // the mannequins' +Z is forward: a half turn faces the door (north, -Z)

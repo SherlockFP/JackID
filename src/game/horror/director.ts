@@ -12,7 +12,7 @@ import type { Rng } from '@/core/rng';
 import type { AudioEngine } from '@/core/audio/types';
 import type { WorldLights, WorldLightTarget } from '@/world/types';
 import type { V3, ZoneId } from '@/core/types';
-import { ActorDirectorImpl, LiveActor, NAV_POINTS, observed, nearestViewer, type Viewer } from '@/world/actors';
+import { ActorDirectorImpl, DarkPatrons, LiveActor, NAV_POINTS, observed, nearestViewer, type Viewer } from '@/world/actors';
 import type { ActorHandle } from '@/core/cutscene/types';
 import { DreadMeter, TIER_RANK, type DreadEventKind, type DreadInput, type DreadTier } from './dread';
 
@@ -92,8 +92,12 @@ export class HorrorDirector {
   private collector: LiveActor | null = null;
   private clinkLeft = 0;
   private clinkTimer = 0;
+  // THE DARK CROWD (wave 72): 4-6 dark patrons wander the floor. Built here, spawned once the level exists (`lights()` is set).
+  private readonly darkPatrons: DarkPatrons;
+  private darkPatronsStarted = false;
 
   constructor(private readonly d: HorrorDeps) {
+    this.darkPatrons = new DarkPatrons({ actors: d.actors, rnd: () => d.rng.next() });
     this.tFlicker = this.jitter(FLICKER_EVERY.uneasy);
     this.tBlackout = this.jitter(90);
     this.tWhisper = this.jitter((WHISPER_MIN + WHISPER_MAX) / 2);
@@ -136,6 +140,8 @@ export class HorrorDirector {
     this.tickPa(dt, tier, set);
     this.tickPatrons(realDt, tier, set);
     this.tickCollector(dt, s);
+    if (!this.darkPatronsStarted && this.d.lights()) { this.darkPatronsStarted = true; void this.darkPatrons.start(); }
+    this.darkPatrons.tick(realDt);
     this.d.actors.update(realDt);
   }
 
@@ -190,6 +196,7 @@ export class HorrorDirector {
 
   dispose(): void {
     this.stopDawnWalk();
+    this.darkPatrons.dispose();
     this.patrons.length = 0;
     this.endBlackout();
     this.d.lights()?.setDread(0);

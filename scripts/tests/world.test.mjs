@@ -454,7 +454,7 @@ test('pit deck: a passing line-up shows at least four suits and holds a STEADY a
 
 test('pit deck: the guard keeps the GDD §8.6 devices when the catalogue cannot pass', async () => {
   const { rosterFor, ROSTER_PADS, DEFAULT_ASSIGN } = await load('src/world/layout.ts');
-  const defaults = Object.fromEntries(ROSTER_PADS.map((p) => [p, DEFAULT_ASSIGN[p]]));
+  const defaults = Object.fromEntries(ROSTER_PADS.filter((p) => DEFAULT_ASSIGN[p]).map((p) => [p, DEFAULT_ASSIGN[p]]));   // (pads with no Wave 72 default are simply absent)
   assert.deepEqual(rosterFor(7, []), defaults, 'empty catalogue');
   const noSuits = pitCatalog().map((c) => ({ ...c, suit: undefined }));
   assert.deepEqual(rosterFor(7, noSuits), defaults, 'no suit data');

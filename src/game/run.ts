@@ -242,6 +242,13 @@ interface StarterState { ids: string[]; open: boolean; left: number }
 
 /** Bell strike length (GDD §2.3). */
 const BELL_SEC = 2;
+declare module '@/core/events' {
+  interface GameEvents {
+    /** THE PROLOGUE (wave 72): `done` when the lift has landed and Night 1 Watch 1 is about to open (the intro plays from here). */
+    'home:prologue': { state: 'done' };
+  }
+}
+
 /** Settle length (GDD §2.3). Wave 42 (director decision 2): 1.5 s. Deposits and WITHDRAW stay open through it (the bank is
  *  settled at its start, so a coin moved now earns from the next Watch on); the lever comes back when it ends. */
 const SETTLE_SEC = 1.5;
@@ -455,6 +462,12 @@ export interface RunOpts {
    * quota). The session sets it for a solo Debt Run; an online run leaves it off and keeps the old lever and the trapdoor. Off by default.
    */
   home?: boolean;
+  /**
+   * THE PROLOGUE (wave 72): a fresh run with the Home layer opens in the apartment (the spouse, the call, the lift down) before Night 1
+   * Watch 1. Only a presentation that plays it (the session's Evening) sets it: a headless run with `home` and no `prologue` goes
+   * straight to the floor, as before. A resumed save never has one.
+   */
+  prologue?: boolean;
 }
 
 /** What the world exposes to the run (machines and slot positions). Attached once the pit exists. */
@@ -486,8 +499,8 @@ export interface DebtRun extends RunApi {
   /** Take the first candidate that fits and drop the offer (the timeout fallback; also used by `tick`). */
   autoPickOverpay(): boolean;
   /**
-   * Starter Draft (draft wave, run start): open the three-charm offer. Opens in a fresh Night 1 Watch 1 (before any pull) or in
-   * any Night 1 intermission (Mola), once per run. False when it is not due yet, already offered, or the run is not a Debt Run.
+   * Starter Draft (draft wave, wave 72): open the three-charm offer in the Night 1 Mola (after the first Bell), never before it and
+   * never during the prologue. Once per run. False when it is not due yet, already offered, or the run is not a Debt Run.
    */
   openStarterDraft(): boolean;
   /** The Starter Draft is still to come (Night 1, no offer made yet): the UI keeps asking `openStarterDraft` until it opens. */
@@ -523,6 +536,12 @@ export interface DebtRun extends RunApi {
   homeLiftReady(): boolean;
   /** The bed: the Evening ends, the screen goes dark and the next Night opens at the end of the stage. False outside the Evening. */
   homeSleep(): boolean;
+  /** THE PROLOGUE (wave 72): a fresh solo run starts in the apartment, before Night 1 Watch 1. True until the lift lands. */
+  prologueOn(): boolean;
+  /** The prologue's lift has landed on the casino floor: the prologue ends and Night 1 Watch 1 begins. False when it is not on. */
+  finishPrologue(): boolean;
+  /** Writes the save now (a visit's verdict at home must not wait for the coalescing timer). */
+  homeSaveNow(): void;
   /** The controller reports the apartment's lights and chain so a save keeps them. */
   homeFlags(f: { lights?: boolean; chain?: boolean }): void;
   /** Pay the rest of the Night now (SETTLE lever). Needs `deposit ≥ quota`. */
@@ -853,6 +872,8 @@ class Run implements DebtRun {
   private hLights = true;
   private hChain = false;
   private readonly hPhone: HomePhoneApi | null;
+  /** THE PROLOGUE (wave 72): true from a fresh start until the lift lands on the floor. Not saved (a resume skips it). */
+  private prologue = false;
 
   // status
   private living = true;
@@ -1117,6 +1138,8 @@ class Run implements DebtRun {
     this.jackpots = this.makeJackpotsApi();
     // THE EVENING: the phone belongs to the Home layer (solo only); an online run has none (`homePhone()` is null).
     this.hPhone = this.homeOn ? createPhone(this) : null;
+    // THE PROLOGUE (wave 72): a fresh Home-layer run opens in the apartment; a resumed save skips it (its Night is already on).
+    this.prologue = this.homeOn && opts.prologue === true && resume === null;
 
     if (resume) {
       this.restore(resume);
@@ -1539,6 +1562,7 @@ class Run implements DebtRun {
   }
 
   startWatch(): boolean {
+    if (this.prologue) return false;   // the prologue holds the clock: Watch 1 starts when the lift lands (finishPrologue)
     if (this.ended || !this.quotaMode || this.topside || this.nightDone) return this.refuse('noWatch');
     if (this.phase !== 'intermission') return this.refuse(this.phaseRefusal());
     this.refusal = null;
@@ -1574,6 +1598,7 @@ class Run implements DebtRun {
   }
 
   openFloor(): boolean {
+    if (this.prologue) return false;
     if (this.ended || !this.quotaMode || this.topside) return this.refuse('noWatch');
     if (this.hStage === 'doomed') return this.refuse('noWatch');
     if (this.phase !== 'intermission') return this.refuse(this.phaseRefusal());
@@ -1659,6 +1684,21 @@ class Run implements DebtRun {
     this.setHome('sleep', HOME_TIMING.sleep);
     return true;
   }
+
+  prologueOn(): boolean { return this.prologue; }
+
+  finishPrologue(): boolean {
+    if (!this.prologue) return false;
+    this.prologue = false;
+    this.emit('home:prologue', { state: 'done' });
+    this.notify();
+    // the lift has landed: Night 1 Watch 1 opens now, on the floor (the bell and the clock start here, not before)
+    if (this.startWatch()) this.banner?.(t('ingame.night', { n: this.night() }), { hold: 3, size: 16 });
+    this.persist();
+    return true;
+  }
+
+  homeSaveNow(): void { this.persist(); }
 
   /** Moves the Home stage, tells the world (`home:stage`) and saves. `null` = back on the casino floor. */
   private setHome(stage: HomeStage | null, left: number): void {
@@ -3425,6 +3465,8 @@ class Run implements DebtRun {
 
   flush(): void {
     if (this.dirty) this.persist();
+    // the store writes what the persist just set (page hide: the run's last write must reach storage before the page goes)
+    this.save?.flush();
   }
 
   // ── overpay choice (GDD §2.6.5) ─────────────────────────────────────────────────────────────────
@@ -3475,11 +3517,10 @@ class Run implements DebtRun {
   }
 
   openStarterDraft(): boolean {
-    if (!this.starterPending()) return false;
-    // A fresh Watch 1 before any pull (the offer then holds the Bell), or any Night 1 intermission (Mola). A player who pulled
-    // first is offered the cards at the Mola, so the offer is not lost.
-    const freshWatch = this.watch === 0 && this.watchPulls === 0 && (this.phase === 'bell' || this.phase === 'play');
-    if (!freshWatch && this.phase !== 'intermission') return false;
+    if (!this.starterPending() || this.prologue) return false;
+    // Wave 72: only in the Night 1 Mola, after the first Watch has ended (the first Bell or the clock). Never on the first frame:
+    // the Watch 1 floor and the Bell are free until then.
+    if (this.phase !== 'intermission' || (this.watch < 1 && !this.nightDone)) return false;
     const ids = starterOffer(this.seed, (id) => this.charmBox.has(this.selfId, id));
     if (ids.length === 0) return false;
     this.starter = { ids, open: true, left: STARTER_TIMEOUT_SEC };

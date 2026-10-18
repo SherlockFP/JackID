@@ -102,13 +102,13 @@ test('Night 1 bet limits: the run cap (a third of the starting pocket), not the 
   run.dispose();
 });
 
-test('tutorial: the spin step teaches four pulls, then rotation (TILT lowers repeat pay), in EN and TR', () => {
+test('tutorial: the spin step teaches four pulls, then another machine (the TILT and HOT steps are gone), in EN and TR', () => {
   const en = TUT.default.en.spin;
   const tr = TUT.default.tr.spin;
   assert.match(en, /Spin 4 times, then try another machine/);
-  assert.match(en, /TILT lowers repeat pay/);
+  assert.doesNotMatch(en, /TILT/, 'no TILT step in the tutorial any more');
   assert.match(tr, /4 kez/);
-  assert.match(tr, /TİLT/);
+  assert.doesNotMatch(tr, /TİLT|TILT/, 'no TILT step in the Turkish tutorial either');
 });
 
 // Cash starvation (wave 14): the float on the first deposit of a Watch, the dead pocket that rings the rescue call, and the

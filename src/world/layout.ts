@@ -24,8 +24,8 @@ const S = (id: InstanceId, zone: ZoneId, size: SlotSize, x: number, z: number, r
   y === undefined ? { id, size, zone, pos: [x, 0, z], rotY } : { id, size, zone, pos: [x, 0, z], rotY, y };
 
 /**
- * GDD §8.6 — every slot in the pit: 48 machine instances + 11 system devices (Terminal, Hotline ×2, Bounty, Charm,
- * Concession, Cashier, Jukebox, Tape, Tonic, Shrine) + 30 pads (27 + 3 Counting Room). The Clock, lift panel, X plate,
+ * GDD §8.6 — every slot in the pit (machine, system and pad slots, plus HOLLOW-TABLE). Pads are the slots without a
+ * DEFAULT_ASSIGN entry (see DEFAULT_PADS); counts are not repeated here so they cannot drift. The Clock, lift panel, X plate,
  * quota board, charm board, furnace and chair are props, not slots, and live in `level.ts`.
  */
 export const SLOTS: SlotDef[] = [
@@ -39,12 +39,12 @@ export const SLOTS: SlotDef[] = [
   S('WELL-01', 'well', 'XL', 0, -4.0, 180, 0.15),
   S('WELL-02', 'well', 'XL', -5.0, -13.0, 0),
   S('WELL-03', 'well', 'L', 5.0, -13.0, 0),
-  S('WELL-04', 'well', 'M', -10.35, -19.5, 90),
+  S('WELL-04', 'mouth', 'M', -10.35, -19.5, 90),
   S('WELL-05', 'well', 'M', -10.35, -17.0, 90),
   S('WELL-06', 'well', 'M', -10.35, -5.0, 90),
   S('WELL-07', 'well', 'M', -10.35, -2.5, 90),
   S('WELL-08', 'well', 'M', -10.35, 0.5, 90),
-  S('WELL-09', 'well', 'M', 10.35, -19.5, 270),
+  S('WELL-09', 'mouth', 'M', 10.35, -19.5, 270),
   S('WELL-10', 'well', 'M', 10.35, -17.0, 270),
   S('WELL-11', 'well', 'M', 10.35, -5.0, 270),
   S('WELL-12', 'well', 'M', 10.35, -2.5, 270),
@@ -58,7 +58,7 @@ export const SLOTS: SlotDef[] = [
   S('LOB-01', 'lobby', 'M', -10.35, 9.0, 90),
   S('LOB-02', 'lobby', 'M', -10.35, 11.5, 90),
   S('LOB-03', 'lobby', 'S', -10.45, 13.5, 90),
-  S('LOB-PAWN', 'lobby', 'L', -6.0, 19.35, 180, 1.0),
+  S('LOB-PAWN', 'lobby', 'L', -6.0, 18.97, 180, 1.0),
   S('LOB-PHONE2', 'lobby', 'M', -3.0, 19.3, 180),
   S('LOB-DESK', 'lobby', 'L', 0, 19.2, 180),
   S('LOB-CASH', 'lobby', 'L', 6.0, 19.35, 180),
@@ -147,40 +147,35 @@ export const SLOTS: SlotDef[] = [
 ];
 
 /**
- * Wave 27, the progressive floor (director decision). A Debt / Co-op / Versus run is built from the 16 CORE machines of
- * `game/progression.ts`: the four starters sit in the Well around the dais (five steps from the spawn arc), the rest are
- * placed in the main pit (Well + Lobby) so nothing is hidden in a wing, and the gated rooms keep a few duplicates of core
- * machines (zone rules still apply to them). Locked machines (not yet scheduled) are covered by the world; their night is
- * `unlockNightOf(id)`. Every other registered machine lives in the Free Casino table (`FREE_ASSIGN`).
+ * Wave 72 casino refit: a Debt / Co-op / Versus run is built from the 10 CORE machines of `game/progression.ts`, seated in four
+ * readable areas (each core machine once; the wings keep a few duplicates, zone rules still apply to them):
+ *   1. ARRIVAL (Mouth)   the lift (lit HOME sign), debt terminal, phone and bounty board, then the lit route south to the Well.
+ *   2. THE WELL          the Big One on its dais with the two free starters (hilo, coinflip) a few steps from the spawn, the
+ *                        roulette and blackjack high tables, plinko, mines and videopoker on the walls.
+ *   3. THE LOBBY         the vendors on the south wall, jukebox and tonic, keno and the sonkart party table (the centre is free for the stage).
+ *   4. BACK OF HOUSE     the wings: story tables (Tally Bench, the Devil's Table, the shrine) plus a core duplicate or two.
+ * Locked machines (not yet scheduled) are covered by the world; their night is `unlockNightOf(id)`. Slots with no entry here are
+ * pads; the world hides the pads of a closed wing. Every other registered machine lives in the Free Casino table (`FREE_ASSIGN`).
  *
  * Unlock Night of each pit instance (canonical order; a run seed reshuffles inside a tier, see progression.ts):
- *   N1  WELL-01 bigone · FLR-01 hilo · FLR-02 WELL-13 coinflip · FLR-03 LOB-01 scratch
- *   N2  FLR-04 LOB-03 bandit · WELL-06 plinko            N3  WELL-11 mines · WELL-07 WELL-04 videopoker
- *   N4  WELL-12 cyclone · WELL-03 blackjack              N5  WELL-08 pachinko · FLR-07 keno
- *   N6  WELL-02 roulette · FLR-06 sonkart                N7  WELL-09 mahjong · FLR-05 craps
+ *   N1  WELL-01 bigone · FLR-01 hilo · FLR-02 coinflip
+ *   N2  WELL-07 videopoker   N3  WELL-11 mines   N4  WELL-06 plinko   N5  WELL-03 blackjack   N6  FLR-07 keno
+ *   N7  WELL-02 roulette · FLR-06 sonkart
  */
 export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   // The Hollow Door's Lords' table (far below the pit; the door opens it, see world/hollow)
   [HOLLOW_TABLE_SLOT.id]: 'lordstable',
-  // The Mouth: terminal, phone and bounty board only (the Fortune Teller moved to the Free Casino)
+  // 1. Arrival: terminal, phone and bounty board (the lift stands beside them)
   'MOUTH-TERM': 'debt_terminal', 'MOUTH-PHONE': 'hotline', 'MOUTH-BOUNTY': 'bounty_board',
-  // The Well: the dais, the high tables and the two wall banks
-  'WELL-01': 'bigone', 'WELL-02': 'roulette', 'WELL-03': 'blackjack',
-  'WELL-04': 'videopoker', 'WELL-06': 'plinko', 'WELL-07': 'videopoker', 'WELL-08': 'pachinko',
-  'WELL-09': 'mahjong', 'WELL-11': 'mines', 'WELL-12': 'cyclone', 'WELL-13': 'coinflip',
-  'FLR-01': 'hilo', 'FLR-02': 'coinflip', 'FLR-03': 'scratch', 'FLR-04': 'bandit',
-  // The Lobby: vendors on the south wall, tables on the floor
-  'LOB-01': 'scratch', 'LOB-03': 'bandit', 'LOB-PAWN': 'charm_vendor', 'LOB-PHONE2': 'hotline',
-  'LOB-CASH': 'cashier', 'LOB-JUKE': 'jukebox', 'LOB-TONIC': 'tonic_vendor',
-  'FLR-05': 'craps', 'FLR-06': 'sonkart', 'FLR-07': 'keno',
-  // Wings (behind grilles): core duplicates, themed to the room; non-core machines left as pads
-  'MID-06': 'cyclone',
-  'CARD-01': 'mahjong', 'CARD-06': 'mahjong', 'CARD-02': 'blackjack', 'CARD-03': 'blackjack', 'CARD-04': 'videopoker', 'CARD-05': 'videopoker',
-  'LAU-02': 'keno', 'LAU-03': 'pachinko', 'LAU-04': 'pachinko', 'LAU-05': 'pachinko', 'LAU-07': 'plinko',
-  'BOI-01': 'craps', 'BOI-05': 'coinflip',
-  'GAL-01': 'bandit', 'GAL-02': 'bandit', 'GAL-03': 'bandit', 'GAL-07': 'bandit', 'GAL-08': 'bandit',
-  'WH-01': 'cyclone',
-  'PAR-01': 'devilstable', 'PAR-03': 'sonkart', 'PAR-SHRINE': 'shrine',
+  // 2. The Well: the Big One on the dais, the starter bank around it, the high tables and the wall banks
+  'WELL-01': 'bigone', 'FLR-01': 'hilo', 'FLR-02': 'coinflip', 'WELL-02': 'roulette', 'WELL-03': 'blackjack',
+  'WELL-06': 'plinko', 'WELL-07': 'videopoker', 'WELL-11': 'mines',
+  // 3. The Lobby: vendors on the south wall, tables on the floor
+  'LOB-PAWN': 'charm_vendor', 'LOB-PHONE2': 'hotline', 'LOB-CASH': 'cashier', 'LOB-JUKE': 'jukebox', 'LOB-TONIC': 'tonic_vendor',
+  'FLR-06': 'sonkart', 'FLR-07': 'keno',
+  // 4. Back of house (behind grilles): a few core duplicates themed to the room, and the story tables
+  'CARD-02': 'blackjack', 'CARD-04': 'videopoker', 'LAU-02': 'keno', 'BOI-05': 'coinflip',
+  'PAR-01': 'devilstable', 'PAR-SHRINE': 'shrine',
   // Wave 25 Tally Bench: one duel table per rival venue (Lucan in the Parlour, Tamsin in the Jade Room, Kuro in the Boiler)
   'PAR-05': 'tallytable', 'CARD-08': 'tallytable', 'BOI-07': 'tallytable',
   // Wave 25 phase 2: Mimosa's table in the Wash (side duel, Night 4) and Vell's in the Counting Room (Night 8 boss)
@@ -217,9 +212,8 @@ export const FREE_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
 
 /** GDD §8.6 busy-floor override: pad → device (host option, default on with ≥ 4 players). Core machines only. */
 export const BUSY_FLOOR: Partial<Record<InstanceId, MachineId>> = {
-  'WELL-05': 'videopoker', 'WELL-10': 'bandit', 'LOB-02': 'scratch', 'LOB-TAPE': 'coinflip',
-  'GAL-04': 'bandit', 'GAL-05': 'bandit', 'GAL-06': 'bandit',
-  'LAU-09': 'pachinko', 'MID-07': 'mines', 'BOI-06': 'plinko', 'WH-04': 'roulette',
+  'WELL-05': 'videopoker', 'WELL-10': 'plinko', 'LOB-02': 'hilo', 'LOB-TAPE': 'coinflip',
+  'LAU-09': 'hilo', 'MID-07': 'mines', 'BOI-06': 'plinko', 'WH-04': 'roulette',
 };
 /** The same override for the Free Casino (the original GDD table). */
 const LEGACY_BUSY_FLOOR: Partial<Record<InstanceId, MachineId>> = {
@@ -252,10 +246,10 @@ export interface SignSide { face: 'N' | 'S'; key: string; arrow: 'left' | 'right
 /** A double-sided hanging board centred at `pos` (y = board centre), `w` metres wide. Text keys are `prop.go.*`. */
 export interface Signpost { id: string; pos: V3; w: number; sides: readonly SignSide[] }
 export const SIGNPOSTS: readonly Signpost[] = [
-  // Mouth: leaving the lift, the floor is straight ahead (south)
-  { id: 'sp.mouth', pos: [0, 3.9, -20.6], w: 3.4, sides: [{ face: 'S', key: 'go.floor', arrow: 'down' }, { face: 'N', key: 'go.terminal', arrow: 'up' }] },
-  // Well: from the spawn the terminal, phone and lift are behind (north); the vendors are ahead (south)
-  { id: 'sp.well', pos: [0, 3.8, -11.4], w: 3.4, sides: [{ face: 'N', key: 'go.terminalPhone', arrow: 'up' }, { face: 'S', key: 'go.vendors', arrow: 'down' }] },
+  // Mouth: the N face is read walking south (leaving the lift: the floor is ahead), the S face walking north (the terminal is ahead)
+  { id: 'sp.mouth', pos: [0, 3.9, -20.6], w: 3.4, sides: [{ face: 'N', key: 'go.floor', arrow: 'up' }, { face: 'S', key: 'go.terminal', arrow: 'up' }] },
+  // Well: walking south the vendors are ahead (N face); walking north the terminal, phone and lift are ahead (S face)
+  { id: 'sp.well', pos: [0, 3.8, -11.4], w: 3.4, sides: [{ face: 'N', key: 'go.vendors', arrow: 'up' }, { face: 'S', key: 'go.terminalPhone', arrow: 'up' }] },
   // Lobby: pawn on the west end of the south wall, cashier on the east end
   { id: 'sp.pawn', pos: [-4.0, 3.3, 17.4], w: 2.6, sides: [{ face: 'N', key: 'go.pawn', arrow: 'right' }, { face: 'S', key: 'go.floor', arrow: 'up' }] },
   { id: 'sp.cash', pos: [4.0, 3.3, 17.4], w: 2.6, sides: [{ face: 'N', key: 'go.cashier', arrow: 'left' }, { face: 'S', key: 'go.floor', arrow: 'up' }] },
@@ -264,18 +258,19 @@ export const SIGNPOSTS: readonly Signpost[] = [
 // ── zones (GDD §8.3 footprints, §8.7 look). Smaller rectangles win where zones overlap. ─────────────────
 const look = (color: Hex, near: number, far: number, ambient: Hex) => ({ fog: { color, near, far }, ambient });
 export const ZONES: ZoneDef[] = [
-  { id: 'mouth', rect: [-11, -30, 11, -18], ...look(0x120a06, 6, 28, 0x2a1a10) },
-  { id: 'well', rect: [-11, -18, 11, 2], ...look(0x0e0806, 6, 32, 0x1e1410) },
-  { id: 'lobby', rect: [-11, 2, 11, 20], ...look(0x0d0a06, 6, 26, 0x1a120c) },
-  { id: 'midway', rect: [-31, -30, -11, -16], gated: true, ...look(0x120814, 4, 22, 0x1c0e1e) },
-  { id: 'cards', rect: [-31, -16, -11, -2], gated: true, ...look(0x06100a, 4, 20, 0x0a120c) },
-  { id: 'laundry', rect: [-31, -2, -11, 12], gated: true, ...look(0x0a1418, 6, 26, 0x0e1e26) },
-  { id: 'boiler', rect: [11, -30, 31, -16], gated: true, ...look(0x140404, 4, 22, 0x200808) },
-  { id: 'gallery', rect: [11, -16, 31, -2], gated: true, ...look(0x08040f, 5, 24, 0x10061a) },
-  { id: 'wheels', rect: [11, -2, 31, 12], gated: true, ...look(0x140505, 4, 22, 0x1e0808) },
-  { id: 'parlour', rect: [11, 12, 31, 20], gated: true, ...look(0x030202, 2, 10, 0x050303) },
-  { id: 'counting', rect: [-31, 12, -11, 20], gated: true, ...look(0x050302, 2, 12, 0x080504) },
-  // Lift car niche (opens at the lobby, Dawn and endings).
+  // Wave 72: brighter key colours per area (no near-black zones); the fog stays short enough to keep the moody look
+  { id: 'mouth', rect: [-11, -30, 11, -18], ...look(0x1c1008, 8, 34, 0x4a3020) },
+  { id: 'well', rect: [-11, -18, 11, 2], ...look(0x160c08, 8, 38, 0x3e2a1a) },
+  { id: 'lobby', rect: [-11, 2, 11, 20], ...look(0x160e08, 8, 34, 0x3a2a1c) },
+  { id: 'midway', rect: [-31, -30, -11, -16], gated: true, ...look(0x1a0c20, 6, 28, 0x3a1c44) },
+  { id: 'cards', rect: [-31, -16, -11, -2], gated: true, ...look(0x08180e, 6, 26, 0x16442c) },
+  { id: 'laundry', rect: [-31, -2, -11, 12], gated: true, ...look(0x0e2028, 7, 30, 0x1e4c5c) },
+  { id: 'boiler', rect: [11, -30, 31, -16], gated: true, ...look(0x240808, 6, 28, 0x4c1a10) },
+  { id: 'gallery', rect: [11, -16, 31, -2], gated: true, ...look(0x10081c, 6, 28, 0x301a4c) },
+  { id: 'wheels', rect: [11, -2, 31, 12], gated: true, ...look(0x240a0a, 6, 28, 0x461a10) },
+  { id: 'parlour', rect: [11, 12, 31, 20], gated: true, ...look(0x120808, 4, 18, 0x2c1c14) },
+  { id: 'counting', rect: [-31, 12, -11, 20], gated: true, ...look(0x120a06, 4, 18, 0x2c1e12) },
+  // Lift car niche: a sealed landmark in campaign runs (the car is ridden by cutscene, never walked into; no run opens this gate).
   { id: 'lift', rect: [-5.1, -32.2, -2.9, -30], gated: true, ...look(0x2a2418, 20, 60, 0x2a2418) },
   // THE UNDERNEATH (world/hollow): far below the pit; the look is HOLLOW_LOOK (fog 2–14 m, a dark red ambient)
   { id: 'hollow', rect: [108, 108, 132, 132], ...look(0x030103, 2, 14, 0x140a0a) },
@@ -335,7 +330,7 @@ export const FLOOR_READY: ReadonlySet<MachineId> = new Set<MachineId>([
   // WAVE 21 views-e (1280x720 bench screenshots): play surface and labels in frame, clear of the HUD strips and occluders.
   'tombola', 'dicetower', 'fantan', 'teetotum', 'bingo',
   // WAVE 22 views-d (1280x720 bench screenshots): whole surface + labels in frame, clear of the HUD strips, figures legible.
-  'baccarat', 'mines', 'plinko', 'sicbo', 'claw',
+  'baccarat', 'mines', 'plinko', 'sicbo', 'claw',   // (the Wave 72 core ten are all listed: bigone coinflip hilo videopoker mines plinko roulette blackjack keno sonkart)
   // WAVE 24 (Little Wall): bench seat view passed at 1280x720; placed at CARD-01 and CARD-06 in the Jade Room.
   'mahjong',
 ]);

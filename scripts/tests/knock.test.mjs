@@ -301,7 +301,7 @@ test('atDoor: the bed is blocked from the footsteps to the end of the leaving', 
   assert.ok(v.finished());
 });
 
-test('abandon: an act still running is a fail, a waiting visit simply never comes', () => {
+test('abandon: an act still running is a fail, and a waiting visit resolves as a fail too (wave 72)', () => {
   const a = atAct('listener');
   a.v.abandon();
   assert.equal(a.m.results()[0].pass, false);
@@ -311,7 +311,8 @@ test('abandon: an act still running is a fail, a waiting visit simply never come
   const v = K.createVisit(st, m.io);
   run(v, 3);
   v.abandon();
-  assert.equal(m.results().length, 0);
+  assert.equal(m.results().length, 1, 'the waiting visit resolves once');
+  assert.equal(m.results()[0].pass, false, 'and it is a fail');
   assert.equal(st.phase, 'done');
 });
 

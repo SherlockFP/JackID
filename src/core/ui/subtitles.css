@@ -1,0 +1,25 @@
+/* Subtitle bar motion and lanes (ui/subtitles.ts drives data-phase and data-lane; the box itself is ui.css .px-subtitle).
+   Motion is PSX-stepped: a 3-step slide-in and out over 0.12 s, a blinking block caret while the line types.
+   `.sub-still` (settings: reduced motion) drops the slide and the caret; the text still types out or shows at once. */
+.px-subtitle[data-phase='in'] { animation: px-sub-in 0.12s steps(3, end) both; }
+.px-subtitle[data-phase='out'] { animation: px-sub-out 0.12s steps(3, end) both; }
+.px-subtitle.sub-still { animation: none !important; }
+.px-subtitle[data-phase='typing'] .txt::after {
+  content: ''; display: inline-block; width: 0.45em; height: 0.9em; margin-left: 2px; vertical-align: -0.1em;
+  background: var(--ivory); animation: px-sub-caret 0.5s steps(1, end) infinite;
+}
+.px-subtitle.sub-still[data-phase='typing'] .txt::after,
+.px-subtitle[data-phase='hold'] .txt::after,
+.px-subtitle[data-phase='in'] .txt::after { display: none; }
+/* Cutscene lines carry the brass inset frame (the tutorial prompt's language); story and ambient lines stay plain. */
+.px-subtitle[data-lane='cutscene'] { box-shadow: inset 0 0 0 var(--u) var(--brass); }
+@keyframes px-sub-in {
+  0% { opacity: 0; transform: translateX(-50%) translateY(calc(4 * var(--u))); }
+  50% { opacity: 1; transform: translateX(-50%) translateY(calc(2 * var(--u))); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+@keyframes px-sub-out {
+  0% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(calc(4 * var(--u))); }
+}
+@keyframes px-sub-caret { 0% { opacity: 1; } 50% { opacity: 0; } }

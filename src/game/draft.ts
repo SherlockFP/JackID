@@ -1,8 +1,9 @@
 /**
- * Starter Draft (draft wave): the three charms the player picks from before the first Bell of a new Debt Run. Pure: the
+ * Starter Draft (draft wave): the three charms the player picks from in the Night 1 Mola, after the first Watch of a new Debt Run
+ * (wave 72: never on the first frame, never during the prologue). Pure: the
  * offer is a function of the run seed and what the player already owns, so a seed always shows the same three cards (the
  * same in every save and on every peer). The cards are drawn by `draft.ui.ts`; the run holds the open offer
- * (`run.openStarterDraft()`, `run.pickStarter()`, `run.starterDraft()`) and holds the Bell until it is taken.
+ * (`run.openStarterDraft()`, `run.pickStarter()`, `run.starterDraft()`) and holds the Bell while it is open.
  *
  * Rules: three distinct Launch charms of rarity Common or Uncommon, exactly one of them an engine charm (an archetype tag,
  * data/charmsEngines.ts), so every run has a build from Watch 1. The engine slot ignores the Night unlock gate on purpose: the

@@ -213,7 +213,7 @@ function openLobby(role: 'host' | 'client', scene: THREE.Scene): LobbyView {
     players.forEach((p, i) => {
       let rec = recs.get(p.id);
       if (!rec) {
-        const actor = app.kit.mannequin({ style: 'plain', color: p.color, clip: 'Idle_Loop' });
+        const actor = app.kit.mannequin({ style: 'plain', color: p.color, clip: 'Idle_Loop', npc: false });
         scene.add(actor.root);
         rec = { actor, seat: i, ready: false, played: null };
         recs.set(p.id, rec);

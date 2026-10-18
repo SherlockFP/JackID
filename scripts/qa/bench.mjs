@@ -451,6 +451,33 @@ const framesOf = (cdp) => evaluate(cdp, clock.step ? 'window.__qaClock.frames()'
 
 // ── the run ────────────────────────────────────────────────────────────────────────────────────────────────
 // ── --run: the debt-run driver ─────────────────────────────────────────────────────────────────────────────
+/**
+ * THE PROLOGUE (wave 72): the apartment scene first. A Space hold (900 ms, past the scene's own hold-to-skip) skips it; then the bot
+ * takes the lift down through the front door station, once the objective is up (the door is ignored until then, so it is sent
+ * again). The ride ends with the run's Watch 1 opening (`run.prologueOn()` false). A resumed run has no prologue: nothing happens.
+ */
+async function skipPrologue(cdp, shoot = null) {
+  const t0 = nowMs();
+  const on = () => evaluate(cdp, 'window.jackid.app.run?.prologueOn?.() === true');
+  if (!(await on())) return { played: false, doors: 0 };
+  let doors = 0, holds = 0, shot = null;
+  while (await on()) {
+    if (nowMs() - t0 > 60_000) throw new Error('prologue: the lift never took the bot down (still on after 60 s)');
+    const id = await evaluate(cdp, 'window.jackid.app.cutscene.playing ?? null');
+    if (id === 'prologue') { await pressKey(cdp, 'Space', 900); holds++; }
+    else {
+      await evaluate(cdp, homeEmitJs('door')); doors++;
+      // THE LIFT RIDE (wave 72): one frame shot 0.9 s after the first call (fade, ding, the teleport comes at T.teleport), once per run
+      if (shoot && !shot) {
+        await sleep(900);
+        shot = await shoot('prologue-lift-ride.png');
+      }
+    }
+    await sleep(250);
+  }
+  return { played: holds > 0, holds, doors, shot };
+}
+
 /** Skips the story intro with real Space taps: one tap (80 ms, a tap not a hold) each 1.2 s once it has played that long. */
 async function skipIntro(cdp) {
   const t0 = nowMs();
@@ -1124,29 +1151,11 @@ const AUTO_BETS_MAX = 60;          // a bot bet cap per Watch (each bet spends a
 const AUTO_LEVER_FAILS = 6;        // lever refused this many times in a row: the Night cannot move on
 
 /**
- * The most the first Night 1 read waits for the Starter Draft to open. The offer waits for the intro, the Night's title card (up to
- * 8 s of its own, draft.ui.ts CARD_HOLD_CAP_SEC) and a quiet beat, so under the fixed clock it opens about 12 s of sim time in; the
- * cap is a safety net for a draft that never comes, not the usual wait.
- */
-const STARTER_WAIT_MS = 40_000;
-
-/**
- * Reads the debt-run state (RUN_STATE_JS). The Starter Draft opens some seconds after the run starts, so on Night 1 with no charm
- * yet and the offer still to come (`starterPending`: the run has not made it), the first read waits (once per run) until
- * `starterOffer` is non-null, or the run says no offer is coming, or STARTER_WAIT_MS has passed. A later read with the draft taken
- * (or no draft on this build) does not wait.
+ * Reads the debt-run state (RUN_STATE_JS). Wave 72: the Starter Draft opens in the Night 1 Mola, after the first Watch's Bell, so
+ * a read does not wait for it: the bot's loop takes the offer when it appears (`st.starterOffer`).
  */
 async function readState(ctx) {
-  let st = await evalJson(ctx.cdp, RUN_STATE_JS);
-  if (!ctx.starterWaited && st.starterOffer == null && st.starterPending && !st.over && st.night === 1 && (st.charms ?? []).length === 0) {
-    ctx.starterWaited = true;
-    const t0 = nowMs();
-    while (st.starterOffer == null && st.starterPending && !st.over && nowMs() - t0 < STARTER_WAIT_MS) {
-      await sleep(200);
-      st = await evalJson(ctx.cdp, RUN_STATE_JS);
-    }
-    if (st.starterOffer == null && st.starterPending && !st.over) log(`starter draft: no offer after ${nowMs() - t0} ms`);
-  }
+  const st = await evalJson(ctx.cdp, RUN_STATE_JS);
   noteNight(ctx, st);
   return st;
 }
@@ -1571,6 +1580,9 @@ async function autoNight(ctx, rec, stopAt = null) {
         } else decide(ctx, 'shop', `no buy: ${pick.why}`);
         continue;
       }
+      // Night 1 Mola (wave 72): the Starter Draft opens a quiet beat after the Mola, from the UI. The lever waits (bounded) for its
+      // offer, which the starter branch above takes on the next pass, so the next Watch does not open over the offer.
+      if (st.night === 1 && st.starterPending && (bot.molaWait ?? 0) < 60) { bot.molaWait = (bot.molaWait ?? 0) + 1; await sleep(300); continue; }
       const r = await exec(ctx, auto({ kind: 'lever', text: 'lever' }));   // starts this Watch
       leverFails = r.ok ? 0 : leverFails + 1;
       if (leverFails >= AUTO_LEVER_FAILS) { end = 'lever refused'; break; }
@@ -1808,6 +1820,8 @@ async function runKind(ctx, s, rec) {
         noteRefusal(rec, before, await evaluate(cdp, REFUSAL_JS));
         return;
       }
+      // The ride is on the sim clock: one frame shot during it (lift-ride.png), then the wait for the Evening.
+      if (ctx.shotsDir) { await sleep(900); rec.shot = await ctx.shoot('lift-ride.png'); }
       const h = await waitHome(ctx, (x) => x.stage === 'evening', HOME_WAIT_MS);
       rec.stage = h?.stage ?? null;
       rec.ok = rec.stage === 'evening';
@@ -2294,12 +2308,6 @@ export async function runBench(opts = {}) {
     if (res.framesPerSec <= 0) throw new Error('rendering did not advance (rAF frames stalled)');
     res.state = await stateOf();
     log(`in game (${res.state}), ${res.framesPerSec} fps`);
-    if (runSteps) {                                       // --run: the intro is skipped with a Space tap before any step
-      res.run = { intro: await skipIntro(cdp), steps: [], states: [], shot: null, failed: 0, aborted: null, start: startRec };
-      log(`intro: played ${res.run.intro.played}, Space taps ${res.run.intro.taps}`);
-      if (startRec) res.run.steps.push({ step: startSpec.text, ok: true, start: true, kit: startRec.kit, stake: startRec.stake, daily: startRec.daily, gated: startRec.gated });
-    }
-
     const shotNames = new Set();   // names written in this run: a reused name becomes -2, -3 (uniqueShotPath), never overwritten
     const shoot = async (name) => {
       const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
@@ -2308,6 +2316,15 @@ export async function runBench(opts = {}) {
       res.shots.push(path);
       return path;
     };
+    if (runSteps) {                                       // --run: the intro is skipped with a Space tap before any step
+      // THE PROLOGUE first (the apartment, then the lift down); the intro follows the lift on a new run
+      const prologue = await skipPrologue(cdp, shotsDir ? shoot : null);
+      log(`prologue: played ${prologue.played}, Space holds ${prologue.holds ?? 0}, lift calls ${prologue.doors}`);
+      res.run = { prologue, intro: await skipIntro(cdp), steps: [], states: [], shot: null, failed: 0, aborted: null, start: startRec };
+      log(`intro: played ${res.run.intro.played}, Space taps ${res.run.intro.taps}`);
+      if (startRec) res.run.steps.push({ step: startSpec.text, ok: true, start: true, kit: startRec.kit, stake: startRec.stake, daily: startRec.daily, gated: startRec.gated });
+    }
+
     // Debug bench hook (DEV only, src/world/bench.ts): wallet and wagered come from the bench run.
     const money = async () => JSON.parse(await evaluate(cdp, 'JSON.stringify({ wallet: window.jackid.bench.run.wallet(), '
       + 'wagered: window.jackid.bench.run.stats.wagered, rounds: window.jackid.bench.run.stats.rounds })'));

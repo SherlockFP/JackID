@@ -13,30 +13,30 @@ before(async () => {
   I18N = await load('src/core/i18n.ts');
 });
 
-const CORE = ['bigone', 'coinflip', 'hilo', 'scratch', 'blackjack', 'roulette', 'plinko', 'mines', 'videopoker', 'bandit',
-  'cyclone', 'mahjong', 'sonkart', 'pachinko', 'keno', 'craps'];
+const CORE = ['bigone', 'coinflip', 'hilo', 'blackjack', 'roulette', 'plinko', 'mines', 'videopoker', 'sonkart', 'keno'];
 // def.slotSize of the core machines (src/machines/<id>/index.ts)
-const SIZE = { bigone: 'XL', roulette: 'XL', craps: 'XL', blackjack: 'L', sonkart: 'L', keno: 'L', hilo: 'M', scratch: 'M', plinko: 'M',
-  mines: 'M', videopoker: 'M', cyclone: 'M', mahjong: 'M', pachinko: 'M', coinflip: 'S', bandit: 'S' };
+const SIZE = { bigone: 'XL', roulette: 'XL', blackjack: 'L', sonkart: 'L', keno: 'L', hilo: 'M', plinko: 'M',
+  mines: 'M', videopoker: 'M', coinflip: 'S' };
 const RANK = { S: 0, M: 1, L: 2, XL: 3 };
 const TIER_RANK = { SIMPLE: 0, CLASSIC: 1, TABLE: 2, HEAVY: 3 };
 
 // ── schedule ─────────────────────────────────────────────────────────────────────────────────────────
-test('the core set is the director list of 16 and every machine unlocks exactly once', () => {
+test('the core set is the Wave 72 ten and every machine unlocks exactly once', () => {
   assert.deepEqual([...P.CORE_MACHINES].sort(), [...CORE].sort());
   for (const seed of [undefined, 1, 7, 12345, 99999]) {
     const all = P.scheduleFor(seed).flatMap((s) => [...s.ids]);
-    assert.equal(all.length, 16, `seed ${seed}`);
+    assert.equal(all.length, 10, `seed ${seed}`);
     assert.deepEqual([...new Set(all)].sort(), [...CORE].sort(), `seed ${seed}`);
   }
 });
 
-test('Night 1 opens exactly the four starters; Nights 2 to 7 open two each; Night 8 opens nothing and everything is on', () => {
+test('Night 1 opens exactly the three starters; Nights 2 to 6 open one each, Night 7 the last two; Night 8 opens nothing and everything is on', () => {
   for (const seed of [undefined, 3, 42]) {
-    assert.deepEqual([...P.unlockedFor(1, seed)].sort(), ['bigone', 'coinflip', 'hilo', 'scratch']);
-    for (let n = 2; n <= 7; n++) assert.equal(P.opensOn(n, seed).length, 2, `Night ${n}`);
+    assert.deepEqual([...P.unlockedFor(1, seed)].sort(), ['bigone', 'coinflip', 'hilo']);
+    for (let n = 2; n <= 6; n++) assert.equal(P.opensOn(n, seed).length, 1, `Night ${n}`);
+    assert.equal(P.opensOn(7, seed).length, 2);
     assert.equal(P.opensOn(8, seed).length, 0);
-    assert.equal(P.unlockedFor(8, seed).length, 16);
+    assert.equal(P.unlockedFor(8, seed).length, 10);
     assert.equal(P.nextOpening(7, seed), null);
     assert.equal(P.nextOpening(1, seed).night, 2);
   }
@@ -60,10 +60,10 @@ test('simple to complex: a tier never opens before an easier one, whatever the s
     const ranks = order.map((id) => TIER_RANK[P.tierOf(id)]);
     assert.deepEqual(ranks, [...ranks].sort((a, b) => a - b), `seed ${seed}: ${order.join()}`);
   }
-  // the canonical order ends on craps (the least readable core machine)
+  // the canonical order ends on the two deep-end tables
   const canon = P.scheduleFor().flatMap((s) => [...s.ids]);
-  assert.equal(canon.at(-1), 'craps');
-  assert.equal(canon.slice(0, 4).join(), 'bigone,coinflip,hilo,scratch');
+  assert.equal(canon.at(-1), 'sonkart');
+  assert.equal(canon.slice(0, 3).join(), 'bigone,coinflip,hilo');
 });
 
 test('the schedule is seeded: same seed, same schedule; other seeds reorder inside tiers', () => {
@@ -84,16 +84,16 @@ test('isNew is true only on the Night a machine opened (never Night 1) and newOn
       assert.deepEqual([...P.newOn(n, seed)].sort(), CORE.filter((id) => P.isNew(id, n, seed)).sort());
     }
   }
-  assert.equal(P.isNew('craps', 3), false);
+  assert.equal(P.isNew('sonkart', 3), false);
   assert.equal(P.isNew('bigone', 1), false);
 });
 
 test('locks: covered until its Night, always-open devices never lock, the Free Casino shows everything', () => {
-  assert.equal(P.isLockedFor('plinko', 1, 'debt'), true);
-  assert.equal(P.isLockedFor('plinko', 2, 'debt'), false);
+  assert.equal(P.isLockedFor('videopoker', 1, 'debt'), true);
+  assert.equal(P.isLockedFor('videopoker', 2, 'debt'), false);
   assert.equal(P.isLockedFor('bigone', 1, 'debt'), false);
-  assert.equal(P.isLockedFor('craps', 6, 'coop'), true);
-  assert.equal(P.isLockedFor('craps', 7, 'coop'), false);
+  assert.equal(P.isLockedFor('sonkart', 6, 'coop'), true);
+  assert.equal(P.isLockedFor('sonkart', 7, 'coop'), false);
   for (const id of ['debt_terminal', 'hotline', 'cashier', 'charm_vendor', 'jukebox', 'tonic_vendor', 'bounty_board', 'shrine', 'tallytable', 'devilstable']) {
     assert.equal(P.isLockedFor(id, 1, 'debt'), false, id);
   }
@@ -126,12 +126,12 @@ test('copy: the NEW toast and the OPENS plate read in both languages', async () 
   I18N.registerStrings(mod.prefix, { en: mod.en, tr: mod.tr });
   I18N.setLang('en');
   assert.equal(P.newOnFloorText(1), null);
-  const names = { plinko: 'Plinko', mines: 'Mines', bandit: 'Bandit', videopoker: 'Video Poker' };
+  const names = { plinko: 'Plinko', mines: 'Mines', videopoker: 'Video Poker' };
   const txt = P.newOnFloorText(2, undefined, (id) => names[id] ?? id);
   assert.match(txt, /^NEW ON THE FLOOR: /);
-  assert.equal(P.opensText('plinko'), 'OPENS NIGHT 2');
+  assert.equal(P.opensText('videopoker'), 'OPENS NIGHT 2');
   I18N.setLang('tr');
-  assert.equal(P.opensText('plinko'), 'GECE 2 AÇILIR');
+  assert.equal(P.opensText('videopoker'), 'GECE 2 AÇILIR');
   assert.match(P.newOnFloorText(2, undefined, (id) => id), /^SALONDA YENİ: /);
   I18N.setLang('en');
 });
@@ -180,7 +180,7 @@ test('the Pit Deck shuffle is a Free Casino feature: any other mode keeps the fi
     ['pachinko', 'M', 'DROPS', 'WILD'], ['pachislot', 'M', 'REELS', 'WILD'], ['fortuneteller', 'M', 'CURIOS', 'STEADY'],
     ['hilo', 'M', 'CARDS', 'WILD'], ['bandit', 'S', 'REELS', 'WILD']]
     .map(([id, slotSize, suit, volatility]) => ({ id, slotSize, tier: 1, seats: 1, suit, volatility }));
-  const fixed = Object.fromEntries(L.ROSTER_PADS.map((p) => [p, L.DEFAULT_ASSIGN[p]]));
+  const fixed = Object.fromEntries(L.ROSTER_PADS.filter((p) => L.DEFAULT_ASSIGN[p]).map((p) => [p, L.DEFAULT_ASSIGN[p]]));
   for (let seed = 1; seed <= 20; seed++) assert.deepEqual(L.rosterFor(seed, cat, 'debt'), fixed);
   assert.notDeepEqual(L.rosterFor(5, cat, 'free'), fixed);
 });
@@ -281,8 +281,8 @@ test('tycoon prices scale with tier and quota; free-only machines are not for sa
   const q = 115;
   const price = (id) => P.buyPrice(id, q);
   assert.ok(price('bigone') >= q * 0.25 && price('bigone') <= q * 0.35, 'SIMPLE is about 30 % of the quota');
-  assert.ok(price('bandit') > price('bigone') && price('cyclone') > price('bandit') && price('craps') > price('cyclone'));
-  assert.ok(price('craps') >= q * 0.95, 'HEAVY costs a full quota');
+  assert.ok(price('videopoker') > price('bigone') && price('blackjack') > price('videopoker') && price('roulette') > price('blackjack'));
+  assert.ok(price('roulette') >= q * 0.95, 'HEAVY costs a full quota');
   assert.ok(P.buyPrice('bigone', 400) > P.buyPrice('bigone', 100), 'the price follows the Night');
   assert.equal(P.buyPrice('slots_free_only_x', q), 0);
   assert.equal(P.buyPrice('hotline', q), 0);
@@ -309,23 +309,23 @@ test('house cut: 5 to 10 percent of the ghost wager plus a flat trickle, seeded,
 test('run: BUY opens a covered machine for the rest of the run, takes coins, refuses when short or already open', async () => {
   const RUN = await load('src/game/run.ts');
   const run = RUN.createRun({ seed: 77, mode: 'debt' });
-  assert.equal(run.isLocked('craps'), true);
+  assert.equal(run.isLocked('roulette'), true);
   assert.equal(run.buyPriceOf('bigone'), 0, 'a starter is open, not for sale');
-  const price = run.buyPriceOf('craps');
+  const price = run.buyPriceOf('roulette');
   assert.ok(price > 0);
   run.earn('coin', price + 3 - run.wallet(), 'test');            // top the pocket up to price + 3 (never below)
   const before = run.wallet();
   assert.ok(before >= price);
-  assert.equal(run.buyMachine('craps'), true);
+  assert.equal(run.buyMachine('roulette'), true);
   assert.equal(run.wallet(), before - price);
-  assert.equal(run.isLocked('craps'), false);
-  assert.equal(run.owns('craps'), true);
-  assert.equal(run.buyPriceOf('craps'), 0);
-  assert.equal(run.buyMachine('craps'), false, 'cannot buy twice');
-  const poor = run.buyPriceOf('mahjong');
+  assert.equal(run.isLocked('roulette'), false);
+  assert.equal(run.owns('roulette'), true);
+  assert.equal(run.buyPriceOf('roulette'), 0);
+  assert.equal(run.buyMachine('roulette'), false, 'cannot buy twice');
+  const poor = run.buyPriceOf('sonkart');
   run.spend('coin', run.wallet(), 'test');
-  assert.equal(run.buyMachine('mahjong'), false, `cannot afford ${poor}`);
-  assert.equal(run.isLocked('mahjong'), true);
+  assert.equal(run.buyMachine('sonkart'), false, `cannot afford ${poor}`);
+  assert.equal(run.isLocked('sonkart'), true);
   const e = run.empire();
   assert.equal(e.count, 1);
   assert.ok(e.perWatch > 0);
@@ -335,13 +335,13 @@ test('run: BUY opens a covered machine for the rest of the run, takes coins, ref
 test('run: the Free Casino sells nothing, and owned machines survive a save round trip', async () => {
   const RUN = await load('src/game/run.ts');
   const free = RUN.createRun({ seed: 78, mode: 'free' });
-  assert.equal(free.buyPriceOf('craps'), 0);
+  assert.equal(free.buyPriceOf('roulette'), 0);
   free.dispose();
   const run = RUN.createRun({ seed: 79, mode: 'debt' });
   run.earn('coin', 5000, 'test');
-  assert.equal(run.buyMachine('bandit'), true);
+  assert.equal(run.buyMachine('mines'), true);
   const snap = run.snapshot();
-  assert.deepEqual(snap.ext.owned, ['bandit']);
+  assert.deepEqual(snap.ext.owned, ['mines']);
   run.dispose();
 });
 

@@ -14,6 +14,11 @@ export default {
     'quota.3': 'Pay in full and the Night is yours. Pay short and the floor opens beneath you.',
     'quota.4': 'Your first quota is three hundred. A small number. Small numbers are how it begins.',
     'quota.5': 'I will visit from time to time. Do not be startled. Being startled is so expensive.',
+    // THE PROLOGUE (wave 72, prologue.cutscene.ts): the spouse, then the wall phone
+    'prologue.spouse.1': "You're home. Sit. I kept your plate warm.",
+    'prologue.spouse.2': 'Eat something before you go down. Please.',
+    'prologue.collector.1': 'Tonight the card owes {quota}. Pay it before the last Watch, or I come up myself.',
+    'prologue.collector.2': 'Take the lift down when you are ready. The floor is waiting.',
     'met.1': 'Paid. The board is stamped. How tidy.',
     'met.2': 'An hour of quiet, now. Spend it wisely. Or do not. The House does not mind.',
     'fail.1': 'Quota not met. Please stand clear of the plate.',
@@ -56,6 +61,11 @@ export default {
     'quota.3': 'Tamamını öderseniz Gece sizin olur. Eksik öderseniz zemin ayaklarınızın altında açılır.',
     'quota.4': 'İlk kotanız üç yüz. Küçük bir rakam. Her şey küçük rakamlarla başlar.',
     'quota.5': 'Ara sıra uğrarım. Ürkmeyin. Ürkmek çok pahalıya patlar.',
+    // PROLOG (wave 72, prologue.cutscene.ts): eş, sonra duvar telefonu
+    'prologue.spouse.1': 'Geldin. Otur. Tabağını sıcak tuttum.',
+    'prologue.spouse.2': 'Aşağı inmeden bir şeyler ye. Lütfen.',
+    'prologue.collector.1': 'Bu gece kart {quota} borçlu. Son Nöbet bitmeden ödeyin, yoksa kendim çıkarım.',
+    'prologue.collector.2': 'Hazır olunca asansöre binip aşağı inin. Zemin bekliyor.',
     'met.1': 'Ödendi. Pano damgalandı. Ne düzenli.',
     'met.2': 'Şimdi bir saatlik sessizlik. İyi harcayın. Ya da harcamayın. Kasa aldırmaz.',
     'fail.1': 'Kota karşılanmadı. Lütfen plakadan uzak durun.',

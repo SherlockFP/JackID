@@ -254,6 +254,8 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
   const items = new ItemManager({ parent: root, interact, tweens: app.tweens.sim });
   /** A machine behind a shut wing is parked: its slot is hidden and it does not tick until the wing opens. The seated
    *  machine keeps running (closing a wing releases its seat anyway). */
+  /** Slots whose colliders are switched off because the machine is parked behind a shut wing (no invisible footprint to stand on). */
+  const collidersOff = new Set<SlotRec>();
   const parked = (rec: SlotRec): boolean => rec.machine !== null && isClosed(rec) && router.seat?.mid !== rec.id;
 
   // ── slot content ──────────────────────────────────────────────────────────────────────────────
@@ -270,6 +272,7 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
     rec.offInteract?.(); rec.offInteract = null;
     for (const id of rec.colliders) collision.remove(id);
     rec.colliders = [];
+    collidersOff.delete(rec);
     for (const off of rec.offLights) off();
     rec.offLights = [];
     if (rec.machine) {
@@ -601,7 +604,13 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
       const m = rec.machine;
       const d = Math.max(0, rec.sphere.center.distanceTo(cp) - rec.sphere.radius);
       const isParked = parked(rec);
-      const inRange = !isParked && (d < reach || seatedAt === rec.id);
+      // a pad inside a shut wing has nothing to open: it is hidden with the wing (its prompt is already off)
+      const deadPad = rec.pad !== null && isClosed(rec);
+      const inRange = !isParked && !deadPad && (d < reach || seatedAt === rec.id);
+      if (isParked !== collidersOff.has(rec)) {
+        for (const id of rec.colliders) collision.setEnabled(id, !isParked);
+        if (isParked) collidersOff.add(rec); else collidersOff.delete(rec);
+      }
       if (rec.group.visible !== inRange) rec.group.visible = inRange;
       if (!m) continue;
       if (isParked) { m.visible = false; continue; }

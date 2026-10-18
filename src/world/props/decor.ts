@@ -181,19 +181,25 @@ export class Sump implements WorldProp {
   dispose(): void { disposeTree(this.root); }
 }
 
+/** Sump wall geometry, shared by the drawn walls here and the colliders in level.ts (they were 4 m apart in y before Wave 72). */
+export const SUMP_HALF = 6;      // the floor is 12 x 12 m
+export const SUMP_WALL_T = 0.3;  // wall thickness (the walls stand outside the floor square)
+export const SUMP_WALL_H = 4;    // wall height above the sump floor
+
 export function buildSump(kit: KitX, tex: TexGen, o: { pos: [number, number, number]; seed?: number; coinCount?: number }): Sump {
   const root = kit.group('sump');
   root.position.set(o.pos[0], o.pos[1], o.pos[2]);
   const concrete = kit.mat({ color: 0x4a4a52, map: tex.concrete(0x4a4a52) });
   const tile = kit.mat({ color: 0x3a3c44, map: tex.tiles(0x3a3c44, 0x2a2c34, 2) });
   kit.plane(12, 12, tile, { rot: [-90, 0, 0], pos: [0, 0.01, 0], parent: root, segW: 6, segH: 6 });
-  kit.box(12.3, 4, 0.3, concrete, { pos: [0, -2, -6.15], parent: root });
-  kit.box(12.3, 4, 0.3, concrete, { pos: [0, -2, 6.15], parent: root });
-  kit.box(0.3, 4, 12, concrete, { pos: [-6.15, -2, 0], parent: root });
-  kit.box(0.3, 4, 12, concrete, { pos: [6.15, -2, 0], parent: root });
+  const wy = SUMP_WALL_H / 2, wc = SUMP_HALF + SUMP_WALL_T / 2, wl = SUMP_HALF * 2 + SUMP_WALL_T * 2;
+  kit.box(wl, SUMP_WALL_H, SUMP_WALL_T, concrete, { pos: [0, wy, -wc], parent: root });
+  kit.box(wl, SUMP_WALL_H, SUMP_WALL_T, concrete, { pos: [0, wy, wc], parent: root });
+  kit.box(SUMP_WALL_T, SUMP_WALL_H, SUMP_HALF * 2, concrete, { pos: [-wc, wy, 0], parent: root });
+  kit.box(SUMP_WALL_T, SUMP_WALL_H, SUMP_HALF * 2, concrete, { pos: [wc, wy, 0], parent: root });
   // pipe runs under the ceiling line (rust, valve wheels)
-  kit.cyl(0.12, 0.12, 12, kit.mat({ color: 0x6a4a30, map: tex.rust(0x6a4a30) }), { rot: [0, 0, 90], pos: [0, -3.6, -5.8], parent: root, seg: 8 });
-  kit.cyl(0.2, 0.2, 12, kit.mat({ color: 0x5a3a24, map: tex.rust(0x5a3a24) }), { rot: [90, 0, 0], pos: [-5.7, -3.3, 0], parent: root, seg: 8 });
+  kit.cyl(0.12, 0.12, 12, kit.mat({ color: 0x6a4a30, map: tex.rust(0x6a4a30) }), { rot: [0, 0, 90], pos: [0, 3.6, -5.8], parent: root, seg: 8 });
+  kit.cyl(0.2, 0.2, 12, kit.mat({ color: 0x5a3a24, map: tex.rust(0x5a3a24) }), { rot: [90, 0, 0], pos: [-5.7, 3.3, 0], parent: root, seg: 8 });
 
   // coin mound Ø 6 m × 1.2 m, one instanced draw (350 coins × 4 segments: half the old 700 × 8, see docs/PERF.md)
   const n = o.coinCount ?? 350;
@@ -232,7 +238,7 @@ export function buildSump(kit: KitX, tex: TexGen, o: { pos: [number, number, num
       tex.drawText(g, id, 16 + (i % 3) * 78, 30 + Math.floor(i / 3) * 34, { font: 'px5', color: '#2a1a10', align: 'left', scale: 2 });
     }
   }, { wrap: 'clamp' });
-  kit.plane(3.2, 2.4, kit.mat({ map: cork, lit: true }), { pos: [0, -1.8, -5.97], parent: root });
+  kit.plane(3.2, 2.4, kit.mat({ map: cork, lit: true }), { pos: [0, 1.8, -5.97], parent: root });
 
   // rope ladder hanging in the shaft (x 0, z 0.7 from the hero plate line)
   const rope = kit.mat({ color: 0x8a7050, map: tex.metal(0x8a7050) });

@@ -25,6 +25,7 @@ import { farCull } from './farCull';
 import { fxLayer } from '../fx/layer';
 import { app } from '../app';
 import { log } from '../log';
+import { setNpcFrame } from './npcFrame';
 
 THREE.ColorManagement.enabled = false;
 
@@ -213,6 +214,7 @@ export function createPsxRenderer(canvas: HTMLCanvasElement, initial: PsxSetting
       const a = app;
       st.simTime += real * (a && !a.simPaused && a.hitstopLeft <= 0 ? a.timeScale : 0);
       uniforms.uTime.value = st.simTime;
+      if (app) setNpcFrame(st.simTime, { calm: app.save.data.settings.calm, reduced: app.save.data.settings.reduceFlashing });   // dark NPC shimmer (npcFrame.ts)
       fxLayer.tick(t0);
 
       syncAspect(camera);

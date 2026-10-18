@@ -1,5 +1,5 @@
 /**
- * Night Cards (director: Nights 2+ need a real decision). At every paid Dawn the run offers two seeded cards (one safe-ish, one risk); the player keeps
+ * Night Cards (director: Nights 2+ need a real decision). At every paid Dawn from Night 2 on (`FIRST_OFFER_NIGHT`) the run offers two seeded cards (one safe-ish, one risk); the player keeps
  * one, and it rides the NEXT Night as a risk/reward modifier. Pure: the offer is a function of the run seed and the Night it
  * is for, so a seed always shows the same two cards. The cards are drawn by `nightCards.ui.ts`; the run holds the offer and the
  * kept card (`run.nightCardOffer()`, `run.pickNightCard()`, `run.nightCard()`).
@@ -19,6 +19,8 @@ import { coldLampCount, hotLampCount, nightDef, ratePercent, TILT_FREE_PULLS } f
 
 /** Cards offered at each Dawn. */
 export const NIGHT_CARD_OFFER_SIZE = 2;
+/** The first offer opens at the Dawn of this printed Night (onboarding: Night 1 has no card to choose). */
+export const FIRST_OFFER_NIGHT = 2;
 /** Seconds the offer waits before the safe card is taken for the player (the last 5 s pulse on the panel). */
 export const NIGHT_CARD_TIMEOUT_SEC = 20;
 /** The safe-ish card may raise the quota by at most this share (the card face's shown quota, after rounding; see the tests). */
@@ -239,10 +241,11 @@ export class NightCards implements ModProvider {
 
   /**
    * Dawn hook: opens the offer for `night` (the Night after the paid one). False when an offer is already open, the Night was
-   * offered before, or the card for it is already kept.
+   * offered before, or the card for it is already kept. Onboarding (wave 72): the first offer opens at the Night 2 Dawn, never at
+   * the Night 1 Dawn (`night` is the paid Night's printed number, so Night 1 passes 1 here).
    */
   openOffer(night: number): boolean {
-    if (this.offer || night <= this.offered || this.kept?.night === night) return false;
+    if (night < FIRST_OFFER_NIGHT || this.offer || night <= this.offered || this.kept?.night === night) return false;
     this.offered = night;
     this.offer = { night, ids: nightCardOffer(this.seed, night), left: NIGHT_CARD_TIMEOUT_SEC };
     return true;

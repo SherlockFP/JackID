@@ -61,6 +61,12 @@ export interface MannequinOpts {
   stepFps?: number | null;
   /** Skip mixer updates entirely (distant LOD / frozen pose). */
   frozen?: boolean;
+  /** Dark NPC look on the body and its attached props (default true; `false` for remote and lobby avatars). */
+  npc?: boolean;
+  /** Dark NPC rim colour (default: cold cyan for house folk, blood red for the Collector). */
+  rim?: Hex;
+  /** Dark NPC eye colour (default: the rim colour). */
+  eyes?: Hex;
 }
 export interface MannequinPlayOpts {
   fade?: number;                   // crossfade seconds, default 0.2

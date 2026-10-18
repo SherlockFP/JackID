@@ -24,13 +24,16 @@ import { mixHex, scaleHex, PAL } from './palette';
 import { VENDOR_PATHS } from './presets';
 import type { KitCtx } from './ctx';
 import { MANNEQUIN_CLIPS, MANNEQUIN_GLB, type Kit, type MannequinActor, type MannequinBone, type MannequinClip, type MannequinOpts, type MannequinPlayOpts } from './types';
-import { headBoxOf, idleRefPose, patchLook, seeded, type HeadBox } from './mannequinLook';
+import { headBoxOf, idleRefPose, patchLook, patchNpc, seeded, type HeadBox } from './mannequinLook';
 
 const D2R = Math.PI / 180;
 const DEFAULT_HEIGHT = 1.75;
 const DEFAULT_STEP_FPS = 15;
 const FACE_DEFAULT = 0xd9c7a3;                  // unpainted wood-doll
 const RIM_LIGHT = 0x8c9cd0;                     // dim cold rim (scaled down in patchLook)
+const NPC_RIM_HOUSE = 0x6fd8e0;                 // dark NPCs: cold cyan rim (house folk)
+const NPC_RIM_COLLECTOR = 0xc0202a;             // the Collector and his men: blood red
+const NPC_BODY_DEAD = 0x0c0b10;                 // placeholder doll while the GLB loads (dark NPC)
 const smooth = (e0: number, e1: number, x: number): number => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
 
 // ── scary posture (scary-models pass) ───────────────────────────────────────────────────────────
@@ -241,6 +244,10 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
     // scary behaviour: seeded per actor, so two identical bots never move in step
     private readonly rnd: () => number;
     private readonly face: { sockets: number; smile: number };
+    /** Dark NPC look (mannequinLook `patchNpc`): off for lit-less looks and for `npc: false` (remote avatars). */
+    private readonly npc: boolean;
+    private readonly npcRim: Hex;
+    private readonly npcEyes: Hex;
     private readonly phase: number;
     private jt = 0;
     private twitchIn: number;
@@ -252,6 +259,9 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
 
     constructor(o: MannequinOpts) {
       this.look = lookOf(o);
+      this.npc = o.npc !== false && this.look.lit;
+      this.npcRim = o.rim ?? (o.style === 'collector' ? NPC_RIM_COLLECTOR : NPC_RIM_HOUSE);
+      this.npcEyes = o.eyes ?? this.npcRim;
       this.height = o.height ?? DEFAULT_HEIGHT;
       this.stepFps = o.stepFps === undefined ? DEFAULT_STEP_FPS : o.stepFps;
       this.pinned = !!o.frozen;
@@ -286,7 +296,7 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
     private buildPlaceholder(): void {
       const { P } = ctx;
       const g = new THREE.Group();
-      const h = this.height, c = this.look.main;
+      const h = this.height, c = this.npc ? NPC_BODY_DEAD : this.look.main;
       P.cyl(0.13 * h / 1.75, 0.1 * h / 1.75, h * 0.34, { color: c, vertexColors: true }, { pos: [0, h * 0.62, 0], seg: 6, parent: g });
       P.sphere(0.1 * h / 1.75, { color: c, vertexColors: true }, { pos: [0, h * 0.89, 0], wSeg: 6, hSeg: 4, parent: g });
       P.cyl(0.045, 0.045, h * 0.45, { color: this.look.joints, vertexColors: true }, { pos: [-0.09, h * 0.22, 0], seg: 5, parent: g });
@@ -318,6 +328,7 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
         }) as THREE.MeshLambertMaterial;
         // painted face + dim rim light (lit looks only; the ghost stays a flat translucent figure)
         if (this.look.lit) patchLook(m, { cracks: !!this.look.cracks, sockets: this.face.sockets, smile: this.face.smile, head: src.head, rim: RIM_LIGHT });
+        if (this.npc) patchNpc(m, { rim: this.npcRim, eyes: this.npcEyes, head: src.head, shimmer: 1 });
         this.mats.push(m);
         this.baseColors.push(base);
         sm.material = m;
@@ -495,8 +506,23 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
       if (pos) a.obj.position.set(pos[0], pos[1], pos[2]);
       if (rot) a.obj.rotation.set(rot[0] * D2R, rot[1] * D2R, rot[2] * D2R);
       if (scale !== undefined) a.obj.scale.setScalar(scale);
+      this.npcProp(a.obj);
       b.add(a.obj);
       a.live = true;
+    }
+    /**
+     * Route an attached prop (mask, hat, coat, held item) through the dark NPC look. Props use shared cached materials, so
+     * each lit mesh gets its own PSX clone first (a unique material carries the per-actor rim uniforms).
+     */
+    private npcProp(obj: THREE.Object3D): void {
+      if (!this.npc) return;
+      obj.traverse((n) => {
+        const mesh = n as THREE.Mesh;
+        if (!mesh.isMesh || !(mesh.material as THREE.MeshLambertMaterial).isMeshLambertMaterial) return;
+        const m = (mesh.material as THREE.MeshLambertMaterial).clone();
+        patchNpc(m, { rim: this.npcRim, eyes: null, head: null, shimmer: 0.6 });
+        mesh.material = m;
+      });
     }
 
     lookAt(target: THREE.Vector3 | null, dur = 0.25): void {

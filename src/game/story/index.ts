@@ -150,12 +150,17 @@ export function startStory(world: World, params: InGameParams, gate: NoteGate | 
 
   // the intro (waking in the pit) and the notes need the built world; a new run (not a resume) shows the intro once
   const ready = (world as World & { ready?: Promise<void> }).ready ?? Promise.resolve();
+  // THE PROLOGUE (wave 72): a fresh run starts in the apartment, so the intro waits for the lift to land (`home:prologue`)
+  const introWaits = (): boolean => app.run?.prologueOn?.() === true;
   void ready.then(() => {
     if (!live) return;
     activeWorld = world;
     refreshStoryNotes();
-    if (!params.resume && !params.bench && !playedThisSession.has('intro')) void playStory('intro');
+    if (!params.resume && !params.bench && !playedThisSession.has('intro') && !introWaits()) void playStory('intro');
   }, (e: unknown) => log.error('story', 'world not ready; notes skipped', e));
+  offs.push(bus.on('home:prologue', () => {
+    if (live && !params.resume && !params.bench && !playedThisSession.has('intro')) void playStory('intro');
+  }));
 
   return () => {
     live = false;

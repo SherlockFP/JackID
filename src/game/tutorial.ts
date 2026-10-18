@@ -1,12 +1,16 @@
 /**
  * Night 1 guided onboarding (first run only). A small top-centre prompt and a floor glow with a bobbing arrow point at the
- * next thing to do: walk to The Big One → spin it → deposit at the Debt Terminal → rotate off a Tilted machine → HOT lamp
- * (text only: lamps start at Night 1) → buy a charm at the Pawn Window in the intermission.
+ * next thing to do: walk to The Big One → spin it → deposit at the Debt Terminal → buy a charm at the Pawn Window in the intermission.
+ * (Wave 72: the TILT and HOT steps are gone; those readouts wait for Night 2, see `menu/hud/disclose.ts`.)
  *
  * Steps 1-3 (walk, spin, deposit) hold the Watch clock (`clockHold`), so the first Watch never runs out while the player is still
- * being shown how to play. Nothing here takes input or changes the input mode. The first-run flag is `save.stats['tutorial.n1']`; it is set when the
+ * being shown how to play. The box shows a small "clock paused" tag while it holds. Nothing here takes input or changes the input mode. The first-run flag is `save.stats['tutorial.n1']`; it is set when the
  * tutorial finishes, is skipped (hold Esc for about a second) or the run leaves Night 1. A run that ends or is quit mid-way
  * keeps the flag unset, so the next first run shows it again.
+ *
+ * Wave 72: the OBJECTIVE line. On Nights 1 and 2 one line always names what to do next (`objectiveFor`, menu/hud/disclose.ts), with
+ * a waypoint on the target machine. It takes the place of the tutorial box once that box is down (the box carries the same job
+ * while it is up), so there is never more than one line of guidance.
  *
  * Wave 27: `startTutorial` also owns the BROKE PROMPT (`brokePrompt.ts`): on every fresh Night 1, tutorial done or not, a big centre card lists
  * the ways out of an empty pocket (bank WITHDRAW, the phone, the cashier, the House loan). It rides this object so the session needs no change.
@@ -18,7 +22,7 @@ import { app } from '@/core/app';
 import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
 import { DEFAULT_BINDINGS, codeLabels } from '@/core/keymap';
-import type { InstanceId, Unsub } from '@/core/types';
+import type { InstanceId, PlayerId, Unsub } from '@/core/types';
 import type { WorldHost } from '@/world/world';
 import type { DebtRun } from '@/game/run';
 import type { UIOverlayX } from '@/core/ui/ui';
@@ -27,6 +31,8 @@ import { inUnderneath } from '@/world/hollow';
 import { TILT_FREE_PULLS } from '@/game/data/schedule';
 import { createBrokePrompt } from '@/game/brokePrompt';
 import { machineName } from '@/game/progression';
+import { objectiveFor, objectiveShown, type Objective, type ObjectiveTarget } from '@/menu/hud/disclose';
+import '@/menu/hud/objective.css';
 
 export interface TutorialHost {
   readonly world: WorldHost;
@@ -63,14 +69,12 @@ export function tutorialActive(): boolean { return active !== null; }
 export function skipTutorial(): void { active?.skip(); }
 
 type Target = 'bigone' | 'debt_terminal' | 'charm_vendor';
-interface Step { key: 'walk' | 'spin' | 'deposit' | 'tilt' | 'hot' | 'pawn'; target: Target | null; }
+interface Step { key: 'walk' | 'spin' | 'deposit' | 'pawn'; target: Target | null; }
 
 const STEPS: readonly Step[] = [
   { key: 'walk', target: 'bigone' },
   { key: 'spin', target: 'bigone' },
   { key: 'deposit', target: 'debt_terminal' },
-  { key: 'tilt', target: null },
-  { key: 'hot', target: null },
   { key: 'pawn', target: 'charm_vendor' },
 ];
 
@@ -90,22 +94,72 @@ function keyLabel(key: string): string {
 }
 
 /**
- * Start the Night 1 helpers for a new run: the first-run tutorial (when it is not done yet) and the broke prompt (every run).
- * Returns null only when the run is not on Night 1. Machines are looked up lazily, so this may be called before the world is built.
+ * Start the Night 1 helpers for a new run: the first-run tutorial (when it is not done yet), the objective line (Nights 1-2)
+ * and the broke prompt (every run). Returns null only when the run is not on Night 1.
+ * Machines are looked up lazily, so this may be called before the world is built.
  */
 export function startTutorial(host: TutorialHost): Tutorial | null {
   if (host.run.night() !== 1) return null;
   const broke = createBrokePrompt(host.run);
   const steps = startSteps(host);
-  if (!steps) return broke;
+  const objective = startObjective(host, () => steps?.shown() ?? false);
   return {
-    update(dt: number): void { steps.update(dt); broke.update(dt); },
-    dispose(): void { steps.dispose(); broke.dispose(); },
+    update(dt: number): void { steps?.update(dt); objective.update(); broke.update(dt); },
+    dispose(): void { steps?.dispose(); objective.dispose(); broke.dispose(); },
+  };
+}
+
+/** The HUD layer (its news feed and `--tut-b` live there). */
+function hudHostEl(): HTMLElement {
+  return (app.ui as UIOverlayX | undefined)?.hudLayer ?? document.body;
+}
+
+/**
+ * The root overlay the guidance boxes (`.px-tut`, `.px-obj`) are appended to: one level above the HUD layer, so the floor banner
+ * (the big-win layer, z 7) never covers them. The HUD layer's own stacking context (z 1) would keep them under it.
+ */
+function overlayEl(): HTMLElement {
+  return hudHostEl().parentElement ?? hudHostEl();
+}
+
+interface Marker { show(mid: InstanceId | null, time: number): void; hide(): void; dispose(): void }
+
+function createMarker(world: WorldHost): Marker {
+  const ringGeo = new THREE.RingGeometry(0.42, 0.62, 40);
+  ringGeo.rotateX(-Math.PI / 2);
+  const ringMat = new THREE.MeshBasicMaterial({ color: GOLD, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.renderOrder = 5;
+  ring.visible = false;
+  const arrowGeo = new THREE.ConeGeometry(0.16, 0.4, 4);
+  arrowGeo.rotateX(Math.PI);                                  // tip points down at the target
+  const arrowMat = new THREE.MeshBasicMaterial({ color: GOLD, depthWrite: false });
+  const arrow = new THREE.Mesh(arrowGeo, arrowMat);
+  arrow.visible = false;
+  world.root.add(ring, arrow);
+  const hide = (): void => { ring.visible = false; arrow.visible = false; };
+  return {
+    show(mid: InstanceId | null, time: number): void {
+      const slot = mid === null ? undefined : world.slot(mid);
+      if (!slot) { hide(); return; }
+      const [x, y, z] = slot.pos;
+      const bob = Math.sin(time * 3) * 0.12;
+      ring.position.set(x, y + 0.04, z);
+      arrow.position.set(x, y + 2.3 + bob, z);
+      ring.visible = true;
+      arrow.visible = true;
+      ringMat.opacity = 0.45 + 0.2 * Math.sin(time * 3);
+    },
+    hide,
+    dispose(): void {
+      world.root.remove(ring, arrow);
+      ringGeo.dispose(); ringMat.dispose(); arrowGeo.dispose(); arrowMat.dispose();
+    },
   };
 }
 
 /** The first-run tutorial steps. Null when already done, or not on Night 1. */
-function startSteps(host: TutorialHost): Tutorial | null {
+function startSteps(host: TutorialHost): Tutorial & { shown(): boolean } | null {
   const { world, run } = host;
   if (tutorialDone() || run.night() !== 1) return null;
   const self = run.selfId;
@@ -134,7 +188,6 @@ function startSteps(host: TutorialHost): Tutorial | null {
     found.set(target, m.id);
     return m.id;
   };
-  const bigMid = (): InstanceId | null => targetMid('bigone');
 
   // ── prompt (DOM, top centre, pointer-events none) ──────────────────────────────────────────────────
   // Bottom-left anchor inside the HUD layer (`.px-tut` in ui.css), above the charm row and clear of PULLS and the top band.
@@ -145,9 +198,13 @@ function startSteps(host: TutorialHost): Tutorial | null {
   const line = document.createElement('div');
   const hint = document.createElement('div');
   hint.className = 'hint';
-  el.append(line, hint);
-  const hudHost: HTMLElement = (app.ui as UIOverlayX | undefined)?.hudLayer ?? document.body;
-  hudHost.appendChild(el);
+  // The clock tag: shown while the box holds the Watch clock (steps 1-3).
+  const tag = document.createElement('div');
+  tag.className = 'px-clock-tag';
+  tag.textContent = t('tut.paused');
+  el.append(line, hint, tag);
+  const hudHost = hudHostEl();
+  overlayEl().appendChild(el);
   // The news feed sits under the box (ui/hud.css reads --tut-b): publish the box's bottom edge while it is on screen.
   let shownB = '';
   const placeFeed = (): void => {
@@ -158,18 +215,7 @@ function startSteps(host: TutorialHost): Tutorial | null {
   };
 
   // ── floor glow and a bobbing arrow over the target ────────────────────────────────────────────────
-  const ringGeo = new THREE.RingGeometry(0.42, 0.62, 40);
-  ringGeo.rotateX(-Math.PI / 2);
-  const ringMat = new THREE.MeshBasicMaterial({ color: GOLD, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending });
-  const ring = new THREE.Mesh(ringGeo, ringMat);
-  ring.renderOrder = 5;
-  ring.visible = false;
-  const arrowGeo = new THREE.ConeGeometry(0.16, 0.4, 4);
-  arrowGeo.rotateX(Math.PI);                                  // tip points down at the target
-  const arrowMat = new THREE.MeshBasicMaterial({ color: GOLD, depthWrite: false });
-  const arrow = new THREE.Mesh(arrowGeo, arrowMat);
-  arrow.visible = false;
-  world.root.add(ring, arrow);
+  const marker = createMarker(world);
 
   // ── steps ──────────────────────────────────────────────────────────────────────────────────────────
   let idx = 0;
@@ -196,10 +242,8 @@ function startSteps(host: TutorialHost): Tutorial | null {
   const complete = (s: Step): boolean => {
     switch (s.key) {
       case 'walk': return seatMid !== null;
-      case 'spin': return rounds - base.rounds >= TILT_FREE_PULLS;   // four full-pay pulls, then rotate (TILT, GDD §3.4.3)
+      case 'spin': return rounds - base.rounds >= TILT_FREE_PULLS;   // four full-pay pulls, then the player moves on
       case 'deposit': return deposits > base.deposits;
-      case 'tilt': return others > base.others || age > 16;
-      case 'hot': return age > 9;
       case 'pawn': return bought > base.bought;
     }
   };
@@ -247,37 +291,27 @@ function startSteps(host: TutorialHost): Tutorial | null {
     releaseClock('tutorial');
     el.remove();
     hudHost.style.removeProperty('--tut-b');
-    world.root.remove(ring, arrow);
-    ringGeo.dispose(); ringMat.dispose(); arrowGeo.dispose(); arrowMat.dispose();
+    marker.dispose();
   }
-
-  const showTarget = (mid: InstanceId | null): void => {
-    const slot = mid === null ? undefined : world.slot(mid);
-    if (!slot) { ring.visible = false; arrow.visible = false; return; }
-    const [x, y, z] = slot.pos;
-    const bob = Math.sin(total * 3) * 0.12;
-    ring.position.set(x, y + 0.04, z);
-    arrow.position.set(x, y + 2.3 + bob, z);
-    ring.visible = true;
-    arrow.visible = true;
-    ringMat.opacity = 0.45 + 0.2 * Math.sin(total * 3);
-  };
 
   /** Hides the box, the target marker and the clock hold. The step and its timer wait (they resume with the next Watch). */
   const hide = (): void => {
     el.style.display = 'none';
-    showTarget(null);
+    marker.hide();
     releaseClock('tutorial');
     placeFeed();
   };
 
   return {
+    shown: (): boolean => !disposed && el.style.display !== 'none',
     update(): void {
       const sdt = Math.max(0, app.time.sim - seenSim);   // sim seconds since the last update (0 while paused or in hit-stop)
       seenSim = app.time.sim;
       if (disposed) return;
       // THE UNDERNEATH pauses the tutorial: its box and target marker hide, and no step, timer or skip moves until the player is back up.
-      if (inUnderneath()) { el.style.display = 'none'; showTarget(null); releaseClock('tutorial'); return; }
+      if (inUnderneath()) { el.style.display = 'none'; marker.hide(); releaseClock('tutorial'); return; }
+      // THE PROLOGUE (wave 72): the apartment holds the tutorial; its box stays hidden and no timer runs until the lift lands (`home:prologue`).
+      if (run.prologueOn()) { hide(); return; }
 
       // Esc held for SKIP_HOLD_S skips (the pause card may open from the same press; Esc closes it as usual).
       if (holdFrom !== null && app.time.sim - holdFrom >= SKIP_HOLD_S) { skip(); return; }
@@ -304,17 +338,91 @@ function startSteps(host: TutorialHost): Tutorial | null {
       if (idx >= STEPS.length) { finish(); return; }
 
       const s = STEPS[idx];
-      if (idx < HOLD_STEPS) holdClock('tutorial', 3); else releaseClock('tutorial');
+      const holding = idx < HOLD_STEPS;
+      if (holding) holdClock('tutorial', 3); else releaseClock('tutorial');
       line.textContent = text(s);
       hint.textContent = `${t('tut.step', { i: idx + 1, total: STEPS.length })}  ·  ${t('tut.skip')}`;
+      tag.style.display = holding ? '' : 'none';
       el.style.display = '';
       placeFeed();
 
       // The pawn window is only worth pointing at in the intermission.
       const wanted = s.target === 'charm_vendor' && run.shift.phase !== 'intermission' ? null
         : s.target !== null ? targetMid(s.target) : null;
-      showTarget(wanted);
+      marker.show(wanted, total);
     },
     dispose,
+  };
+}
+
+/**
+ * The OBJECTIVE line (Nights 1 and 2): one line of what to do next, with a waypoint on the target machine. Silent while the tutorial
+ * box is up (`boxUp`), since that box carries the same job. Counts rounds and deposits per Night, so each Night starts its own list.
+ */
+function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): void; dispose(): void } {
+  const { world, run } = host;
+  const self: PlayerId = run.selfId;
+  const el = document.createElement('div');
+  el.className = 'px-obj';
+  el.style.display = 'none';
+  const label = document.createElement('span');
+  label.className = 'k';
+  label.textContent = t('tut.obj.label');
+  const text = document.createElement('span');
+  el.append(label, text);
+  overlayEl().appendChild(el);
+  const marker = createMarker(world);
+
+  let roundsAll = 0, depositsAll = 0;
+  const offs: Unsub[] = [];
+  offs.push(bus.on('machine:round', (e) => { if (e.pid === self) roundsAll++; }));
+  offs.push(bus.on('run:deposit', (e) => { if (e.pid === self) depositsAll++; }));
+  let night = run.night();
+  let base = { rounds: 0, deposits: 0 };
+  let shownKey = '';
+  const found = new Map<string, InstanceId>();
+  const targetMid = (target: Exclude<ObjectiveTarget, null>): InstanceId | null => {
+    const hit = found.get(target);
+    if (hit !== undefined) return hit;
+    const m = world.machines().find((x) => x.def.id === target);
+    if (!m) return null;
+    found.set(target, m.id);
+    return m.id;
+  };
+  let disposed = false;
+
+  const hide = (): void => {
+    el.style.display = 'none';
+    marker.hide();
+  };
+
+  return {
+    update(): void {
+      if (disposed) return;
+      if (run.night() !== night) { night = run.night(); base = { rounds: roundsAll, deposits: depositsAll }; }
+      if (!objectiveShown(night) || boxUp() || inUnderneath() || run.prologueOn()) { hide(); return; }
+      const sh = run.shift.state();
+      const o = objectiveFor({
+        phase: sh.phase,
+        paid: run.nightPaid,
+        rounds: roundsAll - base.rounds,
+        deposits: depositsAll - base.deposits,
+        pocket: run.wallet(self),
+      });
+      const key = `${night}|${o.key}`;
+      if (key !== shownKey) {
+        shownKey = key;
+        text.textContent = t(`tut.obj.${o.key as Objective}`);
+      }
+      el.style.display = '';
+      marker.show(o.target !== null ? targetMid(o.target) : null, app.time.sim);
+    },
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      for (const off of offs.splice(0)) off();
+      el.remove();
+      marker.dispose();
+    },
   };
 }

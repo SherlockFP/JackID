@@ -12,7 +12,7 @@
 import * as THREE from 'three';
 import { app } from '@/core/app';
 import { bus } from '@/core/events';
-import { registerStrings, t } from '@/core/i18n';
+import { fmtCoins, registerStrings, t } from '@/core/i18n';
 import { hashSeed } from '@/core/rng';
 import type { Unsub, V3 } from '@/core/types';
 import type { UIOverlayX } from '@/core/ui/ui';
@@ -46,6 +46,9 @@ const SEAT_WAIT_SEC = 1;
 const FLICKER: readonly number[] = [0, 0.12, 0.26, 0.55, 0.66, 1.0, 1.1, 1.35];
 /** The window's one-liners (`evening.window.1`..`4`). */
 const WINDOW_LINES = 4;
+/** THE PROLOGUE (wave 72): the scene's id (story/cutscenes/prologue.cutscene.ts) and the objective's repeat (sim s). */
+export const PROLOGUE_CUT = 'prologue';
+const OBJECTIVE_EVERY_SEC = 20;
 
 /** World position, yaw and look direction of an anchor. Forward is the anchor's -Z, the walk and camera convention (-sin yaw, -cos yaw). */
 export function anchorPose(o: THREE.Object3D): { pos: THREE.Vector3; yaw: number; dir: THREE.Vector3 } {
@@ -105,6 +108,16 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   let visit: Visit | null = null;
   /** A walk input or an interaction since the last step (the Listener hears it). */
   let movedFlag = false;
+  /**
+   * THE PROLOGUE (wave 72): `start` until the world is ready, `talk` while the scene plays (the spouse, the call), `walk` when the
+   * objective "take the lift down" is up and the front door takes the lift, `lift` while the ride runs, `done` after it (and always
+   * on a resumed or non-Home run). Sim time only: the scene and the ride count the fixed step, the run holds the clock.
+   */
+  let pro: 'start' | 'talk' | 'walk' | 'lift' | 'done' = run.prologueOn() ? 'start' : 'done';
+  let liftT = 0;
+  let liftBeat = { ding: false, tp: false, fadeIn: false };
+  let objectiveT = 0;
+  let disposed = false;
 
   const spousePresent = (): boolean => (run.homePhone()?.harmony() ?? 3) > 0;
 
@@ -140,6 +153,12 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     if (!a) return false;
     const p = anchorPose(a);
     player.teleport(new THREE.Vector3(p.pos.x, HOME_ORIGIN[1] + STAND_LIFT, p.pos.z), p.yaw);
+    // the camera rig is suspended during a cutscene (the prologue plays right after this), so it never moves the camera to the
+    // flat. The world culls zones and lights from `camera.position`, so the flat's pose is written here as well: without it
+    // the apartment (about 170 m from the pit camera) is culled and the scene renders black.
+    const eye = HOME_ORIGIN[1] + STAND_LIFT + player.eyeHeight;
+    app.camera.position.set(p.pos.x, eye, p.pos.z);
+    app.camera.quaternion.setFromEuler(new THREE.Euler(0, p.yaw, 0));
     const home = world.home;
     home?.setLights(true);
     home?.setChain(false);
@@ -281,7 +300,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
       const id = pickCharm(run.seed, run.night(), owned);
       if (id && run.loseCharm?.(id)) ui().toast(t('knock.stolen', { name: t(`charm.${id}.name`) }), 'warn', 4);
     }
-    run.homeFlags({});   // the visit's outcome is in the pocket and the phone now: save them together
+    run.homeSaveNow();   // the visit's outcome is in the pocket and the phone now: one save at the verdict, not a coalesced one
   };
 
   const io: KnockIO = {
@@ -418,27 +437,101 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     say(t(`evening.window.${n}`), '', 3.5);
   };
 
-  const interact = (station: HomeStation): void => {
-    if (run.over || run.homeStage() !== 'evening') return;   // the Evening is the only stage with a free hand
-    if (station !== 'peephole') movedFlag = true;   // the Listener hears every touch; the look costs only its time
+  /** The stations that only look, talk or toggle: the same in the prologue and in the Evening. */
+  const touch = (station: HomeStation): void => {
     switch (station) {
-      case 'bed':
-        if (visit?.atDoor()) { ui().toast(t('knock.blocked'), 'warn', 2.5); break; }   // not with someone at the door
-        run.homeSleep();
-        break;
       case 'spouse': speak(); break;
       case 'switch': toggleLights(); break;
       case 'chain': toggleChain(); break;
       case 'peephole': peephole(); break;
       case 'window': windowLook(); break;
-      case 'door': sfx(HOME_SFX.lockTurn); ui().toast(t('evening.door'), 'info', 2.5); break;
-      case 'phone': break;   // the wall phone belongs to the phone UI
+      case 'bed': case 'door': case 'phone': break;   // their own rules (or the wall phone's UI)
     }
+  };
+
+  const interact = (station: HomeStation): void => {
+    if (run.over) return;
+    if (pro !== 'done') {
+      // THE PROLOGUE: the apartment is for talking and looking; the front door takes the lift down, the bed waits for Night 1
+      if (pro !== 'walk' || station === 'phone') return;
+      if (station === 'door') { startLift(); return; }
+      if (station === 'bed') { ui().toast(t('evening.prologue.notYet'), 'warn', 2.5); return; }
+      movedFlag = true;
+      touch(station);
+      return;
+    }
+    if (run.homeStage() !== 'evening') return;   // the Evening is the only stage with a free hand
+    if (station !== 'peephole') movedFlag = true;   // the Listener hears every touch; the look costs only its time
+    if (station === 'bed') {
+      if (visit?.atDoor()) { ui().toast(t('knock.blocked'), 'warn', 2.5); return; }   // not with someone at the door
+      run.homeSleep();
+      return;
+    }
+    if (station === 'door') { sfx(HOME_SFX.lockTurn); ui().toast(t('evening.door'), 'info', 2.5); return; }
+    touch(station);
   };
   offs.push(bus.on('home:interact', ({ station }) => interact(station)));
 
+  // ── THE PROLOGUE (wave 72): the scene, the objective, the lift down ───────────────────────────────────────────
+  /** The objective is up: the scene is over (or skipped) and the front door takes the lift down. */
+  const beginWalk = (): void => {
+    pro = 'walk';
+    objectiveT = 0;
+    unlock();
+    ui().toast(t('evening.prologue.objective'), 'sys', 6);
+  };
+  /** The lift down: dark, the ding, the teleport to the elevator door on the floor, back in. The run's Watch 1 opens at the end. */
+  const startLift = (): void => {
+    pro = 'lift';
+    liftT = 0;
+    liftBeat = { ding: false, tp: false, fadeIn: false };
+    wantLock = true;
+    ui().dismissToasts();
+    fadeTo(1, T.dark);
+  };
+  const tickLift = (dt: number): void => {
+    liftT += dt;
+    if (!liftBeat.ding && liftT >= T.dark) { liftBeat.ding = true; sfx(HOME_SFX.ding); }
+    if (!liftBeat.tp && liftT >= T.teleport) { liftBeat.tp = true; placeFloor(); }
+    if (liftBeat.tp && !liftBeat.fadeIn && liftT >= T.fadeIn) { liftBeat.fadeIn = true; fadeTo(0, 0.9); }
+    if (liftT < T.ride) return;
+    pro = 'done';
+    unlock();
+    run.finishPrologue();   // Night 1 Watch 1 opens on the floor now; the intro follows on the run's `home:prologue` event
+  };
+  /** The world is built: the apartment is placed and the scene plays. A run that is not in its prologue has nothing to start. */
+  const startPrologue = (): void => {
+    if (pro !== 'start') return;
+    if (!run.prologueOn() || !app.cutscene.has(PROLOGUE_CUT)) { pro = 'done'; run.finishPrologue(); return; }
+    pro = 'talk';
+    placeHome();
+    ambience(HOME_AMBIENCE, 1.5);
+    void app.cutscene.play(PROLOGUE_CUT, { vars: { quota: fmtCoins(run.debt().due) } }).then(
+      () => { if (!disposed && pro === 'talk') beginWalk(); },
+      () => { if (!disposed && pro === 'talk') beginWalk(); },
+    );
+  };
+
+  // the prologue starts once the world is built (the apartment's anchors and the room exist then)
+  if (pro === 'start') {
+    const ready = (world as WorldHost & { ready?: Promise<void> }).ready ?? Promise.resolve();
+    void ready.then(() => { if (!disposed) startPrologue(); }, () => { if (!disposed) startPrologue(); });
+  }
+
   return {
     update(dt) {
+      if (pro === 'lift') tickLift(dt);
+      if (pro === 'walk') {
+        objectiveT += dt;
+        if (objectiveT >= OBJECTIVE_EVERY_SEC) { objectiveT = 0; ui().toast(t('evening.prologue.objective'), 'sys', 6); }
+      }
+      if (pro !== 'done') {
+        // THE PROLOGUE has no stage of its own: the run is on the intermission, so the Evening's stage checks below stay quiet
+        tryLock();
+        tickTalk(dt);
+        tickPeep(dt);
+        return;
+      }
       const s = run.homeState();
       if (s.stage !== last) {
         const from = last;
@@ -455,6 +548,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
       }
     },
     dispose() {
+      disposed = true;
       for (const off of offs.splice(0)) off();
       world.home?.setDoorShadow(false);
       showVisitor(null);

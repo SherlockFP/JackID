@@ -62,3 +62,8 @@ import './phone.test.mjs';
 import './dawnReceipt.test.mjs';
 import './knock.test.mjs';
 import './wave71Polish.test.mjs';
+import './darkNpc.test.mjs';
+import './onboarding.test.mjs';
+import './prologue.w72.test.mjs';
+import './subtitles.test.mjs';
+import './world.refit.test.mjs';

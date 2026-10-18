@@ -120,6 +120,8 @@ export interface RunApi {
   /** The Tally Bench's run-side hooks (Soul Marks, Pledge, boss rewards). Absent on bench runs: the duel table then offers Coins and Pledge only. */
   readonly duel?: DuelRunHooks;
   readonly config: Readonly<RunConfig>;
+  /** THE PROLOGUE (wave 72): true while the apartment opens the run (Night 1 Watch 1 has not begun). Optional: absent on the bench and the MP facade. */
+  prologueOn?(): boolean;
   /** Current Night (= `shift.quota.index`) and Watch/Dawn window (TECH §11.5, C17). */
   night(): number;
   window(): RunWindow;

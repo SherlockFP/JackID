@@ -101,19 +101,19 @@ export interface ArchProvider {
 
 /** GDD §8.7 — fog colour, near/far and ambient per zone. */
 export const GDD_ZONE_LOOK: Readonly<Record<string, { fog: { color: Hex; near: number; far: number }; ambient: Hex }>> = {
-  mouth:    { fog: { color: 0x120a06, near: 6, far: 28 }, ambient: 0x2a1a10 },
-  well:     { fog: { color: 0x0e0806, near: 6, far: 32 }, ambient: 0x1e1410 },
-  lobby:    { fog: { color: 0x0d0a06, near: 6, far: 26 }, ambient: 0x1a120c },
-  midway:   { fog: { color: 0x120814, near: 4, far: 22 }, ambient: 0x1c0e1e },
-  cards:    { fog: { color: 0x06100a, near: 4, far: 20 }, ambient: 0x0a120c },
-  laundry:  { fog: { color: 0x0a1418, near: 6, far: 26 }, ambient: 0x0e1e26 },
-  boiler:   { fog: { color: 0x140404, near: 4, far: 22 }, ambient: 0x200808 },
-  gallery:  { fog: { color: 0x08040f, near: 5, far: 24 }, ambient: 0x10061a },
-  wheels:   { fog: { color: 0x140505, near: 4, far: 22 }, ambient: 0x1e0808 },
-  parlour:  { fog: { color: 0x0a0606, near: 3, far: 16 }, ambient: 0x140c0a },
-  counting: { fog: { color: 0x0a0604, near: 3, far: 16 }, ambient: 0x140c08 },
+  mouth:    { fog: { color: 0x1c1008, near: 8, far: 34 }, ambient: 0x4a3020 },
+  well:     { fog: { color: 0x160c08, near: 8, far: 38 }, ambient: 0x3e2a1a },
+  lobby:    { fog: { color: 0x160e08, near: 8, far: 34 }, ambient: 0x3a2a1c },
+  midway:   { fog: { color: 0x1a0c20, near: 6, far: 28 }, ambient: 0x3a1c44 },
+  cards:    { fog: { color: 0x08180e, near: 6, far: 26 }, ambient: 0x16442c },
+  laundry:  { fog: { color: 0x0e2028, near: 7, far: 30 }, ambient: 0x1e4c5c },
+  boiler:   { fog: { color: 0x240808, near: 6, far: 28 }, ambient: 0x4c1a10 },
+  gallery:  { fog: { color: 0x10081c, near: 6, far: 28 }, ambient: 0x301a4c },
+  wheels:   { fog: { color: 0x240a0a, near: 6, far: 28 }, ambient: 0x461a10 },
+  parlour:  { fog: { color: 0x120808, near: 4, far: 18 }, ambient: 0x2c1c14 },
+  counting: { fog: { color: 0x120a06, near: 4, far: 18 }, ambient: 0x2c1e12 },
   lift:     { fog: { color: 0x2a2418, near: 20, far: 60 }, ambient: 0x2a2418 },
-  sump:     { fog: { color: 0x000000, near: 2, far: 14 }, ambient: 0x000000 },
+  sump:     { fog: { color: 0x0a0c10, near: 4, far: 20 }, ambient: 0x1a1c24 },
 };
 export const DEFAULT_LOOK = GDD_ZONE_LOOK.well;
 

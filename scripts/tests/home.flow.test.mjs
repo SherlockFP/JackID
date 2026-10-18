@@ -57,6 +57,17 @@ function storeOf(run) {
   return { snap, store: { data: { ...SAVE.defaultSave(), resume: snap }, update(fn) { fn(this.data); }, flush() {} } };
 }
 /** Collects the bus events of a kind for the length of a test. */
+/** Night 1 end to end: the paid Dawn (no Night Card offer on it), the lift, the Evening and the bed, which opens Night 2. */
+function eveningOfNight1(run) {
+  paidDawn(run);
+  assert.equal(run.nightCardOffer(), null, 'the Night 1 Dawn opens no offer (the first is the Night 2 Dawn)');
+  assert.equal(run.openFloor(), true);
+  walk(run, T().ride + 0.1);
+  assert.equal(run.homeSleep(), true, 'the bed');
+  walk(run, T().sleep + 0.1);
+  assert.equal(run.night(), 2, 'Night 2 is open');
+}
+
 function listen(kind) {
   const seen = [];
   const off = EV.bus.on(kind, (e) => seen.push(e));
@@ -126,8 +137,9 @@ test('the Evening has no soft lock: it falls asleep on its own after 120 sim sec
 test('the lift is a Night Card gate like OPEN THE FLOOR: the lever waits for the pick, and the kept card starts the Night after the bed', () => {
   const run = home(703);
   run.setNightCardGate(true);
+  eveningOfNight1(run);
   paidDawn(run);
-  assert.ok(run.nightCardOffer(), 'the Dawn opened the offer');
+  assert.ok(run.nightCardOffer(), 'the Night 2 Dawn opened the offer');
   assert.equal(run.openFloor(), false, 'the open offer holds the lever');
   assert.equal(run.lastRefusal(), 'nightCard');
   assert.equal(run.homeStage(), null);
@@ -138,10 +150,11 @@ test('the lift is a Night Card gate like OPEN THE FLOOR: the lever waits for the
   walk(run, T().ride + 0.1);
   run.homeSleep();
   walk(run, T().sleep + 0.1);
-  assert.equal(run.nightCard()?.id, pick, 'the kept card starts Night 2');
+  assert.equal(run.nightCard()?.id, pick, 'the kept card starts Night 3');
   run.dispose();
   // without the panel (headless) an open offer is settled by its first card at the lever, as before
   const bare = home(704);
+  eveningOfNight1(bare);
   paidDawn(bare);
   assert.equal(bare.openFloor(), true);
   assert.equal(bare.nightCardOffer(), null, 'the lift settled the offer');

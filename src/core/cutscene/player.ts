@@ -40,6 +40,7 @@ import { CutActors } from './actors';
 import { CutCamera, newCameraPose } from './camera';
 import { applyAudio, applyFx, applyLight, cutLetterbox, showSubtitle, type EffectCtx, type TrackedVoice } from './effects';
 import { resolveTarget } from './targets';
+import { subtitles } from '../ui/subtitles';
 
 declare module '@/core/events' {
   interface GameEvents {
@@ -357,6 +358,8 @@ class Run {
    * so a local jump would desync peers) or on the last line (hold to skip the rest).
    */
   private tapLine(paused: boolean): void {
+    // First tap finishes a line that is still typing; the next tap moves on to the following line.
+    if (!paused && subtitles.finishTyping()) return;
     if (!this.skippable || !this.locked || paused || this.voted || this.gate || app.net.online) return;
     let next = -1;
     for (let i = this.cursor; i < this.cues.length; i++) {
@@ -418,7 +421,7 @@ class Run {
     this.actors.dispose();
     fxLayer.setCameraPose(null);
     a.ui.skipHint(null);
-    a.ui.subtitle(null);
+    subtitles.clear('cutscene');
     if (this.def.letterbox !== false) { void a.ui.letterbox(0, 0.4); cutLetterbox(false); }
     if (this.locked) {
       // a state change already set its own mode: only undo what is still ours

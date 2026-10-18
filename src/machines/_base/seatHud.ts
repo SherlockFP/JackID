@@ -24,7 +24,7 @@ import type { TiltView } from '@/game/circuit';
 import type { OddsLine } from '@/game/pace';
 import { BRASS, CREAM, INK, INK_SOFT, Placard3D, button, paginate, put, rowsIn, rulesFirstEver, rulesMarkShown, wrapPx5 } from './placard3d';
 import { showRulesHint } from './rulesHint';
-import type { StakePresetsEvent } from './stakePresets';
+import { STAKE_PRESET_KEYS, type StakePresetKey, type StakePresetsEvent } from './stakePresets';
 import { flashPrefs } from './juice';
 import { tierAtLeast, type JuiceTier } from './tiers';
 import { uiSfx } from '@/core/ui/widgets';
@@ -211,11 +211,14 @@ export class SeatHud {
   /** Repaints the SAFE / BOLD / BIG row: the active preset lit, a BIG waiting for its second press blinking. */
   private refreshPresets(): void {
     const s = this.presetsState;
-    const show = this.shown && !this.uiBlocked && s !== null && s.rows.length > 0;
+    // Onboarding: a preset row waits for its Night (SeatHud.readout, set by menu/hud.ts). The key still works; only the row waits.
+    const allowed = SeatHud.readout().presets;
+    const rows = s ? s.rows.filter((r) => allowed.includes(r.key)) : [];
+    const show = this.shown && !this.uiBlocked && s !== null && rows.length > 0;
     this.presetsEl.style.display = show ? '' : 'none';
     if (!show || s === null) return;
     this.presetsEl.replaceChildren();
-    for (const r of s.rows) {
+    for (const r of rows) {
       const cls = ['shud-preset', r.key === s.active ? 'on' : '', r.key === s.armed ? 'armed' : ''].filter(Boolean).join(' ');
       const b = make('div', cls, this.presetsEl);
       make('span', 'shud-key shud-preset-k', b).textContent = r.keyLabel;
@@ -268,7 +271,8 @@ export class SeatHud {
 
   /** Repaints the Tilt bulbs (cheap: the DOM is touched only when the state changes). */
   private refreshTilt(): void {
-    const v: TiltView | null = this.shown ? this.tilt : null;
+    // Onboarding: the Tilt bulbs wait for Night 2 (SeatHud.readout). The rule itself applies from Night 1.
+    const v: TiltView | null = this.shown && SeatHud.readout().tilt ? this.tilt : null;
     if (v === null) {
       if (this.tiltKey !== '') { this.tiltKey = ''; this.tiltEl.style.display = 'none'; }
       return;
@@ -306,6 +310,11 @@ export class SeatHud {
    * Night is on; the default reads nothing (zero pocket, no own events).
    */
   static stakeSource: () => { self: number; pocket: number } = () => ({ self: -1, pocket: 0 });
+  /**
+   * What the seat shows of the onboarding schedule (set by menu/hud.ts from its disclosure rules): the Tilt bulbs, and the
+   * stake presets on the row. Everything shows until the HUD sets it.
+   */
+  static readout: () => { tilt: boolean; presets: readonly StakePresetKey[] } = () => ({ tilt: true, presets: STAKE_PRESET_KEYS });
   /**
    * Whether the floor is open for play (a Night's play window or last call). The in-game session points this at the run;
    * the default says open, so a standalone bench keeps its prompts.

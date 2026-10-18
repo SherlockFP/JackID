@@ -1,0 +1,156 @@
+[
+ {
+  "id": "closed-wing-empty-floor",
+  "severity": "major",
+  "title": "Closed-wing slots show an empty floor and no OPENS NIGHT plate while a BUY prompt is live",
+  "where": "src/world/world.ts:257 (parked), world.ts:609 (m.visible=false); layout.ts:102 BOI-01, :82 CARD-01, :111 GAL-02, :126 WH-01; plate is a child of the machine (src/kit/states.ts:56 lock_overlay)",
+  "fix": "Keep the slot group visible while a machine is parked and hide only the machine root (world.ts:603-607: set rec.group.visible = !isClosed-only path, or exempt cover/plate children, and keep m.visible = false). Alternatively, gate the BUY interactable on the cover being visible: in session.ts:355 add enabled: () => world.seat == null && covers.get(instance)?.root.visible !== false, or check that the zone is open so the prompt cannot fire behind a closed wing. Correct the report's plate attribution (the plate is in the cover, a sibling of the machine) and downgrade severity from major to minor, since the reachable path is the wing's own BUY at the grille. Remove the BOI-02 comparison unless it is re-verified on a slot that actually has a machine."
+ },
+ {
+  "id": "boiler-invisible-collider",
+  "severity": "major",
+  "title": "Player can stand on top of an invisible parked machine (BOI-01 footprint)",
+  "where": "world.ts:609 (m.visible=false for parked machines, collider not tied to visibility); layout.ts:102 BOI-01 at (22,-23) XL",
+  "fix": "Keep the report's mechanism, downgrade severity to minor with reach limited to devtools teleport, and make the fix a sync rather than a visual change. In world.ts cull() (around line 603-607), when a machine becomes parked, call collision.setEnabled(id, false) for each id in rec.colliders and re-enable them when it unparks. Do the same in setZoneOpen when a zone closes and reopens (world.ts:525-541). A regression test is a closed-zone check that floorAt over each parked slot footprint returns null, plus one that the collider returns after the zone opens. Alternatively, accept the state as dev-only and close the report with no code change. Do not spend a major-severity slot on this."
+ },
+ {
+  "id": "well02-copy-clash",
+  "severity": "minor",
+  "title": "Buy prompt says 'Opens now' while the plate on the same machine says OPENS NIGHT 6",
+  "where": "src/game/progression.strings.ts:13 (buy.sub 'Opens now. ... Opens free on Night {n}.'), src/world/props/props.strings.ts:32 (cover.opens); WELL-02 layout.ts",
+  "fix": "Keep the plate as the free-unlock state and reword the sub to describe the purchase without a bare 'now' claim, e.g. 'Buy it to open it tonight. It pays you a house cut every Watch. Free on Night 6.' Or use the unused 'prog.buy.subNow' key with a 'Buying opens it now' phrasing. Apply the same change to the BOI-01 path (same key). Add a test that the sub and plate share the same unlock night value."
+ },
+ {
+  "id": "big-one-rear-prompt",
+  "severity": "minor",
+  "title": "'Play The Big One' prompt is reachable from the back of the XL cabinet",
+  "where": "layout.ts:58-ish WELL-01 at (0,-4) rot 180 XL; interact box for WELL-01 (src/world/interact.ts)",
+  "fix": "Scope is generic, not XL-only. Accept as walk-up design, or change the generic picker in src/world/interact.ts for all machines."
+ },
+ {
+  "id": "keno-sign-overlap",
+  "severity": "cosmetic",
+  "title": "KENO sign fills the view at LAU-02 and covers the buy prompt",
+  "where": "layout.ts LAU-02 (-20,1.05) L rot0; KENO sign prop (props.strings.ts:27 'sign.keno')",
+  "fix": "Cosmetic only. Either drop the plaque so its lower edge clears the prompt line (y about 1.9 m is the current bottom, so lower it or move it back to about z -2.5 and shrink to about 2.0 x 1.2 m), or give the prompt a dark backing plate for contrast. Do not change the slot, the prompt text or the strings. Re-verify with: --run \"wait:1500;state;shot:lau02\" plus --js \"(() => { const a = window.jackid.app; a.run.pickStarter('loaded_pip'); a.player.teleport({ x: -20, y: 0, z: 1.05 }, 0); return true; })()\"."
+ },
+ {
+  "id": "lift-sign-clipped",
+  "severity": "cosmetic",
+  "title": "LIFT grille sign text is clipped at the top edge",
+  "where": "lift grille sign 'OUT OF SERVICE UNTIL PAID IN FULL' (props.strings.ts:24), lift zone layout.ts:284-ish",
+  "fix": "Keep the bug, but correct the cause and the fix. The clip is vertical: the plaque's top (about y 1.98 m) sits above the 1.62 m eye line, so at the gate (about 0.34 m away) its top is off-frame. In src/world/props/elevator.ts:115 lower the plaque (sign.position y 1.85 to about 1.5 to 1.6, or shrink h 0.25) so it clears the frame top at close range. Shortening the text in props.strings.ts:24 does not fix the top cut. Verify by re-shooting from (-4, 1.62, -29.5) yaw 0 and checking the top HUD overlap. Severity cosmetic."
+ },
+ {
+  "id": "sump-walls-underground",
+  "severity": "major",
+  "title": "Sump walls are drawn below the floor while their 4 m colliders float above it (invisible walls)",
+  "where": "src/world/props/decor.ts:190-193 (buildSump, kit.box centred at local y -2, height 4, root at y -30 => mesh spans world y -34..-30); src/world/level.ts:251-254 (collider boxes span y -30..-26)",
+  "fix": "Make the decor wall boxes and the level colliders come from one set of constants. In decor.ts:190-193 raise the wall centre to local y +2 (spans 0..4 above the pit floor, world -30..-26), or equivalently keep the mesh and set the collider to y -34..-30 only if the walls were meant to be underground (they are not, since they are meant to be seen). Then derive the level.ts:251-254 boxes from the same SUMP_WALL_T / SUMP_WALL_H values, and centre each collider on its mesh (+-0.15 m around the 6.15 / 12.3 dimensions) so the collision footprint matches the drawn walls. Verify by re-running the probe above: wall meshes should read worldYmin -30, worldYmax -26, matching the colliders. Also consider a lit render, since sump ambient is 0 (src/world/sys/arch.ts:116) and the walls will only show under the cage lamps."
+ },
+ {
+  "id": "duel-laundry-anchor-off-table",
+  "severity": "major",
+  "title": "duel.laundry camera anchor sits on LAU-01 (bingo), not Mimosa's table LAU-10",
+  "where": "src/world/level.ts:483 (anchors['duel.laundry'] = marker(-24.5, 1.1, 5)); src/world/layout.ts:91 (LAU-01 XL at -24.5,5), layout.ts:100 and :187/:209 (LAU-10 L at -18,4.5 = tallytable); src/game/story/duels/rivals.ts:116 (mimosa venue duel.laundry)",
+  "fix": "In src/world/level.ts:483, change the marker to the LAU-10 table position used by the other duel anchors: anchors['duel.laundry'] = marker(-18, 1.1, 4.5). That makes it match layout.ts:100 (LAU-10 L at -18.0, 4.5, rot 90) and the tallytable assignment at layout.ts:187 and :209. Add a test next to scripts/tests/duelrun.test.mjs:132 that checks each duel.* anchor against the position of its tally table (the four that match stay matching). Optional: fix the 'PAD' entry for LAU-10 in docs/GDD.md:1771 so the doc agrees with the code. Confirm in-game by playing the Night 4 Mimosa side duel and checking the intro camera frames the tallytable, not the bingo cage."
+ },
+ {
+  "id": "signpost-mouth-faces-swapped",
+  "severity": "minor",
+  "title": "sp.mouth N face (read by walkers leaving the lift southward) says DEBT TERMINAL with an up arrow; the terminal is behind them",
+  "where": "src/world/layout.ts:256 (sp.mouth sides: S=go.floor down, N=go.terminal up); convention at src/world/props/signposts.ts:7 (N read walking south, S read walking north)",
+  "fix": "Swap the faces in src/world/layout.ts:256 so the N face carries go.floor (arrow up) and the S face carries go.terminal (arrow up). Also check sp.well at layout.ts:258, which likely has the same mismatch. Confirm with a bench screenshot from a southbound view."
+ },
+ {
+  "id": "lift-gate-never-opens",
+  "severity": "minor",
+  "title": "Lift niche gate is gated with no opener: its solid collider is never removed in Debt/Co-op/Versus runs",
+  "where": "src/world/layout.ts:278-279 (zone 'lift' gated:true, comment says it opens at Dawn and endings); src/world/level.ts:304-307 (gates.lift, collider box -5..-3 x, z -30.2..-29.8); src/world/world.ts:228 and :540 (collider added on close, removed only in setZoneOpen); src/game/tycoon/index.ts:511-525 (openZone callers: keyring wings, counting, parlour only)",
+  "fix": "Decide intent, then make code and comments agree. (a) If the niche stays sealed by design (the Evening and the ending cut use the camera and teleports, not a walk-through), fix layout.ts:278 to say the lift car stays sealed behind its doors in campaign runs and is never walked into, and remove the unused 'lift' spawn set at level.ts:463 (SpawnKind 'lift' in sys/arch.ts:60 can go too). Also reword the Vell release copy (rivals.strings.ts:16, ending.ts:30) so it does not claim the lift opens. (b) If the doors should open, add an explicit setZoneOpen('lift', true, true) on Dawn or in the endings flow (for example the vell_release path at run.ts:3155-3156 and the elevator ending), and check that the Evening ride and the ending_elevator camera still read correctly with the doors open. In either case, the zone's 'opens at the lobby' wording must go, since the lobby is not gated."
+ },
+ {
+  "id": "lobby-desk-cash-pawn-in-south-wall",
+  "severity": "minor",
+  "title": "LOB-DESK, LOB-CASH and LOB-PAWN footprints run into the south outer wall (z=20)",
+  "where": "src/world/layout.ts:61 (LOB-PAWN L (-6,19.35) y 1.0), :63 (LOB-DESK L (0,19.2) rot 180), :64 (LOB-CASH L (6,19.35) rot 180); wall at src/world/level.ts:199 (wallRun x=20, z 19.85..20.15)",
+  "fix": "Narrow the bug to LOB-PAWN only. Move LOB-PAWN (layout.ts:61) from z 19.35 to about 18.97 so its wall panel's back face sits flush at 19.85 and the grille, shutter and ledger come out into the lobby. Leave LOB-CASH (layout.ts:64) at 19.35, since it is already flush (cashier/model.ts:41). Optionally move LOB-DESK (layout.ts:63) to about 19.15 to clear the 0.04 m dealer-collider intrusion (threecard/model.ts:202); this is cosmetic. Separately fix the cashier sign at level.ts:451 (prop.sign.cashier, z 19.8), which sits inside the cashier steel panel. Place it on the lobby side of the panel face at 19.75 and clear of the ledger at about 19.67. Do not shift it with the machine. Verify with a bench shot (scripts/qa/README.md) of the pawn and cashier from the lobby before and after."
+ },
+ {
+  "id": "sp-well-faces-swapped",
+  "severity": "minor",
+  "title": "sp.well faces carry the opposite destinations to the walkers they face",
+  "where": "src/world/layout.ts:258 (sp.well sides: N=go.terminalPhone up, S=go.vendors down); convention signposts.ts:7",
+  "fix": "Swap the well faces to match the stated intent and the face convention: layout.ts:258 becomes N = go.vendors (arrow up, read by walkers heading south from the lift/terminal side) and S = go.terminalPhone (arrow up, read by walkers heading north from the spawn side, where the terminal is ahead). Also fix the same inversion at layout.ts:256 for sp.mouth: its go.floor (ahead, south, per the comment) belongs on N, and go.terminal belongs on S. Decide the arrow semantics for a board that spans x (currently 'up' is read as ahead, and the lobby uses 'up' for the floor). Then add a test that asserts, for each sign, that the destination lies in the direction the face's reader walks. Relevant files: src/world/layout.ts:256-258, src/world/props/signposts.ts:7, 27-28, scripts/tests/progression.test.mjs:271-275."
+ },
+ {
+  "id": "well-slots-zone-mismatch",
+  "severity": "minor",
+  "title": "WELL-04 and WELL-09 are declared zone 'well' but their origin z=-19.5 is inside the Mouth rect",
+  "where": "src/world/layout.ts:42 (WELL-04 M at -10.35,-19.5 rot 90), :47 (WELL-09 M at 10.35,-19.5 rot 270); zone rects layout.ts:ZONES (mouth z -30..-18, well z -18..2)",
+  "fix": "Keep the bug, correct the fix. Two options that actually work: (a) relabel WELL-04 and WELL-09 to zone 'mouth' in layout.ts:42 and :47 (the origins and footprints already sit in the mouth, and the mouth is ungated, so no gating change); or (b) move the pair together with their neighbours, i.e. shift WELL-05 and WELL-10 as well, so that the origin can sit at z > -18 without footprint overlap. Do not use z -17.6 alone (overlaps WELL-05/WELL-10). Do not only enlarge the Well rect north edge (mouth is still the smaller rect). After either change, rerun audit.mjs (expect no ZONE-MISMATCH and no FP-OVERLAP) and check that the ROSTER_PADS/ASSIGN entries are unaffected."
+ },
+ {
+  "id": "sump-light-zone-not-a-zone",
+  "severity": "cosmetic",
+  "title": "Sump cage lights use zone 'sump', which is not a zone",
+  "where": "src/world/level.ts:257 (sump:cage0-3 zone 'sump'); layout.ts:ZONES list has no 'sump' (and layout.ts header says the Sump is not a zone)",
+  "fix": "Cosmetic and latent. Either omit the explicit zone on the four cage lamps (level.ts:257), which makes world.ts:216 resolve them with zones.zoneAt(0, 12) to 'lobby', the same result the report suggests but without a hardcoded id, or keep the tag and document it as an intentional pseudo-zone. Also drop or document the unreferenced 'sump' entry in arch.ts:116. Keep the Sump out of gate logic, as the report says. No runtime fix is needed today because no caller targets 'sump' or 'lobby' for these lamps."
+ },
+ {
+  "id": "layout-header-counts-stale",
+  "severity": "cosmetic",
+  "title": "layout.ts header counts (48 machines + 11 system + 30 pads) do not match the table",
+  "where": "src/world/layout.ts:27-28 (doc comment), SLOTS array lines ~30-110",
+  "fix": "Replace the counts in the layout.ts header (lines 27-28) with current figures or drop them: for example \"every slot in the pit is listed here (99 entries: machine, system and pad slots, including HOLLOW-TABLE). Props that are not slots (Clock, lift panel, X plate, quota board, charm board, furnace, chair) live in level.ts. Pads are the slots without a DEFAULT_ASSIGN entry (42 today, see DEFAULT_PADS).\" Pointing at SLOTS and DEFAULT_PADS avoids the count drifting again. Optionally note in docs/GDD.md:1810 that the code diverged from the GDD totals since Wave 27. Cosmetic only; no runtime or test change."
+ },
+ {
+  "id": "knock-bed-dodges-visit",
+  "severity": "major",
+  "title": "Going to bed before the visitor's footsteps cancels the visit with no penalty",
+  "where": "src/game/home/knock.ts:252 (atDoor excludes phase 'wait'), knock.ts:291-296 (abandon() in 'wait' is silent), src/game/home/evening.ts:424-428 (bed blocked only when atDoor())",
+  "fix": "Close the loophole in one of two ways, both reached from abandon(). (a) Block the bed while a visit is planned, not only at the door: in evening.ts:426 check `visit && visit.state.phase !== 'done'` (or add a 'planned' predicate to Visit). (b) Keep the bed open and resolve an early-bed skip as the visit arriving: in knock.ts:291-296, if st.phase === 'wait', call io.resolve(resultOf(st.kind, false)) before leaver()/go('done'), so it applies the fail (Heat +1 and the kind's toll and penalty). Option (b) also covers the auto-sleep path because startSleep() calls endVisit(). Add a test that sleeping in 'wait' cannot leave Heat or the toll unchanged."
+ },
+ {
+  "id": "knock-save-restore-verdict-window",
+  "severity": "minor",
+  "title": "A reload between the verdict and the next flush re-resolves a passed visit as a fail",
+  "where": "src/game/home/knock.ts:196-200 (finish: resolve before go('leave')), knock.ts:298-300 (resume forces fail on phase 'act'), src/game/home/evening.ts:276-284 (applyResult -> homeFlags), src/game/run.ts:1645-1649 (homeFlags only calls persistSoon)",
+  "fix": "In knock.ts finish(): set st.pass = pass and go('leave') BEFORE io.resolve(resultOf(...)), so any synchronous save inside applyResult (the Picker's loseCharm persist, run.ts:1392) records 'leave'. In evening.ts applyResult, replace run.homeFlags({}) with a synchronous save (a boundary persist, not persistSoon) so the outcome is written at the verdict. In resume() (knock.ts:298-300), do not re-resolve a visit in 'act' without a stored outcome: record the outcome in the snapshot first, or treat a restored 'act' as already resolved once st.pass is set. Test: restore with phase 'leave' (must not re-resolve) and with phase 'act' (fail), and a Picker steal followed by restore (no second toll or charm loss). Separately, fix run.flush/pagehide ordering so the run's pending write is flushed after save.update (or call app.save.flush() after run.flush()), or the post-verdict state is still lost on a normal reload."
+ },
+ {
+  "id": "harness-keno-never-picks",
+  "severity": "minor",
+  "title": "Bot keno bets are always refused because the recipe never picks numbers",
+  "where": "scripts/qa/bench.mjs BOT_RECIPE / bot bet path (keno is not in the recipe; keno binds n1 = Quick Pick, src/machines/keno/index.ts:134)",
+  "fix": "Add a keno recipe to BOT_RECIPE (bench.mjs:945-948), e.g. keno: 'Digit1:120,wait:300,Space:120,wait:4000,KeyQ:120,wait:500'. Digit1 is n1 (Quick Pick, keno/index.ts:134), so the ticket has picks before Space submits it. The draw timing is an assumption: check the keno draw completes within the wait, and that KeyQ is the right collect key. Or drop keno from the pool by removing it from BOT_CATEGORIES's lottery path (it is picked via category 'lottery' at bench.mjs:952). Also decouple the separate 'could not stand up' goto failure (bench.mjs:1187-1189) into its own report. Re-run with 5 auto:night steps on seed 7201 to confirm keno bets land (bets non-empty, pulls drop). Keep the 'could not stand up' issue out of the keno fix."
+ },
+ {
+  "id": "harness-stand-budget-too-short",
+  "severity": "minor",
+  "title": "Bot goto gives up after 4 s while a busy machine defers the stand-up",
+  "where": "scripts/qa/bench.mjs:1186-1189 (4000 ms budget); src/machines/_base/MachineBase.ts:709-714 (standUp deferred while busy, toast 'standAfterRound')",
+  "fix": "Two changes in scripts/qa/bench.mjs. (1) Before the stand-up in gotoMachine (bench.mjs:1187-1189) and in the 'stand' step (bench.mjs:1765), wait for the seated machine's round to end: poll the instance's m.busy or m.inRound (the waitRoundIdle pattern at bench.mjs:986-993), with maxMs of about 11000 so it covers MachineBase FORCE_RELEASE_S (10 s, MachineBase.ts:75). Keep the seatedIs check after it. (2) Or, at minimum, raise the 4000 ms budget in seatedIs calls for stand-ups to at least 11000 ms, since the game itself allows up to 10 s before a forced release. Do not change game code: MachineBase's deferred stand (MachineBase.ts:709-716) is working as designed. Severity stays minor. Re-check with a seed whose recorded command line is saved next time, so the run can be replayed exactly."
+ },
+ {
+  "id": "harness-bigone-confirm-refused",
+  "severity": "minor",
+  "title": "Bot BIG press on bigone refused with reason 'confirm'",
+  "where": "scripts/qa/bench.mjs bot stake path for BIG (Digit9 arms, second press confirms); src/machines/_base/stakePresets.ts (BIG_CONFIRM_SEC)",
+  "fix": "Bot-side fix in scripts/qa/bench.mjs botRound (bigone branch, and the coinflip branch which has the same single-Space pattern): after setStake('big') and the Space press, if the bet record shows refusal 'confirm' (or run.lastRefusal() === 'confirm'), press the spin key again within the 6 s window (the run's stakeArm, run.ts:2623), then wait for the round to go idle. Also guard the \"decide: spin, no line win\" log so it runs only when a spin actually happened (the bet was accepted), otherwise log \"refused (confirm), spin re-pressed\" or similar. Do not change BIG_CONFIRM_SEC or the Digit9 timing: the preset arm and set are working as designed. Separately, raise the double-confirm question with the director: BIG's ladder snap can put the stake above STAKE_CONFIRM_FRAC of the pocket, so the player confirms twice (stakePresets.ts header and scripts/qa/README.md:229 say one second press)."
+ },
+ {
+  "id": "doc-drift-tithe-and-notice",
+  "severity": "minor",
+  "title": "HANDOFF states the full tithe shortfall joins the quota and the House notice share is 1.2; code uses half and 1.0",
+  "where": "docs/HANDOFF.md:74 and :111 (full shortfall, notice 1.2); src/game/checkpoints.ts:4-6, 19-29 (half, rounded up); src/game/data/schedule.ts:200 (HOUSE_NOTICE_SHARE 1.0)",
+  "fix": "Edit docs/HANDOFF.md (doc-only, no code change): (1) line 74: replace \"Missed: the shortfall is added to tonight's quota\" with \"Missed: HALF the shortfall, rounded up, is added to tonight's quota (TITHE_PENALTY_SHARE)\". (2) line 76 and line 111: replace \"1.2 x the coins held at Dawn\" with \"1.0 x the coins held at Dawn, capped at 2.2 x the ladder quota (HOUSE_NOTICE_SHARE, HOUSE_NOTICE_CAP)\". Also consider adding the same cap note in section 7 line 52 next to the notice rule. Leave the tithe percentages and Night table alone."
+ },
+ {
+  "id": "doc-knock-peephole-wording",
+  "severity": "cosmetic",
+  "title": "knock.ts header says a peephole look is no interaction, but the code only exempts the look from the stillness reset",
+  "where": "src/game/home/knock.ts:8 (Listener: 'no walk input or interaction'); src/game/home/evening.ts interact() (movedFlag set for every station except 'peephole')",
+  "fix": "In src/game/home/knock.ts:8, reword the Listener line to name the exemption, e.g. \"Lights OFF and no walk input or touch (a peephole look does not break stillness; it only pauses the clock) for 8 s inside a 12 s window.\" Keep the knock.ts:211-212 logic unchanged. Optionally align the word \"interaction\" in the evening.ts:106 and :338 comments so they say which stations count."
+ }
+]

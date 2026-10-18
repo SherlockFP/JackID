@@ -18,7 +18,9 @@ export interface Settings {
   showFps: boolean;
   crosshair: 'dot' | 'cross' | 'none';
   subtitles: boolean;
+  subtitleSpeed: 'slow' | 'normal' | 'instant';   // typewriter speed of the subtitle bar (ui/subtitles.ts)
   reduceFlashing: boolean;      // photosensitivity: flashes ×0.35, ≤ 3/s, strobes off
+  reduceMotion: boolean;        // subtitles appear at once; no slide, fade or caret
   calm: boolean;                // Calm Mode: horror scares off, dread bumps halved (HorrorSettings.calm)
   // ── v1 ──
   shake: number;                // 0..1 screen-shake multiplier (ART_BIBLE §9.6)
@@ -53,6 +55,8 @@ export const DEFAULT_SETTINGS: Settings = {
   showFps: false,
   crosshair: 'dot',
   subtitles: true,
+  subtitleSpeed: 'normal',
+  reduceMotion: false,
   reduceFlashing: false,
   calm: false,
   shake: 1,

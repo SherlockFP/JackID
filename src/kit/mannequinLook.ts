@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import type { Hex } from '@/core/types';
 import { GLSL_CRACKS } from './materials';
+import { npcFrame } from '@/core/renderer/npcFrame';
 
 /** Head bounds in the geometry space the shader reads (`transformed`): centre and half-extents. */
 export interface HeadBox { c: THREE.Vector3; r: THREE.Vector3 }
@@ -133,4 +134,96 @@ export function idleRefPose(clip: THREE.AnimationClip, bones: readonly string[])
     out.set(bone, new THREE.Quaternion(t.values[0], t.values[1], t.values[2], t.values[3]));
   }
   return out;
+}
+
+// ── dark other-dimension NPCs (w72 npc lane) ────────────────────────────────────────────────────
+/** Per-character look options, read by the mannequin (kit `mannequin()`). `npc: false` exempts a body (remote avatars). */
+export interface NpcOpts {
+  /** Dark NPC look on the body and its attached props (default true). */
+  npc?: boolean;
+  /** Rim colour (default: cold cyan for house folk, blood red for the Collector). */
+  rim?: Hex;
+  /** Eye colour (default: the rim colour). */
+  eyes?: Hex;
+}
+
+export interface NpcLook {
+  /** Rim colour. */
+  rim: Hex;
+  /** Eye colour; null = no eyes (props, or a body with no head box). */
+  eyes: Hex | null;
+  /** Head bounds for the eye placement (bodies only). */
+  head: HeadBox | null;
+  /** Per-material shimmer amount, 0..1 (props use less). */
+  shimmer: number;
+}
+
+/** Hash and value noise for the shimmer, the eye mask and the body darkening (shared by every NPC material). */
+const GLSL_NPC = /* glsl */`
+varying vec3 vNpcObj;
+varying vec3 vNpcN;
+varying vec3 vNpcV;
+uniform vec3 uNpcRim;
+uniform vec3 uNpcEye;
+uniform vec3 uNpcHc;
+uniform vec3 uNpcHr;
+uniform vec3 uNpcFx;
+uniform float uNpcT;
+uniform float uNpcShimmer;
+float npcHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+float npcNoise(vec3 p) {
+  vec3 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = mix(mix(npcHash(i), npcHash(i + vec3(1.0, 0.0, 0.0)), f.x), mix(npcHash(i + vec3(0.0, 1.0, 0.0)), npcHash(i + vec3(1.0, 1.0, 0.0)), f.x), f.y);
+  float b = mix(mix(npcHash(i + vec3(0.0, 0.0, 1.0)), npcHash(i + vec3(1.0, 0.0, 1.0)), f.x), mix(npcHash(i + vec3(0.0, 1.0, 1.0)), npcHash(i + vec3(1.0, 1.0, 1.0)), f.x), f.y);
+  return mix(a, b, f.z);
+}
+/** Two pinpoint eyes in the head box (normalised: x ±1 across the skull, y up, z front), inside the painted sockets. */
+float npcEyeMask(vec3 o) {
+  vec3 hp = (o - uNpcHc) / max(uNpcHr, vec3(1e-3));
+  float front = smoothstep(0.1, 0.5, hp.z);
+  float d = length(vec2(abs(hp.x) - 0.42, (hp.y - 0.14) * 1.4));
+  return (1.0 - smoothstep(0.075, 0.105, d)) * front * uNpcFx.x;
+}
+vec3 npcBody(vec3 c) { return vec3(0.025, 0.022, 0.03) + c * 0.10; }
+`;
+
+/**
+ * The dark NPC look on a lit PSX material: a near-black body with a faint suit hue, a three-band fresnel rim that reads
+ * in the dark, two emissive eyes (bodies with a head box), and a stepped static shimmer (off in Calm Mode). Chains onto
+ * the material's existing `onBeforeCompile` (run `patchLook` first on bodies), so the PSX injection keeps working.
+ * Every NPC material shares one program (`|npc` key); rim, eyes and shimmer are per-material uniforms.
+ */
+export function patchNpc(m: THREE.MeshLambertMaterial, p: NpcLook): void {
+  const prev = m.onBeforeCompile;
+  const prevKey = m.customProgramCacheKey;
+  const eyes = p.eyes !== null && p.head !== null;
+  const uniforms = {
+    uNpcRim: { value: rimVec(p.rim) },
+    uNpcEye: { value: rimVec(p.eyes ?? p.rim) },
+    uNpcHc: { value: p.head ? p.head.c : new THREE.Vector3() },
+    uNpcHr: { value: p.head ? p.head.r : new THREE.Vector3(1, 1, 1) },
+    uNpcFx: { value: new THREE.Vector3(eyes ? 1 : 0, p.shimmer, 0) },
+  };
+  m.onBeforeCompile = (shader, renderer) => {
+    prev.call(m, shader, renderer);
+    Object.assign(shader.uniforms, uniforms, { uNpcT: npcFrame.uNpcT, uNpcShimmer: npcFrame.uNpcShimmer });
+    let v = shader.vertexShader, f = shader.fragmentShader;
+    v = v.replace('void main() {', `${GLSL_NPC}\nvoid main() {`);
+    v = v.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vNpcObj = transformed;');
+    v = v.replace('#include <project_vertex>', '#include <project_vertex>\n  vNpcN = normalize(transformedNormal);\n  vNpcV = normalize(-mvPosition.xyz);');
+    f = f.replace('void main() {', `${GLSL_NPC}\nvoid main() {`);
+    f = f.replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb = npcBody(diffuseColor.rgb);');
+    f = f.replace('outgoingLight += vMqRim * uRim;', '');
+    f = f.replace('#include <opaque_fragment>', `{
+    float npcF = pow(1.0 - abs(dot(normalize(vNpcN), normalize(vNpcV))), 2.2);
+    npcF = floor(npcF * 3.0 + 0.5) / 3.0;
+    float npcS = step(0.86, npcNoise(vNpcObj * 14.0 + vec3(0.0, uNpcT * 0.37, 0.0))) * 0.18 * uNpcShimmer * uNpcFx.y;
+    outgoingLight += uNpcRim * (npcF * 0.42 + npcS) + uNpcEye * npcEyeMask(vNpcObj) * 1.4;
+  }
+  #include <opaque_fragment>`);
+    shader.vertexShader = v;
+    shader.fragmentShader = f;
+  };
+  m.customProgramCacheKey = () => `${prevKey.call(m)}|npc`;
 }

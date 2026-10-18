@@ -23,6 +23,8 @@ import { COLORS, h, uiSfx } from '@/core/ui/widgets';
 import { circuitView, lampLabel, type LampEntry, type LampView } from '@/game/circuit';
 import { dawnPlan } from '@/game/pace';
 import { watchEventView } from '@/game/watchEvents';
+import { presetRevealed, revealed, ticketsShown } from './hud/disclose';
+import { STAKE_PRESET_KEYS } from '@/machines/_base/stakePresets';
 import type { BankView, NextQuotaPreview, OvershootView } from '@/game/run';
 import type { BrokeHelp, BrokeStep } from '@/game/rescue';
 import { inUnderneath } from '@/world/hollow';
@@ -66,6 +68,8 @@ export interface Hud {
 }
 
 const self = (): PlayerId => app.run?.selfId ?? 0;
+/** The printed Night the run is on (onboarding gates read it; Night 1 before a run exists). */
+const nightNow = (): number => app.run?.night() ?? 1;
 const ui = (): UIOverlayX => app.ui as UIOverlayX;
 const coinSym = (): string => t('common.coinSuffix').trim();
 const money = (n: number): string => fmtCoins(n);
@@ -147,6 +151,11 @@ export function createHud(): Hud {
     const r = app.run;
     return r ? { self: r.selfId, pocket: r.wallet(r.selfId) } : { self: -1, pocket: 0 };
   };
+  // The seat's Tilt bulbs and preset row follow the onboarding schedule by printed Night (disclose.ts).
+  SeatHud.readout = () => {
+    const n = nightNow();
+    return { tilt: revealed(n, 'tilt'), presets: STAKE_PRESET_KEYS.filter((k) => presetRevealed(n, k)) };
+  };
 
   // The top band is a three-column grid (left | centre), the centre clock is capped so it never runs under the right stack.
   const top = h('div', 'hud-top', root);
@@ -177,6 +186,8 @@ export function createHud(): Hud {
   const staff = h('div', 'hb staff hidden', topL);
   const roll = new Roller();
   let walletSeen = false;
+  // BİLET shows once the player has held a ticket (onboarding: no ticket readout until there is one to read).
+  let ticketsSeen = false;
   // The wallet's roll ticks: where the current rise started (the pitch climbs over it), and the 12 Hz throttle.
   let rollStart = 0;
   const rollGate = new TickGate();
@@ -474,7 +485,8 @@ export function createHud(): Hud {
     setText(lampCold, cold);
     const none = !hot && !cold && !!v.pocketShort;
     if (none) setText(lampHot, t('lamps.none'));
-    setCls(lampsEl, 'hidden', voidOn || seated || (!hot && !cold && !none));
+    // Onboarding: the Hot / Cold lines wait for Night 2 (disclose.ts); the Lamps stay in the game either way.
+    setCls(lampsEl, 'hidden', voidOn || seated || !revealed(nightNow(), 'hot') || (!hot && !cold && !none));
     if (hot) fitHotLine(v.hot);
   }
   /** The HOT line stays one line in the top plate: when the line with its zone would wrap, the zone goes (the short name stays). */
@@ -654,7 +666,10 @@ export function createHud(): Hud {
     // red only while the pocket cannot cover the last thing asked for (the run refused it for funds)
     setCls(wallet, 'short', r.lastRefusal() === 'funds');
     setCls(pulls, 'short', r.lastRefusal() === 'pulls');
-    setText(tixNum, String(r.balance('ticket', self())));
+    const tk = r.balance('ticket', self());
+    if (tk > 0) ticketsSeen = true;
+    setCls(tix, 'hidden', !ticketsShown(ticketsSeen, tk));
+    setText(tixNum, String(tk));
     const perMin = r.tycoon.incomePerSec() * 60;
     setCls(staff, 'hidden', perMin <= 0);
     setText(staff, t('hud.staff.perMin', { n: money(Math.round(perMin)) }));
@@ -770,6 +785,8 @@ export function createHud(): Hud {
     payoutLeft -= dt;
     if (payoutLeft > 0) return;
     payoutLeft = PAYOUT_REFRESH_S;
+    // Onboarding: the PAYOUT chip (House Favour, Mood, air) waits for Night 2 (disclose.ts).
+    if (!revealed(nightNow(), 'payout')) { setCls(payout, 'hidden', true); payoutKey = ''; return; }
     const r = app.run;
     const q = r?.shift.quota();
     const sh = r?.shift.state();
@@ -854,7 +871,7 @@ export function createHud(): Hud {
     // OVERSHOOT: a tier reached in the Watch toasts once per Night (the grant itself lands at Dawn). The first read of a Night is
     // silent, so a Night that opens already past a tier does not toast. Runs before the key check: a new tier always moves the balance.
     const ov = (r as (typeof r & { overshootView?: () => OvershootView }) | null)?.overshootView?.() ?? null;
-    if (ov) {
+    if (ov && revealed(nightNow(), 'overshoot')) {
       if (overSeen === null) overSeen = ov.reached;
       else if (ov.reached > overSeen && ov.tier) {
         overSeen = ov.reached;
@@ -881,19 +898,20 @@ export function createHud(): Hud {
     const paidNow = bank.balance >= due;
     const help = (r as (typeof r & { brokeHelp?: () => BrokeHelp | null }) | null)?.brokeHelp?.() ?? null;
     const brokeTxt = !paidNow && help ? brokeHint(help.steps) : '';
-    const key = `${due}|${watch}|${seg.count}|${bank.balance}|${pocket}|${interm}|${p.projected}|${p.gap}|${pullsTxt}|${clock}|${titheE}/${titheN}|${unpaid}|${brokeTxt}|${broken ? 1 : 0}`;
+    const key = `${nightNow()}|${due}|${watch}|${seg.count}|${bank.balance}|${pocket}|${interm}|${p.projected}|${p.gap}|${pullsTxt}|${clock}|${titheE}/${titheN}|${unpaid}|${brokeTxt}|${broken ? 1 : 0}`;
     if (key === planKey) return;
     planKey = key;
     setCls(planNext, 'hidden', true);
     setCls(planBank, 'hidden', false);
     setCls(planEnds, 'hidden', false);
-    setCls(planTithe, 'hidden', !titheOn);
+    const titheShown = revealed(nightNow(), 'tithe');
+    setCls(planTithe, 'hidden', !titheOn || !titheShown);
     if (titheOn) {
       setText(planTithe, t('hud.plan.tithe', { n: titheN, e: titheE }));
       // Green once the Watch has paid the tithe in play; amber while it is still a target (the plan's own colour read as a note).
       planTithe.style.color = titheE >= titheN ? 'var(--green)' : '#ffd34a';
     }
-    setCls(planUnpaid, 'hidden', unpaid <= 0);
+    setCls(planUnpaid, 'hidden', unpaid <= 0 || !titheShown);
     if (unpaid > 0) setText(planUnpaid, t('hud.plan.unpaid', { n: money(unpaid) }));
     setCls(planBroke, 'hidden', !brokeTxt);
     setText(planBroke, brokeTxt);
@@ -901,14 +919,17 @@ export function createHud(): Hud {
     setCls(plan, 'gap', !p.met);
     // Green when the projection covers the quota, red otherwise (the plan classes below); one wording for both.
     // Quota paid before the Dawn: no quota-left line, the surplus that returns at Dawn instead.
+    // Onboarding: Night 1 reads the bank against the quota (no Dawn projection until Night 2, disclose.ts).
     setText(planBank, paidNow
       ? t('hud.plan.paid', { n: money(p.surplus) })
-      : t('hud.plan.bank', { p: money(p.projected), q: money(due) }));
+      : revealed(nightNow(), 'projection')
+        ? t('hud.plan.bank', { p: money(p.projected), q: money(due) })
+        : t('hud.plan.bankNow', { p: money(bank.balance), q: money(due) }));
     setCls(planPocket, 'hidden', pocket <= 0);
     setText(planPocket, t('hud.plan.pocket', { p: money(pocket) }));
     // OVERSHOOT line: once the quota is banked. A broken seal forfeits tonight's tiers (overshootView is then null), so the line
     // says so in red. Otherwise the next tier's target and the coins to go; past the top tier, a plain line.
-    setCls(planOver, 'hidden', !(broken || (ov && paidNow)));
+    setCls(planOver, 'hidden', !(broken || (ov && paidNow)) || !revealed(nightNow(), 'overshoot'));
     if (broken) {
       setText(planOver, t('hud.plan.overForfeit'));
       planOver.style.color = '#ff5a4a';
@@ -1110,7 +1131,7 @@ export function createHud(): Hud {
 
   /** Watch floor event: name, Minute timer, and a Lucky Lamp's pulls left. Hidden between Watches and on boss Nights. */
   function updateWatchEvent(): void {
-    const v = watchEventView();
+    const v = revealed(nightNow(), 'floorEvents') ? watchEventView() : null;
     if (!v) { setCls(watchEl, 'hidden', true); return; }
     const pulls = v.pulls !== null ? `  ${t('event.watch.hud.pulls', { n: v.pulls })}` : '';
     setText(watchTxt, `${t(`event.watch.${v.id}.name`)}  ${mmss(v.leftS)}${pulls}`);
@@ -1162,7 +1183,9 @@ export function createHud(): Hud {
   function updateEvening(): void {
     const r = app.run;
     const stage = (r as (typeof r & { homeStage?: () => string | null }) | null)?.homeStage?.() ?? null;
-    const at = !!r && stage !== null;
+    // the prologue (wave 72) is in the apartment before Night 1: the pit stack gives way to the card here too
+    const pro = (r as (typeof r & { prologueOn?: () => boolean }) | null)?.prologueOn?.() === true;
+    const at = !!r && (stage !== null || pro);
     setCls(root, 'evening-on', at);
     if (!r || !at) return;
     const ph = r.homePhone();
@@ -1229,7 +1252,8 @@ export function mountSpotlightChip(parent: HTMLElement): () => void {
   const chip = h('div', 'hb spotlight hidden', parent);
   chip.style.color = '#ffd34a';
   let key = '';
-  const show = (v: SpotlightView | null): void => {
+  const show = (raw: SpotlightView | null): void => {
+    const v = raw && revealed(app.run?.night() ?? 1, 'spotlight') ? raw : null;   // onboarding: the Spotlight waits for Night 4
     if (!v) { setCls(chip, 'hidden', true); key = ''; return; }
     const text = spotlightChip(v, machineName(v.machineId));
     setCls(chip, 'hidden', false);

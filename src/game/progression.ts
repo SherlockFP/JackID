@@ -1,15 +1,17 @@
 /**
- * The progressive floor (Wave 27, director decision "tycoon floor"). Pure data + pure functions: no THREE, no DOM.
+ * The progressive floor (Wave 27, director decision "tycoon floor"; Wave 72 roster cut). Pure data + pure functions: no THREE, no DOM.
  *
- * The old pit opened ~48 machines at once and nobody could tell what to play. The Debt Run now opens with four dead-simple
- * machines and the house hands the player two more at every Dawn (once the Night's quota is paid), simple to complex:
+ * The Debt Run opens with three dead-simple machines and the house hands the player about one more at every Dawn (once the
+ * Night's quota is paid), simple to complex:
  *
- *   • CORE_MACHINES   the 16 machines a Debt Run is built from. Every other registered machine lives in the Free Casino
- *                     (sandbox mode, `FREE_LAYOUT` in layout.ts) and is not placed in a Debt / Co-op / Versus run.
- *   • UNLOCK_SCHEDULE Night 1 opens the starters (bigone, coinflip, hilo, scratch); Nights 2 to 7 open two each (4 + 12 = 16).
- *                     Night 8 is the finale: nothing new, the whole floor is open. Tiers run SIMPLE → CLASSIC → TABLE → HEAVY.
+ *   • CORE_MACHINES   the 10 machines a Debt Run is built from (bigone, coinflip, hilo, videopoker, mines, plinko, blackjack,
+ *                     keno, roulette, sonkart). Every other registered machine lives in the Free Casino (sandbox mode,
+ *                     `FREE_ASSIGN` in layout.ts) and is not placed in a Debt / Co-op / Versus run.
+ *   • UNLOCK_SCHEDULE Night 1 opens the starters (bigone, coinflip, hilo); Nights 2 to 6 open one each and Night 7 opens the
+ *                     last two (3 + 7 = 10). Night 8 is the finale: nothing new, the whole floor is open.
+ *                     Tiers run SIMPLE -> CLASSIC -> TABLE -> HEAVY.
  *   • seed            the order INSIDE a tier is a seeded shuffle (`hashSeed('progression', seed, tier)`), so two runs do not
- *                     open the same pairs on the same Night, but a tier never opens before an easier one. No seed = canonical.
+ *                     open the same machines on the same Night, but a tier never opens before an easier one. No seed = canonical.
  *
  * Night arithmetic: the machines of Night n open the moment Night n-1's quota is paid (the Dawn), so the player sees them
  * covered on the way in and uncovered at the Dawn. `effectiveNight(night, paid)` turns the run's state into that number.
@@ -17,9 +19,9 @@
  * Always-open devices (vendors, terminals, story tables) are never locked: see `ALWAYS_OPEN`.
  *
  * What the other lanes read (WIRING, see the task report):
- *   run.isLocked(id)  →  `isLockedFor(id, effectiveNight(night(), nightPaid), mode, seed)`
- *   session / HUD     →  `newOn(night, seed)` for the "NEW ON THE FLOOR" toast, `isNew(id, night, seed)` for the NEW marquee
- *   world / pads      →  `unlockNightOf(id, seed)` for the "OPENS NIGHT n" plate (props/cover.ts)
+ *   run.isLocked(id)  ->  `isLockedFor(id, effectiveNight(night(), nightPaid), mode, seed)`
+ *   session / HUD     ->  `newOn(night, seed)` for the "NEW ON THE FLOOR" toast, `isNew(id, night, seed)` for the NEW marquee
+ *   world / pads      ->  `unlockNightOf(id, seed)` for the "OPENS NIGHT n" plate (props/cover.ts)
  */
 import type { GameMode, MachineId } from '@/core/types';
 import { createRng, hashSeed } from '@/core/rng';
@@ -31,30 +33,27 @@ export type Tier = 'SIMPLE' | 'CLASSIC' | 'TABLE' | 'HEAVY';
 export const TIERS: readonly Tier[] = ['SIMPLE', 'CLASSIC', 'TABLE', 'HEAVY'];
 
 /**
- * The core set, in canonical unlock order (Night 1 first). Notes on each pick; nothing was swapped out of the director's
- * list (all 16 are kept) but three are flagged for a UX pass because they read less well than the rest:
- *   bigone / coinflip / hilo / scratch   one decision per round, instant read. The starters.
- *   bandit / plinko / mines / videopoker pull a lever, drop a puck, pick tiles, hold cards: still one screen, one idea.
- *   cyclone / blackjack / pachinko / keno a wheel, the first real card table, a passive ball drop and a draw (pachinko and
- *                                          keno are passive: watch-and-wait; kept for the pace break, placed mid-schedule).
- *   roulette / sonkart / mahjong / craps  the deep end: many bets (roulette, craps), a 4-seat party game (sonkart) and a
- *                                          tile game (mahjong). Craps is the least readable core machine: it opens last.
+ * The core set, in canonical unlock order (Night 1 first).
+ *   bigone / coinflip / hilo          one decision per round, instant read. The starters.
+ *   videopoker / mines / plinko       hold cards, pick tiles, drop a puck: still one screen, one idea.
+ *   blackjack / keno                  the first real card table and a draw.
+ *   roulette / sonkart                the deep end: many bets (roulette) and a 4-seat party game (sonkart).
  */
 export const CORE_PLAN: ReadonlyArray<{ id: MachineId; tier: Tier }> = [
-  { id: 'bigone', tier: 'SIMPLE' }, { id: 'coinflip', tier: 'SIMPLE' }, { id: 'hilo', tier: 'SIMPLE' }, { id: 'scratch', tier: 'SIMPLE' },
-  { id: 'bandit', tier: 'CLASSIC' }, { id: 'plinko', tier: 'CLASSIC' }, { id: 'mines', tier: 'CLASSIC' }, { id: 'videopoker', tier: 'CLASSIC' },
-  { id: 'cyclone', tier: 'TABLE' }, { id: 'blackjack', tier: 'TABLE' }, { id: 'pachinko', tier: 'TABLE' }, { id: 'keno', tier: 'TABLE' },
-  { id: 'roulette', tier: 'HEAVY' }, { id: 'sonkart', tier: 'HEAVY' }, { id: 'mahjong', tier: 'HEAVY' }, { id: 'craps', tier: 'HEAVY' },
+  { id: 'bigone', tier: 'SIMPLE' }, { id: 'coinflip', tier: 'SIMPLE' }, { id: 'hilo', tier: 'SIMPLE' },
+  { id: 'videopoker', tier: 'CLASSIC' }, { id: 'mines', tier: 'CLASSIC' }, { id: 'plinko', tier: 'CLASSIC' },
+  { id: 'blackjack', tier: 'TABLE' }, { id: 'keno', tier: 'TABLE' },
+  { id: 'roulette', tier: 'HEAVY' }, { id: 'sonkart', tier: 'HEAVY' },
 ];
 
 export const CORE_MACHINES: readonly MachineId[] = CORE_PLAN.map((c) => c.id);
 const CORE_SET: ReadonlySet<MachineId> = new Set(CORE_MACHINES);
 const TIER_OF: ReadonlyMap<MachineId, Tier> = new Map(CORE_PLAN.map((c) => [c.id, c.tier]));
 
-/** Machines opened on Night 1. The rest of the tiers are dealt two per Night from Night 2. */
+/** Machines opened on Night 1. The rest are dealt one per Night from Night 2 (the last two together on Night 7). */
 export const STARTERS: readonly MachineId[] = CORE_PLAN.filter((c) => c.tier === 'SIMPLE').map((c) => c.id);
-/** Machines per Night after Night 1 (2 to 3 as asked: the 12 non-starters fill Nights 2 to 7 evenly). */
-export const PER_NIGHT = 2;
+/** Machines per Night after Night 1 (one each on Nights 2 to 6, the last two share Night 7: 7 non-starters in all). */
+export const PER_NIGHT = 1;
 /** First and last Night that opens something. Night 8 (the finale) opens nothing; every core machine is already on. */
 export const FIRST_UNLOCK_NIGHT = 2;
 export const FINAL_NIGHT = 8;
@@ -95,7 +94,11 @@ export function scheduleFor(seed?: number): readonly UnlockStep[] {
   }
   const steps: UnlockStep[] = [{ night: 1, ids: STARTERS }];
   for (let i = 0; i < ordered.length; i += PER_NIGHT) {
-    steps.push({ night: FIRST_UNLOCK_NIGHT + i / PER_NIGHT, ids: ordered.slice(i, i + PER_NIGHT) });
+    const night = Math.min(FIRST_UNLOCK_NIGHT + i / PER_NIGHT, FINAL_NIGHT - 1);
+    const chunk = ordered.slice(i, i + PER_NIGHT);
+    const last = steps[steps.length - 1];
+    if (last.night === night) steps[steps.length - 1] = { night, ids: [...last.ids, ...chunk] };
+    else steps.push({ night, ids: chunk });
   }
   cache.set(key, steps);
   return steps;

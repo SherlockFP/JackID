@@ -202,6 +202,7 @@ function accessPage(c: Ctx): void {
   slide(c, 'headBob', t('settings.headBob'), { min: 0, max: 1, step: 0.05, value: S().headBob, format: pct, apply: (v) => put('headBob', v) });
   slide(c, 'shake', t('settings.shake'), { min: 0, max: 1, step: 0.05, value: S().shake, format: pct, apply: (v) => put('shake', v) });
   flag(c, 'reduceFlashing', t('settings.reduceFlashing'), S().reduceFlashing, (v) => put('reduceFlashing', v), t('settings.reduceFlashing.tip'));
+  flag(c, 'reduceMotion', t('settings.reduceMotion'), S().reduceMotion, (v) => put('reduceMotion', v), t('settings.reduceMotion.tip'));
 
   head(c, t('settings.sec.interface'));
   row(c, 'uiScale', t('settings.uiScale'), (slot) => slider(slot, {
@@ -214,6 +215,10 @@ function accessPage(c: Ctx): void {
     value: S().crosshair, onChange: (v) => put('crosshair', v),
   }));
   flag(c, 'subtitles', t('settings.subtitles'), S().subtitles, (v) => put('subtitles', v));
+  row(c, 'subtitleSpeed', t('settings.subtitleSpeed'), (slot) => cycle<Settings['subtitleSpeed']>(slot, {
+    options: (['slow', 'normal', 'instant'] as const).map((v) => ({ value: v, label: t(`settings.subtitleSpeed.${v}`) })),
+    value: S().subtitleSpeed, onChange: (v) => put('subtitleSpeed', v),
+  }), t('settings.subtitleSpeed.tip'));
   flag(c, 'colorblind', t('settings.colorblind'), S().colorblind, (v) => put('colorblind', v));
   flag(c, 'holdToConfirm', t('settings.holdToConfirm'), S().holdToConfirm, (v) => put('holdToConfirm', v), t('settings.holdToConfirm.tip'));
 }

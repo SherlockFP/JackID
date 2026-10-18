@@ -9,6 +9,7 @@ import type { WorldLightTarget } from '@/world/types';
 import type { Voice } from '../audio/types';
 import { app } from '../app';
 import { glitchPulse } from '../fx';
+import { subtitles } from '../ui/subtitles';
 import { t, type I18nVars } from '../i18n';
 import type { PointResolver } from './actors';
 
@@ -128,15 +129,22 @@ function lightTarget(tg: LightCue['target']): WorldLightTarget | null {
 }
 
 /**
- * Subtitle cue: translated text and speaker, plus typewriter blips in the cue's voice when it names one. A seeking peer
- * (`since` s after the cue was due) only shows what is still left of a line, silently.
+ * Subtitle cue: translated text and speaker, typed out in the cue's voice when it names one (ui/subtitles.ts). The cue's
+ * `dur` is the line's whole on-screen time, so the typing fits inside the authored cue. A seeking peer (`since` s after
+ * the cue was due) gets what is still left of the line, shown at once and silent.
  */
 export function showSubtitle(c: SubtitleCue, vars: I18nVars, seek: boolean, since = 0): void {
   if (seek && since >= c.dur) return;
   const text = t(c.key, { ...vars, ...c.vars });
   const speaker = c.speaker ? t(c.speaker) : undefined;
-  app.ui.subtitle(text, speaker, seek ? c.dur - since : c.dur);
-  if (!seek && c.voice) void app.audio.voice.speak({ text, speaker: c.voice, mood: c.mood }).catch(() => { /* voice is optional */ });
+  subtitles.say({
+    text, speaker, lane: 'cutscene',
+    voice: seek ? undefined : c.voice,
+    fit: seek ? c.dur - since : c.dur,
+    instant: seek,
+  });
+  // Per-letter blips do not duck the score the way voice.speak did: hold the music down while the line is voiced.
+  if (!seek && c.voice) app.audio.duck('music', 0.35, c.dur);
 }
 
 export type { CutTarget };

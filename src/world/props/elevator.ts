@@ -1,7 +1,8 @@
 /**
  * Lift (ART_BIBLE §6.6 ELEVATOR, GDD §8.4): the opening at (−4, 0, −30) in the Mouth's north wall, a brass surround,
  * a fan transom with the floor dial (B7 … B1, G; the needle rests on B7), a gate of brass diamonds that collapses
- * sideways on open, a walnut car in the niche north of the opening, and a chain + padlock while out of service.
+ * sideways on open, a walnut car in the niche north of the opening, a chain across the doors, a lit HOME sign above them
+ * and a small DUE / PAID counter beside them (Wave 72: the lift is the landmark that says where the Night ends).
  *
  * The car lives in the niche (z −32.2 … −30) and rides the shaft: `ride('up')` lifts it out of view, `ride('down')`
  * drops it into the Sump. Doors and ride are frame-driven (`update`), so nothing blocks the game clock.
@@ -11,6 +12,9 @@ import type { KitX } from '@/kit';
 import type { TexGen } from '@/core/texgen/types';
 import type { ElevatorProp } from '../types';
 import { Sched, easeInOutCubic, easeOutQuad } from './sched';
+import type { NeonPart, ScreenSurface } from '@/kit/types';
+import { app } from '@/core/app';
+import { t } from '@/core/i18n';
 
 export const LIFT_OPEN_W = 2.0;
 export const LIFT_OPEN_H = 2.6;
@@ -26,7 +30,13 @@ export interface ElevatorParts {
   needle: THREE.Object3D;
   /** Chain and padlock shown while locked. */
   lock: THREE.Group;
+  /** The lit HOME sign over the doors. */
   sign: THREE.Object3D;
+  neon: NeonPart;
+  /** DUE / PAID counter beside the doors. */
+  counter: ScreenSurface;
+  /** Repaint the counter (`null` = no quota in this mode: just the lift label). */
+  paint(q: { due: number; met: boolean } | null): void;
   dispose(): void;
 }
 
@@ -111,13 +121,30 @@ export function buildElevator(kit: KitX, tex: TexGen): ElevatorParts {
   kit.torus(0.04, 0.012, kit.pal.steel, { pos: [0, 1.36, 0.2], parent: lock, seg: 6, tubeSeg: 3 });
   root.add(lock);
 
-  const sign = kit.plaque({ text: { key: 'prop.sign.outOfService' }, w: 1.1, h: 0.25, color: 0x1a120c });
-  sign.position.set(0, 1.85, 0.16);
-  root.add(sign);
+  // lit HOME sign above the transom (replaces the old OUT OF SERVICE plaque) and the DUE / PAID counter at the right-hand post
+  const neon = kit.neon({ text: { key: 'prop.sign.home' }, h: 0.42, color: 0xffd070, flicker: 0.05 });
+  neon.root.position.set(0, LIFT_OPEN_H + 1.15, 0.2);
+  neon.setOn(true);
+  root.add(neon.root);
+  const sign = neon.root;
+  const counter = kit.screen({ w: 0.9, h: 0.38, px: [144, 60], bezel: 0x3a2a14, glow: 0.9 });
+  counter.mesh.position.set(LIFT_OPEN_W / 2 + 1.25, 1.55, 0.2);
+  root.add(counter.mesh);
+  const paint = (q: { due: number; met: boolean } | null): void => {
+    counter.draw((g, s) => {
+      g.fillStyle = '#0d0906';
+      g.fillRect(0, 0, s.w, s.h);
+      const txt = q === null ? t('prop.sign.home') : q.met ? t('prop.lift.paid') : t('prop.lift.due', { n: Math.max(0, Math.ceil(q.due)) });
+      const col = q === null ? '#ffd070' : q.met ? '#7dff7a' : '#ffb000';
+      tex.drawText(g, txt, s.w / 2, 20, { font: 'px5', color: col, align: 'center', scale: 3 });
+    });
+  };
+  paint(null);
 
   return {
-    root, gateL, gateR, car, needle, lock, sign,
+    root, gateL, gateR, car, needle, lock, sign, neon, counter, paint,
     dispose() {
+      counter.dispose();
       root.traverse((obj) => { const m = obj as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
     },
   };
@@ -130,6 +157,8 @@ export class Elevator implements ElevatorProp {
   private readonly sched = new Sched();
   private needleDeg = -90;
   private needleTarget = -90;
+  private counterAcc = 0;
+  private counterKey = '';
 
   constructor(private readonly parts: ElevatorParts) {
     this.root = parts.root;
@@ -180,14 +209,25 @@ export class Elevator implements ElevatorProp {
     this.parts.needle.rotation.z = -THREE.MathUtils.degToRad(deg);
   }
 
-  /** Show or hide the out-of-service chain. Padlock drop is instant here; animate in a cutscene if needed. */
+  /** Show or hide the chain across the doors. Padlock drop is instant here; animate in a cutscene if needed. */
   setLocked(on: boolean): void {
     this.parts.lock.visible = on;
-    this.parts.sign.visible = on;
   }
 
   update(dt: number): void {
     this.sched.update(dt);
+    this.counterAcc -= dt;
+    if (this.counterAcc > 0) return;
+    this.counterAcc = 0.5;
+    let q: { due: number; met: boolean } | null = null;
+    try {
+      const run = app.run;
+      if (run && run.mode !== 'free') { const s = run.shift.quota(); q = { due: Math.max(0, s.due - s.deposited), met: s.met }; }
+    } catch { q = null; }
+    const key = q ? `${q.met ? 1 : 0}|${Math.ceil(q.due)}` : '-';
+    if (key === this.counterKey) return;
+    this.counterKey = key;
+    this.parts.paint(q);
   }
 
   dispose(): void {

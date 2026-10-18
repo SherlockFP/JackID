@@ -56,9 +56,21 @@ test('the offer varies by seed, and the engine slot ignores the Night gate (some
   assert.ok(gated, 'at least one seed offers a Night-gated engine charm at Night 1');
 });
 
-test('run start: the offer opens once, the Bell waits for a pick, and the pick lands in the pocket', () => {
+/** Night 1's first Watch, settled into the Mola: the Starter Draft opens there (wave 72), never on the first Bell. */
+function toMola(run) {
+  assert.equal(run.startWatch(), true);
+  run.phase = 'closing';
+  run.watchPulls = 2;
+  run.settleWatch();
+  run.tick(1.6);
+  assert.equal(run.shift.phase, 'intermission', 'the Mola');
+}
+
+test('run start: the offer opens once in the Mola, the Bell waits for a pick, and the pick lands in the pocket', () => {
   const run = RUN.createRun({ seed: 41, mode: 'debt' });
   assert.equal(run.starterDraft(), null, 'closed until the run opens it');
+  assert.equal(run.openStarterDraft(), false, 'not on the first Watch');
+  toMola(run);
   assert.equal(run.openStarterDraft(), true);
   assert.equal(run.openStarterDraft(), false, 'opens once');
   const d = run.starterDraft();
@@ -81,6 +93,7 @@ test('run start: the offer opens once, the Bell waits for a pick, and the pick l
 
 test('run start: with no pick, the timer takes the first card that fits and the Bell goes on', () => {
   const run = RUN.createRun({ seed: 42, mode: 'debt' });
+  toMola(run);
   assert.equal(run.openStarterDraft(), true);
   const first = run.starterDraft().candidates[0].id;
   const seen = [];
@@ -98,7 +111,8 @@ test('run start: with no pick, the timer takes the first card that fits and the 
 
 test('the offer is saved with the run and survives a snapshot round trip as plain data', () => {
   const run = RUN.createRun({ seed: 43, mode: 'debt' });
-  run.openStarterDraft();
+  toMola(run);
+  assert.equal(run.openStarterDraft(), true);
   const snap = JSON.parse(JSON.stringify(run.snapshot()));
   assert.equal(snap.ext.starter.open, true);
   assert.deepEqual(snap.ext.starter.ids, run.starterDraft().candidates.map((c) => c.id));

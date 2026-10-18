@@ -105,7 +105,7 @@ class Avatar implements RemoteAvatar {
     this.color = color;
     this.root.name = `avatar:${pid}`;
     this.root.visible = false;
-    this.actor = d.kit.mannequin({ color, height: MODEL_HEIGHT, clip: 'Idle_Loop', stepFps: 15 });
+    this.actor = d.kit.mannequin({ color, height: MODEL_HEIGHT, clip: 'Idle_Loop', stepFps: 15, npc: false });
     this.root.add(this.actor.root);
     const mat = new THREE.SpriteMaterial({ transparent: true, depthWrite: false, fog: false, opacity: 0 });
     this.plate = new THREE.Sprite(mat);

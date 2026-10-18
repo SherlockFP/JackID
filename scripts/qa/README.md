@@ -157,7 +157,7 @@ with a single Space tap (see **Intro skip** below). Seed 7 fires on the player's
 
 ## Debt-run driver (`--run`)
 
-`--run "<steps>"` starts a real debt run (`/?skipmenu=1&seed=N`, the seed from `--seed`), skips the story intro, and runs the
+`--run "<steps>"` starts a real debt run (`/?skipmenu=1&seed=N`, the seed from `--seed`), skips the prologue (wave 72: a Space hold skips the apartment scene, then the bot takes the lift down; one frame is shot during the ride as `prologue-lift-ride.png`) and the story intro, and runs the
 steps in order. Steps are separated by `;`. A `play` step's keys use the script syntax, so its commas stay inside it. The
 `xN` repeat suffix belongs at the end of the whole `play` list:
 
@@ -184,7 +184,7 @@ Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` 
 | `pawn` | one Pawn Window reroll (`run.pawn.reroll()`, Intermission only) |
 | `pawn:buy:<slot>` | buys Pawn Window shelf `slot` (1-based, 1 to 6). Sits at the Pawn Window (`charm_vendor`) if not seated there, closes the tip, presses the shelf's key (`1`-`4`; `5` and `6` by `→` from shelf 4), then `Space` twice. `ok` is whether the shelf now reads sold. `charm`, `price`, `paid` say what it was. Intermission only (`reason` says so otherwise) |
 | `pawn:look` | sits at the Pawn Window and screenshots the seat view to `run-pawn-look-<n>.png` (with `--shots`). `shelves` lists the stock (`null` = sold or empty, `[]` outside an Intermission) |
-| `home:lift` | TAKE THE LIFT: `run.homeLiftReady()` then `run.openFloor()` on a paid Night with the Home layer, then waits (sim time, up to 10 s) for stage `evening` (the ride is 2.6 s). `night` is the Night paid, `stage` the stage reached. Fails (`reason`) off the casino floor, with the layer off, on a Night Card offer the lever is held for, or on Night 8 (the Topside choice) |
+| `home:lift` | TAKE THE LIFT: `run.homeLiftReady()` then `run.openFloor()` on a paid Night with the Home layer, then waits (sim time, up to 10 s) for stage `evening` (the ride is 2.6 s). With `--shots` one frame is taken 0.9 s into the ride (`shot`, `lift-ride.png`). `night` is the Night paid, `stage` the stage reached. Fails (`reason`) off the casino floor, with the layer off, on a Night Card offer the lever is held for, or on Night 8 (the Topside choice) |
 | `home:sleep` | the bed: the world's own `home:interact` event for station `bed`, sent through the app bus (`window.jackid.app.events`), then waits for the sleep (1.8 s) to open the next Night. `night` is the Night slept through, `nightAfter` the next one. Then it waits (up to 300 polls of 100 ms sim) for the arrival fade (`.px-fade`) to clear, so the next step starts on the casino floor in the light: `fadeClear` is true when it has. A dark screen that never clears fails the step. Fails off the Evening |
 | `home:peep` | the peephole: the world's `home:interact` for station `peephole` (the 2.5 s look through the door). Waits the look out (2.7 s sim), then `stage` must still be `evening`. `visitor` names the visitor the lens showed (`listener`, `leaner`, `picker`; `null` for an empty hall: he shows only once his shadow is on the door strip). Fails off the Evening |
 | `home:visit` | THE KNOCK (wave 71). Waits on sim time (up to 45 s) until the Evening's visitor acts (his shadow is on the strip), is leaving, or none is coming. `visitor` (`listener` / `leaner` / `picker` or `null`), `phase`, `k` (timer scale: 1, or 1.5 in Calm), `heat`, `waited` (ms). `ok` when he is acting/leaving or none comes; fails if he is still on the way at the cap. From Night 2, at Heat 2+, an Evening brings one visitor with a seeded chance (60 / 75 / 90 %) |
@@ -247,7 +247,7 @@ The bot keeps its per-Watch bookkeeping on the run, so a bot step split by `auto
 
 ### Starter Draft and floor events: a worked check
 
-The Starter Draft opens on a fresh Watch 1 before any pull, or at a Night 1 intermission (the Mola), and holds the Bell until a card is taken. Its three cards are seeded (`starterOffer(seed)`), so they differ by seed, and the bot's pick is logged as `bot starter` (a refused pick is logged once as `pick <id> refused`). The first state read on Night 1 with no charm yet waits (once per run) while the offer is still to come (`starterPending`: the run has not made it) until `starterOffer` is non-null, so an early `state` does not read a draft that has not opened yet. The offer waits for the intro, the title card and a quiet beat, so it opens about 12 s of sim time in under the fixed clock; the wait caps at 40 s (`STARTER_WAIT_MS`) and logs `starter draft: no offer after N ms` when it gives up. Pick card 2 and check the charm:
+The Starter Draft opens only in the Night 1 Mola, after the first Watch has ended (wave 72: never on the first frame, and never during the prologue), and holds the Bell until a card is taken. Its three cards are seeded (`starterOffer(seed)`), so they differ by seed, and the bot's pick is logged as `bot starter` (a refused pick is logged once as `pick <id> refused`). The first state read does not wait for the offer: the bot takes it from the loop once `starterOffer` is non-null, which is after the first Bell and the Mola. Pick card 2 and check the charm:
 
 ```
 node scripts/qa/bench.mjs --run "shot:starter-offer;play:Digit2;wait:400;state;shot:starter-picked" --seed 1 --shots <dir>

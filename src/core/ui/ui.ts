@@ -16,6 +16,7 @@
  * `setHudVisible(false)`), `banner()`, extra toast kinds, `dispose()`.
  */
 import './ui.css';
+import './subtitles.css';
 import type * as THREE from 'three';
 import { hintKey, type BindingKey } from '../input/types';
 import type {
@@ -28,6 +29,8 @@ import { fmtCoins, fmtNum, t, upper } from '../i18n';
 import { clamp } from '../math';
 import { log } from '../log';
 import { DEFAULT_SETTINGS, type Settings } from '../settings';
+import { subtitles, SUB_TICK, type SubView } from './subtitles';
+import type { VoiceSpeaker } from '../audio/types';
 import {
   COLORS, button, counter, focusFirst, frame, gloveCursors, h, initWidgets, keycap, navGroup, navItems, pixelIcon, textField,
   keyCaptureActive, tickWidgets, uiRng, uiSfx, type Button, type Counter, type IconName, type TextField,
@@ -94,6 +97,30 @@ const BW_SKIP_AFTER_MS = 800;
 const BANNER_GAP_MS = 350;
 
 const settingsNow = (): Settings | undefined => app?.save?.data?.settings;
+
+// ── subtitles: the bar that draws the one subtitle system (ui/subtitles.ts). The queue runs on the UI timers and
+// freezes while the game is paused, the manga box (body.mg-say) or the hotline deal sheet (.hl-sheet) is up.
+let subDriverOn = false;
+let subEl: HTMLElement | null = null;
+let subWho: HTMLElement | null = null;
+let subTxt: HTMLElement | null = null;
+function armSubtitleDriver(): void {
+  if (subDriverOn || !app?.timers?.ui) return;
+  subDriverOn = true;
+  app.timers.ui.every(SUB_TICK, () => subtitles.tick(SUB_TICK, subFrozen()));
+}
+function subFrozen(): boolean {
+  return !!app?.simPaused || !!document.body?.classList.contains('mg-say') || !!subEl?.parentElement?.classList.contains('hl-sheet');
+}
+function renderSub(v: SubView | null): void {
+  if (!subEl || !subWho || !subTxt) return;
+  if (!v || settingsNow()?.subtitles === false) { subEl.classList.remove('on'); subEl.removeAttribute('data-phase'); return; }
+  subWho.textContent = v.speaker ? upper(v.speaker) : ''; subWho.style.display = v.speaker ? '' : 'none';
+  subTxt.textContent = v.shown;
+  subEl.dataset.lane = v.lane; subEl.dataset.phase = v.phase;
+  subEl.classList.toggle('sub-still', !!settingsNow()?.reduceMotion);
+  subEl.classList.add('on');
+}
 const eat = (e: Event): void => { e.preventDefault(); e.stopImmediatePropagation(); };
 const isTextTarget = (el: EventTarget | null): boolean =>
   el instanceof HTMLElement && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
@@ -169,9 +196,16 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
   const pSub = h('div', 'px-prompt-sub', promptEl);
   const mhud = h('div', 'px-mhud', hudLayer);
   const choiceLayer = h('div', 'px-layer px-choices', root);
-  const subEl = h('div', 'px-subtitle', root);
-  const subWho = h('span', 'who', subEl);
-  const subTxt = h('span', 'txt', subEl);
+  subEl = h('div', 'px-subtitle', root);
+  subWho = h('span', 'who', subEl);
+  subTxt = h('span', 'txt', subEl);
+  subtitles.bind({
+    blip: (voice, ch) => { app?.audio?.blip(voice as VoiceSpeaker, ch); },
+    render: renderSub,
+    speed: () => settingsNow()?.subtitleSpeed ?? 'normal',
+    reduceMotion: () => !!settingsNow()?.reduceMotion,
+    arm: armSubtitleDriver,
+  });
   const panelLayer = h('div', 'px-layer px-panels', root);
   const toastsEl = h('div', 'px-toasts', root);
   toastsEl.setAttribute('role', 'status'); toastsEl.setAttribute('aria-live', 'polite');
@@ -605,8 +639,6 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
   let flashAnim: Animation | null = null;
   let lastFlash = -1e9;
   let veilOn = false;
-  let subTimer = 0;
-  let subGen = 0;
 
   // ── the interface ───────────────────────────────────────────────────────────────────────────────
   const ui: UIOverlayX = {
@@ -745,15 +777,9 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     },
 
     subtitle(text, speaker, dur) {
-      subGen++;
-      const g = subGen;
-      clearTimeout(subTimer);
-      if (!text || settingsNow()?.subtitles === false) { subEl.classList.remove('on'); return; }
-      subWho.textContent = speaker ? upper(speaker) : ''; subWho.style.display = speaker ? '' : 'none';
-      subTxt.textContent = text;
-      if (!subEl.classList.contains('on')) { subEl.classList.add('on'); }
-      else subEl.animate([{ opacity: 0.4 }, { opacity: 1 }], { duration: 120 });
-      if (dur && dur > 0) subTimer = window.setTimeout(() => { if (g === subGen) subEl.classList.remove('on'); }, dur * 1000);
+      // Same signature for every caller: a dur is the total on-screen time, typing included.
+      if (!text) { subtitles.clear(); return; }
+      subtitles.say({ text, speaker: speaker || undefined, fit: dur && dur > 0 ? dur : undefined });
     },
 
     choice(title, options, o) {
