@@ -45,7 +45,7 @@ const STEP_SHARED_MS = 450;    // 20 numbers = 9.0 s
 const STEP_SOLO_MS = 200;
 const STEP_DD_MS = 150;        // the last ten numbers after DOUBLE DOWN: 1.5 s
 const DD_S = 3.5;              // DOUBLE DOWN decision window: opens as the tenth number lights; 3.5 s leaves ≥ 3 s after lag
-const GOLD = 0xffd040, GREEN = 0x7dff7a, CREAM = '#f3e7c4', DIM = '#3d6b4f';
+const GOLD = 0xffd040, GREEN = 0x7dff7a, CREAM = '#f3e7c4', DIM = '#a6e8b8';   // DIM is the idle-header ink: bright enough to read on the dark-green CRT
 
 // CRT grid (160 × 120 canvas): 10 × 8 numbers under a header
 const GX0 = 4, GY0 = 13, CW = 15.6, CH = 11.8;
@@ -616,15 +616,15 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
       const sel = new Set(picks);
       this.parts.desks[i].screen.draw((g, sc) => {
         g.fillStyle = '#0b1a12'; g.fillRect(0, 0, sc.w, sc.h);
-        g.fillStyle = '#143524'; g.fillRect(0, 0, sc.w, 12);
-        sc.text(head, 4, 2, { font: 'px5', color: live ? CREAM : DIM });
+        g.fillStyle = '#0d2a1a'; g.fillRect(0, 0, sc.w, 13);
+        sc.text(head, 4, 4, { font: 'px5', color: live ? CREAM : DIM });
         for (let n = 1; n <= 80; n++) {
           const col = (n - 1) % 10, row = Math.floor((n - 1) / 10);
           const x = GX0 + col * CW, y = GY0 + row * CH;
           const on = sel.has(n);
-          g.fillStyle = on ? '#e8c35a' : '#0f2a1c';
+          g.fillStyle = on ? '#ffd860' : '#08170f';
           g.fillRect(x, y, CW - 1.5, CH - 1.5);
-          sc.text(String(n), x + CW / 2, y + 2, { font: 'px5', color: on ? '#1a1206' : '#6f9f80', align: 'center' });
+          sc.text(String(n), x + CW / 2, y + 2, { font: 'px5', color: on ? '#140c02' : '#c4f6d0', align: 'center' });
         }
         sc.text(`${picks.length}/${this.spotTarget}  ${fmtCoins(stake)} x${draws}`, 4, 110, { font: 'px5', color: CREAM });   // inside the 120 px canvas (the 7 px glyphs were cut at 114)
       });

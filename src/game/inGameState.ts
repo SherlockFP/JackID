@@ -374,6 +374,8 @@ export function createInGameState(): AppStateHandler<'ingame'> {
         if (!session || pid !== session.run.selfId) return;
         if (reason === 'house:float' && delta > 0) app.ui.toast(t('house.float.toast', { x: fmtCoins(delta) }), 'good');
       }));
+      // a floor event's one-line news (an auction bid, its result): a toast, in plain words
+      offs.push(bus.on('floor:note', ({ text, tone }) => { if (session) app.ui.toast(text, tone === 'info' ? 'info' : tone, 2.5); }));
     },
     exit() {
       left = true;

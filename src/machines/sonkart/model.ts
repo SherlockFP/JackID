@@ -85,12 +85,15 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<SonKartParts> 
   colLamp.root.position.set(-0.36, feltY + 0.02, 0);
   root.add(colLamp.root);
 
-  // discard + draw pile markers (glass tray under the draw pile, a red cut plate on the discard)
+  // discard + draw pile markers: a card-sized slot outline (brass frame, felt a shade darker) so the piles read as card spots,
+  // never as a stray red plate on the green
   const discardAnchor = new THREE.Object3D();
   discardAnchor.position.copy(discSpot);
   root.add(discardAnchor);
-  const deckTray = kit.box(0.14, 0.012, 0.18, pal.redDark, { pos: [deckSpot.x, feltY + 0.006, deckSpot.z], parent: root });
+  for (const sp of [deckSpot, discSpot]) kit.box(0.09, 0.002, 0.12, pal.brass, { pos: [sp.x, feltY + 0.001, sp.z], parent: root });
+  const deckTray = kit.box(0.078, 0.003, 0.108, 0x0d4a2c, { pos: [deckSpot.x, feltY + 0.0015, deckSpot.z], parent: root });   // top 3 mm: under the cards (+4 mm)
   deckTray.name = 'deckTray';
+  kit.box(0.078, 0.003, 0.108, 0x0d4a2c, { pos: [discSpot.x, feltY + 0.0015, discSpot.z], parent: root });
 
   // the first-person hand: a pool and an invisible hit plane per slot, all under handRoot
   const handRoot = new THREE.Group();
@@ -121,7 +124,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<SonKartParts> 
 
   // screen and sign above the rear rail, on a board between two posts (they used to hang in mid-air)
   kit.box(0.7, 0.58, 0.04, pal.black, { pos: [0, 1.6, -0.9], parent: root, bevel: 0.01 });
-  for (const px of [-0.4, 0.4]) kit.box(0.05, 1.9, 0.05, pal.woodDark, { pos: [px, 0.95, -0.9], parent: root });
+  // the board hangs from the ceiling bar on two thin rods (floor posts used to cross the top of the seated view as brown beams)
+  kit.box(0.8, 0.03, 0.1, pal.black, { pos: [0, 2.42, -0.9], parent: root });
+  for (const px of [-0.3, 0.3]) kit.cyl(0.008, 0.008, 0.52, pal.chrome, { pos: [px, 2.15, -0.9], seg: 5, parent: root });
   // the light bar hangs from a ceiling bar on two rods
   kit.box(1.6, 0.03, 0.1, pal.black, { pos: [0, 2.4, 0], parent: root });
   for (const rx of [-0.7, 0.7]) kit.cyl(0.008, 0.008, 0.45, pal.chrome, { pos: [rx, 2.175, 0], seg: 5, parent: root });

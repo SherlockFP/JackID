@@ -23,7 +23,7 @@ test('stage, jackpot wall and prize case sit inside their rooms', () => {
   const { STAGE, JACKPOT_WALL, PRIZE_CASE } = G;
   assert.ok(STAGE.x - STAGE.w / 2 > -6.5 && STAGE.x + STAGE.w / 2 < -1.0, 'clear of the column at x -7 and the trapdoor');
   assert.ok(STAGE.z + STAGE.d / 2 < 11, 'clear of the trapdoor plate');
-  assert.ok(JACKPOT_WALL.z < 2 && JACKPOT_WALL.y - JACKPOT_WALL.h / 2 > 3.3, 'hangs above head height in the Well');
+  assert.ok(JACKPOT_WALL.z < 2 && JACKPOT_WALL.y - JACKPOT_WALL.h / 2 > 2.5, 'hangs above head height in the Well (lowered in the wave 75 visual pass so the whole wall frames from the floor)');
   assert.ok(PRIZE_CASE.z + PRIZE_CASE.d / 2 <= 19.85 && PRIZE_CASE.x + PRIZE_CASE.w / 2 < 11);
 });
 

@@ -1603,9 +1603,13 @@ class Run implements DebtRun {
     if (amount === null) return false;
     const r = this.watchEv.bidAuction(amount, this.coins);
     if (r.ok === false) {
-      if (r.why === 'pocket') this.refuse('funds');
+      if (r.why === 'pocket') {
+        bus.emit('floor:note', { text: t('event.watch.stage_auction.note.pocket', { next: amount }), tone: 'bad' });
+        this.refuse('funds');
+      }
       return false;
     }
+    bus.emit('floor:note', { text: t('event.watch.stage_auction.note.bid', { b: amount, step: r.charge }), tone: 'good' });
     this.refusal = null;
     this.coins -= r.charge;
     this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: -r.charge, reason: 'auction' });
@@ -1628,11 +1632,13 @@ class Run implements DebtRun {
         this.floorAward(o.reward);
         this.banner?.(this.floorAwardText(o.reward), { hold: 2.5, size: 8 });
       } else if (o.won && o.award) {
+        bus.emit('floor:note', { text: t('event.watch.stage_auction.note.won', { b: o.spent }), tone: 'good' });
         this.floorAward(o.award);
         this.banner?.(`${t('event.watch.stage_auction.won')} ${this.floorAwardText(o.award)}`, { hold: 3, size: 8 });
       } else {
         if (o.consolation) this.floorAward(o.consolation);
-        this.banner?.(t('event.watch.stage_auction.lost'), { hold: 3, size: 8 });
+        bus.emit('floor:note', { text: t(o.spent > 0 ? 'event.watch.stage_auction.note.lost' : 'event.watch.stage_auction.note.none', { b: o.spent }), tone: 'bad' });
+        this.banner?.(t(o.spent > 0 ? 'event.watch.stage_auction.lost' : 'event.watch.stage_auction.none'), { hold: 3, size: 8 });
       }
     }
   }

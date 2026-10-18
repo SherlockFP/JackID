@@ -134,6 +134,9 @@ let live: WatchEvents | null = null;
 /** The active Watch event for the HUD, or null between Watches and on boss Nights. */
 export function watchEventView(): WatchEventView | null { return live?.view() ?? null; }
 
+/** The machine kind that stays lit while SINGLE LIGHT runs, or null (no such event live). The world dims every other light. */
+export function singleLightLit(): MachineId | null { return live?.litMachine() ?? null; }
+
 interface Live { def: WatchEventDef; leftS: number; pulls: number | null; aux: EventAux }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -224,6 +227,12 @@ export class WatchEvents implements ModProvider {
     if (!c || !d || c.def.kind !== 'dare' || !takeDare(d)) return false;
     this.host.touch();
     return true;
+  }
+
+  /** The lit machine while SINGLE LIGHT is live (null otherwise). */
+  litMachine(): MachineId | null {
+    const c = this.cur;
+    return c && c.def.kind === 'single' ? (c.aux.lit ?? null) : null;
   }
 
   /** A STAGE AUCTION bid of `amount` coins with `pocket` in the pocket. The run takes `charge` from the pocket when `ok`. */
@@ -333,9 +342,15 @@ export class WatchEvents implements ModProvider {
     const a = c.aux;
     switch (c.def.kind ?? 'effects') {
       case 'single': return { key: 'event.watch.single_light.hud' };
-      case 'auction': return a.auction && a.auction.phase === 'bid' ? { key: 'event.watch.stage_auction.hud', vars: { n: auctionPrice(a.auction) } } : null;
+      case 'auction': {
+        const au = a.auction;
+        if (!au || au.phase !== 'bid') return null;
+        const next = Math.max(auctionPrice(au) + 1, au.top + 1);
+        // n: the House price, b: the player's own top bid, step: what the next legal bid costs on top of it
+        return { key: 'event.watch.stage_auction.hud', vars: { n: auctionPrice(au), b: au.top, step: next - au.top } };
+      }
       case 'crate': return a.crate && !a.crate.open ? { key: 'event.watch.crate_drop.hud' } : null;
-      case 'wheel': return a.seg ? { key: wheelSpinning(a.elapsedS ?? 0) ? 'event.watch.wheel_spin.spin' : `event.watch.wheel_spin.seg.${a.seg}` } : null;
+      case 'wheel': return a.seg ? { key: wheelSpinning(a.elapsedS ?? 0) ? 'event.watch.wheel_spin.spin' : `event.watch.wheel_spin.seg.${a.seg}`, vars: { s: Math.max(0, Math.ceil(c.leftS)) } } : null;
       case 'dare': {
         const d = a.dare;
         if (!d || !d.armed || d.spent) return null;

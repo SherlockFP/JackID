@@ -24,7 +24,7 @@ import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
 import { countUp, blinkOn, emitComboShow, flashPrefs } from '@/machines/_base/juice';
 import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { KitX } from '@/kit';
-import { fmtCoins, t as tr } from '@/core/i18n';
+import { fmtCoins, t as tr, upper } from '@/core/i18n';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import { TAU } from '@/core/math';
 import { px5Width } from '@/core/texgen/font';
@@ -984,25 +984,24 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     this.parts.screens.top.draw((g, sc) => {
       g.fillStyle = '#120406';
       g.fillRect(0, 0, sc.w, sc.h);
-      sc.text(`${this.t('jackpot')} ${fmtCoins(Math.floor(s.meter))}`, 80, 3, { font: 'px5', color: '#ffd040', align: 'center' });
-      if (shown !== undefined) {
-        sc.text(`+${fmtCoins(shown)}`, 80, 11, { font: 'px5', scale: 2, color: '#ffd040', align: 'center' });
-      } else if (s.last10[0] === 2) {
-        sc.text(this.t('eaten'), 80, 11, { font: 'px5', scale: 2, color: '#ff3040', align: 'center' });
-      } else if (s.gross > 0) {
-        sc.text(this.t('win', { n: fmtCoins(Math.max(0, this.netOf(s.gross, this.lastStake, this.isLocalOccupant))) }), 80, 11, { font: 'px5', scale: 2, color: '#ffd040', align: 'center' });
-      } else {
-        sc.text(`${this.t('bet')} ${fmtCoins(this.bet)}`, 80, 11, { font: 'px5', scale: 2, color: '#4a8a4a', align: 'center' });
-      }
-      g.fillStyle = '#3a1010';
-      g.fillRect(20, 27, 120, 3);   // below the 2x result line (it spans y 11 to 25)
-      g.fillStyle = '#c0182a';
-      g.fillRect(20, 27, Math.round(120 * this.hungerPct()), 3);
-      sc.text(this.t('hunger'), 80, 31, { font: 'px5', color: '#c0182a', align: 'center' });
+      // y is the cap top of a px5 line (cap = 7 x scale); Turkish accents rise 3 x scale above it. Rows, top to bottom:
+      // jackpot 4..11, main line 19..33 (accents from 13), hunger bar 36..38, hunger label + status 40..47 (the screen is 48 high).
+      const ink = (c: string): { font: 'px5'; color: string; align: 'center' } => ({ font: 'px5', color: c, align: 'center' });
+      sc.text(upper(`${this.t('jackpot')} ${fmtCoins(Math.floor(s.meter))}`), 80, 4, ink('#ffe45a'));
+      const main = (txt: string, c: string): void => { sc.text(txt, 80, 19, { ...ink(c), scale: px5Width(txt, 2) <= 152 ? 2 : 1 }); };
+      if (shown !== undefined) main(`+${fmtCoins(shown)}`, '#ffe45a');
+      else if (s.last10[0] === 2) main(upper(this.t('eaten')), '#ff5060');
+      else if (s.gross > 0) main(upper(this.t('win', { n: fmtCoins(Math.max(0, this.netOf(s.gross, this.lastStake, this.isLocalOccupant))) })), '#ffe45a');
+      else main(upper(`${this.t('bet')} ${fmtCoins(this.bet)}`), '#8cff9a');
+      g.fillStyle = '#4a1418';
+      g.fillRect(20, 36, 120, 3);
+      g.fillStyle = '#ff2a40';
+      g.fillRect(20, 36, Math.round(120 * this.hungerPct()), 3);
       const status = this.autoLeft > 0
         ? this.t('autoOn', { n: this.autoLeft })
         : s.hold >= 0 ? this.t('hold', { n: s.hold + 1 }) : this.t('autoSize', { n: this.autoSize });
-      sc.text(status, 80, 40, { font: 'px5', color: '#7dffe0', align: 'center' });
+      sc.text(upper(this.t('hunger')), 3, 40, { font: 'px5', color: '#ff5a6a' });
+      sc.text(upper(status), 157, 40, { font: 'px5', color: '#7dffe0', align: 'right' });
     });
   }
 

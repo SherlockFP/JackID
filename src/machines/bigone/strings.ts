@@ -46,7 +46,7 @@ export const STRINGS: MachineStrings = {
   tr: {
     name: 'Büyük Vurgun',
     desc: 'Beş makara, üst üste binen on beş desen. Laneti besle, jackpot\'un peşinde ol.',
-    spin: 'Çevir', auto: 'Oto', autoStop: 'Dur', autoOn: 'OTO {n}', autoSize: 'BOY {n}',
+    spin: 'Çevir', auto: 'Oto', autoStop: 'Dur', autoOn: 'OTO {n}', autoSize: 'SERİ {n}',
     card: 'Desenler', fast: 'Hızlı', fastOn: 'Hızlı açık',
     hunger: 'AÇLIK', jackpot: 'JACKPOT', bet: 'Bahis', eaten: 'YENDİ', win: 'KAZANÇ {n}',
     hold: 'TUT {n}', holdOff: 'Serbest', holdWin: 'TUT, ödemeyen bir çevirmeden sonra açılır', tease: 'Çok az kaldı...', jpTease: 'JACKPOT?', jpBanner: 'JACKPOT!', respin: 'YENİDEN', ward: 'MUHAFIZ',

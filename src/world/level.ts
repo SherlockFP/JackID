@@ -328,6 +328,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
 
   // Well: the chandelier ring (r 3 m, 24 bulbs, y 7.5) and the dais cone
   const wellChandelier = chandelier(kit, { id: 'well:chandelier', pos: [0, 7.5, -4], r: 3.0, bulbs: 24, ceiling: CEILING.well, color: 0xffb347, intensity: 1.6, range: 12, zone: 'well', tiers: 2 });
+  wellChandelier.root.position.set(0, 0, -4);   // the fixture builds around its own origin; (x, z) place it, y is baked in
   fx(wellChandelier);
   lights.push({ id: 'well:dais', pos: [0, 4.0, -4], color: 0xffe2a0, intensity: 1.4, range: 10, flicker: 'STEADY', zone: 'well' });
   lights.push({ id: 'well:marquee', pos: [0, 2.0, -6.5], color: 0xffc861, intensity: 0.6, range: 4, flicker: 'CANDLE', zone: 'well' });
@@ -369,7 +370,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   fx(tube(kit, { id: 'gallery:cyan', pos: [20, 3.7, -5], length: 6, color: 0x3fe0ff, intensity: 0.7, range: 6, flicker: 'BUZZ', zone: 'gallery', axis: 'x' }));
 
   // Wheel House: chandelier under the dome, velvet and gold
-  fx(chandelier(kit, { id: 'wheels:chandelier', pos: [21, 5.2, 5.5], r: 1.2, bulbs: 12, ceiling: CEILING.wheels, color: 0xfff0c8, intensity: 1.2, range: 8, zone: 'wheels', tiers: 1 }));
+  { const wc = chandelier(kit, { id: 'wheels:chandelier', pos: [21, 5.2, 5.5], r: 1.2, bulbs: 12, ceiling: CEILING.wheels, color: 0xfff0c8, intensity: 1.2, range: 8, zone: 'wheels', tiers: 1 }); wc.root.position.set(21, 0, 5.5); fx(wc); }
 
   // Parlour: one bare bulb on a swinging cord (±12°, period 3.1 s), the Devil's eyes
   const pivot = kit.group('parlourPivot');
@@ -522,7 +523,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   root.add(wall.root);
   disposables.push(wall);
   updates.push({ update: (dt) => wall.update?.(dt) });
-  lights.push({ id: 'well:jackpotWall', pos: [0, 4.6, 0.4], color: 0xffb347, intensity: 0.9, range: 7, flicker: 'STEADY', zone: 'well' });
+  lights.push({ id: 'well:jackpotWall', pos: [0, 3.4, 0.2], color: 0xffb347, intensity: 1.1, range: 7, flicker: 'STEADY', zone: 'well' });
   const prizes = buildPrizeCase(kit, { statical });
   root.add(prizes.prop.root);
   disposables.push(prizes.prop);
@@ -532,11 +533,13 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   const shows: ShowTarget[] = [stage.prop.footlights, wall.border];
   {
     // chandeliers: one over the stage (lit), two small ones over the Well side aisles (visual only, the pool is full enough)
-    const lobbyCh = chandelier(kit, { id: 'lobby:chandelier', pos: [STAGE_X, 3.5, STAGE_Z], r: 1.7, bulbs: 16, ceiling: CEILING.lobby, color: 0xffd890, intensity: 1.0, range: 8, zone: 'lobby', tiers: 1 });
+    const lobbyCh = chandelier(kit, { id: 'lobby:chandelier', pos: [STAGE_X, 3.75, STAGE_Z - 0.9], r: 1.5, bulbs: 16, ceiling: CEILING.lobby, color: 0xffd890, intensity: 1.0, range: 8, zone: 'lobby', tiers: 1 });
+    lobbyCh.root.position.set(STAGE_X, 0, STAGE_Z - 0.9);   // hung in front of the curtain, over the apron
     fx(lobbyCh);
     if (lobbyCh.pattern) shows.push({ pattern: lobbyCh.pattern });
     for (const [i, sx] of [-5, 5].entries()) {
       const c = chandelier(kit, { id: `well:sideChandelier${i}`, pos: [sx, 6.9, -11], r: 1.2, bulbs: 12, ceiling: CEILING.well, color: 0xffb347, zone: 'well', tiers: 1 });
+      c.root.position.set(sx, 0, -11);
       root.add(c.root);
       updates.push({ update: (dt, tt) => c.update?.(dt, tt) });
       if (c.pattern) shows.push({ pattern: c.pattern });

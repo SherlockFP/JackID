@@ -20,7 +20,7 @@
 import * as THREE from 'three';
 import { app } from '@/core/app';
 import { bus } from '@/core/events';
-import { t } from '@/core/i18n';
+import { lang, t } from '@/core/i18n';
 import { DEFAULT_BINDINGS, codeLabels } from '@/core/keymap';
 import type { InstanceId, PlayerId, Unsub } from '@/core/types';
 import type { WorldHost } from '@/world/world';
@@ -248,9 +248,15 @@ function startSteps(host: TutorialHost): Tutorial & { shown(): boolean } | null 
     }
   };
 
+  /** "BÜYÜK VURGUN" → "Büyük Vurgun" (locale-correct), so the name sits in the card's sentence case, not in capitals. */
+  const titleCase = (s: string): string => {
+    const loc = lang() === 'tr' ? 'tr-TR' : 'en-US';
+    return s.toLocaleLowerCase(loc).replace(/(^|\s)(\S)/g, (_m, sp: string, c: string) => sp + c.toLocaleUpperCase(loc));
+  };
+
   const text = (s: Step): string => {
     switch (s.key) {
-      case 'walk': return t('tut.walk', { name: machineName('bigone').toUpperCase() });   // the machine's own name, in the language on screen
+      case 'walk': return t('tut.walk', { name: titleCase(machineName('bigone')) });   // the machine's own name, in the language on screen, in the card's sentence case
       case 'spin': {
         return t('econ.spinAny', { key: keyLabel('m.primary') });
       }

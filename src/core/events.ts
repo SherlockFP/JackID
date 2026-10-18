@@ -97,6 +97,8 @@ export interface GameEvents {
   // ── events / contracts / jackpot ──
   'event:start': { id: string };
   'event:end': { id: string };
+  /** A floor event's one-line news for the player (a bid, a result): the in-game state shows it as a toast. */
+  'floor:note': { text: string; tone: 'good' | 'bad' | 'info' };
   'contract:progress': { uid: string; progress: number; target: number };
   'contract:done': { uid: string };
   'jackpot:change': { pool: string; value: number };

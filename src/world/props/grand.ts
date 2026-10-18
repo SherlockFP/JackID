@@ -9,7 +9,7 @@ import type { KitX } from '@/kit';
 import type { TexGen } from '@/core/texgen/types';
 import type { Hex } from '@/core/types';
 import type { BulbChain, MannequinActor, ScreenSurface } from '@/kit/types';
-import { t } from '@/core/i18n';
+import { t, upper } from '@/core/i18n';
 import type { JackpotWallProp, LightShowProp, PrizeCaseProp, StageProp, WorldLights } from '../types';
 import type { LightHint } from '../sys/arch';
 import { Sched, easeInOutCubic, easeOutQuad } from './sched';
@@ -19,12 +19,12 @@ import { disposeTree } from './decor';
 /** Atrium stage in the Lobby centre (the FLR-05 slot is kept but stays empty). Front faces north (-Z). */
 export const STAGE = { x: -3.6, z: 9.0, w: 5.0, d: 3.2, h: 0.2 } as const;
 /** Jackpot wall: hangs south of the Big One dais, faces the Well. */
-export const JACKPOT_WALL = { x: 0, y: 4.85, z: 1.45, w: 7.0, h: 2.3 } as const;
+export const JACKPOT_WALL = { x: 0, y: 3.85, z: 1.6, w: 6.4, h: 2.4, tilt: 9 } as const;   // lowered and tipped down so the whole wall frames from the Well floor
 /** Prize showcase: against the south wall, east of the cashier. */
 export const PRIZE_CASE = { x: 9.2, z: 19.5, w: 1.7, d: 0.6, h: 2.0 } as const;
 
 const hex = (c: Hex): string => `#${c.toString(16).padStart(6, '0')}`;
-const up = (s: string): string => s.toLocaleUpperCase();
+const up = upper;
 
 /** Largest px5 scale (<= start) at which `text` fits in `maxW` pixels. */
 function fitScale(kit: KitX, text: string, maxW: number, start: number): number {
@@ -61,7 +61,7 @@ export function buildStage(kit: KitX, tex: TexGen, o: { root: THREE.Group; stati
   // back curtain: two halves of velvet folds that gather towards the sides
   const zc = z + d / 2 - 0.12;
   const backdrop = kit.group('backdrop');
-  kit.box(w, 3.1, 0.05, 0x120a0c, { pos: [x, h + 1.55, zc + 0.1], parent: backdrop });
+  kit.box(w, 3.1, 0.05, 0x2c1a24, { pos: [x, h + 1.55, zc + 0.1], parent: backdrop });
   for (let i = 0; i < 7; i++) {
     kit.box(0.05, 2.3, 0.02, 0xc8962e, { pos: [x, h + 1.7, zc + 0.07], rot: [0, 0, -63 + i * 21], parent: backdrop });
   }
@@ -101,7 +101,7 @@ export function buildStage(kit: KitX, tex: TexGen, o: { root: THREE.Group; stati
   root.add(mic);
 
   // the Compere: dark mannequin with a cold cyan rim, facing the room (north)
-  const compere: MannequinActor = kit.mannequin({ color: 0x101014, jointColor: 0x24242c, style: 'plain', height: 1.85, clip: 'Idle_Loop', rim: 0x6fd8e0 });
+  const compere: MannequinActor = kit.mannequin({ color: 0x4a5a70, jointColor: 0x6a7a90, style: 'plain', height: 1.85, clip: 'Idle_Loop', rim: 0x9ff0f8 });
   compere.root.position.set(x, h, z - 0.05);
   compere.root.rotation.y = Math.PI;
   o.root.add(compere.root);
@@ -111,11 +111,16 @@ export function buildStage(kit: KitX, tex: TexGen, o: { root: THREE.Group; stati
     { box: box3(x - w / 2, 0, zc - 0.1, x + w / 2, 3.4, zc + 0.15), tag: 'solid' },
   ];
   const mark = (px: number, py: number, pz: number): THREE.Object3D => { const m = new THREE.Object3D(); m.position.set(px, py, pz); o.root.add(m); return m; };
-  const anchors = { 'stage.center': mark(x, h + 1.0, z), 'stage.compere': mark(x, h + 1.6, z - 0.05) };
+  // stand-off spots on the floor in front of the stage (the viewer looks north): never inside the Compere's footprint
+  const anchors = {
+    'stage.center': mark(x, 1.3, z - d / 2 - 2.8),
+    'stage.view': mark(x, 1.3, z - d / 2 - 4.4),
+    'stage.compere': mark(x, h + 1.6, z - 0.05),
+  };
 
   const hints: LightHint[] = [
     { id: 'stage:foot', pos: [x, 0.9, z - d / 2 + 0.3], color: 0xffd890, intensity: 0.9, range: 5, flicker: 'STEADY', zone: 'lobby' },
-    { id: 'stage:spot', pos: [x, 3.5, z - 0.6], color: 0xbfe0ff, intensity: 0.8, range: 4, flicker: 'STEADY', zone: 'lobby' },
+    { id: 'stage:spot', pos: [x, 3.1, z - 1.5], color: 0xcfe8ff, intensity: 2.4, range: 5, flicker: 'STEADY', zone: 'lobby' },   // spot on the Compere, set in front of him so his face and chest read
   ];
 
   const prop: StageProp & { footlights: BulbChain } = {
@@ -137,26 +142,30 @@ export function buildStage(kit: KitX, tex: TexGen, o: { root: THREE.Group; stati
 }
 
 // ── jackpot LED wall ────────────────────────────────────────────────────────────────────────────
-const LINE_COLORS = ['#ffd34a', '#ff9a5a', '#8fe0e8', '#e8e0c8'];
+const LINE_COLORS = ['#ffe45a', '#ffa860', '#9ff4ff', '#fff6dc'];
 
 export function buildJackpotWall(kit: KitX, o: { ceiling: number }): JackpotWallProp & { border: BulbChain } {
-  const { x, y, z, w, h } = JACKPOT_WALL;
+  const { x, y, z, w, h, tilt } = JACKPOT_WALL;
   const root = kit.group('jackpotWall');
   root.position.set(x, y, z);
   root.rotation.y = Math.PI;   // the screen faces -Z, towards the dais and the spawn
   const sched = new Sched();
-  const px: [number, number] = [448, 144];
-  const screen: ScreenSurface = kit.screen({ w, h, px, bezel: 0x3a2a14, glow: 0.9, scanlines: true });
+  // the panel hangs on a pivot tipped a few degrees down, so the face looks at the people on the Well floor
+  const panel = kit.group('jackpotPanel');
+  panel.rotation.x = THREE.MathUtils.degToRad(tilt);
+  root.add(panel);
+  const px: [number, number] = [256, 96];   // coarse on purpose: each lit texel stays a few screen pixels at 8 m
+  const screen: ScreenSurface = kit.screen({ w, h, px, bezel: 0x3a2a14, glow: 1.25, scanlines: false });
   screen.mesh.position.z = 0.08;
-  root.add(screen.mesh);
-  kit.box(w + 0.5, h + 0.5, 0.14, kit.pal.woodDark, { pos: [0, 0, 0], parent: root });
-  kit.box(w + 0.58, 0.06, 0.2, kit.pal.brass, { pos: [0, h / 2 + 0.28, 0], parent: root });
-  kit.box(w + 0.58, 0.06, 0.2, kit.pal.brass, { pos: [0, -h / 2 - 0.28, 0], parent: root });
+  panel.add(screen.mesh);
+  kit.box(w + 0.5, h + 0.5, 0.14, kit.pal.woodDark, { pos: [0, 0, 0], parent: panel });
+  kit.box(w + 0.58, 0.06, 0.2, kit.pal.brass, { pos: [0, h / 2 + 0.28, 0], parent: panel });
+  kit.box(w + 0.58, 0.06, 0.2, kit.pal.brass, { pos: [0, -h / 2 - 0.28, 0], parent: panel });
   for (const sx of [-1, 1]) kit.tube([[sx * (w / 2 - 0.4), h / 2 + 0.3, 0], [sx * (w / 2 - 0.4), o.ceiling - y, 0]], 0.02, kit.pal.brass, { seg: 6, radialSeg: 3, parent: root });
   const border = kit.bulbChain({ path: { rect: [w + 0.3, h + 0.3] }, count: 44, colors: [0xffd34a, 0xff5a7a], r: 0.05 });
   border.root.position.z = 0.12;
   border.pattern('alt', 1.2);
-  root.add(border.root);
+  panel.add(border.root);
 
   let lines: string[] = [];
   let flashK = 0;
@@ -167,11 +176,14 @@ export function buildJackpotWall(kit: KitX, o: { ceiling: number }): JackpotWall
       if (flashK > 0) { g.fillStyle = `rgba(255,211,74,${(flashK * 0.55).toFixed(3)})`; g.fillRect(0, 0, s.w, s.h); }
       const shown = lines.length ? lines.slice(0, 4).map(up) : [up(t('prop.jackpot.idle')), up(t('prop.jackpot.sub'))];
       const dark = flashK > 0.5;
-      let yy = 10;
+      // four lines at the biggest scale that fits: the first is the headline (scale 3), the rest scale 2; a dark drop shadow keeps them crisp
+      let yy = 8;   // y is the cap top: leave room above for the Turkish accents
       shown.forEach((ln, i) => {
-        const sc = fitScale(kit, ln, s.w - 28, i === 0 ? 5 : 3);
-        kit.tex.drawText(g, ln, s.w / 2, yy, { font: 'px5', color: dark && i === 0 ? '#2a1204' : LINE_COLORS[i % LINE_COLORS.length], align: 'center', scale: sc });
-        yy += sc * 7 + (i === 0 ? 14 : 8);
+        const sc = fitScale(kit, ln, s.w - 12, i === 0 ? 3 : 2);
+        const col = dark && i === 0 ? '#2a1204' : LINE_COLORS[i % LINE_COLORS.length];
+        kit.tex.drawText(g, ln, s.w / 2 + 1, yy + 1, { font: 'px5', color: '#000000', align: 'center', scale: sc });
+        kit.tex.drawText(g, ln, s.w / 2, yy, { font: 'px5', color: col, align: 'center', scale: sc });
+        yy += sc * 7 + 7;
       });
     });
   };
@@ -239,8 +251,8 @@ export function buildPrizeCase(kit: KitX, o: { statical: THREE.Group }): { prop:
     spots.push(spot);
   }
 
-  const placard: ScreenSurface = kit.screen({ w: w - 0.1, h: 0.46, px: [320, 80], bezel: 0x3a2a14, glow: 0.8, scanlines: false });
-  placard.mesh.position.set(0, 0.34, d / 2 + 0.012);
+  const placard: ScreenSurface = kit.screen({ w: w - 0.1, h: 0.4, px: [320, 70], bezel: 0x3a2a14, glow: 0.8, scanlines: false });
+  placard.mesh.position.set(0, 0.3, d / 2 + 0.012);   // top edge 0.50, clear of the brass trim at 0.55
   root.add(placard.mesh);
 
   let labels: string[] = [];

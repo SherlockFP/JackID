@@ -1,0 +1,189 @@
+[
+ {
+  "key": "grand",
+  "items": [
+   {
+    "area": "Atrium stage, Compere, curtain (stage view from the floor, yaw facing the stage)",
+    "ok": false,
+    "problems": [
+     "Top-centre toast '+7 ÇEKİŞ · YENİ VARDİYA' is overdrawn by a second faded line of text (a ghost of another toast) at the same spot; hard to read.",
+     "Compere is a very dark silhouette against the dark centre panel and reads as a shape more than a person; the face and body are hard to make out.",
+     "Curtain, footlights and stage lip read well; scale looks right."
+    ],
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\grand\\stage-view.png"
+   },
+   {
+    "area": "stage.center anchor teleport (anchor:stage.center in --run)",
+    "ok": false,
+    "problems": [
+     "The anchor drops the player at (-3.6, 1.25, 9), inside the Compere's footprint (Compere at z 8.95). The stage mic stand sits 0.55 m in front and fills the bottom-centre of the view, so no stage or curtain is visible.",
+     "Not usable for a stage view; a stand-off position is needed to see the curtain."
+    ],
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\grand\\stage-center.png"
+   },
+   {
+    "area": "Jackpot wall over the Big One dais (Well view, pitch 0)",
+    "ok": false,
+    "problems": [
+     "The jackpot wall is clipped at the top edge of the view: its upper lettering and frame are cut off at pitch 0, so the wall title cannot be read from this position.",
+     "The top-centre HUD (clock, GECE/VARDİYA line, toast) sits directly on top of the wall, so the HUD and the sign compete.",
+     "The wall's LED is small at this distance; its content is hard to read."
+    ],
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\grand\\well-wall-show-b.png"
+   },
+   {
+    "area": "Light show during the wall (lightShow() called; frames a, b, c)",
+    "ok": true,
+    "problems": [
+     "The strip of bulbs under the wall changes colour between frames (pink, cyan, yellow, orange) as expected, and the wall's frame is lit during the show.",
+     "The top toast overlap from the stage view appears here too (second faded line over '+7 ÇEKİŞ')."
+    ],
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\grand\\well-wall-show-c.png"
+   },
+   {
+    "area": "Prize case at (9.2, 19.5)",
+    "ok": false,
+    "problems": [
+     "NOT CHECKED: the bench run budget (4 runs) was used on the stage, the anchor and the Well. No shot of the prize case exists."
+    ],
+    "shot": ""
+   },
+   {
+    "area": "Chandeliers (atrium and Well)",
+    "ok": false,
+    "problems": [
+     "NOT CHECKED as a dedicated shot. The Well views did not clearly show the chandeliers; only the light-bulb strip under the wall was visible. Needs a separate high or wide view."
+    ],
+    "shot": ""
+   },
+   {
+    "area": "Turkish text in the grand casino HUD (lang=tr)",
+    "ok": true,
+    "problems": [
+     "Seen in all shots: REHİN PENCERESİ KAPALI, BİR MAKİNE ISINIYOR: Yazı-Tura Kabini, BÜYÜK VURGUN hint card, SAAT DURDU, KOTA, EKSİK, BANKADA, CEP, NÖBET, ÇEKİŞ, TELEFON [T]. No untranslated English found in these frames. Minor: 'makinesine yürü ve otur' is lowercase under an uppercase heading, which looks uneven."
+    ],
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\grand\\run-final.png"
+   }
+  ]
+ },
+ {
+  "key": "events",
+  "items": [
+   {
+    "area": "Tiny grey hint text at top centre overlaps HUD lines (all events)",
+    "ok": false,
+    "problems": [
+     "A small grey line reading 'FAREYI YAKALAMAK ICIN TIKLA' sits at about y=107 at top centre, under the Watch line. It collides with the BANKA line, the crate line, the dare prompt, the SON CAGRI and 2. GECE banners and the ghost banner, so every line in that band reads as garbled. Zoomed crop confirms it over 'KAZANMAK ICIN 1 CEKIS DAHA'.",
+     "Probably a pointer or tutorial hint rendered in the wrong layer. Not verified which source string it is."
+    ],
+    "shot": "C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-JackID/48c49d04-016b-4c0d-ac70-780ba1fcc555/scratchpad/ev1/crop-hud-ev4.png ; .../scratchpad/ev2/r2-dare-pre.png ; .../scratchpad/ev2/r2-dare-taken.png ; .../scratchpad/ev3/r3-single-dark.png"
+   },
+   {
+    "area": "SINGLE LIGHT (ELEKTRIK KESILDI) in play",
+    "ok": false,
+    "problems": [
+     "HUD line 'TEK ISIK 00:34' and 'Yalnizca spot makine acik.' read clearly. The Compere subtitle 'Elektrik gitti. Yalnizca spot makine acik, o da daha cok oder.' is readable.",
+     "The floor does not look dark. 6 s into the event the room is fully lit, so the single-light dark floor is not visible in this shot. It may be a fade that has not started, but it needs checking.",
+     "The announce line (ELEKTRIK KESILDI) only shows during the Mola, before the Watch starts, so the in-play banner was not captured."
+    ],
+    "shot": "C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-JackID/48c49d04-016b-4c0d-ac70-780ba1fcc555/scratchpad/ev3/r3-single-dark.png ; .../scratchpad/ev2/r2-single-6s.png"
+   },
+   {
+    "area": "STAGE AUCTION (SAHNE MEZADI) prompt and bidding",
+    "ok": false,
+    "problems": [
+     "No auction HUD line, price or bid prompt is visible at any point in the 20 s bid window (events says live, 17.9 s left). The dare shows 'Bahis acik. Almak icin N bas.' and the auction shows nothing equivalent.",
+     "The only on-screen text is the Compere line 'Sahnede bir kasa var. Kim ister?'. That reads like the crate copy, not an auction.",
+     "N presses in play gave no visible bid confirmation. The pocket did not visibly change, though the bid result was not read from state."
+    ],
+    "shot": "C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-JackID/48c49d04-016b-4c0d-ac70-780ba1fcc555/scratchpad/ev4/r4-a-bid2.png ; .../scratchpad/ev3/r3-auction-late.png"
+   },
+   {
+    "area": "CRATE DROP (LOBIDE KASA DUSTU)",
+    "ok": true,
+    "problems": [
+     "The HUD event banner 'KASA DUSTU 00:45' and the info line 'Lobide kasa. Yakinken E'ye bas.' are readable and in Turkish.",
+     "The crate itself was not on screen (the player is not in reach), so the crate model and its pickup were not checked."
+    ],
+    "shot": "C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-JackID/48c49d04-016b-4c0d-ac70-780ba1fcc555/scratchpad/ev1/ev4-wheel-result.png"
+   },
+   {
+    "area": "WHEEL SPIN (CARK DONUYOR) on the Yuksek-Alcak machine",
+    "ok": false,
+    "problems": [
+     "The machine's yellow sign covers the top BANKA +12 FAIZ (%55) HUD line, so that line is partly hidden in both shots.",
+     "The OLAY: CARK line and the Compere 'Cark donuyor. Neye gelirse yarim dakika o gecerli.' read fine.",
+     "The wheel result (the rule that holds for 30 s) is not visible in the 1.5 s and 3.5 s shots, so the result cannot be checked on screen."
+    ],
+    "shot": "C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-JackID/48c49d04-016b-4c0d-ac70-780ba1fcc555/scratchpad/ev3/r3-wheel-result.png ; .../scratchpad/ev3/r3-wheel-after.png"
+   },
+   {
+    "area": "LAST CALL DARE (SON CAGRI) prompt",
+    "ok": true,
+    "problems": [
+     "The prompt 'SON CAGRI BAHSI 00:08' with 'Bahis acik. Almak icin N bas.' reads clearly and is centred over the 2. GECE title.",
+     "The HUD prompt is only up in the last ~8 s of the Watch clock, because the event arms at 20 s left. The accept press (N) was not confirmed on screen.",
+     "The tiny hint overlap from the first item sits right behind the SON CAGRI title."
+    ],
+    "shot": "C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-JackID/48c49d04-016b-4c0d-ac70-780ba1fcc555/scratchpad/ev2/r2-dare-pre.png"
+   },
+   {
+    "area": "Turkish copy (lang=tr) across the event screens",
+    "ok": true,
+    "problems": [
+     "No untranslated English seen in the HUD, Compere or event lines in the shots reviewed. The only oddity is the auction Compere copy 'Sahnede bir kasa var' noted above."
+    ],
+    "shot": "C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-JackID/48c49d04-016b-4c0d-ac70-780ba1fcc555/scratchpad/ev2/r2-single-play.png"
+   }
+  ]
+ },
+ {
+  "key": "seat",
+  "items": [
+   {
+    "area": "bigone seated, lang=tr, 1280x720 (bench debug panel covers the right third; no hide flag exists, so this run was not hidden)",
+    "ok": false,
+    "problems": [
+     "JACKPOT LED is hard to read: the top 'JACKPOT 5.000' label is dim yellow on a near-black LED and clipped at its top edge. The 'Bahis 100' line is dim green, and a red horizontal bar runs through its lower digits, so it reads as an overlap.",
+     "The bottom teal line on the LED is unreadable at this size. It looks like 'BUY 9', which may be an untranslated English word in lang=tr. Needs a 1920 check to confirm.",
+     "Bottom HUD labels are tiny at 1280x720: 'BAHİS' reads like 'DAHİN' and 'BAKİYE' like 'DAKİYE'.",
+     "Top-left machine sign ('XX XX' pixel glyphs next to 'Izgarada desen yakala, laneti atlat') is garbled. The sign text sits partly over the pale sign box."
+    ],
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\seat\\bigone\\bigone-round1.png (crops: bigone-jackpot.png, bigone-hud.png)"
+   },
+   {
+    "area": "keno seated, lang=tr, 1920x1080, debug panel hidden via --js",
+    "ok": true,
+    "problems": [
+     "Minor: the ticket grid numbers and 'BİLET 1' header are dim green on dark green, so contrast is low.",
+     "Minor: the middle stake tile label is hard to read at this size (it looks like '8' or '0'). Confirm it is not the bench tip key."
+    ],
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\seat\\keno\\keno-round1.png (crop: keno-stakes.png)"
+   },
+   {
+    "area": "sonkart seated, lang=tr, 1920x1080, debug panel hidden via --js",
+    "ok": false,
+    "problems": [
+     "A flat red rectangle sits on the felt left of centre, with no label. It looks like a stray overlay or an unexplained element, not a card pile.",
+     "Top of the frame has two brown diagonal beams crossing into the view, with no clear purpose. Low confidence; may be lamp cords."
+    ],
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\seat\\sonkart\\sonkart-round1.png (crop: sonkart-keys.png)"
+   },
+   {
+    "area": "Night 2 HUD, ŞANS row, ghost banner, keepsake K hint (run --run auto:night;nightcard:best;auto:night;state;goto:bigone, lang=tr, 1920x1080, --js keepsakeCarry('ring'))",
+    "ok": false,
+    "problems": [
+     "Night 2 Watch was not reached: the first auto:night stops at the Dawn card, so night2-hud.png is the Night 2 Night Card screen (GECE KARTI · YÜKSEK MASA). The seat shot is Night 3 (GECE 3, Mola). Night 2 HUD and ghost banner were not seen. Ghost banner not observed.",
+     "Overlap at top centre: the big banner 'SONRAKİ GECE: DONMUŞ DEFTER' covers the Night card / offer title box (its text is unreadable). The 'GECE 3' title also overlaps a pause-style 'II' glyph.",
+     "Overlap at bottom HUD: the status line 'İSABET 1/3.4 · 10+ 1/99 · DALGALI · ÇEKİŞ KALMADI' sits over the button row. 'GERİ Bİ…', 'RÖVİT 5', '1 TUT', '2 HIZLI' are hidden or cut. 'KURALLAR' overlaps its 'H' key chip.",
+     "Turkish casing: 'Izgarada desen yakala, laneti atlat' should be 'İzgarada' (dotted capital İ).",
+     "Keepsake hint '[K] Para yerine cep saatini koy' shows correctly in Turkish. The green K chip on the right edge sits tight against the ŞANS side panel.",
+     "ŞANS row '★★★★☆ kazanç +%4' reads well. The small 'SONRAKİ ÖDEME' panel below it is legible but very small.",
+     "Possible overlap at bottom left: the 'TELEFON [T]' label has a boxed glyph cut in front of it (a clipped key chip).",
+     "Night card and pickup prompt: 'BOŞLUK BOŞLUK DOKUN' and 'BOŞLUK BOŞLUK BASILI TUT' repeat the key name because the chip and the text both show it. Redundant and confusing."
+    ],
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\seat\\run\\night2-hud.png, ...\\seat\\run\\seat-keepsake.png (crops: run-top.png, run-bottomhud.png)"
+   }
+  ]
+ }
+]

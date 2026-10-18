@@ -345,7 +345,8 @@ test('the save carries the wave 75 state: a reload mid-auction keeps the top bid
   back.restore(save);
   assert.equal(back.view().id, 'stage_auction');
   assert.equal(back.bidAuction(a.house + 1, 50).why, 'low', 'the top bid survives the reload');
-  assert.deepEqual(back.view().info, { key: 'event.watch.stage_auction.hud', vars: { n: AU.auctionPrice(a) } });
+  const top = a.house + 2, next = Math.max(AU.auctionPrice(a) + 1, top + 1);
+  assert.deepEqual(back.view().info, { key: 'event.watch.stage_auction.hud', vars: { n: AU.auctionPrice(a), b: top, step: next - top } }, 'the line shows the House price, your top bid and what the next bid costs');
 });
 
 test('a save from before wave 75 (no aux) restores the event without throwing', () => {

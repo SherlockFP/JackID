@@ -280,16 +280,16 @@
 .mh-hints .hint { display: inline-flex; align-items: center; gap: calc(3 * var(--u)); }
 
 /* ── prompts and subtitles ────────────────────────────────────────────────────────────────── */
-/* "CLICK TO CAPTURE MOUSE" (input.ts, a direct child of #ui): small, top centre, under the HUD top band. It is the one
-   text that gives way: hidden while the interact prompt or a toast is up (one text lane), so it never sits on either. */
+/* "CLICK TO CAPTURE MOUSE" (input.ts, a direct child of #ui): small, bottom centre, above the bottom hint row (the pull pips
+   and the subtitle lane). The top band belongs to the clock, the Watch line, the toasts and the banners, so it never sits there.
+   It still gives way to the interact prompt (one text lane). */
 .cap-hint {
-  position: absolute; left: 50%; top: calc(var(--hud-top-h, calc(52 * var(--u))) + 4 * var(--u)); transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: calc(var(--lb) * var(--bar-h) + 34 * var(--u)); transform: translateX(-50%);
   z-index: 6; pointer-events: none; white-space: nowrap; display: none;
   padding: calc(1.5 * var(--u)) calc(3 * var(--u)); background: rgba(8, 8, 8, 0.7); color: #efd67b; letter-spacing: 0.04em;
   font-family: var(--f-head); font-size: calc(4 * var(--u)); line-height: 1;
 }
-.px-root:has(> .px-prompt.on) > .cap-hint,
-.px-root:has(> .px-toasts > .px-toast) > .cap-hint { display: none !important; }
+.px-root:has(> .px-prompt.on) > .cap-hint { display: none !important; }
 .px-subtitle {
   position: absolute; left: 50%; bottom: calc(var(--lb) * var(--bar-h) + 10 * var(--u)); transform: translateX(-50%);
   z-index: 3; width: max-content; max-width: min(70vw, calc(100% - 16 * var(--u)));
@@ -493,6 +493,10 @@
    a long text shrinks with the width instead. The toast stack sits one banner row lower (see .px-toasts). */
 .px-bw.t-banner .title { max-width: 94vw; flex-wrap: nowrap; white-space: nowrap; font-size: min(calc(var(--bw-s, 24) * var(--u)), 4.2vw); }
 .px-bw.t-banner .Br { display: none; }
+/* A banner sits on its own dark plate: whatever is behind it (a machine screen, a neon sign) never garbles its letters.
+   Seated, it hangs under the seat's goal / state stack instead of the walk-mode HUD band. */
+.px-bw.t-banner .title { padding: calc(1.5 * var(--u)) calc(5 * var(--u)); background: rgba(8, 8, 8, 0.78); box-shadow: 0 0 0 calc(1 * var(--u)) var(--void); }
+.px-root.seated .px-bw.t-banner { top: calc(var(--seat-top-b, var(--hud-top-h, calc(52 * var(--u)))) + 6 * var(--u)) !important; }
 .px-bw.t-banner .L { opacity: 1 !important; }
 .px-bw .W { display: inline-block; white-space: pre; }
 .px-bw .W.wave { animation: px-wave 0.5s steps(4, end) infinite; animation-delay: calc(var(--i, 0) * -0.06s); }
