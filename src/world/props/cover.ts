@@ -191,3 +191,35 @@ export function createNewMarquee(kit: KitX, o: { size: SlotSize; id?: string }):
   api.setOn(true);
   return api;
 }
+
+// ── Crooked Table mark ───────────────────────────────────────────────────────────────────────────────
+/** A small hanging plate with a number over one of the Crooked Table's three tables (amber letters on a dark ground). */
+export function createTableMark(kit: KitX, o: { size: SlotSize; text: string; id?: string }): NewMarqueeProp {
+  const root = kit.group(`tmark:${o.id ?? o.size}`);
+  const board = kit.group('board');
+  root.add(board);
+  board.position.y = TOP_Y[o.size] + 0.3;
+  const h = 0.26;
+  for (const side of [1, -1]) {
+    const face = kit.group('face');
+    face.rotation.y = side > 0 ? 0 : Math.PI;
+    face.position.z = side * 0.02;
+    board.add(face);
+    const neon = crispNeon(kit, { text: o.text, h, color: 0xffb23a, flicker: 0, font: 'chetyre' });
+    neon.root.position.z = 0.01;
+    face.add(neon.root);
+  }
+  kit.cyl(0.01, 0.01, 0.4, kit.pal.chrome, { pos: [0, h / 2 + 0.2, 0], parent: board, seg: 4 });
+  let t = 0;
+  const api: NewMarqueeProp = {
+    id: `tmark:${o.id ?? o.size}`,
+    root,
+    setOn(v: boolean) { root.visible = v; },
+    update(dt: number) {
+      t += dt;
+      board.rotation.y = Math.sin(t * 1.1) * 0.1;
+    },
+    dispose() { disposeObject3D(root); },
+  };
+  return api;
+}

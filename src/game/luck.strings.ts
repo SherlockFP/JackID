@@ -24,6 +24,7 @@ export default {
     'why.ghost': 'a ghost match',
     'why.promise': 'kept your word',
     'why.frame': 'her photo on the desk',
+    'why.crooked': 'caught the crooked table',
   },
   tr: {
     'label': 'ŞANS',
@@ -44,5 +45,6 @@ export default {
     'why.ghost': 'bir hayalet eşleşmesi',
     'why.promise': 'sözünü tuttun',
     'why.frame': 'masadaki fotoğraf',
+    'why.crooked': 'hileli masayı yakaladın',
   },
 };

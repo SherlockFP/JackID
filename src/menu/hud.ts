@@ -50,6 +50,7 @@ import { SeatHud } from '@/machines/_base/seatHud';
 /** The walk actions the floor event and the keepsake hints name (wave 75; they are not in the frozen `Action` union yet). */
 const FLOOR_KEY = 'floorAct' as Action;
 const KEEPSAKE_KEY = 'keepsake' as Action;
+const CALL_KEY = 'callCheat' as Action;
 const PHONE_SECONDS = 10;
 const FEED_LIFE = 6;
 const FEED_MAX = 4;
@@ -71,6 +72,8 @@ export interface Hud {
   setVisible(on: boolean): void;
   /** Interact prompt (GDD §10.1 "[E] …" line). Pass null to clear. */
   setPrompt(p: HudPrompt | null): void;
+  /** The Crooked Table's one-line prompt ("[C] Call the cheat"), shown while the player stands at, faces or sits at a marked table. */
+  setCallHint(on: boolean): void;
   dispose(): void;
 }
 
@@ -224,6 +227,8 @@ export function createHud(): Hud {
   watchInfo.style.color = '#ffd060';
   const keepHint = h('div', 'lamps hidden', topC);
   keepHint.style.color = 'var(--bone)';
+  const callHint = h('div', 'lamps hidden', topC);
+  callHint.style.color = '#ffd060';
   let lampsSeen: LampView = { hot: [], cold: [] };
   /** True while the player is in THE UNDERNEATH: the pit's lamp lines stay hidden there. */
   let voidOn = false;
@@ -691,6 +696,8 @@ export function createHud(): Hud {
   on('quota:failed', () => { addFeed(t('hud.feed.quotaFailed'), 'red'); });
   on('event:start', ({ id }) => { feedNews(t('hud.feed.event', { name: t(`event.${id}.name`) }), 'gold'); });
   on('event:end', ({ id }) => { feedNews(t('hud.feed.eventEnd', { name: t(`event.${id}.name`) }), ''); });
+  // A floor event's spoken line (Tamsin's intro, the Clerk's ruling): the ambient subtitle lane
+  on('floor:say', (l) => { subtitles.say({ text: l.text, speaker: l.speaker, voice: l.voice, lane: 'ambient', source: l.source }); });
   on('event:start', ({ id }) => { if (id.startsWith('watch.')) { uiSfx('popUp', 0.9); compereSay(id.slice('watch.'.length)); } });   // a Watch floor event: its banner comes with a sound and the Compere's line
   on('tycoon:milestone', ({ upgrade, level }) => {
     const name = has(`upg.${upgrade}.name`) ? t(`upg.${upgrade}.name`) : upgrade;
@@ -1214,7 +1221,7 @@ export function createHud(): Hud {
     setText(watchTxt, `${t(`event.watch.${v.id}.name`)}  ${mmss(v.leftS)}${pulls}`);
     setCls(watchEl, 'hidden', false);
     // one line: the event's state, with the floor key named where the player presses it (N: dare or bid)
-    const info = v.info ? t(v.info.key, { ...v.info.vars, key: app.input.keyLabel(FLOOR_KEY) }) : '';
+    const info = v.info ? t(v.info.key, { ...v.info.vars, key: app.input.keyLabel(v.id === 'crooked_table' ? CALL_KEY : FLOOR_KEY) }) : '';
     setText(watchInfo, info);
     setCls(watchInfo, 'hidden', info === '');
   }
@@ -1322,6 +1329,10 @@ export function createHud(): Hud {
       updateMetStinger(dt);
     },
     setVisible(show: boolean): void { ui().setHudVisible(show); },
+    setCallHint(on: boolean): void {
+      if (on) setText(callHint, t('event.watch.crooked_table.prompt', { key: app.input.keyLabel(CALL_KEY) }));
+      setCls(callHint, 'hidden', !on);
+    },
     setPrompt(p: HudPrompt | null): void {
       if (!p) { ui().prompt(null); return; }
       ui().prompt({ action: p.action, label: p.label, sub: p.sub });

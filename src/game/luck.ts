@@ -76,6 +76,8 @@ export function createLuckMeter(_run: LuckRunPort, touch: () => void = () => {})
     // the kitchen table's Rock, Paper, Promise (mid 'promise') is a kept word, not a keepsake coming back
     bus.on('keepsake:stake', (e) => { if (e.state === 'won') move(e.star, e.mid === 'promise' ? 'promise' : 'keepsake'); }),
     bus.on('ghost:match', (e) => move(e.star, 'ghost')),
+    // THE CROOKED TABLE: a right call at the rigged table earns a star
+    bus.on('floor:luck', (e) => move(e.star, e.why)),
     // THE HOME COMPUTER (wave 77): the framed photo bought on the MARKET gives its star when a Night begins
     bus.on('econ:frame', (e: FrameEvent) => move(e.star, 'frame')),
   ];

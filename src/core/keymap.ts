@@ -47,6 +47,8 @@ export const EXTRA_BINDINGS: Record<string, string[]> = {
   phone: ['KeyT'], phoneReply1: ['Digit1'], phoneReply2: ['Digit2'], phoneReply3: ['Digit3'],
   // wave 75: K stakes the carried keepsake at a seat (seated); N takes the LAST CALL DARE or bids in a STAGE AUCTION (any time)
   keepsake: ['KeyK'], floorAct: ['KeyN'],
+  // the Crooked Table: C at (or facing) a marked table calls the cheat. It shares the code with crouch (a press is read by both)
+  callCheat: ['KeyC'],
 };
 
 /** Every binding key the service knows (frozen + extra) with its default codes. */
@@ -58,7 +60,7 @@ export const layerOf = (key: string): Layer => (key.startsWith('m.') ? 'machine'
 /** Walk-layer actions that stay live while seated (everything else is suppressed at a machine). */
 export const SEATED_WALK_ACTIONS: ReadonlySet<string> = new Set([
   'pause', 'scoreboard', 'chat', 'debug', 'debugColliders', 'help', 'upgrade', 'journal', 'answerPhone',
-  'keepsake', 'floorAct',
+  'keepsake', 'floorAct', 'callCheat',
 ]);
 /** During a cutscene these codes act as `skip` in addition to the user's binding. */
 export const CUTSCENE_SKIP_CODES: readonly string[] = ['Space', 'Enter', 'NumpadEnter', 'Escape'];
@@ -130,6 +132,7 @@ export function actionLabel(key: string): string {
  */
 export const SHARED_CODES: Readonly<Record<string, readonly string[]>> = {
   Space: ['skip', 'jump'],
+  KeyC: ['crouch', 'callCheat'],
   // the hotline's deal keys and the pocket phone's reply keys share the digits: one press is read by whichever surface is up
   Digit1: ['phoneOpt1', 'phoneReply1'], Digit2: ['phoneOpt2', 'phoneReply2'], Digit3: ['phoneOpt3', 'phoneReply3'],
 };

@@ -23,7 +23,7 @@ import { auctionPrice, AUCTION_BID_S, bidAuction as placeBid, closeAuction, roll
 import { rollCrate, tryOpenCrate, type CrateState } from './events/crateDrop';
 import { pickLitMachine, SINGLE_LIGHT_S, singleLightAllows, singleLightEffects } from './events/singleLight';
 import { spinWheel, WHEEL_S, wheelEffects, wheelSpinning, type WheelSegment } from './events/wheelSpin';
-import { callCheat as callTable, CROOKED_S, recordPlay as recordTablePlay, rigEffects, rollCrooked, tableIndex, tellsAt, type CallResult, type CrookedOutcome, type CrookedState, type CrookedTell } from './events/crookedTable';
+import { callCheat as callTable, CROOKED_S, recordPlay as recordTablePlay, rigEffects, rollCrooked, tableIndex, tamsinIntro, tellsAt, type CallResult, type CrookedOutcome, type CrookedState, type CrookedTell } from './events/crookedTable';
 import { NO_FLOOR, type FloorAward, type FloorOutcome, type FloorPt, type WatchFloor } from './events/types';
 
 /** Length of a Watch event, Watch-clock seconds (seeded, inclusive). */
@@ -179,6 +179,10 @@ export class WatchEvents implements ModProvider {
     live = this;
     this.host.touch();
     bus.emit('event:start', { id: `watch.${roll.def.id}` });
+    // Tamsin explains the Crooked Table the first time it ever starts (not on a reload: restore() is silent)
+    if (aux.crooked?.intro) {
+      for (const l of tamsinIntro()) bus.emit('floor:say', { text: l.text, speaker: l.speaker ?? '', voice: l.voice ?? 'tamsin', source: l.source ?? 'crooked.tamsin' });
+    }
     return roll.def;
   }
 
@@ -284,14 +288,15 @@ export class WatchEvents implements ModProvider {
   /**
    * After each resolved round on `mid` (the run calls it from `win()`, after the payout, so a multiplier still applies to that
    * round). `won` is whether the round was a win before the floor's multipliers (a taken LAST CALL DARE settles on it and ends).
-   * A Lucky Lamp spends one pull of its budget when `mid` is HOT.
+   * A Lucky Lamp spends one pull of its budget when `mid` is HOT. `net` is the coins won minus the bet (negative on a loss), and
+   * `machineId` is the machine kind (the Crooked Table's tables are kinds); it defaults to `mid`.
    */
-  onPull(mid: InstanceId, won = false, net = 0): void {
+  onPull(mid: InstanceId, won = false, net = 0, machineId: MachineId = mid): void {
     const c = this.cur;
     if (!c) return;
     const cr = c.aux.crooked;
     if (cr && c.def.kind === 'crooked') {
-      const heat = recordTablePlay(cr, mid, won, net);
+      const heat = recordTablePlay(cr, machineId, won, net);
       if (heat) this.crookedOut.push({ kind: 'heat', heat });
       return;
     }

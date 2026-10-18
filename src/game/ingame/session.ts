@@ -19,7 +19,8 @@ import { makeFog } from '@/core/renderer/fog';
 import type { UIOverlayX } from '@/core/ui/ui';
 import type { KitX } from '@/kit';
 import { createCover, type CoverProp } from '@/world/props/cover';
-import { createNewMarquee, type NewMarqueeProp } from '@/world/props/cover';
+import { createNewMarquee, createTableMark, type NewMarqueeProp } from '@/world/props/cover';
+import { tallyAdd } from '@/game/story/notes';
 import { unlockNightOf, isNew, effectiveNight, newOnFloorText, machineName, opensText } from '@/game/progression';
 import type { InteractableX } from '@/world/interact';
 import { createWorld, type WorldHost } from '@/world/world';
@@ -85,6 +86,9 @@ const LOBBY_CRATE = { x: 0, z: 11 } as const;
 /** The floor event keys: K stakes the carried keepsake at a seat, N takes a dare or bids, E opens the crate in reach. */
 const KEEPSAKE_ACTION = 'keepsake' as Action;
 const FLOOR_ACT_ACTION = 'floorAct' as Action;
+/** THE CROOKED TABLE: C at (or facing, or sitting at) a marked table calls the cheat. */
+const CALL_CHEAT_ACTION = 'callCheat' as Action;
+const CROOKED_P = 'event.watch.crooked_table.';
 const isCursed = (id: string): boolean => charmDef(id)?.rarity === 'cursed';
 
 /** Every registered machine with the facts the Pit Deck line-up reads (WAVE8 item 8). */
@@ -301,6 +305,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     else if (phase === 'collection') horror.startDawnWalk(horrorState());
   }));
   offs.push(bus.on('quota:met', () => { horror.stopDawnWalk(); }));
+  // THE CROOKED TABLE: what the run learned goes onto the Tally Sheet (a page of the journal)
+  offs.push(bus.on('crooked:sheet', ({ key, vars }) => { tallyAdd(key, vars); }));
   offs.push(bus.on('event:start', ({ id }: GameEvents['event:start']) => {
     if (id in EVENT_DREAD) horror.notify(id as DreadEventKind);
   }));
@@ -360,6 +366,15 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   // progressive floor: tarps over locked machines, NEW signs on today's openings
   const covers = new Map<string, CoverProp>();
   const marquees = new Map<string, NewMarqueeProp>();
+  /** THE CROOKED TABLE: the small numbered plates over the three tables, and the plate/habit tells already shown. */
+  const tableMarks = new Map<string, NewMarqueeProp>();
+  const tellsShown = new Set<string>();
+  /** The machine kind the player sits at or faces (null when neither). */
+  const tableUnderFoot = (): string | null => {
+    const focus = world.interact.focused;
+    const mid = world.seat?.mid ?? (app.input.mode === 'walk' && focus && world.slot(focus.id) ? focus.id : null);
+    return mid ? (world.machine(mid)?.def.id ?? null) : null;
+  };
   const buyers = new Map<string, () => void>();
   let coverAcc = 0, lastNight = 0, summaryShown = false;
   /** E on a tarp: BUY the machine with coins (tycoon). The sheet itself lifts on the next lock refresh. */
@@ -393,7 +408,24 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     };
     buyers.set(instance, world.interact.add(x));
   };
+  /** THE CROOKED TABLE: at a marked table the player reads its plate, and its dealer once they have played there (one new line per pass). */
+  const showTells = (crooked: NonNullable<ReturnType<typeof run.crookedView>>): void => {
+    const here = tableUnderFoot();
+    const tb = here === null ? undefined : crooked.tables.find((x) => x.mid === here);
+    if (!tb) return;
+    for (const tell of tb.tells) {
+      if (tell.channel === 'tally') continue;   // the maths goes straight to the Sheet (run.ts)
+      const id = `${tell.key}|${tell.vars?.t ?? 0}`;
+      if (tellsShown.has(id)) continue;
+      tellsShown.add(id);
+      tallyAdd(tell.key, tell.vars);
+      app.ui.toast(t(CROOKED_P + tell.key, tell.vars), 'info', 4);
+      return;
+    }
+  };
   const syncCovers = (): void => {
+    const crooked = run.crookedView();
+    if (!crooked) tellsShown.clear(); else showTells(crooked);
     const night = effectiveNight(run.night(), run.nightPaid, false);
     if (night !== lastNight) {
       const txt = newOnFloorText(night, run.seed);
@@ -427,12 +459,21 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       const mq = marquees.get(m.id);
       if (wantNew && !mq) { const n = createNewMarquee(app.kit as KitX, { size, id: m.id }); g.add(n.root); marquees.set(m.id, n); }
       else if (!wantNew && mq) { g.remove(mq.root); mq.dispose(); marquees.delete(m.id); }
+      // THE CROOKED TABLE: a numbered plate over each of the three tables while the event runs
+      const tableNo = crooked && !locked ? crooked.tables.findIndex((tb) => tb.mid === mid) + 1 : 0;
+      const tm = tableMarks.get(m.id);
+      if (tableNo > 0 && !tm) { const n = createTableMark(app.kit as KitX, { size, text: t(`${CROOKED_P}mark`, { t: tableNo }), id: m.id }); g.add(n.root); tableMarks.set(m.id, n); }
+      else if (tableNo === 0 && tm) { g.remove(tm.root); tm.dispose(); tableMarks.delete(m.id); }
     }
   };
 
   // THE FLOOR EVENTS and THE KEEPSAKE STAKE (wave 75), read once per step: K stakes the carried keepsake at the seat, N takes a
   // dare or bids, and E opens a CRATE DROP in reach (the crate reads the player's floor position, not the seat).
   const floorKeys = (): void => {
+    const here = tableUnderFoot();
+    const marked = here !== null && run.isCrookedTable(here as Parameters<typeof run.isCrookedTable>[0]);
+    hud.setCallHint(marked);
+    if (marked && app.input.pressed(CALL_CHEAT_ACTION)) run.floorCall(here as Parameters<typeof run.floorCall>[0]);
     if (app.input.pressed(KEEPSAKE_ACTION)) { const seat = world.seat; if (seat) run.keepsakeStake(seat.mid); }
     if (app.input.pressed(FLOOR_ACT_ACTION)) run.floorAct();
     const p = player.pos;
@@ -457,6 +498,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       if (ready && coverAcc >= 0.5) { coverAcc = 0; syncCovers(); }
       for (const c of covers.values()) c.update?.(dt);
       for (const n of marquees.values()) n.update?.(dt);
+      for (const n of tableMarks.values()) n.update?.(dt);
       if (ready && boardAcc >= 0.25) { boardAcc = 0; syncBoard(); }
       if (openingWatch && ready) {
         openingWatch = false;

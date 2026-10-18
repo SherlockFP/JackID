@@ -15,6 +15,10 @@ export type TonicVendorParts = {
   drawer: THREE.Object3D;
   /** Four bottle roots (liquid + cork). Each lifts on its own sale. */
   bottles: THREE.Object3D[];
+  /** Four snacks for the food page (banana, coffee, sandwich, can), standing where the bottles stand; hidden until the page flips. */
+  foods: THREE.Object3D[];
+  /** The page sign hung under the top shelf: TONICS or FOOD. */
+  sign: LabelPart;
   /** Price tags on the counter front, one per bottle. */
   tags: LabelPart[];
   /** Ledger above the shelves: the four doses and their prices. */
@@ -78,6 +82,45 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TonicVendorPar
     tags.push(tag);
   });
 
+  // ── snacks (the food page): same four spots as the bottles, hidden until W/S flips the page ──
+  const foods: THREE.Object3D[] = [];
+  const mkFood = (x: number, build: (f: THREE.Object3D) => void): void => {
+    const f = new THREE.Object3D();
+    f.position.set(x, COUNTER_H, COUNTER_Z - 0.05);
+    build(f);
+    f.visible = false;
+    root.add(f);
+    foods.push(f);
+  };
+  // banana: a bent yellow tube with a brown tip
+  mkFood(BOTTLE_X[0], (f) => {
+    kit.tube([[-0.1, 0.07, 0], [-0.04, 0.03, 0], [0.04, 0.03, 0], [0.1, 0.09, 0]], 0.03, 0xf2d23a, { parent: f, radialSeg: 6 });
+    kit.sphere(0.018, 0x6a4a22, { pos: [0.105, 0.095, 0], parent: f });
+  });
+  // coffee: a white cup, a dark top and a handle
+  mkFood(BOTTLE_X[1], (f) => {
+    kit.cyl(0.06, 0.045, 0.1, 0xf2efe6, { pos: [0, 0.05, 0], parent: f, seg: 10 });
+    kit.cyl(0.052, 0.052, 0.01, 0x4a2c14, { pos: [0, 0.1, 0], parent: f, seg: 10 });
+    kit.torus(0.032, 0.01, 0xf2efe6, { pos: [0.075, 0.05, 0], rot: [0, 0, 0], parent: f });
+  });
+  // sandwich: bread, lettuce, ham, bread
+  mkFood(BOTTLE_X[2], (f) => {
+    kit.box(0.2, 0.04, 0.14, 0xd8b070, { pos: [0, 0.02, 0], parent: f, bevel: 0.01 });
+    kit.box(0.2, 0.025, 0.15, 0x6cb04a, { pos: [0, 0.052, 0], parent: f });
+    kit.box(0.19, 0.03, 0.13, 0xe49aa0, { pos: [0, 0.08, 0], parent: f });
+    kit.box(0.2, 0.045, 0.14, 0xd8b070, { pos: [0, 0.117, 0], parent: f, bevel: 0.012 });
+  });
+  // can (the energy drink): red body, silver rims
+  mkFood(BOTTLE_X[3], (f) => {
+    kit.cyl(0.045, 0.045, 0.16, 0xd8202a, { pos: [0, 0.08, 0], parent: f, seg: 10 });
+    kit.cyl(0.047, 0.047, 0.012, 0xc9ced4, { pos: [0, 0.166, 0], parent: f, seg: 10 });
+    kit.cyl(0.047, 0.047, 0.012, 0xc9ced4, { pos: [0, 0.006, 0], parent: f, seg: 10 });
+  });
+  // the page sign: a plate hung in front of the top shelf, so the page reads from the seat
+  const sign = kit.label({ text: '', w: 0.5, h: 0.11, px: [160, 36], color: pal.gold, bg: pal.black, font: 'vt' });
+  sign.mesh.position.set(0, 1.46, WALL_Z + D / 2 + 0.2);
+  root.add(sign.mesh);
+
   // ── lamp and ledger ──
   // lamp sits at x -0.45: its glow sprite (r*7 wide) must stay inside the 1.2 m footprint
   kit.cyl(0.05, 0.06, 0.08, pal.brass, at(-0.45, COUNTER_H + 0.03, COUNTER_Z + 0.2, { seg: 10 }));
@@ -97,8 +140,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TonicVendorPar
   light.userData = { color: 0x60ff90, intensity: 0.5, range: 2.0, flicker: 'STEADY' };
   root.add(light);
 
-  const parts: TonicVendorParts = { drawer, bottles, tags, ledger, lamp };
-  kit.finalize(root, { keep: [drawer, ...bottles, ...tags.map((t) => t.mesh), lamp.root, ledger.mesh, light] });
+  const parts: TonicVendorParts = { drawer, bottles, foods, sign, tags, ledger, lamp };
+  kit.finalize(root, { keep: [drawer, ...bottles, ...foods, sign.mesh, ...tags.map((t) => t.mesh), lamp.root, ledger.mesh, light] });
 
   return {
     root,

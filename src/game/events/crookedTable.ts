@@ -14,6 +14,7 @@ import type { Rng } from '@/core/rng';
 import type { SubLine } from '@/core/ui/subtitles';
 import type { MachineId } from '@/core/types';
 import type { ModEffect } from '@/game/modifiers.types';
+import { ALWAYS_OPEN } from '@/game/progression';
 import { NO_FLOOR, type WatchFloor } from './types';
 
 /** Length of the event, Watch-clock seconds. Long enough to play three tables a few times. */
@@ -78,7 +79,8 @@ export type CrookedOutcome =
  * machines (or no floor facts) means the event cannot run: null, and the Watch rolls nothing.
  */
 export function rollCrooked(rng: Rng, floor: WatchFloor = NO_FLOOR, intro = false): CrookedState | null {
-  const pool = Array.from(new Set(floor.machines));
+  // a table is a game to play: vendors, terminals and the story tables (ALWAYS_OPEN) never count
+  const pool = Array.from(new Set(floor.machines)).filter((m) => !ALWAYS_OPEN.has(m));
   if (pool.length < CROOKED_TABLES) return null;
   const tables: MachineId[] = [];
   while (tables.length < CROOKED_TABLES) {

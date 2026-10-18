@@ -99,6 +99,12 @@ export interface GameEvents {
   'event:end': { id: string };
   /** A floor event's one-line news for the player (a bid, a result): the in-game state shows it as a toast. */
   'floor:note': { text: string; tone: 'good' | 'bad' | 'info' };
+  /** A floor event's spoken line (Tamsin's intro, the Clerk's ruling): the HUD says it through the subtitles. */
+  'floor:say': { text: string; speaker: string; voice: string; source: string };
+  /** A floor event grants (or takes) luck stars: the luck meter moves with the reason key `luck.why.<why>`. */
+  'floor:luck': { star: number; why: string };
+  /** The Crooked Table taught the player something: the in-game state adds it to the Tally Sheet (`tallyAdd`). */
+  'crooked:sheet': { key: string; vars?: Record<string, number> };
   'contract:progress': { uid: string; progress: number; target: number };
   'contract:done': { uid: string };
   'jackpot:change': { pool: string; value: number };

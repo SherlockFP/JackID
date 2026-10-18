@@ -81,3 +81,4 @@ import './promise.test.mjs';
 import './crookedTable.test.mjs';
 import './food.test.mjs';
 import './economy.home.test.mjs';
+import './crookedWiring.test.mjs';

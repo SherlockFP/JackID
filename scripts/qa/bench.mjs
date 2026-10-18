@@ -137,6 +137,9 @@ export function parseScript(text) {
  *   bank:withdraw:<n>  take n coins back from the bank into the pocket (run.withdraw, the broke path)
  *   lever              the terminal lever the run accepts now: OPEN THE FLOOR (with the Home layer on: TAKE THE LIFT home), else the Bell, else SETTLE
  *   home:lift          TAKE THE LIFT (run.openFloor on a paid Night with the Home layer): waits for stage `evening` (the ride, ~2.6 s sim)
+ *   home:stay          the same ride, then STOP in the Evening without sleeping (a no-op when already home): drive the home by hand
+ *   station:<id>       fires `home:interact` for one apartment station (bed|door|peephole|chain|switch|phone|spouse|window|fridge|computer); Evening only
+ *   ui:click:<css>     clicks the first DOM element matching the selector (el.click()): the home computer's tabs and buttons, the fridge
  *   home:sleep         the bed: the `home:interact` event for station `bed`; waits for the next Night to open (the sleep, ~1.8 s sim)
  *   home:talk          the spouse: station `spouse` (the first talk each Evening at Harmony 4+ is the BLESSING); records the lines
  *   home:switch        the ceiling light: station `switch` (lights toggle); records the lights
@@ -170,6 +173,8 @@ export function parseScript(text) {
  *   daily              start config: the day's run (kit, stake 3 and seed from the UTC day, as the picker's daily toggle)
  * The start config is applied once, when the run starts (see startConfigJs); its step records are first in run.steps.
  */
+/** The apartment's stations (HomeStation in src/game/home/contract.ts): `station:<id>` fires `home:interact` for one. */
+const HOME_STATIONS = ['bed', 'door', 'peephole', 'chain', 'switch', 'phone', 'spouse', 'window', 'fridge', 'computer'];
 export function parseRunSteps(text) {
   const out = [];
   for (const raw of String(text ?? '').split(';')) {
@@ -177,7 +182,7 @@ export function parseRunSteps(text) {
     if (!tok) continue;
     if (['stand', 'lever', 'bell', 'pawn', 'state', 'events'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
     // THE EVENING (wave 69): the lift, the apartment's stations and the phone
-    if (['home:lift', 'home:sleep', 'home:talk', 'home:switch', 'home:chain', 'home:peep', 'home:knock-check', 'home:miss', 'home:visit', 'phone:open'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
+    if (['home:lift', 'home:stay', 'home:sleep', 'home:talk', 'home:switch', 'home:chain', 'home:peep', 'home:knock-check', 'home:miss', 'home:visit', 'phone:open'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
     // THE KNOCK (wave 71): set the lights or the chain to a state, and stand still
     const mh = /^home:(lights|chain):(on|off)$/.exec(tok);
     if (mh) { out.push({ kind: mh[1] === 'lights' ? 'home:lights' : 'home:chainset', on: mh[2] === 'on', text: tok }); continue; }
@@ -188,6 +193,15 @@ export function parseRunSteps(text) {
       out.push({ kind: 'home:still', ms, text: tok });
       continue;
     }
+    // THE EVENING, driven by hand: any apartment station (what E at it emits), and a click on a DOM element
+    const mstn = /^station:([a-z]+)$/.exec(tok);
+    if (mstn) {
+      if (!HOME_STATIONS.includes(mstn[1])) throw new Error(`bad station in "${tok}" (station:<${HOME_STATIONS.join('|')}>)`);
+      out.push({ kind: 'station', station: mstn[1], text: tok });
+      continue;
+    }
+    const mclk = /^ui:click:(.{1,200})$/.exec(tok);
+    if (mclk) { out.push({ kind: 'ui:click', selector: mclk[1].trim(), text: tok }); continue; }
     const ma = /^anchor:([A-Za-z][A-Za-z0-9_.-]{0,80})$/.exec(tok);
     if (ma) { out.push({ kind: 'anchor', name: ma[1], text: tok }); continue; }
     let mr = /^phone:reply:(\d+)$/.exec(tok);
@@ -240,7 +254,7 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:sleep | home:talk | home:switch | home:chain | home:chain:<on|off> | home:lights:<on|off> | home:still:<ms> | home:visit | home:peep | home:knock-check | home:miss | anchor:<name> | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:stay | station:<id> | ui:click:<css selector> | home:sleep | home:talk | home:switch | home:chain | home:chain:<on|off> | home:lights:<on|off> | home:still:<ms> | home:visit | home:peep | home:knock-check | home:miss | anchor:<name> | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
   const once = (kind) => {
@@ -1838,12 +1852,15 @@ async function runKind(ctx, s, rec) {
       if (!rec.ok) noteRefusal(rec, before, await evaluate(cdp, REFUSAL_JS));
       return;
     }
+    case 'home:stay':
     case 'home:lift': {
       // TAKE THE LIFT: the paid Night's floor lever with the Home layer. The ride (fade, ding, teleport) runs on sim time; the step
-      // waits for the Evening so the next step finds the player at the front door.
+      // waits for the Evening so the next step finds the player at the front door. `home:stay` is the same, and a no-op when the
+      // player is already in the Evening: either way it stops there, without sleeping, so a tester can drive the home by hand.
       const before = await evaluate(cdp, REFUSAL_JS);
       const h0 = await evalJson(cdp, HOME_STAGE_JS);
       rec.night = h0?.night ?? null;
+      if (s.kind === 'home:stay' && h0?.stage === 'evening') { rec.ok = true; rec.stage = 'evening'; rec.note = 'already in the Evening'; return; }
       if (!h0 || h0.stage !== null) { rec.ok = false; rec.reason = `not on the casino floor (home stage "${h0?.stage ?? 'none'}")`; return; }
       rec.ok = (await evaluate(cdp, `(() => { const r = window.jackid.app.run; return r.homeLiftReady?.() === true && r.openFloor() === true; })()`)) === true;
       if (!rec.ok) {
@@ -1969,6 +1986,36 @@ async function runKind(ctx, s, rec) {
       rec.over = h?.over === true;
       rec.ok = rec.stage === 'doomed' || rec.over;
       if (!rec.ok) rec.reason = `the quota was not missed (stage ${rec.stage}, Night ${h?.night ?? '?'})`;
+      return;
+    }
+    case 'station': {
+      // Any apartment station: the same `home:interact` event the world emits for E at it, through the app bus. Fire-and-look: the
+      // record has the stage before and after and the ids of the UI panels up now (`panels`: the computer opens `home-pc`).
+      const h0 = await evalJson(cdp, HOME_STAGE_JS);
+      if (!h0 || h0.stage !== 'evening') { rec.ok = false; rec.reason = `not in the Evening (home stage "${h0?.stage ?? 'none'}"; home:stay first)`; return; }
+      rec.station = s.station;
+      rec.stageBefore = h0.stage;
+      await evaluate(cdp, homeEmitJs(s.station));
+      await sleep(600);
+      const h1 = await evalJson(cdp, HOME_STAGE_JS);
+      rec.stage = h1?.stage ?? null;
+      rec.panels = await evaluate(cdp, `(() => [...document.querySelectorAll('.px-panel')].map((p) => p.dataset.panel))()`);
+      rec.ok = true;
+      return;
+    }
+    case 'ui:click': {
+      // Clicks the first DOM element that matches the selector (el.click()). For the home computer, the fridge and the menus.
+      const r = await evalJson(cdp, `(() => {
+        const el = document.querySelector(${JSON.stringify(s.selector)});
+        if (!el) return { found: false };
+        el.scrollIntoView?.({ block: 'center' });
+        el.click();
+        return { found: true, tag: el.tagName.toLowerCase(), text: (el.textContent || '').trim().slice(0, 60), disabled: !!el.disabled };
+      })()`);
+      Object.assign(rec, { selector: s.selector }, r);
+      await sleep(300);
+      rec.ok = r.found === true && r.disabled !== true;
+      if (!rec.ok) rec.reason = r.found ? 'the element is disabled' : 'no element matches the selector';
       return;
     }
     case 'home:talk': {

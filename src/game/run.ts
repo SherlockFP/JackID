@@ -101,6 +101,7 @@ import { WatchTithe, type TitheResult, type TitheSave, type TitheView } from './
 import checkpointStrings from './checkpoints.strings';
 import { Spotlight, isSpotlightEligible, spotlightStartLine, type SpotlightSave, type SpotlightView } from './spotlight';
 import { WatchEvents, type WatchEventSave } from './watchEvents';
+import { sheetFromOutcome, sheetFromTells, type CallResult, type CrookedTell } from './events/crookedTable';
 import type { FloorAward, WatchFloor } from './events/types';
 import type { EventBannerShow } from './buffs/banner';
 import { createHomeEconomy, type EconSave, type HomeEconomy } from './economy/homeEconomy';
@@ -621,6 +622,12 @@ export interface DebtRun extends RunApi {
   floorAct(): boolean;
   /** FLOOR EVENTS: the CRATE DROP press (`pressed` is the interact key this step) at the player's floor position. True when it opened. */
   floorCrate(pos: { x: number; z: number } | null, pressed: boolean): boolean;
+  /** THE CROOKED TABLE: the three tables and what can be read at each now (null when the event is not live). */
+  crookedView(): { tables: { mid: MachineId; tells: CrookedTell[] }[]; intro: boolean } | null;
+  /** THE CROOKED TABLE: true when `machineId` is one of the three marked tables right now. */
+  isCrookedTable(machineId: MachineId): boolean;
+  /** THE CROOKED TABLE: call the cheat at the table `machineId` (key C). A right call refunds and gives a luck star; a wrong one costs a fee. */
+  floorCall(machineId: MachineId): boolean;
   /** Pay the rest of the Night now (SETTLE lever). Needs `deposit ≥ quota`. */
   settleEarly(): boolean;
   /**
@@ -1023,6 +1030,8 @@ class Run implements DebtRun {
   private readonly nightCards: NightCards;
   /** Per-Watch floor event (wave 43): rolled at each Bell, ticked on the Watch clock, saved mid-Watch. */
   private readonly watchEv: WatchEvents;
+  /** The Crooked Table's Tally Sheet lines already sent for the live event (a line goes out once per wording). */
+  private readonly crookedSheetSent = new Set<string>();
   /** Machine of the Night (wave 55): one floor kind per Night pays x1.25 and drops a Ticket every 5th play. */
   private readonly spotlight: Spotlight;
   // bounty board (ContractsApi): defs registered by the device catalogue, offers and slips for this run
@@ -1376,7 +1385,8 @@ class Run implements DebtRun {
     const { credited, pr } = this.creditOf(gross, src, meta);
     // FLOOR EVENTS: a resolved round (raw buy-ins and cash-outs are not rounds). After the payout, so the dare and the lamp apply to it.
     if (!meta.raw) {
-      this.watchEv.onPull(src.mid, gross > meta.bet);
+      // net = what the round left in the pocket against the bet (the Crooked Table's refund counts the net losses at a table)
+      this.watchEv.onPull(src.mid, gross > meta.bet, credited - meta.bet, src.machineId);
       if (credited > meta.bet) this.noteGrandWin(src.machineId, credited);
     }
     // THE KEEPSAKE STAKE and THE GHOST SEAT (wave 75): the round's result is the credited amount against the bet
@@ -1639,6 +1649,63 @@ class Run implements DebtRun {
     if (this.ended || !this.canPlay()) return false;
     return this.watchEv.openCrate(pos, pressed) !== null;
   }
+  /** THE CROOKED TABLE: the three tables and what can be read at each now (null when the event is not live). */
+  crookedView(): { tables: { mid: MachineId; tells: CrookedTell[] }[]; intro: boolean } | null { return this.watchEv.crookedView(); }
+  /** True when `machineId` is one of the Crooked Table's three marked tables right now (the C prompt shows only there). */
+  isCrookedTable(machineId: MachineId): boolean { return this.watchEv.isCrookedTable(machineId); }
+  /**
+   * The player calls the cheat at the table `machineId` (key C). A right call refunds double the loss there (capped at 25% of the
+   * quota), +1 luck star, Heat -1; a wrong one costs a fee of 5% of the quota and Heat +1. True when the call was made.
+   */
+  floorCall(machineId: MachineId): boolean {
+    if (this.ended || !this.canPlay()) return false;
+    const r = this.watchEv.callCheat(machineId, this.quota.due);
+    if (!r) return false;
+    this.applyCrooked();
+    return true;
+  }
+  /** Applies the Crooked Table's outcomes (refund, fee, luck, Heat, toasts, the Clerk's line) and feeds the Tally Sheet. */
+  private applyCrooked(): void {
+    const view = this.watchEv.crookedView();
+    if (view) {
+      // the TALLY-channel lines and their lesson (the maths belongs on the Sheet); each line goes out once per wording
+      for (const l of sheetFromTells(view.tables)) {
+        const k = JSON.stringify(l);
+        if (this.crookedSheetSent.has(k)) continue;
+        this.crookedSheetSent.add(k);
+        bus.emit('crooked:sheet', l);
+      }
+    } else if (this.crookedSheetSent.size > 0) this.crookedSheetSent.clear();
+    const P = 'event.watch.crooked_table.';
+    for (const o of this.watchEv.takeCrooked()) {
+      for (const l of sheetFromOutcome(o)) bus.emit('crooked:sheet', l);
+      if (o.kind === 'heat') {
+        hooksOf(this.hPhone)?.heat(o.heat, 'crooked');
+        bus.emit('floor:note', { text: t(P + 'note.heatUp'), tone: 'bad' });
+      } else if (o.kind === 'expired') {
+        bus.emit('floor:note', { text: t(P + 'note.expired'), tone: 'info' });
+      } else {
+        this.crookedCall(o);
+      }
+    }
+  }
+  private crookedCall(o: CallResult): void {
+    const P = 'event.watch.crooked_table.';
+    const tn = o.table + 1;
+    if (o.right) {
+      if (o.refund > 0) this.earn('coin', o.refund, 'crooked.refund');
+      bus.emit('floor:note', { text: t(o.refund > 0 ? P + 'note.right' : P + 'note.right0', { t: tn, refund: o.refund }), tone: 'good' });
+      bus.emit('floor:luck', { star: o.luck, why: 'crooked' });
+    } else {
+      const fine = Math.min(o.fine, Math.floor(this.coins));
+      if (fine > 0) this.spend('coin', fine, 'crooked.fine');
+      bus.emit('floor:note', { text: t(P + 'note.wrong', { t: tn, fine }), tone: 'bad' });
+    }
+    hooksOf(this.hPhone)?.heat(o.heat, 'crooked');
+    bus.emit('floor:say', { text: t(P + (o.right ? 'clerk.right' : 'clerk.wrong')), speaker: t(P + 'clerk.speaker'), voice: 'clerk', source: 'crooked.clerk' });
+    this.notify();
+    this.persistSoon();
+  }
   /** Applies what the floor events handed back since the last frame: Tickets, tonics, charms, Watch clock time, and the banners. */
   private applyFloorOutcomes(): void {
     for (const o of this.watchEv.takeOutcomes()) {
@@ -1853,6 +1920,7 @@ class Run implements DebtRun {
     if (this.phase === 'play' || this.phase === 'lastCall') this.tycoonSys.tick(dt);
     if (!this.rules.timed) return;
     this.applyFloorOutcomes();
+    this.applyCrooked();
     // The Starter Draft's timer runs in every phase (its countdown is on screen); the Bell waits for the offer.
     const starterHolds = this.tickStarter(dt);
     if (this.hStage !== null) this.tickHome(dt);

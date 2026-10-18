@@ -50,8 +50,9 @@ export const def: MachineDef = {
       h_pick: 'PICK', h_buy: 'DRINK', h_leave: 'LEAVE',
       s_coins: 'COINS', s_dose: 'DOSE', s_length: 'LASTS',
       funds: 'NOT ENOUGH COINS', none: 'EMPTY SHELF', hand: 'HAND ALREADY FULL',
-      ledger: 'APOTHECARY', ledgerHint: '1-4 PICK  SPACE DRINK  W/S PAGE',
-      ledgerFood: 'KITCHEN COUNTER', ledgerHintFood: '1-4 PICK  SPACE EAT  W/S PAGE', h_eat: 'EAT',
+      ledger: 'APOTHECARY', ledgerHint: '1-4 PICK  SPACE DRINK  W/S FOOD',
+      ledgerFood: 'FOOD COUNTER', ledgerHintFood: '1-4 PICK  SPACE EAT  W/S TONICS', h_eat: 'EAT',
+      pageTonic: 'TONICS', pageFood: 'FOOD', s_food: 'FOOD', s_bonus: 'BONUS',
       free: 'FREE',
     },
     tr: {
@@ -60,8 +61,9 @@ export const def: MachineDef = {
       h_pick: 'SEÇ', h_buy: 'İÇ', h_leave: 'AYRIL',
       s_coins: 'PARA', s_dose: 'DOZ', s_length: 'SÜRE',
       funds: 'PARA YETMİYOR', none: 'RAF BOŞ', hand: 'ELİ DOLU',
-      ledger: 'ECZANE', ledgerHint: '1-4 SEÇ  BOŞLUK İÇ  W/S SAYFA',
-      ledgerFood: 'MUTFAK TEZGÂHI', ledgerHintFood: '1-4 SEÇ  BOŞLUK YE  W/S SAYFA', h_eat: 'YE',
+      ledger: 'ECZANE', ledgerHint: '1-4 SEÇ  BOŞLUK İÇ  W/S YEMEK',
+      ledgerFood: 'YEMEK TEZGAHI', ledgerHintFood: '1-4 SEÇ  BOŞLUK YE  W/S TONİK', h_eat: 'YE',
+      pageTonic: 'TONİKLER', pageFood: 'YEMEK', s_food: 'YEMEK', s_bonus: 'ETKİ',
       free: 'BEDAVA',
     },
   },
@@ -206,7 +208,8 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
 
   private async presentBuy(ev: Ev, pc: PresentCtx): Promise<void> {
     if (!ev.ok) { this.denied(ev.why); return; }
-    const { drawer, bottles } = this.parts;
+    const { drawer } = this.parts;
+    const bottles = this.foodPage ? this.parts.foods : this.parts.bottles;
     const fx = this.ctx.fx;
     const anchor = this.model.anchors.coinOut;
     const name = nameOf(ev);
@@ -262,14 +265,23 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
     for (let i = 0; i < SLOTS; i++) {
       this.parts.tags[i]?.setText(priceText(stock[i] ?? null, fmtNum, this.t('free')));
     }
+    this.applyPage();
     this.drawLedger(stock);
     if (this.isLocalOccupant) this.showHud();
   }
 
+  /** The food page shows snacks on the counter (the bottles hide), the page sign switches and the ledger turns amber. */
+  private applyPage(): void {
+    const { bottles, foods, sign } = this.parts;
+    for (const b of bottles) b.visible = !this.foodPage;
+    for (const f of foods) f.visible = this.foodPage;
+    sign.setText(this.t(this.foodPage ? 'pageFood' : 'pageTonic'));
+  }
+
   private drawLedger(stock: readonly TonicOffer[]): void {
     const s = this.parts.ledger;
-    s.clear('#081410');
-    s.text(this.t(this.foodPage ? 'ledgerFood' : 'ledger'), 64, 10, { font: 'px5', color: '#80ffb0', align: 'center' });
+    s.clear(this.foodPage ? '#14100a' : '#081410');
+    s.text(this.t(this.foodPage ? 'ledgerFood' : 'ledger'), 64, 10, { font: 'px5', color: this.foodPage ? '#ffd060' : '#80ffb0', align: 'center' });
     for (let i = 0; i < SLOTS; i++) {
       const o = stock[i] ?? null;
       const y = 26 + i * 12;
@@ -289,15 +301,17 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
     const hints: HudHint[] = [
       { action: 'left', label: this.t('h_pick') },
       { action: 'primary', label: this.t(this.foodPage ? 'h_eat' : 'h_buy') },
+      { action: 'up', label: this.t(this.foodPage ? 'pageTonic' : 'pageFood') },
       { action: 'exit', label: this.t('h_leave') },
     ];
     this.hud({
+      title: this.t(this.foodPage ? 'ledgerFood' : 'ledger'),
       bet: null,
       hints,
       stats: [
         { label: this.t('s_coins'), value: fmtNum(this.wallet()) },
-        { label: this.t('s_dose'), value: sel ? nameOf(sel) : '--' },
-        { label: this.t('s_length'), value: sel ? descOf(sel) : '--' },
+        { label: this.t(this.foodPage ? 's_food' : 's_dose'), value: sel ? nameOf(sel) : '--' },
+        { label: this.t(this.foodPage ? 's_bonus' : 's_length'), value: sel ? descOf(sel) : '--' },
       ],
     });
   }
