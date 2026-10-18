@@ -1,0 +1,53 @@
+/* THE HOME COMPUTER (wave 77): the old CRT on the apartment desk. A beige bezel around a green-phosphor screen, hard edges, a
+   stepped scanline. Sizes are design px times --dpx (= --u / 1.5, the draft.css rule). Wraps onto phone widths, no side scroll. */
+.pc-root { --dpx: calc(var(--u, 1.5px) / 1.5); --pc-ink: #8dff9a; --pc-dim: #4fae5c; --pc-bg: #04140a; --pc-warn: #ffb070;
+  position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
+  padding: calc(16 * var(--dpx)); box-sizing: border-box; background: rgba(4, 3, 2, .45); }
+.pc-crt { position: relative; width: min(calc(720 * var(--dpx)), 100%); max-height: 100%; display: flex; box-sizing: border-box;
+  padding: calc(18 * var(--dpx)); background: #b9b09a; border: calc(2 * var(--dpx)) solid #000;
+  box-shadow: inset 0 0 0 calc(3 * var(--dpx)) #d8cfb8, inset 0 0 0 calc(6 * var(--dpx)) #8c836d, calc(5 * var(--dpx)) calc(5 * var(--dpx)) 0 rgba(0, 0, 0, .55); }
+.pc-screen { position: relative; flex: 1 1 auto; min-width: 0; max-height: calc(100vh - 80 * var(--dpx)); overflow: auto;
+  padding: calc(12 * var(--dpx)); box-sizing: border-box; background: var(--pc-bg); color: var(--pc-ink);
+  border: calc(3 * var(--dpx)) solid #000; font-family: var(--f-body, monospace); font-size: calc(18 * var(--dpx)); line-height: 1.2;
+  text-shadow: 0 0 calc(2 * var(--dpx)) rgba(141, 255, 154, .45); }
+.pc-scan { position: absolute; inset: calc(21 * var(--dpx)); pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, .22) 0, rgba(0, 0, 0, .22) calc(1 * var(--dpx)), transparent calc(1 * var(--dpx)), transparent calc(3 * var(--dpx))); }
+
+.pc-top { display: flex; justify-content: space-between; gap: calc(8 * var(--dpx)); flex-wrap: wrap;
+  font-family: var(--f-head, monospace); font-size: calc(10 * var(--dpx)); line-height: 1.6; }
+.pc-pocket { color: #f3e27a; }
+.pc-boot { color: var(--pc-dim); margin: calc(2 * var(--dpx)) 0 calc(8 * var(--dpx)); }
+.pc-boot::after { content: '_'; animation: pc-blink 1s steps(2, end) infinite; }
+@keyframes pc-blink { 50% { opacity: 0; } }
+
+.pc-tabs { display: flex; flex-wrap: wrap; gap: calc(6 * var(--dpx)); margin-bottom: calc(10 * var(--dpx)); }
+.pc-tab, .pc-btn { font: inherit; font-family: var(--f-head, monospace); font-size: calc(9 * var(--dpx)); line-height: 1.4; cursor: pointer;
+  color: var(--pc-ink); background: transparent; border: calc(2 * var(--dpx)) solid var(--pc-dim); padding: calc(4 * var(--dpx)) calc(8 * var(--dpx)); }
+.pc-tab:hover, .pc-btn:hover:not(:disabled), .pc-tab:focus-visible, .pc-btn:focus-visible { outline: none; border-color: var(--pc-ink); }
+.pc-tab-on { color: var(--pc-bg); background: var(--pc-ink); border-color: var(--pc-ink); text-shadow: none; }
+.pc-btn:disabled { opacity: .4; cursor: default; }
+.pc-btn-sell { color: #f3e27a; border-color: #8f8440; }
+
+.pc-body { display: flex; flex-direction: column; gap: calc(8 * var(--dpx)); }
+.pc-line { overflow-wrap: anywhere; }
+.pc-dim { color: var(--pc-dim); }
+.pc-warn { color: var(--pc-warn); text-shadow: none; }
+.pc-story { color: #d8f5dc; font-style: italic; }
+
+.pc-goal { display: flex; flex-direction: column; gap: calc(6 * var(--dpx)); padding: calc(10 * var(--dpx));
+  border: calc(2 * var(--dpx)) solid var(--pc-dim); }
+.pc-goal-title { font-family: var(--f-head, monospace); font-size: calc(9 * var(--dpx)); color: var(--pc-dim); }
+.pc-goal-big { font-family: var(--f-head, monospace); font-size: calc(14 * var(--dpx)); line-height: 1.4; }
+.pc-bar { height: calc(10 * var(--dpx)); border: calc(2 * var(--dpx)) solid var(--pc-dim); }
+.pc-bar-fill { height: 100%; background: var(--pc-ink); }
+
+.pc-row { display: flex; gap: calc(10 * var(--dpx)); align-items: center; flex-wrap: wrap; padding: calc(8 * var(--dpx)) 0;
+  border-top: calc(1 * var(--dpx)) dashed var(--pc-dim); }
+.pc-locked { opacity: .5; }
+.pc-info { flex: 1 1 calc(300 * var(--dpx)); min-width: 0; }
+.pc-name { font-family: var(--f-head, monospace); font-size: calc(10 * var(--dpx)); line-height: 1.5; }
+.pc-desc { color: #c6efcb; }
+.pc-meta { color: var(--pc-dim); font-size: calc(16 * var(--dpx)); }
+.pc-acts { display: flex; gap: calc(6 * var(--dpx)); flex: 0 0 auto; }
+.pc-status { min-height: 1.2em; margin-top: calc(8 * var(--dpx)); color: #f3e27a; }
+.pc-foot { margin-top: calc(4 * var(--dpx)); color: var(--pc-dim); font-size: calc(14 * var(--dpx)); text-align: right; }

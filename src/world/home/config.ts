@@ -132,3 +132,12 @@ export const ANCHOR_PLAN = {
   spouse: { p: [SPOUSE_SEAT.x, 0, SPOUSE_SEAT.z], yaw: 0 },
   window: { p: [-0.6, 1.5, -2.2], yaw: 0 },
 } as const;
+
+/**
+ * The fridge (south-east corner, against the east wall; its door faces west into the room) and the desk with the old CRT PC (north
+ * wall, east of the window). Plan boxes [x0, y0, z0, x1, y1, z1]. The stations (`fridge`, `computer`) are in index.ts.
+ */
+export const FRIDGE = { box: [2.35, 0, 1.6, 3.0, 1.75, 2.3], station: [2.3, 0, 1.55, 3.0, 1.95, 2.35] } as const;
+export const DESK = { x0: 0.75, x1: 1.9, z0: -2.45, z1: -1.85, top: 0.74, station: [0.7, 0, -2.5, 1.9, 1.45, -1.75] } as const;
+/** The desk chair (turned to face the desk, north). */
+export const DESK_CHAIR = { x: 1.3, z: -1.45 } as const;

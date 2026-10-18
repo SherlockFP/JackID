@@ -9,8 +9,8 @@ import { createRng, hashSeed } from '@/core/rng';
 export const SLOTS = 4;
 
 export type TonicJuice = 'plain' | 'rare' | 'cursed';
-/** What a shelf slot sells: a timed buff (tonic) or a physical totem (carried item). */
-export type TonicKind = 'buff' | 'totem';
+/** What a shelf slot sells: a timed buff (tonic), a physical totem (carried item) or a snack from the food page (a `food.*` buff). */
+export type TonicKind = 'buff' | 'totem' | 'food';
 
 /** Totems the Apothecary stocks (ids from items/data.ts). Their prices come from that catalogue. */
 export const SHELF_TOTEMS: readonly string[] = ['lucky_idol', 'loss_shield', 'profit_bell'];
@@ -32,6 +32,20 @@ export const TONIC_CATALOGUE: ReadonlyArray<CatalogueEntry> = [
   { kind: 'totem', id: 'profit_bell', price: 260, juice: 'rare' },
 ];
 
+/**
+ * The food page (client: "put food like bananas we can eat"): the same four slots, a snack each. Each is a one-Watch buff `food.*`
+ * (src/game/data/buffs.ts; the rules and the fridge are src/game/food.ts, which machines may not import, so the prices are mirrored
+ * here and a test keeps them in step). Eating one replaces the food bonus you already had. The stock never changes.
+ */
+export const FOOD_SHELF: ReadonlyArray<CatalogueEntry> = [
+  { kind: 'food', id: 'food.banana', price: 8, juice: 'plain' },
+  { kind: 'food', id: 'food.coffee', price: 14, juice: 'plain' },
+  { kind: 'food', id: 'food.sandwich', price: 20, juice: 'plain' },
+  { kind: 'food', id: 'food.energy', price: 28, juice: 'plain' },
+];
+/** Every buff the food page can leave on the player (and the hidden slot a meal waits in): cleared before a new snack so the show replays. */
+export const FOOD_BUFF_IDS: readonly string[] = [...FOOD_SHELF.map((f) => f.id), 'food.pending'];
+
 export interface TonicOffer {
   kind: TonicKind;
   /** Buff id (tonic.*) or totem id (lucky_idol …). */
@@ -44,6 +58,11 @@ export interface TonicOffer {
 export function tonicStock(seed: number, night: number): TonicOffer[] {
   const rng = createRng(hashSeed(seed, 'apothecary', night));
   return rng.shuffle([...TONIC_CATALOGUE]).slice(0, SLOTS).map((c) => ({ kind: c.kind, id: c.id, price: c.price, juice: c.juice }));
+}
+
+/** The food page's four slots. */
+export function foodStock(): TonicOffer[] {
+  return FOOD_SHELF.map((c) => ({ kind: c.kind, id: c.id, price: c.price, juice: c.juice }));
 }
 
 /** Cursor step over the slots, wrapping. */

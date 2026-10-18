@@ -59,6 +59,7 @@ export function noteFound(id: string): boolean { return found.has(id); }
 export function resetNotes(): void {
   found.clear();
   journalLine = null;
+  tallyClear();
   readerOpen = null;
   const s = stage;
   stage = null;
@@ -66,6 +67,32 @@ export function resetNotes(): void {
   offInteract?.();
   offInteract = null;
 }
+
+// ── the Tally Sheet: a journal page of what the player has learned about cheats (the Crooked Table fills it) ─────────────
+/** Strings live with the event (`event.watch.crooked_table.*`). */
+const TALLY_KEY = 'event.watch.crooked_table.';
+export interface TallyLine { key: string; vars?: Record<string, number> }
+const tallyLines: TallyLine[] = [];
+/** The journal's virtual page (not a world note: it has no anchor and never gets a prop). */
+const TALLY_PAGE: NoteDef = { id: 'tally', kind: 'note', anchor: '', dx: 0, dz: 0, yaw: 0 };
+/**
+ * Adds a line to the Tally Sheet (a key under `event.watch.crooked_table.`, such as `sheet.l.plate` or a `tell.*` line).
+ * The same key with the same vars is kept once; a tell line for the same table and kind replaces the older wording.
+ */
+export function tallyAdd(key: string, vars?: Record<string, number>): void {
+  const same = tallyLines.findIndex((l) => l.key === key && JSON.stringify(l.vars ?? null) === JSON.stringify(vars ?? null));
+  if (same >= 0) return;
+  // a tell at the same table (`t`) with the same family (`tell.tally`) is an update of the count, not a new line
+  const fam = key.startsWith('tell.') ? key.split('.').slice(0, 2).join('.') : null;
+  const old = fam && vars?.t !== undefined ? tallyLines.findIndex((l) => l.key.startsWith(fam) && l.vars?.t === vars.t) : -1;
+  if (old >= 0) tallyLines[old] = { key, vars }; else tallyLines.push({ key, vars });
+}
+export function tallyLinesNow(): readonly TallyLine[] { return tallyLines; }
+export function tallyClear(): void { tallyLines.length = 0; }
+const tallyTitle = (): string => t(`${TALLY_KEY}sheet.t`);
+const tallyBody = (): string => (tallyLines.length ? tallyLines.map((l) => `- ${t(TALLY_KEY + l.key, l.vars)}`).join('\n') : t(`${TALLY_KEY}sheet.empty`));
+const titleOf = (d: NoteDef): string => (d === TALLY_PAGE ? tallyTitle() : t(`story.note.${d.id}.t`));
+const bodyOf = (d: NoteDef): string => (d === TALLY_PAGE ? tallyBody() : t(`story.note.${d.id}.b`));
 
 const indexOf = (id: string): number => NOTES.findIndex((n) => n.id === id);
 
@@ -348,8 +375,11 @@ function journalPlacard(): Placard3D {
   let sel = 0;
   let spin = 0;
   let mark: THREE.Mesh | null = null;
-  const list = (): NoteDef[] => NOTES.filter((d) => found.has(d.id));
-  const bodyRows = (d: NoteDef): string[] => wrapPx5(t(`story.note.${d.id}.b`), PAGE_W);
+  const list = (): NoteDef[] => {
+    const l = NOTES.filter((d) => found.has(d.id));
+    return tallyLines.length ? [...l, TALLY_PAGE] : l;
+  };
+  const bodyRows = (d: NoteDef): string[] => wrapPx5(bodyOf(d), PAGE_W);
   const rightRows = JOURNAL_PX[1] - 26 - 30;
   const pagesOf = (): number => {
     const l = list();
@@ -379,7 +409,7 @@ function journalPlacard(): Placard3D {
       const l = list();
       const top = Math.floor(sel / LIST_ROWS) * LIST_ROWS;
       put(g, t('story.ui.journal'), 14, 8, INK);
-      put(g, journalLine ?? t('story.ui.journalCount', { found: l.length, total: NOTES.length }), 14, 20, INK_SOFT);
+      put(g, journalLine ?? t('story.ui.journalCount', { found: found.size, total: NOTES.length }), 14, 20, INK_SOFT);
       rule(g, 14, 32, PAGE_W);
       g.fillStyle = INK_SOFT; g.fillRect(w / 2, 8, 1, h - 16);       // the gutter
       if (!l.length) {
@@ -392,13 +422,13 @@ function journalPlacard(): Placard3D {
           g.fillStyle = on ? INK : BRASS;
           g.fillRect(12, y - 1, PAGE_W + 4, LIST_ROW - 1);
         }
-        put(g, fitPx5(t(`story.note.${l[k].id}.t`), PAGE_W - 6), 14, y + 1, on ? CREAM : INK);
+        put(g, fitPx5(titleOf(l[k]), PAGE_W - 6), 14, y + 1, on ? CREAM : INK);
         c.region(12, y - 1, PAGE_W + 4, LIST_ROW - 1, `pick:${k}`);
       }
       const cur = l[Math.min(sel, Math.max(0, l.length - 1))];
       if (cur) {
         const x = w / 2 + 14;
-        put(g, fitPx5(t(`story.note.${cur.id}.t`), PAGE_W), x, 8, INK);
+        put(g, fitPx5(titleOf(cur), PAGE_W), x, 8, INK);
         rule(g, x, 20, PAGE_W);
         const pages = paginate(bodyRows(cur), rowsIn(rightRows));
         pages[Math.min(c.page, pages.length - 1)].forEach((r, k) => put(g, r, x, 26 + k * 10, INK));
@@ -407,7 +437,7 @@ function journalPlacard(): Placard3D {
           button(c, x + 22, h - 22, 18, 13, '>', 'next');
           put(g, `${Math.min(c.page, pages.length - 1) + 1}/${pages.length}`, x + 52, h - 19, INK_SOFT);
         }
-        button(c, w - 14 - 56, h - 22, 56, 13, t('story.ui.read'), 'read');
+        if (cur !== TALLY_PAGE) button(c, w - 14 - 56, h - 22, 56, 13, t('story.ui.read'), 'read');
       }
       button(c, 14, h - 22, 56, 13, t('story.ui.close'), 'close');
     },
@@ -430,7 +460,7 @@ function journalPlacard(): Placard3D {
       }
       if (a === 'read' && l.length) {
         const d = l[Math.min(sel, l.length - 1)];
-        present(readPlacard(d), d);
+        if (d !== TALLY_PAGE) present(readPlacard(d), d);   // the Tally Sheet is read in the journal itself
       }
     },
     keys: {

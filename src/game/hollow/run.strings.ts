@@ -6,17 +6,17 @@
 export default {
   prefix: 'hollowrun.',
   en: {
-    'forgiven.1': "The Lord's writ forgives this Night's quota.",
-    'forgiven.2': "The Lord's writ forgives this Night and the next.",
+    'forgiven.1': "The Three Seats forgive this Night's quota.",
+    'forgiven.2': "The Three Seats forgive this Night and the next.",
     'soulRestored': 'You caught the cheat. One Soul Mark returns to your card.',
-    'taken': 'You are taken below. The run is over.',
+    'taken': 'The Three Seats take you below. The run is over.',
     'banked': 'Your Obols are banked, times 1.5.',
   },
   tr: {
-    'forgiven.1': 'Lordun emri bu Gecenin kotasını affediyor.',
-    'forgiven.2': 'Lordun emri bu Geceyi ve sonrakini affediyor.',
+    'forgiven.1': 'Üç Koltuk bu Gecenin kotasını siliyor.',
+    'forgiven.2': 'Üç Koltuk bu Geceyi ve sonrakini siliyor.',
     'soulRestored': 'Hileyi yakaladın. Bir Ruh İzi kartına geri döndü.',
-    'taken': 'Aşağıya alındın. Koşu bitti.',
+    'taken': 'Üç Koltuk seni aşağı çekti. Koşu bitti.',
     'banked': 'Obolların ×1,5 olarak hesaba geçti.',
   },
 };

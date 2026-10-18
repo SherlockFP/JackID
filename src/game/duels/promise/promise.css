@@ -1,12 +1,17 @@
 /* ADA'S KITCHEN TABLE (Rock, Paper, Promise): a plain readable panel in the lower middle. Tokens come from ui.css. */
 .pm-table {
-  position: absolute; left: 50%; bottom: calc(var(--lb, 0) * var(--bar-h, 0px) + 40 * var(--u)); transform: translateX(-50%);
+  position: absolute; left: 50%; bottom: calc(var(--lb, 0) * var(--bar-h, 0px) + 52 * var(--u)); transform: translateX(-50%);
   width: min(92%, calc(220 * var(--u))); z-index: 3; pointer-events: auto;
   padding: calc(6 * var(--u)) calc(8 * var(--u));
   background: var(--panel); box-shadow: inset 0 0 0 var(--u) var(--slate), 0 0 0 var(--u) var(--void);
   font-family: var(--f-head); font-size: var(--fh); line-height: 1.25; color: var(--ivory);
 }
-.pm-title { display: flex; justify-content: space-between; gap: calc(8 * var(--u)); color: var(--amber); }
+/* The header wraps as two whole items (the title never breaks word by word into a narrow column; a long stake drops under it). */
+.pm-title { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: calc(2 * var(--u)) calc(8 * var(--u)); color: var(--amber); }
+.pm-title > span:first-child { white-space: nowrap; flex: 0 0 auto; }
+.pm-title > span:last-child { flex: 1 1 auto; min-width: 0; text-align: right; }
+/* The mouse is free at the table, so the "click to capture" hint stays off the panel. */
+body:has(.pm-table) .cap-hint { display: none !important; }
 .pm-score { font-size: calc(var(--fh) * 1.25); margin: calc(3 * var(--u)) 0; }
 .pm-cracks { opacity: 0.8; }
 .pm-head { margin-top: calc(4 * var(--u)); color: var(--amber); min-height: 1.25em; }

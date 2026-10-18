@@ -16,8 +16,9 @@ import { HOME_ANCHORS, type HomeRoomApi, type HomeStation } from '@/game/home/co
 import type { CollisionWorld, InteractionSystem, WorldLights } from '../types';
 import type { InteractableX } from '../interact';
 import type { LightHint } from '../sys/arch';
-import { ANCHOR_PLAN, at, HOME_ZONE, SPOUSE_SEAT, STATION_PRIORITY, WALL_STATIONS, WIN_X0, WIN_X1, WIN_Y0, WIN_Y1 } from './config';
+import { ANCHOR_PLAN, at, DESK, FRIDGE, HOME_ZONE, SPOUSE_SEAT, STATION_PRIORITY, WALL_STATIONS, WIN_X0, WIN_X1, WIN_Y0, WIN_Y1 } from './config';
 import { buildRoom, type Statics } from './room';
+import { buildFurniture } from './furniture';
 import { HomeDoor } from './door';
 import { HallVisitors, type HomeVisitor } from './visitors';
 
@@ -84,6 +85,7 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
   root.add(shell, dyn);
 
   const room = buildRoom({ kit: o.kit, tex: o.tex, seed: o.seed, shell, dyn });
+  const furniture = buildFurniture({ kit: o.kit, tex: o.tex, seed: o.seed, shell, dyn });   // the fridge, the desk and the old PC
   const door = new HomeDoor({ kit: o.kit, dyn, collision: o.collision ?? null });
   activeDoor = door;
 
@@ -191,6 +193,15 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
       sub: () => t('home.station.door.sub'),
       disabled: () => true,
     }),
+    // the fridge (Ada's snack, the market's deliveries: src/game/food.ts) and the old PC on the desk (the economy lane's market)
+    station('fridge', boxAt(...FRIDGE.station), 2, {
+      label: () => t('home.station.fridge'),
+      sub: () => t('home.station.fridge.sub'),
+    }),
+    station('computer', boxAt(...DESK.station), 2, {
+      label: () => t('home.station.computer'),
+      sub: () => t('home.station.computer.sub'),
+    }),
     station('window', boxAt(WIN_X0 - 0.2, WIN_Y0 - 0.05, -2.85, WIN_X1 + 0.2, WIN_Y1 + 0.1, -2.3), 2, {
       label: () => t('home.station.window'),
       sub: () => t('home.station.window.sub'),
@@ -203,12 +214,13 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
 
   return {
     root,
-    statics: room.statics,
-    lights: room.lights,
+    statics: [...room.statics, ...furniture.statics],
+    lights: [...room.lights, ...furniture.lights],
     anchors,
     api,
-    update() {
-      // nothing per frame: the rain scrolls in the shader, the spouse is driven by the kit's mannequin update
+    update(dt, t) {
+      // the rain scrolls in the shader and the spouse is driven by the kit's mannequin update; only the PC's cursor blinks here
+      furniture.update(dt, t);
     },
     dispose() {
       for (const off of offs.splice(0)) off();

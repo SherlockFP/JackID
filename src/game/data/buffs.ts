@@ -6,6 +6,7 @@
 import type { BuffDef, NightEventDef } from '@/game/types';
 import type { ModEffect } from '@/game/modifiers.types';
 import { CHARM_LUCK_CAP, charmLuckFor } from './charms';
+import { FOOD_FX, onFoodAdded, onPendingTick, PENDING_BUFF } from '../food';
 
 const S = (en: { name: string; desc: string }, tr: { name: string; desc: string }): BuffDef['strings'] => ({ en, tr });
 
@@ -92,6 +93,32 @@ export const BUFF_DATA: BuffDef[] = [
     effects: [{ hook: 'x.pawn.freeRerolls', op: 'add', value: 1 }],
     strings: S({ name: 'Favoured', desc: '+1 free Pawn reroll for one Watch.' },
       { name: 'Gözde', desc: 'Bir nöbet boyunca +1 bedava Pawn yenileme.' }),
+  },
+
+  // ── food (src/game/food.ts): one bonus at a time, one Watch each. A meal eaten during a Watch waits as `food.pending` and
+  // turns into the bonus when the Watch is over, so the pull and clock numbers (read at the Bell) always land on the NEXT Watch. ──
+  ...([
+    ['banana', 'icon.pull', [{ hook: 'x.run.pullsAdd', op: 'add', value: FOOD_FX.pulls }] as ModEffect[],
+      ['Banana', 'Muz'], ['+1 pull on this Watch.', 'Bu Vardiyada +1 çekiş.']],
+    ['coffee', 'icon.hand', [{ hook: 'x.tilt.grace', op: 'add', value: FOOD_FX.tiltGrace }] as ModEffect[],
+      ['Coffee', 'Kahve'], ['Steadier hands: Tilt starts 1 pull later this Watch.', 'Daha sabit eller: bu Vardiyada TİLT 1 çekiş geç başlar.']],
+    ['sandwich', 'icon.star', [{ hook: 'payout.mult', op: 'mult', value: FOOD_FX.starPayout }] as ModEffect[],
+      ['Sandwich', 'Sandviç'], ['+1 ŞANS star this Watch (payouts +1 %).', 'Bu Vardiyada +1 ŞANS yıldızı (ödemeler +%1).']],
+    ['energy', 'icon.bolt', [{ hook: 'x.run.clockAdd', op: 'add', value: FOOD_FX.clockSec }] as ModEffect[],
+      ['Energy Drink', 'Enerji İçeceği'], ['+15 s on this Watch clock.', 'Bu Vardiya saatine +15 sn.']],
+  ] as const).map(([id, icon, effects, name, desc]): BuffDef => ({
+    id: `food.${id}`, kind: 'buff', scope: 'player', icon, maxStacks: 1,
+    duration: { kind: 'shifts', n: 1 }, reapply: 'replace', exclusive: 'food', tags: ['food'],
+    effects: [...effects],
+    strings: S({ name: name[0], desc: desc[0] }, { name: name[1], desc: desc[1] }),
+    on: { add: (c) => onFoodAdded(`food.${id}`, c) },
+  })),
+  {
+    id: PENDING_BUFF, kind: 'buff', scope: 'player', icon: 'icon.hourglass', maxStacks: 1,
+    duration: { kind: 'permanent' }, reapply: 'replace', tags: ['food'], hidden: true, tickEvery: 1,
+    strings: S({ name: 'Saved Meal', desc: 'Eaten in a Watch: the bonus starts with the next one.' },
+      { name: 'Saklanan Yemek', desc: 'Vardiya sırasında yendi: bonus bir sonrakiyle başlar.' }),
+    on: { tick: (c) => onPendingTick(c) },
   },
 
   // ── bounty rewards ──

@@ -21,6 +21,10 @@ const strings = {
     'station.door.sub': 'Locked for the night',
     'station.window': 'Look',
     'station.window.sub': 'The rain and the city',
+    'station.fridge': 'Fridge',
+    'station.fridge.sub': 'Something to eat',
+    'station.computer': 'Computer',
+    'station.computer.sub': 'The old machine',
   },
   tr: {
     'station.bed': 'Uyu',
@@ -39,6 +43,10 @@ const strings = {
     'station.door.sub': 'Gece kilitli',
     'station.window': 'Bak',
     'station.window.sub': 'Yağmur ve şehir',
+    'station.fridge': 'Buzdolabı',
+    'station.fridge.sub': 'Yiyecek bir şeyler',
+    'station.computer': 'Bilgisayar',
+    'station.computer.sub': 'Eski makine',
   },
 };
 

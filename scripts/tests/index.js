@@ -78,3 +78,6 @@ import './floorEvents.test.mjs';
 import './floorWiring.test.mjs';
 import './scrounge.test.mjs';
 import './promise.test.mjs';
+import './crookedTable.test.mjs';
+import './food.test.mjs';
+import './economy.home.test.mjs';

@@ -29,7 +29,7 @@ import { buildDrums, type Drums } from './menuDrums';
 import { buildCabinet, DIE_CENTER, type Cabinet } from './menuCabinet';
 import { MenuDie, easeOutBack, type DieHit } from './menuDie';
 import { MenuBurst } from './menuBurst';
-import { bodyText, makeCanvasTex, paintDieFace, paintPanel, paintValueFace, panelText, PANEL_BUTTON, type CanvasTex, type PanelOpts } from './menuArt';
+import { bodyText, fitText, GOLD_HI, makeCanvasTex, paintDieFace, paintPanel, paintValueFace, panelText, PANEL_BUTTON, type CanvasTex, type PanelOpts } from './menuArt';
 
 // Face order = BoxGeometry groups (+X, -X, +Y, -Y, +Z, -Z): PLAY faces you, MULTIPLAYER is one roll right, SETTINGS left,
 // FREE CASINO up, QUIT down (CONTINUE RUN takes that face while a run is saved), FOUNDATIONS round the back.
@@ -217,11 +217,15 @@ export function createMenuState(): AppStateHandler<'menu'> {
     panel.paint((c, w, h) => {
       // The controls line is set here, not by paintPanel: it is fitted to 84% of the panel width at no more than 0.10 of its
       // height, and sits well above the inner frame line, so the longest Turkish hint never runs into the frame (21:9 report).
-      paintPanel(c, w, h, { ...o, hint: undefined });
-      if (!o.hint) return;
       // The inner frame line (menuArt frame) sits at (w / 40) * 2.2 from the edge, so on a wide plate (21:9) it is a big share of
-      // the height. The hint sits above that line with a margin, and its size fits the room between the body and the line.
+      // the height. The title is drawn here (paintPanel gets an empty one) so its top clears that line on every aspect, and the
+      // hint sits above the line with a margin, its size fitted to the room between the body and the line.
       const frameIn = (w / 40) * 2.2 + Math.max(2, w / 96) / 2;
+      paintPanel(c, w, h, { ...o, title: '', hint: undefined });
+      const tTop = frameIn + h * 0.025, tBot = (o.bodyTop ?? 0.33) * h - h * 0.015;
+      const tPx = Math.max(10, Math.min(h * 0.14, tBot - tTop));
+      fitText(c, o.title, w / 2, Math.max(h * 0.185, tTop + tPx / 2), w * 0.9, tPx, GOLD_HI);
+      if (!o.hint) return;
       const floor = h - frameIn - Math.max(6, h * 0.03);      // lowest pixel the hint may reach
       const ceil = h * 0.7;                                    // keep clear of the title and the body text
       let px = Math.round(h * 0.1);

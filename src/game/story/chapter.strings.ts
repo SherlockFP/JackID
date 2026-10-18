@@ -46,7 +46,7 @@ export default {
     'chapter.n8.title': 'İKİNCİ AD',
     'chapter.n8.line': 'Önce eve gelmenizi istedi. Bu gece adınızı masaya koyuyorsunuz.',
     'reveal.1': 'Misafirlerimizin dikkatine. Bu gece iki adlı bir kart final masasına oturuyor.',
-    'reveal.2': 'İlk ad borçlu. İkinci adın bedelini zaten bir kez ödediler. İlk satırı Mira ödedi.',
+    'reveal.2': 'İlk ad borçlu. İkincisinin bedeli bir kez ödenmişti bile. İlk satırı Mira ödedi.',
     'reveal.3': 'Söylenen söz yazılır. Yazılan söz ödenir.',
     'reveal.4': 'Bu gece neyi koyarsan koy, sözünü tut. Fiyatını biçemedikleri tek şey o.',
   },

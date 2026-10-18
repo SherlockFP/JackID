@@ -54,6 +54,7 @@ import { hollowDoor } from '@/world/hollow';
 import { mountDraftUi } from '@/game/draft.ui';
 import { mountNightCardsUi } from '@/game/nightCards.ui';
 import { mountScrounge } from '@/game/scrounge';
+import { mountFood } from '@/game/food';
 import { mountOverpayUi } from '@/game/overpay.ui';
 import { mountPhoneUi } from '@/game/home/phone.ui';
 import { mountEvening, type Evening } from '@/game/home/evening';
@@ -148,6 +149,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   // Broke-state scrounge (wave 76): critters to catch and sell, and the wristwatch, when the pocket cannot cover a bet.
   // (the run class has cheapestBet; the public DebtRun interface does not list it)
   if (!params.online) mounts.push(mountScrounge(run as unknown as Parameters<typeof mountScrounge>[0], world));
+  // food (wave 79): the fridge station at home and the bar meals
+  if (!params.online) mounts.push(mountFood(run as unknown as Parameters<typeof mountFood>[0]));
   SeatHud.helpKeyLabel = () => app.input.keyLabel('m.help');
   run.attachWorld({
     machines: () => world.machines().map((m) => ({ instance: m.id, machineId: m.def.id, size: world.slot(m.id)?.size })),

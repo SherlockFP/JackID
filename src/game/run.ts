@@ -75,6 +75,7 @@ import { createKeepsakes, type KeepsakeId, type KeepsakeOutcome, type KeepsakeSa
 import { createGhostSeat, type GhostMatch, type GhostSave, type GhostSeat, type GhostSeatInfo } from './ghostSeat';
 import keepsakeStrings from './keepsake.strings';
 import ghostStrings from './ghostSeat.strings';
+import computerStrings from './home/computer.strings';
 import { cloneChapter, freshChapter, readChapter, type ChapterRecord } from './story/chapter';
 import type { HomePhoneApi, HomeSave, HomeStage } from './home/contract';
 import {
@@ -102,6 +103,9 @@ import { Spotlight, isSpotlightEligible, spotlightStartLine, type SpotlightSave,
 import { WatchEvents, type WatchEventSave } from './watchEvents';
 import type { FloorAward, WatchFloor } from './events/types';
 import type { EventBannerShow } from './buffs/banner';
+import { createHomeEconomy, type EconSave, type HomeEconomy } from './economy/homeEconomy';
+import { DEADBOLT_TOLL_BACK } from './economy/market';
+import { FRIDGE_MAX, addToFridge, fridgeOf, fridgeRestore, fridgeSnapshot, type FridgeSave } from './food';
 import type { IdleReport, TycoonState } from '@/game/types';
 
 /**
@@ -348,6 +352,7 @@ registerStrings(checkpointStrings.prefix, { en: checkpointStrings.en, tr: checkp
 registerStrings(runStrings.prefix, { en: runStrings.en, tr: runStrings.tr });
 registerStrings(keepsakeStrings.prefix, { en: keepsakeStrings.en, tr: keepsakeStrings.tr });
 registerStrings(ghostStrings.prefix, { en: ghostStrings.en, tr: ghostStrings.tr });
+registerStrings(computerStrings.prefix, { en: computerStrings.en, tr: computerStrings.tr });   // the Dawn and deadbolt banners
 
 let bossStringsDone = false;
 /** Boss names and texts to `event.<id>.name|desc|announce` (the banner and HUD read them like any Night event). Once. */
@@ -474,6 +479,10 @@ export interface RunExt {
   dawnBook?: DawnReceipt;
   /** The four biggest wins of the run (the jackpot wall). Optional: older saves have none. */
   grandWins?: GrandWin[];
+  /** THE HOME COMPUTER (wave 77): ventures held, home upgrades, the fridge, the last Dawn's pay. Optional: older saves and runs without the Home layer have none. */
+  econ?: EconSave;
+  /** FOOD (wave 77): the fridge at home (src/game/food.ts). Optional: older saves and runs without the Home layer have none. */
+  fridge?: FridgeSave;
 }
 /** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
 interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
@@ -569,6 +578,8 @@ export interface DebtRun extends RunApi {
   readonly homeOn: boolean;
   /** Where the run stands at home: `ride` (lift up), `evening`, `sleep`, `doomed` (a missed quota), or null (on the casino floor). */
   homeStage(): HomeStage | null;
+  /** THE HOME COMPUTER (wave 77): ventures, market and the run goal (src/game/economy). Null without the Home layer. */
+  homeEconomy(): HomeEconomy | null;
   /** Stage, sim seconds left in it, and the lights and chain of the apartment (the controller and the save read it). */
   homeState(): { stage: HomeStage | null; left: number; lights: boolean; chain: boolean };
   /** The floor lever would take the lift now (paid Night, Home layer on, not Night 8): the terminal reads it for its label. */
@@ -946,6 +957,10 @@ class Run implements DebtRun {
   private hLights = true;
   private hChain = false;
   private readonly hPhone: HomePhoneApi | null;
+  /** THE HOME COMPUTER (wave 77): created with the Home layer, saved in `ext.econ`. */
+  private readonly homeEcon: HomeEconomy | null;
+  /** The computer UI's disposer (a browser run mounts it lazily; tests and the bench have no DOM). */
+  private computerUiOff: (() => void) | null = null;
   /** THE LUCK METER (wave 73): stars from the run's own events; its bonus joins the luck hook base. */
   private readonly luckMeter: LuckMeter;
   /** THE KEEPSAKE STAKE (wave 75): the keepsake box (owned, lost, carried, staked). Saved in `resume.ext.keepsake`. */
@@ -1220,10 +1235,13 @@ class Run implements DebtRun {
     this.jackpots = this.makeJackpotsApi();
     // THE EVENING: the phone belongs to the Home layer (solo only); an online run has none (`homePhone()` is null).
     this.hPhone = this.homeOn ? createPhone(this) : null;
+    this.homeEcon = this.homeOn ? this.makeHomeEconomy() : null;
     this.luckMeter = createLuckMeter(this, () => this.modsImpl.touch());
     this.modsImpl.register(this.luckMeter.provider());
     // THE PROLOGUE (wave 72): a fresh Home-layer run opens in the apartment; a resumed save skips it (its Night is already on).
     this.prologue = this.homeOn && opts.prologue === true && resume === null;
+    // a fresh run starts with an empty fridge; a resumed one gets its saved fridge in restore()
+    if (this.homeOn && resume === null) fridgeRestore(undefined);
 
     if (resume) {
       this.restore(resume);
@@ -1670,6 +1688,11 @@ class Run implements DebtRun {
   chapterRecord(): ChapterRecord { return this.chapterRec; }
   charms(pid?: PlayerId): readonly CharmState[] { return this.charmBox.list(pid ?? this.selfId); }
   loseCharm(id: string): boolean {
+    // THE HOME COMPUTER (wave 77): with the deadbolt in, a Picker at the door cannot reach a charm
+    if (this.hStage === 'evening' && this.homeEcon?.has('deadbolt')) {
+      this.banner?.(t('pc.deadbolt.held'), { hold: 3, size: 8 });
+      return false;
+    }
     const def = charmDef(id);
     if (!def || def.rarity === 'legendary' || def.rarity === 'cursed') return false;
     if (!this.charmBox.remove(this.selfId, id)) return false;
@@ -1701,6 +1724,38 @@ class Run implements DebtRun {
   answerPhone(choice: number): void { if (!this.rescue.answer(choice)) this.hotline.answer(choice); }
   /** The player's own phone (spouse and Collector threads). Null when the Home layer is off (online, tests). */
   homePhone(): HomePhoneApi | null { return this.hPhone; }
+  homeEconomy(): HomeEconomy | null { return this.homeEcon; }
+
+  /**
+   * THE HOME COMPUTER (wave 77): the economy's port onto the run (the pocket, the Heat, the Pawn's free rerolls), and the computer
+   * UI on the apartment desk. The UI module is DOM-only, so a browser run imports it lazily; Node tests and the bench skip it.
+   */
+  private makeHomeEconomy(): HomeEconomy {
+    const econ = createHomeEconomy({
+      seed: this.seed,
+      night: () => this.night(),
+      nightsPaid: () => this.stats.nightsPaid ?? 0,
+      wallet: () => this.coins,
+      spend: (n, why) => {
+        if (this.ended || !this.spend('coin', n, why)) return false;
+        this.persistSoon();
+        return true;
+      },
+      earn: (n, why) => { this.earn('coin', n, why); this.persistSoon(); },
+      heat: () => this.hPhone?.heat() ?? 0,
+      addFreeReroll: (n) => { this.freeRerolls += n; this.notify(); },
+      fridgeRoom: () => Math.max(0, FRIDGE_MAX - fridgeOf().items().length),
+      deliver: (food) => addToFridge(food),
+      open: () => this.hStage === 'evening' && !this.prologue && !this.ended,
+    });
+    if (typeof document !== 'undefined') {
+      void import('./home/computer.ui').then((m) => {
+        if (this.computerUiOff === null && !this.disposedUi) this.computerUiOff = m.mountComputerUi(this);
+      }).catch((e: unknown) => { log.warnOnce('run:computerUi', 'run', `computer UI failed to load: ${String(e)}`); });
+    }
+    return econ;
+  }
+  private disposedUi = false;
 
   /** The Night summary's books for the Night in progress (float, interest, tickets). A copy: the caller cannot change them. */
   nightLedger(): Readonly<NightLedger> { return { ...this.ledger }; }
@@ -1741,6 +1796,14 @@ class Run implements DebtRun {
     else this.currencies.set(cur, this.balance(cur, pid) - amount);
     this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: -amount, reason });
     this.notify();
+    // THE HOME COMPUTER (wave 77): the deadbolt gives half of a knock's toll back (the visitor got less through the door)
+    if (cur === 'coin' && reason === 'knock.toll' && this.homeEcon?.has('deadbolt')) {
+      const back = Math.floor(amount * DEADBOLT_TOLL_BACK);
+      if (back > 0) {
+        this.earn('coin', back, 'econ:deadbolt');
+        this.banner?.(t('pc.deadbolt.toll', { n: back }), { hold: 3, size: 8 });
+      }
+    }
     return true;
   }
   dread(): number {
@@ -1893,6 +1956,8 @@ class Run implements DebtRun {
       if (gain > 0) this.earn('coin', gain, 'charm:elevator_token');
     }
     this.index += 1;
+    // THE HOME COMPUTER (wave 77): the Evening's limits reset, and the framed photo gives its ŞANS star
+    this.homeEcon?.newNight(this.index + 1);
     // THE KEEPSAKE STAKE and THE GHOST SEAT (wave 75): a new Night drops a waiting stake; the copy sits where last Night's losses were
     this.keepsakes.newNight();
     const seat = this.ghostSeat.beginNight(this.index + 1);
@@ -2274,6 +2339,9 @@ class Run implements DebtRun {
     this.hotline.dispose();
     this.rescue.dispose();
     this.hPhone?.dispose();
+    this.disposedUi = true;
+    this.computerUiOff?.();
+    this.computerUiOff = null;
     this.luckMeter.dispose();
     clearClockHolds();
     this.buffSys.dispose();
@@ -2456,7 +2524,8 @@ class Run implements DebtRun {
       interest: interestAtDawn, tithe: Math.max(0, Math.floor(this.tithe.addedQuota())),
     };
     // HOUSE TAKES NOTICE (wave 47): the wealth of this Dawn (pocket + bank, before the surplus returns) floors the next quota.
-    const wealth = this.coins + this.debtPaid;
+    // THE HOME COMPUTER (wave 77): the House notices the ventures too (their sell value), so they are no hiding place for coins
+    const wealth = this.coins + this.debtPaid + (this.homeEcon?.worth() ?? 0);
     this.houseWealth = wealth;
 
     // The tiers read the overpay principal (decision D1), and a broken seal forfeits them all for the Night (decision D2).
@@ -2484,6 +2553,7 @@ class Run implements DebtRun {
       this.ledger.carried += surplus;
       this.earn('coin', surplus, 'dawn:surplus');
     }
+    this.payVentures(nightDef(this.index).no);
     this.stats.nightsPaid = (this.stats.nightsPaid ?? 0) + 1;
     this.syncQuota();
     this.nightDone = true;
@@ -3340,6 +3410,16 @@ class Run implements DebtRun {
     if (!ne.isActive(boss.id)) ne.trigger(boss.id);
   }
 
+  /** THE HOME COMPUTER (wave 77): the ventures pay at a paid Dawn (seeded), with one banner for the total and any freeze. */
+  private payVentures(night: number): void {
+    const econ = this.homeEcon;
+    if (!econ) return;
+    const r = econ.dawn(night);
+    if (r.lines.length === 0) return;
+    const text = r.frozen > 0 ? t('pc.dawn.frozen', { n: r.total, k: r.frozen }) : t('pc.dawn.paid', { n: r.total });
+    this.banner?.(text, { color: r.frozen > 0 ? '#ff9a6a' : '#9cff9c', hold: 4, size: 8 });
+  }
+
   // ── special rooms (wave 24, docs/WAVE24_PLAN.md section 2) ─────────────────────────────────────────
   /** Dawn after a paid Night: Wing Keys (Nights 1-6, bosses 3/6/8), the Manager's Key (Night 6 boss), and the Parlour after Night 3. */
   private grantKeys(): void {
@@ -3694,6 +3774,7 @@ class Run implements DebtRun {
       ...(this.dawnBook ? { dawnBook: { ...this.dawnBook } } : {}),
       ...(this.grandWinList.length > 0 ? { grandWins: this.grandWinList.map((w) => ({ ...w })) } : {}),
       ...(this.hPhone ? { home: this.homeSave(this.hPhone) } : {}),
+      ...(this.homeEcon ? { econ: this.homeEcon.snapshot(), fridge: fridgeSnapshot() } : {}),
       luck: this.luckMeter.snapshot(), keepsake: this.keepsakes.snapshot(), ghost: this.ghostSeat.snapshot(), chapter: cloneChapter(this.chapterRec),
     };
     return {
@@ -4086,6 +4167,8 @@ class Run implements DebtRun {
     this.ghostSeat.restore(e.ghost);
     this.chapterRec = readChapter(e.chapter);
     if (this.homeOn) this.restoreHome(e.home);
+    this.homeEcon?.restore(e.econ);
+    if (this.homeOn) fridgeRestore(e.fridge);
     this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);
     this.watchDeposits = Math.max(0, e.watchDep ?? 0);
     this.watchFloatSnap = typeof e.watchFloat === 'number' && Number.isFinite(e.watchFloat) ? Math.max(0, Math.floor(e.watchFloat)) : null;

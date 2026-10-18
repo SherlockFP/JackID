@@ -23,6 +23,7 @@ import { auctionPrice, AUCTION_BID_S, bidAuction as placeBid, closeAuction, roll
 import { rollCrate, tryOpenCrate, type CrateState } from './events/crateDrop';
 import { pickLitMachine, SINGLE_LIGHT_S, singleLightAllows, singleLightEffects } from './events/singleLight';
 import { spinWheel, WHEEL_S, wheelEffects, wheelSpinning, type WheelSegment } from './events/wheelSpin';
+import { callCheat as callTable, CROOKED_S, recordPlay as recordTablePlay, rigEffects, rollCrooked, tableIndex, tellsAt, type CallResult, type CrookedOutcome, type CrookedState, type CrookedTell } from './events/crookedTable';
 import { NO_FLOOR, type FloorAward, type FloorOutcome, type FloorPt, type WatchFloor } from './events/types';
 
 /** Length of a Watch event, Watch-clock seconds (seeded, inclusive). */
@@ -30,7 +31,7 @@ export const WATCH_EVENT_MIN_S = 45;
 export const WATCH_EVENT_MAX_S = 60;
 
 /** How an event plays. `effects` (the default): its ModEffects for the whole event. The rest have their own rules. */
-export type WatchEventKind = 'effects' | 'single' | 'auction' | 'crate' | 'wheel' | 'dare';
+export type WatchEventKind = 'effects' | 'single' | 'auction' | 'crate' | 'wheel' | 'dare' | 'crooked';
 
 export interface WatchEventDef {
   /** Bus id is `watch.<id>`; strings are `event.watch.<id>.name|desc|announce|compere`. */
@@ -75,6 +76,8 @@ export const WATCH_EVENTS: readonly WatchEventDef[] = [
   { id: 'crate_drop', weight: 2, minNight: 2, kind: 'crate', effects: [] },
   { id: 'wheel_spin', weight: 2, minNight: 2, kind: 'wheel', fixedS: WHEEL_S, effects: [] },
   { id: 'last_call_dare', weight: 2, minNight: 2, kind: 'dare', fixedS: DARE_ARM_S, armAtS: DARE_ARM_S, effects: [] },
+  // Story wave S3: the Crooked Table (STORY_BIBLE 5c). Tamsin hosts it from Night 2; see events/crookedTable.ts.
+  { id: 'crooked_table', weight: 2, minNight: 2, kind: 'crooked', fixedS: CROOKED_S, effects: [] },
 ];
 
 /**
@@ -110,6 +113,7 @@ export interface EventAux {
   auction?: AuctionState;
   crate?: CrateState;
   dare?: DareState;
+  crooked?: CrookedState;
 }
 
 /**
@@ -117,7 +121,7 @@ export interface EventAux {
  * memory of the last rolled event (`last`, in Night `lastNight`), so a reload does not let the same event come back at once.
  * `aux` carries the state of the wave 75 kinds (an older save has none, and those events then degrade).
  */
-export interface WatchEventSave { id: string | null; leftS: number; pulls: number | null; last?: string | null; lastNight?: number; aux?: EventAux }
+export interface WatchEventSave { id: string | null; leftS: number; pulls: number | null; last?: string | null; lastNight?: number; aux?: EventAux; crookedSeen?: boolean }
 
 export interface WatchEventHost {
   /** The Circuit's Hot test, for the pull budget (Lucky Lamp counts only pulls on HOT machines). */
@@ -149,6 +153,10 @@ export class WatchEvents implements ModProvider {
   private lastNight = 0;
   /** Rewards and notes for the run; drained by `takeOutcomes()`. */
   private outbox: FloorOutcome[] = [];
+  /** Crooked Table results for the run (Heat, luck, refund, fine); drained by `takeCrooked()`. */
+  private crookedOut: CrookedOutcome[] = [];
+  /** Tamsin has explained the Crooked Table once already (she only does it the first time). */
+  private crookedSeen = false;
 
   constructor(private readonly host: WatchEventHost) {}
 
@@ -186,6 +194,11 @@ export class WatchEvents implements ModProvider {
       case 'crate': return { elapsedS: 0, crate: rollCrate(rng, floor) };
       case 'wheel': return { elapsedS: 0, seg: spinWheel(rng) };
       case 'dare': return { elapsedS: 0, dare: rollDare(rng) };
+      case 'crooked': {
+        const crooked = rollCrooked(rng, floor, !this.crookedSeen);
+        if (crooked) this.crookedSeen = true;
+        return crooked ? { elapsedS: 0, crooked } : null;
+      }
       default: return { elapsedS: 0 };
     }
   }
@@ -273,9 +286,15 @@ export class WatchEvents implements ModProvider {
    * round). `won` is whether the round was a win before the floor's multipliers (a taken LAST CALL DARE settles on it and ends).
    * A Lucky Lamp spends one pull of its budget when `mid` is HOT.
    */
-  onPull(mid: InstanceId, won = false): void {
+  onPull(mid: InstanceId, won = false, net = 0): void {
     const c = this.cur;
     if (!c) return;
+    const cr = c.aux.crooked;
+    if (cr && c.def.kind === 'crooked') {
+      const heat = recordTablePlay(cr, mid, won, net);
+      if (heat) this.crookedOut.push({ kind: 'heat', heat });
+      return;
+    }
     const d = c.aux.dare;
     if (c.def.kind === 'dare' && d && d.accepted && !d.spent) {
       this.outbox.push({ kind: 'dare', result: settleDare(d, won) });
@@ -286,6 +305,43 @@ export class WatchEvents implements ModProvider {
     c.pulls -= 1;
     if (c.pulls <= 0) this.end();
     else this.host.touch();
+  }
+
+  /**
+   * The player calls CHEAT at the table `mid` (key C, facing it). `quota` is the Night's quota in coins. Null when no Crooked
+   * Table runs, `mid` is not one of its three tables, or it was already called. The result is also queued for `takeCrooked()`,
+   * and the event ends (the tables close).
+   */
+  callCheat(mid: MachineId, quota: number): CallResult | null {
+    const c = this.cur;
+    const cr = c?.aux.crooked;
+    if (!c || !cr || c.def.kind !== 'crooked') return null;
+    const r = callTable(cr, mid, quota);
+    if (!r) return null;
+    this.crookedOut.push({ kind: 'call', ...r });
+    this.end();
+    return r;
+  }
+
+  /** The three tables and what the player can read at each now (for the plates, the dealers and the Tally Sheet). Null otherwise. */
+  crookedView(): { tables: { mid: MachineId; tells: CrookedTell[] }[]; intro: boolean } | null {
+    const c = this.cur;
+    const cr = c?.aux.crooked;
+    if (!c || !cr || c.def.kind !== 'crooked') return null;
+    return { tables: cr.tables.map((mid, i) => ({ mid, tells: tellsAt(cr, i as 0 | 1 | 2) })), intro: cr.intro };
+  }
+
+  /** Whether `mid` is one of the Crooked Table's three tables right now (the run shows the C prompt only there). */
+  isCrookedTable(mid: MachineId): boolean {
+    const cr = this.cur?.aux.crooked;
+    return !!cr && this.cur?.def.kind === 'crooked' && tableIndex(cr, mid) >= 0;
+  }
+
+  /** Crooked Table results since the last call: calls (refund, fine, luck, Heat), ride Heat, and an uncalled close. */
+  takeCrooked(): CrookedOutcome[] {
+    const out = this.crookedOut;
+    this.crookedOut = [];
+    return out;
   }
 
   /** The play gate of SINGLE LIGHT: with the event live, only the lit machine may be played. True everywhere else. */
@@ -304,6 +360,8 @@ export class WatchEvents implements ModProvider {
       const r = closeAuction(a);
       this.outbox.push({ kind: 'auction', won: r.won, spent: a.top, award: r.award, consolation: r.consolation });
     }
+    const cr = c.aux.crooked;
+    if (cr && c.def.kind === 'crooked' && !cr.called) this.crookedOut.push({ kind: 'expired', rigPlays: cr.plays[cr.rigged] });
     this.cur = null;
     if (live === this) live = null;
     this.host.touch();
@@ -331,6 +389,7 @@ export class WatchEvents implements ModProvider {
       case 'single': return a.lit ? singleLightEffects(a.lit) : [];
       case 'wheel': return a.seg ? wheelEffects(a.seg) : [];
       case 'dare': return a.dare ? dareEffects(a.dare) : [];
+      case 'crooked': return a.crooked ? rigEffects(a.crooked) : [];
       case 'auction':
       case 'crate': return [];
       default: return c.def.effects;
@@ -349,6 +408,7 @@ export class WatchEvents implements ModProvider {
         // n: the House price, b: the player's own top bid, step: what the next legal bid costs on top of it
         return { key: 'event.watch.stage_auction.hud', vars: { n: auctionPrice(au), b: au.top, step: next - au.top } };
       }
+      case 'crooked': return a.crooked && !a.crooked.called ? { key: 'event.watch.crooked_table.hud' } : null;
       case 'crate': return a.crate && !a.crate.open ? { key: 'event.watch.crate_drop.hud' } : null;
       case 'wheel': return a.seg ? { key: wheelSpinning(a.elapsedS ?? 0) ? 'event.watch.wheel_spin.spin' : `event.watch.wheel_spin.seg.${a.seg}`, vars: { s: Math.max(0, Math.ceil(c.leftS)) } } : null;
       case 'dare': {
@@ -375,7 +435,7 @@ export class WatchEvents implements ModProvider {
     const c = this.cur;
     if (!c && this.last === null) return null;
     return {
-      id: c ? c.def.id : null, leftS: c ? c.leftS : 0, pulls: c ? c.pulls : null, last: this.last, lastNight: this.lastNight,
+      id: c ? c.def.id : null, leftS: c ? c.leftS : 0, pulls: c ? c.pulls : null, last: this.last, lastNight: this.lastNight, crookedSeen: this.crookedSeen,
       ...(c ? { aux: clone(c.aux) } : {}),
     };
   }
@@ -385,6 +445,7 @@ export class WatchEvents implements ModProvider {
     if (!s) return;
     this.last = s.last ?? null;
     this.lastNight = s.lastNight ?? 0;
+    this.crookedSeen = !!s.crookedSeen;
     const def = s.id !== null ? WATCH_EVENTS.find((d) => d.id === s.id) : undefined;
     if (!def) return;
     this.cur = { def, leftS: s.leftS, pulls: s.pulls, aux: s.aux ? clone(s.aux) : { elapsedS: 0 } };

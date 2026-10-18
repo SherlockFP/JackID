@@ -12,7 +12,7 @@
 export const HOME_ORIGIN: readonly [number, number, number] = [-120, 0, 120];
 
 /** Interactable stations in the apartment. The world emits `home:interact` with one of these, and the game decides. */
-export type HomeStation = 'bed' | 'door' | 'peephole' | 'chain' | 'switch' | 'phone' | 'spouse' | 'window';
+export type HomeStation = 'bed' | 'door' | 'peephole' | 'chain' | 'switch' | 'phone' | 'spouse' | 'window' | 'fridge' | 'computer';
 
 /** Named world anchors (world.anchor(name)), used by the flow, cutscenes and the camera. */
 export const HOME_ANCHORS = {

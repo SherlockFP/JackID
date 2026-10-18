@@ -3,7 +3,8 @@
  * Stock, prices and buffs come from rules.ts and data/buffs.ts. The coins move through `run.spend('coin')` in the credit
  * step; the dose is applied with `run.buffs.add(id, { pid })` and a totem with `run.totems.grant(pid, id)`. The machine never prices anything itself.
  *
- * Controls (seated): 1–4 or ←/→ pick a bottle · Space/Enter buy · E stands up.
+ * Controls (seated): 1–4 or ←/→ pick a bottle · Space/Enter buy · W/S flip between the TONICS and the FOOD page · E stands up.
+ * The food page sells four snacks (banana, coffee, sandwich, energy drink), one food bonus at a time (src/game/food.ts).
  * Every peer draws the same shelf from the same run seed and Night. `present()` plays the juice for the local choices.
  */
 import { MachineBase } from '@/machines/_base/MachineBase';
@@ -15,7 +16,7 @@ import type { KitX } from '@/kit';
 import { fmtNum, t as tr } from '@/core/i18n';
 import { lerp } from '@/core/math';
 import { buildModel, DRAWER_SLIDE, type TonicVendorParts } from './model';
-import { SLOTS, priceText, stockKey, tonicStock, wrapSlot, type TonicJuice, type TonicKind, type TonicOffer } from './rules';
+import { FOOD_BUFF_IDS, SLOTS, foodStock, priceText, stockKey, tonicStock, wrapSlot, type TonicJuice, type TonicKind, type TonicOffer } from './rules';
 
 type Ev =
   /** A sale. `why` names the refusal when `ok` is false. */
@@ -49,7 +50,8 @@ export const def: MachineDef = {
       h_pick: 'PICK', h_buy: 'DRINK', h_leave: 'LEAVE',
       s_coins: 'COINS', s_dose: 'DOSE', s_length: 'LASTS',
       funds: 'NOT ENOUGH COINS', none: 'EMPTY SHELF', hand: 'HAND ALREADY FULL',
-      ledger: 'APOTHECARY', ledgerHint: '1-4 PICK  SPACE DRINK',
+      ledger: 'APOTHECARY', ledgerHint: '1-4 PICK  SPACE DRINK  W/S PAGE',
+      ledgerFood: 'KITCHEN COUNTER', ledgerHintFood: '1-4 PICK  SPACE EAT  W/S PAGE', h_eat: 'EAT',
       free: 'FREE',
     },
     tr: {
@@ -58,7 +60,8 @@ export const def: MachineDef = {
       h_pick: 'SEÇ', h_buy: 'İÇ', h_leave: 'AYRIL',
       s_coins: 'PARA', s_dose: 'DOZ', s_length: 'SÜRE',
       funds: 'PARA YETMİYOR', none: 'RAF BOŞ', hand: 'ELİ DOLU',
-      ledger: 'ECZANE', ledgerHint: '1-4 SEÇ  BOŞLUK İÇ',
+      ledger: 'ECZANE', ledgerHint: '1-4 SEÇ  BOŞLUK İÇ  W/S SAYFA',
+      ledgerFood: 'MUTFAK TEZGÂHI', ledgerHintFood: '1-4 SEÇ  BOŞLUK YE  W/S SAYFA', h_eat: 'YE',
       free: 'BEDAVA',
     },
   },
@@ -69,10 +72,13 @@ export const playHeadless: HeadlessPlay = () => ({ gross: 0, tags: [] });
 
 export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null> {
   private cursor = 0;
+  /** false: the tonic shelf; true: the food page (W/S flips). */
+  private foodPage = false;
   private shelf: readonly TonicOffer[] = [];
   private shelfNight = -1;
   private shelfSeed = NaN;
   private stockCache: readonly TonicOffer[] = [];
+  private readonly foodShelf: readonly TonicOffer[] = foodStock();
   private repaintKey = '';
   private hudKey = '';
 
@@ -88,6 +94,7 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
   // ── run state (every peer) ──────────────────────────────────────────────────────────────────────
   /** The shelf is a pure function of (seed, Night): memoised so the per-frame refresh does not re-roll it. */
   private stock(): readonly TonicOffer[] {
+    if (this.foodPage) return this.foodShelf;
     const run = this.ctx.run;
     const night = run.night();
     if (night !== this.shelfNight || run.seed !== this.shelfSeed) {
@@ -128,6 +135,7 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
     switch (e.action) {
       case 'left': this.moveCursor(wrapSlot(this.cursor, -1)); return;
       case 'right': this.moveCursor(wrapSlot(this.cursor, 1)); return;
+      case 'up': case 'down': this.foodPage = !this.foodPage; this.sfx('hover'); this.refresh(true); return;
       case 'n1': case 'n2': case 'n3': case 'n4': this.moveCursor(Number(e.action.slice(1)) - 1); return;
       case 'primary': case 'confirm': this.buy(this.cursor); return;
     }
@@ -172,6 +180,12 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
     }
     if (o.price > 0 && !run.spend('coin', o.price, 'tonic', this.selfId)) {
       this.ctx.ui.toast(this.t('funds'), 'bad');
+      return;
+    }
+    if (o.kind === 'food') {
+      // one food bonus at a time: the old one goes first, so eating the same snack again still plays. The buff's own hook does the rest.
+      for (const id of FOOD_BUFF_IDS) if (run.buffs.has(id, { pid: this.selfId })) run.buffs.remove(id, { pid: this.selfId });
+      run.buffs.add(o.id, { pid: this.selfId, source: { kind: 'system', id: 'food' } });
       return;
     }
     run.buffs.add(o.id, { pid: this.selfId, source: { kind: 'tonic', id: o.id } });
@@ -241,7 +255,7 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
   private refresh(force: boolean): void {
     const stock = this.stock();
     this.stockCache = stock;
-    const key = [stockKey(stock), this.wallet(), this.cursor].join('|');
+    const key = [stockKey(stock), this.wallet(), this.cursor, this.foodPage ? 'f' : 't'].join('|');
     if (!force && key === this.repaintKey) { if (this.isLocalOccupant) this.showHud(); return; }
     this.repaintKey = key;
 
@@ -255,7 +269,7 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
   private drawLedger(stock: readonly TonicOffer[]): void {
     const s = this.parts.ledger;
     s.clear('#081410');
-    s.text(this.t('ledger'), 64, 10, { font: 'px5', color: '#80ffb0', align: 'center' });
+    s.text(this.t(this.foodPage ? 'ledgerFood' : 'ledger'), 64, 10, { font: 'px5', color: '#80ffb0', align: 'center' });
     for (let i = 0; i < SLOTS; i++) {
       const o = stock[i] ?? null;
       const y = 26 + i * 12;
@@ -264,17 +278,17 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
       s.text(`${mark}${i + 1} ${name}`, 4, y, { font: 'px5', color: o?.juice === 'cursed' ? '#c0a0ff' : '#c8ffe0' });
       s.text(o ? priceText(o, fmtNum, this.t('free')) : '--', 124, y, { font: 'px5', color: '#ffd060', align: 'right' });
     }
-    s.text(this.t('ledgerHint'), 64, 72, { font: 'px5', color: '#50a070', align: 'center' });
+    s.text(this.t(this.foodPage ? 'ledgerHintFood' : 'ledgerHint'), 64, 72, { font: 'px5', color: '#50a070', align: 'center' });
   }
 
   private showHud(): void {
     const sel = this.stockCache[this.cursor] ?? null;
-    const key = [this.cursor, this.wallet(), sel ? `${sel.kind}:${sel.id}` : ''].join('|');
+    const key = [this.cursor, this.wallet(), this.foodPage ? 'f' : 't', sel ? `${sel.kind}:${sel.id}` : ''].join('|');
     if (key === this.hudKey) return;
     this.hudKey = key;
     const hints: HudHint[] = [
       { action: 'left', label: this.t('h_pick') },
-      { action: 'primary', label: this.t('h_buy') },
+      { action: 'primary', label: this.t(this.foodPage ? 'h_eat' : 'h_buy') },
       { action: 'exit', label: this.t('h_leave') },
     ];
     this.hud({

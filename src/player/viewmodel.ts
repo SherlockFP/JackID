@@ -6,8 +6,8 @@
  * vertex shading (the scene has no lights); `setLightLevel` dims them in dark rooms.
  *
  * Holds (`hold`): coin (default), card, tonic, phone, ticket, ledger, gun (two-handed),
- * totem, or any `Object3D` the caller supplies (card fan, totem, scratch coin…). One-shot animations (`play`):
- * flip · drink · throw · point · punchCard · recoil · give · grab · checkWatch · unwatch · rpsRock · rpsPaper · rpsScissors. The left wrist wears a brass
+ * totem, the five foods (banana, coffee, sandwich, energy, soup: `eat` and `drink` raise them to the mouth), or any `Object3D` the caller supplies (card fan, totem, scratch coin…). One-shot animations (`play`):
+ * flip · drink · eat · throw · point · punchCard · recoil · give · grab · checkWatch · unwatch · rpsRock · rpsPaper · rpsScissors. The left wrist wears a brass
  * wristwatch (`setWatch`). An empty hand holds a coin (the default). In walk mode with the
  * coin in hand, Q plays a coin trick (`./viewmodel/fidget.ts`); after ~8 s of standing still a short knuckle walk plays
  * on its own. `setHandLook` shows the unsettling finger-tax and porcelain collateral looks. The facade feeds head-bob
@@ -19,6 +19,7 @@ import { clamp, damp, lerp } from '@/core/math';
 import type { Hex } from '@/core/types';
 import type { HeldItem, Viewmodel } from './types';
 import { createFidget, handAmplitude } from './viewmodel/fidget';
+import { FOOD_PARTS, type FoodPropId } from '@/world/props/food';
 
 export interface ViewmodelDrive {
   /** Camera head-bob offsets (m); the hands move 1.5× (ART_BIBLE §8.5). */
@@ -237,7 +238,7 @@ class Hand {
 }
 
 // ── one-shot animations ───────────────────────────────────────────────────────────────────────────
-interface AnimFx { coinY: number; coinSpin: number; coinHide: boolean; itemTilt: number; watchLift: number }
+interface AnimFx { coinY: number; coinSpin: number; coinHide: boolean; itemTilt: number; watchLift: number; itemEat: number }
 interface Anim { dur: number; run(k: number, r: HandPose, l: HandPose, fx: AnimFx): void }
 const smooth = (k: number): number => { const t = clamp(k, 0, 1); return t * t * (3 - 2 * t); };
 /** Rises over [a,b], holds, falls over [c,d]. */
@@ -259,6 +260,19 @@ const ANIMS: Record<string, Anim> = {
       const up = bump(k, 0.05, 0.4, 0.62, 0.95);
       r.py += 0.2 * up; r.pz += 0.06 * up; r.rx += 0.8 * up; r.rz -= 0.5 * up;
       fx.itemTilt = 1.1 * bump(k, 0.3, 0.45, 0.6, 0.72);
+    },
+  },
+  /** Bring the food to the mouth, take three bites (the food shrinks), lower the hand. */
+  eat: {
+    dur: 1.6,
+    run(k, r, _l, fx) {
+      const up = bump(k, 0.06, 0.3, 0.84, 0.98);
+      r.py += 0.17 * up; r.pz += 0.07 * up; r.rx += 0.95 * up; r.px -= 0.1 * up; r.rz -= 0.25 * up;
+      const bites = smooth((k - 0.3) / 0.12) * 0.34 + smooth((k - 0.46) / 0.12) * 0.33 + smooth((k - 0.62) / 0.12) * 0.33;
+      const chew = bump(k, 0.3, 0.34, 0.7, 0.8);
+      r.py -= 0.012 * Math.abs(Math.sin(k * 44)) * chew; r.rx += 0.06 * Math.sin(k * 44) * chew;
+      fx.itemEat = bites;
+      fx.itemTilt = 0.25 * up;
     },
   },
   throw: {
@@ -386,8 +400,20 @@ function buildItem(kind: string, m: OwnMat): THREE.Object3D | null {
       g.add(mesh(cylG(0.022, 0.03, 0.06, 7), m(0x8c6b29), 0, 0.03, 0),
             mesh(shaded(new THREE.IcosahedronGeometry(0.026, 0)), m(0xe8b04a), 0, 0.08, 0));
       break;
-    default:
-      return null;
+    default: {
+      const parts = FOOD_PARTS[kind as FoodPropId];
+      if (!parts) return null;
+      for (const part of parts) {
+        const geo = part.shape === 'box' ? boxG(part.size[0], part.size[1], part.size[2]) : cylG(part.size[0], part.size[1], part.size[2], 10);
+        const o = mesh(geo, m(part.color), part.pos[0], part.pos[1], part.pos[2]);
+        if (part.rot) o.rotation.set(part.rot[0], part.rot[1], part.rot[2]);
+        g.add(o);
+      }
+      // held upright and turned a little to the camera (the banana lies along X in its list, so it stands up in the hand)
+      if (kind === 'banana') g.rotation.set(0, 0.5, Math.PI / 2 - 0.2);
+      else g.rotation.y = 0.3;
+      break;
+    }
   }
   return g;
 }
@@ -427,7 +453,7 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = G
 
   const base = { r: newPose(), l: newPose() };       // grip for the held item
   const live = { r: newPose(), l: newPose() };       // smoothed toward `base`
-  const fx: AnimFx = { coinY: 0, coinSpin: 0, coinHide: false, itemTilt: 0, watchLift: 0 };
+  const fx: AnimFx = { coinY: 0, coinSpin: 0, coinHide: false, itemTilt: 0, watchLift: 0, itemEat: 0 };
   const trickCoin = buildItem('coin', ownMat)!;     // the held coin's own mesh, reused for the Q tricks
   trickCoin.visible = false;
   scene.add(trickCoin);
@@ -460,6 +486,8 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = G
       case 'coin': r.index = 0.25; r.thumb = 0.3; r.curl = 0.55; break;
       case 'card': case 'ticket': r.curl = 0.6; r.index = r.thumb = 0.35; break;
       case 'tonic': r.curl = 1.0; r.index = 0.95; r.thumb = 0.7; break;
+      case 'banana': case 'sandwich': r.curl = 0.85; r.index = 0.8; r.thumb = 0.6; break;
+      case 'coffee': case 'energy': case 'soup': r.curl = 1.0; r.index = 0.95; r.thumb = 0.65; break;
       case 'phone': r.curl = 0.9; r.index = 0.85; r.thumb = 0.5; r.rx -= 0.2; break;
       case 'ledger': r.curl = l.curl = 0.5; l.py += 0.03; break;
       case 'gun':
@@ -562,7 +590,7 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = G
       }
 
       // one-shot animation / idle coin flip
-      fx.coinY = 0; fx.coinSpin = 0; fx.coinHide = false; fx.itemTilt = 0; fx.watchLift = 0;
+      fx.coinY = 0; fx.coinSpin = 0; fx.coinHide = false; fx.itemTilt = 0; fx.watchLift = 0; fx.itemEat = 0;
       if (anim) {
         anim.t += dt;
         anim.def.run(clamp(anim.t / anim.def.dur, 0, 1), right.pose, left.pose, fx);
@@ -579,7 +607,10 @@ export function createViewmodel(sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = G
           held.position.set(0, fx.coinY, 0);
           held.rotation.set(fx.coinSpin, 0, 0);
           held.visible = !fx.coinHide && !fidget.busy;
-        } else held.rotation.z = fx.itemTilt;
+        } else {
+          held.rotation.z = fx.itemTilt;
+          if (item in FOOD_PARTS) held.scale.setScalar(1 - 0.8 * fx.itemEat);   // a bitten food shrinks
+        }
       }
       rig.position.set(swayX + bobX, swayY + bobY, 0);
       if (gun) {
