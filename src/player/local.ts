@@ -539,7 +539,7 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
       }
       viewmodel.drive({
         bobX: rig.bob.x, bobY: rig.bob.y, sprint: ctrl.sprinting, crouch: ctrl.crouchK, grounded: ctrl.grounded,
-        lookDx: lookDxFrame, lookDy: lookDyFrame, aspect: camera.aspect,
+        lookDx: lookDxFrame, lookDy: lookDyFrame, aspect: camera.aspect, speed: ctrl.speed,
       });
       watchTickets();
       viewmodel.update(dt);

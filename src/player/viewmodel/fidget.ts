@@ -158,6 +158,7 @@ const IDLE_MIN_S = 8, IDLE_MAX_S = 12;
 const INTERRUPT: readonly string[] = ['interact', 'use', 'give', 'place', 'emote', 'ping', 'upgrade', 'talk'];
 
 /** Amplitude of the hand motion: settings.headBob (0.35..1 of the motion) and Calm (×0.6). */
+export function handAmplitude(): number { return amplitude(); }
 function amplitude(): number {
   const s = app?.save?.data?.settings;
   if (!s) return 1;
@@ -254,7 +255,7 @@ export function createFidget(right: FidgetHand, left: FidgetHand, coin: THREE.Ob
 
       // blend weight in / out
       const want = cur && !cur.cut ? 1 : 0;
-      w = want > w ? Math.min(1, w + dt / 0.16) : Math.max(0, w - dt / 0.22);
+      w = want > w ? Math.min(1, w + dt / 0.24) : Math.max(0, w - dt / 0.3);
       if (!cur || (cur.cut && w <= 0)) { cur = null; queue = 0; }
 
       if (cur && w > 0) {

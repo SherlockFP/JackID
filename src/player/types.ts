@@ -28,6 +28,8 @@ export interface Viewmodel {
   /** Finger-tax / collateral looks (unsettling, not gory): visible fingers 0..5 and a porcelain hand. */
   setHandLook(o: { fingers?: number; porcelain?: boolean }): void;
   update(dt: number): void;
+  /** Show or hide the wristwatch on the left wrist (optional: stubs may omit it). Anims also include 'grab' | 'checkWatch' | 'unwatch'. */
+  setWatch?(on: boolean): void;
 }
 
 export interface LocalPlayer {
