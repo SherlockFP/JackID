@@ -12,6 +12,7 @@ import type { KitX } from '@/kit';
 import type { TexGen } from '@/core/texgen/types';
 import type { ElevatorProp } from '../types';
 import { Sched, easeInOutCubic, easeOutQuad } from './sched';
+import { crispNeon } from './signs';
 import type { NeonPart, ScreenSurface } from '@/kit/types';
 import { app } from '@/core/app';
 import { t } from '@/core/i18n';
@@ -124,7 +125,7 @@ export function buildElevator(kit: KitX, tex: TexGen): ElevatorParts {
   // lit HOME sign above the transom (replaces the old OUT OF SERVICE plaque) and the DUE / PAID counter at the right-hand post
   // larger, tilted down toward the arrival point, on a dark backboard so the letters read from across the lobby
   kit.box(2.3, 0.78, 0.06, kit.mat({ color: 0x120c08 }), { pos: [0, LIFT_OPEN_H + 1.2, 0.2], rot: [14, 0, 0], parent: root });
-  const neon = kit.neon({ text: { key: 'prop.sign.home' }, h: 0.6, color: 0xffd070, flicker: 0.03 });
+  const neon = crispNeon(kit, { text: { key: 'prop.sign.home' }, h: 0.6, color: 0xffd070, flicker: 0.03 });
   neon.root.position.set(0, LIFT_OPEN_H + 1.2, 0.27);
   neon.root.rotation.x = THREE.MathUtils.degToRad(14);
   neon.setOn(true);

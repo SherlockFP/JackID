@@ -1015,18 +1015,15 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     return clampDeposit(Math.min(amountFor(cell, wallet, bank.left), cell === 'all' ? wallet : bank.left), wallet);
   }
 
-  /** The tab row's label size: the largest size (44 or less) at which the longest tab word fits `room` px. One size for every tab. */
+  /** The tab row's label scale (px5): the largest whole scale (3 or less) at which the longest tab word fits `room` px. One scale for every tab. */
   private tabLabelSize(words: string[], room: number): number {
-    let size = 44;
-    for (const w of words) {
-      const wide = measureText(w, { font: 'vt', size: 44 });
-      if (wide > room) size = Math.min(size, Math.floor((44 * room) / wide));
-    }
-    return size;
+    let scale = 3;
+    for (const w of words) while (scale > 1 && measureText(upper(w), { font: 'px5', scale }) > room) scale--;
+    return scale;
   }
 
   /**
-   * The CRT is a 512 × 384 texture seen from about a metre, so type is big: labels 30-34 px, figures up to 60 px. Top: four tabs
+   * The CRT is a 512 × 384 texture seen from about a metre, so type is big and whole-pixel (the 5x7 bitmap font, scale 3 for labels, up to 9 for figures: no web font to load, full Turkish). Top: four tabs
    * (DEPOSIT, WITHDRAW, BUY BACK, QUOTA), the active one lit. Under them BANK and POCKET (always). Then ONE main figure of the chosen action,
    * two lines of detail and the amount box. A figure shrinks only when it would run past its column.
    */
@@ -1035,18 +1032,28 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     s.clear('#060300');                              // an opaque dark ground: the figures are full-bright on it
     const amber = '#ffc02a', hot = '#fff0a0', dim = '#c0982e', red = '#ff9a78', green = '#b4ffb4', cyan = '#9fe8ff';
     const RIGHT = 504;
-    const fit = (v: string, max: number, w: number): number => Math.min(max, Math.floor(w / Math.max(1, v.length)));
+    // `size` is the old text box height: it picks the start scale (3, or 4 / 6 for the big centre lines), shrunk until the line fits
     const label = (str: string, x: number, y: number, color = amber, size = 32, align: 'left' | 'right' | 'center' = 'left'): void => {
-      s.text(str, x, y, { font: 'vt', size, color, align });
+      const text = upper(str);
+      const room = align === 'center' ? 500 : align === 'right' ? x - 6 : RIGHT - x;
+      let sc = size >= 56 ? 6 : size >= 38 ? 4 : 3;
+      while (sc > 1 && measureText(text, { font: 'px5', scale: sc }) > room) sc--;
+      s.text(text, x, y + Math.max(2 * sc, Math.round((size - 7 * sc) / 2)), { font: 'px5', scale: sc, color, align });
+    };
+    // a figure: the largest scale (up to `maxS`) at which it fits `w` px, right-aligned at `x`, `y` = the cap top
+    const fig = (v: string, x: number, y: number, color: string, maxS: number, w: number): void => {
+      let sc = maxS;
+      while (sc > 1 && measureText(v, { font: 'px5', scale: sc }) > w) sc--;
+      s.text(v, x, y, { font: 'px5', scale: sc, color, align: 'right' });
     };
     if (paid) {                                   // Dawn paid the Night: no stale quota, just the carry-over and the lever
-      s.text(this.t('crt_paid', { n: this.ctx.run.night() }), 256, 40, { font: 'vt', size: 60, color: '#fff070', align: 'center' });
+      label(this.t('crt_paid', { n: this.ctx.run.night() }), 256, 36, '#fff070', 60, 'center');
       if (q.deposited > 0) {
         label(this.t('crt_carry'), 14, 124, amber, 34);
         const v = fmtNum(q.deposited);
-        s.text(v, RIGHT, 168, { font: 'ps2p', size: fit(v, 72, 486), color: '#fff4b8', align: 'right' });
+        fig(v, RIGHT, 168, '#fff4b8', 9, 486);
       }
-      s.text(this.t('crt_floor'), 256, 300, { font: 'vt', size: 42, color: '#fff0c0', align: 'center' });
+      label(this.t('crt_floor'), 256, 296, '#fff0c0', 42, 'center');
       return;
     }
     // tabs: four across the screen (BUY BACK between WITHDRAW and QUOTA); one label size for all, so every word fits its tab
@@ -1059,14 +1066,14 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
         g.fillStyle = on ? amber : '#241800'; g.fillRect(x, 2, w, 44);
         if (!on) { g.strokeStyle = '#8a6a14'; g.lineWidth = 2; g.strokeRect(x + 1, 3, w - 2, 42); }
       });
-      s.text(this.t(k), x + w / 2, 6 + Math.round((44 - tabSize) / 2), { font: 'vt', size: tabSize, color: on ? '#1a1000' : '#d8aa30', align: 'center' });
+      s.text(upper(this.t(k)), x + w / 2, 2 + Math.round((44 - 7 * tabSize) / 2), { font: 'px5', scale: tabSize, color: on ? '#1a1000' : '#e8bc40', align: 'center' });
     });
     // BANK and POCKET, always
     const bv = fmtNum(this.shownDep), pv = fmtNum(bank.pocket);
     label(this.t('c_bank'), 12, 48, amber, 34);
-    s.text(bv, 248, 84, { font: 'ps2p', size: fit(bv, 44, 236), color: hot, align: 'right' });
+    fig(bv, 248, 84, hot, 6, 236);
     label(this.t('c_pocket'), 268, 48, amber, 34);
-    s.text(pv, RIGHT, 84, { font: 'ps2p', size: fit(pv, 44, 236), color: cyan, align: 'right' });
+    fig(pv, RIGHT, 84, cyan, 6, 236);
     s.draw((g) => { g.fillStyle = '#6a4e12'; g.fillRect(4, 134, 504, 3); g.fillRect(258, 52, 3, 78); });
 
     const amt = this.focusAmount(bank);
@@ -1074,16 +1081,16 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     const box = (y: number, head = this.t('nAmount'), val = typedTxt): void => {
       s.draw((g) => { g.fillStyle = '#241800'; g.fillRect(4, y, 504, 38); g.strokeStyle = amber; g.lineWidth = 2; g.strokeRect(5, y + 1, 502, 36); });
       label(head, 14, y + 3, amber, 34);
-      s.text(val, RIGHT - 6, y + 9, { font: 'ps2p', size: 24, color: '#fff0c0', align: 'right' });
+      fig(val, RIGHT - 6, y + 9, '#fff0c0', 3, 300);
     };
 
     if (this.mode === 'dep') {
       const lv = fmtNum(bank.left);
       label(this.t(bank.left > 0 ? 'c_left' : 'c_metBig'), 12, 140, amber, 36);
-      s.text(lv, RIGHT, 168, { font: 'ps2p', size: fit(lv, 64, 490), color: bank.left > 0 ? red : green, align: 'right' });
+      fig(lv, RIGHT, 168, bank.left > 0 ? red : green, 8, 490);
       if (bank.ratePct > 0) {
         label(this.t('c_interest'), 12, 234, amber, 36);
-        s.text(`+${fmtNum(bank.interestNext)}`, RIGHT, 238, { font: 'ps2p', size: 28, color: hot, align: 'right' });
+        fig(`+${fmtNum(bank.interestNext)}`, RIGHT, 236, hot, 4, 240);
         const withIt = amt > 0 ? bank.interestAt(bank.balance + amt) : 0;
         if (withIt > bank.interestNext) label(this.t('c_with', { n: fmtNum(withIt) }), 12, 270, hot, 32);
         else if (bank.pullsToQualify > 0) label(this.t('c_pulls', { n: bank.pullsToQualify }), 12, 270, red, 30);
@@ -1098,7 +1105,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
         // THE SEAL (decision D2): what BREAK would take out, how long it waits, and what taking it out costs
         label(this.t('c_sealHead'), 12, 140, red, 36);
         const sv = fmtNum(bank.sealCoins ?? 0);
-        s.text(sv, RIGHT, 168, { font: 'ps2p', size: fit(sv, 64, 490), color: hot, align: 'right' });
+        fig(sv, RIGHT, 168, hot, 8, 490);
         label(this.t('c_sealWait'), 12, 234, amber, 32);
         label(this.t('c_sealCost'), 12, 270, red, 32);
       } else if (!bank.open || bank.withdrawable <= 0) {
@@ -1107,7 +1114,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
         const pw = this.wdPreview(amt);
         const tv = fmtNum(pw.coins);
         label(this.t('c_take'), 12, 140, amber, 36);
-        s.text(tv, RIGHT, 168, { font: 'ps2p', size: fit(tv, 64, 490), color: pw.coins > 0 ? hot : dim, align: 'right' });
+        fig(tv, RIGHT, 168, pw.coins > 0 ? hot : dim, 8, 490);
         if (pw.coins <= 0) {
           label(this.t('c_wdPick'), 12, 238, amber, 38);
         } else {
@@ -1131,7 +1138,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
           if (on) s.draw((g) => { g.fillStyle = '#241800'; g.fillRect(4, y - 4, 504, 32); g.strokeStyle = amber; g.lineWidth = 2; g.strokeRect(5, y - 3, 502, 30); });
           label(`${i + 1}  ${upper(globalT(`keepsake.${r.id}.name`))}`, 12, y, on ? hot : amber, 32);
           const pv = fmtNum(r.price);
-          s.text(pv, RIGHT, y + 2, { font: 'ps2p', size: fit(pv, 26, 200), color: bank.pocket >= r.price ? green : red, align: 'right' });
+          fig(pv, RIGHT, y + 3, bank.pocket >= r.price ? green : red, 3, 200);
         });
         box(302, this.t('nPrice'), fmtNum(sel.price));
         if (bank.pocket < sel.price) label(this.t('crt_buyShort'), 12, 346, red, 30);
@@ -1141,7 +1148,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     } else {
       const dv = fmtNum(bank.due);
       label(this.t('q_due'), 12, 140, amber, 36);
-      s.text(dv, RIGHT, 168, { font: 'ps2p', size: fit(dv, 64, 490), color: hot, align: 'right' });
+      fig(dv, RIGHT, 168, hot, 8, 490);
       const extra = Math.max(0, q.due - q.base - q.assessment);
       label(this.t('q_base', { b: fmtNum(q.base), a: fmtNum(q.assessment) }) + (extra > 0 ? `  ${this.t('q_loan', { l: fmtNum(extra) })}` : ''), 12, 226, dim, 32);
       label(this.t('q_bank', { b: fmtNum(bank.balance), p: pct(ratioOf(bank.balance, q.due)) }), 12, 260, amber, 34);

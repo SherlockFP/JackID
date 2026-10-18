@@ -1,0 +1,6 @@
+Various Sound Effects (laleksic-various)
+Author: laleksic
+Source: https://opengameart.org/content/various-sound-effects  (archive sounds_8.zip, listed as sounds.zip on the page)
+Licence: CC0 1.0 Universal (public domain dedication). No attribution required.
+Vendored subset: 15 WAV files (doors, creaks, locks, bell, coins, keys). Audio unmodified.
+Vendored by the JackID sound lane on 2026-10-19 via curl from OpenGameArt.

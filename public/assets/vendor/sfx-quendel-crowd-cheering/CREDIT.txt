@@ -1,0 +1,7 @@
+Free Crowd Cheering Sounds (quendel-crowd-cheering)
+Author: Gregor Quendel
+Source: https://opengameart.org/content/free-crowd-cheering-sounds  (archive gregor_quendel_-_free_crowd_cheering_sounds_-_mp3.zip)
+Licence: CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Attribution required.
+Credit line: "Crowd cheering sounds by Gregor Quendel, CC BY 4.0."
+Vendored subset: 8 MP3 files (tracks 03-10, each 14-39 s). Tracks 01, 02 (near-duplicates of 03) and 11 (full 224 s recording) were not vendored. Audio unmodified; filenames shortened.
+Vendored by the JackID sound lane on 2026-10-19 via curl from OpenGameArt.

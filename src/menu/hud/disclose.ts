@@ -49,8 +49,8 @@ export function ticketsShown(seen: boolean, held: number): boolean {
 }
 
 export type Objective = 'win' | 'deposit' | 'bell' | 'lift' | 'dawn';
-/** The world machine the objective points at (its waypoint), or null for no waypoint. */
-export type ObjectiveTarget = 'bigone' | 'debt_terminal' | null;
+/** The world spot the objective points at (its waypoint): a machine, the Bell prop (`bell` anchor), or null for no waypoint. */
+export type ObjectiveTarget = 'bigone' | 'debt_terminal' | 'bell' | null;
 
 export interface ObjectiveFacts {
   /** The shift phase (`run.shift.state().phase`). */
@@ -59,21 +59,32 @@ export interface ObjectiveFacts {
   paid: boolean;
   /** Rounds the player has played this Night. */
   rounds: number;
-  /** Deposits the player has made this Night. */
+  /** Deposits the player has made this Night (used only when `owed` is left out). */
   deposits: number;
   /** Coins in the pocket. */
   pocket: number;
+  /** Quota coins still owed tonight (`run.bank().left`, 0 = met). Left out: the older deposit-count rule applies. */
+  owed?: number;
 }
 
 /**
- * The one objective for Nights 1 and 2, from the player's state. Paid → take the lift home. In a Watch: win coins at a machine,
- * then deposit at the terminal, then ring the Bell. Between Watches with the quota open: the quota is due at Dawn.
+ * The one objective for Nights 1 and 2, from the player's state, re-read every frame. Paid: take the lift home. Last Call: ring the
+ * Bell (its waypoint). Between Watches with the quota open: the quota is due at Dawn. In a Watch: no round played yet → win coins
+ * at The Big One; quota met → ring the Bell; the pocket covers what is still owed → deposit at the terminal; otherwise win more.
  */
 export function objectiveFor(f: ObjectiveFacts): { key: Objective; target: ObjectiveTarget } {
   if (f.paid) return { key: 'lift', target: null };
-  const inWatch = f.phase === 'play' || f.phase === 'lastCall';
+  if (f.phase === 'lastCall') return { key: 'bell', target: 'bell' };
+  const inWatch = f.phase === 'play' || f.phase === 'closing';
   if (!inWatch) return { key: f.phase === 'bell' || f.phase === 'settle' ? 'bell' : 'dawn', target: null };
   if (f.rounds === 0) return { key: 'win', target: 'bigone' };
-  if (f.deposits === 0 && f.pocket > 0) return { key: 'deposit', target: 'debt_terminal' };
-  return { key: 'bell', target: null };
+  if (f.owed === undefined) {
+    // the older rule (no owed figure given): a deposit is still to come while coins sit in the pocket
+    if (f.deposits === 0 && f.pocket > 0) return { key: 'deposit', target: 'debt_terminal' };
+    return { key: 'bell', target: null };
+  }
+  const owed = Math.max(0, f.owed);
+  if (owed <= 0) return { key: 'bell', target: 'bell' };
+  if (f.pocket >= owed) return { key: 'deposit', target: 'debt_terminal' };
+  return { key: 'win', target: 'bigone' };
 }

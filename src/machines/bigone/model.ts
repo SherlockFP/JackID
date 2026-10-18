@@ -338,7 +338,8 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
   root.add(trayPart.root);
 
   // ── glass art: label, glass, crack / fog / palm decals ──
-  const label = kit.label({ text: { key: 'm.bigone.name' }, w: 1.4, h: 0.55, px: [256, 100], color: gold, bg: pal.black });
+  // the bitmap font: whole-pixel letters at any size, full Turkish, no web-font swap (the glass title once smeared)
+  const label = kit.label({ text: { key: 'm.bigone.name' }, w: 1.4, h: 0.55, px: [256, 100], color: gold, bg: pal.black, font: 'px5' });
   label.mesh.position.set(0, 0.575, 0.655);
   root.add(label.mesh);
   const glass = kit.glass({ w: 1.4, h: 0.55, d: 0.02, tint: pal.glass, opacity: 0.25 });

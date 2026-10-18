@@ -1,0 +1,336 @@
+{
+ "found": [
+  {
+   "key": "sound",
+   "packs": [
+    {
+     "title": "Casino Audio (Kenney) - ALREADY IN USE",
+     "url": "https://kenney.nl/assets/casino-audio",
+     "author": "Kenney (kenney.nl)",
+     "licence": "CC0 (public domain)",
+     "licenceQuote": "Creative Commons CC0",
+     "files": "kenney_casino-audio.zip, size not shown on kenney.nl (OpenGameArt mirror shows 876.8 KB). kenney.nl page says 50 files; ASSETS.md says 54 - check the zip on download.",
+     "directLink": "Yes, direct zip link on kenney.nl: https://kenney.nl/media/pages/assets/casino-audio/2472606a04-1721639069/kenney_casino-audio.zip (listed under 'Continue without donating'). Mirror: https://opengameart.org/content/54-casino-sound-effects-cards-dice-chips",
+     "use": "Already vendored in public/assets/vendor/kenney-casino-audio per ASSETS.md. Cards, chips and dice only; no slot reels, jackpot bells, lever or roulette ball. Kenney's Interface Sounds and Impact Sounds packs are also reported as CC0 by secondary guides but were NOT verified on kenney.nl in this run; check them directly before use."
+    },
+    {
+     "title": "Interface UI Sound Pack (Morphonaut)",
+     "url": "https://morphonaut.itch.io/interfacebuttons-sound-pack",
+     "author": "MorphonautAudio",
+     "licence": "CC0 (stated on page)",
+     "licenceQuote": "This compilation of sounds are CC0, use as you want",
+     "files": "Interface_UI_Sound Pack.zip, 12 MB; 92 sounds per page",
+     "directLink": "No. Only a 'Buy Now' button; page says minimum payment of $2 USD. Purchase must be done by the user (paid, not free).",
+     "use": "UI clicks, button presses, notifications for menus, phone-screen taps and chip/card-hub UI. Good CC0 coverage for UI clicks. Does not list phone rings. Requires a $2 purchase by the user."
+    },
+    {
+     "title": "UI Sound Effects (Polar_34)",
+     "url": "https://polar-34.itch.io/ui-sound-effects",
+     "author": "Polar_34",
+     "licence": "Creative Commons Zero v1.0 Universal (asset licence; code is MIT)",
+     "licenceQuote": "Creative Commons Zero v1.0 Universal",
+     "files": "8 WAV files: 8-bit1.wav 59 kB, 8-bit2.wav 37 kB, click1.wav 122 kB, click2.wav 23 kB, hit1.wav 80 kB, hit2.wav 50 kB, exit.wav 232 kB, flip.wav 26 kB",
+     "directLink": "No. Only a 'Download Now' button that goes to a purchase page; name-your-own-price (can be set to free, check on the page).",
+     "use": "Small UI set: click for buttons, flip for card or tile reveal, exit for menu close, hit/8-bit for jackpot or fail stings. Tiny pack, useful as a base for UI clicks."
+    },
+    {
+     "title": "Free Horror SFX Sounds (Liminal Games)",
+     "url": "https://liminal-space-dev.itch.io/free-horror-sfx-sounds",
+     "author": "Liminal Games",
+     "licence": "Creative Commons Zero v1.0 Universal",
+     "licenceQuote": "Creative Commons Zero v1.0 Universal",
+     "files": "2 zips: horror_sfx_vol_1.zip 13 MB, horror_sfx_vol_2.zip 9.2 MB (vol 2 adds 32 footsteps: gravel, mud, stairs, wood)",
+     "directLink": "No. Both downloads are buttons linking to javascript:void(0); a click is needed.",
+     "use": "Door creaks, footsteps on several surfaces, monster growls, horror stinger-like hits for the noir/horror beats and corridor walking. CAUTION: the page says the sounds are AI-generated (AI disclosure: Sounds = AI Assisted) and the listing has a CC0 licence. Check whether the licence applies to AI-generated audio before shipping; the CC0 line is on the page but the provenance is the question."
+    },
+    {
+     "title": "Goofy Sounds for Scary Monsters (Stormyman / DSOP jam)",
+     "url": "https://stormyman.itch.io/goofy-sounds-for-scary-monsters",
+     "author": "Stormyman (publisher Christopher Hahn, vocalist Hahn et al.)",
+     "licence": "Creative Commons Zero v1.0 Universal",
+     "licenceQuote": "Creative Commons Zero v1.0 Universal",
+     "files": "DSOP-Asset-Pack-Jam-2022-CHahn-et-al.zip, 24 MB, FLAC; file count not shown. 11 monsters incl. Rat; 16 categories incl. Scared, Hurt, Attack, Eating, Sleeping",
+     "directLink": "No. Only a 'Download' button linking to javascript:void(0).",
+     "use": "Creature squeaks and vocal reactions for rats (and cockroach-style critters if the rat set fits). The vocals are goofy/cartoony, so tone-check against the noir PSX style before using in-game. Only candidate in this search for CC0 rat squeaks."
+    },
+    {
+     "title": "Ambient and phone SFX - NOT RECOMMENDED: IndieSFX S031C Mobile Tones",
+     "url": "https://indiesfx.itch.io/indiesfx-s031c",
+     "author": "IndieSFX (Mark Sheeky)",
+     "licence": "Not CC0 on the page. Page says only: free to use in your game or project; full terms in separate Licence.pdf (not reproduced).",
+     "licenceQuote": "These sounds are free to use in your game or project",
+     "files": "S031C-MobileTones.zip 24 MB (104 sounds, WAV 44.1kHz mono/stereo), Licence.pdf 23 kB, Preview mp3 867 kB",
+     "directLink": "No. 'Buy Now' with minimum $10 USD; JavaScript download buttons.",
+     "use": "Would cover phone ring, DTMF dial tones and buzz sounds for the phone. Excluded from the CC0/CC-BY set because the licence is unclear without reading Licence.pdf, and it costs $10. Only worth considering if the user is willing to buy and read the PDF first."
+    }
+   ]
+  },
+  {
+   "key": "texture",
+   "packs": [
+    {
+     "title": "Synthetic Texture Pack (Screaming Brain Studios)",
+     "url": "https://screamingbrainstudios.itch.io/synthetic-texture-pack",
+     "author": "Screaming Brain Studios",
+     "licence": "CC0 1.0 (Public Domain)",
+     "licenceQuote": "have been released under the CC0/Public Domain license.",
+     "files": "SBS - Synthetic Texture Pack - 128x128.rar (3.9 MB), 256x256.rar (15 MB), 512x512.rar (57 MB). Seamless PNG. 123 unique textures x 3 sizes = 369. Categories: Fabric, Ground, Leather, Metal, Stone, Tree, Wood (15 each), Misc (18).",
+     "directLink": "button on page: 'Download Now' goes to a purchase page; price is 'Name your own price' (can be 0). No direct file link shown. Not yet in ASSETS.md, so it is a new vendor source and needs that file updated if used.",
+     "use": "NEW candidate. Best fit for felt/velvet-like cloth (Fabric category, tint green or red), leather for seat/chair trim, wood panels and metal for brass trim, stone/ground for floor base layers. Attribution optional (creator says 'not required'). Pick 128x128 to match the PSX pipeline (downscale to 64x64 anyway). Tagged PSX and seamless on itch.io. Still needs a visual check of the sheets before use; no casino-specific patterns in it."
+    },
+    {
+     "title": "Public Pixel Font (GGBotNet)",
+     "url": "https://ggbot.itch.io/public-pixel-font",
+     "author": "GGBotNet",
+     "licence": "CC0 1.0 Universal",
+     "licenceQuote": "This Font Software is licensed under the Creative Commons Zero v1.0 Universal.",
+     "files": "Public_Pixel_Font_1_24.zip, 472 kB, one file.",
+     "directLink": "button on page: 'Download Now' goes to a purchase page; price 'Name your own price'. No direct link shown.",
+     "use": "Signage and HUD pixel font for the casino (sign text, banners, LED-style labels). Turkish is explicitly in its language list (claims 98 languages). Glyph coverage for İ ı Ş ş Ğ ğ Ç ç Ö ö Ü ü is NOT verified by fetch; open the zip after the user approves a download and confirm those glyphs render before use. Search snippet mentioned about 1324 glyphs, unverified."
+    },
+    {
+     "title": "Vyaz Pixel Font (GGBotNet)",
+     "url": "https://ggbot.itch.io/vyaz-pixel-font",
+     "author": "GGBotNet",
+     "licence": "CC0 1.0 Universal",
+     "licenceQuote": "This Font Software is licensed under the Creative Commons Zero v1.0 Universal.",
+     "files": "VyazPixel_Font_1_0.zip, 17 kB, one file.",
+     "directLink": "button on page: 'Download Now' goes to a purchase page; price 'Name your own price'. No direct link shown.",
+     "use": "Small pixel font for in-world signage, menu labels or chip values. Turkish is in its list of 45 supported languages (fetched from the page). Glyph coverage for the Turkish-specific letters is not verified; check the font file for İ ı Ş ş Ğ ğ before use. Lightweight at 17 kB."
+    },
+    {
+     "title": "Low-poly (64x64) Textures (PhobicPaul)",
+     "url": "https://phobicpaul.itch.io/low-poly-64x64-textures",
+     "author": "PhobicPaul",
+     "licence": "Creative Commons Zero v1.0 Universal",
+     "licenceQuote": "Asset license: Creative Commons Zero v1.0 Universal",
+     "files": "low-poly.zip, 87 kB. About 10 PNG textures at 64x64 (fabric, gem, grass, ground, ice, magma, metal, rock, scales, wood, plus variants).",
+     "directLink": "button on page: 'Download Now' ('Name your own price'). Not a direct link.",
+     "use": "ALREADY USED: ASSETS.md lists the PhobicPaul low-poly64 pack (phobicpaul-lowpoly64). Listed only to confirm the licence still matches. Do not re-add; no new value except possibly the variant images not yet in the project."
+    },
+    {
+     "title": "Tiny Texture Pack 2 (Screaming Brain Studios)",
+     "url": "https://screamingbrainstudios.itch.io/tiny-texture-pack-2",
+     "author": "Screaming Brain Studios",
+     "licence": "CC0 1.0 (Public Domain)",
+     "licenceQuote": "have been released under the CC0/Public Domain license.",
+     "files": "128x128 .rar 5.1 MB / .zip 5.1 MB; 256x256 18 MB; 512x512 73 MB. 160 textures across Brick, Dirt, Elements, Metal, Plaster, Stone, Tile, Wood.",
+     "directLink": "button on page: 'Download Now' goes to a purchase page; 'Name your own price'. No direct link shown.",
+     "use": "ALREADY USED: ASSETS.md lists sbs-tiny2 (160 textures). Relevant for tile and plaster ceilings, wood and metal panels. Listed only to confirm the licence still matches; do not re-add."
+    },
+    {
+     "title": "ambientCG (CC0 PBR library)",
+     "url": "https://ambientcg.com",
+     "author": "ambientCG",
+     "licence": "CC0 (per search results; not verified on the page itself)",
+     "licenceQuote": "Not verified by fetch. Search snippets describe the library as a free CC0 (public domain) PBR materials library, usable without credit in shipped games. Confirm on the ambientCG license page before use.",
+     "files": "Not verified. Sources report 1500 to 2000+ PBR materials at up to 8K, PNG/JPG per material. Known example from a community page: Wood052.",
+     "directLink": "Site download (not itch.io). Not checked whether a direct link or account is needed.",
+     "use": "Wood floors, planks and some metal/brick. Carpet, felt, wallpaper and neon were NOT found in the search results, so casino carpet/felt coverage is unconfirmed. Would need to browse its category filters before recommending. Lower priority than the itch.io CC0 packs above for PSX looks, since its PBR maps are high-detail and would need heavy downscaling."
+    }
+   ]
+  }
+ ],
+ "verified": [
+  {
+   "key": "sound",
+   "checked": [
+    {
+     "title": "Casino Audio (Kenney), already in use",
+     "url": "https://kenney.nl/assets/casino-audio",
+     "ok": true,
+     "licence": "\"License\" then \"Creative Commons CC0\" (kenney.nl page). Page lists \"50×\" files; ASSETS.md says 54, so check the zip.",
+     "why": "Already vendored (public/assets/vendor/kenney-casino-audio). Cards, chips and dice only. No slot reels, jackpot bells, lever or roulette ball. Layer with synth SFX and randomize pitch per ASSETS.md.",
+     "attribution": "None legally required. Optional credit \"Kenney.nl\". Credits screen should still thank Kenney per ASSETS.md.",
+     "size": "Zip size not shown on kenney.nl. OpenGameArt mirror shows 876.8 KB.",
+     "download": "Direct link, listed under 'Continue without donating': https://kenney.nl/media/pages/assets/casino-audio/2472606a04-1721639069/kenney_casino-audio.zip"
+    },
+    {
+     "title": "Interface Sounds (Kenney)",
+     "url": "https://kenney.nl/assets/interface-sounds",
+     "ok": true,
+     "licence": "\"License\" then \"Creative Commons CC0\" (kenney.nl page). 100 files.",
+     "why": "Button clicks, snaps, minimize/maximize, confirm sounds for menus, phone-screen taps and chip/card-hub UI. Strong CC0 candidate for UI clicks. Not yet in ASSETS.md.",
+     "attribution": "None required. Optional credit \"Kenney.nl\" (OpenGameArt note).",
+     "size": "Zip size not shown. File formats not stated on the page.",
+     "download": "Direct link, listed under 'Continue without donating': https://kenney.nl/media/pages/assets/interface-sounds/fa43c1dd4d-1677589452/kenney_interface-sounds.zip"
+    },
+    {
+     "title": "Impact Sounds (Kenney)",
+     "url": "https://kenney.nl/assets/impact-sounds",
+     "ok": true,
+     "licence": "\"License\" then \"Creative Commons CC0\" (kenney.nl page). 130 files.",
+     "why": "Impacts, hits and knocks for chip stacks, table thumps, cage/door hits and sting-like beats. Good for the casino floor and horror-hit cues. Not yet in ASSETS.md.",
+     "attribution": "None required. Optional credit \"Kenney.nl\".",
+     "size": "Zip size not shown. File formats not stated on the page.",
+     "download": "Direct link, listed under 'Continue without donating': https://kenney.nl/media/pages/assets/impact-sounds/87b4ddecda-1677589768/kenney_impact-sounds.zip"
+    },
+    {
+     "title": "Simple sound effects for any game (Polar_34)",
+     "url": "https://polar-34.itch.io/sound-effects",
+     "ok": true,
+     "licence": "Asset license: \"Creative Commons Zero v1.0 Universal\". Code: MIT. Price breadcrumb ends in \"Free\". Quoted line: \"CC0 1.0 You can use it however you like and you don't need to give credit.\"",
+     "why": "11 small WAVs: click (mouse-click), tap, switch, snap, paper, creak, slide, crumple, breath, water. Useful for phone-screen taps, card/tile clicks and creak cues. Mouse-click exists, but there is no rodent squeak.",
+     "attribution": "None required.",
+     "size": "breath 124 kB, mouse-click 31 kB, water 679 kB, slide2 168 kB, slide1 82 kB, paper 47 kB, switch2 39 kB, crumple 48 kB, tap 15 kB, creak 75 kB, snap 86 kB.",
+     "download": "No direct file link. Every Download control is javascript:void(0). Download appears to be script-driven; not verified in this run whether it is free without a purchase step."
+    },
+    {
+     "title": "UI Sound Effects (Polar_34)",
+     "url": "https://polar-34.itch.io/ui-sound-effects",
+     "ok": true,
+     "licence": "Asset license: \"Creative Commons Zero v1.0 Universal\". Code: MIT.",
+     "why": "8 WAVs: click1/2, flip (card or tile reveal), exit (menu close), hit1/2 and 8-bit1/2 (jackpot or fail stings). Good UI and reveal set.",
+     "attribution": "None required.",
+     "size": "8-bit2 37 kB, 8-bit1 59 kB, click1 122 kB, click2 23 kB, hit1 80 kB, hit2 50 kB, exit 232 kB, flip 26 kB.",
+     "download": "No direct link. 'Download Now' goes to https://polar-34.itch.io/ui-sound-effects/purchase. Name-your-own-price, minimum not stated, so $0 may be possible; the user should confirm on the purchase page."
+    },
+    {
+     "title": "Interface UI Sound Pack (Morphonaut)",
+     "url": "https://morphonaut.itch.io/interfacebuttons-sound-pack",
+     "ok": true,
+     "licence": "Quoted: \"This compilation of sounds are CC0, use as you want\"",
+     "why": "Licence is clearly CC0, but this pack is PAID: minimum $2 USD. Good CC0 coverage for UI clicks, buttons and notifications. Does not list phone rings.",
+     "attribution": "None required.",
+     "size": "Interface_UI_Sound Pack.zip, 12 MB; about 92 sounds.",
+     "download": "No direct link. Purchase is required at or above the $2 minimum. This is a payment, so the user must do it. Not a free download."
+    },
+    {
+     "title": "Goofy Sounds for Scary Monsters (Stormyman / DSOP jam)",
+     "url": "https://stormyman.itch.io/goofy-sounds-for-scary-monsters",
+     "ok": true,
+     "licence": "Asset license field: \"Creative Commons Zero v1.0 Universal\". Description: \"A CC0 (Free) SFX pack.\"",
+     "why": "Only CC0 candidate found for rat squeaks and creature vocals (11 monsters including Rat; 16 categories such as Scared, Hurt, Eating, Sleeping). Vocals are cartoony, so tone-check against the noir PSX style before use.",
+     "attribution": "None required.",
+     "size": "DSOP-Asset-Pack-Jam-2022-CHahn-et-al.zip, 24 MB, FLAC. File count not stated.",
+     "download": "No direct link. The only Download control is javascript:void(0). Not verified whether it is free without a purchase step."
+    },
+    {
+     "title": "Free Horror SFX Sounds (Liminal Games)",
+     "url": "https://liminal-space-dev.itch.io/free-horror-sfx-sounds",
+     "ok": false,
+     "licence": "Asset license: \"Creative Commons Zero v1.0 Universal\". Use in both commercial and free projects; modify as needed; no attribution required; do not redistribute or resell the pack.",
+     "why": "Default to ok=false. AI disclosure field reads \"AI Assisted, Graphics, Sounds\" and features list \"AI-generated\". Provenance of the audio is unclear, so the CC0 licence cannot be relied on. Exclude until the author confirms the audio is human-made or licensable.",
+     "attribution": "None if the licence were valid; not cleared.",
+     "size": "horror_sfx_vol_1.zip 13 MB; horror_sfx_vol_2.zip 9.2 MB (vol 2 adds 32 footsteps).",
+     "download": "No direct link. Both download controls are javascript:void(0)."
+    },
+    {
+     "title": "Phone Mobile Tones S031C (IndieSFX)",
+     "url": "https://indiesfx.itch.io/indiesfx-s031c",
+     "ok": false,
+     "licence": "Verbatim: \"These sounds are free to use in your game or project. See Licence.pdf for full terms.\" CC0 not stated on the page. Full terms are in Licence.pdf, which was not read.",
+     "why": "Licence not clearly CC0 or CC-BY. Excluded by default. Costs $10 minimum. Only consider if the user buys it and reads Licence.pdf first.",
+     "attribution": "Unknown until Licence.pdf is read.",
+     "size": "S031C-MobileTones.zip 24 MB (104 sounds); Licence.pdf 23 kB; preview mp3 867 kB.",
+     "download": "No direct link. Buy Now with $10 minimum."
+    },
+    {
+     "title": "Casino Sound Effects 2 (Gravity Sound)",
+     "url": "https://gravity-sound.itch.io/casino-sound-effects-2",
+     "ok": false,
+     "licence": "No licence statement on the page. Only a content tag, \"No generative AI was used\".",
+     "why": "Licence unclear, and it is paid: minimum $19.99. Excluded.",
+     "attribution": "Unknown.",
+     "size": "Casino SFX 2.zip, about 90 MB; 285 WAV effects, 44.1 kHz 16-bit.",
+     "download": "No direct link. Buy Now only, minimum $19.99."
+    },
+    {
+     "title": "Squeaky Creatures (soundslikegeorge)",
+     "url": "https://soundslikegeorge.itch.io/squeaky-creatures",
+     "ok": false,
+     "licence": "No licence statement on the page. Only a content tag, \"No generative AI was used\".",
+     "why": "Licence unclear, and paid: $7.50 minimum. Animal squawks, not rodent squeaks. Excluded.",
+     "attribution": "Unknown.",
+     "size": "Squeaky Creatures.zip, 147 MB.",
+     "download": "No direct link. Buy Now only, minimum $7.50."
+    }
+   ]
+  },
+  {
+   "key": "texture",
+   "checked": [
+    {
+     "title": "Synthetic Texture Pack (Screaming Brain Studios)",
+     "url": "https://screamingbrainstudios.itch.io/synthetic-texture-pack",
+     "ok": true,
+     "licence": "CC0/Public Domain. Page text: \"have been released under the CC0/Public Domain license\" and \"free to use in any project, commercial or non-commercial\".",
+     "why": "Fetched page confirms CC0. Best fit for felt/velvet-like cloth (Fabric category, tint green or red), leather for seat trim, wood and metal panels, stone/ground base layers. NEW vendor source, not in ASSETS.md. Still needs a visual check of the contact sheets before use.",
+     "attribution": "Not required. Author says a credit is optional: \"Just fine with Screaming Brain Studios if you feel like adding a credit, but it's not required!\" Suggested credit: Screaming Brain Studios (CC0).",
+     "size": "128x128 .rar 3.9 MB; 256x256 .rar 15 MB; 512x512 .rar 57 MB. 123 textures x 3 sizes (Fabric, Ground, Leather, Metal, Stone, Tree, Wood at 15 each; Misc 18).",
+     "download": "No direct link. 'Download Now' goes to a /purchase page; price is 'Name your own price' (zero allowed). Button flow, user must click."
+    },
+    {
+     "title": "Public Pixel Font (GGBotNet)",
+     "url": "https://ggbot.itch.io/public-pixel-font",
+     "ok": true,
+     "licence": "CC0 1.0 Universal. Page text: \"This Font Software is licensed under the Creative Commons Zero v1.0 Universal.\"",
+     "why": "Best candidate for signage, banners and LED-style labels. Page lists 98 languages with Turkish included and about 1324 glyphs (page claim). Glyph coverage for I/i/S/s/G/g/C/c/O/o/U/u is still unverified until the zip is opened after user approval. Pixel grid 8x8.",
+     "attribution": "Not required under CC0. Suggested credit: Public Pixel Font by GGBotNet (CC0).",
+     "size": "Public_Pixel_Font_1_24.zip, 472 kB.",
+     "download": "No direct link. 'Download Now' goes to /purchase; 'Name your own price'. Button flow."
+    },
+    {
+     "title": "Vyaz Pixel Font (GGBotNet)",
+     "url": "https://ggbot.itch.io/vyaz-pixel-font",
+     "ok": true,
+     "licence": "CC0 1.0 Universal. Page text: \"This Font Software is licensed under the Creative Commons Zero v1.0 Universal.\"",
+     "why": "Small pixel font for in-world signage, menu labels, chip values. Turkish is listed among 45 languages on the page. Glyph check for the Turkish-specific letters still needed on the font file.",
+     "attribution": "Not required under CC0. Suggested credit: Vyaz Pixel by GGBotNet (CC0).",
+     "size": "VyazPixel_Font_1_0.zip, 17 kB.",
+     "download": "No direct link. 'Download Now' goes to purchase page; 'Name your own price' (zero allowed). Button flow."
+    },
+    {
+     "title": "Pixtile Font (GGBotNet)",
+     "url": "https://ggbot.itch.io/pixtile-font",
+     "ok": true,
+     "licence": "CC0 1.0 Universal. Page text: \"This Font Software is licensed under the Creative Commons Zero v1.0 Universal.\"",
+     "why": "Extra option for tile-style or headline text. Turkish is listed among 52 languages. Not previously in the earlier candidate list, so it is an addition found during verification. Glyph check still needed.",
+     "attribution": "Not required under CC0. Suggested credit: Pixtile Font by GGBotNet (CC0).",
+     "size": "Pixtile_Font_1_10.zip, 46 kB.",
+     "download": "No direct link. 'Download Now' goes to /purchase; 'Name your own price'. Button flow."
+    },
+    {
+     "title": "Low-poly (64x64) Textures (PhobicPaul)",
+     "url": "https://phobicpaul.itch.io/low-poly-64x64-textures",
+     "ok": true,
+     "licence": "Creative Commons Zero v1.0 Universal (Asset license field). Author text: \"I also don't require any kind of attribution\".",
+     "why": "ALREADY USED. ASSETS.md already lists phobicpaul-lowpoly64. Licence confirmed still CC0. Only possible new value is the variant images not yet in the project. Do not re-add without checking the existing folder.",
+     "attribution": "Not required. Existing Credits entry already covers PhobicPaul.",
+     "size": "low-poly.zip, 87 kB.",
+     "download": "No direct link. 'Download Now' goes to purchase page; 'Name your own price'. Button flow."
+    },
+    {
+     "title": "Tiny Texture Pack 2 (Screaming Brain Studios)",
+     "url": "https://screamingbrainstudios.itch.io/tiny-texture-pack-2",
+     "ok": true,
+     "licence": "CC0 1.0 (Public Domain). Page text: \"have been released under the CC0/Public Domain license\"; author: \"There is no copyright ... (CC0)\".",
+     "why": "ALREADY USED. ASSETS.md lists sbs-tiny2 (160 textures). Licence confirmed still CC0. Do not re-add.",
+     "attribution": "Not required. Author: \"It's appreciated, but you don't have to credit me\". Already in Credits.",
+     "size": "128x128 .rar 5.1 MB (also .zip 5.1 MB); 256x256 18 MB; 512x512 73 MB.",
+     "download": "No direct link. 'Download Now' goes to /purchase; 'Name your own price'. Button flow."
+    },
+    {
+     "title": "ambientCG (CC0 PBR library)",
+     "url": "https://ambientcg.com/",
+     "ok": true,
+     "licence": "CC0 1.0 Universal. Page text: \"All ambientCG assets are provided under the Creative Commons CC0 1.0 Universal License.\" Commercial use confirmed: \"even for commercial purposes, all without asking permission\" (docs.ambientcg.com/license).",
+     "why": "Verified CC0 and commercial use in games. Use for wood floors, planks, some metal and brick. Carpet, felt and wallpaper were NOT confirmed in search, so casino carpet coverage is unknown. PBR maps are high-detail; they would need heavy downscaling (PSX pipeline 64px) and an offline check of category filters first. Lower priority than the itch.io packs.",
+     "attribution": "Not required. Site asks for optional credit: ambientCG (CC0).",
+     "size": "Not checked. Search snippets mention up to 8K per material; the 1K/2K variants would be the usable ones.",
+     "download": "Site download, not itch.io. Whether an account or Supporter Login is needed was NOT confirmed on the license page. Check before any download."
+    },
+    {
+     "title": "Casino Night pack (Chasersgaming) - poker/casino sprites",
+     "url": "https://chasersgaming.itch.io/asset-pack-casino-night-sms",
+     "ok": false,
+     "licence": "Not on the page licence field. Only an author comment says: \"the license for this asset is CC0, public domain\". Also a Master System style pack; the same author lists it CC0 on OpenGameArt (asset-pack-pixel-poker).",
+     "why": "Default to ok=false because the licence is only in a comment, not on the page itself. Strong lead for card faces, poker table and chips sprite sheets (free tier), but the look is pixel art and may not match the PSX 64px pipeline. Re-check the licence on the download page before using. Dice and the full set need a payment of at least GBP 2.",
+     "attribution": "Unknown until licence is confirmed. If CC0, none required; author is chasersgaming.",
+     "size": "Poker FREE Files.zip 33 kB; Poker FULL Files.zip 63 kB (needs GBP 2 or more).",
+     "download": "No direct link. 'Download Now' goes to purchase page; 'Name your own price' with GBP 2 minimum for the FULL files. Button flow."
+    }
+   ]
+  }
+ ]
+}

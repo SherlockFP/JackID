@@ -1,0 +1,425 @@
+{
+ "found": [
+  {
+   "key": "psx-models",
+   "packs": [
+    {
+     "title": "PSX Style Cars",
+     "url": "https://ggbot.itch.io/psx-style-cars",
+     "author": "GGBotNet",
+     "licence": "CC0 1.0 Universal",
+     "licenceQuote": "\"This game assets is licensed under a CC0 1.0 Universal.\"",
+     "contents": "8 PS1-style car models (station wagon, saloon, hatchback, minivan, sedan with police/taxi variants, burned-out car, 1920s car, step van) on 128x128 textures, plus engine, horn, door, hood and trunk sound effects. Poly counts 304 to 476 tris per car.",
+     "files": ".blend, .obj, .ogg, .png (no FBX or GLB listed). PSX_Style_Cars_by_GGBot_(August2023).zip, 2.4 MB",
+     "download": "itch.io Download Now button, set as name-your-own-price. Set the amount to $0 before downloading; the page does not state a $0 option explicitly.",
+     "use": "Not casino-relevant. Could serve as street or lot dressing, or a parked car in an exterior shot. Low priority for JackID."
+    },
+    {
+     "title": "PSX First Person Arms (Free)",
+     "url": "https://drillimpact.itch.io/psx-first-person-arms-free",
+     "author": "Drillimpact",
+     "licence": "CC0 1.0 Universal (Public Domain)",
+     "licenceQuote": "\"This asset is released under CC0 (Public Domain).\"",
+     "contents": "Arms rig with animation in two hand-painted variants (bare hands, black gloves). Animations: relax, push L/R, jab L/R, guard_draw, guard_idle, grab L/R, finger_gun_idle/fix/fire/broken, knife_draw, knife_hit_01/02, knife_idle. Textures 512x512.",
+     "files": "FBX, GLB, Blend. psx-first-person-arms-free-game-assets.zip, 3.8 MB (v1.1.0). Poly count not stated.",
+     "download": "itch.io Download button, name-your-own-price. Set $0 explicitly; the page does not confirm $0 is accepted.",
+     "use": "Direct reference for the gloved first-person hands, grab, and push or jab anims. JackID already has a procedural gloved hand (Wave 76a), so use this as an animation reference or swap-in, not a replacement. Gloves variant matches the casino glove idea."
+    },
+    {
+     "title": "PSX Style Low-Poly Couch II",
+     "url": "https://duhgless.itch.io/psx-style-low-poly-couch-ii",
+     "author": "Duhgless",
+     "licence": "Creative Commons Zero v1.0 Universal",
+     "licenceQuote": "\"Creative Commons Zero v1.0 Universal\" (page license field)",
+     "contents": "A single green PS1-style couch. Page states no generative AI was used. Rated 5.0 (1 rating).",
+     "files": "couch.fbx 22 kB, couch.glb 69 kB, couch.mtl, couch.obj 10 kB, Couch.png 59 kB. Poly count not stated.",
+     "download": "itch.io Download button, name-your-own-price (may be $0; not stated explicitly).",
+     "use": "Apartment living-room furniture. Format-ready (GLB) and PS1-styled. Good template for the sofa in the apartment."
+    },
+    {
+     "title": "Low_Poly Medieval Tavern Interior",
+     "url": "https://battleroach.itch.io/low-poly-m",
+     "author": "BattleRoach",
+     "licence": "CC0",
+     "licenceQuote": "\"License is CC0. You can use this assets for any project.\"",
+     "contents": "Barrel, barrel stand, table, bench, shelf, stool, chair, bar. Low-poly, not described as PSX-styled.",
+     "files": "LP_TavernInterior.zip, 6.9 MB. File formats and poly counts not stated.",
+     "download": "itch.io Download, name-your-own-price, listed under Free. Set $0 explicitly; not confirmed on the page.",
+     "use": "Bar counter, bar stools, tables, chairs, and shelving for the casino bar and lounge. Needs the PSX texture pipeline pass (64px nearest, palette quantize) to match the look."
+    },
+    {
+     "title": "Mini-RPG-Bundle Part 2 (Low Poly Furniture)",
+     "url": "https://gualtierisgg.itch.io/low-poly-rpg-bundle-low-poly-furniture-part-2",
+     "author": "GualtierisGG",
+     "licence": "CC0 1.0 Universal (CC0 1.0)",
+     "licenceQuote": "\"CC0 1.0 Universal (CC0 1.0)\" (page license field)",
+     "contents": "36+ assets: crates, chairs, stools, tables, short and long benches, gold, silver, copper and iron bars (bullion-style props). Low-poly, not PSX-styled.",
+     "files": "Mini-RPG-Bundle Part2.zip 13 MB (also .rar 12 MB). Tags mention Blender, Unity, Unreal. Formats and poly counts not listed.",
+     "download": "itch.io Download, name-your-own-price, author suggests donation but does not require it. Set $0 explicitly.",
+     "use": "Casino cashier or vault props: crates, stacked gold and silver bars for the cash-out and jackpot room, plus chairs and stools for the table areas. Needs PSX texture pass."
+    },
+    {
+     "title": "Low-poly rigged character (CC0)",
+     "url": "https://barnabe-wild.itch.io/croco-character",
+     "author": "Barnabe Wild (publisher Canal Barnak)",
+     "licence": "CC0 1.0 Universal",
+     "licenceQuote": "\"Creative Commons Zero v1.0 Universal.\" and \"CC0 licence.\"",
+     "contents": "Low-poly rigged character with IK bones and basic rotation constraints. Texture described as easy to edit. Works without plugin. Animation preview pack (mocap) included. Page does not confirm the character is humanoid or female; the URL slug suggests a crocodile character, so inspect before use.",
+     "files": "char_rigged.zip 1.1 MB, mocap_preview.zip 6 MB. Formats and poly counts not specified; made in Blender.",
+     "download": "itch.io Download, name-your-own-price (may be $0; not stated).",
+     "use": "Possible rig and mocap test base for NPCs or the spouse character if the body type fits. Verify humanoid rig and bone names against the Mannequin clip list before use. Not a confirmed woman model."
+    },
+    {
+     "title": "Low Poly Human Mesh (Base Humanoid Mesh)",
+     "url": "https://comp3interactive.itch.io/low-poly-human-mesh",
+     "author": "Comp-3 Interactive",
+     "licence": "Public domain / CC0",
+     "licenceQuote": "\"PUBLIC DOMAIN CC0 LICENCE!\"",
+     "contents": "Low-poly humanoid mesh, 402 tris, two UV layouts (per-limb UV, shared extremity UV). Not rigged (author comment: 'No it's not rigged (yet)'). A commenter notes the reference model it is based on (Emerald Eel) asks for credit, so check that before shipping.",
+     "files": "Base Humanoid Mesh.zip 349 kB. Format not stated; a commenter suggests exporting GLB from Blender.",
+     "download": "itch.io Download, name-your-own-price. Set $0 explicitly.",
+     "use": "Base body for suited staff or collector NPCs, to be rigged to the Mannequin skeleton. Only useful if the Quaternius mannequin is not enough. Check the Emerald Eel credit request first."
+    },
+    {
+     "title": "PSX Furniture and props (Fabled Indian Games psxmodels)",
+     "url": "https://fabledindiagames.itch.io/psxmodels",
+     "author": "fig (fabledindiagames)",
+     "licence": "CC0 (per page; verbatim quote not captured)",
+     "licenceQuote": "Page lists \"Creative Commons Zero v1.0 Universal\" as the asset license.",
+     "contents": "Low-poly PSX-style retro pack, individual props sized for direct engine placement. Current items are indianmatchbox, letterindian and Onigiri Rice Balls psx. Status: in development, more to come. Not casino or furniture items yet.",
+     "files": "indianmatchbox.7z 240 kB, letterindian.7z 125 kB, Onigiri Rice Balls psx.7z 42 kB. Engine-ready for Unity, Unreal, Godot. Advises nearest texture filtering.",
+     "download": "Free, per the Free category and title. Direct download via the itch.io button.",
+     "use": "Low relevance now. Watch for future props. Nearest filtering advice matches the JackID texture pipeline."
+    },
+    {
+     "title": "Retro Furniture PSX Style Asset Pack (not CC0, excluded)",
+     "url": "https://swickster.itch.io/retro-furniture-psx-style-asset-pack",
+     "author": "Swickster",
+     "licence": "Custom (not CC0). Per search snippet: bars resale of models; discloses AI-generated base textures",
+     "licenceQuote": "Not captured (page returned 404 on fetch)",
+     "contents": "About 26 PSX-style furniture pieces (from search snippet).",
+     "files": "Not captured.",
+     "download": "Free.",
+     "use": "Excluded under the ASSETS.md policy (not CC0, AI-generated textures). Listed so it is not reconsidered by mistake."
+    }
+   ]
+  },
+  {
+   "key": "psx-textures",
+   "packs": [
+    {
+     "title": "WRAD TEXTURES",
+     "url": "https://wriks.itch.io/wrad-textures",
+     "author": "wriks",
+     "licence": "CC0 1.0 (listed on the itch CC0 tag; author confirmed in comments)",
+     "licenceQuote": "\"Creative Commons Zero v1.0 Universal\" (page); author comment: \"yup! its cc0 you can do anything with it\"",
+     "contents": "150+ free textures, 74 phototextures, 83 seamless repeatable textures. Thumbnails show brick, grass, tiles, wood, stone, pavement, doors, concrete, urban scenes. Resolution stated as 1024x1024 or higher for most textures. File format not stated.",
+     "files": "WRAD_TEXTURES.zip, 698 MB",
+     "download": "itch Download button, shown as Name your own price (can be $0)",
+     "use": "Photo-based PSX textures for casino walls, carpet-adjacent stone/tile, pavement and concrete for exterior and back-of-house, wood for furniture. Must be downscaled to 64x64 or 32x32 with nearest filtering per ASSETS.md. Very large, so extract only the chosen files."
+    },
+    {
+     "title": "PSX First Person Arms (free)",
+     "url": "https://drillimpact.itch.io/psx-first-person-arms-free",
+     "author": "Drillimpact",
+     "licence": "CC0 1.0 Universal",
+     "licenceQuote": "\"This asset is released under CC0 (Public Domain).\"",
+     "contents": "Arms rig with 17 animations (relax, push L/R, jab L/R, guard_draw, guard_idle, grab L/R, finger_gun idle/fix/fire/broken, knife_draw, knife_hit_01/02, knife_idle). Two hand-painted 512x512 textures: bare hands and black gloves. Low-poly PS1/PS2 style, no poly count given.",
+     "files": "psx-first-person-arms-free-game-assets.zip, 3.8 MB (v1.1.0); formats FBX, GLB, Blend",
+     "download": "itch Download button (Name your own price, can be $0)",
+     "use": "Reference or direct use for first-person gloved hands (matches the Wave 76a gloved hands and grab/unwatch anims). Textures and anims can be cross-checked against the procedural hands. Use GLB and convert materials to PSX."
+    },
+    {
+     "title": "Characters PSX",
+     "url": "https://elbolilloduro.itch.io/characters-psx",
+     "author": "Elbolilloduro",
+     "licence": "Author's own terms: commercial and non-commercial use allowed, no attribution required; not explicitly CC0. Re-upload forbidden.",
+     "licenceQuote": "\"This asset can be used in both commercial and non-commercial projects; no attribution is required.\" and \"you may not re-upload this asset\"",
+     "contents": "137 PSX characters: 12 police officers, 41 civilians, 4 firefighters, 4 doctors, 4 HazMat officers, 8 murderers, 6 monsters, 34+ extras. Poly counts not shown. Listing does not mention animations; pre-rigging only appears in user comments.",
+     "files": "Characters_psx.rar 30 MB, Characters_Extras.rar 16 MB, Characters_Extras_01.zip 11 MB, Characters_psx_1.2.zip 58 MB; formats FBX and Blend (no GLB listed)",
+     "download": "itch Download button (pay-what-you-want style, check price)",
+     "use": "NPC crowd, patrons, spouse-adjacent NPCs, security/police for casino floor. FBX only, so GLB conversion is needed before three.js; the licence is explicit but not CC0, so keep the credit note in Credits even though none is required."
+    },
+    {
+     "title": "PSX Style Cars",
+     "url": "https://ggbot.itch.io/psx-style-cars",
+     "author": "GGBotNet",
+     "licence": "CC0 1.0 Universal",
+     "licenceQuote": "\"This game assets is licensed under a CC0 1.0 Universal.\"",
+     "contents": "8 car models, 304 to 476 triangles each. Formats .blend, .obj, .ogg, .png (sound included).",
+     "files": "PSX_Style_Cars_by_GGBot_(August2023).zip, 2.4 MB",
+     "download": "itch Download button (Name your own price, can be $0)",
+     "use": "Parked cars and vehicle props outside the casino and the apartment block street. OBJ needs conversion to GLB; the .ogg engine sounds are an optional extra."
+    },
+    {
+     "title": "PSX Style Urban Stacked Pack (city modular)",
+     "url": "https://valsekamerplant.itch.io/psx-style-urban-stacked-pack",
+     "author": "valsekamerplant",
+     "licence": "CC0 (author states all textures are CC0 or the author's own photos)",
+     "licenceQuote": "\"This pack is CC0 and all textures where obtained by using CC0 textures or my own photos.\"",
+     "contents": "200+ modular city assets: 9 prebuilt buildings, 45+ building parts, 96 road pieces, 34 dumpsters, 34 bus stop pieces, 24 pipes, 24 placard walls, 14 trash types, 8 sidewalks, traffic lights, street lamps, cones, barriers, bollards, fences, walls, vents. Tagged Low-poly and PSX. Poly counts not stated.",
+     "files": "Pack 84 MB; source files 6.9 MB. Formats GLB and FBX per model (blend source files).",
+     "download": "itch Download button for base pack (Name your own price); source files require $3.99 or more and are not needed",
+     "use": "Exterior street and Night-district dressing, bus stop and placard props for the casino entrance, dumpsters and fences for the alley, traffic lights. Biggest fit for the outside world, larger than we need, so pick only what is needed."
+    },
+    {
+     "title": "PSX Industrial Environment Asset Pack",
+     "url": "https://godgoldfear.itch.io/psx-industrial-environment-asset-pack",
+     "author": "godgoldfear",
+     "licence": "Creative Commons Attribution 4.0 International (attribution required)",
+     "licenceQuote": "\"Creative Commons Attribution v4.0 International\" (listed as the asset license); author: \"distributed under CC 4.0 licensing\"",
+     "contents": "20 level geometry pieces (floors, roads, walls), 10 bridges and supports, 16 buildings and containers, 11 pipes and bends, 19 industrial props. Includes a set of textures with normal maps (resolution not stated). Unity package extras are paid and not needed.",
+     "files": "Industrial_exterior_v2.zip (FBX) 3.1 MB, Industrial_exterior_v2.glb 1.6 MB, PSXIndustrialExteriorPack_v3.unitypackage 6.7 MB",
+     "download": "itch Download button for FBX and GLB (Name your own price, can be $0); unitypackage requires $2.99 or more (skip)",
+     "use": "Back-of-house service corridors and pipes, industrial lift shaft and boiler room under the casino, crates and containers in the storage area. Attribution is required, so add a Credits line for godgoldfear."
+    },
+    {
+     "title": "Retro PSX Nature Pack",
+     "url": "https://elegantcrow.itch.io/retro-psx-nature-pack",
+     "author": "Elegant Crow",
+     "licence": "CC0 for the models; textures from AmbientCG (CC0); image sources from Pixabay (credit not mandatory)",
+     "licenceQuote": "\"The models on this pack are under CC0 License.\" \"Credit is not mandatory but greatly appreciated.\"",
+     "contents": "8 trees, 8 bushes, 12 grass pieces, each with spring, summer, fall and winter texture variations (bushes include 6 spring flower variants). Texture resolution not stated. Tagged for Blender, Godot, Unity, Unreal; a comment mentions glTF files (not confirmed).",
+     "files": "Retro PSX Nature Pack, 5.8 MB",
+     "download": "itch Download button (Name your own price, can be $0)",
+     "use": "Lobby atrium planters, park-style props for the outside view, seasonal decor. Pixabay image sources are not clearly CC0, so check the source images before using any textures; models are CC0."
+    },
+    {
+     "title": "Chetyre Pixel Font",
+     "url": "https://hanshuyuri.itch.io/chetyre",
+     "author": "HanshuYuri",
+     "licence": "SIL Open Font License 1.1",
+     "licenceQuote": "\"This Font Software is licensed under the SIL Open Font License, Version 1.1.\"",
+     "contents": "Bold pixel font (6 to 8 px design), 540 glyphs. Latin list includes Turkish. Turkish glyphs (İ ı Ş ş Ğ ğ Ç ç Ö ö Ü ü) are NOT named on the page and must be checked in the font file. Also Cyrillic and Greek.",
+     "files": "Chetyre v1.0.zip, 53 kB; formats TTF, OTF, WOFF, WOFF2",
+     "download": "itch Download button (Name your own price, can be $0 as the page is under Free)",
+     "use": "Main UI and signage font with Turkish labels. Use as a self-hosted WOFF2 under the OFL (keep the licence file with the font). Verify the Turkish glyphs before shipping."
+    },
+    {
+     "title": "Thintel Pixel Font",
+     "url": "https://skeddles.itch.io/thintel-pixel-font",
+     "author": "skeddles",
+     "licence": "Creative Commons Attribution 4.0 International",
+     "licenceQuote": "\"This font is licensed under Creative Commons Attribution 4.0 International License.\"",
+     "contents": "Pixel font. Page does not list supported characters or languages (Turkish not confirmed). Font formats not stated.",
+     "files": "thintel-free-pixel-font-by-skeddles.zip, 10 kB",
+     "download": "itch Download button (Name your own price, can be $0)",
+     "use": "Small HUD labels and English-only debug/stat text. Turkish is NOT confirmed, so do not use for TR strings until the glyph set is checked. Attribution required."
+    },
+    {
+     "title": "Screaming Brain Studios Horror Texture Pack (already in ASSETS.md, listed to check sizes)",
+     "url": "https://screamingbrainstudios.itch.io/horror-texture-pack",
+     "author": "Screaming Brain Studios",
+     "licence": "CC0 1.0 Universal",
+     "licenceQuote": "\"Creative Commons Zero v1.0 Universal\"; \"free to use in any project, commercial or non-commercial\"",
+     "contents": "100 unique textures, each in 128, 256 and 512 px (300 PNG files). Stains are transparent overlays. Already used in the project (sbs-horror 128x128).",
+     "files": "128x128 3.9 MB (.rar), 256x256 14 MB (.rar), 512x512 65 MB (.rar)",
+     "download": "itch Download button (Name your own price, can be $0)",
+     "use": "Already in the project. Use the 256 or 512 versions only if the 128 set is not enough, then downscale to 64 or 32 with nearest filtering per ASSETS.md. Listed so the team does not re-download it."
+    }
+   ]
+  }
+ ],
+ "verified": [
+  {
+   "key": "psx-models",
+   "checked": [
+    {
+     "title": "PSX Style Cars",
+     "url": "https://ggbot.itch.io/psx-style-cars",
+     "ok": true,
+     "licence": "CC0 1.0 Universal. Page quote: \"This game assets is licensed under a CC0 1.0 Universal.\" Asset license field: \"Creative Commons Zero v1.0 Universal.\"",
+     "why": "Licence is CC0, which permits commercial use and modification, but the page does not restate those rights itself. Not casino-relevant. Could dress a street or lot. Formats are .blend, .obj, .ogg, .png with no GLB or FBX, so it needs conversion. Download is name-your-own-price and the page does not confirm $0.",
+     "attribution": "GGBotNet. Not required under CC0; a credit is courtesy only.",
+     "size": "2.4 MB (PSX_Style_Cars_by_GGBot_(August2023).zip). 8 cars, 304 to 476 tris each, 128x128 textures.",
+     "download": "itch.io \"Download Now\" button, name-your-own-price. Set $0 explicitly. The page does not state a $0 option."
+    },
+    {
+     "title": "PSX First Person Arms (Free)",
+     "url": "https://drillimpact.itch.io/psx-first-person-arms-free",
+     "ok": true,
+     "licence": "CC0 1.0 Universal. Page quote: \"This asset is released under CC0 (Public Domain).\" Developer comment: \"The asset is free for commercial use. No credit is required.\"",
+     "why": "Explicit commercial-use confirmation from the author plus CC0. Best match for the gloved first-person hands and grab, push and jab animations. Use as an animation reference or swap-in, since Wave 76a already has a procedural hand.",
+     "attribution": "Drillimpact. Not required.",
+     "size": "3.8 MB (psx-first-person-arms-free-game-assets.zip, v1.1.0). Formats FBX, GLB, Blend. 512x512 textures. Poly count not stated.",
+     "download": "itch.io Download button, name-your-own-price. $0 not confirmed on the page."
+    },
+    {
+     "title": "PSX Style Low-Poly Couch II",
+     "url": "https://duhgless.itch.io/psx-style-low-poly-couch-ii",
+     "ok": true,
+     "licence": "Creative Commons Zero v1.0 Universal (license field only; no further text on page).",
+     "why": "CC0. PS1 style, and the page states no generative AI was used. Good candidate for the apartment sofa. GLB is provided, so it is directly usable.",
+     "attribution": "Duhgless. Not required.",
+     "size": "couch.glb 69 kB, couch.fbx 22 kB, couch.obj 10 kB, couch.mtl 265 B, Couch.png 59 kB. Poly count not stated.",
+     "download": "itch.io Download button, name-your-own-price. $0 not stated."
+    },
+    {
+     "title": "Low_Poly Medieval Tavern Interior",
+     "url": "https://battleroach.itch.io/low-poly-m",
+     "ok": true,
+     "licence": "CC0. Page quote: \"License is CC0. You can use this assets for any project. Credit is not neccessary.\"",
+     "why": "CC0 with an explicit any-project grant. Bar counter, stools, tables, chairs and shelves fit the casino bar. Not PSX-styled, so it needs the 64px nearest and palette pass. Formats not stated.",
+     "attribution": "BattleRoach. Not required.",
+     "size": "LP_TavernInterior.zip 6.9 MB. Formats and poly counts not stated.",
+     "download": "itch.io Download, name-your-own-price. $0 not confirmed."
+    },
+    {
+     "title": "Mini-RPG-Bundle Part 2 (Low Poly Furniture)",
+     "url": "https://gualtierisgg.itch.io/low-poly-rpg-bundle-low-poly-furniture-part-2",
+     "ok": true,
+     "licence": "CC0 1.0 Universal. Page quote: \"Feel free to use the assets in any project you want. Even for commercial purposes, all without asking for permission.\"",
+     "why": "Explicit commercial-use grant. Crates, benches, chairs, stools, and gold, silver and copper bars fit the vault and cash-out area. Not PSX-styled, so it needs the texture pass. Formats not listed.",
+     "attribution": "GualtierisGG. Not required.",
+     "size": "Mini-RPG-Bundle Part2.zip 13 MB; also .rar 12 MB. 36+ assets. Formats not stated (tags say Blender, Unity, Unreal).",
+     "download": "itch.io Download, name-your-own-price. Set $0 explicitly; not confirmed."
+    },
+    {
+     "title": "Low-poly rigged character (CC0)",
+     "url": "https://barnabe-wild.itch.io/croco-character",
+     "ok": true,
+     "licence": "CC0 1.0 Universal. Page: \"Creative Commons Zero v1.0 Universal.\" and \"CC0 licence.\" Full legal text not on page.",
+     "why": "CC0, and the author says they impose nothing and asks only for courtesy credit. The character is not confirmed humanoid or female (page says \"Ps1 low poly vibe\"), so inspect it before use. Rig is IK with rotation constraints and works out of the box. Possible rig and mocap test base for NPCs or the spouse only if the bone structure matches the Mannequin clip list.",
+     "attribution": "Barnabe Wild (publisher Canal Barnak). Courtesy credit requested, not required.",
+     "size": "char_rigged.zip 1.1 MB; mocap_preview.zip 6 MB. Made in Blender. Formats inside zips not stated.",
+     "download": "itch.io Download, name-your-own-price. $0 not stated."
+    },
+    {
+     "title": "Low Poly Human Mesh (Base Humanoid Mesh)",
+     "url": "https://comp3interactive.itch.io/low-poly-human-mesh",
+     "ok": false,
+     "licence": "Public domain / CC0. Page: \"PUBLIC DOMAIN CC0 LICENCE!\" Author says it can be used however you like.",
+     "why": "Excluded pending a check. The page says it is derived from Emerald Eel's Human Size Reference Model, and a commenter says Eel's model requires credit to his page. The page itself does not confirm Eel's terms. Verify Eel's original licence before shipping. The mesh is 402 tris, not rigged, and needs the Mannequin skeleton.",
+     "attribution": "Comp-3 Interactive. Author says no credit needed. Emerald Eel (source model) may require credit: unverified.",
+     "size": "Base Humanoid Mesh.zip 349 kB. 402 tris, two UV layouts. Format not stated.",
+     "download": "itch.io Download, name-your-own-price. $0 not confirmed."
+    },
+    {
+     "title": "PSX Furniture and props (Fabled Indian Games psxmodels)",
+     "url": "https://fabledindiagames.itch.io/psxmodels",
+     "ok": true,
+     "licence": "Creative Commons Zero v1.0 Universal (license field only). Page: \"CC0.\" No further text on page.",
+     "why": "CC0 field. Low value for JackID right now: current items are indianmatchbox, letterindian and Onigiri Rice Balls, none casino or furniture. Nearest-filter advice matches the pipeline. Watch for future props.",
+     "attribution": "fig (fabledindiagames). Not required.",
+     "size": "indianmatchbox.7z 240 kB; letterindian.7z 125 kB; Onigiri Rice Balls psx.7z 42 kB. Engine-ready for Unity, Unreal and Godot. Formats not stated beyond .7z.",
+     "download": "itch.io Download buttons. No price options shown; listed as Free."
+    },
+    {
+     "title": "Retro Furniture PSX Style Asset Pack (not CC0, excluded)",
+     "url": "https://swickster.itch.io/retro-furniture-psx-style-asset-pack",
+     "ok": false,
+     "licence": "Not verified. WebFetch returned HTTP 404, so the licence could not be read. Earlier search snippet only: resale restricted, AI-generated base textures disclosed.",
+     "why": "Excluded under the ASSETS.md CC0 policy. Not reconsidered.",
+     "attribution": "Swickster (unverified).",
+     "size": "Not captured.",
+     "download": "Free per listing; not attempted."
+    }
+   ]
+  },
+  {
+   "key": "psx-textures",
+   "checked": [
+    {
+     "title": "WRAD TEXTURES",
+     "url": "https://wriks.itch.io/wrad-textures",
+     "ok": true,
+     "licence": "Licence field reads \"Creative Commons Zero v1.0 Universal\" (page). The page text does not quote a full licence body. Brief's author comment (\"its cc0 you can do anything with it\") was not re-checked.",
+     "why": "Verified: CC0 licence field, Name your own price (can be $0), WRAD_TEXTURES.zip 698 MB, 1024x1024 or higher textures for most. Format not stated. Brief's counts (150+, 74 phototextures, 83 seamless) were not verified. Fit: photo-based textures for casino walls, stone/tile, concrete and wood, to be downscaled to 64 or 32 with nearest filtering per ASSETS.md. Extract only chosen files from the 698 MB archive.",
+     "attribution": "None required (CC0). Optional credit: wriks.",
+     "size": "698 MB zip (extract only what is needed)",
+     "download": "itch Download button, Name your own price (can be $0). Do not download without asking."
+    },
+    {
+     "title": "PSX First Person Arms (free)",
+     "url": "https://drillimpact.itch.io/psx-first-person-arms-free",
+     "ok": true,
+     "licence": "\"This asset is released under CC0 (Public Domain).\" Licence field also reads \"Creative Commons Zero v1.0 Universal\".",
+     "why": "Verified: author Drillimpact, 17 animations (relax, push, jab, guard draw/idle, grab L/R, finger_gun set, knife set), two hand-painted 512x512 textures (bare hands, black gloves). Formats FBX, GLB, Blend. Fit: direct reference for the gloved first-person hands and grab/unwatch anims in Wave 76a, with the textures and anims cross-checked against the procedural hands. Use the GLB and convert materials to PSX.",
+     "attribution": "None required (CC0). Optional credit: Drillimpact.",
+     "size": "psx-first-person-arms-free-game-assets.zip, 3.8 MB (v1.1.0)",
+     "download": "itch Download Now button, Name your own price (can be $0). Do not download without asking."
+    },
+    {
+     "title": "Characters PSX",
+     "url": "https://elbolilloduro.itch.io/characters-psx",
+     "ok": true,
+     "licence": "\"This asset can be used in both commercial and non-commercial projects; no attribution is required.\" and \"you may not re-upload this asset—either individually or as part of a collection—elsewhere\". Not CC0.",
+     "why": "Verified: author Elbolilloduro, licence allows commercial use and modification-by-use with no attribution, but forbids re-upload. Files: Characters_psx.rar 30 MB, Characters_Extras.rar 16 MB, Characters_Extras_01.zip 11 MB, Characters_psx_1.2.zip 58 MB. Formats FBX and Blend only, no GLB, so conversion is needed. Animations and rigging are not stated by the creator (only user comments mention pre-rigged models). Fit: NPC crowd, patrons, security and police for the casino floor. Brief's category counts were not verified on the page.",
+     "attribution": "Not legally required. Keep a credit line in Credits anyway (Elbolilloduro).",
+     "size": "Characters_psx_1.2.zip 58 MB (full set about 115 MB across the four files)",
+     "download": "itch Download button, pay-what-you-want style, check the price. Do not download without asking."
+    },
+    {
+     "title": "PSX Style Cars",
+     "url": "https://ggbot.itch.io/psx-style-cars",
+     "ok": true,
+     "licence": "\"This game assets is licensed under a CC0 1.0 Universal.\" Licence link: creativecommons.org/publicdomain/zero/1.0/",
+     "why": "Verified: author GGBotNet, 8 car models with tri counts 304 to 476 (for example Car 04 minivan 476, Car 06 burned-out car 304). Formats .blend, .obj, .ogg, .png (sounds included). Fit: parked cars and vehicle props for the casino exterior and apartment street. OBJ needs conversion to GLB. The .ogg engine sounds are optional.",
+     "attribution": "None required (CC0).",
+     "size": "PSX_Style_Cars_by_GGBot_(August2023).zip, 2.4 MB",
+     "download": "itch Download button, Name your own price (can be $0). Do not download without asking."
+    },
+    {
+     "title": "PSX Style Urban Stacked Pack",
+     "url": "https://valsekamerplant.itch.io/psx-style-urban-stacked-pack",
+     "ok": true,
+     "licence": "\"This pack is CC0 and all textures where obtained by using CC0 textures or my own photos.\"",
+     "why": "Verified: author valsekamerplant, over 200 modular pieces: 9 prebuilt buildings, 45+ building parts, 96 road pieces, 8 sidewalks, traffic and street lights, 34 dumpster variations, 14 trash types, bus stops with graffiti (34), placard walls (24), vents, pipes, fences, walls, barriers, bollards. Formats GLB and FBX per model. Source .blend files cost $3.99 or more (paid, not needed). Brief's 96 road and 34 bus-stop counts match the page. Fit: street dressing, bus stop and placard props for the casino entrance, dumpsters and fences for the alley. Biggest pack, so pick only the needed pieces.",
+     "attribution": "None required (CC0).",
+     "size": "Base pack 84 MB (source files 6.9 MB, paid)",
+     "download": "itch Download button for the base pack, Name your own price (can be $0). Source files need $3.99 or more and are not needed. Do not download without asking."
+    },
+    {
+     "title": "PSX Industrial Environment Asset Pack",
+     "url": "https://godgoldfear.itch.io/psx-industrial-environment-asset-pack",
+     "ok": true,
+     "licence": "Asset licence field: \"Creative Commons Attribution v4.0 International\". Description: \"can be used in various projects for free. and distributed under CC 4.0 licensing\", linking to creativecommons.org/licenses/by/4.0/. Author comment says credit is \"not necessary\" but appreciated.",
+     "why": "Verified: CC BY 4.0, so commercial use and modification are allowed with attribution required. Contents: 20 level geometry pieces, 10 bridges, 16 buildings and containers, 11 pipes and bends, 19 industrial props, textures with normal maps (resolution not stated). Fit: boiler room and service corridors under the casino, pipes, crates and containers. Attribution is required, so add a Credits line. The unitypackage costs $2.99 or more and is not needed.",
+     "attribution": "Credits line required, for example: \"PSX Industrial Environment Asset Pack by godgoldfear, CC BY 4.0, godgoldfear.itch.io/psx-industrial-environment-asset-pack\". Note any changes made.",
+     "size": "Industrial_exterior_v2.zip 3.1 MB (FBX); Industrial_exterior_v2.glb 1.6 MB (GLB); unitypackage 6.7 MB (paid, skip)",
+     "download": "itch Download button for the GLB (and FBX), Name your own price (can be $0). Do not download without asking."
+    },
+    {
+     "title": "Retro PSX Nature Pack",
+     "url": "https://elegantcrow.itch.io/retro-psx-nature-pack",
+     "ok": true,
+     "licence": "Page: \"The models on this pack are under CC0 License.\" \"Textures come from AmbientCG.com\" \"Images come from Pixabay.\" \"Credit is not mandatory but greatly appreciated.\"",
+     "why": "Models are CC0, verified. Textures come from AmbientCG (CC0 per AmbientCG's own licence, not checked here) and image sources from Pixabay (licence not confirmed on this page, so do not use those images without checking). Contents (8 trees, 8 bushes, 12 grass pieces, seasonal textures) were not confirmed by the fetch. The file format is not stated; a comment mentions glTF but it is unconfirmed. Fit: lobby atrium planters and outside-view park props. ok applies to the models only.",
+     "attribution": "Not mandatory. Credit Elegant Crow is appreciated. Credit AmbientCG and Pixabay where their images are used.",
+     "size": "Retro PSX Nature Pack 5.8 MB",
+     "download": "itch Download button, Name your own price (can be $0). Do not download without asking."
+    },
+    {
+     "title": "Chetyre Pixel Font",
+     "url": "https://hanshuyuri.itch.io/chetyre",
+     "ok": true,
+     "licence": "\"This Font Software is licensed under the SIL Open Font License, Version 1.1.\" Full licence text not on the page; standard OFL FAQ link at openfontlicense.org.",
+     "why": "Verified: author HanshuYuri, OFL 1.1 allows commercial use and modification. Formats TTF, OTF, WOFF, WOFF2 in Chetyre v1.0.zip (53 kB). Correction to brief: the page does list Türkçe under Latin, along with Azerbaijani, Croatian, English, French, German, Polish, Romanian, Slovenian and Spanish, and Greek and Cyrillic sets. Turkish glyphs are still worth checking in the file before shipping. Fit: main UI and signage font with Turkish labels, self-hosted WOFF2 with the OFL file kept beside it.",
+     "attribution": "Keep the OFL licence file with the font. Credit HanshuYuri.",
+     "size": "Chetyre v1.0.zip, 53 kB",
+     "download": "itch Download button, Name your own price (can be $0 as the page is under Free). Do not download without asking."
+    },
+    {
+     "title": "Thintel Pixel Font",
+     "url": "https://skeddles.itch.io/thintel-pixel-font",
+     "ok": true,
+     "licence": "\"This font is licensed under Creative Commons Attribution 4.0 International License.\" Also: \"you are free to use it in personal and commercial works.\"",
+     "why": "Verified: author skeddles, CC BY 4.0 allows commercial use with attribution. Formats and supported characters are not listed on the page, so Turkish is still unconfirmed and it must not be used for TR strings. Fit: small English-only HUD labels and debug or stat text.",
+     "attribution": "Credit skeddles (CC BY 4.0). Add a Credits line.",
+     "size": "thintel-free-pixel-font-by-skeddles.zip, 10 kB",
+     "download": "itch Download button, Name your own price (can be $0). Do not download without asking."
+    },
+    {
+     "title": "Horror Texture Pack (already in ASSETS.md)",
+     "url": "https://screamingbrainstudios.itch.io/horror-texture-pack",
+     "ok": true,
+     "licence": "Licence field: \"Creative Commons Zero v1.0 Universal\". Page states the textures \"have been released under the CC0/Public Domain license\". Brief's quote \"free to use in any project, commercial or non-commercial\" was not seen in the fetch.",
+     "why": "Verified: CC0. Resolution archives are 128x128 (3.9 MB RAR), 256x256 (14 MB RAR), 512x512 (65 MB RAR), each a RAR of PNGs. Already used in the project (sbs-horror 128x128), so no new download is needed. Use 256 or 512 only if the 128 set is not enough, then downscale to 64 or 32 with nearest filtering.",
+     "attribution": "None required (CC0). Already credited to Screaming Brain Studios in ASSETS.md.",
+     "size": "128x128 3.9 MB; 256x256 14 MB; 512x512 65 MB (RAR archives)",
+     "download": "itch Download button, Name your own price (can be $0). Do not download, since it is already in the project."
+    }
+   ]
+  }
+ ]
+}

@@ -222,6 +222,26 @@ export function buildBackdrop(): Backdrop {
     figures.push({ g, head, phase: i * 0.9, watcher, base: g.rotation.y });
   });
 
+  // ── far silhouette: pillars and arches of the casino hall, so the wide side views have depth ──────────
+  const pillarMat = psxMaterial({ color: 0x07030a, lit: false });
+  const pillarGeo = own(new THREE.BoxGeometry(1.6, 16, 1.6));
+  const archGeo = own(new THREE.BoxGeometry(1, 1.1, 1.2));
+  for (let x = -34; x <= 34; x += 8.5) {
+    if (Math.abs(x) < 7) continue;
+    const pl = new THREE.Mesh(pillarGeo, pillarMat);
+    pl.position.set(x, FLOOR_Y + 8, -23);
+    root.add(pl);
+    const cap = new THREE.Mesh(archGeo, pillarMat);
+    cap.scale.x = 8.5;
+    cap.position.set(x + 4.25, FLOOR_Y + 12.8, -23);
+    root.add(cap);
+  }
+  // a soft warm pool of light on the floor under the cabinet
+  const pool = new THREE.Mesh(own(new THREE.PlaneGeometry(12, 6)), glowMat(0xffb040, 0.22));
+  pool.rotation.x = -Math.PI / 2;
+  pool.position.set(0, FLOOR_Y + 0.02, 1.5);
+  root.add(pool);
+
   const c = new THREE.Color();
   return {
     root,

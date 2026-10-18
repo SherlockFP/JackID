@@ -1,9 +1,10 @@
-# JackID — Third-party assets (all CC0 1.0, verified on the source pages)
+# JackID — Third-party assets (CC0 1.0 unless a row says otherwise, verified on the source pages)
 
 All files live under `public/assets/vendor/` and are served at `/assets/vendor/...`.
-Original archives are in `vendor-archives/` (git-ignored, not shipped). No attribution is legally
-required, but the Credits screen should still thank: Screaming Brain Studios, PhobicPaul,
-Kenney (kenney.nl), Quaternius.
+Original archives are in `vendor-archives/` (git-ignored, not shipped). CC0 packs need no
+attribution, but the Credits screen should still thank: Screaming Brain Studios, PhobicPaul,
+Kenney (kenney.nl), Quaternius. The Thintel (CC BY 4.0) and Chetyre (OFL) credit lines are
+required and are on the Credits screen (EN and TR, `src/menu/menu.strings.ts`).
 
 | Folder | Source | Contents |
 |---|---|---|
@@ -13,6 +14,19 @@ Kenney (kenney.nl), Quaternius.
 | `phobicpaul-lowpoly64/low-poly/*.png` | PhobicPaul — Low-poly 64x64 | 15 true-PSX 64px textures (fabric, metal, wood, gem…) |
 | `kenney-casino-audio/Audio/*.ogg` (check exact subfolder) | Kenney — Casino Audio | 54 real SFX: card-fan/place/shove/shuffle/slide, cards-pack-open/take-out, chip-lay, chips-collide/handle/stack, dice-grab/shake/throw, die-throw |
 | `quaternius-ual/UAL1_Standard.glb` (7.6 MB) | Quaternius — Universal Animation Library (Standard) | ONE skinned humanoid mesh named `Mannequin` (~13.7k tris, materials `M_Main`, `M_Joints`) + 43 animation clips |
+| `sbs-synthetic/128x128/{Fabric,Ground,Leather,Metal,Misc,Stone,Tree,Wood}/Synth-<Cat>_NN-128x128.png` (+ `License.txt`) | Screaming Brain Studios — Synthetic Texture Pack, 128x128 files only. https://screamingbrainstudios.itch.io/synthetic-texture-pack — CC0 1.0 | 123 seamless 128px textures (Fabric 15, Ground 15, Leather 15, Metal 15, Misc 18, Stone 15, Tree 15, Wood 15). Use under the usage rules below. |
+| `ggbot-public-pixel/PublicPixel.ttf` (+ `License.txt`) | GGBotNet — Public Pixel Font. https://ggbot.itch.io/public-pixel-font — CC0 1.0 | TrueType pixel font, family "Public Pixel". Turkish İ ı Ş ş Ğ ğ Ç ç Ö ö Ü ü: all 12 present (cmap check). Not copied: OTF, WOFF, WOFF2 (same font or web-only), Glyphs.pdf, GGBotNet.URL. |
+| `hanshuyuri-chetyre/Chetyre-Regular.ttf` (+ `LICENSE.txt` SIL OFL 1.1, `README.md`) | HanshuYuri — Chetyre v1.0. https://hanshuyuri.itch.io/chetyre — SIL Open Font License 1.1 (credit line on Credits screen) | TrueType pixel font, family "Chetyre". Turkish İ ı Ş ş Ğ ğ Ç ç Ö ö Ü ü: all 12 present (cmap check). Not copied: OTF, WOFF, WOFF2 (same font or web-only). |
+| `skeddles-thintel/Thintel.ttf` (+ `Licence.txt`) | skeddles — Thintel Pixel Font. https://skeddles.itch.io/thintel-pixel-font — CC BY 4.0 (credit line on Credits screen; the licence file asks for a link to http://samkeddy.com/) | TrueType pixel font, family "Thintel Regular". ASCII only: Turkish İ ı Ş ş Ğ ğ Ç ç Ö ö Ü ü are ALL MISSING, so do not use it for Turkish text without a fallback font. Not copied: `thintel.png` (500x500 specimen sheet, not a texture). |
+| `duhgless-psx-couch-2/couch.glb`, `Couch.png` (+ `LICENSE-NOTE.txt`) | Duhgless — PSX Style Low-Poly Couch II. https://duhgless.itch.io/psx-style-low-poly-couch-ii — CC0 1.0 (stated on the page; the download has no licence file) | One PSX-style couch: GLB (70 KB) and its 256x256 PNG texture. Not copied: FBX, OBJ, MTL (outside the approved GLB + PNG scope). |
+| `gualtierisgg-rpg-furniture-2/FBX/*.fbx` (36 files) + `Texture/Color2.png` (+ `LICENSE-NOTE.txt`) | GualtierisGG — Mini-RPG-Bundle Part 2 (Low Poly Furniture). https://gualtierisgg.itch.io/low-poly-rpg-bundle-low-poly-furniture-part-2 — CC0 1.0 (stated on the page; no licence file in the download) | 36 low-poly furniture and prop FBX models (benches, chairs, stools, table, crates, ingots, Multicolor variants) and the pack's one texture (Color2.png, 128x128). FBX ONLY, not converted: GLTFLoader cannot read FBX, so convert or re-export before use. Not copied: 36 .blend sources, 4 PREVIEW renders. |
+| `battleroach-medieval-tavern/<Model>/TI_<Model>.obj` + `.mtl` + `Textures/DefaultMaterial_BaseColor.png` (+ `LICENSE-NOTE.txt`) | BattleRoach — Low_Poly Medieval Tavern Interior. https://battleroach.itch.io/low-poly-m — CC0 1.0 (stated on the page; no licence file in the download) | 8 tavern props (Bar, Barrel, BarrelStand, Bench, Chair, Shelf, Stool, Table) as OBJ + MTL, with 7 base-colour PNGs at 1024x1024. OBJ, not converted. BarrelStand has NO texture: its MTL points at the author's local C: drive path, so it renders untextured. OBJ files total ~11 MB uncompressed. Not copied: the 8 FBX files. |
+
+## Batch 2026-10-19: notes
+- Only the seven approved packs were fetched, through itch.io's free name-your-own-price flow at $0 (no payment, no login, no personal data). Archives were kept in the scratch folder, path-checked, and extracted there. Only the files listed above were copied into the project.
+- Turkish glyph check: `cmap` tables were read with Node built-ins. Public Pixel and Chetyre pass; Thintel does not.
+- No asset is loaded by game code yet. The only game change is the two credit lines in `src/menu/menu.strings.ts`.
+- Thintel's licence asks for a link to http://samkeddy.com/; the credit line names the author and licence but has no URL. Add the link if the Credits screen can show one.
 
 ## Visual previews
 Labelled contact sheets of every texture are in `docs/asset-sheets/<pack>__<Category>.png`

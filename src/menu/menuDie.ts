@@ -129,8 +129,16 @@ export class MenuDie {
   private glow(): void {
     const front = this.frontFace();
     for (let i = 0; i < 6; i++) {
-      const hex = i === this.hovered ? 0x9a6416 : i === front ? 0x3a1c08 : 0x000000;
-      this.mats[i].emissive.setHex(hex);
+      // hovered: a bright amber that pulses; selected (front) face: a slow gold breath; the rest stay dark
+      if (i === this.hovered) {
+        const k = 0.8 + 0.2 * Math.sin(this.time * 6);
+        this.mats[i].emissive.setRGB(0.68 * k, 0.45 * k, 0.12 * k);
+      } else if (i === front) {
+        const k = 0.85 + 0.15 * Math.sin(this.time * 1.8);
+        this.mats[i].emissive.setRGB(0.26 * k, 0.13 * k, 0.04 * k);
+      } else {
+        this.mats[i].emissive.setHex(0x000000);
+      }
     }
   }
 

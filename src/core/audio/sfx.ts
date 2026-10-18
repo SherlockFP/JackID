@@ -1037,6 +1037,61 @@ const LONG = ['win2', 'win3', 'winHuge', 'winRise', 'winMega', 'jackpot', 'jackp
 for (const n of LONG) { const d = SFX_DEFS.get(n); if (d) d.meta.long = true; }
 for (const n of ['gambleOpen', 'allinDrum', 'allinHit', 'allinMiss']) { const d = SFX_DEFS.get(n); if (d) d.meta.long = true; }
 
+// ── wave 77 sound pass: phone open/close, brass service bell, crowd cheer + murmur, small table sounds ──
+/** Phone out of the pocket: a cloth rustle, a plastic click and a short two-tone chirp. Rising. */
+def('phoneOpen', (k) => {
+  k.noise(0.14, { vol: 0.12, filter: 'bandpass', freq: 700, to: 2200, q: 0.8, env: { a: 0.03, d: 0.1, s: 0, r: 0.02 } });
+  snap(k, 0.11, 0.45, 2600, 0.01, 2); thump(k, 0.11, 240, 130, 0.04, 0.3, 'triangle');
+  k.osc('square', 880, 0.04, { at: 0.17, vol: 0.05, env: { a: 0.002, d: 0.04, s: 0, r: 0.01 } });
+  k.osc('square', 1320, 0.05, { at: 0.21, vol: 0.05, env: { a: 0.002, d: 0.05, s: 0, r: 0.01 } });
+  return 0.3;
+}, { bus: 'ui', pri: 7, max: 2, gain: 1.1 });
+/** Phone back in the pocket: the chirp falls, a softer click, the rustle. */
+def('phoneClose', (k) => {
+  k.osc('square', 1100, 0.04, { vol: 0.05, env: { a: 0.002, d: 0.04, s: 0, r: 0.01 } });
+  k.osc('square', 740, 0.05, { at: 0.04, vol: 0.05, env: { a: 0.002, d: 0.05, s: 0, r: 0.01 } });
+  snap(k, 0.09, 0.35, 2200, 0.01, 2); thump(k, 0.09, 200, 110, 0.04, 0.25, 'triangle');
+  k.noise(0.12, { at: 0.1, vol: 0.1, filter: 'bandpass', freq: 1800, to: 600, q: 0.8, env: { a: 0.02, d: 0.09, s: 0, r: 0.02 } });
+  return 0.26;
+}, { bus: 'ui', pri: 7, max: 2, gain: 1.1 });
+/** Brass service bell (desk bell): a hard strike, a bright ring that hangs, a short second hit when param > 0.5. */
+def(['bellBrass', 'brassBell', 'serviceBell'], (k, o) => {
+  const hit = (at: number, v: number): void => {
+    snap(k, at, 0.4 * v, 4200, 0.006, 2); thump(k, at, 420, 260, 0.03, 0.2 * v, 'triangle');
+    ring(k, at, 1180, 1.1, 0.2 * v, { ratios: [1, 1.5, 2.76, 4.07, 5.4], amps: [1, 0.55, 0.45, 0.22, 0.12] });
+    k.osc('sine', 2360, 0.5, { at, vol: 0.05 * v, env: { a: 0.001, d: 0.5, s: 0, r: 0.02 }, am: [11, 0.3] });
+  };
+  hit(0, 1);
+  if ((o.param ?? 0) > 0.5) hit(0.16, 0.8);
+  return 1.3;
+}, { pri: 6, max: 2, gain: 0.9 });
+/** Crowd cheer for a big win. param 0..1 = size. Filtered noise swell with a few "oh" vowels on top. Loud-safe. */
+def('cheer', (k, o) => {
+  const sz = 0.4 + (o.param ?? 0.5) * 0.6, dur = 1.4 + sz * 1.2;
+  k.noise(dur, { vol: 0.2 * sz, filter: 'bandpass', freq: 1100, to: 1700, q: 0.7, env: { a: 0.25, d: dur * 0.6, s: 0.3, r: 0.5 } });
+  k.noise(dur, { vol: 0.07 * sz, filter: 'highpass', freq: 3500, env: { a: 0.3, d: dur * 0.6, s: 0.2, r: 0.5 } });
+  for (let i = 0; i < 6; i++) {
+    const at = rnd(0.05, dur * 0.5), f = rnd(180, 330);
+    k.osc('sawtooth', f, 0.45, { at, vol: 0.02 * sz, to: f * 1.3, lp: 900, q: 1.2, env: { a: 0.08, d: 0.2, s: 0.4, r: 0.2 } });
+  }
+  for (let i = 0; i < 5; i++) snap(k, rnd(0.2, dur * 0.7), 0.12 * sz, rnd(1800, 3000), 0.02, 1.5);        // claps
+  return dur + 0.4;
+}, { bus: 'amb', pri: 3, max: 1, gain: 1 });
+/** One far-off crowd murmur blob for the casino bed (the pit bed schedules it). */
+def('crowdMurmur', (k) => {
+  const f = rnd(420, 760);
+  k.noise(1.2, { vol: 0.1, filter: 'bandpass', freq: f, to: f * rnd(0.8, 1.3), q: 1.6, env: { a: 0.35, d: 0.6, s: 0.2, r: 0.4 } });
+  const g = rnd(140, 220);
+  k.osc('sawtooth', g, 0.7, { at: 0.2, vol: 0.012, to: g * rnd(0.85, 1.2), lp: 700, q: 1, env: { a: 0.15, d: 0.3, s: 0.4, r: 0.25 } });
+  return 1.6;
+}, { bus: 'amb', pri: 1, max: 2, gain: 1 });
+/** Rubber chip set down hard on felt, a single clack (sits between `chip` and `chipStack`). */
+def('chipClack', (k) => {
+  k.sample(smp(SMP.chipLay), { vol: 0.6, rate: 1.1 });
+  snap(k, 0, 0.35, 3800, 0.008, 2); k.osc('sine', 1500, 0.02, { vol: 0.1, to: 1000 });
+  return 0.15;
+}, { pri: 4, max: 6, gain: 0.9 });
+
 // ── coin fidget (viewmodel Q tricks): quiet, short ticks ──────────────────────────────────────────
 def('coinTrickFlick', (k) => { snap(k, 0, 0.35, 4200, 0.008, 2); return 0.03; }, { pri: 3, max: 8 });
 def('coinTrickClink', (k) => { clink(k, 0, 0.3, 2900, 0.07, 0); return 0.12; }, { pri: 3, max: 8 });
@@ -1189,6 +1244,7 @@ export function buildAmbience(id: AmbienceId, env: AmbEnv): AmbBed {
       b.every(3, 9, () => b.event('coinDrop', 0.08, [8, 22]));
       b.every(5, 14, () => b.event('bell', 0.05, [12, 26]));
       b.every(6, 16, () => b.event('sparkle', 0.04, [8, 20]));
+      b.every(3, 7, () => b.event('crowdMurmur', 0.3, [10, 24]));                                           // far-off crowd
   }
   return b;
 }

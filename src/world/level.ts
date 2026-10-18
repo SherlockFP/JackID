@@ -12,7 +12,7 @@ import type { TexGen } from '@/core/texgen/types';
 import type { V3 } from '@/core/types';
 import type { GateDef, LevelBuild, LevelCtx, LightHint, SpawnPoint } from './sys/arch';
 import type { WorldProp } from './types';
-import { ZONES } from './layout';
+import { ZONES, SIGNPOSTS } from './layout';
 import { bareBulb, chandelier, flickerLevel, pendant, sconce, tube } from './lights';
 import { buildColumn, buildGrille, buildVelvetCurtain, buildManagementDoor, buildSump, buildFurnace, buildCollectorChair, buildXPlate, disposeTree, SUMP_HALF, SUMP_WALL_H, SUMP_WALL_T, type GateProp } from './props/decor';
 import { createClock, type WallClock } from './props/clock';
@@ -21,6 +21,9 @@ import { createElevator, type Elevator } from './props/elevator';
 import { createQuotaBoard, type QuotaBoard } from './props/quotaBoard';
 import { buildStage, buildJackpotWall, buildPrizeCase, buildBalcony, createLightShow, PRIZE_CASE, STAGE, type ShowTarget } from './props/grand';
 import { buildSignposts } from './props/signposts';
+import { crispLabel, crispNeon } from './props/signs';
+import { buildCeilingDressing, buildBalconyUndersides } from './props/ceiling';
+import { buildLastCallBell } from './props/bell';
 import { buildRooms, type RoomsBuild } from './rooms';
 import { buildHollow } from './hollow';
 import { buildHome } from './home';
@@ -174,7 +177,8 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     }
     g.fill();
   }, { wrap: 'repeat' });
-  const ceilMat = kit.mat({ map: coffer, color: 0xd8c8a8 });
+  // the ceiling carries its own glow (the point lights stand below it and never reached it): emissive from its own pattern
+  const ceilMat = kit.mat({ map: coffer, color: 0xd8c8a8, emissive: 0xffffff, emissiveMap: coffer, emissiveIntensity: 0.32 });
   const wf: WallCtx = { kit, root: shell, wall: wallMatDeco, wain: wainMat, statics, meshes: [] };
 
   // floors: walkable boxes (top y 0) and visuals, split around the hero trapdoor hole in the Lobby;
@@ -188,6 +192,18 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     }
     horizontal(kit, z.rect as R4, CEILING[z.id] ?? 4.5, ceilMat, false, 2, shell);
   }
+
+  // coffered beams, lit bay panels, hanging lamps, vents and cables under every zone ceiling (wave 77: no more dark void)
+  buildCeilingDressing(kit, tex, {
+    parent: statical,
+    zones: ZONES.filter((z) => z.id in CEILING && z.id !== 'lift').map((z) => ({ id: z.id, rect: z.rect as R4, h: CEILING[z.id] })),
+    avoid: [
+      [0, -4, 3.8], [-5, -11, 2.2], [5, -11, 2.2], [STAGE_X, STAGE_Z - 0.9, 2.4], [21, 5.5, 2.2], [0, 1.6, 3.6],
+      [-6, -24, 1.4], [6, -24, 1.4], [14, -25, 1.3], [22, -21, 1.3], [28, -27.5, 1.3],
+      ...SIGNPOSTS.map((s) => [s.pos[0], s.pos[2], 1.8] as const),
+    ],
+  });
+  buildBalconyUndersides(kit, statical, { y: 6.4, z0: -17.4, z1: 1.4 });
 
   // ── walls ───────────────────────────────────────────────────────────────────────────────────
   const deco = wallMatDeco, ox = wallMatOx;
@@ -262,7 +278,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   for (const [i, [lx, lz]] of sumpLamps.entries()) {
     lights.push({ id: `sump:cage${i}`, pos: [SUMP_POS[0] + lx, -27, SUMP_POS[2] + lz], color: 0xffb45a, intensity: 1.3, range: 8, flicker: 'DYING' });   // no zone: it resolves to the lobby above (the Sump is not a zone)
   }
-  const exit = kit.neon({ text: { key: 'prop.sign.exit' }, h: 0.45, color: 0xff3a2a, flicker: 0.4 });
+  const exit = crispNeon(kit, { text: { key: 'prop.sign.exit' }, h: 0.45, color: 0xff3a2a, flicker: 0.4 });
   exit.root.position.set(SUMP_POS[0], -26.8, SUMP_POS[2] + 5.95);
   exit.root.rotation.y = Math.PI;
   root.add(exit.root);
@@ -360,7 +376,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   fx(bareBulb(kit, { id: 'boiler:bulb0', pos: [14, 3.0, -25], ceiling: CEILING.boiler, color: 0xffe6b0, intensity: 1.0, range: 6, flicker: 'STEADY', zone: 'boiler' }));
   fx(bareBulb(kit, { id: 'boiler:bulb1', pos: [22, 3.0, -21], ceiling: CEILING.boiler, color: 0xffe6b0, intensity: 1.0, range: 6, flicker: 'BUZZ', zone: 'boiler' }));
   fx(bareBulb(kit, { id: 'boiler:bulb2', pos: [28, 3.0, -27.5], ceiling: CEILING.boiler, color: 0xffe6b0, intensity: 1.0, range: 6, flicker: 'DYING', zone: 'boiler' }));
-  const dice = kit.neon({ text: { key: 'prop.sign.dice' }, h: 0.5, color: 0xff4a3a, flicker: 0.3 });
+  const dice = crispNeon(kit, { text: { key: 'prop.sign.dice' }, h: 0.5, color: 0xff4a3a, flicker: 0.3 });
   dice.root.position.set(22, 2.6, -29.8);
   root.add(dice.root);
   lights.push({ id: 'boiler:dice', pos: [22, 2.6, -29.4], color: 0xff4a3a, intensity: 0.7, range: 4, flicker: 'BUZZ', zone: 'boiler' });
@@ -412,11 +428,20 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   const xPlate = buildXPlate(kit, { pos: [0, 0, -27] });
   root.add(xPlate);
   anchors.x = xPlate;
-  const jack = kit.neon({ text: 'JACK·ID', h: 0.75, color: 0xff3fa4, flicker: 0.2 });
+  const jack = crispNeon(kit, { text: 'JACK·ID', h: 0.75, color: 0xff3fa4, flicker: 0.2 });
   jack.root.position.set(0, 7.0, 1.85);
   jack.root.rotation.y = Math.PI;
   root.add(jack.root);
   anchors.jack = jack.root;
+
+  // ── the LAST CALL BELL on its counter beside the Debt Terminal (anchor 'bell', prop 'lastCallBell'; wave 77) ──
+  const bell = buildLastCallBell(kit, { interact: ctx.interact });
+  root.add(bell.prop.root, bell.anchor);
+  anchors.bell = bell.anchor;
+  lights.push(...bell.hints);
+  statics.push(...bell.statics);
+  updates.push({ update: (dt) => bell.prop.update?.(dt) });
+  disposables.push(bell.prop);
 
   // ── rooms (WAVE 24 §2): grille plates and marquees, Jade / Wash / Boiler / Counting dressing, note anchors ──
   const rooms: RoomsBuild = buildRooms({
@@ -451,7 +476,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
 
   // ── plaques and signage (zones, shops, doors) ────────────────────────────────────────────────
   const plaque = (key: string, w: number, h: number, x: number, y: number, z: number, rot: 0 | 90 | 180 | 270, color: number) => {
-    const p = kit.label({ text: { key }, w, h, color, bg: 0x1a120c });
+    const p = crispLabel(kit, { text: { key }, w, h, color, bg: 0x1a120c, frame: 0x8c6b29 });
     p.mesh.position.set(x, y, z);
     p.mesh.rotation.y = (rot * Math.PI) / 180;
     root.add(p.mesh);
@@ -482,7 +507,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   {
     // one neon per area: ARRIVALS over the Mouth starters, THE WELL on both Well walls, THE LOBBY on both Lobby walls, BACK OF HOUSE above the Mouth wings
     const area = (id: string, key: string, h: number, color: number, pos: V3, yaw: number): void => {
-      const n = kit.neon({ text: { key }, h, color, flicker: 0.1 });
+      const n = crispNeon(kit, { text: { key }, h, color, flicker: 0.1 });
       n.root.position.set(pos[0], pos[1], pos[2]);
       n.root.rotation.y = yaw;
       n.setOn(true);
@@ -584,6 +609,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     jackpotWall: wall,
     prizeCase: prizes.prop,
     lightShow,
+    lastCallBell: bell.prop,
   };
 
   // ── finish: merge the static shell into a few draw calls (fixtures and props stay separate) ──────

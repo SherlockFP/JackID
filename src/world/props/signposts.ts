@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import type { KitX } from '@/kit';
 import type { WorldProp } from '../types';
 import { SIGNPOSTS, type SignSide, type Signpost } from '../layout';
+import { crispLabel } from './signs';
 
 const BOARD_H = 0.52;
 const GOLD = 0xffd34a;
@@ -31,7 +32,7 @@ function buildFace(kit: KitX, sp: Signpost, side: SignSide): THREE.Group {
   // the arrow sits at the end it points to; vertical arrows sit at the left end
   const arrowAtRight = side.arrow === 'right';
   const textX = arrowAtRight ? -0.3 : 0.3;
-  const label = kit.label({ text: { key: `prop.${side.key}` }, w: textW, h: BOARD_H - 0.12, bg: 0x1a120c, color: GOLD, px: [Math.round(textW * 96), 40] });
+  const label = crispLabel(kit, { text: { key: `prop.${side.key}` }, w: textW, h: BOARD_H - 0.12, bg: 0x1a120c, color: GOLD, frame: 0x8c6b29 });
   label.mesh.position.set(textX, 0, 0.012);
   g.add(label.mesh);
   const arrow = kit.extrude(ARROW, 0.02, GOLD, { bevel: 0 });

@@ -15,6 +15,7 @@ import { createRng, type Rng } from '@/core/rng';
 import { t } from '@/core/i18n';
 import { app } from '@/core/app';
 import { roomsBridge, type WingId, type WingState } from './bridge';
+import { crispNeon } from '../props/signs';
 import {
   GRILLES, faceDeg, nearestKeyReady, plateView, plateX, shouldCue, signX, type GrilleSpec, type PlateView,
 } from './logic';
@@ -102,7 +103,7 @@ export function buildGrilles(ctx: GrilleCtx): GrilleBuild {
     const lockShackle = kit.torus(0.06, 0.018, matSealed, { parent: lock, pos: [0, 0.06, 0], arc: Math.PI });
 
     // marquee behind the bars, inside the room
-    const sign = kit.neon({ text: { key: `wroom.wing.${spec.wing}` }, h: 0.42, color: spec.neon, flicker: 0.2 });
+    const sign = crispNeon(kit, { text: { key: `wroom.wing.${spec.wing}` }, h: 0.42, color: spec.neon, flicker: 0.2 });
     sign.root.position.set(signX(spec), spec.signY, spec.z);
     sign.root.rotation.y = face;
     root.add(sign.root);

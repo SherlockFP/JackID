@@ -31,7 +31,7 @@ import { inUnderneath } from '@/world/hollow';
 import { TILT_FREE_PULLS } from '@/game/data/schedule';
 import { createBrokePrompt } from '@/game/brokePrompt';
 import { machineName } from '@/game/progression';
-import { objectiveFor, objectiveShown, type Objective, type ObjectiveTarget } from '@/menu/hud/disclose';
+import { objectiveFor, objectiveShown, type Objective } from '@/menu/hud/disclose';
 import '@/menu/hud/objective.css';
 
 export interface TutorialHost {
@@ -122,7 +122,7 @@ function overlayEl(): HTMLElement {
   return hudHostEl().parentElement ?? hudHostEl();
 }
 
-interface Marker { show(mid: InstanceId | null, time: number): void; hide(): void; dispose(): void }
+interface Marker { show(mid: InstanceId | null, time: number): void; showAt(obj: THREE.Object3D | null, time: number): void; hide(): void; dispose(): void }
 
 function createMarker(world: WorldHost): Marker {
   const ringGeo = new THREE.RingGeometry(0.42, 0.62, 40);
@@ -138,17 +138,28 @@ function createMarker(world: WorldHost): Marker {
   arrow.visible = false;
   world.root.add(ring, arrow);
   const hide = (): void => { ring.visible = false; arrow.visible = false; };
+  const place = (x: number, y: number, z: number, time: number): void => {
+    const bob = Math.sin(time * 3) * 0.12;
+    ring.position.set(x, y + 0.04, z);
+    arrow.position.set(x, y + 2.3 + bob, z);
+    ring.visible = true;
+    arrow.visible = true;
+    ringMat.opacity = 0.45 + 0.2 * Math.sin(time * 3);
+  };
+  const tmp = new THREE.Vector3();
   return {
     show(mid: InstanceId | null, time: number): void {
       const slot = mid === null ? undefined : world.slot(mid);
       if (!slot) { hide(); return; }
       const [x, y, z] = slot.pos;
-      const bob = Math.sin(time * 3) * 0.12;
-      ring.position.set(x, y + 0.04, z);
-      arrow.position.set(x, y + 2.3 + bob, z);
-      ring.visible = true;
-      arrow.visible = true;
-      ringMat.opacity = 0.45 + 0.2 * Math.sin(time * 3);
+      place(x, y, z, time);
+    },
+    // A waypoint on a world object (the Bell anchor): its world position, mapped into the overlay's root space.
+    showAt(obj: THREE.Object3D | null, time: number): void {
+      if (!obj) { hide(); return; }
+      obj.getWorldPosition(tmp);
+      world.root.worldToLocal(tmp);
+      place(tmp.x, tmp.y, tmp.z, time);
     },
     hide,
     dispose(): void {
@@ -387,7 +398,7 @@ function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): v
   let base = { rounds: 0, deposits: 0 };
   let shownKey = '';
   const found = new Map<string, InstanceId>();
-  const targetMid = (target: Exclude<ObjectiveTarget, null>): InstanceId | null => {
+  const targetMid = (target: 'bigone' | 'debt_terminal'): InstanceId | null => {
     const hit = found.get(target);
     if (hit !== undefined) return hit;
     const m = world.machines().find((x) => x.def.id === target);
@@ -414,6 +425,7 @@ function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): v
         rounds: roundsAll - base.rounds,
         deposits: depositsAll - base.deposits,
         pocket: run.wallet(self),
+        owed: run.bank().left,
       });
       const key = `${night}|${o.key}`;
       if (key !== shownKey) {
@@ -421,7 +433,14 @@ function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): v
         text.textContent = t(`tut.obj.${o.key as Objective}`);
       }
       el.style.display = '';
-      marker.show(o.target !== null ? targetMid(o.target) : null, app.time.sim);
+      // The Bell: its prop anchor when the art lane has placed it; without one, the Debt Terminal (where the Bell hangs) is the waypoint.
+      if (o.target === 'bell') {
+        const bell = world.anchor('bell');
+        if (bell) marker.showAt(bell, app.time.sim);
+        else marker.show(targetMid('debt_terminal'), app.time.sim);
+      } else {
+        marker.show(o.target !== null ? targetMid(o.target) : null, app.time.sim);
+      }
     },
     dispose(): void {
       if (disposed) return;

@@ -174,17 +174,36 @@ export function buildJackpotWall(kit: KitX, o: { ceiling: number }): JackpotWall
       g.fillStyle = '#0a0608';
       g.fillRect(0, 0, s.w, s.h);
       if (flashK > 0) { g.fillStyle = `rgba(255,211,74,${(flashK * 0.55).toFixed(3)})`; g.fillRect(0, 0, s.w, s.h); }
-      const shown = lines.length ? lines.slice(0, 4).map(up) : [up(t('prop.jackpot.idle')), up(t('prop.jackpot.sub'))];
       const dark = flashK > 0.5;
-      // four lines at the biggest scale that fits: the first is the headline (scale 3), the rest scale 2; a dark drop shadow keeps them crisp
-      let yy = 8;   // y is the cap top: leave room above for the Turkish accents
-      shown.forEach((ln, i) => {
-        const sc = fitScale(kit, ln, s.w - 12, i === 0 ? 3 : 2);
-        const col = dark && i === 0 ? '#2a1204' : LINE_COLORS[i % LINE_COLORS.length];
-        kit.tex.drawText(g, ln, s.w / 2 + 1, yy + 1, { font: 'px5', color: '#000000', align: 'center', scale: sc });
-        kit.tex.drawText(g, ln, s.w / 2, yy, { font: 'px5', color: col, align: 'center', scale: sc });
-        yy += sc * 7 + 7;
-      });
+      const head = up(t('prop.jackpot.idle'));
+      const drawLine = (str: string, x: number, y: number, sc: number, col: string, align: 'left' | 'right' | 'center'): void => {
+        kit.tex.drawText(g, str, x + 1, y + 1, { font: 'px5', color: '#000000', align, scale: sc });
+        kit.tex.drawText(g, str, x, y, { font: 'px5', color: col, align, scale: sc });
+      };
+      // y is the cap top: leave room above for the Turkish accents. The headline is always the Big One; wins sit under a small header,
+      // name on the left and the coins on the right, so a small win never reads as part of the name.
+      let yy = 8;
+      const hs = fitScale(kit, head, s.w - 12, 3);
+      drawLine(head, s.w / 2, yy, hs, dark ? '#2a1204' : LINE_COLORS[0], 'center');
+      yy += hs * 7 + 6;
+      const wins = lines.slice(0, 2);
+      if (wins.length === 0) {
+        const sub = up(t('prop.jackpot.sub'));
+        drawLine(sub, s.w / 2, yy, fitScale(kit, sub, s.w - 12, 2), LINE_COLORS[1], 'center');
+      } else {
+        const title = up(t('prop.jackpot.wins'));
+        drawLine(title, s.w / 2, yy, fitScale(kit, title, s.w - 12, 2), LINE_COLORS[2], 'center');
+        yy += 14 + 6;
+        wins.forEach((ln) => {
+          const m = /^(.*\S)\s{2,}(\S+)$/.exec(ln);
+          const name = up(m ? m[1] : ln), amt = m ? m[2] : '';
+          const as = 2;
+          const room = s.w - 16 - (amt ? kit.tex.measure(amt, { font: 'px5', scale: as }) + 14 : 0);
+          drawLine(name, 8, yy, fitScale(kit, name, room, 2), LINE_COLORS[3], 'left');
+          if (amt) drawLine(amt, s.w - 8, yy, as, LINE_COLORS[0], 'right');
+          yy += 14 + 5;
+        });
+      }
     });
   };
   paint();

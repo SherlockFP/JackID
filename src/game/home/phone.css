@@ -82,3 +82,10 @@
 .px-phone-reply:disabled { opacity: 0.4; cursor: default; }
 
 .px-phone-hint { font-family: var(--f-head); font-size: calc(5 * var(--u)); line-height: 1.4; color: var(--concrete); text-align: center; }
+
+/* wave 77: the phone slides up from the bottom and back down, in PSX steps (no easing) */
+.px-phone.enter { animation: px-phone-up 0.24s steps(6, end) both; }
+.px-phone.leave { animation: px-phone-down 0.18s steps(5, end) both; pointer-events: none; }
+@keyframes px-phone-up { from { transform: translateY(calc(100% + 60 * var(--u))); } to { transform: translateY(0); } }
+@keyframes px-phone-down { from { transform: translateY(0); } to { transform: translateY(calc(100% + 60 * var(--u))); } }
+@media (prefers-reduced-motion: reduce) { .px-phone.enter, .px-phone.leave { animation-duration: 0.01s; } }

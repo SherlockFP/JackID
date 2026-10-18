@@ -1,0 +1,6 @@
+Door Open / Door Close set (qubodup-doors)
+Author: qubodup
+Source: https://opengameart.org/content/door-open-door-close-set  (archive qubodup-DoorSet.7z)
+Licence: CC0 1.0 Universal (public domain dedication). No attribution required.
+Vendored subset: 18 OGG files (DoorClose01-10, DoorOpen01-08). The FLAC copies were not vendored. Audio unmodified.
+Vendored by the JackID sound lane on 2026-10-19 via curl from OpenGameArt.

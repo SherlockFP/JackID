@@ -1,9 +1,9 @@
 /**
  * Debt Terminal — procedural model (devices-core, system category). Pattern: see `coinflip/model.ts`.
  *
- * The House's cashier alcove at MOUTH-TERM: walnut counter with a brass-trimmed keypad on a sloped plate, a deposit
- * mouth with chewing lips, a receipt printer that feeds a paper stub, a red quota LED and an amber deposit LED over
- * an amber CRT (the printout), a swipe slot for the JackID, the brass SETTLE lever (right), OPEN THE FLOOR lever (left),
+ * The House's cashier alcove at MOUTH-TERM: a gunmetal kiosk cabinet with a brass-railed keypad on a sloped plate, a deposit
+ * mouth with chewing lips, a receipt printer that feeds a paper stub, a red quota LED and an amber deposit LED around
+ * a big amber CRT in a chunky bezel (the printout), a card reader for the JackID, the brass SETTLE lever (right), OPEN THE FLOOR lever (left),
  * a bell rope on the right post and the House eye over the alcove (`emblemLid` lifts when the House looks at you).
  *
  * Footprint 1.20 × 0.90 × 2.40 m (M slot, PLAN §4.3). Origin = floor centre, +Z = player side. Keypad is the only
@@ -71,10 +71,28 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   for (const sx of [-1, 1]) kit.box(0.08, H - 0.12, D, pal.woodDark, at(sx * (W / 2 - 0.04), (H + 0.12) / 2, 0)); // posts
   kit.box(W, 0.1, D, pal.woodDark, at(0, H - 0.05, 0));                                      // canopy
   kit.box(W - 0.02, 0.03, D - 0.02, pal.brass, at(0, H - 0.12, 0));                          // brass trim under canopy
-  kit.box(1.0, COUNTER_TOP - 0.12, 0.6, pal.redDark, at(0, (COUNTER_TOP + 0.12) / 2, 0.1));  // counter body
-  kit.box(1.04, 0.03, 0.66, pal.brass, at(0, COUNTER_TOP - 0.015, 0.1));                    // counter lip
-  kit.box(0.26, 0.1, 0.22, pal.steel, at(-0.38, COUNTER_TOP + 0.05, 0.12));                  // printer housing
-  kit.box(0.14, 0.06, 0.1, pal.black, at(0.38, COUNTER_TOP + 0.03, 0.2));                     // swipe slot block
+  // the kiosk: a gunmetal cabinet with brass edging, a recessed front fascia, rivets, a kick strip and a lit-red base stripe
+  const gun = 0x31313a, gunDark = 0x1c1c24;
+  kit.box(1.0, COUNTER_TOP - 0.12, 0.62, gun, { ...at(0, (COUNTER_TOP + 0.12) / 2, 0.1), bevel: 0.012 });   // cabinet body
+  kit.box(1.06, 0.035, 0.7, pal.brass, at(0, COUNTER_TOP - 0.0175, 0.1));                                  // counter lip
+  kit.box(1.02, 0.07, 0.64, pal.brass, at(0, 0.155, 0.1));                                                 // kick strip
+  kit.box(0.9, 0.5, 0.02, gunDark, at(0, 0.62, 0.41));                                                      // front fascia
+  kit.box(0.94, 0.03, 0.03, pal.brass, at(0, 0.89, 0.415));                                                 // fascia top rail
+  kit.box(0.94, 0.03, 0.03, pal.brass, at(0, 0.35, 0.415));                                                 // fascia bottom rail
+  kit.box(0.9, 0.03, 0.01, pal.red, at(0, 0.28, 0.42));                                                     // red base stripe
+  for (const sx of [-1, 1]) for (const sy of [0.4, 0.84]) kit.sphere(0.014, pal.gold, { ...at(sx * 0.42, sy, 0.425), wSeg: 5, hSeg: 3 });   // rivets
+  // keypad rail: a brass frame round the sloped plate
+  for (const sx of [-1, 1]) kit.box(0.035, 0.05, 0.46, pal.brass, at(sx * 0.395, COUNTER_TOP + 0.025, KEYPAD_Z));
+  kit.box(0.82, 0.05, 0.035, pal.brass, at(0, COUNTER_TOP + 0.025, KEYPAD_Z + 0.225));
+  kit.box(0.82, 0.07, 0.035, pal.brass, at(0, COUNTER_TOP + 0.035, KEYPAD_Z - 0.225));
+  // receipt printer: steel housing with a black feed slot and a brass bezel
+  kit.box(0.26, 0.1, 0.22, pal.steel, { ...at(-0.38, COUNTER_TOP + 0.05, 0.12), bevel: 0.008 });
+  kit.box(0.2, 0.012, 0.03, pal.black, at(-0.38, COUNTER_TOP + 0.101, 0.05));
+  kit.box(0.27, 0.014, 0.23, pal.brass, at(-0.38, COUNTER_TOP + 0.003, 0.12));
+  // card reader for the JackID on the fascia: brass plate, black slot, a small guide arrow
+  kit.box(0.26, 0.13, 0.02, pal.brass, at(0.36, 0.6, 0.43));
+  kit.box(0.2, 0.014, 0.022, pal.black, at(0.36, 0.615, 0.435));
+  kit.box(0.2, 0.03, 0.014, gunDark, at(0.36, 0.565, 0.438));
   kit.box(0.22, 0.12, 0.04, pal.black, at(0, 0.7, 0.42));                                    // deposit mouth recess
   kit.box(0.5, 0.2, 0.04, pal.brass, at(0, 0.73, 0.43));                                     // mouth plate
   kit.box(0.48, 0.04, 0.12, pal.gold, at(0, 1.9, -0.02));                                    // quota LED bezel
@@ -83,11 +101,22 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   // ── animated parts (listed in `keep`) ──
   // 512 × 384 texels (2× the old 256 × 192): the CRT is the readout, so its figures need the texels
   // Built on the screen itself (not `crtMonitor`) with the scanlines off: they dim every other texel row and thin the figures.
-  const crtScreen = kit.screen({ w: 0.46, h: 0.36, px: [512, 384], bezel: pal.black, glow: 0.95, scanlines: false });
+  const SCR_W = 0.58, SCR_H = 0.435, SCR_Y = 1.55;
+  const crtScreen = kit.screen({ w: SCR_W, h: SCR_H, px: [512, 384], bezel: pal.black, glow: 0.95, scanlines: false });
   crtScreen.clear('#060300');
   crispTexture(crtScreen.tex, 4);                       // after the psx material (it forces nearest): linear + mips at native size
-  crtScreen.mesh.position.set(0, 1.56, 0.03);
-  kit.box(0.52, 0.42, 0.06, pal.black, at(0, 1.56, -0.012));   // the casing behind the glass
+  crtScreen.mesh.position.set(0, SCR_Y, 0.03);
+  // a chunky bezel: a deep gunmetal housing behind the glass, a raised frame round it and a brass inner lip
+  kit.box(SCR_W + 0.12, SCR_H + 0.12, 0.1, gunDark, { ...at(0, SCR_Y, -0.03), bevel: 0.012 });
+  for (const sy of [-1, 1]) {
+    kit.box(SCR_W + 0.12, 0.055, 0.07, gun, at(0, SCR_Y + sy * (SCR_H / 2 + 0.0275), 0.03));
+    kit.box(SCR_W + 0.02, 0.012, 0.075, pal.brass, at(0, SCR_Y + sy * (SCR_H / 2 + 0.002), 0.03));
+  }
+  for (const sx of [-1, 1]) {
+    kit.box(0.055, SCR_H + 0.12, 0.07, gun, at(sx * (SCR_W / 2 + 0.0275), SCR_Y, 0.03));
+    kit.box(0.012, SCR_H + 0.02, 0.075, pal.brass, at(sx * (SCR_W / 2 + 0.002), SCR_Y, 0.03));
+  }
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) kit.sphere(0.012, pal.gold, { ...at(sx * (SCR_W / 2 + 0.03), SCR_Y + sy * (SCR_H / 2 + 0.03), 0.07), wSeg: 5, hSeg: 3 });
   root.add(crtScreen.mesh);
 
   const quota = kit.ledPanel({ digits: 10, color: '#ff2a2a', h: 0.08 });
@@ -115,7 +144,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   for (const id of KEYS) {
     const lb = kit.label({
       text: { key: `m.debt_terminal.k_${id}` }, w: KEY_W * 0.92, h: KEY_H * 0.7, px: [352, 160],
-      color: id === 'enter' || id === 'wd' ? 0xffffff : 0x1a1206, bg: null, font: 'ps2p',
+      color: id === 'enter' || id === 'wd' ? 0xffffff : 0x1a1206, bg: null, font: 'px5',   // the bitmap font: whole-pixel letters, full Turkish
     });
     labelParts[id] = lb;
     lb.mesh.rotation.x = -Math.PI / 2;
@@ -147,7 +176,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   root.add(receiptPivot);
 
   const swipe = kit.lamp({ r: 0.02, color: pal.green, shape: 'flat' });
-  swipe.root.position.set(0.38, COUNTER_TOP + 0.075, 0.2);
+  swipe.root.position.set(0.36, 0.665, 0.445);   // beside the card reader slot
   root.add(swipe.root);
 
   const readyLamp = kit.lamp({ r: 0.025, color: pal.neonYellow, shape: 'dome' });
@@ -176,8 +205,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   root.add(bellRope);
 
   // a lit header on the canopy front: the alcove reads as the bank from across the lobby
-  const header = kit.label({ text: { key: 'm.debt_terminal.crt_title' }, w: 0.84, h: 0.12, px: [336, 48], color: 0xffd070, bg: 0x120c08, font: 'ps2p' });
-  header.mesh.position.set(0, H - 0.05, D / 2 + 0.006);
+  const header = kit.label({ text: { key: 'm.debt_terminal.crt_title' }, w: 0.84, h: 0.16, px: [420, 80], color: 0xffd070, bg: 0x120c08, font: 'px5' });
+  header.mesh.position.set(0, H - 0.09, D / 2 + 0.006);
   root.add(header.mesh);
 
   // ── speaker, prompt and the pooled-light hint ──
@@ -203,7 +232,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
     root,
     parts,
     // seat framing: the CRT (y 1.38–1.74), the quota LED (1.9) and the keypad (1.07) all sit inside the view
-    playPose: { pos: new THREE.Vector3(0, 1.5, 1.1), look: new THREE.Vector3(0, 1.4, 0.1), fov: 56, mouse: 'pick' },
+    playPose: { pos: new THREE.Vector3(0, 1.5, 1.1), look: new THREE.Vector3(0, 1.42, 0.1), fov: 56, mouse: 'pick' },
     colliders: [
       { min: [-W / 2, 0, -D / 2], max: [W / 2, H, -D / 2 + 0.12] },   // alcove back
       { min: [-0.5, 0, -0.2], max: [0.5, COUNTER_TOP, 0.4] },          // counter

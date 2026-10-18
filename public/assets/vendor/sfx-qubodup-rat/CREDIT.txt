@@ -1,0 +1,7 @@
+Squeaky Rat (qubodup-rat)
+Author: qubodup (Iwan Gabovitch, http://qubodup.net)
+Source: https://opengameart.org/content/squeaky-rat  (archive qubodupSqueakyRat.7z)
+Licence: CC0 1.0 Universal (public domain dedication). No attribution required.
+Vendored: 3 OGG files (attack, death, pain; 0.15-0.4 s, mono). The FLAC copies were not vendored. Audio unmodified.
+The author notes (derived from CC0 Freesound sources by Zabuhailo and moneykube) are included as NOTES_author.txt.
+Vendored by the JackID sound lane on 2026-10-19 via curl from OpenGameArt.

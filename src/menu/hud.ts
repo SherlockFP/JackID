@@ -203,6 +203,9 @@ export function createHud(): Hud {
   const clock = h('div', 'clock', topC);
   const clockNum = h('span', 'num', clock, '00:00');
   const clockPhase = h('span', 'phase', clock, '');
+  // ELAPSED: the run's time so far (mm:ss), small, beside the Watch clock. Sim time, so it stops with the game's pauses.
+  const elapsedEl = h('span', 'elapsed', clock, '');
+  elapsedEl.style.cssText = 'margin-left:10px;font-size:13px;opacity:0.7;font-variant-numeric:tabular-nums;white-space:nowrap';
   // One clock line (the Watch clock above); the night line under it. The wall-clock "SAAT" line was a duplicate and is gone.
   const sub = h('div', 'sub', topC);
   const night = h('span', 'night', sub, '');
@@ -405,6 +408,10 @@ export function createHud(): Hud {
   let clockAlarmed = false;
   let lastPhase = '';
   let bellLeft = 0;
+  // ELAPSED (run time): sim seconds since this run began; restarts when the run object changes.
+  let elapsedRun: unknown = null;
+  let elapsedSim = 0;
+  let elapsedSeen = 0;
 
   function addFeed(text: string, cls = ''): void {
     const el = h('div', `ln ${cls}`, feed, text);
@@ -769,6 +776,10 @@ export function createHud(): Hud {
       }
       lastPhase = phase;
     }
+    if (r !== elapsedRun) { elapsedRun = r; elapsedSim = 0; elapsedSeen = app.time.sim; }
+    elapsedSim += Math.max(0, app.time.sim - elapsedSeen);
+    elapsedSeen = app.time.sim;
+    setText(elapsedEl, r ? mmss(elapsedSim) : '');
     if (r) {
       const n = r.night();
       const seg = sh?.segment;
@@ -924,6 +935,8 @@ export function createHud(): Hud {
     if (r && next && bank) { showNextNight(next, bank.pocket, bank.balance); return; }
     const show = !!r && !!q && !!seg && !!bank && q.due > 0 && r.window() === 'watch' && !nightPaid(r);
     setCls(plan, 'hidden', !show);
+    // The broke line leaves with the plan: home, Dawn, a paid Night, a Night change. planKey resets so it redraws when it returns.
+    if (!show) { setCls(planBroke, 'hidden', true); setText(planBroke, ''); planKey = ''; }
     // The Watch tithe: run.watchTithe() reports { on, target, earned, met, shortfall, added } (src/game/checkpoints.ts). Probed
     // like the other optional run views, so a run without it reads null and the tithe lines stay hidden.
     const tithe = (r as (typeof r & { watchTithe?: () => { on: boolean; earned: number; target: number; added?: number } | null }) | null)?.watchTithe?.() ?? null;

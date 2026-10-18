@@ -170,6 +170,8 @@ export function mountPhoneUi(run: DebtRun): () => void {
     return last ? last.thread : 'spouse';
   }
 
+  let leaveTimer: (() => void) | null = null;
+
   function openPhone(): void {
     const p = phoneOf(run);
     if (!p || open || disposed) return;
@@ -180,8 +182,12 @@ export function mountPhoneUi(run: DebtRun): () => void {
     p.markRead(thread);
     app.input.exitLock();
     app.player?.viewmodel?.hold?.('phone');
-    app.audio.play('phonePickup');
+    app.audio.play('phoneOpen');
+    if (leaveTimer) { leaveTimer(); leaveTimer = null; }
+    panel.classList.remove('leave');
     panel.hidden = false;
+    void panel.offsetWidth;                     // restart the slide-up when it re-opens mid slide-down
+    panel.classList.add('enter');
     chip.classList.add('open');
     sig = '';
   }
@@ -189,9 +195,13 @@ export function mountPhoneUi(run: DebtRun): () => void {
   function closePhone(): void {
     if (!open) return;
     open = false;
-    panel.hidden = true;
     chip.classList.remove('open');
     app.player?.viewmodel?.hold?.('coin');
+    if (disposed) { panel.hidden = true; return; }
+    app.audio.play('phoneClose');
+    panel.classList.remove('enter');
+    panel.classList.add('leave');               // slides down, then hides
+    leaveTimer = app.timers.sim.after(0.19, () => { leaveTimer = null; panel.classList.remove('leave'); panel.hidden = true; });
   }
 
   /** Reply `choice` (0-based) to the open thread's pending message. Coins that the pocket cannot cover refuse it. */
@@ -260,6 +270,7 @@ export function mountPhoneUi(run: DebtRun): () => void {
 
   return () => {
     disposed = true;
+    leaveTimer?.();
     stopPoll();
     heatStop?.();
     heatToast?.remove();

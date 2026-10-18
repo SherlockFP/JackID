@@ -555,7 +555,11 @@ export function createMenuState(): AppStateHandler<'menu'> {
     const tanV = Math.tan((CAM_FOV * Math.PI) / 360);
     const byHeight = 1.15 + 3.45 / tanV;
     const byWidth = 1.15 + CAB_HALF_WIDTH / (tanV * Math.max(0.2, app.camera.aspect || 1));
-    return Math.max(byHeight, byWidth);
+    // wide screens (16:9, 21:9): the height fit leaves empty side room, so lean in a little; the marquee and the
+    // panel keep a safe margin (never below 90% of the fit)
+    const a = app.camera.aspect || 1;
+    const lean = a > 1.6 ? Math.min(0.1, (a - 1.6) * 0.1) : 0;
+    return Math.max(byHeight * (1 - lean), byWidth);
   };
 
   return {
@@ -645,8 +649,11 @@ export function createMenuState(): AppStateHandler<'menu'> {
       const k = 1 - Math.exp(-dt * 4);
       camX += (ndc.x * 0.45 - camX) * k;
       camY += (ndc.y * 0.22 - camY) * k;
-      app.camera.position.set(camX, 0.12 + camY, dist);
-      app.camera.lookAt(camX * 0.4, LOOK_Y, 0);
+      // slow idle drift on top of the mouse parallax
+      const driftX = Math.sin(time * 0.21) * 0.28;
+      const driftY = Math.sin(time * 0.17 + 1.3) * 0.08;
+      app.camera.position.set(camX + driftX, 0.12 + camY + driftY, dist + Math.sin(time * 0.12) * 0.15);
+      app.camera.lookAt((camX + driftX) * 0.4, LOOK_Y, 0);
       app.renderer.render(scene, app.camera, { scene: panelScene, camera: app.camera });
     },
   };

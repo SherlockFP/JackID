@@ -1,0 +1,6 @@
+Crowd shouting/speaking ambience (starninjas-crowd)
+Author: StarNinjas
+Source: https://opengameart.org/content/crowd-shoutingspeaking-ambience  (file crowd_shouting.ogg; the download link is crowd_shouting_0.ogg)
+Licence: CC0 1.0 Universal (public domain dedication). No attribution required.
+Vendored: 1 OGG file, 27.4 s. Audio unmodified.
+Vendored by the JackID sound lane on 2026-10-19 via curl from OpenGameArt.

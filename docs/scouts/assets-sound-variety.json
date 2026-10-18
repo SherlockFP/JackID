@@ -1,0 +1,406 @@
+{
+ "found": [
+  {
+   "key": "oga-kenney",
+   "packs": [
+    {
+     "title": "Sonniss GameAudioGDC 2024 bundle",
+     "url": "https://sonniss.com/gameaudiogdc/",
+     "author": "Sonniss",
+     "licence": "Sonniss GDC EULA (royalty-free, commercial use, modification allowed, no attribution required, no AI training, no resale as sound effects)",
+     "licenceQuote": "\"All of the sounds are royalty free and commercially usable.\" / \"Layer them, stretch them, pitch them, mangle them - make them completely yours.\" / \"Use for AI/ML training is strictly prohibited under our license terms.\"",
+     "size": "23.5 GB, 9 ZIP parts (2024 bundle; the site lists 73 parts across all years, about 207 GB)",
+     "sounds": "Broadest coverage of what JackID lacks. Use the 2024 track list (Google Sheet or PDF on the page) to pick: slot/coin/jackpot-style metal and coin hits, crowd and room ambience, door and lock foley, footsteps on carpet/wood/tile, phone and electronics, electric hum and buzz, rain. Pick by track name; no per-file counts were visible on the page.",
+     "download": "Direct ZIP links on downloads.sonniss.com, or the official torrent, or a third-party mirror. Download only the parts needed (per part). Needs explicit approval before any download."
+    },
+    {
+     "title": "Kenney RPG Audio",
+     "url": "https://kenney.nl/assets/rpg-audio",
+     "author": "Kenney (kenney.nl)",
+     "licence": "CC0 1.0",
+     "licenceQuote": "\"Creative Commons CC0\" (page licence line)",
+     "size": "50 files, size not listed",
+     "sounds": "Tagged foley, footstep, weapon, rpg. Use the footstep and foley items for footsteps on different floors and cloth/carpet movement. The page does not list door, bell or lift files, so check the zip contents before planning.",
+     "download": "Download button on kenney.nl/assets/rpg-audio (zip). Needs approval before download."
+    },
+    {
+     "title": "Kenney UI Audio",
+     "url": "https://kenney.nl/assets/ui-audio",
+     "author": "Kenney (kenney.nl)",
+     "licence": "CC0 1.0",
+     "licenceQuote": "\"Creative Commons CC0\" (page licence line)",
+     "size": "50 files, size not listed",
+     "sounds": "Tagged button, switch, click. Use for phone keypad/dial taps, slot-machine button presses, and menu clicks. Complements Kenney Casino Audio already in use.",
+     "download": "Download button on kenney.nl/assets/ui-audio (zip). Needs approval before download."
+    },
+    {
+     "title": "202 More Sound Effects (OwlishMedia)",
+     "url": "https://opengameart.org/content/202-more-sound-effects",
+     "author": "OwlishMedia",
+     "licence": "CC0",
+     "licenceQuote": "Licence listed as \"CC0\"",
+     "size": "14.9 MB, MoreSounds.zip (file count not stated)",
+     "sounds": "Camera shutter (photo), phone sounds, keys locking/unlocking and doors opening, coins and money, paper, scissors, stapler, masking tape, cloth, Velcro, kitchen appliances, drinking water. Covers camera shutter, phone, paper/typewriter-adjacent, coin handling, keys and door.",
+     "download": "MoreSounds.zip from the OpenGameArt page download link. Needs approval before download."
+    },
+    {
+     "title": "100 CC0 SFX #2 (rubberduck)",
+     "url": "https://opengameart.org/content/100-cc0-sfx-2",
+     "author": "rubberduck",
+     "licence": "CC0",
+     "licenceQuote": "Licence listed as \"CC0\" (links to the CC0 1.0 deed)",
+     "size": "2.4 MB, sfx_100_v2.zip, 100 sounds",
+     "sounds": "Door, various footsteps, glass, hit, item, switch, metal and metal hit, stones, wood, thunder, and ambient, machine, construction, street and flowing-water loops. Covers doors, footsteps on surfaces, thunder and a machine hum loop for power/fridge/electric ambience.",
+     "download": "sfx_100_v2.zip from the OpenGameArt page download link. Needs approval before download."
+    },
+    {
+     "title": "Door Open, Door Close Set (qubodup)",
+     "url": "https://opengameart.org/content/door-open-door-close-set",
+     "author": "qubodup",
+     "licence": "CC0",
+     "licenceQuote": "Licence shown as \"CC0\" (linked to the Creative Commons Zero 1.0 page)",
+     "size": "3.3 MB, qubodup-DoorSet.7z (file count not stated)",
+     "sounds": "Door open and close variants, some squeaky, wood, metal and synthetic. Fits door knock-free door opening, lock/chain-style door sounds and the hall door transitions.",
+     "download": "qubodup-DoorSet.7z from the OpenGameArt page. Needs approval before download. Note the 7z format requires an extractor."
+    },
+    {
+     "title": "Crowd Shouting/Speaking Ambience (StarNinjas)",
+     "url": "https://opengameart.org/content/crowd-shoutingspeaking-ambience",
+     "author": "StarNinjas",
+     "licence": "CC0",
+     "licenceQuote": "Licence shown as \"CC0\" (the author asks for credit as a courtesy; not legally required)",
+     "size": "335.5 KB, crowd_shouting.ogg (single file)",
+     "sounds": "Crowd shouting and speaking ambience, one loop. Use as casino crowd ambience and a base for cheers. Only one clip, so a crowd cheer layer will still need a second source.",
+     "download": "crowd_shouting.ogg from the OpenGameArt page. Needs approval before download."
+    },
+    {
+     "title": "Squeaky Rat (qubodup)",
+     "url": "https://opengameart.org/content/squeaky-rat",
+     "author": "qubodup (Iwan Gabovitch)",
+     "licence": "CC0",
+     "licenceQuote": "Licence shown as \"CC0\"",
+     "size": "92.9 KB, qubodupSqueakyRat.7z (3 variants)",
+     "sounds": "Rat attack, pain and death squeaks. Use for rat squeaks. Scurry is not included. The page says Attack and Pain come from a Freesound clip, so check that Freesound source licence before shipping. Needs a 7z extractor.",
+     "download": "qubodupSqueakyRat.7z from the OpenGameArt page. Needs approval before download."
+    },
+    {
+     "title": "Horror Hit Soundpack 1 (psychhead_)",
+     "url": "https://opengameart.org/content/horror-hit-soundpack-1",
+     "author": "psychhead_",
+     "licence": "CC0 (Public Domain)",
+     "licenceQuote": "Licence shown as \"Public Domain - CC0\"; author reply when asked about AI: \"Absolutely no AI was used\"",
+     "size": "25.3 MB, horror_hit_soundpack_1.zip, 55 WAV files",
+     "sounds": "Short bassy, mid and high horror hits for jump scares and stingers (preview files bassy_9, high_8, very_bassy_4, mid_5). Use for horror stingers. No door creak, footsteps or rats in this pack.",
+     "download": "horror_hit_soundpack_1.zip from the OpenGameArt page. Needs approval before download."
+    }
+   ]
+  },
+  {
+   "key": "sonniss-itch",
+   "packs": [
+    {
+     "title": "202 More Sound Effects",
+     "url": "https://opengameart.org/content/202-more-sound-effects",
+     "author": "OwlishMedia",
+     "licence": "CC0",
+     "licenceQuote": "License: CC0",
+     "size": "One ZIP (MoreSounds.zip), 14.9 MB; file count not stated on page",
+     "sounds": "Phone, camera shutter, keys, locking/unlocking, opening doors, coins and money, paper, scissors, masking tape, stapler, cloth, drinking water, kitchen appliances, Velcro, plastic crinkling. No footsteps listed. Good for phone, door/lock, typewriter-adjacent paper and coin props.",
+     "download": "Direct ZIP from the OpenGameArt page (not downloaded)"
+    },
+    {
+     "title": "100 CC0 metal and wood SFX",
+     "url": "https://opengameart.org/node/85875",
+     "author": "rubberduck",
+     "licence": "CC0",
+     "licenceQuote": "License: CC0",
+     "size": "One ZIP (100-CC0-wood-metal-SFX.zip), about 2 MB",
+     "sounds": "Metal door opening, lock open/close, keys, hammer, slam, spring, falling metal; wood door closing, squeaking wood, cracking, slam, falling. Covers door, lock and creak needs (no footsteps, no casino).",
+     "download": "Direct ZIP from the OpenGameArt page (not downloaded)"
+    },
+    {
+     "title": "various sound effects (27 phone-recorded SFX)",
+     "url": "https://opengameart.org/content/various-sound-effects",
+     "author": "laleksic",
+     "licence": "CC0",
+     "licenceQuote": "License: CC0",
+     "size": "sounds.zip, about 2.5 MB, 27 WAV files",
+     "sounds": "Door open/close, lock, drawer, bell, creaking, wood. Per-file names are not itemised on the page; tags point to these themes.",
+     "download": "Direct ZIP from the OpenGameArt page (not downloaded)"
+    },
+    {
+     "title": "elevator door (PagDev) and elevator ding (fvcalderan)",
+     "url": "https://opengameart.org/content/elevatordoor",
+     "author": "PagDev (door); fvcalderan (ding, separate OGA upload)",
+     "licence": "CC0 (both per their OGA pages/search snippets)",
+     "licenceQuote": "License: CC0",
+     "size": "elevator_door.wav 1.3 MB single WAV. Elevator ding is a separate small OGG upload (size not confirmed).",
+     "sounds": "Elevator door opening (WAV). Elevator ding (synth-made in GarageBand, CC0 OGG). Fills the lift ding and doors gap. Verify the ding page licence before use since it was only seen in a search snippet.",
+     "download": "Direct download from each OGA page (not downloaded)"
+    },
+    {
+     "title": "RPG Audio (Kenney)",
+     "url": "https://kenney.nl/assets/rpg-audio",
+     "author": "Kenney",
+     "licence": "CC0",
+     "licenceQuote": "License: \"Creative Commons CC0\"",
+     "size": "50 files; total size not shown",
+     "sounds": "Tagged foley, rpg, footstep, weapon. Footstep set is the main value for carpet/wood/tile footsteps. Page does not list individual surfaces, so check the zip contents before relying on surface coverage. Not already in ASSETS.md (only Casino Audio is used).",
+     "download": "Official kenney.nl zip (not downloaded)"
+    },
+    {
+     "title": "Free Crowd Cheering Sounds",
+     "url": "https://opengameart.org/content/free-crowd-cheering-sounds",
+     "author": "Gregor Quendel",
+     "licence": "CC-BY 4.0 (attribution required)",
+     "licenceQuote": "License: CC-BY 4.0",
+     "size": "One ZIP, 19.6 MB, 11 tracks",
+     "sounds": "Strong, soft and rhythmic crowd cheering; cheering mixed with chatter; crowd ambience; a full recording. Best fit for the casino crowd cheers and ambience gap. Attribution needed, so it must be added to the Credits screen.",
+     "download": "Direct ZIP from the OpenGameArt page (not downloaded)"
+    },
+    {
+     "title": "Footsteps Sounds (Dryoma)",
+     "url": "https://dryoma.itch.io/footsteps-sounds",
+     "author": "Dryoma",
+     "licence": "CC-BY 4.0 (attribution required)",
+     "licenceQuote": "Creative Commons Attribution v4.0 International; page says \"You can use the sounds for commercial and non-commercial projects.\"",
+     "size": "Not stated on the page",
+     "sounds": "Footsteps on carpet, dirt, floor, gravel, snow, tiles, water, wood. Covers the carpet/tile/wood footstep gap. Attribution required.",
+     "download": "itch.io download page (free, not downloaded)"
+    },
+    {
+     "title": "The Sonniss GDC Game Audio Bundle (GDC 2026 current; prior years in archive)",
+     "url": "https://gdc.sonniss.com/",
+     "author": "Sonniss (multiple vendors)",
+     "licence": "Sonniss GDC bundle licence (no attribution required); conflicting summaries of scope, verify before use",
+     "licenceQuote": "sonniss.com/gdc-bundle-license: \"Licensee may use and modify the licensed sound effects for personal and commercial projects\". gdc.sonniss.com summary says licensed \"for media production (games, film, TV, interactive projects) only\".",
+     "size": "GDC 2026: 7.47 GB+, 347+ files, five zip parts. Full archive across nine years is over 200 GB.",
+     "sounds": "Category content not confirmed on the page. A track-list spreadsheet is linked. Casino, crowd, footsteps, doors, phones and animals must be checked in the per-year track list. Licence must be checked, since the two summaries conflict and AI-training use is prohibited.",
+     "download": "Direct zips from downloads.sonniss.com (Google Drive mirrors and torrent also listed). Not downloaded."
+    },
+    {
+     "title": "Modern Ringtone [Chirptone]",
+     "url": "https://opengameart.org/content/modern-ringtone-chirptone",
+     "author": "Chirptone author on OpenGameArt (not captured in search result)",
+     "licence": "CC0 (from search snippet, page not fetched)",
+     "licenceQuote": "License: CC0",
+     "size": "Single WAV, about 870 KB",
+     "sounds": "Phone ringtone (tags phone, alarm, notification, ringtone). Covers the phone ring gap. Single file, so not a dial/vibrate set; the Beep Sound (CC0, tagged telephone/dial) is a possible dial stand-in.",
+     "download": "Direct download from OGA page (not downloaded)"
+    },
+    {
+     "title": "10 8bit coin sounds",
+     "url": "https://opengameart.org/content/10-8bit-coin-sounds",
+     "author": "Luke.RUSTLTD",
+     "licence": "CC0",
+     "licenceQuote": "License: CC0",
+     "size": "coin_sounds.zip, 206.1 KB, 10 files",
+     "sounds": "8-bit coin pickup sounds made with CFXR. Usable as slot coin drop or payout stand-ins, though they are chiptune, not real coin recordings. Not a jackpot bell.",
+     "download": "Direct ZIP from the OGA page (not downloaded)"
+    }
+   ]
+  }
+ ],
+ "verified": [
+  {
+   "key": "oga-kenney",
+   "checked": [
+    {
+     "title": "Sonniss GameAudioGDC 2024 bundle",
+     "url": "https://sonniss.com/gameaudiogdc/",
+     "ok": true,
+     "licence": "Sonniss GDC EULA. Page quotes: \"All of the sounds are royalty free and commercially usable.\" Modification: \"Layer them, stretch them, pitch them, mangle them - make them completely yours.\" Attribution: \"No attribution is required and you can use them on an unlimited number of projects for the rest of your lifetime.\" Restrictions: \"Use for AI/ML training is strictly prohibited under our license terms.\" Reselling as sound effects (including in a library or sample pack) is restricted; use in a finished game is allowed. The full EULA text was not on the page, so read it before shipping.",
+     "why": "Commercial game use and modification are clearly allowed on the page, no attribution is required, and the bundle is not AI-generated. The page also restricts AI/ML training and resale as sound effects. Those restrictions do not block shipping in a game. Verified 2024 bundle: 9 parts, 23.5 GB, with a linked track list (Google Sheets). The claim of 73 parts / about 207 GB across all years was not verified.",
+     "attribution": "None required (per the page). Courtesy credit is optional.",
+     "size": "2024 bundle: 23.5 GB across 9 ZIP parts. Per-file counts are not on the page; check the track list.",
+     "download": "Download the needed parts only, from the official download links on the page (downloads.sonniss.com), or the official torrent. Needs explicit approval before any download. Track list: linked from the page."
+    },
+    {
+     "title": "Kenney RPG Audio",
+     "url": "https://kenney.nl/assets/rpg-audio",
+     "ok": true,
+     "licence": "\"Creative Commons CC0\" (page licence line), CC0 1.0.",
+     "why": "CC0 is clear and permits commercial use and modification. The page does not list individual file names or show door, bell or lift files. Only the tags foley, footstep, weapon and rpg are visible, so the contents need checking after download. Not AI-generated per the page.",
+     "attribution": "None required under CC0. Credit to Kenney is appreciated.",
+     "size": "50 files; total size not listed on the page.",
+     "download": "Zip download button on kenney.nl/assets/rpg-audio. Needs explicit approval before any download."
+    },
+    {
+     "title": "Kenney UI Audio",
+     "url": "https://kenney.nl/assets/ui-audio",
+     "ok": true,
+     "licence": "\"Creative Commons CC0\" (page licence line), CC0 1.0.",
+     "why": "CC0 is clear and permits commercial use and modification. The page lists tags button, switch and click but no individual file names. Good fit for phone keypad taps and slot button presses alongside Kenney Casino Audio already in use.",
+     "attribution": "None required under CC0. Credit to Kenney is appreciated.",
+     "size": "50 files; total size not listed on the page.",
+     "download": "Zip download button on kenney.nl/assets/ui-audio. Needs explicit approval before any download."
+    },
+    {
+     "title": "202 More Sound Effects (OwlishMedia)",
+     "url": "https://opengameart.org/content/202-more-sound-effects",
+     "ok": true,
+     "licence": "\"CC0\", linked to the CC0 1.0 deed. The description says the author \"recorded some more sounds around my home.\" No AI-generation statement.",
+     "why": "CC0 is clear and the sounds are recorded, not AI-generated. The file count is not stated. Contents claimed in the research brief (camera shutter, phone, keys, paper, coins) were not verified on the page, so check the zip contents after download.",
+     "attribution": "None required under CC0.",
+     "size": "MoreSounds.zip, 14.9 MB; file count not stated.",
+     "download": "MoreSounds.zip from the OpenGameArt page download link. Needs explicit approval before any download."
+    },
+    {
+     "title": "100 CC0 SFX #2 (rubberduck)",
+     "url": "https://opengameart.org/content/100-cc0-sfx-2",
+     "ok": true,
+     "licence": "\"CC0\", linked to creativecommons.org/publicdomain/zero/1.0/. No AI-generation statement.",
+     "why": "CC0 is clear and no AI statement appears. The page does not state the file count; the title suggests about 100 sounds. The claimed contents (doors, footsteps, machine hum loop, etc.) were not verified on the page, so check after download.",
+     "attribution": "None required under CC0.",
+     "size": "sfx_100_v2.zip, 2.4 MB; file count not stated on the page.",
+     "download": "sfx_100_v2.zip from the OpenGameArt page download link. Needs explicit approval before any download."
+    },
+    {
+     "title": "Door Open, Door Close Set (qubodup)",
+     "url": "https://opengameart.org/content/door-open-door-close-set",
+     "ok": true,
+     "licence": "\"CC0\", linked to the CC0 1.0 page. No AI-generation statement.",
+     "why": "CC0 is clear and no AI statement appears. The page lists one download file, which is a 7z archive, so an extractor is needed. Contents (variants, squeaky/wood/metal) were not verified beyond the page text.",
+     "attribution": "None required under CC0.",
+     "size": "qubodup-DoorSet.7z, 3.3 MB; 1 file in the download.",
+     "download": "qubodup-DoorSet.7z from the OpenGameArt page. Needs explicit approval before any download. Needs a 7z extractor."
+    },
+    {
+     "title": "Crowd Shouting/Speaking Ambience (StarNinjas)",
+     "url": "https://opengameart.org/content/crowd-shoutingspeaking-ambience",
+     "ok": true,
+     "licence": "\"CC0\", linked to the CC0 1.0 Public Domain Zero page. Author note: \"Credit is appreciated, thanks! (Just put a link to my OGA profile)\". No AI-generation statement.",
+     "why": "CC0 is clear and the author states the clips are their own and their siblings', mixed and edited. Credit is a courtesy request, not a legal requirement. The download file name is crowd_shouting_0.ogg on the download link (the page lists crowd_shouting.ogg). It is one clip only, so a separate cheer layer is still needed.",
+     "attribution": "Courtesy credit: \"Crowd Shouting/Speaking Ambience by StarNinjas\" with a link to the author's OGA profile. Not legally required under CC0.",
+     "size": "335.5 KB, one OGG file.",
+     "download": "crowd_shouting_0.ogg from the OpenGameArt page download link. Needs explicit approval before any download."
+    },
+    {
+     "title": "Squeaky Rat (qubodup)",
+     "url": "https://opengameart.org/content/squeaky-rat",
+     "ok": true,
+     "licence": "\"CC0\", linked to CC0 1.0. The page says \"The sounds used to create these were under CC0 at the time of creation.\" Attack and Pain are derived from Freesound sound 143125 (Zabuhailo), and Death from 143125 and 38747 (moneykube). Both Freesound pages state \"Creative Commons 0\" (verified). No AI statement on the page.",
+     "why": "CC0 is clear for the OGA pack, and the Freesound sources were verified as CC0. The page lists no separate variants, and the claim of 3 variants is not supported. The page covers attack, pain and death squeaks only; no scurry sound is listed, so the rat scurry needs another source.",
+     "attribution": "Author requests: \"Squeaky Rat by Iwan 'qubodup' Gabovitch\" with the author's OGA profile URL. Not legally required under CC0.",
+     "size": "qubodupSqueakyRat.7z, 92.9 KB.",
+     "download": "qubodupSqueakyRat.7z from the OpenGameArt page. Needs explicit approval before any download. Needs a 7z extractor."
+    },
+    {
+     "title": "Horror Hit Soundpack 1 (psychhead_)",
+     "url": "https://opengameart.org/content/horror-hit-soundpack-1",
+     "ok": true,
+     "licence": "\"CC0\" in the License(s) field; \"Public Domain - CC0\" in the copyright notice. No AI use: the author replied, \"Absolutely no AI was used, but I understand the concern.\"",
+     "why": "CC0 is clear and the author confirms no AI was used. The page describes 55 game-ready WAV stingers and hits. The specific preview file names (bassy_9, high_8, etc.) were not verified. The pack has no creak, footsteps or rats, as the brief states.",
+     "attribution": "None required under CC0.",
+     "size": "horror_hit_soundpack_1.zip, 25.3 MB, 55 WAV files.",
+     "download": "horror_hit_soundpack_1.zip from the OpenGameArt page. Needs explicit approval before any download."
+    }
+   ]
+  },
+  {
+   "key": "sonniss-itch",
+   "checked": [
+    {
+     "title": "202 More Sound Effects",
+     "url": "https://opengameart.org/content/202-more-sound-effects",
+     "ok": true,
+     "licence": "CC0. Page shows \"License: CC0\" linked to creativecommons.org/publicdomain/zero/1.0/.",
+     "why": "CC0 verified on the page. Not AI-generated: the author says \"I recorded some more sounds around my home.\" Covers phone, camera shutter, door/lock, keys, coins, paper, stapler, Velcro. No footsteps. File count not stated. Gaps it fills: phone, door/lock, coin, paper.",
+     "attribution": "None required (CC0). Optional credit: OwlishMedia.",
+     "size": "MoreSounds.zip, 14.9 MB. File count not stated.",
+     "download": "Direct ZIP from the OpenGameArt page. Not downloaded."
+    },
+    {
+     "title": "100 CC0 metal and wood SFX",
+     "url": "https://opengameart.org/node/85875",
+     "ok": true,
+     "licence": "CC0. Page shows the label \"CC0\" linked to the Creative Commons Zero deed, with no extra text.",
+     "why": "CC0 verified. AI status not stated on the page, and the description is a set of 100 sounds. Covers metal door open, lock, keys, hammer, slam, wood creak, crack, falling. Fills door, lock and creak gaps. No footsteps or casino sounds.",
+     "attribution": "None required (CC0). Optional credit: rubberduck.",
+     "size": "100-CC0-wood-metal-SFX.zip, about 2 MB. File count not stated.",
+     "download": "Direct ZIP from the OpenGameArt page. Not downloaded."
+    },
+    {
+     "title": "various sound effects (27 phone-recorded SFX)",
+     "url": "https://opengameart.org/content/various-sound-effects",
+     "ok": true,
+     "licence": "CC0. Page shows \"CC0\" linked to the Creative Commons Zero deed.",
+     "why": "CC0 verified. Description says the sounds were \"recorded on my phone and cleaned up in Audacity\", so they are human-recorded. 27 WAVs. Per-file names are not listed, so door, lock, drawer and bell coverage is unconfirmed until the zip is inspected.",
+     "attribution": "None required (CC0). Optional credit: laleksic.",
+     "size": "sounds.zip, 2.5 MB, 27 WAV files (862 downloads).",
+     "download": "Direct ZIP from the OpenGameArt page. Not downloaded."
+    },
+    {
+     "title": "Elevator door (PagDev)",
+     "url": "https://opengameart.org/content/elevatordoor",
+     "ok": true,
+     "licence": "CC0. Page shows the CC0 badge. Attribution notice: \"Credit is not required, but it is always appreciated.\"",
+     "why": "CC0 verified for the door file. Covers the elevator door-open gap. The elevator ding was not verified on its own page (only seen in a search snippet), so it is not included here and needs a separate check before use.",
+     "attribution": "None required (CC0). Optional credit: PagDev.",
+     "size": "elevator_door.wav, 1.3 MB single WAV.",
+     "download": "Direct download from the OpenGameArt page. Not downloaded."
+    },
+    {
+     "title": "RPG Audio (Kenney)",
+     "url": "https://kenney.nl/assets/rpg-audio",
+     "ok": true,
+     "licence": "CC0. Page quotes \"Creative Commons CC0\".",
+     "why": "CC0 verified. Tagged foley, rpg, footstep, weapon. 50 files. Individual surfaces are not listed, so carpet, wood and tile footstep coverage must be checked in the zip before relying on it. Kenney is the same publisher as the existing Casino Audio, so it fits the existing pipeline.",
+     "attribution": "None required (CC0). Credit Kenney per ASSETS.md.",
+     "size": "50 files; download size not shown on the page.",
+     "download": "Official kenney.nl zip. Not downloaded."
+    },
+    {
+     "title": "Free Crowd Cheering Sounds",
+     "url": "https://opengameart.org/content/free-crowd-cheering-sounds",
+     "ok": true,
+     "licence": "CC-BY 4.0. Page shows the license as \"CC-BY 4.0\" linked to creativecommons.org/licenses/by/4.0/. No extra attribution wording on the page; standard CC-BY 4.0 attribution applies.",
+     "why": "Licence verified and commercial use is allowed under CC-BY. Not AI-generated: tagged field recording. 11 tracks covering strong, soft and rhythmic cheering, cheering mixed with chatter, and a full recording. Fills the casino crowd cheers and ambience gap. Must be listed on the Credits screen.",
+     "attribution": "\"Free Crowd Cheering Sounds\" by Gregor Quendel, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), source https://opengameart.org/content/free-crowd-cheering-sounds",
+     "size": "gregor_quendel_-_free_crowd_cheering_sounds_-_mp3.zip, 19.6 MB, 11 tracks.",
+     "download": "Direct ZIP from the OpenGameArt page. Not downloaded."
+    },
+    {
+     "title": "Footsteps Sounds (Dryoma)",
+     "url": "https://dryoma.itch.io/footsteps-sounds",
+     "ok": true,
+     "licence": "CC BY 4.0 (Creative Commons Attribution v4.0 International). Page states: \"You can use the sounds for commercial and non-commercial projects.\"",
+     "why": "Licence verified and commercial use is clearly allowed. Covers carpet, dirt, floor, gravel, snow, tiles, water and wood, which fills the footstep gap. The page does not say whether the sounds are AI-generated, so confirm with the author before shipping. Attribution is required.",
+     "attribution": "\"Footsteps Sounds\" by Dryoma, licensed CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), source https://dryoma.itch.io/footsteps-sounds",
+     "size": "Not stated on the page. All files are OGG Vorbis.",
+     "download": "itch.io download page (free, no payment). Not downloaded."
+    },
+    {
+     "title": "The Sonniss GDC Game Audio Bundle",
+     "url": "https://gdc.sonniss.com/",
+     "ok": false,
+     "licence": "Conflicting. Bundle licence page: \"No attribution is required... royalty-free and commercially usable.\" The GDC page says: \"licensed for media production (games, film, TV, interactive projects) only.\" Modification is not addressed on the GDC page. AI/ML training is prohibited.",
+     "why": "Default to not ok. The two licence summaries conflict on scope, and the page does not clearly confirm modification rights. Also needs the per-year track list to confirm casino, crowd, footsteps, doors and phone content. Check the separate sonniss.com/gdc-bundle-license text before using it.",
+     "attribution": "None stated if the bundle licence applies.",
+     "size": "GDC 2026: 7.47 GB+, 347+ files in five zip parts. Full archive is over 200 GB.",
+     "download": "Direct zips from downloads.sonniss.com (also Google Drive and torrent). Not downloaded."
+    },
+    {
+     "title": "Modern Ringtone [Chirptone]",
+     "url": "https://opengameart.org/content/modern-ringtone-chirptone",
+     "ok": true,
+     "licence": "CC0. Page shows the label \"CC0\" linked to the Creative Commons Zero deed.",
+     "why": "CC0 verified. Covers the phone ring gap. Not AI-generated per the page: the author says it was made from a recording of a chick chirping. Correction: the page author is Zane Little Music, not the name in the earlier list. Single file, so there is no dial or vibrate set.",
+     "attribution": "None required (CC0). Optional credit: Zane Little Music.",
+     "size": "chirptone.wav, 870.1 KB.",
+     "download": "Direct download from the OpenGameArt page. Not downloaded."
+    },
+    {
+     "title": "10 8bit coin sounds",
+     "url": "https://opengameart.org/content/10-8bit-coin-sounds",
+     "ok": true,
+     "licence": "CC0. Page shows the label \"CC0\" linked to the Creative Commons Zero deed.",
+     "why": "CC0 verified. Usable as slot coin drop or payout stand-ins. They are chiptune, made with CFXR, so they are not real coin recordings and there is no jackpot bell. Title says 10 sounds.",
+     "attribution": "None required (CC0). Optional credit: Luke.RUSTLTD.",
+     "size": "coin_sounds.zip, 206.1 KB, 10 sounds.",
+     "download": "Direct ZIP from the OpenGameArt page. Not downloaded."
+    }
+   ]
+  }
+ ]
+}

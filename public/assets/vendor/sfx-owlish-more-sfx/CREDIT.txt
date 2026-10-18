@@ -1,0 +1,6 @@
+202 More Sound Effects (owlish-more-sfx)
+Author: OwlishMedia
+Source: https://opengameart.org/content/202-more-sound-effects  (archive MoreSounds.zip)
+Licence: CC0 1.0 Universal (public domain dedication). No attribution required.
+Vendored subset: 19 WAV files (phone, money/coins, key/lock/door). Audio unmodified; filenames lowercased.
+Vendored by the JackID sound lane on 2026-10-19 via curl from OpenGameArt.
