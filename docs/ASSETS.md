@@ -56,3 +56,36 @@ convert materials to PSX materials, 1 AnimationMixer per instance, freeze/LOD di
   game-specific (cards, chips, slot symbols, signage, screens, carpets with casino patterns).
 - Kenney audio: layer with synthesized SFX (e.g. chip-lay + synth click) and randomize pitch ±8%.
 - Never hotlink anything; never add new vendor assets without updating this file.
+
+## Sound packs, 2026-10-19 (sfx-*): licences and credits
+Ten approved OpenGameArt packs, vendored into `public/assets/vendor/sfx-<pack-id>/`. Each folder has a
+`CREDIT.txt` (plus the author's readme where the pack shipped one). The file-by-file index with
+suggested game uses is `public/assets/vendor/SFX_INDEX.md`. Total audio: 98 files, 22.0 MB. Original
+archives were kept in the scratch folder, not in the repo, so `vendor-archives/` is not used for these.
+Nothing is wired into game code yet.
+
+| Folder | Pack and author | Source | Licence | Vendored |
+|---|---|---|---|---|
+| `sfx-owlish-more-sfx/` | 202 More Sound Effects, OwlishMedia | https://opengameart.org/content/202-more-sound-effects (MoreSounds.zip) | CC0 1.0 | 19 WAV (phone, money, key/lock/door), 2.0 MB |
+| `sfx-laleksic-various/` | Various Sound Effects, laleksic | https://opengameart.org/content/various-sound-effects (sounds_8.zip) | CC0 1.0 | 15 WAV (doors, creaks, locks, bell, coins), 1.8 MB |
+| `sfx-rubberduck-metal-wood/` | 100 CC0 wood and metal SFX, rubberduck | https://opengameart.org/node/85875 | CC0 1.0 | 24 OGG (keys, locks, wood, metal), 0.6 MB |
+| `sfx-qubodup-doors/` | Door Open / Door Close set, qubodup | https://opengameart.org/content/door-open-door-close-set | CC0 1.0 | 18 OGG (FLAC copies not used), 0.3 MB |
+| `sfx-pagdev-elevator-door/` | elevatordoor, PagDev | https://opengameart.org/content/elevatordoor | CC0 1.0 | 1 WAV, 1.2 MB |
+| `sfx-starninjas-crowd/` | Crowd shouting/speaking ambience, StarNinjas | https://opengameart.org/content/crowd-shoutingspeaking-ambience | CC0 1.0 | 1 OGG (27 s), 0.3 MB |
+| `sfx-chirptone-ringtone/` | Modern Ringtone [Chirptone], Zane Little Music | https://opengameart.org/content/modern-ringtone-chirptone | CC0 1.0 | 1 WAV (2.5 s), 0.8 MB |
+| `sfx-quendel-crowd-cheering/` | Free Crowd Cheering Sounds, Gregor Quendel | https://opengameart.org/content/free-crowd-cheering-sounds | **CC BY 4.0** | 8 MP3 (tracks 03 to 10), 7.8 MB |
+| `sfx-psychhead-horror-hits/` | Horror Hit Soundpack 1, psychhead_ | https://opengameart.org/content/horror-hit-soundpack-1 | CC0 1.0 | 8 WAV (Bassy, Very Bassy, Mid, High), 7.3 MB |
+| `sfx-qubodup-rat/` | Squeaky Rat, qubodup | https://opengameart.org/content/squeaky-rat | CC0 1.0 | 3 OGG (attack, death, pain), 0.02 MB |
+
+**Credit line (CC BY 4.0, required):** "Crowd cheering sounds by Gregor Quendel, CC BY 4.0"
+(https://creativecommons.org/licenses/by/4.0/). Shown on the Credits screen in EN and TR
+(`src/menu/menu.strings.ts`). Audio is unedited; only the filenames were shortened.
+
+**Not vendored:**
+- Dryoma "Footsteps Sounds" (CC BY 4.0): no OpenGameArt page found under that title or author, so no
+  credit line exists for it. No footstep files are vendored. The laleksic `floor_creak1-3` files are the
+  nearest stand-in (creaks, not steps, and quiet, so they need gain).
+- Quendel tracks 01, 02 (near-duplicates of 03) and 11 (full 224 s recording, 9 MB).
+- FLAC copies in the doors and rat packs; the rest of the owlish, laleksic and horror-hit sets that fall
+  outside the brief (cloth, plastic, kitchen, drink, stationery, camera, velcro, taps, toilet, microwave).
+- No page is marked AI-generated. The horror-hit comment thread asks about AI tools and the author says none were used.

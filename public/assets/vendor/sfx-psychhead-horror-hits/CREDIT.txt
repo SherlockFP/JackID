@@ -2,6 +2,6 @@ Horror Hit Soundpack 1 (psychhead-horror-hits)
 Author: psychhead_
 Source: https://opengameart.org/content/horror-hit-soundpack-1  (archive horror_hit_soundpack_1.zip)
 Licence: CC0 1.0 Universal (public domain dedication), as listed on the OpenGameArt page. No attribution required.
-Vendored subset: 8 WAV files (Bassy 1/5, Very Bassy 2/3, Mid 6/7, High 6/13), each 3-6 s. Audio unmodified; filenames lowercased.
+Vendored subset: 8 WAV files (Bassy 1/5, Very Bassy 2/3, Mid 6/7, High 6/13), each 3.1-6.5 s. Audio unmodified; filenames lowercased.
 The author README (effects recipe) is included as README_author.txt.
 Vendored by the JackID sound lane on 2026-10-19 via curl from OpenGameArt.
