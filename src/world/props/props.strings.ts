@@ -43,6 +43,9 @@ const strings = {
     'go.vendors': 'PAWN · CASHIER',
     'go.pawn': 'PAWN · CHARMS',
     'go.cashier': 'CASHIER',
+    'jackpot.idle': 'THE BIG ONE',
+    'jackpot.sub': 'THE JACKPOT GROWS',
+    'prizes.title': 'PRIZES',
   },
   tr: {
     'quota.title': 'KOTA',
@@ -83,6 +86,9 @@ const strings = {
     'go.vendors': 'REHİN · KASİYER',
     'go.pawn': 'REHİN · TILSIM',
     'go.cashier': 'KASİYER',
+    'jackpot.idle': 'BÜYÜK OLAN',
+    'jackpot.sub': 'JACKPOT BÜYÜYOR',
+    'prizes.title': 'ÖDÜLLER',
   },
 };
 

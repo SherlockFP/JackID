@@ -235,9 +235,10 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BlackjackParts
   const pitBoss = kit.mannequin({ style: 'plain', color: 0x2a2a36, jointColor: 0x4c4c5c, height: 1.82, clip: 'Idle_Loop' });
   // pulled in and scaled so the figure (with its arms) stays inside the L footprint (x ±1.3, z ≥ −0.9)
   // out at the corner of the footprint, well off the centre seat's line of sight (he used to fill the left of the frame)
-  pitBoss.root.position.set(-1.1, 0, -0.6);
+  // now behind the seat cameras (they sit at z <= ~1.8 and look toward -z), so he is never in the seated frame
+  pitBoss.root.position.set(-1.5, 0, 2.4);
   pitBoss.root.scale.setScalar(0.92);
-  pitBoss.root.rotation.y = Math.atan2(1.1, 0.7);
+  pitBoss.root.rotation.y = Math.atan2(1.5, -2.4);   // faces the table
   pitBoss.root.userData.lodDetail = true;   // a mannequin is ~14k tris (two meshes): the world hides it beyond 8 m
   root.add(pitBoss.root);
 

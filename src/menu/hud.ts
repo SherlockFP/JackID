@@ -248,6 +248,7 @@ export function createHud(): Hud {
   const luckEl = h('div', 'hb luck hidden', topR);
   quota.after(luckEl);
   luckEl.title = t('luck.tip');
+  luckEl.dataset.tip = t('luck.tip');   // the readable tooltip (hud/luck.css): the native title is small and slow
   h('span', 'lbl', luckEl, t('luck.label'));
   const luckStars = h('span', 'stars', luckEl, '');
   const luckBonus = h('span', 'bonus', luckEl, '');

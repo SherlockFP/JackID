@@ -24,7 +24,7 @@ export default {
   tr: {
     'toast.new': 'SALONDA YENİ: {names}',
     'opens': 'GECE {n} AÇILIR',
-    'freeOnly': 'SADECE SERBEST KUMARHANE',
+    'freeOnly': 'SADECE SERBEST SALON',
     'sub.opens': 'Gece {n} açılır',
     'next': 'Salonda sıradaki, Gece {n}: {names}',
     'allOpen': 'Salonun tamamı açık.',
@@ -35,10 +35,10 @@ export default {
     'buy.short': '{name} için {need} jeton daha lazım.',
     'bought': 'SATIN ALINDI: {name}. Koşu boyunca senin (Nöbet başına +{cut}).',
     'refused': 'Kasa bunu satmıyor.',
-    'cut': 'SALONUN KAZANDIRDI +{n} bu Nöbet (bu gece {total})',
+    'cut': 'SALONUN BU NÖBET KAZANDIRDIĞI: +{n} (bu gece {total})',
     'empire': 'İMPARATORLUK {n}',
     'empire.income': '+{n}/Nöbet',
     'empire.tip': 'Satın aldığın makineler her Nöbet kapanışında kasa payı öder.',
-    'summary': 'Salonun kazandırdı +{n}',
+    'summary': 'Salonun kazandırdığı: +{n}',
   },
 };

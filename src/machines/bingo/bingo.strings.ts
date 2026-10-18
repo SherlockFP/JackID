@@ -58,7 +58,7 @@ const en: Record<string, string> = {
 
 const tr: Record<string, string> = {
   name: 'Tombala Salonu (Bingo)',
-  desc: 'Kağıt kartları al, Sunucunun kafesi çevirişini izle ve sayılarını işaretle. Bir çerçeve tamamlanınca salon ayağa kalkar.',
+  desc: 'Kağıt kartları al, Sunucunun kafesi çevirmesini izle ve sayılarını işaretle. Bir çerçeve tamamlanınca salon ayağa kalkar.',
   hintBuy: 'Al', hintReady: 'Hazır', hintCards: 'Kart', hintExtra: 'Ekstra top', hintDecline: 'Reddet',
   hintCam: 'Sunucu kamerası', hintChip: 'Jeton', hintLeave: 'Ayrıl',
   sBuy: 'Alım penceresi {n}sn', sBuyOpen: 'Kartlarını al', sLock: 'Kafes dönüyor', sCall: 'Çekiliş {n}/40',

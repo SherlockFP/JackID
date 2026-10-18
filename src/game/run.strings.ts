@@ -5,13 +5,13 @@
 export default {
   prefix: 'run.',
   en: {
-    'mola': 'MOLA — shop, bank, then pull the lever',
+    'mola': 'MOLA: shop, bank, then pull the lever',
     'fall.seized': 'Bank {n} seized by the House',
-    'house.notice': 'THE HOUSE TAKES NOTICE — quota raised to {n}',
+    'house.notice': 'THE HOUSE TAKES NOTICE: quota raised to {n}',
   },
   tr: {
-    'mola': 'MOLA — alışveriş yap, bankaya bak, sonra kolu çek',
+    'mola': 'MOLA: alışveriş yap, bankaya bak, sonra kolu çek',
     'fall.seized': 'Banka {n} Ev tarafından el konuldu',
-    'house.notice': 'EV DİKKAT ÇEKTİ — kota {n} seviyesine çıkarıldı',
+    'house.notice': 'KASA FARK ETTİ: kota {n} oldu',
   },
 };

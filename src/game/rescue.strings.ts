@@ -9,7 +9,7 @@ export default {
     'deal.rescue.name': 'THE LOAN',
     'deal.rescue.boon': 'Get {c} coins now',
     'deal.rescue.cost': 'Tonight\'s quota +{q}',
-    'toast.pocketEmpty': 'Pocket empty — the Collector is calling',
+    'toast.pocketEmpty': 'Pocket empty. The Collector is calling.',
     'broke.bell': 'BELL: at the Debt Terminal, ring the Bell. This Watch ends and the bank keeps growing.',
   },
   tr: {
@@ -17,7 +17,7 @@ export default {
     'deal.rescue.name': 'BORÇ',
     'deal.rescue.boon': 'Şimdi {c} jeton al',
     'deal.rescue.cost': 'Bu Gece kota +{q}',
-    'toast.pocketEmpty': 'Cep boş — Tahsildar arıyor',
+    'toast.pocketEmpty': 'Cep boş. Tahsildar arıyor.',
     'broke.bell': 'ZİL: Banka Terminali’nde zili çal. Bu nöbet biter, banka büyümeye devam eder.',
   },
 };

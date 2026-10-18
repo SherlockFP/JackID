@@ -48,6 +48,7 @@ import { LightPool, type LightSourceInit } from './sys/lightPool';
 import { createLampGlow } from './sys/lamps';
 import { createJuiceFx } from './sys/juiceFx';
 import { ItemManager } from './sys/items';
+import { STAGE_SLOTS } from './layout';
 import { buildBroken, buildPad, playDelivery, playRemoval, type PadServices } from './sys/pads';
 import { fits, resolvePlacements, type Placement } from './sys/placement';
 import { Router, type SeatPhase } from './sys/router';
@@ -286,6 +287,7 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
   }
 
   function buildPadContent(rec: SlotRec): void {
+    if (STAGE_SLOTS.includes(rec.id)) { rec.ready = true; return; }
     const pad = buildPad(kit, rec.size);
     rec.pad = pad;
     rec.group.add(pad.root);
@@ -449,6 +451,7 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
   }
 
   function buildContent(rec: SlotRec, p: Placement): void {
+    if (STAGE_SLOTS.includes(rec.id)) { rec.ready = true; return; }   // the Lobby atrium stage stands here: no pad, no machine
     if (p.kind === 'pad') buildPadContent(rec);
     else if (p.kind === 'broken') buildBrokenContent(rec, `${p.machineId ?? '?'}: ${p.reason}`);
     else buildMachineContent(rec, p.machineId);
@@ -553,7 +556,7 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
     const rec = recs.get(slotId);
     const id = registry.resolve(machineId);
     const mod = id ? registry.get(id) : undefined;
-    if (!rec || !mod || disposed) return null;
+    if (!rec || !mod || disposed || STAGE_SLOTS.includes(slotId)) return null;
     if (rec.machine?.def.id === mod.def.id) return rec.machine;
     if (rec.busy) return null;
     if (!fits(mod.def.slotSize, rec.size)) { log.warn('world', `${slotId}: ${mod.def.id} (${mod.def.slotSize}) does not fit a ${rec.size} slot`); return null; }

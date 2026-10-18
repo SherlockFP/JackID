@@ -54,7 +54,7 @@ const en: Record<string, string> = {
 
 const tr: Record<string, string> = {
   name: 'Piyango Tamburu',
-  desc: 'Bir kağıt bilet için öde, tamburu çevir ve çek. Sonu 0 veya 5 biten bilet, gözündeki ödülü kazandırır. Tamburu azalınca Dul Bilet Satıcısı yeniler.',
+  desc: 'Bir kağıt bilet için öde, tamburu çevir ve çek. Sonu 0 veya 5 biten bilet, gözündeki ödülü kazandırır. Tambur azalınca Dul Bilet Satıcısı yeniler.',
   play: 'Oyna', pay: 'ÖDE {n}', crank: 'ÇEVİR', pull: 'ÇEK', unfold: 'AÇ', feel: 'HİSSET',
   left: 'KALAN BİLET', ticket: 'BİLET {n}', blank: 'BOŞ', win: 'KAZANÇ {n}', grand: 'JACKPOT!',
   prize: '{n} JETON', prizeShort: '{n}P', ev: 'CANLI BEKLENEN {n}%', restock: 'YENİLEME',

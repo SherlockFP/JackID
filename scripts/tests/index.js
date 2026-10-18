@@ -71,3 +71,7 @@ import './ledger.test.mjs';
 import './luck.test.mjs';
 import './nightCalm.test.mjs';
 import './story.chapter.test.mjs';
+import './grand.test.mjs';
+import './keepsake.test.mjs';
+import './ghostSeat.test.mjs';
+import './floorEvents.test.mjs';

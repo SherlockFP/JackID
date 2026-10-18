@@ -25,7 +25,7 @@ export default {
     'zone.lift': 'Lift',
     'zone.hollow': 'Underneath',
     'clock.closing': 'WATCH ENDING…',
-    'clock.bell': 'BELL — the Watch starts in {s} s',
+    'clock.bell': 'BELL: the Watch starts in {s} s',
     'nightSummary': 'NIGHT {n} PAID · bank {carry} (incl. interest +{int}) → pocket · float +{float} · cut +{cut} · tickets +{tickets}',
   },
   tr: {
@@ -49,7 +49,7 @@ export default {
     'zone.lift': 'Asansör',
     'zone.hollow': 'Altlar',
     'clock.closing': 'NÖBET KAPANIYOR…',
-    'clock.bell': 'ÇAN — NÖBET {s} SN SONRA BAŞLIYOR',
+    'clock.bell': 'ZİL: NÖBET {s} SN SONRA BAŞLIYOR',
     'nightSummary': '{n}. GECE ÖDENDİ · banka {carry} (faiz +{int} dahil) → cep · kasa +{float} · kesinti +{cut} · bilet +{tickets}',
   },
 };

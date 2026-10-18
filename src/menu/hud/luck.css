@@ -11,3 +11,15 @@
 @media (prefers-reduced-motion: reduce) {
   .hb.luck.pop { animation: none; }
 }
+
+/* Readable tooltip: the row takes the pointer (the HUD layer is pointer-transparent) and shows a plain dark plate on hover. */
+.hud .hb.luck { pointer-events: auto; cursor: help; }
+.hud .hb.luck .bonus { font-family: var(--f-body); font-size: max(14px, calc(9 * var(--u))); color: var(--ivory); }
+.hud .hb.luck::after {
+  content: attr(data-tip); display: none; position: absolute; top: calc(100% + 4 * var(--u)); right: 0; z-index: 20;
+  width: max-content; max-width: min(70vw, calc(170 * var(--u))); padding: calc(3 * var(--u)) calc(5 * var(--u));
+  white-space: normal; text-align: left; background: #0d0d15; color: var(--ivory); text-shadow: none;
+  box-shadow: 0 0 0 calc(1 * var(--u)) var(--void), 0 0 0 calc(2 * var(--u)) var(--brass-dark);
+  font-family: var(--f-body); font-size: max(16px, calc(10 * var(--u))); line-height: 1.15;
+}
+.hud .hb.luck:hover::after { display: block; }

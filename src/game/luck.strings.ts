@@ -32,9 +32,9 @@ export default {
     'why.failed': 'kota tutmadı',
     'why.tithe': 'vergi ödenmedi',
     'why.loan': 'borç alındı',
-    'why.time': 'geç cevap',
+    'why.time': 'geç verilen cevap',
     'why.deal': 'Tahsildar ile anlaşma',
-    'why.thin': 'ince bir gece',
+    'why.thin': 'zayıf bir gece',
     'why.quiet': 'sessiz bir gece',
   },
 };

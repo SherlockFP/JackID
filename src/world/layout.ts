@@ -203,10 +203,12 @@ const LEGACY_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   // Wave 25 phase 2: Mimosa's table in the Wash (side duel, Night 4) and Vell's in the Counting Room (Night 8 boss)
   'LAU-10': 'tallytable', 'CNT-03': 'tallytable',
 };
+/** Slots that stay empty on purpose: the Lobby atrium stage stands on FLR-05 (no pad, no machine). */
+export const STAGE_SLOTS: readonly InstanceId[] = ['FLR-05'];
 export const FREE_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   ...LEGACY_ASSIGN,
   'FLR-01': 'hilo', 'FLR-02': 'coinflip', 'FLR-03': 'scratch', 'FLR-04': 'bandit',
-  'FLR-05': 'craps', 'FLR-06': 'sonkart', 'FLR-07': 'keno',
+  'FLR-06': 'sonkart', 'FLR-07': 'keno',
   [HOLLOW_TABLE_SLOT.id]: 'lordstable',
 };
 

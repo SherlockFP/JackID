@@ -25,7 +25,7 @@ const en: Record<string, string> = {
 
 const tr: Record<string, string> = {
   name: 'Pençe Vinç',
-  desc: 'Şeker pembesi bir kapıcı. Yığın kese paralarını, tılsım kapsüllerini ve tek bir altın yumurtayı saklar. Pençe zayıftır... çoğu zaman.',
+  desc: 'Şeker pembesi bir pençe makinesi. Yığın para keselerini, tılsım kapsüllerini ve tek bir altın yumurtayı saklar. Pençe zayıftır... çoğu zaman.',
   marquee: 'PENÇE VİNÇ',
   stake: 'Bahis {n}', credit: 'KREDİ', timer: 'SÜRE', ready: 'HAZIR', moving: 'HAREKET', drop: 'BIRAK',
   sReady: 'Bahsi seç, sonra pençeyi oynat', sMove: 'Pençeyi yönlendir', sDescend: 'İniyor', sClose: 'Kavrıyor',

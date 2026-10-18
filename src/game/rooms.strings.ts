@@ -46,7 +46,7 @@ export default {
     'lin.pool': 'Old Lin the Tile Reader only stocks Jade charms.',
   },
   tr: {
-    'wing.midway.name': 'Orta Koridor',
+    'wing.midway.name': 'Orta Geçit',
     'wing.midway.desc': 'Pençenin ötesindeki salon. Bir ANAHTARLA açılır; her zamanki makinelerini korur.',
     'wing.cards.name': 'Yeşim Oda',
     'wing.cards.desc': 'Yeşim vernik ve kâğıt fenerler. KART %10 fazla öder, ama en yüksek bahis %30 düşer.',
@@ -83,7 +83,7 @@ export default {
     'locker.dread': 'Bu gece çok fazla dolap açtın. Çamaşırhane hatırlıyor.',
 
     'backOffice.paid': 'Arka Ofis: {tickets} Bilet için {obols} Obol.',
-    'collector.price': 'Koleksiyoncu bunu {obols} Obol’a satıyor.',
-    'lin.pool': 'Eski Lin Karo Okuyucu yalnızca Yeşim tılsımları stoklar.',
+    'collector.price': 'Tahsildar bunu {obols} Obol’a satıyor.',
+    'lin.pool': 'Karo Okuyucu Yaşlı Lin yalnızca Yeşim tılsımları stoklar.',
   },
 };

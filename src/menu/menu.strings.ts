@@ -86,7 +86,7 @@ export default {
     'val.tr': 'TÜRKÇE',
     'val.sens': 'HASSAS {n}/4',
     'credits.title': 'JENERİK',
-    'credits.body': 'JackID: PSX korku kumarhanesi roguelike.|Three.js, TypeScript, Vite.|Prosedürel müzik ve ses.|Kumarhane modelleri: Kenney (CC0).|Oynadığın için teşekkürler.',
+    'credits.body': 'JackID: PSX korku kumarhanesi roguelike.|Three.js, TypeScript, Vite.|Prosedürel müzik ve ses.|Kumarhane sesleri: Kenney (CC0).|Oynadığın için teşekkürler.',
     'quit.title': 'ÇUKURDA GÖRÜŞÜRÜZ',
     'quit.body': 'Bu sekmeyi şimdi kapatabilirsin.',
     'burst.toast': 'Borç Koşusu çukurda başlıyor',

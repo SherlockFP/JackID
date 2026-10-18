@@ -2,9 +2,9 @@
 export default {
   prefix: 'lamps.',
   en: {
-    'none': 'No lamps tonight — pocket too low',
+    'none': 'No lamps tonight, pocket too low',
   },
   tr: {
-    'none': 'Bu gece lamba yok — kasa çok düşük',
+    'none': 'Bu gece lamba yok, cep çok boş',
   },
 };

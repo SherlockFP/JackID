@@ -5,17 +5,17 @@
 
 .px-obj {
   position: absolute; left: calc(4 * var(--u)); top: calc(var(--hud-top-h, calc(52 * var(--u))) + 22 * var(--u)); bottom: auto;
-  max-width: min(34%, calc(200 * var(--u)));
+  max-width: min(38%, calc(220 * var(--u)));
   padding: calc(3 * var(--u)) calc(5 * var(--u)) calc(4 * var(--u));
-  background: rgba(14, 11, 8, 0.8); box-shadow: inset 0 0 0 var(--u) var(--brass);
-  font-family: var(--f-body); font-size: var(--fb); line-height: 1.05; color: var(--ivory);
+  background: rgba(10, 8, 6, 0.92); box-shadow: inset 0 0 0 var(--u) var(--brass);
+  font-family: var(--f-body); font-size: max(var(--fb), 18px); line-height: 1.1; color: var(--ivory);
   pointer-events: none; overflow-wrap: anywhere;
 }
 .px-obj .k { display: block; margin-bottom: calc(2 * var(--u)); font-family: var(--f-head); font-size: var(--fh); line-height: 1.2; color: var(--grout); }
 .px-root.seated .px-obj {
   top: calc(var(--seat-top-b, var(--hud-top-h, calc(52 * var(--u)))) + 4 * var(--u));
   max-width: min(28%, calc(150 * var(--u)));
-  font-size: calc(var(--fb) * 0.9);
+  font-size: max(calc(var(--fb) * 0.95), 17px);
 }
 
 /* The "clock paused" tag under the tutorial's hint line, while the box holds the Watch clock. */

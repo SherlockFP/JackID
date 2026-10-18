@@ -31,7 +31,7 @@ export default {
     'overForfeit': 'OVERSHOOT FORFEIT TONIGHT',
   },
   tr: {
-    'bank': 'ŞAFAKTA PROJE {p}/{q}',
+    'bank': 'ŞAFAKTA TAHMİN {p}/{q}',
     'bankNow': 'BANKADA {p}/{q}',
     'pocket': 'CEP {p} · YATIR',
     'ends': 'NÖBET {w}/{n} · {p} ÇEKİŞ · {c}',
@@ -50,7 +50,7 @@ export default {
     'ov.uncommon': 'SEYREK TILSIM',
     'ov.golden': 'NADİR TILSIM, SONRAKİ -%5',
     'ov.seal': 'JACKPOT MÜHRÜ: 5 BİLET + EFSANE (5. GECEDEN ÖNCE NADİR)',
-    'ov.envy': 'EV KISKANCI: RUH MÜHRÜ YA DA 3 OBOL',
+    'ov.envy': 'KASA KISKANÇLIĞI: RUH MÜHRÜ YA DA 3 OBOL',
     'overForfeit': 'AŞIM BU GECE KAYIP',
   },
 };

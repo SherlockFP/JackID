@@ -414,7 +414,7 @@
 /* ── toasts (ART §10.7) ───────────────────────────────────────────────────────────────────── */
 /* Top-centre stack sits UNDER the HUD top band (--hud-top-h, set by hud.ts): it used to land on the title strip. */
 .px-toasts {
-  position: absolute; top: calc(var(--hud-top-h, calc(8 * var(--u))) + 6 * var(--u)); left: 50%; transform: translateX(-50%); z-index: 5;
+  position: absolute; top: calc(var(--hud-top-h, calc(8 * var(--u))) + 32 * var(--u)); left: 50%; transform: translateX(-50%); z-index: 5;
   display: flex; flex-direction: column; align-items: center; gap: calc(3 * var(--u));
   width: calc(168 * var(--u)); max-width: calc(100% - 16 * var(--u));
 }
@@ -489,7 +489,10 @@
    bar) and above the eye-level neon signs. The title is kept to the middle 48 % of the screen, so a wide banner never runs over
    the tutorial column on the left (min 260 px on a phone, where the box is small too). */
 .px-bw.t-banner { top: calc(var(--hud-top-h, calc(52 * var(--u))) + 6 * var(--u)) !important; }
-.px-bw.t-banner .title { max-width: max(48vw, min(94vw, 260px)); }
+/* One line: the Watch start and the other top banners never wrap onto a second row (that row landed on the toast stack);
+   a long text shrinks with the width instead. The toast stack sits one banner row lower (see .px-toasts). */
+.px-bw.t-banner .title { max-width: 94vw; flex-wrap: nowrap; white-space: nowrap; font-size: min(calc(var(--bw-s, 24) * var(--u)), 4.2vw); }
+.px-bw.t-banner .Br { display: none; }
 .px-bw.t-banner .L { opacity: 1 !important; }
 .px-bw .W { display: inline-block; white-space: pre; }
 .px-bw .W.wave { animation: px-wave 0.5s steps(4, end) infinite; animation-delay: calc(var(--i, 0) * -0.06s); }

@@ -30,11 +30,11 @@ export default {
     'arch.rotation': 'DÖNÜŞ',
     'arch.hot': 'SICAK',
     'arch.clutch': 'KRİTİK',
-    'arch.banker': 'KASA',
+    'arch.banker': 'BANKACI',
     'arch.whale': 'BALİNA',
     'arch.copycat': 'TAKLİT',
     'interest': 'BANKA +{n} FAİZ (%{pct})',
-    'interest.short': 'BANKA +0 FAİZ (%{pct}): kazanmak için {k} çekiliş daha',
+    'interest.short': 'BANKA +0 FAİZ (%{pct}): kazanmak için {k} çekiş daha',
     'interest.none': 'BANKA +0 FAİZ (%{pct})',
   },
 };

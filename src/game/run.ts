@@ -71,6 +71,10 @@ import { createItemSystem, type ItemSystem } from './items';
 import { createHotline, type Hotline, type HotlineSave } from './hotline';
 import { createPhone, hooksOf } from './home/phone';
 import { createLuckMeter, type LuckMeter } from './luck';
+import { createKeepsakes, type KeepsakeId, type KeepsakeOutcome, type KeepsakeSave, type Keepsakes } from './keepsake';
+import { createGhostSeat, type GhostMatch, type GhostSave, type GhostSeat, type GhostSeatInfo } from './ghostSeat';
+import keepsakeStrings from './keepsake.strings';
+import ghostStrings from './ghostSeat.strings';
 import { cloneChapter, freshChapter, readChapter, type ChapterRecord } from './story/chapter';
 import type { HomePhoneApi, HomeSave, HomeStage } from './home/contract';
 import {
@@ -324,6 +328,8 @@ registerStrings(draftStrings.prefix, { en: draftStrings.en, tr: draftStrings.tr 
 registerStrings(nightCardStrings.prefix, { en: nightCardStrings.en, tr: nightCardStrings.tr });
 registerStrings(checkpointStrings.prefix, { en: checkpointStrings.en, tr: checkpointStrings.tr });
 registerStrings(runStrings.prefix, { en: runStrings.en, tr: runStrings.tr });
+registerStrings(keepsakeStrings.prefix, { en: keepsakeStrings.en, tr: keepsakeStrings.tr });
+registerStrings(ghostStrings.prefix, { en: ghostStrings.en, tr: ghostStrings.tr });
 
 let bossStringsDone = false;
 /** Boss names and texts to `event.<id>.name|desc|announce` (the banner and HUD read them like any Night event). Once. */
@@ -403,6 +409,10 @@ export interface RunExt {
   rescue?: { quota: number; used: number };
   /** THE LUCK METER (wave 73): its saved stars. Optional: older saves have none. */
   luck?: unknown;
+  /** THE KEEPSAKE STAKE (wave 75): owned, lost and carried keepsakes, the staked Night, rounds in play. Optional: older saves have none. */
+  keepsake?: KeepsakeSave;
+  /** THE GHOST SEAT (wave 75): tonight's tally and the copy's seat. Optional: older saves have none. */
+  ghost?: GhostSave;
   /** THE SECOND NAME (wave 73): the chapter record (title cards, arcs, reveal, deal). Optional: older saves have none. */
   chapter?: ChapterRecord;
   /** Deposits made this Watch (every one keeps the float). Optional: older saves have none. */
@@ -551,6 +561,22 @@ export interface DebtRun extends RunApi {
   homeSaveNow(): void;
   /** The controller reports the apartment's lights and chain so a save keeps them. */
   homeFlags(f: { lights?: boolean; chain?: boolean }): void;
+  /** THE KEEPSAKE STAKE (wave 75): the keepsakes the player owns, the House kept, and the one carried tonight. */
+  keepsakeOwned(): KeepsakeId[];
+  keepsakeLost(): KeepsakeId[];
+  keepsakeCarried(): KeepsakeId | null;
+  /** The Evening's carry choice (home, the Evening only): one keepsake to the casino, or null. False when refused. */
+  keepsakeCarry(id: KeepsakeId | null): boolean;
+  /** Stakes the carried keepsake on the next bet at this seat (play only, once a Night). False when refused. */
+  keepsakeStake(mid: InstanceId): boolean;
+  keepsakeStakeCancel(): void;
+  keepsakePending(mid: InstanceId): KeepsakeId | null;
+  /** The Debt Terminal's buy-back price for a lost keepsake, or null. */
+  keepsakeBuyPrice(id: KeepsakeId): number | null;
+  /** Buys a lost keepsake back for coins. */
+  keepsakeBuyBack(id: KeepsakeId): boolean;
+  /** THE GHOST SEAT (wave 75): the copy's seat tonight (machine kind, seat, pools, stars), or null. */
+  ghostSeatInfo(): GhostSeatInfo | null;
   /** Pay the rest of the Night now (SETTLE lever). Needs `deposit ≥ quota`. */
   settleEarly(): boolean;
   /**
@@ -887,6 +913,10 @@ class Run implements DebtRun {
   private readonly hPhone: HomePhoneApi | null;
   /** THE LUCK METER (wave 73): stars from the run's own events; its bonus joins the luck hook base. */
   private readonly luckMeter: LuckMeter;
+  /** THE KEEPSAKE STAKE (wave 75): the keepsake box (owned, lost, carried, staked). Saved in `resume.ext.keepsake`. */
+  private readonly keepsakes: Keepsakes = createKeepsakes();
+  /** THE GHOST SEAT (wave 75): the copy at the machine lost most last Night. Saved in `resume.ext.ghost`. */
+  private readonly ghostSeat: GhostSeat = createGhostSeat();
   /** THE SECOND NAME (wave 73): the chapter record, saved in `resume.ext.chapter`. */
   private chapterRec: ChapterRecord = freshChapter();
   /** THE PROLOGUE (wave 72): true from a fresh start until the lift lands on the floor. Not saved (a resume skips it). */
@@ -1217,14 +1247,17 @@ class Run implements DebtRun {
     const q: ModQuery = { pid: this.selfId, instance: src.mid };
     const lim = this.betLimits(src.machineId, src.mid);
     if (amount < lim.min || amount > lim.max) return this.refuse('limit');
-    if (!this.confirmStake(amount, src, lim.min)) return this.refuse(STAKE_CONFIRM_REASON);
-    const cost = Math.ceil(amount * this.mod('bet.costMult', src.machineId, 1, q));
+    // THE KEEPSAKE STAKE (wave 75): an armed keepsake is the round's whole stake, so no coins and no coin-only confirm
+    const ks = this.openRounds.has(src.mid) ? null : this.keepsakes.pending(src.mid, this.night());
+    if (!ks && !this.confirmStake(amount, src, lim.min)) return this.refuse(STAKE_CONFIRM_REASON);
+    const cost = ks ? 0 : Math.ceil(amount * this.mod('bet.costMult', src.machineId, 1, q));
     const base = o?.pulls ?? registry.get(src.machineId)?.def.actionCost ?? 1;
     const pullCost = Math.max(0, Math.round(this.mod('x.actionCostDelta', src.machineId, base, q)));
     if (!this.rules.unlimitedPulls && this.pullCount < pullCost) return this.refuse('pulls');
     if (cost > this.coins) { this.clearStakeArm(); return this.refuse('funds'); }
     this.refusal = null;
     this.clearStakeArm();
+    if (ks) this.keepsakes.open(src.mid, this.night());
 
     if (!this.rules.unlimitedPulls) this.pullCount -= pullCost;
     this.watchPulls += pullCost;
@@ -1287,6 +1320,11 @@ class Run implements DebtRun {
   win(gross: number, src: EcoSource, meta: WinMeta): number {
     this.openRounds.delete(src.mid);
     const { credited, pr } = this.creditOf(gross, src, meta);
+    // THE KEEPSAKE STAKE and THE GHOST SEAT (wave 75): the round's result is the credited amount against the bet
+    const ks = this.keepsakes.settle(src.mid, credited > meta.bet);
+    if (ks) this.keepsakeSettled(ks);
+    const gh = this.ghostSeat.round(this.night(), src.machineId, src.mid, meta.bet, credited);
+    if (gh) this.ghostMatched(gh);
     if (pr && pr.excess > 0) this.feedJackpot('net', pr.excess);
     this.coins += credited;
     this.maxWallet = Math.max(this.maxWallet, this.coins);
@@ -1428,6 +1466,63 @@ class Run implements DebtRun {
   luck(machineId: MachineId, pid?: PlayerId): number { return this.mods.mod('luck', machineId, 0, { pid }); }
   /** THE LUCK METER (wave 73): the stars (−2..5) behind the payout bonus. */
   luckStars(): number { return this.luckMeter.stars(); }
+
+  // ── THE KEEPSAKE STAKE and THE GHOST SEAT (wave 75) ───────────────────────────────────────────────
+  /** A keepsake round ended. A win brings the keepsake back (the luck meter takes its star); a loss gives it to the House. */
+  private keepsakeSettled(ks: KeepsakeOutcome): void {
+    const name = t(`keepsake.${ks.id}.name`);
+    bus.emit('keepsake:stake', { state: ks.state, id: ks.id, mid: ks.mid, star: ks.star });
+    if (ks.state === 'won') { this.banner?.(t('keepsake.won', { name }), { hold: 3, size: 8 }); return; }
+    if (ks.harmony !== 0) hooksOf(this.hPhone)?.harmony(ks.harmony);
+    this.banner?.(`${t('keepsake.lost', { name })} ${t('keepsake.lost.spouse')}`, { color: '#ff8080', hold: 4, size: 8 });
+  }
+  /** The copy matched one of the player's rounds: one ŞANS star (the luck meter listens for `ghost:match`). */
+  private ghostMatched(g: GhostMatch): void {
+    bus.emit('ghost:match', { side: g.side, machineId: g.machineId, mid: g.mid, star: g.star });
+    this.banner?.(t(g.side === 'lost' ? 'ghost.match.lost' : 'ghost.match.won'), { hold: 3, size: 8 });
+  }
+  /** The keepsakes the player owns: at home or on the table. */
+  keepsakeOwned(): KeepsakeId[] { return this.keepsakes.owned(); }
+  /** The keepsakes the House kept (the Debt Terminal sells them back). */
+  keepsakeLost(): KeepsakeId[] { return this.keepsakes.lost(); }
+  /** The keepsake carried to the casino tonight, or null. */
+  keepsakeCarried(): KeepsakeId | null { return this.keepsakes.carried(); }
+  /** The Evening's carry choice (Home only, before the lift): one keepsake to the casino, or none. False when refused. */
+  keepsakeCarry(id: KeepsakeId | null): boolean {
+    if (this.homeStage() !== 'evening' || this.ended) return false;
+    if (!this.keepsakes.carry(id)) return false;
+    bus.emit('keepsake:carry', { id });
+    this.persistSoon();
+    return true;
+  }
+  /** Arms the carried keepsake for the next bet at `mid`. Play only; one keepsake stake per Night. False when refused. */
+  keepsakeStake(mid: InstanceId): boolean {
+    if (!this.canPlay() || this.ended) return false;
+    return this.keepsakes.arm(mid, this.night());
+  }
+  /** Drops a waiting keepsake stake (no coins, nothing lost). */
+  keepsakeStakeCancel(): void { this.keepsakes.disarm(); }
+  /** The keepsake the next bet at `mid` stakes, or null. The seat HUD can poll this. */
+  keepsakePending(mid: InstanceId): KeepsakeId | null { return this.keepsakes.pending(mid, this.night()); }
+  /** The Debt Terminal's buy-back price for a lost keepsake, or null when it is not lost. */
+  keepsakeBuyPrice(id: KeepsakeId): number | null { return this.keepsakes.buyBackPrice(id); }
+  /** Buys a lost keepsake back for its price in coins. False when it is not lost, or the pocket is short. */
+  keepsakeBuyBack(id: KeepsakeId): boolean {
+    const price = this.keepsakes.buyBackPrice(id);
+    if (price === null || this.ended) return false;
+    const name = t(`keepsake.${id}.name`);
+    if (!this.spend('coin', price, `keepsake:buy:${id}`)) {
+      this.banner?.(t('keepsake.buy.short', { name }), { hold: 3, size: 8 });
+      return false;
+    }
+    this.keepsakes.buyBack(id);
+    this.banner?.(t('keepsake.buy.ok', { name }), { hold: 3, size: 8 });
+    this.notify();
+    this.persistSoon();
+    return true;
+  }
+  /** The copy's seat for this Night (the machine kind, the seat, the pools), or null. */
+  ghostSeatInfo(): ReturnType<GhostSeat['seat']> { return this.ghostSeat.seat(); }
   /** THE SECOND NAME (wave 73): the live chapter record (story code reads it and marks beats through `chapter.ts`). */
   chapterRecord(): ChapterRecord { return this.chapterRec; }
   charms(pid?: PlayerId): readonly CharmState[] { return this.charmBox.list(pid ?? this.selfId); }
@@ -1652,6 +1747,11 @@ class Run implements DebtRun {
       if (gain > 0) this.earn('coin', gain, 'charm:elevator_token');
     }
     this.index += 1;
+    // THE KEEPSAKE STAKE and THE GHOST SEAT (wave 75): a new Night drops a waiting stake; the copy sits where last Night's losses were
+    this.keepsakes.newNight();
+    const seat = this.ghostSeat.beginNight(this.index + 1);
+    bus.emit('ghost:seat', seat ? { night: seat.night, machineId: seat.machineId, mid: seat.mid } : { night: this.index + 1, machineId: null, mid: null });
+    if (seat) this.banner?.(t('ghost.seat', { machine: machineName(seat.machineId as MachineId) }), { hold: 4, size: 8 });
     this.ledger = { night: this.index + 1, float: 0, interest: 0, tickets: 0, cut: 0, carried: 0 };   // a new Night's books start empty (before its float)
     const nd = nightDef(this.index);
     this.watches = Math.max(1, nd.watches + this.nightCards.fx().watchAdd);   // Night Cards: RUSH NIGHT drops a Watch
@@ -3447,7 +3547,7 @@ class Run implements DebtRun {
       ...(this.tithe.snapshot() ? { tithe: this.tithe.snapshot() as TitheSave } : {}),
       ...(this.dawnBook ? { dawnBook: { ...this.dawnBook } } : {}),
       ...(this.hPhone ? { home: this.homeSave(this.hPhone) } : {}),
-      luck: this.luckMeter.snapshot(), chapter: cloneChapter(this.chapterRec),
+      luck: this.luckMeter.snapshot(), keepsake: this.keepsakes.snapshot(), ghost: this.ghostSeat.snapshot(), chapter: cloneChapter(this.chapterRec),
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -3834,6 +3934,8 @@ class Run implements DebtRun {
     this.tithe.restore(e.tithe);
     this.dawnBook = restoredDawnReceipt(e.dawnBook);
     this.luckMeter.restore(e.luck);
+    this.keepsakes.restore(e.keepsake);
+    this.ghostSeat.restore(e.ghost);
     this.chapterRec = readChapter(e.chapter);
     if (this.homeOn) this.restoreHome(e.home);
     this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);

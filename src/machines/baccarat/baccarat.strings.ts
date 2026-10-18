@@ -49,7 +49,7 @@ const en: Record<string, string> = {
 
 const tr: Record<string, string> = {
   name: 'Bakara «Aynalı Masa»',
-  desc: 'Aynalı masada Punto Banco: Oyuncu, Banker ya da Beraberlik\'e bahis koy, kartlarını sıkarak şans topla ve yol haritasını oku. Bankacı sana asla bakmaz.',
+  desc: 'Aynalı masada Punto Banco: Oyuncu, Banker ya da Beraberlik\'e bahis koy, kartlarını sıkarak şans topla ve yol haritasını oku. Banker sana asla bakmaz.',
   boxP: 'OYUNCU', boxB: 'BANKER',
   capB: 'B', capP: 'O', capT: 'BE', capPP: 'OÇ', capBP: 'BÇ',
   banker: 'BANKER', player: 'OYUNCU', tie: 'BERABERE', ppair: 'O ÇİFT', bpair: 'B ÇİFT',

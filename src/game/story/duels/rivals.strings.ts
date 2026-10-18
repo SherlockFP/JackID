@@ -29,7 +29,7 @@ export default {
     'rival.kuro.catch': 'Pressure makes honest men.',
     'rival.kuro.taunt': 'Breathe in, friend. Now the gauge can hear you.',
     'rival.kuro.called': 'Caught. Bless the eyes that counted.',
-    'rival.kuro.loss': 'Brass bends for nobody. It only lets go.',
+    'rival.kuro.loss': 'Brass doesn\'t bend. It just lets go.',
 
     'rival.lucan.name': 'Lucan Morrow',
     'rival.lucan.title': 'Seventh Chamber',
@@ -102,7 +102,7 @@ export default {
     'rival.kuro.catch': 'Basınç adamı dürüst yapar.',
     'rival.kuro.taunt': 'Nefes al dostum. Şimdi gösterge seni duyuyor.',
     'rival.kuro.called': 'Yakalandım. Sayan gözlere bereket.',
-    'rival.kuro.loss': 'Pirinç kimseye eğilmez. Sadece bırakır.',
+    'rival.kuro.loss': 'Pirinç eğilmez. Sadece kopar.',
 
     'rival.lucan.name': 'Lucan Morrow',
     'rival.lucan.title': 'Yedinci Oda',
@@ -121,7 +121,7 @@ export default {
     'rival.mimosa.loss': 'Bulundu o zaman. Biri yine kaybetmeden al.',
 
     'rival.orrin.name': 'Orrin Pale',
-    'rival.orrin.title': 'Koleksiyoncu',
+    'rival.orrin.title': 'Tahsildar',
     'rival.orrin.accessory': 'Gri frak, zincirinde Müdür Anahtarı.',
     'rival.orrin.catch': 'Borç, seni bekleyen birisidir.',
     'rival.orrin.taunt': 'Çabuk ol. Senden daha uzun adamları bekledim.',

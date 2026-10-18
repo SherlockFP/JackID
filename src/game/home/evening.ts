@@ -25,6 +25,7 @@ import { HOME_AMBIENCE, HOME_ANCHORS, HOME_ORIGIN, HOME_SFX, type HomeStage, typ
 import { dreamOf, hooksOf } from './phone';
 import { CRACK_AMOUNT, createVisit, newVisit, pickCharm, readVisit, rollVisit, tollOf, type KnockIO, type Visit, type VisitResult } from './knock';
 import { charmDef } from '../charms/engine';
+import type { KeepsakeId } from '../keepsake';
 import strings from './evening.strings';
 import knockStrings from './knock.strings';
 
@@ -437,10 +438,23 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     say(t(`evening.window.${n}`), '', 3.5);
   };
 
+  /**
+   * THE KEEPSAKE CARRY (wave 75): in the Evening each touch of the spouse cycles the keepsake taken to the casino, through none and
+   * then each one the player owns. The line is a toast, so the spouse's own lines still speak. Only the Evening (never the prologue).
+   */
+  const cycleKeepsake = (): void => {
+    if (run.homeStage() !== 'evening') return;
+    const opts: Array<KeepsakeId | null> = [null, ...run.keepsakeOwned()];
+    const cur = run.keepsakeCarried();
+    const next = opts[(opts.indexOf(cur) + 1) % opts.length] ?? null;
+    if (!run.keepsakeCarry(next)) return;
+    ui().toast(next === null ? t('keepsake.carry.none') : t('keepsake.carry.set', { name: t(`keepsake.${next}.name`) }), 'info', 3);
+  };
+
   /** The stations that only look, talk or toggle: the same in the prologue and in the Evening. */
   const touch = (station: HomeStation): void => {
     switch (station) {
-      case 'spouse': speak(); break;
+      case 'spouse': cycleKeepsake(); speak(); break;
       case 'switch': toggleLights(); break;
       case 'chain': toggleChain(); break;
       case 'peephole': peephole(); break;

@@ -26,6 +26,8 @@ export interface Fixture {
   hint: LightHint;
   /** Lamp / bulb parts the level or the flicker envelope can drive. */
   setOn(on: boolean): void;
+  /** Bulb-ring pattern (chandeliers: the light show drives it). */
+  pattern?(p: 'chase' | 'alt' | 'blink' | 'rainbow' | 'all' | 'off', hz?: number): void;
   update?(dt: number, t: number): void;
 }
 
@@ -132,6 +134,7 @@ export function chandelier(kit: KitX, o: FixtureOpts & { r: number; bulbs: numbe
     root,
     hint: { id: o.id, pos: [o.pos[0], o.pos[1] - 0.2, o.pos[2]], color: o.color, intensity: o.intensity ?? 1.6, range: o.range ?? 12, flicker: o.flicker ?? 'STEADY', zone: o.zone },
     setOn: (on) => { hub.setOn(on); bulbs.pattern(on ? 'all' : 'off'); },
+    pattern: (p, hz) => bulbs.pattern(p, hz),
     update(_dt, t) { root.rotation.z = Math.sin(t * 0.63) * 0.017; },
   };
 }

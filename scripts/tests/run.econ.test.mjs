@@ -380,7 +380,7 @@ test('the tutorial deposit line reads {rate} and names the Watch in both languag
   assert.ok(STR_TUT.en['deposit'].includes('{rate}% per Watch tonight'));
   assert.ok(STR_TUT.tr['deposit'].includes('%{rate} faiz'));
   assert.ok(!STR_TUT.en['deposit'].includes('{pct}') && !STR_TUT.tr['deposit'].includes('{pct}'));
-  assert.ok(STR_LAMPS.en['none'] === 'No lamps tonight — pocket too low' && STR_LAMPS.tr['none']);
+  assert.ok(STR_LAMPS.en['none'] === 'No lamps tonight, pocket too low' && STR_LAMPS.tr['none']);
 });
 
 test('lampView: two Lamps on one machine get ordinals (Bandit (L1), Bandit (L2)); other machines and single Lamps stay bare', () => {

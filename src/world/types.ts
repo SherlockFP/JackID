@@ -78,8 +78,34 @@ export interface QuotaBoardProp extends WorldProp {
   /** "Who paid what" ledger lines (co-op). */
   setLedger(lines: Array<{ name: string; color: Hex; amount: number }>): void;
 }
+/** Lobby atrium stage (wave 75): a curtain, footlights and the dark Compere at a microphone. Anchors `stage.center`, `stage.compere`. */
+export interface StageProp extends WorldProp {
+  readonly compere: import('@/kit/types').MannequinActor;
+  readonly curtainOpen: boolean;
+  setCurtain(open: boolean, dur?: number): Promise<void>;
+  /** The Compere talks (true) or stands idle (false). */
+  speak(on: boolean): void;
+}
+/** Jackpot LED wall behind the Big One dais. The game feeds it already translated lines. */
+export interface JackpotWallProp extends WorldProp {
+  /** Up to 4 lines; the first is the big one. An empty list shows the idle title. */
+  setLines(lines: string[]): void;
+  /** A 1.8 s gold flash with a chasing border. */
+  flash(): Promise<void>;
+}
+/** Prize showcase beside the cashier: 5 lit slots. */
+export interface PrizeCaseProp extends WorldProp {
+  readonly count: number;
+  /** Already translated labels; the first 5 are shown, an empty slot stays dark. */
+  setPrizes(labels: string[]): void;
+}
+/** Slow light show: chandeliers, footlights, wall border and zone pulses. Safe for reduce-flashing (no strobe). */
+export interface LightShowProp extends WorldProp {
+  readonly active: boolean;
+  lightShow(dur?: number): void;
+}
 /** Known prop ids; the type stays open for decor props. */
-export type PropId = 'clock' | 'trapdoor' | 'elevator' | 'quotaBoard' | (string & {});
+export type PropId = 'clock' | 'trapdoor' | 'elevator' | 'quotaBoard' | 'stage' | 'jackpotWall' | 'prizeCase' | 'lightShow' | (string & {});
 
 // ── lights (WORLD-ARCH `lights.ts`) ─────────────────────────────────────────────────────────────
 export type WorldLightTarget = 'all' | ZoneId | InstanceId | THREE.Object3D;

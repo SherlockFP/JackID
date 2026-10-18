@@ -72,7 +72,7 @@ export default {
     'night.overdrawn': 'Açık Hesap',
     'toast.bell': 'Zil çalıyor. Vardiya {watch} / {watches}.',
     'toast.lastCall': 'Son çağrı.',
-    'toast.closing': 'Kapanıyor. Yatırımlarını yap.',
+    'toast.closing': 'Kapanıyor. Yatıracaksan şimdi yatır.',
     'toast.interest': 'Faiz +{amount}',
     'toast.tickets': '+{amount} Bilet',
     'toast.deposit': '{amount} yatırıldı',

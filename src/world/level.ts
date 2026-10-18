@@ -19,6 +19,7 @@ import { createClock, type WallClock } from './props/clock';
 import { createTrapdoor, type Trapdoor } from './props/trapdoor';
 import { createElevator, type Elevator } from './props/elevator';
 import { createQuotaBoard, type QuotaBoard } from './props/quotaBoard';
+import { buildStage, buildJackpotWall, buildPrizeCase, buildBalcony, createLightShow, PRIZE_CASE, STAGE, type ShowTarget } from './props/grand';
 import { buildSignposts } from './props/signposts';
 import { buildRooms, type RoomsBuild } from './rooms';
 import { buildHollow } from './hollow';
@@ -30,7 +31,8 @@ const WALL_H = 9;         // walls run to the tallest ceiling; ceilings hide the
 const LINTEL_Y = 3.2;     // doorway header
 const HERO_PLATE = { x: 0, z: 12 };   // hero trapdoor (Lobby centre); the Sump lies under it
 const SUMP_POS: V3 = [0, -30, 12];
-const WELL_DAIS = { x: 0, z: -4 };    // WELL-01 dais 4 × 4 × 0.15
+const WELL_DAIS = { x: 0, z: -4 };
+const STAGE_X = STAGE.x, STAGE_Z = STAGE.z;    // WELL-01 dais 4 × 4 × 0.15
 /** Playtest lift (director): the pit read as too dark. Every fixture hint gets this intensity and reach gain. */
 const FIXTURE_GAIN = 1.8;
 const FIXTURE_RANGE = 1.2;
@@ -325,7 +327,8 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   lights.push({ id: 'mouth:lift', pos: [-4, 2.4, -31.1], color: 0xfff2d0, intensity: 1.0, range: 4, flicker: 'DYING', zone: 'lift' });
 
   // Well: the chandelier ring (r 3 m, 24 bulbs, y 7.5) and the dais cone
-  fx(chandelier(kit, { id: 'well:chandelier', pos: [0, 7.5, -4], r: 3.0, bulbs: 24, ceiling: CEILING.well, color: 0xffb347, intensity: 1.6, range: 12, zone: 'well', tiers: 2 }));
+  const wellChandelier = chandelier(kit, { id: 'well:chandelier', pos: [0, 7.5, -4], r: 3.0, bulbs: 24, ceiling: CEILING.well, color: 0xffb347, intensity: 1.6, range: 12, zone: 'well', tiers: 2 });
+  fx(wellChandelier);
   lights.push({ id: 'well:dais', pos: [0, 4.0, -4], color: 0xffe2a0, intensity: 1.4, range: 10, flicker: 'STEADY', zone: 'well' });
   lights.push({ id: 'well:marquee', pos: [0, 2.0, -6.5], color: 0xffc861, intensity: 0.6, range: 4, flicker: 'CANDLE', zone: 'well' });
 
@@ -506,6 +509,45 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     ghost: [{ pos: [HERO_PLATE.x, 1.0, HERO_PLATE.z], yaw: 0 }],
   };
 
+  // ── Wave 75 GRAND CASINO: balcony rail, atrium stage, jackpot wall, prize case, chandeliers, light show ──
+  buildBalcony(kit, statical);
+  const stage = buildStage(kit, tex, { root, statical });
+  root.add(stage.prop.root);
+  disposables.push(stage.prop);
+  updates.push({ update: (dt) => stage.prop.update?.(dt) });
+  lights.push(...stage.hints);
+  statics.push(...stage.statics);
+  Object.assign(anchors, stage.anchors);
+  const wall = buildJackpotWall(kit, { ceiling: CEILING.well });
+  root.add(wall.root);
+  disposables.push(wall);
+  updates.push({ update: (dt) => wall.update?.(dt) });
+  lights.push({ id: 'well:jackpotWall', pos: [0, 4.6, 0.4], color: 0xffb347, intensity: 0.9, range: 7, flicker: 'STEADY', zone: 'well' });
+  const prizes = buildPrizeCase(kit, { statical });
+  root.add(prizes.prop.root);
+  disposables.push(prizes.prop);
+  updates.push({ update: (dt) => prizes.prop.update?.(dt) });
+  statics.push({ box: box3(PRIZE_CASE.x - PRIZE_CASE.w / 2, 0, PRIZE_CASE.z - PRIZE_CASE.d / 2, PRIZE_CASE.x + PRIZE_CASE.w / 2, PRIZE_CASE.h, PRIZE_CASE.z + PRIZE_CASE.d / 2), tag: 'solid' });
+  lights.push({ id: 'lobby:prizeCase', pos: [PRIZE_CASE.x, 1.7, PRIZE_CASE.z - 0.7], color: 0xffe9b0, intensity: 0.7, range: 3.5, flicker: 'STEADY', zone: 'lobby' });
+  const shows: ShowTarget[] = [stage.prop.footlights, wall.border];
+  {
+    // chandeliers: one over the stage (lit), two small ones over the Well side aisles (visual only, the pool is full enough)
+    const lobbyCh = chandelier(kit, { id: 'lobby:chandelier', pos: [STAGE_X, 3.5, STAGE_Z], r: 1.7, bulbs: 16, ceiling: CEILING.lobby, color: 0xffd890, intensity: 1.0, range: 8, zone: 'lobby', tiers: 1 });
+    fx(lobbyCh);
+    if (lobbyCh.pattern) shows.push({ pattern: lobbyCh.pattern });
+    for (const [i, sx] of [-5, 5].entries()) {
+      const c = chandelier(kit, { id: `well:sideChandelier${i}`, pos: [sx, 6.9, -11], r: 1.2, bulbs: 12, ceiling: CEILING.well, color: 0xffb347, zone: 'well', tiers: 1 });
+      root.add(c.root);
+      updates.push({ update: (dt, tt) => c.update?.(dt, tt) });
+      if (c.pattern) shows.push({ pattern: c.pattern });
+    }
+    const wellCh = wellChandelier;
+    if (wellCh?.pattern) shows.push({ pattern: wellCh.pattern });
+  }
+  const lightShow = createLightShow({ targets: shows, lights: ctx.lights, wall });
+  updates.push({ update: (dt) => lightShow.update?.(dt) });
+  disposables.push(lightShow);
+
   // ── anchors (cutscene targets) ─────────────────────────────────────────────────────────────
   const marker = (x: number, y: number, z: number): THREE.Object3D => { const o = new THREE.Object3D(); o.position.set(x, y, z); root.add(o); return o; };
   anchors.terminal = marker(0, 1.2, -29.0);
@@ -535,6 +577,10 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     sump,
     parlourCurtain: curtain,
     managementDoor: mgmt,
+    stage: stage.prop,
+    jackpotWall: wall,
+    prizeCase: prizes.prop,
+    lightShow,
   };
 
   // ── finish: merge the static shell into a few draw calls (fixtures and props stay separate) ──────
