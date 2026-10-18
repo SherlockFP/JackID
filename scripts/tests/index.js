@@ -75,3 +75,4 @@ import './grand.test.mjs';
 import './keepsake.test.mjs';
 import './ghostSeat.test.mjs';
 import './floorEvents.test.mjs';
+import './floorWiring.test.mjs';

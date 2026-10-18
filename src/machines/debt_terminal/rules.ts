@@ -15,13 +15,34 @@ export type KeyId = (typeof KEYS)[number];
 export const KEY_COLS = 3;
 export const KEY_ROWS = 3;
 
-/** The terminal's three screens. */
-export const MODES = ['dep', 'wd', 'quota'] as const;
+/**
+ * The terminal's four screens, in the order C cycles them: DEPOSIT, WITHDRAW, BUY BACK (a lost keepsake back for coins), QUOTA.
+ * BUY BACK has no keypad cell of its own (the top row is full): it is reached by the C cycle and shows as a tab on the CRT.
+ */
+export const MODES = ['dep', 'wd', 'buy', 'quota'] as const;
 export type Mode = (typeof MODES)[number];
 /** The mode a cell selects (null for an amount key). */
 export function modeOfKey(k: KeyId): Mode | null { return k === 'dep' || k === 'wd' || k === 'quota' ? k : null; }
 /** Next / previous mode (wraps). */
 export function cycleMode(m: Mode, dir: 1 | -1 = 1): Mode { return MODES[(MODES.indexOf(m) + dir + MODES.length) % MODES.length]; }
+
+/** One BUY BACK row: a keepsake the House kept and what it costs to get back. */
+export interface BuyBackRow<T extends string = string> { id: T; price: number }
+
+/** The BUY BACK rows, in the order the House kept them. A keepsake with no price (null, or not positive) is not for sale. */
+export function buyBackRows<T extends string>(lost: readonly T[], priceOf: (id: T) => number | null): BuyBackRow<T>[] {
+  const rows: BuyBackRow<T>[] = [];
+  for (const id of lost) {
+    const price = priceOf(id);
+    if (price !== null && price > 0) rows.push({ id, price });
+  }
+  return rows;
+}
+
+/** The row a typed digit picks (1 = the first row), or -1 when the digit names no row of `count`. */
+export function rowOfDigit(d: number, count: number): number {
+  return Number.isInteger(d) && d >= 1 && d <= count ? d - 1 : -1;
+}
 
 /** Coins an armed WITHDRAW "PLAY" key takes: enough for the pulls left at two cheapest bets a pull, minus what the pocket holds. */
 export function playNeed(pullsLeft: number, minBet: number, pocket: number): number {

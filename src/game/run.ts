@@ -100,6 +100,7 @@ import { WatchTithe, type TitheResult, type TitheSave, type TitheView } from './
 import checkpointStrings from './checkpoints.strings';
 import { Spotlight, isSpotlightEligible, spotlightStartLine, type SpotlightSave, type SpotlightView } from './spotlight';
 import { WatchEvents, type WatchEventSave } from './watchEvents';
+import type { FloorAward, WatchFloor } from './events/types';
 import type { EventBannerShow } from './buffs/banner';
 import type { IdleReport, TycoonState } from '@/game/types';
 
@@ -316,7 +317,24 @@ declare module '@/core/events' {
     'run:nightcard': { pid: PlayerId; state: 'offer' | 'picked' | 'auto' | 'started'; card: string | null };
     /** Watch tithe (wave 58): a quota Watch's Settle. `met` pays `tickets`; `missed` adds `shortfall` to tonight's quota. */
     'run:tithe': { pid: PlayerId; state: 'met' | 'missed'; watch: number; target: number; earned: number; shortfall: number; tickets: number };
+    /** A Night starts (its first Watch begins): the grand casino props take the Night's light show from this. `night` is 1-based. */
+    'night:begin': { night: number };
   }
+}
+/** One of the biggest wins of the run (the jackpot wall reads the four largest): the machine kind and the credited coins. */
+export interface GrandWin { machineId: MachineId; amount: number }
+/** The four biggest wins the jackpot wall shows. */
+const GRAND_WIN_MAX = 4;
+/** Restores the grand wins from a save: whole positive amounts only, largest first, at most GRAND_WIN_MAX. */
+function restoredGrandWins(v: unknown): GrandWin[] {
+  if (!Array.isArray(v)) return [];
+  const out: GrandWin[] = [];
+  for (const x of v) {
+    const w = x as Partial<GrandWin> | null;
+    if (!w || typeof w.machineId !== 'string' || typeof w.amount !== 'number' || !Number.isFinite(w.amount) || w.amount <= 0) continue;
+    out.push({ machineId: w.machineId as MachineId, amount: Math.floor(w.amount) });
+  }
+  return out.sort((a, b) => b.amount - a.amount).slice(0, GRAND_WIN_MAX);
 }
 /** `lastRefusal()` after a first press on a stake above half the pocket (see `RunStakeConfirmEvent`). Not in `RefusalReason` yet. */
 export const STAKE_CONFIRM_REASON: RefusalReason = 'confirm';
@@ -454,6 +472,8 @@ export interface RunExt {
   tithe?: TitheSave;
   /** The Dawn receipt of the last paid Night (the Night Cards panel reads it). Optional: older saves have none. */
   dawnBook?: DawnReceipt;
+  /** The four biggest wins of the run (the jackpot wall). Optional: older saves have none. */
+  grandWins?: GrandWin[];
 }
 /** Contracts persisted under `ext.contracts`. `base` holds the stat value at signing, for stat goals. */
 interface ContractsSave { night: number; seq: number; list: ContractState[]; base: Record<string, number> }
@@ -493,6 +513,8 @@ export interface RunWorldLink {
   instancePos(mid: InstanceId): V3 | undefined;
   /** True for machines in closed wings / locked tiers (no Lamps there). */
   locked?(instance: InstanceId): boolean;
+  /** The Lobby crate spot (CRATE DROP lands here), when the world has one. */
+  lobbyCrate?(): { x: number; z: number } | undefined;
 }
 
 /** Run control surface on top of `RunApi` (HUD, intermission UI, frame loop). */
@@ -575,8 +597,19 @@ export interface DebtRun extends RunApi {
   keepsakeBuyPrice(id: KeepsakeId): number | null;
   /** Buys a lost keepsake back for coins. */
   keepsakeBuyBack(id: KeepsakeId): boolean;
+  /** True when a keepsake is carried tonight and no stake has been made with it this Night (the seat hint reads it). */
+  keepsakeFreeTonight(): boolean;
   /** THE GHOST SEAT (wave 75): the copy's seat tonight (machine kind, seat, pools, stars), or null. */
   ghostSeatInfo(): GhostSeatInfo | null;
+  /** THE GRAND CASINO (wave 75): the four biggest wins of this run, largest first. */
+  grandWins(): readonly GrandWin[];
+  /**
+   * FLOOR EVENTS (wave 75): the floor press. A LAST CALL DARE to take when it is open, else a STAGE AUCTION bid at the next legal
+   * price. True when something was taken or bid.
+   */
+  floorAct(): boolean;
+  /** FLOOR EVENTS: the CRATE DROP press (`pressed` is the interact key this step) at the player's floor position. True when it opened. */
+  floorCrate(pos: { x: number; z: number } | null, pressed: boolean): boolean;
   /** Pay the rest of the Night now (SETTLE lever). Needs `deposit ≥ quota`. */
   settleEarly(): boolean;
   /**
@@ -789,6 +822,8 @@ class Run implements DebtRun {
   private readonly hotline: Hotline;
   private readonly rescue: RescueLine;
   private worldLink: RunWorldLink | null = null;
+  /** THE GRAND CASINO: the four biggest wins of the run, largest first (saved as `ext.grandWins`). */
+  private grandWinList: GrandWin[] = [];
   private readonly pools = new Map<string, JackpotPool>();
   private readonly poolListeners = new Set<(p: JackpotPool) => void>();
   private readonly counters = new Map<string, number>();
@@ -1037,7 +1072,7 @@ class Run implements DebtRun {
 
     this.circuit = this.makeCircuitView();
     this.modsImpl.register(this.makeCircuitProvider());
-    this.watchEv = new WatchEvents({ isHot: (m) => this.circ.isHot(m), touch: () => this.modsImpl.touch() });
+    this.watchEv = new WatchEvents({ isHot: (m) => this.circ.isHot(m), touch: () => this.modsImpl.touch(), floor: () => this.floorFacts() });
     this.modsImpl.register(this.watchEv);
     this.nightCards = new NightCards(() => this.index, this.seed, () => this.modsImpl.touch());
     this.modsImpl.register(this.nightCards);
@@ -1244,6 +1279,8 @@ class Run implements DebtRun {
   bet(amount: number, src: EcoSource, o?: BetOpts): boolean {
     if (!this.canPlay()) return this.refuse('phase');
     if (this.boilerShut(src.machineId)) return this.refuse('locked');
+    // FLOOR EVENTS: SINGLE LIGHT leaves one machine lit; every other machine refuses a play while it runs
+    if (!this.watchEv.allowsPlay(src.machineId)) return this.refuse('floorEvent');
     const q: ModQuery = { pid: this.selfId, instance: src.mid };
     const lim = this.betLimits(src.machineId, src.mid);
     if (amount < lim.min || amount > lim.max) return this.refuse('limit');
@@ -1261,7 +1298,6 @@ class Run implements DebtRun {
 
     if (!this.rules.unlimitedPulls) this.pullCount -= pullCost;
     this.watchPulls += pullCost;
-    if (pullCost > 0) this.watchEv.onPull(src.mid);
     this.coins -= cost;
     this.stats.wagered = (this.stats.wagered ?? 0) + cost;
     this.tithe.played(0, cost);
@@ -1320,6 +1356,11 @@ class Run implements DebtRun {
   win(gross: number, src: EcoSource, meta: WinMeta): number {
     this.openRounds.delete(src.mid);
     const { credited, pr } = this.creditOf(gross, src, meta);
+    // FLOOR EVENTS: a resolved round (raw buy-ins and cash-outs are not rounds). After the payout, so the dare and the lamp apply to it.
+    if (!meta.raw) {
+      this.watchEv.onPull(src.mid, gross > meta.bet);
+      if (credited > meta.bet) this.noteGrandWin(src.machineId, credited);
+    }
     // THE KEEPSAKE STAKE and THE GHOST SEAT (wave 75): the round's result is the credited amount against the bet
     const ks = this.keepsakes.settle(src.mid, credited > meta.bet);
     if (ks) this.keepsakeSettled(ks);
@@ -1498,8 +1539,13 @@ class Run implements DebtRun {
   /** Arms the carried keepsake for the next bet at `mid`. Play only; one keepsake stake per Night. False when refused. */
   keepsakeStake(mid: InstanceId): boolean {
     if (!this.canPlay() || this.ended) return false;
-    return this.keepsakes.arm(mid, this.night());
+    const id = this.keepsakes.carried();
+    if (!this.keepsakes.arm(mid, this.night())) return false;
+    if (id) this.banner?.(t('keepsake.stake.set', { name: t(`keepsake.${id}.full`) }), { hold: 3, size: 8 });
+    return true;
   }
+  /** A keepsake is carried tonight and no stake has used it yet this Night (the seat hint reads it). */
+  keepsakeFreeTonight(): boolean { return this.keepsakes.carried() !== null && !this.keepsakes.stakedThisNight(this.night()); }
   /** Drops a waiting keepsake stake (no coins, nothing lost). */
   keepsakeStakeCancel(): void { this.keepsakes.disarm(); }
   /** The keepsake the next bet at `mid` stakes, or null. The seat HUD can poll this. */
@@ -1523,6 +1569,97 @@ class Run implements DebtRun {
   }
   /** The copy's seat for this Night (the machine kind, the seat, the pools), or null. */
   ghostSeatInfo(): ReturnType<GhostSeat['seat']> { return this.ghostSeat.seat(); }
+
+  // ── THE GRAND CASINO (wave 75): the four biggest wins, shown on the jackpot wall ───────────────────
+  grandWins(): readonly GrandWin[] { return this.grandWinList; }
+  private noteGrandWin(machineId: MachineId, amount: number): void {
+    const list = [...this.grandWinList, { machineId, amount: Math.floor(amount) }].sort((a, b) => b.amount - a.amount);
+    this.grandWinList = list.slice(0, GRAND_WIN_MAX);
+  }
+
+  // ── FLOOR EVENTS (wave 75): the run feeds the events its floor facts and applies what they hand back ──
+  /** The floor facts the events read: the machine kinds open on the floor, the Night's spotlight kind, the Lobby crate spot. */
+  private floorFacts(): WatchFloor {
+    const link = this.worldLink;
+    const open = (link?.machines() ?? []).filter((m) => !link?.locked?.(m.instance));
+    return {
+      machines: [...new Set(open.map((m) => m.machineId))],
+      spotlight: this.spotlight.current()?.machineId ?? null,
+      lobby: link?.lobbyCrate?.() ?? null,
+    };
+  }
+  floorAct(): boolean {
+    if (this.ended || !this.canPlay()) return false;
+    if (this.watchEv.view()?.canAccept) {
+      const took = this.watchEv.acceptDare();
+      if (took) this.notify();
+      return took;
+    }
+    return this.floorBid();
+  }
+  /** A STAGE AUCTION bid at the next legal price. The charge comes out of the pocket. */
+  private floorBid(): boolean {
+    const amount = this.watchEv.auctionNext();
+    if (amount === null) return false;
+    const r = this.watchEv.bidAuction(amount, this.coins);
+    if (r.ok === false) {
+      if (r.why === 'pocket') this.refuse('funds');
+      return false;
+    }
+    this.refusal = null;
+    this.coins -= r.charge;
+    this.emit('eco:wallet', { pid: this.selfId, wallet: this.coins, delta: -r.charge, reason: 'auction' });
+    this.notify();
+    this.persistSoon();
+    return true;
+  }
+  floorCrate(pos: { x: number; z: number } | null, pressed: boolean): boolean {
+    if (this.ended || !this.canPlay()) return false;
+    return this.watchEv.openCrate(pos, pressed) !== null;
+  }
+  /** Applies what the floor events handed back since the last frame: Tickets, tonics, charms, Watch clock time, and the banners. */
+  private applyFloorOutcomes(): void {
+    for (const o of this.watchEv.takeOutcomes()) {
+      if (o.kind === 'raise') {
+        this.banner?.(t('event.watch.stage_auction.raised', { n: o.price }), { hold: 2.5, size: 8 });
+      } else if (o.kind === 'dare') {
+        this.banner?.(t(`event.watch.last_call_dare.${o.result}`), { hold: 3, size: 8 });
+      } else if (o.kind === 'crate') {
+        this.floorAward(o.reward);
+        this.banner?.(this.floorAwardText(o.reward), { hold: 2.5, size: 8 });
+      } else if (o.won && o.award) {
+        this.floorAward(o.award);
+        this.banner?.(`${t('event.watch.stage_auction.won')} ${this.floorAwardText(o.award)}`, { hold: 3, size: 8 });
+      } else {
+        if (o.consolation) this.floorAward(o.consolation);
+        this.banner?.(t('event.watch.stage_auction.lost'), { hold: 3, size: 8 });
+      }
+    }
+  }
+  private floorAward(a: FloorAward): void {
+    switch (a.kind) {
+      case 'ticket': this.earn('ticket', a.n, 'floor'); break;
+      case 'tonic': this.buffSys.buffs.add(a.id, { pid: this.selfId, source: { kind: 'system', id: 'floor' } }); break;
+      case 'time': this.clock.extend(a.s); break;
+      case 'charm': this.floorCharm(); break;
+    }
+    this.notify();
+  }
+  /** A charm from the Common pool that the player does not hold yet. With no free peg (or nothing new), a Ticket instead. */
+  private floorCharm(): void {
+    const pool = this.charmPool('common').filter((c) => !this.charmBox.has(this.selfId, c.id));
+    const pick = pool.length > 0 ? this.rng.fork(`floor.charm.${this.index}.${this.watch}`).pick(pool) : null;
+    if (pick && this.charmBox.add(this.selfId, pick.id, this.pegs())) return;
+    this.earn('ticket', 1, 'floor');
+  }
+  private floorAwardText(a: FloorAward): string {
+    switch (a.kind) {
+      case 'ticket': return a.n === 1 ? t('event.watch.crate_drop.got.ticket') : t('event.watch.stage_auction.award.ticket', { n: a.n });
+      case 'tonic': return t('event.watch.stage_auction.award.tonic');
+      case 'time': return t('event.watch.stage_auction.award.time', { n: a.s });
+      case 'charm': return t('event.watch.crate_drop.got.charm');
+    }
+  }
   /** THE SECOND NAME (wave 73): the live chapter record (story code reads it and marks beats through `chapter.ts`). */
   chapterRecord(): ChapterRecord { return this.chapterRec; }
   charms(pid?: PlayerId): readonly CharmState[] { return this.charmBox.list(pid ?? this.selfId); }
@@ -1646,6 +1783,7 @@ class Run implements DebtRun {
     if (autoCard) { this.emit('run:nightcard', { pid: this.selfId, state: 'auto', card: autoCard }); this.notify(); this.persist(); }
     if (this.phase === 'play' || this.phase === 'lastCall') this.tycoonSys.tick(dt);
     if (!this.rules.timed) return;
+    this.applyFloorOutcomes();
     // The Starter Draft's timer runs in every phase (its countdown is on screen); the Bell waits for the offer.
     const starterHolds = this.tickStarter(dt);
     if (this.hStage !== null) this.tickHome(dt);
@@ -1659,6 +1797,7 @@ class Run implements DebtRun {
       case 'play':
       case 'lastCall':
         if (!clockHeld()) { this.clock.tick(dt); this.watchEv.tick(dt); }   // tutorial steps 1-3, Collector lines and cutscenes hold the Watch clock (and its floor event)
+        this.watchEv.watchLeft(this.clock.remaining);   // a LAST CALL DARE arms in the last 20 s of the Watch clock
         if (this.clock.remaining <= 0) this.enter('closing', closingSeconds(this.isLastWatch()));
         else if (this.phase === 'play' && this.clock.remaining <= this.lastCallSec) this.enter('lastCall', 0);
         break;
@@ -1690,6 +1829,7 @@ class Run implements DebtRun {
     this.ensureBoss(); // before the clock and pull mods are read below
     // the Watch's floor event (wave 43) rolls before the clock and pull mods are read (cold_snap and the clock/pull effects)
     this.watchEv.begin(this.rng, this.index + 1, this.watch, !!this.bossToday() || this.nightCards.fx().noFloorEvents);
+    if (this.watch === 0) bus.emit('night:begin', { night: this.index + 1 });   // the first Watch of a Night: the grand light show
     this.coolBoiler();
     this.boughtThisWatch = 0;
     this.clockLen = isOvertime ? OVERTIME_SEC : Math.max(10, Math.round(this.mod('x.run.clockAdd', RUN_MACHINE, nd.clock)));
@@ -3546,6 +3686,7 @@ class Run implements DebtRun {
       ...(this.spotlight.snapshot() ? { spotlight: this.spotlight.snapshot() as SpotlightSave } : {}),
       ...(this.tithe.snapshot() ? { tithe: this.tithe.snapshot() as TitheSave } : {}),
       ...(this.dawnBook ? { dawnBook: { ...this.dawnBook } } : {}),
+      ...(this.grandWinList.length > 0 ? { grandWins: this.grandWinList.map((w) => ({ ...w })) } : {}),
       ...(this.hPhone ? { home: this.homeSave(this.hPhone) } : {}),
       luck: this.luckMeter.snapshot(), keepsake: this.keepsakes.snapshot(), ghost: this.ghostSeat.snapshot(), chapter: cloneChapter(this.chapterRec),
     };
@@ -3933,6 +4074,7 @@ class Run implements DebtRun {
     this.spotlight.restore(e.spotlight);
     this.tithe.restore(e.tithe);
     this.dawnBook = restoredDawnReceipt(e.dawnBook);
+    this.grandWinList = restoredGrandWins(e.grandWins);
     this.luckMeter.restore(e.luck);
     this.keepsakes.restore(e.keepsake);
     this.ghostSeat.restore(e.ghost);

@@ -69,6 +69,8 @@ export interface Keepsakes {
   disarm(): void;
   /** The keepsake the next bet at `mid` would stake, or null. A pure read: nothing changes. */
   pending(mid: string, night: number): KeepsakeId | null;
+  /** A keepsake was staked in `night` already (the once-per-Night rule). A pure read. */
+  stakedThisNight(night: number): boolean;
   /** The bet was taken: the armed keepsake goes on the table at `mid`. Returns its id, or null when nothing was armed there. */
   open(mid: string, night: number): KeepsakeId | null;
   /** True while a keepsake round is open at `mid`. */
@@ -131,6 +133,7 @@ export function createKeepsakes(): Keepsakes {
     },
     disarm(): void { armed = null; },
     pending: pendingOf,
+    stakedThisNight: (night: number): boolean => stakedNight === night,
     open(mid, night): KeepsakeId | null {
       const id = pendingOf(mid, night);
       if (id === null) return null;

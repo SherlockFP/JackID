@@ -23,9 +23,11 @@ import { COLORS, h, uiSfx } from '@/core/ui/widgets';
 import { circuitView, lampLabel, type LampEntry, type LampView } from '@/game/circuit';
 import { dawnPlan } from '@/game/pace';
 import { watchEventView } from '@/game/watchEvents';
+import { compereLine } from '@/game/events/compere';
+import { subtitles } from '@/core/ui/subtitles';
 import { presetRevealed, revealed, ticketsShown } from './hud/disclose';
 import { STAKE_PRESET_KEYS } from '@/machines/_base/stakePresets';
-import type { BankView, NextQuotaPreview, OvershootView } from '@/game/run';
+import type { BankView, DebtRun, NextQuotaPreview, OvershootView } from '@/game/run';
 import type { BrokeHelp, BrokeStep } from '@/game/rescue';
 import { inUnderneath } from '@/world/hollow';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
@@ -45,6 +47,9 @@ import { LUCK_MAX } from '@/game/luck';
 import { nightPaid } from '@/machines/debt_terminal/night';
 import { SeatHud } from '@/machines/_base/seatHud';
 
+/** The walk actions the floor event and the keepsake hints name (wave 75; they are not in the frozen `Action` union yet). */
+const FLOOR_KEY = 'floorAct' as Action;
+const KEEPSAKE_KEY = 'keepsake' as Action;
 const PHONE_SECONDS = 10;
 const FEED_LIFE = 6;
 const FEED_MAX = 4;
@@ -211,6 +216,11 @@ export function createHud(): Hud {
   const watchEl = h('div', 'lamps hidden', topC);
   const watchTxt = h('span', 'ev', watchEl);
   watchTxt.style.color = '#ffd060';
+  // The event's one line under the Watch line (its state, or the key to press), and the keepsake seat hint under that (wave 75)
+  const watchInfo = h('div', 'lamps hidden', topC);
+  watchInfo.style.color = '#ffd060';
+  const keepHint = h('div', 'lamps hidden', topC);
+  keepHint.style.color = 'var(--bone)';
   let lampsSeen: LampView = { hot: [], cold: [] };
   /** True while the player is in THE UNDERNEATH: the pit's lamp lines stay hidden there. */
   let voidOn = false;
@@ -674,7 +684,7 @@ export function createHud(): Hud {
   on('quota:failed', () => { addFeed(t('hud.feed.quotaFailed'), 'red'); });
   on('event:start', ({ id }) => { feedNews(t('hud.feed.event', { name: t(`event.${id}.name`) }), 'gold'); });
   on('event:end', ({ id }) => { feedNews(t('hud.feed.eventEnd', { name: t(`event.${id}.name`) }), ''); });
-  on('event:start', ({ id }) => { if (id.startsWith('watch.')) uiSfx('popUp', 0.9); });   // a Watch floor event: its banner comes with a sound
+  on('event:start', ({ id }) => { if (id.startsWith('watch.')) { uiSfx('popUp', 0.9); compereSay(id.slice('watch.'.length)); } });   // a Watch floor event: its banner comes with a sound and the Compere's line
   on('tycoon:milestone', ({ upgrade, level }) => {
     const name = has(`upg.${upgrade}.name`) ? t(`upg.${upgrade}.name`) : upgrade;
     addFeed(t('hud.feed.milestone', { name, n: level }), 'gold');
@@ -1186,10 +1196,28 @@ export function createHud(): Hud {
   /** Watch floor event: name, Minute timer, and a Lucky Lamp's pulls left. Hidden between Watches and on boss Nights. */
   function updateWatchEvent(): void {
     const v = revealed(nightNow(), 'floorEvents') ? watchEventView() : null;
-    if (!v) { setCls(watchEl, 'hidden', true); return; }
+    if (!v) { setCls(watchEl, 'hidden', true); setCls(watchInfo, 'hidden', true); return; }
     const pulls = v.pulls !== null ? `  ${t('event.watch.hud.pulls', { n: v.pulls })}` : '';
     setText(watchTxt, `${t(`event.watch.${v.id}.name`)}  ${mmss(v.leftS)}${pulls}`);
     setCls(watchEl, 'hidden', false);
+    // one line: the event's state, with the floor key named where the player presses it (N: dare or bid)
+    const info = v.info ? t(v.info.key, { ...v.info.vars, key: app.input.keyLabel(FLOOR_KEY) }) : '';
+    setText(watchInfo, info);
+    setCls(watchInfo, 'hidden', info === '');
+  }
+
+  /** THE KEEPSAKE STAKE (wave 75): at a seat, with a keepsake carried and not yet staked this Night, one line names the key. */
+  function updateKeepsakeHint(): void {
+    const r = app.run as Partial<DebtRun> | null;   // the bench stub run has no keepsakes
+    const id = r && app.player?.seat != null && r.keepsakeFreeTonight?.() ? (r.keepsakeCarried?.() ?? null) : null;
+    if (!id) { setCls(keepHint, 'hidden', true); return; }
+    setText(keepHint, t('keepsake.seat.hint', { key: app.input.keyLabel(KEEPSAKE_KEY), name: t(`keepsake.${id}.obj`) }));
+    setCls(keepHint, 'hidden', false);
+  }
+
+  /** The Compere's one line for a floor event that has one (the five wave 75 events): the subtitles, speaker COMPERE. */
+  function compereSay(evId: string): void {
+    if (has(`event.watch.${evId}.compere`)) subtitles.say(compereLine(evId));
   }
 
   function updateDread(): void {
@@ -1272,6 +1300,7 @@ export function createHud(): Hud {
       updateVoid();
       updateLamps(dt);
       updateWatchEvent();
+      updateKeepsakeHint();
       updateFeed(dt);
       updateDread();
       updateWinRolls(dt);

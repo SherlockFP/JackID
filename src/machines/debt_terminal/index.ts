@@ -9,6 +9,8 @@
  *             Press it again once the quota is met to SETTLE early.
  * The six keys under them are the amounts: 10 / 25 / 50 % / ALL of what the chosen action can move, REST (deposit: what the quota
  * still needs; withdraw: PLAY, enough to play on) and ENTER (the typed amount).
+ * BUY BACK (a fourth screen, reached by C between WITHDRAW and QUOTA; no keypad cell): a keepsake the House kept after a lost stake
+ * comes back to the player for its price in coins. A digit picks the row (1 = the first), then PRESS twice (the first arms it).
  *
  * Talks to the game ONLY through `ctx.run`: `run.shift.quota()`, `run.shift.overshootTiers()`, `run.wallet()`, `run.canAfford()`,
  * `run.deposit()`, `run.shift.settleEarly()` and, on the real run, `run.bank()`, `run.withdrawPreview()`, `run.withdraw()` (absent on
@@ -37,10 +39,12 @@ import { countUp } from '@/machines/_base/juice';
 import type { BindingKey, MachineAction, MachineInputEvent, MachinePointerEvent } from '@/core/input/types';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { KitX } from '@/kit';
-import { fmtCoins, fmtNum } from '@/core/i18n';
+import { fmtCoins, fmtNum, upper, t as globalT } from '@/core/i18n';
+import { measureText } from '@/core/texgen/font';
 import type { OvershootTier, QuotaState, RunApi } from '@/game/types';
 import type { BankView, DepositRefusal } from '@/game/run';
 import type { WithdrawPreview } from '@/game/bank';
+import type { KeepsakeId } from '@/game/keepsake';
 /** The Bell's closing window (mirrors `closingSeconds()` in game/data/schedule: machines may not import game values). */
 const CLOSING_SEC = 3;
 import { nightPaid } from './night';
@@ -50,8 +54,8 @@ const EMPTY_QUOTA: QuotaState = { due: 0, base: 0, assessment: 0, deposited: 0, 
 import { lerp, clamp } from '@/core/math';
 import { buildModel, KEY_POS, type DebtParts } from './model';
 import {
-  KEYS, KEY_COLS, KEY_ROWS, COIN_STREAM_S, amountFor, appendDigit, backspace, clampDeposit, customAmount, cycleMode, modeOfKey, nextTier,
-  pct, playNeed, quotaLeft, ratioOf, rollSeconds, ALL_CONFIRM_SEC, withdrawAmountFor, type KeyId, type Mode,
+  KEYS, KEY_COLS, KEY_ROWS, COIN_STREAM_S, amountFor, appendDigit, backspace, buyBackRows, clampDeposit, customAmount, cycleMode, modeOfKey,
+  nextTier, pct, playNeed, quotaLeft, ratioOf, rollSeconds, rowOfDigit, ALL_CONFIRM_SEC, withdrawAmountFor, type BuyBackRow, type KeyId, type Mode,
 } from './rules';
 
 type Ev =
@@ -59,12 +63,20 @@ type Ev =
   | { k: 'dep'; key: string; amount: number; ok: boolean; dep: number }
   /** One withdraw: `amount` coins from the bank to the pocket; `lost` is the interest per Bell it costs. */
   | { k: 'wd'; key: string; amount: number; ok: boolean; lost: number }
+  /** One BUY BACK: `amount` coins from the pocket for keepsake `id` (the run takes them in the credit step). */
+  | { k: 'buy'; key: string; id: KeepsakeId; amount: number; ok: boolean }
   | { k: 'lever'; id: 'settle' | 'floor'; ok: boolean; bell?: boolean };
 
 /** `DebtRun` controls the terminal reaches through the run (absent on the bench stub). */
 type FloorCtl = { openFloor?(): boolean; startWatch?(): boolean };
 type BellCtl = { ringBell?(): boolean };
 type BankCtl = { bank?(): BankView; withdraw?(n: number): number; breakSeal?(): number; withdrawPreview?(n: number): WithdrawPreview };
+/** BUY BACK: the keepsakes the House kept, their prices, and the sale (the run takes the coins and shows its own banner). */
+type BuyBackCtl = {
+  keepsakeLost?(): KeepsakeId[];
+  keepsakeBuyPrice?(id: KeepsakeId): number | null;
+  keepsakeBuyBack?(id: KeepsakeId): boolean;
+};
 /** The run's deposit gate (decision 3): the reason a deposit is refused, or null. Absent on the bench stub. */
 type DepositCtl = { depositRefusal?(amount: number, confirmAll?: boolean): DepositRefusal | null };
 
@@ -102,7 +114,8 @@ export const def: MachineDef = {
       rule1: "BANK: coins you DEPOSIT count toward tonight's quota and earn interest every Bell. Pay the quota and the extra comes back to your pocket.",
       rule2: "WITHDRAW takes coins back to your pocket any time before the Bell. Taken coins stop counting and stop earning. The screen shows what you lose first.",
       rule3: "Keypad: pick DEPOSIT or WITHDRAW on the top row, then 10%, 25%, 50%, ALL, REST, or type an amount and press ENTER. QUOTA shows the status and settles it once it is met.",
-      rule4: "Keys: arrows move the cursor, PRESS hits a key, C switches DEPOSIT / WITHDRAW / QUOTA, 1-9 type an amount, BACK removes a digit.",
+      rule4: "Keys: arrows move the cursor, PRESS hits a key, C switches DEPOSIT / WITHDRAW / BUY BACK / QUOTA, 1-9 type an amount or pick a row, BACK removes a digit.",
+      rule5: "BUY BACK: a keepsake the House kept comes back for coins. Open BUY BACK (C), type its number, then PRESS twice.",
       crt_paid: 'NIGHT {n} PAID', crt_carry: 'CARRIED', crt_floor: 'PULL: OPEN THE FLOOR', crt_bell: 'PULL: RING THE BELL',
       floorOpen: 'FLOOR OPEN', belled: 'BELL', nightN: 'NIGHT {n}',
       nightPaidNote: 'NIGHT PAID: OPEN THE FLOOR', metNote: 'QUOTA MET: OVERPAY WITH 10 / 25 / 50 %, ALL OR A TYPED AMOUNT', typeAmount: 'TYPE AN AMOUNT FIRST',
@@ -139,7 +152,7 @@ export const def: MachineDef = {
       cEnd: "END WATCH",
       bellConfirm: "End Watch with {n} pulls unused? Press {k} again to confirm",
       bellDone: "Watch ended. The bank keeps growing.",
-      cMode: "DEPOSIT / WITHDRAW / QUOTA",
+      cMode: "DEPOSIT / WITHDRAW / BUY BACK / QUOTA",
       cRules: "RULES",
       cLeave: "LEAVE",
       tip1: "THE BANK. Top row: DEPOSIT (coins in, earn interest), WITHDRAW (coins back to your pocket), QUOTA (status).",
@@ -178,6 +191,11 @@ export const def: MachineDef = {
       sealDone: "Seal broken: {n} coins back in your pocket. Tonight's overshoot rewards are forfeit",
       locked: "Sealed: {n} above the quota wait for Dawn. BREAK takes them out and forfeits the overshoot",
       q_forfeit: 'OVERSHOOT FORFEIT: SEAL BROKEN',
+      // BUY BACK (the fourth screen): the keepsakes the House kept, one row each, the highlighted one priced in the box
+      k_buy: 'BUY BACK', crt_buyHead: 'KEPT BY THE HOUSE', crt_buyHint: '1-{n} PICK  ENTER BUY',
+      crt_buyArmed: 'PRESS AGAIN TO CONFIRM', crt_buyShort: 'NOT ENOUGH IN THE POCKET', nPrice: 'PRICE',
+      cPick: 'PICK', cBuy: 'BUY BACK', stBuy: 'BUY BACK A KEEPSAKE',
+      buyConfirm: 'Buy back {name} for {n} coins? Press {k} again to confirm', buyClosed: 'Buy back is closed once the Night is paid',
     },
     tr: {
       name: 'Banka Terminali',
@@ -196,7 +214,8 @@ export const def: MachineDef = {
       rule1: "BANKA: yatırdığın jeton bu gecenin kotasına sayılır ve her Zil'de faiz kazanır. Kotayı ödersen fazlası cebine döner.",
       rule2: "ÇEK, Zil'den önce istediğin an jetonu cebine geri alır. Çekilen jeton kotaya sayılmaz ve faiz kazanmaz. Ekran, ne kaybettiğini önceden gösterir.",
       rule3: "Tuş takımı: üst sırada YATIR ya da ÇEK'i seç, sonra %10, %25, %50, HEPSİ, KALAN'a bas ya da bir tutar yazıp ONAY'a bas. KOTA durumu gösterir, tamamlanınca kapatır.",
-      rule4: "Tuşlar: oklar imleci gezdirir, BAS tuşa basar, C YATIR / ÇEK / KOTA arasında geçer, 1-9 tutar yazar, GERİ bir rakam siler.",
+      rule4: "Tuşlar: oklar imleci gezdirir, BAS tuşa basar, C YATIR / ÇEK / GERİ AL / KOTA arasında geçer, 1-9 tutar ya da satır numarası yazar, GERİ bir rakam siler.",
+      rule5: "GERİ AL: evin aldığı bir eşyayı jetonla geri alabilirsin. GERİ AL sekmesini aç (C), numarasını yaz, sonra iki kez BAS.",
       crt_paid: '{n}. GECE ÖDENDİ', crt_carry: 'DEVİR', crt_floor: 'ÇEK: KATI AÇ', crt_bell: 'ÇEK: ZİLİ ÇAL',
       floorOpen: 'KAT AÇIK', belled: 'ZİL', nightN: '{n}. GECE',
       nightPaidNote: 'GECE ÖDENDİ: KATI AÇ', metNote: 'KOTA TAMAM: %10 / %25 / %50, HEPSİ VEYA TUTAR İLE FAZLA YATIR', typeAmount: 'ÖNCE TUTAR YAZ',
@@ -233,7 +252,7 @@ export const def: MachineDef = {
       cEnd: "NÖBETİ BİTİR",
       bellConfirm: "{n} pul kullanılmadan nöbet bitsin mi? Onaylamak için {k} tuşuna tekrar bas",
       bellDone: "Nöbet bitti. Banka büyümeye devam eder.",
-      cMode: "YATIR / ÇEK / KOTA",
+      cMode: "YATIR / ÇEK / GERİ AL / KOTA",
       cRules: "KURALLAR",
       cLeave: "AYRIL",
       tip1: "BANKA. Üst sıra: YATIR (jeton girer, faiz kazanır), ÇEK (jeton cebine döner), KOTA (durum).",
@@ -272,6 +291,11 @@ export const def: MachineDef = {
       sealDone: "Mühür kırıldı: {n} jeton cebine döndü. Bu gecenin aşım ödülleri kaybedildi",
       locked: "Mühürlü: kotanın üstündeki {n} jeton Şafağa kadar bekler. KIR onları çeker, aşım ödülleri gider",
       q_forfeit: 'AŞIM KAYBI: MÜHÜR KIRILDI',
+      // GERİ AL (the fourth screen): the keepsakes the House kept, one row each, the highlighted one priced in the box
+      k_buy: 'GERİ AL', crt_buyHead: 'EVİN ALDIKLARI', crt_buyHint: '1-{n} SEÇ  ENTER ONAY',
+      crt_buyArmed: 'ONAYLAMAK İÇİN TEKRAR BAS', crt_buyShort: 'CEPTE YETERLİ JETON YOK', nPrice: 'FİYAT',
+      cPick: 'SEÇ', cBuy: 'GERİ AL', stBuy: 'EŞYAYI GERİ AL',
+      buyConfirm: '{name} {n} jetonla geri alınsın mı? Onaylamak için {k} tuşuna tekrar bas', buyClosed: 'Gece ödenince geri alım kapanır',
     },
   },
 };
@@ -299,6 +323,10 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private bellArm = 0;
   /** Seconds an armed BREAK (the seal) stays armed: the first press names the forfeit, the second within the window breaks the seal. */
   private sealArm = 0;
+  /** BUY BACK: the highlighted row (0 = the first keepsake the House kept). Local UI only. */
+  private buyPick = 0;
+  /** An armed BUY BACK: the keepsake it names and the seconds it stays armed (the second press buys it back). */
+  private buyArm: { id: KeepsakeId; left: number } | null = null;
   /** Seconds the Watch has been closing (the run's `closing` phase, counted from the frame time). */
   private closingFor = 0;
   /** Phase last seen by `refresh`: a change clears the typed amount. */
@@ -394,6 +422,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     if (this.keyArm) { this.keyArm.left -= dt; if (this.keyArm.left <= 0) this.keyArm = null; }
     if (this.bellArm > 0) this.bellArm = Math.max(0, this.bellArm - dt);
     if (this.sealArm > 0) this.sealArm = Math.max(0, this.sealArm - dt);
+    if (this.buyArm) { this.buyArm.left -= dt; if (this.buyArm.left <= 0) this.buyArm = null; }
     // The Watch's closing countdown (a Bell or the play clock ends the Watch): the lever's wait, read from the frame time.
     this.closingFor = this.ctx.run.shift?.phase === 'closing' ? this.closingFor + dt : 0;
     this.fitIfBandMoved();
@@ -433,6 +462,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     this.keyArm = null;
     this.bellArm = 0;
     this.sealArm = 0;
+    this.buyArm = null;
   }
 
   onLang(): void {
@@ -495,12 +525,14 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private setMode(m: Mode): void {
     if (m === this.mode) return;
     this.mode = m;
+    if (m === 'buy') this.buyPick = 0;                      // the list opens on its first keepsake
     this.clearEntry();
     this.sfx('click');
     this.refresh(true);
   }
 
   private typeDigit(d: number): void {
+    if (this.mode === 'buy') { this.pickBuy(d); return; }   // on BUY BACK a digit names a row, it is not an amount
     const next = appendDigit(this.entry, d);
     if (next === this.entry) return;
     this.entry = next;
@@ -519,8 +551,61 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       return;
     }
     if (this.mode === 'quota') this.setMode('dep');            // an amount key always acts: it takes the screen to DEPOSIT
-    if (this.mode === 'wd') this.pressWithdraw(key);
+    if (this.mode === 'buy') this.pressBuy(key);
+    else if (this.mode === 'wd') this.pressWithdraw(key);
     else this.pressDeposit(key);
+  }
+
+  /** BUY BACK: the highlighted keypad row. `buyState()` clamps the pick to the rows there are (none: null). */
+  private buyState(): { rows: BuyBackRow<KeepsakeId>[]; sel: BuyBackRow<KeepsakeId> | null } {
+    const run = this.ctx.run as RunApi & BuyBackCtl;
+    const rows = buyBackRows(run.keepsakeLost?.() ?? [], (id) => run.keepsakeBuyPrice?.(id) ?? null);
+    return { rows, sel: rows.length > 0 ? rows[Math.min(this.buyPick, rows.length - 1)] : null };
+  }
+
+  /** BUY BACK: a digit highlights the row it names (1 = the first). A digit with no row is one soft error sound. */
+  private pickBuy(d: number): void {
+    const row = rowOfDigit(d, this.buyState().rows.length);
+    if (row < 0) { this.sfx('error'); return; }
+    if (row === this.buyPick) return;
+    this.buyPick = row;
+    this.buyArm = null;
+    this.sfx('click');
+    this.refresh(true);
+  }
+
+  /**
+   * BUY BACK (decision: two presses, like BREAK): the first press arms the highlighted keepsake and names its price, the second
+   * within ALL_CONFIRM_SEC buys it. The coins move in the credit step; the run shows its own banner on success. A pocket that
+   * cannot pay is refused on screen (no arming). Closed once the Night is paid: the paid screen has no list.
+   */
+  private pressBuy(key: KeyId): void {
+    if (nightPaid(this.ctx.run)) { this.buyArm = null; this.refuse('buyClosed'); return; }
+    const { sel } = this.buyState();
+    const run = this.ctx.run as RunApi & BuyBackCtl;
+    if (sel === null) { this.buyArm = null; this.sfx('error'); this.ctx.ui.toast(globalT('keepsake.buy.none'), 'warn'); return; }
+    if (this.wallet() < sel.price) {
+      // short: the run refuses (takes nothing) and shows its own 'not enough coins' banner; the CRT keeps the reason on screen
+      this.buyArm = null;
+      this.sfx('error');
+      run.keepsakeBuyBack?.(sel.id);
+      this.refresh(true);
+      return;
+    }
+    const armed = this.buyArm !== null && this.buyArm.id === sel.id;   // read before the arm changes
+    if (!armed) {
+      this.buyArm = { id: sel.id, left: ALL_CONFIRM_SEC };
+      this.sfx('click');
+      this.ctx.ui.toast(this.t('buyConfirm', { name: globalT(`keepsake.${sel.id}.name`), n: fmtNum(sel.price), k: this.k('confirm') }), 'warn');
+      this.refresh(true);
+      return;
+    }
+    this.buyArm = null;
+    void this.emit(
+      { k: 'buy', key, id: sel.id, amount: sel.price, ok: true },
+      () => { if (!run.keepsakeBuyBack?.(sel.id)) this.ctx.ui.toast(this.t('denied'), 'bad'); },
+    );
+    this.refresh(true);
   }
 
   /** Authority side: work out the amount, take the money (credit step), then present the stream on every peer. */
@@ -741,7 +826,36 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   present(ev: Ev, pc: PresentCtx): void | Promise<void> {
     if (ev.k === 'lever') return this.presentLever(ev, pc);
     if (ev.k === 'wd') return this.presentWithdraw(ev, pc);
+    if (ev.k === 'buy') return this.presentBuy(ev, pc);
     return this.presentDeposit(ev, pc);
+  }
+
+  /** BUY BACK: the pocket's coins go into the mouth (the House keeps them), then the keepsake is back: a stamp and a minus line. */
+  private async presentBuy(ev: Extract<Ev, { k: 'buy' }>, pc: PresentCtx): Promise<void> {
+    const { keys, mouthLips, swipe } = this.parts;
+    const fx = this.ctx.fx;
+    const anchor = this.model.anchors.coinOut;
+    if (pc.fast) { this.refresh(true); return; }
+    void keys.buttons[ev.key]?.press(0.1);
+    this.sfx('button');
+    if (!ev.ok) {
+      this.sfx('error');
+      fx.shake(0.012, 0.18);
+      fx.popText(anchor, this.t('denied'), RED, { scale: 1.2 });
+      await this.wait(0.2);
+      return;
+    }
+    swipe.blink(10, 0.2);
+    this.sfx('beep', { vol: 0.5 });
+    await this.anim(0.12, (k) => { mouthLips.scale.y = lerp(1, 1.8, k); }, 'outQuad');
+    const n = clamp(Math.round(6 + Math.log10(ev.amount + 1) * 6), 6, 40);
+    this.sfx('coinShower');
+    fx.coins(anchor, n, { spread: 0.08, up: 0.25 });
+    await this.anim(COIN_STREAM_S, (k) => { mouthLips.scale.y = lerp(1.8, 1.0, k); });
+    this.sfx('stamp');
+    fx.flash(GOLD, 0.2, 0.35);
+    fx.popText(anchor, `-${fmtNum(ev.amount)}`, 0xff9a70, { scale: 1.3 });
+    this.refresh(true);
   }
 
   private async presentDeposit(ev: Extract<Ev, { k: 'dep' }>, pc: PresentCtx): Promise<void> {
@@ -875,7 +989,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     if (paid !== this.lastPaid || night !== this.lastNight) { this.lastPaid = paid; this.lastNight = night; this.shownDep = bank.balance; }
     const key = [q.due, this.shownDep, q.base, q.assessment, this.entry, this.cursor, this.mode, bank.pocket, bank.withdrawable, bank.interestNext,
       bank.pullsToQualify, bank.open ? 1 : 0, q.met ? 1 : 0, paid ? 1 : 0, phase, night, this.ctx.run.depositFloor?.() ?? 0,
-      bank.sealed ? 1 : 0, bank.sealCoins ?? 0, bank.sealBroken ? 1 : 0, bank.principal ?? 0].join('|');
+      bank.sealed ? 1 : 0, bank.sealCoins ?? 0, bank.sealBroken ? 1 : 0, bank.principal ?? 0,
+      this.buyPick, this.buyArm ? 1 : 0, this.buyState().rows.map((r) => r.id).join(',')].join('|');
     if (!force && key === this.lastKey) return;
     this.lastKey = key;
     this.lightKeys(bank.sealed === true && this.mode === 'wd');
@@ -900,9 +1015,19 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     return clampDeposit(Math.min(amountFor(cell, wallet, bank.left), cell === 'all' ? wallet : bank.left), wallet);
   }
 
+  /** The tab row's label size: the largest size (44 or less) at which the longest tab word fits `room` px. One size for every tab. */
+  private tabLabelSize(words: string[], room: number): number {
+    let size = 44;
+    for (const w of words) {
+      const wide = measureText(w, { font: 'vt', size: 44 });
+      if (wide > room) size = Math.min(size, Math.floor((44 * room) / wide));
+    }
+    return size;
+  }
+
   /**
-   * The CRT is a 512 × 384 texture seen from about a metre, so type is big: labels 30-34 px, figures up to 60 px. Top: three tabs
-   * (DEPOSIT, WITHDRAW, QUOTA), the active one lit. Under them BANK and POCKET (always). Then ONE main figure of the chosen action,
+   * The CRT is a 512 × 384 texture seen from about a metre, so type is big: labels 30-34 px, figures up to 60 px. Top: four tabs
+   * (DEPOSIT, WITHDRAW, BUY BACK, QUOTA), the active one lit. Under them BANK and POCKET (always). Then ONE main figure of the chosen action,
    * two lines of detail and the amount box. A figure shrinks only when it would run past its column.
    */
   private drawCrt(q: Readonly<QuotaState>, bank: BankView, paid: boolean, inter: boolean): void {
@@ -924,15 +1049,17 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       s.text(this.t('crt_floor'), 256, 300, { font: 'vt', size: 42, color: '#fff0c0', align: 'center' });
       return;
     }
-    // tabs
-    const tabs: Array<[Mode, string]> = [['dep', 'k_dep'], ['wd', 'k_wd'], ['quota', 'k_quota']];
+    // tabs: four across the screen (BUY BACK between WITHDRAW and QUOTA); one label size for all, so every word fits its tab
+    const tabs: Array<[Mode, string]> = [['dep', 'k_dep'], ['wd', 'k_wd'], ['buy', 'k_buy'], ['quota', 'k_quota']];
+    const TAB_W = 124, TAB_STEP = 127;
+    const tabSize = this.tabLabelSize(tabs.map(([, k]) => this.t(k)), TAB_W - 12);
     tabs.forEach(([m, k], i) => {
-      const x = 4 + i * 169, w = 166, on = this.mode === m;
+      const x = 4 + i * TAB_STEP, w = TAB_W, on = this.mode === m;
       s.draw((g) => {
         g.fillStyle = on ? amber : '#241800'; g.fillRect(x, 2, w, 44);
         if (!on) { g.strokeStyle = '#8a6a14'; g.lineWidth = 2; g.strokeRect(x + 1, 3, w - 2, 42); }
       });
-      s.text(this.t(k), x + w / 2, 6, { font: 'vt', size: 44, color: on ? '#1a1000' : '#d8aa30', align: 'center' });
+      s.text(this.t(k), x + w / 2, 6 + Math.round((44 - tabSize) / 2), { font: 'vt', size: tabSize, color: on ? '#1a1000' : '#d8aa30', align: 'center' });
     });
     // BANK and POCKET, always
     const bv = fmtNum(this.shownDep), pv = fmtNum(bank.pocket);
@@ -944,10 +1071,10 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
 
     const amt = this.focusAmount(bank);
     const typedTxt = this.entry === '' ? '_' : `${fmtNum(customAmount(this.entry))}_`;
-    const box = (y: number): void => {
+    const box = (y: number, head = this.t('nAmount'), val = typedTxt): void => {
       s.draw((g) => { g.fillStyle = '#241800'; g.fillRect(4, y, 504, 38); g.strokeStyle = amber; g.lineWidth = 2; g.strokeRect(5, y + 1, 502, 36); });
-      label(this.t('nAmount'), 14, y + 3, amber, 34);
-      s.text(typedTxt, RIGHT - 6, y + 9, { font: 'ps2p', size: 24, color: '#fff0c0', align: 'right' });
+      label(head, 14, y + 3, amber, 34);
+      s.text(val, RIGHT - 6, y + 9, { font: 'ps2p', size: 24, color: '#fff0c0', align: 'right' });
     };
 
     if (this.mode === 'dep') {
@@ -992,6 +1119,25 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
         }
       }
       box(302);
+    } else if (this.mode === 'buy') {
+      // BUY BACK: the keepsakes the House kept, one row each (the highlighted one framed), the highlighted price in the box
+      const { rows, sel } = this.buyState();
+      if (sel === null) {
+        label(globalT('keepsake.buy.none'), 256, 200, amber, 40, 'center');
+      } else {
+        label(this.t('crt_buyHead'), 12, 140, amber, 30);
+        rows.forEach((r, i) => {
+          const y = 176 + i * 36, on = r === sel;
+          if (on) s.draw((g) => { g.fillStyle = '#241800'; g.fillRect(4, y - 4, 504, 32); g.strokeStyle = amber; g.lineWidth = 2; g.strokeRect(5, y - 3, 502, 30); });
+          label(`${i + 1}  ${upper(globalT(`keepsake.${r.id}.name`))}`, 12, y, on ? hot : amber, 32);
+          const pv = fmtNum(r.price);
+          s.text(pv, RIGHT, y + 2, { font: 'ps2p', size: fit(pv, 26, 200), color: bank.pocket >= r.price ? green : red, align: 'right' });
+        });
+        box(302, this.t('nPrice'), fmtNum(sel.price));
+        if (bank.pocket < sel.price) label(this.t('crt_buyShort'), 12, 346, red, 30);
+        else if (this.buyArm) label(this.t('crt_buyArmed'), 12, 346, hot, 30);
+        else label(this.t('crt_buyHint', { n: rows.length }), 12, 346, dim, 30);
+      }
     } else {
       const dv = fmtNum(bank.due);
       label(this.t('q_due'), 12, 140, amber, 36);
@@ -1006,8 +1152,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       else if (q.met) label(this.t('q_settle'), 12, 332, green, 36);
       else if (next !== null) label(this.t('q_reward', { p: pct(next.ratio) }), 12, 332, '#e0a040', 34);
     }
-    // status line
-    if (this.mode !== 'quota') {
+    // status line (the BUY BACK screen writes its own line above)
+    if (this.mode === 'dep' || this.mode === 'wd') {
       if (inter) label(this.t('crt_bell'), RIGHT, 346, hot, 34, 'right');
       else if (q.met) label(this.t('crt_met'), RIGHT, 346, hot, 34, 'right');
     }
@@ -1050,7 +1196,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   }
 
   private rulesLines(): Txt[] {
-    return [1, 2, 3, 4].map((i) => ({ k: `m.debt_terminal.rule${i}` }));
+    return [1, 2, 3, 4, 5].map((i) => ({ k: `m.debt_terminal.rule${i}` }));
   }
 
   /** Banner, key numbers and the valid controls only. Only while the local player stands here. */
@@ -1066,9 +1212,15 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
 
     const paid = nightPaid(this.ctx.run);
     const inter = this.ctx.run.shift.phase === 'intermission';
+    const buyRow = this.mode === 'buy' ? this.buyState().sel : null;   // the highlighted BUY BACK row, or null
 
     // STATE: what this screen does, then whether the quota is paid yet
     if (paid) sh.state({ k: 'm.debt_terminal.stPaid' }, 'good', { k: 'm.debt_terminal.stPaidSub' });
+    else if (this.mode === 'buy') {
+      // BUY BACK does not depend on the quota: its own line, shown even when no quota is due
+      if (buyRow === null) sh.state({ k: 'keepsake.buy.none' }, 'neutral');
+      else sh.state({ k: 'm.debt_terminal.stBuy' }, 'cyan', { k: 'keepsake.buy.price', v: { name: globalT(`keepsake.${buyRow.id}.name`), n: fmtNum(buyRow.price) } });
+    }
     else if (q.due <= 0) sh.state({ k: 'm.debt_terminal.stNone' }, 'neutral');
     else if (this.mode === 'wd') {
       if (bank.sealed) sh.state({ k: 'm.debt_terminal.stSealed' }, 'warn', { k: 'm.debt_terminal.stSealedSub' });
@@ -1094,18 +1246,22 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
           ? { label: { k: 'm.debt_terminal.nSealed' }, value: fmtCoins(bank.sealCoins ?? 0), tone: 'warn' }
           : this.mode === 'wd'
             ? { label: { k: 'm.debt_terminal.nCanTake' }, value: fmtCoins(bank.withdrawable), tone: 'gold' }
-            : { label: { k: 'm.debt_terminal.nAmount' }, value: this.entry === '' ? '-' : fmtCoins(customAmount(this.entry)), tone: 'gold' },
+            : this.mode === 'buy'
+              ? { label: { k: 'm.debt_terminal.nPrice' }, value: buyRow ? fmtCoins(buyRow.price) : '-', tone: 'gold' }
+              : { label: { k: 'm.debt_terminal.nAmount' }, value: this.entry === '' ? '-' : fmtCoins(customAmount(this.entry)), tone: 'gold' },
       ];
     sh.numbers(nums);
 
     // CONTROL BAR: the keypad, the action switch, then SETTLE only once the quota is met
     if (inter) ctrl.push({ key: this.k('fast'), label: { k: paid ? 'm.debt_terminal.cFloor' : 'm.debt_terminal.cBell' }, action: 'fast', primary: true });
     if (!paid) {
+      const buying = this.mode === 'buy';
+      const buyable = !buying || buyRow !== null;     // BUY BACK with nothing lost has no row to pick or press
       ctrl.push({ key: `${this.g('left')}/${this.g('right')}`, label: { k: 'm.debt_terminal.cMove' }, action: 'left' });
-      ctrl.push({ key: this.k('confirm'), label: { k: 'm.debt_terminal.cPress' }, action: 'confirm', primary: !inter });
+      if (buyable) ctrl.push({ key: this.k('confirm'), label: { k: buying ? 'm.debt_terminal.cBuy' : 'm.debt_terminal.cPress' }, action: 'confirm', primary: !inter });
       ctrl.push({ key: this.k('alt'), label: { k: 'm.debt_terminal.cMode' }, action: 'alt' });
       // digits 1-9 and the real key for 0 (BET UP types a 0; its binding, not a fixed "0")
-      ctrl.push({ key: `${this.k('n1')}-${this.k('n9')}/${this.k('betUp')}`, label: { k: 'm.debt_terminal.cAmount' }, action: 'n1' });
+      if (buyable) ctrl.push({ key: `${this.k('n1')}-${this.k('n9')}/${this.k('betUp')}`, label: { k: buying ? 'm.debt_terminal.cPick' : 'm.debt_terminal.cAmount' }, action: 'n1' });
       if (this.entry !== '') ctrl.push({ key: this.k('clear'), label: { k: 'm.debt_terminal.cBack' }, action: 'clear' });
     }
     if (q.met && !inter) ctrl.push({ key: this.k('double'), label: { k: 'm.debt_terminal.cSettle' }, action: 'double', primary: true });

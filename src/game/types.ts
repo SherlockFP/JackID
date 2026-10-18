@@ -60,7 +60,9 @@ export type DepositRefusal = 'notQuota' | 'closed' | 'nightPaid' | 'nothing' | '
 export type RefusalReason = 'funds' | 'pulls' | 'phase' | 'limit' | 'confirm' | 'locked' | DepositRefusal
   | 'shopShut' | 'watchRunning' | 'watchEnding' | 'belling' | 'settling' | 'noWatch' | 'nightUnpaid' | 'quotaShort' | 'nightCard'
   /** `locked`: a WITHDRAW the seal holds (coins above the quota wait for Dawn; BREAK SEAL takes them). `noSeal`: nothing to break. */
-  | 'noSeal';
+  | 'noSeal'
+  /** `floorEvent`: SINGLE LIGHT is on and this machine is not the lit one. */
+  | 'floorEvent';
 
 /** Catalogue range × SI × Cap (TECH §11.5). `ladder` = the bet steps `stepBet()` walks. */
 export interface BetLimits { min: number; max: number; ladder: number[] }

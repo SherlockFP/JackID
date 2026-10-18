@@ -68,11 +68,13 @@ export const WATCH_EVENTS: readonly WatchEventDef[] = [
   { id: 'cashier_bonus', weight: 2, effects: [{ hook: 'deposit.bonus', op: 'add', value: 0.1 }] },
   { id: 'draft', weight: 1, effects: [{ hook: 'payout.mult', op: 'mult', value: 0.9 }, { hook: 'dread.add', op: 'add', value: 4 }] },
   // Wave 75 floor events (Night 2 on). Each one plays its own way (`kind`); `effects` stays empty for them.
-  { id: 'single_light', weight: 1, minNight: 2, kind: 'single', fixedS: SINGLE_LIGHT_S, effects: [] },
+  // Weights are sized for a normal run: 14 Watches are open to floor events from Night 2 (Nights 3, 6 and 8 are boss Nights). At
+  // weight 2 of a 31-weight pool each new event rolls in about half of those runs (scripts/tests/floorWiring.test.mjs checks it).
+  { id: 'single_light', weight: 2, minNight: 2, kind: 'single', fixedS: SINGLE_LIGHT_S, effects: [] },
   { id: 'stage_auction', weight: 2, minNight: 2, kind: 'auction', fixedS: AUCTION_BID_S, effects: [] },
   { id: 'crate_drop', weight: 2, minNight: 2, kind: 'crate', effects: [] },
   { id: 'wheel_spin', weight: 2, minNight: 2, kind: 'wheel', fixedS: WHEEL_S, effects: [] },
-  { id: 'last_call_dare', weight: 1, minNight: 2, kind: 'dare', fixedS: DARE_ARM_S, armAtS: DARE_ARM_S, effects: [] },
+  { id: 'last_call_dare', weight: 2, minNight: 2, kind: 'dare', fixedS: DARE_ARM_S, armAtS: DARE_ARM_S, effects: [] },
 ];
 
 /**
@@ -234,6 +236,14 @@ export class WatchEvents implements ModProvider {
     return r;
   }
 
+  /** The lowest bid a press makes now: one above the House price and above the player's own top bid. Null when no auction runs. */
+  auctionNext(): number | null {
+    const c = this.cur;
+    const a = c?.aux.auction;
+    if (!c || !a || c.def.kind !== 'auction' || a.phase !== 'bid') return null;
+    return Math.max(auctionPrice(a) + 1, a.top + 1);
+  }
+
   /**
    * A press of E at `pos` (the player's floor position, or null when the run has none). Opens the CRATE DROP when in reach and
    * the first time it is pressed. Returns the reward, which is also queued as an outcome.
@@ -250,8 +260,9 @@ export class WatchEvents implements ModProvider {
   }
 
   /**
-   * After each resolved pull on `mid`. `won` is whether the round was a win before the floor's multipliers (a taken LAST CALL
-   * DARE settles on it and ends). A Lucky Lamp spends one pull of its budget when `mid` is HOT.
+   * After each resolved round on `mid` (the run calls it from `win()`, after the payout, so a multiplier still applies to that
+   * round). `won` is whether the round was a win before the floor's multipliers (a taken LAST CALL DARE settles on it and ends).
+   * A Lucky Lamp spends one pull of its budget when `mid` is HOT.
    */
   onPull(mid: InstanceId, won = false): void {
     const c = this.cur;

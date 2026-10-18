@@ -1,7 +1,7 @@
 /**
  * THE LUCK METER (Wave 73, pillar 2: luck is earned at home and in the Night's standing). A run-wide score from −2 to 5 stars,
  * moved by the bus events of the run itself: a quota paid (+1), an overshoot (+1), a quota failed (−2), a Collector Heat gain
- * (−1) or cool-off (+1), a missed Watch tithe (−1) and a rescue loan (−1).
+ * (−1) or cool-off (+1), a missed Watch tithe (−1), a rescue loan (−1), a keepsake that comes back (+1) and a ghost match (+1).
  *
  * Director decision (Oct 2026): the meter no longer feeds the luck hook. Each star is a flat payout bonus instead:
  * `payout.mult` = 1 + 0.01 × stars (−2 % .. +5 %), added through the modifier pipeline by `provider()`.
@@ -70,6 +70,9 @@ export function createLuckMeter(_run: LuckRunPort, touch: () => void = () => {})
     bus.on('home:heat', ({ delta, why }) => move(delta > 0 ? -1 : delta < 0 ? 1 : 0, why)),
     bus.on('run:tithe', (e) => { if (e.state === 'missed') move(-1, 'tithe'); }),
     bus.on('run:rescue', (e) => { if (e.state === 'taken') move(-1, 'loan'); }),
+    // THE KEEPSAKE STAKE and THE GHOST SEAT (wave 75): a keepsake that comes back, and a round that matches the ghost
+    bus.on('keepsake:stake', (e) => { if (e.state === 'won') move(e.star, 'keepsake'); }),
+    bus.on('ghost:match', (e) => move(e.star, 'ghost')),
   ];
   const payoutMult = (): number => 1 + LUCK_PAYOUT_PER_STAR * stars;
   const source = (): ModSource[] => (stars === 0 ? [] : [{

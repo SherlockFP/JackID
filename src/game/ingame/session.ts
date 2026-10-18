@@ -8,6 +8,7 @@
  */
 import * as THREE from 'three';
 import { app } from '@/core/app';
+import type { Action } from '@/core/input/types';
 import { bus, type GameEvents } from '@/core/events';
 import { log } from '@/core/log';
 import { fmtCoins, t } from '@/core/i18n';
@@ -46,6 +47,7 @@ import { SeatHud } from '@/machines/_base/seatHud';
 import { startTutorial, type Tutorial } from '@/game/tutorial';
 import { holdClockFor } from '@/game/clockHold';
 import { startRoomsHost } from './roomsHost';
+import { startGrandCasino } from './grandCasino';
 import { applyEffects, effectsOf } from '@/game/hollow/rules';
 import { lordsHooks } from '@/machines/lordstable';
 import { hollowDoor } from '@/world/hollow';
@@ -76,6 +78,11 @@ const BADGE_FALLBACK = new THREE.Vector3(0, 1.2, 0.7);
 const BADGE_POP_S = 0.45;
 /** Brighter Bulbs upgrade (GDD §6.2): −2 dread per level, read by the horror meter. */
 const BULBS_UPGRADE = 'imp_brighter_bulbs';
+/** The Lobby crate spot (CRATE DROP): the centre of the Lobby zone (layout.ts, `lobby` rect x -11..11, z 2..20). */
+const LOBBY_CRATE = { x: 0, z: 11 } as const;
+/** The floor event keys: K stakes the carried keepsake at a seat, N takes a dare or bids, E opens the crate in reach. */
+const KEEPSAKE_ACTION = 'keepsake' as Action;
+const FLOOR_ACT_ACTION = 'floorAct' as Action;
 const isCursed = (id: string): boolean => charmDef(id)?.rarity === 'cursed';
 
 /** Every registered machine with the facts the Pit Deck line-up reads (WAVE8 item 8). */
@@ -142,6 +149,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     machines: () => world.machines().map((m) => ({ instance: m.id, machineId: m.def.id, size: world.slot(m.id)?.size })),
     instancePos: (mid) => world.slot(mid)?.pos,
     locked: (mid) => world.isLocked(mid),
+    lobbyCrate: () => LOBBY_CRATE,
   });
 
   const player = createLocalPlayer(app.camera);
@@ -159,6 +167,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   // A new run opens straight on Night 1 Watch 1 (the bell, then the floor). Intermissions only sit between Watches and Nights.
   let openingWatch = !params.resume && run.rules.timed;
   const offs: Unsub[] = [];
+  // THE GRAND CASINO (wave 75): the jackpot wall, the prize case and the light show read this run
+  offs.push(startGrandCasino(run, world));
   // Night 1 onboarding: first run only (its own flag), Debt Run only, never a resumed or online run.
   const tutorial: Tutorial | null = !params.resume && !params.online && run.rules.timed ? startTutorial({ world, run }) : null;
 
@@ -413,12 +423,22 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     }
   };
 
+  // THE FLOOR EVENTS and THE KEEPSAKE STAKE (wave 75), read once per step: K stakes the carried keepsake at the seat, N takes a
+  // dare or bids, and E opens a CRATE DROP in reach (the crate reads the player's floor position, not the seat).
+  const floorKeys = (): void => {
+    if (app.input.pressed(KEEPSAKE_ACTION)) { const seat = world.seat; if (seat) run.keepsakeStake(seat.mid); }
+    if (app.input.pressed(FLOOR_ACT_ACTION)) run.floorAct();
+    const p = player.pos;
+    run.floorCrate({ x: p.x, z: p.z }, app.input.pressed('interact'));
+  };
+
   return {
     world, player, run, hud,
     ready: () => ready,
     fixedUpdate(dt) {
       player.fixedUpdate(dt);
       world.fixedUpdate(dt);
+      floorKeys();
       run.tick(dt);
       evening?.update(dt);
       horror.update(dt, horrorState(), dt);

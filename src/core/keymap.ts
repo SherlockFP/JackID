@@ -45,6 +45,8 @@ export const EXTRA_BINDINGS: Record<string, string[]> = {
   answerPhone: ['KeyP'], phoneOpt1: ['Digit1'], phoneOpt2: ['Digit2'], phoneOpt3: ['Digit3'],
   // the pocket phone (wave 69): T opens or closes the threads while walking; 1 / 2 / 3 answer while it is open
   phone: ['KeyT'], phoneReply1: ['Digit1'], phoneReply2: ['Digit2'], phoneReply3: ['Digit3'],
+  // wave 75: K stakes the carried keepsake at a seat (seated); N takes the LAST CALL DARE or bids in a STAGE AUCTION (any time)
+  keepsake: ['KeyK'], floorAct: ['KeyN'],
 };
 
 /** Every binding key the service knows (frozen + extra) with its default codes. */
@@ -56,6 +58,7 @@ export const layerOf = (key: string): Layer => (key.startsWith('m.') ? 'machine'
 /** Walk-layer actions that stay live while seated (everything else is suppressed at a machine). */
 export const SEATED_WALK_ACTIONS: ReadonlySet<string> = new Set([
   'pause', 'scoreboard', 'chat', 'debug', 'debugColliders', 'help', 'upgrade', 'journal', 'answerPhone',
+  'keepsake', 'floorAct',
 ]);
 /** During a cutscene these codes act as `skip` in addition to the user's binding. */
 export const CUTSCENE_SKIP_CODES: readonly string[] = ['Space', 'Enter', 'NumpadEnter', 'Escape'];
