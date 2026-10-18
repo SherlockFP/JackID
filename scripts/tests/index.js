@@ -67,3 +67,7 @@ import './onboarding.test.mjs';
 import './prologue.w72.test.mjs';
 import './subtitles.test.mjs';
 import './world.refit.test.mjs';
+import './ledger.test.mjs';
+import './luck.test.mjs';
+import './nightCalm.test.mjs';
+import './story.chapter.test.mjs';

@@ -218,8 +218,8 @@ export function patchNpc(m: THREE.MeshLambertMaterial, p: NpcLook): void {
     f = f.replace('#include <opaque_fragment>', `{
     float npcF = pow(1.0 - abs(dot(normalize(vNpcN), normalize(vNpcV))), 2.2);
     npcF = floor(npcF * 3.0 + 0.5) / 3.0;
-    float npcS = step(0.86, npcNoise(vNpcObj * 14.0 + vec3(0.0, uNpcT * 0.37, 0.0))) * 0.18 * uNpcShimmer * uNpcFx.y;
-    outgoingLight += uNpcRim * (npcF * 0.42 + npcS) + uNpcEye * npcEyeMask(vNpcObj) * 1.4;
+    float npcS = step(0.93, npcNoise(vNpcObj * 14.0 + vec3(0.0, uNpcT * 0.37, 0.0))) * 0.07 * uNpcShimmer * uNpcFx.y;
+    outgoingLight += uNpcRim * (npcF * 0.30 + npcS) + uNpcEye * npcEyeMask(vNpcObj) * 1.4;
   }
   #include <opaque_fragment>`);
     shader.vertexShader = v;

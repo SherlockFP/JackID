@@ -58,6 +58,7 @@ export function notesFound(): number { return found.size; }
 export function noteFound(id: string): boolean { return found.has(id); }
 export function resetNotes(): void {
   found.clear();
+  journalLine = null;
   readerOpen = null;
   const s = stage;
   stage = null;
@@ -158,10 +159,22 @@ function restoreWalk(): void {
   }
 }
 
+/** Who hears a note read (the Wash ledger counts its pages here). Every open calls them, repeat reads included. */
+const readListeners = new Set<(id: string) => void>();
+export function onNoteRead(fn: (id: string) => void): () => void {
+  readListeners.add(fn);
+  return () => { readListeners.delete(fn); };
+}
+
+/** The journal's quest line (the Wash ledger objective) while a quest runs; null shows the note count. */
+let journalLine: string | null = null;
+export function setJournalLine(line: string | null): void { journalLine = line; }
+
 /** Open a note's reader (from the interactable). */
 export function openNote(def: NoteDef): void {
   if (readerOpen) return;
   found.add(def.id);
+  for (const fn of readListeners) fn(def.id);
   present(readPlacard(def), def);
 }
 
@@ -366,7 +379,7 @@ function journalPlacard(): Placard3D {
       const l = list();
       const top = Math.floor(sel / LIST_ROWS) * LIST_ROWS;
       put(g, t('story.ui.journal'), 14, 8, INK);
-      put(g, t('story.ui.journalCount', { found: l.length, total: NOTES.length }), 14, 20, INK_SOFT);
+      put(g, journalLine ?? t('story.ui.journalCount', { found: l.length, total: NOTES.length }), 14, 20, INK_SOFT);
       rule(g, 14, 32, PAGE_W);
       g.fillStyle = INK_SOFT; g.fillRect(w / 2, 8, 1, h - 16);       // the gutter
       if (!l.length) {

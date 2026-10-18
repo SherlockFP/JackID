@@ -7,14 +7,17 @@
   top: calc(var(--hud-top-h, calc(var(--su) * 3)) + var(--su) * 2);
 }
 
-/* STAKE / POCKET: the big readout, always up while seated; amber above half the pocket, red while a high stake needs confirm */
+/* STAKE: two cells side by side. BET (what you risk, big, gold) | POCKET (what you hold, smaller, cream). The pulls-per-round
+   line, when a machine has one, is the small third row. Amber above half the pocket, red while a high stake needs confirm. */
 .seat-hud .shud-stake {
-  display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 1);
-  padding: calc(var(--su) * 2) calc(var(--su) * 6); min-width: calc(var(--su) * 60);
-  border-top: calc(var(--su) * 2) solid currentColor; text-align: center;
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: center; gap: calc(var(--su) * 1) calc(var(--su) * 6);
+  padding: calc(var(--su) * 2) calc(var(--su) * 5); min-width: calc(var(--su) * 60);
+  border-top: calc(var(--su) * 1.5) solid currentColor; text-align: center;
 }
+.seat-hud .shud-cell { display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 1); }
 .seat-hud .shud-stake-l { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3.5); line-height: 1; color: #b8c0a8; white-space: nowrap; }
-.seat-hud .shud-stake-v { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 7); line-height: 1.2; white-space: nowrap; color: currentColor; }
+.seat-hud .shud-stake-v { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 8); line-height: 1.1; white-space: nowrap; color: currentColor; }
+.seat-hud .shud-pocket .shud-stake-v { font-size: calc(var(--su) * 5.5); color: #f4f0dc; }
 .seat-hud .shud-stake.tone-gold { color: #ffd040; }
 .seat-hud .shud-stake.tone-warn { color: #ffb347; }
 .seat-hud .shud-stake.tone-bad { color: #ff5a4a; }
@@ -27,15 +30,11 @@
 .seat-hud .shud-odds {
   position: absolute; left: 50%; bottom: calc(var(--su) * 1.5); transform: translateX(-50%); z-index: 1;
   max-width: min(70vw, calc(var(--su) * 180)); padding: calc(var(--su) * 1) calc(var(--su) * 3);
-  font-size: calc(var(--su) * 3); line-height: 1.2; text-align: center; white-space: normal; overflow-wrap: anywhere;
+  font-size: calc(var(--su) * 4.5); line-height: 1.1; color: #b8c0a8; text-align: center; white-space: normal; overflow-wrap: anywhere;
 }
 
-/* PULLS PER ROUND (seatHud.ts `pullRate`): one line under the STAKE readout, so a player sees what a pull buys. */
-.seat-hud .shud-rate {
-  font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3.5); line-height: 1;
-  padding: calc(var(--su) * 1.5) calc(var(--su) * 3); color: #f4f0dc; white-space: nowrap; text-align: center;
-  background: rgba(6, 9, 6, 0.9); border-bottom: calc(var(--su) * 1.5) solid #2c3a2c;
-}
+/* PULLS PER ROUND (seatHud.ts `pullRate`): shown only when a round costs more than one pull; the third row of the stake panel. */
+.seat-hud .shud-rate { flex-basis: 100%; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3); line-height: 1; color: #b8c0a8; white-space: nowrap; text-align: center; }
 
 /* SMART STAKES (stakePresets.ts): SAFE / BOLD / BIG under the STAKE readout, keys 7 / 8 / 9. The stake in play is lit;
    a BIG waiting for its second press blinks red. A preset whose digit the machine keeps shows its amount with no key cap. */
@@ -46,7 +45,7 @@
 }
 .seat-hud .shud-preset-k:empty { display: none; }
 .seat-hud .shud-preset-l { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3.5); line-height: 1; }
-.seat-hud .shud-preset-v { font-size: calc(var(--su) * 6.5); line-height: 1; color: #f4f0dc; }
+.seat-hud .shud-preset-v { font-size: calc(var(--su) * 7); line-height: 1; color: #f4f0dc; }
 .seat-hud .shud-preset.on { color: #ffd040; border-bottom-color: #ffd040; background: rgba(40, 32, 4, 0.92); }
 .seat-hud .shud-preset.on .shud-preset-v { color: #ffd040; }
 .seat-hud .shud-preset.armed { border-bottom-color: #ff5a4a; animation: shud-stake-blink 0.6s steps(2, start) infinite; }

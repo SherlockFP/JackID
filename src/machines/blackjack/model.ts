@@ -117,7 +117,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BlackjackParts
 
   // dealer pedestal + brass trim, the hands on rods
   kit.box(0.56, TOP - 0.03, 0.24, { color: pal.black, map: kit.tex.wood(pal.black) }, { pos: [0, (TOP - 0.03) / 2, DEALER_Z - 0.02], parent: root, bevel: 0.01 });
-  kit.box(0.6, 0.03, 0.28, pal.brass, { pos: [0, TOP - 0.015, DEALER_Z - 0.02], parent: root });
+  // (a full brass cap read as a big yellow slab from the seat and swallowed the hands: a thin brass front edge instead)
+  kit.box(0.6, 0.02, 0.02, pal.brass, { pos: [0, TOP - 0.03, DEALER_Z - 0.02 + 0.13], parent: root });
 
   const hands: THREE.Group[] = [];
   for (const side of [-1, 1]) {
@@ -126,7 +127,9 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BlackjackParts
     const hand = new THREE.Group();
     hand.name = side < 0 ? 'handL' : 'handR';
     hand.position.set(x, TOP + 0.2, DEALER_Z);
+    hand.scale.setScalar(1.35);                                                               // the hands are the dealer: they have to read from 2 m
     root.add(hand);
+    kit.box(0.07, 0.07, 0.06, pal.redDark, { pos: [0, -0.015, -0.025], parent: hand });      // velvet cuff: dark behind the porcelain, so the hand has an outline
     kit.box(0.1, 0.024, 0.11, pal.bone, { pos: [0, 0, 0.055], parent: hand });              // palm
     kit.box(0.034, 0.018, 0.034, pal.bone, { pos: [0, 0, 0.12], parent: hand });            // wrist knuckle
     for (let f = 0; f < 4; f++) {                                                             // fingers, 2 segments
@@ -174,16 +177,19 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BlackjackParts
   root.add(seatLamps.root);
 
   // scoreboard over the dealer
-  const totals = kit.screen({ w: 1.3, h: 0.24, px: [256, 48], bezel: pal.black, glow: 0.6 });
-  totals.mesh.position.set(0, 1.28, DEALER_Z - 0.12);
+  // raised to 1.42 (clear of the hands at 0.98 and the dealer total above them), taller, with its lamps on the frame above it
+  const totals = kit.screen({ w: 1.3, h: 0.3, px: [256, 48], bezel: pal.black, glow: 0.6 });
+  totals.mesh.position.set(0, 1.42, DEALER_Z - 0.12);
   root.add(totals.mesh);
-  kit.box(1.36, 0.32, 0.04, pal.black, { pos: [0, 1.28, DEALER_Z - 0.14], parent: root, bevel: 0.01 });
+  kit.box(1.36, 0.38, 0.04, pal.black, { pos: [0, 1.42, DEALER_Z - 0.14], parent: root, bevel: 0.01 });
+  kit.box(0.04, 0.45, 0.04, pal.black, { pos: [-0.3, 1.005, DEALER_Z - 0.14], parent: root });   // posts down to the pedestal
+  kit.box(0.04, 0.45, 0.04, pal.black, { pos: [0.3, 1.005, DEALER_Z - 0.14], parent: root });
   const phaseLamp = kit.lamp({ r: 0.022, color: pal.gold, shape: 'dome' });
-  phaseLamp.root.position.set(-0.6, 1.44, DEALER_Z - 0.1);
+  phaseLamp.root.position.set(-0.6, 1.64, DEALER_Z - 0.1);
   const fairLamp = kit.lamp({ r: 0.022, color: pal.neonCyan, shape: 'dome' });
-  fairLamp.root.position.set(0.6, 1.44, DEALER_Z - 0.1);
+  fairLamp.root.position.set(0.6, 1.64, DEALER_Z - 0.1);
   const insuranceLine = kit.lamp({ r: 0.022, color: pal.neonYellow, shape: 'dome' });
-  insuranceLine.root.position.set(0, 1.44, DEALER_Z - 0.1);
+  insuranceLine.root.position.set(0, 1.64, DEALER_Z - 0.1);
   root.add(phaseLamp.root, fairLamp.root, insuranceLine.root);
 
   // stools at the spots, camera pose per seat
@@ -196,9 +202,10 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BlackjackParts
     root.add(stool);
     seats.push({
       pose: {
-        pos: new THREE.Vector3(s.x * 1.05, 1.2, s.z + 0.3),
-        look: new THREE.Vector3(s.x * 0.6, TOP, -0.1),
-        fov: 60, mouse: 'primary',
+        // high and back enough to take in the dealer's hands and the scoreboard above them, the cards and the five panels at once
+        pos: new THREE.Vector3(s.x * 1.1, 1.5, s.z + 0.85),
+        look: new THREE.Vector3(s.x * 0.45, 0.9, -0.45),
+        fov: 62, mouse: 'primary',
       },
       stand: new THREE.Vector3(s.x, 0, s.z),
       avatar: 'sit',
@@ -225,11 +232,12 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BlackjackParts
   beadCounter.visible = false;
 
   // pit boss, standing behind the spot to the dealer's left
-  const pitBoss = kit.mannequin({ style: 'plain', color: 0x1c1c1c, jointColor: 0x3a3a3a, height: 1.82, clip: 'Idle_Loop' });
+  const pitBoss = kit.mannequin({ style: 'plain', color: 0x2a2a36, jointColor: 0x4c4c5c, height: 1.82, clip: 'Idle_Loop' });
   // pulled in and scaled so the figure (with its arms) stays inside the L footprint (x ±1.3, z ≥ −0.9)
-  pitBoss.root.position.set(-0.86, 0, -0.48);
+  // out at the corner of the footprint, well off the centre seat's line of sight (he used to fill the left of the frame)
+  pitBoss.root.position.set(-1.1, 0, -0.6);
   pitBoss.root.scale.setScalar(0.92);
-  pitBoss.root.rotation.y = Math.atan2(1.05, 0.42);
+  pitBoss.root.rotation.y = Math.atan2(1.1, 0.7);
   pitBoss.root.userData.lodDetail = true;   // a mannequin is ~14k tris (two meshes): the world hides it beyond 8 m
   root.add(pitBoss.root);
 

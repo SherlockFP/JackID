@@ -12,6 +12,7 @@
  *   economy.types    currencies, RewardSpec, progressive network jackpot, contracts/bounties
  */
 import type { GameMode, InstanceId, Json, MachineId, PlayerId } from '@/core/types';
+import type { ChapterRecord } from '@/game/story/chapter';
 import type { Rng } from '@/core/rng';
 import type { GameEvents } from '@/core/events';
 import type { SymbolId } from '@/core/texgen/types';
@@ -122,6 +123,10 @@ export interface RunApi {
   readonly config: Readonly<RunConfig>;
   /** THE PROLOGUE (wave 72): true while the apartment opens the run (Night 1 Watch 1 has not begun). Optional: absent on the bench and the MP facade. */
   prologueOn?(): boolean;
+  /** THE SECOND NAME (wave 73): the live chapter record (optional: absent on the bench and the MP facade). */
+  chapterRecord?(): ChapterRecord;
+  /** THE LUCK METER (wave 73): the run's stars (−2..5), the one meter the luck base reads (optional: absent on the bench and the MP facade). */
+  luckStars?(): number;
   /** Current Night (= `shift.quota.index`) and Watch/Dawn window (TECH §11.5, C17). */
   night(): number;
   window(): RunWindow;

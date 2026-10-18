@@ -12,6 +12,8 @@ import type { Rng } from '@/core/rng';
 import type { AudioEngine } from '@/core/audio/types';
 import type { WorldLights, WorldLightTarget } from '@/world/types';
 import type { V3, ZoneId } from '@/core/types';
+/** Wandering dark patrons on the casino floor (wave 72). Off: the client did not want them. */
+const ROAMING_PATRONS = false;
 import { ActorDirectorImpl, DarkPatrons, LiveActor, NAV_POINTS, observed, nearestViewer, type Viewer } from '@/world/actors';
 import type { ActorHandle } from '@/core/cutscene/types';
 import { DreadMeter, TIER_RANK, type DreadEventKind, type DreadInput, type DreadTier } from './dread';
@@ -140,7 +142,8 @@ export class HorrorDirector {
     this.tickPa(dt, tier, set);
     this.tickPatrons(realDt, tier, set);
     this.tickCollector(dt, s);
-    if (!this.darkPatronsStarted && this.d.lights()) { this.darkPatronsStarted = true; void this.darkPatrons.start(); }
+    // Client (2026-10-18): no wandering crowd on the floor. The module stays for later; it is never started.
+    if (ROAMING_PATRONS && !this.darkPatronsStarted && this.d.lights()) { this.darkPatronsStarted = true; void this.darkPatrons.start(); }
     this.darkPatrons.tick(realDt);
     this.d.actors.update(realDt);
   }

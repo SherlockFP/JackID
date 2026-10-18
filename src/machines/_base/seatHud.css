@@ -15,31 +15,40 @@
 .shud-state-t { display: block; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 5); line-height: 1.2; letter-spacing: 0; }
 .shud-state-s { display: block; font-size: calc(var(--su) * 7); line-height: 1; margin-top: calc(var(--su) * 1); color: #f4f0dc; }
 
-/* centre: result callout */
+/* result callout: hangs under the goal / state stack (--seat-top-b, set by seatHud.ts), never over the machine screen.
+   WIN: big amount with a small word above it. LOSS / PUSH: one small line. */
 .shud-result {
-  position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.6); opacity: 0;
-  font-family: var(--f-head, 'Press Start 2P', monospace); text-align: center; padding: calc(var(--su) * 3) calc(var(--su) * 6);
-  border: calc(var(--su) * 2) solid currentColor; background: rgba(6, 9, 6, 0.92); white-space: nowrap;
+  position: absolute; left: 50%; top: calc(var(--seat-top-b, calc(var(--su) * 40)) + var(--su) * 4); transform: translate(-50%, 0) scale(0.6); opacity: 0;
+  display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 1.5);
+  font-family: var(--f-head, 'Press Start 2P', monospace); text-align: center; padding: calc(var(--su) * 2.5) calc(var(--su) * 6);
+  border: calc(var(--su) * 1.5) solid currentColor; background: rgba(6, 9, 6, 0.92); white-space: nowrap;
   transition: transform 0.12s steps(3), opacity 0.12s steps(3);
 }
-.shud-result.on { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-.shud-result-t { display: block; font-size: calc(var(--su) * 9); line-height: 1.1; }
-.shud-result-a { display: block; font-size: calc(var(--su) * 5); margin-top: calc(var(--su) * 2); color: #f4f0dc; }
+.shud-result.on { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.shud-result-t { display: block; font-size: calc(var(--su) * 4.5); line-height: 1.1; }
+.shud-result-a { display: block; font-size: calc(var(--su) * 10); line-height: 1.1; color: #f4f0dc; }
+.shud-result.r-win .shud-result-a, .shud-result.r-blackjack .shud-result-a, .shud-result.r-even .shud-result-a { color: currentColor; }
+/* losses and pushes stay small: one quiet line, no big number */
+.shud-result.r-lose, .shud-result.r-bust, .shud-result.r-surrender, .shud-result.r-push {
+  flex-direction: row; gap: calc(var(--su) * 3); padding: calc(var(--su) * 1.5) calc(var(--su) * 4); border-width: calc(var(--su) * 1);
+}
+.shud-result.r-lose .shud-result-t, .shud-result.r-bust .shud-result-t, .shud-result.r-surrender .shud-result-t, .shud-result.r-push .shud-result-t { font-size: calc(var(--su) * 4); }
+.shud-result.r-lose .shud-result-a, .shud-result.r-bust .shud-result-a, .shud-result.r-surrender .shud-result-a, .shud-result.r-push .shud-result-a { font-size: calc(var(--su) * 4); }
 
 /* bottom: key numbers, then the control bar */
 /* lifted above the HUD's PULLS coin row (hud.css: bottom 10u, about 20u tall), which it used to overlap */
 /* the pull-rate line ("1 PULL = 1 ROUND") sits on top of this stack: the gap keeps it clear of the key-number cards below it */
-.shud-bottom { position: absolute; left: 0; right: 0; bottom: calc(var(--su) * 34); display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 4); }
+.shud-bottom { position: absolute; left: 0; right: 0; bottom: calc(var(--su) * 34); display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 2.5); }
 .shud-nums { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--su) * 2); max-width: 96%; }
 .shud-num { padding: calc(var(--su) * 1.5) calc(var(--su) * 3); background: rgba(6, 9, 6, 0.9); border-top: calc(var(--su) * 1.5) solid #ffd040; min-width: calc(var(--su) * 30); text-align: center; }
 .shud-num-l { display: block; font-size: calc(var(--su) * 5.5); line-height: 1; color: #b8c0a8; }
 .shud-num-v { display: block; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 4.5); line-height: 1.3; margin-top: calc(var(--su) * 1); white-space: nowrap; }
 .shud-ctrl { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--su) * 2); padding: calc(var(--su) * 2); background: rgba(6, 9, 6, 0.92); border: calc(var(--su) * 1) solid #2c3a2c; max-width: 98%; }
-.shud-btn { display: flex; align-items: center; gap: calc(var(--su) * 1.5); padding: calc(var(--su) * 1.2) calc(var(--su) * 2.2); background: #1b261b; border: calc(var(--su) * 1.2) solid #7dff7a; font-size: calc(var(--su) * 5.5); line-height: 1; color: #7dff7a; white-space: nowrap; }
+.shud-btn { display: flex; align-items: center; gap: calc(var(--su) * 1.5); padding: calc(var(--su) * 1.2) calc(var(--su) * 2.2); background: #1b261b; border: calc(var(--su) * 1.2) solid #7dff7a; font-size: calc(var(--su) * 6.5); line-height: 1; color: #7dff7a; white-space: nowrap; }
 .shud-btn.primary { background: #ffd040; border-color: #ffd040; color: #080b08; }
 .shud-btn.primary .shud-key { background: #080b08; color: #ffd040; }
 /* the key glyph is VT323, not Press Start 2P: at chip size the pixel-font Q (and O, D) reads as a box */
-.shud-key { font-family: var(--f-body, 'VT323', monospace); font-size: calc(var(--su) * 5.5); line-height: 1; padding: calc(var(--su) * 1) calc(var(--su) * 1.5) 0; background: #f4f0dc; color: #080b08; min-width: calc(var(--su) * 7); text-align: center; }
+.shud-key { font-family: var(--f-body, 'VT323', monospace); font-size: calc(var(--su) * 6.5); line-height: 1; padding: calc(var(--su) * 1) calc(var(--su) * 1.5) 0; background: #f4f0dc; color: #080b08; min-width: calc(var(--su) * 7); text-align: center; }
 
 /* tone colours (state banner, number tops) */
 .tone-neutral { color: #f4f0dc; }
@@ -90,9 +99,9 @@
 /* No fill-mode: once the slam ends the callout is governed by .on alone, so a finished callout still hides. */
 .shud-result.slam { animation: shud-slam 0.42s cubic-bezier(0.34, 1.56, 0.64, 1); }
 @keyframes shud-slam {
-  0% { transform: translate(-50%, -50%) scale(2.2); opacity: 0; }
+  0% { transform: translate(-50%, 0) scale(2.2); opacity: 0; }
   55% { opacity: 1; }
-  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, 0) scale(1); opacity: 1; }
 }
 .shud-result.gold { border-color: #ffd040; box-shadow: 0 0 0 calc(var(--su) * 1) #000, 0 0 calc(var(--su) * 6) #ffd040; }
 .shud-result.gold .shud-result-t { color: #ffd040; }

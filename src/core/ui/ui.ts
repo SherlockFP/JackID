@@ -592,9 +592,8 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
   }
 
   async function runBanner(text: string, o: BannerOpts): Promise<void> {
+    // The top band (ui.css `.px-bw.t-banner`): under the HUD top bar, clear of the Night 1 tutorial box and the eye-level neon.
     const wrap = h('div', 'px-bw t-banner', bwLayer);
-    // Set above the centre: the title card used to sit at 30 % and cover the centre-screen prompt (E) and the Big One marquee.
-    wrap.style.top = '22%';
     wrap.style.setProperty('--bw-s', String(o.size ?? 24));
     wrap.style.setProperty('--bw-c', o.color ?? COLORS.ivory);
     wrap.style.setProperty('--bw-sh', o.shadow ?? COLORS.black);

@@ -13,8 +13,9 @@ export interface EventBannerOpts { color?: string; hold?: number; size?: 8 | 16 
 export type EventBannerShow = (text: string, o: EventBannerOpts) => void;
 
 const DEFAULT_COLOR = '#ffd060';
-const HOLD_S = 3.5;
-const ENDED_HOLD_S = 2;
+/** Short holds: an event banner is news, not a title card. It queues behind the last one (ui.ts enqueueBw). */
+const HOLD_S = 2.2;
+const ENDED_HOLD_S = 1.2;
 const hex = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
 
 /** Subscribes to the bus and forwards event banners to `show`. Returns the teardown. */

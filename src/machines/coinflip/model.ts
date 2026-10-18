@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import type { Kit, ButtonPart, LampPart, MarqueePart, ScreenSurface, Palette } from '@/kit/types';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 
 /** Contract between modeler and coder. */
 export type CoinFlipParts = {
@@ -100,7 +101,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<CoinFlipParts> 
   lampHeads.root.position.set(-0.29, 1.4, -D / 2 + 0.065);
   const lampTails = kit.lamp({ r: 0.035, color: pal.neonCyan, shape: 'dome' });
   lampTails.root.position.set(0.29, 1.4, -D / 2 + 0.065);
-  const screen = kit.screen({ w: 0.36, h: 0.18, px: [96, 48], bezel: pal.black });
+  const screen = kit.screen({ w: 0.36, h: 0.18, px: [96, 48], bezel: pal.black, scanlines: false });   // 1-px glyph strokes: no scanline darkening
+  crispTexture(screen.tex, 4);
   screen.mesh.position.set(0, 1.4, -D / 2 + 0.062);
   const marquee = kit.marquee({ w: W - 0.06, h: 0.2, text: { key: 'm.coinflip.name' }, color: pal.neonYellow, bg: pal.black, bulbs: BULBS });
   marquee.root.position.set(0, 1.83, -D / 2 + 0.07);

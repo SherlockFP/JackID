@@ -97,6 +97,8 @@ export class SeatHud {
   private readonly stakeEl: HTMLElement;
   private readonly stakeL: HTMLElement;
   private readonly stakeV: HTMLElement;
+  private readonly pocketL: HTMLElement;
+  private readonly pocketV: HTMLElement;
   /** PULLS per ROUND of the seated machine (`pullRate()`), drawn as a line under the STAKE readout; 0 hides it. */
   private readonly rateEl: HTMLElement;
   private pullsPer = 0;
@@ -159,9 +161,13 @@ export class SeatHud {
     this.oddsEl.style.maxWidth = '70vw'; this.oddsEl.style.whiteSpace = 'normal'; this.oddsEl.style.overflowWrap = 'anywhere';
     this.oddsEl.style.display = 'none';
     this.stakeEl = make('div', 'shud-stake shud-panel tone-gold', bottom);
-    this.stakeL = make('span', 'shud-stake-l', this.stakeEl);
-    this.stakeV = make('span', 'shud-stake-v', this.stakeEl);
-    this.rateEl = make('div', 'shud-rate shud-panel', bottom);
+    const betCell = make('span', 'shud-cell shud-bet', this.stakeEl);
+    this.stakeL = make('span', 'shud-stake-l', betCell);
+    this.stakeV = make('span', 'shud-stake-v', betCell);
+    const pocketCell = make('span', 'shud-cell shud-pocket', this.stakeEl);
+    this.pocketL = make('span', 'shud-stake-l', pocketCell);
+    this.pocketV = make('span', 'shud-stake-v', pocketCell);
+    this.rateEl = make('div', 'shud-rate', this.stakeEl);
     this.rateEl.style.display = 'none';
     // SMART STAKES: the SAFE / BOLD / BIG presets (keys 7 / 8 / 9) under the STAKE readout; drawn from `stake:presets`
     this.presetsEl = make('div', 'shud-presets', bottom);
@@ -201,7 +207,7 @@ export class SeatHud {
   /** Repaints the PULLS-per-ROUND line (DOM only on change of the text). */
   private refreshRate(): void {
     const n = this.pullsPer;
-    const show = this.shown && !this.uiBlocked && n > 0;
+    const show = this.shown && !this.uiBlocked && n > 1;   // "1 PULL = 1 ROUND" is the default: only the odd machine says so
     this.rateEl.style.display = show ? '' : 'none';
     if (!show) return;
     const text = n === 1 ? tr('hud.seat.pullRate1') : tr('hud.seat.pullRateN', { n });
@@ -242,8 +248,10 @@ export class SeatHud {
     this.stakeEl.style.display = show ? '' : 'none';
     const tone = this.stakeNeed ? 'bad' : high ? 'warn' : 'gold';
     this.stakeEl.className = `shud-stake shud-panel tone-${tone}${this.stakeNeed ? ' need' : ''}`;
-    this.stakeL.textContent = tr(this.stakeNeed ? 'hud.stake.confirm' : 'hud.stake.label');
-    this.stakeV.textContent = `${fmtCoins(bet)} / ${fmtCoins(pocket)}`;
+    this.stakeL.textContent = tr(this.stakeNeed ? 'hud.stake.confirm' : 'hud.seat.betL');
+    this.stakeV.textContent = fmtCoins(bet);
+    this.pocketL.textContent = tr('hud.seat.pocketL');
+    this.pocketV.textContent = fmtCoins(pocket);
   }
 
   /**

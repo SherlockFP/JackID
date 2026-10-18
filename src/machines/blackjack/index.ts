@@ -38,7 +38,7 @@ import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { STRINGS } from './blackjack.strings';
 import {
-  buildModel, arcAt, dealerSlot, shoeMouth, slotPos, spotPhi, type BlackjackParts, SPOTS, SPOT_R, TOP, CARD_SLOT_R,
+  buildModel, arcAt, DEALER_Z, dealerSlot, shoeMouth, slotPos, spotPhi, type BlackjackParts, SPOTS, SPOT_R, TOP, CARD_SLOT_R,
 } from './model';
 import * as R from './rules';
 
@@ -936,13 +936,14 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
     const dealerText = shownDealer.length ? this.t('dealer', { n: R.total(shownDealer) }) : '';
     p.totals.draw((g, w) => {
       g.fillStyle = '#080b08'; g.fillRect(0, 0, w.w, w.h);
-      w.text(this.statusText(), 128, 2, { font: 'px5', color: '#7dff7a', align: 'center' });
-      w.text(dealerText, 4, 30, { font: 'px5', color: '#e0c060' });
-      if (left > 0) w.text(String(left), 252, 2, { font: 'px5', color: '#ffffff', align: 'right' });
+      // three rows at scale 2 (the px5 glyphs at scale 1 were ~3 px tall from the seat): status / dealer, then one column per spot
+      w.text(this.statusText(), 128, 3, { font: 'px5', color: '#7dff7a', align: 'center', scale: 2 });
+      if (left > 0) w.text(String(left), 252, 3, { font: 'px5', color: '#ffffff', align: 'right', scale: 2 });
+      w.text(dealerText, 4, 18, { font: 'px5', color: '#e0c060', scale: 2 });
       for (let i = 0; i < SPOTS; i++) {
         const { text, color } = this.boxText(st.boxes[i]);
-        const x = 70 + i * 40;
-        w.text(text, x, 30, { font: 'px5', color: `#${color.toString(16).padStart(6, '0')}`, align: 'center' });
+        const x = 26 + i * 51;
+        w.text(text, x, 34, { font: 'px5', color: `#${color.toString(16).padStart(6, '0')}`, align: 'center', scale: 2 });
       }
     });
     this.refreshLabels();
@@ -1074,13 +1075,13 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
       const tex = new THREE.CanvasTexture(cv);
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
       sp.renderOrder = 20;
-      sp.scale.set(0.15, 0.075, 1);
+      sp.scale.set(0.18, 0.09, 1);
       if (i < SPOTS) {
         const c = arcAt(CARD_SLOT_R, spotPhi(i));
         sp.position.set(c.x, TOP + 0.17, c.z);
       } else {
-        const d = dealerSlot(0);
-        sp.position.set(d.x + 0.05, TOP + 0.2, d.z);
+        // between the hands and the scoreboard, clear of both (it used to hang at hand height and cover them)
+        sp.position.set(0, TOP + 0.36, DEALER_Z + 0.1);
       }
       this.root.add(sp);
       this.labels.push({ sp, cv, cx, tex, last: '\u0000' });

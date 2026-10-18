@@ -16,6 +16,8 @@ export interface NoteDef {
   zone?: string;
   /** First Night (1-based) this note exists. Undefined = from Night 1. */
   night?: number;
+  /** Placed whatever the wing state: the zone only names the Wash locker pool (the Wash ledger pages lie on the open floor). */
+  always?: true;
 }
 
 /** What the placement needs to know about the run: which wings are open and which Night it is. */
@@ -30,7 +32,7 @@ export interface NoteGate {
  * ungated ones show as before. Pure, so the tests can load it without the app core.
  */
 export function noteOpen(def: NoteDef, gate: NoteGate | null): boolean {
-  if (def.zone !== undefined && !(gate?.zoneOpen(def.zone) ?? false)) return false;
+  if (def.zone !== undefined && !def.always && !(gate?.zoneOpen(def.zone) ?? false)) return false;
   if (def.night !== undefined && (gate?.night() ?? 1) < def.night) return false;
   return true;
 }
@@ -58,9 +60,10 @@ export const NOTES: readonly NoteDef[] = [
   // ── WAVE24 §3: Jade (cards), Wash (laundry), Boiler, Parlour, Counting, the Mouth and the Sump ──
   { id: 'n15', kind: 'note', anchor: 'note.n15', dx: 0.6, dz: 0.4, yaw: 0.2, zone: 'cards', night: 2 },
   { id: 'n16', kind: 'note', anchor: 'note.n16', dx: 0.6, dz: 0.4, yaw: -0.4, zone: 'cards', night: 5 },
-  { id: 'n17', kind: 'note', anchor: 'note.n17', dx: 0.6, dz: 0.4, yaw: 0.6, zone: 'laundry' },
-  { id: 'n18', kind: 'note', anchor: 'note.n18', dx: 0.6, dz: 0.4, yaw: 0, zone: 'laundry' },
-  { id: 'n19', kind: 'note', anchor: 'note.n19', dx: 0.6, dz: 0.4, yaw: -0.8, zone: 'laundry', night: 4 },
+  // The Wash ledger (quest 1, story/quests.ts): three pages on the open floor, from Night 1 to Night 3 (n19 from Night 3).
+  { id: 'n17', kind: 'note', anchor: 'quotaBoard', dx: 1.5, dz: -0.5, yaw: 0.6, zone: 'laundry', always: true },
+  { id: 'n18', kind: 'note', anchor: 'jack', dx: -1.1, dz: 0.9, yaw: 0, zone: 'laundry', always: true },
+  { id: 'n19', kind: 'note', anchor: 'clock', dx: -1.2, dz: 1.0, yaw: -0.8, zone: 'laundry', night: 3, always: true },
   { id: 'n20', kind: 'note', anchor: 'note.n20', dx: 0.6, dz: 0.4, yaw: 0.3, zone: 'boiler' },
   { id: 'n21', kind: 'note', anchor: 'note.n21', dx: 0.6, dz: 0.4, yaw: -0.2, zone: 'boiler', night: 5 },
   { id: 'n22', kind: 'note', anchor: 'note.n22', dx: 0.6, dz: 0.4, yaw: 0.5, zone: 'parlour' },

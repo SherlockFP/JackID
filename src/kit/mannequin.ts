@@ -142,7 +142,7 @@ function lookOf(o: MannequinOpts): Look {
       return { main: base, joints: o.jointColor ?? mixHex(base, PAL.BONE, 0.6), lit: true, opacity: 1, cracks: true };
     }
     case 'ghost': return { main: c ?? PAL.ICE, joints: o.jointColor ?? PAL.PAPER, lit: false, opacity: 0.5 };
-    case 'shadow': return { main: c ?? 0x07070b, joints: o.jointColor ?? 0x120d18, lit: true, opacity: 1, emissive: 0x1c0a2e };
+    case 'shadow': return { main: c ?? 0x07070b, joints: o.jointColor ?? 0x120d18, lit: true, opacity: 1, emissive: 0x050308 };
     case 'collector': return { main: c ?? 0x12121a, joints: o.jointColor ?? PAL.GOLD, lit: true, opacity: 1, coat: true };
     default: {
       const main = c ?? FACE_DEFAULT;

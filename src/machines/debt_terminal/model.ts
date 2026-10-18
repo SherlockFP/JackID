@@ -175,6 +175,11 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   bellRope.add(rope, grip);
   root.add(bellRope);
 
+  // a lit header on the canopy front: the alcove reads as the bank from across the lobby
+  const header = kit.label({ text: { key: 'm.debt_terminal.crt_title' }, w: 0.84, h: 0.12, px: [336, 48], color: 0xffd070, bg: 0x120c08, font: 'ps2p' });
+  header.mesh.position.set(0, H - 0.05, D / 2 + 0.006);
+  root.add(header.mesh);
+
   // ── speaker, prompt and the pooled-light hint ──
   const speaker = new THREE.Object3D(); speaker.position.set(0, 1.4, 0.2); root.add(speaker);
   const prompt = new THREE.Object3D(); prompt.position.set(0, 2.2, 0.1); root.add(prompt);
@@ -190,7 +195,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
     settleLever, floorLever, bellRope, swipe, readyLamp,
   };
   kit.finalize(root, {
-    keep: [crtScreen.mesh, quota.root, deposit.root, keys.root, receiptPivot, mouthLips, emblemLid,
+    keep: [header.mesh, crtScreen.mesh, quota.root, deposit.root, keys.root, receiptPivot, mouthLips, emblemLid,
       settleLever.root, floorLever.root, bellRope, swipe.root, readyLamp.root, light],
   });
 

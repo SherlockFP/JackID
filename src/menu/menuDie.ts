@@ -129,7 +129,7 @@ export class MenuDie {
   private glow(): void {
     const front = this.frontFace();
     for (let i = 0; i < 6; i++) {
-      const hex = i === this.hovered ? 0x8a5a12 : i === front ? 0x2c1606 : 0x000000;
+      const hex = i === this.hovered ? 0x9a6416 : i === front ? 0x3a1c08 : 0x000000;
       this.mats[i].emissive.setHex(hex);
     }
   }

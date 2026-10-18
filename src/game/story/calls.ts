@@ -24,7 +24,15 @@ export const STORY_CALLS: readonly StoryCall[] = [
     id: 'mira_n5', night: 5, kind: 'wrong_number', speaker: 'story.speaker.mira',
     lines: ['story.call.mira_n5.1', 'story.call.mira_n5.2', 'story.call.mira_n5.3'],
   },
+  // THE SECOND NAME (wave 73): the third beat of Mira's thread, on Night 8 (she asks you to refuse Vell's table)
+  {
+    id: 'mira_n8', night: 8, kind: 'wrong_number', speaker: 'story.speaker.mira',
+    lines: ['story.call.mira_n8.1', 'story.call.mira_n8.2', 'story.call.mira_n8.3'],
+  },
 ];
+
+/** THE SECOND NAME (wave 73): the Mira call id to her chapter beat (N2 = 1, N5 = 2, N8 = 3). */
+export const MIRA_BEAT: Readonly<Record<string, number>> = { mira_n2: 1, mira_n5: 2, mira_n8: 3 };
 
 /** The story call for a Night, or null when that Night has none. */
 export function storyCallFor(night: number): StoryCall | null {

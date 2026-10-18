@@ -10,6 +10,9 @@ export default {
     'call.mira_n5.1': 'Wrong number again, I think. Is this the Wash? It sounds like the Wash.',
     'call.mira_n5.2': 'The Clerk is counting. I can hear the pages turning from here.',
     'call.mira_n5.3': 'Do not tell the Clerk you picked up. It keeps a column for that.',
+    'call.mira_n8.1': 'It is me again. I will not ask how the tables are going.',
+    'call.mira_n8.2': 'Vell has a seat tonight, and he wants your name at the top of his list. Do not sit down.',
+    'call.mira_n8.3': 'Refuse him. It is the only thing I ever got to refuse. Goodbye.',
   },
   tr: {
     'call.mira_n2.1': 'Ah. Özür dilerim, yanlış numara. Eskiden oturduğum odaya ulaşmaya çalışıyordum.',
@@ -18,5 +21,8 @@ export default {
     'call.mira_n5.1': 'Yine yanlış numara sanırım. Burası Çamaşırhane mi? Çamaşırhane gibi geliyor.',
     'call.mira_n5.2': 'Katip sayıyor. Buradan sayfaların çevrildiğini duyabiliyorum.',
     'call.mira_n5.3': 'Katibe açtığınızı söylemeyin. Bunun için bir sütunu var.',
+    'call.mira_n8.1': 'Yine ben. Masalar nasıl gidiyor, sormayacağım.',
+    'call.mira_n8.2': 'Vell bu gece bir koltuk ayırdı ve listesinin başına adınızı yazmak istiyor. Oturmayın.',
+    'call.mira_n8.3': 'Reddedin. Hayatımda reddedebildiğim tek şey bu. Hoşça kalın.',
   },
 };

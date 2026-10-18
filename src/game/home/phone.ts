@@ -17,6 +17,7 @@ import { log } from '@/core/log';
 import { createRng, hashSeed } from '@/core/rng';
 import type { HomePhoneApi, PhoneMessage, PhoneSave, PhoneThread } from './contract';
 import type { DebtRun } from '../run';
+import { advanceArc, SPOUSE_CARD_BEAT } from '../story/chapter';
 
 declare module '@/core/events' {
   interface GameEvents {
@@ -82,6 +83,24 @@ export const SPOUSE_MESSAGES: readonly SpouseDef[] = [
   { id: 'drawing', replies: [{ kind: 'promise', harmony: 1 }, { kind: 'plain', harmony: 0 }, { kind: 'ignore', harmony: -1 }] },
 ];
 
+/**
+ * THE SECOND NAME (wave 73): the spouse's card messages, one each on Nights 2, 5 and 8 (SPOUSE_CARD_BEAT). They replace the
+ * random spouse message on those Nights, and carry the card and the second name. Keys phone.sp.card<n>.t / .r<n>.
+ */
+export const CARD_MESSAGES: readonly SpouseDef[] = [
+  { id: 'card2', replies: [{ kind: 'promise', harmony: 1 }, { kind: 'plain', harmony: 0 }, { kind: 'ignore', harmony: -1 }] },
+  { id: 'card5', replies: [{ kind: 'promise', harmony: 1 }, { kind: 'plain', harmony: 0 }, { kind: 'ignore', harmony: -1 }] },
+  { id: 'card8', replies: [{ kind: 'promise', harmony: 1 }, { kind: 'plain', harmony: 0 }, { kind: 'ignore', harmony: -1 }] },
+];
+/** THE SECOND NAME (wave 73): the Collector's N2 warning (Heat 1 or more), and the N7 deal: pay a share of the pocket, Heat drops by two. */
+export const WARN_NIGHT = 2;
+export const WARN_KEY = 'phone.co.warn.n2';
+export const DEAL_NIGHT = 7;
+export const DEAL_KEY = 'phone.co.deal.t';
+export const DEAL_SHARE = 0.2;
+export const DEAL_HEAT = -2;
+const DEAL_REPLIES: readonly string[] = ['phone.co.deal.r0', 'phone.co.deal.r1'];
+
 /** Collector replies: "I'll pay" is free, "I need time" adds one Heat. Keys `phone.co.reply.pay|time`. */
 export const COLLECTOR_REPLIES: readonly { key: string; heat: number }[] = [
   { key: 'phone.co.reply.pay', heat: 0 },
@@ -92,7 +111,7 @@ export const COLLECTOR_VARIANTS = 3;
 /** Dream text variants per tier: keys `phone.dream.<tier>.<n>` (n = 1..DREAM_VARIANTS). */
 export const DREAM_VARIANTS = 3;
 
-const SPOUSE_BY_TEXT: ReadonlyMap<string, SpouseDef> = new Map(SPOUSE_MESSAGES.map((d) => [`phone.sp.${d.id}.t`, d]));
+const SPOUSE_BY_TEXT: ReadonlyMap<string, SpouseDef> = new Map([...SPOUSE_MESSAGES, ...CARD_MESSAGES].map((d) => [`phone.sp.${d.id}.t`, d]));
 
 /** Coins a `send` reply costs for a Night's quota: a share of it, at least one coin. */
 export function coinCost(due: number, share: number): number {
@@ -104,6 +123,7 @@ export function coinCost(due: number, share: number): number {
  * spends exactly this amount, so the two always agree.
  */
 export function replyCoinCost(msg: PhoneMessage, choice: number): number {
+  if (msg.thread === 'collector') return msg.textKey === DEAL_KEY && choice === 0 ? Math.max(0, Number(msg.vars?.cost ?? 0)) : 0;
   if (msg.thread !== 'spouse' || !Number.isInteger(choice)) return 0;
   const def = SPOUSE_BY_TEXT.get(msg.textKey);
   const reply = def?.replies[choice];
@@ -137,7 +157,7 @@ export function dreamOf(phone: HomePhoneApi | null | undefined): Dream | null {
 }
 
 // ── state ────────────────────────────────────────────────────────────────────────────────────────────────────────────
-interface Plan { thread: PhoneThread; night: number; watch: number; last: boolean; at: number; pick: number }
+interface Plan { thread: PhoneThread; night: number; watch: number; last: boolean; at: number; pick: number; /** A spouse card message (wave 73). */ card?: boolean }
 interface State {
   harmony: number;
   heat: number;
@@ -203,7 +223,7 @@ function readPlan(x: unknown): Plan | null {
   if (o.thread !== 'spouse' && o.thread !== 'collector') return null;
   return {
     thread: o.thread, night: intIn(o.night, 1, 999, 1), watch: intIn(o.watch, 0, 99, 0), last: o.last === true,
-    at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, pick: intIn(o.pick, 0, 999, 0),
+    at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, pick: intIn(o.pick, 0, 999, 0), card: o.card === true,
   };
 }
 
@@ -248,9 +268,16 @@ export function createPhone(run: DebtRun): HomePhoneApi {
     st.watchKey = key;
     st.elapsed = 0;
     st.plans = [];
+    // THE SECOND NAME (wave 73): a card night whose spouse beat is still owed gets the card message, not the random one
+    const cardBeat = cardBeatDue(night);
     if (w <= 1 && st.spouseNight !== night) {
       const r = createRng(hashSeed(seed, night, w, 'msg.spouse'));
-      if (r.chance(SPOUSE_CHANCE)) {
+      if (cardBeat) {
+        st.plans.push({
+          thread: 'spouse', night, watch: w, last: w === count - 1,
+          at: r.int(SPOUSE_AT[0], SPOUSE_AT[1]), pick: cardBeat - 1, card: true,
+        });
+      } else if (r.chance(SPOUSE_CHANCE)) {
         st.plans.push({
           thread: 'spouse', night, watch: w, last: w === count - 1,
           at: r.int(SPOUSE_AT[0], SPOUSE_AT[1]), pick: r.int(0, SPOUSE_MESSAGES.length - 1),
@@ -264,6 +291,13 @@ export function createPhone(run: DebtRun): HomePhoneApi {
         at: r.int(COLLECTOR_AT[0], COLLECTOR_AT[1]), pick: r.int(0, COLLECTOR_VARIANTS - 1),
       });
     }
+  }
+
+  /** The spouse card beat (1..3) still owed on `night`, or 0 when none is owed (wave 73). */
+  function cardBeatDue(night: number): number {
+    const beat = SPOUSE_CARD_BEAT[night] ?? 0;
+    const c = run.chapterRecord?.();
+    return beat > 0 && c && c.arcs.spouse < beat ? beat : 0;
   }
 
   /** The play window ended (or the phase left play): the pending messages do not arrive. */
@@ -295,7 +329,7 @@ export function createPhone(run: DebtRun): HomePhoneApi {
   }
 
   function deliverSpouse(p: Plan): void {
-    const def = SPOUSE_MESSAGES[p.pick % SPOUSE_MESSAGES.length];
+    const def = p.card ? CARD_MESSAGES[p.pick % CARD_MESSAGES.length] : SPOUSE_MESSAGES[p.pick % SPOUSE_MESSAGES.length];
     const cost = def.share ? coinCost(run.debt().due, def.share) : 0;
     push({
       id: msgId(p), thread: 'spouse', night: p.night, watch: p.watch + 1,
@@ -304,10 +338,31 @@ export function createPhone(run: DebtRun): HomePhoneApi {
       read: false, answered: null,
     });
     st.spouseNight = p.night;
+    const chap = run.chapterRecord?.();
+    if (p.card && chap) advanceArc(chap, 'spouse', SPOUSE_CARD_BEAT[p.night] ?? 0);
   }
 
   /** The Collector writes only when the Night is behind: from Watch 2, and more than the share still owed. */
   function deliverCollector(p: Plan): void {
+    // THE SECOND NAME (wave 73): the N2 warning (Heat 1 or more) and the N7 deal come before the behind-check
+    const chap = run.chapterRecord?.();
+    if (chap && p.night === DEAL_NIGHT && chap.arcs.collector < 3) {
+      advanceArc(chap, 'collector', 3);
+      push({
+        id: msgId(p), thread: 'collector', night: p.night, watch: p.watch + 1,
+        textKey: DEAL_KEY, vars: { cost: Math.max(1, Math.round(run.wallet() * DEAL_SHARE)) },
+        replies: [...DEAL_REPLIES], read: false, answered: null,
+      });
+      return;
+    }
+    if (chap && p.night === WARN_NIGHT && st.heat >= 1 && chap.arcs.collector < 1) {
+      advanceArc(chap, 'collector', 1);
+      push({
+        id: msgId(p), thread: 'collector', night: p.night, watch: p.watch + 1,
+        textKey: WARN_KEY, vars: {}, replies: COLLECTOR_REPLIES.map((r) => r.key), read: false, answered: null,
+      });
+      return;
+    }
     const { due, paid } = run.debt();
     const left = Math.max(0, due - paid);
     if (due <= 0 || left <= 0) return;
@@ -386,18 +441,23 @@ export function createPhone(run: DebtRun): HomePhoneApi {
     reply(id: string, choice: number): boolean {
       const msg = st.msgs.find((m) => m.id === id);
       if (!msg || msg.answered !== null || !Number.isInteger(choice) || choice < 0 || choice >= msg.replies.length) return false;
-      let harmony = 0, heat = 0, coins = 0;
+      let harmony = 0, heat = 0, coins = 0, deal: 0 | 1 | 2 = 0;
       if (msg.thread === 'spouse') {
         const reply = SPOUSE_BY_TEXT.get(msg.textKey)?.replies[choice];
         if (!reply) return false;
         harmony = reply.harmony;
         coins = replyCoinCost(msg, choice);
+      } else if (msg.textKey === DEAL_KEY) {
+        // THE DEAL (wave 73): pay the share of the pocket and Heat drops; refuse and nothing moves
+        deal = choice === 0 ? 1 : 2;
+        if (choice === 0) { coins = Math.max(0, Number(msg.vars?.cost ?? 0)); heat = DEAL_HEAT; }
       } else {
         heat = COLLECTOR_REPLIES[choice]?.heat ?? 0;
       }
       if (coins > 0 && !run.spend('coin', coins, 'phone.reply')) return false;   // not enough in the pocket: nothing applies
       st.harmony = clamp(st.harmony + harmony, 0, HARMONY_MAX);
-      if (heat) bumpHeat(heat, 'time');
+      if (heat) bumpHeat(heat, deal ? 'deal' : 'time');
+      if (deal) { const c = run.chapterRecord?.(); if (c) c.deal = deal; }
       if (msg.thread === 'spouse') st.replyNight = msg.night;
       msg.answered = choice;
       msg.read = true;

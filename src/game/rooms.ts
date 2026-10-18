@@ -13,6 +13,9 @@
  */
 import { bus } from '@/core/events';
 import { createRng, hashSeed, type Rng } from '@/core/rng';
+import {
+  ledgerChoices, ledgerClaim, ledgerFind, ledgerStart, restoreLedger, type LedgerClaim, type LedgerFind, type LedgerProgress,
+} from '@/game/story/quests';
 import type { ModEffect, ModProvider, ModSource } from '@/game/modifiers.types';
 import {
   BACK_OFFICE, BOILER, COLLECTOR, KEYRING, KEYRING_WINGS, LOCKER, LOCKER_TABLE, LOCKSMITH_ORDER,
@@ -123,10 +126,12 @@ export interface RoomsState {
   /** The Night the locker tally belongs to, and the lockers opened on it (1…12). */
   lockerNight: number;
   lockers: number[];
+  /** The Wash ledger (quest 1): the pages found and whether its charm was taken. Run-private, saved with the rooms. */
+  ledger: LedgerProgress;
 }
 
 export function roomsStart(): RoomsState {
-  return { p: 0, blown: false, lockerNight: 0, lockers: [] };
+  return { p: 0, blown: false, lockerNight: 0, lockers: [], ledger: ledgerStart() };
 }
 
 /** Restores a saved state, dropping anything malformed. */
@@ -141,6 +146,7 @@ export function restoreRooms(raw: unknown): RoomsState {
     blown: o.blown === true,
     lockerNight: Math.max(0, Math.floor(num(o.lockerNight, 0))),
     lockers,
+    ledger: restoreLedger(o.ledger),
   };
 }
 
@@ -220,6 +226,24 @@ function lockerResult(kind: LockerKind, o: LockerOptions, rng: Rng): LockerResul
 /** Lockers still shut on the tally of `night` (12 at the start of a Night). */
 export function lockersLeft(s: RoomsState, night: number): number {
   return LOCKER.count - (s.lockerNight === night ? s.lockers.length : 0);
+}
+
+// ── the Wash ledger (quest 1, see story/quests.ts) ─────────────────────────────────────────────────────
+/** A ledger page was read: the new rooms state and what changed (the host toasts `fresh`, opens the locker on `completed`). */
+export function ledgerRead(s: RoomsState, noteId: string): LedgerFind & { state: RoomsState } {
+  const r = ledgerFind(s.ledger, noteId);
+  return { ...r, state: r.fresh ? { ...s, ledger: r.progress } : s };
+}
+
+/** The three charms the Wash locker offers (none until the ledger is whole and unclaimed). */
+export function ledgerOffer(s: RoomsState, seed: number, charms: readonly string[]): string[] {
+  return ledgerChoices(s.ledger, seed, charms);
+}
+
+/** Takes the locker's charm. `ok` is false unless `pick` is one of the offered charms. */
+export function ledgerPick(s: RoomsState, pick: string, seed: number, charms: readonly string[]): LedgerClaim & { state: RoomsState } {
+  const r = ledgerClaim(s.ledger, pick, seed, charms);
+  return { ...r, state: r.ok ? { ...s, ledger: r.progress } : s };
 }
 
 // ── back office and collector ─────────────────────────────────────────────────────────────────────────────

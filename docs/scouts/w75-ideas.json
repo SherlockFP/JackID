@@ -1,0 +1,305 @@
+[
+ {
+  "key": "events",
+  "ideas": [
+   {
+    "name": "Stage Auction",
+    "pitch": "A gilded crate rises on the Well stage with a price card: BID. For 20 s the pocket coins you bid go to the House and the highest bidder takes the crate: a random Watch boost (Ticket, sharper odds on one machine, or a tonic). Losing bidders get a small consolation. The bid is pocket money, not bank deposit, so it is a real risk. Readable at 2 s: a gold crate, a number, a countdown ring.",
+    "inspiration": "Auctions in real casinos and charity nights; bidding rounds are a common roguelike modifier. Research: CloverPit review, Siliconera (https://www.siliconera.com/review-cloverpit-is-an-instant-gratification-roguelike/) for the phone-perk pattern that this extends.",
+    "fitsPillars": "P3 (the House sells the crate); P2 (cash spent now for a Watch boost); P4 (bid count-up and a hammer sound).",
+    "reuses": "watchEvents.ts WATCH_EVENTS (effects list, :39-51) for the boost; bus event:start/end; existing pocket wallet; Ticket counter. New: a bid UI overlay (L).",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "Single Light",
+    "pitch": "The power trips for 40 s and only one machine on the floor stays lit (the same machine that gets a bright lamp). It pays x1.5 and runs faster; every other machine is dark and cannot be played. Players must walk to the one lit machine, which is readable as a spotlight on the floor. It shifts the choice from which machine to whether to wait.",
+    "inspiration": "Balatro boss blinds that rewrite one rule for a round (Insider Gaming, https://insider-gaming.com/how-to-beat-plant-boss-blind-balatro/). Keep it separate from the Night Blackout (buffs.ts:138), which only dims lights.",
+    "fitsPillars": "P5 (dark floor, calm mode keeps the light); P4 (one lit machine is a clear tell); P7 (reuses the Spotlight beam).",
+    "reuses": "spotlight.ts Spotlight.begin (:104) and its beam; machine play gate; watchEvents ModEffect payout.mult and speed.mult. New: a gate that disables non-lit machines (M).",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "Regular Sits Down",
+    "pitch": "A patron (the Regular) sits at the machine next to yours and plays the same kind. Each round you both play, the one who wins the bigger payout takes a Mark; three Marks in a Watch give a Ticket for the winner. Whoever is ahead gets a short taunt line. It is a rivalry with a clock, not a fight.",
+    "inspiration": "Rival gamblers in TALLY duels (HANDOFF section 6) and the rival NPC pattern in Buckshot Roulette (Wikipedia, https://en.wikipedia.org/wiki/Buckshot_Roulette) where the opponent's choices shape your turn.",
+    "fitsPillars": "P3 (the Regular is a face of the House); P4 (the Mark is framed); P1 (a pressure NPC).",
+    "reuses": "Duel/TALLY NPC actor and seat logic (src/game/duels); machine seat system (src/machines/_base); Ticket counter. New: a counter-based patron actor (M).",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "Pit Patrol",
+    "pitch": "A pit boss walks a fixed route through the zones, with a red sight cone on the floor. Playing a machine inside the cone is free but adds an Audit tick (a small payout cut for that Watch). Standing out of the cone for the whole event earns a Clean Floor bonus. It is a readable timing game: walk the gap, not the cone.",
+    "inspiration": "Casino pit boss and floor-watch routines; the nav graph already exists in the game. Balatro's rule-bending bosses (Dotesports, https://dotesports.com/indies/news/balatro-antes-blinds-explained) show a single rule that changes how you move.",
+    "fitsPillars": "P3 (the House watches); P5 (dread from the boss's gaze, muted in Calm mode); P1 (debt is watched).",
+    "reuses": "layout.ts NAV_NODES and NAV_EDGES (:287-314) for the route; ActorDirector patrol; watchEvents ModEffect payout.mult. New: sight-cone check (M).",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "Double or Nothing Card",
+    "pitch": "After a win, a card flips up on the machine: DOUBLE OR NOTHING. You have 3 s to press Double (the win is doubled) or Stop (the win is kept). A loss on Double wipes that one win, so the player must read the card in two seconds. It repeats for the rest of the event, so a streak becomes a real choice.",
+    "inspiration": "Push-your-luck in Luck be a Landlord style runs and Balatro's risk-reward jokers (Wikipedia, https://en.wikipedia.org/wiki/Luck_Be_a_Landlord). The existing push-your-luck offer is already in the auto bot (bench.mjs).",
+    "fitsPillars": "P2 (win vs bank); P4 (count-up and framed near miss); P3 (the House offers the card).",
+    "reuses": "Existing push-your-luck offer code path; payout pipeline; watchEvents tick timer. New: a 3 s choice card UI (S-M).",
+    "effort": "S",
+    "fun": 5
+   },
+   {
+    "name": "Crate Drop",
+    "pitch": "A crate falls at the Lobby with a splash of light. Whoever reaches it first (you, or a player in co-op) opens it: a charm slot, a Ticket, or a tonic. The crate shakes on landing, so the player reads it at once. A second crate drops after 30 s if the first is taken.",
+    "inspiration": "Mystery boxes and loot drops in Peglin-style roguelikes and Buckshot Roulette item drops. The item-steal idea in Buckshot (Wikipedia above) is the shared rule: items move between players.",
+    "fitsPillars": "P7 (charms and Tickets, no new currency); P3 (the House drops it); P4 (shake and light on landing).",
+    "reuses": "charms and Ticket rewards in src/game/charms; tonic_vendor reward list; co-op actor positions. New: a drop actor and a race check (M).",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "Family Text",
+    "pitch": "The phone buzzes: your spouse asks you to come home. Two choices on screen for 6 s: Reply (lose 10 s of the Watch clock, gain a short Warm buff for next Watch) or Ignore (keep the clock, get a Restless debuff for next Watch). It is one tap, and the cost is shown before the choice.",
+    "inspiration": "Welcome to the Game style home threads (DESIGN_PILLARS) and the phone deal pattern in CloverPit's between-round calls (Siliconera review above).",
+    "fitsPillars": "P2 (home is the luck source, the House is money); P3 (the Family face); P1 (time cost).",
+    "reuses": "buffs.ts blessed and restless (:76-88) for the next-Watch result; hotline and phone strings; watchEvents time effect. New: a phone prompt (S).",
+    "effort": "S",
+    "fun": 4
+   },
+   {
+    "name": "Mob Hotline Offer",
+    "pitch": "The mob calls the phone with a fixed-price deal: pay 2 Tickets now and one machine runs HOT (x1.5 heat) for 60 s. If you refuse, nothing happens. If you accept and the event ends with the machine still cold, a small debt tick is added to tonight's quota. The price and the risk are both on screen.",
+    "inspiration": "CloverPit phone perks (Siliconera review above) and the mob pressure of DESIGN_PILLARS pillar 1.",
+    "fitsPillars": "P1 (the mob has a price); P3 (the Mob face); P2 (Tickets are spent, not luck).",
+    "reuses": "hotline phone deals (src/game/hotline.ts); Hot streak buff (buffs.ts:49-58); quota add from checkpoints.ts. New: an offer card (S).",
+    "effort": "S",
+    "fun": 3
+   },
+   {
+    "name": "Back Room Heist",
+    "pitch": "The Boiler door opens. A drawer of coins sits on the cashier's desk for 45 s: a sequence of 4 button presses lifts it. Each second you stay in the room adds dread and the alarm lights. Stop in time and keep the cash, or the Clean Hand charm drops. A failed heist costs one Ticket.",
+    "inspiration": "Heist and vault-break structure from many games; the alarm-timer escalation is a common pattern. Keep the rhythm, not the shapes, from any other game.",
+    "fitsPillars": "P5 (dread grows with time in the room, Calm mode mutes it); P3 (the Mob's job); P4 (the drawer count-up).",
+    "reuses": "Boiler zone rect (layout.ts ZONES, :268); dread.add hook (watchEvents effects); charm reward. New: a 4-press minigame (M).",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "Wheel Spin",
+    "pitch": "The Wheel House wheel spins on screen for 2 s and stops on one of four floor modifiers for 30 s: double tilt-grace, +1 pull, the Hot Lamp x2, or a payout dip. The wheel is readable at a glance because only four segments show. The whole floor reacts with a clack.",
+    "inspiration": "Random modifier wheels in roguelikes (Peglin-style orb picks) and Balatro's shop reroll; original segments.",
+    "fitsPillars": "P7 (uses existing modifier effects); P4 (wheel tick and pitch); P3 (the House spins it).",
+    "reuses": "watchEvents.ts ModEffect list (:39-51); wheel prop in layout WH-01 (:126); bus event ids. New: wheel UI (S).",
+    "effort": "S",
+    "fun": 4
+   },
+   {
+    "name": "Night Leader Board",
+    "pitch": "A board at the Lobby ranks players by net win this Watch. Top player gets a Ticket for 45 s; the board flips every 10 s. In solo the board shows your own net against your last Watch: a rival ghost. It is one glance: the number and an arrow.",
+    "inspiration": "Leaderboards and rival ghosts in arcade and roguelike games; the co-op multiplayer structure in HANDOFF section 1.",
+    "fitsPillars": "P3 (the House ranks you); P2 (community pressure); P4 (count-up on rank change).",
+    "reuses": "Co-op net win state (run.ts); Ticket reward; board prop at Lobby (layout.ts LOB-TONIC area). New: a board display and ghost record (M).",
+    "effort": "M",
+    "fun": 3
+   },
+   {
+    "name": "Shifting Pit",
+    "pitch": "Two machines swap places on the floor for 50 s. Arrows and a dust cloud show the swap before it happens. The Hot Lamp and the Spotlight stay with the machine kind, so the player must walk to the new spot. It is a readable map change and a small chase.",
+    "inspiration": "Luck be a Landlord (Wikipedia above) where symbols react to neighbours, and the floor-layout shuffle of roguelike maps.",
+    "fitsPillars": "P7 (the existing Pit Deck roster is the base); P3 (the House moves them); P5 (no dread, just movement).",
+    "reuses": "layout.ts ROSTER_PADS and rosterFor (:318-430) for the swap logic; machine instance mapping; spotlight.ts instances (:112). New: animated swap (M).",
+    "effort": "M",
+    "fun": 3
+   }
+  ]
+ },
+ {
+  "key": "grand",
+  "ideas": [
+   {
+    "name": "Atrium Stage and Compere",
+    "pitch": "The free centre of the Lobby becomes a small stage. A Compere (the House's voice, a figure you never see clearly) introduces each Watch, the floor event and the Night Card you took, and calls the Spotlight machine with a light beam. Sonkart's party table sits at the foot of the stage and runs a short race as a 'show' at each Watch start, so the centre of the room always has something happening. The show is announcement and light only, with no new machine.",
+    "inspiration": "In-repo: DESIGN_PILLARS.md table (CloverPit deadline, WTTG home) and a generic casino show-stage format. No outside URLs were fetched in this pass; no names or text from other games were used.",
+    "fitsPillars": "3 (the House face speaks), 4 (announcements on the shared WIN/BIG WIN ladder), 1 (the show counts down the Watch clock)",
+    "reuses": "layout.ts:155 (centre of the Lobby kept free for the stage), layout.ts:171-175 (Lobby machines, FLR-06 sonkart), watchEvents.ts:112 and 140 (event:start/end banners), spotlight.ts:118 (spotlight:change beam), HANDOFF.md:79 (Spotlight)",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "Crowd Swell meter",
+    "pitch": "A single crowd meter rises with how many machines are being played at once and how many pulls land in the last minute. Low swell is a murmur. High swell brings a louder room, wider light sweeps and pitch-up count-ups on every machine. A full swell gives a short hour-mark light show across all lamps, in the same colours the Night events already use. Calm mode keeps the light and sound but removes the crowd jump-scares, as the pillars require.",
+    "inspiration": "In-repo: buffs.ts night events (lightColor, lightLevel) and the pillar 4 juice ladder. No outside sources fetched.",
+    "fitsPillars": "4 (juice escalates one shared ladder), 5 (Calm mode mutes scares), 6 (chunky stepped light, no bloom)",
+    "reuses": "buffs.ts:135,143,153 (night event lightColor and lightLevel), spotlight.ts:118 (bus pattern), watchEvents.ts:112 (bus events), DESIGN_PILLARS.md:22 (Calm mode rule)",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "Jackpot Wall ticker",
+    "pitch": "A large screen behind the Big One dais in the Well shows a running ticker of the biggest wins from every machine in this run, with the name of the machine and the Night. Each new JACKPOT makes the wall flash and pushes the old lines up. In multiplayer every player sees the same wall, so one player's big win becomes the whole room's moment. It adds no odds: it only shows results that already happened.",
+    "inspiration": "In-repo: the WIN, BIG WIN, HUGE, JACKPOT ladder in DESIGN_PILLARS.md:19 and the jackpot hook in watchEvents.ts:44. No outside sources.",
+    "fitsPillars": "4 (one shared ladder everyone reads), 2 (the House is watching your wins), 3 (Family and Mob can see your ticker too)",
+    "reuses": "layout.ts:171 (bigone on WELL-01), watchEvents.ts:44 (jackpot.mult for bigone), bus events from the machines, DESIGN_PILLARS.md:19 (ladder)",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "Parlour VIP floor",
+    "pitch": "The Parlour is already a gated zone. Make it the VIP floor: a rope and two high-limit tables (blackjack and roulette) that open after the player has paid a set Night quota, plus one Night Card (high_table) that opens it a Night early. High-limit tables raise the bet cap on the same machine kinds, so the room feels like a bigger stake without a new machine. The rope lifts as a visible progress reward.",
+    "inspiration": "In-repo: HANDOFF.md:78 (high_table Night card), watchEvents.ts:45 (high_roller raises bet.maxMult). No outside sources.",
+    "fitsPillars": "2 (the House is the money source, so the VIP tables pay better), 7 (extends the Night Card and bet cap systems), 1 (the rope is a debt clock reward)",
+    "reuses": "layout.ts:271 (parlour gated zone), layout.ts:133-140 (PAR slots), watchEvents.ts:45 (bet.maxMult), HANDOFF.md:78 (high_table card), stakes.ts (STAKE_MAX 7)",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "Bartender at the tonic bar",
+    "pitch": "A bartender stands at the Lobby tonic vendor. She gives one tip per Night: a true hint about the next Spotlight or Hot Lamp, which the player can check on the floor. Then she offers a quest, such as 'bring me three Ticket stubs', and the reward is a tonic from the existing list (Lucky Mint, Cold Coffee, Dread Salts). Her tips are always true, so trust builds between Nights, and the quest rewards cost her nothing new.",
+    "inspiration": "In-repo: the tonic vendor and tonic list (buffs.ts:33-45). Quest pattern from the in-repo quests idea in docs/scouts/w72-story.md. No outside sources.",
+    "fitsPillars": "3 (a face with a price: the bartender trades tips for Tickets), 2 (rewards are luck and rest, the home loop), 7 (reuses tonics and Tickets)",
+    "reuses": "layout.ts:174 (LOB-TONIC tonic_vendor), buffs.ts:33-45 (tonic list), HANDOFF.md:74 (Tickets from the tithe), spotlight.ts:132 (Tickets from the Spotlight)",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "Prize Showcase at the cashier",
+    "pitch": "A glass case beside the cashier counter lists three to five prizes priced in Tickets: a charm reroll, a tonic, a free Pawn reroll, a Night Card reroll. Tickets already come from the Spotlight (every fifth play) and the Watch tithe, so the showcase gives them a visible goal with no new currency. The showcase lights up the nearest prize the player can afford, so the room always shows a next target.",
+    "inspiration": "In-repo: DESIGN_PILLARS.md:26 and :38 (no new currency, extend what exists). No outside sources.",
+    "fitsPillars": "7 (one mechanic, many readings: Tickets carry the prizes), 4 (the reward is shown before it is earned), 1 (the Ticket goal sits beside the debt clock)",
+    "reuses": "layout.ts:175 (LOB-CASH cashier), spotlight.ts:14 and :132 (SPOTLIGHT_TICKETS on every fifth play), HANDOFF.md:74 (tithe Ticket), buffs.ts:91-94 (favoured, Pawn reroll)",
+    "effort": "S",
+    "fun": 3
+   },
+   {
+    "name": "Mezzanine balcony over the Well",
+    "pitch": "Reached by the existing elevator, a short balcony sits above the Well. From it the player sees the whole floor: which machines are Hot, which are Cold, where the Spotlight beam falls and which pads are empty. The view is a reading tool, not a power. A figure on the far end of the balcony stands still when the House is watching, which is the only horror on that level and is muted in Calm mode.",
+    "inspiration": "In-repo: Hot and Cold lamps (HANDOFF.md:82) and the Welcome-style stillness rule in DESIGN_PILLARS.md:17. No outside sources.",
+    "fitsPillars": "5 (dread from the player's own state), 3 (the House watches from above), 2 (the view is free, earned by the walk)",
+    "reuses": "layout.ts:192 (MID-01 elevator, legacy floor), HANDOFF.md:82 (Hot and Cold Lamps), spotlight.ts:118 (beam state), DESIGN_PILLARS.md:22 (Calm mode)",
+    "effort": "L",
+    "fun": 4
+   },
+   {
+    "name": "Last Call Dare",
+    "pitch": "During the 20-second Last Call the room dims. The Compere offers one double-or-nothing on the machine you played last. If you accept, the machine's next result is doubled or lost. Players who ignore it lose nothing. It uses the existing Last Call timer and the House's voice, and it gives the ending of each Watch a face and a choice.",
+    "inspiration": "In-repo: Last Call phase (HANDOFF.md:66) and the push-your-luck offer the QA bot already reads (HANDOFF.md:128). No outside sources.",
+    "fitsPillars": "3 (the House offers the dare), 1 (the clock is the Last Call timer), 4 (the reveal uses the ladder)",
+    "reuses": "HANDOFF.md:66 (Last Call, 20 s), HANDOFF.md:128 (push-your-luck offer), spotlight.ts:132 (last-play tracking pattern), watchEvents.ts:125 (onPull hook)",
+    "effort": "S",
+    "fun": 4
+   },
+   {
+    "name": "Laundry Wash Room (secret)",
+    "pitch": "Behind a grille in the Laundry, a hidden keno room opens after the player collects three Wash ledger notes. The Mira beat names the Wash, so the room is the story's first secret. Inside, one keno board hangs with a single card the player has never seen before, and winning there gives one Night Card choice. It is a small room that rewards reading the notes, which is the whole point of the second name.",
+    "inspiration": "In-repo: the story scout's Wash ledger quest (docs/scouts/w72-story.md:56) and Mira's Wash line (w72-story.md:50). No outside sources.",
+    "fitsPillars": "3 (a face: Mira names the Wash), 1 (the room opens by Night progress), 7 (reuses the Night Card choice)",
+    "reuses": "layout.ts:177 (LAU-02 keno duplicate), layout.ts:177-178 (back-of-house grilles), docs/scouts/w72-story.md:50,56 (Mira and Wash ledger), buffs.ts (Night Card choice pattern)",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "The Second Name Room",
+    "pitch": "Behind the shrine in the Parlour, a door opens on Night 8 only if the player has the Counting final note. Inside is one roulette wheel with no bet and no money: each spin shows one letter of the second name printed on the card. It is a reading, not a game of chance, and it is the story's last beat before Vell's table. A late secret pays off the whole run without adding a machine.",
+    "inspiration": "In-repo: the Night 8 second-name twist (docs/scouts/w72-story.md:45-52) and the shrine slot (layout.ts:138, 178). No outside sources.",
+    "fitsPillars": "5 (dread from the player's own story progress), 3 (the House shows its name), 7 (roulette wheel reused as a reading)",
+    "reuses": "layout.ts:138 and :178 (PAR-SHRINE and the shrine), layout.ts:171 (roulette zone reference WELL-02), docs/scouts/w72-story.md:52,61 (Clerk ledger, persistence)",
+    "effort": "L",
+    "fun": 5
+   }
+  ]
+ },
+ {
+  "key": "original",
+  "ideas": [
+   {
+    "name": "Keepsake Stake",
+    "pitch": "Before a pull you can stake an object from home: the spouse's ring, a pocket watch, a photo. Win and the object comes back with a Luck star pinned to it. Lose and the House keeps it, and it lands on the Pawn shelf at three times its base price, so you can buy your own life back at a markup. The House is literally holding your things.",
+    "inspiration": "Original. Pawn shelves and charms already have origins (Pillar 1 and the Balatro-style charm table in DESIGN_PILLARS.md); this adds a stake made of keepsakes instead of coins. No external research or named game text used.",
+    "fitsPillars": "2 (home is the luck source, the House is the money source), 3 (the House wants your things), 1 (the debt is paid in objects).",
+    "reuses": "Pawn shelves (src/game/shop.ts, six shelves), the charm origin idea (src/game/data/charms.ts), luck stars (src/game/buffs.ts BLESSED_LUCK at line 16). New: one stake type, a home-object list, and a Pawn shelf entry that is the lost object.",
+    "effort": "M",
+    "fun": 5
+   },
+   {
+    "name": "Memory Stake",
+    "pitch": "You can bet a memory instead of coins: a line from the phone thread, or a home photo. A big win pays out, and the memory is cut from the thread for the rest of the run. Later the spouse says something that refers to a line that is no longer there, and the player has to notice the gap themselves.",
+    "inspiration": "Original. The idea comes from the brief's home and family layer and the phone threads (src/game/home/phone.ts, phone.strings.ts). No external research or named game text used.",
+    "fitsPillars": "2 (home is the luck source), 5 (dread earned from the player's own state, a missing line), 3 (a choice with a face: the House asks for the memory).",
+    "reuses": "Phone threads (src/game/home/phone.ts and phone.strings.ts), the Stake and bet pipeline in the machine base (src/machines/_base), the luck stat. New: a memory list that the phone reads, and a gap line the spouse can refer to.",
+    "effort": "M",
+    "fun": 5
+   },
+   {
+    "name": "Years on the Wall",
+    "pitch": "A calendar hangs at home with a limited number of years. Any machine can take a year as a stake: the Watch clock gains 15 seconds for that Watch, and the family photos on the wall age a little. Only three years exist per run, so every year spent is felt in the next Night's photo.",
+    "inspiration": "Original. A cost that is time rather than money. Extends the Watch clock (src/game/data/buffs.ts energy_drink at line 43 adds time) and the home photos. No external research used.",
+    "fitsPillars": "1 (debt is the clock: the House sells you time), 2 (home pays for the table), 6 (PSX-honest, the calendar is a small physical prop).",
+    "reuses": "Watch clock and time.bonus hook (src/game/data/buffs.ts line 43), home room props (src/world/home/room.ts), run save for the year count. New: a run-scoped year counter and one wall prop that changes with it.",
+    "effort": "S",
+    "fun": 4
+   },
+   {
+    "name": "The Forgeable Ledger",
+    "pitch": "At Mola you can write a fake payment into the debt ledger, up to 10 % of the quota. It works for the Night. On the Night the mob audits (Night 4, 6 and 8 at Settle), any forged amount is doubled and added to the next quota, and a goon waits in the hallway. Forging is a bet on the Collector not checking.",
+    "inspiration": "Original. A debt you can falsify with a visible audit, in the Pillar 1 clock. No external research or named game text used.",
+    "fitsPillars": "1 (debt is the clock: the mob comes if you miss), 3 (the Mob door: a deal with a price), 5 (dread from the audit, earned from your own forgery).",
+    "reuses": "Quota and Settle (src/game/run.ts Settle and the House notice, docs/HANDOFF.md section 6), bank and ledger view (src/game/bank.ts), the hallway goon and phone threads. New: a forge action in Mola and a scheduled audit at Settle.",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "The Mirror Cabinet",
+    "pitch": "A cabinet watches your last six pulls and learns your habit: your stake, your speed, your favourite lever. After six pulls on it, it offers to play your own habit for you at a 2 % cut, and you hear your own sigh sampled from the pulls. It is the House playing you back.",
+    "inspiration": "Original. Tilt rotates value off overplayed machines (docs/HANDOFF.md section 6, circuit); this one plays the player's habit back instead of punishing it. No external research or named game text used.",
+    "fitsPillars": "3 (every choice has a face: the House), 7 (extends Tilt and the auto bot logic rather than adding a new system), 5 (the dread is the player's own pattern).",
+    "reuses": "Tilt and circuit (src/game/circuit.ts), machine round hook (src/game/spotlight.ts round() at line 126 is the play-count pattern), the auto:night bot's stake logic (scripts/qa/bench.mjs). New: a per-machine habit record and one offer card.",
+    "effort": "M",
+    "fun": 5
+   },
+   {
+    "name": "The Dream Floor",
+    "pitch": "Each Night the pit's flexible pads are re-seated from last night's dream at home. A Blessed dream keeps the layout where it was. A Restless dream scrambles it. Any other night uses the seeded line-up. The player wakes up to a casino that has moved while they slept.",
+    "inspiration": "Original. Extends the existing random pit line-up (src/game/world layout roster) so the shuffle has a reason. No external research or named game text used.",
+    "fitsPillars": "2 (the home night decides the floor), 7 (extends the Pit Deck instead of a new system), 6 (the floor shift reads as a clear PSX-style reshuffle).",
+    "reuses": "Pit Deck rosterFor and ROSTER_PADS (src/world/layout.ts lines 318 and 399), dream buffs blessed and restless (src/game/data/buffs.ts lines 76 to 88), the Night start in run.ts.",
+    "effort": "S",
+    "fun": 4
+   },
+   {
+    "name": "The Hallway Bet",
+    "pitch": "During a home Watch, footsteps come down the hallway and stop at a door. Before they stop, you can bet bank coins on whether they reach your door. A win means the next knock is delayed by one Night. A loss means the knock comes on the next Watch. Audio is the odds.",
+    "inspiration": "Original. A bet placed on a sound, from the Welcome-to-the-Game home threat in DESIGN_PILLARS.md but made into a wager. No external research or named game text used.",
+    "fitsPillars": "1 (the mob is the clock), 5 (dread earned from the home state), 4 (juice: the stop is framed like a near miss).",
+    "reuses": "Home layer and hallway (src/world/home/room.ts, the home zone in src/world/layout.ts line 278), bank deposit and withdraw (docs/HANDOFF.md section 6), audio hooks in src/core/audio.",
+    "effort": "M",
+    "fun": 5
+   },
+   {
+    "name": "The Patron Without a Face",
+    "pitch": "A dark patron sits at a seat and offers a wager of seats: beat them at one hand and they leave a Luck star for home; lose and they take one of your seats for one Night, under a curtain. The patron has no name and only says what it wants, so the choice is about the seat, not the money.",
+    "inspiration": "Original. Builds on the roaming dark patrons already in the floor (recent commit 3968bb7, Wave 72). No external research or named game text used.",
+    "fitsPillars": "3 (every choice has a face: the other-dimension patron), 2 (the star goes home), 5 (dread from an unknown visitor).",
+    "reuses": "Dark patron NPCs (src/world, Wave 72 shader and roaming patrons), luck stars (src/game/data/buffs.ts), seat and slot assignment (src/world/layout.ts DEFAULT_ASSIGN, line 165). New: a seat-blocking state and one wager hand.",
+    "effort": "M",
+    "fun": 4
+   },
+   {
+    "name": "The Heartbeat Lever",
+    "pitch": "The lever's pulse runs at a tempo that rises with dread. Tap in tempo and you get a Hot boost for a few pulls. Off-beat taps cost a small heat loss. The machine keeps the tempo, and the player keeps the rhythm, which is the only way to earn the boost.",
+    "inspiration": "Original. A rhythm input on an existing lever, tied to the dread meter. No external research or named game text used.",
+    "fitsPillars": "4 (juice: the tempo is a juice beat), 5 (dread sets the tempo), 6 (PSX-honest, a simple beat with no bloom).",
+    "reuses": "Heat and Hot Lamp (src/game/circuit.ts, docs/HANDOFF.md section 6), dread meter (src/game/horror/director.ts), the lever input in src/machines/_base/seatHud.ts.",
+    "effort": "S",
+    "fun": 3
+   },
+   {
+    "name": "The Ghost Seat",
+    "pitch": "Each Night a faded copy of you sits at the machine where you lost the most on the last Night, and makes the same bets. If the ghost wins a round you lost, you get a Luck star. If the ghost loses, its losses come off tonight's quota. You play against your own past, which is the House's way of keeping score.",
+    "inspiration": "Original. A past-self replay tied to the Night ledger. No external research or named game text used.",
+    "fitsPillars": "1 (the quota is the clock, the ghost's losses come off it), 2 (the star is luck from the home past), 7 (uses the Night ledger and Spotlight pattern, no new currency).",
+    "reuses": "Spotlight's per-Night machine record (src/game/spotlight.ts begin() at line 104, snapshot at line 159), Watch events (src/game/watchEvents.ts), bank and quota (src/game/run.ts). New: a per-Night loss log and a ghost bet replay.",
+    "effort": "M",
+    "fun": 5
+   }
+  ]
+ }
+]

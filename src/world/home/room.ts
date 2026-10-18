@@ -46,8 +46,8 @@ export function buildRoom(c: RoomCtx): RoomParts {
     g.fillStyle = '#5a5246'; g.fillRect(0, h - 6, w, 6);
   });
   const wall = kit.mat({ color: 0xffffff, map: wallTex });
-  const floor = kit.mat({ color: 0xffffff, map: tex.wood(0x6a4a30) });
-  const hallFloor = kit.mat({ color: 0xffffff, map: tex.concrete(0x4a4440) });
+  const floor = kit.mat({ color: 0xffffff, map: kit.tex.wood(0x6a4a30) });
+  const hallFloor = kit.mat({ color: 0xffffff, map: kit.tex.concrete(0x4a4440) });
   const ceil = kit.mat({ color: 0x2c2926 });
   const trim = kit.mat({ color: kit.pal.woodDark });
   const wood = kit.mat({ color: kit.pal.wood });

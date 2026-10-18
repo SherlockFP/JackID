@@ -70,6 +70,8 @@ import { createBuffSystem, type BuffSystem } from './buffs';
 import { createItemSystem, type ItemSystem } from './items';
 import { createHotline, type Hotline, type HotlineSave } from './hotline';
 import { createPhone, hooksOf } from './home/phone';
+import { createLuckMeter, type LuckMeter } from './luck';
+import { cloneChapter, freshChapter, readChapter, type ChapterRecord } from './story/chapter';
 import type { HomePhoneApi, HomeSave, HomeStage } from './home/contract';
 import {
   DOOR_FIRST_NIGHT, PHONE_HOUR, PHONE_MINUTE, initDoor, reveal as doorReveal, ring as doorRing, answer as doorAnswer, enter as doorEnter,
@@ -79,8 +81,9 @@ import type { LordId } from './hollow/rules';
 import {
   LOCKER, announcePressure, announceLocker, backOffice, bindWingSource, boilerNextWatch, boilerPull, boilerVent, bossKeys,
   collectorPrice, dawnKeys, managerKeyDrop, openLocker as rollLocker, restoreRooms, roomsProvider, roomsStart,
-  type LockerOpen, type LockerResult, type RoomsState,
+  ledgerOffer, ledgerPick, ledgerRead, type LockerOpen, type LockerResult, type RoomsState,
 } from './rooms';
+import type { LedgerFind } from './story/quests';
 import pullsStrings from './pulls.strings';
 import bankStrings from './bank.strings';
 import draftStrings from './draft.strings';
@@ -398,6 +401,10 @@ export interface RunExt {
   allIn?: number;
   /** Rescue loans taken tonight: quota added and calls used. Optional: older saves have none. */
   rescue?: { quota: number; used: number };
+  /** THE LUCK METER (wave 73): its saved stars. Optional: older saves have none. */
+  luck?: unknown;
+  /** THE SECOND NAME (wave 73): the chapter record (title cards, arcs, reveal, deal). Optional: older saves have none. */
+  chapter?: ChapterRecord;
   /** Deposits made this Watch (every one keeps the float). Optional: older saves have none. */
   watchDep?: number;
   /** The Watch's float, fixed when it was first read. Optional: older saves recompute it. */
@@ -611,6 +618,12 @@ export interface DebtRun extends RunApi {
   openLocker(n: number): LockerOpen | null;
   /** Back Office: every 3 Tickets become 1 Obol. Returns what was exchanged. */
   backOffice(): { tickets: number; obols: number };
+  /** THE WASH LEDGER (quest 1): a ledger page was read. `fresh` on a new page, `completed` on the last one. */
+  readLedgerNote(noteId: string): LedgerFind;
+  /** The ledger locker's three charm choices (none until the ledger is whole and unclaimed). */
+  ledgerOffer(): string[];
+  /** Takes the ledger charm `charmId` (one of `ledgerOffer`). False when refused or the peg board is full. */
+  ledgerClaim(charmId: string): boolean;
   /** The Collector buys a charm for Obols at 2x its sell value. False when it is not held, cursed or the run is not in a Watch gap. */
   collectorBuy(charmId: string): boolean;
   // ── tycoon (wave 28): buy a covered machine, collect its house cut ──
@@ -872,6 +885,10 @@ class Run implements DebtRun {
   private hLights = true;
   private hChain = false;
   private readonly hPhone: HomePhoneApi | null;
+  /** THE LUCK METER (wave 73): stars from the run's own events; its bonus joins the luck hook base. */
+  private readonly luckMeter: LuckMeter;
+  /** THE SECOND NAME (wave 73): the chapter record, saved in `resume.ext.chapter`. */
+  private chapterRec: ChapterRecord = freshChapter();
   /** THE PROLOGUE (wave 72): true from a fresh start until the lift lands on the floor. Not saved (a resume skips it). */
   private prologue = false;
 
@@ -1138,6 +1155,8 @@ class Run implements DebtRun {
     this.jackpots = this.makeJackpotsApi();
     // THE EVENING: the phone belongs to the Home layer (solo only); an online run has none (`homePhone()` is null).
     this.hPhone = this.homeOn ? createPhone(this) : null;
+    this.luckMeter = createLuckMeter(this, () => this.modsImpl.touch());
+    this.modsImpl.register(this.luckMeter.provider());
     // THE PROLOGUE (wave 72): a fresh Home-layer run opens in the apartment; a resumed save skips it (its Night is already on).
     this.prologue = this.homeOn && opts.prologue === true && resume === null;
 
@@ -1405,7 +1424,12 @@ class Run implements DebtRun {
   getModifier(hook: ModHook, machineId: MachineId, base: number, pid?: PlayerId): number { return this.mods.mod(hook, machineId, base, { pid }); }
   mod(hook: ModHook, machineId: MachineId, base: number, q?: ModQuery): number { return this.mods.mod(hook, machineId, base, q); }
   explain(hook: ModHook, machineId: MachineId, base: number, q?: ModQuery): ModBreakdown { return this.mods.explain(hook, machineId, base, q); }
+  /** The luck hook base is 0: ŞANS (wave 73 re-tune) pays through `payout.mult` (1 % a star), not luck. */
   luck(machineId: MachineId, pid?: PlayerId): number { return this.mods.mod('luck', machineId, 0, { pid }); }
+  /** THE LUCK METER (wave 73): the stars (−2..5) behind the payout bonus. */
+  luckStars(): number { return this.luckMeter.stars(); }
+  /** THE SECOND NAME (wave 73): the live chapter record (story code reads it and marks beats through `chapter.ts`). */
+  chapterRecord(): ChapterRecord { return this.chapterRec; }
   charms(pid?: PlayerId): readonly CharmState[] { return this.charmBox.list(pid ?? this.selfId); }
   loseCharm(id: string): boolean {
     const def = charmDef(id);
@@ -2004,6 +2028,7 @@ class Run implements DebtRun {
     this.hotline.dispose();
     this.rescue.dispose();
     this.hPhone?.dispose();
+    this.luckMeter.dispose();
     clearClockHolds();
     this.buffSys.dispose();
     this.itemSys.dispose();
@@ -3281,6 +3306,22 @@ class Run implements DebtRun {
       .map((d) => d.id);
   }
 
+  readLedgerNote(noteId: string): LedgerFind {
+    const r = ledgerRead(this.rooms, noteId);
+    if (r.fresh) { this.rooms = r.state; this.persistSoon(); this.notify(); }
+    return r;
+  }
+
+  ledgerOffer(): string[] { return ledgerOffer(this.rooms, this.seed, this.lockerCharms()); }
+
+  ledgerClaim(charmId: string): boolean {
+    const r = ledgerPick(this.rooms, charmId, this.seed, this.lockerCharms());
+    if (!r.ok || !this.grantCharm(charmId)) return false;
+    this.rooms = r.state;
+    this.persistSoon();
+    return true;
+  }
+
   openLocker(n: number): LockerOpen {
     const fail = (reason: NonNullable<LockerOpen['reason']>): LockerOpen => ({ ok: false, reason, state: this.rooms, tickets: this.tickets, dread: 0 });
     if (this.ended || !this.tycoonSys.state().zones.includes('laundry')) return fail('range');
@@ -3406,6 +3447,7 @@ class Run implements DebtRun {
       ...(this.tithe.snapshot() ? { tithe: this.tithe.snapshot() as TitheSave } : {}),
       ...(this.dawnBook ? { dawnBook: { ...this.dawnBook } } : {}),
       ...(this.hPhone ? { home: this.homeSave(this.hPhone) } : {}),
+      luck: this.luckMeter.snapshot(), chapter: cloneChapter(this.chapterRec),
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -3791,6 +3833,8 @@ class Run implements DebtRun {
     this.spotlight.restore(e.spotlight);
     this.tithe.restore(e.tithe);
     this.dawnBook = restoredDawnReceipt(e.dawnBook);
+    this.luckMeter.restore(e.luck);
+    this.chapterRec = readChapter(e.chapter);
     if (this.homeOn) this.restoreHome(e.home);
     this.loanQuota = Math.max(0, e.rescue?.quota ?? 0); this.rescuesUsed = Math.max(0, e.rescue?.used ?? 0);
     this.watchDeposits = Math.max(0, e.watchDep ?? 0);

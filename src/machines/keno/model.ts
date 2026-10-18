@@ -27,7 +27,7 @@ export type KenoParts = {
   leds: { drawNo: LedPanelPart; next: LedPanelPart };
   /** 80 lamps, instance `n-1` = number n. Colour via `setLamp`. */
   board: THREE.InstancedMesh;
-  /** Number backdrop behind the lamps (160 × 96). */
+  /** Number backdrop behind the lamps (320 × 192). */
   boardScreen: ScreenSurface;
   /** One rail meter per desk (fills with the ticket's spot count). */
   railMeters: LampPart[];
@@ -90,13 +90,14 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
     kit.box(0.5, 0.7, 0.04, walnut, at(x, DESK_TOP / 2 - 0.02, DESK_Z - 0.2)); // desk back panel
     for (const sx of [-0.27, 0.27]) kit.box(0.04, DESK_TOP - 0.05, 0.4, walnut, at(x + sx, (DESK_TOP - 0.05) / 2, DESK_Z)); // legs
   }
-  kit.box(2.56, 1.6, 0.04, walnut, at(0, 0.8, -0.7));                      // back wall panelling
-  kit.box(2.56, 0.08, 0.04, pal.brass, at(0, 1.6, -0.7));                  // cornice
+  kit.box(2.56, 2.3, 0.04, walnut, at(0, 1.15, -0.7));                     // back wall panelling, full height: the board (y 1.17…2.17) used to hang in the air above a 1.6 m wall
+  kit.box(2.56, 0.08, 0.04, pal.brass, at(0, 2.3, -0.7));                  // cornice
   // carrel dividers between the desks (and at both ends): the seat camera frames ONE ticket writer, never a sliver of its neighbour
   for (const dx of [-1, -0.5, 0, 0.5, 1]) kit.box(0.025, 0.52, 0.42, walnut, at(dx, DESK_TOP + 0.26, DESK_Z - 0.05));
   kit.box(0.04, 1.6, 1.4, walnut, at(-1.26, 0.8, 0));                      // left end panel
   kit.box(0.04, 1.6, 1.4, walnut, at(1.26, 0.8, 0));                       // right end panel
-  kit.box(2.56, 0.04, 1.4, pal.feltDark, at(0, 1.6, 0));                   // ceiling
+  // canopy over the desks only: the old full-depth ceiling slab (y 1.6, z -0.7…0.7) cut straight through the middle of the wall board and hid its upper half
+  kit.box(2.56, 0.04, 0.5, pal.feltDark, at(0, 1.6, 0.45));
   // wall board mount + frame (the board itself hangs above the footprint)
   kit.box(BOARD_W + 0.08, BOARD_H + 0.08, 0.06, pal.brass, at(0, BOARD_Y, BOARD_Z - 0.03));
 
@@ -152,17 +153,17 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<KenoParts> {
   seatLamps.push(...bank.parts.slice(24, 28));
 
   // ── wall board: number backdrop + 80 instanced lamps ──
-  const boardScreen = kit.screen({ w: BOARD_W, h: BOARD_H, px: [160, 96], bezel: pal.black, glow: 0 });   // no halo sprite: it would widen the board past the footprint
+  const boardScreen = kit.screen({ w: BOARD_W, h: BOARD_H, px: [320, 192], bezel: pal.black, glow: 0 });   // no halo sprite: it would widen the board past the footprint
   boardScreen.mesh.position.set(0, BOARD_Y, BOARD_Z);
   root.add(boardScreen.mesh);
-  const lampGeo = new THREE.BoxGeometry(0.18, 0.09, 0.02);
+  const lampGeo = new THREE.BoxGeometry(0.18, 0.06, 0.02);   // under the number (the numerals are 10 px tall on the 320 x 192 backdrop)
   const lampMat = kit.mat(0xffffff);
   const board = new THREE.InstancedMesh(lampGeo, lampMat, LAMP_COUNT);
   board.name = 'keno.board';
   const m4 = new THREE.Matrix4();
   for (let n = 1; n <= LAMP_COUNT; n++) {
     const [x, y] = lampXY(n);
-    m4.makeTranslation(x, y - 0.05, BOARD_Z + 0.02);
+    m4.makeTranslation(x, y - 0.0275, BOARD_Z + 0.02);
     board.setMatrixAt(n - 1, m4);
     board.setColorAt(n - 1, LAMP_BOARD_TMP.setHex(LAMP_OFF));
   }

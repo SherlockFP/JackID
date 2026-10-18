@@ -6,7 +6,7 @@
  */
 
 /** The readouts that wait for a Night. The value is the first printed Night that shows it. */
-export type Reveal = 'payout' | 'projection' | 'hot' | 'tilt' | 'floorEvents' | 'cards' | 'tithe' | 'spotlight' | 'overshoot';
+export type Reveal = 'payout' | 'projection' | 'hot' | 'tilt' | 'floorEvents' | 'cards' | 'tithe' | 'spotlight' | 'overshoot' | 'luck';
 
 const FIRST_NIGHT: Readonly<Record<Reveal, number>> = {
   payout: 2,        // ÖDEME chip (House Favour, Mood, air): Night 2
@@ -18,6 +18,7 @@ const FIRST_NIGHT: Readonly<Record<Reveal, number>> = {
   tithe: 3,         // the Watch tithe
   spotlight: 4,     // the Spotlight chip
   overshoot: 4,     // the OVERSHOOT line
+  luck: 2,          // the ŞANS meter (game/luck.ts): from Night 2, when the first quota is paid
 };
 
 /** True when the readout `what` is shown on printed Night `night`. */

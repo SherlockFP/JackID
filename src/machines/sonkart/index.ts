@@ -999,13 +999,13 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
     scr.draw((g, s) => {
       g.fillStyle = '#060a08';
       g.fillRect(0, 0, s.w, s.h);
-      const line = (txt: string, y: number, color: string): void => { s.text(txt, s.w / 2, y, { font: 'px5', color, align: 'center' }); };
+      const line = (txt: string, y: number, color: string): void => { s.text(txt, s.w / 2, y, { font: 'px5', color, align: 'center', scale: 2 }); };
       const cl = pub.col ? COLOUR_HEX[pub.col] : 0xffffff;
-      line(pub.ph === 'bet' ? this.t('sBots') : this.t('sRound', { n: pub.rnd }), 26, '#' + (pub.ph === 'bet' ? 'e8f5e8' : 'ffd040'));
-      line(`${this.t('scrColour')} ${this.colourName(pub.col)}  ${this.t('scrPot')} ${fmtCoins(pub.pot)}`, 56, '#' + cl.toString(16).padStart(6, '0'));
+      line(pub.ph === 'bet' ? this.t('sBots') : this.t('sRound', { n: pub.rnd }), 8, '#' + (pub.ph === 'bet' ? 'e8f5e8' : 'ffd040'));
+      line(`${this.t('scrColour')} ${this.colourName(pub.col)}  ${this.t('scrPot')} ${fmtCoins(pub.pot)}`, 34, '#' + cl.toString(16).padStart(6, '0'));
       const tail = pub.pend > 0 ? this.t('scrPend', { n: pub.pend }) : pub.jp ? this.t('scrJackpot') : pub.call >= 0 && pub.callOn ? this.t('scrCalled') : '';
-      line(tail, 86, '#ff9040');
-      line(pub.ph === 'play' && pub.turn >= 0 ? this.t('sTurnOf', { name: this.seatName(pub.turn) }) : this.t('sWait'), 106, '#b8b8b8');
+      line(tail, 60, '#ff9040');
+      line(pub.ph === 'play' && pub.turn >= 0 ? this.t('sTurnOf', { name: this.seatName(pub.turn) }) : this.t('sWait'), 86, '#b8b8b8');
     });
   }
 

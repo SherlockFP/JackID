@@ -163,7 +163,7 @@ export function drawIcon(ctx: CanvasRenderingContext2D, kind: string, cx: number
 export function paintDieFace(ctx: CanvasRenderingContext2D, w: number, h: number, o: { label: string; icon: string; lit: boolean; dark?: boolean; sub?: string }): void {
   const g = ctx.createLinearGradient(0, 0, 0, h);
   if (o.dark) { g.addColorStop(0, '#0d2a30'); g.addColorStop(1, '#04100f'); }
-  else { g.addColorStop(0, o.lit ? '#a81d30' : '#780e20'); g.addColorStop(1, '#1c0609'); }
+  else { g.addColorStop(0, o.lit ? '#b82238' : '#8a1226'); g.addColorStop(1, '#1c0609'); }
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = 'rgba(255,220,140,0.06)';
@@ -175,6 +175,10 @@ export function paintDieFace(ctx: CanvasRenderingContext2D, w: number, h: number
   const sub = Boolean(o.sub);
   drawIcon(ctx, o.icon, w / 2, h * (sub ? 0.24 : two ? 0.27 : 0.31), w * (sub ? 0.1 : 0.12), o.lit ? GOLD_HI : (o.dark ? '#5fd6c0' : '#e8485c'));
   const col = o.lit ? GOLD_HI : '#fff0c8';
+  // a dark plate behind the label keeps it readable on the red enamel at a distance
+  ctx.fillStyle = o.dark ? 'rgba(2,14,14,0.55)' : 'rgba(18,2,6,0.55)';
+  const top = h * (sub ? 0.37 : two ? 0.42 : 0.57), bot = h * (sub ? 0.73 : 0.84);
+  ctx.fillRect(w * 0.12, top, w * 0.76, bot - top);
   if (two) {
     bigLabel(ctx, words[0], w / 2, h * (sub ? 0.47 : 0.55), w * 0.76, w * 0.24, col);
     bigLabel(ctx, words[1], w / 2, h * (sub ? 0.64 : 0.74), w * 0.76, w * 0.24, col);

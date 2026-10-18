@@ -119,7 +119,12 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<SonKartParts> 
   strip.root.position.set(0, 1.95, 0);
   root.add(strip.root);
 
-  // screen and sign above the rear rail
+  // screen and sign above the rear rail, on a board between two posts (they used to hang in mid-air)
+  kit.box(0.7, 0.58, 0.04, pal.black, { pos: [0, 1.6, -0.9], parent: root, bevel: 0.01 });
+  for (const px of [-0.4, 0.4]) kit.box(0.05, 1.9, 0.05, pal.woodDark, { pos: [px, 0.95, -0.9], parent: root });
+  // the light bar hangs from a ceiling bar on two rods
+  kit.box(1.6, 0.03, 0.1, pal.black, { pos: [0, 2.4, 0], parent: root });
+  for (const rx of [-0.7, 0.7]) kit.cyl(0.008, 0.008, 0.45, pal.chrome, { pos: [rx, 2.175, 0], seg: 5, parent: root });
   const screen = kit.screen({ w: 0.56, h: 0.22, px: [256, 112], bezel: pal.black, glow: 0.6 });
   screen.mesh.position.set(0, 1.5, -0.86);
   root.add(screen.mesh);

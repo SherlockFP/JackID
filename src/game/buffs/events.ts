@@ -19,6 +19,8 @@ export interface EventHost {
 }
 
 const DEFAULT_CHANCE = 0.35;
+/** The first printed Night a nightly event may start on. Night 1 is the calm tutorial Night. */
+export const FIRST_EVENT_NIGHT = 2;
 
 export class NightEvents implements NightEventsApi, ModProvider {
   readonly kind: ModSourceKind = 'event';
@@ -64,10 +66,11 @@ export class NightEvents implements NightEventsApi, ModProvider {
     bus.emit('event:end', { id });
   }
 
-  /** Host, once per Bell: roll the nightly event. Returns the started event id, or null. */
+  /** Host, once per Bell: roll the nightly event. Returns the started event id, or null. Printed Night 1 is calm: none rolls. */
   roll(): string | null {
+    const night = this.host.run().night();          // printed Night number (1-based), read as-is
+    if (night < FIRST_EVENT_NIGHT) return null;
     if (!this.host.isHost || !this.host.rng.chance(this.chanceP)) return null;
-    const night = this.host.run().night() + 1;
     const pool = [...this.defMap.values()].filter((d) =>
       (d.minShift === undefined || night >= d.minShift)
       && (d.maxShift === undefined || night <= d.maxShift)

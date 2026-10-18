@@ -48,9 +48,12 @@ export type RouletteParts = {
 
 export const TOP = 0.78;               // felt height
 export const WHEEL_X = -0.85;
-const WHEEL_Y = TOP - 0.02;
-export const BALL_R_TRACK = 0.37;      // ball track radius (centre of the track band)
-export const BALL_Y = TOP + 0.04;
+/** Wheel pivot height: the top of the bowl, 1 cm above the felt (a flush top z-fought with the felt and hid the whole rotor). */
+export const WHEEL_Y = TOP + 0.03;
+export const BALL_R_TRACK = 0.395;     // ball track radius (centre of the track band, r 0.36 … 0.43)
+export const BALL_REST_Y = 0.016;      // ball centre above the wheel pivot while it rolls on the track
+export const BALL_POCKET_Y = 0.036;    // … and while it sits on a pocket bead
+export const BALL_R = 0.014;
 export const POCKET_R = 0.275;         // pocket centre radius on the rotor
 export const SEAT_X = [-1.25, -0.75, -0.25, 0.25, 0.75, 1.25];
 const SEAT_Z = 0.95;
@@ -109,13 +112,15 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<RouletteParts> 
   kit.box(2.6, TOP - 0.04, 1.3, walnut, at(0, (TOP - 0.04) / 2, 0));                       // table body
   kit.box(2.66, 0.1, 1.36, pal.black, at(0, TOP - 0.05, 0));                               // padded leather rail
   kit.box(2.5, 0.02, 1.2, pal.felt, at(0, TOP + 0.01, 0));                                 // green felt
-  kit.cyl(0.43, 0.43, 0.08, walnut, { pos: [WHEEL_X, TOP - 0.02, 0], seg: 24, parent: root }); // wheel bowl
+  kit.cyl(0.43, 0.43, 0.1, walnut, { pos: [WHEEL_X, WHEEL_Y - 0.05, 0], seg: 24, parent: root }); // wheel bowl (top at WHEEL_Y)
+  kit.torus(0.425, 0.012, pal.brass, { pos: [WHEEL_X, WHEEL_Y + 0.006, 0], rot: [90, 0, 0], seg: 24, tubeSeg: 4, parent: root }); // ball-track lip
   // (the 0.42 m chrome 'rail stop' ledge lay across the middle number row of the layout, hiding 2 5 8 11 ...: removed)
   for (const sx of SEAT_X) kit.box(0.38, 0.16, 0.1, walnut, at(sx, TOP - 0.1, 0.7));        // front rail blocks
   for (const sx of [-1.35, 1.35]) kit.box(0.04, 0.8, 1.2, walnut, at(sx, 0.4, 0));          // end panels
   kit.box(1.25, 0.03, 0.08, walnut, at(0.25, 0.4, -0.66));                                  // back apron
   kit.box(0.22, 0.4, 0.22, walnut, at(-1.38, 0.2, 0));                                      // history pillar base
-  kit.box(0.06, 0.8, 0.06, pal.brass, at(-1.4, 1.2, -0.08));                               // rake rail post
+  kit.box(0.16, 0.82, 0.12, walnut, at(-1.38, 0.81, 0));                                    // history pillar column (the screen sits on its front)
+  kit.box(0.05, 1.62, 0.05, pal.brass, at(WHEEL_X, 0.81, -1.27));                          // rake gantry post (floor to rail: the rail used to hang in the air)
   kit.box(0.04, 0.04, 1.0, pal.brass, { pos: [WHEEL_X, 1.62, -0.8], parent: root });          // rake rail (z -1.3…-0.3: inside the XL footprint)
   // ceiling pendant (green glass shade, rod)
   kit.cyl(0.008, 0.008, 1.0, pal.chrome, { pos: [0, 2.7, 0], seg: 4, parent: root });
@@ -127,30 +132,34 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<RouletteParts> 
   root.add(wheel);
   const rotor = new THREE.Object3D();
   wheel.add(rotor);
-  const numberRing = kit.lathe([[0.36, 0], [0.31, 0], [0.31, 0.012], [0.36, 0.012]], 37, { color: pal.cream, map: tex.rouletteRing() }, { pos: [0, 0.03, 0], parent: rotor });
-  const pocketRing = kit.lathe([[0.31, 0], [0.24, 0], [0.24, 0.01], [0.31, 0.01]], 37, { color: BLACK_HEX }, { pos: [0, 0.02, 0], parent: rotor });
+  // flat annuli, profile run outer → inner so the face looks UP (the old inner → outer profile faced down and was culled from above)
+  const numberRing = kit.lathe([[0.36, 0], [0.31, 0]], 37, { color: pal.cream, map: tex.rouletteRing() }, { pos: [0, 0.016, 0], parent: rotor, shade: false });
+  numberRing.rotation.y = -Math.PI / 37;                       // texture cell i is centred half a cell round from pocket i
+  const pocketRing = kit.lathe([[0.31, 0], [0.24, 0]], 37, { color: BLACK_HEX }, { pos: [0, 0.014, 0], parent: rotor, shade: false });
+  kit.cyl(0.36, 0.36, 0.012, walnut, { pos: [0, 0.006, 0], seg: 24, parent: rotor });   // rotor body under both rings and the hub
   // one coloured bead per pocket keeps the red/black/green read without 37 draws
   for (let n = 0; n <= 36; n++) {
     const c = colorOf(n) === 'red' ? RED_HEX : colorOf(n) === 'green' ? ZERO_HEX : BLACK_HEX;
     const a = pocketAngle(n);
-    kit.box(0.04, 0.012, 0.03, c, { pos: [Math.sin(a) * POCKET_R, 0.03, Math.cos(a) * POCKET_R], rot: [0, (a * 180) / Math.PI, 0], parent: rotor, shade: false });
+    kit.box(0.04, 0.008, 0.045, c, { pos: [Math.sin(a) * POCKET_R, 0.018, Math.cos(a) * POCKET_R], rot: [0, (a * 180) / Math.PI, 0], parent: rotor, shade: false });
   }
   kit.cyl(0.02, 0.07, 0.12, pal.chrome, { pos: [0, 0.06, 0], seg: 8, parent: wheel });
-  const dolly = kit.sphere(0.014, pal.brass, { pos: [0, 0.05, 0], wSeg: 6, hSeg: 4, parent: rotor });
+  // brass marker that floats over the winning pocket once the ball has dropped (the ball itself sits in the pocket)
+  const dolly = kit.sphere(0.012, pal.brass, { pos: [0, 0.075, 0], wSeg: 6, hSeg: 4, parent: rotor });
   dolly.visible = false;
-  const puck = kit.cyl(0.04, 0.04, 0.014, pal.brass, { pos: [0, TOP + 0.04, 0], seg: 12, parent: root });
+  const puck = kit.cyl(0.035, 0.035, 0.014, pal.brass, { pos: [0, TOP + 0.034, 0], seg: 12, parent: root });
   puck.visible = false;
 
   const ballPivot = new THREE.Object3D();
-  ballPivot.position.set(0, BALL_Y - WHEEL_Y, 0);
   wheel.add(ballPivot);
-  const ball = kit.sphere(0.009, pal.bone, { pos: [BALL_R_TRACK, 0, 0], wSeg: 8, hSeg: 6, parent: ballPivot });
+  // the ball sits at +Z of its pivot (angle 0, the pockets' convention): pivot rotation φ puts it at (r sin φ, r cos φ)
+  const ball = kit.sphere(BALL_R, pal.bone, { pos: [0, BALL_REST_Y, BALL_R_TRACK], wSeg: 8, hSeg: 6, parent: ballPivot });
 
   // rim bulbs around the bowl
   const rimPts: [number, number, number][] = [];
   for (let i = 0; i < 37; i++) {
     const a = pocketAngle(WHEEL_ORDER[i]);
-    rimPts.push([WHEEL_X + Math.sin(a) * 0.42, TOP + 0.09, Math.cos(a) * 0.42]);
+    rimPts.push([WHEEL_X + Math.sin(a) * 0.445, WHEEL_Y + 0.004, Math.cos(a) * 0.445]);
   }
   const rim = kit.bulbChain({ path: rimPts, count: 37, colors: [0xffb347], r: 0.008 });
   root.add(rim.root);
@@ -173,9 +182,8 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<RouletteParts> 
   root.add(layout);
 
   // history pillar (last 12), wheel end
-  const history = kit.screen({ w: 0.08, h: 0.36, px: [32, 192], bezel: pal.black });
-  history.mesh.position.set(-1.38, 0.95, 0);
-  history.mesh.rotation.y = Math.PI / 2;
+  const history = kit.screen({ w: 0.09, h: 0.54, px: [32, 192], bezel: pal.black });
+  history.mesh.position.set(-1.38, 0.92, 0.065);                                          // on the front of the column, facing the players
   root.add(history.mesh);
 
   // lamps: six seat lamps on the rail, phase and fair lamps behind the wheel
@@ -292,12 +300,12 @@ export function paintLayout(canvasTex: THREE.CanvasTexture, texgen: TexGenFull):
     const col = Math.floor((n - 1) / 3), row = 2 - ((n - 1) % 3);
     const za = ROW_Z(row) - ROW_H / 2, zb = ROW_Z(row) + ROW_H / 2;
     cell(gx(col), gx(col + 1), za, zb, colorOf(n) === 'red' ? '#9e1b22' : '#16161a');
-    label(String(n), gx(col), gx(col + 1), za, zb, CREAM);
+    label(String(n), gx(col), gx(col + 1), za, zb, CREAM, 7);
   }
   for (let row = 0; row < 3; row++) {
     const za = ROW_Z(row) - ROW_H / 2, zb = ROW_Z(row) + ROW_H / 2;
     cell(gx(12), gx(13), za, zb, '#0f3320');
-    label('2:1', gx(12), gx(13), za, zb, '#ffd040', 3);
+    label('2:1', gx(12), gx(13), za, zb, '#ffd040', 4);
   }
   // dozens and the even-money row
   const dozens = [tr('tex.roulette.dozen1'), tr('tex.roulette.dozen2'), tr('tex.roulette.dozen3')];

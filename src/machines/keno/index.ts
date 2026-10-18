@@ -592,7 +592,7 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
       g.fillStyle = '#0b0f0c'; g.fillRect(0, 0, sc.w, sc.h);
       for (let n = 1; n <= 80; n++) {
         const col = (n - 1) % 10, row = Math.floor((n - 1) / 10);
-        sc.text(String(n), col * 16 + 8, row * 12, { font: 'px5', color: '#c9b98a', align: 'center' });
+        sc.text(String(n), col * 32 + 16, row * 24 + 1, { font: 'px5', color: '#e6d9a8', align: 'center', scale: 2 });
       }
     });
   }

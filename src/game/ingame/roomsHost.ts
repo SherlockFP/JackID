@@ -15,7 +15,8 @@ import { chairVisible } from '@/world/rooms/logic';
 import { createRng } from '@/core/rng';
 import { charmDef } from '@/game/charms/engine';
 import { NOTES, notesInZone } from '@/game/story/notes.data';
-import { openNote } from '@/game/story/notes';
+import { onNoteRead, openNote, setJournalLine } from '@/game/story/notes';
+import { ledgerLine } from '@/game/story/quests';
 import { holdForStory } from '@/game/story';
 import { holdClockFor } from '@/game/clockHold';
 
@@ -163,6 +164,44 @@ export function startRoomsHost(run: DebtRun, world: WorldHost): () => void {
     });
     holdClockFor('miraCall', lines.length * LINE_S);
   }));
+
+  // ── the Wash ledger (quest 1, story/quests.ts): each page read counts here; the locker pick opens once the ledger is whole ──
+  const syncLedgerLine = (): void => {
+    const l = ledgerLine(run.rooms.ledger);
+    setJournalLine(l ? t('quest.ledger.objective', { n: l.n, total: l.total }) : null);
+  };
+  let ledgerAsking = false;
+  const askLedgerPick = async (): Promise<void> => {
+    if (ledgerAsking || app.run !== run) return;
+    const offer = run.ledgerOffer();
+    if (offer.length === 0) return;
+    ledgerAsking = true;
+    try {
+      const i = await ui.choice(t('quest.ledger.lockerOpen'), offer.map((id) => t(`charm.${id}.name`)));
+      if (app.run !== run || i < 0) return;
+      const pick = offer[i];
+      if (!run.ledgerClaim(pick)) { ui.toast(t('quest.ledger.full'), 'warn', 4); return; }
+      ui.toast(t('quest.ledger.claimed', { charm: t(`charm.${pick}.name`) }), 'good', 4);
+      syncLedgerLine();
+      ui.subtitle(t('quest.ledger.story'), '', 6);
+    } finally {
+      ledgerAsking = false;
+    }
+  };
+  offs.push(onNoteRead((id) => {
+    if (app.run !== run) return;
+    const r = run.readLedgerNote(id);
+    if (!r.fresh) return;   // a repeat read, or a note outside the ledger
+    syncLedgerLine();
+    ui.toast(t('quest.ledger.toast', { n: r.n, total: r.total, title: t(`story.note.${id}.t`) }), 'good', 4);
+    if (!r.completed) return;
+    ui.toast(t('quest.ledger.complete'), 'good', 5);
+    void holdForStory().then(() => askLedgerPick());
+  }));
+  syncLedgerLine();
+  // a resumed save with the ledger whole and unclaimed opens the locker pick again
+  if (run.ledgerOffer().length > 0) void holdForStory().then(() => askLedgerPick());
+  offs.push(() => setJournalLine(null));
 
   // ── the Boiler pressure chip (HUD): shown while the Boiler is open ──────────────────────────────────
   const chip = document.createElement('div');

@@ -40,6 +40,8 @@ import { houseMoodPreviewParts, payoutChip, type PayoutPart } from '@/game/house
 import { spotlightChip, type SpotlightView } from '@/game/spotlight';
 import './hud/hud.css';
 import './hud/evening.css';
+import './hud/luck.css';
+import { LUCK_MAX } from '@/game/luck';
 import { nightPaid } from '@/machines/debt_terminal/night';
 import { SeatHud } from '@/machines/_base/seatHud';
 
@@ -240,6 +242,51 @@ export function createHud(): Hud {
   // Legibility pass: the quota is the run's goal, so it takes the top slot of the right stack (before the spotlight chip and
   // THE EVENING card). hud.css gives it the biggest number and the widest bar on screen.
   topR.prepend(quota);
+  // ŞANS (wave 72, game/luck.ts): the luck meter, one row under the quota from Night 2 (disclose.ts). Red when negative. Each star
+  // is a 1 % payout bonus, shown as "wins +3%" (EN) / "kazanç +%3" (TR). The meter emits `luck:change` on each move; the row
+  // pops and toasts it with the reason when the source gives one. Silent until the readout is shown.
+  const luckEl = h('div', 'hb luck hidden', topR);
+  quota.after(luckEl);
+  luckEl.title = t('luck.tip');
+  h('span', 'lbl', luckEl, t('luck.label'));
+  const luckStars = h('span', 'stars', luckEl, '');
+  const luckBonus = h('span', 'bonus', luckEl, '');
+  let luckRun: unknown = null;
+  let luckKey = '';
+  const luckText = (s: number): string => {
+    const sign = s > 0 ? '+' : s < 0 ? '−' : '±';
+    return t('luck.bonus', { s: sign, n: String(Math.abs(s)) });
+  };
+  // the reason keys, spelled out so the string check sees each one (a heat reason with no key toasts the change alone)
+  const LUCK_WHY: Record<string, string> = {
+    quota: 'luck.why.quota', overshoot: 'luck.why.overshoot', failed: 'luck.why.failed', tithe: 'luck.why.tithe',
+    loan: 'luck.why.loan', time: 'luck.why.time', deal: 'luck.why.deal', thin: 'luck.why.thin', quiet: 'luck.why.quiet',
+  };
+  on('luck:change', ({ delta, why }) => {
+    if (!app.run || !revealed(nightNow(), 'luck')) return;
+    const n = delta > 0 ? '+1' : '-1';
+    const key = LUCK_WHY[why];
+    const reason = key && has(key) ? t(key) : '';
+    ui().toast(reason ? t('luck.toastWhy', { n, why: reason }) : t('luck.toast', { n }), delta > 0 ? 'good' : 'bad', 3.5);
+    luckEl.classList.remove('pop');
+    void luckEl.offsetWidth;
+    luckEl.classList.add('pop');
+    goldBurst(luckEl, '50%', 0);
+  });
+  const luckRender = (): void => {
+    const run = app.run;
+    if (run && luckRun !== run) { luckRun = run; luckKey = ''; }
+    const shown = !!run && revealed(nightNow(), 'luck');
+    luckEl.classList.toggle('hidden', !shown);
+    if (!run) return;
+    const s = run.luckStars?.() ?? 0;
+    const key = String(s);
+    if (key === luckKey) return;
+    luckKey = key;
+    luckStars.textContent = s < 0 ? `${'☆'.repeat(LUCK_MAX)} −${-s}` : '★'.repeat(s) + '☆'.repeat(LUCK_MAX - s);
+    luckBonus.textContent = luckText(s);
+    luckEl.classList.toggle('neg', s < 0);
+  };
   // The quota figure rolls toward the deposited amount (Roller, as the wallet). The fill's last percent and the Night it was read in
   // decide the 25 / 50 / 75 / 100 % ticks: a Night's first read is silent.
   const quotaRoll = new Roller();
@@ -1213,6 +1260,7 @@ export function createHud(): Hud {
       updateClock(dt);
       updateEvening();
       updateQuota(dt);
+      luckRender();
       updatePayout(dt);
       updatePlan();
       updateEmpire();

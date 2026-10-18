@@ -20,11 +20,12 @@
  */
 import * as THREE from 'three';
 import type { V3 } from '@/core/types';
-import type { ButtonPanelPart, PanelButton, LampPart, BulbChain, ScreenSurface, LabelPart } from '@/kit/types';
+import type { ButtonPanelPart, PanelButton, LampPart, BulbChain, ScreenSurface, LabelPart, LedPanelPart } from '@/kit/types';
 import type { KitX } from '@/kit/index';
 import type { MachineModel } from '@/machines/_base/types';
 import type { BulbChainImpl } from '@/kit/lights';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import { crispTexture } from '@/core/ui/textOverlay';
 import { PATTERN_IDS } from './rules';
 import { buildLampBank, type LampBank, type LampSpec } from '@/kit/lamps';
 
@@ -74,6 +75,8 @@ export type BigOneParts = {
   palmDecal: THREE.Mesh;
   /** Painted "THE BIG ONE" on the belly art (re-drawn on language change). */
   label: LabelPart;
+  /** The progressive JACKPOT counter (8 digits, 7-segment). */
+  jackpotLed: LedPanelPart;
 };
 
 export const W = 1.8, D = 1.4, H = 3.1;
@@ -85,8 +88,9 @@ const WIN_TOP = 1.95, WIN_BOT = 1.25, WIN_W = 1.4;
 const FRONT = 0.7;
 
 /** Crown centre (sunburst base) and medallion height. */
-const CROWN_C: V3 = [0, 2.55, 0.6];
+const CROWN_C: V3 = [0, 2.63, 0.6];   // clear of the lid (top at 2.58): the outer rays no longer sit on the trim
 const RAYS = 13;
+const CROWN_R = 0.37;
 
 const LEDS_CREDIT = 8, LEDS_BET = 3, LEDS_WIN = 8, LEDS_JACKPOT = 8;
 const LAST10 = 10;
@@ -260,10 +264,18 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
   root.add(ledStrip.root);
 
   // ── top box: screen, hunger dial, last-10 lamps ──
-  const screen = kit.screen({ w: 0.8, h: 0.24, px: [160, 48], bezel: pal.black });
+  const screen = kit.screen({ w: 0.8, h: 0.24, px: [160, 48], bezel: pal.black, scanlines: false });   // 1-px glyph strokes: no scanline darkening
+  crispTexture(screen.tex, 4);
   screen.mesh.position.set(0, 2.3, 0.655);
   root.add(screen.mesh);
 
+  // progressive JACKPOT counter: a label and an 8-digit LED strip between the screen and the lid
+  const jpLabel = kit.label({ text: { key: 'm.bigone.jackpot' }, w: 0.2, h: 0.05, px: [96, 24], color: pal.neonYellow, bg: pal.black, font: 'px5' });
+  jpLabel.mesh.position.set(-0.3, 2.495, 0.656);
+  root.add(jpLabel.mesh);
+  const jackpotLed = kit.ledPanel({ digits: 8, h: 0.06, color: '#ffd040' });
+  jackpotLed.root.position.set(0.1, 2.495, 0.656);
+  root.add(jackpotLed.root);
 
   const dialShape: Array<[number, number]> = [];
   for (let i = 0; i <= 12; i++) {
@@ -293,8 +305,8 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
   const crownRays: THREE.Mesh[] = [];
   for (let i = 0; i < RAYS; i++) {
     const th = (Math.PI * i) / (RAYS - 1);
-    const cx = CROWN_C[0] + Math.cos(th) * 0.4;
-    const cy = CROWN_C[1] + Math.sin(th) * 0.4;
+    const cx = CROWN_C[0] + Math.cos(th) * CROWN_R;
+    const cy = CROWN_C[1] + Math.sin(th) * CROWN_R;
     const ray = kit.box(0.035, 0.2, 0.02, i % 2 ? gold : pal.red, {
       pos: [cx, cy, CROWN_C[2]],
       rot: [0, 0, ((th - Math.PI / 2) * 180) / Math.PI],
@@ -307,7 +319,7 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
   // medallion: holder spins about Y; the coin face points to the front (rotation.x = π/2)
   const medallion = new THREE.Object3D();
   medallion.name = 'medallion';
-  medallion.position.set(0, 2.78, 0.62);
+  medallion.position.set(0, 2.82, 0.62);
   root.add(medallion);
   const coin = kit.coin({ r: 0.22, thick: 0.03, heads: 'crown', tails: 'eye', color: gold });
   coin.rotation.x = Math.PI / 2;
@@ -342,11 +354,11 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
     g.moveTo(10, 10); g.lineTo(60, 60); g.lineTo(50, 90); g.lineTo(100, 120);
     g.moveTo(60, 60); g.lineTo(120, 50);
     g.stroke();
-    const grd = g.createRadialGradient(192, 64, 4, 192, 64, 110);
+    const grd = g.createRadialGradient(192, 64, 2, 192, 64, 62);
     grd.addColorStop(0, 'rgba(255,255,255,0.7)');
     grd.addColorStop(1, 'rgba(255,255,255,0)');
     g.fillStyle = grd;
-    g.fillRect(128, 0, 128, 128);
+    g.fillRect(128, 0, 128, 128);   // the gradient reaches 0 at the quadrant edge: no hard cut
     g.fillStyle = 'rgba(255,255,255,0.9)';
     g.beginPath();
     g.moveTo(40, 220); g.lineTo(70, 160); g.lineTo(90, 210); g.lineTo(120, 150); g.lineTo(115, 230); g.closePath();
@@ -360,11 +372,16 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
     t.needsUpdate = true;
     return t;
   };
-  const glassCrack = kit.decal({ tex: quad(0, 0.5), w: 1.4, h: 0.55, alphaTest: 0.1 });
-  glassCrack.position.set(0, 0.575, 0.686);
+  // the crack lives in the panel's top-left corner, off the title band (it used to run across 'Big')
+  const glassCrack = kit.decal({ tex: quad(0, 0.5), w: 0.36, h: 0.16, alphaTest: 0.1 });
+  glassCrack.position.set(-0.52, 0.575 + 0.18, 0.686);
   root.add(glassCrack);
-  const fogDecal = kit.decal({ tex: quad(0.5, 0.5), w: 1.4, h: 0.2, alphaTest: 0.05 });
-  fogDecal.position.set(0, 0.3, 0.687);
+  const fogDecal = kit.decal({ tex: quad(0.5, 0.5), w: 1.4, h: 0.2, alphaTest: 0 });
+  // soft blend instead of an alpha cut-out, so the falloff stays smooth
+  const fogMat = fogDecal.material as THREE.Material;
+  fogMat.transparent = true; fogMat.depthWrite = false; fogMat.opacity = 0.35; fogMat.needsUpdate = true;
+  fogDecal.renderOrder = 2;
+  fogDecal.position.set(0, 0.3, 0.688);
   root.add(fogDecal);
   const palmDecal = kit.decal({ tex: quad(0, 0), w: 0.28, h: 0.24, alphaTest: 0.1 });
   palmDecal.position.set(-0.65, 2.3, 0.661);
@@ -423,6 +440,7 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
     fogDecal,
     palmDecal,
     label,
+    jackpotLed,
   };
 
   const keep: Array<THREE.Object3D | { root: THREE.Object3D }> = [
@@ -437,6 +455,9 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
     medallion,
     topLid,
     glassCrack,
+    fogDecal,
+    jpLabel.mesh,
+    jackpotLed.root,
     label.mesh,
     light,
     light2,

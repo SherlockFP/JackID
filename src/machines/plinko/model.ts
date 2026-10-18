@@ -110,7 +110,11 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PlinkoParts> {
   kit.box(0.02, H - 0.64, 0.02, gold, at(W / 2 - 0.05, (0.42 + H - 0.2) / 2, BACK_Z + 0.01));
   kit.cyl(0.1, 0.03, 0.1, wood, { pos: [0, FUNNEL_Y + 0.02, 0], seg: 8, parent: root });    // top funnel
   kit.box(0.5, 0.03, 0.04, brass, at(0, 0.44, 0.16));                                 // base tray lip
-  kit.box(0.2, 0.03, 0.12, brass, at(0.42, 0.42, 0.2));                               // coin tray
+  // coin tray: a shallow dish bolted to the cabinet face between the LED strip and the risk lever, its back flush with the face
+  kit.box(0.2, 0.02, 0.1, brass, at(0.29, 0.31, 0.225));
+  kit.box(0.2, 0.045, 0.012, brass, at(0.29, 0.3325, 0.274));
+  kit.box(0.012, 0.045, 0.1, brass, at(0.194, 0.3325, 0.225));
+  kit.box(0.012, 0.045, 0.1, brass, at(0.386, 0.3325, 0.225));
   kit.box(0.12, 0.06, 0.04, brass, at(0.0, 0.37, 0.182));                             // base badge
 
   // ── pegs (instanced, 96 instances after the six finger spots) ───────────────────────────────────
@@ -196,7 +200,10 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PlinkoParts> {
   root.add(chute);
 
   // ── glass, light hint, anchors ─────────────────────────────────────────────────────────────────
-  const glass = kit.glass({ w: W - 0.06, h: H - 0.5, d: 0.01 });
+  // plain tinted pane: the kit glass paints two diagonal glint bands, which on a 1.1 x 1.9 m pane read as grey stepped blocks across the board
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(W - 0.06, H - 0.5), kit.mat({ color: 0x8fb0c4, lit: false, transparent: true, opacity: 0.06, depthWrite: false }));
+  glass.name = 'glass';
+  glass.renderOrder = 2;
   glass.position.set(0, (0.42 + H - 0.08) / 2, GLASS_Z);
   root.add(glass);
 
@@ -214,7 +221,7 @@ export function buildModel(kit: Kit, o: ModelOpts): MachineModel<PlinkoParts> {
   const marqueeTop = anchor(0, H, 0);
   const servicePlate = anchor(-W / 2 + 0.02, 1.2, 0.0);
   const stand = anchor(0, 0, 0.6);
-  const coinOut = anchor(0.42, 0.46, 0.2);
+  const coinOut = anchor(0.29, 0.34, 0.23);
 
   const parts: PlinkoParts = {
     pegs, pegList, pegSlot, pegGrid: { x0: pegX(1, 0), y0: ROW1_Y, dx: DX, dy: DY },

@@ -10,16 +10,17 @@
 import { pocketAngle } from './model';
 import { POCKETS, colorOf } from './rules';
 
-const SIZE = 120;            // canvas px
+const SIZE = 144;            // canvas px
 const C = SIZE / 2;
-const R_POCKET = 38;         // pocket ring
-const R_BALL = 46;           // ball track (outside the pockets, like the 3D track: 0.37 m over a 0.31 m ring)
+const R_POCKET = 45;         // pocket ring
+const R_BALL = 56;           // ball track (outside the pockets, like the 3D track: 0.395 m over the 0.275 m pocket ring)
 const R_RIM = C - 3;
+const M_POCKET = 0.275, M_TRACK = 0.395;   // the same two radii in metres (BALL_R_TRACK / POCKET_R): the ball's 3D radius maps onto this line
 const PAINT: Readonly<Record<string, string>> = { red: '#d8443e', black: '#2a2a2a', green: '#2fb063' };
 const BRASS = '#ffd040', IVORY = '#f4f0e0', BG = '#06100a';
 
 /** The rotor's and the ball's rotation about +Y, in radians (read from the 3D parts each frame). */
-export interface WheelAngles { rotor: number; ball: number }
+export interface WheelAngles { rotor: number; ball: number; /** ball radius from the wheel centre, metres */ ballR: number }
 
 export class WheelInset {
   private readonly el: HTMLDivElement;
@@ -78,24 +79,26 @@ export class WheelInset {
     for (let n = 0; n < POCKETS; n++) {
       const phi = pocketAngle(n) + a.rotor;
       g.fillStyle = PAINT[colorOf(n)] ?? PAINT.black;
-      g.beginPath(); g.arc(C + R_POCKET * Math.sin(phi), C + R_POCKET * Math.cos(phi), 3.6, 0, Math.PI * 2); g.fill();
+      g.beginPath(); g.arc(C + R_POCKET * Math.sin(phi), C + R_POCKET * Math.cos(phi), 4.4, 0, Math.PI * 2); g.fill();
     }
     // the winning pocket: a ring and its number in the middle
     if (this.landed !== null) {
       const phi = pocketAngle(this.landed) + a.rotor;
       const x = C + R_POCKET * Math.sin(phi), y = C + R_POCKET * Math.cos(phi);
       g.strokeStyle = BRASS; g.lineWidth = 2.5;
-      g.beginPath(); g.arc(x, y, 6.5, 0, Math.PI * 2); g.stroke();
+      g.beginPath(); g.arc(x, y, 8, 0, Math.PI * 2); g.stroke();
       g.fillStyle = BRASS;
-      g.font = 'bold 26px monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = 'bold 34px monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(String(this.landed), C, C + 1);
     } else {
       g.fillStyle = IVORY;
       g.beginPath(); g.arc(C, C, 4, 0, Math.PI * 2); g.fill();
     }
-    // the ball: the ball pivot starts at +X (angle π/2 about the rim) and turns with its rotation
-    const phiB = Math.PI / 2 + a.ball;
+    // the ball: its pivot angle is its angle round the wheel (0 = +Z, the same convention as the pockets); radius from the 3D ball
+    const rB = R_POCKET + (a.ballR - M_POCKET) * ((R_BALL - R_POCKET) / (M_TRACK - M_POCKET));
+    g.fillStyle = '#06100a';
+    g.beginPath(); g.arc(C + rB * Math.sin(a.ball), C + rB * Math.cos(a.ball), 5.4, 0, Math.PI * 2); g.fill();
     g.fillStyle = IVORY;
-    g.beginPath(); g.arc(C + R_BALL * Math.sin(phiB), C + R_BALL * Math.cos(phiB), 2.8, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.arc(C + rB * Math.sin(a.ball), C + rB * Math.cos(a.ball), 4, 0, Math.PI * 2); g.fill();
   }
 }

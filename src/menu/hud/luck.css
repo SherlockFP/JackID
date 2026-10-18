@@ -1,0 +1,13 @@
+/* ŞANS, the luck row under the quota (src/menu/hud.ts, game/luck.ts). PSX chunky: a stepped pop on each change. */
+.hb.luck { position: relative; display: flex; gap: 0.4em; align-items: baseline; }
+.hb.luck.hidden { display: none; }
+.hb.luck .stars { letter-spacing: 0.08em; color: var(--gold, #f5c542); }
+.hb.luck.neg .stars { color: var(--bad, #ff4d4d); }
+.hb.luck.pop { animation: luck-pop 0.45s steps(4, end) 1; }
+@keyframes luck-pop {
+  0% { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hb.luck.pop { animation: none; }
+}

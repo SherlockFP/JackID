@@ -485,7 +485,11 @@
    drop read as a line cut mid-word ("DEPOSITED 1 TO THE BANK · P..."). The letters keep their drop, but they are visible
    from the start (author !important beats the WAAPI opacity), so the news is never half-written. And the banner gets its own
    slot band under the interact prompt (ui.ts pins t-banners at 22%, which landed on the toast stack and the machine face). */
-.px-bw.t-banner { top: 44% !important; }
+/* Top band (ui.ts runBanner): just under the HUD top bar (--hud-top-h), above the Night 1 tutorial box (top-left, 22 u under the
+   bar) and above the eye-level neon signs. The title is kept to the middle 48 % of the screen, so a wide banner never runs over
+   the tutorial column on the left (min 260 px on a phone, where the box is small too). */
+.px-bw.t-banner { top: calc(var(--hud-top-h, calc(52 * var(--u))) + 6 * var(--u)) !important; }
+.px-bw.t-banner .title { max-width: max(48vw, min(94vw, 260px)); }
 .px-bw.t-banner .L { opacity: 1 !important; }
 .px-bw .W { display: inline-block; white-space: pre; }
 .px-bw .W.wave { animation: px-wave 0.5s steps(4, end) infinite; animation-delay: calc(var(--i, 0) * -0.06s); }

@@ -152,9 +152,6 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
     });
   }
   marker(ROOM_ANCHOR_IDS.washLockers, -12.8, 1.0, 0.0);
-  marker(noteAnchorId(17), -13.2, 0.9, -0.6);
-  marker(noteAnchorId(18), -26.8, 1.0, -0.2);
-  marker(noteAnchorId(19), -26.0, 1.65, -1.2);
 
   // ── The Boiler (boiler): rust pipes, steam, pressure gauge, Vent lever ───────────────────────
   const boiler = room('boiler');

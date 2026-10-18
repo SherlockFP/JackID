@@ -18,14 +18,30 @@ import type { World } from '@/world/types';
 import { wingState } from '@/game/rooms';
 import { placeNotes, placedNoteIds, resetNotes, openJournal, notesFound } from './notes';
 import type { NoteGate } from './notes.data';
+import { advanceArc, markCard, type ChapterRecord } from './chapter';
+import { MIRA_BEAT } from './calls';
 
 export { openJournal, notesFound };
 export { STORY_CALLS, storyCallFor, type StoryCall } from './calls';
 
-/** Flags written by cutscene hooks (per run; not persisted). */
-const flags = { descendLook: false, wingSeen: false, keyTurned: false };
-/** Read-only view of the hook flags (the next lore beat may branch on them). */
-export function storyFlags(): Readonly<typeof flags> { return flags; }
+/**
+ * THE SECOND NAME (wave 73): the chapter record lives in the run (saved with it, see chapter.ts). The story reads it here and
+ * moves its arcs; the title cards and the Night 8 reveal are played from the run's events below.
+ */
+function chapterRec(): ChapterRecord | null { return app.run?.chapterRecord?.() ?? null; }
+/** The Night's title card, once per run (chapter.ts marks it). */
+function chapterOpens(night: number): void {
+  const c = chapterRec();
+  if (c && markCard(c, night)) void playStory(`chapter_n${night}`);
+}
+/** The Night 8 reveal, once per run: the second watch of the last chapter. */
+function chapterReveal(): void {
+  const c = chapterRec();
+  if (!c || c.revealed) return;
+  c.revealed = true;
+  advanceArc(c, 'clerk', 2);
+  void playStory('reveal_n8');
+}
 /** Cutscene ids played this page session (the intro plays once). */
 const playedThisSession = new Set<CutsceneId>();
 /** Last scene handed to the cutscene queue; the Results hand-off waits on it. */
@@ -88,9 +104,6 @@ export function startStory(world: World, params: InGameParams, gate: NoteGate | 
   const offs: Array<() => void> = [];
   const once = new Set<string>();
   let watchNight = -1, watches = 0;
-  flags.descendLook = false;
-  flags.wingSeen = false;
-  flags.keyTurned = false;
   nightNow = 1;
   activeGate = gate ?? defaultGate();
   resetNotes();
@@ -101,9 +114,6 @@ export function startStory(world: World, params: InGameParams, gate: NoteGate | 
     void playStory(id);
   };
 
-  offs.push(app.cutscene.registerHook('story.pick', (_args, ctx) => { flags.descendLook = ctx.vars.pick === 0; }));
-  offs.push(app.cutscene.registerHook('story.unlock', () => { flags.wingSeen = true; }));
-  offs.push(app.cutscene.registerHook('story.keyTurned', () => { flags.keyTurned = true; }));
   // the Collector's visit (cutscenes/mafia_visit): the front door swings open at its cue; a seek jumps straight to open
   offs.push(app.cutscene.registerHook('home.doorOpen', (_args, ctx) => { void app.world?.home?.doorTo(1, ctx.seeking ? 0 : 0.8); }));
 
@@ -143,9 +153,27 @@ export function startStory(world: World, params: InGameParams, gate: NoteGate | 
     if (night !== watchNight) { watchNight = night; watches = 0; }
     if (window === 'watch') {
       watches++;
-      if (night === 7 && watches === 2) fire('audit', 'audit');
+      // THE SECOND NAME: each Night opens with its title card on the first Watch
+      if (watches === 1) {
+        chapterOpens(night);
+        // the Collector's arc: the knock of Night 5 is its second beat (the knock itself is the visitor lane's)
+        if (night === 5) { const c = chapterRec(); if (c) advanceArc(c, 'collector', 2); }
+      }
+      if (night === 7 && watches === 2) {
+        fire('audit', 'audit');
+        const c = chapterRec();
+        if (c) advanceArc(c, 'clerk', 1);
+      }
+      if (night === 8 && watches === 2) chapterReveal();
     }
     refreshStoryNotes();
+  }));
+
+  // Mira's thread: each of her calls moves her arc (N2, N5, N8). The call itself is played by the hotline.
+  offs.push(bus.on('phone:story', ({ id }) => {
+    const beat = MIRA_BEAT[id];
+    const c = chapterRec();
+    if (live && c && beat) advanceArc(c, 'mira', beat);
   }));
 
   // the intro (waking in the pit) and the notes need the built world; a new run (not a resume) shows the intro once

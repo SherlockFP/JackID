@@ -19,7 +19,7 @@ import { TableBase } from '@/machines/_base/TableBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { juiceTier } from '@/machines/_base/tiers';
-import { buildModel, CHIP_Y, LAYOUT_CX, LAYOUT_CZ, numberXZ, paintLayout, pocketAngle, spotXZ, type RouletteParts } from './model';
+import { BALL_POCKET_Y, BALL_REST_Y, BALL_R_TRACK, POCKET_R, buildModel, CHIP_Y, LAYOUT_CX, LAYOUT_CZ, numberXZ, paintLayout, pocketAngle, spotXZ, type RouletteParts } from './model';
 import {
   BASE_WEIGHT, POCKETS, callPlan, colorOf, defaultMods, limitsFor, parseSpot, playHeadless, spin, wheelAt,
   type Bet, type CallId, type Mods,
@@ -108,7 +108,11 @@ function nearestSpot(x: number, z: number): string | null {
 
 const wrapTau = (a: number): number => ((a % (Math.PI * 2)) + Math.PI * 4) % (Math.PI * 2);
 /** Where the ball sits over pocket `n` on the rail radius (the dolly's frame). */
-const railXZ = (n: number): [number, number] => { const a = pocketAngle(n); return [Math.sin(a) * 0.275, Math.cos(a) * 0.275]; };
+const railXZ = (n: number): [number, number] => { const a = pocketAngle(n); return [Math.sin(a) * POCKET_R, Math.cos(a) * POCKET_R]; };
+const wrapPi = (a: number): number => { const t = wrapTau(a); return t > Math.PI ? t - Math.PI * 2 : t; };
+const smooth = (k: number): number => { const c = Math.min(1, Math.max(0, k)); return c * c * (3 - 2 * c); };
+const HOVER_Y = 0.07;       // ball height above the wheel pivot while it hunts over a pocket
+const CATCH_S = 0.5;        // the ball leaves the track and spirals in to the rail this long before it drops
 
 export { playHeadless };
 
@@ -449,6 +453,8 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     const bEnd = bStart - Math.PI * 2 * 6 - wrapTau(bStart);
     rim.pattern('chase', 14);
     dolly.visible = false;
+    ball.visible = true;
+    ball.position.set(0, BALL_REST_Y, BALL_R_TRACK);
     if (pc.fast) {
       rotor.rotation.y = rEnd; ballPivot.rotation.y = bEnd;
     } else {
@@ -456,8 +462,10 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
       const spinS = (ev.orbitMs + ev.dropMs) / 1000, dropS = ev.dropMs / 1000;
       const dropAt = spinS - dropS;                                 // the ball leaves the rail
       const hoverAt = ev.near ? dropAt - HOVER_S : dropAt;          // a near miss hovers over the neighbour first
-      const [hx, hz] = railXZ(ev.near ? wheelAt(ev.pocket, ev.pocket % 2 ? 1 : -1) : ev.pocket);
-      const [px, pz] = railXZ(ev.pocket);
+      const hoverPocket = ev.near ? wheelAt(ev.pocket, ev.pocket % 2 ? 1 : -1) : ev.pocket;
+      const dHover = wrapPi(a - pocketAngle(hoverPocket));          // the neighbour pocket is one slot away round the wheel
+      const catchAt = Math.min(hoverAt, dropAt) - CATCH_S;
+      let phi0 = 0, shift = 0, caught = false;
       const step = (Math.PI * 2) / POCKETS;
       let tick = Math.floor(rStart / step), knocks = 0;
       await this.anim(spinS, (k) => {
@@ -469,10 +477,20 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
           const idx = Math.floor(rotor.rotation.y / step);
           if (idx !== tick) { tick = idx; this.sfx('wheelTick', { vol: 0.5, param: 0.4 }); }
         }
-        if (s >= hoverAt) {                                          // the ball: hover, then drop into the pocket
+        if (s >= catchAt) {
+          // the real ball leaves the track, spirals in to the pocket rail (over the neighbour first on a near miss), then drops in
+          // and rides the pocket round: its world angle ends on the winning pocket's (rotor + pocket angle = 0 at the stop)
           const u = s < dropAt ? 0 : Math.min(1, (s - dropAt) / dropS);
-          dolly.visible = true;
-          dolly.position.set(hx + (px - hx) * u, 0.05 + 0.04 * (1 - u) * (1 - u), hz + (pz - hz) * u);
+          const target = pocketAngle(hoverPocket) + dHover * u + rotor.rotation.y;
+          if (!caught) {
+            caught = true; phi0 = ballPivot.rotation.y;
+            shift = phi0 + wrapPi(target - phi0) - target;
+          }
+          const q = smooth((s - catchAt) / CATCH_S);
+          ballPivot.rotation.y = phi0 + (target + shift - phi0) * q;
+          const drop = (1 - u) * (1 - u);
+          ball.position.set(0, BALL_POCKET_Y + (BALL_REST_Y - BALL_POCKET_Y) * (1 - q) + (HOVER_Y - BALL_POCKET_Y) * q * drop,
+            BALL_R_TRACK + (POCKET_R - BALL_R_TRACK) * q);
         }
         // the bounce knocks in the drop: as many as the spin drew, each softer and closer together
         while (knocks < ev.bounces && s >= dropAt + dropS * (1 - Math.pow(0.6, knocks + 1))) {
@@ -484,7 +502,8 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     // impact: the ball drops into the pocket
     rotor.rotation.y = rEnd;
     ballPivot.rotation.y = bEnd;
-    dolly.position.set(Math.sin(a) * 0.275, 0.05, Math.cos(a) * 0.275);
+    ball.position.set(0, BALL_POCKET_Y, POCKET_R);                 // ball angle 0 = the winning pocket's world angle (rotor + a ≡ 0)
+    dolly.position.set(Math.sin(a) * POCKET_R, 0.075, Math.cos(a) * POCKET_R);
     dolly.visible = true;
     const pz = numberXZ(ev.pocket);
     this.parts.puck.position.set(pz[0], this.parts.puck.position.y, pz[1]);   // the puck on the layout: the player's view has no wheel in it
@@ -628,7 +647,7 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
   /** Refreshes the banner once per displayed second of the shared betting window. */
   private shownSecond = -1;
   frame(): void {
-    this.inset?.update(() => ({ rotor: this.parts.rotor.rotation.y, ball: this.parts.ballPivot.rotation.y }));
+    this.inset?.update(() => ({ rotor: this.parts.rotor.rotation.y, ball: this.parts.ballPivot.rotation.y, ballR: this.parts.ball.position.z }));
     if (!this.isLocalOccupant) return;
     const left = this.timerState ? Math.ceil(this.timerLeft) : 0;
     if (left !== this.shownSecond) { this.shownSecond = left; this.showHud(); }

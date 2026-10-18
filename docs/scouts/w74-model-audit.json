@@ -1,0 +1,153 @@
+[
+ {
+  "key": "machinesA",
+  "problems": [
+   {
+    "id": "bigone-glass-crack-over-title",
+    "what": "The glass crack decal (white zigzag) is drawn over the 'The Big One' title on the front glass, so the B and i of 'Big' are covered and the title reads as 'The Bi g One'. Visible in both the front view and the seated view.",
+    "where": "src/machines/bigone/model.ts:329-331 (label at z 0.655), :363-364 (glassCrack decal at z 0.686, quad(0,0.5) = top-left crack art on a 1.4 x 0.55 m plane)",
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\shots\\bigone-round1-2.png (front, zoom bigone_front_title_zoom.png); bigone-round1.png (seated, white streak over the lower button bar)",
+    "severity": "medium",
+    "fix": "Keep the crack art out of the title band: move the crack to the panel corner (or shrink it and lower its alpha over the label), or drop the decal's z offset so the label sits in front. Confirm the title stays legible at 3 m and in the seated view."
+   },
+   {
+    "id": "bigone-fog-decal-hard-edges",
+    "what": "The fog decal (soft radial gradient) is alpha-tested at 0.05, so its soft falloff becomes hard, stair-stepped grey blotches on the dark glass, most visible at the left and top-right of the front panel.",
+    "where": "src/machines/bigone/model.ts:366-367 (fogDecal, alphaTest 0.05 on a radial-gradient atlas quadrant, lines 348-357)",
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\shots\\bigone-round1-2.png (front panel zoom bigone_front_title_zoom.png)",
+    "severity": "low",
+    "fix": "Use transparent blending (alphaTest 0, depthWrite false) for the fog decal so the gradient is smooth, or bake a hard-edged shape on purpose. Check the decal's z (0.687) does not fight the glass plane at 0.675."
+   },
+   {
+    "id": "bigone-lcd-glyphs-unreadable",
+    "what": "The top LCD (160 x 48 px) renders garbled glyphs: the yellow top line and the red '1 HIT' line are not readable, and the cyan bottom line looks like broken pixel art, so the seated view shows no legible status text other than 'Bet 100'.",
+    "where": "src/machines/bigone/model.ts:263-266 (kit.screen 0.8 x 0.24, px [160,48]); glyph/draw code for the screen is in src/machines/bigone/index.ts or show.ts (not confirmed which function owns the top line)",
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\shots\\bigone-round1.png (zoom bigone_lcd_zoom.png)",
+    "severity": "medium",
+    "fix": "Check the px font used for the top and bottom lines for missing glyphs (the 'px5' or similar font may lack characters the strings use) and make sure the screen texture is sampled crisp (nearest or mips) at this size. Confirm the text is legible at seated distance."
+   },
+   {
+    "id": "bigone-medallion-foreshortened",
+    "what": "The crown medallion (coin, radius 0.22 m) reads as a tall narrow figure, about 2:1 in the front view, instead of a round disc. This is probably the spin phase of the holder (it rotates about Y), but it could also be a scale or geometry problem. One frame cannot tell them apart.",
+    "where": "src/machines/bigone/model.ts:306-311 (medallion Object3D at y 2.78, z 0.62; coin r 0.22, thick 0.03) and the spin code in index.ts or show.ts",
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\shots\\bigone-round1-2.png (zoom bigone_front_crown_zoom.png)",
+    "severity": "low",
+    "fix": "Take 3 or 4 frames of the idle front view at different spin phases to confirm. If the disc is round when facing the camera, this is fine. Otherwise check the coin's geometry scale and the spin axis."
+   },
+   {
+    "id": "bigone-crown-rays-at-lid-edge",
+    "what": "The two outer sunburst rays (i=0 and i=12) sit exactly on the lid edge at y 2.55 and touch the gold top trim. The front view shows the crown's bottom bars merging into the trim, with no clear separation.",
+    "where": "src/machines/bigone/model.ts:88 (CROWN_C y 2.55), :292-305 (13 rays, radius 0.4 from the centre, length 0.2); the trim is near the top box at y ~2.55",
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\shots\\bigone-round1-2.png (zoom bigone_front_crown_zoom.png, bottom bars)",
+    "severity": "low",
+    "fix": "Lift the crown centre by about 0.03 m or shorten the outer rays so they clear the trim, or confirm the touch is intended as the lid join."
+   },
+   {
+    "id": "videopoker-hold-pads-banded-and-hidden",
+    "what": "In the seated view the hold/bet pads show horizontal stripe banding on their caps (a stacked-stripe look, not a flat colour). The front row (hold2-4 and DEAL) is hidden behind the HUD bet bar and the '1 PULL = 1 ROUND' tag, so the red DEAL pad is not visible in the frame at all.",
+    "where": "src/machines/videopoker/model.ts:69-84 (buttonPanel, capH 0.02, 11 buttons; front row z 0.05, back row z -0.07); the caps texture comes from kit.buttonPanel (kit source not checked)",
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\shots\\videopoker-round1-2.png (zoom vp_lamps_zoom.png)",
+    "severity": "low",
+    "fix": "Check that the caps texture is not tiled or stretched across the panel (UV repeat per button, or a per-button texture). Confirm in a front-view shot (not run) that all 11 buttons are visible. The HUD overlay covering the deck is a harness/HUD placement question, not a model bug."
+   },
+   {
+    "id": "coverage-gap",
+    "what": "Screenshots were taken for bigone (seated and front) and videopoker (seated only). Coinflip, hilo and mines were not captured because the 4-run budget was used up (one of the runs failed on a boot timeout). Videopoker has no front view. Those machines are unverified visually.",
+    "where": "n/a (QA budget)",
+    "shot": "n/a",
+    "severity": "info",
+    "fix": "Re-run with the remaining machines: npm run qa -- --machine coinflip|hilo|mines --sit --settle 4000 --script wait:1500 --shots <dir>, and for front views use --js to teleport the player to (0, eye, 0) with yaw 0 (bench machines sit at z -3) and run without --sit."
+   }
+  ]
+ },
+ {
+  "key": "machinesB",
+  "problems": [
+   {
+    "id": "plinko-side-blocks",
+    "what": "Grey stepped blocks along both sides of the peg field read as stray geometry or shading artifacts, not board structure. Not confirmed from source; the shot is the only evidence.",
+    "where": "src/machines/plinko/model.ts (board side walls/bevels, not inspected)",
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\qa-b1\\plinko-f1500.png",
+    "severity": "low",
+    "fix": "Check whether the grey stepped shapes are intended side panels; if not, remove them or align them to the board edge. Confirm with a front view at about 3 m."
+   },
+   {
+    "id": "plinko-tray-outside-cabinet",
+    "what": "A red and white stack at the lower right of the cabinet sits outside the board frame and may float beside the cabinet.",
+    "where": "src/machines/plinko/model.ts (tray or puck-stack placement, not inspected)",
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\qa-b1\\plinko-f3000.png",
+    "severity": "low",
+    "fix": "Verify the stack's position against the cabinet footprint. Pull it inside the cabinet or onto a base if it is floating."
+   },
+   {
+    "id": "blackjack-dealer-hands-unreadable",
+    "what": "The dealer (two porcelain hands on brass rods, no body) does not read clearly from the seat. The hands look like flat white blobs above the brass pedestal, and the scoreboard label overlaps them. The dealer is only partly in frame.",
+    "where": "src/machines/blackjack/model.ts:118-128 (pedestal, brass rods, hands at TOP+0.2), :176-187 (scoreboard and lamps). Both confirmed in source.",
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\qa-b1\\blackjack-f2000.png",
+    "severity": "medium",
+    "fix": "Confirm the hand silhouette from the seated view and raise the camera or move the scoreboard so the hands are not hidden by the label. Check hand material contrast against the brass."
+   },
+   {
+    "id": "blackjack-dark-shape-left",
+    "what": "A large dark blue-grey shape with a glossy sheen fills the upper-left of the seated frame. It may be the standing pit-boss mannequin or a dark prop, seen too close to read. Possible dark NPC body with visual errors, not confirmed.",
+    "where": "src/machines/blackjack/model.ts:227 (pit boss mannequin placed behind the dealer's left spot, confirmed in source)",
+    "shot": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\C--Users-Admin-Documents-JackID\\48c49d04-016b-4c0d-ac70-780ba1fcc555\\scratchpad\\qa-b1\\blackjack-f2000.png",
+    "severity": "medium",
+    "fix": "Confirm the shape is the pit boss. If so, check that the mannequin material is not near-black and that the figure is not clipped by the table edge or wall. Take a 3 m front shot to see the whole figure."
+   }
+  ]
+ },
+ {
+  "key": "world",
+  "problems": [
+   {
+    "id": "NPC-01",
+    "what": "Dark patrons render as saturated violet/blue silhouettes with blotchy light cloud spots, not near-black bodies. Faces are blank, and the outline reads as a glowing rim rather than a dark figure.",
+    "where": "src/kit/mannequin.ts:145 (shadow look: main 0x07070b, emissive 0x1c0a2e), src/kit/mannequin.ts:331 (patchNpc shimmer: 1), src/kit/mannequin.ts:34 (NPC_RIM_HOUSE 0x6fd8e0, applied for shadow via line 263)",
+    "shot": "C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-JackID/48c49d04-016b-4c0d-ac70-780ba1fcc555/scratchpad/runA/start.png and runA/lobby.png (two patrons at the casino floor, bench --run seed 1)",
+    "severity": "medium",
+    "fix": "Check whether the emissive and the cyan rim are overpowering the near-black main color. Lower emissive and rim intensity for the shadow style, and confirm the shimmer term is not producing the blotchy spots. Verify the look in both lit and dark conditions."
+   },
+   {
+    "id": "NPC-02",
+    "what": "Patron limbs read oddly in the lobby frame: the right-hand figure has an arm angled out and down at an unnatural pose, and feet look truncated against the floor. Low confidence, from one frame only.",
+    "where": "src/world/actors/darkPatrons.ts (walk and stop poses); mannequin pose in src/kit/mannequin.ts",
+    "shot": "runA/lobby.png, runA/start.png",
+    "severity": "low",
+    "fix": "Capture a close-up of one patron standing at a machine stop and at a walk cycle to confirm the pose and foot contact before changing the rig."
+   },
+   {
+    "id": "APT-01",
+    "what": "Apartment wood floor shows stretched, smeared, low-frequency blotches instead of plank grain, which suggests wrong texture scale or UV tiling on the floor slab.",
+    "where": "src/world/home/room.ts:49 (floor = kit.mat({ map: tex.wood(0x6a4a30) })), src/world/home/room.ts:62 (slab floor, 6.6 x 5.6 m). Texture repeat not verified in the source.",
+    "shot": "C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-JackID/48c49d04-016b-4c0d-ac70-780ba1fcc555/scratchpad/runC/run-f200.png, runC/run-f2600.png, runD/run-f7000.png, runD/run-f9000.png (apartment prologue, --world seed 3)",
+    "severity": "medium",
+    "fix": "Confirm the repeat on the wood texture for the slab size, and check the UV scale in tex.wood. Give the floor a repeat that matches the plank count so the grain reads at 1:1 world scale."
+   },
+   {
+    "id": "APT-02",
+    "what": "Spouse silhouette in the apartment is a faceless dark brown body with a thin light outline. Her arm and hand appear to run into the table edge and the chair back, so the seated pose may intersect the furniture. Low confidence, from the shots only.",
+    "where": "Spouse placement in src/world/home/room.ts (kitchen table, chair and spouse station, around line 144 onward); spouse model not opened",
+    "shot": "runC/run-f200.png, runC/run-f2600.png, runD/run-f7000.png",
+    "severity": "low",
+    "fix": "Take a close shot of the spouse seated at the table from the front and side to check hand-to-table contact and torso-to-chair-back intersection. Adjust the seat offset or the arm pose if they overlap."
+   },
+   {
+    "id": "LFT-01",
+    "what": "Elevator interior view is a lattice of orange beams with a dark head-like shape at the top. It is hard to tell if the cage bars cross the camera or if the lift interior geometry is intersecting the lift shaft. Not conclusive.",
+    "where": "Elevator anchor elevator.door at [-4,1.35,-30] (src/world/props/elevator.ts, not opened)",
+    "shot": "C:/Users/Admin/AppData/Local/Temp/claude/C--Users-Admin-Documents-JackID/48c49d04-016b-4c0d-ac70-780ba1fcc555/scratchpad/runA/elevator-door.png",
+    "severity": "low",
+    "fix": "Shoot from the lift floor centre and from outside the doors to check whether the beams are cage geometry or a z-fight with the shaft walls."
+   },
+   {
+    "id": "TRM-01",
+    "what": "Terminal anchor view lands on a blank wall with a blocky checker texture. The terminal itself is not in frame, so its geometry, scale and label cannot be judged from this capture. The 'Use Bank Terminal' prompt appears, so the object exists.",
+    "where": "Terminal anchor at [0,1.25,-29] (src/world/props, bank terminal); anchor yaw 0 faces the wall",
+    "shot": "runA/terminal.png, runA/phone.png (same frame)",
+    "severity": "low",
+    "fix": "Re-shoot the terminal with the anchor offset in front of it, not on it, so the panel and screen are in frame. The phone and signposts anchors were unavailable without the apartment, so those areas were not checked."
+   }
+  ]
+ }
+]

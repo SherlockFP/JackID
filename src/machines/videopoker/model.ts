@@ -68,17 +68,17 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<VideoPokerPart
   const deck = kit.buttonPanel({
     w: 0.56, d: 0.2, slope: 12, plate: pal.black, capH: 0.02,
     buttons: [
-      { id: 'hold0', color: pal.bone, x: -0.23, z: 0.05, w: 0.06, h: 0.04 },
-      { id: 'hold1', color: pal.bone, x: -0.165, z: 0.05, w: 0.06, h: 0.04 },
-      { id: 'hold2', color: pal.bone, x: -0.1, z: 0.05, w: 0.06, h: 0.04 },
-      { id: 'hold3', color: pal.bone, x: -0.035, z: 0.05, w: 0.06, h: 0.04 },
-      { id: 'hold4', color: pal.bone, x: 0.03, z: 0.05, w: 0.06, h: 0.04 },
-      { id: 'deal', color: pal.red, x: 0.17, z: 0.05, w: 0.08, h: 0.05 },
-      { id: 'betOne', color: pal.chrome, x: -0.2, z: -0.07, w: 0.06, h: 0.04 },
-      { id: 'betMax', color: pal.chrome, x: -0.12, z: -0.07, w: 0.06, h: 0.04 },
-      { id: 'game', color: pal.neonCyan, x: -0.04, z: -0.07, w: 0.06, h: 0.04 },
-      { id: 'double', color: pal.neonYellow, x: 0.05, z: -0.07, w: 0.06, h: 0.04 },
-      { id: 'collect', color: pal.green, x: 0.13, z: -0.07, w: 0.06, h: 0.04 },
+      { id: 'hold0', color: pal.bone, x: -0.23, z: 0.05, w: 0.06, h: 0.04, label: '1' },
+      { id: 'hold1', color: pal.bone, x: -0.165, z: 0.05, w: 0.06, h: 0.04, label: '2' },
+      { id: 'hold2', color: pal.bone, x: -0.1, z: 0.05, w: 0.06, h: 0.04, label: '3' },
+      { id: 'hold3', color: pal.bone, x: -0.035, z: 0.05, w: 0.06, h: 0.04, label: '4' },
+      { id: 'hold4', color: pal.bone, x: 0.03, z: 0.05, w: 0.06, h: 0.04, label: '5' },
+      { id: 'deal', color: pal.red, x: 0.17, z: 0.05, w: 0.08, h: 0.05, label: { key: 'm.videopoker.pDeal' } },
+      { id: 'betOne', color: pal.chrome, x: -0.2, z: -0.07, w: 0.06, h: 0.04, label: '+1' },
+      { id: 'betMax', color: pal.chrome, x: -0.12, z: -0.07, w: 0.06, h: 0.04, label: { key: 'm.videopoker.pMax' } },
+      { id: 'game', color: pal.neonCyan, x: -0.04, z: -0.07, w: 0.06, h: 0.04, label: { key: 'm.videopoker.cGame' } },
+      { id: 'double', color: pal.neonYellow, x: 0.05, z: -0.07, w: 0.06, h: 0.04, label: { key: 'm.videopoker.pDbl' } },
+      { id: 'collect', color: pal.green, x: 0.13, z: -0.07, w: 0.06, h: 0.04, label: { key: 'm.videopoker.pCash' } },
     ],
   });
   (cab.anchors.panel ?? root).add(deck.root);

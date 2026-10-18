@@ -106,6 +106,19 @@ const CURSE_SHOW = 3.2;
 const FORCE_CHASE_TRIES = 400;          // debug force: re-rolls allowed to find a chaseable line win
 const JACKPOT_COUNT = 2.0;
 const LAST10 = 10;
+/** Extra seconds the reels 2 to 4 hold back while two jackpot symbols stand side by side. */
+const JP_EXTRA = [0, 0, 0.3, 0.7, 1.3];
+/** How many leading columns (reels) stand fully on one and the same symbol (grid is row-major, 5 columns). */
+function lockedColumns(grid: readonly number[]): number {
+  const sym = grid[0];
+  if (sym === undefined || sym < 0) return 0;
+  let n = 0;
+  for (let c = 0; c < 5; c++) {
+    if (grid[c] === sym && grid[5 + c] === sym && grid[10 + c] === sym) n++;
+    else break;
+  }
+  return n;
+}
 const LID_OPEN = (25 * Math.PI) / 180;
 const LEVER_PULL = 1.05;
 const GOLD = 0xffd040;
@@ -172,6 +185,12 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   private offer: Offer | null = null;
   /** Debug force (`bigone:chase`): the next spin is re-rolled until it is a chaseable line win. */
   private forceChase = false;
+  /** The JACKPOT LED on the cabinet: the value it shows and the value it is heading to (it ticks up instead of jumping). */
+  private ledShown = -1;
+  private ledTarget = -1;
+  private ledSeq = 0;
+  /** True while a jackpot tease / show owns the LED colour. */
+  private ledBusy = false;
 
   protected createModel(kit: KitX): MachineModel<BigOneParts> {
     return buildModel(kit, this.modelOpts);
@@ -536,15 +555,20 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     // near-miss tell: the reel that would complete a lined-up run crawls; every later reel waits behind it
     const tReel = !free && ev.tease && ev.tReel >= 1 && ev.tReel <= 4 && ev.tReel !== ev.hold ? ev.tReel : -1;
     const crawl = tReel >= 0 ? TEASE_D[Math.min(4, Math.max(2, ev.tLen))] : 0;
+    // jackpot build-up: when the first two reels stand on the same symbol, the rest slow one by one
+    const lock = !free && tReel < 0 && !ev.curse ? lockedColumns(ev.grid) : 0;
+    const jpLast = Math.min(lock, 4);
+    const jpExtra = (i: number): number => (lock >= 2 && i >= 2 ? JP_EXTRA[Math.min(i, jpLast)] : 0);
     const stopOf = (i: number): number => (free
       ? STOP_T[i] * FREE_SPEED
-      : STOP_T[i] + (ev.respin && i >= 3 ? 0.8 : 0) + (tReel >= 0 && i >= tReel ? crawl : 0));
+      : STOP_T[i] + (ev.respin && i >= 3 ? 0.8 : 0) + (tReel >= 0 && i >= tReel ? crawl : 0) + jpExtra(i));
     const runs: Promise<void>[] = [];
     for (let i = 0; i < 5; i++) {
       if (i === ev.hold) { runs.push(Promise.resolve()); continue; }   // held reel stays put
-      runs.push(this.spinReel(i, stopOf(i), i === tReel));
+      runs.push(this.spinReel(i, stopOf(i), i === tReel || (lock >= 2 && i === jpLast)));
     }
     if (tReel >= 0) void this.teaseShow(ev, tReel, stopOf(tReel - 1), crawl);
+    if (lock >= 2) void this.jackpotTease(ev, lock, stopOf(1), jpExtra(jpLast) + 0.5);
     this.reelsTurning = true;
     await Promise.all(runs);
     this.reelsTurning = false;
@@ -564,6 +588,55 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     this.drawText(this.t('tease'));
     this.sfx('tensionRise', { vol: 0.8, param: Math.min(1, (crawl + 0.35) / 1.6) });   // the riser climbs through the held breath
     await this.nearMiss({ dur: crawl + 0.35, at: this.parts.screens.top.mesh, lamps: this.parts.paylineLamps });
+  }
+
+  /**
+   * Two jackpot symbols have landed side by side: the lights race, a riser climbs, the LED flashes and the reels that
+   * are left slow down. A full grid pays off in presentJackpot; otherwise it was a near miss. Presentation only.
+   */
+  private async jackpotTease(ev: SpinEv, lock: number, at: number, dur: number): Promise<void> {
+    await this.wait(at);
+    if (this.disposed) return;
+    const p = this.parts;
+    const calm = flashOpts().reduced || flashOpts().calm;
+    const hz = calm ? 4 : 12;
+    const cells: number[] = [];
+    for (let c = 0; c < Math.min(lock, 2); c++) for (let r = 0; r < 3; r++) cells.push(r * 5 + c);
+    this.lightCells(cells, 1);
+    this.drawText(this.t('jpTease'));
+    this.sfx('tensionRise', { vol: 0.9, param: 1 });
+    p.bulbs.crown.setPattern('chase', hz);
+    p.bulbs.window.setPattern('chase', hz);
+    p.ledStrip.pattern('chase', hz);
+    p.paylineLamps.forEach((l) => l.blink(hz * 0.6, dur * this.speed));
+    this.ctx.fx.lightPulse(p.jackpotLed.root, { color: GOLD, mul: 1.6, dur: dur * this.speed });
+    this.flashLed(dur, calm ? 2 : 6);
+    await this.wait(dur);
+    if (!this.disposed && !ev.fill) this.bulbsIdle();
+  }
+
+  /** The JACKPOT LED blinks gold / white for `dur` seconds, then returns to gold. */
+  private flashLed(dur: number, hz: number): void {
+    const led = this.parts.jackpotLed;
+    this.ledBusy = true;
+    let on = false;
+    void this.anim(dur, (k) => {
+      const now = Math.floor(k * dur * hz * 2) % 2 === 0;
+      if (now !== on) { on = now; led.setColor(on ? '#ffffff' : '#ffd040'); }
+    }).then(() => { led.setColor('#ffd040'); this.ledBusy = false; });
+  }
+
+  /** The LED shows the jackpot meter and counts up to a new value instead of jumping. */
+  private tickLed(target: number): void {
+    if (target === this.ledTarget) return;
+    this.ledTarget = target;
+    const from = this.ledShown < 0 ? target : this.ledShown;
+    const seq = ++this.ledSeq;
+    const set = (v: number): void => { this.ledShown = v; this.parts.jackpotLed.set(String(Math.max(0, Math.min(99999999, v)))); };
+    if (from === target || target < from) { set(target); return; }
+    void this.anim(Math.min(0.9, 0.3 + (target - from) / 4000), (k) => {
+      if (seq === this.ledSeq) set(Math.round(from + (target - from) * k));
+    }).then(() => { if (seq === this.ledSeq) set(target); });
   }
 
   /** One reel: whole turns that end with facet 0 at the front, decelerating, then a bounce. `slow` = the anticipating reel (ticks rise). */
@@ -769,6 +842,13 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     const fx = this.ctx.fx;
     fx.flash(GOLD, 0.8, 0.4);
     fx.hitstop(0.12);
+    const calm = flashOpts().reduced || flashOpts().calm;
+    p.bulbs.crown.setPattern('rainbow', calm ? 3 : 10);
+    p.bulbs.window.setPattern('blink', calm ? 3 : 8);
+    this.flashLed(JACKPOT_COUNT * this.speed + 1.5, calm ? 2 : 8);
+    this.drawText(this.t('jpBanner'));
+    fx.popText(p.medallion, this.t('jpBanner'), GOLD, { dur: 2.2, rise: 0.5, scale: 2 });
+    fx.coins(p.medallion, 48, { spread: 0.6, up: 2.4, over: 2.6 });   // the coin shower from the crown
     const net = Math.max(0, this.netOf(ev.gross, ev.stake, pc.local));   // the count and the pop land on the WIN callout's figure
     await Promise.all([
       this.celebrate('jackpot', { amount: net, mult: ev.gross / Math.max(1, ev.stake), bulbs: p.bulbs.window, lamps: p.last10, restore: () => this.bulbsIdle() }),
@@ -899,6 +979,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   private drawScreen(shown?: number): void {
     const s = this.state;
     this.setNeedle();
+    this.tickLed(Math.floor(s.meter));
     if (shown === undefined && s.tally.length && s.last10[0] === 1) { this.drawTally(s.tally, s.gross); return; }
     this.parts.screens.top.draw((g, sc) => {
       g.fillStyle = '#120406';
@@ -914,9 +995,9 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
         sc.text(`${this.t('bet')} ${fmtCoins(this.bet)}`, 80, 11, { font: 'px5', scale: 2, color: '#4a8a4a', align: 'center' });
       }
       g.fillStyle = '#3a1010';
-      g.fillRect(20, 24, 120, 4);
+      g.fillRect(20, 27, 120, 3);   // below the 2x result line (it spans y 11 to 25)
       g.fillStyle = '#c0182a';
-      g.fillRect(20, 24, Math.round(120 * this.hungerPct()), 4);
+      g.fillRect(20, 27, Math.round(120 * this.hungerPct()), 3);
       sc.text(this.t('hunger'), 80, 31, { font: 'px5', color: '#c0182a', align: 'center' });
       const status = this.autoLeft > 0
         ? this.t('autoOn', { n: this.autoLeft })
