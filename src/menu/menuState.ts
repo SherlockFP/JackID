@@ -219,12 +219,17 @@ export function createMenuState(): AppStateHandler<'menu'> {
       // height, and sits well above the inner frame line, so the longest Turkish hint never runs into the frame (21:9 report).
       paintPanel(c, w, h, { ...o, hint: undefined });
       if (!o.hint) return;
+      // The inner frame line (menuArt frame) sits at (w / 40) * 2.2 from the edge, so on a wide plate (21:9) it is a big share of
+      // the height. The hint sits above that line with a margin, and its size fits the room between the body and the line.
+      const frameIn = (w / 40) * 2.2 + Math.max(2, w / 96) / 2;
+      const floor = h - frameIn - Math.max(6, h * 0.03);      // lowest pixel the hint may reach
+      const ceil = h * 0.7;                                    // keep clear of the title and the body text
       let px = Math.round(h * 0.1);
       for (; px > 12; px -= 2) {
         c.font = `${px}px "VT323", monospace`;
-        if (c.measureText(o.hint).width <= w * 0.84) break;
+        if (c.measureText(o.hint).width <= w * 0.84 && floor - px >= ceil) break;
       }
-      bodyText(c, o.hint, w / 2, h * 0.83, px, '#8fd9ff', 'center');
+      bodyText(c, o.hint, w / 2, floor - px / 2, px, '#8fd9ff', 'center');
     });
   };
 

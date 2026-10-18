@@ -18,6 +18,11 @@ import { createRng, hashSeed, type Rng } from '@/core/rng';
 import type { Kit } from '@/kit/types';
 import type { World } from '@/world/types';
 
+/** A sound on the scrounge: a catch squeaks, a sale hands over cash. Silent when there is no audio (benches, tests). */
+const sfx = (name: string, pos?: THREE.Object3D): void => {
+  try { app.audio.play(name, pos ? { pos } : undefined); } catch { /* no audio in benches */ }
+};
+
 export type CritterKind = 'rat' | 'roach';
 
 /** Coins a sold critter pays. */
@@ -438,6 +443,7 @@ export function mountScrounge(run: ScroungeRun & object, world: World): () => vo
               if ('reason' in r && r.reason === 'full') toast(t('scrounge.toast.full'));
               return;
             }
+            sfx('ratSqueak', vis.root);
             toast(t('scrounge.toast.caught', { kind: t(`scrounge.name.${r.kind}`), n: sc.state().carried.total, max: SCROUNGE_CARRY_MAX }));
             sync();
           },
@@ -485,11 +491,12 @@ export function mountScrounge(run: ScroungeRun & object, world: World): () => vo
       onInteract: () => {
         if (sc.state().carried.total > 0) {
           const r = sc.sell();
+          if (r.ok && r.coins > 0) sfx('sellItem');
           if (r.ok) toast(r.coins === 0 ? t('scrounge.toast.capped') : t(r.n === 1 ? 'scrounge.toast.sold.one' : 'scrounge.toast.sold.other', { n: r.n, c: r.coins }));
           else toast(t('scrounge.toast.capped'));
         } else {
           const r = sc.sellWatch();
-          if (r.ok) { hideWatch(); toast(t('scrounge.toast.watch', { c: r.coins })); }
+          if (r.ok) { sfx('cashHandle'); hideWatch(); toast(t('scrounge.toast.watch', { c: r.coins })); }
           else if ('reason' in r && r.reason === 'not-broke') toast(t('scrounge.toast.notbroke'));
         }
         sync();

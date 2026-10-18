@@ -15,6 +15,8 @@ import { crispLabel } from './signs';
 
 /** North side of the Mouth, between the terminal (x 0) and the phone (x 4). The counter backs onto the north wall. */
 export const BELL_POS = { x: 1.9, z: -29.35 } as const;
+/** Distance (m) the stand point keeps from the bell, on the floor in front of the counter. */
+export const BELL_STAND_M = 1.2;
 /** Seconds the first press stays armed. */
 const ARM_SEC = 4;
 const COUNTER_H = 0.9;
@@ -69,9 +71,12 @@ export function buildLastCallBell(kit: KitX, o: { interact?: InteractionSystem }
   kit.sphere(0.04, pal.red, { pos: [0, 0.055, 0], parent: plunger, wSeg: 8, hSeg: 5 });
   swing.userData.kitKeep = true;
 
+  // The anchor is a stand point: 1.2 m south of the bell (the player's side of the counter), on the floor. Its forward is the
+  // anchor's -z (menu/evening `anchorPose` convention), so yaw 0 looks straight at the bell.
   const anchor = new THREE.Object3D();
   anchor.name = 'bell';
-  anchor.position.set(BELL_POS.x, top + 0.2, BELL_POS.z + 0.02);
+  anchor.position.set(BELL_POS.x, 0, BELL_POS.z + BELL_STAND_M);
+  anchor.rotation.set(0, 0, 0);
 
   const hints: LightHint[] = [
     { id: 'mouth:bell', pos: [BELL_POS.x, 1.7, BELL_POS.z + 0.5], color: 0xffd070, intensity: 0.7, range: 3, flicker: 'STEADY', zone: 'mouth' },

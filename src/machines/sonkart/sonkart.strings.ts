@@ -129,7 +129,7 @@ const tr: Record<string, string> = {
   hPlay: 'Oyna', hDraw: 'Çek', hPass: 'Geç', hCall: 'SON KART', hCatch: 'Yakala', hJump: 'Zıpla',
   hColour: 'Renk', hAnte: 'Bahis', hRules: 'Kurallar', hDrawN: '{n} çek',
   sAnte: '{n} bahis koy ya da izle', sWait: 'Bahisler bekleniyor', sYourTurn: 'Senin sıran', sTurnOf: '{name} oynuyor',
-  sBots: 'Boş koltuklar ev mankenleriyle dolar', sRound: 'EL {n}', sPot: 'HAVUZ {n}',
+  sBots: 'Boş koltuklar Kasa mankenleriyle dolar', sRound: 'EL {n}', sPot: 'HAVUZ {n}',
   sNoAnte: 'Kimse bahis koymadı, masa bekliyor', sPlaying: 'Oynanıyor', sSpectate: 'İzleniyor',
   scrColour: 'RENK', scrPend: 'BORÇ {n}', scrDir: 'SIRA', scrTurn: 'SIRA', scrRound: 'EL', scrPot: 'HAVUZ',
   scrCards: 'KART', scrFwd: '>>', scrBack: '<<', scrJackpot: 'JACKPOT x2', scrCalled: 'SON KART!',

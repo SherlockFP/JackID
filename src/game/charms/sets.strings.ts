@@ -28,7 +28,7 @@ export default {
     'set.hot.name': 'Sıcak Seti', 'set.hot.desc': 'Sıcak çarpanı +0,1.',
     'set.clutch.name': 'Son Anlar Seti', 'set.clutch.desc': 'Son Çağrı +6 sn.',
     'set.banker.name': 'Bankacı Seti', 'set.banker.desc': 'Faiz +%1.',
-    'set.whale.name': 'Balina Seti', 'set.whale.desc': 'Ev Limiti ×1,25.',
+    'set.whale.name': 'Balina Seti', 'set.whale.desc': 'Kasa Limiti ×1,25.',
     'set.rotation.name': 'Rotasyon Seti', 'set.rotation.desc': 'TİLT ek süresi +1 çekiş.',
     'set.copycat.name': 'Taklitçi Seti', 'set.copycat.desc': 'Dublör bir etki daha kopyalar.',
     'evo.label': 'GELİŞMİŞ',
@@ -40,7 +40,7 @@ export default {
     'evo.snowball_ledger': 'En fazla 4 Vardiya sayılır: her biri +%1 faiz (en fazla +%4).',
     'evo.last_gasp': 'Kota tutmadığı sürece, son Vardiya\'nın Son Çağrısı sırasında kazançlar ×1,6.',
     'evo.gilded_chip': 'Maksimum bahiste kazançlar ×1,4. Maksimum bahsin yarısının altında ×0,8.',
-    'evo.false_ceiling': 'Ev Limiti ×2,9 (kotanın 5 katından 14,5 katına). Tutarken Korku +10.',
+    'evo.false_ceiling': 'Kasa Limiti ×2,9 (kotanın 5 katından 14,5 katına). Tutarken Korku +10.',
     'evo.understudy': 'Legendary ya da Lanetli olmayan en pahalı iki tılsımın etkilerini kopyalar.',
   },
 };

@@ -25,7 +25,7 @@ required and are on the Credits screen (EN and TR, `src/menu/menu.strings.ts`).
 ## Batch 2026-10-19: notes
 - Only the seven approved packs were fetched, through itch.io's free name-your-own-price flow at $0 (no payment, no login, no personal data). Archives were kept in the scratch folder, path-checked, and extracted there. Only the files listed above were copied into the project.
 - Turkish glyph check: `cmap` tables were read with Node built-ins. Public Pixel and Chetyre pass; Thintel does not.
-- No asset is loaded by game code yet. The only game change is the two credit lines in `src/menu/menu.strings.ts`.
+- The first batch is now wired in. See "Loaded by the game" below. The credit lines are in `src/menu/menu.strings.ts`.
 - Thintel's licence asks for a link to http://samkeddy.com/; the credit line names the author and licence but has no URL. Add the link if the Credits screen can show one.
 
 ## Visual previews
@@ -62,7 +62,7 @@ Ten approved OpenGameArt packs, vendored into `public/assets/vendor/sfx-<pack-id
 `CREDIT.txt` (plus the author's readme where the pack shipped one). The file-by-file index with
 suggested game uses is `public/assets/vendor/SFX_INDEX.md`. Total audio: 98 files, 22.0 MB. Original
 archives were kept in the scratch folder, not in the repo, so `vendor-archives/` is not used for these.
-Nothing is wired into game code yet.
+All ten packs are wired into game code (see "Loaded by the game" below).
 
 | Folder | Pack and author | Source | Licence | Vendored |
 |---|---|---|---|---|
@@ -79,7 +79,7 @@ Nothing is wired into game code yet.
 
 **Credit line (CC BY 4.0, required):** "Crowd cheering sounds by Gregor Quendel, CC BY 4.0"
 (https://creativecommons.org/licenses/by/4.0/). Shown on the Credits screen in EN and TR
-(`src/menu/menu.strings.ts`). Audio is unedited; only the filenames were shortened.
+(`src/menu/menu.strings.ts`). Audio is unedited; only the filenames were shortened. Wired in: see "Loaded by the game" below.
 
 **Not vendored:**
 - Dryoma "Footsteps Sounds" (CC BY 4.0): no OpenGameArt page found under that title or author, so no
@@ -89,3 +89,19 @@ Nothing is wired into game code yet.
 - FLAC copies in the doors and rat packs; the rest of the owlish, laleksic and horror-hit sets that fall
   outside the brief (cloth, plastic, kitchen, drink, stationery, camera, velcro, taps, toilet, microwave).
 - No page is marked AI-generated. The horror-hit comment thread asks about AI tools and the author says none were used.
+
+## Loaded by the game (checked against the code, 2026-10-19)
+Each row names the file that loads the asset. A pack not listed here is vendored but not loaded.
+
+| What | Loaded by | Packs |
+|---|---|---|
+| Recorded sounds (the ten `sfx-*` packs above, with the procedural fallback kept for each name) | `src/core/audio/real.ts`, installed from `src/core/audio/sfx.ts` | owlish-more-sfx, laleksic-various, rubberduck-metal-wood, qubodup-doors, pagdev-elevator-door, starninjas-crowd (loop), chirptone-ringtone, quendel-crowd-cheering, psychhead-horror-hits, qubodup-rat |
+| Casino sound set (cards, chips, dice) | `src/core/audio/sfx.ts` (`DIR`) | kenney-casino-audio |
+| Textures (PSX pipeline, 32 or 64 px) | `src/kit/presets.ts` (named presets: wood, felt, brushed, plate, tufted, velvet, rust, cloth), `src/world/level.ts` (boiler grating, parlour wood, walls, wainscot), `src/world/props/decor.ts` (marble), `src/world/props/trapdoor.ts`, `src/world/props/vendorModels.ts` | sbs-synthetic (wood, felt, leather, fabric, stone), sbs-tiny2 (wood), sbs-tiny3 (grating, cloth, metal), sbs-horror (walls, metal), phobicpaul-lowpoly64 (plate) |
+| Pixel fonts, sign faces | `src/world/props/signs.ts` (`public`, `chetyre`) | ggbot-public-pixel, hanshuyuri-chetyre |
+| Toast capitals İ Ö Ü | `src/core/ui/ui.css` (`JackID Toast Caps`, toast text only; Public Pixel, scaled to VT323's cap height so the dot does not rise) | ggbot-public-pixel |
+| Mannequin (dealers, staff, cutscene actors) | `src/kit/types.ts` (`MANNEQUIN_GLB`) | quaternius-ual |
+| PSX couch (apartment) | `src/world/props/vendorModels.ts` | duhgless-psx-couch-2 |
+| Medieval tavern interior (OBJ pieces, async) | `src/world/props/vendorModels.ts` (`TAVERN`), placed from `src/world/level.ts` | battleroach-medieval-tavern |
+
+**Not loaded yet:** `gualtierisgg-rpg-furniture-2` (36 FBX, no code path) and `skeddles-thintel` (ASCII only, no Turkish glyphs). The Thintel credit line stays on the Credits screen because the licence needs it while the font is vendored.

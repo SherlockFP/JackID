@@ -7,7 +7,7 @@
  *
  * Holds (`hold`): coin (default), card, tonic, phone, ticket, ledger, gun (two-handed),
  * totem, or any `Object3D` the caller supplies (card fan, totem, scratch coin…). One-shot animations (`play`):
- * flip · drink · throw · point · punchCard · recoil · give · grab · checkWatch · unwatch. The left wrist wears a brass
+ * flip · drink · throw · point · punchCard · recoil · give · grab · checkWatch · unwatch · rpsRock · rpsPaper · rpsScissors. The left wrist wears a brass
  * wristwatch (`setWatch`). An empty hand holds a coin (the default). In walk mode with the
  * coin in hand, Q plays a coin trick (`./viewmodel/fidget.ts`); after ~8 s of standing still a short knuckle walk plays
  * on its own. `setHandLook` shows the unsettling finger-tax and porcelain collateral looks. The facade feeds head-bob
@@ -337,7 +337,21 @@ const ANIMS: Record<string, Anim> = {
       r.curl = r.index = lerp(r.curl, 0, a); r.thumb = lerp(r.thumb, 0.1, a);
     },
   },
+  /** Rock, Paper, Promise (W78): a fist pumped twice, then the hand shows. The three poses share the pump. */
+  rpsRock: { dur: 1.0, run: (k, r) => rpsThrow(k, r, 1.35, 1.3, 0.9, 0) },
+  rpsPaper: { dur: 1.0, run: (k, r) => rpsThrow(k, r, 0.02, 0.02, 0.1, 0) },
+  rpsScissors: { dur: 1.0, run: (k, r) => rpsThrow(k, r, 1.3, 0.02, 0.85, 1) },
 };
+
+/** The shared pump: up and down twice as a fist (k 0..0.55), then the pose opens to `curl`/`index`/`thumb` and holds. `snip` wags the hand. */
+function rpsThrow(k: number, r: HandPose, curl: number, index: number, thumb: number, snip: number): void {
+  const lift = bump(k, 0, 0.12, 0.8, 1);
+  const pump = k < 0.55 ? Math.sin((k / 0.55) * Math.PI * 2) * 0.5 + 0.5 : 0;
+  const show = smooth((k - 0.5) / 0.12);
+  r.pz -= 0.08 * lift; r.py += 0.07 * lift + 0.05 * pump * lift; r.rx += 0.35 * lift;
+  r.curl = lerp(1.3, curl, show); r.index = lerp(1.25, index, show); r.thumb = lerp(0.9, thumb, show);
+  if (snip) r.ry += 0.12 * Math.sin(k * 60) * show * bump(k, 0.55, 0.62, 0.85, 0.95);
+}
 
 // ── item models ───────────────────────────────────────────────────────────────────────────────────
 type OwnMat = (c: Hex) => THREE.MeshBasicMaterial;

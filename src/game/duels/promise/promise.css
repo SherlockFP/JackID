@@ -1,0 +1,22 @@
+/* ADA'S KITCHEN TABLE (Rock, Paper, Promise): a plain readable panel in the lower middle. Tokens come from ui.css. */
+.pm-table {
+  position: absolute; left: 50%; bottom: calc(var(--lb, 0) * var(--bar-h, 0px) + 40 * var(--u)); transform: translateX(-50%);
+  width: min(92%, calc(220 * var(--u))); z-index: 3; pointer-events: auto;
+  padding: calc(6 * var(--u)) calc(8 * var(--u));
+  background: var(--panel); box-shadow: inset 0 0 0 var(--u) var(--slate), 0 0 0 var(--u) var(--void);
+  font-family: var(--f-head); font-size: var(--fh); line-height: 1.25; color: var(--ivory);
+}
+.pm-title { display: flex; justify-content: space-between; gap: calc(8 * var(--u)); color: var(--amber); }
+.pm-score { font-size: calc(var(--fh) * 1.25); margin: calc(3 * var(--u)) 0; }
+.pm-cracks { opacity: 0.8; }
+.pm-head { margin-top: calc(4 * var(--u)); color: var(--amber); min-height: 1.25em; }
+.pm-lines { margin-top: calc(3 * var(--u)); min-height: 3.75em; }
+.pm-lines div { overflow-wrap: anywhere; }
+.pm-keys { display: flex; gap: calc(4 * var(--u)); flex-wrap: wrap; margin-top: calc(5 * var(--u)); }
+.pm-keys button {
+  font: inherit; color: inherit; background: var(--void); border: 0; cursor: pointer;
+  padding: calc(3 * var(--u)) calc(6 * var(--u)); box-shadow: inset 0 0 0 var(--u) var(--slate);
+}
+.pm-keys button:hover:not(:disabled) { box-shadow: inset 0 0 0 var(--u) var(--amber); }
+.pm-keys button:disabled { opacity: 0.35; cursor: default; }
+.pm-hint { margin-top: calc(4 * var(--u)); opacity: 0.6; }

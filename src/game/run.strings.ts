@@ -11,7 +11,7 @@ export default {
   },
   tr: {
     'mola': 'MOLA: alışveriş yap, bankaya bak, sonra kolu çek',
-    'fall.seized': 'Banka {n} Ev tarafından el konuldu',
+    'fall.seized': 'Banka {n} Kasa tarafından el konuldu',
     'house.notice': 'KASA FARK ETTİ: kota {n} oldu',
   },
 };

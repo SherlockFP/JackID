@@ -419,6 +419,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
         const pick = sw.choices[sw.idx];
         this.swap = null;
         if (!slot || !pick) { this.refresh(true); return; }
+        if (pick.refund > 0) this.sfx('sellItem');   // the charm that leaves goes back over the counter
         const ok = slot.price <= 0 || this.wallet() + pick.refund >= slot.price;
         this.commitBuy(pawn, sw.i, slot, ok, ok ? '' : 'funds', pick.id, slot.price - this.wallet() - pick.refund);
         this.refresh(true);

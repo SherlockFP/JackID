@@ -77,3 +77,4 @@ import './ghostSeat.test.mjs';
 import './floorEvents.test.mjs';
 import './floorWiring.test.mjs';
 import './scrounge.test.mjs';
+import './promise.test.mjs';

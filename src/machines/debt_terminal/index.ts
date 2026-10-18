@@ -852,6 +852,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     this.sfx('coinShower');
     fx.coins(anchor, n, { spread: 0.08, up: 0.25 });
     await this.anim(COIN_STREAM_S, (k) => { mouthLips.scale.y = lerp(1.8, 1.0, k); });
+    this.sfx('cashHandle');                       // the keepsake's price changes hands
     this.sfx('stamp');
     fx.flash(GOLD, 0.2, 0.35);
     fx.popText(anchor, `-${fmtNum(ev.amount)}`, 0xff9a70, { scale: 1.3 });
@@ -899,6 +900,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
 
     // impact: the lips chew, the counter rolls, the receipt prints
     this.sfx('lever', { vol: 0.3, pitch: 2 });
+    this.sfx('coinsHandle');                      // the coins settle in the counter
     fx.popText(anchor, `+${fmtNum(ev.amount)}`, GOLD, { scale: 1.3 });
     const rolling = countUp(this.ctx, prev, target, rollSeconds(target - prev), (v) => {
       this.shownDep = Math.round(v);

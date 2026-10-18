@@ -412,6 +412,22 @@
 .px-frame:has(> .px-frame-title) > .px-frame-body { padding-top: calc(11 * var(--u)); }
 
 /* ── toasts (ART §10.7) ───────────────────────────────────────────────────────────────────── */
+/* Dotted capitals in toasts (İ, Ö, Ü): VT323 draws their dot above the cap line (glyph top 720 units, plain capitals 560), so
+   "YENİ VARDİYA" shows its İ jumping off the baseline. Public Pixel (vendored, CC0) keeps the dot inside its cap line (896 units,
+   the same as its I). It is scaled to VT323's cap height (896 / 1024 x 64 % = 0.56 em), and only these three letters use it.
+   The ascent and descent overrides match VT323 so the line box stays the same height. Toast text only. */
+@font-face {
+  font-family: 'JackID Toast Caps';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/assets/vendor/ggbot-public-pixel/PublicPixel.ttf') format('truetype');
+  unicode-range: U+0130, U+00D6, U+00DC;
+  size-adjust: 64%;
+  ascent-override: 80%;
+  descent-override: 20%;
+  line-gap-override: 0%;
+}
 /* Top-centre stack sits UNDER the HUD top band (--hud-top-h, set by hud.ts): it used to land on the title strip. */
 .px-toasts {
   position: absolute; top: calc(var(--hud-top-h, calc(8 * var(--u))) + 32 * var(--u)); left: 50%; transform: translateX(-50%); z-index: 5;
@@ -435,7 +451,7 @@
 }
 .px-toast .bar { position: absolute; left: 0; top: 0; bottom: 0; width: calc(3 * var(--u)); background: var(--tc); }
 .px-toast .ico { flex: 0 0 auto; }
-.px-toast .txt { flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; word-break: normal; hyphens: none; }
+.px-toast .txt { flex: 1 1 auto; min-width: 0; overflow-wrap: break-word; word-break: normal; hyphens: none; font-family: 'JackID Toast Caps', var(--f-body); }
 /* The merge counter ("x2": the same news shown twice within the merge window) meant nothing to the player, so it is dropped:
    one news item, one display (the repo's announce rule). Counting still happens in ui.ts; only the badge is hidden. */
 .px-toast .cnt { display: none; }

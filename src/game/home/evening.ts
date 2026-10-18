@@ -28,6 +28,9 @@ import { charmDef } from '../charms/engine';
 import type { KeepsakeId } from '../keepsake';
 import strings from './evening.strings';
 import knockStrings from './knock.strings';
+import { openKitchen, type Kitchen } from '../duels/promise/kitchen';
+import { stakeFor, type FlowResult } from '../duels/promise/flow';
+import type { Hand } from '../duels/promise/rules';
 
 registerStrings(strings.prefix, { en: strings.en, tr: strings.tr });
 registerStrings(knockStrings.prefix, { en: knockStrings.en, tr: knockStrings.tr });
@@ -119,6 +122,12 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   let liftBeat = { ding: false, tp: false, fadeIn: false };
   let objectiveT = 0;
   let disposed = false;
+  /** ADA'S KITCHEN TABLE (wave 78): the open overlay, the Nights already played, the offer's wait (sim s) and cooldown. */
+  let kitchen: Kitchen | null = null;
+  const kitchenPlayed = new Set<number>();
+  let offerWait = -1;
+  let offerCool = 0;
+  let offering = false;
 
   const spousePresent = (): boolean => (run.homePhone()?.harmony() ?? 3) > 0;
 
@@ -451,10 +460,62 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     ui().toast(next === null ? t('keepsake.carry.none') : t('keepsake.carry.set', { name: t(`keepsake.${next}.name`) }), 'info', 3);
   };
 
+  // ── ADA'S KITCHEN TABLE (wave 78): Rock, Paper, Promise, once per Evening ──────────────────────────────────────────
+  /** After the spouse has spoken, offer the game (once per Night, only in the Evening, never with someone at the door). */
+  const queueOffer = (): void => {
+    if (pro !== 'done' || run.homeStage() !== 'evening' || kitchen || offering || offerWait >= 0 || offerCool > 0) return;
+    if (!spousePresent() || kitchenPlayed.has(run.night()) || visit?.atDoor()) return;
+    offerWait = talk.reduce((n, l) => n + l.sec, Math.max(0, talkWait)) + 0.4;
+  };
+  const offer = async (): Promise<void> => {
+    offering = true;
+    let pick = 1;
+    try { pick = await ui().choice(t('promise.offer.title'), [t('promise.offer.play'), t('promise.offer.no')], { timeout: 12 }); } catch { pick = 1; }
+    offering = false;
+    if (disposed || pick !== 0 || run.over || run.homeStage() !== 'evening' || visit?.atDoor()) { offerCool = 20; return; }
+    startKitchen();
+  };
+  const finishKitchen = (r: FlowResult): void => {
+    kitchen = null;
+    unlock();
+    if (r.left) { ui().toast(t('promise.leave'), 'info', 3); offerCool = 20; return; }
+    kitchenPlayed.add(run.night());
+    if (!r.kept) return;
+    // an evening of kept words: Harmony +1, and one ŞANS star (the luck meter takes it through the stake event, id 'promise')
+    hooksOf(run.homePhone())?.harmony(1);
+    bus.emit('keepsake:stake', { state: 'won', id: run.keepsakeCarried() ?? 'ring', mid: 'promise', star: 1 });
+    ui().toast(`${t('promise.bonus.harmony')}   ${t('promise.bonus.luck')}`, 'good', 4);
+  };
+  const startKitchen = (): void => {
+    if (kitchen) return;
+    wantLock = true;
+    tryLock();
+    kitchen = openKitchen({
+      parent: ui().hudLayer,
+      seed: hashSeed(run.seed, run.night(), 'promise'),
+      stake: stakeFor(run.seed, run.night()),
+      playHand: (hd: Hand) => { try { void player.viewmodel.play(hd === 'rock' ? 'rpsRock' : hd === 'paper' ? 'rpsPaper' : 'rpsScissors'); } catch { /* hands are optional */ } },
+      done: finishKitchen,
+    });
+  };
+  const tickKitchen = (dt: number): void => {
+    if (offerCool > 0) offerCool = Math.max(0, offerCool - dt);
+    if (kitchen) {
+      // the Night moves on (the ride, a knock at the door): the table is cleared
+      if (run.homeStage() !== 'evening' || run.over) { kitchen.dispose(); kitchen = null; unlock(); return; }
+      kitchen.update(dt);
+      return;
+    }
+    if (offerWait >= 0) {
+      offerWait -= dt;
+      if (offerWait < 0) { offerWait = -1; if (!offering && run.homeStage() === 'evening') void offer(); }
+    }
+  };
+
   /** The stations that only look, talk or toggle: the same in the prologue and in the Evening. */
   const touch = (station: HomeStation): void => {
     switch (station) {
-      case 'spouse': cycleKeepsake(); speak(); break;
+      case 'spouse': cycleKeepsake(); speak(); queueOffer(); break;
       case 'switch': toggleLights(); break;
       case 'chain': toggleChain(); break;
       case 'peephole': peephole(); break;
@@ -464,7 +525,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   };
 
   const interact = (station: HomeStation): void => {
-    if (run.over) return;
+    if (run.over || kitchen) return;
     if (pro !== 'done') {
       // THE PROLOGUE: the apartment is for talking and looking; the front door takes the lift down, the bed waits for Night 1
       if (pro !== 'walk' || station === 'phone') return;
@@ -556,6 +617,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
       tryLock();
       tickTalk(dt);
       tickPeep(dt);
+      tickKitchen(dt);
       if (visit && s.stage === 'evening') {
         const moved = heardMoving();
         visit.tick(dt, { lights: world.home?.lightsOn() ?? true, chain: world.home?.chainOn() ?? false, moved, looking: peep !== null });
@@ -568,6 +630,8 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
       showVisitor(null);
       wantLock = false; locked = false;   // the state that follows sets its own input mode
       talk = [];
+      kitchen?.dispose();
+      kitchen = null;
       peep?.el.remove();
       peep = null;
       if (faded) void app.ui.fade(0, 0.2, '#000');

@@ -53,7 +53,7 @@ export default {
     'stake.busy': 'Burada zaten bir eşya masada.',
     'stake.cancel': 'Eşya bahsi iptal edildi.',
     'won': '{name} sana geri döndü.',
-    'lost': 'Ev {name} aldı.',
+    'lost': 'Kasa {name} aldı.',
     'lost.spouse': 'Eşin fark etti.',
     'buy.price': '{name} geri al: {n} jeton',
     'buy.none': 'Geri alınacak bir şey yok.',

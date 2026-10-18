@@ -14,7 +14,7 @@ export default {
   tr: {
     'blank': 'BOŞ',
     'marks.lost': 'Bir Damga alındı. Kartta {n} kaldı.',
-    'marks.blank': 'JackID boş görünüyor. Ev artık adını anmıyor.',
+    'marks.blank': 'JackID boş görünüyor. Kasa artık adını anmıyor.',
     'pledge': 'Rehin senin: {charm}.',
     'tax': 'Katip ödülden {n} jeton alır. Denetim denetimdir.',
   },

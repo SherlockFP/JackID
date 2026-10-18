@@ -4,7 +4,7 @@ export default {
   en: {
     'lever': 'TAKE THE LIFT',
     'hint': 'Home at last. Talk, check the phone, lock up. The bed ends the night.',
-    'speaker.spouse': 'SPOUSE',
+    'speaker.spouse': 'ADA',
     'speaker.note': 'NOTE',
     'note': 'On the pillow: "Gone to my sister\'s. Pay what you owe."',
     'door': 'Locked for the night.',
@@ -20,9 +20,9 @@ export default {
   tr: {
     'lever': 'ASANSÖRE BİN',
     'hint': 'Sonunda evdesin. Konuş, telefona bak, kapıyı kilitle. Yatak geceyi bitirir.',
-    'speaker.spouse': 'EŞİM',
+    'speaker.spouse': 'ADA',
     'speaker.note': 'NOT',
-    'note': 'Yastığın üstünde: "Kız kardeşime gittim. Borcunu öde."',
+    'note': 'Yastığın üstünde: "Ablama gittim. Borcunu öde."',
     'door': 'Gece için kilitli.',
     'peephole': 'Koridor boş.',
     'window.1': 'Camda yağmur. Çukur çok aşağıda parlıyor.',
