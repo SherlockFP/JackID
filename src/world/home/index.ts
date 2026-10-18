@@ -90,8 +90,12 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
   activeDoor = door;
 
   // the spouse sits at the kitchen table, facing the door; the mannequin is skinned, so it stays out of `shell`
-  // the spouse's dark look keeps a warm amber rim (mannequinLook NPC rim)
-  const spouseOpts: MannequinOpts & { rim: number } = { color: 0x5a4a52, jointColor: 0x2a2226, style: 'plain', clip: 'Sitting_Idle_Loop', height: 1.68, rim: 0xd9913a };
+  // Ada keeps the other-dimension dark look (near-black body, warm amber rim) but reads as a young woman: the kit's female option
+  // gives her a slim build, long hair, a dress, large soft warm eyes, a gentle idle and a small wave when you come home
+  const spouseOpts: MannequinOpts & { rim: number; eyes: number; female: boolean; hair: number; dress: number } = {
+    color: 0x5a4a52, jointColor: 0x2a2226, style: 'plain', clip: 'Sitting_Idle_Loop', height: 1.66,
+    rim: 0xd9913a, eyes: 0xffc27a, female: true, hair: 0x2a2230, dress: 0x5a2a3c,
+  };
   const spouse = o.kit.mannequin(spouseOpts);
   spouse.root.position.set(...at(SPOUSE_SEAT.x, 0, SPOUSE_SEAT.z));
   root.add(spouse.root);

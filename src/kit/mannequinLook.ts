@@ -10,7 +10,7 @@
  */
 import * as THREE from 'three';
 import type { Hex } from '@/core/types';
-import { GLSL_CRACKS } from './materials';
+import { GLSL_CRACKS, psx } from './materials';
 import { npcFrame } from '@/core/renderer/npcFrame';
 
 /** Head bounds in the geometry space the shader reads (`transformed`): centre and half-extents. */
@@ -156,6 +156,12 @@ export interface NpcLook {
   head: HeadBox | null;
   /** Per-material shimmer amount, 0..1 (props use less). */
   shimmer: number;
+  /** Eye glow gain (default 1; a softer glow < 1). */
+  eyeGain?: number;
+  /** Extra eye size, 0 = the usual pinpoints, 0.35 = larger anime eyes. */
+  eyeSize?: number;
+  /** How much of the base colour survives the near-black body (default 0.10; dresses and hair use more). */
+  lift?: number;
 }
 
 /** Hash and value noise for the shimmer, the eye mask and the body darkening (shared by every NPC material). */
@@ -168,6 +174,7 @@ uniform vec3 uNpcEye;
 uniform vec3 uNpcHc;
 uniform vec3 uNpcHr;
 uniform vec3 uNpcFx;
+uniform float uNpcLift;
 uniform float uNpcT;
 uniform float uNpcShimmer;
 float npcHash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
@@ -182,10 +189,10 @@ float npcNoise(vec3 p) {
 float npcEyeMask(vec3 o) {
   vec3 hp = (o - uNpcHc) / max(uNpcHr, vec3(1e-3));
   float front = smoothstep(0.1, 0.5, hp.z);
-  float d = length(vec2(abs(hp.x) - 0.42, (hp.y - 0.14) * 1.4));
+  float d = length(vec2(abs(hp.x) - 0.42, (hp.y - 0.14) * 1.4)) / (1.0 + uNpcFx.z);
   return (1.0 - smoothstep(0.075, 0.105, d)) * front * uNpcFx.x;
 }
-vec3 npcBody(vec3 c) { return vec3(0.025, 0.022, 0.03) + c * 0.10; }
+vec3 npcBody(vec3 c) { return vec3(0.025, 0.022, 0.03) + c * uNpcLift; }
 `;
 
 /**
@@ -200,10 +207,11 @@ export function patchNpc(m: THREE.MeshLambertMaterial, p: NpcLook): void {
   const eyes = p.eyes !== null && p.head !== null;
   const uniforms = {
     uNpcRim: { value: rimVec(p.rim) },
-    uNpcEye: { value: rimVec(p.eyes ?? p.rim) },
+    uNpcEye: { value: rimVec(p.eyes ?? p.rim).multiplyScalar(p.eyeGain ?? 1) },
     uNpcHc: { value: p.head ? p.head.c : new THREE.Vector3() },
     uNpcHr: { value: p.head ? p.head.r : new THREE.Vector3(1, 1, 1) },
-    uNpcFx: { value: new THREE.Vector3(eyes ? 1 : 0, p.shimmer, 0) },
+    uNpcFx: { value: new THREE.Vector3(eyes ? 1 : 0, p.shimmer, p.eyeSize ?? 0) },
+    uNpcLift: { value: p.lift ?? 0.10 },
   };
   m.onBeforeCompile = (shader, renderer) => {
     prev.call(m, shader, renderer);
@@ -226,4 +234,147 @@ export function patchNpc(m: THREE.MeshLambertMaterial, p: NpcLook): void {
     shader.fragmentShader = f;
   };
   m.customProgramCacheKey = () => `${prevKey.call(m)}|npc`;
+}
+
+// ── the female option (w80 ada redesign): slimmer build, long hair cards, a simple dress ─────────
+/** Bone scales (x and z; y stays 1, so no bone gets longer or shorter along itself). Effective: hips 1.05, waist 0.84, chest 0.88, neck 0.85, head 1.04. */
+export const FEMALE_SCALES: ReadonlyArray<readonly [string, number]> = [
+  ['pelvis', 1.05], ['spine_01', 0.8], ['spine_02', 1.05], ['spine_03', 1], ['neck_01', 0.97], ['Head', 1.22],
+  ['thigh_l', 0.88], ['thigh_r', 0.88],
+];
+/** Limb scale once the clip pose is restored (replaces the automaton's 6 % long limbs): slimmer arms, no stretch. */
+export const FEMALE_LIMB = new THREE.Vector3(0.88, 1, 0.88);
+
+const HAIR_PIVOT = new THREE.Vector3(0, 0.18, -0.1);
+
+/** Add a strip (a tapered ribbon) along `pts` ([x, y, z, half-width]) to the position / index lists. Width runs along x. */
+function ribbon(pos: number[], idx: number[], pts: ReadonlyArray<readonly [number, number, number, number]>, off: THREE.Vector3 = new THREE.Vector3()): void {
+  const base = pos.length / 3;
+  for (const [x, y, z, w] of pts) pos.push(x - w - off.x, y - off.y, z - off.z, x + w - off.x, y - off.y, z - off.z);
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = base + i * 2;
+    idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+  }
+}
+
+function finishGeo(pos: number[], idx: number[]): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * Long hair in Head-bone space (+Y up, +Z face; crown at y 0.262, head half-width 0.095): a cap with the face left open,
+ * a row of fringe blades, two cheek locks (all in `root`, one mesh) and a long curtain down the back (`sway`, a second mesh
+ * that swings a little). About 120 triangles. Materials are the shared PSX cache; the mannequin routes them through the dark NPC look.
+ */
+export function buildHair(color: Hex): { root: THREE.Group; sway: THREE.Group } {
+  const mat = psx({ color, side: 'double' });
+  // cap: a slightly oversized skull shell; the forehead vertices ride up to the hairline so the face stays open
+  const cap = new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.58);
+  cap.scale(0.106, 0.142, 0.138);
+  cap.translate(0, 0.122, -0.012);
+  const cp = cap.getAttribute('position');
+  for (let i = 0; i < cp.count; i++) {
+    if (Math.abs(cp.getX(i)) < 0.078 && cp.getZ(i) > 0.03 && cp.getY(i) < 0.205) cp.setY(i, 0.205);
+  }
+  cap.computeVertexNormals();
+  const pos: number[] = [], idx: number[] = [];
+  // a point on the face-ellipsoid surface at (x, y), pushed out a little so the hair sits on top of the skin
+  const face = (x: number, y: number): number => 0.128 * Math.sqrt(Math.max(0.03, 1 - (x / 0.1) ** 2 - ((y - 0.127) / 0.145) ** 2)) + 0.012;
+  const blade = (x: number, yBot: number, w: number, lean: number): void => {
+    const pts: Array<readonly [number, number, number, number]> = [];
+    for (const [t, ww] of [[0, w], [0.5, w * 0.8], [1, w * 0.18]] as const) {
+      const y = 0.222 + (yBot - 0.222) * t, xx = x + lean * t;
+      pts.push([xx, y, face(xx, y), ww]);
+    }
+    ribbon(pos, idx, pts);
+  };
+  // fringe: a soft side-swept row of blades, longest on the left, with two framing locks at the cheeks
+  blade(-0.078, 0.150, 0.026, 0.01); blade(-0.045, 0.176, 0.026, 0.006); blade(-0.012, 0.186, 0.024, 0.0);
+  blade(0.02, 0.18, 0.024, -0.004); blade(0.052, 0.19, 0.024, -0.006); blade(0.082, 0.17, 0.022, -0.008);
+  for (const s of [-1, 1]) {
+    ribbon(pos, idx, [
+      [s * 0.098, 0.2, 0.025, 0.02], [s * 0.106, 0.12, 0.045, 0.019], [s * 0.108, 0.04, 0.052, 0.017], [s * 0.1, -0.05, 0.05, 0.01],
+    ]);
+  }
+  const front = finishGeo(pos, idx);
+  const merged = mergeGeos([cap, front]);
+  const root = new THREE.Group();
+  root.name = 'ada_hair';
+  root.add(new THREE.Mesh(merged, mat));
+  // the long curtain behind: three layers, each a tapered ribbon, hung from the pivot at the crown
+  const bp: number[] = [], bi: number[] = [];
+  ribbon(bp, bi, [[0, 0.215, -0.102, 0.078], [0, 0.1, -0.13, 0.098], [0, -0.06, -0.152, 0.108], [0, -0.22, -0.166, 0.112], [0, -0.38, -0.172, 0.096], [0, -0.47, -0.172, 0.03]], HAIR_PIVOT);
+  for (const s of [-1, 1]) {
+    ribbon(bp, bi, [[s * 0.075, 0.17, -0.098, 0.03], [s * 0.098, 0.05, -0.114, 0.04], [s * 0.108, -0.1, -0.13, 0.042], [s * 0.1, -0.26, -0.15, 0.036], [s * 0.088, -0.36, -0.158, 0.012]], HAIR_PIVOT);
+  }
+  const sway = new THREE.Group();
+  sway.name = 'ada_hair_sway';
+  sway.position.copy(HAIR_PIVOT);
+  sway.add(new THREE.Mesh(finishGeo(bp, bi), mat));
+  root.add(sway);
+  root.userData.npcLift = 0.16;
+  return { root, sway };
+}
+
+/** Concatenate non-indexed or indexed position+normal geometries into one indexed geometry (positions and normals only). */
+function mergeGeos(list: readonly THREE.BufferGeometry[]): THREE.BufferGeometry {
+  const pos: number[] = [], nor: number[] = [], idx: number[] = [];
+  for (const g of list) {
+    const p = g.getAttribute('position'), n = g.getAttribute('normal'), ix = g.getIndex();
+    const base = pos.length / 3;
+    for (let i = 0; i < p.count; i++) { pos.push(p.getX(i), p.getY(i), p.getZ(i)); nor.push(n.getX(i), n.getY(i), n.getZ(i)); }
+    if (ix) for (let i = 0; i < ix.count; i++) idx.push(ix.getX(i) + base);
+    else for (let i = 0; i < p.count; i++) idx.push(i + base);
+    g.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  out.setIndex(idx);
+  return out;
+}
+
+export interface DressPiece { bone: string; obj: THREE.Group }
+
+/**
+ * A simple dress in bone space: an A-line skirt (one flared cone per thigh, down to the knee) and a sleeveless bodice
+ * (two short cones up the spine). Bone directions are measured from the rig, so it follows the skeleton whatever its axes are.
+ * Build it before the female bone scales are applied.
+ */
+export function buildDress(bones: ReadonlyMap<string, THREE.Object3D>, color: Hex): DressPiece[] {
+  const mat = psx({ color, side: 'double' });
+  const wp = new THREE.Vector3();
+  const out: DressPiece[] = [];
+  const cone = (bone: string, child: string, rFrom: number, rTo: number, frac: number, seg = 9): void => {
+    const b = bones.get(bone), c = bones.get(child);
+    if (!b || !c) return;
+    b.updateWorldMatrix(true, false);
+    c.getWorldPosition(wp);
+    const d = b.worldToLocal(wp);
+    const len = d.length();
+    if (len < 1e-4) return;
+    const g = new THREE.CylinderGeometry(rTo, rFrom, len * frac, seg, 1, true);   // +Y end = the child end
+    g.translate(0, len * frac * 0.5, 0);
+    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
+    const grp = new THREE.Group();
+    grp.name = `ada_dress_${bone}`;
+    grp.add(new THREE.Mesh(g, mat));
+    grp.userData.npcLift = 0.32;
+    out.push({ bone, obj: grp });
+  };
+  cone('thigh_l', 'calf_l', 0.125, 0.19, 0.94);
+  cone('thigh_r', 'calf_r', 0.125, 0.19, 0.94);
+  cone('spine_01', 'spine_02', 0.105, 0.115, 1, 8);
+  cone('spine_02', 'spine_03', 0.115, 0.108, 1, 8);
+  return out;
+}
+
+/** A small deterministic wave envelope: 0 → 1 in 0.35 s, hold, 1 → 0 over the last 0.6 s of `dur`. */
+export function waveEnv(t: number, dur: number): number {
+  const k = (e0: number, e1: number, x: number): number => { const u = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return u * u * (3 - 2 * u); };
+  return k(0, 0.35, t) * (1 - k(dur - 0.6, dur, t));
 }

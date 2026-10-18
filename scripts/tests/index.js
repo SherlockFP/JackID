@@ -82,3 +82,6 @@ import './crookedTable.test.mjs';
 import './food.test.mjs';
 import './economy.home.test.mjs';
 import './crookedWiring.test.mjs';
+import './derby.test.mjs';
+import './lucan.test.mjs';
+import './cascade.test.mjs';

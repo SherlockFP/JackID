@@ -31,8 +31,11 @@ import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_
 import type { MachineDef, MachineEvent, MachineModel, PresentCtx } from '@/machines/_base/types'
 import type { Kit } from '@/kit/types'
 import * as manga from '@/core/ui/manga'
+import { gamblersEye } from '@/core/ui/manga/eye'
 import '@/game/duels/autoload'
 import { duelForRival } from '@/game/duels/registry'
+import { setPhotoSource } from '@/game/duels/promise/lucan'
+import { applyPromiseRewards } from '@/game/duels/promise/rewards'
 import {
   DuelSession, freshView, pickEncounter, reduce, type DuelEvent, type Encounter, type Prompt, type PublicView, type ReplayEntry,
 } from '@/game/duels/engine'
@@ -125,6 +128,7 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
   private dress: Array<() => void> = []
   private dressed = ''
   private offKey: (() => void) | null = null
+  private offPhoto: (() => void) | null = null
 
   protected createModel(kit: Kit): MachineModel<TallyParts> { return buildModel(kit, this.modelOpts) }
 
@@ -132,11 +136,16 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
     this.seatHud = new SeatHud(this.ctx.ui.root)
     this.panel = new TallyPanel(this.ctx.ui.root)
     this.hud(null)                                        // the seat HUD replaces the generic bottom bar
+    // Promise mode: the photo keepsake the player carries can be set in front of Lucan's watch (docs/STORY_BIBLE.md 5a)
+    this.offPhoto = setPhotoSource(() => {
+      try { return (this.ctx.run as unknown as { keepsakeCarried?: () => string | null }).keepsakeCarried?.() === 'photo' } catch { return false }
+    })
     this.paintAll()
   }
 
   dispose(): void {
     this.offKey?.(); this.offKey = null
+    this.offPhoto?.(); this.offPhoto = null
     this.seatHud?.dispose()
     this.panel?.dispose()
     super.dispose()
@@ -416,6 +425,7 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
     const night = s.night
     const paid = this.payOut(s, pid, true)
     void this.emit({ k: 'paid', ...paid } as unknown as Ev)
+    this.promiseBonus(s)
     for (const e of s.revealEvents()) void this.emit(e as unknown as Ev)
     const r = s.result!
     this.hooks()?.onDuelEnd?.({
@@ -424,6 +434,17 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
     })
     h.doneNight = night
     h.session = null; h.phase = 'idle'
+  }
+
+  /**
+   * Promise mode: a duel may offer `rewards(state)` (Lucan's table): each kept-word win is a ŞANS star (the luck meter hears `floor:luck`),
+   * each crack of the player's is one Heat (broken words travel). Other duels have none.
+   */
+  private promiseBonus(s: DuelSession): void {
+    const rw = (s.rules as unknown as { rewards?: (st: unknown) => { stars: number; cracks: number } }).rewards?.(s.state)
+    if (!rw) return
+    const { stars, heat } = applyPromiseRewards(this.ctx.run, rw)
+    if (stars > 0 || heat > 0) void this.emit({ k: 'bonus', stars, heat } as unknown as Ev)
   }
 
   /** Applies the result to the wallet, the Pledge counters and the Soul Marks. Returns the public report. */
@@ -516,6 +537,8 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
         reduce(this.view, d)
         this.sfx(d.who === 'rival' ? 'click' : 'tileClack', { vol: 0.45 })
         this.paintAll()
+        // Promise mode: a key throw (Lucan's winning call) cuts to his eye for 0.6 s with the thought and the sting
+        if (local && !pc.fast && d.rows.some((r) => r.data && r.data.eye)) await this.guard(gamblersEye({ rival: this.view.rival, kind: 'wide', line: 'duel.pr.eye.wide' }))
         return
       }
       case 'clue': {
@@ -555,6 +578,14 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
         this.paintAll()
         return
       }
+      case 'bonus': {
+        const b = e as unknown as { stars: number; heat: number }
+        if (local) {
+          if (b.stars > 0) this.toast(this.t('prStars', { n: b.stars }), 'info')
+          if (b.heat > 0) this.toast(this.t('prHeat', { n: b.heat }), 'warn')
+        }
+        return
+      }
       case 'reveal': {
         const d = e as unknown as Extract<DuelEvent, { k: 'reveal' }>
         reduce(this.view, d)
@@ -587,6 +618,14 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
   private async ringClue(channel: 'tell' | 'table' | 'math', key: string, data: Record<string, unknown>, show: boolean): Promise<void> {
     const P = this.parts, fx = this.ctx.fx
     const color = CHANNEL_COLOR[channel]
+    if (typeof data.eye === 'string') {
+      // the Gambler's Eye: a tell or oddity the player can read (slow motion, vignette, eye panel, one thought)
+      this.sfx(channel === 'table' ? 'sparkle' : 'chime', { vol: 0.5 })
+      if (show) {
+        await this.guard(gamblersEye({ rival: this.view.rival, kind: data.eye === 'glass' ? 'glass' : 'watch', line: typeof data.line === 'string' ? data.line : undefined, hand: typeof data.hand === 'string' ? data.hand : undefined }))
+      }
+      return
+    }
     if (channel === 'tell') {
       this.sfx('sparkle', { vol: 0.5 })
       void P.rival.play('Sitting_Talking_Loop')
@@ -730,11 +769,15 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`) }
 
   private tipLines(): Txt[] {
+    if (this.view.game === 'promise') return [{ k: 'm.tallytable.prTip1' }, { k: 'm.tallytable.prTip2' }, { k: 'm.tallytable.tip3', v: { call: this.k('alt') } }]
     return [{ k: 'm.tallytable.tip1' }, { k: 'm.tallytable.tip2' }, { k: 'm.tallytable.tip3', v: { call: this.k('alt') } }]
   }
 
   private rulesLines(): Txt[] {
     const v = { call: this.k('alt'), go: this.k('primary'), sheet: 'T' }
+    if (this.view.game === 'promise') {
+      return [{ k: 'm.tallytable.prRule1' }, { k: 'm.tallytable.prRule2' }, { k: 'm.tallytable.prRule3' }, { k: 'm.tallytable.prRule4', v }, { k: 'm.tallytable.prRule5' }]
+    }
     return [
       { k: 'm.tallytable.rule1' }, { k: 'm.tallytable.rule2', v }, { k: 'm.tallytable.rule3', v },
       { k: 'm.tallytable.rule4' }, { k: 'm.tallytable.rule5' },
@@ -761,7 +804,7 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
     const rival = v.rival ? this.t(`rivalName_${v.rival}`) : ''
     const keys = { go: this.k('primary'), call: this.k('alt'), sheet: 'T' }
     const ctrl: HudControl[] = []
-    sh.goal({ k: 'm.tallytable.goal' })
+    sh.goal({ k: v.game === 'promise' ? 'm.tallytable.goalPromise' : 'm.tallytable.goal' })
 
     let picker: { title: string; items: string[]; cursor: number; tone: 'move' | 'call' } | null = null
     if (this.noDuel) sh.state({ k: 'm.tallytable.stNoDuel' }, 'neutral', { k: 'm.tallytable.stNoDuelSub' })

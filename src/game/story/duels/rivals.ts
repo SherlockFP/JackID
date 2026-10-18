@@ -1,7 +1,7 @@
 /**
  * Rivals of the Tally Bench (STORY lane, Wave 25 "TALLY"; spec docs/WAVE25_TALLY.md). Pure data and the spawn schedule.
  *
- * Phase 1 (playable): Tamsin (side duel, Jade, Nights 2+), Kuro (side duel, Boiler, Night 5), Lucan (Night 3 boss, Parlour).
+ * Phase 1 (playable): Tamsin (side duel, Jade, Nights 2+), Kuro (side duel, Boiler, Night 5), Lucan (Night 3 boss, Parlour; plays Rock, Paper, Promise with the watch mirror, STORY_BIBLE S4).
  * Phase 2 (live now: duel games lockershuffle, thequestion and lastcount exist): Mimosa (Night 4, Wash), Orrin (Night 6 boss, Parlour), Vell (Night 8 boss, Counting). Pass `{ phase2: false }` to hide them.
  *
  * Every text field is an i18n key (strings in `rivals.strings.ts`, prefix `story.duel.`). The portrait spec id belongs to the
@@ -100,7 +100,7 @@ export const RIVALS: Readonly<Record<RivalId, RivalDef>> = {
     name: `${S}rival.lucan.name`, title: `${S}rival.lucan.title`, accessory: `${S}rival.lucan.accessory`,
     accent: 0xb3262e, body: 0x1e1416,
     look: { mask: 'mask_fox', props: [{ prop: 'watch', bone: 'hand_l' }] },
-    portrait: 'lucan', duel: 'ghostshell', zone: 'parlour', venue: 'duel.parlour',
+    portrait: 'lucan', duel: 'promise', zone: 'parlour', venue: 'duel.parlour',
     expr: { intro: 'smirk', won: 'hollow', lost: 'smirk' },
     lines: {
       catch: `${S}rival.lucan.catch`, intro: `${S}line.lucan.load`,

@@ -161,6 +161,9 @@ export const SLOTS: SlotDef[] = [
  *   N1  WELL-01 bigone · FLR-01 hilo · FLR-02 coinflip
  *   N2  WELL-07 videopoker   N3  WELL-11 mines   N4  WELL-06 plinko   N5  WELL-03 blackjack   N6  FLR-07 keno
  *   N7  WELL-02 roulette · FLR-06 sonkart
+ *   Wave 80 (pinned Nights, progression.ts PINNED_NIGHT):
+ *   N3  MID-02 derby (the Night Derby, an XL table, so it sits in the Midway wing; the Dawn Wing Keys reach it by Night 3)
+ *   N4  WELL-12 cascade (east wall of the Well, an M pad)
  */
 export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   // The Hollow Door's Lords' table (far below the pit; the door opens it, see world/hollow)
@@ -170,6 +173,8 @@ export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   // 2. The Well: the Big One on the dais, the starter bank around it, the high tables and the wall banks
   'WELL-01': 'bigone', 'FLR-01': 'hilo', 'FLR-02': 'coinflip', 'WELL-02': 'roulette', 'WELL-03': 'blackjack',
   'WELL-06': 'plinko', 'WELL-07': 'videopoker', 'WELL-11': 'mines',
+  // Wave 80: the Night Derby in the Midway (XL, Night 3) and a reserved Well wall pad for the Cascade (Night 4)
+  'MID-02': 'derby', 'WELL-12': 'cascade',
   // 3. The Lobby: vendors on the south wall, tables on the floor
   'LOB-PAWN': 'charm_vendor', 'LOB-PHONE2': 'hotline', 'LOB-CASH': 'cashier', 'LOB-JUKE': 'jukebox', 'LOB-TONIC': 'tonic_vendor',
   'FLR-06': 'sonkart', 'FLR-07': 'keno',
@@ -209,6 +214,7 @@ export const FREE_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   ...LEGACY_ASSIGN,
   'FLR-01': 'hilo', 'FLR-02': 'coinflip', 'FLR-03': 'scratch', 'FLR-04': 'bandit',
   'FLR-06': 'sonkart', 'FLR-07': 'keno',
+  'WELL-12': 'cascade',   // Wave 80: the Free Casino shows the Cascade on the same Well pad as the Debt Run
   [HOLLOW_TABLE_SLOT.id]: 'lordstable',
 };
 
@@ -335,6 +341,8 @@ export const FLOOR_READY: ReadonlySet<MachineId> = new Set<MachineId>([
   'baccarat', 'mines', 'plinko', 'sicbo', 'claw',   // (the Wave 72 core ten are all listed: bigone coinflip hilo videopoker mines plinko roulette blackjack keno sonkart)
   // WAVE 24 (Little Wall): bench seat view passed at 1280x720; placed at CARD-01 and CARD-06 in the Jade Room.
   'mahjong',
+  // WAVE 80: the Cascade takes the Well pad WELL-12 (its seat view is checked in its own lane's bench pass).
+  'cascade',
 ]);
 /** Machines that never move, whatever the line-up: the marquee and table games, plus the vendors and terminals. */
 export const ROSTER_FIXED: ReadonlySet<MachineId> = new Set<MachineId>([

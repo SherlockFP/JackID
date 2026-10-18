@@ -135,6 +135,23 @@ export interface WatchEventHost {
 /** The live event of the most recently begun run (the HUD reads it through `watchEventView`). One run per page. */
 let live: WatchEvents | null = null;
 
+/**
+ * DEV only (QA bench `event:<id>`, scripts/qa/README.md): the next Watch that can roll an event rolls this one instead. The
+ * chance and the weighted pick are skipped; its length and its wave 75 state still come from the Watch's seeded streams. A
+ * boss Night (or a Night Card that holds the floor) still rolls nothing, and the force waits for the next Watch that does. It
+ * is spent when the event starts. Returns false for an unknown id, or in a production build. Registry-style: the bench reaches
+ * it by a dynamic import of this module, the way the `--js` hook does, so nothing in the game reads it.
+ */
+let forcedNext: string | null = null;
+export function forceNextWatchEvent(id: string | null): boolean {
+  if (!import.meta.env.DEV) return false;
+  if (id !== null && !WATCH_EVENTS.some((d) => d.id === id)) return false;
+  forcedNext = id;
+  return true;
+}
+/** The event id the next Watch is forced to roll (DEV), or null. */
+export function forcedWatchEvent(): string | null { return forcedNext; }
+
 /** The active Watch event for the HUD, or null between Watches and on boss Nights. */
 export function watchEventView(): WatchEventView | null { return live?.view() ?? null; }
 
@@ -169,12 +186,17 @@ export class WatchEvents implements ModProvider {
   begin(rng: Rng, nightNo: number, watchIdx: number, blocked = false): WatchEventDef | null {
     this.end();
     const avoid = this.lastNight === nightNo ? this.last : null;
-    const roll = rollWatchEvent(rng.fork(`watchEvent.${nightNo}.${watchIdx}`), nightNo, blocked, avoid);
+    // DEV force (forceNextWatchEvent): the forced def replaces the seeded roll, and only a Watch that can roll at all takes it
+    const forced = forcedNext !== null && !blocked ? WATCH_EVENTS.find((d) => d.id === forcedNext) ?? null : null;
+    const roll = forced
+      ? { def: forced, secs: forced.fixedS ?? rng.fork(`watchEvent.forced.${nightNo}.${watchIdx}`).int(WATCH_EVENT_MIN_S, WATCH_EVENT_MAX_S) }
+      : rollWatchEvent(rng.fork(`watchEvent.${nightNo}.${watchIdx}`), nightNo, blocked, avoid);
     this.last = roll ? roll.def.id : null;
     this.lastNight = nightNo;
     if (!roll) return null;
     const aux = this.prepare(roll.def, rng.fork(`watchEvent.aux.${nightNo}.${watchIdx}`));
     if (!aux) return null;
+    if (forced) forcedNext = null;   // spent only once the event really starts (a SINGLE LIGHT with no machine open waits)
     this.cur = { def: roll.def, leftS: roll.secs, pulls: roll.def.pullBudget ?? null, aux };
     live = this;
     this.host.touch();

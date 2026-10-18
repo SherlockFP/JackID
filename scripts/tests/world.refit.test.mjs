@@ -15,14 +15,16 @@ before(async () => {
 });
 
 const TEN = ['bigone', 'coinflip', 'hilo', 'videopoker', 'mines', 'plinko', 'roulette', 'blackjack', 'keno', 'sonkart'];
+// Wave 80: the Night Derby (Midway wing, XL) and the Cascade (Well pad) join the ten as pinned Nights 3 and 4
+const CORE12 = [...TEN, 'derby', 'cascade'];
 const src = (p) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
 
-test('the floor keeps ten games, three of them free on Night 1, then about one per Night', () => {
-  assert.deepEqual([...P.CORE_MACHINES].sort(), [...TEN].sort());
+test('the floor keeps twelve games, three of them free on Night 1, then about one per Night (two on the pinned Nights 3 and 4)', () => {
+  assert.deepEqual([...P.CORE_MACHINES].sort(), [...CORE12].sort());
   assert.deepEqual([...P.STARTERS].sort(), ['bigone', 'coinflip', 'hilo']);
   for (const seed of [undefined, 5, 99]) {
     const per = P.scheduleFor(seed).map((s) => s.ids.length);
-    assert.deepEqual(per, [3, 1, 1, 1, 1, 1, 2], `seed ${seed}`);
+    assert.deepEqual(per, [3, 1, 2, 2, 1, 1, 2], `seed ${seed}`);
   }
 });
 
@@ -30,13 +32,15 @@ test('every game stands once in the pit (Mouth, Well or Lobby): arrival, the Big
   const asg = L.assignment('debt');
   const slot = new Map(L.SLOTS.map((s) => [s.id, s]));
   const placed = (id) => Object.entries(asg).filter(([s, m]) => m === id && ['mouth', 'well', 'lobby'].includes(slot.get(s).zone));
-  for (const id of TEN) assert.equal(placed(id).length, 1, `${id} has exactly one pit seat`);
+  for (const id of [...TEN, 'cascade']) assert.equal(placed(id).length, 1, `${id} has exactly one pit seat`);
+  assert.equal(placed('derby').length, 0, 'the XL Night Derby has no XL pit slot, so it stands in the Midway');
+  assert.equal(asg['MID-02'], 'derby');
   assert.equal(asg['WELL-01'], 'bigone');
   assert.equal(asg['MOUTH-TERM'], 'debt_terminal');
   for (const s of ['LOB-PAWN', 'LOB-CASH', 'LOB-JUKE', 'LOB-TONIC']) assert.ok(asg[s], `${s} keeps its vendor`);
   // no wing duplicates beyond the four themed ones, and nothing outside the ten plus the system/story devices
   const wingCore = Object.entries(asg).filter(([s, m]) => P.isCore(m) && !['mouth', 'well', 'lobby'].includes(slot.get(s).zone));
-  assert.ok(wingCore.length <= 4, `${wingCore.length} core duplicates in the wings`);
+  assert.ok(wingCore.length <= 5, `${wingCore.length} core duplicates in the wings (four themed ones plus the Midway derby)`);
 });
 
 test('the starters sit around the Big One dais, a few steps from the spawn', () => {

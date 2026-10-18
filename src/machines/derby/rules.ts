@@ -1,9 +1,9 @@
 /**
- * Rat Derby "The Rat Run" — pure rules (no three, kit or DOM). Shared by the live machine (`index.ts`) and the headless
+ * Derby "The Rat Run" (the horse race, back on the floor) — pure rules (no three, kit or DOM). Shared by the live machine (`index.ts`) and the headless
  * play contract (`playHeadless`), so the simulated RTP IS the live RTP. Contract: MACHINES_tables §13, plan logicBrief.
  *
  * Each race the strengths {0.6, 1.0, 1.4, 2.0, 2.8, 4.0} (+ The Albino at L10) are shuffled over the lanes. The tote prints
- * odds = floor(margin / p, 1 dp), min ×1.1 (margin 0.90 Win/Place, 0.85 Exacta/Quinella), fixed before LOCK. The finishing
+ * odds = margin / p to 1 dp, min ×1.1 (margin 0.90 Win/Place/Show, 0.85 Exacta/Quinella), fixed before LOCK. The finishing
  * order is sampled Plackett–Luce. Luck: a solo race reroll (p = L/100) on a losing table; a shared race refunds losing
  * seats with p = L/100.
  */
@@ -20,13 +20,13 @@ export const KEYFRAMES = 28, KEY_DT = 0.5;      // 28 positions every 0.5 s = 14
 export const PHOTO_GAP = 0.1;                   // 1st-2nd gap under this = photo finish
 export const WINNER_MIN = 12.8, WINNER_MAX = 13.6, GAP_MIN = 0.08, GAP_MAX = 0.6;
 
-export type BetType = 'win' | 'place' | 'exacta' | 'quinella';
-export const BET_TYPES: readonly BetType[] = ['win', 'place', 'exacta', 'quinella'];
-export const PICKS_NEEDED: Readonly<Record<BetType, number>> = { win: 1, place: 1, exacta: 2, quinella: 2 };
+export type BetType = 'win' | 'place' | 'show' | 'exacta' | 'quinella';
+export const BET_TYPES: readonly BetType[] = ['win', 'place', 'show', 'exacta', 'quinella'];
+export const PICKS_NEEDED: Readonly<Record<BetType, number>> = { win: 1, place: 1, show: 1, exacta: 2, quinella: 2 };
 
-/** A bet: `p` are 0-based rat indices (1 pick for Win/Place, 2 for Exacta (ordered) and Quinella (any order)). */
+/** A bet: `p` are 0-based runner indices (1 pick for Win/Place, 2 for Exacta (ordered) and Quinella (any order)). */
 export type Bet = { t: BetType; p: number[]; a: number };
-export type Odds = { win: number[]; place: number[]; exacta: number[]; quinella: number[] };
+export type Odds = { win: number[]; place: number[]; show: number[]; exacta: number[]; quinella: number[] };
 /** Charm modifiers (all neutral by default). `oddsBonus` and `longshot` are fractions (0.1 = +10 %). */
 export type Mods = { deadHeat: boolean; longshot: number; exactaInsurance: boolean; oddsBonus: number };
 export const NO_MODS: Mods = { deadHeat: false, longshot: 0, exactaInsurance: false, oddsBonus: 0 };
@@ -54,20 +54,29 @@ export function quinellaIndex(n: number, i: number, j: number): number {
 export function oddsFor(s: readonly number[]): Odds {
   const n = s.length;
   const S = s.reduce((a, b) => a + b, 0);
-  const win: number[] = [], place: number[] = [];
+  const win: number[] = [], place: number[] = [], show: number[] = [];
   for (let i = 0; i < n; i++) {
     const pw = s[i] / S;
     let pp = pw;                                  // P(i finishes 1st or 2nd)
-    for (let j = 0; j < n; j++) if (j !== i) pp += (s[j] / S) * (s[i] / (S - s[j]));
+    let p3 = 0;                                   // P(i finishes 3rd)
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      pp += (s[j] / S) * (s[i] / (S - s[j]));
+      for (let k = 0; k < n; k++) {
+        if (k === i || k === j) continue;
+        p3 += (s[j] / S) * (s[k] / (S - s[j])) * (s[i] / (S - s[j] - s[k]));
+      }
+    }
     win.push(oddsOf(pw, WP_MARGIN));
     place.push(oddsOf(pp, WP_MARGIN));
+    show.push(oddsOf(n >= 3 ? pp + p3 : 1, WP_MARGIN));   // P(i in the first three)
   }
   const pe = (i: number, j: number): number => (s[i] / S) * (s[j] / (S - s[i]));   // P(i 1st, j 2nd)
   const exacta = new Array<number>(n * (n - 1)).fill(0);
   const quinella = new Array<number>((n * (n - 1)) / 2).fill(0);
   for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) if (i !== j) exacta[exactaIndex(n, i, j)] = oddsOf(pe(i, j), EX_MARGIN);
   for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) quinella[quinellaIndex(n, i, j)] = oddsOf(pe(i, j) + pe(j, i), EX_MARGIN);
-  return { win, place, exacta, quinella };
+  return { win, place, show, exacta, quinella };
 }
 
 /** The field for one race: base strengths (+ The Albino at L10), shuffled over the lanes. Consumes draws from `rng`. */
@@ -82,7 +91,7 @@ export function weighted(s: readonly number[], weight: (lane: number) => number)
   return s.map((v, i) => Math.max(0.1, v + weight(i + 1)));
 }
 
-/** Plackett–Luce finishing order: winner ∝ strength, removed, repeat. Returns rat indices, winner first. */
+/** Plackett–Luce finishing order: winner ∝ strength, removed, repeat. Returns runner indices, winner first. */
 export function sampleOrder(rng: Rng, s: readonly number[]): number[] {
   const rest = s.map((_, i) => i);
   const out: number[] = [];
@@ -117,6 +126,8 @@ export function settleBets(bets: readonly Bet[], order: readonly number[], odds:
       if (p0 === second && gap < PHOTO_GAP) nearmiss = true;
     } else if (b.t === 'place') {
       if (p0 === first || p0 === second) g = pay(b.a, odds.place[p0]);
+    } else if (b.t === 'show') {
+      if (p0 === first || p0 === second || p0 === order[2]) g = pay(b.a, odds.show[p0]);
     } else if (b.t === 'exacta') {
       if (p0 === first && p1 === second) g = pay(b.a, odds.exacta[exactaIndex(n, p0, p1)]);
       else if (m.exactaInsurance && p0 === second && p1 === first) g = b.a;

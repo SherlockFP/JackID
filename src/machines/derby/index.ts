@@ -1,17 +1,18 @@
 /**
- * Rat Derby "The Rat Run" (`derby`) — shared TableBase device, 8 rail spots, unlimited bettors (MACHINES_tables §13).
+ * Night Derby "The Rat Run" (`derby`) — six racehorses on a floodlit track, shared TableBase device, 8 rail spots, unlimited
+ * bettors (MACHINES_tables §13). Bets: Win (1st), Place (1st or 2nd), Show (1st to 3rd), Exacta, Quinella.
  *
  * Host timeline (every peer presents): ODDS (tote flips, 1.5 s) → OPEN (solo: until Ready; shared: 20 s, early on all-Ready)
  * → LOCK (stakes charged, the order drawn and paid at once, so leaving mid-race never loses money) → GATES → RACE (14.0 s)
  * → [PHOTO] → RESULT → PAYOUT → RESET → ODDS. Shared cadence ≈ 46 s.
  *
- * Juice: anticipation (tote flips, gate bell, leader lamp) → action (rats race in their lanes, overtakes spark, tails wag) →
- * impact (photo flash, finish shake, chequer lamp chase) → follow-through (tote result, pop text, tier celebration, loss and
- * near-miss beats).
+ * Juice: anticipation (odds board flips, gate bell, leader lamp) → action (horses gallop in their lanes, hoof beats, the crowd
+ * swells and the pennants flap, overtakes spark) → impact (photo flash, finish shake, a cheer) → follow-through (board result,
+ * pop text, tier celebration, loss and near-miss beats).
  *
- * Controls (keymap §11.6): 1–6 pick a rat (a second pick for Exacta / Quinella) · 7 Win · 8 Place · 9 Exacta · LMB on the console
- * (rat numbers, bet types; a bet type with its picks placed at once) · Enter place the slip, or Ready when the slip is empty ·
- * Z/X stake · Backspace clear. Quinella has no digit key, so use its console button.
+ * Controls (keymap §11.6): 1–6 pick a horse (a second pick for Exacta / Quinella) · 7 Win · 8 Place · 9 Show (press again for
+ * Exacta, then Quinella) · LMB on the console (horse numbers, bet types; a bet type with its picks placed at once) · Enter place
+ * the slip, or Ready when the slip is empty · Z/X stake · Backspace clear.
  */
 import type { PanelButton } from '@/kit/types';
 import type { KitX } from '@/kit/index';
@@ -22,7 +23,7 @@ import { TableBase } from '@/machines/_base/TableBase';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier } from '@/machines/_base/tiers';
-import { buildModel, GATE_DOWN_Y, GATE_UP_Y, RATS, RAT_COLORS, ratX, type DerbyParts } from './model';
+import { buildModel, GATE_DOWN_Y, GATE_UP_Y, HORSE_Y, RUNNERS, SILKS, horseX, type DerbyParts } from './model';
 import {
   BET_MAX, BET_MIN, BET_TYPES, HOOK_ALBINO, HOOK_DEAD_HEAT, HOOK_EXACTA_INS, HOOK_LONGSHOT, HOOK_ODDS, KEYFRAMES, KEY_DT,
   MAX_BETS_PER_SEAT, PICKS_NEEDED, exactaIndex, quinellaIndex, field, hookRunnerWeight, oddsFor, playHeadless, runRace, validBet,
@@ -40,10 +41,10 @@ const OPEN_S = 20;          // shared betting window
 const LOCK_S = 0.6;         // bell
 const GATE_S = 0.8;         // gate drops
 const RACE_S = 14.0;        // keyframed race
-const PHOTO_S = 1.0;        // photo finish freeze
+const PHOTO_S = 1.8;        // photo finish: the camera flashes, the board holds the two noses
 const RESULT_S = 2.0;       // tote shows 1-2-3
 const PAYOUT_S = 2.5;       // count-up window
-const RESET_S = 3.0;        // rats wound back
+const RESET_S = 3.0;        // horses walked back
 const SEATS = 8;
 const GOLD = 0xffd040, GREEN = 0x7dff7a;
 const NUM_ACTIONS = ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9'] as const;
@@ -52,7 +53,7 @@ const NUM_ACTIONS = ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9'] as co
 type Show = 'idle' | 'odds' | 'open' | 'lock' | 'race' | 'photo' | 'result' | 'payout' | 'reset';
 type ToteMode = 'last' | 'flip' | 'odds' | 'result' | 'photo';
 type Ev =
-  | { k: 'odds'; raceNo: number; win: number[]; place: number[]; exacta: number[]; quinella: number[] }
+  | { k: 'odds'; raceNo: number; win: number[]; place: number[]; show: number[]; exacta: number[]; quinella: number[] }
   | { k: 'phase'; p: 'odds' | 'open' | 'lock' }
   | { k: 'lay'; seat: number; bets: Bet[] }
   | { k: 'ready'; seat: number; on: boolean }
@@ -67,10 +68,10 @@ type Slip = { t: BetType; p: number[] };
 
 const emptyBets = (): Bet[][] => Array.from({ length: SEATS }, () => [] as Bet[]);
 const emptyReady = (): boolean[] => new Array<boolean>(SEATS).fill(false);
-const emptyOdds = (): Odds => ({ win: [], place: [], exacta: [], quinella: [] });
+const emptyOdds = (): Odds => ({ win: [], place: [], show: [], exacta: [], quinella: [] });
 const hex = (c: number): string => `#${c.toString(16).padStart(6, '0')}`;
 
-export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
+export default class Derby extends TableBase<DerbyParts, Ev, Snap, Act> {
   private st: State = { phase: 'idle', raceNo: 0, odds: emptyOdds(), bets: emptyBets(), ready: emptyReady(), history: [] };
   /** HOST-ONLY authority: strengths and odds of the open race, bets not yet charged, ready flags, the round timer. */
   private hs: { phase: 'idle' | 'odds' | 'open' | 'run'; raceNo: number; strengths: number[]; odds: Odds; bets: Bet[][]; ready: boolean[]; timer: number } = {
@@ -112,10 +113,10 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
     if (e.repeat && !isBet) return;
     const digit = NUM_ACTIONS.indexOf(a as (typeof NUM_ACTIONS)[number]);
     if (digit >= 0) {
-      if (digit < 6) this.pickRat(digit);
+      if (digit < 6) this.pickHorse(digit);
       else if (digit === 6) this.setType('win');
       else if (digit === 7) this.setType('place');
-      else this.setType('exacta');
+      else this.setType(this.nextExotic());
       return;
     }
     switch (a) {
@@ -130,7 +131,7 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
     }
   }
 
-  /** LMB on the console: a rat number picks it, a bet type places its slip when the picks are complete. */
+  /** LMB on the console: a horse number picks it, a bet type places its slip when the picks are complete. */
   onPointer(e: MachinePointerEvent): void {
     if (e.type !== 'down' || this.localSeat < 0) return;
     const hit = this.pick([this.parts.panel.caps]);
@@ -139,7 +140,7 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
     if (!btn) return;
     void btn.press(0.12);
     this.sfx('button', { vol: 0.6 });
-    if (btn.id.startsWith('rat')) { this.pickRat(Number(btn.id.slice(3)) - 1); return; }
+    if (btn.id.startsWith('horse')) { this.pickHorse(Number(btn.id.slice(5)) - 1); return; }
     if ((BET_TYPES as readonly string[]).includes(btn.id)) {
       this.setType(btn.id as BetType);
       if (this.slip.p.length === PICKS_NEEDED[this.slip.t]) this.placeSlip();
@@ -149,7 +150,13 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
   private canBet(): boolean { return this.localSeat >= 0 && this.st.phase === 'open' && !this.st.ready[this.localSeat]; }
   private myBets(): Bet[] { return this.st.bets[this.localSeat] ?? []; }
 
-  private pickRat(i: number): void {
+  /** Key 9: Show first, then each press steps on to Exacta, Quinella and back to Show. */
+  private nextExotic(): BetType {
+    const t = this.slip.t;
+    return t === 'show' ? 'exacta' : t === 'exacta' ? 'quinella' : 'show';
+  }
+
+  private pickHorse(i: number): void {
     if (this.localSeat < 0 || i < 0 || i >= this.runners()) return;
     const need = PICKS_NEEDED[this.slip.t];
     if (need === 1) this.slip.p = [i];
@@ -253,7 +260,7 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
     hs.timer = ODDS_S;
     hs.bets = emptyBets();
     hs.ready = emptyReady();
-    void this.emit({ k: 'odds', raceNo: hs.raceNo, win: hs.odds.win, place: hs.odds.place, exacta: hs.odds.exacta, quinella: hs.odds.quinella });
+    void this.emit({ k: 'odds', raceNo: hs.raceNo, win: hs.odds.win, place: hs.odds.place, show: hs.odds.show, exacta: hs.odds.exacta, quinella: hs.odds.quinella });
     void this.emit({ k: 'phase', p: 'odds' });
   }
 
@@ -300,7 +307,7 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
     const out = runRace(this.hostRng, hs.strengths, active.map((a) => a.bets), hs.odds, this.mods(), this.luck(), solo);
     active.forEach((a, i) => { this.paySeat(a.seat, out.seats[i].gross, { bet: a.stake }); });
 
-    // table charm: the last-place rat is whispered to every bettor before the gates open
+    // table charm: the last-place horse is whispered to every bettor before the gates open
     if (this.tableMod('peekCharges', 0) > 0) {
       const last = out.order[out.order.length - 1];
       for (const a of active) {
@@ -326,7 +333,7 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
     switch (ev.k) {
       case 'odds': {
         this.st.raceNo = ev.raceNo;
-        this.st.odds = { win: ev.win, place: ev.place, exacta: ev.exacta, quinella: ev.quinella };
+        this.st.odds = { win: ev.win, place: ev.place, show: ev.show, exacta: ev.exacta, quinella: ev.quinella };
         this.applyRunners();
         await this.flipTote(pc.fast);
         this.setTote('odds');
@@ -348,7 +355,7 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
       case 'race': await this.raceShow(ev, pc); return;
       case 'result': await this.resultShow(ev, pc); return;
       case 'peek':
-        this.toast(tr('m.derby.peekLast', { rat: this.ratName(ev.last) }), 'sys');
+        this.toast(tr('m.derby.peekLast', { horse: this.horseName(ev.last) }), 'sys');
         return;
     }
   }
@@ -369,11 +376,11 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
       if (this.isLocalOccupant) this.showHud();
       return;
     }
-    // LOCK: anticipation — the bell swings, the rats wind up, then the starting gate drops.
+    // LOCK: anticipation — the bell swings, the horses are loaded, then the starting gate drops.
     s.phase = 'lock';
     this.sfx('bell');
     this.parts.laneLamps.forEach((l) => l.setOn(false));
-    this.parts.rats.forEach((r, i) => { if (i < this.runners()) r.position.x = ratX(0); });
+    this.parts.horses.forEach((r, i) => { if (i < this.runners()) r.position.x = horseX(0); });
     if (pc.fast) {
       this.parts.gate.position.y = GATE_DOWN_Y;
       this.parts.gateBell.rotation.z = 0;
@@ -381,6 +388,7 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
       const bell = this.parts.gateBell;
       void this.anim(LOCK_S, (k) => { bell.rotation.z = Math.sin(k * Math.PI * 6) * 0.6 * (1 - k); }, 'outQuad');
       this.sfx('ratchet', { vol: 0.6 });
+      this.sfx('cheer', { param: 0.1, vol: 0.3 });                              // the stand rises as the gate loads
       await this.wait(LOCK_S * 0.5);
       const gate = this.parts.gate;
       await this.anim(GATE_S, (k) => { gate.position.y = GATE_UP_Y + (GATE_DOWN_Y - GATE_UP_Y) * k; }, 'outQuad');
@@ -389,15 +397,15 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
     if (this.isLocalOccupant) this.showHud();
   }
 
-  /** Action: the rats run their keyframed lanes; the leader lamp follows the front runner; overtakes spark. */
+  /** Action: the horses gallop their keyframed lanes; the leader lamp follows the front runner; the crowd swells; overtakes spark. */
   private async raceShow(ev: Extract<Ev, { k: 'race' }>, pc: PresentCtx): Promise<void> {
     const P = this.parts;
     this.st.phase = 'race';
     const frames = ev.frames;
     const n = ev.order.length;
     const last = frames[KEYFRAMES - 1];
-    const setAt = (i: number, x: number): void => { P.rats[i].position.x = ratX(x); };
-    /** Progress of rat `i` at time `t` (s): 0 at the gate, keyframes every 0.5 s, linear between. */
+    const setAt = (i: number, x: number): void => { P.horses[i].position.x = horseX(x); };
+    /** Progress of horse `i` at time `t` (s): 0 at the gate, keyframes every 0.5 s, linear between. */
     const progress = (t: number, i: number): number => {
       const pos = t / KEY_DT - 1;
       if (pos <= 0) return frames[0][i] * (t / KEY_DT);
@@ -411,32 +419,48 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
       for (let i = 0; i < n; i++) setAt(i, last[i]);
     } else {
       this.sfx('ratchet', { vol: 0.5 });
-      let lead = -1;
+      this.sfx('cheer', { param: 0.25, vol: 0.45 });                        // the off: the stand roars
+      P.bulbs.pattern('chase', 6);
+      let lead = -1, beat = 0, swell = 0;
       await this.anim(RACE_S, (k) => {
         const t = k * RACE_S;
         let best = 0, bestX = -1;
         for (let i = 0; i < n; i++) {
           const x = progress(t, i);
           setAt(i, x);
-          P.tails[i].rotation.y = Math.sin(t * 18 + i * 1.7) * 0.35;      // tails wag with the stride
+          // gallop: front and hind legs swing in opposite phase, the body bobs, the tail swishes
+          const ph = t * 17 + i * 1.7;
+          P.gallop[i][0].rotation.z = Math.sin(ph) * 0.7;
+          P.gallop[i][1].rotation.z = -Math.sin(ph) * 0.7;
+          P.horses[i].position.y = HORSE_Y + Math.abs(Math.sin(ph)) * 0.008;
+          P.tails[i].rotation.z = Math.sin(ph * 0.5) * 0.25;
           if (x > bestX) { bestX = x; best = i; }
         }
+        if (t >= beat) { beat = t + 0.34; this.sfx('thud', { vol: 0.12, pitch: 8 }); }   // hoof beats under the race
+        // the crowd swells with the leader: a rising roar at the turn and again at the line
+        if (swell === 0 && bestX > 0.55) { swell = 1; this.sfx('cheer', { param: 0.45, vol: 0.55 }); }
+        if (swell === 1 && bestX > 0.88) { swell = 2; this.sfx('cheer', { param: 0.7, vol: 0.75 }); }
+        const lift = swell === 0 ? 0.15 : swell === 1 ? 0.45 : 0.9;
+        P.pennants.forEach((pv, c) => { pv.rotation.z = Math.sin(t * 9 + c) * 0.25 * lift; pv.position.y = 1.5 + Math.abs(Math.sin(t * 7 + c * 2)) * 0.03 * lift; });
         if (lead >= 0 && best !== lead && t > 1) {
-          this.sfx('click', { vol: 0.35 });                                 // squeak on an overtake
-          this.ctx.fx.sparks(P.rats[best], 6, RAT_COLORS[best]);
+          this.sfx('click', { vol: 0.35 });                                 // a new leader
+          this.ctx.fx.sparks(P.horses[best], 6, SILKS[best]);
         }
         if (best !== lead) {
           lead = best;
           P.laneLamps.forEach((l, i) => l.setOn(i === best && i < n));
         }
       });
-      // trailing rats reach the line in the follow-through beat
+      // trailing horses reach the line in the follow-through beat
       const from = last.slice(0, n);
       await this.anim(0.6, (k) => { for (let i = 0; i < n; i++) setAt(i, from[i] + (1 - from[i]) * k); }, 'outQuad');
+      P.bulbs.pattern('all');
     }
 
-    // impact: the chequer lamps chase; the finish shakes the glass
+    // impact: the finish shakes the glass, the legs settle
     P.laneLamps.forEach((l) => l.setOn(false));
+    P.gallop.forEach((g) => g.forEach((l) => { l.rotation.z = 0; }));
+    P.horses.forEach((h) => { h.position.y = HORSE_Y; });
     this.sfx('bell');
     this.ctx.fx.shake(0.01, 0.25, { roll: 0.3 });
     this.ctx.fx.sparks(P.finishLine, 10, GOLD);
@@ -445,18 +469,28 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
       this.st.phase = 'photo';
       this.sfx('click', { vol: 0.9 });
       this.ctx.fx.flash(0xffffff, 0.7, 0.12);
-      this.setTote('photo');
-      if (!pc.fast) await this.wait(PHOTO_S);
+      this.view.scramble = 0;
+      P.photoLamp.blink(8, 0.9);                                              // the camera flashes at the line
+      this.setTote('photo', ev.order);
+      if (!pc.fast) {
+        await this.wait(PHOTO_S * 0.5);
+        this.sfx('click', { vol: 0.7 });
+        this.ctx.fx.flash(0xffffff, 0.5, 0.1);                                 // second frame
+        this.view.scramble = 1;
+        this.paintTote();
+        await this.wait(PHOTO_S * 0.5);
+      }
     }
     this.st.history = [ev.order[0], ...this.st.history].slice(0, 10);
   }
 
-  /** Follow-through: tote 1-2-3, pop text, tier celebration, loss and near-miss beats; the rats wind back to the gate. */
+  /** Follow-through: board 1-2-3, pop text, tier celebration, loss and near-miss beats; the horses walk back to the gate. */
   private async resultShow(ev: Extract<Ev, { k: 'result' }>, pc: PresentCtx): Promise<void> {
     this.st.phase = 'result';
     const P = this.parts;
     this.setTote('result', ev.order);
     P.laneLamps[ev.order[0]]?.blink(6, 3);
+    if (!pc.fast) this.sfx('cheer', { param: 0.35, vol: 0.5 });                  // the stand cheers the winner, whoever backed it
     const winners = [...ev.seats].filter((r) => r.gross > 0).sort((x, y) => y.gross - x.gross);
     const best = winners[0];
     if (best) {
@@ -492,20 +526,21 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
     }
     if (!pc.fast) await this.wait(PAYOUT_S * 0.5);
 
-    // reset: the gate lifts and the rats are wound back to the start
+    // reset: the gate lifts and the horses are walked back to the start
     this.st.phase = 'reset';
     this.st.bets = emptyBets();
     this.st.ready = emptyReady();
     const n = ev.order.length;
-    const from = P.rats.map((r) => r.position.x);
+    const from = P.horses.map((r) => r.position.x);
     const gate = P.gate;
     if (pc.fast) {
-      P.rats.forEach((r, i) => { if (i < n) r.position.x = ratX(0); });
+      P.horses.forEach((r, i) => { if (i < n) r.position.x = horseX(0); });
       gate.position.y = GATE_UP_Y;
     } else {
       await this.anim(RESET_S, (k) => {
-        P.rats.forEach((r, i) => { if (i < n) r.position.x = from[i] + (ratX(0) - from[i]) * k; });
-        P.tails.forEach((tl) => { tl.rotation.y *= 1 - k; });
+        P.horses.forEach((r, i) => { if (i < n) r.position.x = from[i] + (horseX(0) - from[i]) * k; });
+        P.tails.forEach((tl) => { tl.rotation.z *= 1 - k; });
+        P.pennants.forEach((pv) => { pv.rotation.z *= 1 - k; pv.position.y = 1.5; });
         if (k > 0.2) gate.position.y = GATE_DOWN_Y + (GATE_UP_Y - GATE_DOWN_Y) * Math.min(1, (k - 0.2) / 0.5);
       }, 'outQuad');
     }
@@ -564,21 +599,21 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
 
   /** Idle: lane lamps chase along the rail so the cabinet reads as alive. */
   attract(_dt: number, time: number): void {
-    const idx = Math.floor(time * 4) % RATS;
+    const idx = Math.floor(time * 4) % RUNNERS;
     if (idx === this.attractIdx) return;
     this.attractIdx = idx;
     this.parts.laneLamps.forEach((l, i) => l.setOn(i === idx && i < this.runners()));
   }
 
   // ── visuals ───────────────────────────────────────────────────────────────────────────────────
-  private ratName(i: number): string { return tr(`m.derby.rat${i + 1}`); }
+  private horseName(i: number): string { return tr(`m.derby.horse${i + 1}`); }
 
-  /** The seventh rat, its lane lamp and its console button only exist once The Albino is in the field. */
+  /** The seventh horse, its lane lamp and its console button only exist once The Albino is in the field. */
   private applyRunners(): void {
     const n = this.runners();
-    this.parts.rats.forEach((r, i) => { r.visible = i < n; });
+    this.parts.horses.forEach((r, i) => { r.visible = i < n; });
     this.parts.laneLamps.forEach((l, i) => { l.root.visible = i < n; });
-    this.parts.buttons.rat7?.setEnabled(n >= 7);
+    this.parts.buttons.horse7?.setEnabled(n >= 7);
   }
 
   private paintLamps(): void {
@@ -601,7 +636,7 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
   }
   private toteOrder: number[] = [];
 
-  /** Draws the tote for the current mode. Scrambled digits while the odds flip. */
+  /** Draws the odds board for the current mode. Scrambled digits while the odds flip. */
   private paintTote(): void {
     const mode = this.view.mode;
     const o = this.st.odds;
@@ -610,38 +645,57 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
       g.fillStyle = '#080c08';
       g.fillRect(0, 0, w.w, w.h);
       if (mode === 'odds' || mode === 'flip') {
+        // header: race number, then the three columns the player bets on
         w.text(`${tr('m.derby.toteOdds')} ${this.st.raceNo || ''}`, 4, 1, { font: 'px5', color: '#ffd040' });
+        w.text(tr('m.derby.tWin'), 70, 1, { font: 'px5', color: '#ffd040' });
+        w.text(tr('m.derby.tPlace'), 108, 1, { font: 'px5', color: '#ffd040' });
+        w.text(tr('m.derby.tShow'), 146, 1, { font: 'px5', color: '#ffd040' });
+        let fav = -1;                                                       // shortest win price = the favourite
+        for (let i = 0; i < n; i++) if (o.win[i] !== undefined && (fav < 0 || o.win[i] < o.win[fav])) fav = i;
         for (let i = 0; i < n; i++) {
-          const y = 11 + i * 7.5;
-          g.fillStyle = hex(RAT_COLORS[i]);
-          g.fillRect(4, y, 5, 5);
-          w.text(String(i + 1), 12, y, { font: 'px5', color: '#ffffff' });
-          const fw = (v: number | undefined): string => (mode === 'flip' || v === undefined
-            ? `${(this.view.scramble * 7 + i * 3) % 10}${(this.view.scramble * 3 + i) % 10}.${(this.view.scramble + i * 5) % 10}`
+          const y = 9 + i * 7.8;
+          g.fillStyle = hex(SILKS[i]);
+          g.fillRect(4, y, 7, 6);                                           // silks swatch
+          w.text(String(i + 1), 14, y, { font: 'px5', color: '#ffffff' });
+          if (mode === 'odds' && i === fav) w.text(tr('m.derby.tFav'), 24, y, { font: 'px5', color: '#7dff7a' });
+          const fw = (v: number | undefined, c: number): string => (mode === 'flip' || v === undefined
+            ? `${(this.view.scramble * 7 + i * 3 + c) % 10}${(this.view.scramble * 3 + i + c) % 10}.${(this.view.scramble + i * 5 + c) % 10}`
             : v.toFixed(1));
-          w.text(`${tr('m.derby.tWin')} ${fw(o.win[i])}`, 40, y, { font: 'px5', color: '#e8e0c8' });
-          w.text(`${tr('m.derby.tPlace')} ${fw(o.place[i])}`, 110, y, { font: 'px5', color: '#e8e0c8' });
+          w.text(fw(o.win[i], 0), 66, y, { font: 'px5', color: '#ffffff' });
+          w.text(fw(o.place[i], 3), 104, y, { font: 'px5', color: '#e8e0c8' });
+          w.text(fw(o.show[i], 6), 142, y, { font: 'px5', color: '#e8e0c8' });
         }
       } else if (mode === 'result') {
         w.text(tr('m.derby.tResult'), 4, 1, { font: 'px5', color: '#ffd040' });
-        this.toteOrder.slice(0, 3).forEach((rat, j) => {
-          const x = 24 + j * 58;
-          g.fillStyle = hex(RAT_COLORS[rat]);
-          g.fillRect(x, 16, 40, 34);
-          w.text(String(rat + 1), x + 20, 22, { font: 'px5', color: '#080c08', align: 'center' });
-          w.text(String(j + 1), x + 20, 38, { font: 'px5', color: '#080c08', align: 'center' });
+        this.toteOrder.slice(0, 3).forEach((horse, j) => {
+          const x = 14 + j * 60;
+          g.fillStyle = hex(SILKS[horse]);
+          g.fillRect(x, 16, 44, 36);
+          w.text(String(horse + 1), x + 22, 22, { font: 'px5', color: '#080c08', align: 'center' });
+          w.text(tr(j === 0 ? 'm.derby.tWin' : j === 1 ? 'm.derby.tPlace' : 'm.derby.tShow'), x + 22, 40, { font: 'px5', color: '#080c08', align: 'center' });
         });
       } else if (mode === 'photo') {
-        g.fillStyle = '#f2f2ea';
+        // photo finish: the two noses on a bright plate, the frame flickers on the second flash
+        const flick = this.view.scramble === 1;
+        g.fillStyle = flick ? '#080c08' : '#f2f2ea';
         g.fillRect(0, 0, w.w, w.h);
-        w.text(tr('m.derby.tPhoto'), w.w / 2, w.h / 2 - 3, { font: 'px5', color: '#080c08', align: 'center' });
+        const ink = flick ? '#f2f2ea' : '#080c08';
+        w.text(tr('m.derby.tPhoto'), w.w / 2, 6, { font: 'px5', color: ink, align: 'center' });
+        const a = this.toteOrder[0], b = this.toteOrder[1];
+        if (a !== undefined && b !== undefined) {
+          g.fillStyle = hex(SILKS[a]); g.fillRect(52, 24, 30, 26);
+          g.fillStyle = hex(SILKS[b]); g.fillRect(110, 24, 30, 26);
+          w.text(String(a + 1), 67, 32, { font: 'px5', color: '#080c08', align: 'center' });
+          w.text(String(b + 1), 125, 32, { font: 'px5', color: '#080c08', align: 'center' });
+          w.text('?', 96, 32, { font: 'px5', color: ink, align: 'center' });
+        }
       } else {
         w.text(tr('m.derby.toteLast'), 4, 1, { font: 'px5', color: '#ffd040' });
-        this.st.history.forEach((rat, j) => {
+        this.st.history.forEach((horse, j) => {
           const x = 6 + (j % 5) * 37, y = 12 + Math.floor(j / 5) * 26;
-          g.fillStyle = hex(RAT_COLORS[rat]);
+          g.fillStyle = hex(SILKS[horse]);
           g.fillRect(x, y, 31, 22);
-          w.text(String(rat + 1), x + 15, y + 7, { font: 'px5', color: '#080c08', align: 'center' });
+          w.text(String(horse + 1), x + 15, y + 7, { font: 'px5', color: '#080c08', align: 'center' });
         });
       }
     });
@@ -665,6 +719,7 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
     if (!o.win.length) return null;
     if (this.slip.t === 'win') return o.win[this.slip.p[0]] ?? null;
     if (this.slip.t === 'place') return o.place[this.slip.p[0]] ?? null;
+    if (this.slip.t === 'show') return o.show[this.slip.p[0]] ?? null;
     const n = o.win.length;
     const [a, b] = this.slip.p;
     if (this.slip.t === 'exacta') return o.exacta[exactaIndex(n, a, b)] ?? null;
@@ -676,7 +731,7 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
 
   private tipLines(): Txt[] {
     return [
-      { k: 'm.derby.tip1', v: { pick: `${this.k('n1')}-${this.k('n6')}`, win: this.k('n7'), place: this.k('n8'), exacta: this.k('n9') } },
+      { k: 'm.derby.tip1', v: { pick: `${this.k('n1')}-${this.k('n6')}`, win: this.k('n7'), place: this.k('n8'), show: this.k('n9') } },
       { k: 'm.derby.tip2', v: { go: this.k('confirm') } },
       { k: 'm.derby.tip3', v: { help: this.k('help') } },
     ];
@@ -719,8 +774,13 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
     // KEY NUMBERS: the slip being built (type, picks, odds), your bets, the chip, the last winner, balance
     const slipPicks = this.slip.p.map((p) => p + 1).join('-') || '?';
     const slipText = `${tr(`m.derby.${this.slip.t}`)} ${slipPicks}${odds !== null ? ` x${odds.toFixed(1)}` : ''}`;
+    const pick0 = this.slip.p[0];
+    const o = this.st.odds;
+    const pickOdds = pick0 !== undefined && o.win[pick0] !== undefined
+      ? `${o.win[pick0].toFixed(1)} / ${o.place[pick0].toFixed(1)} / ${o.show[pick0].toFixed(1)}` : null;
     const nums: HudNumber[] = [
       { label: { k: 'm.derby.nSlip' }, value: slipText, tone: complete ? 'good' : 'gold' },
+      ...(pickOdds !== null && pick0 !== undefined ? [{ label: { k: 'm.derby.nOdds', v: { n: pick0 + 1 } }, value: pickOdds, tone: 'neutral' as const }] : []),
       { label: { k: 'm.derby.nBets' }, value: fmtCoins(total), tone: total > 0 ? 'gold' : 'neutral' },
       { label: { k: 'm.derby.nChip' }, value: fmtCoins(this.bet), tone: 'cyan' },
     ];
@@ -733,10 +793,11 @@ export default class RatDerby extends TableBase<DerbyParts, Ev, Snap, Act> {
     if (open && !ready) {
       if (complete) ctrl.push({ key: this.k('confirm'), label: { k: 'm.derby.cPlace' }, action: 'confirm', primary: true });
       else if (bets.length > 0) ctrl.push({ key: this.k('confirm'), label: { k: 'm.derby.cReady' }, action: 'confirm', primary: true });
-      ctrl.push({ key: `${this.k('n1')}-${this.k('n6')}`, label: { k: 'm.derby.cRat' }, action: 'n1' });
+      ctrl.push({ key: `${this.k('n1')}-${this.k('n6')}`, label: { k: 'm.derby.cHorse' }, action: 'n1' });
       ctrl.push({ key: this.k('n7'), label: { k: 'm.derby.cWin' }, action: 'n7' });
       ctrl.push({ key: this.k('n8'), label: { k: 'm.derby.cPlaceType' }, action: 'n8' });
-      ctrl.push({ key: this.k('n9'), label: { k: 'm.derby.cExacta' }, action: 'n9' });
+      const nx = this.nextExotic();
+      ctrl.push({ key: this.k('n9'), label: { k: nx === 'show' ? 'm.derby.cShowType' : nx === 'exacta' ? 'm.derby.cExacta' : 'm.derby.cQuinella' }, action: 'n9' });
       ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.derby.cChip' }, action: 'betUp' });
       if (bets.length > 0) ctrl.push({ key: this.k('clear'), label: { k: 'm.derby.cClear' }, action: 'clear' });
     }
@@ -767,8 +828,8 @@ export const def: MachineDef = {
     'm.derby.deadHeat': 'bool: a Win pick lost by a photo finish pays at half odds',
     'm.derby.longshotBonus': 'fraction added to payouts at odds ≥ ×10 (Tote Ticket)',
     'm.derby.exactaInsurance': 'bool: an exacta in reverse order refunds the stake',
-    'm.derby.albino': 'bool: The Albino (rat 7, strength 0.6–4.0 each race) joins the field',
-    'x.table.peekCharges': 'bool: every bettor is privately told which rat finishes last',
+    'm.derby.albino': 'bool: The Albino (horse 7, strength 0.6–4.0 each race) joins the field',
+    'x.table.peekCharges': 'bool: every bettor is privately told which horse finishes last',
     luck: 'reroll a losing solo race once with p = luck/100; shared races refund losing seats with the same p',
   },
   strings: STRINGS,

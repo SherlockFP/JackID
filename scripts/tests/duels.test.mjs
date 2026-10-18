@@ -63,7 +63,8 @@ test('the six games register with the duel registry under their rival', () => {
     const R = registry.getDuel(g.id);
     assert.ok(R, `${g.id} registered`);
     assert.equal(R.rival, g.rival);
-    assert.equal(registry.duelForRival(g.rival).id, g.id);
+    // Lucan plays Rock, Paper, Promise now (src/game/duels/promise, loaded by the engine and its tests): Ghost Shell stays registered behind it
+    assert.equal(registry.duelForRival(g.rival).id, g.rival === 'lucan' && registry.getDuel('promise') ? 'promise' : g.id);
     assert.equal(typeof R.reveal.saw, 'string');
     assert.equal(typeof R.revealFair.why, 'string');
   }

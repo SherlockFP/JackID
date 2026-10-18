@@ -24,7 +24,7 @@ import { mixHex, scaleHex, PAL } from './palette';
 import { VENDOR_PATHS } from './presets';
 import type { KitCtx } from './ctx';
 import { MANNEQUIN_CLIPS, MANNEQUIN_GLB, type Kit, type MannequinActor, type MannequinBone, type MannequinClip, type MannequinOpts, type MannequinPlayOpts } from './types';
-import { headBoxOf, idleRefPose, patchLook, patchNpc, seeded, type HeadBox } from './mannequinLook';
+import { buildDress, buildHair, FEMALE_LIMB, FEMALE_SCALES, headBoxOf, idleRefPose, patchLook, patchNpc, seeded, waveEnv, type HeadBox } from './mannequinLook';
 
 const D2R = Math.PI / 180;
 const DEFAULT_HEIGHT = 1.75;
@@ -162,6 +162,23 @@ function faceOf(o: MannequinOpts, rnd: () => number): { sockets: number; smile: 
   }
 }
 
+/**
+ * The female option (w80, Ada): a slimmer build (bone scales), long hair cards on the head, a simple dress, larger and softer
+ * eyes, a gentle idle (breathing, a head tilt toward you when you are near) and a small wave when you come home.
+ * Pass it on top of the usual options: `kit.mannequin({ ...opts, female: true })`.
+ */
+export interface FemaleOpts {
+  female?: boolean;
+  /** Hair colour (default near-black plum). */
+  hair?: Hex;
+  /** Dress colour (default dark wine). */
+  dress?: Hex;
+}
+const HAIR_DEFAULT = 0x2a2230;
+const DRESS_DEFAULT = 0x5a2a3c;
+const WAVE_SECONDS = 2.6;
+const GREET_NEAR = 4, GREET_FAR = 6;           // m: a wave starts when you come inside GREET_NEAR after having been beyond GREET_FAR
+
 /** What the dealer rig (dealer.ts) needs on top of the public actor. */
 export interface MannequinInternal extends MannequinActor {
   /** Dispose `obj` (a prop built for this actor) together with the actor. */
@@ -181,7 +198,7 @@ const MAX_ACTIVE = 12;
 /** Mannequins farther than this from the LOD camera freeze and hide (metres). */
 const LOD_FAR = 20;
 
-export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Group): Pick<Kit, 'loadMannequin'> & { mannequin(o?: MannequinOpts): MannequinInternal; update(dt: number): void; setLodCamera(cam: THREE.Camera | null): void } {
+export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Group): Pick<Kit, 'loadMannequin'> & { mannequin(o?: MannequinOpts & FemaleOpts): MannequinInternal; update(dt: number): void; setLodCamera(cam: THREE.Camera | null): void } {
   const actors = new Set<WeakRef<Actor>>();
   let serial = 0;
   let lodCam: THREE.Camera | null = null;
@@ -256,8 +273,18 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
     private twitchSide = 1;
     /** An owner aimed the head (`lookAt(target)`); the watch-the-player turn stands down until `lookAt(null)`. */
     private ownerLook = false;
+    // the female option
+    private readonly female: boolean;
+    private readonly femaleOpts: FemaleOpts;
+    private hairSway: THREE.Object3D | null = null;
+    private waveT = -1;
+    private wasNear = false;
+    private armSide = -1;
+    private tiltK = 0;
 
-    constructor(o: MannequinOpts) {
+    constructor(o: MannequinOpts & FemaleOpts) {
+      this.female = !!o.female;
+      this.femaleOpts = o;
       this.look = lookOf(o);
       this.npc = o.npc !== false && this.look.lit;
       this.npcRim = o.rim ?? (o.style === 'collector' ? NPC_RIM_COLLECTOR : NPC_RIM_HOUSE);
@@ -281,7 +308,7 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
       this.rnd = seeded(0x5ca1 + id * 7919);
       this.phase = this.rnd() * Math.PI * 2;
       this.twitchIn = 1 + this.rnd() * 5;
-      this.face = faceOf(o, this.rnd);
+      this.face = o.female ? { sockets: 0.3, smile: 0 } : faceOf(o, this.rnd);
       this.acc = ((id * 0.6180339887) % 1) / (this.stepFps ?? DEFAULT_STEP_FPS);   // de-synchronise the 15 fps ticks
       this.buildPlaceholder();
       this.selfRef = new WeakRef(this);
@@ -328,7 +355,7 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
         }) as THREE.MeshLambertMaterial;
         // painted face + dim rim light (lit looks only; the ghost stays a flat translucent figure)
         if (this.look.lit) patchLook(m, { cracks: !!this.look.cracks, sockets: this.face.sockets, smile: this.face.smile, head: src.head, rim: RIM_LIGHT });
-        if (this.npc) patchNpc(m, { rim: this.npcRim, eyes: this.npcEyes, head: src.head, shimmer: 1 });
+        if (this.npc) patchNpc(m, { rim: this.npcRim, eyes: this.npcEyes, head: src.head, shimmer: 1, eyeGain: this.female ? 0.72 : 1, eyeSize: this.female ? 0.35 : 0 });
         this.mats.push(m);
         this.baseColors.push(base);
         sm.material = m;
@@ -360,6 +387,7 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
       this.applyTintAndOpacity();
       if (this.initialMask) { const m = makeProp(this.initialMask); this.own(m); this.attach(m, 'Head'); }
       if (this.look.coat) { const coat = makeProp('coat_long'); this.own(coat); this.attach(coat, 'pelvis'); }
+      if (this.female) this.buildFemale();
       for (const a of this.attachments) if (!a.live) this.mount(a);
       const first = this.pending ?? { clip: this.initialClip, o: { fade: 0 }, resolve: () => {} };
       this.pending = null;
@@ -367,6 +395,29 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
       this.mixer.update(0);
       this.captureAnimPose();
     }
+
+    /** Female option: hair cards on the head, the dress on thighs and spine, the build. Called once the rig is up. */
+    private buildFemale(): void {
+      this.addProc(['spine_03']);
+      const hair = buildHair(this.femaleOpts.hair ?? HAIR_DEFAULT);
+      this.own(hair.root);
+      this.hairSway = hair.sway;
+      this.attach(hair.root, 'Head');
+      for (const piece of buildDress(this.bones, this.femaleOpts.dress ?? DRESS_DEFAULT)) { this.own(piece.obj); this.attach(piece.obj, piece.bone); }
+      // which side the "right" arm hangs on, so the wave lifts it outwards
+      const ua = this.bones.get('upperarm_r');
+      if (ua && this.rig) {
+        this.rig.updateMatrixWorld(true);
+        const lp = this.root.worldToLocal(ua.getWorldPosition(Actor.v1));
+        this.armSide = lp.x >= 0 ? 1 : -1;
+      }
+      this.applyFemaleScale();
+    }
+    private applyFemaleScale(): void {
+      for (const [n, k] of FEMALE_SCALES) this.bones.get(n)?.scale.set(k, 1, k);
+    }
+    /** Start the small wave (ignored while one is running). */
+    wave(): void { if (this.female && this.waveT < 0) this.waveT = 0; }
 
     // ── playback ──
     play(clip: MannequinClip | string, o: MannequinPlayOpts = {}): Promise<void> {
@@ -464,7 +515,10 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
     // ── look ──
     setTint(color: Hex | null, amount = 1): void { this.tint = color === null ? null : { color, amount }; this.applyTintAndOpacity(); }
     setOpacity(a: number): void { this.opacity = Math.max(0, Math.min(1, a)); this.applyTintAndOpacity(); }
-    setVisible(on: boolean): void { this.root.visible = on; }
+    setVisible(on: boolean): void {
+      if (this.female && on && !this.ownVis) this.wasNear = false;   // she is back: wave again when you get close
+      this.root.visible = on;
+    }
     private applyTintAndOpacity(): void {
       for (let i = 0; i < this.mats.length; i++) {
         const m = this.mats[i];
@@ -516,11 +570,12 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
      */
     private npcProp(obj: THREE.Object3D): void {
       if (!this.npc) return;
+      const lift = typeof obj.userData.npcLift === 'number' ? (obj.userData.npcLift as number) : null;
       obj.traverse((n) => {
         const mesh = n as THREE.Mesh;
         if (!mesh.isMesh || !(mesh.material as THREE.MeshLambertMaterial).isMeshLambertMaterial) return;
         const m = (mesh.material as THREE.MeshLambertMaterial).clone();
-        patchNpc(m, { rim: this.npcRim, eyes: null, head: null, shimmer: 0.6 });
+        patchNpc(m, { rim: this.npcRim, eyes: null, head: null, shimmer: 0.6, lift: lift ?? undefined });
         mesh.material = m;
       });
     }
@@ -576,7 +631,8 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
 
     private postPose(dt: number): void {
       for (const [n, q] of this.procAnim) this.bones.get(n)?.quaternion.copy(q);
-      for (const [n, s] of this.procScale) this.bones.get(n)?.scale.copy(s).multiply(LIMB_STRETCH);
+      for (const [n, s] of this.procScale) this.bones.get(n)?.scale.copy(s).multiply(this.female ? FEMALE_LIMB : LIMB_STRETCH);
+      if (this.female) this.applyFemaleScale();
       this.stiffen();
       this.motion(dt);
       for (const f of this.pre) f(dt);
@@ -588,7 +644,7 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
     /** Stiff carriage: while idle, arms and spine are held part-way back to the clip's first pose. */
     private stiffen(): void {
       const clip = this.clip;
-      if (!clip || !STIFF_CLIP.test(clip)) return;
+      if (!clip || !STIFF_CLIP.test(clip) || this.female) return;     // she is relaxed: no automaton carriage
       let ref = stiffRefs.get(clip);
       if (!ref) {
         const c = source?.clips.get(clip);
@@ -602,6 +658,7 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
     /** Idle sway (never still, never regular) and the occasional head jerk: the automaton tell. */
     private motion(dt: number): void {
       this.jt += dt;
+      if (this.female) { this.gentle(dt); return; }
       const t = this.jt, ph = this.phase;
       const pitch = Math.sin(t * 0.9 + ph) * 0.011 + Math.sin(t * 2.7 + ph * 2) * 0.004;
       const yaw = Math.sin(t * 0.6 + ph * 3) * 0.009;
@@ -624,6 +681,61 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
       if (head) head.quaternion.premultiply(Actor.qj.setFromEuler(Actor.eu.set(pitch + jerk * 0.3, yaw + jerk, 0, 'XYZ')));
       if (neck) neck.quaternion.premultiply(Actor.qj.setFromEuler(Actor.eu.set(pitch * 0.5 + jerk * 0.15, yaw * 0.5 + jerk * 0.4, 0, 'XYZ')));
       if (spine) spine.quaternion.premultiply(Actor.qj.setFromEuler(Actor.eu.set(pitch * 0.4, yaw * 0.3, 0, 'XYZ')));
+    }
+
+    /**
+     * Her idle: slow breathing in the chest and shoulders, a faint sway, the head tilting toward you when you are near, hair
+     * swinging a little, and the greeting wave. No twitches.
+     */
+    private gentle(dt: number): void {
+      const t = this.jt, ph = this.phase;
+      const { v1, q1, qj, eu } = Actor;
+      const breath = Math.sin(t * 1.35 + ph);
+      const sway = Math.sin(t * 0.5 + ph * 2) * 0.012;
+      // where you are, in her own frame: how near, and on which side
+      let near = 0, side = 0;
+      if (lodCam) {
+        this.root.getWorldPosition(v1);
+        const dist = v1.distanceTo(lodPos);
+        near = 1 - smooth(1.5, 5, dist);
+        const lp = this.root.worldToLocal(lodPos.clone());
+        side = Math.max(-1, Math.min(1, lp.x / 1.2));
+        if (!this.wasNear && dist < GREET_NEAR) { this.wasNear = true; this.wave(); }
+        else if (this.wasNear && dist > GREET_FAR) this.wasNear = false;
+      }
+      this.tiltK += (near - this.tiltK) * Math.min(1, dt * 1.6);
+      const roll = -side * 0.17 * this.tiltK;
+      const head = this.bones.get('Head'), neck = this.bones.get('neck_01'), s2 = this.bones.get('spine_02'), s3 = this.bones.get('spine_03');
+      if (s2) s2.quaternion.premultiply(qj.setFromEuler(eu.set(breath * 0.012, sway * 0.6, 0, 'XYZ')));
+      if (s3) s3.quaternion.premultiply(qj.setFromEuler(eu.set(breath * 0.016, 0, 0, 'XYZ')));
+      if (neck) neck.quaternion.premultiply(qj.setFromEuler(eu.set(-breath * 0.006, sway * 0.4, roll * 0.4, 'XYZ')));
+      if (head) head.quaternion.premultiply(qj.setFromEuler(eu.set(-breath * 0.008, sway * 0.5, roll * 0.6, 'XYZ')));
+      if (this.hairSway) this.hairSway.rotation.x = Math.sin(t * 0.9 + ph) * 0.035 + breath * 0.01;
+      if (this.waveT >= 0) {
+        this.waveT += dt;
+        const env = waveEnv(this.waveT, WAVE_SECONDS);
+        if (this.waveT >= WAVE_SECONDS) this.waveT = -1;
+        else {
+          const ua = this.bones.get('upperarm_r'), la = this.bones.get('lowerarm_r');
+          this.root.getWorldQuaternion(q1);
+          const rootQ = q1.clone();
+          const swing = Math.sin(this.waveT * 9) * 0.42 * env;
+          if (ua) this.turnWorld(ua, rootQ, 1, 0, 0, -0.75 * env, 0, 0, 1, this.armSide * 0.3 * env);
+          if (la) this.turnWorld(la, rootQ, 1, 0, 0, -1.15 * env, 0, 0, 1, swing);
+        }
+      }
+    }
+
+    /** Rotate `bone` by `a1` about the root-frame axis (x1,y1,z1), then `a2` about (x2,y2,z2), in world terms; refresh its matrices. */
+    private turnWorld(bone: THREE.Object3D, rootQ: THREE.Quaternion, x1: number, y1: number, z1: number, a1: number, x2: number, y2: number, z2: number, a2: number): void {
+      const { q2, q3, v2, v3 } = Actor;
+      bone.parent!.updateWorldMatrix(true, false);
+      const parentQ = bone.parent!.getWorldQuaternion(q2).clone();
+      const world = new THREE.Quaternion().setFromAxisAngle(v2.set(x1, y1, z1).applyQuaternion(rootQ).normalize(), a1);
+      world.multiply(q3.setFromAxisAngle(v3.set(x2, y2, z2).applyQuaternion(rootQ).normalize(), a2));
+      const local = parentQ.clone().invert().multiply(world).multiply(parentQ);
+      bone.quaternion.premultiply(local);
+      bone.updateMatrixWorld(true);
     }
 
     /** Turn the head to the player's camera when they are near (skipped while an owner aims the head). */

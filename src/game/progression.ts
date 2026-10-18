@@ -4,11 +4,12 @@
  * The Debt Run opens with three dead-simple machines and the house hands the player about one more at every Dawn (once the
  * Night's quota is paid), simple to complex:
  *
- *   • CORE_MACHINES   the 10 machines a Debt Run is built from (bigone, coinflip, hilo, videopoker, mines, plinko, blackjack,
- *                     keno, roulette, sonkart). Every other registered machine lives in the Free Casino (sandbox mode,
+ *   • CORE_MACHINES   the 12 machines a Debt Run is built from (bigone, coinflip, hilo, videopoker, mines, plinko, blackjack,
+ *                     keno, roulette, sonkart, derby, cascade). Every other registered machine lives in the Free Casino (sandbox mode,
  *                     `FREE_ASSIGN` in layout.ts) and is not placed in a Debt / Co-op / Versus run.
  *   • UNLOCK_SCHEDULE Night 1 opens the starters (bigone, coinflip, hilo); Nights 2 to 6 open one each and Night 7 opens the
- *                     last two (3 + 7 = 10). Night 8 is the finale: nothing new, the whole floor is open.
+ *                     last two (3 + 7 = 10), and two machines are PINNED to a Night on top of that: the Night Derby on Night 3 and
+ *                     the Cascade on Night 4 (12 in all). Night 8 is the finale: nothing new, the whole floor is open.
  *                     Tiers run SIMPLE -> CLASSIC -> TABLE -> HEAVY.
  *   • seed            the order INSIDE a tier is a seeded shuffle (`hashSeed('progression', seed, tier)`), so two runs do not
  *                     open the same machines on the same Night, but a tier never opens before an easier one. No seed = canonical.
@@ -38,13 +39,22 @@ export const TIERS: readonly Tier[] = ['SIMPLE', 'CLASSIC', 'TABLE', 'HEAVY'];
  *   videopoker / mines / plinko       hold cards, pick tiles, drop a puck: still one screen, one idea.
  *   blackjack / keno                  the first real card table and a draw.
  *   roulette / sonkart                the deep end: many bets (roulette) and a 4-seat party game (sonkart).
+ *   derby / cascade                   pinned to Night 3 and Night 4 (PINNED_NIGHT), the horse race and the falling-ball board.
  */
 export const CORE_PLAN: ReadonlyArray<{ id: MachineId; tier: Tier }> = [
   { id: 'bigone', tier: 'SIMPLE' }, { id: 'coinflip', tier: 'SIMPLE' }, { id: 'hilo', tier: 'SIMPLE' },
   { id: 'videopoker', tier: 'CLASSIC' }, { id: 'mines', tier: 'CLASSIC' }, { id: 'plinko', tier: 'CLASSIC' },
   { id: 'blackjack', tier: 'TABLE' }, { id: 'keno', tier: 'TABLE' },
   { id: 'roulette', tier: 'HEAVY' }, { id: 'sonkart', tier: 'HEAVY' },
+  // Wave 80: horse racing is back (the Night Derby, a Midway-wing XL table) and the Cascade joins; both open on a fixed Night (PINNED_NIGHT).
+  { id: 'derby', tier: 'CLASSIC' }, { id: 'cascade', tier: 'CLASSIC' },
 ];
+
+/**
+ * Machines that open on a fixed Night whatever the run seed. They sit ON TOP of the one-per-Night rhythm, and the seeded shuffle
+ * of the other machines never sees them. Derby Night 3, Cascade Night 4.
+ */
+export const PINNED_NIGHT: Readonly<Partial<Record<MachineId, number>>> = { derby: 3, cascade: 4 };
 
 export const CORE_MACHINES: readonly MachineId[] = CORE_PLAN.map((c) => c.id);
 const CORE_SET: ReadonlySet<MachineId> = new Set(CORE_MACHINES);
@@ -52,7 +62,7 @@ const TIER_OF: ReadonlyMap<MachineId, Tier> = new Map(CORE_PLAN.map((c) => [c.id
 
 /** Machines opened on Night 1. The rest are dealt one per Night from Night 2 (the last two together on Night 7). */
 export const STARTERS: readonly MachineId[] = CORE_PLAN.filter((c) => c.tier === 'SIMPLE').map((c) => c.id);
-/** Machines per Night after Night 1 (one each on Nights 2 to 6, the last two share Night 7: 7 non-starters in all). */
+/** Machines per Night after Night 1 (one each on Nights 2 to 6, the last two share Night 7: 7 unpinned non-starters in all). */
 export const PER_NIGHT = 1;
 /** First and last Night that opens something. Night 8 (the finale) opens nothing; every core machine is already on. */
 export const FIRST_UNLOCK_NIGHT = 2;
@@ -88,7 +98,7 @@ export function scheduleFor(seed?: number): readonly UnlockStep[] {
   const ordered: MachineId[] = [];
   for (const tier of TIERS) {
     if (tier === 'SIMPLE') continue;
-    const ids = CORE_PLAN.filter((c) => c.tier === tier).map((c) => c.id);
+    const ids = CORE_PLAN.filter((c) => c.tier === tier && PINNED_NIGHT[c.id] === undefined).map((c) => c.id);
     if (key) createRng(hashSeed('progression', key, tier)).shuffle(ids);
     ordered.push(...ids);
   }
@@ -100,6 +110,12 @@ export function scheduleFor(seed?: number): readonly UnlockStep[] {
     if (last.night === night) steps[steps.length - 1] = { night, ids: [...last.ids, ...chunk] };
     else steps.push({ night, ids: chunk });
   }
+  for (const [id, night] of Object.entries(PINNED_NIGHT) as Array<[MachineId, number]>) {
+    const at = steps.findIndex((s) => s.night === night);
+    if (at >= 0) steps[at] = { night, ids: [...steps[at].ids, id] };
+    else steps.push({ night, ids: [id] });
+  }
+  steps.sort((a, b) => a.night - b.night);
   cache.set(key, steps);
   return steps;
 }

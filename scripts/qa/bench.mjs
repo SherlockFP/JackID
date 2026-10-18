@@ -164,6 +164,10 @@ export function parseScript(text) {
  *   auto:night:event   the same, but stops at the first Watch with a floor event (shot it, then auto:night carries on)
  *   auto:night:quota   the same, but stops in the Watch whose deposit meets the quota (before its Bell: the NIGHT PLAN's
  *                      OVERSHOOT line is on screen; shot it, then auto:night carries on)
+ *   auto:night:evening the same, but stops in the paid Evening (after the lift, before the spouse, a visitor or the bed), so the
+ *                      apartment is driven by hand: station:, ui:click:, play:. A later auto:night carries on from the bed
+ *   event:<id>         DEV: the next Watch that can roll rolls this floor event (the chance and the weighted pick are skipped)
+ *   duel:promise       DEV: opens Ada's kitchen table (Rock, Paper, Promise) in the Evening, the game's own seed and stake
  *   events             record and print the live floor event (watchEvents.ts watchEventView), null between Watches
  *   shot:<name>        screenshot to <shots>/<name>.png (needs --shots; a name already taken gets -2, -3, never overwritten)
  *   wait:<ms>          pause
@@ -175,6 +179,10 @@ export function parseScript(text) {
  */
 /** The apartment's stations (HomeStation in src/game/home/contract.ts): `station:<id>` fires `home:interact` for one. */
 const HOME_STATIONS = ['bed', 'door', 'peephole', 'chain', 'switch', 'phone', 'spouse', 'window', 'fridge', 'computer'];
+/** The Watch floor events `event:<id>` can force (WATCH_EVENTS in src/game/watchEvents.ts). The page refuses an unknown id. */
+const WATCH_EVENT_IDS = ['happy_minute', 'lucky_lamp', 'dealers_break', 'cold_snap', 'jackpot_whisper', 'high_roller', 'tilt_holiday',
+  'tilt_switch', 'loose_slots', 'cashier_bonus', 'draft', 'single_light', 'stage_auction', 'crate_drop', 'wheel_spin',
+  'last_call_dare', 'crooked_table'];
 export function parseRunSteps(text) {
   const out = [];
   for (const raw of String(text ?? '').split(';')) {
@@ -216,6 +224,17 @@ export function parseRunSteps(text) {
     if (tok === 'auto:night') { out.push({ kind: 'auto', text: tok }); continue; }
     if (tok === 'auto:night:event') { out.push({ kind: 'auto', stopAt: 'event', text: tok }); continue; }
     if (tok === 'auto:night:quota') { out.push({ kind: 'auto', stopAt: 'quota', text: tok }); continue; }
+    if (tok === 'auto:night:evening') { out.push({ kind: 'auto', stopAt: 'evening', text: tok }); continue; }
+    // THE WATCH EVENT, forced (DEV): the next Watch that can roll rolls this event
+    const mev = /^event:([a-z_]{1,40})$/.exec(tok);
+    if (mev) {
+      if (!WATCH_EVENT_IDS.includes(mev[1])) throw new Error(`bad event in "${tok}" (event:<${WATCH_EVENT_IDS.join('|')}>)`);
+      out.push({ kind: 'event', id: mev[1], text: tok });
+      continue;
+    }
+    // THE KITCHEN GAME, started directly (DEV): Ada's Rock, Paper, Promise on the Evening's kitchen table
+    const mdu = /^duel:([a-z_]{1,40})$/.exec(tok);
+    if (mdu) { out.push({ kind: 'duel', id: mdu[1], text: tok }); continue; }
     let m0 = /^shot:([A-Za-z0-9_-]{1,60})$/.exec(tok);
     if (m0) { out.push({ kind: 'shot', name: m0[1], text: tok }); continue; }
     m0 = /^banner:(\d+)$/.exec(tok);
@@ -254,7 +273,7 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:stay | station:<id> | ui:click:<css selector> | home:sleep | home:talk | home:switch | home:chain | home:chain:<on|off> | home:lights:<on|off> | home:still:<ms> | home:visit | home:peep | home:knock-check | home:miss | anchor:<name> | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:stay | station:<id> | ui:click:<css selector> | home:sleep | home:talk | home:switch | home:chain | home:chain:<on|off> | home:lights:<on|off> | home:still:<ms> | home:visit | home:peep | home:knock-check | home:miss | anchor:<name> | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | auto:night:evening | event:<id> | duel:promise | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
   const once = (kind) => {
@@ -1392,6 +1411,54 @@ function watchRec(ctx, st, ev) {
 }
 
 /**
+ * `duel:<id>` (DEV): starts a duel directly. Only `promise` (Ada's kitchen table, Rock Paper Promise) starts from here: it opens
+ * the kitchen overlay the Evening opens after the spouse talks, with the same seed (hashSeed(run.seed, night, 'promise')) and
+ * stake (stakeFor), through a dynamic import of the game's own modules. Needs the Evening (home:stay first). The overlay is then
+ * played with play:Digit1 / Digit2 / Digit3 and play:KeyE. A setInterval ticks its clock (sim time under the fixed clock). The
+ * Tally Table duels (sealedwall, ghostshell, ...) start from their table, so they are refused here.
+ */
+async function duelStep(ctx, s, rec) {
+  const { cdp } = ctx;
+  if (s.id !== 'promise') {
+    rec.ok = false;
+    rec.reason = `only duel:promise starts directly (the kitchen table); the Tally Table duels start from the table (goto:tallytable)`;
+    return;
+  }
+  const h0 = await evalJson(cdp, HOME_STAGE_JS);
+  if (!h0 || h0.stage !== 'evening') { rec.ok = false; rec.reason = `not in the Evening (home stage "${h0?.stage ?? 'none'}"; home:stay first)`; return; }
+  // A story cutscene holds the keys (the Night 1 chapter scene stays up after auto:night:evening): the table would not get the press.
+  const cs = await evaluate(cdp, 'window.jackid.app.cutscene.playing ?? null');
+  if (cs) { rec.ok = false; rec.cutscene = cs; rec.reason = `a cutscene is up ("${cs}"): clear it first (play:Space:1200, a hold skips the scene), then duel:promise`; return; }
+  const r = await evalJson(cdp, `(async () => {
+    const run = window.jackid.app.run;
+    if (document.querySelector('.pm-table')) return { ok: false, reason: 'the kitchen table is already up' };
+    const hud = document.querySelector('.px-hudlayer');
+    if (!hud) return { ok: false, reason: 'no HUD layer' };
+    const kit = await import('/src/game/duels/promise/kitchen.ts');
+    const flow = await import('/src/game/duels/promise/flow.ts');
+    const rng = await import('/src/core/rng.ts');
+    const night = run.night();
+    const seed = rng.hashSeed(run.seed, night, 'promise');
+    const stake = flow.stakeFor(run.seed, night);
+    const k = kit.openKitchen({
+      parent: hud, seed, stake,
+      playHand: () => {},
+      done: (res) => { clearInterval(window.__qaKitchenTimer); window.__qaKitchenDone = res; },
+    });
+    clearInterval(window.__qaKitchenTimer);
+    window.__qaKitchen = k;
+    window.__qaKitchenDone = null;
+    window.__qaKitchenTimer = setInterval(() => k.update(1 / 60), 1000 / 60);
+    const v = k.flow().view();
+    return { ok: true, night, seed, stake, score: v.score, cracks: v.cracks, pick: v.pick, finish: v.finish };
+  })()`);
+  Object.assign(rec, { id: s.id, night: h0.night }, r);
+  rec.ok = r.ok === true;
+  if (!rec.ok) rec.reason = r.reason ?? 'the kitchen table did not open';
+  await sleep(300);
+}
+
+/**
  * `auto:night`: a sensible bot plays one Night. Per Watch: shop the cheapest affordable shelf in the intermission, then
  * lever (starts the Watch). In play: bets rotate over the open machines (Hot, spotlight, least Tilt) until the Watch's pulls
  * are down to BELL_KEEP_PULLS or the pocket cannot cover a bet and keep one minimum bet. Then the bot deposits only what it needs, into the
@@ -1490,6 +1557,9 @@ async function autoNight(ctx, rec, stopAt = null) {
       // THE EVENING: the lift is a ride; at home the bot talks to the spouse once (the Harmony 4+ blessing) and goes to bed. The Night
       // rolls over when the sleep ends. The doom (a missed quota) is waited out: the run ends by itself.
       if (st.homeStage === 'evening') {
+        // auto:night:evening stops here: the paid Evening, after the lift, before the spouse, a visitor or the bed. The apartment
+        // is then driven by hand (station:, ui:click:, play:); a later auto:night carries on from the bed.
+        if (stopAt === 'evening') { end = 'evening'; break; }
         // THE KNOCK: a visitor to come or at the door blocks the bed. The bot reads who it is and passes the visit by the right counter
         // (Listener: lights off and still; Leaner: chain on before the second shove; Picker: chain on and lights off), then waits him out.
         const vz = await evalJson(ctx.cdp, VISIT_JS);
@@ -1672,7 +1742,7 @@ async function autoNight(ctx, rec, stopAt = null) {
   rec.events = events;
   if (end === 'night card' && offer) { rec.offer = offer.ids; rec.cards = offer.cards; rec.have = offer.have; }   // the two cards for the script to choose from
   Object.assign(rec, count);
-  rec.ok = end === 'night paid' || end === 'topside' || end === 'event' || end === 'quota met' || end === 'run over' || end === 'night card';
+  rec.ok = end === 'night paid' || end === 'topside' || end === 'event' || end === 'quota met' || end === 'run over' || end === 'night card' || end === 'evening';
   if (!rec.ok) rec.reason = end;
 }
 
@@ -2100,6 +2170,18 @@ async function runKind(ctx, s, rec) {
     case 'pawnbuy': return pawnBuy(ctx, s.slot, rec);
     case 'pawnlook': return pawnLook(ctx, rec);
     case 'auto': return autoNight(ctx, rec, s.stopAt ?? null);
+    case 'event': {
+      // DEV: the next Watch that can roll rolls this event (watchEvents.ts forceNextWatchEvent, reached by a dynamic import).
+      const r = await evalJson(cdp, `(async () => {
+        const m = await import('/src/game/watchEvents.ts');
+        return { ok: m.forceNextWatchEvent(${JSON.stringify(s.id)}) === true, forced: m.forcedWatchEvent() };
+      })()`);
+      Object.assign(rec, { id: s.id }, r);
+      rec.ok = r.ok === true;
+      if (!rec.ok) rec.reason = 'the page refused the force (a production build, or an unknown event id)';
+      return;
+    }
+    case 'duel': return duelStep(ctx, s, rec);
     case 'events': {
       const ev = await evalJson(cdp, EVENT_JS);
       rec.event = ev;

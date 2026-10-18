@@ -13,30 +13,37 @@ before(async () => {
   I18N = await load('src/core/i18n.ts');
 });
 
-const CORE = ['bigone', 'coinflip', 'hilo', 'blackjack', 'roulette', 'plinko', 'mines', 'videopoker', 'sonkart', 'keno'];
+const CORE = ['bigone', 'coinflip', 'hilo', 'blackjack', 'roulette', 'plinko', 'mines', 'videopoker', 'sonkart', 'keno', 'derby', 'cascade'];
 // def.slotSize of the core machines (src/machines/<id>/index.ts)
 const SIZE = { bigone: 'XL', roulette: 'XL', blackjack: 'L', sonkart: 'L', keno: 'L', hilo: 'M', plinko: 'M',
-  mines: 'M', videopoker: 'M', coinflip: 'S' };
+  mines: 'M', videopoker: 'M', coinflip: 'S', derby: 'XL', cascade: 'M' };
+// XL tables that have no XL slot in the main pit stand in a wing (the Night Derby, Midway MID-02); the Dawn Wing Keys reach them
+const WING_ONLY = { derby: 'MID-02' };
 const RANK = { S: 0, M: 1, L: 2, XL: 3 };
 const TIER_RANK = { SIMPLE: 0, CLASSIC: 1, TABLE: 2, HEAVY: 3 };
 
 // ── schedule ─────────────────────────────────────────────────────────────────────────────────────────
-test('the core set is the Wave 72 ten and every machine unlocks exactly once', () => {
+test('the core set is the Wave 72 ten plus the Night Derby and the Cascade, and every machine unlocks exactly once', () => {
   assert.deepEqual([...P.CORE_MACHINES].sort(), [...CORE].sort());
   for (const seed of [undefined, 1, 7, 12345, 99999]) {
     const all = P.scheduleFor(seed).flatMap((s) => [...s.ids]);
-    assert.equal(all.length, 10, `seed ${seed}`);
+    assert.equal(all.length, 12, `seed ${seed}`);
     assert.deepEqual([...new Set(all)].sort(), [...CORE].sort(), `seed ${seed}`);
   }
 });
 
-test('Night 1 opens exactly the three starters; Nights 2 to 6 open one each, Night 7 the last two; Night 8 opens nothing and everything is on', () => {
+test('Night 1 opens the three starters; Nights 2, 5, 6 open one, Nights 3 and 4 two (the Derby and the Cascade are pinned), Night 7 the last two; Night 8 opens nothing', () => {
   for (const seed of [undefined, 3, 42]) {
     assert.deepEqual([...P.unlockedFor(1, seed)].sort(), ['bigone', 'coinflip', 'hilo']);
-    for (let n = 2; n <= 6; n++) assert.equal(P.opensOn(n, seed).length, 1, `Night ${n}`);
+    for (const n of [2, 5, 6]) assert.equal(P.opensOn(n, seed).length, 1, `Night ${n}`);
+    for (const n of [3, 4]) assert.equal(P.opensOn(n, seed).length, 2, `Night ${n}`);
+    assert.ok(P.opensOn(3, seed).includes('derby'), 'the Night Derby opens on Night 3');
+    assert.ok(P.opensOn(4, seed).includes('cascade'), 'the Cascade opens on Night 4');
+    assert.equal(P.unlockNightOf('derby', seed), 3);
+    assert.equal(P.unlockNightOf('cascade', seed), 4);
     assert.equal(P.opensOn(7, seed).length, 2);
     assert.equal(P.opensOn(8, seed).length, 0);
-    assert.equal(P.unlockedFor(8, seed).length, 10);
+    assert.equal(P.unlockedFor(8, seed).length, 12);
     assert.equal(P.nextOpening(7, seed), null);
     assert.equal(P.nextOpening(1, seed).night, 2);
   }
@@ -144,6 +151,7 @@ test('a Debt Run is built from core machines and always-open devices only; every
   }
   const slot = new Map(L.SLOTS.map((s) => [s.id, s]));
   for (const id of CORE) {
+    if (WING_ONLY[id]) { assert.equal(asg[WING_ONLY[id]], id, `${id} stands at ${WING_ONLY[id]}`); continue; }
     const inPit = Object.entries(asg).filter(([s, m]) => m === id && ['mouth', 'well', 'lobby'].includes(slot.get(s).zone));
     assert.ok(inPit.length >= 1, `${id} is hidden in a wing`);
   }

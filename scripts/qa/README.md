@@ -202,6 +202,9 @@ Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` 
 | `auto:night` | a bot plays one Night, see **Night bot** below. Its own actions are records with `auto: true` |
 | `auto:night:event` | the same bot, but it stops at the first Watch whose floor event is live (no cutscene up), before that Watch's deposit. Its record has `end: "event"`. A later `auto:night` carries on from there |
 | `auto:night:quota` | the same bot, but it stops in the Watch whose deposit meets the quota, before that Watch's Bell, so the NIGHT PLAN's OVERSHOOT line is on screen (shoot it, then `auto:night` carries on). Its record has `end: "quota met"` |
+| `auto:night:evening` | the same bot, but it stops in the paid Evening: after the lift, before the spouse, a visitor or the bed. Its record has `end: "evening"`, and `state` reads `homeStage: "evening"`. The apartment is then driven by hand (`station:`, `ui:click:`, `play:`). A later `auto:night` carries on from the bed |
+| `event:<id>` | DEV only. The next Watch that can roll rolls this floor event instead of the seeded roll: the chance and the weighted pick are skipped, and the length and the wave 75 state still come from the Watch's own seeded streams. Ids: `happy_minute`, `lucky_lamp`, `dealers_break`, `cold_snap`, `jackpot_whisper`, `high_roller`, `tilt_holiday`, `tilt_switch`, `loose_slots`, `cashier_bonus`, `draft`, `single_light`, `stage_auction`, `crate_drop`, `wheel_spin`, `last_call_dare`, `crooked_table`. A boss Night still rolls nothing, and a Watch that cannot run the event (a crooked table needs three open game machines) passes it on, so the force waits for the next Watch that can take it. `forced` is the id still pending. Set it before the Watch's lever: `event:crooked_table;auto:night:event;events` |
+| `duel:promise` | DEV only. Opens Ada's kitchen table (Rock, Paper, Promise) at once, in the Evening, with the game's own seed (`hashSeed(run.seed, night, 'promise')`) and stake (`stakeFor`). The table's clock is a `setInterval`, so it ticks on sim time. Needs the Evening (`home:stay` or `auto:night:evening` first), and refuses while a cutscene is up (the Night 1 chapter scene stays up after `auto:night:evening`: clear it with `play:Space:1200`, a hold skips the scene). Keys: `play:Digit1` / `Digit2` / `Digit3` (the hands), `play:KeyE` (continue), `play:Escape` (leave). Its record has `score`, `cracks`, `pick`, `finish`. The Tally Table duels (sealedwall, ghostshell, ...) start from their table, so `duel:` refuses them |
 | `events` | records and prints the live floor event (`watchEventView()`, `null` between Watches): `event` = `{ id, leftS, pulls }`, `announce` = the banner line |
 | `banner:<ms>` | polls the page for the live event's announce line (up to `ms`), records `waited`, and shoots `banner-seen.png` when it shows. On a miss it records what `.t-banner` holds |
 | `shot:<name>` | screenshot to `<shots>/<name>.png` (needs `--shots`). A name already taken gets `-2`, `-3` … (never overwritten) |
@@ -341,3 +344,26 @@ node scripts/qa/bench.mjs --run "home:miss;wait:9000;shot:mafia-visit;wait:4000;
 ## Intro skip
 
 The debt run's story intro (`intro`) skips on a single Space tap once it has played for 1 s. The skip hint shows then: `TAP SPACE: skip intro` (Turkish: `SPACE DOKUN: girişi atla`). Earlier taps do nothing. The hold still skips any scene (`HOLD SPACE`), as before. Other scenes are unchanged: a tap advances a line, a hold skips the scene. The rule is in `src/core/cutscene/player.ts` (`INTRO_TAP_AFTER`). `--run` taps once per 1.2 s while the intro plays, so it works whichever wall-clock moment the intro starts.
+
+## Evening drive, forced Watch events, the kitchen table (DEV)
+
+Three steps for a tester who needs a specific Watch event or the apartment's own games, without waiting for the luck:
+
+```
+# the Evening, stopped before the spouse: the computer, the fridge, the kitchen table by hand
+node scripts/qa/bench.mjs --run "auto:night:evening;station:computer;shot:pc;ui:click:.px-panel button;state" --seed 1 --shots <dir>
+
+# the next Watch that can roll rolls CROOKED TABLE (any id in the `event:` list), then the bot stops in that Watch
+node scripts/qa/bench.mjs --run "event:crooked_table;auto:night:event;events;state" --seed 1 --shots <dir>
+
+# Ada's kitchen table opened directly in the Evening (clear a cutscene first with play:Space:1200)
+node scripts/qa/bench.mjs --run "auto:night:evening;play:Space:1200,wait:600;duel:promise;shot:kitchen;play:Digit1,wait:2500;state" --seed 1 --shots <dir>
+```
+
+Hooks behind them:
+
+- `auto:night:evening` is the stop in `autoNight` (`scripts/qa/bench.mjs`): the Evening's branch breaks before the spouse, the visitor and the bed.
+- `event:<id>` calls `forceNextWatchEvent(id)` in `src/game/watchEvents.ts` through a dynamic import of that module (the same way `--js` reaches game code). It returns false in a production build, and for an unknown id. The force is spent when the event starts; `begin()` keeps the seeded chance, pick and length out of the way, and the Watch's own forks still decide the length and the wave 75 state. It is not a `registerDebugForce` handler, because `bench.force()` only reaches the seated machine.
+- `duel:promise` calls `openKitchen` (`src/game/duels/promise/kitchen.ts`) with the seed and stake the Evening's own offer uses, and ticks it with a `setInterval` (it runs on sim time under the fixed clock). It does not take the player's hand pose (`playHand` is a no-op), and it does not set the Evening's offer state, so the Evening's own kitchen can still open later in the Night.
+
+Verified on seed 1 (Night 1): the `auto:night:evening` stop lands in the Evening (`homeStage: "evening"`), `station:computer` opens `home-pc`, and `ui:click:.px-panel button` presses its HOME tab. `event:crooked_table` is refused on Watch 1 (fewer than three open game machines) and taken on Watch 2; the announce line is "THE CROOKED TABLE. ONE OF THREE IS NOT PLAYING FAIR.". `duel:promise` opens the table (seed and stake read back) while the Night 1 chapter cutscene is still up, so the press went to the scene: `duel:` now refuses while a cutscene is up, and the table's first round has not been played in a run yet.

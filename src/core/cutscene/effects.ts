@@ -148,3 +148,31 @@ export function showSubtitle(c: SubtitleCue, vars: I18nVars, seek: boolean, sinc
 }
 
 export type { CutTarget };
+
+/** How the Gambler's Eye cut treats the screen: Calm Mode keeps the slow motion and drops flash, hit-stop and chroma. */
+export interface EyeCloseUp {
+  calm: boolean;
+  /** reduceFlashing: no white flash. */
+  noFlash: boolean;
+  /** Length of the cut in seconds (default 0.6). */
+  dur?: number;
+  /** Long read (true) slows time more than a key-throw cut (false). */
+  read?: boolean;
+}
+
+/**
+ * The world half of the eye close-up (STORY_BIBLE section 6.5 and 6.6): a hard cut-in (a zoom punch standing in for the narrow
+ * fov 18 lens), slow motion, a cold tint, and the hit. The DOM half (vignette, eye panel, thought) is `core/ui/manga/eye.ts`.
+ * Slow motion never weakens a running one (`fx.slowmo`), and it is capped in online play. Transient: nothing to restore.
+ */
+export function eyeCloseUp(o: EyeCloseUp): void {
+  const dur = o.dur ?? 0.6;
+  const fx = app.fx;
+  fx.slowmo(o.read === false ? 0.45 : 0.25, dur + 0.5);
+  fx.tint(0x1a2230, o.calm ? 0.18 : 0.3, dur + 0.6);
+  if (o.calm) return;
+  fx.zoomPunch(0.28, dur);
+  fx.chroma(2, 0.3);
+  fx.hitstop(0.05);
+  if (!o.noFlash) fx.flash(0xffffff, 0.22, 0.12);
+}

@@ -11,7 +11,7 @@
 export type Expr = 'calm' | 'smirk' | 'shock' | 'rage' | 'hollow';
 export const EXPRESSIONS: readonly Expr[] = ['calm', 'smirk', 'shock', 'rage', 'hollow'];
 
-export type HairStyle = 'bob' | 'buzz' | 'swept' | 'messy' | 'slick' | 'hood' | 'bun' | 'combed';
+export type HairStyle = 'bob' | 'buzz' | 'swept' | 'messy' | 'slick' | 'hood' | 'bun' | 'combed' | 'long';
 export type EyeStyle = 'closed' | 'wide' | 'predator' | 'round' | 'hollow' | 'tired' | 'plain' | 'masked' | 'blank';
 export type MouthStyle = 'soft' | 'grin' | 'thin' | 'flat' | 'fang' | 'laugh' | 'smile' | 'small';
 export type JawStyle = 'oval' | 'soft' | 'sharp' | 'square' | 'long' | 'round';
@@ -149,13 +149,14 @@ const SPECS: Record<string, PortraitSpec> = {
     brow: { kind: 'none', w: 0 }, bg: 'tiles', outfit: 'robe',
     palette: { ink: '#050508', paper: '#e9eef2', accent: '#9fd3e6', coat: '#1a1d28' },
   },
-  // The spouse (wave 69, the Home layer): a housecoat, hair up with a clip, the warm rust of the lamp. Tired eyes, a small
-  // soft mouth, a worn look. Dots behind, like the wallpaper in the kitchen.
+  // Ada (the spouse, w80 redesign): an anime-style young woman in the dark other-dimension palette. Long near-black hair with a
+  // side-swept fringe and a clip, big soft round eyes with long lashes, a small smile and a blush, a dark dress with a bow. The
+  // background is the kitchen's dark with a warm amber glow, the only warm light in the game.
   spouse: {
-    hair: 'bun', hairColor: '#6b4a36', skin: '#f0d2b8', eyes: 'tired', mouth: 'soft', accessories: ['hairclip', 'blush'],
-    jaw: 'soft', nose: 'small', head: [0.98, 1], tilt: 0.03, shoulders: 0.94, neck: 0.9, line: 0.9, lash: 0.4,
-    brow: { kind: 'droop', w: 2.5 }, bg: 'dots', outfit: 'jacket',
-    palette: { ink: '#120d0a', paper: '#f4ead8', accent: '#c0603c', coat: '#5a4a48' },
+    hair: 'long', hairColor: '#1d1722', skin: '#f1d5c0', eyes: 'round', mouth: 'smile', accessories: ['hairclip', 'blush'],
+    jaw: 'soft', nose: 'small', head: [0.96, 1], tilt: 0.05, shoulders: 0.84, neck: 0.78, line: 0.8, lash: 1,
+    brow: { kind: 'arch', w: 2 }, bg: 'dots', outfit: 'jacket',
+    palette: { ink: '#0b0709', paper: '#2b1d1a', accent: '#e0993a', coat: '#3a1f2e' },
   },
 };
 
@@ -869,6 +870,29 @@ function hairBack(x: Ctx, p: PortraitSpec, rnd: () => number): void {
       x.restore();
       break;
     }
+    case 'long': {
+      // Long straight hair falling behind both shoulders, swelling a little at the sides and ending in soft points.
+      x.beginPath();
+      x.moveTo(128, 42);
+      x.bezierCurveTo(206, 38, 218, 120, 212, 190);
+      x.bezierCurveTo(210, 250, 218, 300, 204, 346);
+      x.lineTo(190, 326); x.lineTo(180, 352); x.lineTo(166, 300);
+      x.lineTo(90, 300); x.lineTo(76, 352); x.lineTo(66, 326); x.lineTo(52, 346);
+      x.bezierCurveTo(38, 300, 46, 250, 44, 190);
+      x.bezierCurveTo(38, 120, 50, 38, 128, 42);
+      x.closePath();
+      x.fillStyle = hc; x.fill(); x.stroke();
+      x.save(); x.clip();
+      hatch(x, 6, ink, 0.22, 1);
+      // amber rim light from the left, long thin highlights
+      x.strokeStyle = p.palette.accent; x.lineCap = 'round';
+      x.globalAlpha = 0.55; x.lineWidth = 3;
+      x.beginPath(); x.moveTo(58, 150); x.bezierCurveTo(52, 220, 60, 280, 56, 330); x.stroke();
+      x.globalAlpha = 0.3; x.lineWidth = 1.6;
+      x.beginPath(); x.moveTo(70, 120); x.bezierCurveTo(64, 200, 72, 270, 68, 320); x.moveTo(196, 130); x.bezierCurveTo(204, 200, 198, 260, 202, 320); x.stroke();
+      x.restore();
+      break;
+    }
     case 'bun': {
       x.beginPath(); x.arc(128, 48, 22, 0, Math.PI * 2); x.fillStyle = hc; x.fill(); x.stroke();
       x.beginPath(); x.arc(128, 48, 12, 0.3, Math.PI * 1.4); x.lineWidth = 1.6; x.stroke(); x.lineWidth = 3.2;
@@ -1010,6 +1034,26 @@ function hairFront(x: Ctx, p: PortraitSpec, rnd: () => number): void {
       x.fillStyle = ink; x.globalAlpha = 0.28; x.fillRect(60, 80, 140, 66);
       hatch(x, 3.4, ink, 0.3, 1); x.restore();
       x.beginPath(); x.moveTo(60, 130); x.quadraticCurveTo(70, 80, 128, 54); x.lineWidth = 2; x.strokeStyle = paper; x.globalAlpha = 0.45; x.stroke(); x.globalAlpha = 1;
+      break;
+    }
+    case 'long': {
+      // Side-swept fringe over the brow (parted to the left), a few loose strands, and two long locks framing the face.
+      x.beginPath();
+      x.moveTo(72, 156); x.quadraticCurveTo(62, 70, 128, 58); x.quadraticCurveTo(196, 68, 186, 156);
+      x.lineTo(180, 122); x.quadraticCurveTo(168, 118, 160, 126); x.lineTo(150, 112); x.quadraticCurveTo(138, 100, 118, 108);
+      x.quadraticCurveTo(100, 112, 90, 134); x.lineTo(84, 160); x.closePath();
+      x.fillStyle = hc; x.fill(); x.stroke();
+      x.save(); x.clip(); hatch(x, 7, ink, 0.14, 1); x.restore();
+      x.lineWidth = 1.3; x.strokeStyle = p.palette.accent; x.globalAlpha = 0.4;
+      for (let i = 0; i < 5; i++) { const sx = 96 + i * 17; x.beginPath(); x.moveTo(sx, 72 + rnd() * 4); x.quadraticCurveTo(sx + 8, 92, sx - 6 + i, 112); x.stroke(); }
+      x.globalAlpha = 1; x.strokeStyle = ink; x.lineWidth = 3;
+      mirrored((m) => {
+        x.beginPath();
+        x.moveTo(128 + m * 56, 108); x.bezierCurveTo(128 + m * 68, 160, 128 + m * 66, 230, 128 + m * 58, 296);
+        x.lineTo(128 + m * 50, 286); x.lineTo(128 + m * 44, 304); x.bezierCurveTo(128 + m * 38, 250, 128 + m * 40, 180, 128 + m * 44, 124); x.closePath();
+        x.fillStyle = hc; x.fill(); x.stroke();
+        x.save(); x.clip(); hatch(x, 6, ink, 0.2, 1); x.restore();
+      });
       break;
     }
     case 'bun': {
