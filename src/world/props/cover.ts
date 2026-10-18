@@ -69,7 +69,7 @@ export function createCover(kit: KitX, o: { size: SlotSize; night: number; id?: 
   plate.position.set(0, py, D / 2 + 0.04);
   kit.box(plateW + 0.06, plateH + 0.06, 0.04, kit.pal.brass, { parent: plate });
   kit.box(plateW + 0.02, plateH + 0.02, 0.05, kit.pal.black, { parent: plate });
-  const label = crispLabel(kit, { text: { key: 'prop.cover.opens', vars: { n: o.night } }, w: plateW, h: plateH, bg: 0x1a120c, color: 0xffd34a });
+  const label = crispLabel(kit, { text: { key: 'prop.cover.opens', vars: { n: o.night } }, w: plateW, h: plateH, bg: 0x1a120c, color: 0xffd34a, font: 'public' });
   label.mesh.position.z = 0.03;
   plate.add(label.mesh);
   // price tag (tycoon BUY): a small gold-on-black line under the plate, hidden until the session sets a price
@@ -156,7 +156,7 @@ export function createNewMarquee(kit: KitX, o: { size: SlotSize; id?: string }):
     kit.box(w, h, 0.05, kit.pal.black, { parent: face, bevel: 0.01 });
     kit.box(w + 0.04, 0.025, 0.06, kit.pal.gold, { pos: [0, h / 2, 0], parent: face });
     kit.box(w + 0.04, 0.025, 0.06, kit.pal.gold, { pos: [0, -h / 2, 0], parent: face });
-    const neon = crispNeon(kit, { text: { key: 'prop.sign.new' }, h: h * 0.7, color: 0xffe14a, flicker: 0.15 });
+    const neon = crispNeon(kit, { text: { key: 'prop.sign.new' }, h: h * 0.7, color: 0xffe14a, flicker: 0.15, font: 'chetyre' });
     neon.root.position.z = 0.04;
     face.add(neon.root);
     faces.push({ neon });

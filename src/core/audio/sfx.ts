@@ -10,7 +10,8 @@
  */
 import type { AmbienceId, Bus, PlayOpts } from './types';
 import type { WinTier } from '@/game/types';
-import { Kit, arng, chance, hz, noiseMakeup, pick, rnd, rndi, semi, type NoiseBank, type NoiseColor } from './synth';
+import { installReal, CROWD_LOOP } from './real';
+import { Kit, arng, chance, hz, noiseMakeup, pick, rnd, rndi, semi, windowPeak, type NoiseBank, type NoiseColor } from './synth';
 
 export interface SfxMeta {
   bus?: Bus;
@@ -1117,6 +1118,9 @@ export function winSfx(tier: WinTier): string | null {
   }
 }
 
+// Recorded sounds layered over / replacing the procedural recipes above (lazy, procedural fallback; see real.ts).
+installReal(SFX_DEFS, def);
+
 // ── ambience beds ─────────────────────────────────────────────────────────────────────────────────
 export interface AmbEnv {
   readonly ctx: BaseAudioContext;
@@ -1125,6 +1129,8 @@ export interface AmbEnv {
   readonly noise: NoiseBank;
   /** One-shot on the amb bus placed `dist` metres around the listener. */
   event(name: string, o?: { vol?: number; pitch?: number; dist?: [number, number]; param?: number }): void;
+  /** Decoded sample if ready (the engine starts loading it otherwise). */
+  sample(url: string): AudioBuffer | null;
 }
 export interface AmbBed { stop(): void }
 
@@ -1151,6 +1157,44 @@ class Bed implements AmbBed {
     g.connect(this.env.out);
     if (o.lfo) this.mod(g.gain, o.lfo[0], o.lfo[1]);
     this.srcs.push(s); s.start();
+  }
+  /**
+   * Looping recorded layer: the file is played end to end, a new copy fading in `xf` seconds before the last one ends, so the
+   * seam is a crossfade. Starts as soon as the file is decoded (polls while it loads); silent if it never loads.
+   */
+  sampleLoop(url: string, o: { gain: number; lp?: number; hp?: number; xf?: number }): void {
+    const c = this.env.ctx, xf = o.xf ?? 2;
+    let next = 0, started = false;
+    const out = c.createGain();
+    out.gain.value = 0;
+    let tail: AudioNode = out;
+    if (o.lp) { const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = o.lp; out.connect(f); tail = f; }
+    if (o.hp) { const f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = o.hp; tail.connect(f); tail = f; }
+    tail.connect(this.env.out);
+    const pump = (): void => {
+      if (this.dead) return;
+      const buf = this.env.sample(url);
+      if (!buf) return;
+      const now = c.currentTime;
+      if (!started) { started = true; next = now + 0.05; out.gain.value = o.gain / Math.max(windowPeak(buf, 0, buf.duration), 0.05); }   // normalised: `gain` is the peak level
+            while (next < now + 3) {
+        const s = c.createBufferSource(), g = c.createGain(), len = buf.duration;
+        s.buffer = buf; s.playbackRate.value = 1;
+        g.gain.setValueAtTime(0.0001, next);
+        g.gain.linearRampToValueAtTime(1, next + xf);
+        g.gain.setValueAtTime(1, next + len - xf);
+        g.gain.linearRampToValueAtTime(0, next + len);
+        s.connect(g); g.connect(out);
+        s.start(next, 0);
+        s.stop(next + len + 0.05);
+        s.onended = () => { const i = this.srcs.indexOf(s); if (i >= 0) this.srcs.splice(i, 1); };
+        this.srcs.push(s);
+        next += len - xf;
+      }
+    };
+    pump();
+    const id = window.setInterval(pump, 1000);
+    this.timers.add(id);
   }
   mod(param: AudioParam, rate: number, depth: number): void {
     const c = this.env.ctx, l = c.createOscillator(), g = c.createGain();
@@ -1245,6 +1289,7 @@ export function buildAmbience(id: AmbienceId, env: AmbEnv): AmbBed {
       b.every(5, 14, () => b.event('bell', 0.05, [12, 26]));
       b.every(6, 16, () => b.event('sparkle', 0.04, [8, 20]));
       b.every(3, 7, () => b.event('crowdMurmur', 0.3, [10, 24]));                                           // far-off crowd
+      b.sampleLoop(CROWD_LOOP, { gain: 0.2, lp: 3200, hp: 180 });                                          // recorded crowd, quiet under the room tone
   }
   return b;
 }

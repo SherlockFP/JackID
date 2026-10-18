@@ -29,7 +29,7 @@ import { buildDrums, type Drums } from './menuDrums';
 import { buildCabinet, DIE_CENTER, type Cabinet } from './menuCabinet';
 import { MenuDie, easeOutBack, type DieHit } from './menuDie';
 import { MenuBurst } from './menuBurst';
-import { makeCanvasTex, paintDieFace, paintPanel, paintValueFace, panelText, PANEL_BUTTON, type CanvasTex, type PanelOpts } from './menuArt';
+import { bodyText, makeCanvasTex, paintDieFace, paintPanel, paintValueFace, panelText, PANEL_BUTTON, type CanvasTex, type PanelOpts } from './menuArt';
 
 // Face order = BoxGeometry groups (+X, -X, +Y, -Y, +Z, -Z): PLAY faces you, MULTIPLAYER is one roll right, SETTINGS left,
 // FREE CASINO up, QUIT down (CONTINUE RUN takes that face while a run is saved), FOUNDATIONS round the back.
@@ -95,6 +95,28 @@ export function createMenuState(): AppStateHandler<'menu'> {
   setDie.root.visible = false;
   scene.add(setDie.root);
   const burst = new MenuBurst(scene, mainDie, cab);
+
+  // Ultra-wide (21:9) framing: the two side reels sit at the frame edges, which leaves a dark gap between them and the cabinet.
+  // Two slimmer reels (clones of the side drums: shared geometry and materials) fill it, so the cabinet reads as the middle of a
+  // row of reels instead of a narrow column. They only show past 2:1, and their spin follows the real drums.
+  const sideReels: Array<{ g: THREE.Object3D; from: THREE.Object3D; k: number }> = [];
+  for (const [i, from] of [drums.root.children[0], drums.root.children[1]].entries()) {
+    if (!from) continue;
+    const g = from.clone(true);
+    g.scale.setScalar(0.64);
+    g.position.set(i === 0 ? -3.95 : 3.95, 0.4, 1.7);
+    g.visible = false;
+    scene.add(g);
+    sideReels.push({ g, from, k: -1.3 });
+  }
+  const frameWide = (): void => {
+    const a = app.camera.aspect || 1;
+    const on = a > 2.0;
+    for (const r of sideReels) {
+      if (r.g.visible !== on) r.g.visible = on;
+      if (on) { const sp = r.g.children[0], src = r.from.children[0]; if (sp && src) sp.rotation.y = src.rotation.y * r.k; }
+    }
+  };
 
   // Text in the scene (the menu has no DOM overlay): the marquee's JACKID texture as the title, and one canvas panel
   // under the glass for the focused entry, the credits and the quit card.
@@ -192,7 +214,18 @@ export function createMenuState(): AppStateHandler<'menu'> {
   /** The text panel under the glass (see paintPanel). Any panel without the button clears the CREDITS hit area. */
   const paintInfo = (o: PanelOpts): void => {
     panelButton = Boolean(o.button);
-    panel.paint((c, w, h) => paintPanel(c, w, h, o));
+    panel.paint((c, w, h) => {
+      // The controls line is set here, not by paintPanel: it is fitted to 84% of the panel width at no more than 0.10 of its
+      // height, and sits well above the inner frame line, so the longest Turkish hint never runs into the frame (21:9 report).
+      paintPanel(c, w, h, { ...o, hint: undefined });
+      if (!o.hint) return;
+      let px = Math.round(h * 0.1);
+      for (; px > 12; px -= 2) {
+        c.font = `${px}px "VT323", monospace`;
+        if (c.measureText(o.hint).width <= w * 0.84) break;
+      }
+      bodyText(c, o.hint, w / 2, h * 0.83, px, '#8fd9ff', 'center');
+    });
   };
 
   /** The focused entry: its name, its description (two lines at most), the control hint and, on the SETTINGS face,
@@ -621,6 +654,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
       cab.update(dt, time);
       backdrop.update(dt, time);
       drums.update(dt, time);
+      frameWide();
       // the panel under the glass follows the die once it stops rolling: the focused entry and its controls
       const onSet = setDie.root.visible && phase !== 'main';
       const die = onSet ? setDie : mainDie;

@@ -43,6 +43,17 @@ export type NoiseColor = keyof NoiseBank;
 /** Decoded vendor samples (Kenney OGGs). AudioBuffers are context-independent, so engines and offline renders share it. */
 export const sampleStore = new Map<string, AudioBuffer>();
 
+/** Peak |sample| of a window of a decoded buffer (seconds). Used to normalise recorded clips to a target level. */
+export function windowPeak(buf: AudioBuffer, off: number, len: number): number {
+  const sr = buf.sampleRate, i0 = Math.max(0, Math.floor(off * sr)), i1 = Math.min(buf.length, Math.ceil((off + len) * sr));
+  let m = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = i0; i < i1; i++) { const x = d[i] < 0 ? -d[i] : d[i]; if (x > m) m = x; }
+  }
+  return m;
+}
+
 /** Three seamless-looping noise buffers, RMS-matched (≈0.3) so `vol` means the same across colours. */
 export function createNoiseBank(sampleRate: number, seconds = 4): NoiseBank {
   const len = Math.floor(sampleRate * seconds), xf = 2048, n = len + xf;
@@ -278,6 +289,33 @@ export class Kit implements SynthKit {
     g.gain.value = o.vol ?? 1;
     s.connect(g); g.connect(o.out ?? this.out);
     this.start(s, this.t + (o.at ?? 0));
+  }
+
+  /**
+   * Play a trimmed window of a recorded sample, peak-normalised so `vol` is the final peak (0..1) whatever the file's level.
+   * `off`/`dur` pick the window (source seconds), `a`/`r` its fades, `rand` the ± random pitch. Returns false when the
+   * file is not decoded yet (the host starts loading it), so the caller can fall back to its procedural version.
+   */
+  clip(url: string, o: { at?: number; vol?: number; rate?: number; rand?: number; off?: number; dur?: number; a?: number; r?: number; pan?: number; out?: AudioNode } = {}): boolean {
+    const buf = this.host.sample(url);
+    if (!buf) return false;
+    const ctx = this.ctx, rate = (o.rate ?? 1) * (1 + (arng.next() * 2 - 1) * (o.rand ?? 0.05));
+    const off = Math.max(0, Math.min(o.off ?? 0, buf.duration - 0.02));
+    const dur = Math.min(o.dur ?? Infinity, (buf.duration - off) / rate);
+    if (dur <= 0.01) return false;
+    const peak = windowPeak(buf, off, dur * rate), v = (o.vol ?? 0.5) / Math.max(peak, 0.01);
+    const at = this.t + (o.at ?? 0), a = o.a ?? 0.004, r = Math.min(o.r ?? 0.06, dur * 0.5);
+    const s = ctx.createBufferSource();
+    s.buffer = buf; s.playbackRate.value = rate;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(v, at + a);
+    g.gain.setValueAtTime(v, Math.max(at + a, at + dur - r)); g.gain.linearRampToValueAtTime(0, at + dur);
+    s.connect(g);
+    let tail: AudioNode = g;
+    if (o.pan) { const p = ctx.createStereoPanner(); p.pan.value = o.pan; g.connect(p); tail = p; }
+    tail.connect(o.out ?? this.out);
+    this.start(s, at, at + dur + 0.02, off);
+    return true;
   }
 
   // ── extras beyond the frozen SynthKit (sfx recipes, ambience, music) ──

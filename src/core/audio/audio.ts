@@ -32,6 +32,7 @@ import {
 } from './sfx';
 import { blipVoiceFor, charEvent, planBlips, renderBlips, scheduleBlip } from './blip';
 import { wireGambleFx } from './gambleFx';
+import { WARM_URLS, horrorForStinger, setAudioCalm } from './real';
 
 const MAX_VOICES = 32;
 const BUSES: readonly Bus[] = ['sfx', 'ui', 'music', 'amb', 'voice'];
@@ -148,7 +149,7 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
       p = fetch(url)
         .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.arrayBuffer(); })
         .then((ab) => ctx.decodeAudioData(ab))
-        .then((buf) => { sampleStore.set(url, buf); })
+        .then((buf) => { sampleStore.set(url, buf); loading.delete(url); })
         .catch((e) => { log.warnOnce(`audio:sample:${url}`, 'audio', `sample unavailable (${url}) — synth layers only`, e); });
       loading.set(url, p);
     }
@@ -408,6 +409,7 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
       g.gain.value = 0; g.gain.setTargetAtTime(AMB_BED_LEVEL, now, fade / 4); g.connect(busIn.amb);
       const bed = buildAmbience(ambWant, {
         ctx, out: g, noise,
+        sample: (url) => { const b = sampleStore.get(url); if (!b) void loadOne(url); return b ?? null; },
         event: (name, o = {}) => { void play(name, { bus: 'amb', vol: o.vol, pitch: o.pitch, param: o.param, pos: eventPos(o.dist ?? [6, 18]) as unknown as THREE.Vector3 }); },
       });
       ambCur = { id: ambWant, bed, fade: g };
@@ -454,6 +456,7 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
     get speaking() { return utterances.size > 0; },
   };
 
+  let musicProxy: MusicApi | null = null, musicProxyOf: MusicApi | null = null;   // stinger wrapper cache (musicWrapped)
   // ── public engine ──
   const engine: AudioEngine = {
     ctx,
@@ -483,7 +486,8 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
     },
     coins(n: number, o: PlayOpts = {}) { playDef('coins', { run: coinCascade(n), meta: { pri: 4, max: 4, gain: 1 } }, o); },
     ambience(id, fade = 1.5) { ambWant = id; if (ctx.state === 'running') applyAmbience(fade); },
-    get music() { return music; },
+    get music() { return musicWrapped(); },
+    setCalm(on: boolean) { setAudioCalm(on); },
     voice,
     setListener(cam: THREE.Camera) {
       const e = cam.matrixWorld.elements;
@@ -527,6 +531,27 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
   ctx.onstatechange = (): void => { if (ctx.state === 'running') onRunning(); };
   if (ctx.state === 'running') onRunning();
   void loadSamples(SAMPLE_URLS);
+  // Recorded sounds: the small files are warmed a few seconds in (never competing with start-up); the long ones load on first use.
+  const warm = window.setTimeout(() => { void loadSamples(WARM_URLS); }, 3500);
+  import.meta.hot?.dispose(() => window.clearTimeout(warm));
+  // Music stingers that are scares also get a recorded horror hit (never in Calm; the hit is a no-op there).
+  function musicWrapped(): MusicApi {
+    if (musicProxy && musicProxyOf === music) return musicProxy;
+    musicProxyOf = music;
+    return (musicProxy = new Proxy({} as MusicApi, {
+    get(_t, key) {
+      if (key === 'stinger') {
+        return (id: string, o?: { vol?: number; duck?: number }): void => {
+          music.stinger(id, o);
+          const p = horrorForStinger(id);
+          if (p !== null) void play('horrorHit', { param: p, vol: Math.min(1, (o?.vol ?? 1) * 0.9) });
+        };
+      }
+      const v = (music as unknown as Record<string | symbol, unknown>)[key];
+      return typeof v === 'function' ? (v as (...a: unknown[]) => unknown).bind(music) : v;
+    },
+    }));
+  }
   const offGamble = wireGambleFx(engine);
   import.meta.hot?.dispose(offGamble);
   return engine;

@@ -86,6 +86,8 @@ function applySettings(a: App, key?: keyof Settings): void {
     a.audio.setVolume('master', s.vol.master);
     for (const b of ['sfx', 'ui', 'music', 'amb', 'voice'] as const) a.audio.setVolume(b, s.vol[b]);
   }
+  // Calm Mode also silences the recorded horror hits (audio/real.ts)
+  if (!key || key === 'calm') a.audio.setCalm?.(s.calm);
   if (key === 'lang') setLang(s.lang);
 }
 

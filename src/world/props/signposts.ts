@@ -32,7 +32,7 @@ function buildFace(kit: KitX, sp: Signpost, side: SignSide): THREE.Group {
   // the arrow sits at the end it points to; vertical arrows sit at the left end
   const arrowAtRight = side.arrow === 'right';
   const textX = arrowAtRight ? -0.3 : 0.3;
-  const label = crispLabel(kit, { text: { key: `prop.${side.key}` }, w: textW, h: BOARD_H - 0.12, bg: 0x1a120c, color: GOLD, frame: 0x8c6b29 });
+  const label = crispLabel(kit, { text: { key: `prop.${side.key}` }, w: textW, h: BOARD_H - 0.12, bg: 0x1a120c, color: GOLD, frame: 0x8c6b29, font: 'public' });
   label.mesh.position.set(textX, 0, 0.012);
   g.add(label.mesh);
   const arrow = kit.extrude(ARROW, 0.02, GOLD, { bevel: 0 });

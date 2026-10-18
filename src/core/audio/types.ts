@@ -156,6 +156,8 @@ export interface AudioEngine {
   setMuffle(amount: number, ramp?: number): void;
   /** Slow-motion: scales playback rate of non-music voices (1 = normal). Used by FxApi.slowmo. */
   setTimeScale(k: number, ramp?: number): void;
+  /** Calm Mode: recorded horror hits (scare stingers, dread events) stay silent. main.ts passes `settings.calm`. */
+  setCalm?(on: boolean): void;
   /** Temporarily attenuate a bus (stingers, cutscene voice, big-win swell). */
   duck(bus: Bus, amount: number, dur: number): void;
 }

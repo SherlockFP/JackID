@@ -50,7 +50,7 @@ export function buildLastCallBell(kit: KitX, o: { interact?: InteractionSystem }
   // plate on the counter front, under the bell
   const plateY = 0.55;
   kit.box(0.5, 0.2, 0.03, pal.brass, { pos: [0, plateY, 0.235], parent: root });
-  const sign = crispLabel(kit, { text: { key: 'prop.sign.bell' }, w: 0.44, h: 0.14, color: 0xffd34a, bg: 0x1a120c, frame: 0x8c6b29 });
+  const sign = crispLabel(kit, { text: { key: 'prop.sign.bell' }, w: 0.44, h: 0.14, color: 0xffd34a, bg: 0x1a120c, frame: 0x8c6b29, font: 'public' });
   sign.mesh.position.set(0, plateY, 0.255);
   root.add(sign.mesh);
 

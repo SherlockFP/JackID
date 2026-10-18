@@ -9,6 +9,7 @@ import type { KitX } from '@/kit';
 import type { TexGen } from '@/core/texgen/types';
 import { createRng } from '@/core/rng';
 import { pendant } from '../lights';
+import { placeCouch } from '../props/vendorModels';
 import type { LightHint } from '../sys/arch';
 import {
   at, BED, CEIL, DOOR_H, DOOR_X0, DOOR_X1, EMPTY_SEAT, HALL_X0, HALL_X1, HALL_Z1, HOME_ZONE, LIGHT, SOUTH_WALL_SOLIDS,
@@ -155,6 +156,11 @@ export function buildRoom(c: RoomCtx): RoomParts {
   shell.add(emptyChair);
   slab(2.5, 0, -0.3, 3.0, 0.92, 1.5, black, true);
   slab(2.46, 0.9, -0.34, 3.02, 0.93, 1.54, steel);
+
+  // ── the couch in the living corner (north-west, against the north wall beside the window, facing the room) ──
+  // the PSX couch GLB loads async; its footprint is solid from the first frame, so the room plays the same either way
+  void placeCouch(dyn, { pos: at(-2.0, 0, -2.1), lookYaw: Math.PI, length: 1.8 });
+  statics.push({ box: new THREE.Box3(new THREE.Vector3(...at(-2.9, 0, -2.5)), new THREE.Vector3(...at(-1.1, 0.85, -1.7))), tag: 'solid' });
 
   // ── the wall phone (north wall) and the answering machine on its shelf, with the red light ─────────
   slab(2.0, 0.96, -2.5, 2.45, 0.99, -2.32, trim);

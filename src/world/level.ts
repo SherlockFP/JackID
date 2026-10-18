@@ -24,6 +24,7 @@ import { buildSignposts } from './props/signposts';
 import { crispLabel, crispNeon } from './props/signs';
 import { buildCeilingDressing, buildBalconyUndersides } from './props/ceiling';
 import { buildLastCallBell } from './props/bell';
+import { placeTavern } from './props/vendorModels';
 import { buildRooms, type RoomsBuild } from './rooms';
 import { buildHollow } from './hollow';
 import { buildHome } from './home';
@@ -162,7 +163,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   const hole: R4 = [HERO_PLATE.x - 1, HERO_PLATE.z - 1, HERO_PLATE.x + 1, HERO_PLATE.z + 1];
   const wallMatDeco = kit.mat({ color: 0x8a6a48, map: kit.tex.vendor('sbs-horror/128x128/Wall/Horror_Wall_03-128x128.png', { size: 64 }) });
   const wallMatOx = kit.mat({ color: 0x5a2024, map: kit.tex.vendor('sbs-horror/128x128/Wall/Horror_Wall_07-128x128.png', { size: 64 }) });
-  const wainMat = kit.mat({ color: 0x4a2a18, map: kit.tex.vendor('sbs-tiny2/128x128/Wood/Wood_05-128x128.png', { size: 64 }) });
+  const wainMat = kit.mat({ color: 0x6a4020, map: kit.tex.vendor('sbs-synthetic/128x128/Wood/Synth-Wood_04-128x128.png', { size: 64 }) });
   const coffer = tex.canvas(128, 128, (g, w, h) => {
     g.fillStyle = '#c9b48a';
     g.fillRect(0, 0, w, h);
@@ -278,7 +279,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   for (const [i, [lx, lz]] of sumpLamps.entries()) {
     lights.push({ id: `sump:cage${i}`, pos: [SUMP_POS[0] + lx, -27, SUMP_POS[2] + lz], color: 0xffb45a, intensity: 1.3, range: 8, flicker: 'DYING' });   // no zone: it resolves to the lobby above (the Sump is not a zone)
   }
-  const exit = crispNeon(kit, { text: { key: 'prop.sign.exit' }, h: 0.45, color: 0xff3a2a, flicker: 0.4 });
+  const exit = crispNeon(kit, { text: { key: 'prop.sign.exit' }, h: 0.45, color: 0xff3a2a, flicker: 0.4, font: 'chetyre' });
   exit.root.position.set(SUMP_POS[0], -26.8, SUMP_POS[2] + 5.95);
   exit.root.rotation.y = Math.PI;
   root.add(exit.root);
@@ -376,7 +377,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   fx(bareBulb(kit, { id: 'boiler:bulb0', pos: [14, 3.0, -25], ceiling: CEILING.boiler, color: 0xffe6b0, intensity: 1.0, range: 6, flicker: 'STEADY', zone: 'boiler' }));
   fx(bareBulb(kit, { id: 'boiler:bulb1', pos: [22, 3.0, -21], ceiling: CEILING.boiler, color: 0xffe6b0, intensity: 1.0, range: 6, flicker: 'BUZZ', zone: 'boiler' }));
   fx(bareBulb(kit, { id: 'boiler:bulb2', pos: [28, 3.0, -27.5], ceiling: CEILING.boiler, color: 0xffe6b0, intensity: 1.0, range: 6, flicker: 'DYING', zone: 'boiler' }));
-  const dice = crispNeon(kit, { text: { key: 'prop.sign.dice' }, h: 0.5, color: 0xff4a3a, flicker: 0.3 });
+  const dice = crispNeon(kit, { text: { key: 'prop.sign.dice' }, h: 0.5, color: 0xff4a3a, flicker: 0.3, font: 'chetyre' });
   dice.root.position.set(22, 2.6, -29.8);
   root.add(dice.root);
   lights.push({ id: 'boiler:dice', pos: [22, 2.6, -29.4], color: 0xff4a3a, intensity: 0.7, range: 4, flicker: 'BUZZ', zone: 'boiler' });
@@ -476,7 +477,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
 
   // ── plaques and signage (zones, shops, doors) ────────────────────────────────────────────────
   const plaque = (key: string, w: number, h: number, x: number, y: number, z: number, rot: 0 | 90 | 180 | 270, color: number) => {
-    const p = crispLabel(kit, { text: { key }, w, h, color, bg: 0x1a120c, frame: 0x8c6b29 });
+    const p = crispLabel(kit, { text: { key }, w, h, color, bg: 0x1a120c, frame: 0x8c6b29, font: 'public' });
     p.mesh.position.set(x, y, z);
     p.mesh.rotation.y = (rot * Math.PI) / 180;
     root.add(p.mesh);
@@ -486,6 +487,21 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   plaque('prop.sign.lift', 0.5, 0.25, -6.4, 1.6, -29.8, 0, 0xffb000);
   plaque('prop.sign.parlour', 2.6, 0.35, 10.8, 3.7, 16, 270, 0xff8a8a);
   plaque('prop.sign.keno', 2.0, 1.2, -20, 3.3, -1.84, 0, 0xffe0a0);   // smaller and higher: it used to fill the view at LAU-02 and cover the buy prompt
+
+  // ── the casino bar (Lobby, behind the stage): the tavern counter with its back-bar shelves and three stools ──────────
+  // The OBJ pieces load async (public/assets/vendor/battleroach-medieval-tavern); the colliders are fixed from the start. The
+  // customers' side faces the stage (north); the counter is 4.4 m long, the shelves stand behind it, BarrelStand ends the bar.
+  {
+    const BAR_X = -6.0, BAR_Z = 14.2;
+    void placeTavern(kit, root, 'Bar', { pos: [BAR_X, 0, BAR_Z], height: 1.0 });
+    for (const sx of [-1.15, 1.15]) void placeTavern(kit, root, 'Shelf', { pos: [BAR_X + sx, 0, BAR_Z + 1.2], height: 2.3 });
+    for (const sx of [-1.4, 0, 1.4]) void placeTavern(kit, root, 'Stool', { pos: [BAR_X + sx, 0, BAR_Z - 1.15], height: 0.72 });
+    void placeTavern(kit, root, 'BarrelStand', { pos: [BAR_X + 2.85, 0, BAR_Z], height: 1.1 });
+    statics.push({ box: box3(BAR_X - 2.25, 0, BAR_Z - 0.55, BAR_X + 2.25, 1.0, BAR_Z + 0.55), tag: 'solid' });
+    statics.push({ box: box3(BAR_X - 2.0, 0, BAR_Z + 0.7, BAR_X + 2.0, 2.3, BAR_Z + 1.7), tag: 'solid' });
+    statics.push({ box: box3(BAR_X + 2.5, 0, BAR_Z - 0.35, BAR_X + 3.2, 1.1, BAR_Z + 0.35), tag: 'solid' });
+    lights.push({ id: 'lobby:bar', pos: [BAR_X, 2.3, BAR_Z - 0.6], color: 0xffb870, intensity: 0.9, range: 5, flicker: 'STEADY', zone: 'lobby' });
+  }
 
   // ── Wave 72: the lit route from the lift past the terminal to the Big One, a key light per area, a neon sign per area ──
   lights.push({ id: 'route:lift', pos: [-4, 2.8, -27.2], color: 0xffe0a0, intensity: 1.3, range: 6, flicker: 'STEADY' });
@@ -507,7 +523,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   {
     // one neon per area: ARRIVALS over the Mouth starters, THE WELL on both Well walls, THE LOBBY on both Lobby walls, BACK OF HOUSE above the Mouth wings
     const area = (id: string, key: string, h: number, color: number, pos: V3, yaw: number): void => {
-      const n = crispNeon(kit, { text: { key }, h, color, flicker: 0.1 });
+      const n = crispNeon(kit, { text: { key }, h, color, flicker: 0.1, font: 'chetyre' });
       n.root.position.set(pos[0], pos[1], pos[2]);
       n.root.rotation.y = yaw;
       n.setOn(true);

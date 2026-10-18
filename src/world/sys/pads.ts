@@ -10,6 +10,8 @@ import * as THREE from 'three';
 import type { LocalAABB, SlotSize } from '@/core/types';
 import { SLOT_DIMS } from '@/core/types';
 import type { Kit } from '@/kit/types';
+import type { KitX } from '@/kit';
+import { crispNeon } from '../props/signs';
 import type { FxApi } from '@/core/fx/types';
 import type { AudioEngine } from '@/core/audio/types';
 import type { TweenSystem } from '@/core/tween';
@@ -47,7 +49,7 @@ export function buildPad(kit: Kit, size: SlotSize): PadParts {
   kit.cyl(0.022, 0.028, 1.35, pal.brass, { pos: [0, 0.07 + 0.675, z], seg: 6, parent: root });
   kit.box(0.84, 0.3, 0.03, pal.black, { pos: [0, 1.52, z], parent: root });
   try {
-    const neon = kit.neon({ text: { key: 'world.forLease' }, h: 0.2, color: pal.neonYellow, flicker: 0.12 });
+    const neon = crispNeon(kit as unknown as KitX, { text: { key: 'world.forLease' }, h: 0.2, color: pal.neonYellow, flicker: 0.12, font: 'chetyre' });
     neon.root.position.set(0, 1.52, z + 0.03);
     neon.setOn(true);
     root.add(neon.root);

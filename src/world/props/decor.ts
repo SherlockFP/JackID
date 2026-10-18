@@ -21,7 +21,7 @@ export interface ColumnParts { root: THREE.Group; radius: number }
 /** Octagonal marble shaft (dia 0.6), brass base rings, three stepped capitals. Origin = floor centre. */
 export function buildColumn(kit: KitX, tex: TexGen, o: { h: number; pos: [number, number, number] }): ColumnParts {
   const root = kit.group('column');
-  const marble = kit.mat({ color: 0x9a8a78, map: tex.tiles(0x9a8a78, 0x7a6c5e, 2) });
+  const marble = kit.mat({ color: 0xb8a890, map: tex.vendor('sbs-synthetic/128x128/Stone/Synth-Stone_04-128x128.png', { size: 64 }) });
   const brass = kit.pal.brass;
   const shaftTop = o.h - 0.35;
   kit.cyl(0.3, 0.3, shaftTop - 0.25, marble, { pos: [0, 0.25 + (shaftTop - 0.25) / 2, 0], parent: root, seg: 8 });

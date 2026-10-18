@@ -234,3 +234,8 @@
 /* Interact prompt ([E] ...) in the walk view: lifted above the machine's face and its label plate, where it sat on the plate
    (ui.css puts it at 50% + 12u). The seated view hides it (ui.css .px-root.seated). */
 .px-root:not(.seated) .px-prompt { bottom: calc(50% + 72 * var(--u)); }
+
+/* ELAPSED readout beside the Watch clock: the inline 13 px at 70% opacity was unreadable, so it takes the body face at 12 UI px
+   (3/4 of the clock digits), full bone colour. !important beats the inline style set in hud.ts. */
+.hud .clock .elapsed { font-family: var(--f-body) !important; font-size: calc(12 * var(--u)) !important; line-height: 1; opacity: 1 !important;
+  color: var(--bone) !important; margin-left: calc(4 * var(--u)) !important; }

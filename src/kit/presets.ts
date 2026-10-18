@@ -14,14 +14,15 @@ import { withTiles } from './tiles';
 
 /** Vendor textures the presets use (also preloaded by `kit.loadMannequin()` so nothing pops in). */
 export const VENDOR = {
-  wood_walnut: { path: 'sbs-tiny2/128x128/Wood/Wood_11-128x128.png', o: { size: 64 } },
-  wood_mahogany: { path: 'sbs-tiny2/128x128/Wood/Wood_01-128x128.png', o: { size: 64 } },
-  wood_pine: { path: 'sbs-tiny2/128x128/Wood/Wood_19-128x128.png', o: { size: 64 } },
-  brushed: { path: 'sbs-tiny2/128x128/Metal/Metal_09-128x128.png', o: { size: 32 } },
-  brushed_hi: { path: 'sbs-tiny2/128x128/Metal/Metal_10-128x128.png', o: { size: 32 } },
+  wood_walnut: { path: 'sbs-synthetic/128x128/Wood/Synth-Wood_01-128x128.png', o: { size: 64 } },
+  wood_mahogany: { path: 'sbs-synthetic/128x128/Wood/Synth-Wood_05-128x128.png', o: { size: 64 } },
+  wood_pine: { path: 'sbs-synthetic/128x128/Wood/Synth-Wood_03-128x128.png', o: { size: 64 } },
+  brushed: { path: 'sbs-synthetic/128x128/Misc/Synth-Misc_07-128x128.png', o: { size: 32 } },
+  brushed_hi: { path: 'sbs-synthetic/128x128/Misc/Synth-Misc_07-128x128.png', o: { size: 32 } },
+  felt: { path: 'sbs-synthetic/128x128/Fabric/Synth-Fabric_07-128x128.png', o: { size: 32 } },
   plate: { path: 'phobicpaul-lowpoly64/low-poly/texture metal 1.png', o: { size: 32 } },
-  tufted: { path: 'sbs-tiny3/128x128/Cloth/Cloth_23-128x128.png', o: { size: 32 } },
-  velvet: { path: 'sbs-tiny3/128x128/Cloth/Cloth_21-128x128.png', o: { size: 32 } },
+  tufted: { path: 'sbs-synthetic/128x128/Leather/Synth-Leather_13-128x128.png', o: { size: 32 } },
+  velvet: { path: 'sbs-synthetic/128x128/Fabric/Synth-Fabric_07-128x128.png', o: { size: 32 } },
   rust: { path: 'sbs-tiny3/128x128/Metal/Metal_23-128x128.png', o: { size: 32 } },
   cloth_dark: { path: 'sbs-tiny3/128x128/Cloth/Cloth_17-128x128.png', o: { size: 32 } },
 } as const satisfies Record<string, { path: string; o: VendorTexOpts }>;
@@ -30,8 +31,8 @@ export const VENDOR_PATHS: string[] = Object.values(VENDOR).map((v) => v.path);
 
 /** Approximate mean colour of each vendor texture, used to derive the tint that lands on a target colour. */
 const MEAN: Record<VendorKey, Hex> = {
-  wood_walnut: 0x4a3426, wood_mahogany: 0xb06848, wood_pine: 0xb89860, brushed: 0xcfcfcf, brushed_hi: 0xe4e4e4,
-  plate: 0x7c8088, tufted: 0xd87888, velvet: 0xc02818, rust: 0x9a4a28, cloth_dark: 0x585a58,
+  wood_walnut: 0x7b6e5e, wood_mahogany: 0xe8bf8a, wood_pine: 0xad9971, brushed: 0xbdbdbd, brushed_hi: 0xbdbdbd, felt: 0xe0d1ca,
+  plate: 0x7c8088, tufted: 0xd6d6ca, velvet: 0xe0d1ca, rust: 0x9a4a28, cloth_dark: 0x585a58,
 };
 
 /** Multiplier colour that turns texture `k` into (roughly) `target`. */
@@ -129,16 +130,16 @@ function build(tex: TexGen): Presets {
     wood(kind = 'walnut') {
       switch (kind) {
         case 'mahogany': return mat(tintFor('wood_mahogany', PAL.MAHOGANY), v('wood_mahogany'));
-        case 'dark': return mat(mixHex(0x555555, 0x888888, 0.2), v('wood_walnut'));
+        case 'dark': return mat(tintFor('wood_walnut', 0x3a2c20), v('wood_walnut'));
         case 'pine': return mat(tintFor('wood_pine', 0xb08850), v('wood_pine'));
-        default: return mat(0xe0d0c0, v('wood_walnut'));
+        default: return mat(tintFor('wood_walnut', 0x4a3828), v('wood_walnut'));
       }
     },
     woodStain: (c) => mat(tintFor('wood_pine', c), v('wood_pine')),
     leather: (c, tufted = true) => (tufted ? mat(tintFor('tufted', c), v('tufted')) : mat(c, tex.noise(0xffffff, { size: 16, amount: 0.07, seed: 3 }))),
     velvet: (c) => mat(tintFor('velvet', c), v('velvet')),
     /** The single felt source: texgen (softened, DECISIONS G). */
-    felt: (c) => psx({ color: 0xffffff, map: tag(tex.felt(c), 0.5), vertexColors: true, snap: false, affine: false }),   // big flat top: no vertex snap / affine warp (decals on it are unsnapped too)
+    felt: (c) => psx({ color: tintFor('felt', c), map: tag(v('felt'), 0.5), vertexColors: true, snap: false, affine: false }),   // big flat top: no vertex snap / affine warp (decals on it are unsnapped too)
     metal: (c) => mat(tintFor('brushed', c), v('brushed')),
     brass: () => mat(tintFor('brushed', mixHex(PAL.BRASS, PAL.GOLD, 0.3)), v('brushed')),
     gold: () => mat(tintFor('brushed', PAL.GOLD), v('brushed')),
