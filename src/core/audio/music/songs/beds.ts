@@ -11,6 +11,8 @@ import {
   sidechain, solo, sparkle, theme, walk, type Groove,
 } from '../parts';
 import { BALLAD, BOP, BOSSA, CHASE, MARCH68, SWING_BRUSH, SWING_RIDE, SYNTH4, TANGO, kit, withHorror } from '../songkit';
+import { withStakes } from '../stakes';
+import { CUES, hitOf, lastCallOf, missOf } from './cues';
 
 const bright = (lo: number): ReturnType<typeof byI> => calmOnly(byI(lo), 0.4, 0.8);
 const rep = (chart: string, n: number): string => Array.from({ length: n }, () => chart).join(' | ');
@@ -415,8 +417,10 @@ const endingLoop: SongDef = {
   ],
 };
 
-/** All beds by id. */
-export const BEDS: Readonly<Record<string, SongDef>> = Object.fromEntries(
-  [menu, lounge, arcade, felt, pipes, tango, laundry, carnival, parlour, counting, elevator, sump, cutscene, chase,
-    jackpot, jackpotParty, defeat, defeatLoop, ending, endingLoop].map((s) => [s.id, s]),
-);
+/** All beds by id. The gambling-floor beds wear the stakes overlay; the high-stakes cues (`cues.ts`) sit beside them, with
+ * Last Call and the chase hit / miss registered on the lounge and the arcade (the conductor builds them for the bed that plays). */
+export const BEDS: Readonly<Record<string, SongDef>> = Object.fromEntries([
+  ...[lounge, arcade, felt, pipes, tango, laundry, carnival].map(withStakes),
+  menu, parlour, counting, elevator, sump, cutscene, chase, jackpot, jackpotParty, defeat, defeatLoop, ending, endingLoop,
+  ...Object.values(CUES), { ...lastCallOf(withStakes(lounge)), id: 'lastcall' }, { ...hitOf(arcade), id: 'chase_hit' }, { ...missOf(arcade), id: 'chase_miss' },
+].map((s) => [s.id, s]));

@@ -99,8 +99,8 @@ export class Arrangement {
   readonly mix: GainNode;
   /** Beat marks the owner drains to drive `onBeat` / the `beat` getter. */
   readonly beatQ: BeatMark[] = [];
-  /** Effective intensity / dread / tempo multiplier, written by the owner before each pump. */
-  i = 0; d = 0; tempoMul = 1;
+  /** Effective intensity / dread / stakes / tempo multiplier, written by the owner before each pump. */
+  i = 0; d = 0; s = 0; tempoMul = 1;
   state: string;
   nextBarTime = 0;
   barNo = 0;
@@ -318,7 +318,7 @@ export class Arrangement {
 
   private fire(e: QEv, now: number): void {
     const part = this.parts[e.p];
-    const gate = part.def.gate({ i: this.i, d: this.d });
+    const gate = part.def.gate({ i: this.i, d: this.d, s: this.s });
     if (gate < 0.025) return;
     const inst = this.inst(e.i);
     if (e.m < 0) { inst.duck?.(e.ts, e.v); return; }

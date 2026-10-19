@@ -18,7 +18,7 @@
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { MachineBase } from '@/machines/_base/MachineBase';
 import { juiceTier } from '@/machines/_base/tiers';
-import { blinkOn, countUp } from '@/machines/_base/juice';
+import { blinkOn, countUp, scorePop } from '@/machines/_base/juice';
 import { glitchPulse } from '@/core/fx';
 import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { ScreenSurface } from '@/kit/types';
@@ -55,6 +55,8 @@ type Ev =
   | { k: 'collect'; amount: number; bet: number };
 
 const HOLDS: readonly VpButton[] = ['hold0', 'hold1', 'hold2', 'hold3', 'hold4'];
+/** Cards that make each paying hand (its scoring pops); a five-card hand when not listed. */
+const HAND_CARDS: Partial<Record<Cat, number>> = { jacks: 2, twoPair: 4, trips: 3, quads: 4, fourDeuces: 4 };
 const CARD_W = 28, CARD_H = 46;
 const CRT_BLUE = '#0B1E8C', CRT_YELLOW = '#FFE45C', CARD_WHITE = '#F4F4F0', CARD_RED = '#D01818', CARD_INK = '#101010';
 const GAMES: readonly Game[] = ['jacks', 'deuces'];
@@ -423,7 +425,12 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     this.hintOn = false;
     this.litHolds(false);
     this.drawScreen();
-    if (!pc.fast) await this.wait(0.5);
+    if (!pc.fast) {
+      // the made hand scores card by card while its paytable row blinks: one pop a step higher per card in it, the last on the cha-ching
+      const n = ev.pay > 0 ? HAND_CARDS[ev.cat as Cat] ?? 5 : 0;
+      for (let i = 0; i < n; i++) void this.wait(0.05 + i * 0.08).then(() => { if (!this.disposed) scorePop(this, i, n); });
+      await this.wait(0.5);
+    }
     s.pot = ev.pay;
     s.phase = ev.pay > 0 ? 'win' : 'ready';
     if (pc.local) this.callout(this.ctx.run.previewCredit(ev.pay, this.src, { bet: this.roundBet }) - this.roundBet);

@@ -162,6 +162,8 @@ export interface AudioEngine {
   setTimeScale(k: number, ramp?: number): void;
   /** Calm Mode: recorded horror hits (scare stingers, dread events) stay silent. main.ts passes `settings.calm`. */
   setCalm?(on: boolean): void;
+  /** Retro sound: slot mechanics, coins and win cues play through the lo-fi cabinet bus. main.ts passes `settings.retroSfx`. */
+  setRetro?(on: boolean): void;
   /** Temporarily attenuate a bus (stingers, cutscene voice, big-win swell). */
   duck(bus: Bus, amount: number, dur: number): void;
 }

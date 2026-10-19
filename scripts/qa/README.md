@@ -26,10 +26,14 @@ npm run qa -- --machine bigone --script "Space:150,wait:3000" --rounds 3 --shots
 | `--menu` | the main menu (`/?seed=N`), no room. The veil is dismissed by a mouse press, then the script keys drive the die (`ArrowLeft` rolls to SETTINGS, `Enter` selects the face toward the camera, `KeyI` opens the credits). Takes no `--machine`, `--world`, `--run`, `--sit` or `--force` |
 | `--run "<steps>"` | a real debt run driven by steps (`;`-separated), see **Debt-run driver** below. Implies `--world`. Takes no `--sit`, `--force`, `--frames`, `--walk-view` |
 | `--js "<expr>"` | run once after the room settles, before the rounds. The JSON value goes to `before`. `await` is allowed (`await import('/src/...')`) |
-| `--probe "<expr>"` | read after every round (after the frame shots), recorded in `roundLog[].probe`. `await` is allowed |
+| `--probe "<expr>"` | read after every round (after the frame shots), recorded in `roundLog[].probe`; with `--run`, read once after the steps, in `run.probe`. `await` is allowed |
 | `--query "<params>"` | extra boot query params, e.g. `--query "lang=tr"`. The language must be set at boot: the HUD caches its strings, so a `--js` setting would leave them in English |
 | `--size <W>x<H>` | the Chrome viewport (default `1280x720`), e.g. `--size 1920x1080` |
 | `--real-time` | the page runs on the wall clock (no fixed step). Default is the fixed clock, see **Fixed clock** below |
+| `--tour` | the whole-game tour, see **The tour** below. Takes `--out <dir>` (the shots and `tour.json`), `--size`, `--query`, `--seed`. Takes no `--machine`, `--world`, `--menu`, `--run`, `--sit`, `--force`, `--frames`, `--walk-view` |
+| `--out <dir>` | the shots directory for `--tour` (the same as `--shots`) |
+
+Every shot waits until the page has drawn a frame (`window.jackid.info().calls > 0`, up to 8 s), and a run waits for the first drawn frame (up to 90 s) before it settles. The world builds in real time while the manual clock stands still, so a shot taken at once used to be black (`--machine bigone` gave an empty frame). The harness reads each shot's mean brightness (`pngStats`); a black frame is under 1.
 
 Script tokens:
 
@@ -68,6 +72,28 @@ By default the page boots with `?fixedstep=1&clock=manual` (DEV build only, `src
   `node scripts/qa/bench.mjs --run "auto:night;nightcard:best;auto:night;state" --seed 3` (run twice, diff `run.nights`).
 - `--real-time` restores the wall-clock page and the wall-clock waits (the old behaviour; not reproducible).
 
+## The tour (`--tour`)
+
+One command walks a fresh profile from the menu to Night 2 and saves a fixed, named set of shots:
+
+```
+node scripts/qa/bench.mjs --tour --size 1920x1080 --query lang=tr --out <dir>
+```
+
+It is deterministic (seed 1 unless `--seed`; the fixed clock) and takes about 80 s of wall time for about 240 s of sim time. The run is a real debt run started from the menu (`app.go('ingame', …)`), driven by the same step handlers as `--run` (`scripts/qa/tour.mjs` holds the checkpoints; `TOUR_SHOTS` is the list and the order). Files are `NN-<name>.png`:
+
+| part | shots |
+| --- | --- |
+| menu | `menu`, `settings` |
+| prologue and street | `prologue-scene`, `prologue-door`, `street-corridor`, `street-walk`, `casino-door`, `lift-down`, `casino-arrival` (the waymark is up) |
+| the floor | `bigone-coach`, `bigone-spin`, `bigone-win` (the forced win), `bank-booth`, `bank-deposit` (a real keypad deposit, the bank must grow), `cashier`, `coin-trick-r`, `coin-trick-q` |
+| the Night | `last-call` (the Watch clock is run on to Last Call), `mola-closed`, `dawn-dark`, `boon-offer`, `boon-picked` (a real `1` key), `lift-up` |
+| the walk home | `walk-street`, `walk-corridor`, `walk-your-door`, `evening` |
+| the Evening | `chapter-title`, `pause-card` (closed with its DEVAM line), `journal-plan`, `phone-inbox`, `konsol`, `achievements` |
+| Night 2 | `night2-lift` (Loki's line in the lift), `night2-loki` (seated, a Loki whisper asked for) |
+
+`tour.json` lists every shot with `ok`, `why` (the reason it failed, or null), `file`, `mean` (brightness) and `scene` (the cutscene playing); a shot that was never reached is a fail with `why: "not reached"`. It also has `sectionErrors` (a part that stopped; the tour goes on with the next part), `failedSteps`, `notes` (game problems the tour worked around), `consoleErrors` and `errors`. Each checkpoint has a page check (a panel is up, the phase is right, the bank grew), so a shot that exists but shows the wrong thing is a fail.
+
 ## Forcing a decision state (`--force`)
 
 A machine's push-your-luck decision (Big One CHASE, scratch BUY THE THIRD, craps PRESS, keno DOUBLE DOWN, lootbox
@@ -83,7 +109,7 @@ machine registered with `registerDebugForce(machineId, fn)` (src/core/debugForce
 registered handler it falls back to the optional `debugForce(state)` method (MachineBase; the bench panel's force field
 uses it too). It returns `{ ok, via: 'registry' | 'method' | 'none', reason? }`. A machine opts in by registering at
 module load, e.g. `registerDebugForce('bigone', (s) => { …; return true; })`, or by implementing `debugForce`. The
-state names are the machine's own (`coinflip` takes `win | loss | near`).
+state names are the machine's own (`coinflip` takes `win | loss | near`; `bigone` takes `chase`, a re-roll until a line win that can be chased, and `win`, until any win).
 
 ## Table machines (`--sit`)
 
@@ -176,8 +202,8 @@ Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` 
 | `goto:hot` | the same, for the Hot cabinet: the first Hot Lamp lit now (`run.circuit.lamps().hot[0]`, lit at each Bell). Fails when no Hot lamp is lit or the cabinet is locked. `machineId` and `lamp: "hot"` say which machine it was |
 | `nightcard:<1\|2\|best>` | picks Night Card 1 or 2 of the offer, or `best` (see **Night Card choice** below): the id at that index of `run.nightCardOffer().candidates` goes to `run.pickNightCard(id)` (it takes the id). `offer` lists the offered ids, `cards` each card with its preview (`index`, `id`, `tone`, `text`, `lines`, `quotaTo`, `ratio`, `payoutX`, `ev`), `index` and `id` the one picked, and for `best` only, `best` the card the heuristic chose (1 or 2), `mode` (`ahead` / `behind` / `unknown`) and `why` (the reason) | Prints the offer. Fails with `no Night Card on this build` when the run has no `pickNightCard`, and is refused (no offer open) when none is up |
 | `play:<keys>xN` | presses the keys N times (default 1). Keys use the script syntax (`Space:150,wait:300`). The `x` suffix ends the step: `play:Space:150,wait:300x3` repeats both |
-| `stand` | stands up from the seat (`world.standUp()`), then waits until the seat is free |
-| `bank:deposit:<n>` | a Debt Terminal deposit of n coins (`run.deposit(n)`). `ok:false` when the run refuses it (pocket floor, quota room, not a quota Watch) |
+| `stand` | stands up from the seat (`world.standUp()`), then waits until the seat is free. A busy machine defers the stand-up: after 3 s the real `E` key asks again, and the step waits up to 12 s more before it fails (`ok:false`, "still seated") |
+| `bank:deposit:<n>` | a Debt Terminal deposit of n coins (`run.deposit(n)`). `ok` only when the bank grew (`bank: [before, after]`); `ok:false` when the run refuses it (pocket floor, quota room, not a quota Watch) or accepts it with the bank unchanged |
 | `bank:withdraw:<n>` | takes n coins back from the bank into the pocket (`run.withdraw(n)`, the broke path). `ok:false` when the window is shut or the bank is empty |
 | `lever` | the terminal lever the run accepts now: OPEN THE FLOOR (Night paid), else the Bell (Intermission), else SETTLE (quota met). `lever: null` when none is open. With the Home layer a paid Night's OPEN THE FLOOR is TAKE THE LIFT (`home` says the stage after: `ride`), and at home it is the bed (`sleep`) |
 | `bell` | rings the Bell early (`run.ringBell()`): ends the Watch while playing or Last Call; unused pulls keep the ticket rebate. `ok:false` outside a playing Watch |
@@ -186,7 +212,7 @@ Use `node scripts/qa/bench.mjs` for `--run` when a step list is long: `npm run` 
 | `pawn:look` | sits at the Pawn Window and screenshots the seat view to `run-pawn-look-<n>.png` (with `--shots`). `shelves` lists the stock (`null` = sold or empty, `[]` outside an Intermission) |
 | `home:lift` | TAKE THE LIFT: `run.homeLiftReady()` then `run.openFloor()` on a paid Night with the Home layer, then waits (sim time, up to 10 s) for stage `evening` (the ride is 2.6 s). With `--shots` one frame is taken 0.9 s into the ride (`shot`, `lift-ride.png`). `night` is the Night paid, `stage` the stage reached. Fails (`reason`) off the casino floor, with the layer off, on a Night Card offer the lever is held for, or on Night 8 (the Topside choice) |
 | `home:stay` | the same ride as `home:lift`, then it STOPS in the Evening: nothing sleeps, so a tester can drive the home by hand (`station:` and `ui:click:` below, `play:` for keys). A no-op (`note: "already in the Evening"`) when the player is home already. `stage` is `evening`; fails off the casino floor, with the layer off, on a Night Card offer, or on Night 8 |
-| `walk:home` | THE WALK HOME: the same ride as `home:lift` (which lands at the casino's street door), then the walk by teleport, shot by shot with `--shots`: `walk-casino-door.png`, `walk-street.png`, `walk-building-entrance.png`, `walk-corridor-ada-door.png`, `walk-your-door.png`. The key turns at your door and the Evening begins (`walked: true`). `home:lift`, `home:stay` and the bot (`auto:night`) walk in the same way without shots; `home:sleep` and the prologue walk out to the casino door and ride the lift down |
+| `walk:home` | THE WALK HOME (also `home:lift` and `home:stay`): on a Night that is not paid yet it first plays the Night on with the bot to the paid Evening (`played` says how it ended), picks an open Dawn offer, and clicks the receipt's DEVAM (`.pt-go`, a real click) so no Dawn card covers the walk; then: the same ride as `home:lift` (which lands at the casino's street door), then the walk by teleport, shot by shot with `--shots`: `walk-casino-door.png`, `walk-street.png`, `walk-building-entrance.png`, `walk-corridor-ada-door.png`, `walk-your-door.png`. The key turns at your door and the Evening begins (`walked: true`). `home:lift`, `home:stay` and the bot (`auto:night`) walk in the same way without shots; `home:sleep` and the prologue walk out to the casino door and ride the lift down |
 | `station:<id>` | fires the world's own `home:interact` for one apartment station, through the app bus: `bed`, `door`, `peephole`, `chain`, `switch`, `phone`, `spouse`, `window`, `fridge` or `computer` (the same event E at it emits). Evening only. `stageBefore` and `stage` are the Home stages around it (`bed` ends the Evening, so use it last), `panels` the ids of the UI panels up after 600 ms (`computer` opens `home-pc`). Read the result with `state`, `shot:<name>` or `ui:click:` |
 | `ui:click:<css selector>` | clicks the first DOM element matching the selector (`el.click()`), e.g. `ui:click:.px-panel button` or a tab of the home computer. The record has `selector`, `found`, `tag`, `text` (its first 60 characters) and `disabled`; `ok` needs a match that is not disabled. A selector may not contain `;` (it ends the step). Keys already have `play:<keys>` (e.g. `play:KeyC:80`, `play:Digit1`); the home loop is `auto:night;nightcard:best;home:stay;station:computer;shot:pc;ui:click:.px-panel button;state` |
 | `home:sleep` | the bed: the world's own `home:interact` event for station `bed`, sent through the app bus (`window.jackid.app.events`), then waits for the sleep (1.8 s) to open the next Night. `night` is the Night slept through, `nightAfter` the next one. Then it waits (up to 300 polls of 100 ms sim) for the arrival fade (`.px-fade`) to clear, so the next step starts on the casino floor in the light: `fadeClear` is true when it has. A dark screen that never clears fails the step. Fails off the Evening |
@@ -222,7 +248,7 @@ Start config steps can sit anywhere in the list; each applies once, at run start
 When the run has ended (`run.over`, or the run is gone because the menu took the screen back), only the game-driving steps are skipped. They are listed in one record `{ step: "run over", ok: true, note, skipped: [...] }`, placed where the first skipped step was. The read-only steps still run after the end: `state`, `shot`, `wait`, `events`, `banner` and `home:knock-check`, so the mafia_visit cutscene and the results can be shot. A `play` repeat that comes after the end is not pressed (its record has `note: "run over after N of M"`). No step throws in that case.
 
 Each step is recorded in `run.steps` as `{ step, ok, ms, … }`, in the order it ran (`via`, `at`, `instance`, `amount`, `lever`, `state`, `charm`, `price`, `paid`, `shelves`, `shot` where they apply).
-A `play` or `bot:bet` record has `bets`: one `{ stake, machine, ok, refusal }` per `run.bet()` call the step made (the stake of each play, accepted or not; `refusal` is the run's refusal reason, null when accepted). Stakes are read through a wrapper that `--run` installs on the run once. A refused `lever`, `pawn`, `deposit`, `withdraw`, `bell` or `nightcard` record has `refusal` (the run's `lastRefusal()` after the step) and `refusalNew`. The run keeps its last refusal until the next accepted bet or buy, so `refusalNew: false` means the reason may be left over from an earlier refusal; `reason` then stays the generic text. A failed step is kept: `ok:false` with `error` (a step that threw: the `goto` to a locked machine, a seat that does not take) or `reason` (a step the run refused). **The steps go on after a failed step.** `run.failed` counts the failed user steps. Only a page reload stops the list: `run.aborted` says so, the run is then invalid (see `viteEvents`), and the exit code is 1. The run ending does not (see the `run over` note above). Output is the same one JSON object; `run.intro` is `{ played, taps }`, and `run.shot` is `run-final.png` when `--shots` is set. `rounds` is 0 in this mode.
+The first plays of each machine type are practice (src/machines/_base/coach.ts, `PRACTICE_ROUNDS` = 2: no `run.bet`, no pull). On a fresh profile every bot bet starts with them, so `bot:bet` plays on until one counts (`practice` is how many were free) instead of reading "no pull spent". A bot bet also waits for an idle machine after the seat. A `play` or `bot:bet` record has `bets`: one `{ stake, machine, ok, refusal }` per `run.bet()` call the step made (the stake of each play, accepted or not; `refusal` is the run's refusal reason, null when accepted). Stakes are read through a wrapper that `--run` installs on the run once. A refused `lever`, `pawn`, `deposit`, `withdraw`, `bell` or `nightcard` record has `refusal` (the run's `lastRefusal()` after the step) and `refusalNew`. The run keeps its last refusal until the next accepted bet or buy, so `refusalNew: false` means the reason may be left over from an earlier refusal; `reason` then stays the generic text. A failed step is kept: `ok:false` with `error` (a step that threw: the `goto` to a locked machine, a seat that does not take) or `reason` (a step the run refused). **The steps go on after a failed step.** `run.failed` counts the failed user steps. Only a page reload stops the list: `run.aborted` says so, the run is then invalid (see `viteEvents`), and the exit code is 1. The run ending does not (see the `run over` note above). Output is the same one JSON object; `run.intro` is `{ played, taps }`, and `run.shot` is `run-final.png` when `--shots` is set. `rounds` is 0 in this mode.
 
 The steps use the running app's own handles (`window.jackid.app`: `world`, `player`, `run`, `cutscene`, `camera`, `input`), so no hook is added to the game.
 

@@ -21,6 +21,8 @@ import { placeNotes, placedNoteIds, resetNotes, openJournal, notesFound } from '
 import type { NoteGate } from './notes.data';
 import { advanceArc, markCard, type ChapterRecord } from './chapter';
 import { MIRA_BEAT } from './calls';
+import { showChapterTitle } from './chapterTitle';
+import { CHAPTER_TITLE_HOOK } from './cutscenes/chapterCard';
 import { ENDING_HOOK, ENDING_WITNESS, endingRecord, endingScene, freshFacts, isEnding, type EndingRecord } from './endings';
 import type { DebtRun } from '@/game/run';
 
@@ -130,6 +132,7 @@ export function startStory(world: World, params: InGameParams, gate: NoteGate | 
 
   // the Collector's visit (cutscenes/mafia_visit): the front door swings open at its cue; a seek jumps straight to open
   offs.push(app.cutscene.registerHook('home.doorOpen', (_args, ctx) => { void app.world?.home?.doorTo(1, ctx.seeking ? 0 : 0.8); }));
+  offs.push(app.cutscene.registerHook(CHAPTER_TITLE_HOOK, (args, ctx) => { if (!ctx.seeking && typeof args === 'number') showChapterTitle(args); }));
   // THE ENDINGS: the flat is dressed (`ada`: 'seat' / 'still' at the table, 'gone' down in your place); the card leaves your hand
   offs.push(app.cutscene.registerHook(ENDING_HOOK.home, (args) => {
     const ada = args && typeof args === 'object' && !Array.isArray(args) ? args.ada : null;

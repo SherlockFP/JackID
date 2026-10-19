@@ -11,130 +11,160 @@
  "missing": [],
  "cues": {
   "button": {
-   "peak": 0.485,
-   "peakDb": -6.3,
-   "stDb": -28.7,
-   "len": 0.07
+   "peak": 0.4,
+   "peakDb": -8,
+   "stDb": -28.3,
+   "len": 0.11
   },
   "lever": {
-   "peak": 0.432,
-   "peakDb": -7.3,
-   "stDb": -25.5,
-   "len": 0.56
+   "peak": 0.551,
+   "peakDb": -5.2,
+   "stDb": -24.4,
+   "len": 0.43
   },
   "reelStart": {
    "peak": 0.452,
    "peakDb": -6.9,
-   "stDb": -19.7,
-   "len": 0.48
+   "stDb": -21.4,
+   "len": 0.3
   },
   "reelStop": {
-   "peak": 0.523,
+   "peak": 0.527,
    "peakDb": -5.6,
-   "stDb": -25.7,
-   "len": 0.19
+   "stDb": -25.2,
+   "len": 0.21
   },
   "reelLoop": {
-   "peak": 0.871,
-   "peakDb": -1.2,
-   "stDb": -12.3,
-   "len": 0.9
+   "peak": 0.596,
+   "peakDb": -4.5,
+   "stDb": -13.4,
+   "len": 0.93
   },
   "lineUp": {
    "peak": 0.367,
    "peakDb": -8.7,
-   "stDb": -30.8,
+   "stDb": -31.5,
    "len": 0.09
   },
   "lose": {
-   "peak": 0.269,
-   "peakDb": -11.4,
-   "stDb": -30.1,
+   "peak": 0.248,
+   "peakDb": -12.1,
+   "stDb": -31.9,
    "len": 0.14
   },
   "numberTick": {
-   "peak": 0.312,
-   "peakDb": -10.1,
-   "stDb": -37.4,
-   "len": 0.03
-  },
-  "countDing": {
-   "peak": 0.71,
-   "peakDb": -3,
-   "stDb": -20.9,
-   "len": 0.59
-  },
-  "streakPing": {
-   "peak": 0.329,
-   "peakDb": -9.7,
-   "stDb": -22,
-   "len": 0.59
-  },
-  "coinClink": {
-   "peak": 0.633,
-   "peakDb": -4,
-   "stDb": -29.9,
+   "peak": 0.357,
+   "peakDb": -8.9,
+   "stDb": -36.8,
    "len": 0.06
   },
+  "countDing": {
+   "peak": 0.521,
+   "peakDb": -5.7,
+   "stDb": -20.7,
+   "len": 0.4
+  },
+  "streakPing": {
+   "peak": 0.394,
+   "peakDb": -8.1,
+   "stDb": -24.7,
+   "len": 0.35
+  },
+  "coinClink": {
+   "peak": 0.509,
+   "peakDb": -5.9,
+   "stDb": -30.1,
+   "len": 0.09
+  },
   "heartbeat": {
-   "peak": 0.627,
-   "peakDb": -4.1,
-   "stDb": -21.5,
+   "peak": 0.264,
+   "peakDb": -11.6,
+   "stDb": -27.4,
    "len": 0.3
   },
   "kachunk": {
-   "peak": 0.798,
-   "peakDb": -2,
+   "peak": 0.62,
+   "peakDb": -4.1,
    "stDb": -18.6,
-   "len": 1.02
+   "len": 0.66
   },
   "alarmBell": {
-   "peak": 0.499,
-   "peakDb": -6,
-   "stDb": -18,
+   "peak": 0.454,
+   "peakDb": -6.9,
+   "stDb": -17.1,
    "len": 2.4
   },
   "tensionRise": {
-   "peak": 0.593,
-   "peakDb": -4.5,
-   "stDb": -19.6,
-   "len": 2.25
+   "peak": 0.487,
+   "peakDb": -6.3,
+   "stDb": -22.1,
+   "len": 1.72
   },
   "win1": {
-   "peak": 0.445,
-   "peakDb": -7,
-   "stDb": -20.2,
-   "len": 3.02
+   "peak": 0.481,
+   "peakDb": -6.4,
+   "stDb": -20.6,
+   "len": 0.53
   },
   "win2": {
-   "peak": 0.577,
-   "peakDb": -4.8,
-   "stDb": -18.5,
-   "len": 5.02
+   "peak": 0.516,
+   "peakDb": -5.7,
+   "stDb": -19.4,
+   "len": 1.73
   },
   "win3": {
-   "peak": 0.709,
-   "peakDb": -3,
-   "stDb": -17.4,
-   "len": 6
+   "peak": 0.603,
+   "peakDb": -4.4,
+   "stDb": -15.6,
+   "len": 3.05
   },
   "winHuge": {
-   "peak": 0.838,
-   "peakDb": -1.5,
-   "stDb": -16.1,
-   "len": 6
+   "peak": 0.648,
+   "peakDb": -3.8,
+   "stDb": -14.2,
+   "len": 3.67
   },
   "winMega": {
-   "peak": 0.967,
-   "peakDb": -0.3,
-   "stDb": -14.6,
-   "len": 6
+   "peak": 0.678,
+   "peakDb": -3.4,
+   "stDb": -12.4,
+   "len": 4.76
   },
   "jackpotShow": {
-   "peak": 0.87,
-   "peakDb": -1.2,
-   "stDb": -14,
-   "len": 10.6
+   "peak": 0.66,
+   "peakDb": -3.6,
+   "stDb": -12,
+   "len": 9.01
+  },
+  "scorePop": {
+   "peak": 0.531,
+   "peakDb": -5.5,
+   "stDb": -27.7,
+   "len": 0.1
+  },
+  "multDing": {
+   "peak": 0.471,
+   "peakDb": -6.5,
+   "stDb": -25.1,
+   "len": 0.23
+  },
+  "chaChing": {
+   "peak": 0.484,
+   "peakDb": -6.3,
+   "stDb": -21.2,
+   "len": 0.4
+  },
+  "coinPour": {
+   "peak": 0.415,
+   "peakDb": -7.6,
+   "stDb": -18.6,
+   "len": 1.03
+  },
+  "jackpot": {
+   "peak": 0.628,
+   "peakDb": -4,
+   "stDb": -14.7,
+   "len": 2.01
   },
   "seat": {
    "peak": 0.436,
@@ -143,49 +173,49 @@
    "len": 0.14
   },
   "foodBite": {
-   "peak": 0.434,
-   "peakDb": -7.2,
-   "stDb": -30.5,
+   "peak": 0.425,
+   "peakDb": -7.4,
+   "stDb": -30.8,
    "len": 0.86
   },
   "foodSip": {
-   "peak": 0.364,
-   "peakDb": -8.8,
+   "peak": 0.37,
+   "peakDb": -8.6,
    "stDb": -25.1,
    "len": 1.11
   },
   "knock": {
-   "peak": 0.65,
-   "peakDb": -3.7,
-   "stDb": -17.5,
-   "len": 0.97
+   "peak": 0.586,
+   "peakDb": -4.6,
+   "stDb": -28.3,
+   "len": 0.92
   },
   "chainRattle": {
-   "peak": 0.432,
-   "peakDb": -7.3,
-   "stDb": -25.3,
-   "len": 0.73
+   "peak": 0.471,
+   "peakDb": -6.5,
+   "stDb": -25.1,
+   "len": 0.72
   },
   "lightSwitch": {
-   "peak": 0.444,
-   "peakDb": -7.1,
-   "stDb": -33.7,
+   "peak": 0.454,
+   "peakDb": -6.9,
+   "stDb": -33.5,
    "len": 0.07
   },
   "bedCreak": {
-   "peak": 0.498,
-   "peakDb": -6,
-   "stDb": -20,
-   "len": 1.57
+   "peak": 0.513,
+   "peakDb": -5.8,
+   "stDb": -19.5,
+   "len": 1.23
   },
   "phoneBuzz": {
-   "peak": 0.298,
+   "peak": 0.299,
    "peakDb": -10.5,
    "stDb": -19.1,
    "len": 0.41
   },
   "liftDing": {
-   "peak": 0.45,
+   "peak": 0.453,
    "peakDb": -6.9,
    "stDb": -22.7,
    "len": 3.7
@@ -197,134 +227,139 @@
    "len": 0.18
   },
   "lockTurn": {
-   "peak": 0.551,
-   "peakDb": -5.2,
-   "stDb": -26.8,
-   "len": 0.99
+   "peak": 0.578,
+   "peakDb": -4.8,
+   "stDb": -26.6,
+   "len": 1.03
   },
   "phoneOpen": {
-   "peak": 0.354,
-   "peakDb": -9,
-   "stDb": -33.8,
+   "peak": 0.334,
+   "peakDb": -9.5,
+   "stDb": -33.7,
    "len": 0.25
   },
   "phoneClose": {
-   "peak": 0.24,
-   "peakDb": -12.4,
+   "peak": 0.236,
+   "peakDb": -12.5,
    "stDb": -35.3,
    "len": 0.17
   },
   "chipClack": {
-   "peak": 0.354,
-   "peakDb": -9,
-   "stDb": -38.8,
+   "peak": 0.449,
+   "peakDb": -7,
+   "stDb": -33.9,
    "len": 0.21
   },
   "click": {
-   "peak": 0.382,
-   "peakDb": -8.4,
+   "peak": 0.425,
+   "peakDb": -7.4,
    "stDb": -23.9,
    "len": 0.15
   },
   "footstep": {
-   "peak": 0.489,
-   "peakDb": -6.2,
-   "stDb": -19.8,
+   "peak": 0.549,
+   "peakDb": -5.2,
+   "stDb": -20.8,
    "len": 0.18
   },
   "door": {
-   "peak": 0.55,
-   "peakDb": -5.2,
-   "stDb": -22.4,
-   "len": 1.11
+   "peak": 0.533,
+   "peakDb": -5.5,
+   "stDb": -24,
+   "len": 1.4
   },
   "creak": {
-   "peak": 0.628,
-   "peakDb": -4,
+   "peak": 0.602,
+   "peakDb": -4.4,
    "stDb": -15.3,
-   "len": 1.58
+   "len": 1.55
   },
   "clockTick": {
-   "peak": 0.589,
-   "peakDb": -4.6,
-   "stDb": -32.3,
+   "peak": 0.54,
+   "peakDb": -5.4,
+   "stDb": -32,
    "len": 0.02
   }
  },
  "tiers": {
   "small": {
-   "peak": 0.328,
-   "peakDb": -9.7,
-   "stDb": -23.9,
-   "len": 2.5
+   "peak": 0.276,
+   "peakDb": -11.2,
+   "stDb": -26.5,
+   "len": 0.5
   },
   "medium": {
-   "peak": 0.392,
-   "peakDb": -8.1,
-   "stDb": -21.9,
-   "len": 3.5
+   "peak": 0.341,
+   "peakDb": -9.3,
+   "stDb": -22.6,
+   "len": 1.71
   },
   "big": {
-   "peak": 0.524,
-   "peakDb": -5.6,
-   "stDb": -20.1,
-   "len": 5
+   "peak": 0.455,
+   "peakDb": -6.8,
+   "stDb": -19.3,
+   "len": 3.55
   },
   "huge": {
-   "peak": 0.582,
-   "peakDb": -4.7,
-   "stDb": -18.2,
-   "len": 7
+   "peak": 0.478,
+   "peakDb": -6.4,
+   "stDb": -17.1,
+   "len": 5.16
   },
   "mega": {
-   "peak": 0.678,
-   "peakDb": -3.4,
-   "stDb": -16.5,
-   "len": 9
+   "peak": 0.501,
+   "peakDb": -6,
+   "stDb": -14.8,
+   "len": 5.67
   },
   "jackpot": {
-   "peak": 0.788,
-   "peakDb": -2.1,
-   "stDb": -13.3,
-   "len": 11.81
+   "peak": 0.51,
+   "peakDb": -5.8,
+   "stDb": -11.8,
+   "len": 10.22
   }
  },
  "headroom": {
   "jackpotRaw": {
-   "peak": 1.46,
-   "peakDb": 3.3,
-   "stDb": -9.7,
-   "len": 11.8
+   "peak": 0.698,
+   "peakDb": -3.1,
+   "stDb": -9.2,
+   "len": 10.21
   },
   "jackpotMax": {
-   "peak": 0.953,
-   "peakDb": -0.4,
-   "stDb": -10.6,
-   "len": 11.95
+   "peak": 0.741,
+   "peakDb": -2.6,
+   "stDb": -8.4,
+   "len": 10.22
   }
  },
  "trims": {
-  "button": 0.8,
-  "lever": 0.46,
-  "reelStart": 1.11,
-  "reelStop": 0.66,
+  "button": 1.49,
+  "lever": 0.55,
+  "reelStart": 1.69,
+  "reelStop": 0.74,
   "reelLoop": 1.75,
   "lineUp": 0.9,
   "lose": 0.5,
   "numberTick": 2.6,
-  "countDing": 1,
+  "countDing": 1.45,
   "streakPing": 1.2,
   "coinClink": 1,
   "heartbeat": 0.45,
-  "kachunk": 0.7,
-  "alarmBell": 1,
-  "tensionRise": 0.6,
-  "win1": 0.8,
-  "win2": 0.79,
-  "win3": 0.54,
-  "winHuge": 0.63,
-  "winMega": 0.75,
+  "kachunk": 0.85,
+  "alarmBell": 1.25,
+  "tensionRise": 0.83,
+  "win1": 1.41,
+  "win2": 1.44,
+  "win3": 0.62,
+  "winHuge": 0.74,
+  "winMega": 1.05,
   "jackpotShow": 0.58,
+  "scorePop": 1.24,
+  "multDing": 1.2,
+  "chaChing": 1.36,
+  "coinPour": 0.96,
+  "jackpot": 0.62,
   "seat": 1.1,
   "foodBite": 1.7,
   "foodSip": 1.9,

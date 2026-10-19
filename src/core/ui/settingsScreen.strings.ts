@@ -81,6 +81,8 @@ const strings = {
     'holdToConfirm': 'Hold to confirm',
     'holdToConfirm.tip': 'Dangerous buttons need to be held.',
     'waymark': 'Objective marker',
+    'retroSfx': 'Retro sound',
+    'retroSfx.tip': 'Machine and win sounds play through an old cabinet speaker: crunchy and lo-fi. Off: clean.',
     'waymark.tip': 'A diamond over your goal with its distance. It always shows on Nights 1 and 2, and later only when you seem lost.',
   },
   tr: {
@@ -163,6 +165,8 @@ const strings = {
     'holdToConfirm': 'Onay için basılı tut',
     'holdToConfirm.tip': 'Tehlikeli düğmeler basılı tutmayı ister.',
     'waymark': 'Hedef işaretçisi',
+    'retroSfx': 'Retro ses',
+    'retroSfx.tip': 'Makine ve kazanç sesleri eski bir kabin hoparlöründen çalar: cızırtılı ve lo-fi. Kapalı: temiz.',
     'waymark.tip': 'Hedefinin üstünde mesafeyle bir elmas. 1. ve 2. Gecede hep görünür, sonra yalnızca yolunu kaybedince.',
   },
 };

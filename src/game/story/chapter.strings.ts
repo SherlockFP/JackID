@@ -6,6 +6,7 @@
 export default {
   prefix: 'story.',
   en: {
+    'chapter.head': 'CHAPTER {n} · {title}',
     'chapter.n1.title': 'THE FIRST NAME',
     'chapter.n1.line': 'Your name on the card. A smaller one under it.',
     'chapter.n2.title': 'THE WRONG NUMBER',
@@ -29,6 +30,7 @@ export default {
     'reveal.4': 'Whatever you stake tonight, keep your word. It is the one thing they cannot price.',
   },
   tr: {
+    'chapter.head': '{n}. BÖLÜM · {title}',
     'chapter.n1.title': 'İLK AD',
     'chapter.n1.line': 'Kartta adınız var. Altında, daha küçük bir ad daha.',
     'chapter.n2.title': 'YANLIŞ NUMARA',

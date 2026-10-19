@@ -27,6 +27,7 @@ import {
   Kit, arng, createNoiseBank, makeImpulse, makeSpringImpulse, rnd, sampleStore,
   type KitHost, type NoiseBank,
 } from './synth';
+import { crushCurve, makeIR } from './music/dsp';
 import {
   SAMPLE_URLS, SFX_DEFS, WIN_COUNT, buildAmbience, coinCascade, winSfx, type AmbBed, type SfxDef,
 } from './sfx';
@@ -51,6 +52,29 @@ function softClip(c: BaseAudioContext): WaveShaperNode {
   s.curve = curve; s.oversample = '2x';
   return s;
 }
+/**
+ * The cabinet: what the slot mechanics, coins and win cues (sfx.ts CAB) play through while Retro sound is on, so they sound like an
+ * old cabinet's speaker, not a clean casino. A 6-bit crush blended in at 40 % (no oversampling: it aliases, which is the crunch), a
+ * 6.5 kHz lowpass for the low sample rate, a gentle tanh drive (headroom to 2x full scale), left and right pulled a quarter toward
+ * each other (a mono-ish punch that still pans in 3D) and a 0.25 s tin-box room. Returns the input; the output goes to `out`.
+ */
+function cabinet(c: BaseAudioContext, out: AudioNode): AudioNode {
+  const input = c.createGain(), dry = c.createGain(), crush = c.createWaveShaper(), wet = c.createGain(), lp = c.createBiquadFilter();
+  const pre = c.createGain(), drive = c.createWaveShaper(), side = c.createGain(), mono = c.createGain(), room = c.createConvolver(), send = c.createGain();
+  dry.gain.value = 0.6; wet.gain.value = 0.4; crush.curve = crushCurve(6);
+  lp.type = 'lowpass'; lp.frequency.value = 6500; lp.Q.value = 0.8;
+  const n = 2049, g = 1.4, curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = ((i / (n - 1)) * 2 - 1) * 2; curve[i] = Math.tanh(g * x) / g; }   // input -2..2 (pre halves it)
+  pre.gain.value = 0.5; drive.curve = curve; drive.oversample = '2x';
+  side.gain.value = 0.5; mono.gain.value = 0.5; mono.channelCount = 1; mono.channelCountMode = 'explicit';   // L' = 0.75 L + 0.25 R
+  room.buffer = makeIR(c, { seconds: 0.25, predelay: 0.003, hf0: 6000, hf1: 1500, seed: 91, metallic: 0.3 }); send.gain.value = 0.16;
+  input.connect(dry); input.connect(crush); crush.connect(wet); dry.connect(lp); wet.connect(lp);
+  lp.connect(pre); pre.connect(drive); drive.connect(side); drive.connect(mono);
+  side.connect(out); mono.connect(out); mono.connect(send); send.connect(room); room.connect(out);
+  return input;
+}
+/** Retro sound (settings): new cabinet cues route through {@link cabinet}. Off: they play clean. */
+let retro = true;
 const REF_DIST = 1.5, ROLLOFF = 1.4, MAX_DIST = 30, FADE_FROM = 22;
 const LOOKAHEAD = 0.2, PUMP_MS = 33;
 const TAU = Math.PI * 2;
@@ -133,6 +157,8 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
   convolver.buffer = makeImpulse(ctx.sampleRate, 1.8);
   reverbIn.connect(convolver); convolver.connect(master);
   for (const b of ['sfx', 'amb'] as const) { const s = ctx.createGain(); s.gain.value = REVERB_SEND; busDuck[b].connect(s); s.connect(reverbIn); }
+  // the cabinet bus, before the user volume: one per bus that carries cabinet cues (the spin button and the count ticks are on 'ui')
+  const cabIn: Partial<Record<Bus, AudioNode>> = { sfx: cabinet(ctx, busIn.sfx), ui: cabinet(ctx, busIn.ui) };
   const springIn = ctx.createGain(), spring = ctx.createConvolver();
   spring.buffer = makeSpringImpulse(ctx.sampleRate);
   springIn.connect(spring); spring.connect(busIn.voice);
@@ -328,8 +354,8 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
     if ('matrixWorld' in p) { const e = p.matrixWorld.elements; return { pos: { x: e[12], y: e[13], z: e[14] }, follow: p }; }
     return { pos: { x: p.x, y: p.y, z: p.z }, follow: null };
   }
-  /** Create a pooled voice routed to its bus (positional if `pos`). Null if culled or out-ranked. */
-  function openVoice(name: string, bus: Bus, pri: number, vol: number, trim: number, o: PlayOpts, long: boolean): VoiceImpl | null {
+  /** Create a pooled voice routed to its bus (positional if `pos`; through the cabinet if `cab` and Retro is on). Null if culled or out-ranked. */
+  function openVoice(name: string, bus: Bus, pri: number, vol: number, trim: number, o: PlayOpts, long: boolean, cab = false): VoiceImpl | null {
     let place: { pos: Pos; follow: Follow | null } | null = null;
     if (o.pos) {
       place = resolvePos(o.pos);
@@ -340,7 +366,7 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
     }
     if (!reserveSlot(pri)) return null;
     const v = new VoiceImpl(name, bus, pri, vol, trim, o.pitch ?? 0, !!o.loop || long || (bus !== 'music' && tsCents !== 0));
-    v.place(busIn[bus], place?.pos ?? null, place?.follow ?? null);
+    v.place((cab && retro ? cabIn[bus] : undefined) ?? busIn[bus], place?.pos ?? null, place?.follow ?? null);
     active.push(v);
     return v;
   }
@@ -351,7 +377,11 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
     if (ctx.state !== 'running') return null;
     const now = ctx.currentTime, pri = o.priority ?? d.meta.pri ?? 5;
     if (!o.loop && pri < 9 && !allow(name, d.meta.max ?? 5, now)) return null;
-    const v = openVoice(name, o.bus ?? d.meta.bus ?? 'sfx', pri, clamp(o.vol ?? 1, 0, 2), d.meta.gain ?? 1, o, !!d.meta.long);
+    if (d.meta.poly) {                                                     // spam guard: the oldest of this cue makes way
+      const same = active.filter((x) => x.name === name && !x.stopping);
+      if (same.length >= d.meta.poly) same[0].stop(0.02);
+    }
+    const v = openVoice(name, o.bus ?? d.meta.bus ?? 'sfx', pri, clamp(o.vol ?? 1, 0, 2), d.meta.gain ?? 1, o, !!d.meta.long, !!d.meta.cab);
     if (!v) return null;
     const t = now + 0.005;
     let dur: number;
@@ -496,10 +526,11 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
       const count = WIN_COUNT[tier];
       if (count) addHold('music', tier === 'medium' ? 0.35 : 0.7, count + 2);
     },
-    coins(n: number, o: PlayOpts = {}) { playDef('coins', { run: coinCascade(n), meta: { pri: 4, max: 4, gain: 1 } }, o); },
+    coins(n: number, o: PlayOpts = {}) { playDef('coins', { run: coinCascade(n), meta: { pri: 4, max: 4, gain: 1, cab: true } }, o); },
     ambience(id, fade = 1.5) { ambWant = id; if (ctx.state === 'running') applyAmbience(fade); },
     get music() { return musicWrapped(); },
     setCalm(on: boolean) { setAudioCalm(on); },
+    setRetro(on: boolean) { retro = on; },
     voice,
     setListener(cam: THREE.Camera) {
       const e = cam.matrixWorld.elements;
@@ -579,7 +610,7 @@ const bankFor = (sr: number): NoiseBank => { let b = noiseCache.get(sr); if (!b)
 export const sfxNames = (): string[] => [...SFX_DEFS.keys()];
 
 /**
- * Render a built-in recipe offline (stereo, trim applied, no bus/master chain). Samples must already be loaded
+ * Render a built-in recipe offline (stereo, trim applied, the cabinet for CAB cues, no bus/master chain). Samples must already be loaded
  * (`audio.loadSamples(...)`) for layered sounds to include them. Used for loudness calibration.
  */
 export async function renderSfx(name: string, o: PlayOpts & { seconds?: number; sampleRate?: number } = {}): Promise<AudioBuffer> {
@@ -587,13 +618,14 @@ export async function renderSfx(name: string, o: PlayOpts & { seconds?: number; 
 }
 
 /** One layer of {@link renderMix}: a recipe started `at` seconds in; a `loop` layer runs its chunks for `loopFor` seconds. */
-export interface MixLayer extends PlayOpts { name: string; at?: number; loopFor?: number }
+export interface MixLayer extends PlayOpts { name: string; at?: number; loopFor?: number; /** Fade the layer out at this time (s), as a voice's stop() does. */ until?: number }
 /**
- * Render several recipes into one offline buffer, the way a win show stacks them (pitch, the recipe's jitter, trim). With
- * `volumes` the layers also pass through the bus gains, the master gain and the master compressor, so the result is what the
- * player hears at those settings. Used by scripts/qa/sfxLoud.mjs to measure the win ladder.
+ * Render several recipes into one offline buffer, the way a win show stacks them (pitch, the recipe's jitter, trim, the cabinet
+ * bus for CAB cues while `retro` is on, the per-cue spam guard). With `volumes` the layers also pass through the bus gains, the
+ * master gain and the master compressor, so the result is what the player hears at those settings. Used by scripts/qa/sfxLoud.mjs
+ * to measure the win ladder and render the previews.
  */
-export async function renderMix(layers: readonly MixLayer[], o: { seconds?: number; sampleRate?: number; volumes?: Record<Bus | 'master', number> } = {}): Promise<AudioBuffer> {
+export async function renderMix(layers: readonly MixLayer[], o: { seconds?: number; sampleRate?: number; volumes?: Record<Bus | 'master', number>; retro?: boolean } = {}): Promise<AudioBuffer> {
   const sr = o.sampleRate ?? 44100, off = new OfflineAudioContext(2, Math.ceil(sr * (o.seconds ?? 4)), sr);
   let dest: AudioNode = off.destination;
   const bus = {} as Record<Bus, AudioNode>;
@@ -605,7 +637,8 @@ export async function renderMix(layers: readonly MixLayer[], o: { seconds?: numb
     m.connect(comp); comp.connect(sat); sat.connect(off.destination); dest = m;
   }
   for (const b of BUSES) { const g = off.createGain(); g.gain.value = o.volumes ? taper(o.volumes[b]) : 1; g.connect(dest); bus[b] = g; }
-  for (const l of layers) {
+  const cab: Partial<Record<Bus, AudioNode>> = {}, alive = new Map<string, Array<{ out: GainNode; end: number }>>();
+  for (const l of [...layers].sort((a, b) => (a.at ?? 0) - (b.at ?? 0))) {
     const d = SFX_DEFS.get(l.name);
     if (!d) throw new Error(`audio: no recipe "${l.name}"`);
     const semis = (l.pitch ?? 0) + (d.meta.jitter ? rnd(-d.meta.jitter, d.meta.jitter) : 0);
@@ -613,10 +646,15 @@ export async function renderMix(layers: readonly MixLayer[], o: { seconds?: numb
     if (semis) { pitch = off.createConstantSource(); pitch.offset.value = semis * 100; pitch.start(); }
     const host: KitHost = { ctx: off, noise: bankFor(sr), pitch, sample: (u) => sampleStore.get(u) ?? null, track() {} };
     const out = off.createGain();
-    out.gain.value = clamp(l.vol ?? 1, 0, 2) * (d.meta.gain ?? 1); out.connect(bus[l.bus ?? d.meta.bus ?? 'sfx']);
+    const b = l.bus ?? d.meta.bus ?? 'sfx';
+    out.gain.value = clamp(l.vol ?? 1, 0, 2) * (d.meta.gain ?? 1); out.connect(d.meta.cab && (o.retro ?? retro) ? (cab[b] ??= cabinet(off, bus[b])) : bus[b]);
     const t0 = 0.005 + (l.at ?? 0), end = t0 + (l.loopFor ?? 0);
+    const same = (alive.get(l.name) ?? []).filter((x) => x.end > t0);
+    if (d.meta.poly && same.length >= d.meta.poly) same.shift()?.out.gain.setTargetAtTime(0, t0, 0.005);   // the engine's spam guard
     let t = t0;
     do t += Math.max(0.05, d.run(new Kit(host, out, t), l)); while (l.loop && t < end);
+    if (l.until !== undefined) out.gain.setTargetAtTime(0, 0.005 + l.until, 0.03);
+    same.push({ out, end: l.until !== undefined ? Math.min(t, 0.005 + l.until) : t }); alive.set(l.name, same);
   }
   return off.startRendering();
 }

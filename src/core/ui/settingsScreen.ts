@@ -192,6 +192,7 @@ function audioPage(c: Ctx): void {
   for (const k of ['ui', 'amb', 'voice'] as const) {
     slide(c, `vol.${k}`, t(`settings.vol.${k}`), { min: 0, max: 1, step: 0.05, value: S().vol[k], format: pct, apply: (v) => putVol(k, v) });
   }
+  flag(c, 'retroSfx', t('settings.retroSfx'), S().retroSfx, (v) => put('retroSfx', v), t('settings.retroSfx.tip'));
 }
 
 function accessPage(c: Ctx): void {

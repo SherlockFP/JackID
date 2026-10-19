@@ -554,10 +554,29 @@ function tallyPop(host: JuiceHost, amount: number, from?: THREE.Object3D): void 
   });
 }
 
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// Scoring pops (one per paying line / tumble / slot / card, Balatro-style)
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+/** Major-scale steps the scoring pops climb from C6 (the recipes sit in the score's key, sfx.ts). */
+const POP_STEPS = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24];
+/** Semitones of scoring element `i` (0-based): one major-scale step per element, held at the top. */
+export const popPitch = (i: number): number => POP_STEPS[clamp(Math.floor(i), 0, POP_STEPS.length - 1)];
+
+/**
+ * One scoring pop for element `i` of `n` (a paying line, a tumble, a paying slot, a card of the made hand): call it as the element
+ * lights. Each pop is a step higher; the last one also lands on the cha-ching. `mult` plays the multiplier's ding stack instead.
+ */
+export function scorePop(host: JuiceHost, i: number, n: number, o: { mult?: boolean; vol?: number } = {}): void {
+  if (host.disposed) return;
+  const pos = anchorOf(host, 'speaker'), vol = o.vol ?? 0.8;
+  host.ctx.audio.play(o.mult ? 'multDing' : 'scorePop', { pos, vol, pitch: popPitch(i) });
+  if (!o.mult && i >= n - 1) host.ctx.audio.play('chaChing', { pos, vol });
+}
+
 /** Seconds a jackpot's count-up runs from the impact (the jackpot cue's rollup counts as long: sfx.ts WIN_COUNT.jackpot; Big One counts its jackpot over it). */
 export const JACKPOT_COUNT_S = 6;
 
-/** Count-up sound options: `tick` rolls a tick under the count, `end` lands it (default 'countDing'; null = silent). */
+/** Count-up sound options: `tick` rolls a tick under the count, `end` lands it (with a tick the default is 'countDing'; null = silent). */
 export interface CountSound { tick?: boolean; end?: SfxName | null }
 
 /** Tick times (0..1 of the count): spaced (i / n)^0.7, so the gaps shrink and the roll accelerates into the landing. */
@@ -568,10 +587,12 @@ export function countTicks(n: number): number[] {
 /**
  * Eased integer count-up on the sim clock (LED windows, "WIN 1,250"). Resolves at the end. With `snd.tick` a rolling tick runs
  * under it (about 16 a second, never more ticks than units counted), climbing an octave and speeding up, then the count lands on
- * `snd.end`. Counts shorter than 0.25 s (fast mode) stay silent.
+ * `snd.end` (an `end` alone lands a count with no tick, e.g. under a win cue that rolls its own). Counts shorter than 0.25 s (fast mode)
+ * stay silent.
  */
 export function countUp(ctx: MachineContext, from: number, to: number, dur: number, onValue: (v: number) => void, snd: CountSound = {}): Promise<void> {
   const loud = !!snd.tick && dur >= 0.25;
+  const landing = dur >= 0.25 ? (snd.end !== undefined ? snd.end : loud ? 'countDing' : null) : null;
   const marks = loud ? countTicks(Math.min(40, Math.round(dur * 16), Math.abs(Math.round(to - from)))) : [];
   let next = 0;
   // the ticks run on linear time: the eased value below slows down, the roll does not
@@ -581,7 +602,7 @@ export function countUp(ctx: MachineContext, from: number, to: number, dur: numb
     });
   }
   return ctx.tweens.run(dur, (k) => onValue(Math.round(lerp(from, to, k))), { ease: 'outCubic' }).promise.then(() => {
-    if (loud && snd.end !== null) ctx.audio.play(snd.end ?? 'countDing', { vol: 0.8 });
+    if (landing) ctx.audio.play(landing, { vol: 0.8 });
   });
 }
 

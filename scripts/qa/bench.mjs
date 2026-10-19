@@ -6,6 +6,7 @@
  *   node scripts/qa/bench.mjs --machine bigone --script "Space:150,wait:3000" --rounds 3 --shots <dir>
  *   node scripts/qa/bench.mjs --world --seed 7 --js "<expr>" --probe "<expr>" --frames "300,1200" --shots <dir>
  *   node scripts/qa/bench.mjs --run "goto:coinflip;play:Space:150x3;state" --seed 1 --shots <dir>   (debt-run driver)
+ *   node scripts/qa/bench.mjs --tour --size 1920x1080 --query lang=tr --out <dir>   (the whole-game tour, scripts/qa/tour.mjs)
  *
  * The boot veil is passed with a real mouse click (main.ts enters on a click, or on Enter/Space once the veil has focus).
  * By default the page runs on the fixed clock (`?fixedstep=1&clock=manual`): the harness steps it, so waits, budgets and
@@ -18,8 +19,10 @@ import { spawn, spawnSync } from 'node:child_process';
 import { connect as netConnect, createServer } from 'node:net';
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { inflateSync } from 'node:zlib';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { runTour } from './tour.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PAWN_SLOTS_MAX = 6;   // charm_vendor SLOTS_MAX: 4 shelves plus up to 2 Second Window extras
@@ -415,7 +418,7 @@ async function pressKey(cdp, code, ms) {
   await sendKey(cdp, 'keyUp', params);
 }
 
-/** A real left click at (x, y) in CSS pixels (the 1280x720 viewport). */
+/** A real left click at (x, y) in CSS pixels of the viewport. */
 async function clickAt(cdp, x, y) {
   await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
   await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
@@ -424,6 +427,58 @@ async function clickAt(cdp, x, y) {
 
 /** Resolves on the next rendered frame, so a screenshot taken after it shows the frame the game just drew. */
 const nextFrame = (cdp) => evaluate(cdp, 'new Promise((r) => requestAnimationFrame(() => r(true)))');
+
+/**
+ * Mean brightness (0-255) of a PNG screenshot (8-bit RGB or RGBA, not interlaced: what Chrome writes), sampled on every 4th row
+ * and pixel. A black frame reads about 0. Returns { w, h, mean }.
+ */
+export function pngStats(buf) {
+  let p = 8, w = 0, h = 0, bpp = 0;
+  const parts = [];
+  while (p + 8 <= buf.length) {
+    const len = buf.readUInt32BE(p), type = buf.toString('latin1', p + 4, p + 8);
+    if (type === 'IHDR') {
+      w = buf.readUInt32BE(p + 8); h = buf.readUInt32BE(p + 12);
+      const depth = buf[p + 16], ct = buf[p + 17];
+      if (depth !== 8 || (ct !== 2 && ct !== 6) || buf[p + 20] !== 0) throw new Error(`png: unsupported (depth ${depth}, colour type ${ct})`);
+      bpp = ct === 6 ? 4 : 3;
+    } else if (type === 'IDAT') parts.push(buf.subarray(p + 8, p + 8 + len));
+    else if (type === 'IEND') break;
+    p += 12 + len;
+  }
+  const raw = inflateSync(Buffer.concat(parts));
+  const stride = w * bpp;
+  let prev = Buffer.alloc(stride), cur = Buffer.alloc(stride), sum = 0, n = 0;
+  for (let y = 0; y < h; y++) {
+    const o = y * (stride + 1), f = raw[o];
+    raw.copy(cur, 0, o + 1, o + 1 + stride);
+    for (let x = 0; x < stride; x++) {
+      const a = x >= bpp ? cur[x - bpp] : 0, b = prev[x], c = x >= bpp ? prev[x - bpp] : 0;
+      let v = cur[x];
+      if (f === 1) v += a;
+      else if (f === 2) v += b;
+      else if (f === 3) v += (a + b) >> 1;
+      else if (f === 4) { const pa = Math.abs(b - c), pb = Math.abs(a - c), pc = Math.abs(a + b - 2 * c); v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c; }
+      cur[x] = v & 255;
+    }
+    if (y % 4 === 0) for (let x = 0; x < stride; x += bpp * 4) { sum += cur[x] + cur[x + 1] + cur[x + 2]; n += 3; }
+    [prev, cur] = [cur, prev];
+  }
+  return { w, h, mean: n ? sum / n : 0 };
+}
+
+/** Page JS: the renderer drew something in its last frame (`window.jackid.info().calls`). 0 while a scene is still loading: a shot then is black. */
+const DRAWN_JS = '(window.jackid.info?.().calls ?? 0) > 0';
+/** Waits (real time; the manual clock is stepped, it draws only then) until the page has drawn a frame. False when `maxMs` pass with nothing drawn. */
+async function waitDrawn(cdp, maxMs = 8000) {
+  const t0 = new Date().getTime();
+  while (!(await evaluate(cdp, DRAWN_JS))) {
+    if (new Date().getTime() - t0 > maxMs) return false;
+    if (clock.step) await stepFrames(cdp, 100);
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return true;
+}
 
 /** Evaluates `expr` (may use `await`) in the page; the value comes back as JSON (null when undefined). */
 async function evalJson(cdp, expr) {
@@ -509,7 +564,7 @@ const framesOf = (cdp) => evaluate(cdp, clock.step ? 'window.__qaClock.frames()'
  * takes the lift down through the front door station, once the objective is up (the door is ignored until then, so it is sent
  * again). The ride ends with the run's Watch 1 opening (`run.prologueOn()` false). A resumed run has no prologue: nothing happens.
  */
-async function skipPrologue(cdp, shoot = null) {
+async function skipPrologue(cdp, shoot = null, marks = null) {   // marks: the tour's shots (scene, door, street), each taken once
   let t0 = nowMs();
   const on = () => evaluate(cdp, 'window.jackid.app.run?.prologueOn?.() === true');
   // The scene only starts once the world is built (evening.ts startPrologue waits on world.ready), so a first look can see
@@ -524,9 +579,13 @@ async function skipPrologue(cdp, shoot = null) {
   while (await on()) {
     if (nowMs() - t0 > 60_000) throw new Error('prologue: the lift never took the bot down (still on after 60 s)');
     const id = await evaluate(cdp, 'window.jackid.app.cutscene.playing ?? null');
-    if (id === 'prologue') { await pressKey(cdp, 'Space', 900); holds++; }
-    else {
+    if (id === 'prologue') {
+      if (marks?.scene && !marks.sceneDone) { marks.sceneDone = true; await sleep(3000); await marks.scene(); }
+      await pressKey(cdp, 'Space', 900); holds++;
+    } else {
+      if (marks?.door && !marks.doorDone) { marks.doorDone = true; await sleep(1200); await marks.door(); }
       await evaluate(cdp, homeEmitJs('door')); doors++;
+      if (marks?.street && !marks.streetDone && (await evaluate(cdp, WALK_GOAL_JS)) === 'casino') { marks.streetDone = true; await marks.street(); }
       await walkOut(cdp);   // THE WALK OUT: the door opens; the bot steps into the casino's street door, where the lift waits
       // THE LIFT RIDE (wave 72): one frame shot 0.9 s after the first call (fade, ding, the teleport comes at T.teleport), once per run
       if (shoot && !shot) {
@@ -577,6 +636,8 @@ const BET_TAP_JS = `(() => {
   return true;
 })()`;
 /** Page JS: the run's last refusal (`run.lastRefusal()`), or null. It is not cleared by every step (see noteRefusal). */
+/** Page JS: the bank balance. */
+const BANK_JS = 'window.jackid.app.run.bank().balance';
 const REFUSAL_JS = '(window.jackid.app.run.lastRefusal?.() ?? null)';
 
 // ── THE EVENING (wave 69): the lift, the apartment's stations and the phone ─────────────────────────────────────────────────────
@@ -651,17 +712,18 @@ const WALK_GOAL_JS = `import('/src/world/street/index.ts').then((m) => m.walkGoa
  * THE WALK HOME by teleport: to your door from the hall (the key turns, the Evening begins), then inside, clear of the leaf (it
  * shuts), then the usual spot inside the door. `shots` (name, anchor, offset, yaw) are taken on the way, before the door.
  */
-async function walkHome(ctx, shots = []) {
+async function walkHome(ctx, shots = [], shoot = null, doorName = 'walk-your-door.png') {
+  const snap = shoot ?? ((n) => ctx.shoot(n));
   const out = { shots: [] };
   if ((await evaluate(ctx.cdp, WALK_GOAL_JS)) !== 'home') { out.walked = false; return out; }
   for (const [name, anchor, off, yaw] of shots) {
     await evalJson(ctx.cdp, anchorJs(anchor, off, yaw));
     await sleep(400);
-    if (ctx.shotsDir) out.shots.push(await ctx.shoot(name));
+    if (ctx.shotsDir) out.shots.push(await snap(name));
   }
   await evalJson(ctx.cdp, anchorJs('street.flatDoor'));
   await sleep(200);
-  if (ctx.shotsDir) out.shots.push(await ctx.shoot('walk-your-door.png'));
+  if (ctx.shotsDir) out.shots.push(await snap(doorName));
   await sleep(1000);
   await evalJson(ctx.cdp, anchorJs('home.spawn', [0, 0, -0.8]));
   await sleep(1000);
@@ -686,6 +748,21 @@ async function waitHome(ctx, test, ms) {
     h = await evalJson(ctx.cdp, HOME_STAGE_JS);
   }
   return h;
+}
+/**
+ * Clears what a Dawn leaves on the screen: the receipt's DEVAM button (`.pt-go`, a real click on it) and the card panel. Returns true when
+ * no Dawn panel is up any more. An offer that is still open (a card must be kept) is left alone and returns false.
+ */
+async function settlePanels(ctx, ms = 5000) {
+  const t0 = nowMs();
+  while (nowMs() - t0 < ms) {
+    const go = await evalJson(ctx.cdp, `(() => { const b = document.querySelector('.pt-go'); if (!b) return null; const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+    if (go) { await clickAt(ctx.cdp, go.x, go.y); await sleep(500); continue; }
+    if (!(await evaluate(ctx.cdp, `Boolean(document.querySelector('.pt-root'))`))) return true;
+    if (await evaluate(ctx.cdp, `Boolean(document.querySelector('.pt-card:not(.pt-picked)'))`)) return false;
+    await sleep(200);
+  }
+  return false;
 }
 /** Page JS: the stake attempts recorded from index n on (see BET_TAP_JS). */
 const betsFrom = (n) => `(window.jackid.app.run?.__qaBets ?? []).slice(${n})`;
@@ -1061,6 +1138,7 @@ const BOT_RECIPE_GENERIC = 'Space:120,wait:2000,KeyQ:120,wait:500';
 /** Machine kinds the bot may bet on besides the spotlight (the rest of the floor is not played: tables, the Pawn, the phone). */
 const BOT_CATEGORIES = new Set(['slot', 'lottery']);
 const BOT_MIN_STAKE = 'KeyZ:60,wait:120';
+const PRACTICE_MAX = 2;   // coach.ts PRACTICE_ROUNDS: free plays per machine type per profile
 const TIP_KEY = 'Digit0';   // the neutral press that closes a first-sit tip (any key does; not a stake preset)
 const BOLD_MIN_MULT = 8;    // BOLD (Digit8, ~15 % of the pocket) on the +EV spots when the pocket holds at least this many minimum bets
 const BIG_MIN_MULT = 20;    // BIG (Digit9, ~30 % of the pocket) only from this many minimum bets up
@@ -1306,6 +1384,8 @@ async function gotoMachine(ctx, machine, rec) {
   if (sel.hot) rec.lamp = 'hot';
   // The seat is granted before the camera glides in; the keys of a seated machine only count once the input mode is 'machine'.
   await waitFor(async () => (await evaluate(cdp, 'window.jackid.app.input?.mode')) === 'machine', 2500, 'machine input').catch(() => { rec.inputMode = 'not machine'; });
+  // ... and the machine is idle (a seat that is still settling drops the first press)
+  await waitFor(async () => (await evaluate(cdp, instJs(tp.instance, '(m.busy !== true)'))) === true, 4000, 'an idle machine').catch(() => { rec.seatBusy = true; });
 }
 
 /** Seats the player at `machine` (the Pawn Window's steps), unless already seated there. */
@@ -1599,6 +1679,7 @@ async function autoNight(ctx, rec, stopAt = null) {
     if (st.over) { end = 'run over'; break; }
     if (st.topside) { end = 'topside'; break; }
     if (st.night > n0) { end = 'night paid'; break; }   // the rollover past the Night this call plays (n0)
+    if (await ctx.tourHooks?.onState?.(st)) continue;   // the tour's checkpoints: a hook that acted has changed the state, read it again
     if (st.homeStage) {
       // THE EVENING: the lift is a ride; at home the bot talks to the spouse once (the Harmony 4+ blessing) and goes to bed. The Night
       // rolls over when the sleep ends. The doom (a missed quota) is waited out: the run ends by itself.
@@ -1775,6 +1856,7 @@ async function autoNight(ctx, rec, stopAt = null) {
       }
       // the bets are in: bank the Watch's winnings (deposit, once per Watch), then print the Watch and ring the Bell
       if (!bot.banked.has(key)) { bot.banked.add(key); await depositFor(); continue; }
+      await ctx.tourHooks?.beforeBell?.(st);
       await logWatchOnce(key);
       if (st.seated != null) await exec(ctx, auto({ kind: 'stand', text: 'stand' }));
       const r = await exec(ctx, auto({ kind: 'bell', text: 'bell' }));
@@ -1904,6 +1986,7 @@ async function runKind(ctx, s, rec) {
       rec.index = card?.index ?? null;
       rec.id = card?.id ?? null;
       rec.ok = card ? (await evalJson(cdp, pickNightCardJs(card.id))) === true : false;
+      if (rec.ok) rec.panels = await settlePanels(ctx);   // the card panel closes; a receipt's DEVAM is clicked
       if (!rec.ok) {
         rec.reason = 'refused (no Night Card offer open, or the card is not in it)';
         noteRefusal(rec, before, await evaluate(cdp, REFUSAL_JS));
@@ -1927,7 +2010,15 @@ async function runKind(ctx, s, rec) {
       const mode = await evaluate(cdp, 'window.jackid.app.input?.mode');
       if (mode !== 'machine') { rec.ok = false; rec.reason = `not at the machine for input (input mode "${mode}"); no keys sent`; return; }
       const n0 = await evaluate(cdp, BET_COUNT_JS);
-      await botRound(ctx, s, rec);
+      // The first PRACTICE_ROUNDS plays of a machine type are free (coach.ts: no run.bet, no pull). A fresh profile meets them on
+      // every machine, so play on until one counts; without this each of those bets read as "no pull spent".
+      rec.practice = 0;
+      for (let i = 0; ; i++) {
+        const free = (await evaluate(cdp, instJs(s.instance, '(m._coach?.practice === true)'))) === true;
+        await botRound(ctx, s, rec);
+        if (!free || i >= PRACTICE_MAX) break;
+        rec.practice = i + 1;
+      }
       rec.bets = await evalJson(cdp, betsFrom(n0));
       const after = (await readState(ctx)).pulls;
       rec.machine = s.machine;
@@ -1936,16 +2027,25 @@ async function runKind(ctx, s, rec) {
       if (!rec.ok) rec.reason = 'no pull spent (refused, or the stake or pocket was short)';
       return;
     }
-    case 'stand':
+    case 'stand': {
       await evaluate(cdp, '(window.jackid.app.world.standUp(), true)');
-      await seatedIs(ctx, false, 4000).catch(() => { rec.ok = false; rec.reason = 'still seated (the round may be settling)'; });
+      let up = await seatedIs(ctx, false, 3000).then(() => true, () => false);
+      if (!up) {                                        // a busy machine defers the stand-up; the real key asks again once it is idle
+        await pressKey(cdp, 'KeyE', DEFAULT_HOLD_MS);
+        up = await seatedIs(ctx, false, 12_000).then(() => true, () => false);
+      }
+      if (!up) { rec.ok = false; rec.reason = 'still seated after 15 s (a round or a card holds the seat)'; }
       return;
+    }
     case 'deposit': {
       rec.amount = s.amount;
       const before = await evaluate(cdp, REFUSAL_JS);
-      rec.ok = (await evaluate(cdp, `window.jackid.app.run.deposit(${s.amount}) === true`)) === true;
+      const bank0 = await evaluate(cdp, BANK_JS);
+      const taken = (await evaluate(cdp, `window.jackid.app.run.deposit(${s.amount}) === true`)) === true;
+      rec.bank = [bank0, await evaluate(cdp, BANK_JS)];
+      rec.ok = taken && rec.bank[1] > rec.bank[0];       // "true" with an unchanged bank is not a deposit
       if (!rec.ok) {
-        rec.reason = 'refused (pocket floor, quota room, or not a quota Watch)';
+        rec.reason = taken ? 'accepted, but the bank did not grow' : 'refused (pocket floor, quota room, or not a quota Watch)';
         noteRefusal(rec, before, await evaluate(cdp, REFUSAL_JS));
       }
       return;
@@ -1977,10 +2077,25 @@ async function runKind(ctx, s, rec) {
       // waits for the Evening so the next step finds the player at the front door. `home:stay` is the same, and a no-op when the
       // player is already in the Evening: either way it stops there, without sleeping, so a tester can drive the home by hand.
       const before = await evaluate(cdp, REFUSAL_JS);
-      const h0 = await evalJson(cdp, HOME_STAGE_JS);
+      let h0 = await evalJson(cdp, HOME_STAGE_JS);
       rec.night = h0?.night ?? null;
+      let played = false;
+      if (h0 && h0.stage === null) {
+        // The Night is not paid yet (before Dawn): play it on, to the paid Evening, instead of refusing the lift. The Dawn offer and its
+        // receipt are cleared on the way, so nothing covers the walk.
+        const st0 = await readState(ctx);
+        if (st0.nightCardOffer) await exec(ctx, { kind: 'nightcard', best: true, text: 'nightcard:best', auto: true });   // the lever waits on the offer
+        if (!st0.nightDone && !st0.over && !st0.topside) {
+          const sub = {};
+          await autoNight(ctx, sub, 'evening');
+          rec.played = sub.end;
+          played = true;
+        }
+        await settlePanels(ctx);
+        h0 = await evalJson(ctx.cdp, HOME_STAGE_JS);
+      }
       if (s.kind === 'home:stay' && h0?.stage === 'evening') { rec.ok = true; rec.stage = 'evening'; rec.note = 'already in the Evening'; return; }
-      const onStreet = s.kind === 'walk:home' && h0?.stage === 'evening';   // the lever already rode up (auto:night:evening): walk from here
+      const onStreet = h0?.stage === 'evening' && (s.kind === 'walk:home' || played);   // the lever already rode up (auto:night:evening): walk from here
       if (!onStreet && (!h0 || h0.stage !== null)) { rec.ok = false; rec.reason = `not on the casino floor (home stage "${h0?.stage ?? 'none'}")`; return; }
       rec.ok = onStreet || (await evaluate(cdp, `(() => { const r = window.jackid.app.run; return r.homeLiftReady?.() === true && r.openFloor() === true; })()`)) === true;
       if (!rec.ok) {
@@ -2021,7 +2136,7 @@ async function runKind(ctx, s, rec) {
       if (!rec.ok) { rec.reason = `the bed did not open the next Night (stage ${rec.stage}, Night ${rec.nightAfter})`; return; }
       // THE WALK OUT: the morning wakes in the flat; the bot goes straight to the casino's street door and rides the lift down
       await waitFadeClear(ctx);
-      if (await walkOut(cdp)) { rec.walkedOut = true; await sleep(3200); }
+      if (await walkOut(cdp)) { rec.walkedOut = true; await ctx.tourHooks?.afterWalkOut?.(); await sleep(3200); }
       // The arrival: the player is teleported back under black, and the screen fades in. The next step starts after it has cleared.
       rec.fadeClear = await waitFadeClear(ctx);
       if (!rec.fadeClear) { rec.ok = false; rec.reason = 'the arrival fade did not clear (the screen is still dark)'; }
@@ -2386,6 +2501,13 @@ function nightLine(n) {
     + `charms ${n.charms.join(', ') || 'none'}, stakes ${stakes}`;
 }
 
+/** What tour.mjs needs from this file (one CDP session, one clock, one set of step handlers). */
+const keyParams = (code) => { const k = keyInfo(code); return { code: k.code, key: k.key, windowsVirtualKeyCode: k.vk, nativeVirtualKeyCode: k.vk }; };
+const TOUR_HELPERS = {
+  evaluate, evalJson, sleep, pressKey, sendKey, keyParams, clickAt, nowMs, log, exec, parseRunSteps, stepFrames, waitRoundIdle,
+  autoNight, walkHome, settlePanels, skipPrologue, skipIntro, anchorJs, BET_TAP_JS, BANK_JS, BIGONE_STATE_JS, FADE_CLEAR_JS,
+};
+
 /**
  * Runs `script` (see parseScript) `rounds` times against machine `machine` in a fresh bench room. Each round is one
  * pass of the script, followed by a screenshot when `shots` is set.
@@ -2398,18 +2520,23 @@ export async function runBench(opts = {}) {
   const runSteps = parsedRun ? parsedRun.filter((s) => !START_KINDS.has(s.kind)) : null;
   const realTime = Boolean(opts.realTime);                  // --real-time: wall-clock page (no fixed step, no manual clock)
   const world = Boolean(opts.world) || runSteps !== null;   // a real debt run (`/?skipmenu=1`), not a bench room
-  const menu = Boolean(opts.menu);                          // `/`: the main menu; the script keys drive the die
+  const tour = Boolean(opts.tour);                          // --tour: the menu, then a fresh run, one named shot per checkpoint (tour.mjs)
+  if (tour && (world || opts.menu || opts.machine !== undefined || opts.sit || opts.force !== undefined || opts.walkView || opts.frames)) {
+    throw new Error('--tour drives a whole run on its own: drop --machine, --world, --menu, --run, --sit, --force, --walk-view, --frames');
+  }
+  const menu = Boolean(opts.menu) || tour;                  // `/`: the main menu; the script keys drive the die (the tour starts there)
   if (menu && (world || opts.sit || opts.force !== undefined || opts.machine !== undefined)) {
     throw new Error('--menu boots the main menu on its own: drop --machine, --world, --run, --sit, --force');
   }
-  const machine = String(opts.machine ?? (world ? 'run' : menu ? 'menu' : ''));
+  const machine = String(opts.machine ?? (world ? 'run' : tour ? 'tour' : menu ? 'menu' : ''));
   if (!/^[a-z][a-z0-9_]*$/.test(machine)) throw new Error('machine id required, e.g. "bigone" (or --world)');
   if (world && opts.sit) throw new Error('--sit needs a bench room (drop --world / --run)');
   if (runSteps && (opts.walkView || opts.frames || opts.force !== undefined)) throw new Error('--run takes its own steps: drop --walk-view, --frames, --force');
   const steps = parseScript(opts.script ?? (opts.walkView ? 'KeyW:400,wait:600' : 'wait:1000'));
   const rounds = Math.max(1, Math.floor(Number(opts.rounds ?? 1)));
   const seed = Math.floor(Number(opts.seed ?? 1));
-  const shotsDir = opts.shots ? resolve(opts.shots) : null;
+  const shotsDir = opts.shots ?? opts.out ? resolve(opts.shots ?? opts.out) : null;
+  if (tour && !shotsDir) throw new Error('--tour writes its shots and tour.json: pass --out <dir>');
   const frames = parseFrames(opts.frames);
   if (frames.length && !shotsDir) throw new Error('--frames writes screenshots: pass --shots <dir>');
   const probe = opts.probe ? String(opts.probe) : null;   // JS, read after every round (recorded as roundLog[].probe)
@@ -2432,7 +2559,7 @@ export async function runBench(opts = {}) {
 
   const res = {
     machine, seed, rounds: 0, roundLog: [], consoleErrors: 0, errors: [], shots: [], state: '', framesPerSec: 0,
-    mode: runSteps ? 'run' : sit ? 'sit' : walkView ? 'walk-view' : 'walk', seated: false, playerMode: '', walkShot: null,
+    mode: tour ? 'tour' : runSteps ? 'run' : sit ? 'sit' : walkView ? 'walk-view' : 'walk', seated: false, playerMode: '', walkShot: null,
     force: null, run: null, reloads: 0, viteEvents: [],          // page loads after the first one (the veil comes back): the run is then invalid
     cleanup: { vite: 'not started', chrome: 'not started', profile: 'not created', ports: 'n/a' },
   };
@@ -2505,6 +2632,11 @@ export async function runBench(opts = {}) {
     // The fixed-step manual clock (default): the page moves only when this harness steps it, so waits and budgets are sim time.
     const fixed = realTime ? '' : '&fixedstep=1&clock=manual';
     const url = menu ? `/?seed=${seed}${extra}${fixed}` : world ? `/?skipmenu=1&seed=${seed}${extra}${fixed}` : `/?bench=${machine}&seed=${seed}${extra}${fixed}`;
+    // Counts the key events the page takes (capture phase on window), for sendKey's wait. Installed before any page script, so it runs
+    // ahead of the game's own capture handlers: a handler that stops the event (a panel, a cutscene's skip hold) must not hide it.
+    await cdp.send('Page.addScriptToEvaluateOnNewDocument', { source: "window.__qaKeys = { down: 0, up: 0 }; "
+      + "window.addEventListener('keydown', () => { window.__qaKeys.down++; }, true); "
+      + "window.addEventListener('keyup', () => { window.__qaKeys.up++; }, true);" });
     await cdp.send('Page.navigate', { url: `http://127.0.0.1:${vport}${url}` });
     await waitFor(() => evaluate(cdp, 'typeof window.jackid === "object"'), READY_TIMEOUT_MS, 'window.jackid');
     // --run start config (kit / stake / daily): wrapped before the veil is entered, so the run starts with it.
@@ -2512,10 +2644,6 @@ export async function runBench(opts = {}) {
     if (startRec && !startRec.ok) throw new Error(`--run start config: ${startRec.error}`);
     if (startRec) log(`start config: kit ${startRec.kit}, stake ${startRec.stake}${startRec.daily ? ' (daily)' : ''}`);
     await evaluate(cdp, 'window.__qaFrames = 0; (function f() { window.__qaFrames++; requestAnimationFrame(f); })(); true');
-    // Counts the key events the page takes (capture phase: before any game handler), for sendKey's wait.
-    await evaluate(cdp, 'window.__qaKeys = { down: 0, up: 0 }; '
-      + "window.addEventListener('keydown', () => { window.__qaKeys.down++; }, true); "
-      + "window.addEventListener('keyup', () => { window.__qaKeys.up++; }, true); true");
     const stateOf = () => evaluate(cdp, 'String((() => { const s = window.jackid.state(); return typeof s === "string" ? s : (s && (s.name ?? s.id ?? s.kind)) ?? JSON.stringify(s); })())');
     // The veil appears after boot and takes Enter; keep pressing it until the room has started.
     const enterVeil = async () => {
@@ -2530,7 +2658,7 @@ export async function runBench(opts = {}) {
       if (!menu) return enterVeil();
       if (!(await veilUp())) return;
       for (const type of ['mousePressed', 'mouseReleased']) {
-        await cdp.send('Input.dispatchMouseEvent', { type, x: 640, y: 360, button: 'left', clickCount: 1 });
+        await cdp.send('Input.dispatchMouseEvent', { type, x: vw / 2, y: vh / 2, button: 'left', clickCount: 1 });
       }
     };
     await waitFor(async () => { await pressVeil(); await sleep(700); return (await stateOf()).includes(readyState) && (!menu || !(await veilUp())); }, READY_TIMEOUT_MS, `${readyState} state`)
@@ -2544,6 +2672,8 @@ export async function runBench(opts = {}) {
       clock.step = (ms) => stepFrames(cdp, ms);
       clock.frames = 0;
     }
+    // The world builds in real time while the manual clock stands still, so the first frames can draw nothing (a black shot).
+    if (!(await waitDrawn(cdp, 90_000))) throw new Error('nothing was drawn within 90 s (the scene did not build)');
     await sleep(1500);                                   // room settles: camera, first frames
     const f0 = await framesOf(cdp);
     await sleep(1000);
@@ -2554,9 +2684,14 @@ export async function runBench(opts = {}) {
     log(`in game (${res.state}), ${res.framesPerSec} fps`);
     const shotNames = new Set();   // names written in this run: a reused name becomes -2, -3 (uniqueShotPath), never overwritten
     const shoot = async (name) => {
+      await waitDrawn(cdp);                              // a scene that is still loading shoots black
       const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
       const path = uniqueShotPath(shotsDir, name, shotNames);
-      writeFileSync(path, Buffer.from(data, 'base64'));
+      const png = Buffer.from(data, 'base64');
+      writeFileSync(path, png);
+      let mean = null;
+      try { mean = Math.round(pngStats(png).mean * 10) / 10; } catch { /* an odd PNG: no brightness */ }
+      shoot.last = { path, mean };                       // mean brightness 0-255: a black frame reads under 1
       res.shots.push(path);
       return path;
     };
@@ -2610,18 +2745,28 @@ export async function runBench(opts = {}) {
       await sleep(400);
     }
 
+    // 3d2) --tour: the menu shots, a fresh run, the checkpoints; tour.json is written by the tour
+    if (tour) {
+      res.run = { steps: [], states: [], shot: null, failed: 0, aborted: null, start: null };
+      const ctx = { cdp, res, run: res.run, shoot, shotsDir, looks: 0, seed };
+      res.tour = await runTour(ctx, TOUR_HELPERS);
+      res.run.failed = res.run.steps.filter((r) => r.ok === false && !r.auto).length;
+      res.run.nights = nightSummaries(ctx);
+    }
+
     // 3e) --run: the debt-run steps (no rounds). The final screenshot is run-final.png.
     if (runSteps) {
       const ctx = { cdp, res, run: res.run, shoot, shotsDir, looks: 0, seed };
       await driveRun(ctx, runSteps);
       res.run.nights = nightSummaries(ctx);   // the per-Night summary: quota, paid, overshoot, card, events, charms, stakes
+      if (probe) res.run.probe = await evalJson(cdp, probe);   // --probe: read once after the steps
       for (const n of res.run.nights) log(nightLine(n));
       if (shotsDir) res.run.shot = await shoot('run-final.png');
     }
 
     // 4) Rounds: one pass of the script per round, then a screenshot. With --sit, the wallet and wagered are read
     //    before and after each pass.
-    for (let r = 1; r <= (runSteps ? 0 : rounds); r++) {
+    for (let r = 1; r <= (runSteps || tour ? 0 : rounds); r++) {
       const before = await framesOf(cdp);
       const m0 = sit ? await money() : null;
       const t0 = nowMs();
@@ -2699,16 +2844,16 @@ export async function runBench(opts = {}) {
 }
 
 // ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────
-const USAGE = 'usage: node scripts/qa/bench.mjs (--machine <id> | --world | --menu | --run "<steps>") [--script "Space:200,wait:1500,KeyX"] [--shots <dir>] '
+const USAGE = 'usage: node scripts/qa/bench.mjs (--machine <id> | --world | --menu | --run "<steps>" | --tour --out <dir>) [--script "Space:200,wait:1500,KeyX"] [--shots <dir>] '
   + '[--frames "300,1200"] [--probe "<js>"] [--js "<js>"] [--rounds <n>] [--seed <n>] [--sit [--seat <n>] [--force "<id>:<state>"]] [--walk-view]';
 
 function parseArgs(argv) {
   const o = {};
   const flags = {
     '--machine': 'machine', '--script': 'script', '--shots': 'shots', '--rounds': 'rounds', '--seed': 'seed', '--seat': 'seat',
-    '--settle': 'settle', '--frames': 'frames', '--probe': 'probe', '--js': 'js', '--force': 'force', '--run': 'run', '--query': 'query', '--size': 'size',
+    '--settle': 'settle', '--frames': 'frames', '--probe': 'probe', '--js': 'js', '--force': 'force', '--run': 'run', '--query': 'query', '--size': 'size', '--out': 'out',
   };
-  const switches = { '--sit': 'sit', '--walk-view': 'walkView', '--world': 'world', '--menu': 'menu', '--real-time': 'realTime' };
+  const switches = { '--sit': 'sit', '--walk-view': 'walkView', '--world': 'world', '--menu': 'menu', '--real-time': 'realTime', '--tour': 'tour' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') { o.help = true; continue; }
@@ -2728,7 +2873,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     let code = 0, out;
     try {
       const o = parseArgs(process.argv.slice(2));
-      if (o.help || (!o.machine && !o.world && !o.menu && o.run === undefined)) { process.stderr.write(USAGE + '\n'); process.exit(o.help ? 0 : 2); }
+      if (o.help || (!o.machine && !o.world && !o.menu && !o.tour && o.run === undefined)) { process.stderr.write(USAGE + '\n'); process.exit(o.help ? 0 : 2); }
       const result = await runBench(o);
       out = result;
       if (result.run?.aborted) code = 1;                 // steps that failed are in the JSON; a reload invalidates the run

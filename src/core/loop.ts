@@ -54,7 +54,7 @@ if (MANUAL_CLOCK) {
   // In manual mode the sim clock is the only clock the page reads (see the header). Before `app` exists it reads 0.
   performance.now = (): number => (app ? app.time.sim * 1000 : 0);
   // ...and the animation-frame callbacks (world build pump, tycoon 3D loop, seat HUD, harness probes) run in the stepped
-  // frames too, with the sim time as their timestamp. The browser's own frame clock never reaches game code.
+  // frames too, with the UI time (one FIXED_DT per frame, paused or not) as their timestamp. The browser's own frame clock never reaches game code.
   const queued = new Map<number, FrameRequestCallback>();
   let nextFrameId = 1;
   window.requestAnimationFrame = (cb: FrameRequestCallback): number => { const id = nextFrameId++; queued.set(id, cb); return id; };
@@ -63,7 +63,9 @@ if (MANUAL_CLOCK) {
     if (queued.size === 0) return;
     const batch = [...queued.values()];
     queued.clear();                                   // callbacks queued by these run in the next frame
-    const now = app ? app.time.sim * 1000 : 0;
+    // The UI clock, not the sim clock: the sim stands still under the pause card, and a callback that animates on its timestamp
+    // (the card's own 3D stage) would then never move, so the card would never show in a QA shot.
+    const now = app ? app.time.real * 1000 : 0;
     for (const cb of batch) {
       try { cb(now); } catch (e) { log.error('loop', 'animation frame callback failed', e); }
     }

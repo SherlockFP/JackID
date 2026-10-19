@@ -20,6 +20,7 @@ import { JUKEBOX } from './songs/jukebox';
 import { createInstrument } from './instruments';
 import { Stingers } from './stingers';
 import type { InstId, SongDef } from './model';
+import { STAKES_TO_I } from './stakes';
 
 const SR = 32000;
 const db = (x: number): number => 20 * Math.log10(Math.max(1e-9, x));
@@ -221,6 +222,59 @@ export async function renderStinger(id: string, seconds = 5): Promise<RenderStat
   const s = analyse(`stinger:${id}`, buf, 0.1, seconds, performance.now() - t0);
   st.dispose(); rig.dispose();
   return s;
+}
+
+/** One segment of a {@link renderPlan}: a song for `sec` seconds, crossfaded in over `fade`, stakes moving through `s`. */
+export interface PlanSeg { id: string; sec: number; /** Stakes keyframes, spread evenly over the segment (default [0]). */ s?: number[]; i?: number; d?: number; fade?: number }
+
+/**
+ * Render songs back to back as the conductor would cross them (each starts at the previous one's end, `fade` long), with
+ * the stakes moving through each segment's keyframes and lifting the intensity as the conductor does. Returns 16-bit
+ * stereo PCM (base64, no header) and its stats. Used by scripts/qa/musicRender.mjs for the high-stakes previews.
+ */
+export async function renderPlan(plan: PlanSeg[], seed = 12345): Promise<{ sr: number; b64: string; stats: RenderStats }> {
+  const t0 = performance.now();
+  const total = plan.reduce((n, p) => n + p.sec, 0);
+  const ctx = new OfflineAudioContext(2, Math.floor(SR * (total + 2.5)), SR);
+  const rig = new Rig(ctx, ctx.destination);
+  const segs: Array<{ arr: Arrangement; p: PlanSeg; song: SongDef; at: number }> = [];
+  let at = 0.05;
+  for (const p of plan) {
+    const song = find(p.id);
+    const arr = new Arrangement(rig, song, { seed, state: 'lounge' });
+    const fade = p.fade ?? 0.05;
+    arr.d = Math.max(p.d ?? 0, song.dFloor ?? 0);
+    const prev = segs[segs.length - 1];
+    if (prev) { prev.arr.stopGen(at); prev.arr.fadeOut(at, fade); } else rig.setLook(arr.d, song.fx, 0);
+    arr.start(at); arr.fadeIn(at, fade);
+    segs.push({ arr, p, song, at });
+    at += p.sec;
+  }
+  const sAt = (p: PlanSeg, u: number): number => {
+    const k = p.s ?? [0];
+    if (k.length < 2) return k[0] ?? 0;
+    const x = Math.min(1, Math.max(0, u)) * (k.length - 1), j = Math.min(k.length - 2, Math.floor(x));
+    return k[j] + (k[j + 1] - k[j]) * (x - j);
+  };
+  for (let t = 0; t < total + 1; t += 0.1) {
+    for (const { arr, p, song, at: a } of segs) {
+      if (t < a - 0.4 || t > a + p.sec + 4) continue;
+      arr.s = sAt(p, (t - a) / p.sec);
+      arr.i = Math.max(p.i ?? 0.3, song.iFloor ?? 0, arr.s * STAKES_TO_I);
+      arr.tempoMul = song.tempoFollowsIntensity ? 1 + 0.1 * arr.i : 1;
+      arr.pump(t, t + 0.16);
+    }
+  }
+  const buf = await ctx.startRendering();
+  const stats = analyse(plan.map((p) => p.id).join('>'), buf, 0, total, performance.now() - t0);
+  const l = buf.getChannelData(0), r = buf.getChannelData(1), n = buf.length, pcm = new Int16Array(n * 2);
+  for (let k = 0; k < n; k++) { pcm[2 * k] = Math.max(-1, Math.min(1, l[k])) * 32767; pcm[2 * k + 1] = Math.max(-1, Math.min(1, r[k])) * 32767; }
+  const bytes = new Uint8Array(pcm.buffer);
+  let bin = '';
+  for (let k = 0; k < bytes.length; k += 0x8000) bin += String.fromCharCode(...bytes.subarray(k, k + 0x8000));
+  for (const x of segs) x.arr.dispose();
+  rig.dispose();
+  return { sr: SR, b64: btoa(bin), stats };
 }
 
 /** Mono 16-bit WAV bytes of a render (base64), for listening outside the game. */

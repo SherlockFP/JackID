@@ -55,7 +55,8 @@ import { lordsHooks } from '@/machines/lordstable';
 import { hollowDoor } from '@/world/hollow';
 import { mountPantheonUi } from '@/game/pantheon.ui';
 import { inkDread } from '@/game/joker/joker';
-import { JOKER_ASK_KEY, JOKER_LIAR_KEY, lokiToast, mountJokerVoice } from '@/core/ui/manga/joker';
+import { JOKER_ASK_KEY, JOKER_HAND_KEY, JOKER_LIAR_KEY, lokiToast, mountJokerVoice } from '@/core/ui/manga/joker';
+import { mountJokerHand } from '@/core/ui/manga/jokerHand';
 import { mountScrounge } from '@/game/scrounge';
 import { mountFood } from '@/game/food';
 import { mountPhoneUi } from '@/game/home/phone.ui';
@@ -164,6 +165,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
 
   const player = createLocalPlayer(app.camera);
   app.player = player;
+  // LOKI'S HAND: the takeover on screen, the green hands, and the Ink symptoms (docs/JOKER.md §2.2, §4)
+  mounts.push(mountJokerHand({ ink: () => run.jokerInk(), hands: (o) => player.viewmodel.jokerHand(o) }));
   // Online runs spawn on the Mouth rows, one per seat (MP-only branch; single-player keeps the solo spawn).
   const spawn = params.online ? world.spawn('mouth', Math.max(0, app.net.selfId - 1)) : world.spawn('solo');
   player.teleport(new THREE.Vector3(spawn.pos[0], spawn.pos[1], spawn.pos[2]), spawn.yaw);
@@ -487,6 +490,10 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     if (marked !== atCrooked) { atCrooked = marked; run.jokerMoment(marked ? 'crooked' : null, here ?? ''); }
     if (app.input.pressed(JOKER_ASK_KEY as Action) && !run.jokerAsk()) lokiToast(t('joker.ui.quiet'), 2);
     if (app.input.pressed(JOKER_LIAR_KEY as Action)) run.jokerCall();
+    if (app.input.pressed(JOKER_HAND_KEY as Action)) {
+      const why = run.jokerTakeover();
+      if (why) lokiToast(t(why === 'cooldown' || why === 'sameMachine' ? `joker.ui.hand.${why}` : 'joker.ui.hand.no'), 2);
+    }
     if (app.input.pressed(KEEPSAKE_ACTION)) { const seat = world.seat; if (seat) run.keepsakeStake(seat.mid); }
     if (app.input.pressed(FLOOR_ACT_ACTION)) run.floorAct();
     const p = player.pos;

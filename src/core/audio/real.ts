@@ -272,8 +272,8 @@ export function installReal(defs: Map<string, SfxDef>, makeDef: (names: string |
   layer(['reelStop'], (k, o, t) => { play(k, GROUPS.clack, { vol: 0.15 * t, rate: semi((o.param ?? 0) * 7), dur: 0.25 }); return 0.3; });
   layer(['lever'], (k, _o, t) => {
     play(k, GROUPS.latch, { vol: 0.15 * t, dur: 0.25 });
-    play(k, GROUPS.lockClunk, { at: 0.16, vol: 0.25 * t, rate: 0.85, dur: 0.4 });
-    return 0.56;
+    play(k, GROUPS.lockClunk, { at: 0.12, vol: 0.25 * t, rate: 0.85, dur: 0.3 });   // on the synth's CHUNK (sfx.ts LEVER_CHUNK)
+    return 0.42;
   });
 
   // ── crowd cheers by win tier: param 0.4 big, 0.7 huge, 0.9 mega, 1 jackpot (winJingle) ──

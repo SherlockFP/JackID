@@ -31,7 +31,7 @@ import { fmtCoins } from '@/core/i18n';
 import { TAU } from '@/core/math';
 import type { Rng } from '@/core/rng';
 import { SeatHud, type HudControl, type HudNumber, type HudPay, type Txt } from '@/machines/_base/seatHud';
-import { flashPrefs } from '@/machines/_base/juice';
+import { flashPrefs, scorePop } from '@/machines/_base/juice';
 import { buildModel, type CascadeParts } from './model';
 import { CELL, CascadeView, orbColour } from './view';
 import {
@@ -360,7 +360,7 @@ export default class Cascade extends MachineBase<CascadeParts, Ev, State> {
         view.pop(Math.floor(first / ROWS), first % ROWS, `+${fmtCoins(coinsOf(h[2], v))}`, GOLD);
       }
       view.dirty = true;
-      this.sfx('chime', { vol: 0.8, pitch: Math.min(i * 2, 12) });
+      scorePop(this, i, r.steps.length);                     // each tumble pops a step higher, the last lands on the cha-ching
       if (stepH >= 20) this.sfx('coinShower', { vol: 0.5 });
       await this.w(T_FLASH);
       // burst
@@ -493,7 +493,7 @@ export default class Cascade extends MachineBase<CascadeParts, Ev, State> {
       const cell = view.cells[c];
       cell.hl = 2;
       view.dirty = true;
-      this.sfx('sparkle', { vol: 0.8, pitch: Math.min(n * 2, 14) });
+      scorePop(this, n, orbs.length, { mult: true });        // the multiplier's ding stack
       view.fly(Math.floor(c / ROWS), c % ROWS, `x${val}`, orbColour(val), flight * this.fac);
       void this.w(flight).then(() => {
         if (this.disposed) return;

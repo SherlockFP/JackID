@@ -2,6 +2,7 @@
  * ADA'S KITCHEN TABLE, the overlay: draws the flow (`flow.ts`) as a small readable panel, routes the keys 1/2/3, E and Esc,
  * and shows Ada's tell as an inner line. DOM only here; the clock is the caller's `update(dt)` (sim time).
  */
+import { bus } from '@/core/events';
 import { registerStrings, t } from '@/core/i18n';
 import { h } from '@/core/ui/widgets';
 import { innerLine } from '@/core/ui/manga/inner';
@@ -60,6 +61,8 @@ export function openKitchen(d: KitchenDeps): Kitchen {
   fin.addEventListener('click', () => flow.confirm());
 
   const render = (v: FlowView): void => {
+    // Ada's music box (music/songs/cues.ts) turns dark on match point
+    bus.emit('music:cue', { cue: 'duel:ada', on: v.phase !== 'end' && v.phase !== 'closed', final: Math.max(v.score.you, v.score.ada) >= v.goal - 1 });
     stk.textContent = t('promise.stake', { stake: t(`promise.stake.${v.stake}`) });
     score.textContent = t('promise.score', { a: v.score.you, b: v.score.ada });
     cracks.textContent = t('promise.cracks', { a: v.cracks.you, b: v.cracks.ada });
@@ -97,6 +100,7 @@ export function openKitchen(d: KitchenDeps): Kitchen {
   function cleanup(): void {
     if (gone) return;
     gone = true;
+    bus.emit('music:cue', { cue: 'duel:ada', on: false });
     window.removeEventListener('keydown', onKey, true);
     root.remove();
   }

@@ -102,7 +102,8 @@ import { WatchTithe, type TitheResult, type TitheSave, type TitheView } from './
 import checkpointStrings from './checkpoints.strings';
 import { Spotlight, isSpotlightEligible, spotlightStartLine, type SpotlightSave, type SpotlightView } from './spotlight';
 import { WatchEvents, type WatchEventSave } from './watchEvents';
-import { Joker, type JokerEvent, shownFrame, grinFrame } from './joker/joker';
+import { INK_HAND, Joker, type AskWhy, type JokerEvent, shownFrame, grinFrame } from './joker/joker';
+import { takeoverPayout } from './joker/takeover';
 import type { WhisperCtx } from './joker/whispers';
 import { HABIT_AFTER, sheetFromOutcome, sheetFromTells, type CallResult, type CrookedTell } from './events/crookedTable';
 import { Bonds, bondOfRival, type BondChange, type BondEvent, type BondsSave } from './bonds';
@@ -572,6 +573,8 @@ export interface DebtRun extends RunApi {
   jokerGrin(): { frame: number; lie: boolean };
   /** His Ink 0..10 (Dread reads `inkDread` of it). */
   jokerInk(): number;
+  /** Give him the hand at this seat for its next round (JOKER §4): null when he took it, else why not. Costs Ink. */
+  jokerTakeover(): AskWhy | 'seat' | null;
   /** The offer panel is on screen: OPEN THE FLOOR waits for a pick (or the panel's timer) instead of taking the leftmost. */
   setBoonGate(on: boolean): void;
   /** The boons kept this run, in the order taken. */
@@ -1084,6 +1087,9 @@ class Run implements DebtRun {
   private grinN = 0;
   /** His lift-mirror line was said this run. */
   private lokiMet = false;
+  /** THE CHANGE OF HANDS (JOKER §4, wave J3): the floor seat his hand can take, and the seat his hand is on for its next round. */
+  private jokerMid: InstanceId | null = null;
+  private lokiHand: { mid: InstanceId; help: boolean } | null = null;
   /** Per-Watch floor event (wave 43): rolled at each Bell, ticked on the Watch clock, saved mid-Watch. */
   private readonly watchEv: WatchEvents;
   /** The Crooked Table's Tally Sheet lines already sent for the live event (a line goes out once per wording). */
@@ -1286,7 +1292,13 @@ class Run implements DebtRun {
         this.jokerSeat(p.on ? p.mid : null);
       }),
       // LOKI talks through the window glass at home (never the phone, never the kitchen before Ink 8: J4)
-      bus.on('home:interact', ({ station }) => { if (station === 'window') this.jokerTip('window', `window:${this.index}`); }),
+      bus.on('home:interact', ({ station }) => {
+        if (station === 'window') this.jokerTip('window', `window:${this.index}`);
+        // from Ink 8 he talks in the kitchen too, and remembers it as his (JOKER §2.2)
+        if ((station === 'spouse' || station === 'fridge') && this.jokerSys.ink >= INK_HAND) this.jokerTip('kitchen', `kitchen:${this.index}`);
+      }),
+      // coffee blocks his unasked hand for the next Watch (JOKER §4)
+      bus.on('buff:add', ({ owner, buff }) => { if (buff.id === 'food.coffee' && owner === `p:${this.selfId}`) { this.jokerSys.drinkCoffee(); this.persistSoon(); } }),
       // BONDS: picking up Mira's wrong number is showing up: it raises her bond once a Night (a 'talk' never would, and her N7 call needs bond 2)
       bus.on('phone:story', ({ id }) => {
         if (id.startsWith('mira')) this.bond({ kind: 'show', who: 'mira' });
@@ -1415,6 +1427,8 @@ class Run implements DebtRun {
     }
     this.notify();
     this.refreshOdds();
+    // a bet of a quarter of the pocket or more is a key moment: from Ink 6 his hand may take it unasked
+    if (!ks && cost * 4 >= this.coins + cost) this.jokerUnasked(src.mid, src.machineId, amount);
     return true;
   }
 
@@ -1450,7 +1464,12 @@ class Run implements DebtRun {
 
   win(gross: number, src: EcoSource, meta: WinMeta): number {
     this.openRounds.delete(src.mid);
-    const { credited, pr } = this.creditOf(gross, src, meta);
+    // LOKI'S HAND: the round pays 10 x the stake (capped by the quota) or nothing when he throws it; tagged 'joker', no stars
+    const hand = !meta.raw && this.lokiHand?.mid === src.mid ? this.lokiHand : null;
+    if (hand) { this.lokiHand = null; meta = { ...meta, tier: hand.help ? 'big' : 'none', tags: [...(meta.tags ?? []), 'joker'] }; }
+    const paid = this.creditOf(gross, src, meta);
+    const credited = hand ? (hand.help ? takeoverPayout(meta.bet, this.quota.due) : 0) : paid.credited;
+    const pr = hand ? null : paid.pr;
     // FLOOR EVENTS: a resolved round (raw buy-ins and cash-outs are not rounds). After the payout, so the dare and the lamp apply to it.
     if (!meta.raw) {
       // net = what the round left in the pocket against the bet (the Crooked Table's refund counts the net losses at a table)
@@ -1460,7 +1479,7 @@ class Run implements DebtRun {
     // THE KEEPSAKE STAKE and THE GHOST SEAT (wave 75): the round's result is the credited amount against the bet
     const ks = this.keepsakes.settle(src.mid, credited > meta.bet);
     if (ks) this.keepsakeSettled(ks);
-    const gh = this.ghostSeat.round(this.night(), src.machineId, src.mid, meta.bet, credited);
+    const gh = hand ? null : this.ghostSeat.round(this.night(), src.machineId, src.mid, meta.bet, credited);
     if (gh) this.ghostMatched(gh);
     if (pr && pr.excess > 0) this.feedJackpot('net', pr.excess);
     this.coins += credited;
@@ -2122,6 +2141,7 @@ class Run implements DebtRun {
     this.jokerSys.beginWatch(this.watch + 1);
     this.jokerSaid.clear();
     this.jokerHere = null;
+    this.lokiHand = null;
     if (this.watch === 0) bus.emit('night:begin', { night: this.index + 1 });   // the first Watch of a Night: the grand light show
     this.coolBoiler();
     this.boughtThisWatch = 0;
@@ -4200,6 +4220,7 @@ class Run implements DebtRun {
     this.rollGrin();
     this.persistSoon();
     this.notify();
+    if (this.jokerSys.cameHome && !this.ended) this.endRun('lost', 'came_home');   // Ink 10: HE CAME HOME (JOKER §2.2)
   }
 
   /** One glance at the card: the true frame, or from Ink 6 one glance in three a wrong one (seeded per glance). */
@@ -4229,11 +4250,13 @@ class Run implements DebtRun {
 
   /** Seated: the bounty board, or a floor machine (cold, or a near miss); and once a Night his dare. Never the cashier, the terminal or the bell. */
   private jokerSeat(mid: InstanceId | null): void {
+    this.jokerMid = null;
     if (mid === null) { if (this.jokerHere?.ctx !== 'crooked') this.jokerHere = null; return; }
     const machineId = this.worldLink?.machines().find((m) => m.instance === mid)?.machineId ?? this.circ.machineOf(mid);
     if (machineId === 'bounty_board') { this.jokerTip('bounty', `bounty:${mid}`); return; }
     const cat = machineId ? registry.get(machineId)?.def.category : undefined;
     if (cat === undefined || cat === 'system' || cat === 'party') return;   // the cashier, the Debt Terminal, the bell are not his
+    this.jokerMid = mid;
     this.jokerTip('machine', `seat:${mid}`, this.circ.isCold(mid) ? 'cold' : 'near');
     if (this.night() >= 2 && this.inWatch() && this.jokerSys.canDare() && this.mod('x.cheat.lokiQuiet', RUN_MACHINE, 0) <= 0) this.emit('joker:dare', { night: this.night() });
   }
@@ -4260,6 +4283,29 @@ class Run implements DebtRun {
 
   jokerGrin(): { frame: number; lie: boolean } { return this.grin; }
   jokerInk(): number { return this.jokerSys.ink; }
+
+  // ─ LOKI'S HAND (docs/JOKER.md §4, wave J3): the Change of Hands at a floor machine. The next round there is his ─
+  jokerTakeover(): AskWhy | 'seat' | null {
+    const mid = this.jokerMid;
+    // a staked keepsake keeps its own round: his hand would make its star his
+    if (this.ended || !this.quotaMode || this.night() < 2 || mid === null || this.lokiHand || !this.canPlay() || this.keepsakes.pending(mid, this.night())) return 'seat';
+    const machineId = this.worldLink?.machines().find((m) => m.instance === mid)?.machineId ?? this.circ.machineOf(mid) ?? '';
+    const stake = this.lastBet.get(mid) ?? this.betLimits(machineId as MachineId, mid).min;
+    const r = this.jokerSys.askTakeover({ where: 'machine', machineId, stake, quota: this.quota.due });
+    if (r.ok === false) return r.why;
+    this.lokiHand = { mid, help: true };
+    this.jokerOut(r);
+    return null;
+  }
+
+  /** A key moment at a machine: his roll for an unasked hand (Ink 6+). Ada's hair tie (the carried 'ring') slips the first one a Night. */
+  private jokerUnasked(mid: InstanceId, machineId: string, stake: number): void {
+    if (this.ended || this.night() < 2 || this.lokiHand) return;
+    const r = this.jokerSys.unasked('bigBet', { machineId, stake, quota: this.quota.due, hairTie: this.keepsakes.carried() === 'ring' });
+    if (r.struck === true) this.lokiHand = { mid, help: r.kind === 'help' };
+    else for (const k of r.lines) bus.emit('floor:say', { text: t(k), speaker: t('story.speaker.loki'), voice: 'loki', source: 'joker' });
+    this.jokerOut(r);
+  }
 
   /** His first line, once a run: the first ride down after the prologue, in the lift mirror. */
   private lokiIntro(): void {

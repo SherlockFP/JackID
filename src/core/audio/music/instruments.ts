@@ -810,6 +810,8 @@ const FACTORY: Record<InstId, Make> = {
   synBass, synArp, synLead, synPad, sub, drone, drums, fx,
   pluck: pluckKit({ damp: 0.996, len: 1.5, bright: 0.55, pan: -0.22, send: 0.3, hall: 0.08, gain: 1 }),
   harp: pluckKit({ damp: 0.9985, len: 2.6, bright: 0.75, pan: 0.18, send: 0.45, hall: 0.3, gain: 0.9 }),
+  /** Bright, quick-decaying pluck: the harpsichord of Lucan's duel waltz. */
+  harpsi: pluckKit({ damp: 0.993, len: 1.1, bright: 0.97, pan: -0.12, send: 0.32, hall: 0.12, gain: 0.8 }),
 };
 
 export function createInstrument(id: InstId, c: InstCtx): Instrument {

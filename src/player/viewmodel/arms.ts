@@ -34,6 +34,8 @@ export const copyPose = (to: HandPose, from: HandPose): void => { for (const k o
 export const GLOVE_LEATHER = 0x4a2110;
 export const GLOVE_IVORY = 0xe6dec5;
 const PORCELAIN = 0xf4eedc;
+/** His hand (JOKER §4). shortcut: the whole glove takes the tint, not just the fingertips; paint tip UVs if the art pass wants it. */
+const LOKI_GREEN = new THREE.Color(0x5aff7b);
 
 /** The model is human size; the viewmodel camera sits close, so it is scaled down and placed so both hands read in frame. */
 export const ARMS_SCALE = 0.55;
@@ -197,6 +199,7 @@ export class Arms {
   private porcelain: THREE.Texture | null = null;
   private porcelainOn = false;
   private light = 1;
+  private tint = 0;
 
   constructor(private readonly src: ArmsSource, readonly right: Arm, readonly left: Arm) {
     this.model = SkeletonUtils.clone(src.scene);
@@ -218,11 +221,13 @@ export class Arms {
   setGlove(bare: boolean): void { this.bare = bare; this.look(); }
   setPorcelain(on: boolean, map: THREE.Texture | null): void { this.porcelainOn = on; this.porcelain = map; this.look(); }
   setLight(v: number): void { if (Math.abs(v - this.light) > 0.004) { this.light = v; this.look(); } }
+  /** LOKI'S HAND (docs/JOKER.md §4): 0..1 toward his phosphor green while he holds the hand. */
+  setTint(k: number): void { if (Math.abs(k - this.tint) > 0.004) { this.tint = k; this.look(); } }
   private look(): void {
     const m = this.material;
     const tex = this.porcelainOn ? this.porcelain : app?.tex?.vendor(`drillimpact-psx-arms/${this.bare ? 'arms_01' : 'arms_gloves_01'}.png`, { size: 128, flipY: true });
     if (m.map !== (tex ?? null)) { m.map = tex ?? null; m.needsUpdate = true; }
-    m.color.setHex(this.porcelainOn ? PORCELAIN : 0xffffff).multiplyScalar(this.light);
+    m.color.setHex(this.porcelainOn ? PORCELAIN : 0xffffff).lerp(LOKI_GREEN, this.tint).multiplyScalar(this.light);
   }
 
   /** The clip cut to one arm: only that side's bones (names end in R or L), no scale tracks. */

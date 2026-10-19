@@ -64,6 +64,11 @@ test('every Night has a title card whose title and line exist in EN and TR', () 
   assert.equal(CH.chapterKeys(9), null);
 });
 
+test('the chapter head reads N. BÖLÜM · TITLE in TR and CHAPTER N · TITLE in EN', () => {
+  assert.equal(STRINGS.en['chapter.head'], 'CHAPTER {n} · {title}');
+  assert.equal(STRINGS.tr['chapter.head'], '{n}. BÖLÜM · {title}');
+});
+
 test('the Night 8 title is THE SECOND NAME, and the chapter ends on Night 8', () => {
   assert.equal(CH.CHAPTER_LAST_NIGHT, 8);
   assert.equal(STRINGS.en['chapter.n8.title'], 'THE SECOND NAME');
@@ -140,7 +145,9 @@ test('each chapter card scene file exists and names its own Night', async () => 
     const mod = await load(`src/game/story/cutscenes/chapter_n${n}.cutscene.ts`);
     assert.equal(mod.default.id, `chapter_n${n}`);
     const subs = mod.default.tracks.find((t) => t.kind === 'subtitle').cues.map((c) => c.key);
-    assert.deepEqual(subs, [`story.chapter.n${n}.title`, `story.chapter.n${n}.line`]);
+    assert.deepEqual(subs, [`story.chapter.n${n}.line`]);
+    const hook = mod.default.tracks.find((t) => t.kind === 'hook').cues[0];
+    assert.deepEqual([hook.hook, hook.args], ['story.chapterTitle', n], 'the title is the centred hook, not a subtitle');
   }
   const reveal = await load('src/game/story/cutscenes/reveal_n8.cutscene.ts');
   assert.equal(reveal.default.id, 'reveal_n8');

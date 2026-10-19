@@ -22,7 +22,7 @@ import { MachineBase } from '@/machines/_base/MachineBase';
 import { registerDebugForce } from '@/core/debugForce';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier, tierAtLeast, windupSec } from '@/machines/_base/tiers';
-import { countUp, blinkOn, emitComboShow, flashPrefs, JACKPOT_COUNT_S, type Whirr } from '@/machines/_base/juice';
+import { countUp, blinkOn, emitComboShow, flashPrefs, scorePop, JACKPOT_COUNT_S, type Whirr } from '@/machines/_base/juice';
 import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { KitX } from '@/kit';
 import { fmtCoins, t as tr, upper } from '@/core/i18n';
@@ -93,16 +93,14 @@ const FREE_SPEED = 0.6;
 /** Extra crawl of the anticipating reel by the run length lined up (index = length: 2 = two of three). */
 const TEASE_D = [0, 0, 0.4, 0.55, 0.7];
 const BOUNCE = 0.12;
-/** Tally: each pattern gets a step of STEP_MAX down to STEP_MIN so the whole count stays under TALLY_CAP seconds. */
-const STEP_MAX = 0.4;
-const STEP_MIN = 0.2;
-const TALLY_CAP = 1.6;
+/** Tally: each pattern gets a step of STEP_MAX down to STEP_MIN so the whole count stays under TALLY_CAP seconds (a normal win scores in ~1 s). */
+const STEP_MAX = 0.3;
+const STEP_MIN = 0.16;
+const TALLY_CAP = 1.0;
 /** Where the seat banner starts, in % of the screen height: under the cabinet's JACKPOT plate, readout and LCD, above the reels (seatHud.topBelow). */
 const BANNER_TOP_PCT = 25;
 /** Free spins tally quicker: a fixed step per pattern. */
 const QUICK_STEP = 0.14;
-/** Semitone ladder of the tally chimes: each pattern rings a note higher. */
-const TALLY_NOTES = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16];
 /** Tally text colours, escalating from pale to hot. */
 const TALLY_INK = ['#c8e8ff', '#ffe27a', '#ffb000', '#ff7a1a', '#ff4fa0', '#ffffff'];
 const CURSE_SHOW = 3.2;
@@ -194,7 +192,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   /** A chased win waiting for the player: SPACE collects the pot, G chases it. Local only; `roundOpen` stays true meanwhile. */
   private offer: Offer | null = null;
   /** Debug force (`bigone:chase`): the next spin is re-rolled until it is a chaseable line win. */
-  private forceChase = false;
+  private force: 'chase' | 'win' | null = null;
   /** The JACKPOT LED on the cabinet: the value it shows and the value it is heading to (it ticks up instead of jumping). */
   private ledShown = -1;
   private ledTarget = -1;
@@ -238,10 +236,11 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     this.attractor.update(dt);
   }
 
-  /** Debug force (bench `--force bigone:chase`, seated): the next spin is re-rolled until it is a line win that can be chased. */
+  /** Debug force (bench `--force bigone:chase|win`, seated): the next spin is re-rolled until it is a line win that can be chased, or any win. */
   private debugState(state: string): boolean {
-    if (state.trim().toLowerCase() !== 'chase' || !this.isLocalOccupant) return false;
-    this.forceChase = true;
+    const s = state.trim().toLowerCase();
+    if ((s !== 'chase' && s !== 'win') || !this.isLocalOccupant) return false;
+    this.force = s;
     return true;
   }
 
@@ -390,9 +389,10 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       let offer: ChaseOffer | null = null;
       try {
         let round = this.roll(stake);
-        if (this.forceChase) {                           // debug force: re-roll (pure, no state change) until a line win can be chased
-          for (let t = 0; t < FORCE_CHASE_TRIES && !chaseOf(round); t++) round = this.roll(stake);
-          this.forceChase = false;
+        if (this.force) {                                // debug force: re-roll (pure, no state change) until a chasable line win, or any win
+          const want = this.force;
+          for (let t = 0; t < FORCE_CHASE_TRIES && !(want === 'chase' ? chaseOf(round) : round.gross > 0); t++) round = this.roll(stake);
+          this.force = null;
         }
         res = round;
         offer = chaseOf(round);                          // a line win may be chased: its settle waits for the player
@@ -631,6 +631,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   private async jackpotTease(ev: SpinEv, lock: number, at: number, dur: number): Promise<void> {
     await this.wait(at);
     if (this.disposed) return;
+    if (this.isLocalOccupant) this.ctx.events.emit('music:cue', { cue: 'reel_chase', on: true });   // the score drops to a heartbeat
     const p = this.parts;
     const calm = flashOpts().reduced || flashOpts().calm;
     const hz = calm ? 4 : 12;
@@ -716,6 +717,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   }
 
   private async presentEval(ev: EvalEv, pc: PresentCtx): Promise<void> {
+    if (pc.local) this.ctx.events.emit('music:cue', { cue: 'reel_chase', on: false, hit: ev.jackpot > 0 });   // ends the chase, if one runs
     const s = this.state;
     s.meter = ev.meter;
     s.gross = ev.gross;
@@ -854,17 +856,12 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
         const pat = `${this.t(`pat_${pay.pat}`)} x${Number.isInteger(pay.raw) ? pay.raw : pay.raw.toFixed(1)}`;
         this.seatHud?.result('win', total, step + 0.5, i > 0 ? `${pat} · ${this.t('tCombo', { n: Number.isInteger(pay.combo) ? String(pay.combo) : pay.combo.toFixed(1) })}` : pat);
       }
-      const note = TALLY_NOTES[Math.min(i, TALLY_NOTES.length - 1)];
-      this.sfx(i === tally.length - 1 && tally.length > 1 ? 'bell' : 'sparkle', { vol: Math.min(1.4, 0.6 + 0.1 * i), pitch: note });
-      if (i >= 1) this.sfx('coin', { vol: 0.5, pitch: note });
+      // the pattern pops a step higher (the last lands on the cha-ching); from the second, its combo multiplier dings a stack above it
+      scorePop(this, i, tally.length);
+      if (i >= 1) void this.wait(0.08).then(() => { if (!this.disposed) scorePop(this, i - 1, tally.length, { mult: true, vol: 0.6 }); });
       this.ctx.fx.glow(this.parts.screens.top.mesh, i >= 3 ? PINK : GOLD, 0.25 + 0.08 * i, 0.3);
       if (i >= 3 && this.isLocalOccupant) this.ctx.fx.shake(0.004 * Math.min(6, i), 0.18);
-      let ticked = -1;
-      await this.anim(step * 0.8, (k) => {
-        this.drawTally(shown, Math.round(from + (total - from) * k));
-        const n = Math.floor(k * 6);   // six count-up ticks per pattern, climbing with the pattern's note
-        if (n > ticked) { ticked = n; this.sfx('tallyTick', { vol: 0.55, pitch: note + n * 0.8 }); }
-      }, 'outQuad');
+      await this.anim(step * 0.8, (k) => this.drawTally(shown, Math.round(from + (total - from) * k)), 'outQuad');
       this.drawTally(shown, total);
       await this.wait(step * 0.2);
     }
@@ -912,7 +909,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     await Promise.all([
       this.celebrate('jackpot', { amount: net, mult: ev.gross / Math.max(1, ev.stake), bulbs: p.bulbs.window, lamps: p.last10, restore: () => this.bulbsIdle() }),
       // the count rolls from the impact under the coin rain and lands on the kachunk
-      this.wait(JACKPOT_WINDUP).then(() => countUp(this.ctx, 0, net, JACKPOT_COUNT_S * this.speed, (v) => this.drawScreen(v), { tick: true, end: 'kachunk' })),
+      this.wait(JACKPOT_WINDUP).then(() => countUp(this.ctx, 0, net, JACKPOT_COUNT_S * this.speed, (v) => this.drawScreen(v), { end: 'kachunk' })),   // no tick: the jackpot cue rolls its own count
       this.anim(0.4, (k) => { p.topLid.rotation.x = LID_OPEN * k; }, 'outBack')
         .then(() => this.anim(0.4, (k) => { p.topLid.rotation.x = LID_OPEN * (1 - k); })),
       this.anim(1.4, (k) => { p.medallion.rotation.y = TAU * 3 * k; }, 'outCubic'),

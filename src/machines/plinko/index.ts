@@ -22,6 +22,7 @@ import * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
 import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
+import { scorePop } from '@/machines/_base/juice';
 import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import { SeatHud, type HudControl, type Txt } from '@/machines/_base/seatHud';
 import type { Kit } from '@/kit/types';
@@ -139,6 +140,8 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
   /** Authority-side fractional payout carried between drops (per machine instance). */
   private dust = 0;
   private readonly dummy = new THREE.Object3D();
+  /** The drop's paying pucks (x2 and up): landed so far, and in all. Each one pops a step higher as it lands. */
+  private pays = { i: 0, n: 0 };
   /** Seat HUD overlay (readability standard, see _base/seatHud.ts). */
   private seatHud?: SeatHud;
   /** A high stake waiting for its second DROP press (the run's stake confirm, `run:stakeConfirm`), or null. */
@@ -337,6 +340,7 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
       return;
     }
 
+    this.pays = { i: 0, n: ev.pucks.filter((p) => p.mult >= 2).length };
     // 1. anticipation: the chute loads a cosmetic insert, the marquee races, the golden slot shows before the drop
     marquee.chase('chase', 9);
     this.sfx('button');
@@ -412,8 +416,8 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
   private landed(p: PuckEv): void {
     this.setLamp(p.slot, colourFor(p.mult));
     this.sfx('thud', { vol: 0.5 });
-    // a puck that lands on a paying slot rings it: the tick climbs with the slot's multiple (x2 +4, x4 +8, x8 and up +12)
-    if (p.mult >= 2) this.sfx('lineUp', { vol: 0.7, pitch: Math.min(12, Math.round(4 * Math.log2(p.mult))) });
+    // a puck that lands on a paying slot pops a step higher than the one before; the last paying puck lands on the cha-ching
+    if (p.mult >= 2) scorePop(this, this.pays.i++, this.pays.n, { vol: 0.7 });
     if (p.mult >= 2 || p.golden) {
       this.ctx.fx.popText(this.parts.slotLamps, `×${p.mult}`, p.golden ? GOLD : colourFor(p.mult), { dur: 0.9, rise: 0.25, scale: 0.9 + 0.1 * p.mult });
     }

@@ -52,6 +52,8 @@ export const EXTRA_BINDINGS: Record<string, string[]> = {
   callCheat: ['KeyC'],
   // LOKI (docs/JOKER.md §3): O asks him about what is in front of you; L calls his last line a lie (C is taken by callCheat and m.alt)
   jokerAsk: ['KeyO'], callLiar: ['KeyL'],
+  // LOKI'S HAND (docs/JOKER.md §4): I gives him the hand at the seat for one round (I is free walking and seated)
+  jokerHand: ['KeyI'],
 };
 
 /** Every binding key the service knows (frozen + extra) with its default codes. */
@@ -63,7 +65,7 @@ export const layerOf = (key: string): Layer => (key.startsWith('m.') ? 'machine'
 /** Walk-layer actions that stay live while seated (everything else is suppressed at a machine). */
 export const SEATED_WALK_ACTIONS: ReadonlySet<string> = new Set([
   'pause', 'scoreboard', 'chat', 'debug', 'debugColliders', 'help', 'upgrade', 'journal', 'answerPhone',
-  'keepsake', 'floorAct', 'callCheat', 'jokerAsk', 'callLiar',
+  'keepsake', 'floorAct', 'callCheat', 'jokerAsk', 'callLiar', 'jokerHand',
 ]);
 /** During a cutscene these codes act as `skip` in addition to the user's binding. */
 export const CUTSCENE_SKIP_CODES: readonly string[] = ['Space', 'Enter', 'NumpadEnter', 'Escape'];

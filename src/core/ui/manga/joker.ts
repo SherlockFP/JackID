@@ -18,6 +18,8 @@ export const JOKER_SOURCE = 'joker';
 /** The ask and catch-a-lie keys (core/keymap.ts). C is the Crooked Table's call and the seated `m.alt`, so the lie call is L. */
 export const JOKER_ASK_KEY = 'jokerAsk' as BindingKey;
 export const JOKER_LIAR_KEY = 'callLiar' as BindingKey;
+/** Give him the hand at the seat (I: free walking and seated). */
+export const JOKER_HAND_KEY = 'jokerHand' as BindingKey;
 
 /** His sigil as two CSS images on the root (--jk-ico, and --jk-ico2 with the eyes shut): the plate, the chip and the god card draw it with CSS. */
 let iconsOn = false;
@@ -61,7 +63,8 @@ export function jokerSay(text: string): void {
   app.audio?.play('cardFlip', { vol: 0.45 });
 }
 
-const calmNow = (): boolean => { const s = app.save?.data?.settings; return !!s && (s.calm === true || !!s.reduceMotion || !!s.reduceFlashing); };
+/** Calm Mode, reduced motion or reduced flashing: his visuals soften (docs/JOKER.md §6). */
+export const calmNow = (): boolean => { const s = app.save?.data?.settings; return !!s && (s.calm === true || !!s.reduceMotion || !!s.reduceFlashing); };
 
 /** A toast with his sigil (green bar, icon.joker); every toast of his goes through here. */
 export function lokiToast(text: string, dur = 2.5): void { (app.ui as UIOverlayX).toast(text, 'loki', dur); }
@@ -79,7 +82,7 @@ export function mountJokerVoice(host: JokerVoiceHost): () => void {
       if (ask) uiSfx('coinDrop', 0.5);   // asking him costs you
       if (hinted) return;
       hinted = true;
-      lokiToast(t('joker.ui.keys', { ask: app.input.keyLabel(JOKER_ASK_KEY), call: app.input.keyLabel(JOKER_LIAR_KEY) }), 6);
+      lokiToast(t('joker.ui.keys', { ask: app.input.keyLabel(JOKER_ASK_KEY), call: app.input.keyLabel(JOKER_LIAR_KEY), hand: app.input.keyLabel(JOKER_HAND_KEY) }), 7);
     }),
     // no numbers: a warmer or a colder face, and his Dawn drift is silent
     bus.on('joker:trust', ({ delta, why }) => {

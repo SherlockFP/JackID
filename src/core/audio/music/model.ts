@@ -10,7 +10,7 @@ import type { Chord, ModeName, Seg } from './theory';
 export type InstId =
   | 'rhodes' | 'piano' | 'bass' | 'vibes' | 'trumpet' | 'organ' | 'reed' | 'box' | 'choir' | 'strings'
   | 'pluck' | 'synBass' | 'synArp' | 'synLead' | 'synPad' | 'calliope' | 'tuba' | 'flute' | 'bell'
-  | 'brass' | 'sub' | 'drone' | 'drums' | 'fx' | 'harp';
+  | 'brass' | 'sub' | 'drone' | 'drums' | 'fx' | 'harp' | 'harpsi';
 
 /** A note event. `t`/`d` are sequencer steps relative to the bar start; `m` is a MIDI note (or a drum/FX code). */
 export interface Ev {
@@ -51,7 +51,8 @@ export interface BarCtx {
 }
 
 export type GenFn = (b: BarCtx, push: Push) => void;
-export interface Gate { (g: { i: number; d: number }): number }
+/** `s` = stakes (0..1, see `stakes.ts`): how much the moment is worth, fed by game events. */
+export interface Gate { (g: { i: number; d: number; s: number }): number }
 
 export interface MakeCtx { song: SongDef; rng: Rng; inst: InstId }
 export interface PartDef {
@@ -119,6 +120,8 @@ export const smooth = (lo: number, hi: number, x: number): number => {
 export const byI = (lo: number, w = 0.14): Gate => (g) => smooth(lo - w * 0.5, lo + w, g.i);
 /** Layer enters as dread passes `lo`. */
 export const byD = (lo: number, w = 0.16): Gate => (g) => smooth(lo - w * 0.5, lo + w, g.d);
+/** Layer enters as the stakes pass `lo` (the high-stakes overlay, `stakes.ts`). */
+export const byS = (lo: number, w = 0.14): Gate => (g) => smooth(lo - w * 0.5, lo + w, g.s);
 /** Layer lives between two intensities, fading out above `hi`. */
 export const bandI = (lo: number, hi: number, w = 0.14): Gate => (g) =>
   smooth(lo - w * 0.5, lo + w, g.i) * (1 - smooth(hi - w * 0.5, hi + w, g.i));

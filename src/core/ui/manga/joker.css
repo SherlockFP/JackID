@@ -37,3 +37,37 @@
 .jk-chip.talk .jk-mouth { animation: jk-talk 0.6s steps(3, end) 1; }
 @keyframes jk-talk { 0% { transform: scaleY(1.8); } 50% { transform: scaleY(0.6); } 100% { transform: scaleY(1); } }
 @media (prefers-reduced-motion: reduce) { .jk-chip.talk .jk-mouth, .jk-chip.talk .jk-ico, .px-subtitle[data-joker] .who::before { animation: none; } }
+
+/* LOKI'S HAND AND HIS INK (manga/jokerHand.ts): the takeover border, the pulse, his face in the glass, the Ink vignette. */
+.jk-hand { position: fixed; inset: 0; pointer-events: none; z-index: 1; }
+.jk-hand > * { position: absolute; inset: 0; opacity: 0; }
+/* Ink 6+: the screen edges go green (weaker in Calm) */
+.jk-vig { background: radial-gradient(ellipse at center, transparent 55%, rgba(40, 255, 110, 0.28) 100%); transition: opacity 2s linear; }
+.jk-hand[data-ink='6'] .jk-vig { opacity: 1; }
+.jk-hand.calm[data-ink='6'] .jk-vig { opacity: 0.5; }
+/* the court card: a thin green border with J pips, 2.5 s; it flashes three times outside Calm, holds steady in it */
+.jk-border { box-shadow: inset 0 0 0 calc(3 * var(--u)) var(--green), inset 0 0 0 calc(5 * var(--u)) var(--black); }
+.jk-pip { position: absolute; font: bold calc(10 * var(--u)) / 1 serif; color: var(--green); }
+.jk-pip.tl { left: calc(8 * var(--u)); top: calc(7 * var(--u)); }
+.jk-pip.tr { right: calc(8 * var(--u)); top: calc(7 * var(--u)); }
+.jk-pip.bl { left: calc(8 * var(--u)); bottom: calc(7 * var(--u)); transform: rotate(180deg); }
+.jk-pip.br { right: calc(8 * var(--u)); bottom: calc(7 * var(--u)); transform: rotate(180deg); }
+.jk-border.on { animation: jk-card 2.5s steps(1, end) 1; }
+.jk-hand.calm .jk-border.on { animation: jk-card-calm 2.5s linear 1; }
+.jk-hand.calm.wait .jk-border.on { animation-delay: 1s; }
+@keyframes jk-card { 0%, 8%, 16% { opacity: 1; } 4%, 12% { opacity: 0.2; } 20%, 92% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes jk-card-calm { 0% { opacity: 0; } 15%, 85% { opacity: 1; } 100% { opacity: 0; } }
+/* the warp: a short chromatic split at the edges (never in Calm) */
+.jk-pulse { box-shadow: inset calc(6 * var(--u)) 0 calc(10 * var(--u)) rgba(255, 30, 70, 0.45), inset calc(-6 * var(--u)) 0 calc(10 * var(--u)) rgba(40, 255, 120, 0.45); mix-blend-mode: screen; }
+.jk-pulse.on { animation: jk-pulse 0.5s ease-out 1; }
+@keyframes jk-pulse { 0% { opacity: 1; transform: scale(1.04); } 100% { opacity: 0; transform: scale(1); } }
+/* Ink 4+: his upside-down head in the glass, a moment and gone (Calm: a slow fade in) */
+.jk-face { display: flex; align-items: center; justify-content: center; }
+.jk-face .jk-ico { width: 40vmin; height: 40vmin; transform: rotate(180deg); filter: drop-shadow(0 0 calc(3 * var(--u)) var(--green)); }
+.jk-face.on { animation: jk-face 0.9s steps(4, end) 1; }
+.jk-hand.calm .jk-face.on { animation: jk-face-calm 2s ease-in-out 1; }
+@keyframes jk-face { 0% { opacity: 0; } 25%, 60% { opacity: 0.16; } 100% { opacity: 0; } }
+@keyframes jk-face-calm { 0% { opacity: 0; } 50% { opacity: 0.1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .jk-pulse.on { animation: none; } }
+/* his Ink in the HUD (menu/hud.ts): the pocket figure in his green while he talks, or while it lies in Calm */
+.hb.wallet .num.jk-ink { color: var(--green); text-shadow: 0 0 calc(2 * var(--u)) rgba(90, 255, 123, 0.35); }

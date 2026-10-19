@@ -6,8 +6,9 @@
  *
  *   node scripts/qa/sfxLoud.mjs            measure and write the fixture
  *   node scripts/qa/sfxLoud.mjs --dry      measure and print only
- *   node scripts/qa/sfxLoud.mjs --wav DIR  render small / medium / big / jackpot (as TIERS stacks them, default volumes) to DIR/<prefix>-<tier>.wav
- *                                           (--prefix NAME, default "new"); measures nothing
+ *   node scripts/qa/sfxLoud.mjs --wav DIR  render the SCENES below (a spin, small / big / jackpot wins with their scoring pops, a near
+ *                                           miss, ten spammed spins; default volumes) to DIR/<prefix><scene>.wav (--prefix, default none);
+ *                                           measures nothing
  *
  * Re-run after changing a recipe, a TRIM, a clip level in real.ts, or the tier layers in juice.ts (TIERS below mirrors them).
  * Zero dependencies, same launcher pattern as bench.mjs (own Vite + own Chrome on free ports, temp profile, killed on exit).
@@ -24,7 +25,7 @@ const CHROME = process.env.QA_CHROME || 'C:\\Program Files\\Google\\Chrome\\Appl
 const OUT = join(ROOT, 'scripts', 'tests', 'fixtures', 'sfxLoudness.json');
 const DRY = process.argv.includes('--dry');
 const argOf = (f) => { const i = process.argv.indexOf(f); return i > 0 ? process.argv[i + 1] : undefined; };
-const WAV = argOf('--wav'), PREFIX = argOf('--prefix') ?? 'new';
+const WAV = argOf('--wav'), PREFIX = argOf('--prefix') ?? '';
 const log = (...a) => process.stderr.write(`[sfxLoud] ${a.join(' ')}\n`);
 
 /** Default settings volumes (src/core/settings.ts DEFAULTS.vol). */
@@ -33,6 +34,7 @@ const VOLUMES = { master: 0.8, sfx: 0.9, ui: 0.8, music: 0.6, amb: 0.7, voice: 0
 const MAX_VOLUMES = { master: 1, sfx: 1, ui: 1, music: 1, amb: 1, voice: 1 };
 /** Single cues: rendered alone, no bus chain (the same numbers the TRIM table is calibrated on). */
 const CUES = ['button', 'lever', 'reelStart', 'reelStop', 'reelLoop', 'lineUp', 'lose', 'numberTick', 'countDing', 'streakPing', 'coinClink', 'heartbeat', 'kachunk', 'alarmBell', 'tensionRise', 'win1', 'win2', 'win3', 'winHuge', 'winMega', 'jackpotShow',
+  'scorePop', 'multDing', 'chaChing', 'coinPour', 'jackpot',
   // the quiet home / food / seat cues, measured against their neighbours (click, footstep, door, creak, clockTick)
   'seat', 'foodBite', 'foodSip', 'knock', 'chainRattle', 'lightSwitch', 'bedCreak', 'phoneBuzz', 'liftDing', 'msgBlip', 'lockTurn',
   'phoneOpen', 'phoneClose', 'chipClack', 'click', 'footstep', 'door', 'creak', 'clockTick'];
@@ -49,6 +51,37 @@ const TIERS = {
   huge: { mult: 25, s: 7, layers: [{ name: 'tensionRise', vol: 0.9, param: 0.6 }, { name: 'winHuge', at: 1.2, vol: jv(25) }] },
   mega: { mult: 50, s: 9, layers: [{ name: 'tensionRise', vol: 0.9, param: 0.6 }, { name: 'winMega', at: 1.2, vol: jv(50) }] },
   jackpot: { mult: 100, s: 12, layers: [{ name: 'tensionRise', vol: 0.9, param: 0.6 }, { name: 'jackpotShow', at: 1.2, vol: jv(100) * 1.5 }] },
+};
+
+// The previews (--wav), timed the way Big One plays them (index.ts STOP_T, the tally's step, juice.celebrate's windup), three reels.
+/** A spin at t0: the coin, the lever, the reels kick in and whirr until the last stop; `stops` are the reel stops after t0. */
+const spinAt = (t0, stops) => [
+  { name: 'coinInsert', at: t0, vol: 0.6 }, { name: 'lever', at: t0 }, { name: 'reelStart', at: t0 + 0.02 },
+  { name: 'reelLoop', at: t0 + 0.04, loop: true, param: 0.6, vol: 0.5, loopFor: stops[stops.length - 1], until: t0 + stops[stops.length - 1] },
+  ...stops.map((s, i) => ({ name: 'reelStop', at: t0 + s, vol: 0.8 + 0.05 * i, param: i / (stops.length - 1) })),
+];
+const POP = [0, 2, 4, 5, 7, 9, 11, 12];   // juice.ts POP_STEPS
+/** juice.scorePop for `n` patterns from t0, `step` apart: a pop each, the cha-ching on the last, the multiplier ding from the second. */
+const popsAt = (t0, n, step) => Array.from({ length: n }, (_, i) => [
+  { name: 'scorePop', at: t0 + i * step, vol: 0.8, pitch: POP[i] },
+  ...(i === n - 1 ? [{ name: 'chaChing', at: t0 + i * step, vol: 0.8 }] : []),
+  ...(i >= 1 ? [{ name: 'multDing', at: t0 + i * step + 0.08, vol: 0.6, pitch: POP[i - 1] }] : []),
+]).flat();
+const SPAM = ['lose', 'w1', 'lose', 'lose', 'w2', 'lose', 'w1', 'lose', 'w2', 'lose'];
+const SCENES = {
+  'spin-sequence': { s: 2.2, layers: spinAt(0, [0.75, 0.95, 1.15]) },
+  'small-win-2-lines': { s: 2.4, layers: [{ name: 'reelStop', at: 0, param: 1 }, { name: 'lineUp', at: 0.05, vol: 0.7 }, ...popsAt(0.15, 2, 0.3), { name: 'win1', at: 0.87, vol: jv(2) }] },
+  'big-win-5-lines': { s: 5.8, layers: [{ name: 'reelStop', at: 0, param: 1 }, { name: 'lineUp', at: 0.05, vol: 0.7, pitch: 4 }, ...popsAt(0.15, 5, 0.2),
+    { name: 'tensionRise', at: 1.27, vol: 0.9, param: 0 }, { name: 'win3', at: 1.87, vol: jv(10) }] },
+  jackpot: { s: 9.6, layers: [...TIERS.jackpot.layers, { name: 'kachunk', at: 7.2, vol: 0.8 }] },
+  'near-miss': { s: 2.6, layers: [...spinAt(0, [0.75, 0.95, 1.55]), { name: 'tensionRise', at: 0.95, vol: 0.7, param: 0.15 },
+    ...Array.from({ length: 6 }, (_, i) => ({ name: 'reelTick', at: 1.25 + i * 0.05, vol: 0.55, pitch: i * 2.5 })), { name: 'lose', at: 1.75 }] },
+  'spam-10-spins': { s: 8.8, layers: SPAM.flatMap((r, s) => {
+    const T = s * 0.8, base = spinAt(T, [0.3, 0.4, 0.5]);
+    if (r === 'lose') return [...base, { name: 'lose', at: T + 0.6 }];
+    const n = r === 'w2' ? 2 : 1;
+    return [...base, ...popsAt(T + 0.58, n, 0.12), { name: 'win1', at: T + 0.58 + 0.12 * (n - 1) + 0.1, vol: jv(2) }];
+  }) },
 };
 
 /** Page side: decode every clip once, then render and measure. Peak = sample peak; st = loudest 400 ms RMS window (dBFS). */
@@ -79,7 +112,7 @@ const PAGE = (task) => `(async () => {
     const wav = {};
     for (const t of task.wav) {
       fill();
-      const d = task.tiers[t], buf = await A.renderMix(d.layers, { seconds: d.s, volumes: task.volumes });
+      const d = task.scenes[t], buf = await A.renderMix(d.layers, { seconds: d.s, volumes: task.volumes });
       const L = buf.getChannelData(0), Rr = buf.getChannelData(1), pcm = new Int16Array(L.length * 2);
       for (let i = 0; i < L.length; i++) { pcm[2 * i] = Math.max(-1, Math.min(1, L[i])) * 32767; pcm[2 * i + 1] = Math.max(-1, Math.min(1, Rr[i])) * 32767; }
       const bytes = new Uint8Array(pcm.buffer); let bin = '';
@@ -139,7 +172,7 @@ try {
   await send('Page.navigate', { url: `http://127.0.0.1:${vport}/assets/vendor/SFX_INDEX.md` });
   await new Promise((r) => setTimeout(r, 1500));
   log('rendering (about a minute)...');
-  const m = await send('Runtime.evaluate', { expression: PAGE({ cues: CUES, tiers: TIERS, volumes: VOLUMES, maxVolumes: MAX_VOLUMES, wav: WAV ? ['small', 'medium', 'big', 'jackpot'] : null }), awaitPromise: true, returnByValue: true, timeout: 600_000 });
+  const m = await send('Runtime.evaluate', { expression: PAGE({ cues: CUES, tiers: TIERS, scenes: SCENES, volumes: VOLUMES, maxVolumes: MAX_VOLUMES, wav: WAV ? Object.keys(SCENES) : null }), awaitPromise: true, returnByValue: true, timeout: 600_000 });
   if (m.result?.exceptionDetails || m.error) throw new Error(JSON.stringify(m.result?.exceptionDetails ?? m.error).slice(0, 1500));
   const res = JSON.parse(m.result.result.value);
   if (WAV) {
@@ -149,7 +182,7 @@ try {
       h.write('RIFF', 0); h.writeUInt32LE(36 + pcm.length, 4); h.write('WAVEfmt ', 8); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20);
       h.writeUInt16LE(2, 22); h.writeUInt32LE(w.sr, 24); h.writeUInt32LE(w.sr * 4, 28); h.writeUInt16LE(4, 32); h.writeUInt16LE(16, 34);
       h.write('data', 36); h.writeUInt32LE(pcm.length, 40);
-      const f = join(WAV, `${PREFIX}-${t}.wav`);
+      const f = join(WAV, `${PREFIX}${t}.wav`);
       writeFileSync(f, Buffer.concat([h, pcm]));
       console.log(`${f}  peak ${w.stats.peak}  loudest-400ms ${w.stats.stDb} dB  len ${w.stats.len}s`);
     }

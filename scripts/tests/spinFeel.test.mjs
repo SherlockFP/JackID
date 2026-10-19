@@ -111,6 +111,23 @@ test('the win cues count as long as juice does: the jackpot rollup is JACKPOT_CO
   for (let i = 1; i < order.length; i++) assert.ok(order[i] > order[i - 1], `tier ${i} counts longer`);
 });
 
+test('wave 91 cabinet palette: scoring pops climb the major scale, the cabinet carries the machine cues only, spam cues are capped', async () => {
+  const juice = await load('src/machines/_base/juice.ts');
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7].map(juice.popPitch), [0, 2, 4, 5, 7, 9, 11, 12], 'one major-scale step per pattern');
+  assert.equal(juice.popPitch(99), juice.popPitch(14), 'held at the top');
+  assert.equal(juice.popPitch(-1), 0);
+  for (const n of ['scorePop', 'multDing', 'chaChing', 'countDing']) assert.ok(sfx.SFX_DEFS.has(n), `no recipe "${n}"`);
+  for (const n of ['lever', 'button', 'reelStop', 'win1', 'jackpotShow', 'scorePop', 'numberTick', 'lose']) assert.ok(sfx.SFX_DEFS.get(n).meta.cab, `${n} plays through the cabinet`);
+  for (const n of ['click', 'hover', 'confirm', 'footstep', 'door', 'horrorHit']) assert.ok(!sfx.SFX_DEFS.get(n).meta.cab, `${n} stays clean`);
+  for (const n of ['lever', 'button', 'reelStart', 'reelStop', 'lose', 'win1', 'scorePop', 'chaChing']) {
+    const p = sfx.SFX_DEFS.get(n).meta.poly;
+    assert.ok(p >= 1 && p <= 3, `${n} is capped at 1-3 voices (spamming spins), got ${p}`);
+  }
+  assert.ok(sfx.WIN_COUNT.medium < 1, 'a medium win counts in under a second');
+  const { DEFAULT_SETTINGS } = await load('src/core/settings.ts');
+  assert.equal(DEFAULT_SETTINGS.retroSfx, true, 'Retro sound starts on');
+});
+
 test('countTicks: the count-up roll accelerates (gaps shrink) and stays inside the count', async () => {
   const juice = await load('src/machines/_base/juice.ts');
   const t = juice.countTicks(20);

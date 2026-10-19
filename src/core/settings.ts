@@ -22,6 +22,7 @@ export interface Settings {
   reduceFlashing: boolean;      // photosensitivity: flashes ×0.35, ≤ 3/s, strobes off
   reduceMotion: boolean;        // subtitles appear at once; no slide, fade or caret
   calm: boolean;                // Calm Mode: horror scares off, dread bumps halved (HorrorSettings.calm)
+  retroSfx: boolean;            // machine and win sounds through the lo-fi cabinet bus (audio.ts), Advanced > Volume
   // ── v1 ──
   shake: number;                // 0..1 screen-shake multiplier (ART_BIBLE §9.6)
   textScale: number;            // 1..1.5 UI text scale
@@ -60,6 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reduceMotion: false,
   reduceFlashing: false,
   calm: false,
+  retroSfx: true,
   shake: 1,
   textScale: 1,
   uiScale: 0.75,

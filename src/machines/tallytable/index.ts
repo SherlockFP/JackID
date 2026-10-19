@@ -187,6 +187,7 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
       this.noDuel = false; this.adjourned = false
       this.hud(null); this.seatHud?.hide(); this.panel?.hide(); this.board?.hide()
       this.clearTable()
+      this.ctx.events.emit('music:cue', { cue: 'duel:', on: false })
       this.parts.notary.setVisible(true)
     }
     this.paintAll()
@@ -511,6 +512,7 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
         this.clearTable()
         this.applyRival(d.rival)
         this.paintAll()
+        if (local) this.ctx.events.emit('music:cue', { cue: `duel:${d.rival}`, on: true })   // the rival's theme (music/songs/cues.ts)
         if (local && !pc.fast && !d.quiet) {
           await this.guard(manga.glyph('menace'))
           await this.guard(manga.dialogue('notary', 'm.tallytable.notarySeal', 'left'))
@@ -587,6 +589,7 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
         const d = e as unknown as Extract<DuelEvent, { k: 'ruling' }>
         reduce(this.view, d)
         this.mine = null; this.callMode = false
+        if (local) this.ctx.events.emit('music:cue', { cue: 'duel:', on: false })
         this.sfx(d.correct === true ? 'stinger' : 'buzzer', { vol: 0.7 })
         this.paintAll()
         if (local && !pc.fast) {
@@ -625,6 +628,8 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
         return
       case 'board':
         if (local) { this.tb = (e as unknown as { b: Board }).b; this.showHud() }
+        // a final round: either side one point from the win lifts the duel theme to its final-round layers
+        if (local && this.tb?.score && this.view.phase === 'rounds') this.ctx.events.emit('music:cue', { cue: `duel:${this.view.rival}`, on: true, final: Math.max(this.tb.score.you, this.tb.score.him) >= (this.tb.score.of ?? 3) - 1 })
         return
       case 'mine': {
         if (!local) return

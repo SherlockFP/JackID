@@ -24,6 +24,21 @@ import { BEDS } from './songs/beds';
 import { JUKEBOX } from './songs/jukebox';
 import { Stingers } from './stingers';
 import { setWinKey } from '../winBand';
+import { audioCalm } from '../real';
+import { bus } from '../../events';
+import { CUES, hitOf, lastCallOf, missOf } from './songs/cues';
+import { HOLD, STAKE, STAKES_TO_I, StakesMeter, betStakes, dreadStakes, gambleStakes } from './stakes';
+
+declare module '../../events' {
+  interface GameEvents {
+    /**
+     * A high-stakes music cue. `cue`: 'tease' (a near miss: stakes only), 'reel_chase' (the jackpot chase; off with `hit`
+     * set to explode or deflate), 'duel:<rival>' (Lucan, Tamsin, Ada's kitchen 'duel:ada'; `final` = a final round),
+     * 'burning_wager'. Emitted by the local player's machines and tables; the conductor listens.
+     */
+    'music:cue': { cue: string; on: boolean; final?: boolean; hit?: boolean };
+  }
+}
 
 const PUMP_MS = 25;
 const LOOKAHEAD = 0.22, LOOKAHEAD_MAX = 1.8;
@@ -63,6 +78,10 @@ const STATES: Record<string, StateCfg> = {
 };
 /** States that keep a playing jukebox track alive (the jukebox is diegetic: it survives tension, not a cutscene). */
 const KEEPS_JUKE = new Set(['lounge', 'tense', 'dread']);
+/** High-stakes cues, first wins. They play over the floor states only (KEEPS_JUKE); Last Call gives way to the jukebox. */
+const CUE_ORDER = ['chase_hit', 'chase_miss', 'reel_chase', 'burning_wager', 'duel_lucan', 'duel_tamsin', 'duel_ada', 'lastcall'];
+/** Seconds a jackpot chase may hold the heartbeat before it counts as a miss. */
+const CHASE_MAX = 15;
 
 /**
  * Exponential slew of one control value (95 % of the way after `dur`). Unlike an eased ramp it keeps its slope when
@@ -104,6 +123,10 @@ export function createMusic(host: MusicHost): MusicApi {
   let stingers: Stingers | null = null;
   let lastLook = 0, lastTick = performance.now(), lookahead = LOOKAHEAD;
   let failures = 0, healAt = 0, lastStateCall = -9;
+  const meter = new StakesMeter();
+  const cues = new Set<string>();
+  const built = new Map<string, SongDef>();
+  let lastPump = ctx.currentTime, wallet = 0, usualBet = 0, chaseUntil = 0;
   const lastSting = new Map<string, number>(), stingTimes: number[] = [];
 
   // beat clock (driven by the audible arrangement)
@@ -114,7 +137,22 @@ export function createMusic(host: MusicHost): MusicApi {
 
   // ── song resolution ──────────────────────────────────────────────────────────────────────────
   const cfgOf = (s: string): StateCfg => STATES[s] ?? STATES.lounge;
+  /** The cue song: fixed (`CUES`) or built for the bed under it (Last Call, chase hit / miss), memoised. */
+  function cueSong(id: string, bed: SongDef): SongDef {
+    if (CUES[id]) return CUES[id];
+    const k = `${id}@${bed.id}`;
+    let s = built.get(k);
+    if (!s) { s = id === 'lastcall' ? lastCallOf(bed) : id === 'chase_hit' ? hitOf(bed) : missOf(bed); built.set(k, s); }
+    return s;
+  }
+
   function resolve(): { song: SongDef | null; key: string; juke: boolean } {
+    const cue = KEEPS_JUKE.has(state) ? CUE_ORDER.find((c) => cues.has(c) && !(c === 'lastcall' && jukeId)) : undefined;
+    if (cue) {
+      const bed = BEDS[zoneBed(zone)] ?? BEDS.lounge;
+      const song = cueSong(cue, bed);
+      return { song, key: 'cue:' + song.id, juke: false };
+    }
     if (jukeId) {
       const e = jukeById.get(jukeId);
       if (e) return { song: e.def, key: 'juke:' + jukeId, juke: true };
@@ -210,6 +248,11 @@ export function createMusic(host: MusicHost): MusicApi {
   /** One-shot reached its last bar: continue gaplessly into `then`, or loop it if it has none. */
   function chain(slot: Slot): void {
     slot.chained = true;
+    if (slot.key.startsWith('cue:chase_')) {                     // the hit / miss phrase is over: hand back to the bed
+      cues.delete('chase_hit'); cues.delete('chase_miss');
+      sync(1.5, false);
+      return;
+    }
     const nextId = slot.song.then;
     const next = nextId ? BEDS[nextId] : slot.song;
     const at = slot.arr.endTime;
@@ -247,10 +290,13 @@ export function createMusic(host: MusicHost): MusicApi {
     lastTick = wall;
     lookahead = gap > 150 ? Math.min(LOOKAHEAD_MAX, (gap / 1000) * 1.5 + 0.2) : Math.max(LOOKAHEAD, lookahead - 0.02);
     const until = now + lookahead;
-    const i = effI.at(now), d = effD.at(now);
+    meter.calm = audioCalm();
+    const s = meter.tick(now, now - lastPump);
+    lastPump = now;
+    const i = Math.max(effI.at(now), s * STAKES_TO_I), d = effD.at(now);
     if (cur) {
       const a = cur.arr;
-      a.i = i; a.d = d; a.tempoMul = tempoOf(cur.song, i); a.state = state;
+      a.i = i; a.d = d; a.s = s; a.tempoMul = tempoOf(cur.song, i); a.state = state;
       try { a.pump(now, until); } catch (e) {
         log.error('music', 'arrangement failed — dropping it', e);
         a.dispose(); cur = null;
@@ -264,15 +310,74 @@ export function createMusic(host: MusicHost): MusicApi {
       }
     }
     if (healAt && now >= healAt && !cur) { healAt = 0; sync(1, false); }
+    if (chaseUntil && now >= chaseUntil) endChase(false);       // the machine never said how it ended (stood up, disposed)
     for (let k = fading.length - 1; k >= 0; k--) {
       const f = fading[k];
       if (now >= f.killAt) { f.arr.dispose(); fading.splice(k, 1); continue; }
-      f.arr.i = i; f.arr.d = d;
+      f.arr.i = i; f.arr.d = d; f.arr.s = s;
       try { f.arr.pump(now, until); } catch { f.arr.dispose(); fading.splice(k, 1); }
     }
     applyLook(now);
   }
   setInterval(pump, PUMP_MS);
+
+  // ── stakes and cues from the bus ─────────────────────────────────────────────────────────────
+  /** Cue on / off; a change re-resolves the song (at the bar line, over `fade`, unless `quantize` is false). */
+  function cue(id: string, on: boolean, fade = DEFAULT_FADE, quantize = true): void {
+    if (on === cues.has(id)) return;
+    if (on) cues.add(id); else cues.delete(id);
+    if (KEEPS_JUKE.has(state)) sync(fade, quantize);
+  }
+  /** The last reel landed: a hit explodes at once (Calm skips the burst and eases back), a miss deflates. */
+  function endChase(hit: boolean): void {
+    chaseUntil = 0;
+    if (!cues.has('reel_chase')) return;
+    meter.set('chase', 0, ctx.currentTime);
+    cues.delete('reel_chase');
+    if (!KEEPS_JUKE.has(state)) return;
+    if (hit && !audioCalm()) cue('chase_hit', true, 0.06, false);
+    else if (hit) sync(1.5, false);
+    else cue('chase_miss', true, 0.6, false);
+  }
+  const DUELS = CUE_ORDER.filter((c) => c.startsWith('duel_'));
+  function duelOff(): void {
+    meter.set('duel', 0, ctx.currentTime);
+    for (const c of DUELS) cue(c, false);
+  }
+  bus.on('music:cue', (e) => {
+    const now = ctx.currentTime;
+    if (e.cue === 'tease') { meter.set('tease', e.on ? STAKE.tease : 0, now, HOLD.tease); return; }
+    if (e.cue === 'reel_chase') {
+      if (!e.on) { endChase(!!e.hit); return; }
+      meter.set('chase', STAKE.chase, now, CHASE_MAX);
+      chaseUntil = now + CHASE_MAX;
+      cue('chase_hit', false); cue('chase_miss', false);
+      cue('reel_chase', true, 0.35, false);                      // not on the bar: the drop-out lands with the reel
+      return;
+    }
+    if (e.cue === 'burning_wager') { meter.set('duel', e.on ? STAKE.final : 0, now); cue('burning_wager', e.on); return; }
+    if (e.cue.startsWith('duel:')) {
+      if (!e.on) { duelOff(); return; }
+      meter.set('duel', e.final ? STAKE.final : STAKE.duel, now);
+      const id = 'duel_' + e.cue.slice(5);
+      for (const c of DUELS) if (c !== id) cue(c, false);
+      if (CUES[id]) cue(id, true);                                // a rival without a theme keeps the bed and its stakes
+    }
+  });
+  bus.on('shift:phase', ({ phase }) => {
+    meter.set('lastCall', phase === 'lastCall' ? STAKE.lastCall : 0, ctx.currentTime);
+    cue('lastcall', phase === 'lastCall');
+    if (phase !== 'play' && phase !== 'lastCall' && phase !== 'closing') duelOff();
+  });
+  bus.on('gamble:fx', ({ kind, step }) => meter.set('gamble', gambleStakes(kind, step) ?? 0, ctx.currentTime, HOLD.gamble));
+  bus.on('eco:wallet', (e) => { wallet = e.wallet; });
+  // shortcut: the run emits machine:round and eco:wallet for its own player only; the pocket is the last wallet seen (before or after the debit)
+  bus.on('machine:round', ({ bet }) => {
+    meter.set('bet', betStakes(bet, Math.max(wallet, bet), usualBet), ctx.currentTime, HOLD.bet);
+    usualBet = usualBet > 0 ? usualBet * 0.8 + bet * 0.2 : bet;
+  });
+  bus.on('dread:change', ({ value }) => meter.set('dread', dreadStakes(value), ctx.currentTime));
+  bus.on('app:state', () => { meter.clear(); cues.clear(); usualBet = 0; });
 
   // ── public API ───────────────────────────────────────────────────────────────────────────────
   const api = {
@@ -282,7 +387,7 @@ export function createMusic(host: MusicHost): MusicApi {
       // simply re-asserting its state every frame
       const sinceCall = ctx.currentTime - lastStateCall;
       lastStateCall = ctx.currentTime;
-      const again = s === state && sinceCall > 1 && !!cur && !cur.key.startsWith('juke:') && cur.song.id !== cur.key;
+      const again = s === state && sinceCall > 1 && !!cur && !cur.key.startsWith('juke:') && !cur.key.startsWith('cue:') && cur.song.id !== cur.key;
       state = s;
       if (s === 'silent' || !KEEPS_JUKE.has(s)) jukeId = null;
       retarget(fade);
@@ -346,7 +451,7 @@ export function createMusic(host: MusicHost): MusicApi {
     debug() {
       const now = ctx.currentTime;
       return {
-        state, zone, jukeId, song: cur?.song.id ?? null, key: cur?.key ?? null, userI, userD,
+        state, zone, jukeId, song: cur?.song.id ?? null, key: cur?.key ?? null, userI, userD, stakes: meter.value, cues: [...cues],
         effI: effI.at(now), effD: effD.at(now), fading: fading.length, bar: cur?.arr.barNo ?? 0, load: rig.load(now), lookahead,
       };
     },

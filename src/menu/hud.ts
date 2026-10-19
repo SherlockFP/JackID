@@ -25,7 +25,8 @@ import { dawnPlan } from '@/game/pace';
 import { watchEventView } from '@/game/watchEvents';
 import { compereLine } from '@/game/events/compere';
 import { subtitles } from '@/core/ui/subtitles';
-import { grinChip } from '@/core/ui/manga/joker';
+import { calmNow, grinChip } from '@/core/ui/manga/joker';
+import { createRng, hashSeed } from '@/core/rng';
 import { presetRevealed, revealed, ticketsShown } from './hud/disclose';
 import { STAKE_PRESET_KEYS } from '@/machines/_base/stakePresets';
 import type { BankView, DebtRun, NextQuotaPreview, OvershootView } from '@/game/run';
@@ -66,6 +67,8 @@ const PAYOUT_LIVE_PHASES: ReadonlySet<string> = new Set(['bell', 'play', 'lastCa
 const BELL_SEC = 2;
 /** The Hot Lamp's distance and arrow refresh this often while a Lamp is lit (the text itself is written on change only). */
 const CHASE_S = 0.2;
+/** Loki in the pocket figure: how long his green stays after a line (s), and how long a lie holds before it snaps back (s). */
+const JK_BLEED_S = 2.5, JK_LIE_S = 1;
 
 export interface HudPrompt { action: Action; label: string; sub?: string }
 
@@ -685,6 +688,18 @@ export function createHud(): Hud {
     }
   });
 
+  // LOKI'S INK in the pocket figure (docs/JOKER.md §2.2): from Ink 2 his line turns it green while he talks; from Ink 4 one gain
+  // in three he lies with it, overshooting by up to 5 % for a second (Calm: the lie is tinted green, so it never passes as true)
+  let jkBleed = 0, jkLie = 0, jkMult = 1, jkN = 0;
+  const inkNow = (): number => (app.run as Partial<DebtRun> | null)?.jokerInk?.() ?? 0;
+  on('joker:whisper', () => { if (inkNow() >= 2) jkBleed = JK_BLEED_S; });
+  on('eco:wallet', ({ pid, delta }) => {
+    const r = app.run;
+    if (!r || pid !== self() || delta <= 0 || inkNow() < 4) return;
+    const rng = createRng(hashSeed(r.seed, 'joker.hud', jkN++));
+    if (rng.next() < 1 / 3) { jkLie = JK_LIE_S; jkMult = 1 + rng.float(0.01, 0.05); }
+  });
+
   on('machine:result', ({ pid, machineId, tier, bet, gross, credited }) => {
     if (pid !== self()) return;
     const idx = tierIndex(tier);
@@ -787,7 +802,10 @@ export function createHud(): Hud {
     if (roll.target > roll.shown && rollGate.pass(dt, moved)) {
       rollTick((roll.shown - rollStart) / Math.max(1, roll.target - rollStart), 0.22);
     } else rollGate.pass(dt, false);
-    setText(walletNum, money(roll.shown));
+    jkBleed = Math.max(0, jkBleed - dt);
+    jkLie = Math.max(0, jkLie - dt);
+    setText(walletNum, money(jkLie > 0 ? Math.round(roll.shown * jkMult) : roll.shown));
+    setCls(walletNum, 'jk-ink', jkBleed > 0 || (jkLie > 0 && calmNow()));
     // red only while the pocket cannot cover the last thing asked for (the run refused it for funds)
     setCls(wallet, 'short', r.lastRefusal() === 'funds');
     setCls(pulls, 'short', r.lastRefusal() === 'pulls');

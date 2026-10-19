@@ -74,6 +74,8 @@ export interface ViewmodelHost extends Viewmodel {
   setWatchTime(sec: number | null): void;
   /** Show or hide the wristwatch on the left wrist. */
   setWatch(on: boolean): void;
+  /** LOKI (docs/JOKER.md §4, §2.2): `flash` turns the hands his green for the Change of Hands (2.5 s); `lag` (Ink 8+) lets them drift out of step with the mouse. */
+  jokerHand(o: { flash?: boolean; lag?: boolean }): void;
   dispose(): void;
 }
 
@@ -87,6 +89,8 @@ const GRIP_DROP = 0.025;
 const GUN_HOME = new THREE.Vector3(0.135, -0.135, -0.3);
 /** A new item rises from below on a spring; the old one shrinks away over this long (s). */
 const RAISE_DROP = 0.07, LEAVE_S = 0.12, FADE_OUT_S = 0.2;
+/** The Change of Hands lasts this long (docs/JOKER.md §4: 2.5 s in all). */
+const LOKI_HAND_S = 2.5;
 /** Clips an item holds on the arms while it is in the hand (`t` = where in the clip). The phone is held in the left hand. */
 const HOLD_CLIPS: Record<string, { r?: ClipReq; l?: ClipReq }> = {
   phone: { l: { clip: 'grab.L', w: 1, t: 0.5 } },
@@ -148,6 +152,7 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
   let bobX = 0, bobY = 0, crouchK = 0, airK = 0, airTarget = 0, sprintTarget = 0, lookX = 0, lookY = 0;
   let sprintK = 0, swayX = 0, swayY = 0;
   let speed = 0, walkK = 0, walkPhase = 0, watchOn = true;
+  let lokiT = 0, lokiLag = false;                    // his hand: seconds of green left, and the Ink 8+ drift
   let holdClips = HOLD_CLIPS.phone, holdK = 0;       // the clips of the item in the hand, and how far they have come in
 
   const mount = (src: ArmsSource | null): void => {
@@ -279,6 +284,10 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
     setLightLevel(v) { lightLevel = clamp(v, 0.2, 1); },
     setWatch(on) { watchOn = on; watch.visible = on; },
     setWatchTime(sec) { setWatchTime(watch, sec); },
+    jokerHand(o) {
+      if (o.flash) lokiT = LOKI_HAND_S;
+      if (o.lag !== undefined) lokiLag = o.lag;
+    },
     drive(d) {
       speed = d.speed ?? 0;
       bobX = d.bobX * 0.4; bobY = d.bobY * 0.4;
@@ -296,8 +305,12 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
       spring(raise, 0, 15, 0.5, Math.min(dt, 0.1));
       // sway lags the mouse by ~0.08 s, capped at 3 cm (ART_BIBLE §8.5)
       const rate = 1 / Math.max(dt, 1 / 240);
-      swayX = damp(swayX, clamp(-lookX * rate * 0.00004, -0.03, 0.03), 12, dt);
-      swayY = damp(swayY, clamp(lookY * rate * 0.00004, -0.03, 0.03), 12, dt);
+      // Ink 8+: the hands trail the look a beat and overshoot it, as if someone else were moving them
+      const sk = lokiLag ? 3.5 : 12, sm = lokiLag ? 2.2 : 1;
+      swayX = damp(swayX, clamp(-lookX * rate * 0.00004 * sm, -0.03 * sm, 0.03 * sm), sk, dt);
+      swayY = damp(swayY, clamp(lookY * rate * 0.00004 * sm, -0.03 * sm, 0.03 * sm), sk, dt);
+      lokiT = Math.max(0, lokiT - dt);
+      arms?.setTint(lokiT > 0 ? Math.min(1, lokiT / 0.3, (LOKI_HAND_S - lokiT) / 0.2) : 0);   // in fast, out fast, his green in between
 
       // grip → live pose
       const k = 1 - Math.exp(-14 * dt);

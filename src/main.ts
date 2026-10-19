@@ -86,6 +86,7 @@ function applySettings(a: App, key?: keyof Settings): void {
   }
   // Calm Mode also silences the recorded horror hits (audio/real.ts)
   if (!key || key === 'calm') a.audio.setCalm?.(s.calm);
+  if (!key || key === 'retroSfx') a.audio.setRetro?.(s.retroSfx);
   if (key === 'lang') setLang(s.lang);
 }
 

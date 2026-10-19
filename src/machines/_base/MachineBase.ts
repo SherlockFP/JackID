@@ -747,7 +747,10 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   /** Small readable loss feedback + sound. */
   protected commiserate(o?: { amount?: number; at?: THREE.Object3D }): void { juice.loss(this, o); }
   /** Held-breath tease before a "nearly won" loss; awaitable. */
-  protected nearMiss(o: juice.NearMissOpts = {}): Promise<void> { return juice.nearMiss(this, { ...o, dur: (o.dur ?? 0.9) * this.speed }); }
+  protected nearMiss(o: juice.NearMissOpts = {}): Promise<void> {
+    if (this.isLocalOccupant) this.ctx.events.emit('music:cue', { cue: 'tease', on: true });   // the score's stakes rise for the held breath
+    return juice.nearMiss(this, { ...o, dur: (o.dur ?? 0.9) * this.speed });
+  }
   /** Pour coins into the tray with an optional count-up; awaitable. */
   protected pourCoins(amount: number, o?: juice.PourOpts): Promise<void> { return juice.pourCoins(this, amount, { speed: this.speed, ...o }); }
 
