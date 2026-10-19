@@ -3,7 +3,7 @@
 // Presentation only: nothing here touches an outcome, a payout or the rng.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { load, closeVite, ROOT } from './_vite.mjs';
 
@@ -80,6 +80,23 @@ test('every recorded clip real.ts can play is on disk (a typo would fall back to
   for (const u of real.CLIP_URLS) assert.ok(existsSync(join(ROOT, 'public', u.replace(/^\//, ''))), `missing ${u}`);
 });
 
+test('wave 83 sound pass: every vendored file is wired, every pack has its licence, the CC BY line is credited, the new names have recipes', async () => {
+  const real = await load('src/core/audio/real.ts');
+  const VENDOR = join(ROOT, 'public', 'assets', 'vendor');
+  for (const d of ['sfx-obsydianx-ui', 'sfx-ci-400', 'sfx-halfwits-dice', 'sfx-heyheythere-footsteps', 'sfx-liminal-horror', 'sfx-polar-magic']) {
+    assert.ok(existsSync(join(VENDOR, d, 'LICENSE.txt')), `${d} has a LICENSE.txt`);
+    for (const f of readdirSync(join(VENDOR, d))) {
+      if (f !== 'LICENSE.txt') assert.ok(real.CLIP_URLS.some((x) => x.endsWith(`${d}/${f}`)), `${d}/${f} is vendored but nothing plays it`);
+    }
+  }
+  const CC = 'Footsteps SFX Free by heyheythere - https://heyheythere.itch.io/footsteps-sfx-free - CC BY 4.0';
+  for (const f of ['docs/ASSETS.md', 'public/assets/vendor/sfx-heyheythere-footsteps/LICENSE.txt']) assert.ok(readFileSync(join(ROOT, f), 'utf8').includes(CC), `${f} carries the heyheythere credit`);
+  const credits = readFileSync(join(ROOT, 'src/menu/menu.strings.ts'), 'utf8');
+  assert.equal(credits.split('Footsteps SFX Free by heyheythere -|https://heyheythere.itch.io/footsteps-sfx-free - CC BY 4.0').length - 1, 2, 'the credit is on the Credits face in EN and TR');
+  for (const n of ['confirm', 'back', 'creakLong', 'growl', 'windGust', 'dreadDrone', 'knockDoor', 'knockSingle', 'knockDistant', 'boonOffer', 'boonPick', 'omen', 'spell', 'divineEcho']) assert.ok(sfx.SFX_DEFS.has(n), `no recipe "${n}"`);
+  for (const n of ['hover', 'click', 'error', 'popUp', 'card', 'cardFlip', 'shuffle', 'dice', 'diceLand', 'footstep', 'footstepWet']) assert.ok(sfx.SFX_DEFS.has(n), `${n} still has its recipe`);
+});
+
 test('the win ladder maps to its recipes; the jackpot plays the full show, the count-up sounds exist', () => {
   assert.equal(sfx.winSfx('jackpot'), 'jackpotShow');
   for (const n of ['jackpotShow', 'alarmBell', 'countDing', 'kachunk', 'jackpot']) assert.ok(sfx.SFX_DEFS.has(n), n);
@@ -102,10 +119,11 @@ test('win tiers are stepped in measured loudness, nothing clips, and the trims a
   const order = ['small', 'medium', 'big', 'huge', 'mega', 'jackpot'];
   for (let i = 1; i < order.length; i++) {
     const a = m.tiers[order[i - 1]].stDb, b = m.tiers[order[i]].stDb;
-    assert.ok(b >= a + 1, `${order[i]} (${b} dB) is at least 1 dB over ${order[i - 1]} (${a} dB)`);
+    assert.ok(b >= a + 1.5, `${order[i]} (${b} dB) is at least 1.5 dB over ${order[i - 1]} (${a} dB)`);
   }
   assert.ok(m.tiers.jackpot.stDb - m.tiers.small.stDb >= 6, 'small to jackpot spans 6 dB or more');
   for (const [t, v] of Object.entries(m.tiers)) assert.ok(v.peak <= 1, `${t} does not clip (peak ${v.peak})`);
+  assert.ok(m.headroom.jackpotMax.peak <= 1, `the jackpot does not clip with every slider at 1 (peak ${m.headroom.jackpotMax.peak})`);
   for (const [n, v] of Object.entries(m.cues)) assert.ok(v.peak <= 1, `${n} does not clip (peak ${v.peak})`);
   for (const [n, g] of Object.entries(m.trims)) assert.equal(sfx.SFX_DEFS.get(n).meta.gain, g, `${n} trim changed since the measurement: re-run sfxLoud`);
 });

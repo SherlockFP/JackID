@@ -282,7 +282,7 @@ function mount(el: HTMLElement, o: SettingsOpts): () => void {
     bodyEl = h('div', 'st-body', scrollEl);
     const foot = h('div', 'st-foot', fr.body);
     h('div', 'hint', foot, t('settings.footer'));
-    const back = button(foot, { label: t('common.back'), kind: 'primary', onClick: () => closeSettingsScreen() });
+    const back = button(foot, { label: t('common.back'), kind: 'primary', sfx: 'back', onClick: () => closeSettingsScreen() });
     back.el.dataset.sk = 'back';
     renderPage(false);
     refocus(sk);

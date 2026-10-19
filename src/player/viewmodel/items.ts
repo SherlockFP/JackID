@@ -8,15 +8,17 @@
  * can shorten the part that is eaten.
  */
 import * as THREE from 'three';
+import { app } from '@/core/app';
 import { clamp } from '@/core/math';
 import type { Hex } from '@/core/types';
 import { FOOD_BITE, FOOD_PARTS, type FoodPropId } from '@/world/props/food';
-import { ARMS_SCALE, type HandPose } from './arms';
+import { ARMS_SCALE, ARMS_UNIT, HOLD_AT, type HandPose } from './arms';
 import { mesh, shaded } from './shape';
 
 export type OwnMat = (c: Hex) => THREE.MeshBasicMaterial;
 type V3 = readonly [number, number, number];
 
+const COIN_R = 0.0125, COIN_H = 0.0035;
 const boxG = (w: number, h: number, d: number): THREE.BoxGeometry => shaded(new THREE.BoxGeometry(w, h, d));
 const cylG = (rt: number, rb: number, h: number, seg: number): THREE.CylinderGeometry => shaded(new THREE.CylinderGeometry(rt, rb, h, seg));
 
@@ -28,9 +30,19 @@ export interface Bite { pivot: THREE.Object3D; axis: 0 | 1 | 2 }
 export function buildItem(kind: string, m: OwnMat): THREE.Object3D | null {
   const g = new THREE.Group();
   switch (kind) {
-    case 'coin':
-      g.add(mesh(cylG(0.0125, 0.0125, 0.0035, 10), m(0xf0c048)));
+    case 'coin': {
+      // a thick gold rim and, on both faces, the embossed ¢ disc of the symbol atlas (its transparent ring leaves the rim showing)
+      g.add(mesh(cylG(COIN_R, COIN_R, COIN_H, 12), m(0xc9962e)));
+      const face = m(0xffffff);
+      face.map = app?.tex?.symbol('coin', 32) ?? null;
+      face.alphaTest = 0.5;
+      for (const s of [1, -1]) {
+        const d = mesh(shaded(new THREE.CircleGeometry(COIN_R, 12)), face, 0, s * (COIN_H / 2 + 0.0002), 0);
+        d.rotation.x = -s * Math.PI / 2;
+        g.add(d);
+      }
       break;
+    }
     case 'card':
       g.add(mesh(boxG(0.042, 0.002, 0.062), m(0xf2ecd8)), mesh(boxG(0.034, 0.0022, 0.054), m(0xb1202c)));
       break;
@@ -96,7 +108,7 @@ export function buildWatch(m: OwnMat): THREE.Group {
 export function liftWatch(w: THREE.Object3D, v: number): void {
   w.position.set(WATCH_AT[0] - 0.12 * v, WATCH_AT[1] - 0.05 * v, WATCH_AT[2] + 0.04 * v);
   w.rotation.set(0.5 * v, 0, 0.6 * v);
-  w.scale.setScalar(Math.max(0.001, (1 - clamp((v - 0.85) / 0.15, 0, 1)) / ARMS_SCALE));
+  w.scale.setScalar(Math.max(0.001, (1 - clamp((v - 0.85) / 0.15, 0, 1)) * ARMS_UNIT / ARMS_SCALE));
 }
 
 /** Double-barrel shotgun, muzzle toward −Z, origin at the grip. */
@@ -134,13 +146,13 @@ const CAN_LIFT = {
 } as const;
 
 export const GRIPS: Readonly<Record<string, Grip>> = {
-  coin: { pos: [-0.012, 0.016, -0.055], rot: [0, 0, 0], hand: { index: 0.15, thumb: 0.2, curl: 0.28 } },
+  coin: { pos: HOLD_AT, rot: [0, 0, 0], hand: { index: 0.15, thumb: 0.2, curl: 0.28 } },
   card: { pos: [0, 0, 0], rot: [0, 0.2, 0], hand: { curl: 0.6, index: 0.35, thumb: 0.35 } },
   ticket: { pos: [0, 0, 0], rot: [0, 0, 0], hand: { curl: 0.6, index: 0.35, thumb: 0.35 } },
   ledger: { pos: [0, 0, 0], rot: [0, 0, 0], hand: { curl: 0.5 } },
   totem: { pos: [0, 0, 0], rot: [0, 0, 0], hand: {} },
   tonic: { pos: [0.044, -0.028, -0.04], rot: [0, 0, Math.PI / 2], hand: { curl: 1.0, index: 0.95, thumb: 0.7, rz: -1.2 }, ...CAN_LIFT },
-  phone: { pos: [0, -0.026, -0.04], rot: [0, Math.PI / 2, 0], hand: { curl: 0.95, index: 0.9, thumb: 0.65, rz: -1.1, py: 0.07, px: -0.03, pz: 0.03, rx: 0.1 } },
+  phone: { pos: [0, -0.045, -0.03], rot: [0, Math.PI / 2, 0], hand: { curl: 0.95, index: 0.9, thumb: 0.65 } },
   banana: {
     pos: [-0.012, -0.022, -0.04], rot: [0, Math.PI, 0], hand: { curl: 0.95, index: 0.9, thumb: 0.65 },
     lift: { px: -0.1, py: -0.004, pz: 0.155, rx: 0.126, ry: 0.167, rz: -0.378 },

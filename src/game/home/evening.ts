@@ -225,7 +225,8 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     wantLock = true;
     sfx(HOME_SFX.bed);
     fadeTo(1, T.sleep - 0.3);
-    // a flat of Harmony 0 has no spouse: the bed shows the note instead
+    // a flat of Harmony 0 has no Ada: the bed shows the note instead
+    // shortcut: always `evening.note` (gone to her sister's); A2 shows `evening.note.across` while adaPhase is 'across' (before N5).
     if ((run.homePhone()?.harmony() ?? 3) <= 0) say(t('evening.note'), t('evening.speaker.note'), 3.5);
   };
 

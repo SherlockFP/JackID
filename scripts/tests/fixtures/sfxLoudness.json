@@ -1,0 +1,217 @@
+{
+ "note": "written by scripts/qa/sfxLoud.mjs; peak = sample peak, stDb = loudest 400 ms RMS (dBFS); tiers through default bus volumes + master compressor",
+ "volumes": {
+  "master": 0.8,
+  "sfx": 0.9,
+  "ui": 0.8,
+  "music": 0.6,
+  "amb": 0.7,
+  "voice": 0.9
+ },
+ "missing": [],
+ "cues": {
+  "button": {
+   "peak": 0.487,
+   "peakDb": -6.2,
+   "stDb": -28.7,
+   "len": 0.07
+  },
+  "lever": {
+   "peak": 0.436,
+   "peakDb": -7.2,
+   "stDb": -25.7,
+   "len": 0.56
+  },
+  "reelStart": {
+   "peak": 0.447,
+   "peakDb": -7,
+   "stDb": -19.7,
+   "len": 0.48
+  },
+  "reelStop": {
+   "peak": 0.537,
+   "peakDb": -5.4,
+   "stDb": -25.7,
+   "len": 0.19
+  },
+  "reelLoop": {
+   "peak": 0.871,
+   "peakDb": -1.2,
+   "stDb": -12.3,
+   "len": 0.9
+  },
+  "lineUp": {
+   "peak": 0.356,
+   "peakDb": -9,
+   "stDb": -30.8,
+   "len": 0.09
+  },
+  "lose": {
+   "peak": 0.27,
+   "peakDb": -11.4,
+   "stDb": -30.3,
+   "len": 0.14
+  },
+  "numberTick": {
+   "peak": 0.322,
+   "peakDb": -9.9,
+   "stDb": -37.5,
+   "len": 0.03
+  },
+  "countDing": {
+   "peak": 0.712,
+   "peakDb": -2.9,
+   "stDb": -20.9,
+   "len": 0.59
+  },
+  "streakPing": {
+   "peak": 0.329,
+   "peakDb": -9.7,
+   "stDb": -22,
+   "len": 0.59
+  },
+  "coinClink": {
+   "peak": 0.667,
+   "peakDb": -3.5,
+   "stDb": -29.8,
+   "len": 0.06
+  },
+  "heartbeat": {
+   "peak": 0.509,
+   "peakDb": -5.9,
+   "stDb": -23.9,
+   "len": 0.3
+  },
+  "kachunk": {
+   "peak": 0.797,
+   "peakDb": -2,
+   "stDb": -18.6,
+   "len": 1.02
+  },
+  "alarmBell": {
+   "peak": 0.499,
+   "peakDb": -6,
+   "stDb": -18,
+   "len": 2.4
+  },
+  "win1": {
+   "peak": 0.44,
+   "peakDb": -7.1,
+   "stDb": -20.6,
+   "len": 0.9
+  },
+  "win2": {
+   "peak": 0.442,
+   "peakDb": -7.1,
+   "stDb": -19.6,
+   "len": 2.13
+  },
+  "win3": {
+   "peak": 0.314,
+   "peakDb": -10,
+   "stDb": -20.9,
+   "len": 2.79
+  },
+  "winHuge": {
+   "peak": 0.51,
+   "peakDb": -5.8,
+   "stDb": -18.6,
+   "len": 4
+  },
+  "winMega": {
+   "peak": 0.671,
+   "peakDb": -3.5,
+   "stDb": -14.7,
+   "len": 4
+  },
+  "jackpotShow": {
+   "peak": 0.895,
+   "peakDb": -1,
+   "stDb": -13.8,
+   "len": 4
+  }
+ },
+ "tiers": {
+  "small": {
+   "peak": 0.312,
+   "peakDb": -10.1,
+   "stDb": -23.7,
+   "len": 0.91
+  },
+  "medium": {
+   "peak": 0.354,
+   "peakDb": -9,
+   "stDb": -21.2,
+   "len": 1.91
+  },
+  "big": {
+   "peak": 0.448,
+   "peakDb": -7,
+   "stDb": -19.2,
+   "len": 3.4
+  },
+  "huge": {
+   "peak": 0.547,
+   "peakDb": -5.2,
+   "stDb": -17.6,
+   "len": 5.9
+  },
+  "mega": {
+   "peak": 0.587,
+   "peakDb": -4.6,
+   "stDb": -15.5,
+   "len": 7.4
+  },
+  "jackpot": {
+   "peak": 0.773,
+   "peakDb": -2.2,
+   "stDb": -13.6,
+   "len": 10.86
+  }
+ },
+ "headroom": {
+  "jackpotRaw": {
+   "peak": 1.436,
+   "peakDb": 3.1,
+   "stDb": -9.7,
+   "len": 10.85
+  },
+  "jackpotMax": {
+   "peak": 0.955,
+   "peakDb": -0.4,
+   "stDb": -10.9,
+   "len": 10.86
+  }
+ },
+ "trims": {
+  "button": 0.8,
+  "lever": 0.46,
+  "reelStart": 1.11,
+  "reelStop": 0.66,
+  "reelLoop": 1.75,
+  "lineUp": 0.9,
+  "lose": 0.5,
+  "numberTick": 2.6,
+  "countDing": 1,
+  "streakPing": 1.2,
+  "coinClink": 1,
+  "heartbeat": 0.45,
+  "kachunk": 0.7,
+  "alarmBell": 1,
+  "win1": 0.72,
+  "win2": 0.61,
+  "win3": 0.33,
+  "winHuge": 0.35,
+  "winMega": 0.62,
+  "jackpotShow": 0.44,
+  "coinPour": 0.64,
+  "tensionRise": 0.83,
+  "chime": 1.64,
+  "cheer": 1,
+  "winRise": 0.8,
+  "bell": 1.01,
+  "jackpotSiren": 1.77,
+  "jackpotBells": 1.76,
+  "coinRain": 1.75
+ }
+}

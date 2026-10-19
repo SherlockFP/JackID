@@ -1,0 +1,11 @@
+Footsteps SFX Free by heyheythere
+Source: https://heyheythere.itch.io/footsteps-sfx-free
+Licence: Creative Commons Attribution 4.0 International (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/
+Attribution is REQUIRED. The author's credit line, to be kept in the game's credits (src/menu/menu.strings.ts, EN and TR) and in docs/ASSETS.md:
+
+    Footsteps SFX Free by heyheythere - https://heyheythere.itch.io/footsteps-sfx-free - CC BY 4.0
+
+Vendored in JackID (wave 83): 16 of the 30 free clips, the original OGG Vorbis files, unmodified, renamed by floor
+(carpet, wood, tile, metal, dirt, wet, concrete). Mapping to the pack's names is in public/assets/vendor/SFX_INDEX.md.
+The pack's full legal code is at https://creativecommons.org/licenses/by/4.0/legalcode
+The full (paid) pack, Footsteps SFX, has its own licence at https://heyheythere.itch.io/footsteps-sfx and is not included.

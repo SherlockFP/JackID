@@ -1,0 +1,7 @@
+SFX Pack - Rolling Dice by Halfwits & Failed Crits (recorded by Jonathan Swenson, Neumann TLM103)
+Source: https://halfwitsfailedcrits.itch.io/sfx-pack-rolling-dice
+Licence: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/). No credit required.
+The pack is pay-what-you-want (https://www.ko-fi.com/halfwitsfailedcrits); courtesy line: "Dice rolls by Halfwits & Failed Crits (CC0)."
+
+Vendored in JackID (wave 83): 4 clips (Roll 1d6, 2d6, 3d6, 5d6).
+Modified: trimmed, mixed to mono, resampled to 22.05 kHz, peak-normalised, faded, saved as 16-bit WAV.

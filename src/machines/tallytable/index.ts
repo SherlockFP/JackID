@@ -331,7 +331,7 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
       S, calm,
       coins: run.canAfford(S, pid),
       pledge: pc ? pc.cur : '',
-      soul: calm || !hooks ? 0 : hooks.soulMarks(pid),
+      soul: calm || !hooks || hooks.soulMarks(pid) < 2 ? 0 : hooks.soulMarks(pid),   // the Clerk never takes the last seal (docs/BLESSINGS.md §1)
     }
   }
 

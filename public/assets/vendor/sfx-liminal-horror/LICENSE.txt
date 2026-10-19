@@ -1,0 +1,11 @@
+Free Horror SFX / Sounds, volumes 1 and 2, by Liminal Games
+Source: https://liminal-space-dev.itch.io/free-horror-sfx-sounds
+Licence field on the page: CC0. Terms as stated there:
+  "Use in both commercial and free projects"
+  "No attribution required"
+  "Please don't redistribute or resell the pack itself"
+JackID ships a small selection of clips inside the game, not the pack.
+
+Vendored in JackID (wave 83): 11 clips (Creaking Door 2, 4, 6, 7, 9; Monster Growl 2, 4, 6; Ambient Wind 2, 4, 5).
+Modified: cut to one gesture each, mixed to mono, resampled (11 to 22 kHz), peak-normalised, faded, saved as 16-bit WAV.
+Which clip plays where: public/assets/vendor/SFX_INDEX.md, src/core/audio/real.ts.

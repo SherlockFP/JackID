@@ -21,7 +21,9 @@ export default {
     'rival.tamsin.catch': 'Forgive me. It was already mine.',
     'rival.tamsin.taunt': 'Sit down. The wall remembers every tile, and so do I.',
     'rival.tamsin.called': 'You were watching my sleeve. How unkind of you to be right.',
-    'rival.tamsin.loss': 'Forgive me again. Tonight you were the honest one.',
+    'rival.tamsin.loss': 'Forgive me again. You hold cards like someone I used to deal for.',
+    // Bond 2 hint. shortcut: unwired until A4 (bonds) reads it at the Night 8 tables.
+    'rival.tamsin.hint': 'He goes quiet before he breaks. I dealt for him long enough to hear it.',
 
     'rival.kuro.name': 'Kuro Brandt',
     'rival.kuro.title': 'Brass Saint',
@@ -37,7 +39,10 @@ export default {
     'rival.lucan.catch': 'I don\'t break my word. I just choose when to give it.',
     'rival.lucan.taunt': 'Keep your hands on the felt. A nervous hand is a loud clock.',
     'rival.lucan.called': 'You saw the watch. Nobody looks at the watch. What a shame.',
-    'rival.lucan.loss': 'Hm. Your second name is still breathing. Lucky you.',
+    'rival.lucan.loss': 'You read that watch like he did. Nobody has since the girl beat him.',
+    // Bond 2 hints. shortcut: unwired until A4 (bonds) reads them after a later Night rematch and at the Night 8 front row.
+    'rival.lucan.hint.pair': 'Unless both keep it. Then nobody gets paid.',
+    'rival.lucan.hint.ada': 'She said paper and kept it. He threw rock. He always did.',
 
     'rival.mimosa.name': 'Mimosa Teague',
     'rival.mimosa.title': 'Lost & Found',
@@ -75,6 +80,11 @@ export default {
     'line.mimosa.intro': 'Everything is lost until somebody looks. Look carefully, hm?',
     'line.orrin.intro': 'I paid all of it. The lift took me up. Only me.',
     'line.clerk.ledger': 'Nothing in the ledger is surprising. That is what the ledger is for.',
+    // The Audit (Night 7) and the kitchen. shortcut: unwired until A5 plays them.
+    'line.clerk.chosen': 'You were not chosen. You were next.',
+    'line.clerk.hands': 'Three hands have been on this card. Yours, hers, and the loser\'s.',
+    'line.clerk.glove': 'None dark. Unusual.',
+    'line.clerk.pair': 'A wager nobody loses cannot be collected.',
     'line.vell.intro': 'I counted every coin in the Well. This one is yours. Don\'t throw it again.',
     'line.vell.end': 'Call me a cheat. It is the only way the Clerk lets me lose.',
   },
@@ -94,7 +104,8 @@ export default {
     'rival.tamsin.catch': 'Kusura bakmayın. Zaten benimdi.',
     'rival.tamsin.taunt': 'Oturun. Duvar her taşı hatırlar, ben de.',
     'rival.tamsin.called': 'Koluma bakıyordunuz. Haklı çıkmak ne kadar kaba.',
-    'rival.tamsin.loss': 'Yine kusura bakmayın. Bu gece dürüst olan sizdiniz.',
+    'rival.tamsin.loss': 'Yine kusura bakmayın. Kartları, eskiden dağıttığım biri gibi tutuyorsunuz.',
+    'rival.tamsin.hint': 'Bozmadan önce susar. Onun için yeterince dağıttım, sessizliğini duyarım.',
 
     'rival.kuro.name': 'Kuro Brandt',
     'rival.kuro.title': 'Pirinç Aziz',
@@ -110,7 +121,9 @@ export default {
     'rival.lucan.catch': 'Sözümü bozmam. Sadece ne zaman vereceğimi seçerim.',
     'rival.lucan.taunt': 'Ellerini kumaşta tut. Titreyen el, yüksek sesli bir saattir.',
     'rival.lucan.called': 'Saate baktın. Kimse saate bakmaz. Ne yazık.',
-    'rival.lucan.loss': 'Hm. İkinci adın hâlâ nefes alıyor. Şanslısın.',
+    'rival.lucan.loss': 'Saati o okuduğu gibi okudun. Kız onu yendiğinden beri kimse okumadı.',
+    'rival.lucan.hint.pair': 'Tek istisna: ikisi de tutarsa. O zaman kimse ödemez.',
+    'rival.lucan.hint.ada': 'Kız kağıt dedi ve tuttu. O taş attı. Hep atardı.',
 
     'rival.mimosa.name': 'Mimosa Teague',
     'rival.mimosa.title': 'Kayıp & Buluntu',
@@ -148,6 +161,10 @@ export default {
     'line.mimosa.intro': 'Her şey, biri bakana kadar kayıptır. Dikkatli bak, olur mu?',
     'line.orrin.intro': 'Hepsini ödedim. Asansör beni yukarı çıkardı. Yalnızca beni.',
     'line.clerk.ledger': 'Defterde şaşırtıcı hiçbir şey yok. Defter bunun için var.',
+    'line.clerk.chosen': 'Seçilmediniz. Sıradaydınız.',
+    'line.clerk.hands': 'Bu kartta üç el var. Sizinki, onunki, bir de kaybedeninki.',
+    'line.clerk.glove': 'Hiçbiri kararmamış. Alışılmadık.',
+    'line.clerk.pair': 'Kimsenin kaybetmediği bahis tahsil edilemez.',
     'line.vell.intro': 'Kuyu\'daki her parayı saydım. Bu seninki. Bir daha atma.',
     'line.vell.end': 'Bana hileci de. Katip beni ancak böyle kaybettirir.',
   },

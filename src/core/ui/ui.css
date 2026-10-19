@@ -317,7 +317,7 @@
   /* No height cap and no clip: the box grows to its text, so the last line ("… Hold ESC to skip") is never cut off.
      The bottom padding leaves room under the hint line for its descenders and the box's own inset edge. */
   padding: calc(3 * var(--u)) calc(5 * var(--u)) calc(5 * var(--u));
-  background: rgba(14, 11, 8, 0.8); box-shadow: inset 0 0 0 var(--u) var(--brass);
+  background: #0e0b08; box-shadow: inset 0 0 0 var(--u) var(--brass);
   font-family: var(--f-body); font-size: var(--fb); line-height: 1.15; color: var(--ivory); pointer-events: none;
   overflow-wrap: break-word; word-break: normal; hyphens: none;
 }

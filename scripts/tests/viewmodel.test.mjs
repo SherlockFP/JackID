@@ -50,7 +50,7 @@ const sample = (vm) => {
 /** The held food's bite pivot, if it has one. */
 const pivotOf = (vm) => { let found = null; vm.scene.traverse((o) => { if (o.userData.bite) found = o.userData.bite; }); return found; };
 
-test('the arms are the rigged GLB: one skinned mesh of 1176 triangles, both hands in frame at rest', async () => {
+test('the arms are the rigged GLB: one skinned mesh of 1176 triangles, both hands low in frame at rest (the wrist at the bottom edge)', async () => {
   const vm = await make();
   let skinned = 0;
   vm.scene.traverse((o) => { if (o.isSkinnedMesh) { skinned++; assert.equal(o.skeleton.bones.length, 52); } });
@@ -60,7 +60,7 @@ test('the arms are the rigged GLB: one skinned mesh of 1176 triangles, both hand
   vm.camera.updateMatrixWorld(true);
   for (const name of ['handR', 'handL']) {
     const v = bone(vm, name).getWorldPosition(new THREE.Vector3()).project(vm.camera);
-    assert.ok(Math.abs(v.x) < 0.95 && v.y > -1.1 && v.y < 0.2, `${name} at screen ${v.x.toFixed(2)}, ${v.y.toFixed(2)}`);
+    assert.ok(Math.abs(v.x) < 0.95 && v.y > -1.3 && v.y < -0.4, `${name} at screen ${v.x.toFixed(2)}, ${v.y.toFixed(2)}`);
   }
   vm.dispose();
 });
@@ -219,4 +219,189 @@ test('food parts: a bitten food names its bite part, and the banana is curved, s
   const ys = ban.filter((p) => p.seg === 5).map((p) => p.pos[1]);
   assert.ok(Math.max(...ys) - Math.min(...ys) > 0.02, 'the slices follow a curve');
   assert.ok(ITEMS.buildItem('banana', () => new THREE.MeshBasicMaterial()), 'the hand can build it');
+});
+
+// ── coin tricks (fidget.ts, coinTricks.ts) ───────────────────────────────────────────────────────
+const TRACKED = ['handR', 'forearmR', 'f_index03R', 'f_middle03R', 'f_pinky03R', 'thumb03R', 'handL'];
+/** World positions of the right arm's bones: a pop in any of them is a pop on screen. */
+const skeleton = (vm) => { vm.scene.updateMatrixWorld(true); return TRACKED.map((n) => bone(vm, n).getWorldPosition(new THREE.Vector3())); };
+/** The trick coin (the second thing in the scene, after the rig), or null when it is the held coin that shows. */
+const trickCoin = (vm) => { const c = vm.scene.children[1]; return c && c.visible ? c : null; };
+const coinPos = (vm) => trickCoin(vm)?.getWorldPosition(new THREE.Vector3()) ?? null;
+
+test('spamming the trick key (every 0.05 s for 3 s) never pops: no bone and no coin jumps in one frame', async () => {
+  const vm = await make();
+  let prev = skeleton(vm), prevCoin = null, maxBone = 0, maxCoin = 0;
+  for (let f = 0; f < 180; f++) {
+    if (f % 3 === 0) { vm.trick(true); vm.trick(false); }          // 0.05 s at 60 fps
+    vm.update(1 / 60);
+    const cur = skeleton(vm);
+    cur.forEach((p, i) => { maxBone = Math.max(maxBone, p.distanceTo(prev[i])); });
+    prev = cur;
+    const c = coinPos(vm);
+    if (c && prevCoin) maxCoin = Math.max(maxCoin, c.distanceTo(prevCoin));
+    prevCoin = c;
+  }
+  assert.ok(maxBone < 0.035, `a bone moved ${maxBone.toFixed(4)} m in one frame`);
+  assert.ok(maxCoin < 0.06, `the coin moved ${maxCoin.toFixed(4)} m in one frame`);
+  vm.dispose();
+});
+
+test('every trick, cut into by the next from any frame, blends within 0.12 s and the coin is always in the hand or in flight from it', async () => {
+  for (let which = 0; which < 4; which++) {
+    for (let cutAt = 5; cutAt < 100; cutAt += 7) {
+      const vm = await make();
+      vm.trick(true, which); vm.trick(false);
+      for (let f = 0; f < cutAt; f++) vm.update(1 / 60);
+      vm.trick(true, (which + 1) % 4); vm.trick(false);
+      let prev = skeleton(vm), prevCoin = coinPos(vm);
+      for (let f = 0; f < 150; f++) {
+        vm.update(1 / 60);
+        const cur = skeleton(vm), hand = cur[0];
+        cur.forEach((p, i) => assert.ok(p.distanceTo(prev[i]) < 0.035, `trick ${which} cut at ${cutAt}: ${TRACKED[i]} jumped at frame ${f}`));
+        prev = cur;
+        const c = coinPos(vm);
+        if (c) {
+          assert.ok(c.distanceTo(hand) < 0.4, `the coin is ${c.distanceTo(hand).toFixed(2)} m from the hand`);
+          if (prevCoin) assert.ok(c.distanceTo(prevCoin) < 0.06, `trick ${which} cut at ${cutAt}: the coin jumped ${c.distanceTo(prevCoin).toFixed(3)} m at frame ${f}`);
+        }
+        prevCoin = c;
+      }
+      vm.dispose();
+    }
+  }
+});
+
+test('the thumb flip is a real arc: up and back to the hand under gravity, caught, and the held coin shows again', async () => {
+  const vm = await make();
+  vm.trick(true, 0); vm.trick(false);
+  const ys = [], start = [];
+  for (let f = 0; f < 150; f++) {
+    vm.update(1 / 60);
+    const c = coinPos(vm), hand = bone(vm, 'handR').getWorldPosition(new THREE.Vector3());
+    ys.push(c ? c.y - hand.y : null);
+    if (f === 5) start.push(c.y - hand.y);
+  }
+  const air = ys.filter((y) => y !== null);
+  const apex = Math.max(...air) - start[0];
+  assert.ok(apex > 0.05 && apex < 0.13, `the coin rises ${apex.toFixed(3)} m`);
+  const top = ys.indexOf(Math.max(...air));
+  const rise = ys.slice(top - 12, top), fall = ys.slice(top, top + 12);
+  assert.ok(rise.every((y, i) => i === 0 || y >= rise[i - 1] - 0.003), 'it climbs to the top');
+  assert.ok(fall.every((y, i) => i === 0 || y <= fall[i - 1] + 0.003), 'and falls from it');
+  assert.equal(ys[ys.length - 1], null, 'the trick coin is gone: the held coin shows again');
+  vm.dispose();
+});
+
+test('holding the key loops the knuckle roll; letting go finishes it and the held coin comes back', async () => {
+  const vm = await make();
+  vm.trick(true, 1);
+  for (let f = 0; f < 60 * 6; f++) vm.update(1 / 60);               // 6 s: three times the length of the trick
+  assert.ok(trickCoin(vm), 'still rolling after the trick is long over');
+  vm.trick(false);
+  for (let f = 0; f < 60 * 4; f++) vm.update(1 / 60);
+  assert.equal(trickCoin(vm), null, 'released: back to the held coin');
+  vm.dispose();
+});
+
+test('a cut-in keeps the coin momentum: a coin in the air flies on and lands, it is not put back in the palm', async () => {
+  const vm = await make();
+  vm.trick(true, 0); vm.trick(false);
+  for (let f = 0; f < 30; f++) vm.update(1 / 60);                    // 0.5 s: the coin is near its top
+  const before = coinPos(vm), handY = bone(vm, 'handR').getWorldPosition(new THREE.Vector3()).y;
+  assert.ok(before.y - handY > 0.04, 'in the air');
+  vm.trick(true, 3); vm.trick(false);
+  vm.update(1 / 60);
+  assert.ok(coinPos(vm).y - bone(vm, 'handR').getWorldPosition(new THREE.Vector3()).y > 0.02, 'one frame later it is still up there');
+  vm.dispose();
+});
+
+test('the tricks do not depend on the frame rate (the same sim seconds give the same hand and the same coin)', async () => {
+  const run = async (fps) => {
+    const vm = await make();
+    vm.trick(true, 0); vm.trick(false);
+    const out = [];
+    for (const sec of [0.3, 0.5, 0.8]) {
+      const target = Math.round(sec * fps);
+      while (out.frames === undefined || out.frames < target) { vm.update(1 / fps); out.frames = (out.frames ?? 0) + 1; }
+      out.push(...skeleton(vm).flatMap((p) => p.toArray()), ...(coinPos(vm)?.toArray() ?? [0, 0, 0]));
+    }
+    vm.dispose();
+    return out.slice();
+  };
+  const a = await run(30), b = await run(120);
+  for (let i = 0; i < a.length; i++) assert.ok(Math.abs(a[i] - b[i]) < 0.02, `channel ${i}: ${a[i]} vs ${b[i]}`);
+});
+
+test('the trick curves: smooth, flat at holds, every trick starts and ends on the held coin', async () => {
+  const T = await load('src/player/viewmodel/coinTricks.ts');
+  const c = T.curve([[0, 0], [1, 1], [2, 1], [3, 3]]);
+  assert.equal(c(-1), 0); assert.equal(c(5), 3); assert.equal(c(1.5), 1, 'a hold is flat');
+  for (const trick of T.TRICKS) {
+    const curves = T.curvesOf(trick);
+    for (const ch of T.CHANNELS) {
+      if (ch === 'cspin' || ch === 'crx') continue;                   // whole turns: checked below
+      assert.ok(Math.abs(curves[ch](0) - T.REST[ch]) < 1e-9 && Math.abs(curves[ch](trick.dur) - T.REST[ch]) < 1e-9, `${trick.name}.${ch} starts and ends at rest`);
+    }
+    const turn = (v) => Math.abs(v - 2 * Math.PI * Math.round(v / (2 * Math.PI)));
+    assert.ok(turn(curves.cspin(trick.dur)) < 1e-6 && turn(curves.crx(trick.dur)) < 1e-6, `${trick.name} ends flat`);
+    if (trick.loop) for (const ch of T.CHANNELS) assert.ok(Math.abs(curves[ch](trick.loop[0]) - curves[ch](trick.loop[1])) < 1e-9, `${trick.name}.${ch} matches across the loop`);
+  }
+});
+
+// ── framing: small hands, no cut end, a real coin, own pass ──────────────────────────────────────
+const skinned = (vm) => { let m; vm.scene.traverse((o) => { if (o.isSkinnedMesh) m = o; }); return m; };
+/** Skinned vertices on screen: [vertex index → NDC] for the ones in front of the camera. */
+const ndcOf = (vm, mesh, i, v) => {
+  mesh.getVertexPosition(i, v); v.applyMatrix4(mesh.matrixWorld);
+  if (v.clone().applyMatrix4(vm.camera.matrixWorldInverse).z > -0.01) return null;
+  return v.project(vm.camera);
+};
+const settle = (vm) => { vm.scene.updateMatrixWorld(true); vm.camera.updateMatrixWorld(true); const m = skinned(vm); m.skeleton.update(); return m; };
+
+test('at rest the hands cover at most 22% of the screen height at 16:9 and 21:9', async () => {
+  for (const aspect of [16 / 9, 21 / 9]) {
+    const vm = await make();
+    vm.drive({ ...DRIVE, aspect });
+    vm.update(1 / 60);
+    const m = settle(vm), v = new THREE.Vector3();
+    let top = -9;
+    for (let i = 0; i < m.geometry.getAttribute('position').count; i++) { const p = ndcOf(vm, m, i, v); if (p && Math.abs(p.x) < 1) top = Math.max(top, p.y); }
+    assert.ok((top + 1) / 2 <= 0.22, `aspect ${aspect.toFixed(2)}: hands reach ${((top + 1) / 2 * 100).toFixed(1)}% of the height`);
+    vm.dispose();
+  }
+});
+
+test("no animation lifts the arm far enough to show its open cut end", async () => {
+  const v = new THREE.Vector3();
+  for (const name of Object.keys(ANIMS)) {
+    const vm = await make(name === 'drink' ? 'coffee' : name === 'eat' ? 'banana' : null);
+    const m = settle(vm), n = m.geometry.getAttribute('position').count;
+    const hands = ['handR', 'handL'].map((h) => bone(vm, h).getWorldPosition(new THREE.Vector3()));
+    const far = [];
+    for (let i = 0; i < n; i++) { m.getVertexPosition(i, v); v.applyMatrix4(m.matrixWorld); far.push([v.distanceTo(hands[v.x > 0 ? 0 : 1]), i]); }
+    const cut = far.sort((a, b) => b[0] - a[0]).slice(0, Math.round(n * 0.04)).map((x) => x[1]);     // the farthest 4%: the elbow end
+    void vm.play(name);
+    for (let f = 0; f < Math.ceil((ANIMS[name].dur + 0.3) * 60); f++) {
+      vm.update(1 / 60);
+      settle(vm);
+      for (const i of cut) { const p = ndcOf(vm, m, i, v); assert.ok(!p || Math.abs(p.x) >= 1 || p.y <= -1 || p.y >= 1, `${name} frame ${f}: the cut end is on screen`); }
+    }
+    vm.dispose();
+  }
+});
+
+test('the coin is a real coin: a rim cylinder and an embossed face on each side', async () => {
+  const c = ITEMS.buildItem('coin', () => new THREE.MeshBasicMaterial());
+  const kinds = []; c.traverse((o) => { if (o.isMesh) kinds.push(o.geometry.type); });
+  assert.deepEqual(kinds.sort(), ['CircleGeometry', 'CircleGeometry', 'CylinderGeometry']);
+});
+
+test('the viewmodel is its own pass: drawn after the world and the fx, depth cleared first, camera and scene of its own', () => {
+  const src = readFileSync(`${ROOT}/src/core/renderer/psxRenderer.ts`, 'utf8');
+  const at = (s) => src.indexOf(s);
+  assert.ok(at('three.render(scene, camera)') < at('three.render(fxLayer.scene, camera)'));
+  assert.ok(at('three.render(fxLayer.scene, camera)') < at('three.clearDepth()'));
+  assert.ok(at('three.clearDepth()') < at('three.render(overlay.scene, overlay.camera)'));
+  assert.ok(at('three.render(overlay.scene, overlay.camera)') < at('three.render(pass.scene, pass.camera)'));
 });

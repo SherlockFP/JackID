@@ -108,6 +108,8 @@
 // camper N3 16. Open: N8 (human 20 vs ~5) needs the SI ladder smoothed (SI 1,2,4 … 128 gives N8 ~4) and the rotator sits ~35 points
 // above the human late (a bot/charm question, not the quota ladder). Run node scripts/sim/run.mjs --runs 2000 to see the table.
 import { writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { load, closeVite } from '../tests/_vite.mjs';
 
 const args = process.argv.slice(2);
@@ -146,6 +148,7 @@ const HUMAN_DEP_HI = Number(argVal('--human-dep-hi', 0.7));
 const FLOAT_POCKET = Number(argVal("--float-pocket", 0.3));
 const RESERVE_FRAC = Number(argVal('--reserve-frac', 0.35));
 const JSON_OUT = argVal('--json', '');
+const HOOK = argVal('--hook', '');   // a module that layers a rule set on the run (see HOOK below); scripts/sim/joker.mjs is one
 const SEED = Number(argVal('--seed', 20261013)) | 0;
 const CAREFUL_DEP = Number(argVal('--careful-dep', 0.5));          // share of the pocket the careful new player deposits at the first Bell
 const NEWBIE_DEP = Number(argVal('--newbie-dep', 1));              // ... and the newbie (everything the float allows)
@@ -187,6 +190,11 @@ const CIR = await load('src/game/circuit.ts');
 const ECO = await load('src/game/economy.ts');
 const RESC = await load('src/game/rescue.ts');
 const RNG = await load('src/core/rng.ts');
+// HOOK (docs/JOKER.md sim): --hook <file.mjs> is imported once and called through these seams, so a rule set can ride on the real economy without
+// forking this file. start({ bot, runIdx, seed, args }) -> run hook | null. The run hook may define: night(no, nightQuota), watch(w, watches),
+// bet(bet, ctx) -> bet (kept only if 0 < bet <= pocket), pull(ctx) -> credited, over() -> true ends the run now, dawn({ idx, nightNo, pocket }),
+// end({ nightsPaid, wealth }). The module may define finish({ runs, results }) -> an object stored under `hook` in the --json output.
+const HOOK_MOD = HOOK ? await import(pathToFileURL(resolve(HOOK)).href) : null;
 const ENG = await load('src/game/charms/engine.ts');
 const SHOP = await load('src/game/shop.ts');
 const STAMPS = await load('src/game/stamps.ts');
@@ -477,11 +485,13 @@ function playRun(bot, runIdx) {
   let stuckRun = false;
   let stuckW = false;
   const hum = { rng: RNG.createRng(RNG.hashSeed('simhuman', SEED, runIdx)), cur: null, dwell: 0 };
+  const H = HOOK_MOD ? HOOK_MOD.start({ bot, runIdx, seed: SEED, args }) : null;
 
   for (let idx = 0; idx < SCH.BASE_RUN_NIGHTS; idx++) {
     S.idx = idx;
     const nd = NIGHTS[idx];
     const nightQuota = nextQuota;
+    H?.night(nd.no, nightQuota);
     QSEEN[idx].push(nightQuota);
     let due = nightQuota;
     let loans = 0;
@@ -491,6 +501,7 @@ function playRun(bot, runIdx) {
     for (let w = 0; w < nd.watches; w++) {
       stuckW = false;
       S.shopNight = idx; S.shopWatch = w;
+      H?.watch(w, nd.watches);
       // Deposits at the Bell: interest only works on what is already in the Debt Terminal. The rotator deposits what compounds
       // to the gap by the last settle (the HUD shows the pace); the banker deposits as much as it can. Shopping comes after.
       let fx0 = runFx(S);
@@ -611,13 +622,17 @@ function playRun(bot, runIdx) {
           S.pocket += loan.coins; due += loan.quota; loans += 1; TOT.loans += 1; loanedRun = true;
           if (idx === 0 && stuckW) N1.byLoan += 1;
         }
-        const bet = banked ? (lim.min <= S.pocket ? lim.min : 0)
+        let bet = banked ? (lim.min <= S.pocket ? lim.min : 0)
           : bot === 'human' ? stakeAt(lim, Math.max(lim.min, (HUMAN_STAKE_LO + (HUMAN_STAKE_HI - HUMAN_STAKE_LO) * hum.rng.next()) * S.pocket), S.pocket)
           : newbieLike(bot) ? stakeAt(lim, CAREFUL_STAKE_LO + hum.rng.int(0, CAREFUL_STAKE_HI - CAREFUL_STAKE_LO), S.pocket)
           : stakeFor(bot, lim, S.pocket);
         if (bet <= 0) break;
         // Activity float: after the 3 pulls interest needs, never bet into the coins the next Watches' 3 pulls each need.
         if (!isCamp(bot) && watchPulls >= SCH.ACTIVITY_MIN_PULLS && S.pocket - bet < (nd.watches - w - 1) * SCH.ACTIVITY_MIN_PULLS * defs[pick.machineId].minBet) break;
+        if (H) {
+          const hb = H.bet(bet, { pocket: S.pocket, due, nightQuota, lim, mid: pick.mid, machineId: pick.machineId, hot: circ.isHot(pick.mid), cold: circ.isCold(pick.mid), banked, watchPulls, idx, w });
+          if (hb > 0 && hb <= S.pocket) bet = hb;
+        }
         S.pocket -= bet;
         tStaked += bet;
         const wasLast = pullsMax - pulls >= Math.floor(pullsMax * 0.87);
@@ -632,11 +647,13 @@ function playRun(bot, runIdx) {
         const cf = charmFactors(S, pick, ctx);
         const gross = def.headless(rng, bet, hooksFor(S, pick.machineId)).gross;
         const witch = SCH.isWitchingWatch(nd.watches, w) ? 0.05 : 0;
-        const credited = ECO.settlePayout({ gross, bet, A: cf.A + witch, M: lampF * tiltF * cf.M * (NO_FAVOUR ? 1 : nd.favour) * (NO_MOOD ? 1 : moodOf(idx)), flat: 0, quota: due, limitMult: fx0.limitMult }).credited;
+        let credited = ECO.settlePayout({ gross, bet, A: cf.A + witch, M: lampF * tiltF * cf.M * (NO_FAVOUR ? 1 : nd.favour) * (NO_MOOD ? 1 : moodOf(idx)), flat: 0, quota: due, limitMult: fx0.limitMult }).credited;
+        if (H) credited = H.pull({ bet, credited, gross, due, nightQuota, pocket: S.pocket, mid: pick.mid, machineId: pick.machineId, hot, cold, idx, w, pulls });
         S.pocket += credited;
         tWon += credited;
         TOT.wagered += bet; TOT.credited += credited; TOT.plays += 1;
         NIGHT_RTP.wagered[idx] += bet; NIGHT_RTP.credited[idx] += credited;
+        if (H?.over()) { H.end({ nightsPaid: S.nightsPaid, wealth: S.pocket + S.debt }); out.charms = S.held.length; return out; }
 
         // charm state after the result
         const cs = S.cs;
@@ -692,7 +709,7 @@ function playRun(bot, runIdx) {
     }
 
     if (TRACE && runIdx < TRACE) console.log(`run ${runIdx} ${bot} N${nd.no} due ${due} debt ${S.debt} pocket ${S.pocket} held [${S.held.join(',')}] loans ${loans}`);
-    if (S.debt < due) { out.charms = S.held.length; return out; }
+    if (S.debt < due) { H?.end({ nightsPaid: S.nightsPaid, wealth: S.pocket + S.debt }); out.charms = S.held.length; return out; }
     // overpay rewards: 1.5x -> pick an Uncommon, 2x -> pick a Rare (best priority of the three)
     const ratio = S.debt / due;
     for (const [need, rarity] of [[1.5, 'uncommon'], [2, 'rare']]) {
@@ -711,6 +728,7 @@ function playRun(bot, runIdx) {
     S.debt = 0;
     S.nightsPaid += 1;
     out.paid.push(nd.no);
+    H?.dawn({ idx, nightNo: nd.no, pocket: S.pocket });
     out.pocket.push(S.pocket);
     if (idx === 0 && newbieLike(bot)) { N1.paid += 1; N1.dawn.push(S.pocket); }
     CHARM_COUNT.sum[idx] += S.held.length; CHARM_COUNT.n[idx] += 1;
@@ -722,6 +740,7 @@ function playRun(bot, runIdx) {
       S.shopNight = idx + 1; S.shopWatch = 0; shop(S, bot, nextQuota, hum.rng);
     }
   }
+  H?.end({ nightsPaid: S.nightsPaid, wealth: S.pocket + S.debt });
   out.charms = S.held.length;
   if (owned.size > 0) { TYC.runs += 1; TYC.ownedEnd += owned.size; }
   if (loanedRun) TOT.runsWithLoan += 1;
@@ -909,5 +928,6 @@ for (const bot of BOTS) {
   if (VERBOSE && BOUGHT.size) console.log('bought:', [...BOUGHT.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${v}`).join(' '));
 }
 
-if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify({ runs: RUNS, betFrac: BET_FRAC, scaleLadder: SCALE_LADDER, seed: SEED, results }, null, 2));
+const hookOut = HOOK_MOD?.finish ? HOOK_MOD.finish({ runs: RUNS, results }) : undefined;
+if (JSON_OUT) writeFileSync(JSON_OUT, JSON.stringify({ runs: RUNS, betFrac: BET_FRAC, scaleLadder: SCALE_LADDER, seed: SEED, results, hook: hookOut }, null, 2));
 await closeVite();

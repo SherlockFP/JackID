@@ -40,6 +40,17 @@ const REVERB_SEND = 0.15;
 /** Room-tone level of ambience beds: they are built from full-scale noise, so this lands them near −26 dBFS RMS. */
 const AMB_BED_LEVEL = 0.35;
 const MUFFLE_OPEN = 11000, MUFFLE_CLOSED = 600;
+/**
+ * Master safety: untouched below 0.8, then a smooth tanh knee that tops out under full scale. The compressor's makeup gain lets a
+ * stack like the jackpot's (about ten layers) overshoot at full sliders; this rounds that instead of letting the output clip.
+ */
+function softClip(c: BaseAudioContext): WaveShaperNode {
+  const n = 2049, curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1, a = Math.abs(x); curve[i] = Math.sign(x) * (a < 0.8 ? a : 0.8 + 0.2 * Math.tanh((a - 0.8) / 0.2)); }
+  const s = c.createWaveShaper();
+  s.curve = curve; s.oversample = '2x';
+  return s;
+}
 const REF_DIST = 1.5, ROLLOFF = 1.4, MAX_DIST = 30, FADE_FROM = 22;
 const LOOKAHEAD = 0.2, PUMP_MS = 33;
 const TAU = Math.PI * 2;
@@ -109,7 +120,8 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
   comp.threshold.value = -12; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.22;
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass'; lp.frequency.value = MUFFLE_OPEN; lp.Q.value = 0.7;
-  master.connect(comp); comp.connect(lp); lp.connect(ctx.destination);
+  const sat = softClip(ctx);
+  master.connect(comp); comp.connect(lp); lp.connect(sat); sat.connect(ctx.destination);
 
   const busIn = {} as Record<Bus, GainNode>, busDuck = {} as Record<Bus, GainNode>;
   for (const b of BUSES) {
@@ -479,7 +491,7 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
     winJingle(tier: WinTier, o: PlayOpts = {}) {
       const n = winSfx(tier);
       if (!n) return;
-      play(n, tier === 'jackpot' ? { ...o, vol: (o.vol ?? 1) * 1.25 } : o);   // the jackpot is the loudest thing on the floor
+      play(n, tier === 'jackpot' ? { ...o, vol: (o.vol ?? 1) * 1.5 } : o);   // the jackpot is the loudest thing on the floor (jackpotShow's TRIM holds its solo cue under full scale)
       // the music ducks for as long as the fanfare window of the tier plays (win3 2.8 s, winHuge 4.2, winMega 5.6, jackpotShow 9.6)
       if (tier === 'big') { addHold('music', 0.45, 3); void play('cheer', { param: 0.4, vol: 0.6 }); }
       else if (tier === 'huge') { addHold('music', 0.55, 4.6); void play('cheer', { param: 0.7, vol: 0.8 }); }
@@ -589,7 +601,8 @@ export async function renderMix(layers: readonly MixLayer[], o: { seconds?: numb
     const m = off.createGain(), comp = off.createDynamicsCompressor();
     m.gain.value = taper(o.volumes.master);
     comp.threshold.value = -12; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.22;
-    m.connect(comp); comp.connect(off.destination); dest = m;
+    const sat = softClip(off);
+    m.connect(comp); comp.connect(sat); sat.connect(off.destination); dest = m;
   }
   for (const b of BUSES) { const g = off.createGain(); g.gain.value = o.volumes ? taper(o.volumes[b]) : 1; g.connect(dest); bus[b] = g; }
   for (const l of layers) {

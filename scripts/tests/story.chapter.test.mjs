@@ -122,7 +122,7 @@ test('the chapter record round trips through a save (copy, restore, same progres
   assert.equal(CH.advanceArc(back, 'mira', 3), true);
 });
 
-test('the Night 8 reveal plays once: the reveal flag is the guard, and the reveal text names the second name', () => {
+test('the Night 8 reveal plays once: the reveal flag is the guard, and the reveal text names the champion the second name beat', () => {
   const c = CH.freshChapter();
   assert.equal(c.revealed, false);
   c.revealed = true;
@@ -131,8 +131,8 @@ test('the Night 8 reveal plays once: the reveal flag is the guard, and the revea
   for (const k of ['reveal.1', 'reveal.2', 'reveal.3', 'reveal.4']) {
     assert.ok(STRINGS.en[k] && STRINGS.tr[k], k);
   }
-  assert.match(STRINGS.en['reveal.2'], /Mira/);
-  assert.match(STRINGS.tr['reveal.2'], /Mira/);
+  assert.match(STRINGS.en['reveal.2'], /champion/);
+  assert.match(STRINGS.tr['reveal.2'], /şampiyon/);
 });
 
 test('each chapter card scene file exists and names its own Night', async () => {

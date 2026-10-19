@@ -4,11 +4,11 @@ export default {
   en: {
     'deposit': 'Deposited {n} to the bank · pocket {p}',
     'credit': 'Phone deal: +{n} to the bank (it stays there until Dawn)',
-    'settle': 'SETTLING · lever back in {s} s',
+    'settle': 'SETTLING · LEVER IN {s} S',
   },
   tr: {
     'deposit': 'Bankaya {n} yatırıldı · cep {p}',
     'credit': 'Telefon anlaşması: bankaya +{n} (Şafağa kadar orada kalır)',
-    'settle': 'KAPANIYOR · kol {s} sn sonra',
+    'settle': 'KAPANIYOR · KOL {s} SN SONRA',
   },
 };

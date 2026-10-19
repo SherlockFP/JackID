@@ -294,7 +294,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       quota: q.due,
       cursedCharms: cursed,
       brightBulbs: Math.max(0, Math.min(4, Math.round(bulbs))),
-      charmRelief: Math.max(0, -run.mod('dread.add', 'run', 0)),
+      // signed on purpose: dread.add is relief when negative and Dread when positive (cursed candy, moth swarm, the draft event, Loki's boons)
+      charmRelief: -run.mod('dread.add', 'run', 0),
       luck: run.luck('run', self),
       badRun: run.buffs.has('bad_run', { pid: self }),
     };

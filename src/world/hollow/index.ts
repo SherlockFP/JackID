@@ -290,7 +290,7 @@ export class HollowDoor {
     this.knocks.push(this.clock);
     if (this.knocks.length > KNOCKS) this.knocks.shift();
     this.shake = 0.18;
-    sfx('thud', { vol: 0.7, pitch: -4, pri: 6, pos: this.crackPos });
+    sfx('knockSingle', { vol: 0.8, pri: 6, pos: this.crackPos });   // one recorded knock on the plate (a synthesised thud until it decodes)
     if (this.knocks.length === KNOCKS && this.clock - this.knocks[0] <= KNOCK_WINDOW_S) {
       this.knocks = [];
       app.run?.hollowTrigger('knock');   // the run decides (once per run); it opens the crack through `hollow:open`

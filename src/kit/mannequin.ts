@@ -318,7 +318,7 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
       this.rnd = seeded(0x5ca1 + id * 7919);
       this.phase = this.rnd() * Math.PI * 2;
       this.twitchIn = 1 + this.rnd() * 5;
-      this.face = o.female ? { sockets: 0.3, smile: 0 } : faceOf(o, this.rnd);
+      this.face = o.female ? (this.npc ? { sockets: 0.3, smile: 0 } : { sockets: 0.5, smile: 0.45 }) : faceOf(o, this.rnd);
       this.acc = ((id * 0.6180339887) % 1) / (this.stepFps ?? DEFAULT_STEP_FPS);   // de-synchronise the 15 fps ticks
       this.buildPlaceholder();
       this.selfRef = new WeakRef(this);

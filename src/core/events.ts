@@ -75,6 +75,8 @@ export interface GameEvents {
   'quota:update': { quota: Readonly<QuotaState> };
   'quota:met': { index: number; ratio: number };
   'quota:failed': { index: number };
+  /** A missed Dawn that cost a name seal, not the run (docs/BLESSINGS.md §1): `left` seals remain, `memory` is the memory it took. */
+  'quota:sealed': { index: number; left: number; memory: string };
   'quota:overshoot': { tier: string; pid: PlayerId };
   'dread:change': { value: number };
   // ── charms / buffs / totems / collateral ──

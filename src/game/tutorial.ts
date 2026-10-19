@@ -344,7 +344,9 @@ function startSteps(host: TutorialHost): Tutorial & { shown(): boolean } | null 
       holdClock('tutorial', 3);
       line.textContent = text(s);
       hint.textContent = `${t('tut.step', { i: idx + 1, total: STEPS.length })}  ·  ${t('tut.skip')}`;
-      el.style.display = '';
+      // A step shows only where it applies: the walk and spin lines step aside while the player sits at the Bank Terminal (the clock stays held).
+      const atBank = seatMid !== null && s.key !== 'deposit' && world.machines().some((x) => x.id === seatMid && x.def.id === 'debt_terminal');
+      el.style.display = atBank ? 'none' : '';
       placeFeed();
       marker.show(targetMid(s.target), total);
     },
@@ -397,7 +399,8 @@ function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): v
     update(): void {
       if (disposed) return;
       if (run.night() !== night) { night = run.night(); base = { rounds: roundsAll, deposits: depositsAll }; }
-      if (!objectiveShown(night) || boxUp() || inUnderneath() || run.prologueOn()) { hide(); return; }
+      // At home (the Evening) the HUD's evening card carries the goal (rest, tomorrow's quota); "take the lift" would be wrong there.
+      if (!objectiveShown(night) || boxUp() || inUnderneath() || run.prologueOn() || run.homeStage() !== null) { hide(); return; }
       const sh = run.shift.state();
       const o = objectiveFor({
         phase: sh.phase,

@@ -275,6 +275,8 @@ export interface ButtonOpts {
   key?: string;
   title?: string;
   silent?: boolean;
+  /** Sound on press (default: `confirm` for primary buttons, `click` for the rest). */
+  sfx?: string;
 }
 export interface Button { readonly el: HTMLButtonElement; setLabel(s: string): void; setDisabled(b: boolean): void }
 const HOLD_MS = 700;
@@ -288,7 +290,7 @@ export function button(parent: Node | null, o: ButtonOpts): Button {
   if (o.title) tip(el, o.title);
   el.disabled = !!o.disabled;
 
-  const fire = (): void => { if (!o.silent) uiSfx('click'); o.onClick?.(); };
+  const fire = (): void => { if (!o.silent) uiSfx(o.sfx ?? (o.kind === 'primary' ? 'confirm' : 'click')); o.onClick?.(); };
   const needHold = (): boolean => !!o.hold && !!settings()?.holdToConfirm;
   let anim: Animation | null = null;
   const startHold = (): void => {

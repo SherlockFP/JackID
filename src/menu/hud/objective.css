@@ -27,3 +27,7 @@
 /* The HUD is off (cutscene, title): the guidance boxes go with it, as the HUD layer does. */
 .px-root.hud-off .px-tut,
 .px-root.hud-off .px-obj { display: none !important; }
+
+/* A draft, a night card or a modal is open: the guidance boxes step aside (they sit above the root's layers, z 8, and would cover its title). */
+body:has(.sd-root, .nc-root, .px-modal) .px-tut,
+body:has(.sd-root, .nc-root, .px-modal) .px-obj { display: none !important; }

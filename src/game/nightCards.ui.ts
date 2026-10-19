@@ -17,7 +17,7 @@ import { fmtCoins, lang, t } from '@/core/i18n';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { addTicker, h, modalPanel, uiSfx } from '@/core/ui/widgets';
 import * as registry from '@/machines/_base/registry';
-import type { DebtRun } from './run';
+import type { DawnReceipt, DebtRun } from './run';
 import { NIGHT_CARD_TIMEOUT_SEC, nightCardPreview } from './nightCards';
 
 const PANEL = 'night-cards';
@@ -70,6 +70,8 @@ export function mountNightCardsUi(run: DebtRun): () => void {
     if (c) chip.textContent = t('nightcard.chip', { name: t(`nightcard.${c.id}.name`) });
   };
   const offs: Unsub[] = [];
+  // A short Dawn that cost a name seal has no offer: the receipt alone opens, with the memory it took (docs/BLESSINGS.md §1).
+  offs.push(bus.on('quota:sealed', () => { showSealed(run); }));
   offs.push(bus.on('run:nightcard', (e) => {
     if (e.pid !== run.selfId) return;
     if (e.state === 'offer') { showCards(run, chip, refreshChip); return; }
@@ -87,6 +89,63 @@ export function mountNightCardsUi(run: DebtRun): () => void {
     for (const off of offs.splice(0)) off();
     chip.remove();
   };
+}
+
+/** The Dawn receipt block: the settlement counts up (about 1.5 s, a coin tick while it rolls). A sealed Dawn adds the memory it took. */
+function receiptBlock(box: HTMLElement, receipt: DawnReceipt, alive: () => boolean): void {
+  const rows: { to: number; v: HTMLElement }[] = [];
+  const rec = h('div', 'nc-receipt', box);
+  h('div', receipt.memory ? 'nc-rec-title nc-sealed' : 'nc-rec-title', rec, t(receipt.memory ? 'nightcard.receipt.sealed' : 'nightcard.receipt.title', { n: receipt.night }));
+  const grid = h('div', 'nc-rec-grid', rec);
+  const lines = [
+    { to: receipt.due, key: 'nightcard.receipt.due' },
+    { to: receipt.paid, key: 'nightcard.receipt.paid' },
+    { to: receipt.interest, key: 'nightcard.receipt.interest' },
+    { to: receipt.tithe, key: 'nightcard.receipt.tithe' },
+  ];
+  for (const r of lines) {
+    const line = h('div', 'nc-rec-row', grid);
+    h('span', 'nc-rec-k', line, t(r.key));
+    rows.push({ to: r.to, v: h('span', 'nc-rec-v', line, fmtCoins(0)) });
+    // The quota grew inside the Night by the missed tithes: say so under the quota, with the amount.
+    if (r.key === 'nightcard.receipt.due' && receipt.tithe > 0) h('div', 'nc-rec-sub', line, t('nightcard.receipt.titheAdd', { n: fmtCoins(receipt.tithe) }));
+  }
+  if (receipt.memory) {
+    h('div', 'nc-rec-sub nc-rec-mem', rec, t(`run.mem.${receipt.memory}.lost`));
+    h('div', 'nc-rec-sub', rec, t('nightcard.receipt.sealsLeft', { n: receipt.seals ?? 0 }));
+  }
+  let rolled = 0;
+  let lastStep = -1;
+  addTicker((dt) => {
+    if (!alive()) return false;
+    rolled = Math.min(RECEIPT_SEC, rolled + dt);
+    const k = rolled / RECEIPT_SEC;
+    const ease = 1 - Math.pow(1 - k, 3);
+    for (const r of rows) r.v.textContent = fmtCoins(k >= 1 ? r.to : Math.round(r.to * ease));
+    const step = Math.floor(k * 14);   // a coin tick about every 0.1 s while the numbers roll
+    if (k < 1 && step !== lastStep) { lastStep = step; uiSfx('coin', 0.4); }
+    return k < 1;
+  });
+}
+
+/** The receipt alone, for a Dawn that cost a seal: modal, Esc or the button closes it. */
+function showSealed(run: DebtRun): void {
+  const receipt = run.dawnReceipt();
+  if (!receipt?.memory) return;
+  const ui = app.ui as UIOverlayX;
+  app.ui.panel(PANEL, (host) => {
+    ui.holdToasts(true);
+    let alive = true;
+    const root = h('div', 'nc-root', host);
+    modalPanel(host, { escClose: true, dim: true });
+    const box = h('div', 'nc-box', root);
+    receiptBlock(box, receipt, () => alive);
+    const go = h('button', 'nc-go', box, t('nightcard.receipt.go'));
+    go.type = 'button';
+    go.addEventListener('click', () => app.ui.closePanel(PANEL));
+    go.focus({ preventScroll: true });
+    return () => { alive = false; ui.holdToasts(false); };
+  });
 }
 
 /** The card panel: modal (the veil blocks the walk), no Esc (a card must be kept), keys 1-2 captured before the game sees them. */
@@ -113,37 +172,7 @@ function showCards(run: DebtRun, chip: HTMLElement, refreshChip: () => void): vo
     modalPanel(host, { escClose: false, dim: true });
     const box = h('div', 'nc-box', root);
     // The Dawn receipt, on top: last Night's settlement counts up (about 1.5 s, a coin tick while it rolls).
-    const rows: { to: number; v: HTMLElement }[] = [];
-    if (receipt) {
-      const rec = h('div', 'nc-receipt', box);
-      h('div', 'nc-rec-title', rec, t('nightcard.receipt.title', { n: receipt.night }));
-      const grid = h('div', 'nc-rec-grid', rec);
-      const lines = [
-        { to: receipt.due, key: 'nightcard.receipt.due' },
-        { to: receipt.paid, key: 'nightcard.receipt.paid' },
-        { to: receipt.interest, key: 'nightcard.receipt.interest' },
-        { to: receipt.tithe, key: 'nightcard.receipt.tithe' },
-      ];
-      for (const r of lines) {
-        const line = h('div', 'nc-rec-row', grid);
-        h('span', 'nc-rec-k', line, t(r.key));
-        rows.push({ to: r.to, v: h('span', 'nc-rec-v', line, fmtCoins(0)) });
-        // The quota grew inside the Night by the missed tithes: say so under the quota, with the amount.
-        if (r.key === 'nightcard.receipt.due' && receipt.tithe > 0) h('div', 'nc-rec-sub', line, t('nightcard.receipt.titheAdd', { n: fmtCoins(receipt.tithe) }));
-      }
-    }
-    let rolled = 0;
-    let lastStep = -1;
-    if (receipt) addTicker((dt) => {
-      if (!alive) return false;
-      rolled = Math.min(RECEIPT_SEC, rolled + dt);
-      const k = rolled / RECEIPT_SEC;
-      const ease = 1 - Math.pow(1 - k, 3);
-      for (const r of rows) r.v.textContent = fmtCoins(k >= 1 ? r.to : Math.round(r.to * ease));
-      const step = Math.floor(k * 14);   // a coin tick about every 0.1 s while the numbers roll
-      if (k < 1 && step !== lastStep) { lastStep = step; uiSfx('coin', 0.4); }
-      return k < 1;
-    });
+    if (receipt) receiptBlock(box, receipt, () => alive);
     h('h2', 'nc-title', box, t('nightcard.title'));
     h('p', 'nc-hint', box, t('nightcard.hint'));
     // The countdown: a bar that drains over the 20 s and a number; the last 5 s pulse.

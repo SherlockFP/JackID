@@ -89,6 +89,8 @@ export interface TierShow {
   hz: number;
   /** Sound layered over `audio.winJingle`; null = jingle only. */
   sfx: SfxName | null;
+  /** Level of that layer sound (default 0.8). The win ladder's loudness steps are set in sfx.ts TRIM and here: see scripts/qa/sfxLoud.mjs. */
+  sfxVol?: number;
   /** Colour of the light pulse at the machine. */
   glow: Hex;
 }
@@ -100,10 +102,10 @@ export const TIER_SHOW: Readonly<Record<JuiceTier, TierShow>> = {
   push:    { show: 0.4, hz: 2,  sfx: 'coin',     glow: 0xe8d35a },
   small:   { show: 1.2, hz: 6,  sfx: null,       glow: 0xffce5a },
   medium:  { show: 2,   hz: 8,  sfx: null,       glow: 0xffce5a },
-  big:     { show: 3,   hz: 8,  sfx: 'chime',    glow: 0xffd040 },
+  big:     { show: 3,   hz: 8,  sfx: 'chime', sfxVol: 0.45, glow: 0xffd040 },
   huge:    { show: 5,   hz: 10, sfx: 'chime',    glow: 0xffd040 },
   mega:    { show: 7,   hz: 12, sfx: 'bell',       glow: 0xffd040 },
-  jackpot: { show: 8,   hz: 14, sfx: 'jackpotSiren', glow: 0xfff0a0 },
+  jackpot: { show: 8,   hz: 14, sfx: 'jackpotSiren', sfxVol: 0.55, glow: 0xfff0a0 },
 };
 
 const GOLD_FLASH: Hex = 0xffd040;
@@ -207,11 +209,11 @@ export function celebrate(host: JuiceHost, tier: JuiceTier, o: CelebrateOpts = {
     if (!fast) winFeelLayer(host, shown, feel, at, dist, sp, zoomOk);
     ctx.fx.winBurst(shown === 'mega' ? 'huge' : shown, at, { amount: showPop && !own ? pop : undefined, flyToWallet: host.isLocalOccupant && !fast });
     if (own) winPop(host, feel, at, pop as number);
-    // level rises with the multiple (0.75 at x1 up to 1.1 at x50; the engine plays a jackpot 25 % louder still). Pitch too, for
+    // level rises with the multiple (0.75 at x1 up to 1.1 at x50; the engine plays a jackpot 50 % louder still). Pitch too, for
     // small and medium only: big and up play the recorded fanfare, which must stay in its key (and over it, the layer sound)
     const pitched = !tierAtLeast(tier, 'big');
     ctx.audio.winJingle(toWinTier(tier), { pos: speaker, pitch: pitched ? feel.pitch + streakSteps(streak) : 0, vol: 0.75 + 0.35 * feel.k });
-    if (show.sfx && !fast) ctx.audio.play(show.sfx, { pos: speaker, vol: 0.8 });
+    if (show.sfx && !fast) ctx.audio.play(show.sfx, { pos: speaker, vol: show.sfxVol ?? 0.8 });
     // a hot machine glows a little brighter with every win in a row
     ctx.fx.lightPulse(at, { color: show.glow, mul: (tier === 'small' ? 1.15 : tier === 'medium' ? 1.3 : 1.7) * streakGlow(streak), dur: 0.5 });
     if (!fast) escalate(host, shown, at, speaker, sp, zoomOk);
@@ -313,7 +315,7 @@ function escalate(host: JuiceHost, shown: JuiceTier, at: THREE.Object3D, speaker
   }
   if (tierAtLeast(shown, 'huge')) {
     ctx.fx.slowmo(0.4, 0.4);                                             // 0.4 s held breath
-    ctx.audio.play('winRise', { pos: speaker, vol: 0.8 });               // rising chord
+    ctx.audio.play('winRise', { pos: speaker, vol: shown === 'jackpot' ? 0.5 : 0.8 });   // rising chord (softer under the jackpot's stack: its first 0.5 s peaked at full sliders)
     if (!flashPrefs().calm) ctx.timers.wait(0.1 * sp).then(() => { if (!host.disposed) ctx.fx.flash(GOLD_FLASH, 0.4, 0.3); });
   }
   if (tierAtLeast(shown, 'mega')) {

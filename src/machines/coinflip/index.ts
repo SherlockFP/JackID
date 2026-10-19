@@ -76,6 +76,7 @@ export const def: MachineDef = {
   strings: {
     en: {
       name: 'Coin Flip Booth',
+      sign: 'COIN FLIP',             // the marquee board is ~100 texels wide: 9 glyphs at the 8 px minimum font, not the full name
       desc: 'Call heads, tails or the edge. Win and ride the ladder up to 13x, or collect any time.',
       heads: 'Heads', tails: 'Tails', edge: 'Edge', flip: 'Flip', ride: 'Ride', collect: 'Collect',
       streak: 'STREAK {n}', pot: 'POT {n}', potLabel: 'Pot', h: 'H', t: 'T', e: 'E',
@@ -101,6 +102,7 @@ export const def: MachineDef = {
     },
     tr: {
       name: 'Yazı-Tura Kabini',
+      sign: 'YAZI-TURA',
       desc: 'Tura, yazı ya da kenar. Kazandıkça 13 kata kadar merdivende tırman, ya da kasayı al.',
       heads: 'Tura', tails: 'Yazı', edge: 'Kenar', flip: 'At', ride: 'Devam', collect: 'Kasayı Al',
       streak: 'SERİ {n}', pot: 'KASA {n}', potLabel: 'Kasa', h: 'T', t: 'Y', e: 'K',

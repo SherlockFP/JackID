@@ -62,3 +62,9 @@
   transform: translateX(-50%) skewX(-8deg); }
 .nc-chip[hidden] { display: none; }
 @media (max-width: 560px) { .nc-card { flex-basis: 100%; min-height: 0; } }
+/* A Dawn that cost a name seal (nightCards.ui.ts showSealed): the receipt alone, a red title, the memory line and a CONTINUE button. */
+.nc-rec-title.nc-sealed { background: #b3201c; }
+.nc-rec-mem { margin-top: calc(6 * var(--dpx)); font-size: calc(13 * var(--dpx)); color: #000; }
+.nc-go { margin-top: calc(10 * var(--dpx)); padding: calc(6 * var(--dpx)) calc(14 * var(--dpx)); font-family: var(--f-head, monospace); font-size: calc(11 * var(--dpx)); color: #000; cursor: pointer;
+  background: #ffe9a8; border: calc(3 * var(--dpx)) solid #000; box-shadow: calc(3 * var(--dpx)) calc(3 * var(--dpx)) 0 #000; }
+.nc-go:hover, .nc-go:focus { background: #ffd34a; outline: none; }

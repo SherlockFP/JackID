@@ -203,8 +203,12 @@ export function buildRoom(c: RoomCtx): RoomParts {
   const pilotOff = kit.box(0.04, 0.03, 0.012, kit.mat({ color: 0x2a2622, lit: false }), { pos: at(0.7, 1.31, 2.468), parent: dyn });
 
   // ── the lights ────────────────────────────────────────────────────────────────────────────────
-  const ceilingLamp = kit.lamp({ r: 0.2, color: LIGHT.ceiling.color, shape: 'dome' });
-  ceilingLamp.root.position.set(...at(0, CEIL - 0.14, 0));
+  // a fixture hung from the ceiling: a rose plate, a short stem, an open cone shade and the bulb under it
+  kit.cyl(0.09, 0.09, 0.03, cream, { pos: at(0, CEIL - 0.015, 0), parent: shell, seg: 10 });
+  kit.cyl(0.012, 0.012, 0.16, black, { pos: at(0, CEIL - 0.11, 0), parent: shell, seg: 5 });
+  kit.cyl(0.05, 0.2, 0.13, kit.mat({ color: 0xcdb98e, side: 'double' }), { pos: at(0, CEIL - 0.255, 0), parent: shell, seg: 12 });
+  const ceilingLamp = kit.lamp({ r: 0.06, color: LIGHT.ceiling.color, shape: 'bulb' });
+  ceilingLamp.root.position.set(...at(0, CEIL - 0.36, 0));
   ceilingLamp.setOn(true);
   dyn.add(ceilingLamp.root);
   const ceilingHint: LightHint = {
@@ -219,7 +223,7 @@ export function buildRoom(c: RoomCtx): RoomParts {
   pend.setOn(true);
   dyn.add(pend.root);
 
-  // a candle in a saucer at the near edge of the table: a small warm light on Ada (her rim is the only other light on her)
+  // a candle in a saucer at the near edge of the table: a small warm light on Ada (the key light below adds the rest)
   const candleAt = at(SPOUSE_SEAT.x, TABLE.top, TABLE.z0 + 0.1);
   kit.cyl(0.05, 0.05, 0.008, cream, { pos: [candleAt[0], candleAt[1] + 0.004, candleAt[2]], parent: shell, seg: 8 });
   kit.cyl(0.014, 0.014, 0.07, cream, { pos: [candleAt[0], candleAt[1] + 0.043, candleAt[2]], parent: shell, seg: 6 });
@@ -230,6 +234,12 @@ export function buildRoom(c: RoomCtx): RoomParts {
   const candleHint: LightHint = {
     id: 'home:candle', pos: [candleAt[0], candleAt[1] + 0.11, candleAt[2]], color: LIGHT.candle.color, intensity: LIGHT.candle.intensity,
     range: LIGHT.candle.range, flicker: 'CANDLE', zone: HOME_ZONE,
+  };
+
+  // a soft warm key light in front of her face (the candle is too low to reach it): she must read as a person, not a silhouette
+  const adaKey: LightHint = {
+    id: 'home:adakey', pos: at(SPOUSE_SEAT.x - 0.1, 1.45, SPOUSE_SEAT.z + 0.85), color: 0xffc89a, intensity: 0.5,
+    range: 2.1, flicker: 'STEADY', zone: HOME_ZONE,
   };
 
   // the hallway bulb hangs outside the zone: the switch does not reach it, and its light leaks under the door
@@ -245,7 +255,7 @@ export function buildRoom(c: RoomCtx): RoomParts {
 
   return {
     statics,
-    lights: [ceilingHint, pend.hint, candleHint, hallHint],
+    lights: [ceilingHint, pend.hint, candleHint, adaKey, hallHint],
     setSwitched(on: boolean) {
       ceilingLamp.setOn(on);
       pend.setOn(on);

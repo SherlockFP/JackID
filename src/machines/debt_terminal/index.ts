@@ -108,13 +108,13 @@ export const def: MachineDef = {
       rc_title: 'RECEIPT', rc_dep: 'DEPOSIT', rc_wd: 'WITHDRAW', rc_bank: 'BANK', rc_quota: 'QUOTA', rc_left: 'LEFT', rc_thanks: 'THANK YOU',
       rc_base: 'BASE', rc_assess: 'ASSESS',
       quotaMet: 'QUOTA MET', denied: 'DENIED', settled: 'SETTLED', notYet: 'NOT YET', floorNo: 'FLOOR LOCKED',
-      h_move: 'MOVE', h_press: 'PRESS', h_digits: 'AMOUNT', h_clear: 'BACK', h_settle: 'SETTLE', h_leave: 'LEAVE',
+      h_move: 'MOVE', h_press: 'CONFIRM', h_digits: 'AMOUNT', h_clear: 'BACK', h_settle: 'SETTLE', h_leave: 'LEAVE',
       s_entry: 'AMOUNT',
       goal: "DEPOSIT coins for the quota, WITHDRAW them if you need to play. Bank coins earn interest at every Bell.",
       rule1: "BANK: coins you DEPOSIT count toward tonight's quota and earn interest every Bell. Pay the quota and the extra comes back to your pocket.",
       rule2: "WITHDRAW takes coins back to your pocket any time before the Bell. Taken coins stop counting and stop earning. The screen shows what you lose first.",
       rule3: "Keypad: pick DEPOSIT or WITHDRAW on the top row, then 10%, 25%, 50%, ALL, REST, or type an amount and press ENTER. QUOTA shows the status and settles it once it is met.",
-      rule4: "Keys: arrows move the cursor, PRESS hits a key, C switches DEPOSIT / WITHDRAW / BUY BACK / QUOTA, 1-9 type an amount or pick a row, BACK removes a digit.",
+      rule4: "Keys: arrows move the cursor, CONFIRM presses the lit key, C switches DEPOSIT / WITHDRAW / BUY BACK / QUOTA, 1-9 type an amount or pick a row, BACK removes a digit.",
       rule5: "BUY BACK: a keepsake the House kept comes back for coins. Open BUY BACK (C), type its number, then PRESS twice.",
       crt_paid: 'NIGHT {n} PAID', crt_carry: 'CARRIED', crt_floor: 'PULL: OPEN THE FLOOR', crt_bell: 'PULL: RING THE BELL',
       floorOpen: 'FLOOR OPEN', belled: 'BELL', nightN: 'NIGHT {n}',
@@ -145,7 +145,7 @@ export const def: MachineDef = {
       nCanTake: "CAN TAKE",
       nInterest: "BELL INTEREST",
       cMove: "MOVE",
-      cPress: "PRESS",
+      cPress: "CONFIRM",
       cAmount: "AMOUNT",
       cBack: "BACK",
       cSettle: "SETTLE",
@@ -208,13 +208,13 @@ export const def: MachineDef = {
       rc_title: 'FİŞ', rc_dep: 'YATIRMA', rc_wd: 'ÇEKME', rc_bank: 'BANKA', rc_quota: 'KOTA', rc_left: 'KALAN', rc_thanks: 'TEŞEKKÜRLER',
       rc_base: 'TABAN', rc_assess: 'DEĞER',
       quotaMet: 'KOTA TAMAM', denied: 'REDDEDİLDİ', settled: 'KAPANDI', notYet: 'HENÜZ DEĞİL', floorNo: 'KAT KİLİTLİ',
-      h_move: 'GEZ', h_press: 'BAS', h_digits: 'TUTAR', h_clear: 'GERİ', h_settle: 'KAPAT', h_leave: 'AYRIL',
+      h_move: 'GEZ', h_press: 'ONAYLA', h_digits: 'TUTAR', h_clear: 'GERİ', h_settle: 'KAPAT', h_leave: 'AYRIL',
       s_entry: 'TUTAR',
       goal: "Kota için jeton YATIR, oynamak için gerekirse GERİ ÇEK. Bankadaki jeton her Zil'de faiz kazanır.",
       rule1: "BANKA: yatırdığın jeton bu gecenin kotasına sayılır ve her Zil'de faiz kazanır. Kotayı ödersen fazlası cebine döner.",
       rule2: "ÇEK, Zil'den önce istediğin an jetonu cebine geri alır. Çekilen jeton kotaya sayılmaz ve faiz kazanmaz. Ekran, ne kaybettiğini önceden gösterir.",
       rule3: "Tuş takımı: üst sırada YATIR ya da ÇEK'i seç, sonra %10, %25, %50, HEPSİ, KALAN'a bas ya da bir tutar yazıp ONAY'a bas. KOTA durumu gösterir, tamamlanınca kapatır.",
-      rule4: "Tuşlar: oklar imleci gezdirir, BAS tuşa basar, C YATIR / ÇEK / GERİ AL / KOTA arasında geçer, 1-9 tutar ya da satır numarası yazar, GERİ bir rakam siler.",
+      rule4: "Tuşlar: oklar imleci gezdirir, ONAYLA seçili tuşa basar, C YATIR / ÇEK / GERİ AL / KOTA arasında geçer, 1-9 tutar ya da satır numarası yazar, GERİ bir rakam siler.",
       rule5: "GERİ AL: Kasa'nın aldığı bir eşyayı jetonla geri alabilirsin. GERİ AL sekmesini aç (C), numarasını yaz, sonra iki kez BAS.",
       crt_paid: '{n}. GECE ÖDENDİ', crt_carry: 'DEVİR', crt_floor: 'ÇEK: KATI AÇ', crt_bell: 'ÇEK: ZİLİ ÇAL',
       floorOpen: 'KAT AÇIK', belled: 'ZİL', nightN: '{n}. GECE',
@@ -245,7 +245,7 @@ export const def: MachineDef = {
       nCanTake: "ÇEKİLEBİLİR",
       nInterest: "ZİL FAİZİ",
       cMove: "GEZ",
-      cPress: "BAS",
+      cPress: "ONAYLA",
       cAmount: "TUTAR",
       cBack: "GERİ",
       cSettle: "KAPAT",
@@ -1017,10 +1017,10 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     return clampDeposit(Math.min(amountFor(cell, wallet, bank.left), cell === 'all' ? wallet : bank.left), wallet);
   }
 
-  /** The tab row's label scale (px5): the largest whole scale (3 or less) at which the longest tab word fits `room` px. One scale for every tab. */
-  private tabLabelSize(words: string[], room: number): number {
-    let scale = 3;
-    for (const w of words) while (scale > 1 && measureText(upper(w), { font: 'px5', scale }) > room) scale--;
+  /** The tab row's label scale (px5): the largest whole scale (4 or less) at which every word, padded, fits the 508 px row. One scale for every tab. */
+  private tabLabelSize(words: string[]): number {
+    let scale = 4;
+    while (scale > 1 && words.reduce((n, w) => n + measureText(w, { font: 'px5', scale }) + 28 + 4, 0) > 508) scale--;
     return scale;
   }
 
@@ -1060,21 +1060,25 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     }
     // tabs: four across the screen (BUY BACK between WITHDRAW and QUOTA); one label size for all, so every word fits its tab
     const tabs: Array<[Mode, string]> = [['dep', 'k_dep'], ['wd', 'k_wd'], ['buy', 'k_buy'], ['quota', 'k_quota']];
-    const TAB_W = 124, TAB_STEP = 127;
-    const tabSize = this.tabLabelSize(tabs.map(([, k]) => this.t(k)), TAB_W - 12);
+    // widths follow the words (the old equal 124 px tabs forced "GERİ AL" down to scale 2: unreadable at the PSX frame size)
+    const words = tabs.map(([, k]) => upper(this.t(k)));
+    const tabSize = this.tabLabelSize(words);
+    const TAB_PAD = 14, TAB_GAP = 4;
+    let tx = 2;
     tabs.forEach(([m, k], i) => {
-      const x = 4 + i * TAB_STEP, w = TAB_W, on = this.mode === m;
+      const w = measureText(words[i], { font: 'px5', scale: tabSize }) + 2 * TAB_PAD, x = tx, on = this.mode === m;
+      tx += w + TAB_GAP;
       s.draw((g) => {
         g.fillStyle = on ? amber : '#241800'; g.fillRect(x, 2, w, 44);
         if (!on) { g.strokeStyle = '#8a6a14'; g.lineWidth = 2; g.strokeRect(x + 1, 3, w - 2, 42); }
       });
-      s.text(upper(this.t(k)), x + w / 2, 2 + Math.round((44 - 7 * tabSize) / 2), { font: 'px5', scale: tabSize, color: on ? '#1a1000' : '#e8bc40', align: 'center' });
+      s.text(words[i], x + w / 2, 2 + Math.round((44 - 7 * tabSize) / 2), { font: 'px5', scale: tabSize, color: on ? '#1a1000' : '#e8bc40', align: 'center' });
     });
     // BANK and POCKET, always
     const bv = fmtNum(this.shownDep), pv = fmtNum(bank.pocket);
-    label(this.t('c_bank'), 12, 48, amber, 34);
+    label(this.t('c_bank'), 12, 48, amber, 38);
     fig(bv, 248, 84, hot, 6, 236);
-    label(this.t('c_pocket'), 268, 48, amber, 34);
+    label(this.t('c_pocket'), 268, 48, amber, 38);
     fig(pv, RIGHT, 84, cyan, 6, 236);
     s.draw((g) => { g.fillStyle = '#6a4e12'; g.fillRect(4, 134, 504, 3); g.fillRect(258, 52, 3, 78); });
 
@@ -1082,16 +1086,16 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     const typedTxt = this.entry === '' ? '_' : `${fmtNum(customAmount(this.entry))}_`;
     const box = (y: number, head = this.t('nAmount'), val = typedTxt): void => {
       s.draw((g) => { g.fillStyle = '#241800'; g.fillRect(4, y, 504, 38); g.strokeStyle = amber; g.lineWidth = 2; g.strokeRect(5, y + 1, 502, 36); });
-      label(head, 14, y + 3, amber, 34);
+      label(head, 14, y + 3, amber, 38);
       fig(val, RIGHT - 6, y + 9, '#fff0c0', 3, 300);
     };
 
     if (this.mode === 'dep') {
       const lv = fmtNum(bank.left);
-      label(this.t(bank.left > 0 ? 'c_left' : 'c_metBig'), 12, 140, amber, 36);
+      label(this.t(bank.left > 0 ? 'c_left' : 'c_metBig'), 12, 140, amber, 38);
       fig(lv, RIGHT, 168, bank.left > 0 ? red : green, 8, 490);
       if (bank.ratePct > 0) {
-        label(this.t('c_interest'), 12, 234, amber, 36);
+        label(this.t('c_interest'), 12, 234, amber, 38);
         fig(`+${fmtNum(bank.interestNext)}`, RIGHT, 236, hot, 4, 240);
         const withIt = amt > 0 ? bank.interestAt(bank.balance + amt) : 0;
         if (withIt > bank.interestNext) label(this.t('c_with', { n: fmtNum(withIt) }), 12, 270, hot, 32);
@@ -1105,7 +1109,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     } else if (this.mode === 'wd') {
       if (bank.sealed) {
         // THE SEAL (decision D2): what BREAK would take out, how long it waits, and what taking it out costs
-        label(this.t('c_sealHead'), 12, 140, red, 36);
+        label(this.t('c_sealHead'), 12, 140, red, 38);
         const sv = fmtNum(bank.sealCoins ?? 0);
         fig(sv, RIGHT, 168, hot, 8, 490);
         label(this.t('c_sealWait'), 12, 234, amber, 32);
@@ -1115,7 +1119,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       } else {
         const pw = this.wdPreview(amt);
         const tv = fmtNum(pw.coins);
-        label(this.t('c_take'), 12, 140, amber, 36);
+        label(this.t('c_take'), 12, 140, amber, 38);
         fig(tv, RIGHT, 168, pw.coins > 0 ? hot : dim, 8, 490);
         if (pw.coins <= 0) {
           label(this.t('c_wdPick'), 12, 238, amber, 38);
@@ -1149,7 +1153,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       }
     } else {
       const dv = fmtNum(bank.due);
-      label(this.t('q_due'), 12, 140, amber, 36);
+      label(this.t('q_due'), 12, 140, amber, 38);
       fig(dv, RIGHT, 168, hot, 8, 490);
       const extra = Math.max(0, q.due - q.base - q.assessment);
       label(this.t('q_base', { b: fmtNum(q.base), a: fmtNum(q.assessment) }) + (extra > 0 ? `  ${this.t('q_loan', { l: fmtNum(extra) })}` : ''), 12, 226, dim, 32);

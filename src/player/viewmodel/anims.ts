@@ -175,7 +175,7 @@ export const ANIMS: Record<string, Anim> = {
     dur: 0.8,
     run(k, r) {
       const a = bump(k, 0, 0.35, 0.55, 1);
-      r.pz -= 0.12 * a; r.py += 0.05 * a; r.rx += 0.3 * a;
+      r.pz -= 0.1 * a; r.py += 0.03 * a; r.rx += 0.3 * a;
       r.curl = lerp(r.curl, 0, a); r.index = lerp(r.index, 0, a); r.thumb = lerp(r.thumb, 0.1, a);
       r.rx += 0.05 * ring(k, 0.35, 26, 6);
     },

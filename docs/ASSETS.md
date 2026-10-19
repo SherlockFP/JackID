@@ -90,10 +90,30 @@ Courtesy credit (not required): "Casino sounds from Mixkit; win fanfare by gchoc
 (https://creativecommons.org/licenses/by/4.0/). Shown on the Credits screen in EN and TR
 (`src/menu/menu.strings.ts`). Audio is unedited; only the filenames were shortened. Wired in: see "Loaded by the game" below.
 
+**Sound pass, wave 83 (2026-10-19): six itch.io packs, a curated 68 clips, 2.0 MB, in `public/assets/vendor/sfx-<pack>/`.**
+Each folder has a `LICENSE.txt` quoting the licence and the source. Clip by clip: `public/assets/vendor/SFX_INDEX.md`.
+Audio that needed trimming was cut, mixed to mono, resampled to 11 to 22 kHz and saved as 16-bit WAV (ffmpeg was not available for OGG);
+the heyheythere clips are the original OGG files.
+
+| Folder | Pack and author | Source | Licence | Vendored |
+|---|---|---|---|---|
+| `sfx-obsydianx-ui/` | Interface SFX Pack 1, ObsydianX | https://obsydianx.itch.io/interface-sfx-pack-1 | CC0 | 9 WAV (hover, confirm, back, error tones, the dark styles) |
+| `sfx-liminal-horror/` | Free Horror SFX / Sounds, vol 1 and 2, Liminal Games | https://liminal-space-dev.itch.io/free-horror-sfx-sounds | CC0 field on the page; "Use in both commercial and free projects", "No attribution required", "Please don't redistribute or resell the pack itself" (a selection ships inside the game, not the pack) | 11 WAV (door creaks, growls, wind, drone) |
+| `sfx-heyheythere-footsteps/` | Footsteps SFX Free, heyheythere | https://heyheythere.itch.io/footsteps-sfx-free | **CC BY 4.0 (credit required)** | 16 OGG (carpet, wood, tile, metal, dirt, wet, concrete), unmodified |
+| `sfx-polar-magic/` | Magic Sound Effects, Polar_34 | https://polar-34.itch.io/magic-sound-effects | CC0 | 7 WAV (chimes, echo1, echo2, locate, sonar, spell, success) |
+| `sfx-ci-400/` | 400 Sounds Pack, Chequered Ink | https://ci.itch.io/400-sounds-pack | "ANY and ALL uses including commercial use, with or without giving credit", "except that you may not sell or redistribute the unaltered assets as your own game assets" (trimmed clips inside a game are fine) | 21 WAV (cards, dice, UI ticks, pops, two knocks, a ghost, two carpet steps) |
+| `sfx-halfwits-dice/` | SFX Pack, Rolling Dice, Halfwits & Failed Crits | https://halfwitsfailedcrits.itch.io/sfx-pack-rolling-dice | CC0 | 4 WAV (1d6, 2d6, 3d6, 5d6 rolls) |
+
+**Credit line (CC BY 4.0, required, heyheythere):**
+`Footsteps SFX Free by heyheythere - https://heyheythere.itch.io/footsteps-sfx-free - CC BY 4.0`
+Shown on the Credits face in EN and TR (`src/menu/menu.strings.ts`, on two lines) and in `public/assets/vendor/sfx-heyheythere-footsteps/LICENSE.txt`.
+Courtesy lines (not required): "Dice rolls by Halfwits & Failed Crits (CC0)", "Some sounds from the 400 Sounds Pack by Chequered Ink".
+The new sound names for the gods' blessings (`boonOffer`, `boonPick`, `omen`, `spell`, `divineEcho`) are registered and not called yet.
+
 **Not vendored:**
 - Dryoma "Footsteps Sounds" (CC BY 4.0): no OpenGameArt page found under that title or author, so no
-  credit line exists for it. No footstep files are vendored. The laleksic `floor_creak1-3` files are the
-  nearest stand-in (creaks, not steps, and quiet, so they need gain).
+  credit line exists for it. Real footsteps now come from the heyheythere pack (wave 83). The laleksic
+  `floor_creak1-3` files stay as floor creaks (creaks, not steps, and quiet, so they need gain).
 - Quendel tracks 01, 02 (near-duplicates of 03) and 11 (full 224 s recording, 9 MB).
 - FLAC copies in the doors and rat packs; the rest of the owlish, laleksic and horror-hit sets that fall
   outside the brief (cloth, plastic, kitchen, drink, stationery, camera, velcro, taps, toilet, microwave).
@@ -104,7 +124,7 @@ Each row names the file that loads the asset. A pack not listed here is vendored
 
 | What | Loaded by | Packs |
 |---|---|---|
-| Recorded sounds (the ten `sfx-*` packs above, with the procedural fallback kept for each name) | `src/core/audio/real.ts`, installed from `src/core/audio/sfx.ts` | owlish-more-sfx, laleksic-various, rubberduck-metal-wood, qubodup-doors, pagdev-elevator-door, starninjas-crowd (loop), chirptone-ringtone, quendel-crowd-cheering, psychhead-horror-hits, qubodup-rat, mixkit-casino (reel whirr, win chime, alarms, bells), oga-wins (fanfare, jingle) |
+| Recorded sounds (the `sfx-*` packs above, with the procedural fallback kept for each name; wave 83 adds interface tones, cards, dice, footsteps by floor, creaks, growls, wind, knocks and the blessings magic set) | `src/core/audio/real.ts`, installed from `src/core/audio/sfx.ts` | obsydianx-ui, ci-400, halfwits-dice, heyheythere-footsteps, liminal-horror, polar-magic, owlish-more-sfx, laleksic-various, rubberduck-metal-wood, qubodup-doors, pagdev-elevator-door, starninjas-crowd (loop), chirptone-ringtone, quendel-crowd-cheering, psychhead-horror-hits, qubodup-rat, mixkit-casino (reel whirr, win chime, alarms, bells), oga-wins (fanfare, jingle) |
 | Casino sound set (cards, chips, dice) | `src/core/audio/sfx.ts` (`DIR`) | kenney-casino-audio |
 | Textures (PSX pipeline, 32 or 64 px) | `src/kit/presets.ts` (named presets: wood, felt, brushed, plate, tufted, velvet, rust, cloth), `src/world/level.ts` (boiler grating, parlour wood, walls, wainscot), `src/world/props/decor.ts` (marble), `src/world/props/trapdoor.ts`, `src/world/props/vendorModels.ts` | sbs-synthetic (wood, felt, leather, fabric, stone), sbs-tiny2 (wood), sbs-tiny3 (grating, cloth, metal), sbs-horror (walls, metal), phobicpaul-lowpoly64 (plate) |
 | Pixel fonts, sign faces | `src/world/props/signs.ts` (`public`, `chetyre`) | ggbot-public-pixel, hanshuyuri-chetyre |

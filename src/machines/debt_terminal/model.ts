@@ -56,7 +56,7 @@ export const KEY_POS: Record<(typeof KEYS)[number], { x: number; z: number }> = 
   p10: { x: -0.16, z: 0 }, p25: { x: 0, z: 0 }, p50: { x: 0.16, z: 0 },
   all: { x: -0.16, z: 0.09 }, rest: { x: 0, z: 0.09 }, enter: { x: 0.16, z: 0.09 },
 };
-export const KEY_W = 0.14, KEY_H = 0.072;
+export const KEY_W = 0.152, KEY_H = 0.082;     // bigger caps: the labels are what the player reads at the PSX frame size
 /** Top of a keypad cap in panel space (`kit.buttonPanel`: plate 0.012 + cap 0.03). */
 const CAP_TOP = 0.042;
 
@@ -143,7 +143,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   keyLabels.userData.kitKeep = true;                       // dynamic-looking labels: never merged into the model
   for (const id of KEYS) {
     const lb = kit.label({
-      text: { key: `m.debt_terminal.k_${id}` }, w: KEY_W * 0.92, h: KEY_H * 0.7, px: [352, 160],
+      text: { key: `m.debt_terminal.k_${id}` }, w: KEY_W * 0.96, h: KEY_H * 0.86, px: [192, 96],
       color: id === 'enter' || id === 'wd' ? 0xffffff : 0x1a1206, bg: null, font: 'px5',   // the bitmap font: whole-pixel letters, full Turkish
     });
     labelParts[id] = lb;
@@ -154,7 +154,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   keys.root.add(keyLabels);
   const keyCursor = new THREE.Group();
   keyCursor.userData.kitKeep = true;
-  const cw = KEY_W + 0.024, ch = KEY_H + 0.024, bar = 0.01, by = CAP_TOP + 0.004, bh = 0.008;
+  const cw = KEY_W + 0.01, ch = KEY_H + 0.006, bar = 0.01, by = CAP_TOP + 0.004, bh = 0.008;
   kit.box(cw, bh, bar, pal.gold, { pos: [0, by, -(ch - bar) / 2], parent: keyCursor });
   kit.box(cw, bh, bar, pal.gold, { pos: [0, by, (ch - bar) / 2], parent: keyCursor });
   kit.box(bar, bh, ch, pal.gold, { pos: [-(cw - bar) / 2, by, 0], parent: keyCursor });

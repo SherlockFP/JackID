@@ -71,3 +71,9 @@ export function overTierLevel(id: string | null | undefined): number {
 export function overTierSting(id: string | null | undefined): string {
   return (id && OVER_SFX[id]) || 'win1';
 }
+
+/** The name-seal strip (docs/BLESSINGS.md §1): one cell per seal the card can hold, lit for each seal kept (the pause card's `paintSeals` rule). */
+export function sealCells(left: number, max: number): boolean[] {
+  const kept = Math.max(0, Math.min(max, Math.floor(left)));
+  return Array.from({ length: max }, (_, i) => i < kept);
+}

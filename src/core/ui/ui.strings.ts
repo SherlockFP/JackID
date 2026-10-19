@@ -3,7 +3,7 @@ const strings = {
   prefix: 'ui.',
   en: {
     'veil.click': 'CLICK TO CONTINUE',
-    'skip.hold': 'TAP/HOLD [{key}] SKIP',
+    'skip.hold': 'TAP/HOLD: SKIP',
     'toggle.on': 'ON',
     'toggle.off': 'OFF',
     'rebind.press': 'PRESS A KEY…',
@@ -13,7 +13,7 @@ const strings = {
   },
   tr: {
     'veil.click': 'DEVAM ETMEK İÇİN TIKLA',
-    'skip.hold': 'DOKUN/BASILI TUT [{key}] ATLA',
+    'skip.hold': 'DOKUN/BASILI TUT: ATLA',
     'toggle.on': 'AÇIK',
     'toggle.off': 'KAPALI',
     'rebind.press': 'BİR TUŞA BAS…',

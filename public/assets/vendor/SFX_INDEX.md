@@ -201,3 +201,73 @@ each with its procedural version as the fallback.
 |---|---|---|---|
 | `win_fanfare_gchoc.ogg` | 16.3 s | fanfare at a steady level, G major, accents at 0, 1.25, 2.25 and 8.5 s | `win3` (2.8 s from 0 or 8.5 s), `winHuge` (4.2 s), `winMega` (5.6 s), `jackpotShow` (9.6 s) |
 | `win_jingle_fupi.ogg` | 3.8 s | rising jingle, 2.3 s of sound, F major | `win2` (medium) |
+
+## Wave 83 sound pass (added 2026-10-19): 68 clips, 2.0 MB, six packs
+
+Cards, dice, interface, footsteps by floor, horror and dread, and a magic set for the coming gods' blessings
+(`docs/BLESSINGS.md`). Licences are in each folder's `LICENSE.txt` and in `docs/ASSETS.md`. **heyheythere is CC BY 4.0:
+the credit line `Footsteps SFX Free by heyheythere - https://heyheythere.itch.io/footsteps-sfx-free - CC BY 4.0` is on the Credits face and in ASSETS.md.**
+
+How these were picked and prepared (nothing was auditioned; the picks come from file names, measured length, level and brightness):
+- ffmpeg is not installed on the build machine, so there is no OGG q4 encode. The 52 clips that needed trimming (ObsydianX 6 s files that are
+  mostly silence, 8 s Liminal files, stereo 44.1 kHz WAV) were cut to the sound in muted headless Chrome, mixed to mono, low-passed and
+  resampled (22.05 kHz; 16 kHz for growls; 11.025 kHz for winds and drones, which have nothing above 5 kHz), peak-normalised to 0.89,
+  faded 2 ms in and up to 30 ms out, and written as 16-bit mono WAV (4 to 210 KB each; the longest is the 4.8 s long creak). The game
+  already low-passes everything at 11 kHz, so 22.05 kHz loses nothing. The 16 heyheythere footsteps were already short mono OGG and are the originals.
+- Level: `Kit.clip` peak-normalises each clip to the recipe's `vol`, so a spiky clip would sit quieter to the ear than a steady one. Each
+  group in `real.ts` therefore has a per-clip `lv` = 10^((crest - median crest of the group) / 40), clamped to 0.65-1.5, where crest = peak minus the
+  loudest 200 ms RMS (dB). That evens out the peak/RMS compromise inside a group. Group levels were then set against the clips already in
+  the game (footsteps 0.55, hover 0.3, click layer 0.22, cards 0.3, dice 0.75, creaks 0.42, magic 0.4 to 0.5), all final peaks.
+- Every recipe keeps its procedural body as the fallback until a clip is decoded, so a missing or slow file is never silence (the exceptions
+  are the new dread names, which are silent until decoded). The small groups (interface, cards, dice, footsteps, single knock) are warmed
+  3.5 s after start; the creaks, winds, drones and magic load on first use.
+
+### Sound name to clip
+
+| Sound name | What it does now | Clip file(s) | Pack |
+|---|---|---|---|
+| `hover` | replaced (synth fallback) | `sfx-obsydianx-ui/ui-cursor-2`, `ui-cursor-4` | ObsydianX (CC0) |
+| `click` | soft clip layered under the synth tick | `sfx-ci-400/ui-select-2`, `ui-select-4` | Chequered Ink |
+| `confirm` (new; primary buttons play it) | the dark confirm tones | `ui-confirm-1`, `-2`, `-3` | ObsydianX |
+| `back` (new; Settings > Back plays it through `ButtonOpts.sfx`) | back tones | `ui-back-1`, `ui-back-2` | ObsydianX |
+| `error` | replaced | `ui-error-1`, `ui-error-2` | ObsydianX |
+| `popUp` (toast pop, banners) | replaced, rate follows `param` | `sfx-ci-400/ui-pop-1`, `ui-pop-3`, `ui-pop-4` | Chequered Ink |
+| `card` | draw layered over the Kenney place sample | `card-draw-1`, `-2`, `-3` | Chequered Ink |
+| `cardFlip` | slide-and-click layer, 0.45 s | `card-slide-click` | Chequered Ink |
+| `cardSlap` | draw layer, rate 0.8 | `card-draw-1`, `-2`, `-3` | Chequered Ink |
+| `shuffle` | two fans and a draw over the Kenney shuffle | `card-fan-1`, `card-fan-2`, `card-draw-*` | Chequered Ink |
+| `dice`, `diceRoll` (main-menu die, craps, dice tower) | replaced: grab, shake, then a d6 roll | `sfx-ci-400/dice-grab`, `dice-shake-3`; `sfx-halfwits-dice/roll-1d6`, `-2d6`, `-3d6`, `-5d6` | Chequered Ink, Halfwits (CC0) |
+| `diceLand` | replaced: one tumble | `sfx-ci-400/dice-roll-1`, `-2`, `-3`; `sfx-halfwits-dice/roll-1d6` | Chequered Ink, Halfwits |
+| `footstep` (player and avatars; `param` = surface hardness) | replaced: carpet below 0.17, dirt below 0.35, wood below 0.65, tile below 0.9, else metal | the floor rows below | heyheythere (CC BY 4.0), Chequered Ink |
+| floor: carpet | | `sfx-heyheythere-footsteps/step-carpet-1`; `sfx-ci-400/step-carpet-2`, `-3` | heyheythere, Chequered Ink |
+| floor: wood (`footstepWood`) | | `step-wood-1` (walk_wood_01), `-2` (walk_old_wood_01), `-3` (sneakers_wood_01) | heyheythere |
+| floor: tile | | `step-tile-1` (walk_tile_01), `-2` (heels_tile_01), `-3` (walk_marble_01) | heyheythere |
+| floor: metal (`footstepMetal`) | | `step-metal-1` (walk_metal_01), `-2` (walk_grate_01) | heyheythere |
+| floor: dirt | | `step-dirt-1` (walk_dirt_01), `-2` (walk_gravel_02) | heyheythere |
+| floor: wet (`footstepWet`) | | `step-wet-1` (walk_puddle_01), `-2` (walk_wade_01), `-3` (walk_mud_01) | heyheythere |
+| floor: concrete (`footstepConcrete`, the Evening visitor) | | `step-concrete-1` (walk_concrete_02), `-2` (sneak_concrete_01) | heyheythere |
+| `doorCreak`, `doorSqueak`, `doorCreakOpen` | two more variants in the open group | `sfx-liminal-horror/creak-door-2`, `creak-door-4` | Liminal (CC0) |
+| `doorCreakClose` | two more variants | `creak-door-6`, `creak-door-7` | Liminal |
+| `creak`, `bedCreak` | two more short creaks in the layer | `creak-door-6`, `creak-door-7` (1.2 s) | Liminal |
+| `creakLong` (new) | a slow 4.8 s door creak | `creak-door-9-long` | Liminal |
+| `knock` (home knocks) | a third variant | `sfx-ci-400/knock-soft` | Chequered Ink |
+| `knockSingle` (new; the Hollow Door plate knock) | one soft knock, a synthesised thud until decoded | `knock-soft` | Chequered Ink |
+| `knockDoor` (new) | a run of heavy door knocks; also layered under `knockStinger` | `knock-door` | Chequered Ink |
+| `knockDistant` (new) | three soft knocks far off; Void and Shaft beds every 45 to 110 s; silent in Calm | `knock-soft` at rate 0.78 | Chequered Ink |
+| `windGust` (new) | a 5 s gust; Void, Shaft and Apartment beds | `sfx-liminal-horror/wind-2`, `wind-4` | Liminal |
+| `dreadDrone` (new) | a 5 s low drone; also under every `horrorHit` at param 0.3 or more; silent in Calm | `drone-5`; `sfx-ci-400/ghost-long` | Liminal, Chequered Ink |
+| `growl` (new) | a growl; also under `horrorHit` at param 0.45 or more; silent in Calm | `growl-2`, `growl-4`, `growl-6` | Liminal |
+| `boonOffer`, `boonPick`, `omen`, `spell`, `divineEcho` (new; **registered and ready, nothing calls them yet**: gods' blessings, `docs/BLESSINGS.md`) | offer = locate + chimes; pick = success + a little spell; omen = sonar + echo (silent in Calm); spell; divineEcho = echo1 or echo2 | `sfx-polar-magic/locate`, `chimes`, `success`, `spell`, `sonar`, `echo1`, `echo2` | Polar_34 (CC0) |
+
+Pack-name mapping for the converted clips (pack file name to vendored name):
+- ObsydianX `cursor_style_2`, `cursor_style_4`, `confirm_style_4_001`, `confirm_style_4_003`, `confirm_style_5_002`, `back_style_4_001`, `back_style_5_002`, `error_style_4_001`, `error_style_5_001` to `ui-cursor-2`, `ui-cursor-4`, `ui-confirm-1..3`, `ui-back-1..2`, `ui-error-1..2`.
+- Liminal Creaking Door (2, 4, 6, 7, 9), Monster Growl (2, 4, 6), Ambient Wind (2, 4), Ambient Wind (5) to `creak-door-2`, `-4`, `-6`, `-7`, `-9-long`, `growl-2`, `-4`, `-6`, `wind-2`, `-4`, `drone-5`.
+- Chequered Ink `Card and Board/card_draw_1..3, card_fan, card_fan_2, dice_roll_1..3, dice_shake_3, dice_grab`, `Other/slide_and_click, subtle_knock, ghost_long`, `Environment/door_knock`, `Footsteps/foley_footstep_carpet_2, _3`, `UI/select_2, select_4, pop_1, pop_3, pop_4`.
+
+### Not used
+
+- ObsydianX: the other 213 files (the upbeat styles 1 to 3 and 6, the echo variants, cursor styles 1, 3 and 5).
+- Liminal: the gravel, mud, leaves, wind and stair footsteps (8 s walking sequences, not single steps), the 22 s winds, growls 1, 3, 5 and 7 to 12 (very loud, peaks at 0 dB), creaks 1, 3, 5, 8 and 10 to 12.
+- heyheythere: grass, sand, leaves, snow, run and loop files, jump, land, scuff, ladder, stairs, armour, barefoot.
+- Halfwits: d4, d8, d10, d12, d20 and the 4, 6 to 10 dice rolls; the `.asd` files.
+- Chequered Ink: the other 380 files (combat and gore, human, match three, musical effects, retro, weapons, items, materials, machines, most of environment and other).

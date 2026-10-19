@@ -69,6 +69,7 @@ export function createLuckMeter(_run: LuckRunPort, touch: () => void = () => {})
     bus.on('quota:met', () => move(1, 'quota')),
     bus.on('quota:overshoot', () => move(1, 'overshoot')),
     bus.on('quota:failed', () => move(-2, 'failed')),
+    bus.on('quota:sealed', () => move(-2, 'failed')),   // a missed Dawn that cost a seal, not the run: the same two stars
     bus.on('home:heat', ({ delta, why }) => move(delta > 0 ? -1 : delta < 0 ? 1 : 0, why)),
     bus.on('run:tithe', (e) => { if (e.state === 'missed') move(-1, 'tithe'); }),
     bus.on('run:rescue', (e) => { if (e.state === 'taken') move(-1, 'loan'); }),

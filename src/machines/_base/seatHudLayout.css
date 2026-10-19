@@ -25,10 +25,8 @@
 @keyframes shud-stake-blink { 50% { opacity: 0.25; } }
 @media (prefers-reduced-motion: reduce) { .seat-hud .shud-stake.need .shud-stake-l { animation: none; } }
 
-/* Odds line (seatHud.ts `.shud-odds`): out of the bottom stack, so it no longer sits over the reels / Big One grid. It hangs
-   under the control stack, in the strip the bottom stack leaves free (bottom: 34 units), centred and width-capped. */
+/* Odds line (seatHud.ts `.shud-odds`): its own row in the bottom stack, directly above the control bar, centred and width-capped. */
 .seat-hud .shud-odds {
-  position: absolute; left: 50%; bottom: calc(var(--su) * 1.5); transform: translateX(-50%); z-index: 1;
   max-width: min(70vw, calc(var(--su) * 180)); padding: calc(var(--su) * 1) calc(var(--su) * 3);
   font-size: calc(var(--su) * 4.5); line-height: 1.1; color: #b8c0a8; text-align: center; white-space: normal; overflow-wrap: anywhere;
 }

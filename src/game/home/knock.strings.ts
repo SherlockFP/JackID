@@ -32,7 +32,10 @@ export default {
     'toll.one': 'The toll: {n} coin.',
     'toll.other': 'The toll: {n} coins.',
     'stolen': 'He took your {name} on the way out.',
-    'harmony': 'Your spouse heard all of it. She\'s frightened.',
+    'harmony': 'Ada heard all of it. She\'s frightened.',
+    // Ada at the door: two soft knocks (the Collector knocks three times). shortcut: unwired until A2 (adaPhase) schedules her night knock from N6.
+    'ada.knock': 'Two soft knocks. Ada.',
+    'ada.peep': 'ADA. Standing very still, facing the door.',
   },
   tr: {
     'steps': 'Koridorda ayak sesleri, yaklaşıyor.',
@@ -59,6 +62,8 @@ export default {
     'toll.one': 'Haraç: {n} jeton.',
     'toll.other': 'Haraç: {n} jeton.',
     'stolen': 'Giderken {name} tılsımını da aldı.',
-    'harmony': 'Eşin hepsini duydu. Çok korktu.',
+    'harmony': 'Ada hepsini duydu. Çok korktu.',
+    'ada.knock': 'İki hafif vuruş. Ada.',
+    'ada.peep': 'ADA. Kıpırtısız, kapıya dönük duruyor.',
   },
 };

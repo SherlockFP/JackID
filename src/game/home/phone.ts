@@ -328,6 +328,8 @@ export function createPhone(run: DebtRun): HomePhoneApi {
     return `${p.thread}:${p.night}:${p.watch + 1}:0`;
   }
 
+  // shortcut: always the home pool (`phone.sp.<id>.*`). The across pool (`phone.sp.<id>.x.*`, same reply kinds) is written; A2 picks it
+  // while adaPhase(night) is 'across' (before N5), and SPOUSE_BY_TEXT must then map the `.x.` text keys too.
   function deliverSpouse(p: Plan): void {
     const def = p.card ? CARD_MESSAGES[p.pick % CARD_MESSAGES.length] : SPOUSE_MESSAGES[p.pick % SPOUSE_MESSAGES.length];
     const cost = def.share ? coinCost(run.debt().due, def.share) : 0;

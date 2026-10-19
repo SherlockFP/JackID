@@ -77,6 +77,7 @@ test('fall: a run that falls with money in the bank reports the bank it lost (th
   let seized = null;
   const off = EV.bus.on('run:end', (e) => { summary = e.summary; seized = Math.floor(run.debt().paid); });
   run.index = 1;
+  run.soulMarkCount = 1;   // the last seal: a miss with 2+ seals costs a seal instead (seals.test.mjs)
   run.coins = 0;
   run.debtPaid = Math.floor(due / 2);   // money in the bank, short of the quota
   run.syncQuota();

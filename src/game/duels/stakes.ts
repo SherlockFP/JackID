@@ -3,7 +3,7 @@
  * Soul Mark (3 per run). The rival always puts up its Pledge (a themed Rare charm plus 2 Obols).
  *
  * Pure maths + the optional run hooks the integrator provides (`run.duel`, see `DuelRunHooks`). The Soul Mark counter
- * lives in the run (save, HUD seals, `blank_jackid` at 0), so the engine only talks to it through the hooks.
+ * lives in the run (save, HUD seals), so the engine only talks to it through the hooks. A duel stakes a seal only while 2+ remain.
  */
 import type { StakeTier } from './types'
 
@@ -35,11 +35,11 @@ export function pledgeCost(tickets: number, obols: number): { cur: 'ticket' | 'o
 export interface DuelRunHooks {
   /** Soul Marks left (0..3). */
   soulMarks(pid?: number): number
-  /** Put one Mark on the table. False when the player has none. The Mark leaves the counter until returned or lost. */
+  /** Put one Mark on the table. False when it would be the last one (the card keeps one). The Mark leaves the counter until returned or lost. */
   stakeSoulMark(pid?: number): boolean
   /** The duel was won or drawn: the escrowed Mark goes back on the card. */
   returnSoulMark(pid?: number): void
-  /** The duel was lost: the Mark is gone. Update the save and the HUD seals; at 0 the JackID reads BLANK (`blank_jackid`). Dread is added by the engine. */
+  /** The duel was lost: the Mark is gone. Update the save and the HUD seals. Dread is added by the engine. */
   loseSoulMark(pid?: number): void
   /** The winner takes the rival's Pledge: a themed Rare charm (the 2 Obols are paid by the engine). */
   grantPledge?(rivalId: string, pid?: number): void

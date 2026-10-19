@@ -1,0 +1,12 @@
+400 Sounds Pack by Chequered Ink
+Source: https://ci.itch.io/400-sounds-pack
+Licence as stated on the page:
+  "ANY and ALL uses including commercial use, with or without giving credit"
+  "except that you may not sell or redistribute the unaltered assets as your own game assets"
+JackID ships a small selection of trimmed, converted clips inside the game, not the pack. No credit is required; courtesy line:
+"Some sounds from the 400 Sounds Pack by Chequered Ink."
+
+Vendored in JackID (wave 83): 21 clips (card draw, fan and slide; dice rolls, shake and grab; two carpet footsteps; two UI ticks; three soft pops;
+a door knock, a soft knock, a ghost).
+Modified: trimmed, mixed to mono, resampled (11 to 22 kHz), peak-normalised, faded, saved as 16-bit WAV.
+Which clip plays where: public/assets/vendor/SFX_INDEX.md, src/core/audio/real.ts.

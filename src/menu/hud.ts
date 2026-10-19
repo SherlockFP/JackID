@@ -35,7 +35,7 @@ import type { InstanceId, PlayerId } from '@/core/types';
 import { initial, mmss, Roller, signed } from './hud/fmt';
 import { createProcPops, goldBurst, pegBadge, pegLabel, playProcTick, renderSetChips, setChipName } from './hud/charmProc';
 import { barView, leftText } from './hud/nightBar';
-import { countUpSec, heatTone, overTierLevel, overTierSting, quotaCrossings, rollPitch, TickGate } from './hud/juiceMath';
+import { countUpSec, heatTone, overTierLevel, overTierSting, quotaCrossings, rollPitch, sealCells, TickGate } from './hud/juiceMath';
 import { FIXED_STEP } from '@/core/loop';
 import { charmDef } from '@/game/charms/engine';
 import { activeSets, type SetId } from '@/game/charms/sets';
@@ -44,6 +44,8 @@ import { spotlightChip, type SpotlightView } from '@/game/spotlight';
 import './hud/hud.css';
 import './hud/evening.css';
 import './hud/luck.css';
+import './hud/seals.css';
+import { SOUL_MARKS_PER_RUN } from '@/game/duels/stakes';
 import { LUCK_MAX } from '@/game/luck';
 import { nightPaid } from '@/machines/debt_terminal/night';
 import { SeatHud } from '@/machines/_base/seatHud';
@@ -82,7 +84,6 @@ const self = (): PlayerId => app.run?.selfId ?? 0;
 /** The printed Night the run is on (onboarding gates read it; Night 1 before a run exists). */
 const nightNow = (): number => app.run?.night() ?? 1;
 const ui = (): UIOverlayX => app.ui as UIOverlayX;
-const coinSym = (): string => t('common.coinSuffix').trim();
 const money = (n: number): string => fmtCoins(n);
 /**
  * The broke hint (NIGHT PLAN): the bank first (WITHDRAW at the terminal, the same order the broke card lists them), else the phone,
@@ -190,7 +191,8 @@ export function createHud(): Hud {
 
   // ── top-left: pocket, tickets, staff ────────────────────────────────────────────────────────────
   const wallet = h('div', 'hb wallet', topL);
-  const walletNum = h('span', 'num', wallet, `${coinSym()} 0`);
+  h('i', 'coin', wallet);   // a drawn coin, not the "¢" glyph (it reads as cents)
+  const walletNum = h('span', 'num', wallet, '0');
   const tix = h('div', 'hb tix', topL);
   h('span', 'lbl', tix, t('hud.tickets'));
   const tixNum = h('span', 'num', tix, '0');
@@ -307,6 +309,35 @@ export function createHud(): Hud {
     luckStars.textContent = s < 0 ? `${'☆'.repeat(LUCK_MAX)} −${-s}` : '★'.repeat(s) + '☆'.repeat(LUCK_MAX - s);
     luckBonus.textContent = luckText(s);
     luckEl.classList.toggle('neg', s < 0);
+  };
+  // NAME SEALS (docs/BLESSINGS.md §1): the card's lives, right under the quota from Night 1. Lit = kept, a ring = lost. The strip is the
+  // pause card's wax seals (game/ingame/panels.ts paintSeals) in DOM; a lost seal cracks (`quota:sealed`, or a duel's `duel:marks`).
+  const sealsEl = h('div', 'hb seals hidden', topR);
+  quota.after(sealsEl);
+  sealsEl.title = t('hud.seals.tip');
+  sealsEl.dataset.tip = t('hud.seals.tip');
+  const sealPips = Array.from({ length: SOUL_MARKS_PER_RUN }, () => h('i', 'seal', sealsEl));
+  let sealsRun: unknown = null;
+  let sealsKey = -1;
+  const crackSeal = (i: number): void => {
+    const pip = sealPips[i];
+    if (!pip) return;
+    uiSfx('porcelainCrack', 0.8);
+    if (calmOn() || reduceMotion()) return;
+    pip.classList.remove('crack');
+    void pip.offsetWidth;
+    pip.classList.add('crack');
+  };
+  on('quota:sealed', ({ left }) => { crackSeal(left); });
+  on('duel:marks', ({ left, lost }) => { if (lost) crackSeal(left); });
+  const sealsRender = (): void => {
+    const run = app.run;
+    if (run && sealsRun !== run) { sealsRun = run; sealsKey = -1; }
+    const marks = run?.duel?.soulMarks();   // absent on bench and online runs: no strip
+    sealsEl.classList.toggle('hidden', marks === undefined || run?.mode === 'free');
+    if (marks === undefined || marks === sealsKey) return;
+    sealsKey = marks;
+    sealCells(marks, SOUL_MARKS_PER_RUN).forEach((lit, i) => setCls(sealPips[i]!, 'lit', lit));
   };
   // The quota figure rolls toward the deposited amount (Roller, as the wallet). The fill's last percent and the Night it was read in
   // decide the 25 / 50 / 75 / 100 % ticks: a Night's first read is silent.
@@ -737,7 +768,7 @@ export function createHud(): Hud {
     if (roll.target > roll.shown && rollGate.pass(dt, moved)) {
       rollTick((roll.shown - rollStart) / Math.max(1, roll.target - rollStart), 0.22);
     } else rollGate.pass(dt, false);
-    setText(walletNum, `${coinSym()} ${money(roll.shown)}`);
+    setText(walletNum, money(roll.shown));
     // red only while the pocket cannot cover the last thing asked for (the run refused it for funds)
     setCls(wallet, 'short', r.lastRefusal() === 'funds');
     setCls(pulls, 'short', r.lastRefusal() === 'pulls');
@@ -1340,6 +1371,7 @@ export function createHud(): Hud {
       updateEvening();
       updateQuota(dt);
       luckRender();
+      sealsRender();
       updatePayout(dt);
       updatePlan();
       updateEmpire();
@@ -1357,6 +1389,7 @@ export function createHud(): Hud {
       updateStamps(dt);
       updateHeat();
       updateMetStinger(dt);
+      setRsB();   // the plan, seals and buffs change the stack's height: toasts below it re-anchor the same frame
     },
     setVisible(show: boolean): void { ui().setHudVisible(show); },
     setCallHint(on: boolean): void {

@@ -60,6 +60,7 @@ import { DAILY_STAKE, dailyBetter, dailyKit, dailySeed, dayKey, isDayKey, type D
 import { clampStake, isStakeClear, recordStakeClear, stakeBossFor, stakeEffects, type StakeEffects } from './stakes';
 import { BOSS_REWARD, BOSS_TEMPLATES } from './data/bosses';
 import { SOUL_MARKS_PER_RUN, type DuelEndReport, type DuelRunHooks } from './duels/stakes';
+import { isSealMemory, nextMemory } from './sealMemories';
 import { bossRivalFor, rivalById, type RivalId } from './story/duels/rivals';
 import { rivalTermsFor, termsVars } from './story/duels/terms';
 import { presentationIdle } from './duels/runlink';
@@ -139,12 +140,17 @@ export interface NightLedger { night: number; float: number; interest: number; t
  * Terminal shows, interest included), `interest` the part of that balance the bank paid as interest, `tithe` the quota the
  * missed Watch tithes added to that Night.
  */
-export interface DawnReceipt { night: number; due: number; paid: number; interest: number; tithe: number }
+export interface DawnReceipt {
+  night: number; due: number; paid: number; interest: number; tithe: number;
+  /** A short Dawn that cost a name seal: the memory it took and the seals left (docs/BLESSINGS.md §1). Absent on a Night paid in full. */
+  memory?: string; seals?: number;
+}
 const isCount = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0;
 /** A saved receipt, or null: older saves have none, and a damaged one is dropped rather than shown. */
 function restoredDawnReceipt(d: DawnReceipt | undefined): DawnReceipt | null {
   if (!d || !isCount(d.night) || !isCount(d.due) || !isCount(d.paid) || !isCount(d.interest) || !isCount(d.tithe)) return null;
-  return { night: Math.floor(d.night), due: Math.floor(d.due), paid: Math.floor(d.paid), interest: Math.floor(d.interest), tithe: Math.floor(d.tithe) };
+  const sealed = isSealMemory(d.memory) && isCount(d.seals) ? { memory: d.memory, seals: Math.floor(d.seals) } : {};
+  return { night: Math.floor(d.night), due: Math.floor(d.due), paid: Math.floor(d.paid), interest: Math.floor(d.interest), tithe: Math.floor(d.tithe), ...sealed };
 }
 /** Every reason a run action refuses, as `lastRefusal()` names it: the full `RefusalReason` union (types.ts). */
 export type RunRefusal = RefusalReason;
@@ -453,6 +459,8 @@ export interface RunExt {
   /** Wave 25 duels: Soul Marks on the card, the one in play, the Night whose boss duel was won, rivals whose Pledge charm is taken. Optional: older saves have none. */
   soulMarks?: number;
   markEscrow?: number;
+  /** The memories the lost seals took, most recent last (the Dawn receipt prints them; a restored seal gives the last back). Optional: older saves have none. */
+  lostMemories?: string[];
   bossDuel?: number;
   pledged?: string[];
   /** The ending path reached this run (wave 25 phase 2: `vell_release`), if any. */
@@ -851,6 +859,7 @@ class Run implements DebtRun {
   /** Soul Marks on the JackID card (3 per run), the one on the table, the Night of a won boss duel, rivals whose Pledge charm is taken. */
   private soulMarkCount = SOUL_MARKS_PER_RUN;
   private markEscrow = 0;
+  private lostMemories: string[] = [];
   private bossDuelNight = 0;
   private readonly pledged = new Set<string>();
   /** The ending path reached this run (`vell_release` once Vell's thrown match is called out), or null. */
@@ -2561,8 +2570,10 @@ class Run implements DebtRun {
   /** Dawn Collection: the quota is settled. Paid → overpay rewards, the surplus goes back to the pocket. Short → protections or the trapdoor. */
   private dawn(): void {
     this.expireContracts();
+    this.releaseMarkEscrow();   // a Mark still on the table is on the card again before the card is read for a seal
     const due = this.quota.due;
     let paid = this.debtPaid >= due;
+    // shortcut: the false_bottom and rope_ladder branches are dead (no shop row sells either); BLESSINGS wave 2 moves them behind the ledg_round / ash_overtime boons, then delete the charm rows
     if (!paid && this.charmBox.has(this.selfId, 'false_bottom') && due - this.debtPaid <= 0.1 * due) {
       this.charmBox.remove(this.selfId, 'false_bottom');
       this.debtPaid = due;
@@ -2578,12 +2589,16 @@ class Run implements DebtRun {
       this.persist();
       return;
     }
-    if (!paid) {
+    // THE NAME SEALS (docs/BLESSINGS.md §1): a short Dawn with 2+ seals costs one seal, not the run. The last seal never pays a miss, and
+    // neither does the last Night (a miss must not walk the card out of the door).
+    const sealed = !paid && this.soulMarkCount >= 2 && !this.topside && nightDef(this.index).no < BASE_RUN_NIGHTS;
+    if (!paid && !sealed) {
       // THE EVENING: a solo Home-layer run takes the ride home first (the Collector's men are at the door); the trapdoor is for the rest
       if (this.homeOn) { this.startDoomed(); return; }
       this.fall();
       return;
     }
+    const memory = sealed ? this.takeSeal() : undefined;
     // The Dawn receipt, read once before anything resets: the quota, the deposits that paid it, the interest on them and the tithes
     // the Night's missed Watches added. The Night Cards panel reads this snapshot only (never the live books after the reset below).
     const bankAtDawn = Math.max(0, Math.floor(this.debtPaid));
@@ -2591,6 +2606,7 @@ class Run implements DebtRun {
     this.dawnBook = {
       night: nightDef(this.index).no, due: Math.max(0, Math.floor(due)), paid: bankAtDawn,
       interest: interestAtDawn, tithe: Math.max(0, Math.floor(this.tithe.addedQuota())),
+      ...(memory ? { memory, seals: this.soulMarkCount } : {}),
     };
     // HOUSE TAKES NOTICE (wave 47): the wealth of this Dawn (pocket + bank, before the surplus returns) floors the next quota.
     // THE HOME COMPUTER (wave 77): the House notices the ventures too (their sell value), so they are no hiding place for coins
@@ -2608,9 +2624,8 @@ class Run implements DebtRun {
       }
     }
     this.houseNotice();   // after the overshoot grants: a golden overpay may set the next Night's discount
-    this.finishBoss();
+    this.finishBoss(!sealed);
     this.grantKeys();
-    this.releaseMarkEscrow();
     // The surplus above the quota (overpays and the interest on them, all of it banked until now) returns to the pocket at Dawn,
     // so Night N+1 starts with the cash. It is the Night summary's "carried" figure.
     const surplus = Math.max(0, this.debtPaid - due);
@@ -2628,11 +2643,20 @@ class Run implements DebtRun {
     this.nightDone = true;
     if (nightDef(this.index).no === BASE_RUN_NIGHTS) this.topside = true;
     this.spotlight.end();   // Machine of the Night: the Night is over, the spotlight and its x1.25 end
-    // Night Cards: every paid Dawn with a Night after it (from Night 1 on) opens the two-card offer for that Night.
-    if (!this.topside && this.nightCards.openOffer(this.index + 1)) this.emit('run:nightcard', { pid: this.selfId, state: 'offer', card: null });
+    // Night Cards: every paid Dawn with a Night after it (from Night 1 on) opens the two-card offer for that Night. A sealed Dawn has no offer.
+    if (!sealed && !this.topside && this.nightCards.openOffer(this.index + 1)) this.emit('run:nightcard', { pid: this.selfId, state: 'offer', card: null });
     this.enter('intermission', 0);
     this.emit('quota:update', { quota: this.quota });
     this.persist();
+  }
+
+  /** A short Dawn takes one name seal and the memory with it. The HUD cracks the seal on `quota:sealed`; the Dawn receipt prints the line. */
+  private takeSeal(): string {
+    this.soulMarkCount -= 1;
+    const memory = this.forget();
+    this.marksChanged(false);
+    this.emit('quota:sealed', { index: this.index, left: this.soulMarkCount, memory });
+    return memory;
   }
 
   /**
@@ -3010,6 +3034,7 @@ class Run implements DebtRun {
   private grantTier(tier: OvershootMarkTier): void {
     if (tier.restoreMark && this.soulMarkCount + this.markEscrow < SOUL_MARKS_PER_RUN) {
       this.soulMarkCount += 1;
+      this.remember();
       this.marksChanged(false);
       return;
     }
@@ -3214,6 +3239,7 @@ class Run implements DebtRun {
   restoreSoulMark(): void {
     if (this.ended) return;
     this.soulMarkCount = Math.min(SOUL_MARKS_PER_RUN, this.soulMarkCount + 1);
+    this.remember();
     this.marksChanged(false);
     this.toast('hollowrun.soulRestored');
   }
@@ -3516,9 +3542,9 @@ class Run implements DebtRun {
     this.notify();
   }
 
-  /** One Mark goes on the table. False when the card has none left. */
+  /** One Mark goes on the table. False when it would be the card's last seal: a duel never takes the last one (docs/BLESSINGS.md §1). */
   private stakeMark(): boolean {
-    if (this.soulMarkCount <= 0) return false;
+    if (this.soulMarkCount < 2) return false;
     this.soulMarkCount -= 1;
     this.markEscrow += 1;
     this.marksChanged(false);
@@ -3533,14 +3559,25 @@ class Run implements DebtRun {
     this.marksChanged(false);
   }
 
-  /** The Mark on the table is gone. At 0 the JackID reads BLANK: the cursed `blank_jackid` charm, a road to the void ending. */
+  /** The Mark on the table is gone, and it takes a memory. BLANK (0 seals) only comes from a Dawn: a duel stakes 2+ seals, so one stays. */
   private loseMark(): void {
     if (this.markEscrow > 0) this.markEscrow -= 1;
-    if (this.soulMarkCount === 0 && this.markEscrow === 0) {
-      // a full peg board does not stop the BLANK card: the cursed charm takes one extra peg
-      if (!this.charmBox.has(this.selfId, 'blank_jackid')) this.charmBox.add(this.selfId, 'blank_jackid', this.pegs() + 1);
-    }
+    const memory = this.forget();   // before the banner: `?.` skips its arguments when there is no banner (headless)
+    this.banner?.(t(`run.mem.${memory}.lost`), { color: '#c9a0ff', hold: 4, size: 8 });
     this.marksChanged(true);
+  }
+
+  /** A seal is lost: it takes one memory the card still has (seeded). Returns its id. */
+  private forget(): string {
+    const id = nextMemory(this.lostMemories, this.seed, this.index);
+    this.lostMemories.push(id);
+    return id;
+  }
+
+  /** A seal comes back with the last memory it took. */
+  private remember(): void {
+    const id = this.lostMemories.pop();
+    if (id) this.banner?.(t(`run.mem.${id}.back`), { color: '#c9a0ff', hold: 4, size: 8 });
   }
 
   /** A Mark that is still on the table at Dawn (the duel never finished) goes back to the card. */
@@ -3759,10 +3796,11 @@ class Run implements DebtRun {
   }
 
   /** Night paid on a boss Night: the boss ends; reward = choose 1 of 3 Rare charms + 3 Tickets. */
-  private finishBoss(): void {
+  private finishBoss(reward = true): void {
     const boss = this.bossToday();
     if (!boss) return;
     this.buffSys.nightEvents.end(boss.id);
+    if (!reward) return;   // a boss Night paid with a seal ends, but pays nothing
     this.grant({ currencies: { coin: 0, obol: 0, ticket: BOSS_REWARD.tickets }, charm: { choose: 1, of: BOSS_REWARD.charmChoices, rarity: BOSS_REWARD.charmRarity }, text: 'boss' });
   }
 
@@ -3833,6 +3871,7 @@ class Run implements DebtRun {
       bank:{ granted: this.bankGranted, wd: this.watchWd, dep: this.watchDepCoins, interest: this.nightInterest, broken: this.sealBroken },
       wingKeys: this.wingKeys, managerKey: this.managerKey, rooms: { ...this.rooms, lockers: [...this.rooms.lockers] }, bonusObols: this.currencies.get('obol') ?? 0,
       soulMarks: this.soulMarkCount, markEscrow: this.markEscrow, bossDuel: this.bossDuelNight, pledged: [...this.pledged],
+      ...(this.lostMemories.length > 0 ? { lostMemories: [...this.lostMemories] } : {}),
       ...(this.endingPathId ? { endingPath: this.endingPathId } : {}),
       hollow: { ...this.hollow }, forgiveUntil: this.forgiveUntil, houseWealth: this.houseWealth, obolMult: this.obolMult, hollowRefused: this.hollowRefused,
       ...(this.starter ? { starter: { ids: [...this.starter.ids], open: this.starter.open, left: this.starter.left } } : {}),
@@ -4251,6 +4290,7 @@ class Run implements DebtRun {
     if ((e.bonusObols ?? 0) > 0) this.currencies.set('obol', e.bonusObols ?? 0);
     this.soulMarkCount = Math.min(SOUL_MARKS_PER_RUN, Math.max(0, Math.floor(e.soulMarks ?? SOUL_MARKS_PER_RUN)));
     this.markEscrow = Math.min(SOUL_MARKS_PER_RUN, Math.max(0, Math.floor(e.markEscrow ?? 0)));
+    this.lostMemories = (e.lostMemories ?? []).filter(isSealMemory).slice(0, SOUL_MARKS_PER_RUN);
     this.bossDuelNight = Math.max(0, Math.floor(e.bossDuel ?? 0));
     this.endingPathId = typeof e.endingPath === 'string' ? e.endingPath : null;
     this.pledged.clear();

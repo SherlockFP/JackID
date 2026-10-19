@@ -211,6 +211,7 @@ test('a missed quota in a solo run: the doomed ride, then run:end fell with endi
   const ends = listen('run:end');
   const falls = listen('player:fall');
   const run = home(710);
+  run.soulMarkCount = 1;   // the last seal: a miss with 2+ seals costs a seal instead (seals.test.mjs)
   missedDawn(run);
   assert.equal(run.homeStage(), 'doomed', 'stage doomed');
   assert.equal(run.over, false, 'the run is still alive on the ride home');
@@ -260,11 +261,12 @@ test('the outs come first: false_bottom pays a near miss and rope_ladder buys an
   assert.equal(rope.homeStage(), null, 'rope_ladder: an overtime Watch, not the doom');
   assert.equal(rope.shift.phase, 'intermission');
   assert.equal(rope.over, false);
+  rope.soulMarkCount = 1;
   rope.debtPaid = 0;
   rope.syncQuota();
   rope.phase = 'collection';
   rope.dawn();
-  assert.equal(rope.homeStage(), 'doomed', 'the second miss is the doom');
+  assert.equal(rope.homeStage(), 'doomed', 'the second miss, on the last seal, is the doom');
   rope.dispose();
 });
 
@@ -337,6 +339,7 @@ test('save and restore: the Evening comes back in the Evening, with its clock, l
 
 test('save and restore: the doom comes back whole and ends the run; an online resume ignores the Home slice', () => {
   const run = home(721);
+  run.soulMarkCount = 1;   // the last seal: the doom (a miss with 2+ seals costs a seal instead)
   missedDawn(run);
   const snap = storeOf(run);
   assert.equal(snap.snap.ext.home.stage, 'doomed');

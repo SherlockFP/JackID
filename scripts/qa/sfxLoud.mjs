@@ -25,6 +25,8 @@ const log = (...a) => process.stderr.write(`[sfxLoud] ${a.join(' ')}\n`);
 
 /** Default settings volumes (src/core/settings.ts DEFAULTS.vol). */
 const VOLUMES = { master: 0.8, sfx: 0.9, ui: 0.8, music: 0.6, amb: 0.7, voice: 0.9 };
+/** Every slider at the top: the headroom check renders the jackpot here too. */
+const MAX_VOLUMES = { master: 1, sfx: 1, ui: 1, music: 1, amb: 1, voice: 1 };
 /** Single cues: rendered alone, no bus chain (the same numbers the TRIM table is calibrated on). */
 const CUES = ['button', 'lever', 'reelStart', 'reelStop', 'reelLoop', 'lineUp', 'lose', 'numberTick', 'countDing', 'streakPing', 'coinClink', 'heartbeat', 'kachunk', 'alarmBell', 'win1', 'win2', 'win3', 'winHuge', 'winMega', 'jackpotShow'];
 
@@ -37,7 +39,7 @@ const TIERS = {
   medium: { mult: 5, s: 3.5, layers: [{ name: 'win2', vol: jv(5), pitch: 2 }, { name: 'coinPour', vol: 0.35 + 0.5 * k(5) }] },
   big: { mult: 10, s: 5, layers: [
     { name: 'tensionRise', vol: 0.9, param: 0 },
-    { name: 'win3', at: 0.6, vol: jv(10) }, { name: 'chime', at: 0.6, vol: 0.8 }, { name: 'coinPour', at: 0.6, vol: 0.35 + 0.5 * k(10) },
+    { name: 'win3', at: 0.6, vol: jv(10) }, { name: 'chime', at: 0.6, vol: 0.45 }, { name: 'coinPour', at: 0.6, vol: 0.35 + 0.5 * k(10) },
     { name: 'cheer', at: 0.6, param: 0.4, vol: 0.6 },
   ] },
   huge: { mult: 25, s: 7, layers: [
@@ -52,7 +54,7 @@ const TIERS = {
   ] },
   jackpot: { mult: 100, s: 12, layers: [
     { name: 'tensionRise', vol: 0.9, param: 0.6 },
-    { name: 'jackpotShow', at: 1.2, vol: jv(100) * 1.25 }, { name: 'jackpotSiren', at: 1.2, vol: 0.8 }, { name: 'winRise', at: 1.2, vol: 0.8 },
+    { name: 'jackpotShow', at: 1.2, vol: jv(100) * 1.5 }, { name: 'jackpotSiren', at: 1.2, vol: 0.55 }, { name: 'winRise', at: 1.2, vol: 0.5 },
     { name: 'cheer', at: 1.2, param: 1, vol: 1 },
     { name: 'jackpotBells', at: 1.6, vol: 0.9 }, { name: 'jackpotBells', at: 4.6, vol: 0.7, pitch: 2 },
     { name: 'coinRain', at: 1.2, vol: 0.7, loop: true, loopFor: 6 },
@@ -83,9 +85,14 @@ const PAGE = (task) => `(async () => {
   };
   const med = (xs, key) => xs.map((x) => x[key]).sort((a, b) => a - b)[1];
   const three = async (fn) => { const r = []; for (let i = 0; i < 3; i++) { fill(); r.push(stats(await fn())); } return { peak: med(r, 'peak'), peakDb: med(r, 'peakDb'), stDb: med(r, 'stDb'), len: med(r, 'len') }; };
-  const out = { missing, cues: {}, tiers: {}, trims: {} };
+  const out = { missing, cues: {}, tiers: {}, headroom: {}, trims: {} };
   for (const n of task.cues) out.cues[n] = await three(() => A.renderSfx(n, { seconds: 4, param: n === 'reelLoop' ? 0.6 : undefined }));
   for (const [t, d] of Object.entries(task.tiers)) out.tiers[t] = await three(() => A.renderMix(d.layers, { seconds: d.s, volumes: task.volumes }));
+  // headroom: the jackpot stacks about ten layers. Raw = the sum before the buses and the master compressor (it may pass 1: the
+  // compressor is what holds it); max = through the chain with every slider at 1, which must not clip.
+  const jp = task.tiers.jackpot;
+  out.headroom.jackpotRaw = await three(() => A.renderMix(jp.layers, { seconds: jp.s }));
+  out.headroom.jackpotMax = await three(() => A.renderMix(jp.layers, { seconds: jp.s, volumes: task.maxVolumes }));
   for (const n of new Set([...task.cues, ...Object.values(task.tiers).flatMap((d) => d.layers.map((l) => l.name))])) out.trims[n] = X.SFX_DEFS.get(n).meta.gain;
   return JSON.stringify(out);
 })()`;
@@ -129,7 +136,7 @@ try {
   await send('Page.navigate', { url: `http://127.0.0.1:${vport}/assets/vendor/SFX_INDEX.md` });
   await new Promise((r) => setTimeout(r, 1500));
   log('rendering (about a minute)...');
-  const m = await send('Runtime.evaluate', { expression: PAGE({ cues: CUES, tiers: TIERS, volumes: VOLUMES }), awaitPromise: true, returnByValue: true, timeout: 600_000 });
+  const m = await send('Runtime.evaluate', { expression: PAGE({ cues: CUES, tiers: TIERS, volumes: VOLUMES, maxVolumes: MAX_VOLUMES }), awaitPromise: true, returnByValue: true, timeout: 600_000 });
   if (m.result?.exceptionDetails || m.error) throw new Error(JSON.stringify(m.result?.exceptionDetails ?? m.error).slice(0, 1500));
   const res = JSON.parse(m.result.result.value);
   const fixture = { note: 'written by scripts/qa/sfxLoud.mjs; peak = sample peak, stDb = loudest 400 ms RMS (dBFS); tiers through default bus volumes + master compressor', volumes: VOLUMES, ...res };

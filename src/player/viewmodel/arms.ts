@@ -24,10 +24,10 @@ import { psxMaterial } from '@/core/renderer/psxMaterial';
 
 const GLB = `${import.meta.env.BASE_URL}assets/vendor/drillimpact-psx-arms/arms_rig.glb`;
 
-/** Pose of one hand relative to its clip: offsets (m / rad) and finger curls (rad-ish, 0 = straight, 0.3 = as the clip has them). */
-export interface HandPose { px: number; py: number; pz: number; rx: number; ry: number; rz: number; curl: number; index: number; thumb: number; middle: number }
-export const POSE_KEYS = ['px', 'py', 'pz', 'rx', 'ry', 'rz', 'curl', 'index', 'thumb', 'middle'] as const;
-export const newPose = (): HandPose => ({ px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, curl: 0.3, index: 0.3, thumb: 0.2, middle: 0 });
+/** Pose of one hand relative to its clip: offsets (m / rad), the wrist (`wp` fingers up, `wr` roll about the hand's own axis) and finger curls (rad-ish, 0 = straight, 0.3 = as the clip has them). */
+export interface HandPose { px: number; py: number; pz: number; rx: number; ry: number; rz: number; curl: number; index: number; thumb: number; middle: number; wp: number; wr: number }
+export const POSE_KEYS = ['px', 'py', 'pz', 'rx', 'ry', 'rz', 'curl', 'index', 'thumb', 'middle', 'wp', 'wr'] as const;
+export const newPose = (): HandPose => ({ px: 0, py: 0, pz: 0, rx: 0, ry: 0, rz: 0, curl: 0.3, index: 0.3, thumb: 0.2, middle: 0, wp: 0, wr: 0 });
 export const copyPose = (to: HandPose, from: HandPose): void => { for (const k of POSE_KEYS) to[k] = from[k]; };
 
 /** Gloves on (dark leather, the default) or off (bare hands: the old ivory glove colour is the marker). */
@@ -36,14 +36,17 @@ export const GLOVE_IVORY = 0xe6dec5;
 const PORCELAIN = 0xf4eedc;
 
 /** The model is human size; the viewmodel camera sits close, so it is scaled down and placed so both hands read in frame. */
-export const ARMS_SCALE = 0.75;
-const ARMS_AT = { x: 0, y: 0.03, z: -0.11 };
+export const ARMS_SCALE = 0.55;
+/** The scale the grips, HOLD_AT and the coin tricks were solved at: held things scale with the arms by ARMS_UNIT. */
+const GRIP_REF = 0.75;
+export const ARMS_UNIT = ARMS_SCALE / GRIP_REF;
+const ARMS_AT = { x: 0, y: -0.06, z: -0.11 };
 /** Both hands sit this much closer to the middle than the model has them (m). */
-const HOME_IN = 0.05;
+const HOME_IN = -0.02;
 /** The model's camera bone: the viewmodel camera is where it sits (model y, m). */
 const EYE_Y = 1.743;
 /** Where the coin is held (palm space, right hand): the pinch of thumb and fingers on the back of the hand. Other items are placed by their grip, relative to it. */
-export const HOLD_AT = [-0.012, 0.016, -0.055] as const;
+export const HOLD_AT = [-0.028, 0.01, -0.06] as const;
 /** The palm centre, on the hand bone (bone units), and the neutral curl the clips already carry. */
 const PALM_Y = 0.06, NEUTRAL_CURL = 0.3;
 /** How far each segment follows a curl: fingers (knuckle, middle, tip) and thumb. */
@@ -107,7 +110,7 @@ export class Arm {
     const b = side === 1 ? [[0, 0, -1], [1, 0, 0], [0, -1, 0]] : [[0, 0, 1], [-1, 0, 0], [0, -1, 0]];
     this.palm.setRotationFromMatrix(new THREE.Matrix4().makeBasis(...b.map(([x, y, z]) => new THREE.Vector3(x, y, z)) as [THREE.Vector3, THREE.Vector3, THREE.Vector3]));
     this.palm.position.y = PALM_Y;
-    this.palm.scale.setScalar(1 / ARMS_SCALE);
+    this.palm.scale.setScalar(1 / GRIP_REF);
     this.holder.position.set(HOLD_AT[0] * side, HOLD_AT[1], HOLD_AT[2]);
     this.palm.add(this.holder);
     this.pitch.z = side === 1 ? -1 : 1;
@@ -149,7 +152,8 @@ export class Arm {
     const L = this.lag;
     if (snap) { L.rx.x = p.rx; L.y.x = p.py; L.rx.v = L.y.v = 0; }
     else { spring(L.rx, p.rx, 15, 0.55, step); spring(L.y, p.py, 13, 0.5, step); }
-    this.hand.rotateOnAxis(this.pitch, clamp(((L.rx.x - p.rx) * 0.6 + (L.y.x - p.py) * 4) * amp, -0.26, 0.26));
+    this.hand.rotateOnAxis(this.pitch, clamp(((L.rx.x - p.rx) * 0.6 + (L.y.x - p.py) * 4) * amp, -0.26, 0.26) + p.wp);
+    this.hand.rotateY(p.wr * s);
 
     this.forearm.rotateY(this.roll);
 

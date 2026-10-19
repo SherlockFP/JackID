@@ -1,4 +1,4 @@
-/** THE EVENING (wave 69, Home layer): the lever's label, the apartment's one-liners and the spouse's speaker plate. Loaded by the `*.strings.ts` glob in main.ts. */
+/** THE EVENING (wave 69, Home layer): the lever's label, the apartment's one-liners and Ada's speaker plate. Loaded by the `*.strings.ts` glob in main.ts. */
 export default {
   prefix: 'evening.',
   en: {
@@ -7,13 +7,17 @@ export default {
     'speaker.spouse': 'ADA',
     'speaker.note': 'NOTE',
     'note': 'On the pillow: "Gone to my sister\'s. Pay what you owe."',
+    // shortcut: before N5 she lives across the hall, so Harmony 0 reads this instead; A2 (adaPhase) switches `note` and `note.across`.
+    'note.across': 'Her door stays shut. Not answering.',
+    // A visit Evening (Harmony 2+, before N5): two soft knocks. shortcut: unwired until A2.
+    'visit.knock': 'Two soft knocks. Ada, with a bowl in both hands.',
     'door': 'Locked for the night.',
     'peephole': 'The hall is empty.',
     'window.1': 'Rain on the glass. The Pit glows far below.',
     'window.2': 'The street is empty. One light still burns down in the Pit.',
     'window.3': 'Your reflection looks tired. Behind it, the dark.',
     'window.4': 'A siren somewhere. It doesn\'t stop here.',
-    // THE PROLOGUE (wave 72): the objective after the spouse and the call, and the bed's answer before the lift
+    // THE PROLOGUE (wave 72): the objective after Ada and the call, and the bed's answer before the lift
     'prologue.objective': 'Take the lift down.',
     'prologue.notYet': 'Not yet. The lift first.',
   },
@@ -23,6 +27,8 @@ export default {
     'speaker.spouse': 'ADA',
     'speaker.note': 'NOT',
     'note': 'Yastığın üstünde: "Ablama gittim. Borcunu öde."',
+    'note.across': 'Kapısı kapalı. Cevap vermiyor.',
+    'visit.knock': 'İki hafif vuruş. Ada, iki elinde bir kâse.',
     'door': 'Gece için kilitli.',
     'peephole': 'Koridor boş.',
     'window.1': 'Camda yağmur. Çukur çok aşağıda parlıyor.',

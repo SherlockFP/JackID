@@ -25,6 +25,10 @@ const many = (dir: string, files: string[], o: Omit<Clip, 'u'> = {}): Clip[] => 
 
 const OWL = 'sfx-owlish-more-sfx', LAL = 'sfx-laleksic-various', RUB = 'sfx-rubberduck-metal-wood', QDOOR = 'sfx-qubodup-doors';
 const MIX = 'sfx-mixkit-casino', OGA = 'sfx-oga-wins';
+// wave 83 sound pass: ObsydianX UI, Chequered Ink 400, Halfwits dice, heyheythere footsteps, Liminal horror, Polar_34 magic
+const OBS = 'sfx-obsydianx-ui', CIK = 'sfx-ci-400', DIC = 'sfx-halfwits-dice', HEY = 'sfx-heyheythere-footsteps', LIM = 'sfx-liminal-horror', MAG = 'sfx-polar-magic';
+/** `[file, lv]` pairs: lv = the clip's level trim inside its group, from the crest factor (peak minus loudest-200 ms RMS), see SFX_INDEX.md. */
+const lvs = (dir: string, files: Array<[string, number]>, o: Omit<Clip, 'u' | 'lv'> = {}): Clip[] => files.map(([f, lv]) => c(dir, f, { ...o, lv }));
 const LATCH = c(OWL, 'key_lock_door_30.wav');
 const GROUPS = {
   ring: [c('sfx-chirptone-ringtone', 'chirptone.wav')],
@@ -45,11 +49,11 @@ const GROUPS = {
   doorCloseMetal: [c(RUB, 'metal_close_01.ogg')],
   slamWood: [c(RUB, 'wood_slam_01.ogg'), c(RUB, 'wood_slam_02.ogg')],
   slamMetal: [c(RUB, 'metal_slam_01.ogg'), c(LAL, 'clang_metal.wav')],
-  squeakOpen: [c(LAL, 'door_creak_open.wav')],
-  squeakClose: [c(LAL, 'door_creak_close.wav')],
+  squeakOpen: [c(LAL, 'door_creak_open.wav'), ...lvs(LIM, [['creak-door-2.wav', 1.01], ['creak-door-4.wav', 0.99]])],
+  squeakClose: [c(LAL, 'door_creak_close.wav'), ...lvs(LIM, [['creak-door-6.wav', 0.98], ['creak-door-7.wav', 1]])],
   squeak: [c(RUB, 'wood_squeak_01.ogg'), c(RUB, 'wood_squeak_02.ogg')],
-  floorCreak: many(LAL, ['floor_creak1.wav', 'floor_creak2.wav', 'floor_creak3.wav'], { dur: 1.6 }),
-  knock: [c(RUB, 'wood_hit_01.ogg'), c(RUB, 'wood_hit_02.ogg')],
+  floorCreak: [...many(LAL, ['floor_creak1.wav', 'floor_creak2.wav', 'floor_creak3.wav'], { dur: 1.6 }), ...lvs(LIM, [['creak-door-6.wav', 0.98], ['creak-door-7.wav', 1]], { dur: 1.2 })],
+  knock: [c(RUB, 'wood_hit_01.ogg'), c(RUB, 'wood_hit_02.ogg'), c(CIK, 'knock-soft.wav', { lv: 0.8 })],
   liftDoor: [c('sfx-pagdev-elevator-door', 'elevator_door.wav')],
   bell: [c(LAL, 'bell.wav', { dur: 1.7 })],
   drawer: [c(LAL, 'drawer_open.wav')],
@@ -83,6 +87,44 @@ const GROUPS = {
     c('sfx-psychhead-horror-hits', 'very_bassy_03.wav', { dur: 3 }),
     c('sfx-psychhead-horror-hits', 'bassy_05.wav', { dur: 3.2 }),
   ] as Group,
+  // ── wave 83 sound pass. Dark, short interface tones (ObsydianX styles 4/5, no upbeat ones), cards (Chequered Ink), d6 rolls ──
+  uiHover: lvs(OBS, [['ui-cursor-2.wav', 0.95], ['ui-cursor-4.wav', 1]]),
+  uiClick: lvs(CIK, [['ui-select-2.wav', 1], ['ui-select-4.wav', 0.99]]),
+  uiConfirm: lvs(OBS, [['ui-confirm-1.wav', 1.04], ['ui-confirm-2.wav', 1], ['ui-confirm-3.wav', 0.96]]),
+  uiBack: lvs(OBS, [['ui-back-1.wav', 1], ['ui-back-2.wav', 0.89]]),
+  uiError: lvs(OBS, [['ui-error-1.wav', 0.94], ['ui-error-2.wav', 1]]),
+  uiPop: lvs(CIK, [['ui-pop-1.wav', 1.01], ['ui-pop-3.wav', 1], ['ui-pop-4.wav', 0.95]]),
+  cardDraw: lvs(CIK, [['card-draw-1.wav', 0.97], ['card-draw-2.wav', 1.3], ['card-draw-3.wav', 1]]),
+  cardFan: lvs(CIK, [['card-fan-1.wav', 0.98], ['card-fan-2.wav', 1]]),
+  cardSlide: [c(CIK, 'card-slide-click.wav')],
+  diceShake: [c(CIK, 'dice-shake-3.wav')],
+  diceGrab: [c(CIK, 'dice-grab.wav')],
+  diceTumble: [...lvs(CIK, [['dice-roll-1.wav', 1.06], ['dice-roll-2.wav', 1], ['dice-roll-3.wav', 0.94]]), ...lvs(DIC, [['roll-1d6.wav', 1]])],   // a single die landing
+  diceD6: lvs(DIC, [['roll-1d6.wav', 1], ['roll-2d6.wav', 0.9], ['roll-3d6.wav', 1.03], ['roll-5d6.wav', 0.77]]),
+  // footsteps by floor (src/player/surface.ts: hardness 0.1 carpet · 0.25 dirt · 0.45 wood · 0.8 tile · 1 metal; wet and concrete have their own names)
+  step: {
+    carpet: [...lvs(HEY, [['step-carpet-1.ogg', 1.33]]), ...lvs(CIK, [['step-carpet-2.wav', 0.89], ['step-carpet-3.wav', 1]])],
+    wood: lvs(HEY, [['step-wood-1.ogg', 1], ['step-wood-2.ogg', 0.91], ['step-wood-3.ogg', 1]]),
+    tile: lvs(HEY, [['step-tile-1.ogg', 1.02], ['step-tile-2.ogg', 1], ['step-tile-3.ogg', 0.98]]),
+    metal: lvs(HEY, [['step-metal-1.ogg', 1], ['step-metal-2.ogg', 0.77]]),
+    dirt: lvs(HEY, [['step-dirt-1.ogg', 1], ['step-dirt-2.ogg', 0.88]]),
+    wet: lvs(HEY, [['step-wet-1.ogg', 1], ['step-wet-2.ogg', 0.67], ['step-wet-3.ogg', 1.01]]),
+    concrete: lvs(HEY, [['step-concrete-1.ogg', 1], ['step-concrete-2.ogg', 0.93]]),
+  } as Record<string, Group>,
+  // horror: a long creak, growls, wind and drones for dread, a heavy door knock and single soft knocks
+  creakLong: [c(LIM, 'creak-door-9-long.wav')],
+  growl: lvs(LIM, [['growl-2.wav', 1.28], ['growl-4.wav', 1], ['growl-6.wav', 0.94]]),
+  wind: lvs(LIM, [['wind-2.wav', 1], ['wind-4.wav', 0.96]]),
+  drone: [c(LIM, 'drone-5.wav'), c(CIK, 'ghost-long.wav', { lv: 0.8 })],
+  knockDoor: [c(CIK, 'knock-door.wav')],
+  knockSoft: [c(CIK, 'knock-soft.wav', { lv: 0.8 })],
+  // the gods' blessings (docs/BLESSINGS.md): registered and ready, nothing calls them until that feature ships
+  magicOffer: [c(MAG, 'locate.wav')],
+  magicChimes: [c(MAG, 'chimes.wav')],
+  magicPick: [c(MAG, 'success.wav')],
+  magicSpell: [c(MAG, 'spell.wav')],
+  magicOmen: [c(MAG, 'sonar.wav', { lv: 0.8 })],
+  magicEcho: [c(MAG, 'echo1.wav'), c(MAG, 'echo2.wav')],
 };
 
 /** The casino-floor crowd loop (27 s). The ambience bed crossfades it with itself. */
@@ -96,6 +138,10 @@ export const WARM_URLS: string[] = [
   ...GROUPS.knock, ...GROUPS.liftDoor, ...GROUPS.bell, ...GROUPS.drawer, ...GROUPS.rat.attack, ...GROUPS.rat.pain, ...GROUPS.rat.death,
   ...GROUPS.clack, ...GROUPS.wheel, ...GROUPS.winChime, ...GROUPS.winJingle, ...GROUPS.fanfare, ...GROUPS.alarm, ...GROUPS.coinAlarm,
   ...GROUPS.bellsReward,
+  // wave 83: the interface, cards, dice, footsteps and the single knocks are warmed; creaks, winds, drones and the magic set load on first use
+  ...GROUPS.uiHover, ...GROUPS.uiClick, ...GROUPS.uiConfirm, ...GROUPS.uiBack, ...GROUPS.uiError, ...GROUPS.uiPop,
+  ...GROUPS.cardDraw, ...GROUPS.cardFan, ...GROUPS.cardSlide, ...GROUPS.diceShake, ...GROUPS.diceGrab, ...GROUPS.diceTumble, ...GROUPS.diceD6,
+  ...Object.values(GROUPS.step).flat(), ...GROUPS.knockSoft,
 ].map((x) => x.u).filter((u, i, a) => a.indexOf(u) === i);
 
 /** Every recorded file real.ts can play (the loudness harness decodes them all; a test checks each one exists). */
@@ -238,6 +284,40 @@ export function installReal(defs: Map<string, SfxDef>, makeDef: (names: string |
     return len + 0.4;
   });
 
+  // ── wave 83 sound pass. Every `replace` keeps its procedural recipe as the fallback; each `vol` is the final peak ──
+  // interface: short dark tones (hover, error, toast pop replaced; the click keeps its synthesised tick with a soft recorded one under it)
+  replace(['hover'], (k, _o, t) => (play(k, GROUPS.uiHover, { vol: 0.3 * t, rand: 0.03 }) ? 0.25 : null));
+  layer(['click'], (k, _o, t) => { play(k, GROUPS.uiClick, { vol: 0.22 * t, rand: 0.04 }); return 0.17; });
+  replace(['error'], (k, _o, t) => (play(k, GROUPS.uiError, { vol: 0.5 * t, rand: 0.01 }) ? 0.45 : null));
+  replace(['popUp'], (k, o, t) => (play(k, GROUPS.uiPop, { vol: 0.5 * t, rate: semi(((o.param ?? 0.4) - 0.4) * 6) }) ? 0.15 : null));
+
+  // cards: Chequered Ink draws, fans and a slide under the Kenney samples and the synthesised snaps
+  layer(['card'], (k, _o, t) => { play(k, GROUPS.cardDraw, { vol: 0.3 * t, rand: 0.06 }); return 0.25; });
+  layer(['cardFlip'], (k, _o, t) => { play(k, GROUPS.cardSlide, { vol: 0.22 * t, dur: 0.45, rand: 0.05 }); return 0.45; });
+  layer(['cardSlap'], (k, _o, t) => { play(k, GROUPS.cardDraw, { vol: 0.35 * t, rate: 0.8 }); return 0.3; });
+  layer(['shuffle'], (k, _o, t) => {
+    play(k, GROUPS.cardFan, { at: 0.05, vol: 0.3 * t });
+    play(k, GROUPS.cardFan, { at: 0.5, vol: 0.28 * t, rate: 1.05 });
+    play(k, GROUPS.cardDraw, { at: 0.95, vol: 0.3 * t });
+    return 1.2;
+  });
+
+  // dice: the grab and shake, then a d6 roll across the felt; a single die landing uses the shorter tumbles
+  replace(['dice', 'diceRoll'], (k, _o, t) => {
+    const grab = play(k, GROUPS.diceGrab, { vol: 0.25 * t }), shake = play(k, GROUPS.diceShake, { at: 0.1, vol: 0.4 * t, dur: 0.55 });
+    if (!grab && !shake) return null;
+    play(k, GROUPS.diceD6, { at: 0.5, vol: 0.75 * t, rand: 0.04 });
+    return 2;
+  });
+  replace(['diceLand'], (k, _o, t) => (play(k, GROUPS.diceTumble, { vol: 0.6 * t, rand: 0.05 }) ? 0.7 : null));
+
+  // footsteps by floor: `footstep` carries the surface hardness in `param` (src/player/surface.ts); the named ones pick their own floor
+  const FLOOR: Record<string, string> = { footstepCarpet: 'carpet', footstepConcrete: 'concrete', footstepMetal: 'metal', footstepWood: 'wood', footstepWet: 'wet' };
+  const floorOf = (n: string, p: number): string => FLOOR[n] ?? (p < 0.17 ? 'carpet' : p < 0.35 ? 'dirt' : p < 0.65 ? 'wood' : p < 0.9 ? 'tile' : 'metal');
+  // The caller's `pitch` (a per-floor offset, carpet -3 .. metal +4, plus a +-1 wobble) suits the synthesised step only; a recording
+  // already sounds like its floor, so it is cancelled with the opposite rate (the clip's own `rand` supplies the variation).
+  for (const n of ['footstep', ...Object.keys(FLOOR)]) replace([n], (k, o, t) => (play(k, GROUPS.step[floorOf(n, o.param ?? 0)], { vol: 0.55 * t, rate: semi(-(o.pitch ?? 0)), rand: 0.04 }) ? 0.45 : null));
+
   // ── new names (other lanes call these) ──
   makeDef(['doorOpen', 'doorOpenWood'], (k, _o) => (play(k, GROUPS.doorOpenWood, { vol: 0.5 }) ? 1.1 : (doorFallback(k, 0), 0.5)), { pri: 5, max: 3 });
   makeDef(['doorClose', 'doorCloseWood'], (k) => (play(k, GROUPS.doorCloseWood, { vol: 0.55 }) ? 1.1 : (doorFallback(k, 1), 0.4)), { pri: 5, max: 3 });
@@ -270,12 +350,54 @@ export function installReal(defs: Map<string, SfxDef>, makeDef: (names: string |
     const p = o.param ?? 0.5, n = GROUPS.horror.length, i = Math.min(n - 1, Math.floor(p * n)), lo = Math.max(0, i - 1), hi = Math.min(n - 1, i + 1);
     const g: Group = GROUPS.horror.slice(lo, hi + 1);
     if (!play(k, g, { vol: 0.62, a: 0.002, r: 0.9, rand: 0.02 })) return 0;
+    if (p >= 0.45) play(k, GROUPS.growl, { at: 0.04, vol: 0.12 + 0.22 * p, a: 0.02, r: 0.6, dur: 1.6 });   // something answers under the hit
+    if (p >= 0.3) play(k, GROUPS.drone, { at: 0.05, vol: 0.14 + 0.1 * p, a: 0.5, r: 1.4, dur: 3.2 });      // wind / low drone bed, swells in
     return (g[0].dur ?? 2.6) + 0.5;
   };
   makeDef(['horrorHit', 'knockStinger', 'visitorStinger', 'mafiaStinger'], (k, o) => horror(k, o), { pri: 8, max: 1, long: true });
   // Dread events already on the floor get the recording underneath (quieter than a stinger of their own).
+  layer(['knockStinger'], (k) => (calm ? 0 : (play(k, GROUPS.knockDoor, { vol: 0.5 }) ? 0.8 : 0)));
   layer(['powerDown'], (k, o) => (calm ? 0 : horror(k, { ...o, param: 0.75 })));
   layer(['trapdoor'], (k, o) => (calm ? 0 : horror(k, { ...o, param: 0.95 })));
+
+  // ── wave 83 new names. UI (bus ui): the dark confirm and back tones, a procedural stand-in until they decode ──
+  makeDef(['confirm'], (k) => (play(k, GROUPS.uiConfirm, { vol: 0.5, rand: 0.02 }) ? 0.45 : (k.osc('triangle', 520, 0.12, { vol: 0.12, to: 780, env: { a: 0.003, d: 0.1, s: 0, r: 0.01 } }), 0.15)), { bus: 'ui', pri: 7, max: 2 });
+  makeDef(['back'], (k) => (play(k, GROUPS.uiBack, { vol: 0.45, rand: 0.02 }) ? 0.4 : (k.osc('triangle', 520, 0.1, { vol: 0.12, to: 340, env: { a: 0.003, d: 0.08, s: 0, r: 0.01 } }), 0.15)), { bus: 'ui', pri: 7, max: 2 });
+
+  // horror and dread (all silent in Calm Mode except the creak and the single knock, which the home already plays)
+  makeDef(['creakLong'], (k) => (play(k, GROUPS.creakLong, { vol: 0.4, a: 0.05, r: 0.5 }) ? 4.9 : (play(k, GROUPS.squeakOpen, { vol: 0.42 }), 1.6)), { pri: 4, max: 2, long: true });
+  makeDef(['growl'], (k, o) => (calm ? 0 : (play(k, GROUPS.growl, { vol: 0.35 + 0.25 * (o.param ?? 0.5), a: 0.02, r: 0.5, rand: 0.06 }) ? 2 : 0)), { pri: 6, max: 1, long: true });
+  makeDef(['windGust'], (k) => (play(k, GROUPS.wind, { vol: 0.32, a: 0.9, r: 1.6, rand: 0.05 }) ? 5 : 0), { bus: 'amb', pri: 2, max: 1, long: true });
+  makeDef(['dreadDrone'], (k) => (calm ? 0 : (play(k, GROUPS.drone, { vol: 0.34, a: 0.8, r: 1.6, rand: 0.03 }) ? 5 : 0)), { pri: 5, max: 1, long: true });
+  makeDef(['knockDoor'], (k) => (play(k, GROUPS.knockDoor, { vol: 0.6, rand: 0.03 }) ? 0.8 : 0), { pri: 6, max: 2 });
+  makeDef(['knockSingle'], (k) => (play(k, GROUPS.knockSoft, { vol: 0.65, rate: 0.9, rand: 0.05 }) ? 0.35 : (k.osc('sine', 150, 0.09, { vol: 0.4, to: 65, env: { a: 0.002, d: 0.08, s: 0, r: 0.01 } }), 0.15)), { pri: 6, max: 3 });
+  /** Knocks heard through the building: three soft ones far away, rate and level falling. Silent in Calm Mode. */
+  makeDef(['knockDistant'], (k) => {
+    if (calm) return 0;
+    let at = 0;
+    for (let i = 0; i < 3; i++) { play(k, GROUPS.knockSoft, { at, vol: (0.3 - i * 0.04) * rnd(0.85, 1), rate: 0.78, rand: 0.04 }); at += rnd(0.42, 0.6); }
+    return at + 0.3;
+  }, { bus: 'amb', pri: 2, max: 1 });
+
+  // ── the gods' blessings (docs/BLESSINGS.md): sounds are registered and ready, nothing in the game plays them yet ──
+  // boonOffer: the card turns over · boonPick: a boon taken · omen: a warning from the unseen (visual only in Calm) · spell: a rite · divineEcho: a god's voice carrying
+  makeDef(['boonOffer'], (k) => {
+    if (!play(k, GROUPS.magicOffer, { vol: 0.4 })) return 0;
+    play(k, GROUPS.magicChimes, { at: 0.12, vol: 0.34, rand: 0.02 });
+    return 1.1;
+  }, { pri: 6, max: 2 });
+  makeDef(['boonPick'], (k) => {
+    if (!play(k, GROUPS.magicPick, { vol: 0.5 })) return 0;
+    play(k, GROUPS.magicSpell, { at: 0.05, vol: 0.2 });
+    return 1.4;
+  }, { pri: 7, max: 2, long: true });
+  makeDef(['omen'], (k) => {
+    if (calm || !play(k, GROUPS.magicOmen, { vol: 0.4, a: 0.05, r: 0.8 })) return 0;
+    play(k, GROUPS.magicEcho, { at: 0.35, vol: 0.28, rate: 0.85 });
+    return 2.2;
+  }, { pri: 7, max: 1, long: true });
+  makeDef(['spell'], (k) => (play(k, GROUPS.magicSpell, { vol: 0.45 }) ? 0.8 : 0), { pri: 6, max: 2 });
+  makeDef(['divineEcho'], (k) => (play(k, GROUPS.magicEcho, { vol: 0.38, rand: 0.02 }) ? 1.9 : 0), { pri: 5, max: 2, long: true });
 
   function ratPlay(k: Kit, o: PlayOpts): boolean {
     const p = o.param ?? 0, g = p > 0.66 ? GROUPS.rat.death : p > 0.33 ? GROUPS.rat.pain : GROUPS.rat.attack;

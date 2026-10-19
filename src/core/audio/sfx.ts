@@ -47,17 +47,17 @@ const TRIM: Record<string, number> = {
   click: 1.13, hover: 3, button: 0.8, popUp: 1.19, numberTick: 2.6, quotaTick: 2.16, charmTick: 2.2,
   beep: 2.37, error: 1.64, chime: 1.64, lever: 0.46, ratchet: 1.73, reelStart: 1.11,
   reelLoop: 1.75, reelSpin: 1.91, reelTick: 2.79, reelStop: 0.66, crank: 1.75, motor: 0.47,
-  lineUp: 0.9, streakPing: 1.2, coinClink: 1, countDing: 1, kachunk: 0.7, alarmBell: 1, jackpotShow: 0.6,
+  lineUp: 0.9, streakPing: 1.2, coinClink: 1, countDing: 1, kachunk: 0.7, alarmBell: 1, jackpotShow: 0.44,
   gunClick: 2.6, gunBlank: 2.4, blankClick: 2.4, gunLoad: 1.09, shellRack: 1.17, shellEject: 2.53,
   gunShot: 0.38, coin: 0.78, coinDrop: 0.65, coinFlick: 2.99, coinLand: 0.57, coinShower: 0.81,
   coinPour: 0.64, coinMagnet: 0.89, chip: 0.85, chipStack: 0.84, card: 0.77, cardFlip: 0.9,
   shuffle: 0.81, cardSlap: 0.77, dice: 0.68, diceRoll: 0.66, diceLand: 0.74, wheelTick: 2.45,
   ballRoll: 2.82, ballBounce: 1.8, ballDrop: 1.17, bell: 1.01, buzzer: 1.22, lose: 0.5,
-  whoosh: 1.2, thud: 0.6, glass: 1.08, glassBreak: 1.08, win1: 0.87, win2: 0.61,
-  win3: 0.8, winHuge: 0.5, winRise: 0.8, winMega: 0.6, winPush: 0.85, jackpot: 0.62, jackpotSiren: 1.77, jackpotBells: 1.76,
+  whoosh: 1.2, thud: 0.6, glass: 1.08, glassBreak: 1.08, win1: 0.72, win2: 0.61,
+  win3: 0.33, winHuge: 0.35, winRise: 0.8, winMega: 0.62, winPush: 0.85, jackpot: 0.62, jackpotSiren: 1.77, jackpotBells: 1.76,
   stinger: 0.57, quotaMet: 0.82, quotaFail: 0.46, upgrade: 1.05, purchase: 1.06, cashRegister: 0.89,
   unlock: 1.15, buffGain: 1.02, buffLose: 1.24, stamp: 0.64, printer: 1.82, sparkle: 3,
-  whisper: 0.9, whispers: 0.98, heartbeat: 0.6, lightFlicker: 2.14, powerDown: 1.02, powerUp: 0.98,
+  whisper: 0.9, whispers: 0.98, heartbeat: 0.45, lightFlicker: 2.14, powerDown: 1.02, powerUp: 0.98,
   neonBuzz: 3, paClick: 1.3, tapeStop: 1.74, tinnitus: 3, defib: 0.58, totemPlace: 0.64,
   totemPulse: 1.38, porcelainCrack: 1.21, creak: 2.73, mannequinCreak: 2.52, drip: 1.89, phoneRing: 2.5,
   phonePickup: 1.46, clockTick: 2.71, clockAlarm: 2.65, trapdoor: 0.66, elevator: 2.03, elevatorDing: 1.69,
@@ -1360,6 +1360,8 @@ export function buildAmbience(id: AmbienceId, env: AmbEnv): AmbBed {
       b.every(14, 30, () => b.event('whisper', 0.1, [3, 8]));
       b.every(4, 10, () => b.event('drip', 0.1, [4, 14], { pitch: rnd(-5, 3) }));
       b.every(60, 120, () => b.event('tinnitus', 0.04, [2, 4]));
+      b.every(20, 45, () => b.event('windGust', 0.5, [8, 20]));                                            // recorded wind (real.ts)
+      b.every(50, 110, () => b.event('knockDistant', 0.8, [10, 24]));                                      // three soft knocks, far off (silent in Calm)
       break;
     case 'elevator':                               // cabin hum, cable rattle
       b.osc('sawtooth', 58, 0.045, { lp: 260 }); b.osc('sine', 116, 0.02);
@@ -1375,6 +1377,8 @@ export function buildAmbience(id: AmbienceId, env: AmbEnv): AmbBed {
       b.every(6, 14, () => b.event('creak', 0.14, [5, 20], { param: 0.1 }));
       b.every(10, 20, () => b.event('thud', 0.1, [10, 24], { pitch: rnd(-6, 0) }));
       b.every(3, 8, () => b.event('drip', 0.12, [4, 12], { pitch: rnd(-6, 2) }));
+      b.every(12, 28, () => b.event('windGust', 0.5, [8, 22]));
+      b.every(45, 100, () => b.event('knockDistant', 0.7, [10, 24]));
       break;
     case 'parlour':                                // one bulb, a clock, something breathing
       b.osc('sawtooth', 120, 0.018, { lp: 900 }); b.osc('sine', 240, 0.008);
@@ -1400,6 +1404,7 @@ export function buildAmbience(id: AmbienceId, env: AmbEnv): AmbBed {
       b.noise({ color: 'pink', freq: 2400, q: 0.6, gain: 0.018, lfo: [0.15, 500] });                            // rain on the glass
       { const tv1 = b.noise({ color: 'pink', freq: 520, q: 2.2, gain: 0.012 }); b.mod(tv1.gain, 3.1, 0.008); }  // TV murmur, syllable rhythm
       { const tv2 = b.noise({ color: 'pink', freq: 1250, q: 2.5, gain: 0.006 }); b.mod(tv2.gain, 4.3, 0.004); }
+      b.every(35, 80, () => b.event('windGust', 0.35, [10, 24]));                                              // wind round the building
       break;
     default:                                       // 'pit' (and any unknown id): the casino floor
       b.noise({ color: 'pink', freq: 600, q: 0.6, gain: 0.16, lfo: [0.11, 200] }); b.noise({ color: 'brown', type: 'lowpass', freq: 160, gain: 0.22 });

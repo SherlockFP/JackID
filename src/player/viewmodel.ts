@@ -1,7 +1,7 @@
 /**
  * First-person viewmodel (PLAYER): the CC0 rigged arms (`viewmodel/arms.ts`: fingerless leather gloves, 18 clips) in their OWN scene,
  * rendered after the world with the depth buffer cleared (`renderer.render(scene, camera, { scene: vm.scene, camera: vm.camera })`),
- * FOV 50, near 0.01 (TECH_SPEC §11.7, ART_BIBLE §8.5). The GLB loads once, asynchronously: until it has (or if it cannot be
+ * FOV 58 (VM_FOV), near 0.01 (TECH_SPEC §11.7, ART_BIBLE §8.5). The GLB loads once, asynchronously: until it has (or if it cannot be
  * loaded: one warning) there are simply no hands, and the game plays on. The things the hands hold are in `viewmodel/items.ts`,
  * the one-shot animations in `viewmodel/anims.ts` and the coin tricks in `viewmodel/fidget.ts`. Materials are unlit; `setLightLevel`
  * dims them in dark rooms.
@@ -10,6 +10,8 @@
  * `grab.R`, `punchCard` and `throw` `push.R`, `flip` and `point` the `finger_gun_*` clips, the phone `grab.L`), blended with the
  * animation's own fade in and out. On top of the clip the hands keep the additive pose: breathing, walk bob, a lift to the
  * mouth, finger curls (rock, paper and scissors are curls on the finger bones), the wristwatch on the left forearm.
+ *
+ * The Q coin tricks are `viewmodel/coinTricks.ts` (hand-keyed curves) run by `viewmodel/fidget.ts`.
  *
  * Holds (`hold`): coin (default), card, tonic, phone, ticket, ledger, gun (two-handed), totem, the five foods (banana, coffee,
  * sandwich, energy, soup: `eat` and `drink` raise them to the mouth), or any `Object3D` the caller supplies (card fan, totem, scratch
@@ -55,6 +57,8 @@ export interface ViewmodelHost extends Viewmodel {
   /** Settles once the arms are in the scene (or could not be loaded: then there are no hands). */
   readonly ready: Promise<void>;
   drive(d: ViewmodelDrive): void;
+  /** The coin-trick key (Q) went down or up: a press cuts into the next trick at once, held loops the knuckle roll. `which` picks a trick (tests, bench). */
+  trick(down: boolean, which?: number): void;
   /** 0..1 brightness of the surroundings. */
   setLightLevel(v: number): void;
   /** The arms are bare skin under the gloves: the jacket colour is kept for the day the sleeves come back. */
@@ -69,6 +73,12 @@ export interface ViewmodelHost extends Viewmodel {
 }
 
 // ── viewmodel ─────────────────────────────────────────────────────────────────────────────────────
+/** Both hands rest a little higher and tipped up, not flat on the bottom edge. */
+/** Vertical FOV of the viewmodel camera: wider than the world's so the hands stay small (CS/HL rest pose). */
+const VM_FOV = 58;
+const REST_POSE = { py: 0.02, rx: 0.1, wp: 0.08 };
+/** The grips were solved on the old glove: on this hand every held item sits this far lower (m), in the fist and not above it. */
+const GRIP_DROP = 0.025;
 const GUN_HOME = new THREE.Vector3(0.135, -0.135, -0.3);
 /** A new item rises from below on a spring; the old one shrinks away over this long (s). */
 const RAISE_DROP = 0.07, LEAVE_S = 0.12, FADE_OUT_S = 0.2;
@@ -93,7 +103,7 @@ const addReq = (list: ClipReq[], r: ClipReq): void => {
 
 export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = GLOVE_LEATHER, armsSource: Promise<ArmsSource | null> = loadArms()): ViewmodelHost {
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.01, 4);
+  const camera = new THREE.PerspectiveCamera(VM_FOV, 16 / 9, 0.01, 4);
   const own: THREE.Material[] = [];
   const ownMat: OwnMat = (c) => { const x = mat(c); own.push(x); return x; };
   const right = new Arm(1);
@@ -170,6 +180,7 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
   const setBase = (): void => {
     const r = base.r, l = base.l;
     copyPose(r, newPose()); copyPose(l, newPose());
+    Object.assign(r, REST_POSE); Object.assign(l, REST_POSE);
     switch (item) {
       case 'ledger': Object.assign(r, gripOf(item).hand); l.curl = 0.5; l.py += 0.03; break;
       case 'gun': r.curl = 0.9; r.index = 0.8; r.thumb = 0.6; l.curl = 0.9; l.thumb = 0.6; break;
@@ -213,6 +224,7 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
   const vm: ViewmodelHost = {
     scene, camera, ready,
     get item() { return item; },
+    trick(down, which) { fidget.press(down, which); },
     setVisible(on) { visible = on; rig.visible = on; if (gun) gun.visible = on; if (!on) fidget.reset(); },
     hold(next, obj) {
       if (next === 'none' && !obj) next = 'coin';           // an empty hand holds a coin: the Q tricks always have one
@@ -232,8 +244,8 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
       } else if (next !== 'none') {
         const built = buildItem(next, ownMat);
         if (built) {
-          const g = gripOf(next), arm = handOf(next), s = arm.side;      // the left hand mirrors the grip
-          built.position.set((g.pos[0] - HOLD_AT[0]) * s, g.pos[1] - HOLD_AT[1], g.pos[2] - HOLD_AT[2]);
+          const g = gripOf(next), arm = handOf(next), s = arm.side, drop = next === 'coin' ? 0 : GRIP_DROP;      // the left hand mirrors the grip
+          built.position.set((g.pos[0] - HOLD_AT[0]) * s, g.pos[1] - HOLD_AT[1] - drop, g.pos[2] - HOLD_AT[2]);
           built.rotation.set(g.rot[0], g.rot[1] * s, g.rot[2] * s);
           arm.holder.add(built); held = built; heldOwned = true;
         }

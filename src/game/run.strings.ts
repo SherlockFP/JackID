@@ -1,5 +1,6 @@
 /**
- * The between-Watch flow's HUD line and the fall receipt's bank line (wave 45, director: MOLA and the seized bank).
+ * The between-Watch flow's HUD line and the fall receipt's bank line (wave 45, director: MOLA and the seized bank), and the memories
+ * the name seals cost (docs/BLESSINGS.md §1; src/game/sealMemories.ts): `mem.<id>.lost` prints when a seal goes, `.back` when it returns.
  * Loaded by the `*.strings.ts` glob in main.ts.
  */
 export default {
@@ -8,10 +9,42 @@ export default {
     'mola': 'MOLA: shop, bank, then pull the lever',
     'fall.seized': 'Bank {n} seized by the House',
     'house.notice': 'THE HOUSE TAKES NOTICE: quota raised to {n}',
+    'mem.street.lost': 'Forgotten: the name of your street.',
+    'mem.street.back': 'You remember your street.',
+    'mem.song.lost': 'Forgotten: the song your father whistled.',
+    'mem.song.back': 'You remember the song your father whistled.',
+    'mem.door.lost': 'Forgotten: the number on the door across the hall.',
+    'mem.door.back': 'You remember the number on the door across the hall.',
+    'mem.hello.lost': 'Forgotten: what you were going to say to her.',
+    'mem.hello.back': 'You remember what you were going to say to her.',
+    'mem.coin.lost': 'Forgotten: where you got your lucky coin.',
+    'mem.coin.back': 'You remember where you got your lucky coin.',
+    'mem.wall.lost': 'Forgotten: laughter through the wall of your flat.',
+    'mem.wall.back': 'You remember laughter through the wall of your flat.',
+    'mem.phone.lost': 'Forgotten: a phone number you knew by heart.',
+    'mem.phone.back': 'You remember a phone number by heart.',
+    'mem.mother.lost': 'Forgotten: how your mother said your name.',
+    'mem.mother.back': 'You remember how your mother said your name.',
   },
   tr: {
     'mola': 'MOLA: alışveriş yap, bankaya bak, sonra kolu çek',
     'fall.seized': 'Banka {n} Kasa tarafından el konuldu',
     'house.notice': 'KASA FARK ETTİ: kota {n} oldu',
+    'mem.street.lost': 'Unutuldu: sokağının adı.',
+    'mem.street.back': 'Sokağını hatırladın.',
+    'mem.song.lost': 'Unutuldu: babanın ıslıkla çaldığı şarkı.',
+    'mem.song.back': 'Babanın ıslıkla çaldığı şarkıyı hatırladın.',
+    'mem.door.lost': 'Unutuldu: karşı dairenin kapı numarası.',
+    'mem.door.back': 'Karşı dairenin kapı numarasını hatırladın.',
+    'mem.hello.lost': 'Unutuldu: ona ne diyecektin.',
+    'mem.hello.back': 'Ona ne diyeceğini hatırladın.',
+    'mem.coin.lost': 'Unutuldu: şans parasını nereden aldığın.',
+    'mem.coin.back': 'Şans parasını nereden aldığını hatırladın.',
+    'mem.wall.lost': 'Unutuldu: dairenin duvarından gelen kahkaha.',
+    'mem.wall.back': 'Dairenin duvarından gelen kahkahayı hatırladın.',
+    'mem.phone.lost': 'Unutuldu: ezbere bildiğin bir telefon numarası.',
+    'mem.phone.back': 'Ezbere bildiğin bir telefon numarasını hatırladın.',
+    'mem.mother.lost': 'Unutuldu: annenin adını söyleyişi.',
+    'mem.mother.back': 'Annenin adını söyleyişini hatırladın.',
   },
 };

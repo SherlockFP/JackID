@@ -1,0 +1,7 @@
+Magic Sound Effects by Polar_34
+Source: https://polar-34.itch.io/magic-sound-effects
+Licence: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/). No credit required.
+
+Vendored in JackID (wave 83): all 7 clips (chimes, echo1, echo2, locate, sonar, spell, success).
+Modified: trimmed to the sound, resampled to 22.05 kHz, peak-normalised, faded, saved as 16-bit WAV.
+Registered for the gods' blessings feature (docs/BLESSINGS.md): boonOffer, boonPick, omen, spell, divineEcho.

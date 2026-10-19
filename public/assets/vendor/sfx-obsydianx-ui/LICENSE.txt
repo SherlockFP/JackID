@@ -1,0 +1,8 @@
+Interface SFX Pack 1 by ObsydianX
+Source: https://obsydianx.itch.io/interface-sfx-pack-1
+Licence: CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/). No credit required.
+The pack's own readme says: "License: CC0".
+
+Vendored in JackID (wave 83): 9 clips from the Cursor, Confirm, Back and Error tones (the darkest styles, 4 and 5).
+Modified: the 6 s OGG files were cut to the tone, mixed to mono, resampled to 22.05 kHz, peak-normalised and saved as 16-bit WAV.
+Which clip plays where: public/assets/vendor/SFX_INDEX.md, src/core/audio/real.ts.

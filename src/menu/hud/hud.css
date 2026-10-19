@@ -30,6 +30,10 @@
 /* top-left: pocket, tickets, staff */
 .hud .wallet .num { color: var(--shine); font-size: calc(16 * var(--u)); }
 .hud .wallet.short .num { color: var(--signal); }
+/* the coin icon: a gold disc with a dark rim and a pixel glint (replaces the "¢" glyph, which read as cents) */
+.hud .wallet { display: flex; align-items: center; gap: calc(3 * var(--u)); }
+.hud .coin { display: inline-block; flex: none; width: calc(13 * var(--u)); height: calc(13 * var(--u)); box-sizing: border-box; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff1a8 0 12%, var(--shine) 13% 62%, #c8902a 63%); border: calc(1.5 * var(--u)) solid #6b4a12; }
 .hud .pulls.short { color: var(--signal); }
 .hud .wallet.gain { animation: hud-glow .35s ease-out; }
 .hud .tix { color: var(--coral); }
@@ -45,9 +49,10 @@
 .hud .clock.soon .phase { color: var(--amber); animation: nbar-pulse .9s ease-in-out infinite alternate; }
 .hud .clock.last .phase { color: #ff5a4a; }
 /* NIGHT TIMELINE (nightBar.ts): one segment per Watch, a gap per Mola, a sun for Dawn. Marker = the current segment's fill edge. */
-.hud .nbar { display: flex; align-items: center; flex: 1 1 auto; min-width: calc(110 * var(--u)); height: calc(7 * var(--u)); gap: calc(2 * var(--u)); }
-.hud .nbar .seg { position: relative; flex: 1 1 0; height: 100%; background: #26222c; box-shadow: 0 0 0 calc(1 * var(--u)) #000; }
+.hud .nbar { display: flex; align-items: center; flex: 1 1 auto; min-width: calc(110 * var(--u)); height: calc(10 * var(--u)); gap: calc(2 * var(--u)); }
+.hud .nbar .seg { position: relative; flex: 1 1 0; height: 100%; background: #4a4256; box-shadow: 0 0 0 calc(1 * var(--u)) #000, inset 0 0 0 calc(1 * var(--u)) #6a6078; }
 .hud .nbar .f { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--bone); }
+.hud .nbar .seg.cur { box-shadow: 0 0 0 calc(1 * var(--u)) var(--shine); }
 .hud .nbar .seg.cur .f { background: var(--shine); }
 .hud .nbar .seg.cur .f::after { content: ''; position: absolute; right: 0; top: calc(-1 * var(--u)); bottom: calc(-1 * var(--u)); width: calc(1 * var(--u)); background: #fff; }
 .hud .nbar .seg.nx { box-shadow: 0 0 0 calc(1 * var(--u)) var(--shine); }

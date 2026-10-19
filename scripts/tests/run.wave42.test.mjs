@@ -130,6 +130,7 @@ test('bug a: a run that falls at Dawn with the pocket equal to the quota reports
   let summary = null;
   const off = EV.bus.on('run:end', (e) => { summary = e.summary; });
   run.index = 1;
+  run.soulMarkCount = 1;    // the last seal: a miss with 2+ seals costs a seal instead (seals.test.mjs)
   run.coins = due;          // the pocket holds exactly the quota ...
   run.debtPaid = 0;         // ... but nothing was deposited
   run.syncQuota();

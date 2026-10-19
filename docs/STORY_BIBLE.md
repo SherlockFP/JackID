@@ -575,3 +575,41 @@ Client note: friendships matter. One plain value per key character, not a pile o
 | Collector | he calls before he knocks | the truth about the deal: "I took it once. Don't." | at THE VISIT, one more Dawn, once; he holds the lift door in KEPT PAIR | Heat +1 every Night |
 
 **Bonds and Ada.** She wants you to herself. From N5 her phone asks where you were whenever a friend's bond rises, and on N6 she makes you choose once (Selim). Bonds never gate an ending: they bring clues earlier, help at the tables, and decide who is waiting for you. In KEPT PAIR, friends at 3 wait at the street door. In COLD KITCHEN, Selim pours you a drink and says nothing. In THE CHAIR, Selim brings a coffee to your new table.
+
+### Wiring plan
+
+`src/game/bonds.ts` (rules, pure) and `bonds.strings.ts` (EN+TR, prefix `bonds.`) are built and tested (`scripts/tests/bonds.test.mjs`); nothing calls them yet. Nights below are printed Nights (`nightDef(this.index).no`). The module takes events and returns a `BondChange` (`deltas` with a toast key, `unlocked` and `locked` ids, and for Selim's loan a `line`, a `thing` and a `refused` reason).
+
+**Funnel and save (`src/game/run.ts`).**
+- Field beside `ghostSeat`: `private readonly bonds = new Bonds(this.seed)`; `bonds(): Bonds` on `DebtRun` beside `ghostSeatInfo()`.
+- One method, `bond(ev: BondEvent)`: `const ch = this.bonds.apply(night, ev)`; per delta `bus.emit('bond:change', { ...delta, night })` and a `floor:note` with `t(delta.line)`; for `ch.line` use `t(ch.line, { thing: t('bonds.selim.thing.' + ch.thing) })`; then `persist()`.
+- Save: `RunExt.bonds?: BondsSave`; the `ext` object in `persist` (beside `ghost:`) gets `bonds: this.bonds.snapshot()`; the restore (beside `this.ghostSeat.restore(e.ghost)`) gets `this.bonds.restore(e.bonds)`.
+
+**Events in.**
+
+| Event | Hook |
+|---|---|
+| `dawn` | `run.ts dawn()`, paid branch, after `this.nightDone = true`. Once more on Night 8 right before the Burning Wager (Act 2 hand-off in `story/index.ts`), which is when an unpaid loan is judged |
+| `help` | `story/quests.ts` on completion (Mimosa's Wash ledger, Selim's short till on N4); Vell's tapes found (`story/notes.ts`) |
+| `word` | a promise to a friend kept at Dawn (`run.ts expireContracts()` and the hotline promise check); Mira's call promises (`hotline.ts`, the story-call branch) |
+| `share` | a tip at the bar (`food.ts mountFood`); `hotline.ts` on `hotline:result` when the bargain paid for someone else |
+| `show` | `run.ts duelStarting(e)` with `bondOfRival(e.rivalId)` for each side duel (once a Night); the Wash; the Crooked Table event (Tamsin) |
+| `defend` | N6 Selim choice (stand up for him: also Harmony -1, in `home/phone.ts`); N4 till quest; a Crooked Table that ends uncalled with fewer than two tells seen (Tamsin) |
+| `clean` or `loki` | `run.ts duelEnded(r)`: `r.won` gives `{ kind: 'clean', who: bondOfRival(r.rivalId) }`; a win on Loki's hand gives `loki`. Needs a `lokiHand` flag on `DuelEndReport` from the docs/JOKER.md waves; until then every win reads clean |
+| `drop` | N6 Selim choice, "let it go" |
+| `betray` | a kept-promise check that fails; `run.ts crookedCall(o)` when `!o.right` (Tamsin); a wrong MIRROR call in `duels/promise/lucan.ts call()` (Lucan); a wrong MARKED DECK call in `duels/thequestion` (Collector) |
+| `talk` | the bar (`mountFood`), Mira's call picked up (`hotline.ts`), the phone threads (`home/phone.ts`), the Collector's call or knock (`home/knock.ts`) |
+| `lend` | `run.ts dawn()` where `sealed` is worked out: a short Dawn with `bonds.has('selim.cover')` and `selim().seals > 0` is covered. Confirm first when `seals === 1` (his last seal makes him still). On `refused`, fall through to the normal short Dawn |
+| `repay` | a PAY BACK row on the bar's food page (`food.ts`) while `selim().owes > 0`. The price is not in the bible; suggest the share of the quota he covered |
+
+**Reads out** (`has(id)`, `level(who)` for the pips, `greeting(who)` for the line key on the PEOPLE page and at the bar).
+- Tips and perks: `selim.tip`, `selim.food` (the bar page, `BAR_MENU`); `mira.call` (`story/calls.ts storyCallFor`, one extra call a Night); `tamsin.early` (`events/crookedTable.ts tellsAt`); `tamsin.fair` (`rollCrooked`); `lucan.rematch` (`duels/promise/lucan.ts`); `mimosa.charm` (Locker Shuffle prize); `vell.tape` (`story/notes.ts`); `collector.early` (`home/knock.ts`); `collector.visit` (THE VISIT: `run.ts startDoomed()` / `fall('shot')` gives one more Dawn, once).
+- Clues: `selim.night0`, `mimosa.memory`, `mimosa.early`, `vell.count`, `collector.deal` (the flashback source in `story/index.ts`, the N7 deal call).
+- Kept-pair hints: `selim.pair`, `mira.pair` (the N7 call, `story/calls.strings.ts`), `lucan.pair` (`story/duels/rivals.strings.ts`, already marked "bond 2").
+- Help at the Burning Wager (`duels/promise/flow.ts`): `tamsin.silence`, `lucan.howAda`, `lucan.tell`, `selim.water`, `mimosa.eye`; `vell.call` in `duels/lastcount`.
+
+**Night 8.** `floor()` is who stands on the floor in Act 1 and waits at the street door (`ending_elevator`; `selim.rideUp`, `vell.rideUp`, `mira.liftCall`, `collector.lift` are their colour). `against()` is who was betrayed, one act each: Selim is not at the rail and, if `selim().forgot`, does not know your name; Tamsin rigs one of your N8 tables; Lucan calls your tell (-1 Eye); Mimosa loses the memory (the flashback comes from Ada); Vell throws the Last Count against you; Mira has already stopped calling; the Collector's Heat +1 comes every Night, so `beginNight()` adds it while `against()` includes `collector`.
+
+**Ada and the sheet.** From Night 5, `home/phone.ts` listens for `bond:change` with `to > from` and queues "Where were you?". The PEOPLE page is a new page of the journal in `story/notes.ts` (the 3D notebook that `tallyAdd` feeds): each silhouette in its rim colour from §2, three pips from `level()`, the line from `greeting()`, the heading BAĞLAR. Bonds never move ŞANS.
+
+**Not in the module (decide in the wiring wave).** The repay price; whether Calm Mode mutes the toasts; the PEOPLE page layout; the Night 6 phone line that triggers `defend` or `drop`.

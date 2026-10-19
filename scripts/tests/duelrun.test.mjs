@@ -37,30 +37,18 @@ test('a new run holds 3 Soul Marks; staking takes one off the card, winning or d
   run.dispose();
 });
 
-test('a lost Mark stays lost; the third one makes the JackID BLANK (the cursed charm), a Mark in play never does', () => {
+test('a lost Mark stays lost, and a duel never takes the last seal (no BLANK from a table; see seals.test.mjs)', () => {
   const run = fresh(32);
   const seen = [];
   const off = BUS.bus.on('duel:marks', (e) => seen.push(e));
   for (let i = 0; i < 2; i++) { assert.ok(run.duel.stakeSoulMark()); run.duel.loseSoulMark(); }
   assert.equal(run.duel.soulMarks(), 1);
-  assert.equal(run.charmBox.has(run.selfId, 'blank_jackid'), false, 'one Mark left: the card is not blank');
-  assert.ok(run.duel.stakeSoulMark());                          // the last Mark is on the table
-  assert.equal(run.charmBox.has(run.selfId, 'blank_jackid'), false, 'a Mark in play is not a lost Mark');
-  run.duel.loseSoulMark();
-  assert.equal(run.duel.soulMarks(), 0);
-  assert.equal(run.charmBox.has(run.selfId, 'blank_jackid'), true, 'BLANK at 0 Marks');
-  assert.equal(run.duel.stakeSoulMark(), false, 'no Mark left to put up');
-  assert.equal(seen.at(-1).blank, true);
-  assert.equal(seen.filter((e) => e.lost).length, 3);
+  assert.equal(run.duel.stakeSoulMark(), false, 'the last seal never goes on the table');
+  assert.equal(run.duel.soulMarks(), 1);
+  assert.equal(run.charmBox.has(run.selfId, 'blank_jackid'), false, 'the cursed charm is gone');
+  assert.equal(seen.at(-1).blank, false);
+  assert.equal(seen.filter((e) => e.lost).length, 2);
   off(); run.dispose();
-});
-
-test('BLANK still lands when the charm board is full', () => {
-  const run = fresh(33);
-  for (const id of ['mirror_shoe', 'brass_knuckles', 'hollow_dice', 'sun_dial', 'long_shot']) run.grantCharm(id);
-  for (let i = 0; i < 3; i++) { assert.ok(run.duel.stakeSoulMark()); run.duel.loseSoulMark(); }
-  assert.equal(run.charmBox.has(run.selfId, 'blank_jackid'), true);
-  run.dispose();
 });
 
 test('Soul Marks (and the Mark on the table) survive a snapshot and a resume; a Mark left on the table returns at Dawn', () => {

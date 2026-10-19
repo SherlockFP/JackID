@@ -157,9 +157,6 @@ export class SeatHud {
     for (let i = 0; i < 4; i++) this.bulbs.push(make('i', '', row));
     this.tiltLamp = make('span', 'shud-tilt-lamp', this.tiltEl);
     this.tiltEl.style.display = 'none';
-    this.oddsEl = make('div', 'shud-odds shud-panel', bottom);
-    this.oddsEl.style.maxWidth = '70vw'; this.oddsEl.style.whiteSpace = 'normal'; this.oddsEl.style.overflowWrap = 'anywhere';
-    this.oddsEl.style.display = 'none';
     this.stakeEl = make('div', 'shud-stake shud-panel tone-gold', bottom);
     const betCell = make('span', 'shud-cell shud-bet', this.stakeEl);
     this.stakeL = make('span', 'shud-stake-l', betCell);
@@ -173,6 +170,10 @@ export class SeatHud {
     this.presetsEl = make('div', 'shud-presets', bottom);
     this.presetsEl.style.display = 'none';
     this.numsEl = make('div', 'shud-nums', bottom);
+    // The odds footer is its own row, directly above the control bar (it used to hang on the bar's top edge and cover its keys).
+    this.oddsEl = make('div', 'shud-odds shud-panel', bottom);
+    this.oddsEl.style.maxWidth = '70vw'; this.oddsEl.style.whiteSpace = 'normal'; this.oddsEl.style.overflowWrap = 'anywhere';
+    this.oddsEl.style.display = 'none';
     this.ctrlEl = make('div', 'shud-ctrl shud-panel', bottom);
     this.stackRo = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => this.placeToasts()) : null;
     this.stackRo?.observe(top);
