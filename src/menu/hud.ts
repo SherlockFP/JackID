@@ -348,6 +348,7 @@ export function createHud(): Hud {
       void ui().banner(t('lastGame.opened'), { color: COLORS.shine, hold: 2.2, size: 24 });
     }
     const odds = shown ? lg?.lastGameOdds?.().pct : undefined;
+    if (odds !== undefined) need('lastGame');   // the SON OYUN line's first sight explains the machine once
     const key = `${s}|${g.frame}|${g.lie}|${odds ?? ''}`;
     if (key === luckKey) return;
     luckKey = key;

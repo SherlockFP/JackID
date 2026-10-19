@@ -22,6 +22,7 @@ export default {
     'harmony.n': 'HARMONY', 'harmony.d': 'Your bond with Ada. At zero she leaves.',
     'heat.n': 'HEAT', 'heat.d': 'The Collector\'s eye. At 3 he freezes your best investment.',
     'pulls.n': 'PULLS', 'pulls.d': 'Spins you have left this Watch. Leftover pulls turn into tickets.',
+    'lastGame.n': 'THE LAST GAME', 'lastGame.d': 'Opens once Night 8 is paid. Win it and the run is won; a loss burns a seal.',
   },
   tr: {
     'say': '{name}: {d}',
@@ -40,5 +41,6 @@ export default {
     'harmony.n': 'UYUM', 'harmony.d': 'Ada ile aran. Sıfırda yanından gider.',
     'heat.n': 'ISI', 'heat.d': 'Tahsildar\'ın dikkati. 3 olunca yatırımını dondurur.',
     'pulls.n': 'ÇEKİŞ', 'pulls.d': 'Bu vardiyada kalan çevirme hakkın. Artanlar bilet olur.',
+    'lastGame.n': 'SON OYUN', 'lastGame.d': '8. gece ödenince açılır. Kazanırsan oyun biter, kaybedersen bir mühür yanar.',
   },
 };

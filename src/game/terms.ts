@@ -7,7 +7,7 @@
  * Strings: game/terms.strings.ts (`term.<id>.n` the name, `term.<id>.d` the one-line meaning).
  */
 
-export const TERMS = ['quota', 'seal', 'luck', 'payout', 'hunger', 'series', 'stakes', 'harmony', 'heat', 'pulls'] as const;
+export const TERMS = ['quota', 'seal', 'luck', 'payout', 'hunger', 'series', 'stakes', 'harmony', 'heat', 'pulls', 'lastGame'] as const;
 export type TermId = typeof TERMS[number];
 
 type Seen = Record<string, number>;
