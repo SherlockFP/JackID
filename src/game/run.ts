@@ -2161,7 +2161,12 @@ class Run implements DebtRun {
     this.jokerSaid.clear();
     this.jokerHere = null;
     this.lokiHand = null;
-    if (this.watch === 0) bus.emit('night:begin', { night: this.index + 1 });   // the first Watch of a Night: the grand light show
+    if (this.watch === 0) {
+      bus.emit('night:begin', { night: this.index + 1 });   // the first Watch of a Night: the grand light show
+      // the ghost's table is news of the floor: said when the Night's first Watch opens, not at home on waking (over a home scene)
+      const gs = this.ghostSeat.seat();
+      if (gs && gs.night === this.index + 1 && gs.machineId) this.banner?.(t('ghost.seat', { machine: machineName(gs.machineId as MachineId) }), { hold: 4, size: 8 });
+    }
     bus.emit('watch:begin', { night: this.index + 1, watch: this.watch + 1 });
     this.coolBoiler();
     this.boughtThisWatch = 0;
@@ -2228,7 +2233,6 @@ class Run implements DebtRun {
     this.keepsakes.newNight();
     const seat = this.ghostSeat.beginNight(this.index + 1);
     bus.emit('ghost:seat', seat ? { night: seat.night, machineId: seat.machineId, mid: seat.mid } : { night: this.index + 1, machineId: null, mid: null });
-    if (seat) this.banner?.(t('ghost.seat', { machine: machineName(seat.machineId as MachineId) }), { hold: 4, size: 8 });
     this.ledger = { night: this.index + 1, float: 0, interest: 0, tickets: 0, cut: 0, carried: 0 };   // a new Night's books start empty (before its float)
     const nd = nightDef(this.index);
     this.watches = Math.max(1, nd.watches + this.pantheon.fx('watchAdd'));   // Short Night (ash_short) drops a Watch
