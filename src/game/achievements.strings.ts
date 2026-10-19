@@ -30,6 +30,7 @@ export default {
     'end_he_came_home.name': 'Uninvited Guest', 'end_he_came_home.desc': 'Reach the ending HE CAME HOME.',
     'end_descend.name': 'One Floor Down', 'end_descend.desc': 'Reach the ending DESCEND.',
     'end_fall.name': 'Through the Trapdoor', 'end_fall.desc': 'Reach the ending FALL.',
+    'end_last_game.name': 'The Last Game', 'end_last_game.desc': 'Win THE LAST GAME and end the run.',
 
     'loki_lie.name': 'Liar, Liar', 'loki_lie.desc': 'Catch Loki in a lie.',
     'no_loki.name': 'Deaf Sultan', 'no_loki.desc': 'Reach Night 6 without asking Loki anything or calling him a liar.',
@@ -76,6 +77,7 @@ export default {
     'end_he_came_home.name': 'Davetsiz Misafir', 'end_he_came_home.desc': 'EVE DÖNDÜ sonuna ulaş.',
     'end_descend.name': 'Bir Kat Aşağı', 'end_descend.desc': 'İNİŞ sonuna ulaş.',
     'end_fall.name': 'Kapaktan Aşağı', 'end_fall.desc': 'DÜŞÜŞ sonuna ulaş.',
+    'end_last_game.name': 'Son Oyun', 'end_last_game.desc': 'SON OYUN’u kazan ve oyunu bitir.',
 
     'loki_lie.name': 'Yalancının Mumu', 'loki_lie.desc': 'Loki\'yi yalanda yakala.',
     'no_loki.name': 'Sağır Sultan', 'no_loki.desc': 'Loki\'ye bir şey sormadan, yalancı demeden 6. geceye ulaş.',

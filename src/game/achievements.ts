@@ -28,9 +28,9 @@ declare module '@/core/events' {
 export type AchIcon = 'coin' | 'ticket' | 'check' | 'bell' | 'star' | 'curse';
 export interface AchDef { id: string; g: number; icon: AchIcon; secret?: true }
 
-const ENDINGS = ['kept_pair', 'cold_kitchen', 'alone', 'chair', 'kept', 'paid_in_full', 'he_came_home', 'descend', 'fall'] as const;
+const ENDINGS = ['kept_pair', 'cold_kitchen', 'alone', 'chair', 'kept', 'paid_in_full', 'he_came_home', 'descend', 'fall', 'last_game'] as const;
 const ENDING_G: Readonly<Record<(typeof ENDINGS)[number], number>> = {
-  kept_pair: 100, cold_kitchen: 60, alone: 50, chair: 25, kept: 25, paid_in_full: 25, he_came_home: 30, descend: 30, fall: 10,
+  kept_pair: 100, cold_kitchen: 60, alone: 10, chair: 25, kept: 25, paid_in_full: 25, he_came_home: 30, descend: 30, fall: 10, last_game: 50,
 };
 
 export const ACHIEVEMENTS: readonly AchDef[] = [
@@ -38,7 +38,7 @@ export const ACHIEVEMENTS: readonly AchDef[] = [
   { id: 'first_jackpot', g: 20, icon: 'coin' },
   { id: 'night1', g: 10, icon: 'bell' },
   { id: 'night5', g: 25, icon: 'bell' },
-  { id: 'night8', g: 75, icon: 'bell' },
+  { id: 'night8', g: 65, icon: 'bell' },
   ...ENDINGS.map((e): AchDef => ({ id: `end_${e}`, g: ENDING_G[e], icon: 'star' })),
   { id: 'loki_lie', g: 15, icon: 'curse' },
   { id: 'no_loki', g: 75, icon: 'curse' },

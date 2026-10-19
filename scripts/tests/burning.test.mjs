@@ -191,16 +191,18 @@ describe('the run', () => {
     assert.equal(run.wagerDue(), true);
     const ends = [];
     const off = EV.bus.on('run:end', ({ summary }) => ends.push(summary));
+    assert.equal(run.lastGameOpen(), false, 'the House machine waits for the Wager');
     run.burningWager({ wager: 'win', cracks: 0 });
     assert.equal(run.wagerDue(), false, 'played: never again');
-    run.burningWager({ wager: 'lose', cracks: 2 });   // a second outcome changes nothing: the run is over
+    run.burningWager({ wager: 'lose', cracks: 2 });   // a second outcome changes nothing
     off();
-    assert.equal(ends.length, 1);
+    assert.equal(ends.length, 0, 'SON OYUN: a won Wager does not end the run');
     assert.equal(run.chapterRecord().wager, 'win');
+    assert.equal(run.lastGameOpen(), true, 'the Champion gives up his seat: the House machine is lit');
     run.dispose();
   });
 
-  test('the Champion\'s match decides the ending: KEPT PAIR, COLD KITCHEN, THE CHAIR, and a cracked win is ALONE', () => {
+  test('the Champion\'s match then the House machine decide the ending: KEPT PAIR, COLD KITCHEN, THE CHAIR, and a cracked win is SON OYUN', () => {
     const play = (kitchen, seed, policy) => {
       const run = at(7, seed);
       run.kitchenDone(game(kitchen, kitchen === 'pair' ? 3 : 0));
@@ -208,6 +210,7 @@ describe('the run', () => {
       paidDawn(run);
       const { result } = drive(seed, policy);
       run.burningWager(C.wagerOutcome(result, false));
+      if (!run.over) { run.rng.chance = () => true; run.playLastGame(); run.endLastGame(); }   // a won Wager: the machine pays
       const rec = run.endingRecord();
       run.dispose();
       return { rec, result };
@@ -223,10 +226,10 @@ describe('the run', () => {
     const chair = play('win', seedWhere(loser, (r) => r.winner === 'ada'), loser);
     assert.equal(chair.result.winner, 'ada');
     assert.equal(chair.rec.id, 'chair');
-    // a win with a broken word of yours on the way: the card stays (ALONE)
+    // a win with a broken word of yours on the way: the card stays, and the machine's win is SON OYUN
     const breaker = (st, phase, call) => (st.caller === 'b' ? (call.tell ? call.promise : R.counterOf(call.promise)) : phase === 'promise' ? 'rock' : st.round <= 2 ? 'paper' : 'rock');
     const cracked = seedWhere(breaker, (r) => r.winner === 'you' && r.cracks.you > 0);
-    assert.equal(play('pair', cracked, breaker).rec.id, 'alone');
+    assert.equal(play('pair', cracked, breaker).rec.id, 'last_game');
   });
 
   test('restart rule: a save taken while the Wager is due resumes with it due again, and the same seed plays the same match', () => {

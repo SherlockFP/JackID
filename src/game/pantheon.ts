@@ -61,14 +61,16 @@ export interface BoonDef {
 const e = (hook: ModEffect['hook'], op: ModEffect['op'], value: number, priority?: number): ModEffect =>
   priority === undefined ? { hook, op, value } : { hook, op, value, priority };
 
-/** The data: 5 boons + 1 Rite for each owner, 4 for Loki, 6 duos (docs/BLESSINGS.md §2.3). */
+/** The data: 5 boons + 1 Rite for each owner (the Well, Ash and the Mirrors got a sixth boon in wave 106), 4 for Loki, 6 duos (docs/BLESSINGS.md §2.3). */
 export const BOONS: readonly BoonDef[] = [
   // The Well
-  { id: 'well_penny', god: 'well', kind: 'boon', effects: [e('x.luck.perStar', 'add', 0.005)], fx: { starNow: 1 } },
+  { id: 'well_penny', god: 'well', kind: 'boon', effects: [e('x.luck.perStar', 'add', 0.01)], fx: { starNow: 1 } },
   { id: 'well_soft', god: 'well', kind: 'boon', effects: [e('x.luck.failSoft', 'add', 1)] },
   { id: 'well_warm', god: 'well', kind: 'boon', effects: [e('x.lamp.hotMult', 'mult', 1.3)] },
   { id: 'well_lamps', god: 'well', kind: 'boon', effects: [e('x.lamp.hotCount', 'add', 1), e('quota.mult', 'mult', 1.05)] },
   { id: 'well_wish', god: 'well', kind: 'boon', effects: [e('jackpot.mult', 'mult', 1.5)] },
+  // wave 106 (the Last Game): a star by play, once a Night (luck.ts reads `starOnTithe`)
+  { id: 'well_fill', god: 'well', kind: 'boon', effects: [], fx: { starOnTithe: 1 } },
   { id: 'well_answer', god: 'well', kind: 'rite', effects: [e('x.luck.max', 'add', 2)], fx: { starEachDawn: 1 } },
   // Lord of Ledgers
   { id: 'ledg_compound', god: 'ledgers', kind: 'boon', effects: [e('x.econ.interestAdd', 'add', 0.03)] },
@@ -83,6 +85,7 @@ export const BOONS: readonly BoonDef[] = [
   { id: 'ash_hand', god: 'ash', kind: 'boon', effects: [e('x.tilt.grace', 'add', 3)] },
   { id: 'ash_cold', god: 'ash', kind: 'boon', effects: [e('dread.add', 'add', -15)] },
   { id: 'ash_short', god: 'ash', kind: 'boon', effects: [e('quota.mult', 'mult', 0.8)], fx: { watchAdd: -1 } },
+  { id: 'ash_final', god: 'ash', kind: 'boon', effects: [e('x.lastGame.pct', 'add', 5)] },   // wave 106: the Last Game's odds, in whole percent
   { id: 'ash_overtime', god: 'ash', kind: 'rite', effects: [], fx: { overtime: 1 }, once: true },
   // Lord of Mirrors
   { id: 'mir_print', god: 'mirrors', kind: 'boon', effects: [e('x.onTag.bigwin', 'add', 1)] },
@@ -90,6 +93,7 @@ export const BOONS: readonly BoonDef[] = [
   { id: 'mir_tell', god: 'mirrors', kind: 'boon', effects: [e('x.duel.tellEarly', 'add', 1)] },
   { id: 'mir_face', god: 'mirrors', kind: 'boon', effects: [], fx: { borrowedFace: 1 } },
   { id: 'mir_clear', god: 'mirrors', kind: 'boon', effects: [e('x.crooked.starAdd', 'add', 1)] },
+  { id: 'mir_lucky', god: 'mirrors', kind: 'boon', effects: [], fx: { starOnBigWin: 1 } },   // wave 106: a star by play, once a Night (luck.ts)
   { id: 'mir_name', god: 'mirrors', kind: 'rite', effects: [], fx: { sealAdd: 1 }, once: true },
   // Loki, the Borrowed God (swap only). His price is Ink (Dread 8 and 10 were 2 and 3 Ink at 4 Dread an Ink).
   { id: 'loki_tip', god: 'loki', kind: 'boon', effects: [e('payout.mult', 'mult', 1.15)], ink: 2 },

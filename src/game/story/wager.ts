@@ -2,8 +2,8 @@
  * THE BURNING WAGER on the floor (STORY_BIBLE §4 N8 Act 2, §5a "Finale", §9). Night 8 is paid (`run.wagerDue()`): a short beat, then the
  * Compere calls the last table, sets the mic on its stand and sits down at a table on the stage (`wager_sit` cutscene, hook `wager.sit`
  * dresses the stage). You stand at its edge, he sits across, and Loki stands behind his chair as his mirror image. The board
- * (duels/promise/burning.ts) plays the match; the crowd is sound only. The outcome goes to `run.burningWager`, which ends the run, and the
- * routed ending plays from story/index.ts.
+ * (duels/promise/burning.ts) plays the match; the crowd is sound only. The outcome goes to `run.burningWager`. A loss ends the run (the
+ * routed ending plays from story/index.ts); a win does not: the Champion gives up his seat and SON OYUN (lastGame.ts) is the way out.
  *
  * Opened once per session while the Wager is due. Restart rule: nothing of the match is saved, so a resume opens it again from 0:0 (the
  * seed is the run's: the same match). Mounted by the session for solo story runs (`run.homeOn`).
@@ -107,7 +107,11 @@ export function mountWager(run: DebtRun, world: World, player: LocalPlayerHost, 
     board = null;
     state = 'done';
     lock(false);
-    if (!run.over) run.burningWager({ wager: r.wager, cracks: r.cracks, word: r.word });
+    if (run.over) return;
+    run.burningWager({ wager: r.wager, cracks: r.cracks, word: r.word });
+    if (r.wager !== 'win') return;
+    loki.pin(null);   // the floor is open again: the walk to the House's machine
+    bus.emit('floor:say', { text: t('story.end.last_game.open'), speaker: t('story.end.speaker.champion'), voice: 'compere', source: 'wager.lastGame' });
   };
 
   const openBoard = (): void => {

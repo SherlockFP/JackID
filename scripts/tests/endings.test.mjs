@@ -1,6 +1,6 @@
 // THE ENDINGS (STORY wave A5, src/game/story/endings.ts): every routing branch, the priority order, "the kept pair beats everything except the
 // run-enders that come before the Wager", bonds that never gate an ending, Loki's variants (docs/STORY_BIBLE.md §9), Ada's end, the save
-// record and its tolerant reader, and the nine cutscene files (three full scenes, six cards): ids, line counts, timing, hooks, anchors, and
+// record and its tolerant reader, and the ten cutscene files (three full scenes, seven cards): ids, line counts, timing, hooks, anchors, and
 // EN+TR copy with no dashes.
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -31,8 +31,8 @@ const PAIRED = { night: 8, paid: true, kitchen: 'pair', pairs: 3, wager: 'win' }
 
 // ── routing ──────────────────────────────────────────────────────────────────────────────────────────
 
-test('the nine endings are the bible\'s, in its table order', () => {
-  assert.deepEqual([...E.ENDING_IDS], ['kept_pair', 'cold_kitchen', 'alone', 'chair', 'kept', 'paid_in_full', 'he_came_home', 'descend', 'fall']);
+test('the nine endings are the bible\'s, in its table order, then SON OYUN', () => {
+  assert.deepEqual([...E.ENDING_IDS], ['kept_pair', 'cold_kitchen', 'alone', 'chair', 'kept', 'paid_in_full', 'he_came_home', 'descend', 'fall', 'last_game']);
   assert.deepEqual([...E.FULL_ENDINGS], ['kept_pair', 'cold_kitchen', 'kept']);
   assert.equal(E.endingScene('kept_pair'), 'ending_kept_pair');
 });
@@ -57,6 +57,11 @@ test('every routing branch', () => {
     ['DESCEND after a dirty win', { ...CLEAN, cracks: 1, descended: true }, 'descend'],
     ['DESCEND after a clean win: the card burned, so there is no card to take down', { ...CLEAN, descended: true }, 'cold_kitchen'],
     ['Night 8 paid and no Wager played (the old topside)', { night: 8, paid: true }, 'alone'],
+    ['the House machine won', { night: 8, paid: true, lastGame: 'win' }, 'last_game'],
+    ['the House machine won after a cracked Wager', { ...CLEAN, cracks: 1, lastGame: 'win' }, 'last_game'],
+    ['the House machine won after a clean Wager: the burn scene', { ...CLEAN, lastGame: 'win' }, 'cold_kitchen'],
+    ['the last seal lost at the House machine', { night: 8, paid: true, lastGame: 'lose' }, 'chair'],
+    ['the last seal lost after a clean Wager', { ...PAIRED, lastGame: 'lose' }, 'chair'],
     ['a quit', {}, null],
     ['Night 8 reached and nothing settled', { night: 8 }, null],
   ];
@@ -64,11 +69,11 @@ test('every routing branch', () => {
 });
 
 test('the priority order is the documented one, and each rule beats every later rule', () => {
-  assert.deepEqual([...E.PRIORITY], ['he_came_home', 'paid_in_full', 'fall', 'kept', 'chair', 'kept_pair', 'cold_kitchen', 'descend', 'alone']);
+  assert.deepEqual([...E.PRIORITY], ['he_came_home', 'paid_in_full', 'fall', 'kept', 'chair', 'kept_pair', 'cold_kitchen', 'last_game', 'descend', 'alone']);
   assert.deepEqual([...E.PRIORITY].sort(), [...E.ENDING_IDS].sort(), 'every ending is routable, once');
   const witness = {
     he_came_home: { cameHome: true }, paid_in_full: { deal: 1 }, fall: { fell: true }, kept: { kitchen: 'lose' }, chair: { wager: 'lose' },
-    kept_pair: { kitchen: 'pair', wager: 'win' }, cold_kitchen: { kitchen: 'win', wager: 'win' }, descend: { descended: true }, alone: { paid: true },
+    kept_pair: { kitchen: 'pair', wager: 'win' }, cold_kitchen: { kitchen: 'win', wager: 'win' }, last_game: { lastGame: 'win' }, descend: { descended: true }, alone: { paid: true },
   };
   for (const [id, o] of Object.entries(witness)) assert.equal(route(o), id, `${id} alone`);
   for (let i = 0; i < E.PRIORITY.length; i++) {
@@ -196,7 +201,7 @@ test('the record clamps what it stores and survives a JSON round trip; the reade
   const r = E.endingRecord(F({ ...PAIRED, night: 99, seals: -4, pairs: 1e9, waiting: ['mira', 'selim'] }));
   assert.deepEqual([r.v, r.id, r.night, r.seals, r.pairs], [1, 'kept_pair', 8, 0, 99]);
   for (const id of E.ENDING_IDS) {
-    const facts = { kept_pair: PAIRED, cold_kitchen: CLEAN, alone: { paid: true }, chair: { wager: 'lose' }, kept: { kitchen: 'lose' }, paid_in_full: { deal: 1 }, he_came_home: { cameHome: true }, descend: { descended: true, trust: -3 }, fall: { fell: true, night: 6 } }[id];
+    const facts = { kept_pair: PAIRED, cold_kitchen: CLEAN, alone: { paid: true }, chair: { wager: 'lose' }, kept: { kitchen: 'lose' }, paid_in_full: { deal: 1 }, he_came_home: { cameHome: true }, descend: { descended: true, trust: -3 }, fall: { fell: true, night: 6 }, last_game: { paid: true, lastGame: 'win' } }[id];
     const rec = E.endingRecord(F({ ...facts, waiting: ALL }));
     assert.equal(rec.id, id);
     assert.deepEqual(E.readEnding(JSON.parse(JSON.stringify(rec))), rec, id);
@@ -212,7 +217,7 @@ const subs = (def) => def.tracks.filter((t) => t.kind === 'subtitle').flatMap((t
 const hooks = (def) => def.tracks.filter((t) => t.kind === 'hook').flatMap((t) => t.cues.map((c) => c.hook));
 const has = (lang, key) => typeof TABLES[lang].get(key) === 'string' && TABLES[lang].get(key).length > 0;
 
-test('every ending has a cutscene file under its id: three full scenes of 8 to 14 lines, six cards of 2 to 3 lines and a title', () => {
+test('every ending has a cutscene file under its id: three full scenes of 8 to 14 lines, seven cards of 2 to 3 lines and a title', () => {
   for (const id of E.ENDING_IDS) {
     const def = SCENES[id];
     assert.equal(def.id, E.endingScene(id), id);
@@ -223,8 +228,8 @@ test('every ending has a cutscene file under its id: three full scenes of 8 to 1
     if (E.FULL_ENDINGS.includes(id)) assert.ok(cues.length >= 8 && cues.length <= 14, `${id}: ${cues.length} cues`);
     else assert.ok(cues.length - 1 >= 2 && cues.length - 1 <= 3, `${id}: ${cues.length - 1} lines`);
   }
-  assert.deepEqual([...CARD.CARD_IDS].sort(), E.ENDING_IDS.filter((id) => !E.FULL_ENDINGS.includes(id)).sort(), 'the cards are the six others');
-  assert.equal(new Set(E.ENDING_IDS.map((id) => SCENES[id].id)).size, 9);
+  assert.deepEqual([...CARD.CARD_IDS].sort(), E.ENDING_IDS.filter((id) => !E.FULL_ENDINGS.includes(id)).sort(), 'the cards are the seven others');
+  assert.equal(new Set(E.ENDING_IDS.map((id) => SCENES[id].id)).size, 10);
 });
 
 test('the scenes\' lines fit their duration, never overlap, and exist in EN and TR with their speakers', () => {
@@ -281,7 +286,8 @@ test('the copy: same keys in EN and TR, same placeholders, no empty value, no da
       assert.ok(!/clover|chest/i.test(s), `${k}: original IP`);
     }
   }
-  assert.deepEqual(E.ENDING_IDS.map((id) => STR.en[`${id}.title`]), ['KEPT PAIR', 'COLD KITCHEN', 'ALONE', 'THE CHAIR', 'KEPT', 'PAID IN FULL', 'HE CAME HOME', 'DESCEND', 'FALL']);
+  assert.deepEqual(E.ENDING_IDS.map((id) => STR.en[`${id}.title`]), ['KEPT PAIR', 'COLD KITCHEN', 'ALONE', 'THE CHAIR', 'KEPT', 'PAID IN FULL', 'HE CAME HOME', 'DESCEND', 'FALL', 'THE LAST GAME: YOU WON']);
+  assert.equal(STR.tr['last_game.title'], 'SON OYUN: KAZANDIN');
   assert.equal(STR.tr['kept_pair.title'], 'SÖZ SÖZE');
   assert.equal(STR.tr['cold_kitchen.title'], 'SOĞUK MUTFAK');
   assert.equal(STR.tr['kept.title'], 'SAKLI');
@@ -322,6 +328,7 @@ describe('the run', () => {
     const ends = [];
     const off = EV.bus.on('run:end', ({ summary }) => ends.push(summary));
     run.burningWager(wager);
+    if (!run.over) { run.rng.chance = () => true; run.playLastGame(); run.endLastGame(); }   // SON OYUN: a won Wager, then the machine
     off();
     run.dispose();
     return { rec: run.endingRecord(), summary: ends[0] };
@@ -333,27 +340,20 @@ describe('the run', () => {
     assert.equal(rec.pairs, 3);
     assert.equal(rec.ada, 'beside');
     assert.equal(summary.endingId, 'kept_pair');
-    assert.equal(summary.ending, 'elevator', 'results and Obols still read the run tag');
+    assert.equal(summary.ending, 'last_game', 'results and Obols still read the run tag');
   });
 
-  test('Ada beaten at the wager then Night 8: COLD KITCHEN; no wager at all: ALONE', () => {
+  test('Ada beaten at the wager then Night 8: COLD KITCHEN; no Wager played, the House machine cannot be pulled', () => {
     assert.equal(finale('win', 9102).rec.id, 'cold_kitchen');
     const run = at(8, 9103);
     paidDawn(run);
-    run.stayUp();
-    assert.equal(run.endingRecord().id, 'alone', 'no kitchen on record: the lift does not stand in for the Wager');
+    assert.equal(run.playLastGame(), null, 'the Wager comes first');
+    assert.equal(run.over, false);
     run.dispose();
   });
 
-  test('the lift no longer stands in for the Wager: a kitchen on record and STAY UP is ALONE; a cracked win is ALONE; a loss is THE CHAIR', () => {
-    const run = at(7, 9109);
-    run.kitchenDone(game('pair', 3));
-    run.index = 7;
-    paidDawn(run);
-    run.stayUp();
-    assert.equal(run.endingRecord().id, 'alone');
-    run.dispose();
-    assert.equal(finale('pair', 9110, { wager: 'win', cracks: 1 }).rec.id, 'alone');
+  test('a cracked win then the House machine is SON OYUN; a loss is THE CHAIR', () => {
+    assert.equal(finale('pair', 9110, { wager: 'win', cracks: 1 }).rec.id, 'last_game');
     const chair = finale('win', 9111, { wager: 'lose', cracks: 0 });
     assert.equal(chair.rec.id, 'chair');
     assert.equal(chair.summary.ending, 'chair');

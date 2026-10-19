@@ -30,7 +30,7 @@ test('the five buff foods use existing hooks with the brief numbers, one Watch e
   const fx = (id) => buffDef(`food.${id}`).effects;
   assert.deepEqual(fx('banana'), [{ hook: 'x.run.pullsAdd', op: 'add', value: 1 }]);
   assert.deepEqual(fx('coffee'), [{ hook: 'x.tilt.grace', op: 'add', value: 1 }]);
-  assert.deepEqual(fx('sandwich'), [{ hook: 'payout.mult', op: 'mult', value: 1.01 }]);   // one ŞANS star = 1 % (src/game/luck.ts)
+  assert.deepEqual(fx('sandwich'), [{ hook: 'payout.mult', op: 'mult', value: 1.02 }]);   // one ŞANS star = 2 % (src/game/luck.ts, wave 106)
   assert.deepEqual(fx('energy'), [{ hook: 'x.run.clockAdd', op: 'add', value: 15 }]);
   assert.deepEqual(fx('tea'), [{ hook: 'dread.add', op: 'add', value: -5 }]);                 // calm: a little less Dread
   for (const id of ['banana', 'coffee', 'sandwich', 'energy', 'tea']) {
@@ -44,7 +44,7 @@ test('the five buff foods use existing hooks with the brief numbers, one Watch e
   // the numbers in food.ts are the ones the defs use
   assert.equal(F.FOOD_FX.pulls, 1);
   assert.equal(F.FOOD_FX.clockSec, 15);
-  assert.equal(F.FOOD_FX.starPayout, 1.01);
+  assert.equal(F.FOOD_FX.starPayout, 1.02);
   assert.equal(F.FOOD_FX.teaDread, -5);
 });
 

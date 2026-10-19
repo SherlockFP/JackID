@@ -18,12 +18,12 @@ import { BOND_IDS, type BondId } from '@/game/bonds';
 import type { FlowResult } from '@/game/duels/promise/flow';
 import { adaPhase } from '@/game/home/ada';
 
-/** The nine endings, in the bible's table order. */
-export const ENDING_IDS = ['kept_pair', 'cold_kitchen', 'alone', 'chair', 'kept', 'paid_in_full', 'he_came_home', 'descend', 'fall'] as const;
+/** The nine endings, in the bible's table order, then SON OYUN (wave 106: the House's machine won after Night 8). */
+export const ENDING_IDS = ['kept_pair', 'cold_kitchen', 'alone', 'chair', 'kept', 'paid_in_full', 'he_came_home', 'descend', 'fall', 'last_game'] as const;
 export type EndingId = (typeof ENDING_IDS)[number];
 export const isEnding = (x: unknown): x is EndingId => (ENDING_IDS as readonly unknown[]).includes(x);
 
-/** The three endings with a finished scene. The other six play a short card (`cutscenes/endingCard.ts`). */
+/** The three endings with a finished scene. The other seven play a short card (`cutscenes/endingCard.ts`). */
 export const FULL_ENDINGS: readonly EndingId[] = ['kept_pair', 'cold_kitchen', 'kept'];
 /** The cutscene of an ending: `cutscenes/ending_<id>.cutscene.ts`. */
 export const endingScene = (id: EndingId): string => `ending_${id}`;
@@ -65,6 +65,8 @@ export interface EndingFacts {
   wordAtMatchPoint: boolean;
   /** The Visit's takeover was already used this run (`Joker.snapshot().used.visit`). */
   visitUsed: boolean;
+  /** SON OYUN (`lastGame.ts`): the House's machine was won, or lost on the last seal. null: no final pull. */
+  lastGame: 'win' | 'lose' | null;
   /** Ada's bond, 0..5 (`phone.harmony()`). */
   harmony: number;
   /** Friends at bond 3, never betrayed (`Bonds.floor()`). */
@@ -73,7 +75,7 @@ export interface EndingFacts {
 
 export const freshFacts = (): EndingFacts => ({
   night: 1, paid: false, fell: false, seals: 3, descended: false, deal: 0, kitchen: null, pairs: 0, wager: null, cracks: 0,
-  lokiHand: false, cameHome: false, trust: 0, wordAtMatchPoint: false, visitUsed: false, harmony: 2, waiting: [],
+  lokiHand: false, cameHome: false, trust: 0, wordAtMatchPoint: false, visitUsed: false, lastGame: null, harmony: 2, waiting: [],
 });
 
 /** The Wager won clean: zero cracks, no takeover. */
@@ -84,10 +86,13 @@ const RULES: ReadonlyArray<readonly [EndingId, (f: EndingFacts) => boolean]> = [
   ['paid_in_full', (f) => f.deal === 1],
   ['fall', (f) => f.fell],
   ['kept', (f) => f.kitchen === 'lose'],
-  ['chair', (f) => f.wager === 'lose'],
+  // the last seal lost at the House's machine: the House keeps you in the chair
+  ['chair', (f) => f.wager === 'lose' || f.lastGame === 'lose'],
   ['kept_pair', (f) => clean(f) && f.kitchen === 'pair'],
   // shortcut: a clean win with no kitchen on record reads as COLD KITCHEN; the N8 flow always plays the kitchen first
   ['cold_kitchen', (f) => clean(f)],
+  // below the two burns: a clean Wager then the machine still plays its full scene
+  ['last_game', (f) => f.lastGame === 'win'],
   ['descend', (f) => f.descended],
   ['alone', (f) => f.paid || f.wager === 'win'],
 ];
@@ -102,6 +107,7 @@ export const ENDING_WITNESS: Readonly<Record<EndingId, Partial<EndingFacts>>> = 
   he_came_home: { night: 6, cameHome: true },
   descend: { night: 4, descended: true },
   fall: { night: 3, fell: true, seals: 0 },
+  last_game: { night: 8, paid: true, lastGame: 'win' },
 };
 /** The evaluation order of {@link routeEnding}. */
 export const PRIORITY: readonly EndingId[] = RULES.map(([id]) => id);
@@ -123,6 +129,7 @@ export type AdaEnd = (typeof ADA_ENDS)[number];
 export const LOKI_LINE = {
   burns: 'story.end.loki.burn', stays: 'story.end.loki.stay', rides: 'story.end.loki.rides', likes: 'story.end.loki.likes',
   comes: 'story.end.loki.comes', offers: 'story.end.loki.shame', silent: 'story.end.loki.hush', home: '', wins: '',
+  beaten: 'story.end.loki.beaten',
 } as const;
 export type LokiEnd = keyof typeof LOKI_LINE;
 
@@ -156,6 +163,7 @@ const ADA: Record<EndingId, (f: EndingFacts) => AdaEnd | null> = {
   he_came_home: () => 'table',
   descend: () => 'waits',
   fall: (f) => (adaPhase(f.night) === 'home' && f.harmony > 0 ? 'door' : null),
+  last_game: () => 'home',
 };
 
 const burnsOrStays = (f: EndingFacts): LokiEnd => (f.wordAtMatchPoint ? 'stays' : 'burns');
@@ -169,6 +177,7 @@ const LOKI: Record<EndingId, (f: EndingFacts) => LokiEnd> = {
   he_came_home: () => 'wins',
   descend: () => 'comes',
   fall: (f) => (f.visitUsed ? 'silent' : 'offers'),
+  last_game: () => 'beaten',
 };
 
 const waitingOf = (id: EndingId, w: readonly BondId[]): BondId[] =>

@@ -214,6 +214,7 @@ const SUITS = await load('src/game/suits.ts');
 const MT = await load('src/game/modifiers.types.ts');
 const HM = await load('src/game/houseMood.ts');   // HOUSE MOOD (wave 46): the Night's payout multiplier on every floor machine
 const NO_MOOD = args.includes('--no-mood');
+const PAY_MULT = Number(argVal('--pay-mult', 1));   // flat payout multiplier on every win: stands in for the ŞANS stars (the sim has no luck meter), e.g. 1.04 = +2 stars at 2 % each
 // HOUSE TAKES NOTICE (wave 47, schedule.ts houseNoticeQuota): the quota of a Night from HN_FROM on is at least HN_SHARE x the wealth
 // read at the Dawn before. --notice-share 0 switches it off; --notice-from / --notice-share try other values.
 const HN_FROM = Number(argVal('--notice-from', SCH.HOUSE_NOTICE_FROM));
@@ -675,7 +676,7 @@ function playRun(bot, runIdx) {
         const cf = charmFactors(S, pick, ctx);
         const gross = def.headless(rng, bet, hooksFor(S, pick.machineId)).gross;
         const witch = SCH.isWitchingWatch(nd.watches, w) ? 0.05 : 0;
-        let credited = ECO.settlePayout({ gross, bet, A: cf.A + witch, M: lampF * tiltF * cf.M * (H?.payMult ? H.payMult() : 1) * (NO_MOOD ? 1 : moodOf(idx)), flat: 0, quota: due, limitMult: fx0.limitMult }).credited;
+        let credited = ECO.settlePayout({ gross, bet, A: cf.A + witch, M: lampF * tiltF * cf.M * (H?.payMult ? H.payMult() : 1) * PAY_MULT * (NO_MOOD ? 1 : moodOf(idx)), flat: 0, quota: due, limitMult: fx0.limitMult }).credited;
         if (H) credited = H.pull({ bet, credited, gross, due, nightQuota, pocket: S.pocket, mid: pick.mid, machineId: pick.machineId, hot, cold, idx, w, pulls });
         S.pocket += credited;
         tWon += credited;

@@ -285,7 +285,15 @@ test('Night 8 keeps the old lever (the Topside choice), and the Evening is back 
   assert.equal(run.openFloor(), true);
   assert.equal(run.homeStage(), null, 'no lift');
   assert.equal(run.night(), 9, 'Night 9 opened at once');
-  passNight(run);                   // Night 9 is Overdrawn: the Evening works there
+  // Night 9 is Overdrawn: its paid Dawn is a Topside again (SON OYUN), and GO BACK DOWN takes the lift home: the Evening works there
+  paidDawn(run);
+  assert.equal(run.topsideOpen, true);
+  assert.equal(run.goBackDown(), true);
+  assert.equal(run.openFloor(), true, 'the lever takes the lift');
+  walk(run, T().ride + 0.1);
+  assert.equal(run.homeStage(), 'evening');
+  assert.equal(run.homeSleep(), true);
+  walk(run, T().sleep + 0.1);
   assert.equal(run.night(), 10);
   run.dispose();
 });

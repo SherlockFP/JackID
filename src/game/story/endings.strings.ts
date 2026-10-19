@@ -1,5 +1,5 @@
 /**
- * THE ENDINGS (story wave A5, STORY_BIBLE §4 and §9): the nine endings' names, Loki's last lines, and the copy of the scenes in
+ * THE ENDINGS (story wave A5, STORY_BIBLE §4 and §9): the endings' names, Loki's last lines, and the copy of the scenes in
  * `cutscenes/ending_<id>.cutscene.ts` (three full scenes; the other six are short cards, `cutscenes/endingCard.ts`). Keys:
  * `story.end.<id>.title` / `.<n>`, the Clerk's burn lines `burn.*`, Loki's `loki.*`, and the champion's speaker label.
  * `story.end.loki` is `{loki}`: the scenes that cannot know his line pick it at play time (`EndingRecord.lokiLine`).
@@ -17,6 +17,7 @@ export default {
     'he_came_home.title': 'HE CAME HOME',
     'descend.title': 'DESCEND',
     'fall.title': 'FALL',
+    'last_game.title': 'THE LAST GAME: YOU WON',
     'speaker.champion': 'THE CHAMPION',
 
     // the burn, shared by KEPT PAIR and COLD KITCHEN
@@ -31,6 +32,7 @@ export default {
     'loki.comes': "Again? I knew you'd miss me.",
     'loki.shame': 'Shame. Good hands.',
     'loki.hush': '...',
+    'loki.beaten': 'You beat the House. Nobody does that.',
 
     // KEPT PAIR: the burn, the lift, the phone, the kitchen
     'kept_pair.1': 'I broke. I always break. Who taught you to keep it?',
@@ -79,6 +81,11 @@ export default {
     'descend.2': 'At every Dawn, Ada is waiting at the lift.',
     'fall.1': 'The quota is short and the last seal is gone.',
     'fall.2': 'Three knocks. The Collector never waits for an answer.',
+    'last_game.1': "The House's machine stops on a winning line. The lights go out one by one.",
+    'last_game.2': 'The card is yours. The debt is closed.',
+    // SON OYUN: the Topside button, and the Champion's line when the Burning Wager is won
+    'last_game.name': 'THE LAST GAME',
+    'last_game.open': "My seat is yours. The House's machine is lit. Go pull it.",
   },
   tr: {
     'kept_pair.title': 'SÖZ SÖZE',
@@ -90,6 +97,7 @@ export default {
     'he_came_home.title': 'EVE DÖNDÜ',
     'descend.title': 'İNİŞ',
     'fall.title': 'DÜŞÜŞ',
+    'last_game.title': 'SON OYUN: KAZANDIN',
     'speaker.champion': 'ŞAMPİYON',
 
     'burn.1': 'Beşinci kural. Bahis temizdi. Kart yanıyor.',
@@ -102,6 +110,7 @@ export default {
     'loki.comes': 'Yine mi? Beni özleyeceğini biliyordum.',
     'loki.shame': 'Yazık. Güzel eller.',
     'loki.hush': '...',
+    'loki.beaten': 'Kasayı yendin. Bunu kimse yapamaz.',
 
     'kept_pair.1': 'Bozdum. Hep bozarım. Sözü tutmayı sana kim öğretti?',
     'kept_pair.2': 'Karşı daireden bir kız.',
@@ -146,5 +155,9 @@ export default {
     'descend.2': 'Her şafakta Ada asansörde sizi bekliyor.',
     'fall.1': 'Kota eksik, son mühür de gitti.',
     'fall.2': 'Üç vuruş. Tahsildar cevap beklemez.',
+    'last_game.1': 'Kasanın makinesi kazanan çizgide duruyor. Işıklar tek tek sönüyor.',
+    'last_game.2': 'Kart sizin. Borç kapandı.',
+    'last_game.name': 'SON OYUN',
+    'last_game.open': 'Yerim senin. Kasanın makinesi yandı. Git, çek.',
   },
 };

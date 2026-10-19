@@ -26,6 +26,7 @@ import { buildSignposts } from './props/signposts';
 import { crispLabel, crispNeon } from './props/signs';
 import { buildCeilingDressing, buildBalconyUndersides, buildCeilingRoses, buildCeilingSteps, type CeilingStep } from './props/ceiling';
 import { buildLastCallBell } from './props/bell';
+import { buildLastGame } from './props/lastGame';
 import { buildLounge } from './props/lounge';
 import { planLounge, slotRect, slotBody, DOORS, type Rect } from './props/loungePlan';
 import { damaskTex, wainscotTex, cofferTex, worldUV, WAINSCOT_TILE } from './props/surfaces';
@@ -481,6 +482,15 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   updates.push({ update: (dt) => bell.prop.update?.(dt) });
   disposables.push(bell.prop);
 
+  // ── SON OYUN, the House's own machine at the Lobby's north end (anchor + prop 'lastGame'; wave 106). Before the lounge plan: it keeps clear of it. ──
+  const lastGame = buildLastGame(kit, { interact: ctx.interact });
+  root.add(lastGame.prop.root, lastGame.anchor);
+  anchors.lastGame = lastGame.anchor;
+  lights.push(...lastGame.hints);
+  statics.push(...lastGame.statics);
+  updates.push({ update: (dt) => lastGame.prop.update?.(dt) });
+  disposables.push(lastGame.prop);
+
   // ── rooms (WAVE 24 §2): grille plates and marquees, Jade / Wash / Boiler / Counting dressing, note anchors ──
   const rooms: RoomsBuild = buildRooms({
     kit, tex, seed: ctx.seed, chair, sumpPos: SUMP_POS,
@@ -702,6 +712,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     prizeCase: prizes.prop,
     lightShow,
     lastCallBell: bell.prop,
+    lastGame: lastGame.prop,
   };
 
   // ── THE NIGHT CYCLE (nightLights.ts): the lights, lamps, ceilings, music and crowd follow the run's phase ──

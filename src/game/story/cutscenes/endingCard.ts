@@ -1,6 +1,6 @@
 /**
  * THE ENDINGS (story wave A5): the placeholder card of the six endings that have no finished scene yet (ALONE, THE CHAIR, PAID IN FULL,
- * HE CAME HOME, DESCEND, FALL). Black screen, two or three lines, then the ending's name. Each `ending_<id>.cutscene.ts` default-exports
+ * HE CAME HOME, DESCEND, FALL) and SON OYUN (wave 106). Black screen, two or three lines, then the ending's name. Each `ending_<id>.cutscene.ts` default-exports
  * one card. Not a scene itself (no `.cutscene.ts` suffix), so the cutscene glob does not register it. Copy: `../endings.strings.ts`.
  * FALL's last line is Loki's, picked by the run: play it with `vars: { loki: t(record.lokiLine) }`.
  */
@@ -8,7 +8,7 @@ import type { CutsceneDef, SubtitleCue } from '@/core/cutscene/types';
 import { endingScene, endingTitleKey, type EndingId } from '../endings';
 
 export type CardId = Exclude<EndingId, 'kept_pair' | 'cold_kitchen' | 'kept'>;
-export const CARD_IDS: readonly CardId[] = ['alone', 'chair', 'paid_in_full', 'he_came_home', 'descend', 'fall'];
+export const CARD_IDS: readonly CardId[] = ['alone', 'chair', 'paid_in_full', 'he_came_home', 'descend', 'fall', 'last_game'];
 
 type Line = Pick<SubtitleCue, 'key' | 'speaker' | 'voice' | 'mood'>;
 const E = 'story.end.';
@@ -26,6 +26,7 @@ const CARDS: Record<CardId, { music: string; lines: Line[] }> = {
   he_came_home: { music: 'dread', lines: [line('he_came_home', 1), line('he_came_home', 2), ada(3)] },
   descend: { music: 'dread', lines: [line('descend', 1), loki('loki.comes'), line('descend', 2)] },
   fall: { music: 'defeat', lines: [line('fall', 1), line('fall', 2), loki('loki')] },
+  last_game: { music: 'ending', lines: [line('last_game', 1), line('last_game', 2), loki('loki.beaten')] },
 };
 
 const STEP = 3.4;

@@ -235,6 +235,8 @@ export interface Signpost { id: string; pos: V3; w: number; sides: readonly Sign
 export const BAR_POS = { x: -6.0, z: 14.2 } as const;
 /** North side of the Mouth, between the terminal (x 0) and the phone (x 4). The Last Call Bell's counter backs onto the north wall. */
 export const BELL_POS = { x: 1.9, z: -29.35 } as const;
+/** The House's own machine (SON OYUN): the Lobby's north end, east of the central aisle, its front turned west to the aisle (rotY 270). */
+export const LAST_GAME_POS = { x: 2.9, z: 3.7, rotY: 270 } as const;
 /** The lift door in the Mouth's north wall. */
 export const LIFT_DOOR = { x: -4, z: -30 } as const;
 

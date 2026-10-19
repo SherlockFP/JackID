@@ -193,6 +193,13 @@ export function createWayfinder(host: WayfinderHost): Wayfinder {
       v.y += BELL_Y;
       return v;
     }
+    if (target === 'lastGame') {   // SON OYUN, the House's own machine: its prop anchor (world/props/lastGame.ts), hung over the cabinet
+      const a = world.anchor('lastGame');
+      if (!a) return null;
+      a.getWorldPosition(v);
+      v.y += BELL_Y;
+      return v;
+    }
     if (target === 'lift' || target === 'bell') {
       const a = world.anchor(target === 'lift' ? 'elevator.door' : 'bell');
       if (a) { a.getWorldPosition(v); v.y += target === 'lift' ? LIFT_Y : BELL_Y; return v; }
@@ -264,7 +271,7 @@ export function createWayfinder(host: WayfinderHost): Wayfinder {
       const dist = Math.hypot(pt.x - p.pos.x, pt.z - p.pos.z);
       const stalled = stall.update(a.target as string, dist, walking ? dt : 0);
       const enabled = app.save.data.settings.waymark !== false;
-      if (!walking || dist < ARRIVED_M || !waymarkWanted(night, enabled, stalled)) { diamond.hide(); return; }
+      if (!walking || dist < ARRIVED_M || !waymarkWanted(night, enabled, stalled || a.target === 'lastGame')) { diamond.hide(); return; }   // the open Last Game is always pointed at
       cam.updateMatrixWorld();
       const c = v.applyMatrix4(cam.matrixWorldInverse);
       const px = (app.ui as UIOverlayX | undefined)?.px ?? 3;

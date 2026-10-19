@@ -32,6 +32,7 @@ import type { BuffsApi } from './buffs.types';
 import type { HomePhoneApi } from './home/contract';
 import { hooksOf } from './home/phone';
 import { machineName } from './progression';
+import { LUCK_PAYOUT_PER_STAR } from './luck';
 import type { BondChange, BondEvent, Bonds } from './bonds';
 import type { MachineId } from '@/core/types';
 
@@ -64,7 +65,7 @@ export const FOODS: Readonly<Record<FoodId, FoodDef>> = {
 };
 
 /** The bonus numbers (data/buffs.ts holds the same values as effects; the tests keep the two in step). */
-export const FOOD_FX = { pulls: 1, tiltGrace: 1, starPayout: 1.01, clockSec: 15, teaDread: -5 } as const;
+export const FOOD_FX = { pulls: 1, tiltGrace: 1, starPayout: 1 + LUCK_PAYOUT_PER_STAR, clockSec: 15, teaDread: -5 } as const;
 
 /** The bar's food page, in slot order. */
 export const BAR_MENU: readonly FoodId[] = FOOD_IDS.filter((id) => FOODS[id].bar);

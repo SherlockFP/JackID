@@ -1,5 +1,6 @@
-// ŞANS, the luck meter (src/game/luck.ts): star bounds, the payout bonus (1 % a star through payout.mult), the luck hook left
-// alone, the change event with its reason, and the save round trip.
+// ŞANS, the luck meter (src/game/luck.ts): star bounds, the payout bonus (2 % a star through payout.mult), the luck hook left
+// alone, the change event with its reason, the save round trip, and the wave 106 sources: Nazar Boncuğu (max +1, the first loss
+// of a Night blocked), Full Bucket (a star on a tithe met) and Lucky Hand (a star on a x10 win), each once a Night.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { load, closeVite } from './_vite.mjs';
@@ -28,14 +29,14 @@ test('ŞANS starts at 0, adds no payout effect, stays in −2..5', () => {
   m.dispose();
 });
 
-test('ŞANS moves payout.mult by exactly 1 % per star and never touches the luck hook', () => {
+test('ŞANS moves payout.mult by exactly 2 % per star and never touches the luck hook', () => {
   const m = L.createLuckMeter({});
   for (let stars = L.LUCK_MIN; stars <= L.LUCK_MAX; stars++) {
     m.restore({ stars });
     assert.equal(m.stars(), stars);
     const effects = effectsOf(m);
     assert.ok(effects.every((e) => e.hook === 'payout.mult'), `only payout.mult at ${stars} stars`);
-    const expected = 1 + 0.01 * stars;
+    const expected = 1 + 0.02 * stars;
     assert.ok(Math.abs(m.payoutMult() - expected) < 1e-12, `payoutMult at ${stars} stars`);
     if (stars === 0) assert.deepEqual(effects, []);
     else assert.ok(Math.abs(effects[0].value - expected) < 1e-12, `provider value at ${stars} stars`);
@@ -90,6 +91,78 @@ test('the Well tunes ŞANS through the run port: a richer star, a higher cap, a 
   assert.equal(m.stars(), -1, 'Soft Landing: a fall costs one star, not two');
   bus.emit('quota:sealed', { index: 0, left: 2, memory: 'street' });
   assert.equal(m.stars(), -1, 'Still Water: a sealed Dawn costs no stars');
+  m.dispose();
+});
+
+const tithe = (state) => ({ pid: 0, state, watch: 1, target: 10, earned: 10, shortfall: 0, tickets: 0 });
+const win = (bet, gross) => ({ mid: 'm1', machineId: 'bandit', pid: 0, bet, gross, credited: gross, tier: 'big', tags: [] });
+
+test('Nazar Boncuğu: the cap rises by one the moment the charm is held, and the first star loss of each Night is blocked whole', () => {
+  const xs = {};
+  const m = L.createLuckMeter({ x: (h, b) => xs[h] ?? b });
+  bus.emit('night:begin', { night: 1 });
+  m.restore({ stars: 5 });
+  bus.emit('quota:met', { index: 0, ratio: 1 });
+  assert.equal(m.stars(), 5, 'no charm: the cap is 5');
+  Object.assign(xs, { 'x.luck.max': 6, 'x.luck.shield': 1 });   // the charm is bought: no retune() call, the meter reads it on the next move
+  bus.emit('quota:met', { index: 1, ratio: 1 });
+  assert.equal(m.stars(), 6, 'max +1');
+  bus.emit('quota:failed', { index: 1 });
+  assert.equal(m.stars(), 6, 'the first loss (two stars) is blocked whole');
+  bus.emit('quota:failed', { index: 2 });   // not a missed tithe: a HomePhone left alive by another test hears those (heat, one more star)
+  assert.equal(m.stars(), 4, 'the second loss of the Night goes through');
+  bus.emit('night:begin', { night: 2 });
+  bus.emit('quota:failed', { index: 3 });
+  assert.equal(m.stars(), 4, 'a new Night: the first loss is blocked again');
+  m.dispose();
+});
+
+test('Nazar Boncuğu is not spent by a loss that could not move the meter (already at the floor) and survives a save', () => {
+  const m = L.createLuckMeter({ x: (h, b) => (h === 'x.luck.shield' ? 1 : b) });
+  bus.emit('night:begin', { night: 1 });
+  m.restore({ stars: -2 });
+  bus.emit('quota:failed', { index: 0 });
+  assert.equal(m.stars(), -2);
+  bus.emit('quota:met', { index: 0, ratio: 1 });
+  assert.equal(m.stars(), -1);
+  bus.emit('quota:failed', { index: 1 });
+  assert.equal(m.stars(), -1, 'the shield was still there for the first real loss');
+  const snap = JSON.parse(JSON.stringify(m.snapshot()));
+  m.restore(snap);
+  bus.emit('quota:failed', { index: 2 });
+  assert.equal(m.stars(), -2, 'restored as spent: the next loss goes through');
+  m.restore({ stars: -1 });
+  bus.emit('quota:failed', { index: 3 });
+  assert.equal(m.stars(), -1, 'a slice with no flags (an old save): the shield is there');
+  m.dispose();
+});
+
+test('Full Bucket and Lucky Hand: a star by play, once a Night each, and only while the boon is held', () => {
+  const fxs = {};
+  const m = L.createLuckMeter({ fx: (k) => fxs[k] ?? 0 });
+  bus.emit('night:begin', { night: 1 });
+  bus.emit('run:tithe', tithe('met'));
+  bus.emit('machine:result', win(10, 100));
+  assert.equal(m.stars(), 0, 'no boon: no stars');
+  Object.assign(fxs, { starOnTithe: 1, starOnBigWin: 1 });
+  bus.emit('quota:failed', { index: 0 });   // a loss still costs (not a missed tithe: see the Nazar test)
+  assert.equal(m.stars(), -2, 'a loss still costs');
+  bus.emit('run:tithe', tithe('met'));
+  assert.equal(m.stars(), -1);
+  assert.equal(m.last().why, 'titheMet');
+  bus.emit('run:tithe', tithe('met'));
+  assert.equal(m.stars(), -1, 'the tithe star is once a Night');
+  bus.emit('machine:result', win(10, 99));
+  assert.equal(m.stars(), -1, 'x9.9 is not a big win');
+  bus.emit('machine:result', win(10, 100));
+  assert.equal(m.stars(), 0);
+  assert.equal(m.last().why, 'bigWin');
+  bus.emit('machine:result', win(10, 500));
+  assert.equal(m.stars(), 0, 'the big-win star is once a Night');
+  bus.emit('night:begin', { night: 2 });
+  bus.emit('run:tithe', tithe('met'));
+  bus.emit('machine:result', win(10, 500));
+  assert.equal(m.stars(), 2, 'a new Night: both again');
   m.dispose();
 });
 

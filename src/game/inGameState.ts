@@ -60,6 +60,8 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   let resumedAt = -Infinity;
   let interOpen = false;
   let interKey = '';
+  /** SON OYUN: the Topside (`night|true`) whose panel the player closed to walk to the House's machine. */
+  let walkKey = '';
   /** Free-roam Intermission: the HUD hint line and the paid-Night bookkeeping for the summary toast. */
   let interHint: InterHint | null = null;
   let wasPaid = false;
@@ -283,18 +285,19 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     if (!s || !s.ready() || ending || paused) { interHint?.set(null); return; }
     syncHint(s);
     const phase = s.run.shift.phase;
-    // a story run plays the Burning Wager instead (story/wager.ts): its outcome ends the run, so STAY UP never shows there
-    const want = phase === 'intermission' && s.run.rules.timed && !s.run.over && s.run.topsideOpen && !s.run.wagerDue();
+    // a story run plays the Burning Wager first (story/wager.ts); a won Wager opens this panel. An Overdrawn Dawn's boon offer goes first.
+    const key = `${s.run.night()}|${s.run.topsideOpen}`;
+    const want = phase === 'intermission' && s.run.rules.timed && !s.run.over && s.run.topsideOpen && !s.run.wagerDue()
+      && !s.run.boonOffer() && walkKey !== key;
     if (!want) {
       if (interOpen) { app.ui.closePanel(INTER_PANEL); interOpen = false; interKey = ''; }
       return;
     }
-    const key = `${s.run.night()}|${s.run.topsideOpen}`;
     if (interOpen && key === interKey) return;
     if (!interOpen) uiSfx('popUp', 0.5);
     interOpen = true;
     interKey = key;
-    app.ui.panel(INTER_PANEL, (el) => buildIntermission(el, s.run, { redraw: () => { interKey = ''; } }));
+    app.ui.panel(INTER_PANEL, (el) => buildIntermission(el, s.run, { redraw: () => { interKey = ''; }, walk: () => { walkKey = key; } }));
   };
 
   /**
@@ -329,6 +332,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       paused = false;
       interOpen = false;
       interKey = '';
+      walkKey = '';
       pauseLive = false;
       toSettings = false;
       overlay = null;

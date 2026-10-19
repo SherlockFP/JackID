@@ -49,7 +49,8 @@ import './hud/evening.css';
 import './hud/luck.css';
 import './hud/seals.css';
 import { SOUL_MARKS_PER_RUN } from '@/game/duels/stakes';
-import { LUCK_MAX } from '@/game/luck';
+import { LUCK_MAX, LUCK_PAYOUT_PER_STAR } from '@/game/luck';
+import type { LastGameApi } from '@/game/lastGame';
 import { nightPaid } from '@/machines/debt_terminal/night';
 import { SeatHud } from '@/machines/_base/seatHud';
 import { goalLine, isTerm, termMark, termSeen, type TermId } from '@/game/terms';
@@ -296,19 +297,26 @@ export function createHud(): Hud {
   // LOKI (docs/JOKER.md §6): the corner of your card beside the stars, his grin in seven frames and no number
   const grin = grinChip(luckEl);
   disposers.push(() => grin.dispose());
+  // SON OYUN (game/lastGame.ts): one small line under the meter, so luck's last use reads all game ("SON OYUN %23"). The run offers it through
+  // the optional `LastGameApi`; a run without it (bench, online) shows nothing.
+  const lastGameEl = h('span', 'lg', luckEl, '');
+  lastGameEl.hidden = true;
+  const lastGameApi = (run: unknown): Partial<LastGameApi> | null => run as Partial<LastGameApi> | null;
   let luckRun: unknown = null;
   let luckKey = '';
+  let lastGameSeen: unknown = null;   // the run whose opening banner has been shown (or whose open machine was there at load)
   // SEATED FOCUS (hud.css .seat-focus) hides the luck row; his grin comes back for a few seconds while Loki whispers
   let whisperLeft = 0;
   on('joker:whisper', () => { whisperLeft = WHISPER_CHIP_S; });
   const luckText = (s: number): string => {
     const sign = s > 0 ? '+' : s < 0 ? '−' : '±';
-    return t('luck.bonus', { s: sign, n: String(Math.abs(s)) });
+    return t('luck.bonus', { s: sign, n: String(Math.round(Math.abs(s) * LUCK_PAYOUT_PER_STAR * 100)) });   // the payout share, not the star count
   };
   // the reason keys, spelled out so the string check sees each one (a heat reason with no key toasts the change alone)
   const LUCK_WHY: Record<string, string> = {
     quota: 'luck.why.quota', overshoot: 'luck.why.overshoot', failed: 'luck.why.failed', tithe: 'luck.why.tithe',
     loan: 'luck.why.loan', time: 'luck.why.time', deal: 'luck.why.deal', thin: 'luck.why.thin', quiet: 'luck.why.quiet',
+    titheMet: 'luck.why.titheMet', bigWin: 'luck.why.bigWin',
   };
   on('luck:change', ({ delta, why }) => {
     if (!app.run || !revealed(nightNow(), 'luck')) return;
@@ -330,9 +338,20 @@ export function createHud(): Hud {
     if (!run) return;
     const s = run.luckStars?.() ?? 0;
     const g = (run as Partial<DebtRun>).jokerGrin?.() ?? { frame: 3, lie: false };
-    const key = `${s}|${g.frame}|${g.lie}`;
+    // the machine opens (Night 8 paid): one banner per run, whatever the pulls do to `lastGameOpen()` after (it is false while a result shows)
+    const lg = lastGameApi(run);
+    if (lg?.lastGameOpen?.() && lastGameSeen !== run) {
+      lastGameSeen = run;
+      uiSfx('jackpotBells', 0.8);
+      void ui().banner(t('lastGame.opened'), { color: COLORS.shine, hold: 2.2, size: 24 });
+    }
+    const odds = shown ? lg?.lastGameOdds?.().pct : undefined;
+    const key = `${s}|${g.frame}|${g.lie}|${odds ?? ''}`;
     if (key === luckKey) return;
     luckKey = key;
+    lastGameEl.textContent = odds === undefined ? '' : t('lastGame.hud', { n: odds });
+    lastGameEl.hidden = odds === undefined;
+    luckEl.dataset.tip = odds === undefined ? t('luck.tip') : `${t('luck.tip')} ${t('lastGame.hudTip')}`;
     grin.set(g.frame, g.lie);
     luckStars.textContent = s < 0 ? `${'☆'.repeat(LUCK_MAX)} −${-s}` : '★'.repeat(s) + '☆'.repeat(LUCK_MAX - s);
     luckBonus.textContent = luckText(s);

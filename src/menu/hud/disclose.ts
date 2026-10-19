@@ -49,8 +49,8 @@ export function ticketsShown(seen: boolean, held: number): boolean {
 }
 
 export type Objective = 'win' | 'deposit' | 'bell' | 'lift' | 'dawn' | 'broke.bank' | 'broke.cashier' | 'broke.phone' | 'broke.loan';
-/** The world spot the objective points at (its waypoint): a machine, the Bell prop (`bell` anchor), the lift door (`elevator.door` anchor), or null for no waypoint. */
-export type ObjectiveTarget = 'bigone' | 'debt_terminal' | 'cashier' | 'bell' | 'lift' | 'buildingDoor' | 'casinoDoor' | null;
+/** The world spot the objective points at (its waypoint): a machine, the Bell prop (`bell` anchor), the lift door (`elevator.door` anchor), the open Last Game (`lastGame` anchor), or null for no waypoint. */
+export type ObjectiveTarget = 'bigone' | 'debt_terminal' | 'cashier' | 'bell' | 'lift' | 'lastGame' | 'buildingDoor' | 'casinoDoor' | null;
 
 export interface ObjectiveFacts {
   /** The shift phase (`run.shift.state().phase`). */

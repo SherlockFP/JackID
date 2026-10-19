@@ -128,3 +128,5 @@ import './qa.tour.test.mjs';
 import './version.test.mjs';
 import './gamepad.test.mjs';
 import './terms.test.mjs';
+import './lastGame.run.test.mjs';
+import './lastGame.world.test.mjs';

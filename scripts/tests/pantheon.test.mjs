@@ -18,9 +18,10 @@ const offer = (seed, night, ctx) => P.pantheonOffer(RNG.createRng(RNG.hashSeed('
 const god = (id) => P.boonDef(id).god;
 const make = (seed = 7) => new P.Pantheon(seed, () => {});
 
-test('data: 5 boons + 1 Rite per owner, 4 for Loki, 6 duos, every duo a distinct pair', () => {
+test('data: 5 boons (6 for the Well, Ash and the Mirrors: the Last Game luck boons) + 1 Rite per owner, 4 for Loki, 6 duos, every duo a distinct pair', () => {
+  const boons = { well: 6, ledgers: 5, ash: 6, mirrors: 6 };
   for (const g of P.OWNERS) {
-    assert.equal(P.BOONS.filter((b) => b.god === g && b.kind === 'boon').length, 5, g);
+    assert.equal(P.BOONS.filter((b) => b.god === g && b.kind === 'boon').length, boons[g], g);
     assert.equal(P.BOONS.filter((b) => b.god === g && b.kind === 'rite').length, 1, g);
   }
   assert.equal(P.BOONS.filter((b) => b.god === 'loki').length, 4);
@@ -28,6 +29,16 @@ test('data: 5 boons + 1 Rite per owner, 4 for Loki, 6 duos, every duo a distinct
   assert.equal(duos.length, 6);
   assert.equal(new Set(duos.map((d) => [d.god, d.god2].sort().join('+'))).size, 6);
   assert.equal(new Set(P.BOONS.map((b) => b.id)).size, P.BOONS.length);
+});
+
+test('the Last Game luck boons: Last Hour adds 5 to x.lastGame.pct, Full Bucket and Lucky Hand carry their star keys', () => {
+  const p = make();
+  p.restore({ kept: ['ash_final', 'well_fill', 'mir_lucky'] });
+  const out = [];
+  p.collect({}, out);
+  assert.deepEqual(out.flatMap((s) => s.effects).filter((e) => e.hook === 'x.lastGame.pct').map((e) => e.value), [5]);
+  assert.equal(p.fx('starOnTithe'), 1);
+  assert.equal(p.fx('starOnBigWin'), 1);
 });
 
 test('the seeded offer is deterministic and varies with the seed', () => {

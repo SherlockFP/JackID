@@ -72,6 +72,7 @@ import { createItemSystem, type ItemSystem } from './items';
 import { createHotline, type Hotline, type HotlineSave } from './hotline';
 import { createPhone, hooksOf, DEAL_NIGHT, HARMONY_START } from './home/phone';
 import { createLuckMeter, type LuckMeter } from './luck';
+import { lastGameOdds as oddsOf, type LastGameApi, type LastGameOdds, type LastGameResult } from './lastGame';
 import { createKeepsakes, type KeepsakeId, type KeepsakeOutcome, type KeepsakeSave, type Keepsakes } from './keepsake';
 import { createGhostSeat, type GhostMatch, type GhostSave, type GhostSeat, type GhostSeatInfo } from './ghostSeat';
 import keepsakeStrings from './keepsake.strings';
@@ -317,6 +318,8 @@ declare module '@/core/events' {
     'room:keys': { n: number; why: 'dawn' | 'boss' | 'manager' };
     /** The Boiler blew at P 100 and is shut until the next Watch. */
     'room:blown': { zone: string };
+    /** SON OYUN (wave 106): one pull at the House's machine was rolled (the seal of a loss is already spent; the UI reveals, then `endLastGame`). */
+    'lastgame:result': LastGameResult;
     /** Soul Marks changed (wave 25 duels): `left` on the card, `lost` when one was just taken, `blank` at 0. */
     'duel:marks': { left: number; lost: boolean; blank: boolean };
     /** A duel is settled and its closing scene is done (the demo ends its run on Lucan's, game/demoEnd.ts). */
@@ -471,6 +474,8 @@ export interface RunExt {
   markEscrow?: number;
   /** The memories the lost seals took, most recent last (the Dawn receipt prints them; a restored seal gives the last back). Optional: older saves have none. */
   lostMemories?: string[];
+  /** SON OYUN: a final pull already rolled, the run not yet ended on it (a resume ends it on its first tick). Optional. */
+  lastGameEnd?: 'win' | 'lose';
   bossDuel?: number;
   pledged?: string[];
   /** The ending path reached this run (wave 25 phase 2: `vell_release`), if any. */
@@ -547,7 +552,7 @@ export interface RunWorldLink {
 }
 
 /** Run control surface on top of `RunApi` (HUD, intermission UI, frame loop). */
-export interface DebtRun extends RunApi {
+export interface DebtRun extends RunApi, LastGameApi {
   /** True from Dawn paying the Night until OPEN THE FLOOR. */
   readonly nightPaid: boolean;
   /** True from a sealed Dawn (a short quota paid with a name seal) until OPEN THE FLOOR: it counts as paid for flow, but must read SEALED. */
@@ -658,7 +663,7 @@ export interface DebtRun extends RunApi {
    * the N8 kitchen wager (`r.wager` set) is recorded, and a lost wager ends the run (KEPT). A left game counts for nothing.
    */
   kitchenDone(r: Pick<FlowResult, 'left' | 'wager' | 'pairs' | 'cracks'>): void;
-  /** THE ENDINGS: the Burning Wager is over and the run ends on it (story/wager.ts, the Champion's table on the stage). */
+  /** THE ENDINGS: the Burning Wager is over (story/wager.ts, the Champion's table on the stage). A loss ends the run; a win opens SON OYUN. */
   burningWager(r: { wager: 'win' | 'lose'; cracks: number; lokiHand?: boolean; word?: boolean }): void;
   /**
    * THE BURNING WAGER: Night 8 is paid and the Wager is still to play (a solo story run). The session opens it while this holds.
@@ -727,8 +732,6 @@ export interface DebtRun extends RunApi {
   readonly machineMods: MachineMods;
   /** Sell a charm for 50 % (70 % with Pawn Ticket). Cursed charms cannot be sold. */
   sellCharm(id: string): boolean;
-  /** Topside: STAY UP ends the run as a win. */
-  stayUp(): boolean;
   /** Topside: GO BACK DOWN continues into Overdrawn. */
   goBackDown(): boolean;
   /** Abandon the run. */
@@ -912,6 +915,9 @@ class Run implements DebtRun {
   private soulMarkCount = SOUL_MARKS_PER_RUN;
   private markEscrow = 0;
   private lostMemories: string[] = [];
+  /** SON OYUN: the pull the UI is revealing (not saved), and a final result applied but not yet ended on (saved). */
+  private lastPull: LastGameResult | null = null;
+  private lastGameEnd: 'win' | 'lose' | null = null;
   private bossDuelNight = 0;
   private readonly pledged = new Set<string>();
   /** The ending path reached this run (`vell_release` once Vell's thrown match is called out), or null. */
@@ -1916,13 +1922,14 @@ class Run implements DebtRun {
   }
 
   burningWager(r: { wager: 'win' | 'lose'; cracks: number; lokiHand?: boolean; word?: boolean }): void {
-    if (this.ended) return;
+    if (this.ended || this.chapterRec.wager !== null) return;   // played once: a won Wager leaves the run open
     const c = this.chapterRec;
     c.wager = r.wager;
     c.cracks = Math.max(0, Math.trunc(r.cracks));
     c.lokiHand = r.lokiHand === true;
     c.word = r.word === true;
-    if (r.wager === 'win') this.endRun('escaped', 'elevator');
+    // SON OYUN: a win no longer ends the run. The Champion gives up his seat and the House's machine is the way out.
+    if (r.wager === 'win') { this.persist(); this.notify(); }
     else this.endRun('lost', 'chair');
   }
 
@@ -1936,7 +1943,7 @@ class Run implements DebtRun {
       descended: end?.ending === 'descend', deal: c.deal, kitchen: c.kitchen, pairs: c.pairs,
       wager: c.wager, cracks: c.cracks, lokiHand: c.lokiHand, wordAtMatchPoint: c.word,
       cameHome: this.jokerSys.cameHome, trust: this.jokerSys.trust, visitUsed: this.jokerSys.snapshot().used.visit === 1,
-      harmony: this.hPhone?.harmony() ?? HARMONY_START, waiting: this.bondBook.floor(),
+      harmony: this.hPhone?.harmony() ?? HARMONY_START, waiting: this.bondBook.floor(), lastGame: this.lastGameEnd,
     };
     return f;
   }
@@ -2085,6 +2092,7 @@ class Run implements DebtRun {
   // ── DebtRun controls ──────────────────────────────────────────────────────────────────────────────
   tick(dt: number): void {
     if (this.ended || dt <= 0) return;
+    if (this.lastGameEnd !== null && this.lastPull === null) { this.endLastGame(); return; }   // resumed after a final pull
     this.elapsed += dt;
     this.clockAcc += dt;
     if (this.dirty) {
@@ -2583,10 +2591,40 @@ class Run implements DebtRun {
     return true;
   }
 
-  stayUp(): boolean {
-    if (!this.topside || this.ended) return false;
-    this.endRun('escaped', 'elevator');
-    return true;
+  // ── SON OYUN (wave 106, lastGame.ts): the House's machine after Night 8 ────────────────────────────────
+  lastGameOpen(): boolean {
+    return this.topside && !this.ended && this.quotaMode && !this.wagerDue() && this.lastPull === null && this.lastGameEnd === null;
+  }
+  /** `luck` read on the run id: only the sources with no machine scope (tonics, buffs, items, Foundations) count, as everywhere. */
+  lastGameOdds(): LastGameOdds {
+    return oddsOf({ stars: this.luckMeter.stars(), luck: this.mod('luck', RUN_MACHINE, 0), bonusPct: this.mod('x.lastGame.pct', RUN_MACHINE, 0) });
+  }
+  playLastGame(): LastGameResult | null {
+    if (!this.lastGameOpen()) return null;
+    const { pct } = this.lastGameOdds();
+    const win = this.rng.chance(pct / 100);   // the run's own stream, saved below: a reload cannot roll it again
+    const final = win || this.soulMarkCount <= 1;
+    if (final) this.lastGameEnd = win ? 'win' : 'lose';
+    if (win) this.persist();
+    else {
+      // a lost seal takes a memory, as a lost duel Mark does (no `quota:sealed`: a pull costs no ŞANS stars)
+      this.soulMarkCount = Math.max(0, this.soulMarkCount - 1);
+      const memory = this.forget();
+      this.banner?.(t(`run.mem.${memory}.lost`), { color: '#c9a0ff', hold: 4, size: 8 });
+      this.marksChanged(true);   // saves
+    }
+    const r: LastGameResult = { win, pct, sealsLeft: this.soulMarkCount, final };
+    this.lastPull = r;
+    this.emit('lastgame:result', r);
+    return r;
+  }
+  /** After the reveal. Idempotent: a second call, or one with nothing final, only reopens the machine. */
+  endLastGame(): void {
+    this.lastPull = null;
+    if (this.ended || this.lastGameEnd === null) { this.notify(); return; }
+    // the last seal lost: THE CHAIR (the House keeps you; endings.ts routes `lastGame: 'lose'` there)
+    if (this.lastGameEnd === 'win') this.endRun('escaped', 'last_game');
+    else this.endRun('lost', 'chair');
   }
   goBackDown(): boolean {
     if (!this.topside || this.ended) return false;
@@ -2859,11 +2897,12 @@ class Run implements DebtRun {
     this.syncQuota();
     this.nightDone = true;
     this.bond({ kind: 'dawn' });   // neglect, and Selim's unpaid loans come due. On Night 8 this is the call right before the Burning Wager
-    if (nightDef(this.index).no === BASE_RUN_NIGHTS) this.topside = true;
+    // every paid Night from 8 on is a Topside: an Overdrawn run that went back down for more luck gets the machine back
+    if (nightDef(this.index).no >= BASE_RUN_NIGHTS) this.topside = true;
     if (this.dealEnds()) return;
     this.spotlight.end();   // Machine of the Night: the Night is over, the spotlight and its x1.25 end
     // THE PANTHEON: every paid Dawn with a Night after it (from Night 1 on) opens the boon offer. A sealed Dawn has none.
-    if (!sealed && !this.topside) {
+    if (!sealed && (!this.topside || nightDef(this.index).no > BASE_RUN_NIGHTS)) {   // Overdrawn Dawns keep their offer (luck to build)
       if (this.pantheon.fx('starEachDawn') > 0) bus.emit('floor:luck', { star: 1, why: 'well' });   // The Well Answers
       const opts = { tier: this.offerTier(), sealsMissing: this.soulMarkCount + this.markEscrow < SOUL_MARKS_PER_RUN };
       if (this.pantheon.open(this.index + 1, opts)) this.emit('run:boon', { pid: this.selfId, state: 'offer', ids: [] });
@@ -4155,6 +4194,7 @@ class Run implements DebtRun {
       wingKeys: this.wingKeys, managerKey: this.managerKey, rooms: { ...this.rooms, lockers: [...this.rooms.lockers] }, bonusObols: this.currencies.get('obol') ?? 0,
       soulMarks: this.soulMarkCount, markEscrow: this.markEscrow, bossDuel: this.bossDuelNight, pledged: [...this.pledged],
       ...(this.lostMemories.length > 0 ? { lostMemories: [...this.lostMemories] } : {}),
+      ...(this.lastGameEnd ? { lastGameEnd: this.lastGameEnd } : {}),
       ...(this.endingPathId ? { endingPath: this.endingPathId } : {}),
       hollow: { ...this.hollow }, forgiveUntil: this.forgiveUntil, houseWealth: this.houseWealth, obolMult: this.obolMult, hollowRefused: this.hollowRefused,
       ...(this.pantheon.snapshot() ? { pantheon: this.pantheon.snapshot() as PantheonSave } : {}),
@@ -4611,6 +4651,7 @@ class Run implements DebtRun {
     this.soulMarkCount = Math.min(SOUL_MARKS_PER_RUN, Math.max(0, Math.floor(e.soulMarks ?? SOUL_MARKS_PER_RUN)));
     this.markEscrow = Math.min(SOUL_MARKS_PER_RUN, Math.max(0, Math.floor(e.markEscrow ?? 0)));
     this.lostMemories = (e.lostMemories ?? []).filter(isSealMemory).slice(0, SOUL_MARKS_PER_RUN);
+    this.lastGameEnd = e.lastGameEnd === 'win' || e.lastGameEnd === 'lose' ? e.lastGameEnd : null;
     this.bossDuelNight = Math.max(0, Math.floor(e.bossDuel ?? 0));
     this.endingPathId = typeof e.endingPath === 'string' ? e.endingPath : null;
     this.pledged.clear();

@@ -5,12 +5,15 @@
  * kept at the kitchen table (+1, reason `promise`) and the framed photo from the home computer (+1 when a Night begins).
  *
  * Director decision (Oct 2026): the meter no longer feeds the luck hook. Each star is a flat payout bonus instead:
- * `payout.mult` = 1 + 0.01 × stars (−2 % .. +5 %), added through the modifier pipeline by `provider()`.
+ * `payout.mult` = 1 + 0.02 × stars (−4 % .. +10 %), added through the modifier pipeline by `provider()`. (Wave 106: 1 % became 2 %,
+ * because stars now also decide the Last Game: 3 % of its odds each, `lastGame.ts`.)
  *
  * THE PANTHEON (docs/BLESSINGS.md §2.3): the Well's boons tune the meter through the run port: `x.luck.perStar` (First Penny),
- * `x.luck.failSoft` (Soft Landing: a missed Dawn or tithe costs a star less), `x.luck.max` (The Well Answers), and two duo
- * numbers (`sealedNoStars`, `depositPerStar`). The meter never reads the mods inside `collect` (that would recurse): the run
- * calls `retune()` when a boon is kept or spent, and the numbers are cached until then.
+ * `x.luck.failSoft` (Soft Landing: a missed Dawn or tithe costs a star less), `x.luck.max` (The Well Answers, Nazar Boncuğu),
+ * `x.luck.shield` (Nazar Boncuğu: the first star loss each Night is blocked) and the duo numbers (`sealedNoStars`,
+ * `depositPerStar`). Two boons earn stars by play: `starOnTithe` (a Watch goal met, Full Bucket) and `starOnBigWin` (a win of ×10
+ * or more, Lucky Hand), each once per Night. The meter never reads the mods inside `collect` (that would recurse): it re-reads the
+ * numbers when the run calls `retune()` (a boon kept or spent), when a star is about to move (a charm bought or sold) and on restore.
  *
  * The meter listens to the bus itself. Each move emits `luck:change` (the HUD toasts it with the reason). The run creates it,
  * restores it from `resume.ext.luck`, saves `snapshot()`, and calls `dispose()` on exit.
@@ -21,8 +24,8 @@ import type { FrameEvent } from './economy/homeEconomy';   // brings the `econ:f
 
 export const LUCK_MIN = -2;
 export const LUCK_MAX = 5;
-/** Payout multiplier per star: 1 % (payout.mult = 1 + 0.01 × stars). */
-export const LUCK_PAYOUT_PER_STAR = 0.01;
+/** Payout multiplier per star: 2 % (payout.mult = 1 + 0.02 × stars). Sim (300 human runs, ±2.5): 3 stars +2 reach points, 5 stars +3 at most. */
+export const LUCK_PAYOUT_PER_STAR = 0.02;
 
 /** One move of the meter. `why` is the source's reason key (`luck.why.<why>` in the strings), or '' when the event gives none. */
 export interface LuckChange { delta: number; stars: number; why: string }
@@ -37,7 +40,7 @@ declare module '@/core/events' {
 export interface LuckMeter {
   /** The meter's stars, −2..5. */
   stars(): number;
-  /** The payout multiplier the meter adds: 1 + 0.01 × stars. */
+  /** The payout multiplier the meter adds: 1 + 0.02 × stars. */
   payoutMult(): number;
   /** The meter's last move (null before the first one): the same change `luck:change` carries. */
   last(): LuckChange | null;
@@ -64,12 +67,25 @@ export function createLuckMeter(run: LuckRunPort, touch: () => void = () => {}):
   let stars = 0;
   let disposed = false;
   let lastMove: LuckChange | null = null;
-  const tune = { perStar: LUCK_PAYOUT_PER_STAR, max: LUCK_MAX, soft: 0, sealedFree: false, depositPerStar: 0 };
+  const tune = { perStar: LUCK_PAYOUT_PER_STAR, max: LUCK_MAX, soft: 0, shield: 0, sealedFree: false, depositPerStar: 0 };
+  /** Once-a-Night flags (reset when a Night begins): Nazar Boncuğu's blocked loss, Full Bucket's tithe star, Lucky Hand's big-win star. */
+  const night = { shielded: false, tithed: false, bigWin: false };
+  const tuneIn = (): void => {
+    tune.perStar = run.x?.('x.luck.perStar', LUCK_PAYOUT_PER_STAR) ?? LUCK_PAYOUT_PER_STAR;
+    tune.max = Math.max(LUCK_MAX, Math.round(run.x?.('x.luck.max', LUCK_MAX) ?? LUCK_MAX));
+    tune.soft = Math.max(0, Math.round(run.x?.('x.luck.failSoft', 0) ?? 0));
+    tune.shield = Math.max(0, Math.round(run.x?.('x.luck.shield', 0) ?? 0));
+    tune.sealedFree = (run.fx?.('sealedNoStars') ?? 0) > 0;
+    tune.depositPerStar = Math.max(0, run.fx?.('depositPerStar') ?? 0);
+  };
   const clampStars = (v: number): number => Math.min(tune.max, Math.max(LUCK_MIN, Math.round(v)));
   /** A loss of `n` stars, softened by Soft Landing (never below 0). */
   const loss = (n: number): number => -Math.max(0, n - tune.soft);
   const move = (d: number, why = ''): void => {
     if (disposed || d === 0) return;
+    tuneIn();   // a charm bought or sold changes the numbers without a boon: read them fresh before every move
+    // Nazar Boncuğu: the first loss of a Night that would really cost a star is blocked whole (one that cannot move the meter is not spent on)
+    if (d < 0 && tune.shield > 0 && !night.shielded && clampStars(stars + d) !== stars) { night.shielded = true; return; }
     const before = stars;
     stars = clampStars(stars + d);
     if (stars === before) return;
@@ -84,7 +100,17 @@ export function createLuckMeter(run: LuckRunPort, touch: () => void = () => {}):
     // a missed Dawn that cost a seal, not the run: the same two stars (none with Still Water)
     bus.on('quota:sealed', () => move(tune.sealedFree ? 0 : loss(2), 'failed')),
     bus.on('home:heat', ({ delta, why }) => move(delta > 0 ? -1 : delta < 0 ? 1 : 0, why)),
-    bus.on('run:tithe', (e) => { if (e.state === 'missed') move(loss(1), 'tithe'); }),
+    bus.on('run:tithe', (e) => {
+      if (e.state === 'missed') move(loss(1), 'tithe');
+      else if (!night.tithed && (run.fx?.('starOnTithe') ?? 0) > 0) { night.tithed = true; move(1, 'titheMet'); }   // Full Bucket
+    }),
+    // Lucky Hand: a win of x10 or more earns a star (once a Night)
+    bus.on('machine:result', (e) => {
+      if (night.bigWin || e.bet <= 0 || e.gross < e.bet * 10 || !((run.fx?.('starOnBigWin') ?? 0) > 0)) return;
+      night.bigWin = true;
+      move(1, 'bigWin');
+    }),
+    bus.on('night:begin', () => { night.shielded = night.tithed = night.bigWin = false; }),
     bus.on('run:rescue', (e) => { if (e.state === 'taken') move(-1, 'loan'); }),
     // THE KEEPSAKE STAKE and THE GHOST SEAT (wave 75): a keepsake that comes back, and a round that matches the ghost
     // the kitchen table's Rock, Paper, Promise (mid 'promise') is a kept word, not a keepsake coming back
@@ -111,18 +137,16 @@ export function createLuckMeter(run: LuckRunPort, touch: () => void = () => {}):
     payoutMult,
     last: (): LuckChange | null => lastMove,
     provider: (): ModProvider => providerObj,
-    snapshot: (): unknown => ({ v: 1, stars }),
+    snapshot: (): unknown => ({ v: 1, stars, night: { ...night } }),
     retune(): void {
-      tune.perStar = run.x?.('x.luck.perStar', LUCK_PAYOUT_PER_STAR) ?? LUCK_PAYOUT_PER_STAR;
-      tune.max = Math.max(LUCK_MAX, Math.round(run.x?.('x.luck.max', LUCK_MAX) ?? LUCK_MAX));
-      tune.soft = Math.max(0, Math.round(run.x?.('x.luck.failSoft', 0) ?? 0));
-      tune.sealedFree = (run.fx?.('sealedNoStars') ?? 0) > 0;
-      tune.depositPerStar = Math.max(0, run.fx?.('depositPerStar') ?? 0);
+      tuneIn();
       touch();
     },
     restore(s: unknown): void {
-      const v = s && typeof s === 'object' ? (s as { stars?: unknown }).stars : undefined;
-      stars = typeof v === 'number' && Number.isFinite(v) ? clampStars(v) : 0;
+      tuneIn();   // the charms are back before the meter: a charm's higher cap must not clamp a saved star
+      const o = s && typeof s === 'object' ? (s as { stars?: unknown; night?: Record<string, unknown> }) : {};
+      stars = typeof o.stars === 'number' && Number.isFinite(o.stars) ? clampStars(o.stars) : 0;
+      night.shielded = o.night?.shielded === true; night.tithed = o.night?.tithed === true; night.bigWin = o.night?.bigWin === true;
       touch();
     },
     dispose(): void {

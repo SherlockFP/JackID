@@ -88,7 +88,7 @@ test('First Penny gives its star at once; Your Name Back puts a seal back and is
   run.soulMarkCount = 2;
   assert.equal(run.pickBoon('well_penny'), true);
   assert.equal(run.luckStars(), stars + 1);
-  assert.ok(Math.abs(run.mod('payout.mult', 'bigone', 1) - (1 + 0.015 * run.luckStars())) < 1e-9, 'each star now pays 1.5 %');
+  assert.ok(Math.abs(run.mod('payout.mult', 'bigone', 1) - (1 + 0.03 * run.luckStars())) < 1e-9, 'each star now pays 3 % (2 % + First Penny\'s 1 %)');
   assert.equal(run.pickBoon('mir_name'), true);
   assert.equal(run.duel.soulMarks(), 3);
   assert.equal(run.pantheon.fx('sealAdd'), 0, 'the Rite is spent');

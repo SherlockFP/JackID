@@ -166,12 +166,12 @@ test('the luck meter moves on the run events and stays between -2 and 5 stars', 
   const m = LUCK.createLuckMeter({});
   for (let i = 0; i < 9; i++) EV.bus.emit('quota:met', { index: i, ratio: 1 });
   assert.equal(m.stars(), 5, 'capped at five stars');
-  assert.equal(m.payoutMult(), 1.05, '5 stars pay +5 %');
+  assert.equal(m.payoutMult(), 1.1, '5 stars pay +10 %');
   EV.bus.emit('quota:failed', { index: 9 });
   assert.equal(m.stars(), 3);
   for (let i = 0; i < 5; i++) EV.bus.emit('quota:failed', { index: i });
   assert.equal(m.stars(), -2, 'floored at minus two stars');
-  assert.equal(m.payoutMult(), 0.98, '-2 stars pay -2 %');
+  assert.equal(m.payoutMult(), 0.96, '-2 stars pay -4 %');
   m.dispose();
 });
 
@@ -192,7 +192,7 @@ test('the luck meter saves and restores its stars; a damaged slice reads as zero
   const b = LUCK.createLuckMeter({});
   b.restore(saved);
   assert.equal(b.stars(), 2);
-  assert.equal(b.payoutMult(), 1.02, '2 stars pay +2 %');
+  assert.equal(b.payoutMult(), 1.04, '2 stars pay +4 %');
   b.restore('nonsense');
   assert.equal(b.stars(), 0);
   b.restore({ stars: 99 });

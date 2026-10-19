@@ -33,6 +33,7 @@ import { walkGoal } from '@/world/street';
 import { TILT_FREE_PULLS } from '@/game/data/schedule';
 import { createBrokePrompt } from '@/game/brokePrompt';
 import { machineName } from '@/game/progression';
+import type { LastGameApi } from '@/game/lastGame';
 import { objectiveFor, objectiveShown, type Objective } from '@/menu/hud/disclose';
 import { createWayfinder } from '@/menu/hud/waymark';
 import '@/menu/hud/objective.css';
@@ -416,7 +417,9 @@ function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): v
         broke: run.brokeHelp()?.steps[0]?.id ?? null,
       });
       // The wayfinder follows the objective even while the tutorial box carries the words (its own gate: Nights 1-2, or a stall).
-      wayfinder.update({ target: o.target, night });
+      // SON OYUN: once the House's machine is open the diamond points at it, whatever the Night's objective says (wave 106)
+      const lastGameOpen = (run as unknown as Partial<LastGameApi>).lastGameOpen?.() === true;
+      wayfinder.update({ target: lastGameOpen ? 'lastGame' : o.target, night });
       if (!objectiveShown(night) || boxUp()) { hide(); return; }
       const key = `${night}|${o.key}`;
       if (key !== shownKey) {

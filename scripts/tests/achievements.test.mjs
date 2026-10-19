@@ -19,9 +19,9 @@ before(async () => {
 });
 
 // ── the table ───────────────────────────────────────────────────────────────────────────────────────
-test('thirty achievements, 5 to 100 gamerscore each, 1000 in all, unique ids', () => {
-  assert.equal(A.ACHIEVEMENTS.length, 30);
-  assert.equal(new Set(A.ACHIEVEMENTS.map((a) => a.id)).size, 30);
+test('thirty-one achievements (THE LAST GAME added in wave 106), 5 to 100 gamerscore each, 1000 in all, unique ids', () => {
+  assert.equal(A.ACHIEVEMENTS.length, 31);
+  assert.equal(new Set(A.ACHIEVEMENTS.map((a) => a.id)).size, 31);
   for (const a of A.ACHIEVEMENTS) assert.ok(a.g >= 5 && a.g <= 100 && Number.isInteger(a.g), `${a.id} ${a.g}`);
   assert.equal(A.GAMERSCORE_TOTAL, 1000);
   assert.equal(A.gamerscore(A.ACHIEVEMENTS.map((a) => a.id)), 1000);
@@ -105,7 +105,7 @@ test('each ending, and nothing for a run that ended without one', () => {
   assert.deepEqual(got, []);
   for (const id of END.ENDING_IDS) emit('run:end', { summary: summary({ endingId: id }) });
   assert.deepEqual(got.sort(), END.ENDING_IDS.map((id) => `end_${id}`).sort());
-  assert.equal(A.gamerscore(got), 355, 'the nine endings are worth 355');
+  assert.equal(A.gamerscore(got), 365, 'the ten endings are worth 365 (THE LAST GAME 50, ALONE down to 10)');
 });
 
 test('Loki: catch a lie, a false accusation, and a run that never asks him', () => {

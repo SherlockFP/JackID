@@ -202,13 +202,18 @@ export function createInterHint(parent: HTMLElement): InterHint {
 }
 
 // ── intermission terminal ────────────────────────────────────────────────────────────────────────
-export interface InterOpts { redraw(): void }
+export interface InterOpts {
+  redraw(): void;
+  /** SON OYUN: the panel closes for this Topside and the player walks to the House's machine. */
+  walk(): void;
+}
 
 const SCR_W = 128, SCR_H = 96;
 const SCR_BG = 0x06161b, SCR_CYAN = 0x7ff0ff, SCR_DIM = 0x2f7f8c, SCR_HI = 0xffffff;
 
 /**
- * Topside choice (after the 8th Night paid): STAY UP (win) or GO BACK DOWN (Overdrawn). This is the only modal left:
+ * Topside choice (after the 8th Night paid, and every Overdrawn Night paid after it): THE LAST GAME (walk to the House's machine,
+ * lastGame.ts) or GO BACK DOWN (Overdrawn, more Nights to build luck). This is the only modal left:
  * the ordinary Intermission is free-roam (Pawn Window, phone, Debt Terminal levers; see `createInterHint`). The CONTINUE
  * line stays as a fallback that opens the floor or rings the Bell, but `inGameState` only mounts this panel on Topside.
  * The terminal boots open from its centre line; ENTER (or a click) picks the highlighted line.
@@ -246,7 +251,7 @@ export function buildIntermission(el: HTMLElement, run: DebtRun, o: InterOpts): 
   };
   const btns: Array<{ label: string; y: number; act(): void }> = run.topsideOpen
     ? [
-      { label: t('ingame.inter.stayUp'), y: 52, act: () => { run.stayUp(); } },
+      { label: t('story.end.last_game.name'), y: 52, act: () => { o.walk(); } },
       { label: t('ingame.inter.goBack'), y: 70, act: () => { run.goBackDown(); o.redraw(); } },
     ]
     : [{ label: t('ingame.inter.continue'), y: 62, act: cont }];

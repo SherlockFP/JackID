@@ -1,5 +1,5 @@
 /**
- * ŞANS, the luck meter (src/game/luck.ts; the HUD row in src/menu/hud.ts). Each star is a payout bonus of 1 % (`bonus`, `s` is the
+ * ŞANS, the luck meter (src/game/luck.ts; the HUD row in src/menu/hud.ts). Each star is a payout bonus of 2 % (`bonus`, `s` is the
  * sign and `n` the size). The HUD toasts `toast`, or `toastWhy` with the reason from `why.<key>` when the source event gives one.
  * Loaded by the `*.strings.ts` glob in main.ts.
  */
@@ -10,7 +10,7 @@ export default {
     'toast': 'LUCK {n}',
     'toastWhy': 'LUCK {n} · {why}',
     'bonus': 'wins {s}{n}%',
-    'tip': 'Each star adds 1 % to every win (−2 % to +5 %). Quotas, tithes, loans, heat and keepsakes move it.',
+    'tip': 'Each star adds 2 % to every win (−4 % to +10 %) and 3 % to the Last Game odds. Quotas, tithes, loans, heat and keepsakes move it.',
     'why.quota': 'quota paid',
     'why.overshoot': 'quota overshoot',
     'why.failed': 'quota missed',
@@ -26,13 +26,15 @@ export default {
     'why.frame': 'her photo on the desk',
     'why.crooked': 'caught the crooked table',
     'why.well': 'the Well',
+    'why.titheMet': 'a shift goal met',
+    'why.bigWin': 'a big win',
   },
   tr: {
     'label': 'ŞANS',
     'toast': 'ŞANS {n}',
     'toastWhy': 'ŞANS {n} · {why}',
     'bonus': 'kazanç {s}%{n}',
-    'tip': 'Her yıldız kazançlara %1 ekler (−%2 ile +%5 arası). Kota, vergi, borç, ısı ve eşyalar ŞANS’ı oynatır.',
+    'tip': 'Her yıldız kazançlara %2, Son Oyun şansına %3 ekler (kazançta −%4 ile +%10 arası). Kota, vergi, borç, ısı ve eşyalar ŞANS’ı oynatır.',
     'why.quota': 'kota ödendi',
     'why.overshoot': 'kota fazlası',
     'why.failed': 'kota tutmadı',
@@ -48,5 +50,7 @@ export default {
     'why.frame': 'masadaki fotoğraf',
     'why.crooked': 'hileli masayı yakaladın',
     'why.well': 'Kuyu',
+    'why.titheMet': 'vardiya hedefi tuttu',
+    'why.bigWin': 'büyük kazanç',
   },
 };

@@ -144,6 +144,9 @@ const RARE: CharmDef[] = [
   charm('shill_contract', 'rare', 35, 'TYCOON', 'N4', ['Shill Contract', 'Shill stake 1% → 2% of max bet; shill hires −50%'], ['Ortak Sözleşmesi', 'Ortak bahsi %1 → %2; ortak kiralama %50 ucuz'], [fx('x.tycoon.shillStake', 'set', 0.02), fx('x.tycoon.shillHireMult', 'mult', 0.5)]),
   charm('altimeter', 'rare', 40, null, 'N3', ['Altimeter', '+2% on all payouts per floor climbed'], ['Altimetre', 'Çıkılan kat başına tüm kazançlarda +%2'], []),
   charm('elevator_token', 'rare', 35, 'LEDGER', 'N2', ['Elevator Token', 'At every Ascent, gain 5% of pocket (max 300 × SI)'], ['Asansör Jetonu', 'Her yükselişte cebin %5\'i (en fazla 300 × SI)'], [fx('x.econ.onAscend', 'add', 0.05)]),
+  // Wave 106, the Last Game: two luck charms. The bead keeps the stars (luck.ts: max +1, the first loss of a Night is blocked); the token is raw odds.
+  charm('nazar_boncugu', 'rare', 45, null, 'N3', ['Nazar Boncuğu', 'Star limit +1. The first star you would lose each Night stays.'], ['Nazar Boncuğu', 'Yıldız sınırı +1. Her gece kaybedeceğin ilk yıldız gitmez.'], [fx('x.luck.max', 'add', 1), fx('x.luck.shield', 'add', 1)]),
+  charm('final_token', 'rare', 50, null, 'N5', ['Final Token', 'The Last Game odds +8 %.'], ['Son Jeton', 'Son Oyun şansı +%8.'], [fx('x.lastGame.pct', 'add', 8)]),
 ];
 
 // ── Legendary (7) ──────────────────────────────────────────────────────────────────────────────
@@ -172,7 +175,7 @@ const CURSED: CharmDef[] = [
   charm('glass_heart', 'cursed', -20, null, 'F3', ['Glass Heart', 'Luck +8; after 6 losses in a row it shatters (−25% pocket)'], ['Cam Kalp', 'Şans +8; üst üste 6 kayıptan sonra kırılır (cebin %25\'i gider)'], luckFx(8, Object.keys(CHARM_LUCK_CAP))),
 ];
 
-/** All 96 charms in GDD table order (false_bottom, rope_ladder and blank_jackid became boons, docs/BLESSINGS.md §1; votive_candle became shrine Favour). Behaviours (code) are merged in by `charms/behaviours.ts`. */
+/** All 98 charms in GDD table order (the last two rares are wave 106's) (false_bottom, rope_ladder and blank_jackid became boons, docs/BLESSINGS.md §1; votive_candle became shrine Favour). Behaviours (code) are merged in by `charms/behaviours.ts`. */
 export const CHARM_DATA: readonly CharmDef[] = [...COMMON, ...UNCOMMON, ...RARE, ...LEGENDARY, ...CURSED];
 
 /**
@@ -200,4 +203,6 @@ export const LAUNCH_CHARM_IDS: ReadonlySet<string> = new Set<string>([
   // N2 4 (+ coiled_cord), N3 9 (+ brass_knuckles, cuckoo_feather, altimeter, suit_ladder, last_gasp), N4+ all 15.
   'sun_dial', 'tote_ticket', 'long_shot', 'coiled_cord', 'brass_knuckles', 'cuckoo_feather', 'altimeter',
   'mirror_shoe', 'golden_ratchet', 'glass_funnel', 'high_rollers_cufflink', 'collectors_tag',
+  // Wave 106: the Last Game luck charms
+  'nazar_boncugu', 'final_token',
 ]);
