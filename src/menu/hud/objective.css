@@ -11,6 +11,7 @@
   font-family: var(--f-body); font-size: max(var(--fb), 18px); line-height: 1.1; color: var(--ivory);
   pointer-events: none; overflow-wrap: anywhere;
 }
+.px-tut .goal, .px-obj .goal { display: block; margin-top: calc(3 * var(--u)); font-family: var(--f-body); font-size: calc(9 * var(--u)); line-height: 1.2; color: var(--grout); }
 .px-obj .k { display: block; margin-bottom: calc(2 * var(--u)); font-family: var(--f-head); font-size: var(--fh); line-height: 1.2; color: var(--grout); }
 .px-root.seated .px-obj {
   top: calc(var(--seat-top-b, var(--hud-top-h, calc(52 * var(--u)))) + 4 * var(--u));

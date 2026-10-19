@@ -50,6 +50,7 @@ import './hud/luck.css';
 import './hud/seals.css';
 import { SOUL_MARKS_PER_RUN } from '@/game/duels/stakes';
 import { LUCK_MAX, LUCK_PAYOUT_PER_STAR } from '@/game/luck';
+import { BASE_RUN_NIGHTS } from '@/game/data/schedule';
 import type { LastGameApi } from '@/game/lastGame';
 import { nightPaid } from '@/machines/debt_terminal/night';
 import { SeatHud } from '@/machines/_base/seatHud';
@@ -925,7 +926,7 @@ export function createHud(): Hud {
     const tickSec = (phase === 'play' || lastCall) && left > 0 && left <= 10 ? Math.ceil(left) : 0;
     if (tickSec > 0 && tickSec !== clockTickSec) uiSfx('clockTick', 0.5);
     clockTickSec = tickSec;
-    setText(night, r ? t('hud.nightBare', { n: r.night() }) : '');
+    setText(night, r ? (r.night() <= BASE_RUN_NIGHTS ? t('hud.nightOf', { n: r.night(), of: BASE_RUN_NIGHTS }) : t('hud.nightBare', { n: r.night() })) : '');
     // The Night's last Watch: one toast as it starts (once per Night and Watch).
     if (bar?.last && phase === 'play' && r) {
       const key = `${r.night()}:${seg?.index}`;

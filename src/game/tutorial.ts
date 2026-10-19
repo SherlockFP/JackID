@@ -30,7 +30,7 @@ import type { UIOverlayX } from '@/core/ui/ui';
 import { holdClock, releaseClock } from '@/game/clockHold';
 import { inUnderneath } from '@/world/hollow';
 import { walkGoal } from '@/world/street';
-import { TILT_FREE_PULLS } from '@/game/data/schedule';
+import { BASE_RUN_NIGHTS, TILT_FREE_PULLS } from '@/game/data/schedule';
 import { createBrokePrompt } from '@/game/brokePrompt';
 import { machineName } from '@/game/progression';
 import type { LastGameApi } from '@/game/lastGame';
@@ -206,7 +206,10 @@ function startSteps(host: TutorialHost): Tutorial & { shown(): boolean } | null 
   const tag = document.createElement('div');
   tag.className = 'px-clock-tag';
   tag.textContent = t('tut.paused');
-  el.append(line, hint, tag);
+  const goal = document.createElement('div');   // the run's goal, from the first second (the objective box carries it once this box is gone)
+  goal.className = 'goal';
+  goal.textContent = t('tut.obj.goal', { n: BASE_RUN_NIGHTS });
+  el.append(line, hint, tag, goal);
   const hudHost = hudHostEl();
   overlayEl().appendChild(el);
   // The news feed sits under the box (ui/hud.css reads --tut-b): publish the box's bottom edge while it is on screen.
@@ -369,7 +372,10 @@ function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): v
   label.className = 'k';
   label.textContent = t('tut.obj.label');
   const text = document.createElement('span');
-  el.append(label, text);
+  const goal = document.createElement('span');   // the run's goal under the step: a newcomer knows where the Nights lead
+  goal.className = 'goal';
+  goal.textContent = t('tut.obj.goal', { n: BASE_RUN_NIGHTS });
+  el.append(label, text, goal);
   overlayEl().appendChild(el);
   const marker = createMarker(world);
   const wayfinder = createWayfinder({ world });
