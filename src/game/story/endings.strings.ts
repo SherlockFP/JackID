@@ -69,9 +69,9 @@ export default {
     // the six cards
     'alone.1': 'Daylight. The card is still in your pocket, and still warm.',
     'alone.2': "You are out. The debt isn't.",
-    'chair.1': 'The Champion takes back his memory, and everything it grew into.',
+    'chair.1': 'The House takes back what you bet, and everything it grew into.',
     'chair.2': "On the floor, the Compere's voice has never sounded better.",
-    'chair.3': 'You are in his chair now. A new guest sits down across from you.',
+    'chair.3': 'You are in the chair now. A new guest sits down across from you.',
     'paid_in_full.1': 'The second name is signed over. At Dawn, Ada is taken to the Hall.',
     'paid_in_full.2': 'Now you know.',
     'he_came_home.1': 'The voice takes your hand, and does not give it back.',
@@ -143,9 +143,9 @@ export default {
 
     'alone.1': 'Gün ışığı. Kart hâlâ cebinizde, hâlâ ılık.',
     'alone.2': 'Dışarıdasınız. Borç değil.',
-    'chair.1': 'Şampiyon hafızasını geri alıyor, onun büyüttüğü her şeyle birlikte.',
+    'chair.1': 'Kasa ortaya koyduğun her şeyi geri alıyor, büyüttüğü her şeyle birlikte.',
     'chair.2': 'Salonda Sunucu’nun sesi hiç bu kadar güzel çıkmamıştı.',
-    'chair.3': 'Artık onun sandalyesindesiniz. Karşınıza yeni bir misafir oturuyor.',
+    'chair.3': 'Artık o sandalyedesiniz. Karşınıza yeni bir misafir oturuyor.',
     'paid_in_full.1': 'İkinci ad devredildi. Şafakta Ada Hol’e götürülüyor.',
     'paid_in_full.2': 'Artık biliyorsunuz.',
     'he_came_home.1': 'Ses elinizi alıyor ve geri vermiyor.',

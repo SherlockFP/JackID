@@ -342,7 +342,7 @@ export function createHud(): Hud {
     const g = (run as Partial<DebtRun>).jokerGrin?.() ?? { frame: 3, lie: false };
     // the machine opens (Night 8 paid): one banner per run, whatever the pulls do to `lastGameOpen()` after (it is false while a result shows)
     const lg = lastGameApi(run);
-    if (lg?.lastGameOpen?.() && lastGameSeen !== run) {
+    if (lg?.lastGameOpen?.() && !(run as typeof run & { boonOffer?: () => unknown }).boonOffer?.() && lastGameSeen !== run) {   // not behind an Overdrawn Dawn's offer
       lastGameSeen = run;
       uiSfx('jackpotBells', 0.8);
       void ui().banner(t('lastGame.opened'), { color: COLORS.shine, hold: 2.2, size: 24 });

@@ -17,6 +17,14 @@ import { addTicker, h, modalPanel, uiRng, uiSfx } from '@/core/ui/widgets';
 import type { LastGameProp } from '@/world/props/lastGame';
 import type { DebtRun } from './run';
 import { LAST_GAME, type LastGameApi, type LastGameOdds, type LastGameResult } from './lastGame';
+import { bus } from '@/core/events';
+
+declare module '@/core/events' {
+  interface GameEvents {
+    /** The player left SON OYUN with nothing pending while it is still open: the Topside choice (GO BACK DOWN) comes back (inGameState). */
+    'lastgame:left': Record<string, never>;
+  }
+}
 
 const PANEL = 'lastGame';
 /** The drum faces; index 0 (the 7) is the win. */
@@ -29,6 +37,7 @@ const STOP_DUR = [0.7, 0.7, 0.9];
 const LAND_CALL_S = 0.9;
 const SPIN_SPEED = 16;   // cells per second while a reel runs
 const CONTINUE_S = 3.5;  // a win or a final loss goes on by itself after this long
+const REVEAL_LOCK_S = 1.0;  // a Space still held from the pull must not skip KAZANDIN / KAYBETTİN
 const COINS = 46;
 
 const calmOn = (): boolean => !!app?.save?.data?.settings?.calm;
@@ -64,7 +73,6 @@ export function openLastGamePanel(): void {
   const cab = (): LastGameProp | null => app.world?.prop<LastGameProp>('lastGame') ?? null;
 
   app.ui.panel(PANEL, (host) => {
-    ui.holdToasts(true);   // the seal's own toast would land on the title: news waits until the panel closes (as the boon offer does)
     let alive = true;
     let state: 'idle' | 'spin' | 'reveal' = 'idle';
     let pending: LastGameResult | null = null;   // a rolled pull whose `endLastGame()` has not run yet
@@ -120,6 +128,7 @@ export function openLastGamePanel(): void {
       for (const p of odds.parts) h('div', `lg-part${p.pct < 0 ? ' lg-neg' : ''}`, partsEl, partLine(p));
       const sum = odds.parts.reduce((s, p) => s + p.pct, 0);
       if (Math.round(sum) > odds.pct) h('div', 'lg-part lg-cap', partsEl, t('lastGame.cap', { p: pctText(odds.cap, false) }));
+      else if (Math.round(sum) < odds.pct) h('div', 'lg-part lg-cap', partsEl, t('lastGame.floor', { p: pctText(odds.pct, false) }));
       const left = seals(run);
       costEl.textContent = left === undefined ? '' : left <= 1 ? t('lastGame.costLast') : t('lastGame.cost', { n: left });
       costEl.classList.toggle('lg-last', left !== undefined && left <= 1);
@@ -204,7 +213,7 @@ export function openLastGamePanel(): void {
       app.ui.closePanel(PANEL);
     };
 
-    pullBtn.addEventListener('click', () => { if (state === 'reveal' && pending) proceed(); else pull(); });
+    pullBtn.addEventListener('click', () => { if (state === 'reveal' && pending) { if (revealT >= REVEAL_LOCK_S) proceed(); } else pull(); });
     leaveBtn.addEventListener('click', () => { if (state === 'idle') leave(); });
     for (const b of [pullBtn, leaveBtn]) b.addEventListener('mouseenter', () => uiSfx('hover', 0.5));
 
@@ -217,19 +226,23 @@ export function openLastGamePanel(): void {
       e.stopImmediatePropagation();
       if (e.repeat) return;
       if (e.code === 'Escape') { if (state === 'idle') leave(); return; }
-      if (state === 'reveal' && pending) proceed(); else pull();
+      if (state === 'reveal' && pending) { if (revealT >= REVEAL_LOCK_S) proceed(); } else pull();
     };
-    window.addEventListener('keydown', onKey, true);
 
     drawInfo();
     rest();
     resEl.hidden = true;
     setButtons('ask');
     uiSfx('popUp', 0.5);
+    // registered once the panel is built: a throw above leaves no key trap and no held toasts behind
+    window.addEventListener('keydown', onKey, true);
+    ui.holdToasts(true);
+    let idleT = 0;
 
     addTicker((dt) => {
       if (!alive) return false;
       if (run.over && state !== 'reveal') { app.ui.closePanel(PANEL); return false; }   // the run ended under the panel
+      if (state === 'idle' && (idleT += dt) >= 0.5) { idleT = 0; drawInfo(); }
       if (state === 'spin') {
         t0 += dt;
         if (!landed && t0 >= LAND_CALL_S * speed) { landed = true; cab()?.land(pending?.win ?? false); }
@@ -270,6 +283,7 @@ export function openLastGamePanel(): void {
       window.removeEventListener('keydown', onKey, true);
       // a pull that was rolled must be resolved, whatever closed the panel (Esc is ignored mid-spin, but a run end or a replaced panel is not)
       if (pending && !run.over) { pending = null; try { run.endLastGame(); } catch { /* the run was already over */ } }
+      else if (!run.over && run.lastGameOpen()) bus.emit('lastgame:left', {});
     };
   });
 }

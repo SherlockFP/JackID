@@ -350,6 +350,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
         openSettingsScreen({ focus: 'keys' });
       }));
       offs.push(bus.on('run:end', ({ summary }) => { reportSeized(summary); endRun(summary); }));
+      offs.push(bus.on('lastgame:left', () => { walkKey = ''; }));   // walked away from SON OYUN: the Topside choice (and GO BACK DOWN) comes back
       offs.push(app.input.on('pause', (down) => {
         if (!session || ending) return;
         if (!down) {
