@@ -23,6 +23,7 @@ export default {
     'prologue.keys': 'Your keys. Don\'t lose them again.',
     // THE WALK HOME (world/street)
     'walk.home': 'Walk home. Your block is down the street.',
+    'walk.door': 'Your door is 8.',
     'walk.out': 'Walk to the casino.',
   },
   tr: {
@@ -43,6 +44,7 @@ export default {
     'prologue.notYet': 'Henüz değil. Önce kumarhane.',
     'prologue.keys': 'Anahtarların. Yine kaybetme.',
     'walk.home': 'Eve yürü. Apartman sokağın aşağısında.',
+    'walk.door': 'Kapın 8 numara.',
     'walk.out': 'Kumarhaneye yürü.',
   },
 };

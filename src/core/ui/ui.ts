@@ -332,8 +332,10 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     rec.shown = false;
     clearTimeout(rec.timer);
     const el = rec.el;
+    // a quick take-off (dismissToasts, a warning taking the slot) leaves at once: a fading ghost would stay in the column and push its replacement down
+    if (quick) { el.remove(); return true; }
     const a = el.animate([{ transform: 'translateX(0)', opacity: 1 }, { transform: `translateX(${40 * px}px)`, opacity: 0 }],
-      { duration: quick ? 90 : 220, easing: 'ease-in', fill: 'forwards' });
+      { duration: 220, easing: 'ease-in', fill: 'forwards' });
     a.onfinish = () => el.remove();
     setTimeout(() => el.remove(), 400);
     return true;

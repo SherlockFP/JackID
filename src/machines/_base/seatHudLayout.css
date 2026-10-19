@@ -101,7 +101,7 @@
    leave landed on the quota and goal strip. The column takes the same shift, and its text drops to HUD size so a two-line
    explainer stays small. `body` lifts the specificity over ui.css, whatever the bundle order. */
 body .px-root.seated .px-toasts { transform: translateY(calc(var(--lb, 0) * var(--bar-h, 0px))); }
-body .px-root.seated .px-toast { font-size: max(14px, calc(var(--u) * 11)); }
+body .px-root.seated .px-toast { font-size: max(13px, calc(var(--u) * 9)); }
 
 /* A duel overlay is open (Promise / Burning Wager, game/duels/promise: .pm-table): its own buttons own keys 1 to 3, so the seated machine's
    key bar, big button and coach line step aside (the same pattern as the .cap-hint rule in promise.css). They return when the panel closes. */

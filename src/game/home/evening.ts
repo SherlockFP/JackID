@@ -22,9 +22,10 @@ import { fmtCoins, registerStrings, t } from '@/core/i18n';
 import { hashSeed } from '@/core/rng';
 import type { Unsub, V3 } from '@/core/types';
 import type { UIOverlayX } from '@/core/ui/ui';
+import { subtitles } from '@/core/ui/subtitles';
 import { h } from '@/core/ui/widgets';
 import { setDoorOut, shakeDoor as worldShakeDoor, showVisitor } from '@/world/home';
-import { setWalk, STREET_ANCHORS, TAXI_NIGHT, walkCue, type WalkLeg } from '@/world/street';
+import { setWalk, STREET_ANCHORS, TAXI_NIGHT, walkCue, walkWaypoint, type WalkLeg } from '@/world/street';
 import type { WorldHost } from '@/world/world';
 import type { ElevatorProp } from '@/world/types';
 import type { LocalPlayerHost } from '@/player/local';
@@ -143,7 +144,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
    */
   let pro: 'start' | 'talk' | 'walk' | 'lift' | 'done' = run.prologueOn() ? 'start' : 'done';
   /** THE WALK (world/street): the leg under way; `past` = home: the key has turned (the Evening runs), out: the door is behind. */
-  let walk: { leg: WalkLeg; past: boolean; doorOpen: boolean } | null = null;
+  let walk: { leg: WalkLeg; past: boolean; doorOpen: boolean; inside?: boolean } | null = null;
   /** The lift down from the casino's street door (the prologue, the morning): its clock and beats, then what comes after. */
   let lift: { t: number; ding: boolean; tp: boolean; fadeIn: boolean; out: boolean; exit: boolean; fadeIn2: boolean; done: () => void } | null = null;
   let objectiveT = 0;
@@ -318,6 +319,13 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     const cue = walkCue(walk.leg, player.pos.x - HOME_ORIGIN[0], player.pos.z - HOME_ORIGIN[2]);
     if (walk.leg === 'home') {
       if (run.homeStage() !== 'evening') return;   // the ride is still fading in
+      // the tip follows the player: the block is down the street, once in the corridor the door is the one numbered 8
+      const inside = walkWaypoint('home', player.pos.x, player.pos.z) === 'flatDoor';
+      if (inside !== !!walk.inside) {
+        walk.inside = inside;
+        ui().dismissToasts();
+        ui().toast(t(inside ? 'evening.walk.door' : 'evening.walk.home'), 'sys', 6);
+      }
       if (cue === 'door' && !walk.past) reachHome(true);
       else if (cue === 'in') {
         if (!walk.past) reachHome(false);
@@ -801,6 +809,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     sfx('doorOpen', { vol: 0.7 });
     wantLock = true;
     ui().dismissToasts();
+    subtitles.clear('story');   // the apartment's lines (the morning dream) stay in the apartment; Loki's lift line is ambient and stays
     fadeTo(1, T.dark);
   };
   const tickLift = (dt: number): void => {

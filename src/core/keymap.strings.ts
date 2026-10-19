@@ -33,7 +33,7 @@ const strings = {
     'action.m.n5': 'Button 5', 'action.m.n6': 'Button 6', 'action.m.n7': 'Button 7', 'action.m.n8': 'Button 8',
     'action.m.n9': 'Button 9',
     // controls lane
-    'ctl.capture': 'CLICK TO CAPTURE MOUSE',
+    'ctl.capture': 'CLICK TO PLAY',
     'ctl.standAfterRound': 'Standing up after this round',
   },
   tr: {
@@ -66,7 +66,7 @@ const strings = {
     'action.m.n5': 'Düğme 5', 'action.m.n6': 'Düğme 6', 'action.m.n7': 'Düğme 7', 'action.m.n8': 'Düğme 8',
     'action.m.n9': 'Düğme 9',
     // controls lane
-    'ctl.capture': 'FAREYİ YAKALAMAK İÇİN TIKLA',
+    'ctl.capture': 'OYNAMAK İÇİN TIKLA',
     'ctl.standAfterRound': 'Bu turdan sonra kalkacaksın',
   },
 };
