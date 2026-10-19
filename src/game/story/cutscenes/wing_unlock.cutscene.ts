@@ -7,8 +7,8 @@ const def: CutsceneDef = {
   duration: 9,
   tracks: [
     { kind: 'camera', keys: [
-      { t: 0, pos: [-6, 1.6, -14], look: { anchor: 'mgmt.door' }, fov: 64, cut: true },
-      { t: 5, pos: [-4, 1.6, -18], look: { anchor: 'parlour.curtain' }, fov: 58, ease: 'inOutQuad' },
+      { t: 0, pos: [-3, 1.6, 17.5], look: { anchor: 'mgmt.door', offset: [0, 1.2, 0] }, fov: 64, cut: true },
+      { t: 5, pos: [3, 1.6, 17.5], look: { anchor: 'parlour.curtain', offset: [0, 1.2, 0] }, fov: 58, ease: 'inOutQuad' },
     ] },
     { kind: 'subtitle', cues: [
       { t: 1.0, dur: 2.8, key: 'story.wing.1', speaker: 'story.speaker.pa', voice: 'house', mood: 'calm' },

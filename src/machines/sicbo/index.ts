@@ -95,7 +95,7 @@ export default class SicBo extends TableBase<SicBoParts, Ev, Snap, Act> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.ruleLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -456,7 +456,6 @@ export default class SicBo extends TableBase<SicBoParts, Ev, Snap, Act> {
       this.sfx('chime', { vol: 0.5 });
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('sicbo', this.tipLines());
     }
   }
   onRelease(_pid: PlayerId, seat: number, local: boolean): void {
@@ -563,14 +562,6 @@ export default class SicBo extends TableBase<SicBoParts, Ev, Snap, Act> {
 
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.sicbo.hTip1', v: { up: this.k('betUp'), down: this.k('betDown') } },
-      { k: 'm.sicbo.hTip2', v: { ready: this.k('confirm') } },
-      { k: 'm.sicbo.hTip3', v: { help: this.k('help') } },
-    ];
-  }
 
   private ruleLines(): Txt[] {
     return [

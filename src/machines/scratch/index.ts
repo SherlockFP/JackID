@@ -192,7 +192,6 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
     if (local) {
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip(this.def.id, this.tipLines());
     }
   }
 
@@ -227,7 +226,7 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     const isQty = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isQty) return;
     switch (a) {
@@ -820,13 +819,6 @@ export default class ScratchVendor extends MachineBase<ScratchParts, Ev, State> 
   private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.${this.def.id}.${key}`, v } : { k: `m.${this.def.id}.${key}` }; }
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-  private tipLines(): Txt[] {
-    return [
-      this.tx('tip1', { pick: `${this.k('n1')}-${this.k('n5')}`, vend: this.k('primary') }),
-      this.tx('tip2', { pick: this.k('primary') }),
-      this.tx('tip3', { sweep: this.k('primary'), help: this.k('help') }),
-    ];
-  }
   /** Rules card: the static rules, then the top prize of the selected card. */
   private rulesLines(): Txt[] {
     const sel = this.state.sel;

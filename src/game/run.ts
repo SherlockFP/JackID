@@ -40,7 +40,7 @@ import {
   type CircuitSave, type CircuitView, type LampCandidate, type LampView, type TiltView,
 } from './circuit';
 import {
-  PAYOUT_GUARD, RESCUE_MAX_PER_NIGHT, STAKE_CONFIRM_SEC, bettingLadder, charmPrice, houseFloatTopUp, night1StakeCap, settlePayout, snapDown,
+  PAYOUT_GUARD, RESCUE_MAX_PER_NIGHT, STAKE_CONFIRM_SEC, bettingLadder, charmPrice, holdAtOpen, houseFloatTopUp, night1StakeCap, settlePayout, snapDown,
   stakeNeedsConfirm, type PayoutResult, type RescueLoan,
 } from './economy';
 import { clearClockHolds, clockHeld, holdClock, releaseClock, tickClockHold } from './clockHold';
@@ -102,7 +102,8 @@ import { Spotlight, isSpotlightEligible, spotlightStartLine, type SpotlightSave,
 import { WatchEvents, type WatchEventSave } from './watchEvents';
 import { Joker, type JokerEvent, shownFrame, grinFrame } from './joker/joker';
 import type { WhisperCtx } from './joker/whispers';
-import { sheetFromOutcome, sheetFromTells, type CallResult, type CrookedTell } from './events/crookedTable';
+import { HABIT_AFTER, sheetFromOutcome, sheetFromTells, type CallResult, type CrookedTell } from './events/crookedTable';
+import { Bonds, bondOfRival, type BondChange, type BondEvent, type BondsSave } from './bonds';
 import type { FloorAward, WatchFloor } from './events/types';
 import type { EventBannerShow } from './buffs/banner';
 import { createHomeEconomy, type EconSave, type HomeEconomy } from './economy/homeEconomy';
@@ -257,6 +258,8 @@ declare module '@/core/events' {
 const SETTLE_SEC = 1.5;
 /** Dawn Collection length (GDD §2.7). */
 const COLLECTION_SEC = 12;
+/** Seconds a short Dawn waits for the player to answer Selim's last-seal question (`selim:ask`) before it reads as no. */
+const SELIM_ASK_SEC = 20;
 /**
  * The Home stages in sim seconds (docs/WAVE69_HOME.md). The run owns the clock of every stage, so a headless run walks the whole
  * Evening on its own; the controller (src/game/home/evening.ts) reads the same numbers to time its fades, sounds and teleports.
@@ -316,6 +319,8 @@ declare module '@/core/events' {
     'night:begin': { night: number };
     /** LOKI dares you (once a Night, at a seat): the voice asks, and the answer comes back through `jokerDare`. */
     'joker:dare': { night: number };
+    /** BONDS: a short Dawn and Selim has one seal left: the bar asks the player, the answer goes to `selimAnswer`. */
+    'selim:ask': { night: number };
   }
 }
 /** One of the biggest wins of the run (the jackpot wall reads the four largest): the machine kind and the credited coins. */
@@ -428,6 +433,8 @@ export interface RunExt {
   ghost?: GhostSave;
   /** THE SECOND NAME (wave 73): the chapter record (title cards, arcs, reveal, deal). Optional: older saves have none. */
   chapter?: ChapterRecord;
+  /** BONDS (docs/STORY_BIBLE.md §10): the 0..3 bonds, Selim's loans, the once-a-run perks spent. Optional: older saves have none. */
+  bonds?: BondsSave;
   /** Deposits made this Watch (every one keeps the float). Optional: older saves have none. */
   watchDep?: number;
   /** The Watch's float, fixed when it was first read. Optional: older saves recompute it. */
@@ -523,6 +530,8 @@ export interface RunWorldLink {
 export interface DebtRun extends RunApi {
   /** True from Dawn paying the Night until OPEN THE FLOOR. */
   readonly nightPaid: boolean;
+  /** True from a sealed Dawn (a short quota paid with a name seal) until OPEN THE FLOOR: it counts as paid for flow, but must read SEALED. */
+  readonly nightSealed: boolean;
   /** The Night summary's books (float, interest, tickets) for the Night in progress. */
   nightLedger(): Readonly<NightLedger>;
   /** The Dawn receipt of the last paid Night (a copy), or null before the first paid Dawn. Taken in `dawn()`, before the reset. */
@@ -605,6 +614,14 @@ export interface DebtRun extends RunApi {
   keepsakeFreeTonight(): boolean;
   /** THE GHOST SEAT (wave 75): the copy's seat tonight (machine kind, seat, pools, stars), or null. */
   ghostSeatInfo(): GhostSeatInfo | null;
+  /** BONDS (§10): the friends' book (levels, unlocks, greetings, Selim's loans). Read it; move it only through `bond`. */
+  bonds(): Bonds;
+  /** BONDS: one event in tonight's printed Night: the toasts, the `bond:change` events and the save. */
+  bond(ev: BondEvent): BondChange;
+  /** The Hot Lamp the next Bell will roll (the hotline's lamp deal and Selim's tip), or null. */
+  nextHot(): { mid: string; machineId: string } | null;
+  /** Selim's last seal at a short Dawn: the player's answer to `selim:ask` (no answer in time reads as no). */
+  selimAnswer(yes: boolean): void;
   /** THE GRAND CASINO (wave 75): the four biggest wins of this run, largest first. */
   grandWins(): readonly GrandWin[];
   /**
@@ -879,6 +896,7 @@ class Run implements DebtRun {
   private phaseLeft = 0;
   private nightDone = false;
   get nightPaid(): boolean { return this.nightDone; }
+  get nightSealed(): boolean { return this.nightDone && !!this.dawnBook?.memory; }
   private topside = false;
   private metFired = false;
   private skipRest = 0;
@@ -968,6 +986,11 @@ class Run implements DebtRun {
   private readonly ghostSeat: GhostSeat = createGhostSeat();
   /** THE SECOND NAME (wave 73): the chapter record, saved in `resume.ext.chapter`. */
   private chapterRec: ChapterRecord = freshChapter();
+  /** BONDS (§10): pure rules in bonds.ts, saved in `resume.ext.bonds`; every move goes through `bond()`. */
+  private readonly bondBook: Bonds;
+  /** Selim's last seal waits on the player at a short Dawn ('ask'), then carries the answer into the re-run `dawn()`. */
+  private selimAsk: 'ask' | 'yes' | 'no' | null = null;
+  private selimAskLeft = 0;
   /** THE PROLOGUE (wave 72): true from a fresh start until the lift lands on the floor. Not saved (a resume skips it). */
   private prologue = false;
 
@@ -1086,8 +1109,6 @@ class Run implements DebtRun {
       collect: (_q, out) => {
         if (!this.rules.quota || !this.inWatch()) return;
         const effs: ModEffect[] = [];
-        const favour = nightDef(this.index).favour;
-        if (favour !== 1) effs.push({ hook: 'payout.mult', op: 'mult', value: favour });
         if (isWitchingWatch(this.watches, this.watch)) {
           effs.push({ hook: 'payout.mult', op: 'inc', value: 0.05 });
           effs.push({ hook: 'dread.add', op: 'add', value: 10 });
@@ -1095,7 +1116,7 @@ class Run implements DebtRun {
         if (effs.length) out.push({ kind: 'house', id: `night:${this.index + 1}`, owner: 0, effects: effs });
       },
     });
-    // HOUSE MOOD (wave 46): the Night's payout mood on every floor machine, in the same quota Watches as House Favour.
+    // HOUSE MOOD (wave 46): the Night's payout mood on every floor machine, in the same quota Watches as the house provider above.
     this.modsImpl.register(houseMoodProvider({ index: () => this.index, active: () => this.rules.quota && this.inWatch() }));
 
     this.circuit = this.makeCircuitView();
@@ -1112,6 +1133,7 @@ class Run implements DebtRun {
     this.pantheon = new Pantheon(this.seed, () => { this.modsImpl.touch(); this.luckMeter?.retune(); });
     this.jokerSys = new Joker(this.seed);
     this.jokerSys.beginNight(1);
+    this.bondBook = new Bonds(this.seed);
     this.modsImpl.register(this.pantheon);
     this.spotlight = new Spotlight(this.seed, () => this.modsImpl.touch());
     this.modsImpl.register(this.spotlight);
@@ -1195,20 +1217,8 @@ class Run implements DebtRun {
         hollowCanRing: () => this.hollowCanRing(),
         hollowRing: () => this.hollowRing(),
         hollowAnswer: (c) => this.hollowAnswer(c),
-        previewNextHot: () => {
-          if (!this.quotaMode) return null;
-          const last = this.watch + 1 >= this.watches;
-          const idx = last ? this.index + 1 : this.index;
-          const wt = last ? 0 : this.watch + 1;
-          if (idx + 1 < LAMP_FIRST_NIGHT) return null;
-          const hot = rollLamps(createRng(hashSeed('lamps', this.seed, idx, wt)), this.lampCandidates(), {
-            hot: Math.max(0, hotLampCount(idx + 1) + Math.round(this.mod('x.lamp.hotCount', RUN_MACHINE, 0))),
-            cold: 0,
-            prevHot: this.circ.hot(),
-          }).hot[0];
-          const c = hot === undefined ? undefined : this.lampCandidates().find((m) => m.mid === hot);
-          return c ? { mid: c.mid, machineId: c.machineId } : null;
-        },
+        previewNextHot: () => this.nextHot(),
+        bondHas: (id) => this.bondBook.has(id),
       },
     });
     this.rescue = createRescue({
@@ -1248,6 +1258,8 @@ class Run implements DebtRun {
       }),
       // LOKI talks through the window glass at home (never the phone, never the kitchen before Ink 8: J4)
       bus.on('home:interact', ({ station }) => { if (station === 'window') this.jokerTip('window', `window:${this.index}`); }),
+      // BONDS: picking up Mira's wrong number is showing up: it raises her bond once a Night (a 'talk' never would, and her N7 call needs bond 2)
+      bus.on('phone:story', ({ id }) => { if (id.startsWith('mira')) this.bond({ kind: 'show', who: 'mira' }); }),
       bus.on('machine:result', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:result', p); }),
       bus.on('machine:round', (p) => { if (p.pid === this.selfId) { this.advanceContracts('machine:round', p); this.boilerRound(p.machineId); } }),
       bus.on('room:opened', () => { this.modsImpl.touch(); this.persistSoon(); this.notify(); }),
@@ -1280,6 +1292,8 @@ class Run implements DebtRun {
       this.enter(this.rules.timed ? 'intermission' : 'play', 0);
       this.applyStartKit();
       this.applyMetaStart();
+      // Night 1 opens with what the kit and the Foundations gave: the House notice floors its quota on it (a rich start raises the quota, never pays it)
+      if (this.quotaMode) { this.houseWealth = this.coins + this.debtPaid; this.recomputeQuota(); this.persist(); }
     }
     this.prepareBoss();
   }
@@ -1618,6 +1632,40 @@ class Run implements DebtRun {
   /** The copy's seat for this Night (the machine kind, the seat, the pools), or null. */
   ghostSeatInfo(): ReturnType<GhostSeat['seat']> { return this.ghostSeat.seat(); }
 
+  bonds(): Bonds { return this.bondBook; }
+  bond(ev: BondEvent): BondChange {
+    const night = this.night();
+    const ch = this.bondBook.apply(night, ev);
+    for (const d of ch.deltas) {
+      bus.emit('bond:change', { who: d.who, from: d.from, to: d.to, why: d.why, night });
+      bus.emit('floor:note', { text: t(d.line), tone: d.to > d.from ? 'good' : 'bad' });
+    }
+    if (ch.line) bus.emit('floor:note', { text: t(ch.line, { thing: t(`bonds.selim.thing.${ch.thing ?? 0}`) }), tone: 'info' });
+    if (ch.deltas.length > 0 || ch.line) this.persist();
+    return ch;
+  }
+
+  nextHot(): { mid: string; machineId: string } | null {
+    if (!this.quotaMode) return null;
+    const last = this.watch + 1 >= this.watches;
+    const idx = last ? this.index + 1 : this.index;
+    const wt = last ? 0 : this.watch + 1;
+    if (idx + 1 < LAMP_FIRST_NIGHT) return null;
+    const hot = rollLamps(createRng(hashSeed('lamps', this.seed, idx, wt)), this.lampCandidates(), {
+      hot: Math.max(0, hotLampCount(idx + 1) + Math.round(this.mod('x.lamp.hotCount', RUN_MACHINE, 0))),
+      cold: 0,
+      prevHot: this.circ.hot(),
+    }).hot[0];
+    const c = hot === undefined ? undefined : this.lampCandidates().find((m) => m.mid === hot);
+    return c ? { mid: c.mid, machineId: c.machineId } : null;
+  }
+
+  selimAnswer(yes: boolean): void {
+    if (this.selimAsk !== 'ask' || this.ended) return;
+    this.selimAsk = yes ? 'yes' : 'no';
+    this.dawn();
+  }
+
   // ── THE GRAND CASINO (wave 75): the four biggest wins, shown on the jackpot wall ───────────────────
   grandWins(): readonly GrandWin[] { return this.grandWinList; }
   private noteGrandWin(machineId: MachineId, amount: number): void {
@@ -1696,6 +1744,8 @@ class Run implements DebtRun {
         bus.emit('crooked:sheet', l);
       }
     } else if (this.crookedSheetSent.size > 0) this.crookedSheetSent.clear();
+    // BONDS: Tamsin's tables open (showing up for her floor event)
+    if (view && this.crookedSheetSent.size === 0) this.bond({ kind: 'show', who: 'tamsin' });
     const P = 'event.watch.crooked_table.';
     for (const o of this.watchEv.takeCrooked()) {
       for (const l of sheetFromOutcome(o)) bus.emit('crooked:sheet', l);
@@ -1704,6 +1754,8 @@ class Run implements DebtRun {
         bus.emit('floor:note', { text: t(P + 'note.heatUp'), tone: 'bad' });
       } else if (o.kind === 'expired') {
         bus.emit('floor:note', { text: t(P + 'note.expired'), tone: 'info' });
+        // a cheat you could not prove, left uncalled, is Tamsin defended (bonds §10)
+        if (o.rigPlays < HABIT_AFTER) this.bond({ kind: 'defend', who: 'tamsin' });
       } else {
         this.crookedCall(o);
       }
@@ -1720,6 +1772,7 @@ class Run implements DebtRun {
       const fine = Math.min(o.fine, Math.floor(this.coins));
       if (fine > 0) this.spend('coin', fine, 'crooked.fine');
       bus.emit('floor:note', { text: t(P + 'note.wrong', { t: tn, fine }), tone: 'bad' });
+      this.bond({ kind: 'betray', who: 'tamsin' });   // a false accusation at her tables
     }
     hooksOf(this.hPhone)?.heat(o.heat, 'crooked');
     bus.emit('floor:say', { text: t(P + (o.right ? 'clerk.right' : 'clerk.wrong')), speaker: t(P + 'clerk.speaker'), voice: 'clerk', source: 'crooked.clerk' });
@@ -1960,6 +2013,11 @@ class Run implements DebtRun {
         break;
       case 'collection':
         if (this.hStage === 'doomed') break;   // a missed quota: the doom walks on its own clock (tickHome)
+        if (this.selimAsk === 'ask') {        // Selim's last seal: the Dawn waits on the answer, and silence is a no
+          this.selimAskLeft -= dt;
+          if (this.selimAskLeft <= 0) this.selimAnswer(false);
+          break;
+        }
         this.phaseLeft -= dt;
         if (this.phaseLeft <= 0) this.dawn();
         break;
@@ -2038,6 +2096,8 @@ class Run implements DebtRun {
     }
     this.index += 1;
     this.jokerSys.beginNight(this.index + 1);
+    // BONDS: a betrayed Collector leans a little harder every Night
+    if (this.bondBook.against().includes('collector')) hooksOf(this.hPhone)?.heat(1, 'grudge');
     // THE HOME COMPUTER (wave 77): the Evening's limits reset, and the framed photo gives its ŞANS star
     this.homeEcon?.newNight(this.index + 1);
     // THE KEEPSAKE STAKE and THE GHOST SEAT (wave 75): a new Night drops a waiting stake; the copy sits where last Night's losses were
@@ -2594,12 +2654,31 @@ class Run implements DebtRun {
     }
     // THE NAME SEALS (docs/BLESSINGS.md §1): a short Dawn with 2+ seals costs one seal, not the run. The last seal never pays a miss, and
     // neither does the last Night (a miss must not walk the card out of the door).
+    // SELIM (bonds §10): at bond 2+ a seal of his name covers a short quota first. His last seal asks (it makes him still).
+    if (!paid && !this.topside && this.bondBook.has('selim.cover') && this.bondBook.selim().seals > 0) {
+      if (this.bondBook.selim().seals === 1 && this.selimAsk === null) {
+        this.selimAsk = 'ask';
+        this.selimAskLeft = SELIM_ASK_SEC;
+        bus.emit('selim:ask', { night: this.night() });
+        return;   // tick holds the Dawn; selimAnswer runs it again
+      }
+      const ok = this.selimAsk !== 'no' && !this.bond({ kind: 'lend', coins: Math.ceil(due - this.debtPaid) }).refused;
+      if (ok) { this.debtPaid = due; paid = true; }
+    }
+    this.selimAsk = null;
     const sealed = !paid && this.soulMarkCount >= 2 && !this.topside && nightDef(this.index).no < BASE_RUN_NIGHTS;
     if (!paid && !sealed) {
-      // THE EVENING: a solo Home-layer run takes the ride home first (the Collector's men are at the door); the trapdoor is for the rest
-      if (this.homeOn) { this.startDoomed(); return; }
-      this.fall();
-      return;
+      if (this.bondBook.useOnce('collector.visit')) {
+        // THE VISIT (Collector at bond 3): once a run he holds the door, and the miss is written off for one more Dawn
+        bus.emit('floor:note', { text: t('bonds.collector.visit'), tone: 'good' });
+        this.debtPaid = due;
+        paid = true;
+      } else {
+        // THE EVENING: a solo Home-layer run takes the ride home first (the Collector's men are at the door); the trapdoor is for the rest
+        if (this.homeOn) { this.startDoomed(); return; }
+        this.fall();
+        return;
+      }
     }
     const memory = sealed ? this.takeSeal() : undefined;
     this.jokerOut(this.jokerSys.dawn());   // after the Dawn checks (J4 settles his promise here first)
@@ -2612,10 +2691,10 @@ class Run implements DebtRun {
       interest: interestAtDawn, tithe: Math.max(0, Math.floor(this.tithe.addedQuota())),
       ...(memory ? { memory, seals: this.soulMarkCount } : {}),
     };
-    // HOUSE TAKES NOTICE (wave 47): the wealth of this Dawn (pocket + bank, before the surplus returns) floors the next quota.
-    // THE HOME COMPUTER (wave 77): the House notices the ventures too (their sell value), so they are no hiding place for coins
-    const wealth = this.coins + this.debtPaid + (this.homeEcon?.worth() ?? 0);
-    this.houseWealth = wealth;
+    // After the receipt is booked: a `quota:sealed` listener (the sealed receipt panel) reads `dawnReceipt()` while it is emitted.
+    if (memory) this.emit('quota:sealed', { index: this.index, left: this.soulMarkCount, memory });
+    // HOUSE TAKES NOTICE (wave 47, every Night since wave 85): what the next Night will open with floors its quota, so no hold pays it.
+    this.houseWealth = this.holdNext(due);
 
     // The tiers read the overpay principal (decision D1), and a broken seal forfeits them all for the Night (decision D2).
     const ratio = due > 0 ? this.principalNow() / due : 1;
@@ -2645,6 +2724,7 @@ class Run implements DebtRun {
     this.stats.nightsPaid = (this.stats.nightsPaid ?? 0) + 1;
     this.syncQuota();
     this.nightDone = true;
+    this.bond({ kind: 'dawn' });   // neglect, and Selim's unpaid loans come due. shortcut: the Night 8 call before the Burning Wager waits for A5
     if (nightDef(this.index).no === BASE_RUN_NIGHTS) this.topside = true;
     this.spotlight.end();   // Machine of the Night: the Night is over, the spotlight and its x1.25 end
     // THE PANTHEON: every paid Dawn with a Night after it (from Night 1 on) opens the boon offer. A sealed Dawn has none.
@@ -2656,6 +2736,14 @@ class Run implements DebtRun {
     this.enter('intermission', 0);
     this.emit('quota:update', { quota: this.quota });
     this.persist();
+  }
+
+  /**
+   * What the next Night opens with, as the House notice reads it: the pocket plus this Dawn's surplus, at least the House float.
+   * THE HOME COMPUTER (wave 77): the House notices the ventures too (their sell value), so they are no hiding place for coins.
+   */
+  private holdNext(due: number): number {
+    return holdAtOpen(this.index + 1, this.coins + Math.max(0, this.debtPaid - due)) + (this.homeEcon?.worth() ?? 0);
   }
 
   /** THE OWNERS (docs/BLESSINGS.md §4): Night 2's first Mola, at the bar, Selim and Loki name the gods. Subtitles only. */
@@ -2695,12 +2783,11 @@ class Run implements DebtRun {
     if (ids && ids.length > 0) this.boonsTaken(ids, 'auto');
   }
 
-  /** A short Dawn takes one name seal and the memory with it. The HUD cracks the seal on `quota:sealed`; the Dawn receipt prints the line. */
+  /** A short Dawn takes one name seal and the memory with it. `dawn()` then emits `quota:sealed` (the HUD cracks the seal) once the receipt prints the line. */
   private takeSeal(): string {
     this.soulMarkCount -= 1;
     const memory = this.forget();
     this.marksChanged(false);
-    this.emit('quota:sealed', { index: this.index, left: this.soulMarkCount, memory });
     return memory;
   }
 
@@ -3030,7 +3117,7 @@ class Run implements DebtRun {
     let discount = this.nextDiscount;
     let wealth = this.houseWealth;
     if (dawnNow) {
-      wealth = this.coins + this.debtPaid;
+      wealth = this.holdNext(this.quota.due);
       const ratio = this.quota.due > 0 ? this.principalNow() / this.quota.due : 1;
       for (const tier of OVERSHOOT_TIERS) {
         if (!this.sealBroken && ratio >= tier.ratio && !this.quota.claimed.some((c) => c.id === tier.id)) discount += tier.reward.nextQuotaDiscount ?? 0;
@@ -3659,8 +3746,15 @@ class Run implements DebtRun {
 
   /** A duel opens (first sitting of the Night): the rival's intro scene, with the Rival's Terms on a boss Night. */
   private duelStarting(e: { rivalId: string; night: number; boss: boolean }): Promise<void> | void {
+    const who = bondOfRival(e.rivalId);
+    if (who) this.bond({ kind: 'show', who });
+    // Lucan at bond 2 says the kept-pair line once, at a later sitting
+    const pair = e.rivalId === 'lucan' && this.bondBook.useOnce('lucan.pair');
     // LOKI reads the rival once the intro is off screen (he only knows the hands he sat across: Lucan's watch, Orrin's card)
-    const tip = (): void => this.jokerTip('duel', `duel:${e.rivalId}`, e.rivalId === 'lucan' ? 'watch' : e.rivalId === 'orrin' ? 'card' : '-');
+    const tip = (): void => {
+      if (pair) bus.emit('floor:say', { text: t('story.duel.rival.lucan.hint.pair'), speaker: t('story.duel.rival.lucan.name'), voice: 'dealer', source: 'bonds.lucan.pair' });
+      this.jokerTip('duel', `duel:${e.rivalId}`, e.rivalId === 'lucan' ? 'watch' : e.rivalId === 'orrin' ? 'card' : '-');
+    };
     if (!rivalById(e.rivalId as RivalId)) { tip(); return; }
     return playDuelScene(e.rivalId as RivalId, 'intro', this.seed, e.night).finally(tip);
   }
@@ -3668,6 +3762,11 @@ class Run implements DebtRun {
   /** A duel is settled: boss rewards, the Audit tax, then the rival's closing scene once the reveal is off screen. */
   private duelEnded(r: DuelEndReport): void {
     const rival = rivalById(r.rivalId as RivalId);
+    const who = bondOfRival(r.rivalId);
+    // shortcut: every win reads clean (DuelEndReport has no Loki-hand flag until the takeover, docs/JOKER.md J3); send 'loki' for those then
+    if (who && r.won) this.bond({ kind: 'clean', who });
+    // a wrong call (Lucan's MIRROR, the Collector's MARKED DECK, any table) is a false accusation
+    if (who && r.calledCorrect === false) this.bond({ kind: 'betray', who });
     if (r.boss && r.won && this.bossDuelNight !== r.night) {
       this.bossDuelNight = r.night;
       this.wingKeys += 1;
@@ -3780,6 +3879,7 @@ class Run implements DebtRun {
   readLedgerNote(noteId: string): LedgerFind {
     const r = ledgerRead(this.rooms, noteId);
     if (r.fresh) { this.rooms = r.state; this.persistSoon(); this.notify(); }
+    if (r.completed) this.bond({ kind: 'help', who: 'mimosa' });   // the Wash ledger is Mimosa's errand
     return r;
   }
 
@@ -3922,6 +4022,7 @@ class Run implements DebtRun {
       ...(this.hPhone ? { home: this.homeSave(this.hPhone) } : {}),
       ...(this.homeEcon ? { econ: this.homeEcon.snapshot(), fridge: fridgeSnapshot() } : {}),
       luck: this.luckMeter.snapshot(), keepsake: this.keepsakes.snapshot(), ghost: this.ghostSeat.snapshot(), chapter: cloneChapter(this.chapterRec),
+      bonds: this.bondBook.snapshot(),
     };
     return {
       mode: this.mode, seed: this.seed, window: this.window(),
@@ -4012,7 +4113,7 @@ class Run implements DebtRun {
 
   /** He speaks (a tip, or an Ask). False when he has nothing to say. */
   private jokerSpeak(req: { ctx: WhisperCtx; fact?: string; ask?: boolean }): boolean {
-    if (this.ended) return false;
+    if (this.ended || this.night() < 2) return false;   // he introduces himself on the Night 2 lift: Night 1 is the coach's, not his
     const w = this.jokerSys.whisper(req);
     if (!w) return false;
     this.jokerLast = this.elapsed;
@@ -4036,7 +4137,7 @@ class Run implements DebtRun {
     const cat = machineId ? registry.get(machineId)?.def.category : undefined;
     if (cat === undefined || cat === 'system' || cat === 'party') return;   // the cashier, the Debt Terminal, the bell are not his
     this.jokerTip('machine', `seat:${mid}`, this.circ.isCold(mid) ? 'cold' : 'near');
-    if (this.inWatch() && this.jokerSys.canDare()) this.emit('joker:dare', { night: this.night() });
+    if (this.night() >= 2 && this.inWatch() && this.jokerSys.canDare()) this.emit('joker:dare', { night: this.night() });
   }
 
   jokerMoment(ctx: 'crooked' | null, id = ''): void {
@@ -4314,6 +4415,7 @@ class Run implements DebtRun {
     this.luckMeter.restore(e.luck);
     this.keepsakes.restore(e.keepsake);
     this.ghostSeat.restore(e.ghost);
+    this.bondBook.restore(e.bonds);
     this.chapterRec = readChapter(e.chapter);
     if (this.homeOn) this.restoreHome(e.home);
     this.homeEcon?.restore(e.econ);

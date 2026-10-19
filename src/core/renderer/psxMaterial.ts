@@ -271,10 +271,12 @@ const sourceCache = new Map<string, { vertex: string; fragment: string }>();
 export function psxTexture(t: THREE.Texture | null | undefined): void {
   if (!t) return;
   let dirty = false;
-  if (t.magFilter !== THREE.NearestFilter) t.magFilter = THREE.NearestFilter;
-  if (t.minFilter !== THREE.NearestFilter) t.minFilter = THREE.NearestFilter;
-  if (t.generateMipmaps) t.generateMipmaps = false;
-  t.anisotropy = 1;
+  if (!t.userData.mips) {   // opt-out for sign text, which is mipmapped on purpose (signs.ts crispFilters): far letters blur instead of tearing
+    if (t.magFilter !== THREE.NearestFilter) t.magFilter = THREE.NearestFilter;
+    if (t.minFilter !== THREE.NearestFilter) t.minFilter = THREE.NearestFilter;
+    if (t.generateMipmaps) t.generateMipmaps = false;
+    t.anisotropy = 1;
+  }
   if (t.colorSpace === THREE.SRGBColorSpace) { t.colorSpace = THREE.NoColorSpace; dirty = true; }
   if (dirty) t.needsUpdate = true;
 }

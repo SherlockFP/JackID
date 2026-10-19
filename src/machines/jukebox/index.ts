@@ -109,7 +109,6 @@ export default class Jukebox extends MachineBase<JukeboxParts, Ev, null> {
     if (local) {
       this.sfx('chime');
       this.seatHud?.show(); this.refresh(true);
-      this.seatHud?.firstTip('jukebox', this.tipLines());
     }
   }
 
@@ -126,7 +125,7 @@ export default class Jukebox extends MachineBase<JukeboxParts, Ev, null> {
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (e.repeat) return;
     const n = this.catalog.length;
@@ -250,14 +249,6 @@ export default class Jukebox extends MachineBase<JukeboxParts, Ev, null> {
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
   /** The key bound to a general action (arrows, help, exit). */
   private g(a: BindingKey): string { return this.ctx.input.keyLabel(a); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.jukebox.tip1' },
-      { k: 'm.jukebox.tip2', v: { move: `${this.g('left')}/${this.g('right')}`, play: this.k('primary') } },
-      { k: 'm.jukebox.tip3', v: { stop: this.k('secondary'), help: this.g('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return [1, 2, 3].map((i) => ({ k: `m.jukebox.rule${i}` }));

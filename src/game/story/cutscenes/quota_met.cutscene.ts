@@ -7,8 +7,9 @@ const def: CutsceneDef = {
   duration: 9,
   tracks: [
     { kind: 'camera', keys: [
-      { t: 0, pos: { anchor: 'quotaBoard', offset: [0, 0.2, -2.5] }, look: { anchor: 'quotaBoard' }, fov: 60, cut: true },
-      { t: 5, pos: { anchor: 'quotaBoard', offset: [0.8, 0.4, -2.2] }, look: { anchor: 'quotaBoard' }, fov: 54, ease: 'inOutQuad' },
+      // the Well side (+z, the board's front face): -z put the camera behind the Mouth/Well ceiling step wall at z -18.1
+      { t: 0, pos: { anchor: 'quotaBoard', offset: [0, -0.6, 3.2] }, look: { anchor: 'quotaBoard' }, fov: 60, cut: true },
+      { t: 5, pos: { anchor: 'quotaBoard', offset: [0.9, -0.4, 2.7] }, look: { anchor: 'quotaBoard' }, fov: 54, ease: 'inOutQuad' },
     ] },
     { kind: 'subtitle', cues: [
       { t: 1.0, dur: 2.8, key: 'story.met.1', speaker: 'story.speaker.collector', voice: 'collector', mood: 'cheery' },

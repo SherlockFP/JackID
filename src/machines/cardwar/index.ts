@@ -180,7 +180,7 @@ export default class CardWar extends TableBase<CardwarParts, Ev, Snap, Act> {
   // ── local input ────────────────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const seat = this.localSeat;
     const v = this.st.variant;
@@ -503,7 +503,6 @@ export default class CardWar extends TableBase<CardwarParts, Ev, Snap, Act> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('cardwar', this.tipLines());
     }
   }
 
@@ -870,14 +869,6 @@ export default class CardWar extends TableBase<CardwarParts, Ev, Snap, Act> {
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.cardwar.hTip1', v: { n1: this.k('n1'), n2: this.k('n2'), n3: this.k('n3') } },
-      { k: 'm.cardwar.hTip2', v: { lock: this.k('primary') } },
-      { k: 'm.cardwar.hTip3', v: { war: this.k('n1'), surr: this.k('n2'), help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return ['hRule1', 'hRule2', 'hRule3', 'hRule4', 'hRule5', 'hRule6'].map((r) => ({ k: 'm.cardwar.' + r }));

@@ -11,6 +11,9 @@ import { createRng } from '@/core/rng';
 import { pendant } from '../lights';
 import { FLOOR_TILE_M } from '../layout';
 import { placeCouch } from '../props/vendorModels';
+import { presets } from '@/kit/presets';
+import { homePaperTex, plasterTex, worldUV, HOME_PAPER_TILE } from '../props/surfaces';
+import { buildFoodProp } from '../props/food';
 import type { LightHint } from '../sys/arch';
 import {
   at, BED, CEIL, DOOR_H, DOOR_X0, DOOR_X1, EMPTY_SEAT, HALL_X0, HALL_X1, HALL_Z1, HOME_ZONE, LIGHT, SOUTH_WALL_SOLIDS,
@@ -35,31 +38,30 @@ export function buildRoom(c: RoomCtx): RoomParts {
   const statics: Statics[] = [];
 
   // a solid (or visual-only) box in plan coordinates
-  const slab = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, m: THREE.Material, solid = false): void => {
-    kit.box(x1 - x0, y1 - y0, z1 - z0, m, { pos: at((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), parent: shell });
+  const slab = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, m: THREE.Material, solid = false): THREE.Mesh => {
+    const mesh = kit.box(x1 - x0, y1 - y0, z1 - z0, m, { pos: at((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), parent: shell });
     if (solid) statics.push({ box: new THREE.Box3(new THREE.Vector3(...at(x0, y0, z0)), new THREE.Vector3(...at(x1, y1, z1))), tag: 'solid' });
+    return mesh;
   };
+  /** A papered wall: the texture is mapped in world metres (skirting on the floor, picture rail under the ceiling on every piece). */
+  const wallSlab = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): void => { worldUV(slab(x0, y0, z0, x1, y1, z1, wall, true), HOME_PAPER_TILE); };
 
   // ── materials (the palette from kit.pal; procedural textures for the walls, floors and the window) ──
-  const wallTex = tex.canvas(64, 64, (g, w, h) => {
-    g.fillStyle = '#46504c'; g.fillRect(0, 0, w, h);
-    g.fillStyle = '#3a443f';
-    for (let x = 0; x < w; x += 16) g.fillRect(x, 0, 3, h);
-    g.fillStyle = '#5a5246'; g.fillRect(0, h - 6, w, 6);
-  });
-  const wall = kit.mat({ color: 0xffffff, map: wallTex });
+  // wave 87 (ART.md §2 Home): faded sage paper over cream beadboard and a dark skirting, plaster ceiling, real wood and cloth
+  const wall = kit.mat({ color: 0xd8d0c4, map: homePaperTex(tex) });
+  const M = presets(kit.tex);
   // vendored boards and stone tile at the shared floor density (the kit tags a 64 px vendor map as 1 m: widen it to FLOOR_TILE_M)
   const floorMap = (p: string): THREE.Texture => { const m = kit.tex.vendor(p, { size: 64 }); m.userData.tile = FLOOR_TILE_M; return m; };
   const floor = kit.mat({ color: 0xd8a880, map: floorMap('sbs-tiny2/128x128/Wood/Wood_01-128x128.png') });
   const hallFloor = kit.mat({ color: 0x9a8a78, map: floorMap('sbs-horror/128x128/Floor/Horror_Floor_12-128x128.png') });
-  const ceil = kit.mat({ color: 0x2c2926 });
-  const trim = kit.mat({ color: kit.pal.woodDark });
-  const wood = kit.mat({ color: kit.pal.wood });
-  const cream = kit.mat({ color: kit.pal.cream });
+  const ceil = kit.mat({ color: 0x6a645c, map: plasterTex(tex) });
+  const trim = M.wood('dark');
+  const wood = M.wood('walnut');
+  const cream = M.leather(kit.pal.cream, false);
   const black = kit.mat({ color: kit.pal.black });
   const steel = kit.mat({ color: kit.pal.steel });
   const brass = kit.mat({ color: kit.pal.brass });
-  const blanket = kit.mat({ color: kit.pal.redDark });
+  const blanket = M.velvet(0x7a1c26);
   const coat = kit.mat({ color: kit.pal.leather });
 
   // ── floors and ceilings ────────────────────────────────────────────────────────────────────
@@ -70,20 +72,20 @@ export function buildRoom(c: RoomCtx): RoomParts {
     box: new THREE.Box3(new THREE.Vector3(...at(HALL_X0 - 0.3, -0.5, 2.8)), new THREE.Vector3(...at(HALL_X1 + 0.3, 0, HALL_Z1 + 0.3))),
     tag: 'walkable',
   });
-  slab(-3.3, CEIL, -2.8, 3.3, CEIL + 0.12, 2.8, ceil);
-  slab(HALL_X0 - 0.3, CEIL, 2.8, HALL_X1 + 0.3, CEIL + 0.12, HALL_Z1 + 0.3, ceil);
+  worldUV(slab(-3.3, CEIL, -2.8, 3.3, CEIL + 0.12, 2.8, ceil), 2);
+  worldUV(slab(HALL_X0 - 0.3, CEIL, 2.8, HALL_X1 + 0.3, CEIL + 0.12, HALL_Z1 + 0.3, ceil), 2);
 
   // ── walls: the room (window in the north wall, front door in the south) and the hallway ─────────
-  slab(-3.3, 0, -2.8, -3.0, CEIL, 2.8, wall, true);
-  slab(3.0, 0, -2.8, 3.3, CEIL, 2.8, wall, true);
-  slab(-3.3, 0, -2.8, WIN_X0, CEIL, -2.5, wall, true);
-  slab(WIN_X1, 0, -2.8, 3.3, CEIL, -2.5, wall, true);
-  slab(WIN_X0, 0, -2.8, WIN_X1, WIN_Y0, -2.5, wall, true);
-  slab(WIN_X0, WIN_Y1, -2.8, WIN_X1, CEIL, -2.5, wall, true);
-  for (const s of SOUTH_WALL_SOLIDS) slab(s[0], s[1], s[2], s[3], s[4], s[5], wall, true);
-  slab(HALL_X0 - 0.3, 0, 2.8, HALL_X0, CEIL, HALL_Z1 + 0.3, wall, true);
-  slab(HALL_X1, 0, 2.8, HALL_X1 + 0.3, CEIL, HALL_Z1 + 0.3, wall, true);
-  slab(HALL_X0 - 0.3, 0, HALL_Z1, HALL_X1 + 0.3, CEIL, HALL_Z1 + 0.3, wall, true);
+  wallSlab(-3.3, 0, -2.8, -3.0, CEIL, 2.8);
+  wallSlab(3.0, 0, -2.8, 3.3, CEIL, 2.8);
+  wallSlab(-3.3, 0, -2.8, WIN_X0, CEIL, -2.5);
+  wallSlab(WIN_X1, 0, -2.8, 3.3, CEIL, -2.5);
+  wallSlab(WIN_X0, 0, -2.8, WIN_X1, WIN_Y0, -2.5);
+  wallSlab(WIN_X0, WIN_Y1, -2.8, WIN_X1, CEIL, -2.5);
+  for (const s of SOUTH_WALL_SOLIDS) wallSlab(s[0], s[1], s[2], s[3], s[4], s[5]);
+  wallSlab(HALL_X0 - 0.3, 0, 2.8, HALL_X0, CEIL, HALL_Z1 + 0.3);
+  wallSlab(HALL_X1, 0, 2.8, HALL_X1 + 0.3, CEIL, HALL_Z1 + 0.3);
+  wallSlab(HALL_X0 - 0.3, 0, HALL_Z1, HALL_X1 + 0.3, CEIL, HALL_Z1 + 0.3);
 
   // door frame trims on both faces of the opening
   for (const z of [2.46, 2.8]) {
@@ -139,6 +141,7 @@ export function buildRoom(c: RoomCtx): RoomParts {
 
   // ── the bed against the west wall (headboard on the wall) ──────────────────────────────────────
   slab(BED.x0, 0, BED.z0, BED.x1, BED.h, BED.z1, wood, true);
+  slab(BED.x1, 0.06, BED.z0 + 0.04, BED.x1 + 0.03, BED.h - 0.04, BED.z1 - 0.04, trim);   // footboard rail
   slab(-3.0, 0, -1.35, -2.9, 1.0, 0.15, trim, true);
   slab(-2.9, BED.h, -1.25, -1.15, 0.6, 0.05, cream);
   slab(-2.05, 0.6, -1.27, -1.12, 0.64, 0.07, blanket);
@@ -157,13 +160,52 @@ export function buildRoom(c: RoomCtx): RoomParts {
   emptyChair.position.set(...at(EMPTY_SEAT.x, 0, EMPTY_SEAT.z));
   emptyChair.rotation.y = Math.PI;
   shell.add(emptyChair);
-  slab(2.5, 0, -0.3, 3.0, 0.92, 1.5, black, true);
-  slab(2.46, 0.9, -0.34, 3.02, 0.93, 1.54, steel);
+  const paint = M.enamel(0x56664c, 0.15), block = M.woodStain(0x9a6a3a), chrome = M.chrome();
+  slab(2.5, 0.08, -0.3, 3.0, 0.9, 1.5, paint, true);                                  // carcass
+  slab(2.54, 0, -0.26, 3.0, 0.08, 1.46, black);                                       // kick
+  for (let i = 0; i < 3; i++) {                                                       // three doors with pulls
+    const z0 = -0.27 + i * 0.6;
+    slab(2.485, 0.12, z0, 2.5, 0.86, z0 + 0.57, paint);
+    slab(2.47, 0.62, z0 + 0.06, 2.485, 0.66, z0 + 0.1, steel);
+  }
+  slab(2.46, 0.9, -0.34, 3.0, 0.94, 1.54, block);                                     // worktop
+  slab(2.6, 0.94, 0.3, 2.95, 0.95, 0.8, chrome);                                       // sink rim
+  slab(2.65, 0.95, 0.35, 2.9, 0.954, 0.75, black);                                    // the basin
+  kit.cyl(0.015, 0.015, 0.25, chrome, { pos: at(2.92, 1.075, 0.55), parent: shell, seg: 6 });
+  kit.box(0.16, 0.02, 0.02, chrome, { pos: at(2.85, 1.19, 0.55), parent: shell });
+  const tile = kit.mat({ color: 0xa8a090, map: kit.tex.tiles(0xd8d0b8, 0x8a8470, 8) });
+  slab(2.985, 0.94, -0.34, 2.995, 1.5, 1.54, tile);                                   // splash, 5 mm proud of the paper
+  slab(2.65, 1.55, -0.34, 3.0, 2.2, 1.54, paint, true);                               // wall cupboards
+  for (let i = 0; i < 3; i++) slab(2.635, 1.58, -0.31 + i * 0.6, 2.65, 2.17, -0.31 + i * 0.6 + 0.56, paint);
+  kit.cyl(0.07, 0.08, 0.16, chrome, { pos: at(2.75, 1.02, -0.05), parent: shell, seg: 8 });   // kettle
+  kit.box(0.08, 0.02, 0.02, chrome, { pos: at(2.66, 1.06, -0.05), rot: [0, 0, 25], parent: shell });
+  const mug = buildFoodProp(kit, 'coffee');
+  mug.position.set(...at(2.72, 0.94, 1.2));
+  shell.add(mug);
 
   // ── the couch in the living corner (north-west, against the north wall beside the window, facing the room) ──
   // the PSX couch GLB loads async; its footprint is solid from the first frame, so the room plays the same either way
   void placeCouch(dyn, { pos: at(-2.0, 0, -2.1), lookYaw: Math.PI, length: 1.8 });
   statics.push({ box: new THREE.Box3(new THREE.Vector3(...at(-2.9, 0, -2.5)), new THREE.Vector3(...at(-1.1, 0.85, -1.7))), tag: 'solid' });
+
+  // ── the lived-in bits (wave 87): a worn rug, a side table with a lamp and an ashtray, a nightstand and clock, the hall runner ──
+  const rug = kit.mat({ color: 0xffffff, map: kit.tex.carpet('diamond', [0x5a2a24, 0x3a1a18, 0xa08050, 0x4a6a5a]) });
+  slab(-1.4, 0, -0.9, 0.7, 0.012, 1.1, rug);
+  slab(-1.0, 0, 3.0, -0.2, 0.012, 5.0, rug);
+  const side = (x: number, z: number, lamp: boolean): void => {
+    slab(x - 0.2, 0.5, z - 0.2, x + 0.2, 0.54, z + 0.2, wood);
+    for (const lx of [x - 0.17, x + 0.17]) for (const lz of [z - 0.17, z + 0.17]) slab(lx - 0.015, 0, lz - 0.015, lx + 0.015, 0.5, lz + 0.015, trim);
+    statics.push({ box: new THREE.Box3(new THREE.Vector3(...at(x - 0.2, 0, z - 0.2)), new THREE.Vector3(...at(x + 0.2, 0.55, z + 0.2))), tag: 'solid' });
+    if (!lamp) return;
+    kit.cyl(0.06, 0.08, 0.04, brass, { pos: at(x, 0.56, z), parent: shell, seg: 8 });
+    kit.cyl(0.012, 0.012, 0.28, brass, { pos: at(x, 0.72, z), parent: shell, seg: 4 });
+    kit.cyl(0.09, 0.15, 0.17, kit.mat({ color: 0xe8c890, lit: false }), { pos: at(x, 0.93, z), parent: shell, seg: 8 });
+  };
+  side(-0.8, -2.05, true);
+  kit.cyl(0.06, 0.055, 0.018, kit.mat({ color: 0x5a6a70, lit: false }), { pos: at(-0.68, 0.549, -1.95), parent: shell, seg: 8 });
+  side(-2.72, 0.42, false);
+  kit.box(0.14, 0.08, 0.06, black, { pos: at(-2.72, 0.58, 0.42), parent: shell });
+  kit.box(0.09, 0.03, 0.005, kit.mat({ color: 0xff3a2a, lit: false }), { pos: at(-2.72, 0.585, 0.456), parent: shell });
 
   // ── the wall phone (north wall) and the answering machine on its shelf, with the red light ─────────
   slab(2.0, 0.96, -2.5, 2.45, 0.99, -2.32, trim);
@@ -210,7 +252,7 @@ export function buildRoom(c: RoomCtx): RoomParts {
   };
 
   const pend = pendant(kit, {
-    id: 'home:pendant', pos: at(1.6, 1.85, 0.3), drop: CEIL - 1.85, color: LIGHT.pendant.color,
+    id: 'home:pendant', pos: at(1.6, 1.85, (TABLE.z0 + TABLE.z1) / 2), drop: CEIL - 1.85, color: LIGHT.pendant.color,
     intensity: LIGHT.pendant.intensity, range: LIGHT.pendant.range, flicker: 'STEADY', zone: HOME_ZONE,
   });
   pend.setOn(true);

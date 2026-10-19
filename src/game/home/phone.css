@@ -31,17 +31,28 @@
 .px-phone-head { display: flex; align-items: center; justify-content: space-between; }
 .px-phone-title { font-family: var(--f-head); font-size: var(--fh); color: var(--shine); }
 
-.px-phone-tabs { display: flex; gap: calc(3 * var(--u)); }
-.px-phone-tab {
-  appearance: none; flex: 1 1 0; min-width: 0; position: relative;
-  padding: calc(4 * var(--u)) calc(3 * var(--u)); border: 0; border-radius: 0;
-  background: var(--soot); box-shadow: inset 0 0 0 var(--u) var(--slate);
-  font-family: var(--f-head); font-size: calc(6 * var(--u)); line-height: 1.2; color: var(--grout);
-  text-align: center; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.px-phone-list { display: flex; flex-direction: column; gap: calc(3 * var(--u)); }
+.px-phone-list[hidden], .px-phone-thread[hidden], .px-phone-body[hidden], .px-phone-replies[hidden] { display: none !important; }
+.px-phone-row {
+  appearance: none; display: flex; flex-direction: column; gap: calc(2 * var(--u)); width: 100%; min-width: 0;
+  padding: calc(5 * var(--u)) calc(6 * var(--u)); border: 0; border-radius: 0;
+  background: var(--soot); box-shadow: inset 0 0 0 var(--u) var(--slate); text-align: left; cursor: pointer;
 }
-.px-phone-tab.on { background: var(--brass-dark); box-shadow: inset 0 0 0 var(--u) var(--amber); color: var(--shine); }
-.px-phone-tab:hover, .px-phone-tab:focus-visible { outline: none; color: var(--ivory); }
-.px-phone-tab .px-phone-dot { position: absolute; right: calc(3 * var(--u)); top: calc(3 * var(--u)); }
+.px-phone-row.unread { box-shadow: inset 0 0 0 var(--u) var(--amber); }
+.px-phone-row:hover, .px-phone-row:focus-visible { outline: none; background: var(--brass-dark); }
+.px-phone-row-top { display: flex; align-items: center; justify-content: space-between; gap: calc(4 * var(--u)); }
+.px-phone-row-name { font-family: var(--f-head); font-size: calc(7 * var(--u)); line-height: 1.2; color: var(--shine); }
+.px-phone-badge {
+  min-width: calc(10 * var(--u)); padding: calc(1 * var(--u)) calc(3 * var(--u)); text-align: center;
+  background: var(--amber); color: var(--void); font-family: var(--f-head); font-size: calc(6 * var(--u)); font-weight: normal; line-height: 1.2;
+}
+.px-phone-row-prev { color: var(--grout); font-family: var(--f-body); font-size: calc(12 * var(--u)); line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.px-phone-row.unread .px-phone-row-prev { color: var(--ivory); }
+.px-phone-back {
+  appearance: none; border: 0; border-radius: 0; padding: calc(3 * var(--u)) calc(5 * var(--u)); cursor: pointer;
+  background: var(--soot); box-shadow: inset 0 0 0 var(--u) var(--slate); font-family: var(--f-head); font-size: calc(7 * var(--u)); line-height: 1; color: var(--ivory);
+}
+.px-phone-back:hover { background: var(--brass-dark); }
 
 .px-phone-thread {
   display: flex; align-items: center; gap: calc(6 * var(--u)); min-height: calc(28 * var(--u));

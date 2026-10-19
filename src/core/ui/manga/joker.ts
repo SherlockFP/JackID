@@ -11,20 +11,44 @@ import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
 import type { BindingKey } from '@/core/input/types';
 import { subtitles } from '../subtitles';
+import { iconEl } from '../widgets';
+import type { UIOverlayX } from '../ui';
 
 export const JOKER_SOURCE = 'joker';
 /** The ask and catch-a-lie keys (core/keymap.ts). C is the Crooked Table's call and the seated `m.alt`, so the lie call is L. */
 export const JOKER_ASK_KEY = 'jokerAsk' as BindingKey;
 export const JOKER_LIAR_KEY = 'callLiar' as BindingKey;
 
+/** His sigil as two CSS images on the root (--jk-ico, and --jk-ico2 with the eyes shut): the plate, the chip and the god card draw it with CSS. */
+let iconsOn = false;
+function iconVars(): void {
+  if (iconsOn || typeof document === 'undefined') return;
+  const src = (id: string): string => (iconEl(id, 16).querySelector('img') as HTMLImageElement | null)?.src ?? '';
+  const a = src('icon.joker'), b = src('icon.joker2');
+  if (!a) return;   // no texgen yet (a test, a menu before the first scene): try again at the next call
+  iconsOn = true;
+  document.documentElement.style.setProperty('--jk-ico', `url(${a})`);
+  document.documentElement.style.setProperty('--jk-ico2', `url(${b})`);
+}
+
+/** The sigil as a small element (`.jk-ico`); it blinks when he speaks (see joker.css). */
+export function jokerIcon(cls = ''): HTMLElement {
+  iconVars();
+  const el = document.createElement('i');
+  el.className = `jk-ico ${cls}`.trim();
+  el.setAttribute('aria-hidden', 'true');
+  return el;
+}
+
 let watching = false;
 /** Keeps `data-joker` on the subtitle bar true only while one of his lines is on screen. */
 function watch(): void {
+  iconVars();
   if (watching || typeof document === 'undefined' || typeof MutationObserver === 'undefined') return;
   const bar = document.querySelector('.px-subtitle');
   if (!bar) return;
   watching = true;
-  const sync = (): void => { bar.toggleAttribute('data-joker', subtitles.current()?.source === JOKER_SOURCE); };
+  const sync = (): void => { if (subtitles.current()?.source === JOKER_SOURCE) bar.setAttribute('data-joker', calmNow() ? 'calm' : 'talk'); else bar.removeAttribute('data-joker'); };
   new MutationObserver(sync).observe(bar, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['data-phase', 'class'] });
   sync();
 }
@@ -37,7 +61,10 @@ export function jokerSay(text: string): void {
   app.audio?.play('cardFlip', { vol: 0.45 });
 }
 
-const calmNow = (): boolean => { const s = app.save?.data?.settings; return !!s && ((s as { calm?: boolean }).calm === true || !!s.reduceMotion); };
+const calmNow = (): boolean => { const s = app.save?.data?.settings; return !!s && (s.calm === true || !!s.reduceMotion || !!s.reduceFlashing); };
+
+/** A toast with his sigil (green bar, icon.joker); every toast of his goes through here. */
+export function lokiToast(text: string, dur = 2.5): void { (app.ui as UIOverlayX).toast(text, 'loki', dur); }
 
 /** What the voice needs back from the run. */
 export interface JokerVoiceHost { dare(accept: boolean): void }
@@ -51,12 +78,12 @@ export function mountJokerVoice(host: JokerVoiceHost): () => void {
       jokerSay(keys.map((k) => t(k)).join(' '));
       if (hinted) return;
       hinted = true;
-      app.ui.toast(t('joker.ui.keys', { ask: app.input.keyLabel(JOKER_ASK_KEY), call: app.input.keyLabel(JOKER_LIAR_KEY) }), 'sys', 6);
+      lokiToast(t('joker.ui.keys', { ask: app.input.keyLabel(JOKER_ASK_KEY), call: app.input.keyLabel(JOKER_LIAR_KEY) }), 6);
     }),
     // no numbers: a warmer or a colder face, and his Dawn drift is silent
     bus.on('joker:trust', ({ delta, why }) => {
       if (why === 'dawn' || delta === 0) return;
-      app.ui.toast(t(delta > 0 ? 'joker.ui.liked' : 'joker.ui.remember'), delta > 0 ? 'good' : 'bad', 2.5);
+      lokiToast(t(delta > 0 ? 'joker.ui.liked' : 'joker.ui.remember'), 2.5);
     }),
     bus.on('joker:dare', () => {
       void app.ui.choice(t('joker.ui.dare'), [t('joker.ui.take'), t('joker.ui.refuse')], { timeout: 8 })
@@ -73,12 +100,12 @@ export interface GrinChip {
   dispose(): void;
 }
 
-/** The corner of your card: a J and his grin. Its width is his mood in seven frames; it moves when he talks (not in Calm). */
+/** The corner of your card: his sigil and his grin. Its width is his mood in seven frames; it moves when he talks (not in Calm). */
 export function grinChip(parent: HTMLElement): GrinChip {
   const el = document.createElement('span');
   el.className = 'jk-chip';
   el.title = t('joker.ui.chip');
-  el.innerHTML = '<i class="jk-j">J</i><i class="jk-mouth"></i>';
+  el.append(jokerIcon(), Object.assign(document.createElement('i'), { className: 'jk-mouth' }));
   parent.appendChild(el);
   const off = bus.on('joker:whisper', () => {
     if (calmNow()) return;

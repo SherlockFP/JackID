@@ -165,7 +165,6 @@ export default class Mahjong extends MachineBase<MahjongParts, Ev, State> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('mahjong', this.tipLines());
     }
   }
 
@@ -203,7 +202,7 @@ export default class Mahjong extends MachineBase<MahjongParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const moves = a === 'left' || a === 'right';
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
@@ -762,14 +761,6 @@ export default class Mahjong extends MachineBase<MahjongParts, Ev, State> {
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.mahjong.tip1', v: { deal: this.k('primary'), bet: `${this.k('betDown')}/${this.k('betUp')}` } },
-      { k: 'm.mahjong.tip2', v: { take: this.k('n1'), draw: this.k('n2'), disc: this.k('primary') } },
-      { k: 'm.mahjong.tip3', v: { left: this.k('left'), right: this.k('right'), hint: this.k('alt'), help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6', 'rule7'].map((r) => ({ k: 'm.mahjong.' + r }));

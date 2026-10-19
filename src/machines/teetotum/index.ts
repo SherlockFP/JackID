@@ -156,7 +156,7 @@ export default class Teetotum extends TableBase<TeetotumParts, Ev, Snap, Act> {
   // ── local input → action to the host ─────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     const a = e.action as MachineAction;
     const seat = this.localSeat;
     const mine = seat >= 0 ? this.st.seats[seat] : undefined;
@@ -481,7 +481,6 @@ export default class Teetotum extends TableBase<TeetotumParts, Ev, Snap, Act> {
       this.hudSig = '';
       this.repaintAll();
       this.showHud();
-      this.seatHud?.firstTip('teetotum', this.tipLines());
     }
   }
 
@@ -779,14 +778,6 @@ export default class Teetotum extends TableBase<TeetotumParts, Ev, Snap, Act> {
 
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.teetotum.tip1' },
-      { k: 'm.teetotum.tip2', v: { spin: this.k('confirm'), double: this.k('double'), ante: `${this.k('betDown')}/${this.k('betUp')}` } },
-      { k: 'm.teetotum.tip3', v: { sit: this.k('n1'), leave: this.k('collect'), help: this.k('help') } },
-    ];
-  }
 
   /** Banner, key numbers and valid controls for the local player. Redraws only when something changed. */
   private showHud(): void {

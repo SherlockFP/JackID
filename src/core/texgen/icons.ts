@@ -16,7 +16,20 @@ import {
 const fin = (p: Pix): void => { p.outline(P01); };
 const def = (paint: (p: Pix) => void): SymbolDef => ({ size: 16, paint: (p) => { paint(p); fin(p); } });
 
+/** LOKI's sigil: a green jester, a two-point cap with gold bells, a wide toothy grin. `blink` closes the eyes and opens the mouth (the talk frame). */
+const jokerFace = (blink: boolean): SymbolDef => def((p) => {
+  p.ellipse(8, 10, 6, 4.5, P33);
+  p.poly([[2, 7], [2, 2], [8, 6]], P30).poly([[13, 7], [13, 2], [7, 6]], P30);
+  p.rect(3, 5, 10, 2, P30).rect(3, 7, 10, 1, P23).rect(1, 1, 2, 2, P23).rect(13, 1, 2, 2, P23).px(1, 1, P24).px(13, 1, P24);
+  if (blink) p.rect(5, 10, 2, 1, P01).rect(9, 10, 2, 1, P01);
+  else p.rect(5, 9, 2, 2, P01).rect(9, 9, 2, 2, P01).px(5, 9, P10).px(9, 9, P10);
+  p.px(2, 11, P01).px(13, 11, P01).px(3, 12, P01).px(12, 12, P01).rect(4, 13, 8, blink ? 2 : 1, P01);
+  p.rect(4, 12, 8, 1, P10);
+});
+
 export const BUILTIN_ICONS: Readonly<Record<string, SymbolDef>> = {
+  'icon.joker': jokerFace(false),
+  'icon.joker2': jokerFace(true),
   'icon.coin': def((p) => { p.disc(8, 8, 6.5, P23).ring(8, 8, 4, 5, P22).px(5, 4, P24).px(6, 4, P24).px(4, 5, P24); p.rect(7, 5, 2, 6, P22); }),
   'icon.ticket': def((p) => { p.rect(1, 4, 14, 8, P19).disc(1, 8, 1.8, -1).disc(15, 8, 1.8, -1); p.rect(10, 5, 1, 6, P18); p.px(5, 7, P20).px(4, 8, P20).px(6, 8, P20).px(5, 9, P20); p.rect(2, 4, 12, 1, P20); }),
   'icon.pull': def((p) => { p.disc(8, 8, 6.5, P22).ring(8, 8, 4.5, 5.5, P23).disc(8, 8, 2, P01).px(4, 4, P24); }),

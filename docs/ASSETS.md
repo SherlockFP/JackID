@@ -132,6 +132,6 @@ Each row names the file that loads the asset. A pack not listed here is vendored
 | Mannequin (dealers, staff, cutscene actors) | `src/kit/types.ts` (`MANNEQUIN_GLB`) | quaternius-ual |
 | PSX couch (apartment) | `src/world/props/vendorModels.ts` | duhgless-psx-couch-2 |
 | First-person arms (rigged GLB, 52 bones, 18 clips, fingerless gloves; texture through the vendor pipeline at 128 px) | `src/player/viewmodel/arms.ts` (`GLB`, `look`) | drillimpact-psx-arms: "PSX First Person Arms" v1.1.0, Drillimpact, https://drillimpact.itch.io/psx-first-person-arms-free, CC0 1.0 (credit not required; courtesy line: "First-person arms by Drillimpact (CC0)"). `arms_gloves_01.png` is the default, `arms_01.png` (bare hands) shows with Settings, Gloves off |
-| Medieval tavern interior (OBJ pieces, async) | `src/world/props/vendorModels.ts` (`TAVERN`), placed from `src/world/level.ts` | battleroach-medieval-tavern |
+| Medieval tavern interior (OBJ pieces) | unused since wave 87 (the Lobby bar is kit-built: `src/world/props/bar.ts`) | battleroach-medieval-tavern |
 
 **Not loaded yet:** `gualtierisgg-rpg-furniture-2` (36 FBX, no code path) and `skeddles-thintel` (ASCII only, no Turkish glyphs). The Thintel credit line stays on the Credits screen because the licence needs it while the font is vendored.

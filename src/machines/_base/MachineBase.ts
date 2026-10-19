@@ -26,6 +26,9 @@
  *                    reload / re-sit never re-rolls (TECH §11.4). Extra stakes inside the round: `addStake`.
  *   emit(event)      outcome → every peer's `present()`; resolves when the local presentation finished.
  *   settle({gross})  pays out, `busy = false`, adds the catalogue tier tags (`bigwin`…`megawin`).
+ *   Practice (coach.ts): on a scripted solo machine the profile's first plays are free. `beginRound` / `addStake` /
+ *                    `settle` then never touch the run, and the round draws from its own seeded stream (the round counter,
+ *                    and so every paid round's stream, is untouched). Machines need no code for it.
  *   Ladder games (coin-flip rides, hi-lo) keep the round OPEN between decisions: set `busy = false` while the
  *   player decides (release stays possible; the machine settles in `onRelease`) — `roundOpen` stays true.
  *
@@ -68,8 +71,9 @@ import { SLOT_DIMS, type MachineContext, type MachineDef, type MachineEnvelope, 
 import { juiceTier, streakPitch, tierTags, toWinTier, type JuiceTier } from './tiers';
 import * as juice from './juice';
 import { RiskLayer } from './riskLayer';
+import { Coach } from './coach';
 import { GambleUi } from '@/game/gambleUi';
-import { HS_MULT } from '@/game/gamble';
+import { HS_MULT, gamblesLive } from '@/game/gamble';
 import { BIG_CONFIRM_SEC, presetOf, stakeKeyOwned, stakePresetAmounts, STAKE_PRESET_ACTION, STAKE_PRESET_KEYS, type StakePresetKey, type StakePresetRow } from './stakePresets';
 
 const FORCE_RELEASE_S = 10;
@@ -146,6 +150,8 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   private _stakeSig = '';
   private _stakeT = 0;
   private _offLang: (() => void) | null = null;
+  /** True once `onWatchClosed` ran for the current close (re-armed when gambles go live again). */
+  private _watchWrapped = false;
   private _ray = new THREE.Raycaster();
   private _sink: MachineSink | null = null;
   private _attract: juice.AttractScript | null = null;
@@ -156,6 +162,10 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   private _idleChecked = false;
   /** The latest `anticipate` call: only its own music fall-back runs (a newer call replaces it). */
   private _antTok = 0;
+  /** The seat coach (coach.ts) of the local seat, while it has steps or free plays left; TableBase feeds it too. */
+  protected _coach: Coach | null = null;
+  private _coachBet = 0;
+  private _coachSig = '';
   /** Active `_timer` (see TableBase.countdown): host-ms deadline + label. */
   protected timerState: { until: number; label: string } | null = null;
 
@@ -184,6 +194,12 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   onPointer(_e: MachinePointerEvent): void {} // local occupant only, pose.mouse === 'pick'
   /** The language changed: repaint diegetic screens and the HUD strip (kit `{ key }` texts re-draw themselves). */
   onLang(): void {}
+  /**
+   * The Watch closed (`gamblesLive` went false: the floor stopped taking plays) and the seated local player has nothing in flight
+   * (`!busy`): finish what is pending and stay seated. A ladder collects (or refunds), a chase or double-up is taken: nothing may
+   * keep paying into Dawn. Runs once per close, as soon as the machine is idle; a machine with nothing pending leaves it empty.
+   */
+  protected onWatchClosed(): void {}
 
   // ── cosmetic NPCs and headless replay (DECISIONS C27) ──
   private _npc: { seat: number; kind: NpcKind } | null = null;
@@ -243,6 +259,8 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   get isLocalOccupant(): boolean { return this.localSeat >= 0; }
   get src(): EcoSource { return { mid: this.id, machineId: this.def.id }; }
   get disposed(): boolean { return this._disposed; }
+  /** Gambles are live (`gamblesLive` over the run's phase): false from the Watch's close (`closing`) to the next Watch. */
+  get gamblesLive(): boolean { return gamblesLive(this.ctx.run.shift?.phase); }
   /** Per-instance counter of rounds begun here; persisted through `_snapshot`. */
   get roundNo(): number { return this._round; }
   /** A stake is on the table and no `settle` happened yet (true also while a ladder waits for the player). */
@@ -292,6 +310,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   private _pendHeld = false;
   /** Sink → machine: fold the primary / confirm alias, then `onInput`. */
   private _route(e: MachineInputEvent): void {
+    if (e.down && !e.repeat) this._coach?.press(e.action);
     if (this._riskL?.route(e as MachineInputEvent & { code?: string; mods?: { shift?: boolean } })) return;   // risk layer keys (G / Shift+H / K / ladder)
     // smart stakes: 7 SAFE, 8 BOLD, 9 BIG (stakePresets.ts). A digit the machine keeps for itself is passed on below.
     const preset = presetOf(e.action);
@@ -462,6 +481,16 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
    */
   protected beginRound(bet: number = this.bet): boolean {
     if (this.busy || this._roundOpen || this._riskL?.ladderOpen) return false;
+    const coach = this._coach;
+    if (coach?.practice && this.gamblesLive) {             // a free practice play: no run.bet, its own seeded stream
+      this._hsMult = 1;
+      this.busy = true;
+      this._roundOpen = true;
+      this._roundBet = bet;
+      this.rng = createRng(hashSeed(this.ctx.runSeed, this.id, 'practice', coach.practiceUsed));
+      coach.round(true);
+      return true;
+    }
     // the current bet outruns the pocket: step it down first (toasted); with no affordable stake there is no round
     if (bet === this.bet && this.costOf(bet) > this.ctx.run.wallet()) {
       if (!this.fitBet()) { this.sfx('buzzer'); return false; }
@@ -479,6 +508,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     this._roundOpen = true;
     this._roundBet = bet;
     this.rng = createRng(hashSeed(this.ctx.runSeed, this.id, ++this._round));
+    coach?.round(false);
     return true;
   }
   /**
@@ -487,6 +517,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
    */
   protected addStake(amount: number): boolean {
     if (!this._roundOpen) { log.warn('machine', `${this.id} addStake without an open round`); return false; }
+    if (this._coach?.practiceRound) { this._roundBet += amount; return true; }   // practice: the extra stake is free too
     const extra = this._hsMult > 1 ? (this._hsMult - 1) * amount : 0;           // HIGH STAKES: the extra stake rides along
     if (extra > 0 && this.ctx.run.wallet() < this.costOf(amount) + extra) { this.sfx('buzzer'); return false; }
     if (extra > 0 && this._riskL && this._riskL.hsBegin(amount, this.costOf(amount)) === 0) { this.sfx('buzzer'); return false; }
@@ -501,6 +532,13 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   }
   /** `run.win()`; closes the round (`busy = false`); returns credited. Adds `bigwin/hugewin/megawin` tags by multiple. */
   protected settle(r: { gross: number; tier?: WinTier; tags?: string[]; silent?: boolean }): number {
+    if (this._coach?.practiceRound) {                      // practice: nothing is paid, counted or offered
+      this._roundOpen = false;
+      this.busy = false;
+      this._coach.result(r.gross, this._roundBet);
+      if (this._releaseRequested) this.standUp();
+      return 0;
+    }
     const mult = this._hsMult;
     const nominal = this._roundBet;
     const gross = mult > 1 && this._riskL ? this._riskL.hsPay(r.gross, nominal, mult) : r.gross;   // HIGH STAKES: x5 and a fatter tail
@@ -511,6 +549,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     this._roundOpen = false;
     this._hsMult = 1;
     const credited = this.ctx.run.win(gross, this.src, meta);
+    if (this.isLocalOccupant) this._coach?.result(gross, bet);
     // win streak (presentation only): a win extends it, a loss ends it, a push leaves it as it was
     if (this.isLocalOccupant) { if (gross > bet) this._streak++; else if (gross < bet) this._streak = 0; }
     this.busy = false;
@@ -612,6 +651,22 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     const active = STAKE_PRESET_KEYS.find((k) => amounts[k] === this.bet) ?? null;
     this.ctx.events.emit('stake:presets', { mid: this.id, on: true, bet: this.bet, pocket, hs, active, armed, rows, pullCost: this.def.actionCost ?? 1 });
   }
+  /** Feeds the coach what it polls (the stake, the DOUBLE OR NOTHING offer, the show queue) and publishes its box. */
+  private coachStep(dt: number): void {
+    const c = this._coach!;
+    if (this.bet !== this._coachBet) { this._coachBet = this.bet; c.bet(); }
+    c.offer(this._riskL?.offerLive ?? false);
+    c.tick(dt, this._pending === 0);
+    this.publishCoach();
+  }
+  /** `coach:view` for the seat HUD, on change only (null when there is no coach). */
+  private publishCoach(force = false): void {
+    const v = this._coach && this.isLocalOccupant ? this._coach.view() : null;
+    const sig = v ? `${v.keys.join(' ')}|${v.line}|${v.why}|${v.tone}|${v.tag}` : '';
+    if (sig === this._coachSig && !force) return;
+    this._coachSig = sig;
+    this.ctx.events.emit('coach:view', { view: v });
+  }
   /** Coins the run charges for a stake of `amount` (`bet.costMult`, the same fold `run.bet()` applies). */
   protected costOf(amount: number): number { return Math.ceil(amount * this.mod('bet.costMult', 1)); }
   /**
@@ -700,6 +755,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       id: this.id, src: this.src, runSeed: this.ctx.runSeed, shared: !!this.def.shared,
       get isLocalOccupant() { return self.isLocalOccupant; },
       get roundOpen() { return self._roundOpen; },
+      get gamblesLive() { return self.gamblesLive; },
       get busy() { return self.busy; }, set busy(v: boolean) { self.busy = v; },
       run: this.ctx.run,
       wait: (s) => this.wait(s),
@@ -773,8 +829,13 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       else if ((this._releaseWait += dt) > FORCE_RELEASE_S) { log.warn('machine', `${this.id} forced release while busy`); this.busy = false; this.standUp(); }
     }
     this._riskL?.step(dt);
+    if (this.isLocalOccupant) {
+      if (this.gamblesLive) this._watchWrapped = false;
+      else if (!this._watchWrapped && !this.busy) { this._watchWrapped = true; this.onWatchClosed(); }
+    }
     if (this._stakeBigArm > 0 && (this._stakeBigArm -= dt) <= 0) this.disarmBig();
     if (this.isLocalOccupant && this.def.minBet > 0 && (this._stakeT -= dt) <= 0) { this._stakeT = STAKE_POLL_S; this.publishStakes(); }   // Z / X, wallet and high-stakes changes reach the HUD
+    if (this._coach && this.isLocalOccupant) this.coachStep(dt);
     this._firePending();                                    // a press queued during a round goes now that it is idle
     this.tick(dt);
     if (this.isHost) this.hostTick(dt);
@@ -805,6 +866,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     if (local) {
       this._aliasHeld.clear();
       this._pend = null; this._pendHeld = false;
+      this._watchWrapped = false;                           // a seat taken after the close (a restored ladder) is wrapped up too
       this._streak = 0;
       this.rng = createRng(seed);
       this._releaseRequested = false;
@@ -813,6 +875,10 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       this.fitBet();
       this.publishStakes();
       void this.risk;                                       // the risk layer lives with the local seat
+      const coach = this.def.coach?.length ? new Coach(this.def.id, this.def.coach, !this.def.shared) : null;
+      this._coach = coach && (!coach.done || coach.practice) ? coach : null;
+      this._coachBet = this.bet;
+      this.publishCoach(true);
     }
     this.ctx.events.emit('player:seat', { pid, mid: this.id, seat, on: true });
     this.onOccupy(pid, seat, local);
@@ -829,6 +895,8 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       this.disarmBig();
       this._stakeSig = '';
       this.publishStakes(false);
+      this._coach = null;
+      this.publishCoach(true);
       this.ctx.ui.machineHud(null);
       this._releaseRequested = false;
       if (this._roundOpen) {            // a machine must settle in onRelease; never strand a stake silently

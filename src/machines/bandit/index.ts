@@ -152,7 +152,6 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('bandit', this.tipLines());
     }
   }
 
@@ -178,6 +177,11 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
     super.standUp();
   }
 
+  /** The Watch closed: a pot waiting for the gamble is collected, so HI / LO pays nothing in Dawn. */
+  protected override onWatchClosed(): void {
+    if (this.pending) void this.collect();
+  }
+
   /** A win is waiting for the HI / LO gamble (or COLLECT). */
   private get pending(): boolean { return this.roundOpen && !this.busy && this.state.pot > 0; }
 
@@ -191,7 +195,7 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax' || a === 'n1';
     if (e.repeat && !isBet) return;
@@ -586,14 +590,6 @@ export default class Bandit extends MachineBase<BanditParts, Ev, State> {
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.bandit.tip1', v: { pull: this.k('primary') } },
-      { k: 'm.bandit.tip2', v: { bet: `${this.k('betDown')}/${this.k('betUp')}`, coin: this.k('n1'), max: this.k('betMax') } },
-      { k: 'm.bandit.tip3', v: { help: this.k('help') } },
-    ];
-  }
 
   /** One gamble side as the player reads it: the chance of a right guess and the factor it pays. */
   private sideText(o: { offered: boolean; p: number; mult: number }): string {

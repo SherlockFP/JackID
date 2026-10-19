@@ -8,6 +8,7 @@ export default {
     'stake.label': 'STAKE / POCKET',
     'stake.confirm': 'CONFIRM HIGH STAKE',
     'paidTag': 'N{n} PAID',
+    'sealedTag': 'SEALED',
     'lampChase.hot': 'HOT · {name}',
     'lampChase.hotAt': 'HOT · {name} ({where})',
     'lampChase.dist': '{d} m {a}',
@@ -27,11 +28,13 @@ export default {
     'clock.closing': 'WATCH ENDING…',
     'clock.bell': 'BELL: the Watch starts in {s} s',
     'nightSummary': 'NIGHT {n} PAID · bank {carry} (incl. interest +{int}) → pocket · float +{float} · cut +{cut} · tickets +{tickets}',
+    'nightSealed': 'NIGHT {n} SEALED · the House kept the bank · float +{float} · cut +{cut} · tickets +{tickets}',
   },
   tr: {
     'stake.label': 'BAHİS / CEP',
     'stake.confirm': 'YÜKSEK BAHİS: ONAYLA',
     'paidTag': 'G{n} ÖDENDİ',
+    'sealedTag': 'MÜHÜRLE KAPANDI',
     'lampChase.hot': 'SICAK · {name}',
     'lampChase.hotAt': 'SICAK · {name} ({where})',
     'lampChase.dist': '{d} m {a}',
@@ -51,5 +54,6 @@ export default {
     'clock.closing': 'NÖBET KAPANIYOR…',
     'clock.bell': 'ZİL: NÖBET {s} SN SONRA BAŞLIYOR',
     'nightSummary': '{n}. GECE ÖDENDİ · banka {carry} (faiz +{int} dahil) → cep · kasa +{float} · kesinti +{cut} · bilet +{tickets}',
+    'nightSealed': '{n}. GECE MÜHÜRLE KAPANDI · banka Kasa\'da kaldı · kasa +{float} · kesinti +{cut} · bilet +{tickets}',
   },
 };

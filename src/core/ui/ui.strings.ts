@@ -2,6 +2,7 @@
 const strings = {
   prefix: 'ui.',
   en: {
+    'keyhint': 'ESC Back · ENTER Select · ↑↓ Move',
     'veil.click': 'CLICK TO CONTINUE',
     'skip.hold': 'TAP/HOLD: SKIP',
     'toggle.on': 'ON',
@@ -12,6 +13,7 @@ const strings = {
     'controls.seated': 'AT A MACHINE',
   },
   tr: {
+    'keyhint': 'ESC Geri · ENTER Seç · ↑↓ Gez',
     'veil.click': 'DEVAM ETMEK İÇİN TIKLA',
     'skip.hold': 'DOKUN/BASILI TUT: ATLA',
     'toggle.on': 'AÇIK',

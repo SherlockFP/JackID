@@ -7,7 +7,7 @@ import type { MachineStrings } from '@/machines/_base/types';
 const STRINGS: MachineStrings = {
   en: {
     name: 'Mahjong: Little Wall',
-    desc: 'Seven tiles and six turns. Take the upcard or draw from the wall, then discard. Two melds and a pair wins, and the sooner the better.',
+    desc: 'Seven tiles, six turns. Take or draw, then discard. Two melds and a pair win; sooner pays more.',
     take: 'TAKE', draw: 'DRAW', discards: 'DISCARDS', waits: 'WAITS', wall: 'WALL', turns: 'TURNS',
     mahjong: 'MAHJONG!', near: 'NEAR HAND', nearPay: 'NEAR HAND  {n}',
     bPure: 'PURE SUIT', bDragon: 'DRAGON', bTriplets: 'ALL TRIPLETS', bRuns: 'ALL RUNS',
@@ -18,10 +18,7 @@ const STRINGS: MachineStrings = {
     suggestTake: 'Take this one', suggestDraw: 'Draw instead',
 
     // ── seat HUD (readability standard) ──
-    goal: 'Build 2 melds and a pair before the beads run out. The sooner the bigger.',
-    tip1: 'Press [{deal}] to pay and deal 7 tiles. Change the stake with [{bet}].',
-    tip2: 'Each turn TAKE the upcard [{take}] or DRAW from the wall [{draw}], then DISCARD [{disc}].',
-    tip3: 'Move with [{left}] [{right}]  ·  [{hint}] HINT RING  ·  [{help}] FULL RULES',
+    goal: 'Build 2 melds and a pair before the beads run out. Sooner pays more.',
     rule1: 'You get 7 tiles and 6 turns (the brass beads). Each turn the House flips an upcard.',
     rule2: 'TAKE the upcard, or DRAW the next wall tile and the upcard is gone. Then discard one tile.',
     rule3: 'A hand of 8 tiles made of two melds and a pair is a MAHJONG and wins at once.',
@@ -33,13 +30,13 @@ const STRINGS: MachineStrings = {
     stPick: 'TAKE OR DRAW?', stPickSub: 'Turn {n} of {t}  ·  a win now pays x{m}',
     stDisc: 'DISCARD ONE TILE', stDiscSub: 'Move [{left}] [{right}], then [{disc}]',
     stDone: 'ROUND OVER', stDoneSub: 'Press [{deal}] for a new hand',
-    nTurn: 'TURN', nBet: 'YOUR BET', nPays: 'WIN PAYS', nWall: 'WALL', nBalance: 'BALANCE',
+    nTurn: 'TURN', nBet: 'BET', nPays: 'WIN PAYS', nWall: 'WALL', nBalance: 'BALANCE',
     cDeal: 'DEAL', cBet: 'BET', cTake: 'TAKE', cDraw: 'DRAW', cDiscard: 'DISCARD', cMove: 'MOVE',
     cHint: 'HINT', cRules: 'RULES', cLeave: 'LEAVE',
   },
   tr: {
     name: 'Mahjong: Küçük Duvar',
-    desc: 'Yedi taş, altı tur. Açık taşı al ya da duvardan çek, sonra bir taş at. İki per ve bir çift kazandırır; ne kadar erken, o kadar iyi.',
+    desc: 'Yedi taş, altı tur. Al ya da çek, sonra at. İki per ve bir çift kazandırır; erken olan çok öder.',
     take: 'AL', draw: 'ÇEK', discards: 'ATILANLAR', waits: 'BEKLENEN', wall: 'DUVAR', turns: 'TURLAR',
     mahjong: 'MAHJONG!', near: 'YAKIN EL', nearPay: 'YAKIN EL  {n}',
     bPure: 'TEK TAKIM', bDragon: 'EJDERHA', bTriplets: 'HEP ÜÇLÜ', bRuns: 'HEP SIRA',
@@ -50,10 +47,7 @@ const STRINGS: MachineStrings = {
     suggestTake: 'Bunu al', suggestDraw: 'Bunun yerine çek',
 
     // ── seat HUD (readability standard) ──
-    goal: 'Boncuklar bitmeden 2 per ve bir çift kur. Ne kadar erken, o kadar büyük.',
-    tip1: '[{deal}] ile bahsi öde, 7 taş dağıt. Bahsi [{bet}] ile değiştir.',
-    tip2: 'Her turda açık taşı AL [{take}] ya da duvardan ÇEK [{draw}], sonra AT [{disc}].',
-    tip3: '[{left}] [{right}] ile gez  ·  [{hint}] İPUCU HALKASI  ·  [{help}] TAM KURALLAR',
+    goal: 'Boncuklar bitmeden 2 per ve bir çift kur. Erken olan çok öder.',
     rule1: '7 taşın ve 6 turun var (pirinç boncuklar). Her turda krupiye bir taş açar.',
     rule2: 'Açık taşı AL ya da duvardaki sıradaki taşı ÇEK; açık taş ölür. Sonra bir taş at.',
     rule3: 'İki per ve bir çiftten oluşan 8 taşlık el MAHJONG sayılır ve hemen kazandırır.',
@@ -65,7 +59,7 @@ const STRINGS: MachineStrings = {
     stPick: 'AL MI ÇEK Mİ?', stPickSub: '{n}. tur / {t}  ·  şimdi kazanırsan x{m}',
     stDisc: 'BİR TAŞ AT', stDiscSub: '[{left}] [{right}] ile seç, [{disc}] ile at',
     stDone: 'EL BİTTİ', stDoneSub: 'Yeni el için [{deal}]',
-    nTurn: 'TUR', nBet: 'BAHSİN', nPays: 'KAZANÇ', nWall: 'DUVAR', nBalance: 'BAKİYE',
+    nTurn: 'TUR', nBet: 'BAHİS', nPays: 'KAZANÇ', nWall: 'DUVAR', nBalance: 'BAKİYE',
     cDeal: 'DAĞIT', cBet: 'BAHİS', cTake: 'AL', cDraw: 'ÇEK', cDiscard: 'AT', cMove: 'GEZ',
     cHint: 'İPUCU', cRules: 'KURALLAR', cLeave: 'ÇIK',
   },

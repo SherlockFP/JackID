@@ -180,7 +180,7 @@ export default class Baccarat extends TableBase<BaccaratParts, Ev, Snap, Act> {
   // ── local input ────────────────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const seat = this.localSeat;
     const open = this.st.phase === 'open' && seat >= 0 && !this.st.locked[seat];
@@ -462,7 +462,6 @@ export default class Baccarat extends TableBase<BaccaratParts, Ev, Snap, Act> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('baccarat', this.tipLines());
     }
   }
 
@@ -831,14 +830,6 @@ export default class Baccarat extends TableBase<BaccaratParts, Ev, Snap, Act> {
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.baccarat.hTip1', v: { p: this.k('n1'), b: this.k('n2'), t: this.k('n3') } },
-      { k: 'm.baccarat.hTip2', v: { lock: this.k('primary') } },
-      { k: 'm.baccarat.hTip3', v: { skip: this.k('primary'), help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return ['hRule1', 'hRule2', 'hRule3', 'hRule4', 'hRule5'].map((r) => ({ k: 'm.baccarat.' + r }));

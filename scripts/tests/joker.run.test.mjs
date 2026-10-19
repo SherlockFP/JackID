@@ -22,6 +22,7 @@ before(async () => {
 const KINDS = ['coinflip', 'bigone', 'bounty_board', 'debt_terminal'];
 function floorRun(seed = 41) {
   const run = RUN.createRun({ seed, mode: 'debt' });
+  run.index = 1;   // Night 2: Loki is silent on Night 1 (he introduces himself on the Night 2 lift)
   run.attachWorld({ machines: () => KINDS.map((k) => ({ instance: `m-${k}`, machineId: k })), instancePos: () => undefined });
   assert.equal(run.startWatch(), true);
   for (let i = 0; i < 40 && run.shift.phase !== 'play'; i++) run.tick(0.5);
@@ -97,4 +98,17 @@ test('keys: L and O are free of the Crooked Table call and the seated keys; stri
   assert.ok(KM.SEATED_WALK_ACTIONS.has('jokerAsk') && KM.SEATED_WALK_ACTIONS.has('callLiar'));
   assert.deepEqual(Object.keys(S.en).sort(), Object.keys(S.tr).sort());
   for (const l of ['en', 'tr']) for (const v of Object.values(S[l])) assert.ok(!/[–—]/.test(v), v);
+});
+
+test('Night 1 is the coach\'s: Loki neither whispers nor dares before his Night 2 lift line', () => {
+  const run = RUN.createRun({ seed: 41, mode: 'debt' });
+  run.attachWorld({ machines: () => KINDS.map((k) => ({ instance: `m-${k}`, machineId: k })), instancePos: () => undefined });
+  assert.equal(run.startWatch(), true);
+  for (let i = 0; i < 40 && run.shift.phase !== 'play'; i++) run.tick(0.5);
+  const h = heard(['joker:whisper', 'joker:dare']);
+  seat(run, 'coinflip');
+  seat(run, 'bounty_board');
+  h.off();
+  assert.equal(h.got.length, 0, 'silent on Night 1');
+  run.dispose?.();
 });

@@ -1,27 +1,18 @@
 /**
- * Vendored furniture models (CC0, public/assets/vendor, docs/ASSETS.md): the PSX couch (GLB) for the apartment and the
- * tavern pieces (OBJ) for the Lobby bar. Everything loads once, asynchronously, and is cloned per placement; a file that
- * fails to load is logged and simply never appears (the colliders are registered by the caller, so the world is the same).
+ * Vendored furniture models (CC0, public/assets/vendor, docs/ASSETS.md): the PSX couch (GLB) for the apartment. It loads once,
+ * asynchronously, and is cloned per placement; a file that fails to load is logged and simply never appears (the colliders are
+ * registered by the caller, so the world is the same). The Lobby bar was the medieval tavern OBJ set until wave 87; it is now
+ * built from kit primitives (props/bar.ts).
  *
  *   placeCouch(parent, { pos, yaw, length })            the couch, back detected and turned to `yaw`, `length` m long
- *   placeTavern(kit, parent, name, { pos, yaw, ... })   one tavern piece, scaled to `height` m, centred on `pos`
- *
- * The OBJ materials are not read: each model is one 1024 px atlas, which would be a 4 MB upload per piece and break the PSX
- * look, so the atlas goes through the vendor texture pipeline instead (nearest-downscaled to 128 px, 5-bit quantised, shared).
- * BarrelStand's MTL points at the author's C: drive, so it takes a wood texture from the Synthetic pack.
  */
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
-import type { KitX } from '@/kit';
 import { log } from '@/core/log';
 import { psxMaterial } from '@/core/renderer/psxMaterial';
 
 const ROOT = `${import.meta.env.BASE_URL}assets/vendor/`;
 const COUCH_GLB = `${ROOT}duhgless-psx-couch-2/couch.glb`;
-const TAVERN = 'battleroach-medieval-tavern';
-
-export type TavernPiece = 'Bar' | 'Shelf' | 'Stool' | 'BarrelStand' | 'Barrel';
 
 const cache = new Map<string, Promise<THREE.Object3D | null>>();
 
@@ -114,39 +105,6 @@ export async function placeCouch(parent: THREE.Object3D, o: { pos: [number, numb
   const g = normalise(clone, (s) => o.length / Math.max(s[longAxis], 0.001), yaw);
   g.position.set(o.pos[0], o.pos[1], o.pos[2]);
   g.name = 'couch';
-  parent.add(g);
-  return g;
-}
-
-function loadTavernSource(kit: KitX, name: TavernPiece): Promise<THREE.Object3D | null> {
-  const key = `tavern:${name}`;
-  const hit = cache.get(key);
-  if (hit) return hit;
-  const p = new OBJLoader().loadAsync(`${ROOT}${TAVERN}/${name}/TI_${name}.obj`).then((obj): THREE.Object3D => {
-    const atlas = name === 'BarrelStand'
-      ? kit.tex.vendor('sbs-synthetic/128x128/Wood/Synth-Wood_01-128x128.png', { size: 64 })
-      : kit.tex.vendor(`${TAVERN}/${name}/Textures/DefaultMaterial_BaseColor.png`, { size: 128 });
-    const big = name === 'Bar' || name === 'Shelf';
-    const mat = psxMaterial({ map: atlas, color: name === 'BarrelStand' ? 0x9a7a58 : 0xffffff, affine: !big });
-    obj.traverse((n) => {
-      const m = n as THREE.Mesh;
-      if (!m.isMesh) return;
-      m.material = mat;
-      if (!m.geometry.getAttribute('normal')) m.geometry.computeVertexNormals();
-    });
-    return shareGeometry(obj);
-  }).catch((e: unknown): null => { log.warn('world', `tavern ${name} failed to load`, e); return null; });
-  cache.set(key, p);
-  return p;
-}
-
-/** One tavern piece: scaled so its height is `height` m, centred on (pos.x, pos.z) and standing at pos.y, turned by `yaw`. */
-export async function placeTavern(kit: KitX, parent: THREE.Object3D, name: TavernPiece, o: { pos: [number, number, number]; yaw?: number; height: number }): Promise<THREE.Object3D | null> {
-  const src = await loadTavernSource(kit, name);
-  if (!src) return null;
-  const g = normalise(src.clone(true), (s) => o.height / Math.max(s.y, 0.001), o.yaw ?? 0);
-  g.position.set(o.pos[0], o.pos[1], o.pos[2]);
-  g.name = `tavern:${name}`;
   parent.add(g);
   return g;
 }

@@ -90,7 +90,7 @@ export function buildClock(kit: KitX, o: { ceiling?: number } = {}): ClockParts 
   const minuteHand = hand(kit, [[0, -0.16], [-0.03, 0], [-0.018, L * 0.7], [0, L * 0.86], [0.018, L * 0.7], [0.03, 0]], 0.132, 0.02, 0x1a0f08, root);
   const secondHand = hand(kit, [[-0.008, -0.22], [-0.008, L * 0.9], [0.008, L * 0.9], [0.008, -0.22]], 0.156, 0.01, kit.pal.red, root);
   // counterweight disc on the second hand's tail
-  kit.cyl(0.035, 0.035, 0.012, kit.pal.red, { rot: [90, 0, 0], pos: [0, -0.16, 0.161], parent: secondHand, seg: 8 });
+  kit.cyl(0.035, 0.035, 0.022, kit.pal.red, { rot: [90, 0, 0], pos: [0, -0.16, 0.161], parent: secondHand, seg: 8 });   // 22 mm: at 12 its faces lay 1 mm off the hand's
   // the tiny XIII: tucked inside the ring between XII and I, shown on Night 8
   const xiii = kit.label({ text: 'XIII', w: 0.2, h: 0.09, px: [48, 22], color: 0x8a1a14, bg: null, font: 'px5' }).mesh;   // i18n-ok: a Roman numeral, not prose
   xiii.position.set(Math.sin(Math.PI / 12) * 0.56, Math.cos(Math.PI / 12) * 0.56, 0.104);

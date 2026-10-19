@@ -19,9 +19,7 @@ export const PAUSE_PANEL = 'ingame-pause';
 export const INTER_PANEL = 'ingame-intermission';
 
 export interface PauseOpts {
-  onResume(): void; onQuit(): void; onGone(): void; onStandUp?(): void; onSettings?(): void;
-  /** Given only while the first-run tutorial is on screen: a SKIP TUTORIAL line (the caller also closes the card). */
-  onSkipTutorial?(): void;
+  onResume(): void; onQuit(): void; onGone(): void; onSettings?(): void; onJournal?(): void;
   /** Online session: the game does NOT stop behind the card. The card says so (GAME CONTINUES) and its title becomes MENU. */
   live?: boolean;
   /** Wave 25: Soul Marks left on the JackID card (seals under the title). At 0 the card reads BLANK. Absent: no seals row. */
@@ -49,8 +47,8 @@ function paintSeals(p: Pix, left: number, max: number): void {
 interface MenuRow { label: string; danger: boolean; hold: boolean; act(): void }
 
 /**
- * Pause card. `onGone` runs when the panel closes for any reason (Esc, a menu line, state exit). `onStandUp` only when
- * seated; `onSettings` adds a SETTINGS line when given.
+ * Pause card. `onGone` runs when the panel closes for any reason (Esc, a menu line, state exit). `onSettings` and `onJournal` add their lines when given.
+ * Four lines at most: RESUME, SETTINGS, JOURNAL, QUIT (standing up has its key, the tutorial skips on an Esc hold).
  */
 export function buildPause(el: HTMLElement, o: PauseOpts): () => void {
   modalPanel(el, { escClose: true, dim: false });
@@ -61,9 +59,8 @@ export function buildPause(el: HTMLElement, o: PauseOpts): () => void {
 
   const rows: MenuRow[] = [
     { label: t('ingame.pause.resume'), danger: false, hold: false, act: o.onResume },
-    ...(o.onStandUp ? [{ label: t('ingame.pause.standUp'), danger: false, hold: false, act: o.onStandUp }] : []),
-    ...(o.onSkipTutorial ? [{ label: t('tut.skipCard'), danger: false, hold: false, act: o.onSkipTutorial }] : []),
     ...(o.onSettings ? [{ label: t('ingame.pause.settings'), danger: false, hold: false, act: o.onSettings }] : []),
+    ...(o.onJournal ? [{ label: t('ingame.pause.journal'), danger: false, hold: false, act: o.onJournal }] : []),
     { label: t('ingame.pause.quit'), danger: true, hold: true, act: o.onQuit },
   ];
 
@@ -100,7 +97,7 @@ export function buildPause(el: HTMLElement, o: PauseOpts): () => void {
     if (o.live) txt(p, fit(t('pauselive.label'), 88, { micro: true }), CARD_W / 2, CARD_H - 25, CARD_LIVE, { micro: true, align: 'center' });
     // two micro lines (5 px tall): the hold hint sits 17 px up from the bottom, the key line 8 px up, so they never touch
     txt(p, fit(t('ingame.pause.holdHint'), 88, { micro: true }), CARD_W / 2, CARD_H - 17, 0x9c8a62, { micro: true, align: 'center' });
-    txt(p, 'W/S  ENTER  ESC', CARD_W / 2, CARD_H - 8, 0x7a6a4c, { micro: true, align: 'center' });
+    txt(p, fit(t('ui.keyhint'), 88, { micro: true }), CARD_W / 2, CARD_H - 8, 0x7a6a4c, { micro: true, align: 'center' });
   });
 
   const press = (i: number): void => {

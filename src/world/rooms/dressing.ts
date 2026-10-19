@@ -158,7 +158,7 @@ export function buildDressing(ctx: DressingCtx): DressingBuild {
   const rust = kit.mat({ color: RUST });
   kit.tube([[11.4, 3.1, -29.6], [29.6, 3.1, -29.6]], 0.09, rust, { parent: boiler });
   kit.tube([[11.4, 2.5, -29.6], [29.6, 2.5, -29.6]], 0.06, rust, { parent: boiler });
-  kit.cyl(0.08, 0.08, 3.6, rust, { pos: [12.2, 1.8, -29.6], parent: boiler, seg: 8 });
+  kit.cyl(0.08, 0.08, 3.58, rust, { pos: [12.2, 1.79, -29.6], parent: boiler, seg: 8 });   // 2 cm under the 3.6 m ceiling (its top lay in the ceiling plane)
   const steamSeeds: Array<{ sp: THREE.Sprite; x: number; z: number; ph: number }> = [];
   for (let i = 0; i < 5; i++) {
     const sp = kit.glow({ color: 0xd9e4dc, size: 1.6, intensity: 0.18 });

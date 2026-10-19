@@ -36,7 +36,7 @@ export default {
     'choice.look': 'LOOK AT THE CARD',
     'choice.away': 'LOOK AWAY',
     // the Collector's visit (cutscenes/mafia_visit.cutscene.ts): one line, read by the House
-    'mafia.1': 'The House sends its regards.',
+    'mafia.1': 'The quota was due tonight. Thank you for your time.',
     // THE LAW OF THE HOUSE (the Clerk plate; the journal page prints the same five). shortcut: unwired until the Law page is built.
     'law.title': 'THE LAW OF THE HOUSE',
     'law.1': 'A wager said over a card is binding. The Clerk hears it.',
@@ -136,7 +136,7 @@ export default {
     'gods.3': 'Tanrı mı? İkisiyle oturdum. Bahşişleri berbat.',
     'choice.look': 'KARTA BAK',
     'choice.away': 'BAKMA',
-    'mafia.1': 'Kasa selamını yolladı.',
+    'mafia.1': 'Kota bu geceydi. Vaktiniz için teşekkürler.',
     'law.title': 'KASA YASASI',
     'law.1': 'Kart üzerinde söylenen bahis bağlayıcıdır. Katip duyar.',
     'law.2': 'Herkes hile yapabilir. Katibe kanıtlanan hile bahsi kaybettirir. Yanlış suçlama ceza öder.',

@@ -1,7 +1,8 @@
 /**
  * THE PHONE UI (wave 69, Home layer): the pocket phone over `run.homePhone()` (docs/WAVE69_HOME.md §4). A chip sits bottom-left
- * with an unread dot; PHONE (default T, rebindable) or the wall phone at home opens the overlay: two threads (EŞİM / SPOUSE and
- * TAHSİLDAR / THE COLLECTOR, Heat as pips on its header), message bubbles and 2–3 replies on keys 1-3.
+ * with an unread dot; PHONE (default T, rebindable) or the wall phone at home opens the overlay: a thread list (EŞİM / SPOUSE and
+ * TAHSİLDAR / THE COLLECTOR; newest first, one preview line and an unread badge each), then the open thread (Heat as pips on the
+ * Collector header), message bubbles and 2–3 replies on keys 1-3.
  *
  * The overlay is not a modal: it stays in walk mode, so the phone keys keep working (the input service delivers walk actions
  * only in walk mode). Keys are read on the sim timer, once per fixed step, the same place the hotline's keys are read. Replies
@@ -69,6 +70,7 @@ export function mountPhoneUi(run: DebtRun): () => void {
   let open = false;
   let disposed = false;
   let thread: PhoneThread = 'spouse';
+  let view: 'list' | 'thread' = 'list';
   let sig = '';
   let keyLabel = 'T';
 
@@ -81,16 +83,7 @@ export function mountPhoneUi(run: DebtRun): () => void {
   // ── panel skeleton (rebuilt on render) ─────────────────────────────────────────────────────────
   const head = el('div', 'px-phone-head', panel);
   el('span', 'px-phone-title', head, t('phone.ui.title'));
-  const tabs = el('div', 'px-phone-tabs', panel);
-  const tabEls = new Map<PhoneThread, HTMLButtonElement>();
-  for (const th of THREADS) {
-    const b = el('button', 'px-phone-tab', tabs, t(`phone.thread.${th}`));
-    b.type = 'button';
-    b.dataset.thread = th;
-    el('i', 'px-phone-dot', b);
-    b.addEventListener('click', () => selectThread(th));
-    tabEls.set(th, b);
-  }
+  const list = el('div', 'px-phone-list', panel);
   const threadHead = el('div', 'px-phone-thread', panel);
   const body = el('div', 'px-phone-body', panel);
   const replies = el('div', 'px-phone-replies', panel);
@@ -98,6 +91,9 @@ export function mountPhoneUi(run: DebtRun): () => void {
 
   function renderThreadHead(p: HomePhoneApi): void {
     threadHead.replaceChildren();
+    const back = el('button', 'px-phone-back', threadHead, '<');
+    back.type = 'button';
+    back.addEventListener('click', () => { view = 'list'; sig = ''; });
     if (thread === 'spouse') {
       const img = el('img', 'px-phone-avatar', threadHead);
       img.alt = '';
@@ -112,11 +108,31 @@ export function mountPhoneUi(run: DebtRun): () => void {
     for (let i = 0; i < HEAT_PIPS; i++) el('i', i < heat ? 'px-pip on' : 'px-pip', pips);
   }
 
-  function render(p: HomePhoneApi): void {
-    for (const [th, b] of tabEls) {
-      b.classList.toggle('on', th === thread);
-      b.querySelector<HTMLElement>('.px-phone-dot')?.classList.toggle('lit', p.messages().some((m) => m.thread === th && !m.read));
+  /** The inbox: threads with messages, newest first; one line of preview and the unread count as a badge. */
+  function renderList(p: HomePhoneApi): void {
+    list.replaceChildren();
+    const msgs = p.messages();
+    const rows = THREADS.map((th) => ({ th, last: msgs.map((m, i) => (m.thread === th ? i : -1)).reduce((a, b) => Math.max(a, b), -1) }))
+      .filter((r) => r.last >= 0).sort((a, b) => b.last - a.last);
+    if (!rows.length) el('div', 'px-phone-empty', list, t('phone.ui.empty'));
+    for (const { th, last } of rows) {
+      const m = msgs[last];
+      const unread = msgs.filter((x) => x.thread === th && !x.read).length;
+      const r = el('button', unread ? 'px-phone-row unread' : 'px-phone-row', list);
+      r.type = 'button';
+      r.dataset.thread = th;
+      const top = el('span', 'px-phone-row-top', r);
+      el('span', 'px-phone-row-name', top, t(`phone.thread.${th}`));
+      if (unread) el('b', 'px-phone-badge', top, String(unread));
+      el('span', 'px-phone-row-prev', r, t(m.textKey, m.vars));
+      r.addEventListener('click', () => selectThread(th));
     }
+  }
+
+  function render(p: HomePhoneApi): void {
+    const inThread = view === 'thread';
+    list.hidden = inThread; threadHead.hidden = !inThread; body.hidden = !inThread; replies.hidden = !inThread;
+    if (!inThread) { renderList(p); hint.textContent = t('phone.ui.hint.list', { key: keyLabel }); return; }
     renderThreadHead(p);
 
     body.replaceChildren();
@@ -152,22 +168,22 @@ export function mountPhoneUi(run: DebtRun): () => void {
 
   function signature(p: HomePhoneApi): string {
     const msgs = p.messages().map((m) => `${m.id}:${m.answered}:${m.read ? 1 : 0}`).join('|');
-    return `${thread}#${p.heat()}#${msgs}`;
+    return `${view}#${thread}#${p.heat()}#${msgs}`;
   }
 
   function selectThread(th: PhoneThread): void {
     const p = phoneOf(run);
     if (!p || !open) return;
     thread = th;
+    view = 'thread';
     p.markRead(th);
     sig = '';
   }
 
-  /** Opens on the thread with a question waiting, else on the newest message, else on the spouse. */
-  function pickThread(p: HomePhoneApi): PhoneThread {
+  /** Opens straight into a thread with a question waiting (its reply keys must work), else on the inbox. */
+  function pendingThread(p: HomePhoneApi): PhoneThread | null {
     for (const th of THREADS) if (pendingIn(p, th)) return th;
-    const last = p.messages()[p.messages().length - 1];
-    return last ? last.thread : 'spouse';
+    return null;
   }
 
   let leaveTimer: (() => void) | null = null;
@@ -178,8 +194,9 @@ export function mountPhoneUi(run: DebtRun): () => void {
     if (app.input.mode !== 'walk') return;      // a cutscene, a menu or a text field has the screen
     refreshKeyLabel();                          // the bindings may have changed in the controls card
     open = true;
-    thread = pickThread(p);
-    p.markRead(thread);
+    const pend = pendingThread(p);
+    view = 'list';
+    if (pend) { thread = pend; view = 'thread'; p.markRead(pend); }
     app.input.exitLock();
     app.player?.viewmodel?.hold?.('phone');
     app.audio.play('phoneOpen');
@@ -242,7 +259,7 @@ export function mountPhoneUi(run: DebtRun): () => void {
     (app.ui as UIOverlayX).toast(t(msg.thread === 'spouse' ? 'phone.toast.spouse' : 'phone.toast.collector'), 'phone', TOAST_S, `phone:${msg.thread}`);
     app.audio.play(HOME_SFX.buzz);
     const p = phoneOf(run);
-    if (open && p && msg.thread === thread) p.markRead(thread);
+    if (open && p && view === 'thread' && msg.thread === thread) p.markRead(thread);
     sig = '';
   }));
   offs.push(bus.on('msg:reply', () => { sig = ''; }));

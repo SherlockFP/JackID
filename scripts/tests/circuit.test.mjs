@@ -126,8 +126,8 @@ test('schedule: Hot Lamp count is 1 from Night 1 (2 from Night 5); Cold from Nig
   assert.equal(S.coldLampCount(3, -5), 0, 'never below zero');
 });
 
-test('schedule: the quota ladder is strictly increasing and Night 1 is the teaching Night (quota 24 under the 30 pocket)', () => {
-  assert.ok(S.BASE_NIGHTS[0].base < S.START.pocket, 'Night 1 quota below the starting pocket (director: one bad streak does not end a first run)');
+test('schedule: the quota ladder is strictly increasing and Night 1 opens with at most half its quota in the pocket (wave 85: 12 of 24)', () => {
+  assert.ok(2 * S.START.pocket <= S.BASE_NIGHTS[0].base, 'the starting pocket is at most half of Night 1 (it was 30 against 24: the quota was paid at once)');
   assert.ok(S.BASE_NIGHTS.every((n, i, a) => i === 0 || n.base > a[i - 1].base), 'quota ladder strictly increasing');
 });
 

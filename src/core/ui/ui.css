@@ -305,12 +305,13 @@
 .px-subtitle .who { display: block; margin-bottom: calc(3 * var(--u)); font-family: var(--f-head); font-size: var(--fh); line-height: 1; color: var(--amber); }
 .px-subtitle .txt { display: block; font-family: var(--f-body); font-size: var(--fb); line-height: 1.1; color: var(--ivory); overflow-wrap: anywhere; }
 
-/* Night 1 tutorial prompt (tutorial.ts): upper-left, under the HUD top band (--hud-top-h, set by hud.ts) and the rules chip.
+/* Night 1 tutorial prompt (tutorial.ts): upper-left, under the HUD top band (--hud-top-h, set by hud.ts) and the rules chip. It starts
+   30 u under the bar (the top banner, up to two rows, ends about 27 u under it), so a banner never reaches into it.
    It never reaches the bottom: the odds line and the STAKE / POCKET panel of the seat HUD stay clear of it.
    Legibility pass: narrower (so it stays out of the centre column and off the machine's sign) and it wraps at word
    boundaries — "intermission" was being broken mid-word ("intermissio") by the old anywhere wrap. */
 .px-tut {
-  position: absolute; left: calc(4 * var(--u)); top: calc(var(--hud-top-h, calc(52 * var(--u))) + 22 * var(--u)); bottom: auto; z-index: 2;
+  position: absolute; left: calc(4 * var(--u)); top: calc(var(--hud-top-h, calc(52 * var(--u))) + 30 * var(--u)); bottom: auto; z-index: 2;
   /* Narrow enough to stay clear of the centred debt CRT and the console (fitPose), and ends above the centre line so the
      world prompt (centre, up) never sits under it. The capture hint (top centre) is not in the way: the tutorial is upper-left. */
   max-width: min(26%, calc(160 * var(--u)));
@@ -463,6 +464,7 @@
 .px-toast.k-money { --tc: var(--shine); }
 .px-toast.k-curse { --tc: var(--violet); animation: px-curse 0.5s steps(1) infinite; }
 .px-toast.k-phone { --tc: var(--amber); }
+.px-toast.k-loki { --tc: var(--green); }
 .px-toast.k-phone .ico { animation: px-shake 0.083s steps(2, end) infinite; }
 
 /* ── popText flyers and spark bursts (core/ui fly()) ──────────────────────────────────────── */
@@ -499,22 +501,24 @@
    stretch alignment the other words ("MOL" in "KRUPİYER MOLASI") rode high. */
 .px-bw .Wd { display: inline-flex; align-items: baseline; white-space: nowrap; }
 .px-bw .L { display: inline-block; vertical-align: baseline; }
-/* Legibility pass (HUD lane): a t-banner's letters drop in 40 ms apart (ui.ts dropLetters), so any frame taken during the
-   drop read as a line cut mid-word ("DEPOSITED 1 TO THE BANK · P..."). The letters keep their drop, but they are visible
+/* Legibility pass (HUD lane): a t-banner's letters nudge in 20 ms apart, 1 px (ui.ts dropLetters, soft), so any frame taken during the
+   drop read as a line cut mid-word ("DEPOSITED 1 TO THE BANK · P..."). The letters keep a soft drop, but they are visible
    from the start (author !important beats the WAAPI opacity), so the news is never half-written. And the banner gets its own
    slot band under the interact prompt (ui.ts pins t-banners at 22%, which landed on the toast stack and the machine face). */
-/* Top band (ui.ts runBanner): just under the HUD top bar (--hud-top-h), above the Night 1 tutorial box (top-left, 22 u under the
-   bar) and above the eye-level neon signs. The title is kept to the middle 48 % of the screen, so a wide banner never runs over
-   the tutorial column on the left (min 260 px on a phone, where the box is small too). */
-.px-bw.t-banner { top: calc(var(--hud-top-h, calc(52 * var(--u))) + 6 * var(--u)) !important; }
-/* One line: the Watch start and the other top banners never wrap onto a second row (that row landed on the toast stack);
-   a long text shrinks with the width instead. The toast stack sits one banner row lower (see .px-toasts). */
-.px-bw.t-banner .title { max-width: 94vw; flex-wrap: nowrap; white-space: nowrap; font-size: min(calc(var(--bw-s, 24) * var(--u)), 4.2vw); }
+/* Top band (ui.ts runBanner): just under the HUD top bar (--hud-top-h), above the Night 1 tutorial box and the objective (top-left, 30 u under
+   the bar: a banner's second row ends about 27 u under it) and above the eye-level neon signs. The banner is a centre column (46 % of
+   the screen, at most 300 u), so it never runs over the left objective / tutorial panel (up to 38 %, 26 % with the tutorial) or the
+   right stack. ui.ts picks a size that fits the column on one row (24, 16, then 8); the rest wraps to a second row inside it. Seated,
+   banners are toasts (ui.ts banner()). */
+.px-bw.t-banner { top: calc(var(--hud-top-h, calc(52 * var(--u))) + 6 * var(--u)) !important; left: 50%; right: auto; width: min(46%, calc(300 * var(--u))); transform: translateX(-50%); }
+.px-bw.t-banner .stage { max-width: 100%; }
+.px-bw.t-banner .title { max-width: 100%; font-size: min(calc(var(--bw-s, 24) * var(--u)), 4.2vw); }
 .px-bw.t-banner .Br { display: none; }
-/* A banner sits on its own dark plate: whatever is behind it (a machine screen, a neon sign) never garbles its letters.
-   Seated, it hangs under the seat's goal / state stack instead of the walk-mode HUD band. */
+/* A banner sits on its own dark plate: whatever is behind it (a machine screen, a neon sign) never garbles its letters. */
 .px-bw.t-banner .title { padding: calc(1.5 * var(--u)) calc(5 * var(--u)); background: rgba(8, 8, 8, 0.78); box-shadow: 0 0 0 calc(1 * var(--u)) var(--void); }
-.px-root.seated .px-bw.t-banner { top: calc(var(--seat-top-b, var(--hud-top-h, calc(52 * var(--u)))) + 6 * var(--u)) !important; }
+/* A banner still running (or queued) when the player sits is not drawn: it would sit over the machine, its tip or the left objective
+   panel, and its news is stale by then. News that comes while seated is a toast already (ui.ts banner()). */
+.px-root.seated .px-bw.t-banner { display: none; }
 .px-bw.t-banner .L { opacity: 1 !important; }
 .px-bw .W { display: inline-block; white-space: pre; }
 .px-bw .W.wave { animation: px-wave 0.5s steps(4, end) infinite; animation-delay: calc(var(--i, 0) * -0.06s); }

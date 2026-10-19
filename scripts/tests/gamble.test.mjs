@@ -104,7 +104,7 @@ test('all-in: 1 in 4 for x4.5 is EV 1.125 (analytic and sampled); the two-press 
 
 // ── the seat controller against a mock run ────────────────────────────────────────────────────────
 function mk({ night = 1, wallet = 1000, shared = false, windowId = 'watch', seed = 1234 } = {}) {
-  const st = { wallet, night, watch: 7, used: false, log: [], busy: false, roundOpen: false, flashes: [], fx: [] };
+  const st = { wallet, night, watch: 7, used: false, log: [], busy: false, roundOpen: false, live: true, flashes: [], fx: [] };
   const port = {
     watchId: () => st.watch,
     allInUsed: () => st.used,
@@ -116,6 +116,7 @@ function mk({ night = 1, wallet = 1000, shared = false, windowId = 'watch', seed
   const host = {
     id: 'm1', src: { mid: 'm1', machineId: 'slot' }, runSeed: seed, shared, isLocalOccupant: true,
     get roundOpen() { return st.roundOpen; },
+    get gamblesLive() { return st.live; },
     get busy() { return st.busy; }, set busy(v) { st.busy = v; },
     run: { wallet: () => st.wallet, night: () => st.night, window: () => windowId },
     wait: () => Promise.resolve(),
@@ -173,6 +174,62 @@ test('layer: the offer expires, a new stake cancels it, tiny wins are not offere
   assert.ok(!w.layer.offerLive);
   w.layer.offerWin(50); w.layer.hsBegin(10, 10);
   assert.ok(!w.layer.offerLive);
+});
+
+// ── the Watch closes: nothing pending may pay in Dawn ──────────────────────────────────────────────
+test('gamblesLive: live while the floor takes plays (and on the bench), locked from the close on', () => {
+  for (const p of ['play', 'lastCall', 'idle', undefined]) assert.equal(G.gamblesLive(p), true, String(p));
+  for (const p of ['bell', 'closing', 'settle', 'collection', 'intermission', 'over']) assert.equal(G.gamblesLive(p), false, p);
+});
+
+test('every machine with its own pending gamble (chase, double-up, ladder, pot) wraps it up when the Watch closes', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { ROOT } = await import('./_vite.mjs');
+  for (const m of ['bigone', 'videopoker', 'hilo', 'bandit', 'coinflip', 'mines']) {
+    const src = readFileSync(join(ROOT, 'src/machines', m, 'index.ts'), 'utf8');
+    assert.ok(/override onWatchClosed()/.test(src), `${m} overrides onWatchClosed`);
+  }
+  const base = readFileSync(join(ROOT, 'src/machines/_base/MachineBase.ts'), 'utf8');
+  assert.ok(/this.onWatchClosed()/.test(base), 'the base calls the hook from its fixed step');
+});
+
+test('layer: when the Watch closes the offer lapses, nothing new is offered and G / the all-in do nothing', () => {
+  const w = mk({ wallet: 500 });
+  w.layer.offerWin(50);
+  assert.ok(w.layer.offerLive);
+  w.st.live = false; w.tick(0.1);
+  assert.ok(!w.layer.offerLive, 'the open offer is voided at the close');
+  assert.equal(w.st.wallet, 500, 'the credited win stays in the pocket');
+  w.layer.offerWin(50);
+  assert.ok(!w.layer.offerLive, 'a win credited after the close is not offered');
+  assert.equal(w.key('auto', { code: 'KeyG' }), false, 'G stays the machine key');
+  w.key('key', { code: 'KeyK' }); w.key('key', { code: 'KeyK' });
+  assert.equal(w.st.wallet, 500, 'no all-in shot after the close');
+  w.st.live = true; w.layer.offerWin(50);
+  assert.ok(w.layer.offerLive, 'the next Watch offers again');
+});
+
+test('layer: an offer taken just before the close pays out at the close; a flipping card pays when it lands', async () => {
+  const w = mk({ wallet: 500 });
+  w.layer.offerWin(200); w.key('auto', { code: 'KeyG' }); await w.settleP();
+  assert.equal(w.st.wallet, 300);                                 // 200 at risk on the ladder
+  w.st.live = false; w.tick(0.1); await w.settleP(); await w.settleP();
+  assert.equal(w.st.wallet, 500, 'an idle ladder collects at x1 when the Watch closes');
+  assert.ok(!w.st.busy && !w.layer.ladderOpen);
+  w.st.live = true;
+
+  let paid = 0, lost = 0;
+  for (let i = 0; i < 60; i++) {                                  // mid-flip at the close: collect after the card lands (or nothing if it lost)
+    const x = mk({ wallet: 500, seed: 70 + i });
+    x.layer.offerWin(100); x.key('auto', { code: 'KeyG' }); await x.settleP();
+    x.key('left');                                                // the card is in the air
+    x.st.live = false; x.tick(0.1);
+    for (let k = 0; k < 40; k++) await x.settleP();
+    assert.ok(!x.st.busy && !x.layer.ladderOpen, 'the ladder ends by itself');
+    if (x.st.wallet === 400) lost++; else { paid++; assert.ok(x.st.wallet > 400); }
+  }
+  assert.ok(paid > 10 && lost > 10, `both outcomes happen (paid ${paid}, lost ${lost})`);
 });
 
 test('layer: high stakes needs Night 2, Shift+H, and takes the extra x4 from the pocket', () => {

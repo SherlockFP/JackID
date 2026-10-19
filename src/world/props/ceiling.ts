@@ -14,6 +14,12 @@ import * as THREE from 'three';
 import type { KitX } from '@/kit';
 import type { TexGen } from '@/core/texgen/types';
 import type { V3 } from '@/core/types';
+import { bayPanelTex } from './surfaces';
+
+/** Walnut grain and velvet nap (Synthetic pack, tile-tagged by kit.tex): the beams, soffits and step panels were flat colour slabs. */
+const WALNUT = 'sbs-synthetic/128x128/Wood/Synth-Wood_01-128x128.png', VELVET = 'sbs-synthetic/128x128/Fabric/Synth-Fabric_07-128x128.png';
+const grain = (kit: KitX, path: string, color: number, emissive: number): THREE.Material =>
+  kit.mat({ color, map: kit.tex.vendor(path, { size: 64 }), emissive, emissiveIntensity: 1 });
 
 export interface CeilingZone { id: string; rect: [number, number, number, number]; h: number }
 export interface CeilingOpts {
@@ -33,14 +39,9 @@ const CELL = 4.2;
 
 export function buildCeilingDressing(kit: KitX, tex: TexGen, o: CeilingOpts): void {
   const parent = o.parent;
-  // the panel face: a lit centre, a darker rim and a thin brass line, one image stretched over every bay
-  const panelTex = tex.canvas(32, 32, (g, w, h) => {
-    g.fillStyle = '#7a6040'; g.fillRect(0, 0, w, h);
-    g.fillStyle = '#b89860'; g.fillRect(3, 3, w - 6, h - 6);
-    g.fillStyle = '#d8bc7c'; g.fillRect(6, 6, w - 12, h - 12);
-    g.fillStyle = '#c8a45a'; g.fillRect(14, 6, 4, h - 12); g.fillRect(6, 14, w - 12, 4);
-  }, { wrap: 'clamp' });
-  const beamMat = kit.mat({ color: 0x6a4428, emissive: 0x3c2410, emissiveIntensity: 1 });
+  // the panel face: a dentil border, a lit field and a gilt ring, one image stretched over every bay
+  const panelTex = bayPanelTex(tex);
+  const beamMat = grain(kit, WALNUT, 0xb08060, 0x2c1a0c);
   const trimMat = kit.mat({ color: 0xb08a38, emissive: 0x4a3810, emissiveIntensity: 1 });
   const ductMat = kit.mat({ color: 0x8a9096, emissive: 0x30363c, emissiveIntensity: 1 });
   const ventMat = kit.mat({ color: 0x241810, lit: false });
@@ -62,26 +63,26 @@ export function buildCeilingDressing(kit: KitX, tex: TexGen, o: CeilingOpts): vo
     const tint = TINT[zone.id] ?? 0xc0a070;
     const panelMat = kit.mat({ map: panelTex, color: tint, lit: false });
 
-    // cornice: a deep band along the walls with a brass line on its lower edge
+    // cornice: a deep band along the walls with a brass line on its lower edge (cornice and beams stop 1-3 cm short of the wall planes)
     const cy = H - bd * 0.35, ct = 0.3;
     for (const sz of [-1, 1]) {
-      const z = sz < 0 ? z0 + ct / 2 + 0.15 : z1 - ct / 2 - 0.15;
-      kit.box(w - 0.3, bd * 0.7, ct, beamMat, { pos: [xc, cy, z], parent, shade: false });
-      kit.box(w - 0.3, 0.04, ct + 0.04, trimMat, { pos: [xc, H - bd * 0.7, z], parent, shade: false });
+      const z = sz < 0 ? z0 + ct / 2 + 0.18 : z1 - ct / 2 - 0.18;
+      kit.box(w - 0.32, bd * 0.7, ct, beamMat, { pos: [xc, cy, z], parent, shade: false });
+      kit.box(w - 0.32, 0.04, ct + 0.04, trimMat, { pos: [xc, H - bd * 0.7, z], parent, shade: false });
     }
     for (const sx of [-1, 1]) {
-      const x = sx < 0 ? x0 + ct / 2 + 0.15 : x1 - ct / 2 - 0.15;
-      kit.box(ct, bd * 0.7, d - 0.3, beamMat, { pos: [x, cy, zc], parent, shade: false });
-      kit.box(ct + 0.04, 0.04, d - 0.3, trimMat, { pos: [x, H - bd * 0.7, zc], parent, shade: false });
+      const x = sx < 0 ? x0 + ct / 2 + 0.18 : x1 - ct / 2 - 0.18;
+      kit.box(ct, bd * 0.7, d - 0.32, beamMat, { pos: [x, cy, zc], parent, shade: false });
+      kit.box(ct + 0.04, 0.04, d - 0.32, trimMat, { pos: [x, H - bd * 0.7, zc], parent, shade: false });
     }
     // cross beams
     for (const x of xs) {
-      kit.box(bw, bd, d - 0.3, beamMat, { pos: [x, H - bd / 2, zc], parent, shade: false });
-      kit.box(bw + 0.04, 0.035, d - 0.3, trimMat, { pos: [x, H - bd, zc], parent, shade: false });
+      kit.box(bw, bd, d - 0.32, beamMat, { pos: [x, H - bd / 2, zc], parent, shade: false });
+      kit.box(bw + 0.04, 0.035, d - 0.32, trimMat, { pos: [x, H - bd, zc], parent, shade: false });
     }
     for (const z of zs) {
-      kit.box(w - 0.3, bd * 0.85, bw, beamMat, { pos: [xc, H - (bd * 0.85) / 2, z], parent, shade: false });
-      kit.box(w - 0.3, 0.035, bw + 0.04, trimMat, { pos: [xc, H - bd * 0.85, z], parent, shade: false });
+      kit.box(w - 0.32, bd * 0.85, bw, beamMat, { pos: [xc, H - (bd * 0.85) / 2, z], parent, shade: false });
+      kit.box(w - 0.32, 0.035, bw + 0.04, trimMat, { pos: [xc, H - bd * 0.85, z], parent, shade: false });
     }
     // lit panel in every bay
     const bayX = (i: number): number => x0 + (i + 0.5) * cw;
@@ -129,14 +130,14 @@ export function buildCeilingDressing(kit: KitX, tex: TexGen, o: CeilingOpts): vo
         if (k % 2 !== 0) return;
         const spans = [z0 + 0.3, ...zs, z1 - 0.3];
         for (let s = 0; s + 1 < spans.length; s++) {
-          const za = spans[s] + 0.1, zb = spans[s + 1] - 0.1, y = H - bd + 0.04;
-          for (const off of [0.18, 0.26]) {
+          const za = spans[s] + 0.1, zb = spans[s + 1] - 0.1, y = H - bd - 0.03;   // hangs under the beam: at +0.04 the tube ran inside it and showed as dashes
+          for (const off of [0.1, 0.18]) {
             const pts: V3[] = [];
             for (let q = 0; q <= 4; q++) {
               const u = q / 4;
               pts.push([x + off, y - Math.sin(u * Math.PI) * 0.16, za + (zb - za) * u]);
             }
-            kit.tube(pts, 0.012, cordMat, { parent, seg: 4, radialSeg: 3, shade: false });
+            kit.tube(pts, 0.03, cordMat, { parent, seg: 4, radialSeg: 3, shade: false });
           }
         }
       });
@@ -186,8 +187,8 @@ export interface CeilingStep {
  */
 export function buildCeilingSteps(kit: KitX, parent: THREE.Object3D, o: { x0: number; x1: number; steps: readonly CeilingStep[] }): void {
   const brass = kit.mat({ color: 0xb08a38, emissive: 0x4a3810, emissiveIntensity: 1 });
-  const wood = kit.mat({ color: 0x5a3820, emissive: 0x2c1a0c, emissiveIntensity: 1 });
-  const velvet = kit.mat({ color: 0x6a1426, emissive: 0x3a0c16, emissiveIntensity: 1 });
+  const wood = grain(kit, WALNUT, 0x9a6a48, 0x2c1a0c);
+  const velvet = grain(kit, VELVET, 0x8a1c30, 0x3a0c16);
   const cove = kit.mat({ color: 0xffd890, lit: false });
   const w = o.x1 - o.x0, xc = (o.x0 + o.x1) / 2;
   for (const st of o.steps) {
@@ -232,7 +233,7 @@ export function buildCeilingSteps(kit: KitX, parent: THREE.Object3D, o: { x0: nu
  */
 export function buildBalconyUndersides(kit: KitX, parent: THREE.Object3D, o: { y: number; z0: number; z1: number }): void {
   const len = o.z1 - o.z0, zc = (o.z0 + o.z1) / 2;
-  const wood = kit.mat({ color: 0x4a2c18, emissive: 0x32200e, emissiveIntensity: 1 });
+  const wood = grain(kit, WALNUT, 0x8a5a3c, 0x32200e);
   const brass = kit.mat({ color: 0xb08a38, emissive: 0x4a3810, emissiveIntensity: 1 });
   const glow = kit.mat({ color: 0xffe2a0, lit: false });
   for (const side of [-1, 1]) {

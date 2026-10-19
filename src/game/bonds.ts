@@ -2,7 +2,7 @@
  * BONDS (docs/STORY_BIBLE.md §10; client: "arkadaş ilişkileri de önemli olsun"). One plain 0..3 value for each of Selim, Mira, Tamsin,
  * Lucan, Mimosa, Vell and the Collector (Ada keeps Harmony, Loki keeps Trust; the Clerk and the Compere have none). Pure rules: no DOM,
  * no run import, no clock. Inputs are the printed Night and an event; outputs are a {@link BondChange} (deltas with their toast line key,
- * and the unlock ids gained and lost). The bus event, the save slot, the PEOPLE page and the bar are a later wave (bible, "Wiring plan").
+ * and the unlock ids gained and lost). run.ts funnels the events (`bond()`), saves it and emits `bond:change`; the bar is food.ts, the PEOPLE page story/notes.ts.
  *
  * Moves: help, a kept word, a share, showing up and defending raise a bond by 1, once per character per Night. A rival beaten clean
  * starts at 1; a win on Loki's hand sets them to 0. Three Nights without a touch cost a pip. A betrayal sets the bond to 0 for good: they
@@ -100,7 +100,7 @@ export type BondWhy = RaiseKind | 'clean' | 'loki' | 'drop' | 'neglect' | 'betra
  */
 export interface PersonEvent { kind: RaiseKind | 'clean' | 'loki' | 'drop' | 'betray' | 'talk'; who: BondId }
 /** `lend` / `repay`: Selim's seal on a short quota and the pay-back at his bar. `dawn`: a paid Dawn closed the Night (also once before the Night 8 Wager). */
-export type BondEvent = PersonEvent | { kind: 'lend' } | { kind: 'repay' } | { kind: 'dawn' };
+export type BondEvent = PersonEvent | { kind: 'lend'; /** Coins of the quota his seal covered: the pay-back price. */ coins?: number } | { kind: 'repay' } | { kind: 'dawn' };
 
 export interface BondDelta { who: BondId; from: number; to: number; why: BondWhy; /** The toast key (`t(line)`). */ line: string }
 export interface BondChange {
@@ -116,10 +116,10 @@ export interface BondChange {
 }
 
 interface Rec { v: number; /** The last Night the player touched them. */ last: number; /** The last Night they rose. */ up: number; burned: boolean }
-interface Loan { night: number; thing: number }
+interface Loan { night: number; thing: number; coins: number }
 
 /** Save shape (`resume.ext.bonds`). Everything checked on restore; a save without it reads as a fresh run. */
-export interface BondsSave { v: 1; b: Record<BondId, Rec>; loans: Loan[]; taken: number; forgot: boolean }
+export interface BondsSave { v: 1; b: Record<BondId, Rec>; loans: Loan[]; taken: number; forgot: boolean; /** Once-a-run unlocks already spent ({@link Bonds.useOnce}). */ used?: string[] }
 
 const freshRecs = (): Record<BondId, Rec> =>
   Object.fromEntries(BOND_IDS.map((w) => [w, { v: w === 'selim' ? 1 : 0, last: INTRO[w] - 1, up: 0, burned: false }])) as Record<BondId, Rec>;
@@ -131,6 +131,7 @@ export class Bonds {
   /** Loans ever made: picks the next small thing from the seeded order. */
   private taken = 0;
   private forgot = false;
+  private used: string[] = [];
   private readonly order: number[];
 
   constructor(seed: number) {
@@ -144,9 +145,15 @@ export class Bonds {
   has(id: string): boolean { return this.unlocked().includes(id); }
   /** Selim out of seals: he stands still behind the bar. */
   private get still(): boolean { return this.loans.length >= SELIM_SEALS; }
-  /** Selim's books: seals he still has, loans out, and whether he has forgotten you. */
-  selim(): { seals: number; owes: number; forgot: boolean; still: boolean } {
-    return { seals: SELIM_SEALS - this.loans.length, owes: this.loans.length, forgot: this.forgot, still: this.still };
+  /** Selim's books: seals he still has, loans out, the price of paying the oldest back, and whether he has forgotten you. */
+  selim(): { seals: number; owes: number; price: number; forgot: boolean; still: boolean } {
+    return { seals: SELIM_SEALS - this.loans.length, owes: this.loans.length, price: this.loans[0]?.coins ?? 0, forgot: this.forgot, still: this.still };
+  }
+  /** A once-a-run unlock (the Collector's VISIT, Lucan's line): true the first time it is asked while held, then never again. */
+  useOnce(id: string): boolean {
+    if (!this.has(id) || this.used.includes(id)) return false;
+    this.used.push(id);
+    return true;
   }
   /** Who is waiting on Night 8 (bond 3, never betrayed). Colour only: the run ends the same with or without them. */
   floor(): BondId[] { return BOND_IDS.filter((w) => this.rec[w].v >= BOND_MAX && !this.rec[w].burned); }
@@ -164,7 +171,7 @@ export class Bonds {
     const before = this.unlocked();
     const out: BondChange = { deltas: [], unlocked: [], locked: [] };
     if (ev.kind === 'dawn') this.dawn(night, out);
-    else if (ev.kind === 'lend') this.lend(night, out);
+    else if (ev.kind === 'lend') this.lend(night, out, ev.coins ?? 0);
     else if (ev.kind === 'repay') this.repay(night, out);
     else this.person(night, ev, out);
     const after = this.unlocked();
@@ -226,11 +233,11 @@ export class Bonds {
   }
 
   /** Selim's seal on a short quota: bond 2+, a seal left, not forgotten, once a Night. The last seal makes him still. */
-  private lend(night: number, out: BondChange): void {
+  private lend(night: number, out: BondChange, coins: number): void {
     const no = this.forgot ? 'forgot' : this.still ? 'still' : this.rec.selim.v < 2 ? 'bond' : this.loans.some((l) => l.night === night) ? 'night' : null;
     if (no) { out.refused = no; return; }
     const thing = this.order[this.taken++ % SELIM_THINGS];
-    this.loans.push({ night, thing });
+    this.loans.push({ night, thing, coins: Math.max(0, Math.floor(coins)) });
     this.touch('selim', night);
     out.thing = thing;
     out.line = lineKey('selim', 'lend');
@@ -249,7 +256,7 @@ export class Bonds {
   snapshot(): BondsSave {
     const b = {} as Record<BondId, Rec>;
     for (const w of BOND_IDS) b[w] = { ...this.rec[w] };
-    return { v: 1, b, loans: this.loans.map((l) => ({ ...l })), taken: this.taken, forgot: this.forgot };
+    return { v: 1, b, loans: this.loans.map((l) => ({ ...l })), taken: this.taken, forgot: this.forgot, used: [...this.used] };
   }
 
   /** Restores a save; anything damaged falls back to the fresh value, and the Selim invariants (burned when forgotten, 0 when still) are re-applied. */
@@ -258,6 +265,7 @@ export class Bonds {
     this.loans = [];
     this.taken = 0;
     this.forgot = false;
+    this.used = [];
     if (!s || typeof s !== 'object') return;
     const o = s as Partial<BondsSave>;
     const n = (x: unknown, hi: number): number | null => (typeof x === 'number' && Number.isInteger(x) && x >= 0 && x <= hi ? x : null);
@@ -274,11 +282,12 @@ export class Bonds {
       for (const l of o.loans) {
         const night = n(l?.night, 9999);
         const thing = n(l?.thing, SELIM_THINGS - 1);
-        if (night !== null && thing !== null && this.loans.length < SELIM_SEALS) this.loans.push({ night, thing });
+        if (night !== null && thing !== null && this.loans.length < SELIM_SEALS) this.loans.push({ night, thing, coins: n(l?.coins, 1e12) ?? 0 });
       }
     }
     this.taken = n(o.taken, 99999) ?? this.loans.length;
     this.forgot = o.forgot === true;
+    if (Array.isArray(o.used)) this.used = o.used.filter((x): x is string => typeof x === 'string' && UNLOCKS.some((d) => d.id === x));
     if (this.forgot) this.rec.selim.burned = true;
     if (this.still) this.rec.selim.v = 0;
   }

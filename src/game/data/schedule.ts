@@ -21,8 +21,6 @@ export interface NightDef {
   clock: number;
   /** Interest rate per Settle. */
   interest: number;
-  /** House Favour M-factor on payouts (1 = none). */
-  favour: number;
   /** Stake index (SI). */
   si: number;
   /** Punch card side length (0 = no card yet). */
@@ -33,7 +31,7 @@ export interface NightDef {
  * GDD §2.4 base run, Nights 1–8 (index 0..7).
  * Economy decision (wave 13): base machines are slightly negative EV (RTP 0.91–0.97); the player turns +EV through decisions
  * (Hot Lamp, rotating off Tilt, interest, phone deals, Pawn charms). The base quota ladder is STRICTLY increasing, from just above
- * the Pauper pocket (30) up to the late Nights where stakes and Pawn prices scale with SI.
+ * the Pauper pocket (12 since wave 85) up to the late Nights where stakes and Pawn prices scale with SI.
  *
  * Wave 19 (director): the quota ladder is SMOOTH, no Night steps up more than ~2.1× the one before (the old 40 → 198 and
  * 208 → 1000 → 14000 → 115000 jumps were cliffs). Tuned with the casual human bot as the primary target (scripts/sim/run.mjs,
@@ -100,14 +98,14 @@ export interface NightDef {
  * notice). Seeds 1 and 99: N2 80.5 %, N3 62-63 %, N4 48-49 %.
  */
 export const BASE_NIGHTS: readonly NightDef[] = [
-  { no: 1, floor: 'B7', name: 'first', base: 24, watches: 3, pulls: 7, clock: 150, interest: 0.55, favour: 1.25, si: 1, card: 0 },
-  { no: 2, floor: 'B6', name: 'second', base: 36, watches: 3, pulls: 7, clock: 150, interest: 0.50, favour: 1.15, si: 3, card: 3 },
-  { no: 3, floor: 'B5', name: 'third', base: 72, watches: 3, pulls: 8, clock: 165, interest: 0.45, favour: 1.07, si: 10, card: 3 },
-  { no: 4, floor: 'B4', name: 'fourth', base: 144, watches: 3, pulls: 9, clock: 165, interest: 0.40, favour: 1, si: 30, card: 4 },
-  { no: 5, floor: 'B3', name: 'fifth', base: 288, watches: 4, pulls: 8, clock: 180, interest: 0.35, favour: 1, si: 100, card: 4 },
-  { no: 6, floor: 'B2', name: 'sixth', base: 576, watches: 4, pulls: 9, clock: 180, interest: 0.30, favour: 1, si: 300, card: 4 },
-  { no: 7, floor: 'B1', name: 'seventh', base: 1152, watches: 4, pulls: 9, clock: 195, interest: 0.25, favour: 1, si: 1000, card: 4 },
-  { no: 8, floor: 'G', name: 'final', base: 2304, watches: 4, pulls: 10, clock: 210, interest: 0.20, favour: 1, si: 3000, card: 5 },
+  { no: 1, floor: 'B7', name: 'first', base: 24, watches: 3, pulls: 7, clock: 150, interest: 0.55, si: 1, card: 0 },
+  { no: 2, floor: 'B6', name: 'second', base: 36, watches: 3, pulls: 7, clock: 150, interest: 0.50, si: 3, card: 3 },
+  { no: 3, floor: 'B5', name: 'third', base: 72, watches: 3, pulls: 8, clock: 165, interest: 0.45, si: 10, card: 3 },
+  { no: 4, floor: 'B4', name: 'fourth', base: 144, watches: 3, pulls: 9, clock: 165, interest: 0.40, si: 30, card: 4 },
+  { no: 5, floor: 'B3', name: 'fifth', base: 288, watches: 4, pulls: 8, clock: 180, interest: 0.35, si: 100, card: 4 },
+  { no: 6, floor: 'B2', name: 'sixth', base: 576, watches: 4, pulls: 9, clock: 180, interest: 0.30, si: 300, card: 4 },
+  { no: 7, floor: 'B1', name: 'seventh', base: 1152, watches: 4, pulls: 9, clock: 195, interest: 0.25, si: 1000, card: 4 },
+  { no: 8, floor: 'G', name: 'final', base: 2304, watches: 4, pulls: 10, clock: 210, interest: 0.20, si: 3000, card: 5 },
 ];
 
 export const BASE_RUN_NIGHTS = BASE_NIGHTS.length;
@@ -124,7 +122,6 @@ export function overdrawnNight(no: number): NightDef {
     pulls: 10,
     clock: 210,
     interest: Math.max(0.04, 0.20 - 0.04 * k),
-    favour: 1,
     si: sig(3000 * Math.pow(3.5, k), 2),
     card: 5,
   };
@@ -182,9 +179,9 @@ export function assessmentFor(index: number, holdings: number, rate = 0.08): num
 
 /**
  * HOUSE TAKES NOTICE (wave 47, director: the late Nights were trivial for survivors). From `HOUSE_NOTICE_FROM` on, the quota of a
- * Night is at least `HOUSE_NOTICE_SHARE` x the coins the player held at the Dawn before (pocket + banked, before that Dawn pays
- * the quota). The ladder stays the floor, so the rule only bites a run that is rich: its threshold is the ladder value itself.
- * `share` 0 switches it off. Pure: the caller passes the wealth it read at Dawn.
+ * Night is at least `HOUSE_NOTICE_SHARE` x the coins the player holds when it opens (wave 85; waves 47-84 read the pocket + bank at the
+ * Dawn before, before that Dawn paid the quota). The ladder stays the floor, so the rule only bites a run that is rich: its threshold is
+ * the ladder value itself. `share` 0 switches it off. Pure: the caller passes the wealth it read (run.ts `holdNext`).
  */
 /**
  * Wave 58 (director, Watch tithe): the notice starts at Night 6 (was 5), share unchanged at 1.2. With the notice on Night 5 its
@@ -196,9 +193,19 @@ export function assessmentFor(index: number, holdings: number, rate = 0.08): num
  * Director (house notice cap): the share is 1.0 (was 1.2). Night 6 went 576 -> 1300 (2.25x) at 1.2, so one notice raise may not
  * exceed HOUSE_NOTICE_CAP x the ladder value of that Night (1.6x). `cap` 0 switches the cap off (the sim's --notice-cap 0).
  */
-export const HOUSE_NOTICE_FROM = 6;
-export const HOUSE_NOTICE_SHARE = 1.0;
-export const HOUSE_NOTICE_CAP = 2.2;   // director: 1.6 left late survivors 10-24x richer than the quota; 2.2 keeps the 1300-style cliff out
+/**
+ * Wave 85 (director, "I start with 30 and the quota is 26, I just deposit it"): the notice is the rule that NO Night can be paid by what
+ * the player holds when it opens. It runs on every Night (from 1) and reads the hold the Night OPENS with (pocket after the Dawn's
+ * surplus and the House float, plus the kit's pre-deposit and the Foundations pocket on Night 1; run.ts `holdAtOpen`), at 1.25 x, with no
+ * cap. So the open hold is at most 80 % of the quota. Night 1 is the ladder's 24 against the 12 pocket (50 %; 46 % at stake 2+), and a kit
+ * or a Foundations pocket that holds more raises the quota instead of paying it. Before, a run held at least the whole quota at 100 / 67 /
+ * 53 / 60 / 73 / 66 / 79 / 90 % of its Night openings (sim `hold>=quota%` column, human bot). Retuned with the House Mood (houseMood.ts), because the
+ * carried hold stopped being a free pass: human bot, 4000 runs, seed 20261013, reach 86 / 72 / 53 / 42 / 36 / 32 / 28 / 26 % (was 94 / 82 /
+ * 61 / 47 / 40 / 33 / 29 / 27 with the exploit).
+ */
+export const HOUSE_NOTICE_FROM = 1;
+export const HOUSE_NOTICE_SHARE = 1.25;
+export const HOUSE_NOTICE_CAP = 0;   // off: a cap would let a rich hold pay its own quota again (it was 2.2 x the ladder from Night 6)
 export function houseNoticeQuota(no: number, ladderQuota: number, wealth: number, share = HOUSE_NOTICE_SHARE, from = HOUSE_NOTICE_FROM, cap = HOUSE_NOTICE_CAP): number {
   if (share <= 0 || no < from || wealth <= 0) return ladderQuota;
   const floor = sig(share * wealth, 3);
@@ -275,8 +282,11 @@ export const HOUSE_LIMIT_QUOTA_MULT = 5;
 export const NETWORK_FEED = 0.01;
 /** Ticket cap. */
 export const TICKET_CAP = 99;
-/** Starting values (GDD §2.5, kit Pauper). */
-export const START: { pocket: number; tickets: number; pegs: number; pegCap: number; jackpotSeed: number } = { pocket: 30, tickets: 2, pegs: 6, pegCap: 9, jackpotSeed: 50 };
+/**
+ * Starting values (GDD §2.5, kit Pauper). Wave 85: the pocket is 12, the House float of Night 1 (economy.ts houseFloat(0)), half of the
+ * 24 quota. With the 2 Tickets (5 coins each at the cashier) the Pauper's cash is 22, still under the quota. Was 30, which paid it.
+ */
+export const START: { pocket: number; tickets: number; pegs: number; pegCap: number; jackpotSeed: number } = { pocket: 12, tickets: 2, pegs: 6, pegCap: 9, jackpotSeed: 50 };
 
 /**
  * Index convention self-check. `nightDef(index)` takes the 0-based Night index (`shift.index`, `debt.index`) and returns

@@ -75,8 +75,18 @@
 //   human     a casual player (wave 19): stakes a random 5-15 % of the pocket a pull (wave 45; --human-stake-lo/hi), the ladder step at or below it, rotates machine every
 //             3-5 pulls, goes for the Hot Lamp ~60 % of the time it rotates (--human-hot-p 0.6), deposits a random 30-70 % slice of
 //             the pocket at ~80 % of the Bells and pays the gap only on the last Watch. Banks once the quota is covered.
-// Also modelled: House Favour (x1.25 / 1.15 / 1.07 on Nights 1-3), the Witching Watch +5 %, the activity float (never bet into the
-// 3 pulls the next Watches need). --no-favour switches Favour off; --trace N prints the first N runs Night by Night.
+//   nogamble  (probe, opt-in, wave 85) banks every coin at every Bell and never pulls, so the activity clause pays it no interest: it must fail Night 1 on
+//             every seed (scripts/tests/run.econ.test.mjs pins 200 seeds). minbet is the same with one minimum stake a Watch: it still clears N1-N2 on the
+//             bank's interest alone (the Watch tithe, from N3, is what stops it), which is the known limit of "the hold cannot pay the quota".
+// Also modelled: House Mood (houseMood.ts; House Favour is folded into it since wave D1; wave 85 retuned it: N1 x3.5, N2 x1.8, N3 x1.5, N4 x1.25), the Witching Watch +5 %, the activity float (never bet into the
+// 3 pulls the next Watches need). --no-mood switches the mood off; --trace N prints the first N runs Night by Night.
+// WAVE 85 (director, "30 coins and a quota of 26, I just deposit it"): START.pocket is 12 (the Night 1 House float) and the House notice runs on EVERY Night, 1.25 x
+// what the Night opens with (pocket after the surplus and the float, Night 1: the start), no cap. The `hold>=quota%` column is the share of runs that opened a Night
+// holding the whole quota; it was 100 / 67 / 53 / 60 / 73 / 66 / 79 / 90 % for the human bot and is 0 everywhere now. Human 4000 runs (seed 20261013):
+// reach 86 / 72 / 53 / 42 / 36 / 32 / 28 / 26 % (was 94 / 82 / 61 / 47 / 40 / 33 / 29 / 27; `--start 30 --notice-from 6 --notice-share 1 --notice-cap 2.2
+// --notice-basis dawn --mood 1.475,1.265,1.1021,1,0.98,0.97,0.96,0.95` reproduces that table). Rotator 95 / 93 / 86 / 78 / 73 / 68 / 60 / 44.
+// The cost: at half the quota in hand a casual Night 1 needs the machines to pay (the 12-coin human bot reached only 44 % at the old N1 mood x1.475; every
+// other lever, interest .55 -> .9 and the quota, moved it less than the mood), so N1 x3.5 carries it. `--notice-basis dawn` reads the wealth the old way.
 //
 // DIRECTOR (house notice cap): the notice share is 1.0 (was 1.2) and one Night's notice raise is capped at 1.6 x the ladder
 // (Night 6 went 576 -> 1300 at 1.2). `--notice-share 1.2 --notice-cap 0` reproduces the table before this change.
@@ -163,7 +173,6 @@ const N1 = { stuckRuns: 0, stuckEvents: 0, byWithdraw: 0, byTickets: 0, byLoan: 
 const VERBOSE = args.includes('--verbose');
 const BRIEF = args.includes('--brief');
 const TRACE = Number(argVal('--trace', 0)) | 0;
-const NO_FAVOUR = args.includes('--no-favour');
 const NO_FLOAT = args.includes('--no-float');   // the House float (F(n) = 12 + 6n topped up at each Night start) off, for comparison
 const STAMPS_ALL = args.includes('--stamps');   // every non-camper bot also shops the Stamp board (the 'stamper' bot always does)
 const STAMP_RESERVE = Number(argVal('--stamp-reserve', 1.5));   // the stamp shopper keeps this share of the quota in the pocket after a buy
@@ -194,6 +203,9 @@ const RNG = await load('src/core/rng.ts');
 // forking this file. start({ bot, runIdx, seed, args }) -> run hook | null. The run hook may define: night(no, nightQuota), watch(w, watches),
 // bet(bet, ctx) -> bet (kept only if 0 < bet <= pocket), pull(ctx) -> credited, over() -> true ends the run now, dawn({ idx, nightNo, pocket }),
 // end({ nightsPaid, wealth }). The module may define finish({ runs, results }) -> an object stored under `hook` in the --json output.
+// Economy seams (wave D1, scripts/sim/pantheon.mjs): quotaMult() scales a Night's quota, watchAdd() adds Watches to a Night, payMult() multiplies the payout M,
+// fx() -> { interestAdd, depositBonus, pullsAdd, grace, hotMult (a factor), hotCount } added to the run numbers, writeOff() -> share of the quota a Dawn forgives.
+// dawn() also gets ratio (banked / due, for the overpay tier).
 const HOOK_MOD = HOOK ? await import(pathToFileURL(resolve(HOOK)).href) : null;
 const ENG = await load('src/game/charms/engine.ts');
 const SHOP = await load('src/game/shop.ts');
@@ -208,10 +220,15 @@ const HN_FROM = Number(argVal('--notice-from', SCH.HOUSE_NOTICE_FROM));
 const HN_SHARE = Number(argVal('--notice-share', SCH.HOUSE_NOTICE_SHARE));
 // the notice raise is capped at HN_CAP x the ladder value of the Night (director: 1.6). --notice-cap 0 switches the cap off.
 const HN_CAP = Number(argVal('--notice-cap', SCH.HOUSE_NOTICE_CAP));
+// the wealth the notice reads: 'open' = what the next Night opens with (pocket after the surplus and the House float, wave 85); 'dawn' = pocket + bank before the quota is paid (waves 47-84)
+const HN_BASIS = argVal('--notice-basis', 'open');
 // per bot: the quota each Night started with (all runs that reached it), and per run the quota and pocket of each paid Night
 const QSEEN = Array.from({ length: 8 }, () => []);
+// per Night: runs that opened it, and how many of those held (pocket, the House float included) at least the Night's whole quota in coins at the open
+// (the "I can just deposit it" Nights, wave 85: the hold may never pay the quota by itself)
+const FREE = { n: new Array(8).fill(0), free: new Array(8).fill(0) };
 const CHD = await load('src/game/data/charms.ts');
-const OVERRIDE = { quotas: list('--quotas'), interest: list('--interest'), pulls: list('--pulls'), si: list('--si'), favour: list('--favour') };
+const OVERRIDE = { quotas: list('--quotas'), interest: list('--interest'), pulls: list('--pulls'), si: list('--si') };
 const START_POCKET = Number(argVal('--start', SCH.START.pocket));
 const NIGHTS = SCH.BASE_NIGHTS.map((n, i) => ({
   ...n,
@@ -219,7 +236,6 @@ const NIGHTS = SCH.BASE_NIGHTS.map((n, i) => ({
   interest: OVERRIDE.interest?.[i] ?? n.interest,
   pulls: OVERRIDE.pulls?.[i] ?? n.pulls,
   si: OVERRIDE.si?.[i] ?? n.si,
-  favour: OVERRIDE.favour?.[i] ?? n.favour,
 }));
 /** House Mood multiplier of a 0-based Night index: the houseMood.ts table, or the --mood override (8 values) for trials. */
 const MOOD_OVR = list('--mood');
@@ -345,6 +361,8 @@ function runFx(S) {
       else if (e.hook === 'x.house.limitMult' && e.op === 'mult') o.limitMult *= e.value;
     }
   }
+  const hx = S.H?.fx?.();
+  if (hx) { o.interestAdd += hx.interestAdd; o.depositBonus += hx.depositBonus; o.pullsAdd += hx.pullsAdd; o.grace += hx.grace; o.hotMult *= hx.hotMult; o.hotCount += hx.hotCount; }
   if (S.held.includes('lampwick')) o.hotMult += 0.08 * S.cs.wicks;
   o.interestAdd += S.held.includes('snowball_ledger') ? 0.01 * S.cs.snow : 0;
   return o;
@@ -384,6 +402,8 @@ function makeHost(S, rng) {
 
 // ── symbol stamps ───────────────────────────────────────────────────────────────────────────────────────
 const isCamp = (bot) => bot === 'camper' || bot === 'stamper';
+/** The exploit probes (opt-in): nogamble never pulls, minbet pulls one minimum stake a Watch (for the activity clause). Both bank every coin they can. */
+const scripted = (bot) => bot === 'nogamble' || bot === 'minbet';
 const stampsOn = (bot) => bot === 'stamper' || (STAMPS_ALL && !isCamp(bot));
 /** Measured RTP points per level of a stamp (--stamp-report, 1M spins); the bots rank offers by points per coin. */
 const STAMP_POINTS = {
@@ -472,7 +492,8 @@ function playRun(bot, runIdx) {
   const rng = RNG.createRng((SEED + runIdx * 7919) >>> 0);
   const circ = new CIR.Circuit();
   const out = { paid: [], pocket: [], quota: [], charms: [], fund: [], dueP: [] };
-  let nextQuota = dueOf(NIGHTS[0]);   // the quota of the next Night: the ladder, or the House's wealth floor (from HN_FROM)
+  // the quota of the next Night: the ladder, or the House's wealth floor (from HN_FROM; Night 1 reads the starting pocket)
+  let nextQuota = SCH.houseNoticeQuota(1, dueOf(NIGHTS[0]), START_POCKET, HN_SHARE, HN_FROM, HN_CAP);
   const S = {
     idx: 0, pocket: START_POCKET, tickets: 2, debt: 0, held: [], nightsPaid: 0, shopNight: 0, shopWatch: 0,
     cs: { rungs: 0, last: null, pressure: 0, charge: 0, wicks: 0, streak: 0, cuckoo: false, snow: 0 },
@@ -486,13 +507,15 @@ function playRun(bot, runIdx) {
   let stuckW = false;
   const hum = { rng: RNG.createRng(RNG.hashSeed('simhuman', SEED, runIdx)), cur: null, dwell: 0 };
   const H = HOOK_MOD ? HOOK_MOD.start({ bot, runIdx, seed: SEED, args }) : null;
+  S.H = H;
 
   for (let idx = 0; idx < SCH.BASE_RUN_NIGHTS; idx++) {
     S.idx = idx;
-    const nd = NIGHTS[idx];
-    const nightQuota = nextQuota;
+    const nd = H?.watchAdd ? { ...NIGHTS[idx], watches: Math.max(1, NIGHTS[idx].watches + H.watchAdd()) } : NIGHTS[idx];
+    const nightQuota = H?.quotaMult ? Number((nextQuota * H.quotaMult()).toPrecision(3)) : nextQuota;
     H?.night(nd.no, nightQuota);
     QSEEN[idx].push(nightQuota);
+    FREE.n[idx] += 1; if (S.pocket >= nightQuota) FREE.free[idx] += 1;
     let due = nightQuota;
     let loans = 0;
     S.cs.snow = 0; S.cs.wicks = 0;
@@ -505,7 +528,11 @@ function playRun(bot, runIdx) {
       // Deposits at the Bell: interest only works on what is already in the Debt Terminal. The rotator deposits what compounds
       // to the gap by the last settle (the HUD shows the pace); the banker deposits as much as it can. Shopping comes after.
       let fx0 = runFx(S);
-      if (newbieLike(bot)) {
+      if (scripted(bot)) {
+        // bank everything (minbet keeps one stake coin per Watch left); ALL, confirmed, goes below the Night 1 float
+        const dep = Math.max(0, S.pocket - (bot === 'minbet' ? nd.watches - w : 0));
+        if (dep > 0) { S.pocket -= dep; S.debt += Math.floor(dep * (1 + fx0.depositBonus)); }
+      } else if (newbieLike(bot)) {
         const rem = Math.max(0, due - S.debt);
         const last = nd.watches - w === 1;
         let dep = 0;
@@ -562,6 +589,7 @@ function playRun(bot, runIdx) {
       if (S.held.includes('porcelain_pig')) S.pocket += Math.min(Math.floor(S.pocket * 0.04), 40 * nd.si);
 
       while (pulls > 0) {
+        if (bot === 'nogamble' || (bot === 'minbet' && watchPulls >= 1)) break;
         let pick;
         if (isCamp(bot)) {
           pick = world[0];
@@ -622,7 +650,7 @@ function playRun(bot, runIdx) {
           S.pocket += loan.coins; due += loan.quota; loans += 1; TOT.loans += 1; loanedRun = true;
           if (idx === 0 && stuckW) N1.byLoan += 1;
         }
-        let bet = banked ? (lim.min <= S.pocket ? lim.min : 0)
+        let bet = banked || bot === 'minbet' ? (lim.min <= S.pocket ? lim.min : 0)
           : bot === 'human' ? stakeAt(lim, Math.max(lim.min, (HUMAN_STAKE_LO + (HUMAN_STAKE_HI - HUMAN_STAKE_LO) * hum.rng.next()) * S.pocket), S.pocket)
           : newbieLike(bot) ? stakeAt(lim, CAREFUL_STAKE_LO + hum.rng.int(0, CAREFUL_STAKE_HI - CAREFUL_STAKE_LO), S.pocket)
           : stakeFor(bot, lim, S.pocket);
@@ -647,7 +675,7 @@ function playRun(bot, runIdx) {
         const cf = charmFactors(S, pick, ctx);
         const gross = def.headless(rng, bet, hooksFor(S, pick.machineId)).gross;
         const witch = SCH.isWitchingWatch(nd.watches, w) ? 0.05 : 0;
-        let credited = ECO.settlePayout({ gross, bet, A: cf.A + witch, M: lampF * tiltF * cf.M * (NO_FAVOUR ? 1 : nd.favour) * (NO_MOOD ? 1 : moodOf(idx)), flat: 0, quota: due, limitMult: fx0.limitMult }).credited;
+        let credited = ECO.settlePayout({ gross, bet, A: cf.A + witch, M: lampF * tiltF * cf.M * (H?.payMult ? H.payMult() : 1) * (NO_MOOD ? 1 : moodOf(idx)), flat: 0, quota: due, limitMult: fx0.limitMult }).credited;
         if (H) credited = H.pull({ bet, credited, gross, due, nightQuota, pocket: S.pocket, mid: pick.mid, machineId: pick.machineId, hot, cold, idx, w, pulls });
         S.pocket += credited;
         tWon += credited;
@@ -709,6 +737,7 @@ function playRun(bot, runIdx) {
     }
 
     if (TRACE && runIdx < TRACE) console.log(`run ${runIdx} ${bot} N${nd.no} due ${due} debt ${S.debt} pocket ${S.pocket} held [${S.held.join(',')}] loans ${loans}`);
+    if (H?.writeOff && S.debt < due && S.debt >= due * (1 - H.writeOff())) S.debt = due;   // Rounding Error: a small shortfall is written off
     if (S.debt < due) { H?.end({ nightsPaid: S.nightsPaid, wealth: S.pocket + S.debt }); out.charms = S.held.length; return out; }
     // overpay rewards: 1.5x -> pick an Uncommon, 2x -> pick a Rare (best priority of the three)
     const ratio = S.debt / due;
@@ -728,7 +757,7 @@ function playRun(bot, runIdx) {
     S.debt = 0;
     S.nightsPaid += 1;
     out.paid.push(nd.no);
-    H?.dawn({ idx, nightNo: nd.no, pocket: S.pocket });
+    H?.dawn({ idx, nightNo: nd.no, pocket: S.pocket, ratio });
     out.pocket.push(S.pocket);
     if (idx === 0 && newbieLike(bot)) { N1.paid += 1; N1.dawn.push(S.pocket); }
     CHARM_COUNT.sum[idx] += S.held.length; CHARM_COUNT.n[idx] += 1;
@@ -736,7 +765,7 @@ function playRun(bot, runIdx) {
     if (idx + 1 < SCH.BASE_RUN_NIGHTS && !NO_FLOAT) { const top = ECO.houseFloatTopUp(S.pocket, idx + 1); S.pocket += top; FLOAT_PAID[idx + 1] += top; }
     // Dawn visit: the Pawn shows the next Night's stock (priced at this Night's SI).
     if (idx + 1 < SCH.BASE_RUN_NIGHTS) {
-      nextQuota = SCH.houseNoticeQuota(idx + 2, dueOf(NIGHTS[idx + 1]), wealthAtDawn, HN_SHARE, HN_FROM, HN_CAP);
+      nextQuota = SCH.houseNoticeQuota(idx + 2, dueOf(NIGHTS[idx + 1]), HN_BASIS === 'dawn' ? wealthAtDawn : S.pocket, HN_SHARE, HN_FROM, HN_CAP);
       S.shopNight = idx + 1; S.shopWatch = 0; shop(S, bot, nextQuota, hum.rng);
     }
   }
@@ -885,7 +914,7 @@ for (const bot of BOTS) {
   const pockets = Array.from({ length: SCH.BASE_RUN_NIGHTS }, () => []);
   const quotas = Array.from({ length: SCH.BASE_RUN_NIGHTS }, () => []);
   const fundSum = new Array(SCH.BASE_RUN_NIGHTS).fill(0), dueSum = new Array(SCH.BASE_RUN_NIGHTS).fill(0);
-  QSEEN.forEach((a) => { a.length = 0; });
+  QSEEN.forEach((a) => { a.length = 0; }); FREE.n.fill(0); FREE.free.fill(0);
   Object.assign(N1, { stuckRuns: 0, stuckEvents: 0, byWithdraw: 0, byTickets: 0, byLoan: 0, molaAfford: 0, molaN: 0, paid: 0 }); N1.mola.length = 0; N1.dawn.length = 0;
   for (let r = 0; r < RUNS; r++) {
     const res = playRun(bot, r);
@@ -898,7 +927,7 @@ for (const bot of BOTS) {
     const nightRtp = NIGHT_RTP.wagered[i] ? +(NIGHT_RTP.credited[i] / NIGHT_RTP.wagered[i]).toFixed(3) : 0;
     const charms = CHARM_COUNT.n[i] ? +(CHARM_COUNT.sum[i] / CHARM_COUNT.n[i]).toFixed(1) : 0;
     const intPct = dueSum[i] ? +(100 * fundSum[i] / dueSum[i]).toFixed(1) : 0;
-    rows.push({ night: i + 1, quota: Math.round(median(QSEEN[i])), survQuota: Math.round(median(quotas[i])), reachPct: +(100 * paid / RUNS).toFixed(1), condPct: +(100 * paid / Math.max(1, started)).toFixed(1), medianPocket: Math.round(median(pockets[i])), pqRatio: quotas[i].length ? +(median(pockets[i]) / median(quotas[i])).toFixed(2) : 0, nightRtp, charms, intPct });
+    rows.push({ night: i + 1, quota: Math.round(median(QSEEN[i])), survQuota: Math.round(median(quotas[i])), reachPct: +(100 * paid / RUNS).toFixed(1), condPct: +(100 * paid / Math.max(1, started)).toFixed(1), medianPocket: Math.round(median(pockets[i])), pqRatio: quotas[i].length ? +(median(pockets[i]) / median(quotas[i])).toFixed(2) : 0, nightRtp, charms, intPct, freePct: FREE.n[i] ? +(100 * FREE.free[i] / FREE.n[i]).toFixed(1) : 0 });
     started = paid;
   }
   const allDue = dueSum.reduce((a, b) => a + b, 0), allFund = fundSum.reduce((a, b) => a + b, 0);
@@ -907,14 +936,14 @@ for (const bot of BOTS) {
   results[bot + '_quotaIntPct'] = allDue ? +(100 * allFund / allDue).toFixed(1) : 0;
   // Watch tithe (wave 58): N3..N8, the share of tithe Watches met and the mean shortfall a missed one added (coins, all runs).
   if (!NO_TITHE) console.log(`${bot.padEnd(8)} tithe N3..N8 met% ${TITH.on.slice(2).map((n, i) => (n ? String(Math.round(100 * TITH.met[i + 2] / n)).padStart(3) : '  -')).join(' ')}  shortfall/Watch ${TITH.on.slice(2).map((n, i) => (n ? Math.round(TITH.short[i + 2] / n) : 0)).join(' ')}`);
-  if (BRIEF) { console.log(`${bot.padEnd(8)} reach% ${rows.map((r) => String(Math.round(r.reachPct)).padStart(3)).join(' ')}  pocket ${rows.map((r) => fmtCoins(r.medianPocket)).join(' ')}  quota ${rows.map((r) => fmtCoins(r.quota)).join(' ')}  pocket/quota ${rows.map((r) => r.pqRatio).join(' ')}  charms ${rows.map((r) => r.charms).join(' ')}  int% ${rows.map((r) => r.intPct).join(' ')}  quota-int ${results[bot + '_quotaIntPct']}%  rtp ${results[bot + '_rtp']}`); continue; }
+  if (BRIEF) { console.log(`${bot.padEnd(8)} reach% ${rows.map((r) => String(Math.round(r.reachPct)).padStart(3)).join(' ')}  pocket ${rows.map((r) => fmtCoins(r.medianPocket)).join(' ')}  quota ${rows.map((r) => fmtCoins(r.quota)).join(' ')}  pocket/quota ${rows.map((r) => r.pqRatio).join(' ')}  charms ${rows.map((r) => r.charms).join(' ')}  int% ${rows.map((r) => r.intPct).join(' ')}  hold>=quota% ${rows.map((r) => Math.round(r.freePct)).join(' ')}  quota-int ${results[bot + '_quotaIntPct']}%  rtp ${results[bot + '_rtp']}`); continue; }
   console.log(`\n${bot}  (${RUNS} runs, ${((Date.now() - t0) / 1000).toFixed(1)} s${SCALE_LADDER ? ', ladder scaled by SI' : ''}${NO_CHARMS ? ', no charms' : ''}${isCamp(bot) ? '' : `, stake ${BET_FRAC * 100} % of pocket`})`);
   if (bot === 'human' && !NO_TYCOON) console.log(`tycoon: runs that owned a machine ${TYC.runs}/${RUNS} (avg owned ${(TYC.ownedEnd / Math.max(1, TYC.runs)).toFixed(1)}); per run N1..N8 bought [${TYC.bought.map((x) => (x / RUNS).toFixed(2)).join(' ')}], coins spent [${TYC.price.map((x) => Math.round(x / RUNS)).join(' ')}], house cut [${TYC.cut.map((x) => Math.round(x / RUNS)).join(' ')}]`);
   console.log(`realized RTP ${results[bot + '_rtp']}  plays/run ${(TOT.plays / RUNS).toFixed(1)}  rescue loans/run ${(TOT.loans / RUNS).toFixed(2)}`);
   console.log(`house float per run (N2..N8): ${FLOAT_PAID.slice(1).map((v) => (v / RUNS).toFixed(1)).join(' ')}${NO_FLOAT ? '  (off)' : ''}`);
-  console.log('Night  quota     reach%  cond%   median pocket (runs that paid)   realized RTP   charms held   pocket/quota (survivors)   int% (quota paid by interest)');
+  console.log('Night  quota     reach%  cond%   median pocket (runs that paid)   realized RTP   charms held   pocket/quota (survivors)   int% (quota paid by interest)   hold>=quota% (opened with the whole quota in the pocket)');
   for (const row of rows) {
-    console.log(`N${String(row.night).padEnd(4)} ${fmtCoins(row.quota).padEnd(9)} ${String(row.reachPct).padStart(6)}  ${String(row.condPct).padStart(6)}   ${fmtCoins(row.medianPocket).padEnd(30)} ${String(row.nightRtp).padEnd(14)} ${String(row.charms).padEnd(13)} ${String(row.pqRatio).padEnd(26)} ${row.intPct}`);
+    console.log(`N${String(row.night).padEnd(4)} ${fmtCoins(row.quota).padEnd(9)} ${String(row.reachPct).padStart(6)}  ${String(row.condPct).padStart(6)}   ${fmtCoins(row.medianPocket).padEnd(30)} ${String(row.nightRtp).padEnd(14)} ${String(row.charms).padEnd(13)} ${String(row.pqRatio).padEnd(26)} ${String(row.intPct).padEnd(30)} ${row.freePct}`);
   }
   console.log(`quota paid by interest ${results[bot + '_quotaIntPct']} %, by play (pocket) ${(100 - results[bot + '_quotaIntPct']).toFixed(1)} %  (all Nights, coin-weighted over the paid quotas)`);
   if (newbieLike(bot)) {

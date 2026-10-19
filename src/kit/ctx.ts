@@ -10,6 +10,7 @@ import { createPrims } from './prims';
 import { presets, tiled, type Presets } from './presets';
 import { createTextHub, type TextHub } from './text';
 import { paintGlow } from './draw';
+import { setHexPresets } from './materials';
 import type { Kit, Palette } from './types';
 
 /** A screen whose canvas needs re-uploading. */
@@ -32,12 +33,14 @@ export interface KitCtx {
 
 export function createCtx(raw: TexGen): KitCtx {
   const tex = tiled(raw);
+  const M = presets(tex);
+  setHexPresets((c) => M.hex(c));
   const anim = new Anim();
   const sprites = new Map<string, THREE.SpriteMaterial>();
   let glowT: THREE.Texture | null = null;
   const glowTex = (): THREE.Texture => glowT ??= tex.canvas(16, 16, (g) => paintGlow(g, 16), { key: 'kit:glow', wrap: 'clamp' });
   return {
-    tex, pal: PALETTE, M: presets(tex), anim, text: createTextHub(), P: createPrims(), dirty: new Set(),
+    tex, pal: PALETTE, M, anim, text: createTextHub(), P: createPrims(), dirty: new Set(),
     glowTex,
     glowMat(color, intensity) {
       const k = `${color}:${intensity}`;

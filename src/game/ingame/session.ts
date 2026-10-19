@@ -44,7 +44,7 @@ import { paceOf } from '@/game/pace';
 import type { QuotaBoardProp } from '@/world/types';
 import { startOnlineHooks } from './mp';
 import { nightPaid } from '@/machines/debt_terminal/night';
-import { SeatHud } from '@/machines/_base/seatHud';
+import { setCoachStore } from '@/machines/_base/coach';
 import { startTutorial, type Tutorial } from '@/game/tutorial';
 import { holdClockFor } from '@/game/clockHold';
 import { startRoomsHost } from './roomsHost';
@@ -54,7 +54,7 @@ import { lordsHooks } from '@/machines/lordstable';
 import { hollowDoor } from '@/world/hollow';
 import { mountPantheonUi } from '@/game/pantheon.ui';
 import { inkDread } from '@/game/joker/joker';
-import { JOKER_ASK_KEY, JOKER_LIAR_KEY, mountJokerVoice } from '@/core/ui/manga/joker';
+import { JOKER_ASK_KEY, JOKER_LIAR_KEY, lokiToast, mountJokerVoice } from '@/core/ui/manga/joker';
 import { mountScrounge } from '@/game/scrounge';
 import { mountFood } from '@/game/food';
 import { mountPhoneUi } from '@/game/home/phone.ui';
@@ -152,7 +152,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   if (!params.online) mounts.push(mountScrounge(run as unknown as Parameters<typeof mountScrounge>[0], world));
   // food (wave 79): the fridge station at home and the bar meals
   if (!params.online) mounts.push(mountFood(run as unknown as Parameters<typeof mountFood>[0]));
-  SeatHud.helpKeyLabel = () => app.input.keyLabel('m.help');
+  // the seat coach keeps its progress per profile in the save's `seen` record (machines may not import the app)
+  setCoachStore({ get: (k) => app.save.data.seen[k] ?? 0, set: (k, v) => app.save.update((d) => { d.seen[k] = v; }) });
   run.attachWorld({
     machines: () => world.machines().map((m) => ({ instance: m.id, machineId: m.def.id, size: world.slot(m.id)?.size })),
     instancePos: (mid) => world.slot(mid)?.pos,
@@ -445,14 +446,18 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       const cov = covers.get(m.id);
       if (cov && run.mode !== 'free') { const p = run.buyPriceOf(mid); cov.setPrice(p > 0 ? fmtCoins(p) : null); }
       if (locked && !cov) {
-        const c = createCover(app.kit as KitX, { size, night: unlockNightOf(mid, run.seed), id: m.id });
+        const kit = app.kit as KitX;
+        const c = createCover(kit, { size, night: unlockNightOf(mid, run.seed), id: m.id, box: kit.aabb(m.model.root, g) });
         g.add(c.root); covers.set(m.id, c);
         if (run.mode !== 'free') addBuyer(m.id, mid, c, g);
       } else if (!locked && cov && cov.covered) {
         // The lift is a tween driven by cov.update(dt) in frame(): the cover stays in `covers` until it has landed
-        // (deleting it first froze the tarp in place over the opened machine).
+        // (deleting it first froze the vitrine in place over the opened machine). The glass rises with a dust fall and the
+        // machine boots (power-up, then the unlock jingle when the glass has cleared).
         buyers.get(m.id)?.(); buyers.delete(m.id);
-        void cov.setCovered(false, 1.2).then(() => { covers.delete(m.id); g.remove(cov.root); cov.dispose(); });
+        app.fx.burst('dust', g.localToWorld(cov.top.clone()), 28, { spread: 0.6, over: 0.8 });
+        app.audio.play('powerUp', { pos: g, vol: 0.7 });
+        void cov.setCovered(false, 1.6).then(() => { app.audio.play('unlock', { pos: g }); covers.delete(m.id); g.remove(cov.root); cov.dispose(); });
       }
       const wantNew = !locked && run.mode !== 'free' && isNew(mid, night, run.seed);
       const mq = marquees.get(m.id);
@@ -476,7 +481,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     if (marked && app.input.pressed(CALL_CHEAT_ACTION)) run.floorCall(here as Parameters<typeof run.floorCall>[0]);
     // LOKI: he names a table when you stand at one; O asks him about what is in front of you, L calls his last line a lie
     if (marked !== atCrooked) { atCrooked = marked; run.jokerMoment(marked ? 'crooked' : null, here ?? ''); }
-    if (app.input.pressed(JOKER_ASK_KEY as Action) && !run.jokerAsk()) app.ui.toast(t('joker.ui.quiet'), 'info', 2);
+    if (app.input.pressed(JOKER_ASK_KEY as Action) && !run.jokerAsk()) lokiToast(t('joker.ui.quiet'), 2);
     if (app.input.pressed(JOKER_LIAR_KEY as Action)) run.jokerCall();
     if (app.input.pressed(KEEPSAKE_ACTION)) { const seat = world.seat; if (seat) run.keepsakeStake(seat.mid); }
     if (app.input.pressed(FLOOR_ACT_ACTION)) run.floorAct();

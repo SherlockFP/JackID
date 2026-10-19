@@ -5,7 +5,7 @@
 export default {
   prefix: 'hotline.',
   en: {
-    'call.rescue': 'Empty pockets already? The Collector can lend. What you borrow is added to tonight\'s quota, and then some.',
+    'call.rescue': 'Your pockets are empty. I can lend you coins. They go on tonight\'s quota.',
     'deal.rescue.name': 'THE LOAN',
     'deal.rescue.boon': 'Get {c} coins now',
     'deal.rescue.cost': 'Tonight\'s quota +{q}',
@@ -13,7 +13,7 @@ export default {
     'broke.bell': 'BELL: at the Bank Terminal, ring the Bell. This Watch ends and the bank keeps growing.',
   },
   tr: {
-    'call.rescue': 'Cepler şimdiden boş mu? Tahsildar borç verebilir. Aldığın, bu Gecenin kotasına eklenir, hem de fazlasıyla.',
+    'call.rescue': 'Cepleriniz boş. Borç verebilirim. Bu Gecenin kotasına eklenir.',
     'deal.rescue.name': 'BORÇ',
     'deal.rescue.boon': 'Şimdi {c} jeton al',
     'deal.rescue.cost': 'Bu Gece kota +{q}',

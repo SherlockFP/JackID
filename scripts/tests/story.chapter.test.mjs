@@ -200,3 +200,10 @@ test('a disposed luck meter stops listening to the bus', () => {
   EV.bus.emit('quota:met', { index: 0, ratio: 1 });
   assert.equal(m.stars(), 0);
 });
+
+test('bonds (A4): Mira\'s Night 7 call rings only with the kept-pair unlock; the other Nights are unchanged', () => {
+  assert.equal(CALLS.storyCallFor(7), null);
+  assert.equal(CALLS.storyCallFor(7, (id) => id === 'mira.pair').id, 'mira_n7');
+  assert.equal(CALLS.storyCallFor(2, () => true).id, 'mira_n2');
+  for (const k of CALLS.storyCallFor(7, () => true).lines) assert.ok(CALLS_STR.en[k.slice('story.'.length)] && CALLS_STR.tr[k.slice('story.'.length)], k);
+});

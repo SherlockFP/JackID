@@ -4,19 +4,25 @@
  * mod pipeline: early Nights pay generously so a skilled player grows the pocket; later Nights tighten and demand charms, lamps
  * and engines. Pure data plus a ModProvider: run.ts registers the provider, hud.ts shows the line under the quota.
  *
- * Overdrawn Nights (9 and up) keep the last value (x0.95). The multiplier stacks with House Favour (`nightDef().favour`).
+ * Overdrawn Nights (9 and up) keep the last value (x0.95). House Favour (the old second curve, x1.25 / 1.15 / 1.07 on Nights 1-3) is
+ * folded in (wave D1, docs/BLESSINGS.md §2.1); wave 85 then retuned the early values (below).
  */
 import type { ModEffect, ModProvider, ModQuery, ModSource } from '@/game/types';
 import { registerStrings, t } from '@/core/i18n';
-import { isWitchingWatch, nightDef } from './data/schedule';
+import { isWitchingWatch } from './data/schedule';
 import houseMoodStrings from './houseMood.strings';
 import payoutStrings from './payout.strings';
 
 registerStrings(houseMoodStrings.prefix, { en: houseMoodStrings.en, tr: houseMoodStrings.tr });
 registerStrings(payoutStrings.prefix, { en: payoutStrings.en, tr: payoutStrings.tr });
 
-/** Payout multiplier per printed Night, Nights 1..8 (director: N1 x1.12 … N8 x0.95). */
-export const HOUSE_MOOD: readonly number[] = [1.18, 1.10, 1.03, 1.0, 0.98, 0.97, 0.96, 0.95];   // wave 57: play carries the early Nights
+/**
+ * Payout multiplier per printed Night, Nights 1..8. Wave 85 (director): a run opens every Night with at most 80 % of its quota in hand
+ * (the House notice, schedule.ts), so the carried hold no longer pays the early quotas and the pocket starts at 12, not 30. The early
+ * Nights pay for it: N1 x3.5 (was x1.475, the 12-coin pocket has to double on the machines), N2 x1.8 (was 1.265), N3 x1.5 (was 1.1021),
+ * N4 x1.25 (was 1.00); N5 … N8 are as before (x0.98 … x0.95). Human bot, 4000 runs: reach 86 / 72 / 53 / 42 / 36 / 32 / 28 / 26 %.
+ */
+export const HOUSE_MOOD: readonly number[] = [3.5, 1.8, 1.5, 1.25, 0.98, 0.97, 0.96, 0.95];
 
 /** The mood multiplier for a 0-based Night index (run.index). */
 export function houseMoodMult(index: number): number {
@@ -24,14 +30,14 @@ export function houseMoodMult(index: number): number {
   return HOUSE_MOOD[i];
 }
 
-/** Whole percent of the mood: +12, +7, +3, 0, -2, -3, -4, -5 for Nights 1..8. */
+/** Whole percent of the mood: +250, +80, +50, +25, -2, -3, -4, -5 for Nights 1..8. */
 export function houseMoodPct(index: number): number {
-  return Math.round((houseMoodMult(index) - 1) * 100);
+  return Math.round((houseMoodMult(index) - 1) * 100 + 1e-9);   // x1.265 is +26.5 %, which float math leaves a hair under
 }
 
 export type HouseMoodTone = 'generous' | 'neutral' | 'tight';
 
-/** The HUD line for a 0-based Night index: "HOUSE MOOD: GENEROUS +12%", plus the tone that colours it (by sign). */
+/** The HUD line for a 0-based Night index: "HOUSE MOOD: GENEROUS +48%", plus the tone that colours it (by sign). */
 export function houseMoodLine(index: number): { text: string; tone: HouseMoodTone; pct: number } {
   const pct = houseMoodPct(index);
   const tone: HouseMoodTone = pct > 0 ? 'generous' : pct < 0 ? 'tight' : 'neutral';
@@ -42,7 +48,7 @@ export function houseMoodLine(index: number): { text: string; tone: HouseMoodTon
 export interface HouseMoodHost {
   /** The Night's 0-based index (run.index). */
   index: () => number;
-  /** True while the mood applies: a quota Watch in play (the same gate as House Favour). */
+  /** True while the mood applies: a quota Watch in play. */
   active: () => boolean;
 }
 
@@ -78,7 +84,7 @@ export const WITCH_PAYOUT_INC = 0.05;
 
 /** The signed whole percent of one part: x1.25 -> +25%, x0.95 -> -5%, +0.05 -> +5%. */
 function partPct(p: PayoutPart): number {
-  return Math.round(p.op === 'mult' ? (p.value - 1) * 100 : p.value * 100);
+  return Math.round((p.op === 'mult' ? (p.value - 1) * 100 : p.value * 100) + 1e-9);
 }
 
 function toneOf(pct: number): PayoutTone { return pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat'; }
@@ -106,13 +112,11 @@ export function payoutChip(parts: readonly PayoutPart[]): PayoutChipView {
 }
 
 /**
- * The Mola preview: the parts the next Watch will carry (mood and House Favour always, the Witching bonus when
+ * The Mola preview: the parts the next Watch will carry (the mood always, the Witching bonus when
  * the next Watch is the witching one). `index` is the Night's 0-based index; `watchIndex` the next Watch's 0-based index.
  */
 export function houseMoodPreviewParts(index: number, watches: number, watchIndex: number): PayoutPart[] {
   const parts: PayoutPart[] = [{ label: t('payout.mood'), op: 'mult', value: houseMoodMult(index) }];
-  const favour = nightDef(index).favour;
-  if (favour !== 1) parts.push({ label: t('payout.favour'), op: 'mult', value: favour });
   if (watchIndex < watches && isWitchingWatch(watches, watchIndex)) parts.push({ label: t('payout.witch'), op: 'inc', value: WITCH_PAYOUT_INC });
   return parts;
 }

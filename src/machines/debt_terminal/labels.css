@@ -1,0 +1,19 @@
+/* Debt Terminal DOM labels (labels.ts): chips over the keypad caps and the CRT tab strip, positioned each frame from the 3D
+   rectangles. Pointer-transparent: the mouse still picks the 3D caps. Under the seat HUD (it is mounted before it). */
+.dt-labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.dt-key, .dt-tab {
+  position: absolute; left: 0; top: 0; box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+  line-height: 1; white-space: nowrap; text-align: center; overflow: hidden;
+  /* one pixel of weight on every glyph: a bold face that holds up at 8-20 px */
+  text-shadow: 1px 0 0 currentColor, 0 1px 0 currentColor;
+  -webkit-font-smoothing: none;
+}
+.dt-key { box-shadow: 0 0 0 1px #000, inset 0 -2px 0 rgba(0, 0, 0, 0.28); filter: brightness(0.82); }
+.dt-key.lit { filter: none; }
+.dt-key.cur { box-shadow: 0 0 0 2px #000, 0 0 0 4px #ffd040, inset 0 -2px 0 rgba(0, 0, 0, 0.28); filter: none; }
+/* CRT tabs (green phosphor, like the CRT): the open screen is a bright green plate with dark glyphs; the others a lit brown plate with pale glyphs (never dark on dark) */
+.dt-tab { background: #0f4a1c; color: #d8ffd8; box-shadow: 0 0 0 1px #000, inset 0 0 0 1px #3fbf5a; font-family: var(--f-head, "Press Start 2P", monospace); }
+.dt-tab.on { background: #5aff7b; color: #031a08; box-shadow: 0 0 0 1px #000, inset 0 0 0 1px #d8ffd8; }
+/* the amount row: its heading on the left, the typed figure (white, the brightest thing on the CRT) on the right */
+.dt-tab.box { justify-content: space-between; padding: 0 1.2em; background: #0a3a15; box-shadow: 0 0 0 1px #000, inset 0 0 0 2px #5aff7b; }
+.dt-tab.box .val { color: #fff; }

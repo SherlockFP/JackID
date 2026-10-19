@@ -644,3 +644,33 @@ test('Ada has the same lines in both phases: talk, text and dream keys exist in 
     for (const tier of ['good', 'cold']) for (let n = 1; n <= PH.DREAM_VARIANTS; n++) assert.ok(`dream.x.${tier}.${n}` in STR[lang], `${lang} dream.x.${tier}.${n}`);
   }
 });
+
+test('bonds (A4): Night 6 brings the Selim choice; standing up costs a Harmony and defends him, letting go drops him', () => {
+  for (const [choice, kind, dh] of [[0, 'defend', -1], [1, 'drop', 0]]) {
+    const run = mockRun({ seed: 3, night: 6, count: 3 });
+    const bonds = [];
+    run.bond = (e) => { bonds.push(e); return { deltas: [], unlocked: [], locked: [] }; };
+    withPhone(run, (p) => {
+      const msg = playNight(p, run).find((m) => m.thread === 'spouse');
+      assert.equal(msg.textKey, 'phone.sp.selim.t');
+      const h0 = p.harmony();
+      assert.ok(p.reply(msg.id, choice));
+      assert.equal(p.harmony(), h0 + dh);
+      assert.deepEqual(bonds, [{ kind, who: 'selim' }]);
+    });
+  }
+  for (const k of ['sp.selim.t', 'sp.selim.r0', 'sp.selim.r1', 'sp.where.t', 'sp.where.r0', 'sp.where.r1']) assert.ok(STR.en[k] && STR.tr[k], k);
+});
+
+test('bonds (A4): from Night 5 a friend\'s bond rising brings "Where were you?" once a Night; before Night 5 and a fall bring nothing', () => {
+  const run = mockRun({ night: 5 });
+  withPhone(run, (p) => {
+    EV.bus.emit('bond:change', { who: 'selim', from: 1, to: 2, why: 'share', night: 4 });
+    EV.bus.emit('bond:change', { who: 'selim', from: 2, to: 1, why: 'neglect', night: 5 });
+    assert.equal(p.messages().length, 0);
+    EV.bus.emit('bond:change', { who: 'selim', from: 1, to: 2, why: 'share', night: 5 });
+    EV.bus.emit('bond:change', { who: 'mira', from: 0, to: 1, why: 'show', night: 5 });
+    assert.deepEqual(p.messages().map((m) => m.textKey), ['phone.sp.where.t']);
+    assert.ok(p.reply(p.messages()[0].id, 1));
+  });
+});

@@ -14,6 +14,19 @@ export default defineConfig({
       name: 'jackid-html-version',
       transformIndexHtml: (html: string) => html.replace(/__APP_VERSION__/g, pkg.version),
     },
+    {
+      // The two pixel fonts sit behind CSS, so the browser finds them only after the stylesheet: preload them with the script.
+      name: 'jackid-font-preload',
+      transformIndexHtml: {
+        order: 'post',
+        handler(html: string, ctx: { bundle?: Record<string, unknown> }) {
+          const fonts = Object.keys(ctx.bundle ?? {}).filter((f) => /(vt323|press-start-2p)-latin(-ext)?-400-normal-.*\.woff2$/.test(f));
+          const tags = fonts.map((f) => `<link rel="preload" as="font" type="font/woff2" crossorigin href="/${f}" />`).join('\n  ');
+          return tags ? html.replace('</head>', `  ${tags}
+</head>`) : html;
+        },
+      },
+    },
   ],
   server: {
     host: true,

@@ -161,7 +161,7 @@ export default class RedDog extends TableBase<ReddogParts, Ev, Snap, Act> {
   // ── local input ──────────────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const seat = this.localSeat;
     const s = this.st;
@@ -401,7 +401,6 @@ export default class RedDog extends TableBase<ReddogParts, Ev, Snap, Act> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('reddog', this.tipLines());
     }
   }
 
@@ -704,14 +703,6 @@ export default class RedDog extends TableBase<ReddogParts, Ev, Snap, Act> {
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.reddog.hTip1', v: { bet: this.k('primary'), down: this.k('betDown'), up: this.k('betUp') } },
-      { k: 'm.reddog.hTip2' },
-      { k: 'm.reddog.hTip3', v: { raise: this.k('n1'), pass: this.k('n2'), help: this.k('help') } },
-    ];
-  }
 
   /** Settle banner for the round's result kind (see `presentResult`). */
   private resultBanner(kind: string): { k: string; tone: HudTone } {

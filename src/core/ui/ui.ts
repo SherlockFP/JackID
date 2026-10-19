@@ -30,16 +30,17 @@ import { clamp } from '../math';
 import { log } from '../log';
 import { DEFAULT_SETTINGS, type Settings } from '../settings';
 import { subtitles, SUB_TICK, type SubView } from './subtitles';
+import { bannerToastKind, fitBannerSize } from './bannerKit';
 import type { VoiceSpeaker } from '../audio/types';
 import {
-  COLORS, button, counter, focusFirst, frame, gloveCursors, h, initWidgets, keycap, navGroup, navItems, pixelIcon, textField,
+  COLORS, button, counter, focusFirst, frame, gloveCursors, h, iconEl, initWidgets, keycap, navGroup, navItems, pixelIcon, textField,
   keyCaptureActive, tickWidgets, uiRng, uiSfx, type Button, type Counter, type IconName, type TextField,
 } from './widgets';
 
 export interface UiDeps { keyLabel(a: BindingKey): string }
 
 /** Toast kinds beyond the frozen five (ART_BIBLE §10.7): MONEY gold, CURSE violet flicker, PHONE amber. */
-export type ExtraToastKind = 'money' | 'curse' | 'phone';
+export type ExtraToastKind = 'money' | 'curse' | 'phone' | 'loki';
 /** Which toasts `dismissToasts` takes: by kind, by tag, or both. An empty match takes every toast. */
 export interface ToastMatch { kind?: ToastKind | ExtraToastKind; tag?: string }
 export interface BannerOpts {
@@ -305,7 +306,7 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
   function showToast(rec: ToastRec): void {
     const el = h('div', `px-toast k-${rec.kind}`);
     h('i', 'bar', el);
-    const ico = h('span', 'ico', el); ico.appendChild(pixelIcon(TOAST_ICON[rec.kind] ?? 'info'));
+    const ico = h('span', 'ico', el); ico.appendChild(rec.kind === 'loki' ? iconEl('icon.joker', 16) : pixelIcon(TOAST_ICON[rec.kind] ?? 'info'));
     h('span', 'txt', el, rec.text);
     rec.cnt = h('span', 'cnt', el, rec.count > 1 ? `×${rec.count}` : '');
     rec.el = el;
@@ -489,8 +490,12 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
       pumpBw();
     });
   }
-  /** Letters drop in one by one (40 ms each, −12 px with a 2 px bounce). Returns the letter wrappers. */
-  function dropLetters(parent: HTMLElement, text: string, wave: boolean): HTMLElement[] {
+  /**
+   * Letters drop in one by one (40 ms each, −12 px with a 2 px bounce). Returns the letter wrappers. `soft` (the top-band banners)
+   * is a 1 px nudge 20 ms apart: those letters are readable from the first frame, so none of them rides off the baseline.
+   */
+  function dropLetters(parent: HTMLElement, text: string, wave: boolean, soft = false): HTMLElement[] {
+    const rise = (soft ? 1 : 12) * px, gap = soft ? 20 : 40;
     const out: HTMLElement[] = [];
     let word: HTMLElement | null = null;                         // one nowrap box per word: a line break only falls between words
     Array.from(text).forEach((ch, i) => {
@@ -502,10 +507,10 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
       outer.style.setProperty('--i', String(i));
       h('span', wave ? 'W wave' : 'W', outer, ch);
       outer.animate([
-        { transform: `translateY(${-12 * px}px)`, opacity: 0 },
-        { transform: `translateY(${2 * px}px)`, opacity: 1, offset: 0.65 },
+        { transform: `translateY(${-rise}px)`, opacity: 0 },
+        { transform: `translateY(${soft ? 0 : 2 * px}px)`, opacity: 1, offset: 0.65 },
         { transform: 'translateY(0)', opacity: 1 },
-      ], { duration: 240, delay: i * 40, easing: 'steps(6)', fill: 'forwards' });
+      ], { duration: 240, delay: i * gap, easing: 'steps(6)', fill: 'forwards' });
       out.push(outer);
     });
     return out;
@@ -594,14 +599,17 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
   async function runBanner(text: string, o: BannerOpts): Promise<void> {
     // The top band (ui.css `.px-bw.t-banner`): under the HUD top bar, clear of the Night 1 tutorial box and the eye-level neon.
     const wrap = h('div', 'px-bw t-banner', bwLayer);
-    wrap.style.setProperty('--bw-s', String(o.size ?? 24));
+    // The centre column (ui.css `.px-bw.t-banner .title`): a line that does not fit it on one row steps down to size 16, then 8 (two rows).
+    const upperText = upper(text);
+    const size = fitBannerSize(upperText, o.size ?? 24, Math.min(root.clientWidth * 0.46, 300 * px), px);
+    wrap.style.setProperty('--bw-s', String(size));
     wrap.style.setProperty('--bw-c', o.color ?? COLORS.ivory);
     wrap.style.setProperty('--bw-sh', o.shadow ?? COLORS.black);
     const stage = h('div', 'stage', wrap);
     const titleEl = h('div', 'title', stage);
-    dropLetters(titleEl, upper(text), !!o.wave);
+    dropLetters(titleEl, upperText, !!o.wave, true);
     uiSfx('stamp', 0.6);
-    await heldWait((o.hold ?? 1.5) * 1000 + Array.from(text).length * 40 + 240);
+    await heldWait((o.hold ?? 1.5) * 1000 + Array.from(text).length * 20 + 240);
     await dissolve(wrap);
     wrap.remove();
   }
@@ -731,6 +739,9 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
       return enqueueBw(() => runBigWin(amount, tier, title));
     },
     banner(text, o = {}) {
+      // Seated, a title card would sit over the machine's screen (and over its first-sit tip): the news is a toast instead, in the
+      // upper-right column the seat keeps clear (ui.css `.px-root.seated .px-toasts`). Toasts keep their own repeat check.
+      if (root.classList.contains('seated')) { ui.toast(text, bannerToastKind(o.color), Math.max(2.5, o.hold ?? 1.5)); return Promise.resolve(); }
       if (!claimAnnounce(text)) return Promise.resolve();     // same news just announced: drop the repeat
       return enqueueBw(() => runBanner(text, o));
     },

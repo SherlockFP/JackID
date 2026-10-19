@@ -160,7 +160,6 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
     this.sfx('chime', { vol: 0.5 });
     this.seatHud?.show();
     this.showHud();
-    this.seatHud?.firstTip(this.def.id, this.tipLines());
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
@@ -205,7 +204,7 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
   // ── input (local occupant) ───────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     const a = e.action;
-    if (e.down && this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.down && this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.down && a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (a === 'primary') {
       if (e.down && !e.repeat && !this.auth.leaving) this.sfx('lever', { vol: 0.4 });
@@ -747,13 +746,6 @@ export default class Pachinko extends MachineBase<PachinkoParts, Ev, State> {
   private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.${this.def.id}.${key}`, v } : { k: `m.${this.def.id}.${key}` }; }
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-  private tipLines(): Txt[] {
-    return [
-      this.tx('tip1', { fire: this.k('primary'), power: `${this.k('left')}/${this.k('right')}` }),
-      this.tx('tip2'),
-      this.tx('tip3', { help: this.k('help') }),
-    ];
-  }
   private rulesLines(): Txt[] {
     return [this.tx('rule1', { fire: this.k('primary') }), this.tx('rule2'), this.tx('rule3'), this.tx('rule4'), this.tx('rule5')];
   }

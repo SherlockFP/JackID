@@ -269,12 +269,17 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
   screen.mesh.position.set(0, 2.3, 0.655);
   root.add(screen.mesh);
 
-  // progressive JACKPOT counter: a label and an 8-digit LED strip between the screen and the lid
-  const jpLabel = kit.label({ text: { key: 'm.bigone.jackpot' }, w: 0.2, h: 0.05, px: [96, 24], color: pal.neonYellow, bg: pal.black, font: 'px5' });
-  jpLabel.mesh.position.set(-0.3, 2.495, 0.656);
+  // progressive JACKPOT counter: one smoked-glass band in a brass frame between the screen bezel (top 2.451) and the gold lid
+  // trim (bottom 2.535). The label and the LED sit proud of the trim's front face (z 0.675): they used to sit behind it at
+  // z 0.656, and the trim shaved the top rows off both (the "buggy corner" of the jackpot).
+  const JP_Y = 2.493, JP_Z = 0.678;
+  kit.box(1.02, 0.084, 0.02, brass, at(0, JP_Y, JP_Z - 0.012));
+  kit.box(0.99, 0.066, 0.02, pal.black, at(0, JP_Y, JP_Z - 0.008));
+  const jpLabel = kit.label({ text: { key: 'm.bigone.jackpot' }, w: 0.27, h: 0.05, px: [128, 24], color: pal.neonYellow, bg: pal.black, font: 'px5' });
+  jpLabel.mesh.position.set(-0.32, JP_Y, JP_Z + 0.004);
   root.add(jpLabel.mesh);
-  const jackpotLed = kit.ledPanel({ digits: 8, h: 0.06, color: '#ffd040' });
-  jackpotLed.root.position.set(0.1, 2.495, 0.656);
+  const jackpotLed = kit.ledPanel({ digits: 8, h: 0.046, color: '#ffd040' });
+  jackpotLed.root.position.set(0.17, JP_Y, JP_Z + 0.03);   // its bezel housing reaches 0.034 behind the face
   root.add(jackpotLed.root);
 
   const dialShape: Array<[number, number]> = [];
@@ -282,12 +287,28 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
     const t = (Math.PI * i) / 12;
     dialShape.push([Math.cos(t) * 0.13, Math.sin(t) * 0.13]);
   }
-  kit.extrude(dialShape, 0.01, pal.cream, { pos: [0.55, 2.1, 0.655], parent: root, name: 'hungerDial' });
+  // hunger gauge: a dark dial face in a brass half-ring with green / amber / red zone ticks (a bare cream disc read as a white blob)
+  kit.extrude(dialShape, 0.01, 0x1a1210, { pos: [0.55, 2.1, 0.655], parent: root, name: 'hungerDial' });
+  kit.torus(0.13, 0.012, brass, { pos: [0.55, 2.1, 0.665], arc: Math.PI, parent: root, seg: 12, tubeSeg: 4 });
+  kit.box(0.28, 0.016, 0.016, brass, at(0.55, 2.1, 0.665));
+  for (let i = 0; i < 7; i++) {
+    const th = Math.PI - (Math.PI * (i + 0.5)) / 7;
+    const c = i < 3 ? pal.green : i < 5 ? pal.neonYellow : pal.red;
+    kit.box(0.012, 0.03, 0.006, c, { pos: [0.55 + Math.cos(th) * 0.1, 2.1 + Math.sin(th) * 0.1, 0.667], rot: [0, 0, (th * 180) / Math.PI - 90], parent: root });
+  }
   const hungerNeedle = new THREE.Object3D();
   hungerNeedle.name = 'hungerNeedle';
-  hungerNeedle.position.set(0.55, 2.1, 0.67);
+  hungerNeedle.position.set(0.55, 2.1, 0.672);
   root.add(hungerNeedle);
-  kit.box(0.012, 0.12, 0.012, pal.red, { pos: [0, 0.06, 0], parent: hungerNeedle });
+  kit.box(0.012, 0.11, 0.008, pal.red, { pos: [0, 0.055, 0], parent: hungerNeedle });
+  kit.cyl(0.018, 0.018, 0.012, brass, { pos: [0, 0, 0.002], rot: [90, 0, 0], seg: 8, parent: hungerNeedle });
+  // the dial's twin on the left: a brass coin-entry plate with a dark slot and a lit arrow, so the top box reads symmetric
+  kit.box(0.22, 0.2, 0.016, brass, at(-0.55, 2.16, 0.66));
+  kit.box(0.17, 0.15, 0.01, 0x1a1210, at(-0.55, 2.16, 0.668));
+  kit.box(0.025, 0.1, 0.012, pal.black, at(-0.55, 2.18, 0.672));
+  kit.box(0.04, 0.004, 0.004, brass, at(-0.55, 2.236, 0.678));
+  kit.box(0.04, 0.004, 0.004, brass, at(-0.55, 2.124, 0.678));
+  kit.extrude([[-0.03, 0], [0.03, 0], [0, -0.025]], 0.004, pal.neonYellow, { pos: [-0.55, 2.11, 0.672], parent: root });
 
   // ── bulb chains: crown arc (48) and window perimeter (40) ──
   const crownBulbs = kit.bulbChain({
@@ -385,8 +406,8 @@ export function buildModel(kit: KitX, _o: ModelOpts): MachineModel<BigOneParts> 
   fogDecal.position.set(0, 0.3, 0.688);
   root.add(fogDecal);
   const palmDecal = kit.decal({ tex: quad(0, 0), w: 0.28, h: 0.24, alphaTest: 0.1 });
+  // not mounted: the white palm cut-out at the top-left of the top box read as a texture bug. Kept for the parts contract.
   palmDecal.position.set(-0.65, 2.3, 0.661);
-  root.add(palmDecal);
 
   // ── lights and anchors (no THREE.Light inside machines) ──
   const light = new THREE.Object3D();

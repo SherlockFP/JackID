@@ -11,9 +11,10 @@ const def: CutsceneDef = {
   },
   tracks: [
     { kind: 'camera', handheld: 0.1, keys: [
-      { t: 0, pos: [0, 1.6, -7.8], look: { anchor: 'collector' }, fov: 58, cut: true },
-      { t: 10, pos: [6, 1.6, -5], look: { anchor: 'collector' }, fov: 56, ease: 'inOutQuad' },
-      { t: 18, pos: [6, 1.6, -5], look: { anchor: 'quotaBoard' }, fov: 60, ease: 'inOutCubic' },
+      // the Collector sits in the Parlour: shoot from inside it (the Well camera looked through three walls), then cut back to the board
+      { t: 0, pos: [19, 1.6, 16], look: { anchor: 'collector' }, fov: 58, cut: true },
+      { t: 10, pos: [22, 1.6, 16.5], look: { anchor: 'collector' }, fov: 56, ease: 'inOutQuad' },
+      { t: 18, pos: [6, 1.6, -5], look: { anchor: 'quotaBoard' }, fov: 60, cut: true },
     ] },
     { kind: 'actor', actor: 'collector', cues: [
       { t: 0, clip: 'Idle_Talking_Loop', loop: true, turnTo: { target: { player: 'local' }, dur: 1 } },

@@ -144,7 +144,7 @@ export default class DevilsTable extends TableBase<DevilParts, Ev, Snap, Act> {
       else if (a === 'secondary' && this.holding) { this.holding = false; this.holdT = 0; this.showHud(); }
       return;
     }
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -447,7 +447,6 @@ export default class DevilsTable extends TableBase<DevilParts, Ev, Snap, Act> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('devilstable', this.tipLines());
     }
     this.paintAll();
   }
@@ -753,14 +752,6 @@ export default class DevilsTable extends TableBase<DevilParts, Ev, Snap, Act> {
 
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.devilstable.tip1' },
-      { k: 'm.devilstable.tip2', v: { fire: this.k('primary'), aim: `${this.k('left')}/${this.k('right')}` } },
-      { k: 'm.devilstable.tip3', v: { help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return [

@@ -185,7 +185,7 @@ export interface Kit {
   /** Physical radius item model + glowing floor ring (BRIEF ADDENDUM 8). */
   totem(o: { shape: string; color: Hex; radius: number }): TotemPart;
   // ── states ──
-  lockOverlay(size: SlotSize): THREE.Group;     // chains + padlock + CLOSED sign (i18n)
+  lockOverlay(size: SlotSize): THREE.Group;     // powered-down shade over a locked machine (the vitrine is world/props/cover.ts)
   outOfOrder(size: SlotSize): THREE.Group;      // placeholder cabinet "OUT OF ORDER"
   /** Advance animated actors (mixers, stepped animation). Called once per frame by the loop. */
   update(dt: number): void;

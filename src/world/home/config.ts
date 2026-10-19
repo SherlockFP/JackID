@@ -111,7 +111,7 @@ export const LIGHT = {
 
 /** The seated spouse's chair (the mannequin sits here, facing the door) and the empty chair opposite it. */
 export const SPOUSE_SEAT = { x: 1.6, z: -0.75 } as const;
-export const EMPTY_SEAT = { x: 1.6, z: 1.25 } as const;
+export const EMPTY_SEAT = { x: 1.6, z: 1.7 } as const;
 /**
  * How the seated spouse sits on that chair. The `Sitting_Idle_Loop` clip puts the pelvis 0.18 x height behind the actor root (kit/mannequin
  * `SEATED_HIP`), so the root goes `fwd` in front of the chair centre or the hips sit in the backrest (it did, wave 80). `fwd` keeps her
@@ -119,9 +119,14 @@ export const EMPTY_SEAT = { x: 1.6, z: 1.25 } as const;
  */
 export const SPOUSE_SIT = { fwd: 0.23, y: -0.025, seat: 0.42 } as const;
 
-/** Furniture plan (local): the bed's footprint, the kitchen table's footprint and top height. */
+/**
+ * Furniture plan (local): the bed's footprint, the kitchen table's footprint and top height. The table's near edge (z0) is 0.6 m
+ * from the seated spouse's toes (0.75 m from her knees, measured on the `Sitting_Idle_Loop` rig, wave 84). It was 0.14 m: the prologue
+ * camera (the spawn, looking at the table) sees her knees along the edge of the top, so her knee and shin read as passing through the
+ * table's corner. At 0.35 the sight line to her legs clears the corner by 0.2 m. The empty chair keeps its distance from the far edge.
+ */
 export const BED = { x0: -2.95, x1: -1.1, z0: -1.3, z1: 0.1, h: 0.42 } as const;
-export const TABLE = { x0: 1.05, x1: 2.15, z0: -0.1, z1: 0.7, top: 0.74 } as const;
+export const TABLE = { x0: 1.05, x1: 2.15, z0: 0.35, z1: 1.15, top: 0.74 } as const;
 
 /**
  * The anchors (world.anchor, the cutscene and camera targets). Each is a plan point; `yaw` is the facing (game convention).
@@ -135,7 +140,7 @@ export const ANCHOR_PLAN = {
   hall: { p: [-0.6, 0, 3.9], yaw: 0 },
   switch: { p: [0.7, 1.2, 2.2], yaw: 0 },
   phone: { p: [2.2, 1.3, -2.45], yaw: 0 },
-  table: { p: [1.6, TABLE.top, 0.3], yaw: 0 },
+  table: { p: [1.6, TABLE.top, (TABLE.z0 + TABLE.z1) / 2], yaw: 0 },
   spouse: { p: [SPOUSE_SEAT.x, 0, SPOUSE_SEAT.z], yaw: 0 },
   window: { p: [-0.6, 1.5, -2.2], yaw: 0 },
 } as const;

@@ -73,6 +73,12 @@ export const def: MachineDef = {
     'm.coinflip.pWin': `Base chance a heads/tails flip wins (${WIN_P.toFixed(3)}). Charms add, e.g. +0.05.`,
     'm.coinflip.rideCap': `Extra rides up the ladder (base ${RIDE_CAP}, hard cap ${MAX_RIDE_CAP}).`,
   },
+  // seat coach (_base/coach.ts): taught by doing on the first sits
+  coach: [
+    { key: 'primary', say: 'flip', done: 'round' },
+    { key: 'double alt', say: 'ride', done: 'press' },
+    { key: 'collect', say: 'collect', done: 'result' },
+  ],
   strings: {
     en: {
       name: 'Coin Flip Booth',
@@ -85,14 +91,11 @@ export const def: MachineDef = {
       stPick: 'PICK A SIDE, THEN FLIP', stPickSub: 'You call it, the coin decides',
       stAir: 'IN THE AIR', stAirSub: 'Watch the coin balance on its edge',
       stWon: 'YOU WON: RIDE OR COLLECT', stWonSub: 'Ride for x{n} or take the pot',
-      nStake: 'YOUR BET', nCall: 'YOUR CALL', nChance: 'CHANCE', nPot: 'WINNINGS', nNext: 'NEXT WIN',
+      nStake: 'BET', nCall: 'YOUR CALL', nChance: 'CHANCE', nPot: 'WINNINGS', nNext: 'NEXT WIN',
       nStreak: 'STREAK', nBalance: 'BALANCE',
       cHeads: 'HEADS', cTails: 'TAILS', cEdge: 'EDGE', cFlip: 'FLIP', cRide: 'RIDE', cCollect: 'COLLECT', cBet: 'BET',
       cRules: 'RULES', cLeave: 'LEAVE',
       edgeOdds: '1 IN 60', edgeWin: 'THE COIN STANDS ON ITS EDGE!',
-      tip1: 'Pick heads or tails, then flip. The coin decides.',
-      tip2: '[{heads}] HEADS  ·  [{tails}] TAILS  ·  [{edge}] EDGE  ·  [{flip}] FLIP  ·  [{bet}] BET',
-      tip3: 'After a win: [{ride}] RIDE up the ladder, or [{collect}] COLLECT. [{help}] RULES.',
       rule1: 'Call heads or tails and flip. A win pays 1.9x your bet.',
       rule2: 'Ride to climb the ladder: 1.9x, 3.6x, 7x, 13x. Collect any time.',
       rule3: 'A lost flip takes the amount at risk. Collecting pays the pot you hold.',
@@ -111,14 +114,11 @@ export const def: MachineDef = {
       stPick: 'BİR YÜZ SEÇ, SONRA AT', stPickSub: 'Tahmini sen yap, sonucu para belirler',
       stAir: 'HAVADA', stAirSub: 'Paranın kenarında dengelenişini izle',
       stWon: 'KAZANDIN: DEVAM ET YA DA AL', stWonSub: 'x{n} için devam et, ya da kasayı al',
-      nStake: 'BAHSİN', nCall: 'TAHMİNİN', nChance: 'ŞANS', nPot: 'KASA', nNext: 'SONRAKİ',
+      nStake: 'BAHİS', nCall: 'TAHMİNİN', nChance: 'ŞANS', nPot: 'KASA', nNext: 'SONRAKİ',
       nStreak: 'SERİ', nBalance: 'BAKİYE',
       cHeads: 'TURA', cTails: 'YAZI', cEdge: 'KENAR', cFlip: 'AT', cRide: 'DEVAM', cCollect: 'KASAYI AL', cBet: 'BAHİS',
       cRules: 'KURALLAR', cLeave: 'AYRIL',
       edgeOdds: '60’TA 1', edgeWin: 'PARA KENARINDA DURDU!',
-      tip1: 'Tura ya da yazı seç, sonra at. Sonucu para belirler.',
-      tip2: '[{heads}] TURA  ·  [{tails}] YAZI  ·  [{edge}] KENAR  ·  [{flip}] AT  ·  [{bet}] BAHİS',
-      tip3: 'Kazanınca [{ride}] DEVAM ile merdiveni tırman, ya da [{collect}] KASAYI AL. [{help}] KURALLAR.',
       rule1: 'Tura ya da yazı seç ve at. Bilirsen bahsinin 1,9 katını alırsın.',
       rule2: 'Devam edince merdiven yükselir: 1,9x, 3,6x, 7x, 13x. İstediğin an kasayı alabilirsin.',
       rule3: 'Kaybettiğin atışta o atışa koyduğun tutar gider. Kasayla ayrılırsan elindeki kasa ödenir.',
@@ -185,7 +185,6 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
       if (this.state.pot > 0 && !this.roundOpen) this.resumeRound(this.state.bet);   // restored pot: the sitter owns it
       this.sfx('chime'); this.showHud();
       this.seatHud?.show();
-      this.seatHud?.firstTip('coinflip', this.tipLines());
     }
   }
 
@@ -205,6 +204,11 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     if (this.isLocalOccupant) this.showHud();
   }
 
+  /** The Watch closed: a pot on the table is collected, so no flip pays in Dawn. */
+  protected override onWatchClosed(): void {
+    if (this.pending) void this.collect();
+  }
+
   /** Leaving with a pot on the table collects it first (the safe default for a ladder game). */
   protected override standUp(): void {
     if (this.pending) { void this.collect(); }          // busy now: settle() releases the seat afterwards
@@ -215,7 +219,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -548,14 +552,6 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
 
   /** The chance of one heads/tails flip winning, as a whole percentage (hooks included). */
   private chance(): string { return `${Math.round(clampP(this.mod(HOOK_P, WIN_P)) * 100)}%`; }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.coinflip.tip1' },
-      { k: 'm.coinflip.tip2', v: { heads: this.k('n1'), tails: this.k('n2'), edge: this.k('n3'), flip: this.k('primary'), bet: `${this.k('betDown')}/${this.k('betUp')}` } },
-      { k: 'm.coinflip.tip3', v: { ride: this.k('double'), collect: this.k('primary'), help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return [

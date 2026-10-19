@@ -122,6 +122,11 @@ export function houseFloatTopUp(pocket: number, index: number): number {
   return Math.max(0, houseFloat(index) - Math.max(0, Math.floor(pocket)));
 }
 
+/** Coins a Night opens with: the pocket (the Dawn's surplus in it) topped up by the House float. The House notice floors the quota on it (schedule.ts). */
+export function holdAtOpen(index: number, pocket: number): number {
+  return Math.max(houseFloat(index), Math.max(0, Math.floor(pocket)));
+}
+
 // ── the deposit float on Night 1 (wave 27, bank-econ) ───────────────────────────────────────────────────────
 /** Coins a new player keeps in the pocket on the first deposit of a Night 1 Watch: three pulls at about 3 coins (the activity clause needs 3 pulls). */
 export const NIGHT1_FLOAT = 9;

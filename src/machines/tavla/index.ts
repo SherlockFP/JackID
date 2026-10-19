@@ -129,7 +129,7 @@ export default class Tavla extends TableBase<TavlaParts, Ev, Pub, Act> {
   // ── local input ─────────────────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (e.repeat) return;
     const st = this.st, me = this.localSide();
@@ -563,7 +563,6 @@ export default class Tavla extends TableBase<TavlaParts, Ev, Pub, Act> {
     if (local) {
       this.sfx('chime');
       this.seatHud?.show(); this.showHud();
-      this.seatHud?.firstTip('tavla', this.tipLines());
     }
   }
 
@@ -819,14 +818,6 @@ export default class Tavla extends TableBase<TavlaParts, Ev, Pub, Act> {
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.tavla.tip1' },
-      { k: 'm.tavla.tip2', v: { ready: this.k('primary'), stake: `${this.k('betDown')}/${this.k('betUp')}` } },
-      { k: 'm.tavla.tip3', v: { roll: this.k('primary'), double: this.k('n1'), help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return [1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => ({ k: `m.tavla.r${i}` }));

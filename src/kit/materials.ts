@@ -35,9 +35,20 @@ export function perspectiveVariant(m: THREE.Material): THREE.Material {
   return psx({ ...o, affine: false });
 }
 
-/** `MatLike` → material. `shade` = the geometry carries baked vertex colours. */
+/** Palette hexes that stand for a real material (brass, chrome, walnut …), set by the kit context (ctx.ts) from the presets. */
+let hexPreset: ((c: Hex) => THREE.Material | null) | null = null;
+export function setHexPresets(fn: (c: Hex) => THREE.Material | null): void { hexPreset = fn; }
+
+/**
+ * `MatLike` → material. `shade` = the geometry carries baked vertex colours. A bare palette hex for a metal, wood, leather or
+ * felt resolves to its textured preset (docs/ART.md, machine bible), so those never ship as flat untextured slabs.
+ */
 export function resolveMat(m: MatLike, shade: boolean): THREE.Material {
-  if (typeof m === 'number') return psx({ color: m as Hex, vertexColors: shade });
+  if (typeof m === 'number') {
+    const p = hexPreset?.(m as Hex);
+    const o = p ? optsOf.get(p) : undefined;
+    return psx(o ? { ...o, vertexColors: shade } : { color: m as Hex, vertexColors: shade });
+  }
   if ((m as THREE.Material).isMaterial) return shade ? withVertexColors(m as THREE.Material) : (m as THREE.Material);
   const o = m as PsxMatOpts;
   return psx({ ...o, vertexColors: o.vertexColors ?? shade });

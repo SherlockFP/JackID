@@ -20,6 +20,7 @@ import {
 } from '@/machines/_base/placard3d';
 import { setFlashPrefsHost } from '@/machines/_base/juice';
 import { NOTES, noteOpen, type NoteDef, type NoteGate } from './notes.data';
+import { BOND_IDS, BOND_MAX, type Bonds } from '../bonds';
 
 // The placards (notes, tape, journal, and the machines' almanac and rules cards) live in the first-person overlay.
 // Machines may not import the app core, so the story layer, which may, hands them the overlay and the canvas.
@@ -91,8 +92,23 @@ export function tallyLinesNow(): readonly TallyLine[] { return tallyLines; }
 export function tallyClear(): void { tallyLines.length = 0; }
 const tallyTitle = (): string => t(`${TALLY_KEY}sheet.t`);
 const tallyBody = (): string => (tallyLines.length ? tallyLines.map((l) => `- ${t(TALLY_KEY + l.key, l.vars)}`).join('\n') : t(`${TALLY_KEY}sheet.empty`));
-const titleOf = (d: NoteDef): string => (d === TALLY_PAGE ? tallyTitle() : t(`story.note.${d.id}.t`));
-const bodyOf = (d: NoteDef): string => (d === TALLY_PAGE ? tallyBody() : t(`story.note.${d.id}.b`));
+// ── the PEOPLE page (bonds, docs/STORY_BIBLE.md §10): each friend, three pips and what they say to you now ─────────────────
+const PEOPLE_PAGE: NoteDef = { id: 'people', kind: 'note', anchor: '', dx: 0, dz: 0, yaw: 0 };
+const bondBook = (): Bonds | null => (app as unknown as { run?: { bonds?(): Bonds } | null } | undefined)?.run?.bonds?.() ?? null;
+/** One entry per friend: the name and pips ("*" held, "-" not), then their greeting line. Never a number (bonds §10). */
+export function peopleBody(b: Pick<Bonds, 'level' | 'greeting'>): string {
+  return BOND_IDS.filter((w) => b.level(w) > 0).map((w) => {   // only the friends met so far
+    const n = b.level(w);
+    return `${t(`bonds.name.${w}`)}  ${'*'.repeat(n)}${'-'.repeat(BOND_MAX - n)}\n${t(b.greeting(w))}`;
+  }).join('\n\n');
+}
+const virtualTitle = (d: NoteDef): string | null => (d === TALLY_PAGE ? tallyTitle() : d === PEOPLE_PAGE ? t('bonds.people') : null);
+const titleOf = (d: NoteDef): string => virtualTitle(d) ?? t(`story.note.${d.id}.t`);
+const bodyOf = (d: NoteDef): string => {
+  if (d === TALLY_PAGE) return tallyBody();
+  if (d === PEOPLE_PAGE) { const b = bondBook(); return b ? peopleBody(b) : t('bonds.people.hint'); }
+  return t(`story.note.${d.id}.b`);
+};
 
 const indexOf = (id: string): number => NOTES.findIndex((n) => n.id === id);
 
@@ -377,7 +393,10 @@ function journalPlacard(): Placard3D {
   let mark: THREE.Mesh | null = null;
   const list = (): NoteDef[] => {
     const l = NOTES.filter((d) => found.has(d.id));
-    return tallyLines.length ? [...l, TALLY_PAGE] : l;
+    if (tallyLines.length) l.push(TALLY_PAGE);
+    const b = bondBook();
+    if (b && BOND_IDS.some((w) => b.level(w) > 0)) l.unshift(PEOPLE_PAGE);   // the friends first, but only once there is a first one
+    return l;
   };
   const bodyRows = (d: NoteDef): string[] => wrapPx5(bodyOf(d), PAGE_W);
   const rightRows = JOURNAL_PX[1] - 26 - 30;
@@ -437,8 +456,9 @@ function journalPlacard(): Placard3D {
           button(c, x + 22, h - 22, 18, 13, '>', 'next');
           put(g, `${Math.min(c.page, pages.length - 1) + 1}/${pages.length}`, x + 52, h - 19, INK_SOFT);
         }
-        if (cur !== TALLY_PAGE) button(c, w - 14 - 56, h - 22, 56, 13, t('story.ui.read'), 'read');
+        if (cur !== TALLY_PAGE && cur !== PEOPLE_PAGE) button(c, w - 14 - 56, h - 22, 56, 13, t('story.ui.read'), 'read');
       }
+      put(g, fitPx5(t('ui.keyhint'), PAGE_W), 14, h - 8, INK_SOFT);
       button(c, 14, h - 22, 56, 13, t('story.ui.close'), 'close');
     },
     act: (a) => {
@@ -460,7 +480,7 @@ function journalPlacard(): Placard3D {
       }
       if (a === 'read' && l.length) {
         const d = l[Math.min(sel, l.length - 1)];
-        if (d !== TALLY_PAGE) present(readPlacard(d), d);   // the Tally Sheet is read in the journal itself
+        if (d !== TALLY_PAGE && d !== PEOPLE_PAGE) present(readPlacard(d), d);   // the Tally Sheet and PEOPLE are read in the journal itself
       }
     },
     keys: {

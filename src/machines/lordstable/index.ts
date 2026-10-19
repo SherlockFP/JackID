@@ -300,7 +300,6 @@ export default class LordsTable extends TableBase<LordsParts, Ev, Snap, Act> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('lordstable', this.tipLines());
       const set = chosenLord();
       if (set) this.act({ k: 'pick', lord: set });             // sat down with the Lord already chosen: the duel starts
     }
@@ -538,13 +537,6 @@ export default class LordsTable extends TableBase<LordsParts, Ev, Snap, Act> {
   }
 
   // ── HUD ─────────────────────────────────────────────────────────────────────────────────────
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.lordstable.tip1', v: { pull: this.k('primary') } },
-      { k: 'm.lordstable.tip2' },
-      { k: 'm.lordstable.tip3', v: { call: this.k('alt') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return [

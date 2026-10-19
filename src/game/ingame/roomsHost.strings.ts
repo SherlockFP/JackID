@@ -52,10 +52,10 @@ export default {
     'collector.offer': 'Satılacak bir tılsım seç. Değerinin iki katı, Obol olarak.',
     'collector.none': 'Bir tılsım istiyor. Birini getir.',
     'collector.bought': '{charm} {obols} Obol karşılığı satıldı.',
-    'collector.refused': 'Koleksiyerci bunu almaz.',
-    'collector.wrong': 'Yanlış. Koleksiyerciye bir Bilet gitti.',
+    'collector.refused': 'Tahsildar bunu almaz.',
+    'collector.wrong': 'Yanlış. Tahsildara bir Bilet gitti.',
     'collector.wrongNone': 'Yanlış. Kaybedecek biletin yok.',
-    'collector.timeout': 'Koleksiyerci ilgisini kaybetti. Zarar yok.',
+    'collector.timeout': 'Tahsildar ilgisini kaybetti. Zarar yok.',
     'collector.done': 'Bu gece seninle zaten konuştu.',
   },
 };

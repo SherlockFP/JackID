@@ -144,7 +144,7 @@ export default class Pisti extends TableBase<PistiParts, Ev, Snap, Act> {
   // ── local input → action to the host ─────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const a = e.action as MachineAction;
     const seat = this.localSeat;
@@ -404,7 +404,6 @@ export default class Pisti extends TableBase<PistiParts, Ev, Snap, Act> {
     if (local) {
       this.sfx('chime');
       this.seatHud?.show(); this.repaintAll(); this.showHud();
-      this.seatHud?.firstTip('pisti', this.tipLines());
     }
   }
 
@@ -725,14 +724,6 @@ export default class Pisti extends TableBase<PistiParts, Ev, Snap, Act> {
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.pisti.tip1' },
-      { k: 'm.pisti.tip2', v: { ready: this.k('primary'), stake: `${this.k('betDown')}/${this.k('betUp')}` } },
-      { k: 'm.pisti.tip3', v: { cards: `${this.k('n1')}-${this.k('n4')}`, help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return RULE_KEYS.map((key) => ({ k: `m.pisti.${key}` }));

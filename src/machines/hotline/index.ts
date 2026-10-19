@@ -103,10 +103,6 @@ export const def: MachineDef = {
       rule3: "If nobody answers in time, the game resolves the call on its own clock.",
       rule4: "E stands up from the booth. Hanging up is not possible yet; standing up keeps the call and its deal board.",
       rule5: "Answering works from anywhere, walking or seated: the answer key picks up, and the board stays up while you walk.",
-      tip1: "Answer the phone when it rings. Only the call's player can pick up.",
-      tip2: "[{pick}] PICK UP, then choose a reply within 15 seconds",
-      tip3: "On the line: [{choose}] CHOOSE A REPLY  ·  [{help}] RULES",
-      tip4: "[{phone}] ANSWER FROM ANYWHERE, WALKING TOO",
       ringHint: "RING RING: [{phone}] ANSWERS FROM ANYWHERE",
       sheetTitle: "THE HOUSE CALLS", sheetHint: "Press 1 / 2 / 3 or click a deal", sheetGet: "GET", sheetPay: "PAY",
       speaker: "THE HOUSE",
@@ -139,10 +135,6 @@ export const def: MachineDef = {
       rule3: "Kimse zamanında açmazsa oyun çağrıyı kendi saatiyle çözer.",
       rule4: "E tuşu kabinden kalkar. Henüz kapatma yok; kalkmak çağrıyı ve teklif panosunu açık tutar.",
       rule5: "Açmak her yerden olur, yürürken ya da otururken: açma tuşu telefonu kaldırır, pano sen yürürken de açık kalır.",
-      tip1: "Telefon çalınca aç. Yalnızca çağrının sahibi açabilir.",
-      tip2: "[{pick}] AÇ, sonra 15 saniye içinde bir yanıt seç",
-      tip3: "Hatta: [{choose}] YANIT SEÇ  ·  [{help}] KURALLAR",
-      tip4: "[{phone}] HER YERDEN AÇ, YÜRÜRKEN DE",
       ringHint: "TRIN TRIN: [{phone}] HER YERDEN AÇILIR",
       sheetTitle: "EV ARIYOR", sheetHint: "1 / 2 / 3 tuşla ya da bir teklife tıkla", sheetGet: "KAZAN", sheetPay: "BEDEL",
       speaker: "EV",
@@ -295,7 +287,6 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
     if (local) {
       this.sfx('chime'); this.hudKey = '';
       this.seatHud?.show(); this.showHud(this.ctx.run.phone());
-      this.seatHud?.firstTip('hotline', this.tipLines());
     }
   }
 
@@ -314,7 +305,7 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (e.repeat) return;
     if (e.action === 'primary' || e.action === 'confirm') { this.answerPhoneKey(); return; }
@@ -470,15 +461,6 @@ export default class Hotline extends MachineBase<HotlineParts, Ev, null> {
   /** The key bound to a machine action, as the player sees it. `answerPhone` is a walk-layer action (see keymap.ts). */
   private k(a: MachineAction | 'answerPhone'): string {
     return a === 'answerPhone' ? this.ctx.input.keyLabel('answerPhone' as BindingKey) : this.ctx.input.keyLabel(`m.${a}` as BindingKey);
-  }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.hotline.tip1' },
-      { k: 'm.hotline.tip2', v: { pick: this.k('primary') } },
-      { k: 'm.hotline.tip3', v: { choose: `${this.k('n1')}-${this.k('n3')}`, help: this.k('help') } },
-      { k: 'm.hotline.tip4', v: { phone: this.k('answerPhone') } },
-    ];
   }
 
   private rulesLines(): Txt[] {

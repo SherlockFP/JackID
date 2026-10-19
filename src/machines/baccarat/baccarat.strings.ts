@@ -26,9 +26,6 @@ const en: Record<string, string> = {
 
   // ── seat HUD (readability standard) ──
   hGoal: 'Bet on Player, Banker or Tie. The hand closest to 9 wins.',
-  hTip1: 'Bet: PLAYER [{p}]  ·  BANKER [{b}]  ·  TIE [{t}]',
-  hTip2: 'Lock your bets with [{lock}] before the cards are dealt.',
-  hTip3: 'Squeeze: hold and drag a card down to flip it. [{skip}] reveals all, [{help}] RULES.',
   hRule1: 'Punto Banco: the hand closest to 9 wins. Face cards count 0, aces count 1.',
   hRule2: 'PLAYER pays 1 to 1, BANKER 1 to 1 less 5% commission, TIE 8 to 1. On a tie, PLAYER and BANKER bets come back.',
   hRule3: 'A pair (the first two cards match) pays 11 to 1 on the PLAYER PAIR or BANKER PAIR spot.',
@@ -41,7 +38,7 @@ const en: Record<string, string> = {
   hStSqueezeOther: 'SOMEONE IS SQUEEZING', hStTurn: 'TURNING THE CARDS',
   hStPlayer: 'PLAYER WINS', hStBanker: 'BANKER WINS', hStTie: 'TIE',
   hStPayout: 'PAYING OUT', hStShuffle: 'SHUFFLING', hStIdle: 'THE SHOE IS QUIET',
-  hNStake: 'YOUR STAKE', hNPicks: 'YOUR PICKS', hNPlayer: 'PLAYER', hNBanker: 'BANKER', hNBalance: 'BALANCE',
+  hNStake: 'BET', hNPicks: 'YOUR PICKS', hNPlayer: 'PLAYER', hNBanker: 'BANKER', hNBalance: 'BALANCE',
   hsB: 'B', hsP: 'P', hsT: 'T', hsPP: 'PP', hsBP: 'BP',
   hCLock: 'LOCK', hCPlayer: 'PLAYER', hCBanker: 'BANKER', hCTie: 'TIE', hCBet: 'BET', hCClear: 'CLEAR',
   hCReveal: 'REVEAL ALL', hCRules: 'RULES', hCLeave: 'LEAVE',
@@ -71,9 +68,6 @@ const tr: Record<string, string> = {
 
   // ── seat HUD (readability standard) ──
   hGoal: 'Oyuncu, Banker ya da Beraberlik\'e bahis koy. Eli 9\'a en yakın olan kazanır.',
-  hTip1: 'Bahis: OYUNCU [{p}]  ·  BANKER [{b}]  ·  BERABERE [{t}]',
-  hTip2: 'Kartlar dağıtılmadan önce bahislerini [{lock}] ile kilitle.',
-  hTip3: 'Kart sık: basılı tut, kartı aşağı çek. [{skip}] hepsini açar, [{help}] KURALLAR.',
   hRule1: 'Punto Banco: eli 9\'a en yakın olan kazanır. Resimli kartlar 0, as 1 sayılır.',
   hRule2: 'OYUNCU 1\'e 1, BANKER %5 komisyon düşülerek 1\'e 1, BERABERE 8\'e 1 öder. Berabere kalınca OYUNCU ve BANKER bahisleri iade edilir.',
   hRule3: 'İlk iki kartı eş olan çift, OYUNCU ÇİFT ya da BANKER ÇİFT bahsine 11\'e 1 öder.',
@@ -86,7 +80,7 @@ const tr: Record<string, string> = {
   hStSqueezeOther: 'BİRİ KARTINI SIKIYOR', hStTurn: 'KARTLAR ÇEVRİLİYOR',
   hStPlayer: 'OYUNCU KAZANDI', hStBanker: 'BANKER KAZANDI', hStTie: 'BERABERE',
   hStPayout: 'ÖDENİYOR', hStShuffle: 'SABOT KARIŞTIRILIYOR', hStIdle: 'SABOT SESSİZ',
-  hNStake: 'BAHSİN', hNPicks: 'SEÇİMLERİN', hNPlayer: 'OYUNCU', hNBanker: 'BANKER', hNBalance: 'BAKİYE',
+  hNStake: 'BAHİS', hNPicks: 'SEÇİMLERİN', hNPlayer: 'OYUNCU', hNBanker: 'BANKER', hNBalance: 'BAKİYE',
   hsB: 'B', hsP: 'O', hsT: 'BE', hsPP: 'OÇ', hsBP: 'BÇ',
   hCLock: 'KİLİTLE', hCPlayer: 'OYUNCU', hCBanker: 'BANKER', hCTie: 'BERABERE', hCBet: 'BAHİS', hCClear: 'TEMİZLE',
   hCReveal: 'HEPSİNİ AÇ', hCRules: 'KURALLAR', hCLeave: 'ÇIK',

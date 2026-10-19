@@ -134,7 +134,6 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip(this.def.id, this.tipLines());
     }
   }
 
@@ -635,13 +634,6 @@ export default class Fortuneteller extends MachineBase<FortunetellerParts, Ev, S
   private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.${this.def.id}.${key}`, v } : { k: `m.${this.def.id}.${key}` }; }
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-  private tipLines(): Txt[] {
-    return [
-      this.tx('tip1', { read: this.k('primary') }),
-      this.tx('tip2', { pick: `${this.k('n1')}-${this.k('n3')}` }),
-      this.tx('tip3', { defy: this.k('n4'), help: this.k('help') }),
-    ];
-  }
   /**
    * Omen almanac: all 22 cards with their coin multiplier and effect (EN/TR), a 3D book held up in front of the eye.
    * Toggled with H; Esc or a click on CLOSE shuts it, arrows / A D or a click on the page turn the pages.

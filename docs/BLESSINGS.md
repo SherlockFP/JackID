@@ -276,7 +276,7 @@ Two lanes per wave at most. A lane owns its files; anything else is a request to
 **Wave D: merge and balance**
 | Lane | Owns | Work |
 |---|---|---|
-| D1 balance | `src/game/houseMood.ts`, `src/game/data/schedule.ts` (favour column), `scripts/sim/*` | Fold House Favour into House Mood (one curve, same totals). Headless sims: best boon build stays under the payout cap; a no-boon run still clears N8 at the current rate. |
+| D1 balance (done) | `src/game/houseMood.ts`, `src/game/data/schedule.ts` (favour column), `scripts/sim/*` | House Favour is folded into House Mood: N1 x1.475, N2 x1.265, N3 x1.102 (old mood x old Favour, so the totals are exact and reach is unchanged). `nightDef().favour` is now always 1; delete it with the two reads in `run.ts`. `scripts/sim/pantheon.mjs` (4000 seeds, human bot) pins: the best build stays at x1.35, a no-boon run clears N8 at today's 27 %, a greedy bot (biggest percentage on the card) does not beat a sensible one by 15 % of reach. Reach, N1..N8: none 94 82 61 47 40 33 29 27, random 94 82 61 47 41 35 32 31, greedy 94 82 61 49 43 38 36 34, sensible 94 82 62 51 46 41 37 36. No boon number needed tuning. |
 | D2 docs | `docs/HOUSE_DIRECTOR.md`, `docs/STORY_BIBLE.md`, `docs/ASSETS.md` | Night Card table → god weights; §4 lines for N2/N7; statue and sigil assets. |
 
 **Cut list.**

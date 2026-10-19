@@ -168,7 +168,6 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
       if (this.mod(HOOK.peek, 0) > 0) this.peekT = 3;
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('pachislot', this.tipLines());
       if (this.state.bonus) void this.runBonus();      // a feast left unfinished (reload / snapshot) goes on
     }
   }
@@ -194,7 +193,7 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -539,14 +538,6 @@ export default class Pachislot extends MachineBase<PachislotParts, Ev, State> {
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.pachislot.tip1', v: { lever: this.k('primary') } },
-      { k: 'm.pachislot.tip2', v: { l: this.k('n1'), c: this.k('n2'), r: this.k('n3') } },
-      { k: 'm.pachislot.tip3', v: { bet: `${this.k('betDown')}/${this.k('betUp')}`, max: this.k('betMax'), help: this.k('help') } },
-    ];
-  }
 
   /** Result callout for the local player: `net` = coins back minus the stake. */
   private callout(net: number): void {

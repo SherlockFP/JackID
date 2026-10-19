@@ -142,7 +142,7 @@ export default class LottoBlower extends TableBase<LottoParts, Ev, Snap, Act> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -610,7 +610,6 @@ export default class LottoBlower extends TableBase<LottoParts, Ev, Snap, Act> {
       this.seatHud?.show();
       this.hudSig = '';
       this.showHud();
-      this.seatHud?.firstTip('lottoblower', this.tipLines());
     }
   }
   onRelease(_pid: PlayerId, _seat: number, local: boolean): void {
@@ -689,14 +688,6 @@ export default class LottoBlower extends TableBase<LottoParts, Ev, Snap, Act> {
 
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.lottoblower.tip1' },
-      { k: 'm.lottoblower.tip2', v: { quick: this.k('n1'), add: this.k('n2'), batch: this.k('n3') } },
-      { k: 'm.lottoblower.tip3', v: { buy: this.k('confirm'), help: this.k('help') } },
-    ];
-  }
 
   /** Banner, key numbers and valid controls for the local player. Redraws only when something changed. */
   private showHud(): void {

@@ -13,9 +13,10 @@
 import './manga.css';
 import { registerStrings } from '@/core/i18n';
 import type { App } from '@/core/app';
+import { bus } from '@/core/events';
 import type { CutscenePlayer } from '@/core/cutscene/types';
 import strings from './manga.strings';
-import { cutin as cutinRun, setMotionSource, type Motion } from './mangaPanel';
+import { cutin as cutinRun, setMotionSource, skip as skipRun, type Motion } from './mangaPanel';
 import { glyph as glyphRun } from './glyph';
 import { reveal as revealRun, type MangaClue, type MangaScript, type Verdict } from './reveal';
 import { EXPRESSIONS, type Expr } from './portrait';
@@ -86,6 +87,8 @@ export function installManga(app: Pick<App, 'cutscene' | 'save'>): () => void {
       const verdict: Verdict = a.verdict === 'FAIR' ? 'FAIR' : 'CHEAT';
       void revealRun(script, clueList(a.clues), verdict);
     }),
+    // a skipped scene must not leave its cut-in playing: the skip is instant
+    bus.on('cutscene:end', ({ result }) => { if (result === 'skipped') skipRun(); }),
   ];
   return () => {
     for (const off of offs) off();

@@ -94,6 +94,15 @@ export const CARD_MESSAGES: readonly SpouseDef[] = [
   { id: 'card5', replies: [{ kind: 'promise', harmony: 1 }, { kind: 'plain', harmony: 0 }, { kind: 'ignore', harmony: -1 }] },
   { id: 'card8', replies: [{ kind: 'promise', harmony: 1 }, { kind: 'plain', harmony: 0 }, { kind: 'ignore', harmony: -1 }] },
 ];
+/**
+ * BONDS (docs/STORY_BIBLE.md §10): Night 6, Ada wants Selim out of your life. Stand up for him (Selim +1, Harmony -1) or let it go
+ * (Selim -1). It takes that Night's spouse slot. Keys phone.sp.selim.t / .r0 / .r1.
+ */
+export const SELIM_NIGHT = 6;
+export const SELIM_MESSAGE: SpouseDef = { id: 'selim', replies: [{ kind: 'plain', harmony: -1 }, { kind: 'plain', harmony: 0 }] };
+/** From Night 5 (she is home), a friend's bond rising gets "Where were you?" once a Night. The truth costs a Harmony. Keys phone.sp.where.*. */
+export const WHERE_NIGHT = 5;
+export const WHERE_MESSAGE: SpouseDef = { id: 'where', replies: [{ kind: 'plain', harmony: -1 }, { kind: 'promise', harmony: 0 }] };
 /** THE SECOND NAME (wave 73): the Collector's N2 warning (Heat 1 or more), and the N7 deal: pay a share of the pocket, Heat drops by two. */
 export const WARN_NIGHT = 2;
 export const WARN_KEY = 'phone.co.warn.n2';
@@ -114,7 +123,7 @@ export const COLLECTOR_VARIANTS = 3;
 export const DREAM_VARIANTS = 3;
 
 const SPOUSE_BY_TEXT: ReadonlyMap<string, SpouseDef> = new Map([
-  ...[...SPOUSE_MESSAGES, ...CARD_MESSAGES].map((d): [string, SpouseDef] => [`phone.sp.${d.id}.t`, d]),
+  ...[...SPOUSE_MESSAGES, ...CARD_MESSAGES, SELIM_MESSAGE, WHERE_MESSAGE].map((d): [string, SpouseDef] => [`phone.sp.${d.id}.t`, d]),
   ...SPOUSE_MESSAGES.map((d): [string, SpouseDef] => [`phone.sp.${d.id}.x.t`, d]),   // the across pool (cards have one text for both)
 ]);
 
@@ -162,7 +171,7 @@ export function dreamOf(phone: HomePhoneApi | null | undefined): Dream | null {
 }
 
 // ── state ────────────────────────────────────────────────────────────────────────────────────────────────────────────
-interface Plan { thread: PhoneThread; night: number; watch: number; last: boolean; at: number; pick: number; /** A spouse card message (wave 73). */ card?: boolean }
+interface Plan { thread: PhoneThread; night: number; watch: number; last: boolean; at: number; pick: number; /** A spouse card message (wave 73). */ card?: boolean; /** The Night 6 Selim choice (bonds). */ selim?: boolean }
 interface State {
   harmony: number;
   heat: number;
@@ -230,7 +239,7 @@ function readPlan(x: unknown): Plan | null {
   if (o.thread !== 'spouse' && o.thread !== 'collector') return null;
   return {
     thread: o.thread, night: intIn(o.night, 1, 999, 1), watch: intIn(o.watch, 0, 99, 0), last: o.last === true,
-    at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, pick: intIn(o.pick, 0, 999, 0), card: o.card === true,
+    at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, pick: intIn(o.pick, 0, 999, 0), card: o.card === true, selim: o.selim === true,
   };
 }
 
@@ -284,6 +293,8 @@ export function createPhone(run: DebtRun): HomePhoneApi {
           thread: 'spouse', night, watch: w, last: w === count - 1,
           at: r.int(SPOUSE_AT[0], SPOUSE_AT[1]), pick: cardBeat - 1, card: true,
         });
+      } else if (night === SELIM_NIGHT) {
+        st.plans.push({ thread: 'spouse', night, watch: w, last: w === count - 1, at: r.int(SPOUSE_AT[0], SPOUSE_AT[1]), pick: 0, selim: true });
       } else if (r.chance(SPOUSE_CHANCE)) {
         st.plans.push({
           thread: 'spouse', night, watch: w, last: w === count - 1,
@@ -343,9 +354,9 @@ export function createPhone(run: DebtRun): HomePhoneApi {
   }
 
   function deliverSpouse(p: Plan): void {
-    const def = p.card ? CARD_MESSAGES[p.pick % CARD_MESSAGES.length] : SPOUSE_MESSAGES[p.pick % SPOUSE_MESSAGES.length];
+    const def = p.selim ? SELIM_MESSAGE : p.card ? CARD_MESSAGES[p.pick % CARD_MESSAGES.length] : SPOUSE_MESSAGES[p.pick % SPOUSE_MESSAGES.length];
     const cost = def.share ? coinCost(run.debt().due, def.share) : 0;
-    const pool = p.card ? '' : poolOf(p.night);   // N1-N4 she texts from across the hall; the card messages are one text for both
+    const pool = p.card || p.selim ? '' : poolOf(p.night);   // N1-N4 she texts from across the hall; the card messages are one text for both
     push({
       id: msgId(p), thread: 'spouse', night: p.night, watch: p.watch + 1,
       textKey: `phone.sp.${def.id}${pool}.t`, vars: { cost },
@@ -429,6 +440,15 @@ export function createPhone(run: DebtRun): HomePhoneApi {
   }));
   unsubs.push(bus.on('run:rescue', (e) => { if (!disposed && e.state === 'taken') bumpHeat(1, 'loan'); }));
   unsubs.push(bus.on('home:stage', ({ stage }) => { if (stage === 'sleep') closeNight(); }));
+  // BONDS: she is home from Night 5 and wants you to herself; a friend's bond rising gets "Where were you?" once a Night
+  unsubs.push(bus.on('bond:change', ({ to, from, night }) => {
+    const id = `spouse:${night}:where`;
+    if (disposed || to <= from || night < WHERE_NIGHT || st.msgs.some((m) => m.id === id)) return;
+    push({
+      id, thread: 'spouse', night, watch: 1, textKey: 'phone.sp.where.t', vars: {},
+      replies: WHERE_MESSAGE.replies.map((_, i) => `phone.sp.where.r${i}`), read: false, answered: null,
+    });
+  }));
 
   const api: HomePhoneApi = {
     tick(dt: number): void {
@@ -474,6 +494,9 @@ export function createPhone(run: DebtRun): HomePhoneApi {
       if (heat) bumpHeat(heat, deal ? 'deal' : 'time');
       if (deal) { const c = run.chapterRecord?.(); if (c) c.deal = deal; }
       if (msg.thread === 'spouse') st.replyNight = msg.night;
+      // BONDS: the Night 6 Selim choice, and a reply to the Collector is a word with him
+      if (msg.textKey === 'phone.sp.selim.t') run.bond?.({ kind: choice === 0 ? 'defend' : 'drop', who: 'selim' });
+      else if (msg.thread === 'collector') run.bond?.({ kind: 'talk', who: 'collector' });
       msg.answered = choice;
       msg.read = true;
       bus.emit('msg:reply', { id, thread: msg.thread, choice });

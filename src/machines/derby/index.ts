@@ -107,7 +107,7 @@ export default class Derby extends TableBase<DerbyParts, Ev, Snap, Act> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -574,7 +574,6 @@ export default class Derby extends TableBase<DerbyParts, Ev, Snap, Act> {
       this.seatHud?.show();
       this.hudSig = '';
       this.showHud();
-      this.seatHud?.firstTip('derby', this.tipLines());
     }
   }
   onRelease(_pid: PlayerId, seat: number, local: boolean): void {
@@ -729,14 +728,6 @@ export default class Derby extends TableBase<DerbyParts, Ev, Snap, Act> {
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
 
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.derby.tip1', v: { pick: `${this.k('n1')}-${this.k('n6')}`, win: this.k('n7'), place: this.k('n8'), show: this.k('n9') } },
-      { k: 'm.derby.tip2', v: { go: this.k('confirm') } },
-      { k: 'm.derby.tip3', v: { help: this.k('help') } },
-    ];
-  }
-
   /** Banner, key numbers and valid controls for the local player. Redraws only when something changed. */
   private showHud(): void {
     const sh = this.seatHud;
@@ -832,5 +823,11 @@ export const def: MachineDef = {
     'x.table.peekCharges': 'bool: every bettor is privately told which horse finishes last',
     luck: 'reroll a losing solo race once with p = luck/100; shared races refund losing seats with the same p',
   },
+  // seat coach (_base/coach.ts): taught by doing on the first sits
+  coach: [
+    { key: 'n1 n2 n3 n4 n5 n6', say: 'horse', done: 'press' },
+    { key: 'n7 n8 n9', say: 'betType', done: 'press' },
+    { key: 'confirm', say: 'slip', done: 'press' },
+  ],
   strings: STRINGS,
 };

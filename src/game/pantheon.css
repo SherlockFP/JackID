@@ -1,6 +1,6 @@
 /* The pantheon's offer (pantheon.ui.ts): the Dawn receipt, then one card per god. Manga-lite like the other Dawn panels: cream
    paper, heavy ink borders, halftone dots, a skewed title bar. Each god has a CSS sigil (no art file): the Well a ring of water,
-   Ledgers a coin with a slot, Ash a burnt match, Mirrors an oval glass with no face, Loki a green grin.
+   Ledgers a coin with a slot, Ash a burnt match, Mirrors an oval glass with no face; Loki wears his jester sigil (icon.joker, joker.ts jokerIcon).
    Sizes are design px times --dpx (= --u / 1.5, the HUD rule in ui.css). The veil wraps onto phone widths with no side scroll.
    The veil is a light tint only: ui.ts already drops a dark backdrop behind this modal. */
 .pt-root { --dpx: calc(var(--u, 1.5px) / 1.5);
@@ -39,13 +39,13 @@
 .pt-take { margin-top: auto; font-family: var(--f-head, monospace); font-size: calc(10 * var(--dpx)); color: #000; text-decoration: underline; }
 /* The sigils: one small CSS mark per god, drawn in ink and the god's colour. */
 .pt-sigil { position: relative; flex: 0 0 auto; width: calc(16 * var(--dpx)); height: calc(16 * var(--dpx)); box-sizing: border-box; }
+.jk-ico.pt-sigil { width: calc(18 * var(--dpx)); height: calc(18 * var(--dpx)); }
 .pt-sig-well { border: calc(3 * var(--dpx)) solid #2a6fb3; border-radius: 50%; box-shadow: inset 0 0 0 calc(1.5 * var(--dpx)) #9fd0ff; }
 .pt-sig-ledgers { border-radius: 50%; background: #d9a514; border: calc(2 * var(--dpx)) solid #000; }
 .pt-sig-ledgers::after { content: ''; position: absolute; left: 25%; right: 25%; top: 42%; height: 16%; background: #000; }
 .pt-sig-ash::before { content: ''; position: absolute; left: 44%; width: 12%; top: 25%; bottom: 0; background: #8a6a3a; }
 .pt-sig-ash::after { content: ''; position: absolute; left: 30%; width: 40%; top: 0; height: 36%; border-radius: 50%; background: #111; }
 .pt-sig-mirrors { width: calc(12 * var(--dpx)); border: calc(2 * var(--dpx)) solid #000; border-radius: 50%; background: linear-gradient(135deg, #f2f6fa 30%, #9aa9b8); }
-.pt-sig-loki { border-bottom: calc(4 * var(--dpx)) solid #2f9a3e; border-radius: 0 0 50% 50%; height: calc(10 * var(--dpx)); }
 /* The Dawn receipt: last Night's settlement, counted up in the modal's head. */
 .pt-receipt { margin: 0 0 calc(12 * var(--dpx)); padding: calc(8 * var(--dpx)) calc(10 * var(--dpx)); box-sizing: border-box; background: #fffdf5;
   border: calc(2 * var(--dpx)) solid #000; box-shadow: calc(3 * var(--dpx)) calc(3 * var(--dpx)) 0 #000; }

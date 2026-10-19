@@ -14,7 +14,7 @@ export default {
     'call.mira_n8.1': 'It\'s me. I won\'t ask how the tables are going.',
     'call.mira_n8.2': 'Tonight they\'ll ask you to put your name on the table. She did that once for mine. Don\'t let her do it twice.',
     'call.mira_n8.3': 'Tell her I\'m sorry I couldn\'t dial her myself. Goodbye.',
-    // Night 7, bond 2 only. shortcut: unwired until A4 (bonds) adds the call and its gate.
+    // Night 7, bond 2 only (calls.ts gates it on `mira.pair`).
     'call.mira_n7.1': 'It\'s me. One thing, then I hang up.',
     'call.mira_n7.2': 'Two people can say the same word and keep it. Then nobody gets paid.',
     'call.mira_n7.3': 'She\'ll never offer it. You\'ll have to.',

@@ -147,7 +147,7 @@ export default class FanTan extends TableBase<FantanParts, Ev, Snap, Act> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -609,7 +609,6 @@ export default class FanTan extends TableBase<FantanParts, Ev, Snap, Act> {
       this.seatHud?.show();
       this.hudSig = '';
       this.showHud();
-      this.seatHud?.firstTip('fantan', this.tipLines());
     }
   }
   onRelease(_pid: PlayerId, seat: number, local: boolean): void {
@@ -697,14 +696,6 @@ export default class FanTan extends TableBase<FantanParts, Ev, Snap, Act> {
 
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.fantan.tip1' },
-      { k: 'm.fantan.tip2', v: { side: `${this.k('n1')}-${this.k('n4')}`, ssh: `${this.k('n5')}-${this.k('n8')}`, oe: `${this.k('up')}/${this.k('down')}` } },
-      { k: 'm.fantan.tip3', v: { ready: this.k('confirm'), help: this.k('help') } },
-    ];
-  }
 
   /** Banner, key numbers and valid controls for the local player. Redraws only when something changed. */
   private showHud(): void {

@@ -193,7 +193,6 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
       if (this.s.gamble || this.s.core.nudges > 0 || this.s.gross > 0) this.resumeOpen();
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('fruitmachine', this.tipLines());
     }
     this.refresh();
   }
@@ -224,7 +223,7 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -657,14 +656,6 @@ export default class FruitMachine extends MachineBase<FruitParts, Ev, State> {
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.fruitmachine.tip1', v: { start: this.k('primary'), hold: `${this.k('n1')}-${this.k('n3')}` } },
-      { k: 'm.fruitmachine.tip2', v: { nudge: `${this.k('n1')}-${this.k('n3')}`, hi: this.k('up'), lo: this.k('down'), collect: this.k('collect') } },
-      { k: 'm.fruitmachine.tip3', v: { stake: `${this.k('betDown')}/${this.k('betUp')}`, max: this.k('betMax'), help: this.k('help') } },
-    ];
-  }
 
   /** Result callout once the round has settled: no gamble open and no nudges left. Local player only. */
   private roundEnd(pc: PresentCtx, stake: number, nudges: number, gambleOpen: boolean): void {

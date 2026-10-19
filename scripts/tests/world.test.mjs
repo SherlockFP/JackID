@@ -480,3 +480,18 @@ test('pit deck: with the real FLOOR_READY machines the line-up passes the guard 
   }
   assert.ok(rolled >= 90, `only ${rolled}/100 seeds rolled a line-up`);
 });
+
+// Texture rules: a sign texture that opts into mips keeps them through material build; every other texture is forced nearest.
+test('psxTexture keeps the filters of a mips opt-in texture and resets the rest', async () => {
+  const { psxTexture } = await load('src/core/renderer/psxMaterial.ts');
+  const plain = new THREE.Texture();
+  plain.minFilter = THREE.LinearMipmapLinearFilter; plain.generateMipmaps = true;
+  psxTexture(plain);
+  assert.equal(plain.minFilter, THREE.NearestFilter);
+  assert.equal(plain.generateMipmaps, false);
+  const sign = new THREE.Texture();
+  sign.minFilter = THREE.LinearMipmapLinearFilter; sign.generateMipmaps = true; sign.userData.mips = true;
+  psxTexture(sign);
+  assert.equal(sign.minFilter, THREE.LinearMipmapLinearFilter);
+  assert.equal(sign.generateMipmaps, true);
+});

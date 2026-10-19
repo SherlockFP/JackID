@@ -129,7 +129,7 @@ export default class Dicetower extends TableBase<DicetowerParts, Ev, Snap, Act> 
   // ── local input → action to the host ─────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     const seat = this.localSeat;
     switch (e.action) {
       case 'betUp': case 'n2': this.stepBet(1); this.sfx('click'); this.showHud(); break;     // X / wheel up
@@ -393,7 +393,6 @@ export default class Dicetower extends TableBase<DicetowerParts, Ev, Snap, Act> 
       this.sfx('chime', { vol: 0.5 });
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('dicetower', this.tipLines());
     }
   }
 
@@ -601,14 +600,6 @@ export default class Dicetower extends TableBase<DicetowerParts, Ev, Snap, Act> 
   // ── local HUD and help ──────────────────────────────────────────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.dicetower.tip1' },
-      { k: 'm.dicetower.tip2', v: { ready: this.k('confirm') } },
-      { k: 'm.dicetower.tip3', v: { help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] { return ['rule1', 'rule2', 'rule3', 'rule4'].map((k) => ({ k: 'm.dicetower.' + k })); }
 

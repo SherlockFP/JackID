@@ -109,6 +109,12 @@ export const def: MachineDef = {
     'm.mines.capRaise': `Multiplier cap (base ${CAP}, raised to ${CAP_RAISED}).`,
     luck: 'Core luck: each point gives 1 % (cap 30 %) that the first mine hit in a round is defused.',
   },
+  // seat coach (_base/coach.ts): taught by doing on the first sits
+  coach: [
+    { key: 'primary', say: 'arm', done: 'round' },
+    { key: 'primary', say: 'reveal', done: 'press' },
+    { key: 'collect', say: 'collect', done: 'result' },
+  ],
   strings: { en: STR.en, tr: STR.tr },
 };
 
@@ -156,7 +162,6 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('mines', this.tipLines());
     }
   }
 
@@ -190,6 +195,11 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
     if (this.isLocalOccupant) this.showHud();
   }
 
+  /** The Watch closed: a round with a safe reveal cashes out, one without is refunded, so no tile pays in Dawn. */
+  protected override onWatchClosed(): void {
+    if (this.roundOpen) void (this.st.k >= 1 ? this.cashOut() : this.endRound('void'));
+  }
+
   /** E: a round with a safe reveal cashes out, a round without one is refunded. Stand-up never forfeits a stake. */
   protected override standUp(): void {
     if (this.roundOpen) {
@@ -203,7 +213,7 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const moves = a === 'left' || a === 'right' || a === 'up' || a === 'down';
     if (e.repeat && !moves && a !== 'betUp' && a !== 'betDown' && a !== 'n6' && a !== 'n7') return;
@@ -669,14 +679,6 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
 
   /** The four move keys read as one label, e.g. "WASD". */
   private moveKeys(): string { return `${this.k('up')}${this.k('left')}${this.k('down')}${this.k('right')}`; }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.mines.tip1' },
-      { k: 'm.mines.tip2', v: { primary: this.k('primary'), move: this.moveKeys(), mines: `${this.k('n6')}/${this.k('n7')}` } },
-      { k: 'm.mines.tip3', v: { cash: this.k('collect'), help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.mines.' + k }));

@@ -3,7 +3,7 @@ export default {
   prefix: 'evening.',
   en: {
     'lever': 'TAKE THE LIFT',
-    'hint': 'Home at last. Talk, check the phone, lock up. The bed ends the night.',
+    'hint': 'Talk, check the phone. The bed ends the night.',
     'speaker.spouse': 'ADA',
     'speaker.note': 'NOTE',
     'note': 'On the pillow: "Gone to my sister\'s. Pay what you owe."',
@@ -23,7 +23,7 @@ export default {
   },
   tr: {
     'lever': 'ASANSÖRE BİN',
-    'hint': 'Sonunda evdesin. Konuş, telefona bak, kapıyı kilitle. Yatak geceyi bitirir.',
+    'hint': 'Konuş, telefona bak. Yatak geceyi bitirir.',
     'speaker.spouse': 'ADA',
     'speaker.note': 'NOT',
     'note': 'Yastığın üstünde: "Ablama gittim. Borcunu öde."',

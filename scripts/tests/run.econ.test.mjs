@@ -2,11 +2,16 @@
 // the Collector's rescue loan, the Watch-clock hold, the Pawn's first-shop synergy guarantee and its Night-rollover restock.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { load, closeVite } from './_vite.mjs';
 
 after(closeVite);
 
-let SCH, ECO, RUN, REG, SH, R, E, CH, HOLD, RES, EV, WE;
+let SCH, ECO, RUN, REG, SH, R, E, CH, HOLD, RES, EV, WE, KT;
 before(async () => {
   SCH = await load('src/game/data/schedule.ts');
   ECO = await load('src/game/economy.ts');
@@ -20,14 +25,15 @@ before(async () => {
   RES = await load('src/game/rescue.ts');
   EV = await load('src/core/events.ts');
   WE = await load('src/game/watchEvents.ts');
+  KT = await load('src/game/data/kits.ts');
   REG.load();
 });
 
 // ─â”€ the ladder ─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─â”€─
-test('quota ladder: strictly increasing night over night, N1 is the teaching Night under the Pauper pocket', () => {
+test('quota ladder: strictly increasing night over night, N1 is twice the Pauper pocket', () => {
   const q = SCH.BASE_NIGHTS.map((n) => n.base);
   for (let i = 1; i < q.length; i++) assert.ok(q[i] > q[i - 1], `N${i + 1} (${q[i]}) must exceed N${i} (${q[i - 1]})`);
-  assert.ok(q[0] > 0 && q[0] < SCH.START.pocket, `N1 ${q[0]} is below the ${SCH.START.pocket} pocket (teaching Night)`);
+  assert.ok(q[0] >= 2 * SCH.START.pocket, `N1 ${q[0]} is at least twice the ${SCH.START.pocket} pocket (wave 85: the start never pays the quota)`);
   for (let i = 1; i < SCH.BASE_RUN_NIGHTS + 4; i++) assert.ok(SCH.quotaFor(i) > SCH.quotaFor(i - 1), `Overdrawn ladder keeps rising at ${i + 1}`);
 });
 
@@ -77,21 +83,98 @@ test('WAVE 47 ladder: no Night steps up more than its cap (2x up to N3, 3x from 
   for (let i = 1; i < q.length; i++) assert.ok(q[i] <= 2 * q[i - 1], `N${i + 1} is at most 2x N${i} (director: no step above 2x after Night 2)`);
 });
 
-test('WAVE 47 house takes notice: from Night 6 (wave 58; was 5) the quota is at least 1.0 x the wealth at Dawn, capped at 1.6 x the ladder; the ladder is the floor; off below Night 6 and at share 0', () => {
-  assert.equal(SCH.HOUSE_NOTICE_FROM, 6, 'wave 58: the notice starts at Night 6 (Night 5 is set by its ladder, see schedule.ts)');
-  assert.equal(SCH.HOUSE_NOTICE_SHARE, 1, 'director (house notice cap): share 1.0 (was 1.2)');
-  assert.equal(SCH.HOUSE_NOTICE_CAP, 2.2, 'director: one notice raise at most 2.2 x the ladder');
-  assert.equal(SCH.houseNoticeQuota(4, 168, 1e6), 168, 'no notice before Night 6');
-  assert.equal(SCH.houseNoticeQuota(5, 504, 1e6), 504, 'no notice on Night 5 (wave 58)');
-  assert.equal(SCH.houseNoticeQuota(6, 504, 100), 504, 'a poor run keeps the ladder value');
-  assert.equal(SCH.houseNoticeQuota(6, 504, 700), 700, '1.0 x 700 coins, under the 1.6x cap (806)');
-  assert.equal(SCH.houseNoticeQuota(6, 576, 1300), 1270, 'the Night 6 case: capped at 2.2 x 576, rounded to the quota step (was 1300 at 1.2)');
-  assert.equal(SCH.houseNoticeQuota(6, 576, 1300, 1, 6, 0), 1300, 'cap 0 switches the cap off');
+test('WAVE 85 house takes notice: every Night the quota is at least 1.25 x what the Night opens with, uncapped; the ladder is the floor; share 0 and a late "from" switch it off', () => {
+  assert.equal(SCH.HOUSE_NOTICE_FROM, 1, 'wave 85: the notice runs on every Night');
+  assert.equal(SCH.HOUSE_NOTICE_SHARE, 1.25, 'wave 85: a Night opens with at most 80 % of its quota');
+  assert.equal(SCH.HOUSE_NOTICE_CAP, 0, 'wave 85: no cap (a cap would let a rich hold pay its own quota)');
+  assert.equal(SCH.houseNoticeQuota(1, 24, 12), 24, 'the 12-coin start keeps the ladder (1.25 x 12 = 15)');
+  assert.equal(SCH.houseNoticeQuota(1, 24, 0), 24, 'no wealth, no floor');
+  assert.equal(SCH.houseNoticeQuota(1, 24, 22), 27.5, 'a Foundations pocket of +10 raises Night 1 instead of paying it');
+  assert.equal(SCH.houseNoticeQuota(2, 36, 700), 875, 'a rich hold floors Night 2 (the old rule had no notice before Night 6)');
+  assert.equal(SCH.houseNoticeQuota(6, 576, 1300), 1630, 'Night 6: 1.25 x 1300 (1625, rounded to the quota step), no 2.2 x ladder cap any more');
+  assert.equal(SCH.houseNoticeQuota(6, 576, 1300, 1.25, 1, 2.2), 1270, 'the cap is still a dial: 2.2 x 576, rounded to the quota step');
   assert.equal(SCH.houseNoticeQuota(6, 504, 1000, 0), 504, 'share 0 switches the rule off');
-  assert.equal(SCH.quotaFor(3, { wealth: 1e6 }), 144, 'quotaFor(index 3) is Night 4: no notice');
-  assert.equal(SCH.quotaFor(4, { wealth: 1000 }), 288, 'quotaFor(index 4) is Night 5: the ladder, no wealth floor');
-  assert.equal(SCH.quotaFor(5, { wealth: 1000 }), 1000, 'quotaFor(index 5) is Night 6: the wealth floor (1000), under the 2.2 x 576 cap');
+  assert.equal(SCH.houseNoticeQuota(3, 72, 1e6, 1.25, 6), 72, '"from" 6 keeps the old late-only rule available');
+  assert.equal(SCH.quotaFor(4, { wealth: 1000 }), 1250, 'quotaFor(index 4) is Night 5: the floor (1250) over the ladder (288)');
   assert.equal(SCH.quotaFor(4), 288, 'quotaFor without wealth is the ladder');
+});
+
+test('WAVE 85 nogamble: a bot that banks every coin and never pulls fails Night 1 on all 200 seeds (sim probe), where the 30-coin start paid it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'nogamble-'));
+  const sim = fileURLToPath(new URL('../sim/run.mjs', import.meta.url));
+  const play = (name, extra = []) => {
+    const out = join(dir, name + '.json');
+    const r = spawnSync(process.execPath, [sim, '--bots', 'nogamble,human', '--runs', '200', '--brief', '--json', out, ...extra], { encoding: 'utf8', timeout: 170000 });
+    assert.equal(r.status, 0, r.stderr || r.stdout);
+    return JSON.parse(readFileSync(out, 'utf8')).results;
+  };
+  try {
+    const now = play('now');
+    assert.equal(now.nogamble[0].reachPct, 0, 'no seed pays Night 1 without a single pull');
+    assert.equal(now.nogamble[0].freePct, 0, 'and none opens with the whole quota in the pocket');
+    assert.ok(now.human[0].reachPct > 50, 'the probe is not vacuous: the casual bot does pay Night 1 (' + now.human[0].reachPct + ' %)');
+    for (const row of now.human) assert.equal(row.freePct, 0, 'Night ' + row.night + ': the casual bot never opens a Night able to pay it');
+    const before = play('before', ['--start', '30', '--notice-from', '6', '--notice-share', '1', '--notice-cap', '2.2']);
+    assert.equal(before.nogamble[0].reachPct, 100, 'the old 30-coin start paid Night 1 by depositing and never playing');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WAVE 85 Dawn: the next quota is floored on what the next Night opens with (pocket + surplus, at least the float), and the Night opens on that quota', () => {
+  // a rich Dawn: 20 in the pocket and 100 over the quota come to 120, so Night 2 asks 1.25 x 120 and the preview says so before the Night opens
+  const rich = RUN.createRun({ seed: 85, mode: 'debt' });
+  rich.coins = 20;
+  rich.debtPaid = rich.quota.due + 100;
+  rich.dawn();
+  assert.equal(rich.coins, 120);
+  const prev = rich.nextQuotaPreview();
+  assert.equal(prev.due, SCH.quotaFor(1, { wealth: 120 }), 'the preview reads the hold of the opening');
+  assert.ok(prev.due >= 1.25 * 120 && prev.due > rich.coins, 'Night 2 asks more than the 120 held: ' + prev.due);
+  assert.equal(rich.openFloor(), true);
+  assert.equal(rich.quota.due, prev.due, 'the Night opens on the quota the Dawn promised');
+  assert.equal(rich.coins, 120, 'no float on top of a pocket above it');
+  rich.dispose();
+  // a poor Dawn: nothing left, the House float (18) is what Night 2 opens with, half of its 36
+  const poor = RUN.createRun({ seed: 87, mode: 'debt' });   // a seed whose auto-picked Dawn boon (openFloor takes the leftmost card) leaves the quota alone
+  poor.coins = 0;
+  poor.debtPaid = poor.quota.due;
+  poor.dawn();
+  assert.equal(poor.openFloor(), true);
+  assert.equal(poor.mod('quota.mult', 'run', 1), 1);
+  assert.equal(poor.coins, ECO.houseFloat(1));
+  assert.equal(poor.quota.due, SCH.quotaFor(1), 'the ladder: 1.25 x 18 is under 36');
+  assert.equal(2 * poor.coins, poor.quota.due, 'and the hold is half the quota');
+  poor.dispose();
+});
+
+test('WAVE 85 no hold pays its quota: every Night, every wealth, every kit, every stake, and a maxed Foundations pocket', () => {
+  for (let index = 0; index < SCH.BASE_RUN_NIGHTS + 4; index++) {
+    for (const wealth of [1, 7, 12, 22, 62, 99, 999, 1e4, 123456, 1e7]) {
+      const q = SCH.quotaFor(index, { wealth });
+      assert.ok(q > wealth, "Night " + (index + 1) + " holding " + wealth + ": quota " + q + " is more");
+    }
+  }
+  // Night 1 as the player meets it: 12 of 24 in the pocket, and the 2 Tickets at the cashier (5 coins each) still leave it short
+  assert.equal(SCH.START.pocket, ECO.houseFloat(0), 'the start is the Night 1 House float');
+  assert.ok(SCH.START.pocket * 2 <= SCH.BASE_NIGHTS[0].base, 'half the quota or less');
+  assert.ok(SCH.START.pocket + SCH.START.tickets * 5 < SCH.BASE_NIGHTS[0].base, 'pocket plus the Tickets sold is still short');
+  for (let level = 0; level <= 5; level++) {
+    const hold = SCH.START.pocket + 10 * level;   // Foundations V1: +10 a level
+    assert.ok(SCH.quotaFor(0, { wealth: hold }) > hold, "Foundations V1 level " + level + ": " + hold + " coins");
+  }
+  // the real run, every kit on every stake: the quota is more than the pocket and the pre-deposit together
+  for (const kit of KT.KITS) {
+    for (let stake = 0; stake <= 7; stake++) {
+      const run = RUN.createRun({ seed: 85, mode: 'debt', cfg: { kit: kit.id, stake } });
+      const hold = run.wallet() + run.shift.quota().deposited;
+      assert.equal(hold, kit.coins + kit.predeposit, kit.id + " holds its coins and pre-deposit");
+      assert.ok(run.shift.quota().due > hold, kit.id + " stake " + stake + ": due " + run.shift.quota().due + " against " + hold);
+      assert.ok(run.shift.quota().due >= 1.25 * hold - 1, kit.id + " stake " + stake + ": the quota keeps 25 % over the hold");
+      assert.equal(run.shift.quota().met, false, kit.id + " stake " + stake + ": Night 1 starts unpaid");
+      run.dispose();
+    }
+  }
 });
 
 test('WAVE 47 floor events: the same event is never rolled twice in a row within a Night (and the memory survives a save)', () => {
@@ -160,6 +243,10 @@ function burn(run, amount) {
   if (!run.bet(amount, SRC) && !run.bet(amount, SRC)) throw new Error('bet refused twice');
   run.win(0, SRC, { bet: amount, tier: 'none' });
 }
+/** Lose the whole pocket, two coins at a time (Night 1 caps a stake at a third of the 12-coin start). */
+function burnAll(run) {
+  while (run.wallet() > 0) burn(run, Math.min(2, run.wallet()));
+}
 
 test('the Watch clock stands still while the tutorial holds it, and runs again after', () => {
   HOLD.clearClockHolds();
@@ -178,7 +265,8 @@ test('the Watch clock stands still while the tutorial holds it, and runs again a
 test('Night 1 caps the top stake at a third of the starting pocket; Night 2 does not', () => {
   const run = RUN.createRun({ seed: 3, mode: 'debt' });
   if (!REG.get('bigone')) { run.dispose(); return; }
-  assert.equal(run.betLimits('bigone', 'x').max, 10);
+  const lim = run.betLimits('bigone', 'x');
+  assert.equal(lim.max, ECO.snapDown(ECO.night1StakeCap(SCH.START.pocket), lim.ladder), 'a third of the 12-coin start is 4: the top ladder step at or under it');
   run.dispose();
 });
 
@@ -191,16 +279,16 @@ test('a stake above half the pocket needs a second press (event + refusal), then
     if (ok) run.win(0, SRC, { bet: amount, tier: 'none' });
     return ok;
   };
-  assert.equal(spin(10), true, '10 of 30 needs no confirm');
-  assert.equal(spin(10), true, '10 of 20 is exactly half');
-  assert.equal(run.wallet(), 10);
-  assert.equal(run.bet(10, SRC), false, 'all-in: first press refused');
+  assert.equal(spin(2), true, '2 of 12 needs no confirm');
+  for (let k = 0; k < 4; k++) assert.equal(spin(2), true, '2 of 4 or more is half or under');
+  assert.equal(run.wallet(), 2);
+  assert.equal(run.bet(2, SRC), false, 'all-in: first press refused');
   assert.equal(String(run.lastRefusal()), 'confirm');
-  assert.equal(run.wallet(), 10, 'nothing was charged');
+  assert.equal(run.wallet(), 2, 'nothing was charged');
   assert.equal(seen.at(-1).state, 'ask');
-  assert.equal(seen.at(-1).amount, 10);
-  assert.deepEqual(run.pendingStake(SRC.mid), { amount: 10, left: 6 });
-  assert.equal(run.bet(10, SRC), true, 'second press confirms');
+  assert.equal(seen.at(-1).amount, 2);
+  assert.deepEqual(run.pendingStake(SRC.mid), { amount: 2, left: 6 });
+  assert.equal(run.bet(2, SRC), true, 'second press confirms');
   assert.equal(run.wallet(), 0);
   assert.equal(seen.at(-1).state, 'clear');
   off();
@@ -209,13 +297,13 @@ test('a stake above half the pocket needs a second press (event + refusal), then
 
 test('the second press must repeat the same stake, and the arm lapses after 6 s', () => {
   const run = playing(9);
-  run.bet(10, SRC); run.win(0, SRC, { bet: 10, tier: 'none' });
-  run.bet(10, SRC); run.win(0, SRC, { bet: 10, tier: 'none' });
-  assert.equal(run.bet(10, SRC), false);
-  assert.equal(run.bet(5, SRC), true, 'a different, smaller stake just plays');
-  run.win(0, SRC, { bet: 5, tier: 'none' });
-  assert.equal(run.wallet(), 5);
-  assert.equal(run.bet(4, SRC), false, 'armed again');
+  for (let k = 0; k < 4; k++) { run.bet(2, SRC); run.win(0, SRC, { bet: 2, tier: 'none' }); }   // 12 -> 4
+  run.bet(1, SRC); run.win(0, SRC, { bet: 1, tier: 'none' });                                   // 4 -> 3
+  assert.equal(run.bet(2, SRC), false, '2 of 3 is more than half');
+  assert.equal(run.bet(1, SRC), true, 'a different, smaller stake just plays');
+  run.win(0, SRC, { bet: 1, tier: 'none' });
+  assert.equal(run.wallet(), 2);
+  assert.equal(run.bet(2, SRC), false, 'armed again');
   for (let i = 0; i < 8; i++) run.tick(1);
   assert.equal(run.pendingStake(SRC.mid), null, 'lapsed');
   run.dispose();
@@ -226,7 +314,7 @@ test('rescue: pocket 0 with the quota unmet rings the Collector loan; taking it 
   const run = playing(11);
   const rings = [];
   const off = EV.bus.on('phone:ring', (e) => rings.push(e.callId));
-  for (let k = 0; k < 3; k++) { burn(run, 10); }
+  burnAll(run);
   assert.equal(run.wallet(), 0);
   const due0 = run.shift.quota().due;
   const call = run.phone();
@@ -248,11 +336,11 @@ test('rescue: pocket 0 with the quota unmet rings the Collector loan; taking it 
 test('rescue: no call while the pocket has coins, the quota is met, or interest alone covers it', () => {
   const run = playing(12);
   assert.equal(run.phone(), null);
-  run.bet(10, SRC); run.win(0, SRC, { bet: 10, tier: 'none' });
-  assert.equal(run.phone(), null, 'pocket still 20');
+  run.bet(2, SRC); run.win(0, SRC, { bet: 2, tier: 'none' });
+  assert.equal(run.phone(), null, 'pocket still 10');
   run.dispose();
   const rich = playing(13);
-  for (let k = 0; k < 3; k++) { burn(rich, 10); }
+  burnAll(rich);
   assert.ok(rich.phone(), 'broke with 0 deposited: rings');
   rich.dispose();
 });
@@ -261,7 +349,7 @@ test('rescue: an unanswered call lapses (the line goes dead) and does not ring a
   const run = playing(14);
   const res = [];
   const off = EV.bus.on('hotline:result', (e) => res.push(e));
-  for (let k = 0; k < 3; k++) { burn(run, 10); }
+  burnAll(run);
   assert.ok(run.phone());
   for (let i = 0; i < 34; i++) run.tick(1);   // the rescue call rings 30 s
   assert.equal(run.phone(), null);

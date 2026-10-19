@@ -16,6 +16,8 @@ import { crispNeon } from './signs';
 import type { NeonPart, ScreenSurface } from '@/kit/types';
 import { app } from '@/core/app';
 import { t } from '@/core/i18n';
+import { presets } from '@/kit/presets';
+import { marbleTex, mirrorTex, worldUV } from './surfaces';
 
 export const LIFT_OPEN_W = 2.0;
 export const LIFT_OPEN_H = 2.6;
@@ -62,13 +64,20 @@ function dialTexture(tex: TexGen): THREE.Texture {
 export function buildElevator(kit: KitX, tex: TexGen): ElevatorParts {
   const root = kit.group('elevator');
   const brass = kit.pal.brass;
-  const marble = kit.mat({ color: 0x6a5a48, map: tex.tiles(0x6a5a48, 0x4a3e34, 4) });
-  const walnut = kit.mat({ color: 0x4a2a18, map: tex.wood(0x4a2a18) });
+  // wave 87 (ART.md §2 Lift): a cream veined marble surround, a walnut car with raised panels, a smoked mirror and a lit ceiling
+  const marble = kit.mat({ color: 0xffffff, map: marbleTex(tex, 0x8a7a64, 0xd8ccb0) });
+  const M = presets(tex);
+  const walnut = M.wood('walnut'), mahog = M.wood('mahogany');
 
-  // surround (3.2 × 3.6), opening 2.0 × 2.6 is the hole in the wall
-  kit.box(0.2, 3.6, 0.3, marble, { pos: [-LIFT_OPEN_W / 2 - 0.6, 1.8, 0.1], parent: root });
-  kit.box(0.2, 3.6, 0.3, marble, { pos: [LIFT_OPEN_W / 2 + 0.6, 1.8, 0.1], parent: root });
-  kit.box(3.2, 0.2, 0.3, marble, { pos: [0, LIFT_OPEN_H + 0.7, 0.1], parent: root });
+  // surround (3.2 × 3.6), opening 2.0 × 2.6 is the hole in the wall; the header's underside sits 2 cm under the wall lintel (it shared its plane)
+  for (const m of [
+    kit.box(0.2, 3.6, 0.3, marble, { pos: [-LIFT_OPEN_W / 2 - 0.6, 1.8, 0.1], parent: root }),
+    kit.box(0.2, 3.6, 0.3, marble, { pos: [LIFT_OPEN_W / 2 + 0.6, 1.8, 0.1], parent: root }),
+    kit.box(3.2, 0.24, 0.3, marble, { pos: [0, LIFT_OPEN_H + 0.7, 0.1], parent: root }),
+  ]) worldUV(m, 2);
+  // the call plate on the left post: two lit buttons
+  kit.box(0.14, 0.26, 0.02, brass, { pos: [-LIFT_OPEN_W / 2 - 0.92, 1.15, 0.185], parent: root });
+  for (const [by, col] of [[1.21, 0xffd070], [1.09, 0x7a6040]] as const) kit.cyl(0.03, 0.03, 0.015, kit.mat({ color: col, lit: false }), { pos: [-LIFT_OPEN_W / 2 - 0.92, by, 0.2], rot: [90, 0, 0], seg: 8, parent: root });
   kit.box(3.4, 0.08, 0.36, brass, { pos: [0, 0.04, 0.12], parent: root });
   kit.box(3.4, 0.05, 0.36, brass, { pos: [0, LIFT_OPEN_H + 0.6, 0.12], parent: root });
 
@@ -100,6 +109,20 @@ export function buildElevator(kit: KitX, tex: TexGen): ElevatorParts {
   kit.box(0.05, 2.5, 1.8, walnut, { pos: [-0.9, 1.25, 0], parent: car });
   kit.box(0.05, 2.5, 1.8, walnut, { pos: [0.9, 1.25, 0], parent: car });
   kit.box(1.8, 2.5, 0.05, walnut, { pos: [0, 1.25, -0.9], parent: car });
+  kit.box(1.7, 0.012, 1.7, kit.mat({ color: 0xffffff, map: tex.carpet('diamond', [0x5a1020, 0x3a0a14, 0xc89c3c, 0x2aa898]) }), { pos: [0, 0.106, 0], parent: car });
+  // raised mahogany panels, low and high, on the three walls (2 cm proud), and a brass chair rail
+  for (const [py, ph] of [[0.55, 0.7], [1.72, 1.0]] as const) {
+    for (const sx of [-1, 1]) kit.box(0.02, ph, 1.5, mahog, { pos: [sx * 0.865, py, 0], parent: car });
+    for (const sx of [-1, 1]) if (py < 1) kit.box(0.72, ph, 0.02, mahog, { pos: [sx * 0.42, py, -0.865], parent: car });
+  }
+  for (const sx of [-1, 1]) kit.box(0.03, 0.04, 1.7, brass, { pos: [sx * 0.86, 1.0, 0], parent: car });
+  // a smoked mirror over the back rail, framed in brass
+  kit.plane(1.5, 0.95, { map: mirrorTex(tex), color: 0xc8d0d8, lit: false }, { pos: [0, 1.72, -0.867], parent: car });
+  for (const sy of [-1, 1]) kit.box(1.56, 0.04, 0.02, brass, { pos: [0, 1.72 + sy * 0.495, -0.865], parent: car });
+  // a lit ceiling panel in a brass frame
+  kit.box(1.1, 0.02, 1.1, kit.mat({ color: 0xffe8c0, lit: false }), { pos: [0, 2.465, 0], parent: car });
+  kit.box(1.2, 0.03, 0.05, brass, { pos: [0, 2.46, 0.575], parent: car });
+  kit.box(1.2, 0.03, 0.05, brass, { pos: [0, 2.46, -0.575], parent: car });
   kit.tube([[-0.8, 0.9, -0.85], [0.8, 0.9, -0.85]], 0.02, brass, { parent: car, seg: 4, radialSeg: 4 }); // handrail
   kit.box(1.4, 0.35, 0.5, kit.mat({ color: 0x5a1020, map: tex.carpet('diamond', [0x5a1020, 0x3a0a14]) }), { pos: [0, 0.2, -0.6], parent: car }); // velvet bench
   const bulb = kit.lamp({ r: 0.1, color: 0xfff2d0, shape: 'bulb' });

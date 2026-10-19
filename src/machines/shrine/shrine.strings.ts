@@ -27,9 +27,6 @@ const en: Record<string, string> = {
   rule1: "Light one candle per Watch. The price shown is what you pay when you pick a statue, and it changes with your stake.",
   rule2: "The statue you pick gets one Favour, up to 3. At 2 its omen can fire. At 3 it weeps and offers its Rite.",
   rule3: "Keys: PRIMARY starts a candle, 1-4 or LEFT and RIGHT pick a statue, HELP opens this card, E leaves.",
-  tip1: "Light a candle, then pick a statue. Its owner remembers.",
-  tip2: "[{light}] LIGHT A CANDLE, one per Watch",
-  tip3: "[{help}] RULES  ·  1-4 pick the statue",
   once: 'ONE CANDLE PER WATCH', funds: 'NOT ENOUGH COINS', full: 'ALL FOUR ARE WEEPING', maxed: 'THAT STATUE IS ALREADY WEEPING',
 };
 
@@ -55,9 +52,6 @@ const tr: Record<string, string> = {
   rule1: "Vardiya başına bir mum yak. Gösterilen fiyatı heykeli seçtiğinde ödersin; bahsine göre değişir.",
   rule2: "Seçtiğin heykel bir Teveccüh alır, en çok 3. 2'de alameti çıkabilir. 3'te ağlar ve Ayini sunar.",
   rule3: "Tuşlar: BİRİNCİL mum başlatır, 1-4 ya da SOL ve SAĞ heykeli seçer, KURALLAR bu kartı açar, E ayrılır.",
-  tip1: "Bir mum yak, sonra bir heykel seç. Sahibi hatırlar.",
-  tip2: "[{light}] MUM YAK, Vardiya başına bir tane",
-  tip3: "[{help}] KURALLAR  ·  1-4 heykeli seçer",
   once: 'VARDİYA BAŞINA BİR MUM', funds: 'PARA YETMİYOR', full: 'DÖRDÜ DE AĞLIYOR', maxed: 'O HEYKEL ZATEN AĞLIYOR',
 };
 

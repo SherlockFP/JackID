@@ -153,7 +153,8 @@ export class CascadeView {
   /** True while something moves by itself (particles, orbs in flight, the overlays). */
   live = false;
   dirty = true;
-  private readonly sprites: HTMLCanvasElement[] = [];
+  /** The nine symbols and the wheel, CELL px square (the seat HUD's pay strip draws them too). */
+  readonly sprites: HTMLCanvasElement[] = [];
   private parts: Particle[] = [];
   private flys: Fly[] = [];
   private pops: Pop[] = [];

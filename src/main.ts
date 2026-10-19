@@ -2,9 +2,9 @@
  * Boot sequence — wiring only (TD-owned). Contract: TECH_SPEC §1.3.
  *
  *  1  index.html shows #boot ("JackID BIOS")           7  wait for fonts (≤ 3 s, Turkish glyph check)
- *  2  fonts imported below                              8  machine registry load + strings
- *  3  save.load → settings → language                   9  texgen.warm + mannequin preload
- *  4  *.strings.ts / *.cutscene.ts globs                10 URL params (bootParams)
+ *  2  fonts imported below                              8  after the menu: run chunk (machines, cutscenes)
+ *  3  save.load → settings → language                   9  after the menu: texgen.warm + mannequin preload
+ *  4  *.strings.ts glob                                 10 URL params (bootParams)
  *  5  renderer (WebGL2; failure → localized error)      11 app.go('menu') (or bench / skipmenu after the veil)
  *  6  services: input, ui, audio, net, tex, kit, fx     12 "CLICK TO ENTER THE PIT" veil → audio.resume
  *
@@ -17,7 +17,6 @@ import '@fontsource/press-start-2p/latin-ext.css';
 import * as THREE from 'three';
 import type { BindingKey } from '@/core/input/types';
 import type { Settings } from '@/core/settings';
-import type { CutsceneDef } from '@/core/cutscene/types';
 import { createApp, app, type App } from '@/core/app';
 import { bus } from '@/core/events';
 import { startLoop } from '@/core/loop';
@@ -36,11 +35,10 @@ import { createFx } from '@/core/fx';
 import { createCutscenePlayer } from '@/core/cutscene/player';
 import { createKit } from '@/kit';
 import { createSession } from '@/net/session';
-import * as registry from '@/machines/_base/registry';
 import { createMenuState } from '@/menu/menuState';
 import { createLobbyState } from '@/menu/lobbyState';
 import { createResultsState } from '@/menu/resultsState';
-import { createInGameState } from '@/game/inGameState';
+import { lazyState } from '@/core/lazyState';
 import { installManga, mangaBusy } from '@/core/ui/manga';
 import { setPresentationProbe } from '@/game/duels/runlink';
 import en from '@/i18n/en';
@@ -48,7 +46,6 @@ import tr from '@/i18n/tr';
 
 type StringsModule = { default: { prefix: string; en: StringTable; tr: StringTable } };
 const stringModules = import.meta.glob<StringsModule>('./**/*.strings.ts', { eager: true });
-const cutsceneModules = import.meta.glob<{ default: CutsceneDef }>('./**/*.cutscene.ts', { eager: true });
 
 const bootEl = document.getElementById('boot') as HTMLElement;
 const canvas = document.getElementById('game') as HTMLCanvasElement;
@@ -92,6 +89,11 @@ function applySettings(a: App, key?: keyof Settings): void {
 }
 
 async function boot(): Promise<void> {
+  /** Procedural + vendor assets; one shared run of it. */
+  let warmed: Promise<unknown> | null = null;
+  const warmup = (): Promise<unknown> => (warmed ??= Promise.all([app.tex.warm(), app.kit.loadMannequin()])
+    .catch((e) => log.warn('boot', 'warm-up failed', e)));
+
   // 3 — save → settings → language
   const save = createSaveStore();
   save.load();
@@ -124,7 +126,6 @@ async function boot(): Promise<void> {
   const kit = createKit(tex);
   const fx = createFx();
   const cutscene = createCutscenePlayer();
-  for (const m of Object.values(cutsceneModules)) cutscene.register(m.default);
   const camera = new THREE.PerspectiveCamera(settings.fov, window.innerWidth / Math.max(1, window.innerHeight), 0.05, 60);
   const rootSeed = bootParams.seed ?? hashSeed('root', randomSeed());
 
@@ -138,7 +139,9 @@ async function boot(): Promise<void> {
   a.register('boot', { enter() {}, exit() {}, fixedUpdate() {}, frame() {} });
   a.register('menu', createMenuState());
   a.register('lobby', createLobbyState());
-  a.register('ingame', createInGameState());
+  // Machines, cutscenes and the whole run live in one lazy chunk (game/ingameBoot); the menu preloads it once it is interactive.
+  const inGame = lazyState<'ingame'>(async () => (await import('@/game/ingameBoot')).loadInGame(cutscene, warmup));
+  a.register('ingame', inGame);
   a.register('results', createResultsState());
   installDebug(a);
   // Wave 25 TALLY: the manga cut-in, glyph and reveal hooks for cutscenes; the run waits for the presentation before rewards and scenes
@@ -151,11 +154,6 @@ async function boot(): Promise<void> {
     Promise.all([document.fonts.load('16px VT323', glyphs), document.fonts.load("16px 'Press Start 2P'", glyphs)]),
     sleep(3000),
   ]).catch((): void => { /* a slow font must never block boot */ });
-
-  // 8 — machines
-  registry.load();
-  // 9 — procedural + vendor assets
-  await Promise.all([tex.warm(), kit.loadMannequin()]).catch((e) => log.warn('boot', 'warm-up failed', e));
 
   // 10/11 — parameters, first state (the menu keeps rendering behind the veil)
   net.startOffline();
@@ -185,6 +183,14 @@ async function boot(): Promise<void> {
   bootEl.tabIndex = 0;
   bootEl.addEventListener('keydown', (e) => { if (e.code === 'Enter' || e.code === 'Space') enter(); });
   bootEl.focus();
+
+  // 8/9 — everything a run needs but the menu does not, once the menu is up: the run chunk (machines, cutscenes), the procedural
+  // atlases and the 7 MB arms/mannequin GLB. The first `ingame` enter waits for `warmup()`, so nothing pops in.
+  const idle = (fn: () => void): void => {
+    if ('requestIdleCallback' in window) window.requestIdleCallback(fn, { timeout: 1500 });
+    else setTimeout(fn, 200);
+  };
+  idle(() => { void inGame.preload().then(() => warmup()); });
 }
 
 boot().catch((e) => fatal(t('ui.error.generic', { msg: String((e as Error)?.message ?? e) })));

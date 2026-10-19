@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import type { KitX } from '@/kit';
 import type { TexGen } from '@/core/texgen/types';
 import type { LightHint } from '../sys/arch';
+import { presets } from '@/kit/presets';
 import { pendant } from '../lights';
 import { buildDoorway, type Doorway } from './doorway';
 import { ARRIVE, DOOR_H, DOOR_W, EXIT_DOOR, HOLLOW_HOME, LAMP_DROP, LORD_POS, TABLE_POS, TABLE_Y, UNDER_H, UNDER_HALF } from './config';
@@ -37,18 +38,21 @@ export function buildUnderneath(kit: KitX, tex: TexGen): Underneath {
   const floorMat = kit.mat({ color: 0xffffff, map: tex.concrete(0x2a2226) });
   const wallMat = kit.mat({ color: 0x1a1214, map: tex.concrete(0x1e1618) });
   const woodDark = kit.mat({ color: 0x241610, map: tex.wood(0x2a1a12) });
-  const velvet = kit.mat({ color: 0x3a0a10 });
+  const velvet = presets(kit.tex).velvet(0x3a0a10);
 
-  // solid box: visual + static collider (min/max in world space)
+  // solid box: visual + static collider, from its min (a, b, c) and max (d, e, f) corners in world space. The visual used to swap
+  // y and z (height f - b, depth e - c): every wall was drawn as a slab 139 m tall lying through the floor and the ceiling.
   const solid = (a: number, b: number, c: number, d: number, e: number, f: number, m: THREE.Material): void => {
-    kit.box(d - a, f - b, e - c, m, { pos: [(a + d) / 2, (b + f) / 2, (c + e) / 2], parent: root });
+    kit.box(d - a, e - b, f - c, m, { pos: [(a + d) / 2, (b + e) / 2, (c + f) / 2], parent: root });
     statics.push({ box: new THREE.Box3(new THREE.Vector3(a, b, c), new THREE.Vector3(d, f, e)), tag: 'solid' });
   };
 
-  // floor (walkable top at HOME.y) and ceiling (visual only)
-  kit.box(x1 - x0 + 2 * WALL_T, 0.3, z1 - z0 + 2 * WALL_T, floorMat, { pos: [H[0], H[1] - 0.15, H[2]], parent: root });
+  // floor (walkable top at HOME.y) and ceiling (visual only): both span the room's interior only. They used to run under and over
+  // the walls, so the wall boxes' bottoms and tops lay in the floor's and the ceiling's planes (the wave 86 sweep's overlapping triangles).
+  kit.box(x1 - x0, 0.3, z1 - z0, floorMat, { pos: [H[0], H[1] - 0.15, H[2]], parent: root });
+  kit.box(DOOR_W, 0.3, WALL_T, floorMat, { pos: [H[0], H[1] - 0.15, z1 + WALL_T / 2], parent: root });   // the doorway's threshold
   statics.push({ box: new THREE.Box3(new THREE.Vector3(x0 - WALL_T, H[1] - 0.5, z0 - WALL_T), new THREE.Vector3(x1 + WALL_T, H[1], z1 + WALL_T)), tag: 'walkable' });
-  kit.box(x1 - x0 + 2 * WALL_T, 0.3, z1 - z0 + 2 * WALL_T, wallMat, { pos: [H[0], H[1] + UNDER_H + 0.15, H[2]], parent: root });
+  kit.box(x1 - x0, 0.3, z1 - z0, wallMat, { pos: [H[0], H[1] + UNDER_H + 0.15, H[2]], parent: root });
 
   // walls: west, east, north solid; south with the exit opening (door width, lintel above)
   const top = H[1] + UNDER_H;

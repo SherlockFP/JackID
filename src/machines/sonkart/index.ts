@@ -115,6 +115,12 @@ export const def: MachineDef = {
     buyIn: { min: 20, max: 2000 }, spectatorBets: false,
     houseRules: { ...R.HOUSE_DEFAULT }, hidden: true, turnTimerS: TURN_S,
   },
+  // seat coach (_base/coach.ts): taught by doing on the first sits
+  coach: [
+    { key: 'primary', say: 'ante', done: 'round' },
+    { key: 'primary', say: 'playCard', done: 'press' },
+    { key: 'double', say: 'lastCard', done: 'press' },
+  ],
   strings: STRINGS,
 };
 
@@ -160,7 +166,7 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
   // ── local input → action to the host ─────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const kh = this.kart;
     if (kh?.picking) {
@@ -545,7 +551,6 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
       this.cursor = 0; this.sfx('chime');
       this.relayout();                                              // the top card turns to face the new seat
       this.seatHud?.show(); this.showHud(); this.paintScreen();
-      this.seatHud?.firstTip('sonkart', this.tipLines());
     }
     this.refreshLamps();
   }
@@ -926,14 +931,6 @@ export default class SonKart extends TableBase<SonKartParts, Ev, Snap, Act> {
   // ── HUD, screen, rules ──────────────────────────────────────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.sonkart.tip1' },
-      { k: 'm.sonkart.tip2', v: { ante: this.k('primary'), bet: `${this.k('betDown')}/${this.k('betUp')}`, auto: this.k('auto') } },
-      { k: 'm.sonkart.tip3', v: { play: this.k('primary'), draw: this.k('secondary'), help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return [1, 2, 3, 4, 5, 6].map((n) => ({ k: `m.sonkart.rules${n}` }));

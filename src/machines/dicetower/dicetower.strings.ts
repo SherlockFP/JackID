@@ -35,9 +35,6 @@ const en: Record<string, string> = {
   nBets: 'YOUR BETS', nChip: 'CHIP', nLast: 'LAST ROLL', nBalance: 'BALANCE',
   cReady: 'READY', cUnready: 'NOT READY', cDrop: 'DROP', cRepeat: 'REPEAT', cClear: 'CLEAR', cChip: 'CHIP SIZE',
   cRules: 'RULES', cLeave: 'LEAVE',
-  tip1: 'Click a spot on the felt to place chips. Right click takes one back.',
-  tip2: '[{ready}] READY when your bets are set. Then the shooter drops the dice.',
-  tip3: 'Each spot pays its own odds. [{help}] RULES shows the full payout table.',
 };
 
 const tr: Record<string, string> = {
@@ -70,12 +67,9 @@ const tr: Record<string, string> = {
   stYouDrop: 'SENİN ATIŞIN', stYouDropSub: 'Zarları bırakmak için [{drop}]',
   stWaitDrop: 'ATICI BEKLENİYOR', stWaitDropSub: 'Zarlar kulenin içinde',
   stRoll: 'ZARLAR HAVADA', stResult: 'TOPLAM {n}', stResultSub: 'Ödeniyor',
-  nBets: 'BAHSİN', nChip: 'FİŞ', nLast: 'SON ATIŞ', nBalance: 'BAKİYE',
+  nBets: 'BAHİSLERİN', nChip: 'FİŞ', nLast: 'SON ATIŞ', nBalance: 'BAKİYE',
   cReady: 'HAZIR', cUnready: 'GERİ AL', cDrop: 'BIRAK', cRepeat: 'TEKRARLA', cClear: 'TEMİZLE', cChip: 'FİŞ BOYU',
   cRules: 'KURALLAR', cLeave: 'AYRIL',
-  tip1: 'Masadaki bir alana tıklayıp fiş koy. Sağ tık bir fişi geri alır.',
-  tip2: 'Bahislerin tamamsa [{ready}] ile hazır ol. Sonra atıcı zarları bırakır.',
-  tip3: 'Her alan kendi oranıyla öder. [{help}] tam ödeme tablosu için KURALLAR.',
 };
 
 export default { prefix: 'm.dicetower.', en, tr };

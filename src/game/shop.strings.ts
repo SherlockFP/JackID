@@ -24,7 +24,7 @@ export default {
     'cUnlock': 'UNLOCK',
     'cPickSwap': 'CHOOSE',
     'ledgerSwap': 'REPLACE WHICH?',
-    'rule5': 'FIT shows how many of your charms a charm works with. A lock keeps a charm on the shelf until you buy it. If your pegs are full, a purchase asks which charm to replace; it sells back for half.',
+    'rule5': 'FIT: how many of your charms it works with. A lock holds a charm for you. Pegs full: pick one to replace; it sells for half.',
   },
   tr: {
     'fit': 'UYUM {n}',
@@ -49,6 +49,6 @@ export default {
     'cUnlock': 'KİLİDİ AÇ',
     'cPickSwap': 'SEÇ',
     'ledgerSwap': 'HANGİSİ GİDECEK?',
-    'rule5': 'UYUM, bir tılsımın kaç tılsımınla uyumlu çalıştığını gösterir. Kilit, tılsımı sen alana kadar rafta tutar. Çivilerin doluysa satın alırken hangi tılsımın değişeceği sorulur; o yarı fiyatına geri satılır.',
+    'rule5': 'UYUM: tılsımın kaç tılsımınla çalıştığı. Kilit, tılsımı senin için tutar. Çiviler doluysa değişecek tılsımı seç; yarı fiyata satılır.',
   },
 };

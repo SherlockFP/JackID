@@ -31,6 +31,7 @@ import type { Kit } from '@/kit/types';
 import type { RunApi, HeadlessPlay } from '@/game/types';
 import type { SlotDef } from '@/world/types';
 import type { MachineBase } from './MachineBase';
+import type { CoachStep } from './coach';
 
 export type { SlotSize, ZoneId, LocalAABB, PlayPose, SeatDef } from '@/core/types';
 export { SLOT_DIMS } from '@/core/types';
@@ -88,6 +89,8 @@ export interface MachineDef {
   modHooks?: Record<string, string>;
   /** Present for party tables. */
   party?: PartyDef;
+  /** Seat coach script (coach.ts): 2-4 steps taught by doing on the first sits. A solo machine with one also gets free practice plays. */
+  coach?: CoachStep[];
 }
 
 export interface MachineModel<P extends object = Record<string, THREE.Object3D>> {

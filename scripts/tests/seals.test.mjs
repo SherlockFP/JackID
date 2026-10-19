@@ -191,3 +191,52 @@ test('at home a miss with seals left takes the lift, not the doom; the last seal
   assert.equal(run.homeStage(), 'doomed');
   run.dispose();
 });
+
+test('a quota:sealed listener reads the sealed receipt (Night, memory, seals left) while the event is emitted', async () => {
+  const run = RUN.createRun({ seed: 811, mode: 'debt' });
+  const seen = [];
+  const off = EV.bus.on('quota:sealed', (e) => seen.push({ left: e.left, memory: e.memory, receipt: run.dawnReceipt() }));
+  dawnAt(run, 1);
+  assert.equal(seen.length, 1);
+  const { receipt, left, memory } = seen[0];
+  assert.ok(receipt, 'the receipt is booked before the event (it was still null: the sealed panel never opened)');
+  assert.equal(receipt.night, 1);
+  assert.ok(MEM.isSealMemory(receipt.memory), 'the memory line the panel prints');
+  assert.equal(receipt.memory, memory);
+  assert.equal(receipt.seals, 2, 'seals left');
+  assert.equal(receipt.seals, left);
+  // the panel keys its title on the memory: the sealed title exists in both languages
+  const P = (await load('src/game/pantheon.strings.ts')).default;
+  for (const lang of ['en', 'tr']) assert.ok(P[lang]['receipt.sealed'] && P[lang]['receipt.sealsLeft'], lang);
+  off(); run.dispose();
+});
+
+test('a sealed Dawn reads SEALED, not PAID, and pays nothing for it: no overshoot, no offer, no float or cut, no surplus', async () => {
+  const over = listen('quota:overshoot');
+  const run = RUN.createRun({ seed: 812, mode: 'debt' });
+  run.index = 1;
+  run.recomputeQuota();
+  run.coins = 40;
+  const ledger = run.nightLedger();
+  const wallet = run.wallet();
+  dawnAt(run, 2, 20);   // 20 banked against a quota of 36
+  assert.equal(run.nightPaid, true, 'paid for flow');
+  assert.equal(run.nightSealed, true, 'but sealed to the player');
+  assert.equal(over.seen.length, 0, 'no overshoot tier');
+  assert.deepEqual(run.quota.claimed, []);
+  assert.equal(run.boonOffer(), null, 'no boon offer');
+  assert.deepEqual(run.nightLedger(), ledger, 'no float, cut, interest or carried figure was booked at the Dawn');
+  assert.equal(run.wallet(), wallet, 'the pocket is what it was: the House kept the bank');
+  assert.equal(run.bank().balance, 0);
+  const H = (await load('src/menu/hud/layout.strings.ts')).default;
+  for (const lang of ['en', 'tr']) {
+    for (const k of ['sealedTag', 'nightSealed']) assert.ok(H[lang][k] && !/ÖDENDİ|PAID/.test(H[lang][k]), `${lang} ${k} never says paid`);
+    assert.equal(H[lang].nightSealed.match(/\{\w+\}/g).sort().join(), H[lang].nightSummary.match(/\{\w+\}/g).sort().filter((x) => x !== '{carry}' && x !== '{int}').join(), `${lang}: the sealed line takes the same figures`);
+  }
+  run.beginNight();
+  assert.equal(run.nightSealed, false, 'the next Night opens unsealed');
+  const paid = RUN.createRun({ seed: 813, mode: 'debt' });
+  dawnAt(paid, 1, 1000);
+  assert.equal(paid.nightSealed, false, 'a Night paid in full is not sealed');
+  over.off(); run.dispose(); paid.dispose();
+});

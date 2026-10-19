@@ -42,6 +42,8 @@ export interface RiskHost {
   readonly shared: boolean;
   readonly isLocalOccupant: boolean;
   readonly roundOpen: boolean;
+  /** Gambles are live (`gamblesLive`). Absent = live (the unit tests' mock host). Offers and ladders lock when the Watch closes. */
+  readonly gamblesLive?: boolean;
   busy: boolean;
   run: { wallet(): number; night(): number; window(): string };
   wait(sec: number): Promise<void>;
@@ -110,9 +112,17 @@ export class RiskLayer {
   onLang(): void { this._ui.v?.relang(); }
   dispose(): void { this.dead = true; this._ui.v?.dispose(); this._ui.v = null; }
 
-  /** Fixed step: offer countdown, the all-in confirm window. */
+  /** The Watch is closed: no offer opens, no ladder starts, and nothing pending outlives the close. */
+  private get closed(): boolean { return this.h.gamblesLive === false; }
+
+  /** Fixed step: offer countdown, the all-in confirm window, and the lock when the Watch closes. */
   step(dt: number): void {
     this.clock += dt;
+    if (this.closed) {                                       // the offer lapses (its win is already in the pocket); an idle ladder pays out, a flipping one when the card lands
+      if (this.offer) { this.offer = null; this._ui.v?.hideOffer(); }
+      this.onExit();
+      this.cancelAllIn();
+    }
     if (this.offer && this.clock >= this.offer.until) { this.offer = null; this._ui.v?.hideOffer(); }
     if (this.armShown && !this.arm.armed(this.clock)) this.cancelAllIn();
   }
@@ -155,8 +165,8 @@ export class RiskLayer {
   // ── DOUBLE OR NOTHING ──
   /** After a credited win: open the offer chip. */
   offerWin(credited: number): void {
-    if (!this.port || this.dead || !this.h.isLocalOccupant || credited < GAMBLE_MIN_WIN || this.ladderOpen) return;
-    this.offer = { amount: credited, until: this.clock + GAMBLE_OFFER_S };
+    if (!this.port || this.dead || !this.h.isLocalOccupant || credited < GAMBLE_MIN_WIN || this.ladderOpen || this.closed) return;
+    this.offer ={ amount: credited, until: this.clock + GAMBLE_OFFER_S };
     this.ui().showOffer(credited);
     this.fx('offer', 0, credited);
   }
@@ -164,7 +174,7 @@ export class RiskLayer {
     const o = this.offer; const port = this.port;
     if (!o || !port || this.ladder) return;
     this.offer = null; this.ui().hideOffer();
-    if (this.h.roundOpen || this.h.run.wallet() < o.amount || !port.debit(o.amount, this.h.src, 'gamble')) {
+    if (this.closed || this.h.roundOpen || this.h.run.wallet() < o.amount || !port.debit(o.amount, this.h.src, 'gamble')) {
       this.h.toast(t('gamble.noFunds'), 'warn'); return;
     }
     const rng = createRng(hashSeed(this.h.runSeed, this.h.id, 'gamble', ++this.ladderN, o.amount));
@@ -237,7 +247,7 @@ export class RiskLayer {
   // ── ALL-IN SHOT ──
   private allInPress(): void {
     const port = this.port; if (!port) return;
-    if (this.h.busy || this.h.roundOpen) return;
+    if (this.h.busy || this.h.roundOpen || this.closed) return;
     if (this.h.run.window() !== 'watch') return;
     if (port.allInUsed()) { this.h.toast(t('gamble.allinUsed'), 'warn'); return; }
     const pocket = this.h.run.wallet();

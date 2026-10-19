@@ -132,7 +132,6 @@ export default class Shrine extends MachineBase<ShrineParts, Ev, ShrineState> {
     if (local) {
       this.sfx('chime');
       this.seatHud?.show(); this.refresh(true);
-      this.seatHud?.firstTip('shrine', this.tipLines());
     }
   }
 
@@ -149,7 +148,7 @@ export default class Shrine extends MachineBase<ShrineParts, Ev, ShrineState> {
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (e.repeat) return;
     if (this.choosing) { this.onPick(e.action); return; }
@@ -273,14 +272,6 @@ export default class Shrine extends MachineBase<ShrineParts, Ev, ShrineState> {
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.shrine.tip1' },
-      { k: 'm.shrine.tip2', v: { light: this.k('primary') } },
-      { k: 'm.shrine.tip3', v: { help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return [1, 2, 3].map((i) => ({ k: `m.shrine.rule${i}` }));

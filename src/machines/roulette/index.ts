@@ -142,7 +142,7 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.ruleLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -571,7 +571,6 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
       this.sfx('chime', { vol: 0.5 });
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('roulette', this.tipLines());
     }
   }
   onRelease(_pid: PlayerId, seat: number, local: boolean): void {
@@ -655,14 +654,6 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
 
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.roulette.hTip1', v: { up: this.k('betUp'), down: this.k('betDown') } },
-      { k: 'm.roulette.hTip2', v: { ready: this.k('confirm') } },
-      { k: 'm.roulette.hTip3', v: { help: this.k('help') } },
-    ];
-  }
 
   private ruleLines(): Txt[] {
     const keys: Txt[] = ['hR1', 'hR2', 'hR3', 'hR4', 'hR5'].map((k) => ({ k: `m.roulette.${k}` }));
@@ -757,5 +748,10 @@ export const def: MachineDef = {
     'm.roulette.neighbourPay': 'bool: a losing straight-up pays 1:1 when the ball lands ±1 pocket',
     luck: 'solo only: reroll a losing table once with p = luck/100',
   },
+  // seat coach (_base/coach.ts): taught by doing on the first sits
+  coach: [
+    { key: '', say: 'chips', done: 'round' },
+    { key: 'betUp', say: 'chipValue', done: 'bet' },
+  ],
   strings: STRINGS,
 };

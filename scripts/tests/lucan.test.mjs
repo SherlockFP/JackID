@@ -336,7 +336,7 @@ test('strings: EN and TR have the same keys, every key the duel can name exists,
   for (const t of [R.reveal, R.revealFair]) for (const k of Object.values(t)) need.add(k);
   for (const k of ['duel.pr.tell.glance', 'duel.pr.tell.look', 'duel.pr.table.glass', 'duel.pr.math.answered', 'duel.pr.eye.watch', 'duel.pr.eye.look', 'duel.pr.eye.glass', 'duel.pr.eye.wide', 'duel.pr.call', 'duel.pr.line.score', 'duel.pr.line.late', 'duel.pr.line.photo']) need.add(k);
   for (const k of need) assert.ok(have(k), `missing string ${k}`);
-  for (const k of ['goalPromise', 'prTip1', 'prTip2', 'prRule1', 'prRule2', 'prRule3', 'prRule4', 'prRule5', 'prStars', 'prHeat']) {
+  for (const k of ['goalPromise', 'prRule1', 'prRule2', 'prRule3', 'prRule4', 'prRule5', 'prStars', 'prHeat']) {
     assert.ok(PSTR.en[k] && PSTR.tr[k], `machine string ${k}`);
   }
   for (const k of Object.keys(STR.en).filter((x) => x.startsWith('pr.eye.'))) assert.ok(STR.en[k].split(/\s+/).length <= 9, `${k} is a short thought`);

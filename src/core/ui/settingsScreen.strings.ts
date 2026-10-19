@@ -3,11 +3,9 @@ const strings = {
   prefix: 'settings.',
   en: {
     'title': 'SETTINGS',
-    'tab.controls': 'CONTROLS',
-    'tab.video': 'VIDEO',
-    'tab.audio': 'AUDIO',
-    'tab.access': 'ACCESS',
-    'footer': 'ESC close  ·  W/S move  ·  A/D change  ·  Q/E page',
+    'sec.basic': 'ESSENTIALS',
+    'adv.show': 'ADVANCED  +',
+    'adv.hide': 'ADVANCED  -',
     // controls
     'sec.mouse': 'MOUSE AND VIEW',
     'mouseSens': 'Mouse sensitivity',
@@ -85,11 +83,9 @@ const strings = {
   },
   tr: {
     'title': 'AYARLAR',
-    'tab.controls': 'KONTROLLER',
-    'tab.video': 'GÖRÜNTÜ',
-    'tab.audio': 'SES',
-    'tab.access': 'ERİŞİM',
-    'footer': 'ESC kapat  ·  W/S gezin  ·  A/D değiştir  ·  Q/E sayfa',
+    'sec.basic': 'TEMEL',
+    'adv.show': 'GELİŞMİŞ  +',
+    'adv.hide': 'GELİŞMİŞ  -',
     // controls
     'sec.mouse': 'FARE VE GÖRÜŞ',
     'mouseSens': 'Fare hassasiyeti',

@@ -113,7 +113,6 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
     if (local) {
       this.sfx('chime');
       this.seatHud?.show(); this.refresh(true);
-      this.seatHud?.firstTip('cashier', this.tipLines());
     }
   }
 
@@ -130,7 +129,7 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (e.repeat) return;
     switch (e.action) {
@@ -286,14 +285,6 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
   /** The key bound to a general action (arrows, help, exit). */
   private g(a: BindingKey): string { return this.ctx.input.keyLabel(a); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.cashier.tip1' },
-      { k: 'm.cashier.tip2', v: { move: `${this.k('up')}/${this.k('down')}`, go: this.k('primary') } },
-      { k: 'm.cashier.tip3', v: { help: this.g('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return [1, 2, 3, 4].map((i) => ({ k: `m.cashier.rule${i}` }));

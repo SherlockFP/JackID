@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import type { Hex } from '@/core/types';
 import type { TexGen, VendorTexOpts } from '@/core/texgen/types';
-import { PAL, mixHex, hexR, hexG, hexB, rgbHex } from './palette';
+import { PAL, PALETTE, mixHex, hexR, hexG, hexB, rgbHex } from './palette';
 import { psx } from './materials';
 import { withTiles } from './tiles';
 
@@ -71,6 +71,8 @@ export interface Presets {
   grille(color?: Hex): THREE.Material;
   /** Flat vertex-lit colour. */
   flat(color: Hex): THREE.Material;
+  /** The textured preset a bare palette hex stands for (brass, gold, chrome, walnut, leather, felt), else null. */
+  hex(color: Hex): THREE.Material | null;
 }
 
 const cache = new WeakMap<TexGen, Presets>();
@@ -154,6 +156,17 @@ function build(tex: TexGen): Presets {
     unlit: (c) => psx({ color: c, lit: false }),
     grille: (c = 0x9a9aa2) => mat(c, tag(grilleTex(), 0.25)),
     flat: (c) => mat(c, null),
+    hex: (c) => {
+      switch (c) {
+        case PALETTE.brass: case PALETTE.gold: case PALETTE.chrome: return mat(tintFor('brushed', c), v('brushed'));
+        case PALETTE.wood: case PALETTE.woodDark: return mat(tintFor('wood_walnut', c), v('wood_walnut'));
+        case PALETTE.leather: return mat(c, tex.noise(0xffffff, { size: 16, amount: 0.07, seed: 3 }));
+        case PALETTE.red: case PALETTE.redDark: case PALETTE.blood: return mat(c, tag(enamelTex(0.15), 0.5));
+        case PALETTE.carpet: return mat(tintFor('velvet', c), v('velvet'));
+        case PALETTE.felt: case PALETTE.feltDark: return psx({ color: tintFor('felt', c), map: tag(v('felt'), 0.5), vertexColors: true, snap: false, affine: false });
+        default: return null;
+      }
+    },
   };
 }
 

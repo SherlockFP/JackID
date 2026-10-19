@@ -23,9 +23,6 @@ const en: Record<string, string> = {
 
   // ── seat HUD (readability standard) ──
   hGoal: 'Bet that the third card lands strictly between the two cards shown.',
-  hTip1: 'Place your bet with [{bet}]. Change the amount with [{down}]/[{up}].',
-  hTip2: 'Two cards turn up. The wider the gap between them, the more a hit pays.',
-  hTip3: 'Wide gap: [{raise}] RAISE  ·  [{pass}] PASS  ·  [{help}] RULES',
   hRule1: 'Two cards turn up. Bet that the third card lands strictly between them.',
   hRule2: 'Cards between them: 1 pays 5 to 1, 2 pays 4 to 1, 3 pays 2 to 1, 4 or more pay 1 to 1.',
   hRule3: 'Consecutive cards have no gap and push. A pair pays 11 to 1 if the third card matches it (trips).',
@@ -42,7 +39,7 @@ const en: Record<string, string> = {
   hStThird: 'THIRD CARD', hStShuffle: 'SHUFFLING THE SIX DECKS',
   hResWin: 'WIN', hResLose: 'OUTSIDE THE SPREAD', hResPush: 'PUSH', hResTrips: 'TRIPS!',
   hResConsec: 'CONSECUTIVE, PUSH', hResPairNo: 'PAIR, PUSH', hResRefund: 'STAKE REFUNDED',
-  hNBet: 'YOUR BET', hNRaise: 'RAISE', hNCards: 'THE CARDS', hNPays: 'PAYS', hNPaysV: '{n} TO 1',
+  hNBet: 'BET', hNRaise: 'RAISE', hNCards: 'THE CARDS', hNPays: 'PAYS', hNPaysV: '{n} TO 1',
   hNThird: 'THIRD CARD', hNBalance: 'BALANCE',
   hCBet: 'BET', hCAmount: 'AMOUNT', hCRaise: 'RAISE', hCHalf: 'HALF RAISE', hCPass: 'PASS',
   hCRules: 'RULES', hCLeave: 'LEAVE',
@@ -69,9 +66,6 @@ const tr: Record<string, string> = {
 
   // ── seat HUD (readability standard) ──
   hGoal: 'Üçüncü kartın gösterilen iki kartın tam arasına düşeceğine bahis koy.',
-  hTip1: 'Bahsini [{bet}] ile koy. Tutarı [{down}]/[{up}] ile değiştir.',
-  hTip2: 'İki kart açılır. Aralarındaki fark ne kadar geniş olursa, isabet o kadar çok öder.',
-  hTip3: 'Geniş fark: [{raise}] ARTIR  ·  [{pass}] ARTIRMA  ·  [{help}] KURALLAR',
   hRule1: 'İki kart açılır. Üçüncü kartın ikisinin tam arasına düşeceğine bahis koy.',
   hRule2: 'Aradaki kart sayısı: 1 kart 5\'e 1, 2 kart 4\'e 1, 3 kart 2\'ye 1, 4 ve üstü 1\'e 1 öder.',
   hRule3: 'Ardışık kartların arasında boşluk yoktur, berabere kalır. Üçüncü kart çiftle aynıysa üçlü olur ve 11\'e 1 öder.',
@@ -88,7 +82,7 @@ const tr: Record<string, string> = {
   hStThird: 'ÜÇÜNCÜ KART', hStShuffle: 'ALTI DESTE KARIŞTIRILIYOR',
   hResWin: 'KAZANDIN', hResLose: 'FARK DIŞINDA', hResPush: 'BERABERE', hResTrips: 'ÜÇLÜ!',
   hResConsec: 'ARDIŞIK, BERABERE', hResPairNo: 'ÇİFT, BERABERE', hResRefund: 'BAHİS İADE',
-  hNBet: 'BAHSİN', hNRaise: 'ARTIRMA', hNCards: 'KARTLAR', hNPays: 'ÖDER', hNPaysV: '{n}\'E 1',
+  hNBet: 'BAHİS', hNRaise: 'ARTIRMA', hNCards: 'KARTLAR', hNPays: 'ÖDER', hNPaysV: '{n}\'E 1',
   hNThird: 'ÜÇÜNCÜ KART', hNBalance: 'BAKİYE',
   hCBet: 'BAHİS', hCAmount: 'TUTAR', hCRaise: 'ARTIR', hCHalf: 'YARI ARTIR', hCPass: 'ARTIRMA',
   hCRules: 'KURALLAR', hCLeave: 'ÇIK',

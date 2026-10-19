@@ -84,6 +84,12 @@ export const def: MachineDef = {
     'm.hilo.sameBonus': 'Float: exact-rank hits multiply that step by 1 + x.',
     'm.hilo.startMult': 'Float: the ladder starts at ×(1 + x).',
   },
+  // seat coach (_base/coach.ts): taught by doing on the first sits
+  coach: [
+    { key: 'primary', say: 'deal', done: 'round' },
+    { key: 'up down n1 n2', say: 'hiLo', done: 'press' },
+    { key: 'collect', say: 'collect', done: 'result' },
+  ],
   strings: {
     en: { ...STRINGS.en, noProfit: 'A collect has to pay more than the stake. Keep climbing.' },
     tr: { ...STRINGS.tr, noProfit: 'Kasa bahisten fazla ödemeli. Tırmanmaya devam et.' },
@@ -119,7 +125,6 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('hilo', this.tipLines());
     }
   }
 
@@ -142,18 +147,23 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
 
   /** Leaving with a ladder on the table collects it first (≥ 1 step that pays a profit) or refunds the stake. */
   protected override standUp(): void {
+    this.closeLadder();
+    super.standUp();
+  }
+  /** The Watch closed: the ladder is closed the same way (collected, or the stake refunded), so no step pays in Dawn. */
+  protected override onWatchClosed(): void { this.closeLadder(); }
+  private closeLadder(): void {
     if (this.roundOpen && !this.busy) {
       if (this.state.steps > 0 && paysProfit(this.roundBet, this.state.run)) void this.collect();
       else this.settle({ gross: this.roundBet });
     }
-    super.standUp();
   }
 
   // ── input (local occupant) ───────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -548,14 +558,6 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.hilo.tip1', v: { deal: this.k('primary'), bet: `${this.k('betDown')}/${this.k('betUp')}` } },
-      { k: 'm.hilo.tip2', v: { up: this.k('up'), down: this.k('down') } },
-      { k: 'm.hilo.tip3', v: { collect: this.k('collect'), help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((r) => ({ k: 'm.hilo.' + r }));

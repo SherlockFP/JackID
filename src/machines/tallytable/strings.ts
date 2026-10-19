@@ -7,7 +7,7 @@ import type { MachineStrings } from '@/machines/_base/types'
 export const STRINGS: MachineStrings = {
   en: {
     name: 'The Tally Table',
-    desc: 'A sealed wager against a champion of the House. Read the table, call the cheat once, and the Clerk rules.',
+    desc: 'A sealed wager against a House champion. Call the cheat once; the Clerk rules.',
     plate: 'THE CLERK’S TABLE',
     callCheat: 'CHEAT',
     // seat HUD: one short banner, one goal line; the keys are on the choice bar and in the hint row
@@ -19,7 +19,7 @@ export const STRINGS: MachineStrings = {
     stRuling: 'THE CLERK RULES', stReveal: 'THE REVEAL', stDone: 'THE CLERK CLOSES THE BOOK',
     stAdjourned: 'BOOK CLOSED UNTIL THE NEXT NIGHT', stAdjournedSub: 'You have already sat before the Clerk tonight',
     stNoDuel: 'NOBODY SITS ACROSS FROM YOU', stNoDuelSub: 'No champion of the House is ready for this Night',
-    nRound: 'ROUND', nStake: 'STAKE',
+    nRound: 'ROUND', nStake: 'BET',
     turnYou: 'YOUR TURN', turnHim: 'THEIR TURN', turnRuling: 'THE CLERK RULES',
     hintMove: '[{left}] [{right}] choose  ·  [{go}] play', hintTier: '[{n1}] to [{n3}] choose', hintCall: '[{go}] call it  ·  [{call}] cancel',
     cCall: 'CALL', cSheet: 'SHEET', cRules: 'RULES', cLeave: 'LEAVE', cCancel: 'CANCEL', cTier: 'STAKE', cPlay: 'PLAY',
@@ -58,9 +58,6 @@ export const STRINGS: MachineStrings = {
     noDuel: 'No duel is registered for this rival yet.', badTier: 'That stake is not on offer', stale: 'Too late: the table moved on',
     noFunds: 'You cannot cover that stake', illegal: 'That is not allowed now', onePerDuel: 'One call per duel',
     // rules
-    tip1: 'Pick a stake, then play. Your rival may cheat once.',
-    tip2: 'Every cheat leaves three clues: a TELL on their face, a TABLE oddity, a MATH mismatch on the Sheet.',
-    tip3: '[{call}] calls the cheat. You get ONE call, and a wrong call is fined.',
     rule1: 'The Clerk seals the wager. You put up Coins (about 6 % of the quota), a Pledge, or a Soul Mark.',
     rule2: 'Everything that happens is written on the Tally Sheet. [{sheet}] opens and closes it.',
     rule3: 'Press [{call}], pick what you saw, press [{go}]. Right: the wager is voided and the rival pays 3x.',
@@ -68,8 +65,6 @@ export const STRINGS: MachineStrings = {
     rule5: 'Win a Pledge duel and you take the rival\'s Pledge. Lose a Soul Mark and the rival takes it.',
     // Promise mode (Lucan, Rock, Paper, Promise)
     goalPromise: 'First to 4 points. Say a hand, then throw. A kept word scores double.',
-    prTip1: 'Say your hand, then throw. A kept word that wins is worth 2. Break it and your card cracks.',
-    prTip2: 'Lucan keeps his early promises. Watch what he looks at, and when.',
     prRule1: 'First to 4 points. Callers take turns. Name a hand out loud, then throw.',
     prRule2: 'A kept word that wins scores 2, any other win 1. A broken word cracks your card; three cracks lose.',
     prRule3: 'Believe a promise and counter it, doubt it and throw the same hand, or go one step further.',
@@ -80,7 +75,7 @@ export const STRINGS: MachineStrings = {
   },
   tr: {
     name: 'Hesap Masası',
-    desc: 'Kasa’nın şampiyonlarından biriyle mühürlü bir bahis. Masayı oku, hileyi bir kez ihbar et, gerisini Katip karara bağlar.',
+    desc: 'Kasa şampiyonuna mühürlü bahis. Hileyi bir kez ihbar et, Katip karar verir.',
     plate: 'KATİBİN MASASI',
     callCheat: 'HİLE',
     goal: 'Düelloyu kazan. Rakip hile yaparsa bir kez ihbar et.',
@@ -124,17 +119,12 @@ export const STRINGS: MachineStrings = {
     sealed: 'Mühür mühürdür. Bahsinden vazgeçmek için 3 saniye içinde E tuşuna tekrar bas.',
     noDuel: 'Bu rakip için henüz kayıtlı bir düello yok.', badTier: 'Bu bahis sunulmuyor', stale: 'Çok geç: masa ilerledi',
     noFunds: 'Bu bahsi karşılayamazsın', illegal: 'Şu an buna izin yok', onePerDuel: 'Düello başına tek ihbar',
-    tip1: 'Bir bahis seç, sonra oyna. Rakibin bir kez hile yapabilir.',
-    tip2: 'Her hile üç ipucu bırakır: yüzünde bir YÜZ işareti, masada bir MASA tuhaflığı, Çizelgede bir SAYI uyuşmazlığı.',
-    tip3: '[{call}] hileyi adlandırır. TEK hakkın var: yanlış ihbar cezalandırılır.',
     rule1: 'Katip bahsi mühürler. Para (kotanın yaklaşık %6\'sı), bir Rehin ya da bir Ruh Mührü koyarsın.',
     rule2: 'Olan her şey Hesap Çizelgesine yazılır. [{sheet}] açıp kapatır.',
     rule3: '[{call}] bas, gördüğünü seç, [{go}] bas. Doğruysa bahis iptal olur ve rakip 3 katını öder.',
     rule4: 'Yanlış ya da erkense bir bahis birimi ceza yersin ve düello sürer.',
     rule5: 'Rehin düellosunu kazanırsan rakibin Rehinini alırsın. Ruh Mührü kaybedersen rakip onu alır.',
     goalPromise: 'İlk 4 puana varan kazanır. Bir el söyle, sonra at. Tutulan söz çift puan.',
-    prTip1: 'Elini söyle, sonra at. Tutulan sözle kazanılan el 2 puan. Bozarsan kartın çatlar.',
-    prTip2: 'Lucan erken sözlerini tutar. Neye ve ne zaman baktığını izle.',
     prRule1: 'İlk 4 puana varan alır. Sırayla söz verilir. Elini yüksek sesle söyle, sonra at.',
     prRule2: 'Tutulan sözle kazanılan el 2 puan, diğer galibiyetler 1 puan. Bozulan söz kartını çatlatır; üç çatlak kaybettirir.',
     prRule3: 'Söze inanıp karşılığını atabilirsin, şüphelenip aynı eli atabilirsin ya da bir adım daha ileri gidebilirsin.',

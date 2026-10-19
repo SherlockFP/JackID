@@ -4,7 +4,7 @@
 .px-root .px-obj { z-index: 8; }
 
 .px-obj {
-  position: absolute; left: calc(4 * var(--u)); top: calc(var(--hud-top-h, calc(52 * var(--u))) + 22 * var(--u)); bottom: auto;
+  position: absolute; left: calc(4 * var(--u)); top: calc(var(--hud-top-h, calc(52 * var(--u))) + 30 * var(--u)); bottom: auto;
   max-width: min(38%, calc(220 * var(--u)));
   padding: calc(3 * var(--u)) calc(5 * var(--u)) calc(4 * var(--u));
   background: rgba(10, 8, 6, 0.92); box-shadow: inset 0 0 0 var(--u) var(--brass);

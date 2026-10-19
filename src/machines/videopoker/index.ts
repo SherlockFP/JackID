@@ -81,6 +81,12 @@ export const def: MachineDef = {
     'videopoker.bonusQuads': 'Feature: four aces or four eights pay ×2.',
     'videopoker.hintOptimal': 'Feature: HOLD lamps blink on the suggested hold.',
   },
+  // seat coach (_base/coach.ts): taught by doing on the first sits
+  coach: [
+    { key: 'primary', say: 'deal', done: 'round' },
+    { key: 'n1 n2 n3 n4 n5', say: 'hold', done: 'press' },
+    { key: 'primary', say: 'draw', done: 'press' },
+  ],
   strings: STRINGS,
 };
 
@@ -155,7 +161,6 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('videopoker', this.tipLines());
     }
   }
 
@@ -181,16 +186,24 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     super.standUp();
   }
   private async leave(): Promise<void> {
+    await this.finish();
+    super.standUp();
+  }
+  /** Ends the round the safe way (a HOLD draws, a WIN or PICK collects): leaving and the Watch's close both do it. */
+  private async finish(): Promise<void> {
     if (this.state.phase === 'hold') await this.draw();
     if (this.roundOpen && !this.busy && (this.state.phase === 'win' || this.state.phase === 'pick')) await this.collect();
-    super.standUp();
+  }
+  /** The Watch closed: a hand on the table is finished now (no double-up, no draw left to pay in Dawn). */
+  protected override onWatchClosed(): void {
+    if (this.roundOpen && this.state.phase !== 'ready') void this.finish();
   }
 
   // ── input (local occupant) ───────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -567,14 +580,6 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.videopoker.tip1', v: { deal: this.k('primary'), hold: `${this.k('n1')}-${this.k('n5')}` } },
-      { k: 'm.videopoker.tip2', v: { draw: this.k('primary'), double: this.k('double'), collect: this.k('collect') } },
-      { k: 'm.videopoker.tip3', v: { help: this.k('help') } },
-    ];
-  }
 
   /** Result callout for the local player: `net` = coins back minus the stake. */
   private callout(net: number): void {

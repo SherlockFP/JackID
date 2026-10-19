@@ -110,13 +110,7 @@ export default class BingoHall extends TableBase<BingoParts, Ev, Snap, Act> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) {
-      // any key closes a tip or rules card. The first-sit tip is a how-to, so its Enter also buys (the HUD says ENTER BUY);
-      // a rules card only closes, so reading the rules can never spend the stake.
-      const tip = !this.seatHud.rulesOpen;
-      this.seatHud.dismiss();
-      if (!(tip && a === 'confirm')) return;
-    }
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card; reading it never buys
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -556,7 +550,6 @@ export default class BingoHall extends TableBase<BingoParts, Ev, Snap, Act> {
       this.seatHud?.show();
       this.hudSig = '';
       this.showHud();
-      this.seatHud?.firstTip('bingo', this.tipLines());
     }
   }
 
@@ -666,14 +659,6 @@ export default class BingoHall extends TableBase<BingoParts, Ev, Snap, Act> {
 
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.bingo.tip1' },
-      { k: 'm.bingo.tip2', v: { buy: this.k('confirm'), cards: this.k('n6'), bet: `${this.k('betDown')}/${this.k('betUp')}` } },
-      { k: 'm.bingo.tip3', v: { help: this.k('help') } },
-    ];
-  }
 
   /** Banner, key numbers and valid controls for the local player. Redraws only when something changed. */
   private showHud(): void {

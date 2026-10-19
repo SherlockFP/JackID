@@ -13,6 +13,7 @@ import { app } from '@/core/app';
 import { bus } from '@/core/events';
 import type { Unsub } from '@/core/types';
 import { fmtCoins, t } from '@/core/i18n';
+import { jokerIcon } from '@/core/ui/manga/joker';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { addTicker, h, modalPanel, uiSfx } from '@/core/ui/widgets';
 import type { DawnReceipt, DebtRun } from './run';
@@ -125,8 +126,9 @@ function godCard(run: DebtRun, row: HTMLElement, def: BoonDef, key: string): HTM
   card.setAttribute('data-nav', '');   // Up / Down (W / S) move between the cards, as in the other panels
   const head = h('span', 'pt-head', card);
   h('span', 'pt-key', head, key);
-  h('i', `pt-sigil pt-sig-${def.god}`, head);
-  if (def.god2) h('i', `pt-sigil pt-sig-${def.god2}`, head);
+  const sigil = (god: string): void => { if (god === 'loki') head.appendChild(jokerIcon('pt-sigil')); else h('i', `pt-sigil pt-sig-${god}`, head); };
+  sigil(def.god);
+  if (def.god2) sigil(def.god2);
   h('span', 'pt-god', head, t(`pantheon.god.${def.god}.name`));
   if (def.god !== 'loki') {
     const fav = run.boonFavour(def.god);
@@ -210,7 +212,9 @@ function showCards(run: DebtRun, fresh: boolean): void {
       return idx >= 0 && startPick(idx);
     };
     activePick = pickFromEvent;
-    cards.forEach((card, i) => card.addEventListener('click', () => { const id = ids[i]; if (id) run.pickBoon(id); }));
+    // The last card kept takes the mouse back inside the pick's own click or key (a gesture; the panel closes 0.6 s later, when it is gone).
+    const keep = (id: string): void => { if (run.pickBoon(id) && !run.boonOffer() && app.player?.seat == null) void app.input.requestLock(); };
+    cards.forEach((card, i) => card.addEventListener('click', () => { const id = ids[i]; if (id) keep(id); }));
     addTicker((dt) => {
       if (!alive) return false;
       if (pickT >= 0) {
@@ -237,7 +241,7 @@ function showCards(run: DebtRun, fresh: boolean): void {
       if (pickT >= 0) return;
       if (swap) { if (offer.canSwap) run.swapBoon(marked); return; }
       const id = ids[i];
-      if (id) run.pickBoon(id);
+      if (id) keep(id);
     };
     // The veil owns its keys while it is open, whatever has focus (a capture listener runs before the game's).
     window.addEventListener('keydown', onKey, true);

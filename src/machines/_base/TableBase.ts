@@ -81,6 +81,7 @@ export abstract class TableBase<P extends object, E extends MachineEvent, S exte
     if (pid === null || pid === undefined) return false;
     const ok = isBot(pid) ? true : this.ctx.run.hostBet(pid, amount, this.src);
     if (ok) this._seatBet[seat] += amount;
+    if (ok && pid === this.selfId) this._coach?.round(false);   // tables teach, but never practise (shared host stream)
     return ok;
   }
   /**
@@ -94,7 +95,7 @@ export abstract class TableBase<P extends object, E extends MachineEvent, S exte
     const jt = juiceTier(gross, bet, meta?.tags);
     const tags = [...new Set([...(meta?.tags ?? []), ...tierTags(jt)])];
     const credited = this.ctx.run.hostWin(pid, gross, this.src, { bet, tier: meta?.tier ?? toWinTier(jt), tags, silent: meta?.silent });
-    if (pid === this.selfId) this.offerGamble(credited);       // DOUBLE OR NOTHING for the local player's table win
+    if (pid === this.selfId) { this._coach?.result(gross, bet); this.offerGamble(credited); }   // the coach's note, DOUBLE OR NOTHING
     return credited;
   }
   /** Table-family hook (`x.table.<name>`: limitMult, freeChip, rakeDelta, peekCharges, timerMult, pushToWin, shoeInfo). */

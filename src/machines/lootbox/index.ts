@@ -39,8 +39,6 @@ import { playHeadless } from './rules';
 
 /** The capsule in play: the tier it is at now (a trade moves it up), its content and the pity bookkeeping. */
 interface Pending { tier: TierId; content: Content; dudIdx: number; forced: boolean; threshold: number; count: number }
-/** Keys that still act when they also close the first-sit tip (the rules card and other keys only close). */
-const TIP_PASS_KEYS: ReadonlySet<string> = new Set(['primary', 'confirm', 'alt', 'n1', 'n2', 'n3', 'left', 'right']);
 /** Settlement fields the credit step fills in (read by the presentation of the result). */
 interface Settle { coins: number; granted: boolean; fallback: boolean; net: number }
 
@@ -161,7 +159,6 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
       this.hudKey = '';
       this.seatHud?.show();
       this.refreshHud(true);
-      this.seatHud?.firstTip(this.def.id, this.tipLines());
     }
   }
 
@@ -193,12 +190,7 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down || e.repeat) return;
-    if (this.seatHud?.blocking) {
-      // any key closes a tip or contents card; on the first-sit tip a play key is not swallowed (it also acts)
-      const firstTip = this.seatHud.tipOpen;
-      this.seatHud.dismiss();
-      if (!firstTip || !TIP_PASS_KEYS.has(e.action)) return;
-    }
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the contents card
     switch (e.action) {
       case 'n1': this.selectTier(0); return;
       case 'n2': this.selectTier(1); return;
@@ -652,14 +644,6 @@ export default class Lootbox extends MachineBase<LootboxParts, Ev, null> {
   private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.lootbox.${key}`, v } : { k: `m.lootbox.${key}` }; }
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-  private tipLines(): Txt[] {
-    return [
-      this.tx('tip1', { tiers: `${this.k('n1')}-${this.k('n3')}`, crank: this.k('primary') }),
-      this.tx('tip2', { twist: this.k('primary') }),
-      this.tx('tip4', { keep: this.k('primary'), trade: this.k('alt') }),
-      this.tx('tip3', { help: this.k('help') }),
-    ];
-  }
   /** Contents card (H): the three tier tables and the trade-up rule. */
   private contentsLines(): Txt[] {
     return [this.tx('tableTin'), this.tx('tableBrass'), this.tx('tableGilded'), this.tx('pityRule'), this.tx('tradeRule')];

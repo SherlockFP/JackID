@@ -906,19 +906,22 @@ export function createHud(): Hud {
     quotaRoll.tick(dt);
     setText(quotaNum, unset ? '-' : `${money(Math.round(quotaRoll.shown))} / ${money(due)}`);
     setQuotaBar(frac, r.night());
-    const met = !unset && (paid || q.met || (due > 0 && dep >= due));
-    if (paid) setText(quotaNum, t('hud.paidTag', { n: r.night() }));   // short tag: it must not clip the top banner
+    // a Dawn paid with a name seal counts as paid for flow, but the box reads SEALED in wax red (never the green paid state)
+    const sealed = paid && (r as Partial<DebtRun>).nightSealed === true;
+    const met = !unset && !sealed && (paid || q.met || (due > 0 && dep >= due));
+    if (paid) setText(quotaNum, sealed ? t('hud.sealedTag') : t('hud.paidTag', { n: r.night() }));   // short tag: it must not clip the top banner
+    setCls(quota, 'sealed', sealed);
     setCls(quota, 'met', met);
-    setCls(quota, 'short', !met && !unset);
+    setCls(quota, 'short', !met && !sealed && !unset);
     const late = r.shift.phase === 'lastCall' || r.shift.timeLeft() < 30;
-    setCls(quota, 'late', !met && !unset && late);
+    setCls(quota, 'late', !met && !sealed && !unset && late);
     setText(quotaShort, met || paid || unset ? '' : t('hud.quota.short', { n: money(Math.max(0, due - dep)) }));
   }
 
   /** A source's name on the PAYOUT chip: the Night's own House sources by kind, a charm or buff by its name, else its id. */
-  function payoutSourceLabel(id: string, op: 'mult' | 'inc'): string {
+  function payoutSourceLabel(id: string): string {
     if (id.startsWith('mood:')) return t('payout.mood');
-    if (id.startsWith('night:')) return op === 'inc' ? t('payout.witch') : t('payout.favour');
+    if (id.startsWith('night:')) return t('payout.witch');
     if (id.startsWith('watch.') && has(`event.watch.${id.slice(6)}.name`)) return t(`event.watch.${id.slice(6)}.name`);
     if (has(`charm.${id}.name`)) return t(`charm.${id}.name`);
     if (has(`buff.${id}.name`)) return t(`buff.${id}.name`);
@@ -954,7 +957,7 @@ export function createHud(): Hud {
       parts = [];
       for (const s of br.steps) {
         if (s.op !== 'mult' && s.op !== 'inc') continue;
-        parts.push({ label: payoutSourceLabel(s.source.id, s.op), op: s.op, value: s.value });
+        parts.push({ label: payoutSourceLabel(s.source.id), op: s.op, value: s.value });
       }
       label = t('payout.label');
     } else {

@@ -20,8 +20,6 @@ import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/type
 import type { HeadlessPlay } from '@/game/types';
 import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
-import { rulesFirstEver, rulesMarkShown } from '@/machines/_base/placard3d';
-import { showRulesHint } from '@/machines/_base/rulesHint';
 import { bus } from '@/core/events';
 import type { CharmRarity } from '@/game/types';
 import type { KitX } from '@/kit';
@@ -110,9 +108,6 @@ export const def: MachineDef = {
       rule2: "REROLL refreshes the stock for tickets. Each further reroll in the same intermission costs one more ticket.",
       rule3: "LOCK keeps one charm for your next visit. A cursed charm pays you coins when you buy it; UNCURSE removes a curse for tickets.",
       rule4: "Keys: arrows or 1-4 pick a slot, PRIMARY buys, the ALT key rerolls, E leaves.",
-      tip1: "The pawn window is open only between shifts. Pick a charm, then buy it.",
-      tip2: "[{move}] PICK A CHARM  ·  [{buy}] BUY WITH COINS",
-      tip3: "Tickets: [{reroll}] REROLL  ·  [{lock}] LOCK  ·  [{help}] RULES",
       rarCommon: 'COMMON', rarUncommon: 'UNCOMMON', rarRare: 'RARE', rarLegendary: 'LEGENDARY', rarCursed: 'CURSED',
       tagLocked: 'LOCKED', tagSale: 'SALE', tagSecret: 'UNDER THE COUNTER',
       curseNote: 'Cursed: the house pays you to take it. It cannot be sold back.',
@@ -164,9 +159,6 @@ export const def: MachineDef = {
       rule2: "YENİLE stoku biletle yeniler. Aynı Molada her ek yenileme bir bilet daha tutar.",
       rule3: "KİLİTLE bir tılsımı bir sonraki ziyaretine saklar. Lanetli tılsım alınca sana para öder; LANETİ AÇ laneti biletle kaldırır.",
       rule4: "Tuşlar: ok ya da 1-4 yuva seçer, BİRİNCİL satın alır, ALT yenilettirir, E ayrılır.",
-      tip1: "Rehin penceresi yalnızca Molalarda açık. Bir tılsım seç, sonra al.",
-      tip2: "[{move}] TILSIM SEÇ  ·  [{buy}] PARAYLA AL",
-      tip3: "Biletler: [{reroll}] YENİLE  ·  [{lock}] KİLİTLE  ·  [{help}] KURALLAR",
       rarCommon: 'SIRADAN', rarUncommon: 'YARI NADİR', rarRare: 'NADİR', rarLegendary: 'EFSANEVİ', rarCursed: 'LANETLİ',
       tagLocked: 'KİLİTLİ', tagSale: 'İNDİRİM', tagSecret: 'TEZGAH ALTI',
       curseNote: 'Lanetli: ev seni almaya para öder. Geri satılamaz.',
@@ -216,7 +208,6 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   private plateTones: PlateTone[] = [];
   private uiBlocked = false;
   private offBlock: (() => void) | null = null;
-  private offHint: (() => void) | null = null;
   private readonly onResize = (): void => this.fitPose();
   /** The window's state at the last tick (null until the first one): a change is the Mola signal (toast and chime). */
   private pawnWasOpen: boolean | null = null;
@@ -282,7 +273,6 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
 
   dispose(): void {
     this.offBlock?.(); this.offBlock = null;
-    this.offHint?.(); this.offHint = null;
     window.removeEventListener('resize', this.onResize);
     this.card?.el.remove(); this.card = undefined;
     this.tabs?.el.remove(); this.tabs = undefined;
@@ -299,8 +289,6 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
       this.sfx('chime');
       this.seatHud?.show(); this.refresh(true);
       this.cardKey = '';
-      // HOW TO PLAY opens only on the first sit in the whole save; after that a small hint names the rules key
-      this.seatHud?.firstTip('charm_vendor', this.tipLines());
     }
   }
 
@@ -310,7 +298,6 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
     this.armed = null;
     if (local) {
       this.seatHud?.hide(); this.hudKey = '';
-      this.offHint?.(); this.offHint = null;
       this.syncCard();
     }
   }
@@ -325,7 +312,7 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (e.repeat) return;
     this.idle = 0;
@@ -1029,14 +1016,6 @@ export default class CharmVendor extends MachineBase<CharmVendorParts, Ev, null>
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.charm_vendor.tip1' },
-      { k: 'm.charm_vendor.tip2', v: { move: `${this.k('left')}/${this.k('right')}`, buy: this.k('primary') } },
-      { k: 'm.charm_vendor.tip3', v: { reroll: this.k('alt'), lock: this.k('double'), help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     const st = this.stamps();

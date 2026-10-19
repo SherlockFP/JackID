@@ -26,8 +26,10 @@ import { crispLabel, crispNeon } from './props/signs';
 import { buildCeilingDressing, buildBalconyUndersides, buildCeilingRoses, buildCeilingSteps, type CeilingStep } from './props/ceiling';
 import { buildLastCallBell } from './props/bell';
 import { buildLounge } from './props/lounge';
-import { planLounge, slotRect, type Rect } from './props/loungePlan';
-import { placeTavern } from './props/vendorModels';
+import { planLounge, slotRect, slotBody, DOORS, type Rect } from './props/loungePlan';
+import { damaskTex, wainscotTex, cofferTex, worldUV, WAINSCOT_TILE } from './props/surfaces';
+import { buildBar } from './props/bar';
+import { buildAmbience, type Beam, type Pool } from './props/ambience';
 import { buildRooms, type RoomsBuild } from './rooms';
 import { buildHollow } from './hollow';
 import { buildHome } from './home';
@@ -67,20 +69,7 @@ function floorTex(id: string, tex: TexGen): { map: THREE.Texture; color: number 
   }
 }
 
-// ── UV helpers: world-unit tiling on kit primitives (their UVs are 0…1 per face) ──────────────────
-function boxWorldUV(mesh: THREE.Mesh, tile: number): void {
-  const geo = mesh.geometry as THREE.BufferGeometry;
-  const pos = geo.attributes.position, nrm = geo.attributes.normal, uv = geo.attributes.uv;
-  if (!pos || !nrm || !uv) return;
-  for (let i = 0; i < pos.count; i++) {
-    const nx = Math.abs(nrm.getX(i)), ny = Math.abs(nrm.getY(i)), nz = Math.abs(nrm.getZ(i));
-    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    let u: number, v: number;
-    if (nx >= ny && nx >= nz) { u = z; v = y; } else if (nz >= ny) { u = x; v = y; } else { u = x; v = z; }
-    uv.setXY(i, u / tile, v / tile);
-  }
-  uv.needsUpdate = true;
-}
+// ── UV helpers: world-unit tiling on kit primitives (their UVs are 0…1 per face); boxes use `worldUV` (props/surfaces.ts) ──
 function planeWorldUV(mesh: THREE.Mesh, w: number, h: number, tile: number, u0 = 0, v0 = 0): void {
   const geo = mesh.geometry as THREE.BufferGeometry;
   const pos = geo.attributes.position, uv = geo.attributes.uv;
@@ -111,6 +100,26 @@ function horizontal(kit: KitX, r: R4, y: number, mat: THREE.Material, up: boolea
   return m;
 }
 
+// ── ambience (props/ambience.ts): floor pools under the fixed lamps, haze cones under the main pendants and the stage spot ──
+const WARM = 0x4a3010, SOFT = 0x3a2a12;
+const FIXTURE_POOLS: readonly Pool[] = [
+  { x: -6, z: -24, r: 2.4, color: WARM }, { x: 6, z: -24, r: 2.4, color: WARM },                       // Mouth pendants
+  { x: 0, z: -4, r: 4.2, color: SOFT },                                                                 // Well chandelier
+  { x: STAGE.x, z: STAGE.z - 2.3, r: 2.0, color: SOFT },                                                // Lobby chandelier, on the apron
+  { x: STAGE.x, z: STAGE.z - 0.3, r: 1.3, color: 0x1c2a34, y: STAGE.h + 0.012 },                        // the Compere's spot, on the boards
+  { x: -6, z: 13.3, r: 1.7, color: WARM },                                                              // the bar
+  { x: -10.2, z: 2.6, r: 1.0, color: SOFT }, { x: 10.2, z: 2.6, r: 1.0, color: SOFT },                  // Lobby sconces
+  ...([[-24, -9], [-16, -15], [-16, -3]] as const).map(([x, z]) => ({ x, z, r: 1.6, color: 0x14361c })),   // Card Room bankers
+  ...([[14, -25], [22, -21], [28, -27.5]] as const).map(([x, z]) => ({ x, z, r: 1.7, color: 0x40240c })),  // Boiler bulbs
+  ...([[-26, -1], [-20, 2], [-26, 7], [-18, 9.5], [-24, 12]] as const).map(([x, z]) => ({ x, z, r: 2.0, color: 0x10303a })),   // Laundry tubes
+  { x: 20, z: -9, r: 2.3, color: 0x3a1030 }, { x: 20, z: -5, r: 2.3, color: 0x10363c },                 // Gallery neon
+  { x: 21, z: 5.5, r: 2.8, color: SOFT }, { x: 19.5, z: 16, r: 1.6, color: WARM }, { x: -20, z: 15.5, r: 1.5, color: WARM },
+];
+const HAZE: readonly Beam[] = [
+  { x: -6, z: -24, y0: 4.8, y1: 0.05, r0: 0.25, r1: 1.9, color: 0x160e06 }, { x: 6, z: -24, y0: 4.8, y1: 0.05, r0: 0.25, r1: 1.9, color: 0x160e06 },
+  { x: STAGE.x, z: STAGE.z - 0.4, y0: 3.9, y1: STAGE.h + 0.01, r0: 0.15, r1: 1.0, color: 0x0e161a },
+];
+
 // ── wall runs ───────────────────────────────────────────────────────────────────────────────────
 /** Shared state for the wall runs: where to parent, which materials to use, where colliders go. */
 interface WallCtx { kit: KitX; root: THREE.Object3D; wall: THREE.Material; wain: THREE.Material; statics: Array<{ box: THREE.Box3; tag?: 'solid' | 'walkable' | 'low' }>; meshes: THREE.Mesh[] }
@@ -133,11 +142,13 @@ function wallRun(w: WallCtx, axis: 'x' | 'z', c: number, a0: number, a1: number,
     const size: [number, number, number] = axis === 'z' ? [T, ht, len] : [len, ht, T];
     const pos: V3 = axis === 'z' ? [c, cy, mid] : [mid, cy, c];
     const m = w.kit.box(size[0], size[1], size[2], w.wall, { pos, parent: w.root });
-    boxWorldUV(m, 2);
+    worldUV(m, 2);
     w.meshes.push(m);
     if (p.y0 === 0) {
-      const wm = w.kit.box(axis === 'z' ? T + 0.04 : len, 1.2, axis === 'z' ? len : T + 0.04, w.wain, { pos: axis === 'z' ? [c, 0.6, mid] : [mid, 0.6, c], parent: w.root });
-      boxWorldUV(wm, 1);
+      // 2 cm longer than its wall piece at each end: at a doorway jamb the wall's end face and the wainscot's were one plane
+      const wl = len + 0.04;
+      const wm = w.kit.box(axis === 'z' ? T + 0.04 : wl, 1.2, axis === 'z' ? wl : T + 0.04, w.wain, { pos: axis === 'z' ? [c, 0.6, mid] : [mid, 0.6, c], parent: w.root });
+      worldUV(wm, WAINSCOT_TILE);
       w.meshes.push(wm);
       w.statics.push({ box: new THREE.Box3(new THREE.Vector3(pos[0] - size[0] / 2, 0, pos[2] - size[2] / 2), new THREE.Vector3(pos[0] + size[0] / 2, h, pos[2] + size[2] / 2)), tag: 'solid' });
     }
@@ -147,7 +158,7 @@ function wallRun(w: WallCtx, axis: 'x' | 'z', c: number, a0: number, a1: number,
 // ── the level ───────────────────────────────────────────────────────────────────────────────────
 export function buildLevel(ctx: LevelCtx): LevelBuild {
   const kit = ctx.kit as KitX;
-  const tex = ctx.tex;
+  const tex = kit.tex;   // the tile-tagged TexGen: the raw one left every prop texture stretched once over its whole face (grilles, curtain, shaft, sump)
   const root = new THREE.Group();
   root.name = 'level:pit';
   const statics: Array<{ box: THREE.Box3; tag?: 'solid' | 'walkable' | 'low' }> = [];
@@ -165,23 +176,11 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
 
   // ── floors and ceilings (split around the hero trapdoor hole) ────────────────────────────────
   const hole: R4 = [HERO_PLATE.x - 1, HERO_PLATE.z - 1, HERO_PLATE.x + 1, HERO_PLATE.z + 1];
-  const wallMatDeco = kit.mat({ color: 0x8a6a48, map: kit.tex.vendor('sbs-horror/128x128/Wall/Horror_Wall_03-128x128.png', { size: 64 }) });
-  const wallMatOx = kit.mat({ color: 0x5a2024, map: kit.tex.vendor('sbs-horror/128x128/Wall/Horror_Wall_07-128x128.png', { size: 64 }) });
-  const wainMat = kit.mat({ color: 0x6a4020, map: kit.tex.vendor('sbs-synthetic/128x128/Wood/Synth-Wood_04-128x128.png', { size: 64 }) });
-  const coffer = tex.canvas(128, 128, (g, w, h) => {
-    g.fillStyle = '#c9b48a';
-    g.fillRect(0, 0, w, h);
-    g.fillStyle = '#7a5a30';
-    g.fillRect(0, 0, 16, h); g.fillRect(w - 16, 0, 16, h); g.fillRect(0, 0, w, 16); g.fillRect(0, h - 16, w, 16);
-    g.fillStyle = '#e8c46a';
-    g.beginPath();
-    for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2;
-      g.moveTo(w / 2, h / 2);
-      g.lineTo(w / 2 + Math.cos(a) * 14, h / 2 + Math.sin(a) * 14);
-    }
-    g.fill();
-  }, { wrap: 'repeat' });
+  // ART.md §3: damask wallpaper above a walnut wainscot (world-mapped, 32 texels per metre); the wing partitions take the dark colourway
+  const wallMatDeco = kit.mat({ color: 0xd4c4b4, map: damaskTex(tex, 'nave') });   // a step under the props, so the paper sits back
+  const wallMatOx = kit.mat({ color: 0xe8dccc, map: damaskTex(tex, 'wing') });
+  const wainMat = kit.mat({ color: 0xf0e4d8, map: wainscotTex(tex) });
+  const coffer = cofferTex(tex);
   // the ceiling carries its own glow (the point lights stand below it and never reached it): emissive from its own pattern
   const ceilMat = kit.mat({ map: coffer, color: 0xd8c8a8, emissive: 0xffffff, emissiveMap: coffer, emissiveIntensity: 0.5 });
   const ceilFar = kit.mat({ map: coffer, color: 0xd8c8a8, emissive: 0xffffff, emissiveMap: coffer, emissiveIntensity: 0.32 });   // the Underneath and the apartment keep their dark ceilings
@@ -192,14 +191,15 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   // floors: walkable boxes (top y 0) and visuals, split around the hero trapdoor hole in the Lobby;
   // ceilings: one plane per zone at its height, never holed
   for (const z of ZONES) {
+    const own = z.id === 'home' || z.id === 'hollow';   // the apartment and the Underneath build their own floor and ceiling (a second floor at y 0 z-fought in the flat)
     const ft = floorTex(z.id, tex);
     const fmat = kit.mat({ color: ft.color, map: ft.map });
     for (const piece of rectMinus(z.rect as R4, z.id === 'lobby' ? hole : null)) {
-      horizontal(kit, piece, 0, fmat, true, FLOOR_TILE_M, statical, true);
+      if (!own) horizontal(kit, piece, 0, fmat, true, FLOOR_TILE_M, statical, true);
       statics.push({ box: box3(piece[0], -0.5, piece[1], piece[2], 0, piece[3]), tag: 'walkable' });
     }
     const ch = CEILING[z.id];
-    horizontal(kit, z.rect as R4, ch ?? 4.5, ch === undefined ? ceilFar : ch >= 6 ? ceilTall : ceilMat, false, 2, shell);
+    if (!own) horizontal(kit, z.rect as R4, ch ?? 4.5, ch === undefined ? ceilFar : ch >= 6 ? ceilTall : ceilMat, false, 2, shell);
   }
 
   // coffered beams, lit bay panels, hanging lamps, vents and cables under every zone ceiling (wave 77: no more dark void)
@@ -221,7 +221,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   ];
   for (const st of STEPS) {
     const body = kit.box(22, st.y1 - st.y0 + 0.02, T, wallMatDeco, { pos: [0, (st.y0 - 0.02 + st.y1) / 2, st.z], parent: shell });
-    boxWorldUV(body, 2);
+    worldUV(body, 2);
   }
   // the finishing pieces are decoration: a failure here must never drop the whole pit to the fallback hall
   try {
@@ -510,18 +510,14 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   plaque('prop.sign.cashier', 1.6, 0.4, 6, 2.9, 19.7, 180, 0xffe0a0);
   plaque('prop.sign.charm', 1.6, 1.0, -9, 1.4, 19.84, 180, 0xffe0a0);
   plaque('prop.sign.lift', 0.5, 0.25, -6.4, 1.6, -29.8, 0, 0xffb000);
-  plaque('prop.sign.parlour', 2.6, 0.35, 10.8, 3.7, 16, 270, 0xff8a8a);
+  plaque('prop.sign.parlour', 2.6, 0.35, 10.62, 4.06, 16, 270, 0xff8a8a);   // above the door casing's cornice (3.77)
   plaque('prop.sign.keno', 2.0, 1.2, -20, 3.3, -1.84, 0, 0xffe0a0);   // smaller and higher: it used to fill the view at LAU-02 and cover the buy prompt
 
-  // ── the casino bar (Lobby, behind the stage): the tavern counter with its back-bar shelves and three stools ──────────
-  // The OBJ pieces load async (public/assets/vendor/battleroach-medieval-tavern); the colliders are fixed from the start. The
-  // customers' side faces the stage (north); the counter is 4.4 m long, the shelves stand behind it, BarrelStand ends the bar.
+  // ── the casino bar (Lobby, behind the stage): a walnut and marble counter, a mirrored back bar of lit bottles, three stools (props/bar.ts) ──
+  // The customers' side faces the stage (north); the counter is 4.4 m long, the back bar stands behind it, a service cabinet ends the bar.
   {
     const BAR_X = -6.0, BAR_Z = 14.2;
-    void placeTavern(kit, root, 'Bar', { pos: [BAR_X, 0, BAR_Z], height: 1.0 });
-    for (const sx of [-1.15, 1.15]) void placeTavern(kit, root, 'Shelf', { pos: [BAR_X + sx, 0, BAR_Z + 1.2], height: 2.3 });
-    for (const sx of [-1.4, 0, 1.4]) void placeTavern(kit, root, 'Stool', { pos: [BAR_X + sx, 0, BAR_Z - 1.15], height: 0.72 });
-    void placeTavern(kit, root, 'BarrelStand', { pos: [BAR_X + 2.85, 0, BAR_Z], height: 1.1 });
+    buildBar(kit, { parent: statical, root, x: BAR_X, z: BAR_Z });
     statics.push({ box: box3(BAR_X - 2.25, 0, BAR_Z - 0.55, BAR_X + 2.25, 1.0, BAR_Z + 0.55), tag: 'solid' });
     statics.push({ box: box3(BAR_X - 2.0, 0, BAR_Z + 0.7, BAR_X + 2.0, 2.3, BAR_Z + 1.7), tag: 'solid' });
     statics.push({ box: box3(BAR_X + 2.5, 0, BAR_Z - 0.35, BAR_X + 3.2, 1.1, BAR_Z + 0.35), tag: 'solid' });
@@ -561,7 +557,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     area('wellW', 'prop.sign.well', 0.7, 0xffd070, [-10.75, 5.4, -9], E);
     area('wellE', 'prop.sign.well', 0.7, 0xffd070, [10.75, 5.4, -9], -E);
     area('lobbyW', 'prop.sign.lobby', 0.5, 0xff9a5a, [-10.75, 3.5, 11], E);
-    area('lobbyE', 'prop.sign.lobby', 0.5, 0xff9a5a, [10.75, 3.5, 7.5], -E);
+    area('lobbyE', 'prop.sign.lobby', 0.5, 0xff9a5a, [10.75, 3.5, 9.4], -E);   // clear of the Wheel House door casing (z 2.6 … 7.4)
     area('bohW', 'prop.sign.backOfHouse', 0.45, 0xff5a7a, [-10.75, 4.4, -23], E);
     area('bohE', 'prop.sign.backOfHouse', 0.45, 0xff5a7a, [10.75, 4.4, -23], -E);
   }
@@ -630,6 +626,18 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
       const lounge = buildLounge(kit, { parent: statical, plan, clock: { x: 0, y: 4.3, z: -29.7 } });
       statics.push(...lounge.statics);
       lights.push(...plan.lights);
+      // ART.md §5/§6: door casings, a light pool under every lamp, haze under the main pendants, posters by the wing doors
+      const lampPools = plan.items.flatMap((it): Pool[] =>
+        it.k === 'torch' ? [{ x: it.x, z: it.z, r: 1.3, color: 0x4a3418 }]
+          : it.k === 'table' && it.lamp ? [{ x: it.x, z: it.z, r: 1.1, color: 0x3a2812 }]
+            : it.k === 'pendant' ? [{ x: it.x, z: it.z, r: 1.2, color: 0x3a2812 }] : []);
+      buildAmbience(kit, {
+        parent: statical,
+        doors: DOORS.flatMap(([z0, z1]) => [{ x: -11, z0, z1 }, { x: 11, z0, z1 }]),
+        pools: [...FIXTURE_POOLS, ...lampPools],
+        beams: HAZE,
+        blockers: ctx.slots.map((s) => slotBody(s)),
+      });
     } catch (e) { log.error('world', 'lounge dressing failed', e); }
   }
 

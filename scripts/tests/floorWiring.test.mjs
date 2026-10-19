@@ -123,12 +123,12 @@ test('SINGLE LIGHT: only the lit machine plays, and the refusal says why', () =>
   const lit = run.watchEv.snapshot().aux.lit;
   assert.ok(lit === SRC.machineId || lit === OTHER.machineId, `lit is on the floor: ${lit}`);
   const dark = lit === SRC.machineId ? OTHER : SRC;
-  assert.equal(run.bet(10, dark), false);
+  assert.equal(run.bet(2, dark), false);
   assert.equal(String(run.lastRefusal()), 'floorEvent');
-  assert.equal(run.wallet(), 30, 'nothing was charged');
+  assert.equal(run.wallet(), SCH.START.pocket, 'nothing was charged');
   const litSrc = lit === SRC.machineId ? SRC : OTHER;
-  assert.equal(run.bet(10, litSrc), true, 'the lit machine plays');
-  run.win(0, litSrc, { bet: 10, tier: 'none' });
+  assert.equal(run.bet(2, litSrc), true, 'the lit machine plays');
+  run.win(0, litSrc, { bet: 2, tier: 'none' });
   run.watchEv.end();
   run.dispose();
 });
@@ -142,8 +142,8 @@ test('LAST CALL DARE: floorAct takes it once armed, and the next round settles i
   assert.equal(run.watchEv.view().canAccept, true);
   assert.equal(run.floorAct(), true, 'the floor key takes the dare');
   assert.equal(run.watchEv.view().canAccept, false);
-  assert.equal(run.bet(10, SRC), true);
-  run.win(0, SRC, { bet: 10, tier: 'none' });
+  assert.equal(run.bet(2, SRC), true);
+  run.win(0, SRC, { bet: 2, tier: 'none' });
   assert.equal(run.watchEv.view(), null, 'the dare ends with its result');
   run.dispose();
 });
@@ -153,9 +153,9 @@ test('the run keeps the four biggest wins, largest first', () => {
   const run = playingWithFloor(14);
   const credited = [];
   for (const gross of [30, 80, 20, 60, 50]) {
-    if (run.wallet() < 10) break;
-    assert.equal(place(run, 10, SRC), true);
-    credited.push(run.win(gross, SRC, { bet: 10, tier: 'big' }));
+    if (run.wallet() < 2) break;
+    assert.equal(place(run, 2, SRC), true);
+    credited.push(run.win(gross, SRC, { bet: 2, tier: 'big' }));
   }
   const top = credited.map((c) => Math.floor(c)).sort((a, b) => b - a).slice(0, 4);
   const wins = run.grandWins();

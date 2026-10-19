@@ -182,6 +182,14 @@ class InputImpl implements InputExt {
 
     window.addEventListener('keydown', (e) => this.onKey(e, true));
     window.addEventListener('keyup', (e) => this.onKey(e, false));
+    // Any click or key (not Esc, not a repeat) while walking unlocked takes the lock back: a closed modal whose own re-lock
+    // was refused (auto-pick, Firefox's short gesture window) hands control over on the player's next input, whatever it hit.
+    const regrab = (e: Event): void => {
+      if ((e as KeyboardEvent).code === 'Escape' || (e as KeyboardEvent).repeat) return;
+      if (this.mode === 'walk' && !this.locked && !this.noLock && !this.seatGlide) void this.requestLock();
+    };
+    window.addEventListener('pointerdown', regrab, true);
+    window.addEventListener('keydown', regrab, true);
     window.addEventListener('blur', () => this.releaseAll());
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.releaseAll(); });
     canvas.addEventListener('mousedown', (e) => this.onMouse(e, true));
@@ -272,7 +280,8 @@ class InputImpl implements InputExt {
         const r = (this.canvas.requestPointerLock as (o?: object) => Promise<void> | undefined).call(this.canvas, opts);
         if (r && typeof r.then === 'function') r.then(() => finish(document.pointerLockElement === this.canvas), () => finish(false));
       } catch { finish(false); }
-      setTimeout(() => finish(document.pointerLockElement === this.canvas), 1500);
+      // safety net for browsers that fire neither event; a settled attempt must not touch `document` again
+      setTimeout(() => { if (!settled) finish(document.pointerLockElement === this.canvas); }, 1500);
     });
   }
 

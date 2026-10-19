@@ -4,9 +4,7 @@
  */
 const en: Record<string, string> = {
   anyKey: 'PRESS ANY KEY',
-  firstSit: 'HOW TO PLAY',
   rulesTitle: 'RULES',
-  rHelpHint: '[{help}] RULES',
   kWin: 'WIN',
   kLose: 'LOST',
   kPush: 'PUSH',
@@ -22,9 +20,7 @@ const en: Record<string, string> = {
 
 const tr: Record<string, string> = {
   anyKey: 'BİR TUŞA BAS',
-  firstSit: 'NASIL OYNANIR',
   rulesTitle: 'KURALLAR',
-  rHelpHint: '[{help}] KURALLAR',
   kWin: 'KAZANDIN',
   kLose: 'KAYBETTİN',
   kPush: 'BERABERE',
@@ -33,7 +29,7 @@ const tr: Record<string, string> = {
   kSurrender: 'TESLİM',
   kEven: 'EŞİT PARA',
   betL: 'BAHİS',
-  pocketL: 'CEBİN',
+  pocketL: 'CEP',
   pullRate1: '1 ÇEKİŞ = 1 TUR',
   pullRateN: '{n} ÇEKİŞ = 1 TUR',
 };

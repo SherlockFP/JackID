@@ -26,7 +26,7 @@ import { countUp, blinkOn, emitComboShow, flashPrefs, JACKPOT_COUNT_S, type Whir
 import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { KitX } from '@/kit';
 import { fmtCoins, t as tr, upper } from '@/core/i18n';
-import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
+import { SeatHud, type HudControl, type HudNumber, type HudPay, type Txt } from '@/machines/_base/seatHud';
 import { TAU } from '@/core/math';
 import { px5Width } from '@/core/texgen/font';
 import { buildModel, type BigOneParts } from './model';
@@ -160,6 +160,12 @@ export const def: MachineDef = {
     'jackpot.mult': 'Multiplies the FULL (jackpot) odds.',
     luck: 'Luck: coalesce chance +1 % per point (cap 30 %), plus the pre-coalesce grid for a visible jump.',
   },
+  // seat coach (_base/coach.ts): taught by doing on the first sits
+  coach: [
+    { key: 'primary', say: 'spin', done: 'round' },
+    { key: 'betUp', say: 'bet', done: 'bet' },
+    { key: 'auto', say: 'gamble', done: 'gamble' },
+  ],
   strings: STRINGS,
 };
 
@@ -245,7 +251,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('bigone', this.tipLines());
+      this.seatHud?.pay(this.payStrip());
     }
   }
 
@@ -272,6 +278,13 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     this.showHud();
   }
 
+  /** The Watch closed: autoplay stops and a chase on offer is collected, so no key pays in Dawn. */
+  protected override onWatchClosed(): void {
+    this.autoLeft = 0;
+    if (this.offer) this.collectKey();
+    this.showHud();
+  }
+
   onLang(): void {
     this.drawScreen();
     if (this.isLocalOccupant) this.showHud();
@@ -281,7 +294,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -743,7 +756,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       this.commiserate({ amount: ev.stake, at: this.parts.screens.top.mesh });
       if (!pc.fast) await this.wait(0.3);
     }
-    this.clearHighlights();
+    if (total > 0) this.dimLit(); else this.clearHighlights();   // what paid stays softly lit until the next spin
     this.drawScreen();
     if (!this.comboOn && !this.disposed) this.bulbsIdle();   // the spin chase and any tease race end here
   }
@@ -1099,19 +1112,19 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
 
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.bigone.tip1', v: { spin: this.k('primary'), stake: `${this.k('betDown')}/${this.k('betUp')}` } },
-      { k: 'm.bigone.tip2', v: { auto: this.k('auto') } },
-      { k: 'm.bigone.tip3', v: { help: this.k('help') } },
-    ];
+  /** The pay strip on the seat HUD: every symbol and its value (a pattern pays value × its multiplier × the stake). */
+  private payStrip(): HudPay[] {
+    const vals = this.currentMods().values;
+    const gild = gildLevels();
+    return SYM_NAMES.map((_, s) => ({
+      px: 32, pays: `×${vals[s] ?? BASE_VALUE[s]}`,
+      paint: (g: CanvasRenderingContext2D) => { g.fillStyle = SYMBOL_BG; g.fillRect(0, 0, 32, 32); paintSymbol(g, s, 0, 0, 0, gild[s] ?? 0); },
+    }));
   }
 
-  /** The rules card: five rules, the symbol values, then every pattern with its multiplier, three to a line. */
+  /** The rules card: the rules, then every pattern with its multiplier, three to a line (the symbol values are the pay strip). */
   private rulesLines(): Txt[] {
     const lines: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6', 'rule7', 'rule8'].map((k) => ({ k: 'm.bigone.' + k }));
-    const vals = this.currentMods().values;
-    lines.push(SYM_NAMES.map((n, s) => `${this.t(`sym_${n}`)} ${vals[s] ?? BASE_VALUE[s]}`).join('   '));
     for (let i = 0; i < PATTERN_IDS.length; i += 3) {
       lines.push(PATTERN_IDS.slice(i, i + 3)
         .map((pat) => `${this.t(`pat_${pat}`)} x${pat === 'CLUSTER' ? 'n-5' : PATTERN_MULT[pat]}`)

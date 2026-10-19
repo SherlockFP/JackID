@@ -210,6 +210,8 @@ export function parseRunSteps(text) {
     }
     const mclk = /^ui:click:(.{1,200})$/.exec(tok);
     if (mclk) { out.push({ kind: 'ui:click', selector: mclk[1].trim(), text: tok }); continue; }
+    const mtp = /^tp:(-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)(?:,(-?[\d.]+))?$/.exec(tok);
+    if (mtp) { out.push({ kind: 'tp', v: mtp.slice(1).map((n) => (n === undefined ? 0 : Number(n))), text: tok }); continue; }
     const ma = /^anchor:([A-Za-z][A-Za-z0-9_.-]{0,80})$/.exec(tok);
     if (ma) { out.push({ kind: 'anchor', name: ma[1], text: tok }); continue; }
     let mr = /^phone:reply:(\d+)$/.exec(tok);
@@ -2017,6 +2019,13 @@ async function runKind(ctx, s, rec) {
       rec.ok = r.ok === true && r.apartment === true;
       if (!rec.ok) rec.reason = r.reason ?? 'no apartment built (world.home)';
       log(`knock-check: ${JSON.stringify({ run: r.run, world: r.world })}`);
+      return;
+    }
+    case 'tp': {   // tp:x,z,y,yawDeg[,pitchDeg]: free camera spot for texture sweeps (feet at y; yaw 0 faces -Z)
+      const [x, z, y, yaw, pitch] = s.v;
+      Object.assign(rec, await evalJson(cdp, `(() => { const a = window.jackid.app; if (!a.player) return { ok: false }; while (a.cutscene.playing) a.cutscene.abort();
+        a.player.teleport(a.camera.position.clone().set(${x}, ${y}, ${z}), ${yaw} * Math.PI / 180); a.player.pitch = ${pitch} * Math.PI / 180; return { ok: true }; })()`));
+      rec.ok = rec.ok === true;
       return;
     }
     case 'anchor': {

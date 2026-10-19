@@ -143,6 +143,12 @@ export const def: MachineDef = {
     'm.blackjack.bjPayAdd': 'Blackjack payout 1.5 → 1.5 + x (0.5 = 2:1). Dealer\'s Button charm.',
     'm.blackjack.doubleAny': 'Double on three or more cards too (non-zero enables).',
   },
+  // seat coach (_base/coach.ts): taught by doing on the first sits
+  coach: [
+    { key: 'primary', say: 'ready', done: 'round' },
+    { key: 'hit stand', say: 'hitStand', done: 'result' },
+    { key: 'betUp', say: 'bet', done: 'bet' },
+  ],
   strings: STRINGS,
 };
 
@@ -183,7 +189,7 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -580,7 +586,6 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
       this.sfx('chime');
       this.seatHud?.show();
       this.refreshHud();
-      this.seatHud?.firstTip('blackjack', this.tipLines());
     }
   }
 
@@ -952,14 +957,6 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.blackjack.tip1' },
-      { k: 'm.blackjack.tip2', v: { ready: this.k('primary'), bet: `${this.k('betDown')}/${this.k('betUp')}` } },
-      { k: 'm.blackjack.tip3', v: { hit: this.k('n1'), stand: this.k('n2'), help: this.k('help') } },
-    ];
-  }
 
   /** One hand as the player reads it: total, soft total "7/17", BJ or BUST. */
   private handText(cards: readonly string[]): string {

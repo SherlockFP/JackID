@@ -241,3 +241,12 @@ test('soup: Ada not home waits, once a Night it is Harmony +1, again it is only 
   assert.equal(F.soupOutcome(3, true), 'plain');
   assert.equal(F.soupOutcome(5, false), 'plain');
 });
+
+test('Selim\'s bar: a tip is a small share of the quota (at least 1), PAY BACK shows only while he holds a loan he can take', () => {
+  assert.equal(F.tipPrice(0), 1);
+  assert.equal(F.tipPrice(1000), 30);
+  assert.deepEqual(F.barRows({ owes: 0, forgot: false, still: false }), ['tip']);
+  assert.deepEqual(F.barRows({ owes: 1, forgot: false, still: false }), ['tip', 'repay']);
+  assert.deepEqual(F.barRows({ owes: 1, forgot: true, still: false }), ['tip'], 'he forgot you: nothing to pay back');
+  assert.deepEqual(F.barRows({ owes: 2, forgot: false, still: true }), [], 'still: he takes nothing');
+});

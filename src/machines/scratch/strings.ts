@@ -10,7 +10,7 @@ import type { MachineStrings } from '@/machines/_base/types';
 export const STRINGS: MachineStrings = {
   en: {
     name: 'Scratch-Card Vendor',
-    desc: 'Five cards, five prize tables. Pick a card, feed the slot, and scratch the foil before it gives up its secret.',
+    desc: 'Five cards, five prize tables. Pick one, feed the slot, scratch the foil.',
     marquee: 'SCRATCH & WIN',
     c0: 'PIT PENNY', c1: 'LUCKY LADDER', c2: 'HOUSE vs YOU', c3: 'BLOOD MOON', c4: 'THE DEEP END',
     vend: 'Vend', scratchAll: 'Scratch all', qty: 'Qty {n}', card: 'Card', prizes: 'Prizes', leftLabel: 'Left',
@@ -26,9 +26,6 @@ export const STRINGS: MachineStrings = {
     cPick: 'SCRATCH', cMove: 'MOVE', nPicks: 'PICKS LEFT', pairOne: '2 MATCHED — ONE MORE!', pairHit: 'PAIR!',
     nBet: 'BET', nCards: 'CARDS', nPrice: 'PRICE', nLast: 'LAST', nBalance: 'BALANCE',
     cSweep: 'SWEEP', cSweepAll: 'SWEEP ALL', cVend: 'BUY CARD · {n}', cCard: 'CARD', cQty: 'QTY', cRules: 'PRIZES', cLeave: 'LEAVE',
-    tip1: 'Pick a card with {pick}, then press {vend} to buy.',
-    tip2: 'Drag the coin over the foil to scratch it off. PIT PENNY: pick your spots with {pick}.',
-    tip3: 'Press {sweep} to clear a card at once, {help} for the prizes.',
     rule1: 'Scratch the foil. A card pays its prize multiplier times its price.',
     rule2: 'A batch of up to five cards pays once, after the last card is revealed.',
     rule3: 'Leaving with cards left sweeps them and pays the batch.',
@@ -42,7 +39,7 @@ export const STRINGS: MachineStrings = {
   },
   tr: {
     name: 'Kazı Kazan Otomatı',
-    desc: 'Beş kart, beş ödül tablosu. Bir kart seç, yuvayı besle ve sırrını vermeden folyoyu kazı.',
+    desc: 'Beş kart, beş ödül tablosu. Birini seç, yuvayı besle, folyoyu kazı.',
     marquee: 'KAZI & KAZAN',
     c0: 'KUYU KURUŞU', c1: 'ŞANSLI MERDİVEN', c2: 'EV ile SEN', c3: 'KAN AYI', c4: 'DERİN UÇ',
     vend: 'Çıkar', scratchAll: 'Hepsini kazı', qty: 'Adet {n}', card: 'Kart', prizes: 'Ödüller', leftLabel: 'Kalan',
@@ -58,9 +55,6 @@ export const STRINGS: MachineStrings = {
     cPick: 'KAZI', cMove: 'TAŞI', nPicks: 'KALAN SEÇİM', pairOne: '2 EŞLEŞTİ — BİR TANE DAHA!', pairHit: 'ÇİFT!',
     nBet: 'BAHİS', nCards: 'KART', nPrice: 'FİYAT', nLast: 'SON', nBalance: 'BAKİYE',
     cSweep: 'SİL', cSweepAll: 'HEPSİNİ SİL', cVend: 'KART AL · {n}', cCard: 'KART', cQty: 'ADET', cRules: 'ÖDÜLLER', cLeave: 'AYRIL',
-    tip1: 'Kartı {pick} ile seç, sonra {vend} ile satın al.',
-    tip2: 'Madeni parayı folyonun üstünde sürükleyerek kazı. KUYU KURUŞU: {pick} ile göz seç.',
-    tip3: '{sweep} bir kartı tek seferde açar, ödüller için {help}.',
     rule1: 'Folyoyu kazı. Kart, ödül çarpanı kadar kart fiyatını öder.',
     rule2: 'En fazla beş kartlık paket, son kart açıldıktan sonra tek seferde öder.',
     rule3: 'Kartlar kalmışken çıkarsan kalanlar otomatik açılır ve paket ödenir.',

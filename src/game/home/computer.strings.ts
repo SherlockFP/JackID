@@ -26,7 +26,7 @@ export default {
     'home.heat': 'The Collector is watching your business. At the next Dawn he will freeze {n} of your ventures.',
     'home.totals': 'This run: ventures paid {a}, the computer cost {b}.',
 
-    'inv.hint': 'Each one pays at every paid Dawn and grows a little each time. Sell for half the price.',
+    'inv.hint': 'Pays every paid Dawn and grows a little each time. Sells for half.',
     'inv.pays': 'pays about {n} a Dawn · back in ~{k} Nights',
     'inv.held': 'held {n}/{k}',
     'inv.growth': 'growing x{n}',
@@ -99,7 +99,7 @@ export default {
     'home.heat': 'Tahsildar işlerini kolluyor. Bir sonraki şafakta yatırımlarından {n} tanesini donduracak.',
     'home.totals': 'Bu oyunda: yatırımlar {a} getirdi, bilgisayara {b} harcandı.',
 
-    'inv.hint': 'Her biri ödenen her şafakta para getirir ve her seferinde biraz büyür. Yarı fiyatına satılır.',
+    'inv.hint': 'Ödenen her şafakta para getirir, biraz büyür. Yarı fiyata satılır.',
     'inv.pays': 'şafak başı ~{n} · ~{k} gecede kendini öder',
     'inv.held': 'elinde {n}/{k}',
     'inv.growth': 'büyüme x{n}',

@@ -7,7 +7,7 @@ import type { MachineStrings } from '@/machines/_base/types';
 export const STRINGS: MachineStrings = {
   en: {
     name: 'Coin Pusher "The Shelf"',
-    desc: 'A glass box of coins on a sliding shelf. Drop your coins, feed the lucky gate, and hope the avalanche reaches your tray.',
+    desc: 'A glass box of coins on a sliding shelf. Feed the lucky gate, hope for an avalanche.',
     marquee: 'THE SHELF',
     hintDrop: 'Drop', hintAim: 'Aim', hintThump: 'Thump', hintInfo: 'Info', hintLeave: 'Leave',
     block: 'BLOCK {n}/10', blockPay: 'BLOCK +{n}', tray: 'TRAY {n}', shelf: 'SHELF {n}',
@@ -20,11 +20,11 @@ export const STRINGS: MachineStrings = {
     noFunds: 'Not enough coins for a block', scav: 'Tray collected +{n}', wallsTimer: 'WALLS {n}s',
     trayRisk: 'TRAY AT RISK: {n}', noTray: 'Tray is empty, nothing to risk',
     infoTitle: 'COIN PUSHER RULES',
-    infoBody: 'Hold Space or click to drop coins (3 a second). A and D aim the chute. Ten coins make a block; its wins pay out when the block closes. Coins that cross your half land in your tray. Gutter coins are lost to the house. The lucky gate spins the bonus reels. F thumps the shelf: each thump shoves a few coins into the trays and fills the HEAT meter. Heat cools over time. The third thump in a short run trips the TILT alarm: your tray is lost and the station locks for 30 seconds.',
+    infoBody: 'Hold Space or click to drop coins. A and D aim. F thumps the shelf and fills HEAT. A third quick thump trips TILT: tray lost, station locked 30 s. The lucky gate spins bonus reels.',
   },
   tr: {
     name: 'Jeton İtici «Raf»',
-    desc: 'Kayan rafta bir yığın jetonun olduğu camlı kutu. Jetonlarını bırak, şanslı kapıyı besle ve çığın tepsine ulaşmasını umut et.',
+    desc: 'Kayan rafta camlı jeton kutusu. Şans kapısını besle, çığı bekle.',
     marquee: 'RAF',
     hintDrop: 'Bırak', hintAim: 'Nişan', hintThump: 'Vur', hintInfo: 'Bilgi', hintLeave: 'Ayrıl',
     block: 'BLOK {n}/10', blockPay: 'BLOK +{n}', tray: 'TEPSİ {n}', shelf: 'RAF {n}',
@@ -37,6 +37,6 @@ export const STRINGS: MachineStrings = {
     noFunds: 'Blok için yeterli jeton yok', scav: 'Tepsi toplandı +{n}', wallsTimer: 'DUVARLAR {n}s',
     trayRisk: 'RİSKTEKİ TEPSİ: {n}', noTray: 'Tepsi boş, riske atılacak bir şey yok',
     infoTitle: 'JETON İTİCİ KURALLARI',
-    infoBody: 'Jeton bırakmak için Boşluk tuşunu basılı tut ya da tıkla (saniyede 3). A ve D oluğu hizalar. On jeton bir blok yapar; kazançlar blok kapanınca ödenir. Senin yarına düşen jetonlar tepsine gelir. Kenar oluklarındaki jetonlar eve kalır. Şans kapısı bonus makaralarını çevirir. F rafı sarsar: her vuruş birkaç jetonu tepsilere iter ve ISI ölçerini doldurur. Isı zamanla soğur. Kısa sürede üçüncü vuruş SARSINTI alarmını tetikler: tepsin kaybolur ve istasyon 30 saniye kilitlenir.',
+    infoBody: 'Boşluk ya da tık: jeton bırak. A ve D nişan alır. F rafı sarsar, ISI dolar. Kısa sürede üçüncü vuruş SARSINTI: tepsi gider, istasyon 30 sn kilitli. Şans kapısı bonus makaralarını çevirir.',
   },
 };

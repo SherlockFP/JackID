@@ -544,7 +544,9 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
   }
   ctx.onstatechange = (): void => { if (ctx.state === 'running') onRunning(); };
   if (ctx.state === 'running') onRunning();
-  void loadSamples(SAMPLE_URLS);
+  // the core samples load just after the menu is up, so they never share the wire with the first scripts and fonts
+  const core = window.setTimeout(() => { void loadSamples(SAMPLE_URLS); }, 1200);
+  import.meta.hot?.dispose(() => window.clearTimeout(core));
   // Recorded sounds: the small files are warmed a few seconds in (never competing with start-up); the long ones load on first use.
   const warm = window.setTimeout(() => { void loadSamples(WARM_URLS); }, 3500);
   import.meta.hot?.dispose(() => window.clearTimeout(warm));

@@ -12,6 +12,15 @@
 import type { Rng } from '@/core/rng';
 import type { EcoSource } from '@/game/types';
 
+/**
+ * Gambles (a double-up offer, a ladder, a chase) live only while the floor takes plays (`play`, `lastCall`: the run's `canPlay`, the
+ * seat HUD's FLOOR CLOSED); the bench has no phase ('idle'). From `closing` on (grace, settle, Dawn's `collection`, the Mola) they are
+ * locked: what is pending pays out at once and nothing new opens, so no key pays in Dawn and no pot hangs off the pocket through the
+ * Watch's accounting.
+ */
+export const gamblesLive = (phase: string | undefined): boolean =>
+  phase === undefined || phase === 'idle' || phase === 'play' || phase === 'lastCall';
+
 // ── DOUBLE OR NOTHING ──────────────────────────────────────────────────────────────────────────────
 export const GAMBLE_STEPS = 4;                 // x2, x4, x8, x16
 export const GAMBLE_WIN_P = 0.485;             // 2 x 0.485 = 0.97 per rung

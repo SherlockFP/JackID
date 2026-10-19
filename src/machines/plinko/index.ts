@@ -102,6 +102,12 @@ export const def: MachineDef = {
     'm.plinko.edgeMult': 'Multiplier on the edge slots 0 and 12. Base 1.',
     'm.plinko.safetyFloor': 'Every multiplier below this value is raised to it. Base 0.',
   },
+  // seat coach (_base/coach.ts): taught by doing on the first sits
+  coach: [
+    { key: 'primary', say: 'drop', done: 'round' },
+    { key: 'n1 n2 n3', say: 'risk', done: 'press' },
+    { key: 'betUp', say: 'bet', done: 'bet' },
+  ],
   strings: {
     en: {
       name: 'Plinko Board',
@@ -171,7 +177,6 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip(this.def.id, this.tipLines());
     }
   }
 
@@ -196,7 +201,7 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet && a !== 'up' && a !== 'down') return;
@@ -576,13 +581,6 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
   private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.${this.def.id}.${key}`, v } : { k: `m.${this.def.id}.${key}` }; }
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-  private tipLines(): Txt[] {
-    return [
-      this.tx('tip1', { risk: `${this.k('n1')}-${this.k('n3')}`, pucks: `${this.k('up')}/${this.k('down')}` }),
-      this.tx('tip2', { drop: this.k('primary') }),
-      this.tx('tip3', { help: this.k('help') }),
-    ];
-  }
   private rulesLines(): Txt[] {
     return [this.tx('rule1'), this.tx('rule2'), this.tx('rule3'), this.tx('rule4', { keys: `${this.k('betDown')}/${this.k('betUp')}` }), this.tx('rule5')];
   }

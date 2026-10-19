@@ -97,6 +97,7 @@ export function crispFilters(tex: THREE.Texture): void {
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.generateMipmaps = true;
   tex.anisotropy = 4;
+  tex.userData.mips = true;   // psxTexture would otherwise reset the filters when the material is built
   tex.needsUpdate = true;
 }
 

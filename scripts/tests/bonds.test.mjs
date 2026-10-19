@@ -111,12 +111,12 @@ test('Selim lends a seal at bond 2+, once a Night, and the thing he forgets come
   assert.equal(c.refused, undefined);
   assert.equal(c.line, 'bonds.selim.lend');
   assert.ok(Number.isInteger(c.thing) && c.thing >= 0 && c.thing < B.SELIM_THINGS);
-  assert.deepEqual(b.selim(), { seals: 1, owes: 1, forgot: false, still: false });
+  assert.deepEqual(b.selim(), { seals: 1, owes: 1, price: 0, forgot: false, still: false });
   assert.equal(b.apply(1, { kind: 'lend' }).refused, 'night');
   const r = b.apply(2, { kind: 'repay' });
   assert.equal(r.thing, c.thing);
   assert.equal(r.line, 'bonds.selim.repay');
-  assert.deepEqual(b.selim(), { seals: 2, owes: 0, forgot: false, still: false });
+  assert.deepEqual(b.selim(), { seals: 2, owes: 0, price: 0, forgot: false, still: false });
   assert.equal(b.apply(2, { kind: 'repay' }).refused, 'none');
   assert.equal(b.level('selim'), 2, 'lending and paying back move no pip');
   const seen = new Set();
@@ -146,7 +146,7 @@ test('Selim forgets you when a loan is 3 Nights old or the last Night comes: 0, 
   b.apply(2, { kind: 'lend' });           // lent Night 2, due Night 5
   for (const n of [2, 3, 4]) { assert.equal(dawn(b, n).deltas.length, 0, `Dawn ${n}`); ev(b, n, 'talk', 'selim'); }
   assert.deepEqual(dawn(b, 5).deltas, [{ who: 'selim', from: 2, to: 0, why: 'forgot', line: 'bonds.selim.forgot' }]);
-  assert.deepEqual(b.selim(), { seals: 1, owes: 1, forgot: true, still: false });
+  assert.deepEqual(b.selim(), { seals: 1, owes: 1, price: 0, forgot: true, still: false });
   assert.equal(b.greeting('selim'), 'bonds.selim.forgotYou');
   assert.deepEqual(b.against(), ['selim']);
   assert.equal(b.apply(5, { kind: 'repay' }).refused, 'forgot');
@@ -158,7 +158,7 @@ test('Selim forgets you when a loan is 3 Nights old or the last Night comes: 0, 
   paid.apply(2, { kind: 'lend' });
   paid.apply(4, { kind: 'repay' });
   for (let n = 2; n <= 8; n++) { dawn(paid, n); ev(paid, n, 'talk', 'selim'); }
-  assert.deepEqual(paid.selim(), { seals: 2, owes: 0, forgot: false, still: false });
+  assert.deepEqual(paid.selim(), { seals: 2, owes: 0, price: 0, forgot: false, still: false });
   assert.equal(paid.level('selim'), 2, 'paid in time, he remembers');
 
   const late = make();
@@ -268,7 +268,7 @@ test('save round trip: JSON-safe, the same afterwards, and a damaged save falls 
   ev(f, 1, 'help', 'selim'); f.apply(1, { kind: 'lend' }); dawn(f, 4);
   const g = make(3);
   g.restore(JSON.parse(JSON.stringify(f.snapshot())));
-  assert.deepEqual(g.selim(), { seals: 1, owes: 1, forgot: true, still: false });
+  assert.deepEqual(g.selim(), { seals: 1, owes: 1, price: 0, forgot: true, still: false });
   assert.deepEqual(g.against(), ['selim']);
 
   const bad = [undefined, null, 'x', 7, [], {}, { b: 'x' }, { b: { selim: { v: 99, last: -1, up: 'x' } } }, { loans: [null, { night: 'x' }, { night: 1, thing: 99 }, { night: 1, thing: 1 }, { night: 2, thing: 2 }, { night: 3, thing: 3 }] }, { forgot: 'yes' }, { taken: -5 }];
@@ -290,10 +290,17 @@ test('strings: EN and TR for every line the module can return, no dashes, the sa
   for (const w of ['tamsin', 'lucan', 'mimosa', 'vell', 'collector']) need.push(`${w}.loki`);
   need.push('selim.forgot', 'selim.forgotYou', 'selim.still', 'selim.lend', 'selim.repay');
   for (let i = 0; i < B.SELIM_THINGS; i++) need.push(`selim.thing.${i}`);
+  // the wiring's own lines (A4): names (the same in both), the PEOPLE page, Selim's bar, his last seal, the VISIT
+  const wiring = [...B.BOND_IDS.map((w) => `name.${w}`), 'people', 'people.hint', 'selim.tipLine', 'selim.tipNone', 'selim.food', 'selim.pairLine',
+    'selim.thanks', 'bar.title', 'bar.tip', 'bar.repay', 'bar.close', 'bar.broke', 'selim.ask', 'selim.askYes', 'selim.askNo', 'collector.visit'];
   assert.equal(STR.prefix, 'bonds.');
-  assert.deepEqual(Object.keys(STR.en).sort(), [...need].sort(), 'no missing and no stray EN key');
-  assert.deepEqual(Object.keys(STR.tr).sort(), [...need].sort(), 'no missing and no stray TR key');
+  assert.deepEqual(Object.keys(STR.en).sort(), [...need, ...wiring].sort(), 'no missing and no stray EN key');
+  assert.deepEqual(Object.keys(STR.tr).sort(), [...need, ...wiring].sort(), 'no missing and no stray TR key');
   const slots = (s) => (s.match(/\{\w+\}/g) ?? []).sort().join();
+  for (const k of wiring) {
+    assert.ok(STR.en[k] && STR.tr[k] && !/[—–]/.test(STR.en[k] + STR.tr[k]), k);
+    assert.equal(slots(STR.en[k]), slots(STR.tr[k]), `${k}: same placeholders`);
+  }
   for (const k of need) {
     const en = STR.en[k]; const tr = STR.tr[k];
     assert.ok(typeof en === 'string' && en.length > 3 && typeof tr === 'string' && tr.length > 3, k);
@@ -305,4 +312,41 @@ test('strings: EN and TR for every line the module can return, no dashes, the sa
   assert.equal(B.lineKey('mira', 2), 'bonds.mira.2');
   const tr = Object.values(STR.tr).join('');
   for (const ch of 'çğıöşüİ') assert.ok(tr.includes(ch), `TR uses ${ch}`);
+});
+
+test('wiring (A4): a loan remembers the coins it covered (the pay-back price), and once-a-run perks fire once and survive the save', () => {
+  const b = make();
+  ev(b, 1, 'help', 'selim');
+  b.apply(1, { kind: 'lend', coins: 42.7 });
+  assert.equal(b.selim().price, 42, 'the oldest loan sets the price');
+  assert.equal(b.useOnce('collector.visit'), false, 'not held: nothing spent');
+  for (let night = 1; night <= 3; night++) ev(b, night, 'help', 'lucan');
+  assert.equal(b.useOnce('lucan.pair'), true);
+  assert.equal(b.useOnce('lucan.pair'), false, 'once a run');
+  const c = make();
+  c.restore(JSON.parse(JSON.stringify(b.snapshot())));
+  assert.equal(c.selim().price, 42);
+  assert.equal(c.useOnce('lucan.pair'), false, 'spent stays spent after a reload');
+  c.restore({ used: ['nope', 7, 'lucan.pair'] });
+  assert.deepEqual(c.snapshot().used, ['lucan.pair'], 'unknown ids are dropped');
+  b.apply(2, { kind: 'repay' });
+  assert.equal(b.selim().price, 0, 'paid back: nothing owed');
+});
+
+test('wiring: picking up Mira\'s story call raises her bond once a Night, so her Night 7 kept-pair call can ring', async () => {
+  const RUN = await load('src/game/run.ts');
+  const EV = await load('src/core/events.ts');
+  const CALLS = await load('src/game/story/calls.ts');
+  (await load('src/machines/_base/registry.ts')).load();
+  const run = RUN.createRun({ seed: 41, mode: 'debt' });
+  const pick = (id) => EV.bus.emit('phone:story', { callId: 1, id, speaker: 'story.speaker.mira', lines: [] });
+  run.index = 1;   // Night 2
+  pick('mira_n2');
+  pick('mira_n2');
+  assert.equal(run.bonds().level('mira'), 1, 'one pip a Night');
+  run.index = 4;   // Night 5
+  pick('mira_n5');
+  assert.equal(run.bonds().level('mira'), 2);
+  assert.equal(CALLS.storyCallFor(7, (id) => run.bonds().has(id))?.id, 'mira_n7', 'bond 2 holds mira.pair: the Night 7 call is reachable');
+  run.dispose();
 });

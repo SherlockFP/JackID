@@ -7,29 +7,31 @@
  *   NUMBERS    labelled key figures (bet, balance, totals)     numbers([{label, value, tone}])
  *   CONTROLS   the valid actions RIGHT NOW, with bound keys    controls([{key, label, action, primary}])
  *   RESULT     WIN / LOSE / PUSH / BLACKJACK + amount, 1.5 s   result(kind, amount)
- *   FIRST SIT  3-line how-to, once per machine (localStorage)  firstTip(machineId, lines) → true if shown
- *   RULES      full rules card, re-opened by the help key      rules(lines) / dismiss()
+ *   PAY        a machine's symbols and what each pays           pay(items)
+ *   COACH      one small box over the bar, the key to press pulsing in it (coach.ts, from `coach:view`)
+ *   RULES      full rules card, opened by the help key         rules(lines) / dismiss()
  *
- * The FIRST-SIT tip and the RULES card are 3D placards (`placard3d.ts`): a board held up in front of the eye in the
- * first-person overlay, with bitmap text and page buttons. The DOM part is the HUD bar only.
+ * The RULES card is a 3D placard (`placard3d.ts`): a board held up in front of the eye in the first-person overlay, with
+ * bitmap text and page buttons. Everything else is DOM.
  *
  * Lifecycle: the machine calls `show()` when the local player is seated and `hide()` on stand-up. Every text
  * argument is an i18n key (`{ k, v? }`) or a literal string for values that need no translation (numbers). The
  * machine re-sends its content from `onLang()`. While `blocking` is true the machine routes its next action to
- * `dismiss()` and swallows it (any key closes a card; a click on the card closes it too).
+ * `dismiss()` and swallows it (any key closes the card; a click on the card closes it too).
  */
 import { bus } from '@/core/events';
 import { t as tr, fmtCoins, type I18nVars } from '@/core/i18n';
 import type { TiltView } from '@/game/circuit';
 import type { OddsLine } from '@/game/pace';
-import { BRASS, CREAM, INK, INK_SOFT, Placard3D, button, paginate, put, rowsIn, rulesFirstEver, rulesMarkShown, wrapPx5 } from './placard3d';
-import { showRulesHint } from './rulesHint';
+import { BRASS, CREAM, INK, INK_SOFT, Placard3D, button, paginate, put, rowsIn, wrapPx5 } from './placard3d';
+import type { CoachView } from './coach';
 import { STAKE_PRESET_KEYS, type StakePresetKey, type StakePresetsEvent } from './stakePresets';
 import { flashPrefs } from './juice';
 import { tierAtLeast, type JuiceTier } from './tiers';
 import { uiSfx } from '@/core/ui/widgets';
 import './seatHud.css';
 import './seatHudLayout.css';
+import './coach.css';
 
 declare module '@/core/events' {
   interface GameEvents {
@@ -44,8 +46,9 @@ export type HudResultKind = 'win' | 'lose' | 'push' | 'blackjack' | 'bust' | 'su
 export type Txt = string | { k: string; v?: I18nVars };
 export interface HudNumber { label: Txt; value: Txt; tone?: HudTone }
 export interface HudControl { key: string; label: Txt; action?: string; primary?: boolean }
+/** One cell of the pay strip: the symbol's icon (the machine paints it on a `px` square) and what it pays. */
+export interface HudPay { px: number; paint(g: CanvasRenderingContext2D): void; pays: string }
 
-const seenKey = (id: string): string => `jackid.seatTip.${id}`;
 const RESULT_KEY: Record<HudResultKind, string> = {
   win: 'hud.seat.kWin', lose: 'hud.seat.kLose', push: 'hud.seat.kPush', blackjack: 'hud.seat.kBlackjack',
   bust: 'hud.seat.kBust', surrender: 'hud.seat.kSurrender', even: 'hud.seat.kEven',
@@ -117,6 +120,11 @@ export class SeatHud {
   private readonly resultA: HTMLElement;
   private readonly numsEl: HTMLElement;
   private readonly ctrlEl: HTMLElement;
+  private readonly payEl: HTMLElement;
+  /** The coach box (coach.ts): practice tag, key cap, line, rule; drawn from the last `coach:view`. */
+  private readonly coachEl: HTMLElement;
+  private coachV: CoachView | null = null;
+  private coachKey = '';
   private readonly tiltEl: HTMLElement;
   private readonly tiltL: HTMLElement;
   private readonly tiltLamp: HTMLElement;
@@ -130,11 +138,10 @@ export class SeatHud {
   /** The latest Tilt state the run announced (`circuit:tilt`); shown while this HUD is. */
   private tilt: TiltView | null = null;
   private readonly offs: Array<() => void> = [];
-  /** The open tip / rules card (3D placard), or null. */
+  /** The open rules card (3D placard), or null. */
   private cardP: Placard3D | null = null;
   private shown = false;
-  private card: 'none' | 'tip' | 'rules' = 'none';
-  private tipId = '';
+  private card: 'none' | 'rules' = 'none';
   private cancelResult: (() => void) | null = null;
 
   /** `mount` is normally the machine's `ctx.ui.root` (`#ui`). */
@@ -146,6 +153,8 @@ export class SeatHud {
     this.stateT = make('span', 'shud-state-t', this.stateEl);
     this.stateS = make('span', 'shud-state-s', this.stateEl);
     this.goalEl = make('div', 'shud-goal shud-panel', top);
+    this.payEl = make('div', 'shud-pay shud-panel', top);
+    this.payEl.style.display = 'none';
     this.resultEl = make('div', 'shud-result', this.root);
     this.resultT = make('span', 'shud-result-t', this.resultEl);
     this.resultA = make('span', 'shud-result-a', this.resultEl);
@@ -174,12 +183,16 @@ export class SeatHud {
     this.oddsEl = make('div', 'shud-odds shud-panel', bottom);
     this.oddsEl.style.maxWidth = '70vw'; this.oddsEl.style.whiteSpace = 'normal'; this.oddsEl.style.overflowWrap = 'anywhere';
     this.oddsEl.style.display = 'none';
+    this.coachEl = make('div', 'shud-coach shud-panel', bottom);
+    this.coachEl.style.display = 'none';
     this.ctrlEl = make('div', 'shud-ctrl shud-panel', bottom);
     this.stackRo = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => this.placeToasts()) : null;
     this.stackRo?.observe(top);
     this.stackRo?.observe(bottom);
     this.offs.push(bus.on('circuit:tilt', (e) => { this.tilt = e.tilt; this.refreshTilt(); }));
     this.offs.push(bus.on('seat:odds', (e) => this.odds(e.line)));
+    // the seated machine publishes before it shows the HUD, so the last view is kept and drawn on show()
+    this.offs.push(bus.on('coach:view', (e) => { this.coachV = e.view; this.refreshCoach(); }));
     this.offs.push(bus.on('ui:blocking', ({ blocking }) => this.setUiBlocked(blocking)));
     // STAKE: the local player's bet (machine:round) and pocket (wallet) feed the readout; the econ lane may flag a high stake.
     const mine = (pid: number): boolean => pid === SeatHud.stakeSource().self;
@@ -299,21 +312,17 @@ export class SeatHud {
 
   // ── lifecycle ─────────────────────────────────────────────────────────────────────────────────
   get visible(): boolean { return this.shown; }
-  /** A tip or rules card is open: route the next action to `dismiss()`. */
+  /** The rules card is open: route the next action to `dismiss()`. */
   get blocking(): boolean { return this.card !== 'none'; }
-  /** The open card is the first-sit tip (not the rules card): a machine may let its play key through as well. */
-  get tipOpen(): boolean { return this.card === 'tip'; }
-  get rulesOpen(): boolean { return this.card === 'rules'; }
+  /** A card or a modal covers the view: DOM drawn over the world (a machine's key chips) steps aside while this is true. */
+  get covered(): boolean { return this.card !== 'none' || this.uiBlocked; }
 
   /** Seated: show the overlay. */
   show(): void {
     this.shown = true; this.root.classList.add('on'); this.root.parentElement?.classList.add('seated');
     this.stakeKnown = false; this.stakeBet = 0;   // each seat reports its own stake; a seat that never does shows no STAKE readout
-    this.refreshTilt(); this.refreshStake(); this.refreshRate(); this.refreshPresets(); this.placeToasts();
+    this.refreshTilt(); this.refreshStake(); this.refreshRate(); this.refreshPresets(); this.refreshCoach(); this.placeToasts();
   }
-  /** Stood up: hide everything, drop the result and any open card (an unseen tip stays unseen). */
-  /** Label of the help key; the in-game session points this at the live binding (default key H). */
-  static helpKeyLabel: () => string = () => 'H';
   /**
    * The local player's id and pocket for the STAKE readout. The in-game HUD (`menu/hud.ts`) points this at the run while a
    * Night is on; the default reads nothing (zero pocket, no own events).
@@ -329,9 +338,8 @@ export class SeatHud {
    * the default says open, so a standalone bench keeps its prompts.
    */
   static floorOpen: () => boolean = () => true;
-  private offHint: (() => void) | null = null;
+  /** Stood up: hide everything, drop the result and the rules card. */
   hide(): void {
-    this.offHint?.(); this.offHint = null;
     this.shown = false;
     this.root.classList.remove('on');
     this.root.parentElement?.classList.remove('seated');
@@ -340,10 +348,11 @@ export class SeatHud {
     this.refreshTilt();
     this.refreshRate();
     this.refreshPresets();
+    this.refreshCoach();
     this.placeToasts();
   }
   dispose(): void {
-    this.offHint?.(); this.offHint = null; for (const off of this.offs.splice(0)) off(); this.clearResult(); this.cardP?.dispose(); this.cardP = null;
+    for (const off of this.offs.splice(0)) off(); this.clearResult(); this.cardP?.dispose(); this.cardP = null;
     this.stackRo?.disconnect();
     this.root.parentElement?.style.removeProperty('--seat-top-b');
     this.root.parentElement?.style.removeProperty('--seat-bot-t');
@@ -370,16 +379,12 @@ export class SeatHud {
   }
 
   /**
-   * The toast stack (`.px-toasts`, the Night summary and other news) is pushed down to sit under this HUD's header while
-   * the HUD is up; it used to cover the goal and the state banner. Restored when the HUD hides or the UI blocks.
+   * Re-places the stack edges. The toast column (`.px-toasts`, the news and every banner while seated) is NOT moved from here:
+   * ui.css anchors it upper right under the HUD's right stack (`--hud-rs-b`), clear of this header, the machine and its tip. An
+   * inline `top` under this header used to override that and sat the toasts on the right stack.
    */
   private placeToasts(): void {
     this.placeStack();
-    const stack = this.root.parentElement?.querySelector<HTMLElement>('.px-toasts');
-    if (!stack) return;
-    if (!this.shown || this.uiBlocked) { stack.style.top = ''; return; }
-    const head = this.root.querySelector<HTMLElement>('.shud-top');
-    stack.style.top = head ? `${head.offsetTop + head.offsetHeight + 6}px` : '';
   }
 
   /**
@@ -421,6 +426,48 @@ export class SeatHud {
       make('span', 'shud-btn-l', b).textContent = txt(c.label);
     }
     this.ctrlEl.style.display = items.length ? '' : 'none';
+    this.coachKey = '';
+    this.refreshCoach();                                  // the pulse sits on a button of the bar just built
+  }
+
+  /** The pay strip under the goal: each symbol's icon and what it pays (`×2`). Null or [] hides it. */
+  pay(items: HudPay[] | null): void {
+    this.payEl.replaceChildren();
+    for (const p of items ?? []) {
+      const cell = make('span', 'shud-pay-i', this.payEl);
+      const icon = make('canvas', '', cell);
+      icon.width = icon.height = p.px;
+      const g = icon.getContext('2d');
+      if (g) p.paint(g);
+      make('span', '', cell).textContent = p.pays;
+    }
+    this.payEl.style.display = items?.length ? '' : 'none';
+    this.placeToasts();
+  }
+
+  /**
+   * Draws the coach box and pulses the step's key in the bar. A step line shows only while its key is in the bar (the bar
+   * lists what is valid right now), and its key cap is the bar's own. A result note (no keys) shows as is.
+   */
+  private refreshCoach(): void {
+    const v = this.shown ? this.coachV : null;
+    const btns = (v?.keys ?? []).flatMap((k) => [...this.ctrlEl.querySelectorAll<HTMLElement>(`.shud-btn[data-action="${k}"]`)]);
+    const line = v && (v.keys.length === 0 || btns.length > 0) ? v.line : '';
+    const cap = btns.map((b) => b.querySelector('.shud-key')?.textContent ?? '').join('/');
+    const key = v ? `${v.keys.join(' ')}|${cap}|${line}|${v.why}|${v.tone}|${v.tag}` : '';
+    if (key === this.coachKey) return;
+    this.coachKey = key;
+    for (const b of this.ctrlEl.querySelectorAll('.coach-pulse')) b.classList.remove('coach-pulse');
+    for (const b of btns) b.classList.add('coach-pulse');
+    const show = !!v && (line !== '' || v.tag !== '');
+    this.coachEl.style.display = show ? '' : 'none';
+    if (!v || !show) return;
+    this.coachEl.className = `shud-coach shud-panel${v.tone ? ` tone-${v.tone}` : ''}`;
+    this.coachEl.replaceChildren();
+    make('span', 'shud-coach-tag', this.coachEl).textContent = v.tag;
+    make('span', 'shud-key', this.coachEl).textContent = line ? cap : '';
+    make('span', 'shud-coach-l', this.coachEl).textContent = line;
+    make('span', 'shud-coach-s', this.coachEl).textContent = v.why;
   }
 
   /**
@@ -430,6 +477,7 @@ export class SeatHud {
    */
   result(kind: HudResultKind, amount = 0, hold = 1.5, label?: string, tier?: JuiceTier): void {
     this.clearResult();
+    if (this.coachV?.tag) amount = 0;                    // a practice round (coach.ts): nothing was won or lost, so no amount
     const prefs = flashPrefs();
     const big = tier !== undefined && tierAtLeast(tier, 'big');
     const slam = big && amount > 0;
@@ -471,54 +519,35 @@ export class SeatHud {
   }
 
   // ── cards ─────────────────────────────────────────────────────────────────────────────────────
-  /** First time at this machine: opens the how-to card and returns true. Remembered per machine (try/catch). */
-  firstTip(machineId: string, lines: Txt[]): boolean {
-    this.offHint?.(); this.offHint = null;
-    if (!rulesFirstEver()) {
-      this.offHint = showRulesHint(this.root, tr('hud.seat.rHelpHint', { help: SeatHud.helpKeyLabel() }));
-      return false;
-    }
-    rulesMarkShown();
-    this.tipId = machineId;
-    this.openCard('tip', tr('hud.seat.firstSit'), lines);
-    return true;
-  }
-
   /** Full rules card (the help key). */
   rules(lines: Txt[], title?: Txt): void {
-    this.tipId = '';
-    this.openCard('rules', title === undefined ? tr('hud.seat.rulesTitle') : txt(title), lines);
+    this.openCard(title === undefined ? tr('hud.seat.rulesTitle') : txt(title), lines);
   }
 
-  /** Closes the open card (a first-sit tip is then remembered as seen). Returns true when something closed. */
+  /** Closes the open card. Returns true when something closed. */
   dismiss(): boolean {
     if (this.card === 'none') return false;
-    if (this.card === 'tip' && this.tipId) {
-      try { window.localStorage.setItem(seenKey(this.tipId), '1'); } catch { /* private window: the tip repeats */ }
-    }
     this.closeCard();
     return true;
   }
 
-  /** The card as a 3D placard: numbered rules, paginated, with page buttons; a click on the board closes it. */
-  private openCard(kind: 'tip' | 'rules', title: string, lines: Txt[]): void {
+  /** The card as a 3D placard: short bulleted rules, paginated, with page buttons; a click on the board closes it. */
+  private openCard(title: string, lines: Txt[]): void {
     this.cardP?.dispose();
-    this.card = kind;
+    this.card = 'rules';
     const rows: string[] = [];
-    lines.forEach((l, i) => { for (const r of wrapPx5(`${i + 1}. ${txt(l)}`, CARD_TEXT_W)) rows.push(r); });
+    for (const l of lines) for (const r of wrapPx5(`• ${txt(l)}`, CARD_TEXT_W)) rows.push(r);
     const pages = paginate(rows, rowsIn(CARD_BODY_H));
     const hint = tr('hud.seat.anyKey');
     const p = new Placard3D({
-      name: `seat-${kind}`,
+      name: 'seat-rules',
       w: CARD_W, h: CARD_H, px: CARD_PX,
       pages: () => pages.length,
       bg: CREAM,
       frame: { color: 0x6b4f1d, pad: 0.012, depth: 0.008 },
       rest: [0, -0.03, -0.5],
-      autoHide: kind === 'tip' ? 6 : undefined,                    // a first-sit tip fades by itself; rules stay until closed
       onGone: () => {
         if (this.cardP !== p) return;                              // dismissed by hand already (or replaced)
-        if (kind === 'tip' && this.tipId) { try { window.localStorage.setItem(seenKey(this.tipId), '1'); } catch { /* repeats */ } }
         this.card = 'none'; this.cardP = null;
       },
       paint: (c) => {
@@ -526,10 +555,7 @@ export class SeatHud {
         g.fillStyle = BRASS; g.fillRect(0, 0, w, CARD_HEAD);
         put(g, title, w / 2, 8, INK, 'center');
         pages[c.page].forEach((r, i) => put(g, r, CARD_PAD, CARD_BODY_Y + i * 10));
-        if (kind === 'tip') {                                    // the first-sit tip says what to do: a brass strip with the key prompt
-          g.fillStyle = BRASS; g.fillRect(0, h - 17, w, 17);
-          put(g, hint, w / 2, h - 13, INK, 'center');
-        } else put(g, hint, w / 2, h - 12, INK_SOFT, 'center');
+        put(g, hint, w / 2, h - 12, INK_SOFT, 'center');
         if (pages.length > 1) {
           button(c, CARD_PAD, h - 26, 22, 13, '<', 'prev');
           button(c, w - CARD_PAD - 22, h - 26, 22, 13, '>', 'next');

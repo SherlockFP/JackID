@@ -8,6 +8,7 @@ import type { LightHint } from '../sys/arch';
 import { buildFoodProp } from '../props/food';
 import { at, DESK, DESK_CHAIR, FRIDGE, HOME_ZONE } from './config';
 import type { RoomCtx, Statics } from './room';
+import { presets } from '@/kit/presets';
 
 export interface FurnitureParts {
   readonly statics: Statics[];
@@ -27,12 +28,13 @@ export function buildFurniture(c: RoomCtx): FurnitureParts {
   const slab = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, m: THREE.Material): void => {
     kit.box(x1 - x0, y1 - y0, z1 - z0, m, { pos: at((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), parent: shell });
   };
-  const enamel = kit.mat({ color: 0xcfc8b4 });
+  const M = presets(kit.tex);
+  const enamel = M.enamel(0xcfc8b4, 0.6);
   const seam = kit.mat({ color: kit.pal.black });
   const beige = kit.mat({ color: 0xb8ad94 });
   const beigeDark = kit.mat({ color: 0x8c826c });
-  const wood = kit.mat({ color: kit.pal.wood });
-  const trim = kit.mat({ color: kit.pal.woodDark });
+  const wood = M.wood('walnut');
+  const trim = M.wood('dark');
 
   // ── the fridge: a cream box, a seam between freezer and fridge, a black handle, snacks on top ──
   const [fx0, , fz0, fx1, fy1, fz1] = FRIDGE.box;

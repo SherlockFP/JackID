@@ -96,6 +96,8 @@ export function buildLounge(kit: KitX, o: { parent: THREE.Object3D; plan: Lounge
   const velvet = grain('Fabric/Synth-Fabric_07-128x128.png', 0x8b1833, 0x2a060e), leather = grain('Leather/Synth-Leather_13-128x128.png', 0x6b3b28, 0x1c0f08), pot = lit(0x2a1c14, 0x0c0806);
   const glass = lit(0xe0a860, 0x60401c), ropeMat = lit(0x8c1921, 0x2a0508), cream = lit(0xe6dec5, 0x3a362c);
   const glow = kit.mat({ color: 0xffd08a, lit: false });
+  const ashGlass = kit.mat({ color: 0x5a6a70, lit: false }), paper = kit.mat({ color: 0xe8e0d0, lit: false }), ember = kit.mat({ color: 0xff6020, lit: false });
+  const CHIP = [0xb01c28, 0x1c3a8a, 0xe8e0d0, 0x1c6a3a].map((c) => kit.mat({ color: c, lit: false }));
   const glowWarm = kit.mat({ color: 0xffb860, lit: false });
   const leaves = [lit(0x2f6a35, 0x0c2010), lit(0x3d8040, 0x10281a), lit(0x24522b, 0x08180c)];
   const box = (w: number, h: number, d: number, m: THREE.Material, pos: V3, yaw = 0): void => { kit.box(w, h, d, m, { pos, rot: [0, yaw, 0], parent, shade: false }); };
@@ -133,7 +135,7 @@ export function buildLounge(kit: KitX, o: { parent: THREE.Object3D; plan: Lounge
   const plant = (x: number, z: number, h: number): void => {
     cyl(0.3, 0.22, 0.5, pot, [x, 0.25, z], 8);
     cyl(0.33, 0.31, 0.06, brass, [x, 0.5, z], 8);
-    cyl(0.28, 0.28, 0.02, woodDark, [x, 0.52, z], 8);
+    cyl(0.28, 0.28, 0.02, woodDark, [x, 0.535, z], 8);   // soil, 1.5 cm proud of the rim (both tops were at y 0.53)
     const n = 9;
     for (let k = 0; k < n; k++) {
       const a = (k / n) * Math.PI * 2 + (k % 2) * 0.2, th = ((24 + ((k * 37) % 30)) * Math.PI) / 180, len = h * (0.55 + ((k * 53) % 40) / 100);
@@ -157,6 +159,10 @@ export function buildLounge(kit: KitX, o: { parent: THREE.Object3D; plan: Lounge
     cyl(0.04, 0.05, 0.7, woodDark, [x, 0.37, z], 6);
     cyl(0.22, 0.26, 0.04, woodDark, [x, 0.02, z], 8);
     for (const s of [-1, 1]) cyl(0.035, 0.028, 0.09, glass, [x + s * r * 0.55, 0.815, z + s * r * 0.15], 6);
+    cyl(0.06, 0.055, 0.018, ashGlass, [x - r * 0.25, 0.769, z - r * 0.5], 8);
+    box(0.07, 0.01, 0.01, paper, [x - r * 0.25 + 0.04, 0.784, z - r * 0.5], 30);
+    box(0.012, 0.012, 0.012, ember, [x - r * 0.25 + 0.073, 0.784, z - r * 0.5 - 0.019]);
+    if ((Math.round(x * 7 + z * 13) & 1) === 0) for (let i = 0; i < 4; i++) cyl(0.021, 0.021, 0.008, CHIP[(i + Math.round(x)) & 3], [x + r * 0.3, 0.764 + i * 0.0085, z - r * 0.35], 8);
     if (lamp) {
       cyl(0.05, 0.07, 0.16, brass, [x, 0.84, z], 6);
       cyl(0.07, 0.15, 0.17, glow, [x, 1.0, z], 8);
@@ -209,10 +215,10 @@ export function buildLounge(kit: KitX, o: { parent: THREE.Object3D; plan: Lounge
     const [pw, ph, paint] = ART[art % ART.length];
     const h = (w * ph) / pw, P = at(x, z, yaw);
     box(w + 0.2, h + 0.2, 0.05, brass, P(0, y, 0.025), yaw);
-    box(w + 0.1, h + 0.1, 0.06, woodDark, P(0, y, 0.03), yaw);
+    box(w + 0.1, h + 0.1, 0.06, woodDark, P(0, y, 0.035), yaw);
     let canvas = arts.get(art % ART.length);
     if (!canvas) { canvas = kit.tex.canvas(pw, ph, paint, { wrap: 'clamp' }); arts.set(art % ART.length, canvas); }
-    kit.plane(w, h, { map: canvas, color: 0xd8ccbc, lit: false }, { pos: P(0, y, 0.066), rot: [0, yaw, 0], parent, shade: false });
+    kit.plane(w, h, { map: canvas, color: 0xd8ccbc, lit: false }, { pos: P(0, y, 0.075), rot: [0, yaw, 0], parent, shade: false });
     box(Math.min(0.7, w * 0.4), 0.05, 0.05, brass, P(0, y + h / 2 + 0.2, 0.12), yaw);
     box(Math.min(0.55, w * 0.32), 0.025, 0.04, glow, P(0, y + h / 2 + 0.17, 0.14), yaw);
   };

@@ -30,13 +30,13 @@ import type { Ease } from '@/core/tween';
 import { fmtCoins } from '@/core/i18n';
 import { TAU } from '@/core/math';
 import type { Rng } from '@/core/rng';
-import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
+import { SeatHud, type HudControl, type HudNumber, type HudPay, type Txt } from '@/machines/_base/seatHud';
 import { flashPrefs } from '@/machines/_base/juice';
 import { buildModel, type CascadeParts } from './model';
-import { CascadeView, orbColour } from './view';
+import { CELL, CascadeView, orbColour } from './view';
 import {
   BET_STEPS, CAP_H, CAP_X, CELLS, COLS, HOOK, ROWS, SCATTER, SYM_N, TRIGGER_AT, advanceFeature, applyStep, at, coinsOf,
-  extraSpins, findHits, isOrb, luckOrb, orbValue, pickSym, playHeadless, playSpin, startFeature,
+  extraSpins, findHits, isOrb, luckOrb, orbValue, PAY_H, pickSym, playHeadless, playSpin, startFeature,
   type Feature, type SpinResult,
 } from './rules';
 import { STRINGS } from './cascade.strings';
@@ -84,6 +84,11 @@ export const def: MachineDef = {
     'm.cascade.freeSpins': 'Free round +N spins (cap +5).',
     luck: 'Luck: orb chance x(1 + 0.02 L), capped at x1.5.',
   },
+  // seat coach (_base/coach.ts): taught by doing on the first sits
+  coach: [
+    { key: 'primary', say: 'spin', done: 'round' },
+    { key: 'betUp', say: 'bet', done: 'bet' },
+  ],
   strings: STRINGS,
 };
 
@@ -169,7 +174,7 @@ export default class Cascade extends MachineBase<CascadeParts, Ev, State> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('cascade', this.tipLines());
+      this.seatHud?.pay(this.payStrip());
       if (this.state.feature) void this.runFeature();        // a free round left unfinished (reload / snapshot) goes on
     }
   }
@@ -188,6 +193,11 @@ export default class Cascade extends MachineBase<CascadeParts, Ev, State> {
     this.refresh();
   }
 
+  /** The pay strip on the seat HUD: each symbol and what eight or more of it pay, × the bet. */
+  private payStrip(): HudPay[] {
+    return PAY_H.map((p, i) => ({ px: CELL, pays: `×${p[0] / 2}`, paint: (g: CanvasRenderingContext2D) => g.drawImage(this.view.sprites[i], 0, 0) }));
+  }
+
   onLang(): void {
     this.refresh();
     if (this.isLocalOccupant) this.showHud();
@@ -197,7 +207,7 @@ export default class Cascade extends MachineBase<CascadeParts, Ev, State> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -674,14 +684,6 @@ export default class Cascade extends MachineBase<CascadeParts, Ev, State> {
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.cascade.tip1', v: { spin: this.k('primary') } },
-      { k: 'm.cascade.tip2' },
-      { k: 'm.cascade.tip3', v: { fast: this.k('fast') } },
-    ];
-  }
 
   /** Result callout for the local player: `net` = coins back minus the stake. */
   private callout(net: number, tier: JuiceTier): void {

@@ -162,7 +162,6 @@ export default class ShellGame extends MachineBase<ShellParts, Ev, Snap> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('shellgame', this.tipLines());
     }
   }
 
@@ -202,7 +201,7 @@ export default class ShellGame extends MachineBase<ShellParts, Ev, Snap> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (e.repeat && a !== 'betUp' && a !== 'betDown') return;
     switch (a) {
@@ -609,14 +608,6 @@ export default class ShellGame extends MachineBase<ShellParts, Ev, Snap> {
 
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.shellgame.tip1' },
-      { k: 'm.shellgame.tip2', v: { insert: this.k('primary'), cups: `${this.k('n1')}/${this.k('n2')}/${this.k('n3')}` } },
-      { k: 'm.shellgame.tip3', v: { cheat: this.k('n4'), help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return [

@@ -164,7 +164,6 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('elevator', this.tipLines());
     }
   }
 
@@ -178,7 +177,7 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     const isAuto = /^n[1-9]$/.test(a);
@@ -565,14 +564,6 @@ export default class Elevator extends TableBase<ElevatorParts, Ev, State, Act> {
 
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.elevator.tip1' },
-      { k: 'm.elevator.tip2', v: { ride: this.k('primary'), bet: `${this.k('betDown')}/${this.k('betUp')}`, auto: `${this.k('n1')}-${this.k('n9')}` } },
-      { k: 'm.elevator.tip3', v: { out: this.k('primary'), help: this.k('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6'].map((k) => ({ k: 'm.elevator.' + k }));

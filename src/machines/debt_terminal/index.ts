@@ -52,7 +52,8 @@ import { bandFromPx, CONTROL_MARGIN, frameConsole, type Vec3 } from './fit';
 
 const EMPTY_QUOTA: QuotaState = { due: 0, base: 0, assessment: 0, deposited: 0, perPlayer: {}, met: false, overshoot: 0, ratio: 0, claimed: [] };
 import { lerp, clamp } from '@/core/math';
-import { buildModel, KEY_POS, type DebtParts } from './model';
+import { buildModel, CRT_PX, KEY_POS, SCR_H, SCR_W, type DebtParts } from './model';
+import { KEY_FACE, TerminalLabels, type CrtChip } from './labels';
 import {
   KEYS, KEY_COLS, KEY_ROWS, COIN_STREAM_S, amountFor, appendDigit, backspace, buyBackRows, clampDeposit, customAmount, cycleMode, modeOfKey,
   nextTier, pct, playNeed, quotaLeft, ratioOf, rollSeconds, rowOfDigit, ALL_CONFIRM_SEC, withdrawAmountFor, type BuyBackRow, type KeyId, type Mode,
@@ -155,9 +156,6 @@ export const def: MachineDef = {
       cMode: "DEPOSIT / WITHDRAW / BUY BACK / QUOTA",
       cRules: "RULES",
       cLeave: "LEAVE",
-      tip1: "THE BANK. Top row: DEPOSIT (coins in, earn interest), WITHDRAW (coins back to your pocket), QUOTA (status).",
-      tip2: "[{move}] MOVE  ·  [{press}] PRESS  ·  [{digits}] TYPE AN AMOUNT  ·  [{mode}] SWITCH",
-      tip3: "Out of coins? WITHDRAW some. Quota met? [{settle}] SETTLE  ·  [{help}] RULES",
       floorKept: "Float kept: {n} coins stay in your pocket",
       floorRefuse: "Float kept: the pocket keeps {n} coins. Only a confirmed ALL goes below it",
       notQuota: "Not a quota Watch: nothing to deposit toward tonight",
@@ -253,9 +251,6 @@ export const def: MachineDef = {
       cMode: "YATIR / ÇEK / GERİ AL / KOTA",
       cRules: "KURALLAR",
       cLeave: "AYRIL",
-      tip1: "BANKA. Üst sıra: YATIR (jeton girer, faiz kazanır), ÇEK (jeton cebine döner), KOTA (durum).",
-      tip2: "[{move}] GEZ  ·  [{press}] BAS  ·  [{digits}] TUTAR YAZ  ·  [{mode}] DEĞİŞTİR",
-      tip3: "Jetonun mu bitti? Biraz ÇEK. Kota tamam mı? [{settle}] KAPAT  ·  [{help}] KURALLAR",
       floorKept: "Yedek akçe: {n} jeton cepte kalır",
       floorRefuse: "Yedek akçe: cepte {n} jeton kalmalı. Yalnızca onaylı HEPSİ bunun altına iner",
       notQuota: "Kota nöbeti değil: bu gece için yatıracak bir şey yok",
@@ -313,6 +308,8 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   private lastNight = -1;
   /** Seat HUD overlay (created in init, shown while seated). */
   private seatHud?: SeatHud;
+  /** The keypad words and the CRT tab strip, as DOM chips over the 3D (labels.ts). */
+  private labels?: TerminalLabels;
   /** An armed two-press deposit (ALL below the float, REST): the key, the amount it showed, and the seconds it stays armed. */
   private keyArm: { key: KeyId; amount: number; left: number } | null = null;
   /** Seconds an armed END WATCH stays armed (the second press ends the Watch). */
@@ -336,6 +333,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   }
 
   init(): void {
+    this.labels = new TerminalLabels(this.ctx.ui.root);     // before the seat HUD: its panels draw over the chips
     this.seatHud = new SeatHud(this.ctx.ui.root);
     this.ctx.ui.machineHud(null);                          // the seat HUD replaces the generic bottom bar
     this.fitPose();
@@ -429,8 +427,18 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     this.attractor.update(dt);
   }
 
+  /** Render rate, seated: the chips follow the keys and the CRT through the camera, and step aside under a card or a modal. */
+  frame(): void {
+    const l = this.labels;
+    if (!l) return;
+    const on = this.isLocalOccupant && !!this.seatHud?.visible && !this.seatHud.covered;
+    l.show(on);
+    if (on) l.place(this.ctx.camera, this.parts.keys.root, this.parts.crt.mesh, { texW: CRT_PX[0], texH: CRT_PX[1], w: SCR_W, h: SCR_H });
+  }
+
   dispose(): void {
     window.removeEventListener('resize', this.onResize);
+    this.labels?.dispose();
     this.seatHud?.dispose();
     super.dispose();
   }
@@ -443,13 +451,12 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       this.sfx('chime');
       this.seatHud?.show(); this.showHud();
       this.fitPose();                // the seat stack's edges exist now: frame the console between them
-      this.seatHud?.firstTip('debt_terminal', this.tipLines());
     }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
     this.clearEntry();
-    if (local) this.seatHud?.hide();
+    if (local) { this.labels?.show(false); this.seatHud?.hide(); }
   }
 
   /** The typed amount and the armed ALL are per visit and per press: nothing typed earlier may commit later (the stale 44). */
@@ -470,7 +477,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   // ── input (local occupant) ──────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.action === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     const row = Math.floor(this.cursor / KEY_COLS), col = this.cursor % KEY_COLS;
     switch (e.action) {
@@ -903,7 +910,10 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       this.refresh(true);
     });
     const chew = this.anim(0.5, (k) => { mouthLips.scale.y = 1 + 0.25 * Math.sin(k * Math.PI * 4) * (1 - k); });
-    await Promise.all([rolling, chew]);
+    // the teller's desk: the till slides out, the stamp thumps PAID into the ledger, the till shuts (model.ts `teller`)
+    const teller = this.anim(0.3, (k) => this.parts.teller.pose('out', k), 'outQuad')
+      .then(() => { this.sfx('stamp'); return this.anim(0.7, (k) => this.parts.teller.pose('back', k)); });
+    await Promise.all([rolling, chew, teller]);
     this.shownDep = target;
 
     this.drawReceipt('dep', ev.amount, target, this.quota().due);
@@ -1027,31 +1037,38 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
    */
   private drawCrt(q: Readonly<QuotaState>, bank: BankView, paid: boolean, inter: boolean): void {
     const s = this.parts.crt;
-    s.clear('#060300');                              // an opaque dark ground: the figures are full-bright on it
-    const amber = '#ffc02a', hot = '#fff0a0', dim = '#c0982e', red = '#ff9a78', green = '#b4ffb4', cyan = '#9fe8ff';
+    s.clear('#010602');                              // an opaque dark ground: the figures are full-bright on it
+    const amber = '#8dff9a', hot = '#e2ffe0', dim = '#5fd872', red = '#ff9a78', green = '#b4ffb4', cyan = '#9fe8ff';   // green phosphor: the House Bank's teller CRT (red stays the warning colour)
     const RIGHT = 504;
+    // The CRT is about 4.5 texels to a screen pixel at the 360-line frame, so a 3-4 texel stroke lands on one pixel at half strength
+    // (the dull olive labels). Every small word is struck twice, half a stroke apart: a stroke of 1.5 pixels or more, at full colour.
+    const bold = (str: string, x: number, y: number, sc: number, color: string, align: 'left' | 'right' | 'center'): void => {
+      s.text(str, x, y, { font: 'px5', scale: sc, color, align });
+      if (sc <= 5) s.text(str, x + Math.max(1, Math.floor(sc / 2)), y, { font: 'px5', scale: sc, color, align });
+    };
     // `size` is the old text box height: it picks the start scale (3, or 4 / 6 for the big centre lines), shrunk until the line fits
     const label = (str: string, x: number, y: number, color = amber, size = 32, align: 'left' | 'right' | 'center' = 'left'): void => {
       const text = upper(str);
       const room = align === 'center' ? 500 : align === 'right' ? x - 6 : RIGHT - x;
-      let sc = size >= 56 ? 6 : size >= 38 ? 4 : 3;
+      let sc = size >= 56 ? 7 : size >= 38 ? 5 : 4;
       while (sc > 1 && measureText(text, { font: 'px5', scale: sc }) > room) sc--;
-      s.text(text, x, y + Math.max(2 * sc, Math.round((size - 7 * sc) / 2)), { font: 'px5', scale: sc, color, align });
+      bold(text, x, y + Math.max(2 * sc, Math.round((size - 7 * sc) / 2)), sc, color, align);
     };
     // a figure: the largest scale (up to `maxS`) at which it fits `w` px, right-aligned at `x`, `y` = the cap top
     const fig = (v: string, x: number, y: number, color: string, maxS: number, w: number): void => {
       let sc = maxS;
       while (sc > 1 && measureText(v, { font: 'px5', scale: sc }) > w) sc--;
-      s.text(v, x, y, { font: 'px5', scale: sc, color, align: 'right' });
+      bold(v, x, y, sc, color, 'right');
     };
     if (paid) {                                   // Dawn paid the Night: no stale quota, just the carry-over and the lever
-      label(this.t('crt_paid', { n: this.ctx.run.night() }), 256, 36, '#fff070', 60, 'center');
+      this.labels?.setCrt(null);
+      label(this.t('crt_paid', { n: this.ctx.run.night() }), 256, 36, '#b8ffb0', 60, 'center');
       if (q.deposited > 0) {
         label(this.t('crt_carry'), 14, 124, amber, 34);
         const v = fmtNum(q.deposited);
-        fig(v, RIGHT, 168, '#fff4b8', 9, 486);
+        fig(v, RIGHT, 168, '#e2ffe0', 9, 486);
       }
-      label(this.t('crt_floor'), 256, 296, '#fff0c0', 42, 'center');
+      label(this.t('crt_floor'), 256, 296, '#c8ffc0', 42, 'center');
       return;
     }
     // tabs: four across the screen (BUY BACK between WITHDRAW and QUOTA); one label size for all, so every word fits its tab
@@ -1059,16 +1076,13 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     // widths follow the words (the old equal 124 px tabs forced "GERİ AL" down to scale 2: unreadable at the PSX frame size)
     const words = tabs.map(([, k]) => upper(this.t(k)));
     const tabSize = this.tabLabelSize(words);
+    // The strip and the amount row are DOM (labels.ts): this only lays their plates out, in texture px, and the chips follow the CRT.
     const TAB_PAD = 14, TAB_GAP = 4;
     let tx = 2;
-    tabs.forEach(([m, k], i) => {
-      const w = measureText(words[i], { font: 'px5', scale: tabSize }) + 2 * TAB_PAD, x = tx, on = this.mode === m;
+    const chips: CrtChip[] = tabs.map(([m], i) => {
+      const w = measureText(words[i], { font: 'px5', scale: tabSize }) + 2 * TAB_PAD, x = tx;
       tx += w + TAB_GAP;
-      s.draw((g) => {
-        g.fillStyle = on ? amber : '#241800'; g.fillRect(x, 2, w, 44);
-        if (!on) { g.strokeStyle = '#8a6a14'; g.lineWidth = 2; g.strokeRect(x + 1, 3, w - 2, 42); }
-      });
-      s.text(words[i], x + w / 2, 2 + Math.round((44 - 7 * tabSize) / 2), { font: 'px5', scale: tabSize, color: on ? '#1a1000' : '#e8bc40', align: 'center' });
+      return { kind: this.mode === m ? 'tabOn' : 'tab', text: words[i], x, y: 2, w, h: 44 };
     });
     // BANK and POCKET, always
     const bv = fmtNum(this.shownDep), pv = fmtNum(bank.pocket);
@@ -1076,14 +1090,12 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     fig(bv, 248, 84, hot, 6, 236);
     label(this.t('c_pocket'), 268, 48, amber, 38);
     fig(pv, RIGHT, 84, cyan, 6, 236);
-    s.draw((g) => { g.fillStyle = '#6a4e12'; g.fillRect(4, 134, 504, 3); g.fillRect(258, 52, 3, 78); });
+    s.draw((g) => { g.fillStyle = '#1f5a2a'; g.fillRect(4, 134, 504, 3); g.fillRect(258, 52, 3, 78); });
 
     const amt = this.focusAmount(bank);
     const typedTxt = this.entry === '' ? '_' : `${fmtNum(customAmount(this.entry))}_`;
     const box = (y: number, head = this.t('nAmount'), val = typedTxt): void => {
-      s.draw((g) => { g.fillStyle = '#241800'; g.fillRect(4, y, 504, 38); g.strokeStyle = amber; g.lineWidth = 2; g.strokeRect(5, y + 1, 502, 36); });
-      label(head, 14, y + 3, amber, 38);
-      fig(val, RIGHT - 6, y + 9, '#fff0c0', 3, 300);
+      chips.push({ kind: 'box', text: upper(head), value: val, x: 4, y, w: 504, h: 38 });
     };
 
     if (this.mode === 'dep') {
@@ -1130,7 +1142,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
         label(this.t('crt_buyHead'), 12, 140, amber, 30);
         rows.forEach((r, i) => {
           const y = 176 + i * 36, on = r === sel;
-          if (on) s.draw((g) => { g.fillStyle = '#241800'; g.fillRect(4, y - 4, 504, 32); g.strokeStyle = amber; g.lineWidth = 2; g.strokeRect(5, y - 3, 502, 30); });
+          if (on) s.draw((g) => { g.fillStyle = '#062a10'; g.fillRect(4, y - 4, 504, 32); g.strokeStyle = amber; g.lineWidth = 2; g.strokeRect(5, y - 3, 502, 30); });
           label(`${i + 1}  ${upper(globalT(`keepsake.${r.id}.name`))}`, 12, y, on ? hot : amber, 32);
           const pv = fmtNum(r.price);
           fig(pv, RIGHT, y + 3, bank.pocket >= r.price ? green : red, 3, 200);
@@ -1152,13 +1164,14 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       const next = bank.sealBroken ? null : nextTier(this.tiers(), ratioOf(bank.principal ?? this.shownDep, q.due));
       if (bank.sealBroken) label(this.t('q_forfeit'), 12, 332, red, 28);
       else if (q.met) label(this.t('q_settle'), 12, 332, green, 36);
-      else if (next !== null) label(this.t('q_reward', { p: pct(next.ratio) }), 12, 332, '#e0a040', 34);
+      else if (next !== null) label(this.t('q_reward', { p: pct(next.ratio) }), 12, 332, '#7fd08a', 34);
     }
     // status line (the BUY BACK screen writes its own line above)
     if (this.mode === 'dep' || this.mode === 'wd') {
       if (inter) label(this.t('crt_bell'), RIGHT, 346, hot, 34, 'right');
       else if (q.met) label(this.t('crt_met'), RIGHT, 346, hot, 34, 'right');
     }
+    this.labels?.setCrt(chips);
   }
 
   /** The keypad cursor is the one lit cap plus a gold frame on its cell; the active action's cap stays lit too. */
@@ -1166,10 +1179,12 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
     const cur = KEYS[this.cursor];
     for (const id of KEYS) this.parts.keys.buttons[id]?.setLit(id === cur || id === this.mode);
     this.parts.keyCursor.position.set(KEY_POS[cur].x, 0, KEY_POS[cur].z);
-    // REST means "what the quota still needs" on DEPOSIT and "enough to play on" on WITHDRAW
-    this.parts.keyLabels.rest?.setText({ key: this.mode === 'wd' ? 'm.debt_terminal.k_play' : 'm.debt_terminal.k_rest' });
-    // ALL is BREAK while the seal holds the overpay in WITHDRAW (decision D2): the cap names the press that breaks it
-    this.parts.keyLabels.all?.setText({ key: sealed ? 'm.debt_terminal.k_seal' : 'm.debt_terminal.k_all' });
+    // the chips: REST means "what the quota still needs" on DEPOSIT and "enough to play on" (PLAY) on WITHDRAW; ALL is BREAK while
+    // the seal holds the overpay in WITHDRAW (decision D2): the cap names the press that breaks it
+    for (const id of KEYS) {
+      const word = id === 'rest' ? (this.mode === 'wd' ? 'k_play' : 'k_rest') : id === 'all' ? (sealed ? 'k_seal' : 'k_all') : `k_${id}`;
+      this.labels?.setKey(id, { text: upper(this.t(word)), ...KEY_FACE[id], lit: id === cur || id === this.mode, cursor: id === cur });
+    }
   }
 
   private drawReceipt(kind: 'dep' | 'wd', amount: number, bank: number, due: number): void {
@@ -1188,14 +1203,6 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   /** The key bound to an action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
   private g(a: BindingKey): string { return this.ctx.input.keyLabel(a); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.debt_terminal.tip1' },
-      { k: 'm.debt_terminal.tip2', v: { move: this.g('left'), press: this.k('confirm'), digits: this.k('n1'), mode: this.k('alt') } },
-      { k: 'm.debt_terminal.tip3', v: { settle: this.k('double'), help: this.g('help') } },
-    ];
-  }
 
   private rulesLines(): Txt[] {
     return [1, 2, 3, 4, 5].map((i) => ({ k: `m.debt_terminal.rule${i}` }));

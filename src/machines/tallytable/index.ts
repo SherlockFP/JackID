@@ -175,7 +175,6 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
       this.parts.notary.setVisible(false)               // a standing figure would fill the steep seat view (seat.ts)
       this.bindSheetKey()
       this.showHud()
-      this.seatHud?.firstTip('tallytable', this.tipLines())
     }
     this.paintAll()
   }
@@ -822,11 +821,6 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
 
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`) }
-
-  private tipLines(): Txt[] {
-    if (this.view.game === 'promise') return [{ k: 'm.tallytable.prTip1' }, { k: 'm.tallytable.prTip2' }, { k: 'm.tallytable.tip3', v: { call: this.k('alt') } }]
-    return [{ k: 'm.tallytable.tip1' }, { k: 'm.tallytable.tip2' }, { k: 'm.tallytable.tip3', v: { call: this.k('alt') } }]
-  }
 
   private rulesLines(): Txt[] {
     const v = { call: this.k('alt'), go: this.k('primary'), sheet: 'T' }

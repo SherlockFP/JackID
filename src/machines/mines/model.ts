@@ -20,6 +20,7 @@ import type { KitX } from '@/kit/index';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
 import { crispTexture } from '@/core/ui/textOverlay';
+import { presets } from '@/kit/presets';
 
 /** Contract between modeler and coder. */
 export type MinesParts = {
@@ -78,13 +79,24 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<MinesParts> {
   const root = kit.group('mines');
   const at = (x: number, y: number, z: number): { pos: [number, number, number]; parent: THREE.Object3D } => ({ pos: [x, y, z], parent: root });
 
-  // ── static cabinet shell (flat colours: merged by kit.finalize) ──
-  kit.box(1.10, 0.78, 0.90, body, at(0, 0.47, 0));                    // body, top at 0.86: under the 15 deg bed everywhere (it used to poke through the front lip)
-  kit.box(1.06, 0.08, 0.86, steel, at(0, 0.04, 0));                   // plinth
-  kit.box(1.10, 0.26, 0.04, body, at(0, 1.0, -0.46));                 // back panel closing the wedge under the tilted top (the old 0.5 m riser poked through the middle of the grid)
-  kit.box(0.03, 0.82, 0.86, steel, at(-0.555, 0.49, 0));              // side panels
-  kit.box(0.03, 0.82, 0.86, steel, at(0.555, 0.49, 0));
-  kit.cyl(0.03, 0.03, 0.4, steel, { pos: [0, 1.15, -0.47], parent: root, seg: 6 }); // CRT stalk: stands at the BACK edge of the grid so it never crosses the tiles from the seat
+  // ── static cabinet shell: worn olive-drab paint on steel, merged by kit.finalize (it was one flat untextured olive slab) ──
+  const M = presets(kit.tex);
+  const paint = M.enamel(body, 0.6), metal = M.metal(steel);
+  kit.box(1.10, 0.78, 0.90, paint, at(0, 0.47, 0));                   // body, top at 0.86: under the 15 deg bed everywhere (it used to poke through the front lip)
+  kit.box(1.06, 0.08, 0.86, metal, at(0, 0.04, 0));                   // plinth
+  kit.box(1.10, 0.26, 0.04, paint, at(0, 1.0, -0.46));                // back panel closing the wedge under the tilted top (the old 0.5 m riser poked through the middle of the grid)
+  kit.box(0.03, 0.82, 0.86, metal, at(-0.555, 0.49, 0));              // side panels
+  kit.box(0.03, 0.82, 0.86, metal, at(0.555, 0.49, 0));
+  kit.cyl(0.03, 0.03, 0.4, metal, { pos: [0, 1.15, -0.47], parent: root, seg: 6 }); // CRT stalk: stands at the BACK edge of the grid so it never crosses the tiles from the seat
+  // hazard band across the kick, steel straps with rivets up the front corners: an ordnance crate, not a box
+  const hazard = kit.tex.stripes([0xd8b020, 0x16160e], 'd').clone();
+  hazard.userData = { tile: 0.14 };                                   // a stripe every 7 cm (the shared tile is 0.5 m: two fat bands)
+  hazard.needsUpdate = true;
+  kit.box(1.04, 0.07, 0.006, kit.mat({ map: hazard, color: 0xffffff }), at(0, 0.15, 0.453));
+  for (const sx of [-1, 1]) {
+    kit.box(0.05, 0.7, 0.012, metal, at(sx * 0.5, 0.5, 0.456));
+    for (const y of [0.22, 0.5, 0.78]) kit.sphere(0.011, metal, { pos: [sx * 0.5, y, 0.464], wSeg: 5, hSeg: 3, parent: root });
+  }
 
   // ── tilted top: velvet plate, brass frame, flaps, socket, selector ──
   const tilt = kit.group('mines_top');

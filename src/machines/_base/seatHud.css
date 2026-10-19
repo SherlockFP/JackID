@@ -70,14 +70,6 @@
 .shud-result.r-push { color: #f4f0dc; }
 .shud-result.r-lose, .shud-result.r-bust, .shud-result.r-surrender { color: #ff5a4a; }
 
-/* centre card: first-sit tip and rules */
-.shud-card { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(calc(var(--su) * 118), 94%); pointer-events: auto; cursor: pointer; display: none; background: #0c120c; border: calc(var(--su) * 2) solid #ffd040; box-shadow: 0 0 0 calc(var(--su) * 2) #000; padding: calc(var(--su) * 3) calc(var(--su) * 4); }
-.shud-card.on { display: block; }
-.shud-card-h { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 5); color: #ffd040; padding-bottom: calc(var(--su) * 2); border-bottom: calc(var(--su) * 1) solid #2c3a2c; margin-bottom: calc(var(--su) * 2); }
-.shud-card-b { margin: 0; padding-left: calc(var(--su) * 6); font-size: calc(var(--su) * 7); line-height: 1.15; }
-.shud-card-b li { margin-bottom: calc(var(--su) * 1.5); }
-.shud-card-f { margin-top: calc(var(--su) * 2); text-align: right; font-size: calc(var(--su) * 6); color: #b8c0a8; }
-
 /* THE CIRCUIT: Tilt bulbs (GDD 3.4.3). Four amber bulbs = full-value pulls left; at 0 the red TILT label flickers faster per step. */
 .shud-tilt { display: flex; align-items: center; gap: calc(var(--su) * 3); padding: calc(var(--su) * 1.5) calc(var(--su) * 3); border-top: calc(var(--su) * 1.5) solid #ffb000; }
 .shud-tilt-l { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 4); line-height: 1.2; color: #ffb000; white-space: nowrap; }

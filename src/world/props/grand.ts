@@ -13,6 +13,7 @@ import { t, upper } from '@/core/i18n';
 import type { JackpotWallProp, LightShowProp, PrizeCaseProp, StageProp, WorldLights } from '../types';
 import type { LightHint } from '../sys/arch';
 import { FLOOR_TILE_M } from '../layout';
+import { presets } from '@/kit/presets';
 import { Sched, easeInOutCubic, easeOutQuad } from './sched';
 import { disposeTree } from './decor';
 
@@ -20,7 +21,7 @@ import { disposeTree } from './decor';
 /** Atrium stage in the Lobby centre (the FLR-05 slot is kept but stays empty). Front faces north (-Z). */
 export const STAGE = { x: -3.6, z: 9.0, w: 5.0, d: 3.2, h: 0.2 } as const;
 /** Jackpot wall: hangs south of the Big One dais, faces the Well. */
-export const JACKPOT_WALL = { x: 0, y: 3.85, z: 1.6, w: 6.4, h: 2.4, tilt: 9 } as const;   // lowered and tipped down so the whole wall frames from the Well floor
+export const JACKPOT_WALL = { x: 0, y: 6.3, z: 1.6, w: 6.4, h: 2.4, tilt: 15 } as const;   // high enough that the headline clears the Big One crown from the spawn (3 m out), tipped down at the Well floor
 /** Prize showcase: against the south wall, east of the cashier. */
 export const PRIZE_CASE = { x: 9.2, z: 19.5, w: 1.7, d: 0.6, h: 2.0 } as const;
 
@@ -55,6 +56,17 @@ export function buildStage(kit: KitX, tex: TexGen, o: { root: THREE.Group; stati
   kit.box(w, h, d, wood, { pos: [x, h / 2, z], parent: o.statical });
   kit.box(w + 0.08, 0.03, 0.08, kit.pal.brass, { pos: [x, h, z - d / 2], parent: o.statical });
   kit.box(w, 0.02, 0.02, kit.pal.brass, { pos: [x, 0.02, z - d / 2 - 0.02], parent: o.statical });
+  // wave 87 (ART.md §2 Stage): a panelled walnut fascia, velvet proscenium columns with brass caps, a fringe under the valance
+  const M = presets(kit.tex);
+  const velvetHi = M.velvet(0x8a1426), velvetLo = M.velvet(0x560c1a), walnut = M.wood('dark'), gilt = M.gold();
+  kit.box(w + 0.02, h - 0.03, 0.03, walnut, { pos: [x, (h - 0.03) / 2 + 0.005, z - d / 2 - 0.016], parent: o.statical });
+  for (let i = 0; i < 5; i++) kit.box(0.8, h - 0.09, 0.02, M.wood('mahogany'), { pos: [x - w / 2 + 0.5 + i * ((w - 1) / 4), h / 2, z - d / 2 - 0.04], parent: o.statical });
+  for (const sx of [-1, 1]) {
+    const cx = x + sx * (w / 2 + 0.12), cz = z + d / 2 - 0.12;
+    kit.box(0.24, 3.42, 0.3, velvetHi, { pos: [cx, 1.71, cz], parent: o.statical });
+    kit.box(0.32, 0.12, 0.38, gilt, { pos: [cx, 3.45, cz], parent: o.statical });
+    kit.box(0.32, 0.22, 0.38, walnut, { pos: [cx, 0.11, cz], parent: o.statical });
+  }
 
   // footlights along the front edge
   const foot = kit.bulbChain({ path: [[x - w / 2 + 0.2, h + 0.1, z - d / 2 + 0.12], [x + w / 2 - 0.2, h + 0.1, z - d / 2 + 0.12]], count: 14, colors: [0xffd890], r: 0.05 });
@@ -64,9 +76,9 @@ export function buildStage(kit: KitX, tex: TexGen, o: { root: THREE.Group; stati
   // back curtain: two halves of velvet folds that gather towards the sides
   const zc = z + d / 2 - 0.12;
   const backdrop = kit.group('backdrop');
-  kit.box(w, 3.1, 0.05, 0x2c1a24, { pos: [x, h + 1.55, zc + 0.1], parent: backdrop });
+  kit.box(w, 3.1, 0.05, M.velvet(0x301018), { pos: [x, h + 1.55, zc + 0.1], parent: backdrop });
   for (let i = 0; i < 7; i++) {
-    kit.box(0.05, 2.3, 0.02, 0xc8962e, { pos: [x, h + 1.7, zc + 0.07], rot: [0, 0, -63 + i * 21], parent: backdrop });
+    kit.box(0.05, 2.3, 0.02, gilt, { pos: [x, h + 1.7, zc + 0.065], rot: [0, 0, -63 + i * 21], parent: backdrop });
   }
   root.add(backdrop);
   const halves: THREE.Group[] = [];
@@ -75,12 +87,13 @@ export function buildStage(kit: KitX, tex: TexGen, o: { root: THREE.Group; stati
     half.position.set(x + side * (w / 2), 0, zc);
     const folds = 10, fw = w / 2 / folds;
     for (let i = 0; i < folds; i++) {
-      kit.box(fw + 0.01, 3.0, 0.1, i % 2 ? 0x6a1020 : 0x4a0c18, { pos: [-side * (i + 0.5) * fw, h + 1.5, (i % 2) * 0.06], parent: half });
+      kit.box(fw + 0.01, 3.0, 0.1, i % 2 ? velvetHi : velvetLo, { pos: [-side * (i + 0.5) * fw, h + 1.5, (i % 2) * 0.06], parent: half });
     }
     root.add(half);
     halves.push(half);
   }
-  kit.box(w + 0.3, 0.45, 0.24, 0x7a1226, { pos: [x, h + 3.2, zc], parent: o.statical });
+  kit.box(w + 0.3, 0.45, 0.24, velvetHi, { pos: [x, h + 3.2, zc], parent: o.statical });
+  for (let i = 0; i < 26; i++) kit.box(0.06, 0.09, 0.02, gilt, { pos: [x - (w + 0.2) / 2 + (i + 0.5) * ((w + 0.2) / 26), h + 2.93, zc - 0.15], parent: o.statical });   // fringe
   kit.box(w + 0.34, 0.05, 0.28, kit.pal.brass, { pos: [x, h + 2.96, zc], parent: o.statical });
   let curtainOpen = 0.4, curtainTarget = 0.4;
   const applyCurtain = (): void => { for (const half of halves) half.scale.x = 1 - 0.78 * curtainOpen; };
@@ -112,6 +125,7 @@ export function buildStage(kit: KitX, tex: TexGen, o: { root: THREE.Group; stati
   const statics: StageBuild['statics'] = [
     { box: box3(x - w / 2, -0.5, z - d / 2, x + w / 2, h, z + d / 2), tag: 'walkable' },
     { box: box3(x - w / 2, 0, zc - 0.1, x + w / 2, 3.4, zc + 0.15), tag: 'solid' },
+    ...[-1, 1].map((sx) => ({ box: box3(x + sx * (w / 2 + 0.12) - 0.12, 0, z + d / 2 - 0.27, x + sx * (w / 2 + 0.12) + 0.12, 3.5, z + d / 2 + 0.03), tag: 'solid' as const })),
   ];
   const mark = (px: number, py: number, pz: number): THREE.Object3D => { const m = new THREE.Object3D(); m.position.set(px, py, pz); o.root.add(m); return m; };
   // stand-off spots on the floor in front of the stage (the viewer looks north): never inside the Compere's footprint
@@ -161,9 +175,17 @@ export function buildJackpotWall(kit: KitX, o: { ceiling: number }): JackpotWall
   const screen: ScreenSurface = kit.screen({ w, h, px, bezel: 0x3a2a14, glow: 1.25, scanlines: false });
   screen.mesh.position.z = 0.08;
   panel.add(screen.mesh);
-  kit.box(w + 0.5, h + 0.5, 0.14, kit.pal.woodDark, { pos: [0, 0, 0], parent: panel });
+  // the back faces the Lobby: boards, not a flat slab (a flat colour read as a hole in the room)
+  kit.box(w + 0.5, h + 0.5, 0.14, kit.mat({ color: 0xb09070, map: kit.tex.wood(kit.pal.woodDark) }), { pos: [0, 0, 0], parent: panel });
   kit.box(w + 0.58, 0.06, 0.2, kit.pal.brass, { pos: [0, h / 2 + 0.28, 0], parent: panel });
   kit.box(w + 0.58, 0.06, 0.2, kit.pal.brass, { pos: [0, -h / 2 - 0.28, 0], parent: panel });
+  // wave 87: a gilt frame outside the bulb ring, corner rosettes and a walnut pediment with a gilt fan
+  const JM = presets(kit.tex), jg = JM.gold(), jw = JM.wood('dark');
+  for (const sy of [-1, 1]) kit.box(w + 0.58, 0.08, 0.08, jg, { pos: [0, sy * (h / 2 + 0.25), 0.09], parent: panel });
+  for (const sx of [-1, 1]) kit.box(0.08, h + 0.42, 0.08, jg, { pos: [sx * (w / 2 + 0.25), 0, 0.09], parent: panel });
+  for (const sx of [-1, 1]) for (const sy of [-1, 1]) kit.cyl(0.07, 0.07, 0.04, jg, { pos: [sx * (w / 2 + 0.25), sy * (h / 2 + 0.25), 0.14], rot: [90, 0, 0], seg: 8, parent: panel });
+  kit.box(w * 0.5, 0.36, 0.12, jw, { pos: [0, h / 2 + 0.49, 0], parent: panel });
+  for (let i = 0; i <= 6; i++) kit.box(0.04, 0.3, 0.02, jg, { pos: [Math.sin((i / 6 - 0.5) * 2.2) * 0.14, h / 2 + 0.36 + Math.cos((i / 6 - 0.5) * 2.2) * 0.14, 0.07], rot: [0, 0, -((i / 6 - 0.5) * 2.2 * 180) / Math.PI], parent: panel });
   for (const sx of [-1, 1]) kit.tube([[sx * (w / 2 - 0.4), h / 2 + 0.3, 0], [sx * (w / 2 - 0.4), o.ceiling - y, 0]], 0.02, kit.pal.brass, { seg: 6, radialSeg: 3, parent: root });
   const border = kit.bulbChain({ path: { rect: [w + 0.3, h + 0.3] }, count: 44, colors: [0xffd34a, 0xff5a7a], r: 0.05 });
   border.root.position.z = 0.12;
@@ -239,12 +261,12 @@ export function buildPrizeCase(kit: KitX, o: { statical: THREE.Group }): { prop:
   sp.position.copy(root.position);
   sp.rotation.y = Math.PI;
   o.statical.add(sp);
-  const wood = kit.pal.woodDark;
+  const wood = presets(kit.tex).wood('dark');
   kit.box(w, 0.55, d, wood, { pos: [0, 0.275, 0], parent: sp });
   kit.box(w + 0.06, 0.04, d + 0.06, kit.pal.brass, { pos: [0, 0.57, 0], parent: sp });
   kit.box(w + 0.06, 0.1, d + 0.06, kit.pal.brass, { pos: [0, h, 0], parent: sp });
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) kit.box(0.05, h - 0.55, 0.05, kit.pal.brass, { pos: [sx * (w / 2), 0.55 + (h - 0.55) / 2, sz * (d / 2)], parent: sp });
-  kit.box(w, h - 0.6, 0.03, 0x120a0c, { pos: [0, 0.6 + (h - 0.6) / 2, -d / 2 + 0.02], parent: sp });   // dark back panel
+  kit.box(w, h - 0.6, 0.03, presets(kit.tex).velvet(0x3a0c16), { pos: [0, 0.6 + (h - 0.6) / 2, -d / 2 + 0.02], parent: sp });   // velvet back panel
   kit.box(w - 0.06, 0.04, d - 0.1, kit.pal.brass, { pos: [0, 1.15, 0.0], parent: sp });                    // shelf
 
   const glass = kit.glass({ w: w - 0.08, h: h - 0.65, d: 0.02, tint: 0xa8d8e0, opacity: 0.18 });
@@ -332,20 +354,21 @@ export function buildPrizeCase(kit: KitX, o: { statical: THREE.Group }): { prop:
 /** A projecting ledge with a balustrade high on both Well side walls, and dark box-seat windows above it. All static. */
 export function buildBalcony(kit: KitX, statical: THREE.Group): void {
   const Y = 6.4, z0 = -17.4, z1 = 1.4, len = z1 - z0, zc = (z0 + z1) / 2;
-  const velvet = kit.mat({ color: 0x4a0c18 });
+  const velvet = presets(kit.tex).velvet(0x5a0c1a), ledge = presets(kit.tex).wood('dark');
   for (const side of [-1, 1]) {
     const wallX = side * 10.85;
     const inX = wallX - side * 0.28;
-    kit.box(0.56, 0.14, len, kit.pal.woodDark, { pos: [inX, Y, zc], parent: statical });
+    kit.box(0.56, 0.14, len, ledge, { pos: [inX, Y, zc], parent: statical });
     kit.box(0.62, 0.04, len, kit.pal.brass, { pos: [inX - side * 0.01, Y + 0.09, zc], parent: statical });
     const railX = wallX - side * 0.5;
     kit.box(0.09, 0.07, len, kit.pal.brass, { pos: [railX, Y + 1.0, zc], parent: statical });
     for (let zz = z0 + 0.3; zz <= z1; zz += 0.9) kit.cyl(0.025, 0.025, 0.92, kit.pal.brass, { pos: [railX, Y + 0.55, zz], seg: 5, parent: statical });
     // box seats: a framed dark window and a velvet swag above the rail
     for (const zz of [-15.6, -12.6, -9.6, -6.6, -3.6, -0.6]) {
-      kit.box(0.08, 1.5, 1.9, kit.pal.brass, { pos: [wallX - side * 0.04, Y + 2.0, zz], parent: statical });
-      kit.box(0.1, 1.36, 1.76, 0x0c0608, { pos: [wallX - side * 0.05, Y + 2.0, zz], parent: statical });
-      kit.box(0.14, 0.3, 2.1, velvet, { pos: [wallX - side * 0.07, Y + 2.8, zz], parent: statical });
+      // each piece starts 1, 2 and 3 cm off the wall face (their backs used to share the wall plane)
+      kit.box(0.08, 1.5, 1.9, kit.pal.brass, { pos: [wallX - side * 0.05, Y + 2.0, zz], parent: statical });
+      kit.box(0.1, 1.36, 1.76, 0x0c0608, { pos: [wallX - side * 0.07, Y + 2.0, zz], parent: statical });
+      kit.box(0.14, 0.3, 2.1, velvet, { pos: [wallX - side * 0.1, Y + 2.8, zz], parent: statical });
     }
   }
 }

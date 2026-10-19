@@ -46,7 +46,7 @@ const strings = {
     'act.buy': '{p} jetonla SATIN AL',
     'sub.opens': '{wing} açılır',
     'sub.keyBuy': '{wing} açılır · F: {p} jetonla SATIN AL',
-    'collector.label': 'Koleksiyerciye sor',
+    'collector.label': 'Tahsildara sor',
     'collector.sub': 'Bir soru · bir tılsım, Obol karşılığı',
     'collector.done': 'Bu gece zaten soruldu',
     'toast.keyDist': 'ANAHTAR HAZIR: {wing}, {m} m uzakta',

@@ -5,6 +5,7 @@
  *
  * Controls (seated): 1–4 or ←/→ pick a bottle · Space/Enter buy · W/S flip between the TONICS and the FOOD page · E stands up.
  * The food page sells four snacks (banana, coffee, sandwich, energy drink), one food bonus at a time (src/game/food.ts).
+ * It is Selim's bar: opening it emits `bar:food` for the local player, and src/game/food.ts plays him (greeting, tip, TIP / PAY BACK).
  * Every peer draws the same shelf from the same run seed and Night. `present()` plays the juice for the local choices.
  */
 import { MachineBase } from '@/machines/_base/MachineBase';
@@ -14,9 +15,17 @@ import type { MachineInputEvent } from '@/core/input/types';
 import type { HudHint } from '@/core/ui/types';
 import type { KitX } from '@/kit';
 import { fmtNum, t as tr } from '@/core/i18n';
+import { bus } from '@/core/events';
 import { lerp } from '@/core/math';
 import { buildModel, DRAWER_SLIDE, type TonicVendorParts } from './model';
 import { FOOD_BUFF_IDS, SLOTS, foodStock, priceText, stockKey, tonicStock, wrapSlot, type TonicJuice, type TonicKind, type TonicOffer } from './rules';
+
+declare module '@/core/events' {
+  interface GameEvents {
+    /** The local player opened the food page: Selim's bar (src/game/food.ts answers). */
+    'bar:food': Record<string, never>;
+  }
+}
 
 type Ev =
   /** A sale. `why` names the refusal when `ok` is false. */
@@ -118,7 +127,7 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
 
   onOccupy(_pid: number, _seat: number, local: boolean): void {
     this.cursor = 0;
-    if (local) { this.sfx('chime'); this.refresh(true); }
+    if (local) { this.sfx('chime'); this.refresh(true); if (this.foodPage) bus.emit('bar:food', {}); }
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
@@ -137,7 +146,10 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
     switch (e.action) {
       case 'left': this.moveCursor(wrapSlot(this.cursor, -1)); return;
       case 'right': this.moveCursor(wrapSlot(this.cursor, 1)); return;
-      case 'up': case 'down': this.foodPage = !this.foodPage; this.sfx('hover'); this.refresh(true); return;
+      case 'up': case 'down':
+        this.foodPage = !this.foodPage; this.sfx('hover'); this.refresh(true);
+        if (this.foodPage) bus.emit('bar:food', {});
+        return;
       case 'n1': case 'n2': case 'n3': case 'n4': this.moveCursor(Number(e.action.slice(1)) - 1); return;
       case 'primary': case 'confirm': this.buy(this.cursor); return;
     }

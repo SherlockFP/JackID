@@ -430,8 +430,57 @@ S1-S7 (W78-W79) built the pieces this reuses: the Promise rules and Ada's kitche
 - **A2, Ada's phase.** `adaPhase(night)` ('across' / 'home'), station visibility, visit Evenings, `HARMONY_START` 2, Harmony 0 by phase and her floor presence, the thread label, her knock.
 - **A3, the kept pair.** "Me too", kept pairs and the three-pair draw in the Promise rules; Ada's echo rule; the kitchen wager mode; headless tests.
 - **A4, bonds and Selim.** `bonds.ts`, toasts, the PEOPLE page; Selim at the bar (tip, food, seal cover and repay, his thread); rival hooks; Mira and Collector moves; the director hook.
-- **A5, the finale.** The N7 deal and PAID IN FULL, the flashback sources, the Clerk in the kitchen, the Compere reveal and the Champion's play, Ada behind you, the nine endings and their save fields.
+- **A5, the finale.** The N7 deal and PAID IN FULL, the flashback sources, the Clerk in the kitchen, the Compere reveal and the Champion's play, Ada behind you, the nine endings and their save fields. Endings routing, save record, three full scenes and six cards are built (wiring plan below).
 - **A6, Loki.** docs/JOKER.md waves J1-J5, with copy and endings from §9.
+
+**A5 wiring plan (the finale).** Built and tested, not called by anything yet: `src/game/story/endings.ts` (the routing and the save record), `endings.strings.ts` (EN+TR), `cutscenes/ending_<id>.cutscene.ts` (three full scenes, `kept_pair`, `cold_kitchen` and `kept`, and six placeholder cards through `cutscenes/endingCard.ts`) and `scripts/tests/endings.test.mjs`. The run fills an `EndingFacts`, `endingRecord(facts)` returns the record, `endingScene(id)` is the scene to play. Still to build in A5: the N7 deal as a run end, the flashback sources, the Clerk in the kitchen, the Compere reveal and the Champion's play.
+
+**Routing** (first match wins, `PRIORITY`). A clean win is `wager === 'win'` with no cracks and no takeover.
+
+| # | Ending | When |
+|---|---|---|
+| 1 | HE CAME HOME | `cameHome` (Ink 10) |
+| 2 | PAID IN FULL | `deal === 1` |
+| 3 | FALL | `fell` |
+| 4 | KEPT | `kitchen === 'lose'` |
+| 5 | THE CHAIR | `wager === 'lose'` |
+| 6 | KEPT PAIR | clean win, `kitchen === 'pair'` |
+| 7 | COLD KITCHEN | clean win, any other kitchen |
+| 8 | DESCEND | `descended` |
+| 9 | ALONE | `paid`, or a win that was not clean |
+
+Only rows 1-3 can overwrite a kept pair (each ends the run before the Wager can be won); rows 4-5 cannot meet it. Bonds, Harmony, seals, Trust and the Night never change the route, they only fill the record (`waiting`, `ada`, `loki`, `carry`).
+
+**Where the run reads the facts.**
+
+| Fact | Source |
+|---|---|
+| `night`, `paid` | `nightDef(this.index).no`; `this.topside` (set at the Night 8 paid Dawn in `dawn()`) |
+| `fell`, `seals` | `fall()` ends `endRun('fell', ...)`; `this.soulMarkCount` |
+| `descended` | the `onDescend` callback (`endRun('escaped', 'descend')`) |
+| `deal` | `chapterRec.deal` (`home/phone.ts` sets it on the Collector's reply) |
+| `kitchen`, `pairs` | new `ChapterRecord.kitchen` and `.pairs`, written when the N8 Evening's `openKitchen({ wager })` calls `done(r)` from `r.wager` and `r.pairs` (the record's 'won' / 'lost' are the flow's 'win' / 'lose') |
+| `wager`, `cracks`, `lokiHand` | new `ChapterRecord.wager`; the Burning Wager's `FlowResult` (`r.wager`, `r.cracks.you`) and the `lokiHand` flag on `DuelEndReport` (JOKER J3, false until then) |
+| `cameHome`, `trust` | `jokerSys.cameHome`, `jokerSys.trust` |
+| `wordAtMatchPoint`, `visitUsed` | a flag the Wager flow sets when his word is spent at match point; `jokerSys.snapshot().used.visit === 1` |
+| `harmony`, `waiting` | `homePhone()?.harmony() ?? HARMONY_START`; `bondBook.floor()` |
+
+**Hooks, in the order of a run.**
+1. Night 7 Dawn (`run.ts dawn()`, paid branch): if `chapterRec.deal === 1`, end the run there instead of opening the Evening (PAID IN FULL).
+2. The Evening that opens Night 8 (`home/evening.ts`, a step before the free walk): open the kitchen wager and store `kitchen` and `pairs`. `lose` ends the run now (KEPT). `win` and `pair` go on to the floor.
+3. Night 8 Act 2 (`story/index.ts`, right after the Night 8 `bond({ kind: 'dawn' })`): run the Burning Wager, store `wager`, `cracks`, `lokiHand` and `wordAtMatchPoint`, then end the run.
+4. `joker:ink` reaching 10 ends the run (J5), which routes to HE CAME HOME by itself.
+5. `run.ts endRun()`: build the facts, call `endingRecord`, keep the record on the run, add an optional `endingId` to `RunSummary` (`summary.ending` stays 'shot' / 'descend' / 'elevator', because `results.ts` and `runObols` read them) and emit it (a bus event `ending:reached`).
+6. `story/index.ts` `run:end` handler: after the scene the run already plays (`ending_elevator`, `mafia_visit`, `quota_fail`, `descend`), queue `playStory(endingScene(rec.id), { vars: { loki: t(rec.lokiLine) } })`. KEPT PAIR and COLD KITCHEN replace `ending_elevator`, they carry their own lift. `holdForStory()` already waits for the queue.
+
+**Hooks the scenes call** (register them next to `home.doorOpen`; a missing hook only logs): `ending.burn` (the card burns on the viewmodel and the HUD; the scene flashes and flickers without it) and `ending.home` (`args.ada` 'seat' or 'still' calls `world.home.setSpouse(true, 'home')`, 'gone' calls `setSpouse(false, 'home')`).
+
+**Open.**
+- Ada's lit face in the lift needs `ActorSpec` to pass `npc: false`, `female` and `rim` to `kit.mannequin` (three optional fields in `core/cutscene/types.ts`, which is TD-frozen, and one line in `actors.ts`). Until then she is a dark NPC in warm light.
+- The lift and stage camera numbers in `ending_kept_pair` come from the level's coordinates and are unchecked in the engine.
+- Bond colour from `rec.waiting` (the street door in KEPT PAIR, Selim's drink in COLD KITCHEN, his coffee in THE CHAIR, Mira's lift call, the Collector holding the door) is a short `floor:say` tag after the scene. The lines do not exist yet.
+- For the lead writer: where is Ada in THE CHAIR (the record says unknown)? A clean win with no kitchen on record reads as COLD KITCHEN, and DESCEND after a burn reads as the burn. The FALL card has no Orrin line ("Not this time, Mr Loki.") and no Ada at the door.
+- Tests to add with the wiring: the facts builder against a real run, each hook above, and the `{loki}` var reaching its cue.
 
 **Tests:** the kept pair and the three-pair draw; Ada's echo rule; the three kitchen outcomes; `adaPhase` and Harmony 0 by phase; the bond fold, neglect and betrayal; Selim's seal round trip; ending routing from save fields.
 

@@ -264,7 +264,7 @@ one shared quota, or against them until one is left standing above the trapdoor.
 
 | Item | Value |
 |---|---|
-| Pocket | 50 ¢ |
+| Pocket | 12 ¢ (wave 85: the Night 1 House float, half the 24 quota; the House notice keeps every Night's opening hold at or under 80 % of its quota, kits and Foundations included) |
 | Deposit | 0 ¢ |
 | Tickets | 2 |
 | Charm pegs | 6 (max 9 in-run, 10 with meta) |

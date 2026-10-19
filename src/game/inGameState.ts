@@ -20,7 +20,7 @@ import { startDebtSession, type DebtSession } from './ingame/session';
 import { fmtCoins, t } from '@/core/i18n';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { nightPaid } from '@/machines/debt_terminal/night';
-import { SKIP_HOLD_S, skipTutorial, tutorialActive } from '@/game/tutorial';
+import { SKIP_HOLD_S, tutorialActive } from '@/game/tutorial';
 import { closeSettingsScreen, openSettingsScreen, settingsScreenOpen } from '@/core/ui/settingsScreen';
 import { startStory, holdForStory, openJournal, storyNight } from '@/game/story';
 import { mountLedger } from '@/game/tycoon/ledger';
@@ -100,18 +100,15 @@ export function createInGameState(): AppStateHandler<'ingame'> {
 
   /** The pause card. Built again after the Settings screen closes (the card is closed while Settings is up). */
   const showPauseCard = (): void => {
-    const seated = app.player?.seat != null;
-    const tutorial = tutorialActive();
     app.ui.panel(PAUSE_PANEL, (el) => buildPause(el, {
       live: pauseLive,
       marks: app.run?.duel ? { left: app.run.duel.soulMarks(), max: SOUL_MARKS_PER_RUN } : undefined,
       onResume: () => { app.ui.closePanel(PAUSE_PANEL); },
       onQuit: () => { session?.run.quit(); },
       onGone: () => { if (paused && !toSettings) setPaused(false); },
-      // seated: STAND UP releases the seat (deferred while the round settles), then the pause closes
-      onStandUp: seated ? () => { session?.world.standUp(); app.ui.closePanel(PAUSE_PANEL); } : undefined,
-      onSkipTutorial: tutorial ? () => { skipTutorial(); app.ui.closePanel(PAUSE_PANEL); } : undefined,
       onSettings: openSettingsFromPause,
+      // the card closes (the pause ends, the mode comes back), then the journal opens as if J had been pressed
+      onJournal: () => { app.ui.closePanel(PAUSE_PANEL); if (app.player?.seat != null) openSeatedJournal(); else openJournal(); },
     }));
   };
 
@@ -207,7 +204,9 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     const L = s.run.nightLedger();
     // The pocket delta of the Night is carried + float + cut (the books reconcile); interest is in the bank and reaches the pocket
     // only through "carried". The label says NIGHT N PAID (it was "QUOTA N PAID", which read as the quota, not the Night).
-    const text = t('hud.nightSummary', {
+    // A sealed Dawn (a name seal paid the miss) counts as paid for flow but reads SEALED: its own line, no PAID title card.
+    const sealed = s.run.nightSealed;
+    const text = t(sealed ? 'hud.nightSealed' : 'hud.nightSummary', {
       n: L.night, carry: Math.round(L.carried), float: Math.round(L.float), cut: Math.round(L.cut),
       tickets: Math.round(L.tickets), int: Math.round(L.interest),
     });
@@ -215,7 +214,8 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     const root = (app.ui as UIOverlayX).hudLayer.parentElement;
     root?.classList.add('dawn-toast');
     app.timers.ui.after(SUMMARY_TOAST_S, () => root?.classList.remove('dawn-toast'));
-    (app.ui as UIOverlayX).toast(text, 'good', SUMMARY_TOAST_S);
+    (app.ui as UIOverlayX).toast(text, sealed ? 'bad' : 'good', SUMMARY_TOAST_S);
+    if (sealed) { overTier = null; return; }
     // NIGHT N PAID as a title card with the rolling amount: the paid total is the quota plus the surplus that returned at Dawn
     // (the receipt's "paid"). The tier by margin: a met quota is BIG, an overshoot tier HUGE, the JACKPOT SEAL or HOUSE ENVY MEGA.
     const paid = Math.round(dueSeen + L.carried);
@@ -336,7 +336,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
       offs.push(app.input.on('help', (down) => {
         const m = app.input.mode;
         if (!down || left || ending || paused || (m !== 'walk' && m !== 'machine')) return;
-        openSettingsScreen({ page: 'controls', focus: 'keys' });
+        openSettingsScreen({ focus: 'keys' });
       }));
       offs.push(bus.on('run:end', ({ summary }) => { reportSeized(summary); endRun(summary); }));
       offs.push(app.input.on('pause', (down) => {

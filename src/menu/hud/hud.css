@@ -110,6 +110,9 @@
 .hud .quota.short.late .bar i:not(.gh) { background: var(--signal); animation: hud-blink .5s steps(2, start) infinite; }
 .hud .quota .int { font-family: var(--f-head); font-size: max(11px, calc(8 * var(--u))); color: var(--bone); }
 .hud .quota.met .num { color: var(--green); }
+/* a Dawn paid with a name seal (hud.ts updateQuota): the wax-red of the seal pips (seals.css), never the green paid state */
+.hud .quota.sealed .bar i:not(.gh) { background: #d2483a; }
+.hud .quota.sealed .num { color: #d2483a; }
 .hud .quota .short { font-family: var(--f-head); font-size: calc(9 * var(--u)); color: var(--amber); }
 
 /* HEAT meter under the quota (hud.ts updateHeat): a thin bar, amber to red, blinking above 75 */

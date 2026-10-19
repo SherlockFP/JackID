@@ -21,13 +21,16 @@ export interface KitDef {
 }
 
 export const KITS: readonly KitDef[] = [
-  // Playtest 5.5/10: Pauper's 50 coins trivialised Night 1 (quota 14). Kits are scaled (about x0.6) and Night 1 re-verified with scripts/sim/run.mjs (rotator >= 95 %, camper >= 75 %; Night 1 quota 19 in schedule.ts).
-  { id: 'pauper', unlockCost: 0, coins: 30, tickets: 2, predeposit: 0, charms: [] },
-  { id: 'rotator', unlockCost: 30, coins: 25, tickets: 0, predeposit: 0, charms: ['suit_ladder'] },
-  { id: 'hot_hand', unlockCost: 60, coins: 25, tickets: 0, predeposit: 0, charms: ['lampwick', 'cold_hands'] },
-  { id: 'clutch', unlockCost: 60, coins: 22, tickets: 0, predeposit: 0, charms: ['last_gasp', 'night_owl'] },
-  { id: 'banker', unlockCost: 90, coins: 12, tickets: 0, predeposit: 25, charms: ['piggy_tooth', 'wax_seal'] },
-  { id: 'heir', unlockCost: 120, coins: 120, tickets: 0, predeposit: 0, charms: ['glass_heart'] },
+  // Wave 85 (director): no kit may open Night 1 able to pay it. Night 1's quota is 24 and the House notice (schedule.ts) raises it to
+  // 1.25 x whatever a start holds (pocket + pre-deposit), so every kit stays under 19 coins: Pauper 12 (+2 Tickets = 10 at the cashier),
+  // the charm kits a little less, the Banker 12 with 8 of them already earning, the Heir the richest at 18. (Was 30 / 25 / 25 / 22 /
+  // 12 + 25 / 120: the Banker's pre-deposit alone paid the 24, and the Heir held five quotas.)
+  { id: 'pauper', unlockCost: 0, coins: 12, tickets: 2, predeposit: 0, charms: [] },
+  { id: 'rotator', unlockCost: 30, coins: 10, tickets: 0, predeposit: 0, charms: ['suit_ladder'] },
+  { id: 'hot_hand', unlockCost: 60, coins: 10, tickets: 0, predeposit: 0, charms: ['lampwick', 'cold_hands'] },
+  { id: 'clutch', unlockCost: 60, coins: 9, tickets: 0, predeposit: 0, charms: ['last_gasp', 'night_owl'] },
+  { id: 'banker', unlockCost: 90, coins: 4, tickets: 0, predeposit: 8, charms: ['piggy_tooth', 'wax_seal'] },
+  { id: 'heir', unlockCost: 120, coins: 18, tickets: 0, predeposit: 0, charms: ['glass_heart'] },
 ];
 
 export const kitById = (id: string): KitDef | undefined => KITS.find((k) => k.id === id);

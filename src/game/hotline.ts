@@ -73,6 +73,8 @@ export interface HotlineHost {
   hollowRing?(): boolean;
   /** The 3:33 call was answered ('godown' opens the door) or spent ('hangup': missed, declined or hung up). */
   hollowAnswer?(choice: 'godown' | 'hangup'): boolean;
+  /** BONDS: whether a bond unlock is held (Mira's Night 7 call). Missing = none held. */
+  bondHas?(id: string): boolean;
 }
 
 export interface HotlineOpts {
@@ -587,7 +589,7 @@ export function createHotline(run: RunApi, opts: HotlineOpts = {}): Hotline {
       st.answerLeft = ANSWER_SECONDS;
       rebuildView();
       // the first Watch of a Night with a Mira call: her lines play over the pickup (the deals still follow)
-      const sc = st.watch === 0 && !c.hollow ? storyCallFor(run.night()) : null;
+      const sc = st.watch === 0 && !c.hollow ? storyCallFor(run.night(), (id) => host.bondHas?.(id) ?? false) : null;
       if (sc && !(st.story ?? []).includes(sc.night)) {
         (st.story ??= []).push(sc.night);
         bus.emit('phone:story', { callId: c.id, id: sc.id, speaker: sc.speaker, lines: [...sc.lines] });

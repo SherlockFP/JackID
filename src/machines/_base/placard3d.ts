@@ -40,21 +40,6 @@ export const RED = '#c0392b';
  */
 export const RES = 3;
 
-// ── rules card policy: the automatic how-to opens once per save ───────────────────────────────────────
-const RULES_KEY = 'jackid.rulesAutoShown';
-/**
- * True until the first how-to card has been shown anywhere in this save. Machines used to open HOW TO PLAY on the first
- * sit at EVERY machine; now only the very first sit in the save does, and the seat HUD shows a small "[key] RULES" hint
- * afterwards. Storage can throw (private window): then the card counts as already shown.
- */
-export function rulesFirstEver(): boolean {
-  try { return window.localStorage.getItem(RULES_KEY) !== '1'; } catch { return false; }
-}
-/** Remember that the one automatic how-to card has been shown. */
-export function rulesMarkShown(): void {
-  try { window.localStorage.setItem(RULES_KEY, '1'); } catch { /* private window: nothing to remember */ }
-}
-
 // ── host: the first-person overlay and the game canvas ─────────────────────────────────────────────
 export interface OverlayRig { readonly scene: THREE.Scene; readonly camera: THREE.Camera }
 /**
@@ -176,9 +161,6 @@ export interface PlacardSpec {
   rest?: readonly [number, number, number];
   /** Called once the hide animation has finished and the placard is disposed. */
   onGone?(): void;
-  /** Seconds it stays open before it slides away by itself (a first-sit tip must not sit over the HUD). Any action still
-   *  works while it is up. */
-  autoHide?: number;
   /** Seated: lift the face into the clear band between the seat HUD's top band and its control stack (see
    *  `seatClearRest`). Seat cards (`seat-*`) always do; a caller sets it for its own board. */
   clearSeat?: boolean;
@@ -187,10 +169,11 @@ export interface PlacardSpec {
 // ── seated clearance: the face sits between the seat HUD's top band and its control stack ─────────────
 /**
  * Rest position (overlay space) that puts the face's bottom edge just above the seat stack (`--seat-bot-t`) and keeps
- * it under the top band (`--seat-top-b`) when both are known. Null when not seated (no stack published) or no
- * perspective camera; the spec's own rest then stands.
+ * it under the top band (`--seat-top-b`) when both are known. A face taller than that band is scaled down (`k`, not below
+ * a half) to fit it: centred in a band it does not fit, its header sat under the seat's state box and goal line.
+ * Null when not seated (no stack published) or no perspective camera; the spec's own rest then stands.
  */
-function seatClearRest(cam: THREE.Camera, spec: PlacardSpec): THREE.Vector3 | null {
+function seatClearRest(cam: THREE.Camera, spec: PlacardSpec): { rest: THREE.Vector3; k: number } | null {
   const el = document.querySelector<HTMLElement>('.px-root.seated');   // seatHud.ts marks the HUD root while seated
   if (!el || !(cam instanceof THREE.PerspectiveCamera)) return null;
   const bot = parseFloat(el.style.getPropertyValue('--seat-bot-t'));
@@ -201,13 +184,14 @@ function seatClearRest(cam: THREE.Camera, spec: PlacardSpec): THREE.Vector3 | nu
   const d = Math.abs(r[2]);
   const hh = d * Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2);   // half the visible height at the face's depth
   const pxToWorld = (2 * hh) / H;
-  const facePx = spec.h / pxToWorld;
   const bottomPx = bot - 6;                                         // a small gap over the stack
   const topBand = Number.isFinite(top) ? top + 4 : 0;
+  const k = Math.max(0.5, Math.min(1, (bottomPx - topBand) / (spec.h / pxToWorld)));
+  const facePx = (spec.h / pxToWorld) * k;
   let centrePx = bottomPx - facePx / 2;
-  if (centrePx - facePx / 2 < topBand) centrePx = (topBand + bottomPx) / 2;   // cannot fit: centre in the band
+  if (centrePx - facePx / 2 < topBand) centrePx = (topBand + bottomPx) / 2;   // cannot fit even scaled: centre in the band
   const y = hh - centrePx * pxToWorld;                              // screen px (down) → world y (up); eye on the axis
-  return new THREE.Vector3(r[0], y, r[2]);
+  return { rest: new THREE.Vector3(r[0], y, r[2]), k };
 }
 
 const IN_S = 0.42, OUT_S = 0.2, FLIP_S = 0.26;
@@ -215,7 +199,7 @@ const live = new Set<Placard3D>();
 const stack: Placard3D[] = [];
 let hooked = false;
 
-/** Seat cards (`seatHud.ts`: `seat-tip`, `seat-rules`) close on ANY key, Space included; the key is consumed. */
+/** Seat cards (`seatHud.ts`: `seat-rules`) close on ANY key, Space included; the key is consumed. */
 const ANY_KEY_PREFIX = 'seat-';
 const MODIFIER_CODES = new Set(['ShiftLeft', 'ShiftRight', 'ControlLeft', 'ControlRight', 'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight', 'CapsLock']);
 /** Class on the HUD root while any placard is up: the Night 1 tutorial box (`.px-tut`) steps aside (ui.css). */
@@ -248,6 +232,7 @@ export class Placard3D {
   private flipSwapped = false;
   private flipTo = 0;
   private pageNo = 0;
+  private refitT = 0;
   private hovered: string | null = null;
   private regions: Array<{ x: number; y: number; w: number; h: number; act: string }> = [];
   private dead = false;
@@ -284,6 +269,20 @@ export class Placard3D {
     this.repaint();
   }
 
+  /**
+   * A seat card sits in the clear band of the seat HUD (`seatClearRest`). The stack's edges move after the card opens (the odds line
+   * arrives, a control wraps, the window resizes), so this runs on open and every 0.2 s while it is up.
+   */
+  private refit(): void {
+    if (!this.cam || !(this.spec.clearSeat || this.spec.name.startsWith(ANY_KEY_PREFIX))) return;
+    const l = seatClearRest(this.cam, this.spec);
+    if (!l) return;
+    if (l.rest.distanceToSquared(this.rest) < 1e-6 && Math.abs(l.k - this.root.scale.x) < 0.005) return;
+    this.rest = l.rest;
+    this.from = l.rest.clone().add(new THREE.Vector3(0, -0.34, 0.06));
+    this.root.scale.setScalar(l.k);
+  }
+
   /** Current page (clamped to the page count on repaint). */
   get page(): number { return this.pageNo; }
   get open(): boolean { return (this.phase === 'in' || this.phase === 'open') && !this.dead; }
@@ -294,10 +293,7 @@ export class Placard3D {
     const rig = overlayRig();
     if (!rig) { log.warn('placard', `${this.spec.name}: no overlay scene`); return false; }
     this.cam = rig.camera;
-    if (this.spec.clearSeat || this.spec.name.startsWith(ANY_KEY_PREFIX)) {
-      const lifted = seatClearRest(rig.camera, this.spec);
-      if (lifted) { this.rest = lifted; this.from = lifted.clone().add(new THREE.Vector3(0, -0.34, 0.06)); }
-    }
+    this.refit();
     rig.scene.add(this.root);
     markCrisp(this.root);                             // meshes the caller added after construction
     ensureCrispPass();
@@ -417,7 +413,7 @@ export class Placard3D {
   update(dt: number): void {
     if (this.dead) return;
     this.t += dt; this.time += dt;
-    if (this.phase === 'open' && this.spec.autoHide && this.t >= this.spec.autoHide) this.hide();
+    if (this.phase !== 'out' && (this.refitT += dt) >= 0.2) { this.refitT = 0; this.refit(); }
     let repaint = false;
     if (this.phase === 'in') {
       const f = Math.min(1, this.t / IN_S);

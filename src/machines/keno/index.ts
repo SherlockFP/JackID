@@ -122,7 +122,7 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
   onInput(e: MachineInputEvent): void {
     if (!e.down) return;
     const a = e.action;
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(RULE_LINES); return; }
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
     if (e.repeat && !isBet) return;
@@ -561,7 +561,6 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
       this.seatHud?.show();
       this.hudSig = '';
       this.showHud();
-      this.seatHud?.firstTip('keno', this.tipLines());
     }
   }
   onRelease(_pid: PlayerId, _seat: number, local: boolean): void {
@@ -652,14 +651,6 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
 
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.keno.tip1' },
-      { k: 'm.keno.tip2', v: { quick: this.k('n1'), spots: this.k('n2'), clear: this.k('clear') } },
-      { k: 'm.keno.tip3', v: { play: this.k('confirm'), help: this.k('help') } },
-    ];
-  }
 
   /** DOUBLE DOWN window: the hits so far, the second stake, the new paytable for the hit counts still in reach, the balance. */
   private ddNumbers(o: Offer, picks: number[], wallet: number): HudNumber[] {
@@ -757,5 +748,11 @@ export const def: MachineDef = {
     'm.keno.extraNumber': 'int: extra public numbers drawn after the 20, counted for the owner only',
     luck: 'solo only: reroll a non-paying draw once with p = luck/100',
   },
+  // seat coach (_base/coach.ts): taught by doing on the first sits
+  coach: [
+    { key: 'n1', say: 'quickPick', done: 'press' },
+    { key: 'confirm', say: 'play', done: 'press' },
+    { key: 'betUp', say: 'bet', done: 'bet' },
+  ],
   strings: STRINGS,
 };

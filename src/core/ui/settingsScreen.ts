@@ -1,18 +1,15 @@
 /**
  * Settings screen (CORE-UI). One modal DOM panel built from the widget kit, opened from the main menu (SETTINGS), from the
- * pause card and from F1 (the CONTROLS page). Pages:
+ * pause card and from F1 (opens ADVANCED at the key bindings). One scrolling page:
  *
- *   CONTROLS  mouse sensitivity · invert Y · FOV · every key binding (walk | seated columns) with rebinding + RESET ALL
- *   VIDEO     Performance / Standard presets · PSX look and filters · resolution · draw distance
- *   AUDIO     master · effects · interface · music · ambience · voice
- *   ACCESS    language · calm mode · head bob · screen shake · flashing · text size · crosshair · subtitles · colour-blind ·
- *             hold to confirm
+ *   ESSENTIALS  master · music · effects · resolution · mouse sensitivity · invert Y · language · subtitles
+ *   ADVANCED    (collapsed) FOV · every key binding · presets and PSX filters · other volumes · comfort and interface
  *
  * Every control writes through `save.setSetting` the moment it changes, so the game reacts live and the value persists.
  * Input: the panel is a `modalPanel`, so the Input service switches to 'ui' while it is open and falls back to whatever mode
  * the game had (walk, seated machine, menu) when it closes. The screen never touches the input mode itself, which is what
  * makes the restore exact: pointer lock is requested again only when the mode that returns is 'walk'. Esc closes the panel
- * (core/ui handles it, except while a key is being rebound). ←/→ or Q/E switch pages, W/S move between controls.
+ * (core/ui handles it, except while a key is being rebound). W/S move between controls.
  */
 import './settingsScreen.css';
 import { app } from '../app';
@@ -25,32 +22,27 @@ import { PERFORMANCE_PSX } from '../renderer/perfPreset';
 import type { PsxSettings } from '../renderer/types';
 import { DEFAULT_PSX, type Settings } from '../settings';
 import {
-  button, cycle, field, frame, h, keyBind, keyCaptureActive, modalPanel, scroll, slider, tabs, tip, toggle, uiSfx,
-  type Tabs,
+  button, cycle, field, frame, h, keyBind, keyCaptureActive, modalPanel, scroll, slider, tip, toggle, uiSfx,
 } from './widgets';
 
 export const SETTINGS_PANEL = 'settings-screen';
 
-export type SettingsPage = 'controls' | 'video' | 'audio' | 'access';
 export interface SettingsOpts {
-  /** Page to show first (default CONTROLS). */
-  page?: SettingsPage;
-  /** `'keys'` scrolls the CONTROLS page down to the key bindings (F1 opens it this way). */
+  /** `'keys'` opens ADVANCED and scrolls down to the key bindings (F1 opens it this way). */
   focus?: 'keys';
   /** Runs once when the screen closes, for any reason (Esc, BACK, the panel being replaced or the state exiting). */
   onClose?(): void;
 }
 
-const PAGES: readonly SettingsPage[] = ['controls', 'video', 'audio', 'access'];
 const FRAME_W = 430;
 
-/** The open screen, if any: lets a second `openSettingsScreen` just flip the page instead of rebuilding. */
-let live: { select(page: SettingsPage, focus?: 'keys'): void } | null = null;
+/** The open screen, if any: lets a second `openSettingsScreen` just jump to the keys instead of rebuilding. */
+let live: { select(focus?: 'keys'): void } | null = null;
 
 export function settingsScreenOpen(): boolean { return live !== null; }
 
 export function openSettingsScreen(o: SettingsOpts = {}): void {
-  if (live) { live.select(o.page ?? 'controls', o.focus); return; }
+  if (live) { live.select(o.focus); return; }
   app.ui.panel(SETTINGS_PANEL, (el) => mount(el, o));
 }
 
@@ -101,12 +93,28 @@ function flag(c: Ctx, key: string, label: string, value: boolean, apply: (v: boo
   row(c, key, label, (slot) => toggle(slot, { value, onChange: apply }), hint);
 }
 
-function controlsPage(c: Ctx): void {
-  head(c, t('settings.sec.mouse'));
+function essentialsPage(c: Ctx): void {
+  head(c, t('settings.sec.basic'));
+  for (const k of ['master', 'music', 'sfx'] as const) {
+    slide(c, `vol.${k}`, t(`settings.vol.${k}`), { min: 0, max: 1, step: 0.05, value: S().vol[k], format: pct, apply: (v) => putVol(k, v) });
+  }
+  row(c, 'psx.targetHeight', t('settings.res'), (slot) => cycle<number>(slot, {
+    options: [180, 224, 240, 288, 360].map((v) => ({ value: v, label: `${v}p` })),
+    value: S().psx.targetHeight, wrap: false, onChange: (v) => { putPsx('targetHeight', v); c.reload(); },
+  }));
   slide(c, 'mouseSens', t('settings.mouseSens'), {
     min: 0.0005, max: 0.006, step: 0.0001, value: S().mouseSens, format: (v) => (v * 1000).toFixed(1), apply: (v) => put('mouseSens', v),
   });
   flag(c, 'invertY', t('settings.invertY'), S().invertY, (v) => put('invertY', v));
+  row(c, 'lang', t('settings.lang'), (slot) => cycle<Settings['lang']>(slot, {
+    options: [{ value: 'en', label: 'English' }, { value: 'tr', label: 'Türkçe' }],   // i18n-ok: language names are shown in their own language
+    value: S().lang, onChange: (v) => put('lang', v),
+  }));
+  flag(c, 'subtitles', t('settings.subtitles'), S().subtitles, (v) => put('subtitles', v));
+}
+
+function controlsPage(c: Ctx): void {
+  head(c, t('settings.sec.mouse'));
   slide(c, 'fov', t('settings.fov'), {
     min: 60, max: 95, step: 1, value: S().fov, format: (v) => `${v}°`, apply: (v) => put('fov', v),
   });
@@ -159,10 +167,6 @@ function videoPage(c: Ctx): void {
 
   head(c, t('settings.sec.picture'));
   flag(c, 'psx.enabled', t('settings.psx'), S().psx.enabled, (v) => putPsx('enabled', v));
-  row(c, 'psx.targetHeight', t('settings.res'), (slot) => cycle<number>(slot, {
-    options: [180, 224, 240, 288, 360].map((v) => ({ value: v, label: `${v}p` })),
-    value: S().psx.targetHeight, wrap: false, onChange: (v) => { putPsx('targetHeight', v); c.reload(); },
-  }));
   row(c, 'psx.drawDistance', t('settings.dist'), (slot) => cycle<PsxSettings['drawDistance']>(slot, {
     options: (['near', 'normal', 'far'] as const).map((v) => ({ value: v, label: t(`settings.dist.${v}`) })),
     value: S().psx.drawDistance, wrap: false, onChange: (v) => { putPsx('drawDistance', v); c.reload(); },
@@ -185,18 +189,12 @@ function videoPage(c: Ctx): void {
 
 function audioPage(c: Ctx): void {
   head(c, t('settings.sec.volume'));
-  for (const k of ['master', 'sfx', 'ui', 'music', 'amb', 'voice'] as const) {
+  for (const k of ['ui', 'amb', 'voice'] as const) {
     slide(c, `vol.${k}`, t(`settings.vol.${k}`), { min: 0, max: 1, step: 0.05, value: S().vol[k], format: pct, apply: (v) => putVol(k, v) });
   }
 }
 
 function accessPage(c: Ctx): void {
-  head(c, t('settings.sec.language'));
-  row(c, 'lang', t('settings.lang'), (slot) => cycle<Settings['lang']>(slot, {
-    options: [{ value: 'en', label: 'English' }, { value: 'tr', label: 'Türkçe' }],   // i18n-ok: language names are shown in their own language
-    value: S().lang, onChange: (v) => put('lang', v),
-  }));
-
   head(c, t('settings.sec.comfort'));
   flag(c, 'calm', t('settings.calm'), S().calm, (v) => put('calm', v), t('settings.calm.tip'));
   slide(c, 'headBob', t('settings.headBob'), { min: 0, max: 1, step: 0.05, value: S().headBob, format: pct, apply: (v) => put('headBob', v) });
@@ -214,7 +212,6 @@ function accessPage(c: Ctx): void {
     options: (['dot', 'cross', 'none'] as const).map((v) => ({ value: v, label: t(`settings.crosshair.${v}`) })),
     value: S().crosshair, onChange: (v) => put('crosshair', v),
   }));
-  flag(c, 'subtitles', t('settings.subtitles'), S().subtitles, (v) => put('subtitles', v));
   row(c, 'subtitleSpeed', t('settings.subtitleSpeed'), (slot) => cycle<Settings['subtitleSpeed']>(slot, {
     options: (['slow', 'normal', 'instant'] as const).map((v) => ({ value: v, label: t(`settings.subtitleSpeed.${v}`) })),
     value: S().subtitleSpeed, onChange: (v) => put('subtitleSpeed', v),
@@ -227,10 +224,9 @@ function accessPage(c: Ctx): void {
 function mount(el: HTMLElement, o: SettingsOpts): () => void {
   modalPanel(el, { escClose: true, dim: true });
   const input = app.input as InputExt;
-  let page: SettingsPage = o.page ?? 'controls';
   let wantKeys = o.focus === 'keys';
+  let adv = wantKeys;   // ADVANCED starts collapsed, except when F1 asks for the key bindings
   let pageOff: Array<() => void> = [];
-  let tabsW: Tabs | null = null;
   let scrollEl: HTMLElement | null = null;
   let bodyEl: HTMLElement | null = null;
   let closed = false;
@@ -254,12 +250,12 @@ function mount(el: HTMLElement, o: SettingsOpts): () => void {
     const ctx: Ctx = {
       body: bodyEl, input, reload: () => renderPage(true), track: (d) => { pageOff.push(d); },
     };
-    if (page === 'controls') controlsPage(ctx);
-    else if (page === 'video') videoPage(ctx);
-    else if (page === 'audio') audioPage(ctx);
-    else accessPage(ctx);
+    essentialsPage(ctx);
+    const more = button(bodyEl, { label: t(adv ? 'settings.adv.hide' : 'settings.adv.show'), onClick: () => { adv = !adv; renderPage(true); } });
+    more.el.dataset.sk = 'advanced';
+    if (adv) { controlsPage(ctx); videoPage(ctx); audioPage(ctx); accessPage(ctx); }
     scrollEl.scrollTop = top;
-    if (wantKeys && page === 'controls') {
+    if (wantKeys && adv) {
       wantKeys = false;
       bodyEl.querySelector<HTMLElement>('[data-anchor="keys"]')?.scrollIntoView({ block: 'start' });
     }
@@ -271,38 +267,26 @@ function mount(el: HTMLElement, o: SettingsOpts): () => void {
     disposePage();
     el.replaceChildren();
     const fr = frame(el, { title: t('settings.title'), width: FRAME_W, className: 'st-frame' });
-    tabsW = tabs(fr.body, {
-      tabs: PAGES.map((id) => ({ id, label: t(`settings.tab.${id}`) })),
-      active: page,
-      onChange: (id) => { page = id as SettingsPage; renderPage(false); },
-    });
-    tabsW.el.classList.add('st-tabs');
     scrollEl = scroll(fr.body);
     scrollEl.classList.add('st-scroll');
     bodyEl = h('div', 'st-body', scrollEl);
     const foot = h('div', 'st-foot', fr.body);
-    h('div', 'hint', foot, t('settings.footer'));
+    h('div', 'hint', foot, t('ui.keyhint'));
     const back = button(foot, { label: t('common.back'), kind: 'primary', sfx: 'back', onClick: () => closeSettingsScreen() });
     back.el.dataset.sk = 'back';
     renderPage(false);
     refocus(sk);
   };
 
-  const select = (next: SettingsPage, focus?: 'keys'): void => {
-    page = next;
+  const select = (focus?: 'keys'): void => {
     wantKeys = focus === 'keys';
-    tabsW?.select(next);
+    if (wantKeys) adv = true;
     renderPage(false);
   };
 
   const onKey = (e: KeyboardEvent): void => {
     if (keyCaptureActive() || e.ctrlKey || e.altKey || e.metaKey) return;
     if (input.codesOf('help').includes(e.code)) { e.preventDefault(); e.stopImmediatePropagation(); closeSettingsScreen(); return; }
-    const d = e.code === 'KeyQ' || e.code === 'PageUp' ? -1 : e.code === 'KeyE' || e.code === 'PageDown' ? 1 : 0;
-    if (!d) return;
-    e.preventDefault();
-    select(PAGES[(PAGES.indexOf(page) + d + PAGES.length) % PAGES.length]);
-    uiSfx('click', 0.6);
   };
   window.addEventListener('keydown', onKey);
   // a language change re-texts everything: rebuild the whole frame, keeping the page and the focused control

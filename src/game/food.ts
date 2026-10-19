@@ -17,6 +17,11 @@
  * The fridge (`mountFood`) holds up to FRIDGE_MAX meals. Ada leaves something in it each Night; the economy lane's market delivers with
  * `addToFridge(id)`. Eating plays a short hand animation (src/player/viewmodel.ts) and a sound; no setTimeout, no wall clock.
  * Saved with `fridgeSnapshot()` / `fridgeRestore()`; the buffs travel with the buff save.
+ *
+ * SELIM'S BAR (bonds, docs/STORY_BIBLE.md §10): the food page is his bar. Opening it (`bar:food`, from the machine) is a word with
+ * him; the first time a Night he greets you by bond, gives his tip (bond 1: the next Hot Lamp), the kept-pair line (bond 3) and a
+ * free coffee (bond 2). Then a short pick list: TIP (a share, +1 bond) and PAY BACK while he holds a loan (the share of the quota his
+ * seal covered). His last seal at a short Dawn asks here too (`selim:ask`).
  */
 import { app } from '@/core/app';
 import { bus } from '@/core/events';
@@ -25,6 +30,9 @@ import { createRng, hashSeed } from '@/core/rng';
 import type { BuffsApi } from './buffs.types';
 import type { HomePhoneApi } from './home/contract';
 import { hooksOf } from './home/phone';
+import { machineName } from './progression';
+import type { BondChange, BondEvent, Bonds } from './bonds';
+import type { MachineId } from '@/core/types';
 
 export type FoodId = 'banana' | 'coffee' | 'sandwich' | 'energy' | 'soup';
 export const FOOD_IDS: readonly FoodId[] = ['banana', 'coffee', 'sandwich', 'energy', 'soup'];
@@ -273,6 +281,25 @@ export interface FoodHost {
   night(): number;
   buffs: BuffsApi;
   homePhone?(): HomePhoneApi | null;
+  // Selim's bar (the run has them all; optional so a bare host still mounts the fridge)
+  bonds?(): Bonds;
+  bond?(ev: BondEvent): BondChange;
+  nextHot?(): { machineId: string } | null;
+  debt?(): { due: number };
+  canAfford?(cost: number): boolean;
+  spend?(cur: 'coin', amount: number, reason: string): boolean;
+  selimAnswer?(yes: boolean): void;
+}
+
+// ── Selim's bar ──────────────────────────────────────────────────────────────────────────────────────────────────────
+/** A tip at Selim's bar: this share of tonight's quota, at least one coin. */
+export const TIP_SHARE = 0.03;
+export const tipPrice = (due: number): number => Math.max(1, Math.round(Math.max(0, due) * TIP_SHARE));
+export type BarRow = 'tip' | 'repay';
+/** What the bar offers: a tip unless he stands still (out of seals), and PAY BACK while a loan is out and he can still take it. */
+export function barRows(s: { owes: number; forgot: boolean; still: boolean }): BarRow[] {
+  if (s.still) return [];
+  return s.owes > 0 && !s.forgot ? ['tip', 'repay'] : ['tip'];
 }
 
 /**
@@ -324,6 +351,67 @@ export function mountFood(run: FoodHost): () => void {
     }
   };
 
-  const off = bus.on('home:interact', ({ station }) => { if (station === 'fridge') void openFridge(); });
-  return () => { disposed = true; off(); };
+  // ── Selim's bar (the food page) ──
+  let barOpen = false;
+  let greetNight = 0;
+  let foodNight = 0;
+  const say = (key: string, vars?: Record<string, string | number>): void => {
+    bus.emit('floor:say', { text: t(key, vars), speaker: t('story.speaker.selim'), voice: 'bartender', source: 'bonds.selim' });
+  };
+  const hasFood = (): boolean => [...FOOD_BUFFS, PENDING_BUFF].some((id) => run.buffs.has(id, { pid: run.selfId }));
+
+  const openBar = async (): Promise<void> => {
+    const book = run.bonds?.();
+    if (!book || !run.bond || barOpen || disposed) return;
+    barOpen = true;
+    try {
+      const night = run.night();
+      run.bond({ kind: 'talk', who: 'selim' });
+      if (greetNight !== night) {
+        greetNight = night;
+        say(book.greeting('selim'));
+        if (book.has('selim.tip')) {
+          const hot = run.nextHot?.() ?? null;
+          say(hot ? 'bonds.selim.tipLine' : 'bonds.selim.tipNone', hot ? { machine: machineName(hot.machineId as MachineId) } : undefined);
+        }
+        if (book.has('selim.pair')) say('bonds.selim.pairLine');
+      }
+      // a free coffee a Night at bond 2; he keeps it for later while another meal is still working
+      if (foodNight !== night && book.has('selim.food') && !hasFood()) {
+        foodNight = night;
+        say('bonds.selim.food');
+        run.buffs.add('food.coffee', { pid: run.selfId, source: { kind: 'system', id: 'food' } });
+      }
+      const rows = barRows(book.selim());
+      if (rows.length === 0) return;
+      const price = (r: BarRow): number => (r === 'tip' ? tipPrice(run.debt?.().due ?? 0) : book.selim().price);
+      const labels = rows.map((r) => t(`bonds.bar.${r}`, { n: price(r) }));
+      const pick = await app?.ui?.choice(t('bonds.bar.title'), [...labels, t('bonds.bar.close')], { timeout: 20 });
+      if (disposed || pick === undefined || pick < 0 || pick >= rows.length) return;
+      const row = rows[pick];
+      const n = price(row);
+      if (n > 0 && !(run.canAfford?.(n) ?? false)) { app?.ui?.toast(t('bonds.bar.broke'), 'bad', 2.5); return; }
+      if (row === 'repay') {
+        // the seal comes back first; the coins move only when he took it
+        if (!run.bond({ kind: 'repay' }).refused && n > 0) run.spend?.('coin', n, 'bar.repay');
+      } else if (run.spend?.('coin', n, 'bar.tip')) {
+        if (run.bond({ kind: 'share', who: 'selim' }).deltas.length === 0) app?.ui?.toast(t('bonds.selim.thanks'), 'info', 2.5);
+      }
+    } catch { /* the UI went away mid-pick */ } finally {
+      barOpen = false;
+    }
+  };
+  /** His last seal at a short Dawn: the run waits on this answer (and reads silence as no). */
+  const askSeal = async (): Promise<void> => {
+    let yes = false;
+    try { yes = (await app?.ui?.choice(t('bonds.selim.ask'), [t('bonds.selim.askYes'), t('bonds.selim.askNo')], { timeout: 15 })) === 0; } catch { /* no UI */ }
+    if (!disposed) run.selimAnswer?.(yes);
+  };
+
+  const offs = [
+    bus.on('home:interact', ({ station }) => { if (station === 'fridge') void openFridge(); }),
+    bus.on('bar:food', () => { void openBar(); }),
+    bus.on('selim:ask', () => { void askSeal(); }),
+  ];
+  return () => { disposed = true; for (const off of offs) off(); };
 }

@@ -24,7 +24,7 @@ A signed scale, because he can be a friend or an enemy and the sign is his mood 
 
 | Move | Trust |
 |---|---|
-| Take a dare (his machine at his stake, raise when he says raise, ride the rig once more) | +1, max +1 a Watch |
+| Take a dare (his machine at his stake, raise when he says raise, ride the rig once more) | +1, once a Night |
 | Feed him a marked card | +1 |
 | Keep a promise you made him (checked at Dawn) | +1 |
 | Catch him lying: press C within 3 s of a whisper that was a lie | +1, once a Night |
@@ -34,6 +34,8 @@ A signed scale, because he can be a friend or an enemy and the sign is his mood 
 | Hand a marked card to the Clerk | −1 |
 | Break a promise to him | −2 |
 | Admit him to Ada (N5, once) | −2 |
+
+Trust gains cap at +1 a Night, whatever you do; it falls without limit. At a Dawn Trust decays 1 toward 0 unless it moved that Night, so a favour you stop feeding is forgotten.
 
 Ignoring a plain tip costs nothing: only dares and promises are requests. His promises are small and run until Dawn ("Play the derby for me tomorrow." "Leave the photo at home."). He asks one a Night at most, at the Evening, through the window glass. At Ada's table he is silent until Ink 8: she beat him, and he can't read her. After that he may ask you to break your word to her: breaking it gives Trust +1, Harmony −1 and a crack; keeping it costs Trust −1, and the kept word still heals Ink.
 
@@ -168,7 +170,7 @@ Each one costs Ink +2. Two counters:
 - **Ada's hair tie,** worn on your wrist as the keepsake: the first unasked takeover each Night slips off ("not that hand").
 - **Coffee:** blocks them for the next Watch.
 
-**His word.** At Trust +3 he offers one true answer, because you earned it. It is said over the card, so Rule 1 binds him. Once a run, an Ask made "on his word" is always true and carries no tell. It holds even if Trust falls later, and he will try to make you spend it early. Spent at the Burning Wager's match point, it is the first word he has ever kept: he tells the truth against the rest of himself, and when the card burns the fire can't take him (STORY_BIBLE §9).
+**His word.** His word is earned when Trust +3 is held at a Dawn: then he offers one true answer. It is said over the card, so Rule 1 binds him. Once a run, an Ask made "on his word" is always true and carries no tell. It holds even if Trust falls later, and he will try to make you spend it early. Spent at the Burning Wager's match point, it is the first word he has ever kept: he tells the truth against the rest of himself, and when the card burns the fire can't take him (STORY_BIBLE §9).
 
 ## 5. Integration
 
@@ -234,9 +236,9 @@ Found while reading: `session.ts` reads `dread.add` only as relief (`Math.max(0,
 | Bot | Plays | Target |
 |---|---|---|
 | abstain | never uses him | HE CAME HOME 0 %; quota pass rate within 1 point of today |
-| measured | one takeover a Night, asks at key moments | HE CAME HOME under 5 %; pass rate +5 to +10 points; Ink ≤ 6 in 90 % of runs |
+| measured | one takeover a Night, asks at key moments | HE CAME HOME under 5 %; pass rate about +10 points; Ink ≤ 6 in 97 % of runs |
 | leaner | a takeover every Watch | HE CAME HOME in 70 %+ of runs by Night 6 |
 | believer | follows every whisper | coins no better than abstain |
-| reader | follows only lines without "we", calls the rest | coins 5-10 % above abstain; Trust +3 without a takeover by N6 in half the runs |
+| reader | follows only lines without "we", calls the rest | coins 5-10 % above abstain; Trust +3 held at a Dawn by N6, without a takeover, in about 40 % of runs |
 
 Also check zero tell errors at Ink ≤ 5 over 10⁵ whispers.

@@ -189,7 +189,6 @@ export default class Bingopin extends MachineBase<BingoParts, Ev, State> {
     this.seatKey = '';
     this.seatHud?.show();
     this.showHud();
-    this.seatHud?.firstTip(this.def.id, this.tipLines());
   }
 
   onRelease(_pid: number, _seat: number, local: boolean): void {
@@ -239,7 +238,7 @@ export default class Bingopin extends MachineBase<BingoParts, Ev, State> {
   // ── input (local occupant) ───────────────────────────────────────────────────────────────────────
   onInput(e: MachineInputEvent): void {
     const a = e.action;
-    if (e.down && this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (e.down && this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (e.down && a === 'help' && !e.repeat) { this.seatHud?.rules(this.rulesLines()); return; }
     if (a === 'primary') {
       if (e.down) { if (!e.repeat) this.pressPlunger(); } else this.releasePlunger();
@@ -679,13 +678,6 @@ export default class Bingopin extends MachineBase<BingoParts, Ev, State> {
   private tx(key: string, v?: I18nVars): Txt { return v ? { k: `m.${this.def.id}.${key}`, v } : { k: `m.${this.def.id}.${key}` }; }
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-  private tipLines(): Txt[] {
-    return [
-      this.tx('tip1', { fire: this.k('primary') }),
-      this.tx('tip2'),
-      this.tx('tip3', { nudge: `${this.k('left')}/${this.k('right')}`, help: this.k('help') }),
-    ];
-  }
   private rulesLines(): Txt[] {
     return ['rule1', 'rule2', 'rule3', 'rule4', 'rule5'].map((r) => this.tx(r, r === 'rule4' ? { nudge: `${this.k('left')}/${this.k('right')}` } : undefined));
   }

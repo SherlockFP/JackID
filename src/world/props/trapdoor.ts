@@ -61,11 +61,11 @@ export function buildTrapdoor(kit: KitX, tex: TexGen, o: { shaftDepth?: number }
   // shaft: four concrete walls with the inner face toward the axis
   const shaft = kit.group('shaft');
   const wall = kit.mat({ color: 0x5a524a, map: tex.concrete(0x4a4440) });
-  const h = depth;
-  kit.box(0.06, h, 2.0, wall, { pos: [-1.03, -h / 2, 0], parent: shaft });
-  kit.box(0.06, h, 2.0, wall, { pos: [1.03, -h / 2, 0], parent: shaft });
-  kit.box(2.0, h, 0.06, wall, { pos: [0, -h / 2, -1.03], parent: shaft });
-  kit.box(2.0, h, 0.06, wall, { pos: [0, -h / 2, 1.03], parent: shaft });
+  const h = depth, top = -0.012;   // the wall tops sit under the floor plane: flush they z-fought with the carpet around the hole
+  kit.box(0.06, h, 2.0, wall, { pos: [-1.03, top - h / 2, 0], parent: shaft });
+  kit.box(0.06, h, 2.0, wall, { pos: [1.03, top - h / 2, 0], parent: shaft });
+  kit.box(2.0, h, 0.06, wall, { pos: [0, top - h / 2, -1.03], parent: shaft });
+  kit.box(2.0, h, 0.06, wall, { pos: [0, top - h / 2, 1.03], parent: shaft });
   // ring lights every 10 m (emissive plates, no light objects)
   for (let y = 10; y < h; y += 10) {
     const lamp = kit.lamp({ r: 0.12, color: 0xffb45a, shape: 'flat' });

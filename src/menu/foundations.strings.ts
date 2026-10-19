@@ -3,7 +3,7 @@ export default {
   prefix: 'found.',
   en: {
     'title': 'FOUNDATIONS',
-    'hint': 'ARROWS move · ENTER buys · ESC closes · click a node to select it, click again to buy',
+    'hint': 'ARROWS move · ENTER buys · ESC closes · click to select, again to buy',
     'obols': 'OBOLS {n}',
     'lv': 'LV {lv}/{max}',
     'buy': 'BUY',
@@ -28,7 +28,7 @@ export default {
   },
   tr: {
     'title': 'TEMELLER',
-    'hint': 'OKLAR hareket · ENTER alır · ESC kapatır · düğüme tıkla seç, tekrar tıkla al',
+    'hint': 'OKLAR hareket · ENTER alır · ESC kapatır · tıkla seç, tekrar tıkla al',
     'obols': 'OBOL {n}',
     'lv': 'SV {lv}/{max}',
     'buy': 'AL',

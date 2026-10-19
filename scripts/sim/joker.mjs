@@ -52,6 +52,9 @@
 //             (any moment 79 %; target about half). The decay alone left 94 %, because anyone who does a favour moves Trust every Night and the decay never
 //             fires; the Night's +1 cap is what slows it. A perfect reader is at +3 on the third Dawn, which only the 62 % of runs that pay Night 3 see.
 //   Tell errors at Ink <= 5: 0 in ~45 000 whispers here and in 1e5 rolls in scripts/tests/joker.test.mjs.
+// WAVE 85 (12-coin start, House notice on every Night, early House Mood x3.5 / 1.8 / 1.5 / 1.25; 1000 seeds): abstain 86 71 55 44 39 34 30 27 (mean 48.2), measured +12.0 points
+// (MISS, was +10.1; probably because his takeover cap is 2.5 % of the Night quota and the notice lifts the late quotas of a rich run), HOME 0.6 %, leaner HOME 90.6 %, reader still +0.0 % coins (a floor).
+// Not retuned here: Loki's numbers are the Loki agent's; the lever is the 2.5 % cap (src/game/joker) or the sim's takeover value.
 // HE CAME HOME ends the run on the spot (the ending), so a run that gets there pays no later quota.
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';

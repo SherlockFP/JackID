@@ -188,7 +188,6 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
       this.sfx('chime');
       this.seatHud?.show();
       this.showHud();
-      this.seatHud?.firstTip('cyclone', this.tipLines());
     }
   }
 
@@ -226,7 +225,7 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
     if (!e.down) return;
     const a = e.action;
     const isBet = a === 'betUp' || a === 'betDown' || a === 'betMax';
-    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes a tip or rules card
+    if (this.seatHud?.blocking) { this.seatHud.dismiss(); return; }   // any key closes the rules card
     if (a === 'help' && !e.repeat) { this.seatHud?.rules(this.ruleLines()); return; }
     if (e.repeat && !isBet) return;
     switch (a) {
@@ -609,14 +608,6 @@ export default class Cyclone extends MachineBase<CyclonParts, Ev, State> {
   // ── seat HUD (readability standard, see _base/seatHud.ts) ─────────────────────────────────────
   /** The key bound to a machine action, as the player sees it. */
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
-
-  private tipLines(): Txt[] {
-    return [
-      { k: 'm.cyclone.hTip1', v: { up: this.k('betUp'), down: this.k('betDown'), start: this.k('primary') } },
-      { k: 'm.cyclone.hTip2', v: { start: this.k('primary') } },
-      { k: 'm.cyclone.hTip3', v: { help: this.k('help') } },
-    ];
-  }
 
   private ruleLines(): Txt[] {
     return [

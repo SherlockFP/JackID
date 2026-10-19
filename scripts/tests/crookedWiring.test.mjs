@@ -49,8 +49,11 @@ function forceCrooked(run, night = 2) {
   throw new Error('never forced crooked_table');
 }
 
+/** The smallest stake at `machineId` (Night 1 starts with 12 coins and caps the top stake at 4, so the tests lose the table minimum). */
+const minStake = (run, machineId) => run.betLimits(machineId, `m-${machineId}`).min;
+
 /** One lost round of `bet` at `machineId` (the stake leaves the pocket, nothing comes back). */
-function lose(run, machineId, bet = 10) {
+function lose(run, machineId, bet = minStake(run, machineId)) {
   const s = src(machineId);
   assert.equal(run.bet(bet, s) || run.bet(bet, s), true);
   run.win(0, s, { bet, tier: 'none' });
@@ -73,13 +76,13 @@ test('the event can roll in a normal run: Night 2 with four open kinds, the weig
   assert.equal(CT.rollCrooked(R.createRng(1).fork('x'), { machines: ['coinflip', 'bigone', 'charm_vendor', 'cashier'] }, false), null);
 });
 
-test('the run hands the table the NET of a round: a lost round of 10 counts 10 lost at its table', () => {
+test('the run hands the table the NET of a round: a lost round counts its stake as lost at its table', () => {
   const run = playingWithFloor(21);
   forceCrooked(run);
   const cr = run.watchEv.snapshot().aux.crooked;
   const mid = cr.tables[0];
-  lose(run, mid, 10);
-  assert.equal(run.watchEv.snapshot().aux.crooked.lost[0], 10);
+  lose(run, mid);
+  assert.equal(run.watchEv.snapshot().aux.crooked.lost[0], minStake(run, mid));
   assert.equal(run.crookedView().tables.length, 3);
   assert.equal(run.isCrookedTable(mid), true);
   const other = KINDS.find((k) => !cr.tables.includes(k));
@@ -100,11 +103,11 @@ test('a right call refunds, gives the luck star, ends the event and feeds the Ta
   assert.equal(said.filter((l) => l.voice === 'tamsin').length, 3, 'Tamsin\'s three lines on the first start');
   const cr = run.watchEv.snapshot().aux.crooked;
   const rig = cr.tables[cr.rigged];
-  lose(run, rig, 10);
-  lose(run, rig, 10);
+  lose(run, rig);
+  lose(run, rig);
   const pocket = run.wallet();
   const stars = run.luckStars();
-  const expected = Math.min(2 * 20, Math.floor(run.quota.due * 0.25));
+  const expected = Math.min(2 * 2 * minStake(run, rig), Math.floor(run.quota.due * 0.25));
   assert.equal(run.floorCall(rig), true);
   assert.equal(run.wallet(), pocket + expected, 'the refund is paid into the pocket');
   assert.equal(run.luckStars(), stars + 1, 'a right call is +1 luck star');
