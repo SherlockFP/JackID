@@ -125,3 +125,4 @@ import './street.walk.test.mjs';
 import './qa.tour.test.mjs';
 import './version.test.mjs';
 import './gamepad.test.mjs';
+import './terms.test.mjs';

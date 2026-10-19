@@ -95,3 +95,9 @@
 
 /* SCREEN SEAT (seatHud.ts `screenSeat`: the bank terminal, the cashier): the machine's own screen carries the figures, so the numbers row is not drawn again under it. */
 .seat-hud.screen .shud-nums { display: none !important; }
+
+/* A duel overlay is open (Promise / Burning Wager, game/duels/promise: .pm-table): its own buttons own keys 1 to 3, so the seated machine's
+   key bar, big button and coach line step aside (the same pattern as the .cap-hint rule in promise.css). They return when the panel closes. */
+body:has(.pm-table) .seat-hud .shud-ctrl,
+body:has(.pm-table) .seat-hud .shud-main,
+body:has(.pm-table) .seat-hud .shud-coach { display: none !important; }

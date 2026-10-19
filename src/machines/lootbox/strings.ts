@@ -47,7 +47,7 @@ export const STRINGS: MachineStrings = {
     cTwist: 'BURU', cCrank: 'ÇEVİR', cTier: 'SEÇ', cContents: 'İÇERİK', cLeave: 'AYRIL',
     pityRule: 'BORÇ: PİRİNÇ ve ALTIN çekilerde nadir olmayanlar sayılır. Eşiğe gelince bir sonraki en az nadir olur.',
     h_tier: 'SEÇ', h_crank: 'ÇEVİR', h_open: 'BURUR', h_table: 'LİSTE', h_leave: 'AYRIL',
-    s_coins: 'PARA', s_price: 'FİYAT', s_pity: 'BORÇ {n}/{m}', s_tier: 'SEVİYE',
+    s_coins: 'JETON', s_price: 'FİYAT', s_pity: 'BORÇ {n}/{m}', s_tier: 'SEVİYE',
     tableTitle: 'İÇERİK', tableTin: 'TENEKE 10c: eşya 32 · para 40 · yaygın 22 · nadir-az 5 · nadir 0,6',
     tableBrass: 'PİRİNÇ 40c: eşya 10 · para 35 · yaygın 25 · az nadir 20 · nadir 7 · efsane 0,75 · lanetli 2',
     tableGilded: 'ALTIN 150c: para 30 · az nadir 32 · nadir 25 · efsane 8 · lanetli 5',

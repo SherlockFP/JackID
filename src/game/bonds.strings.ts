@@ -166,7 +166,7 @@ export default {
     'bar.tip': "Selim'e bahşiş ({n})",
     'bar.repay': "Selim'e borcunu öde ({n})",
     'bar.close': 'Sadece bir içki',
-    'bar.broke': 'Cebindeki para yetmiyor.',
+    'bar.broke': 'Cebindeki jeton yetmiyor.',
     'selim.ask': "Şafakta eksiksin. Selim'in tek mührü kaldı. Kendi adına yazmasına izin verecek misin?",
     'selim.askYes': 'İzin ver',
     'selim.askNo': 'Hayır. Sonuncusu olmaz.',

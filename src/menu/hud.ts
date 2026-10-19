@@ -51,6 +51,7 @@ import { SOUL_MARKS_PER_RUN } from '@/game/duels/stakes';
 import { LUCK_MAX } from '@/game/luck';
 import { nightPaid } from '@/machines/debt_terminal/night';
 import { SeatHud } from '@/machines/_base/seatHud';
+import { goalLine, isTerm, termMark, termSeen, type TermId } from '@/game/terms';
 
 /** The walk actions the floor event and the keepsake hints name (wave 75; they are not in the frozen `Action` union yet). */
 const FLOOR_KEY = 'floorAct' as Action;
@@ -61,6 +62,10 @@ const PHONE_SECONDS = 10;
 const WHISPER_CHIP_S = 4;
 const FEED_LIFE = 6;
 const FEED_MAX = 4;
+/** How long a term explainer stays up (s); the next one waits for it. */
+const TERM_TOAST_S = 4.5;
+/** The terms drawn at a machine seat (the Big One, the coin flip, the stake row): their explainer waits only while seated. */
+const SEAT_TERMS: readonly TermId[] = ['hunger', 'series', 'stakes'];
 const BUFF_REFRESH_S = 0.25;
 const PAYOUT_REFRESH_S = 0.25;
 /** Shift phases in which the run's payout.mult sources are live (the run's own inWatch set); Mola (`intermission`) shows a preview. */
@@ -319,6 +324,7 @@ export function createHud(): Hud {
     if (run && luckRun !== run) { luckRun = run; luckKey = ''; }
     const shown = !!run && revealed(nightNow(), 'luck');
     luckEl.classList.toggle('hidden', !shown);
+    if (shown) need('luck');
     if (!run) return;
     const s = run.luckStars?.() ?? 0;
     const g = (run as Partial<DebtRun>).jokerGrin?.() ?? { frame: 3, lie: false };
@@ -336,6 +342,7 @@ export function createHud(): Hud {
   quota.after(sealsEl);
   sealsEl.title = t('hud.seals.tip');
   sealsEl.dataset.tip = t('hud.seals.tip');
+  h('span', 'lbl', sealsEl, t('term.seal.n'));   // the three red squares are MÜHÜR (the lives), not decoration
   const sealPips = Array.from({ length: SOUL_MARKS_PER_RUN }, () => h('i', 'seal', sealsEl));
   let sealsRun: unknown = null;
   let sealsKey = -1;
@@ -355,6 +362,7 @@ export function createHud(): Hud {
     if (run && sealsRun !== run) { sealsRun = run; sealsKey = -1; }
     const marks = run?.duel?.soulMarks();   // absent on bench and online runs: no strip
     sealsEl.classList.toggle('hidden', marks === undefined || run?.mode === 'free');
+    if (marks !== undefined && run?.mode !== 'free') need('seal');
     if (marks === undefined || marks === sealsKey) return;
     sealsKey = marks;
     sealCells(marks, SOUL_MARKS_PER_RUN).forEach((lit, i) => setCls(sealPips[i]!, 'lit', lit));
@@ -365,6 +373,30 @@ export function createHud(): Hud {
   let quotaSeen = false;
   let quotaPct = -1;
   let quotaNight = -1;
+  // THE GOAL STRIP: one plain line under the quota box ("Pay 24 by dawn · 19 left"). It stays up walking and seated (hud.css keeps it in the compact seat strip).
+  const goalEl = h('div', 'hb goal hidden', topR);
+  quota.after(goalEl);
+  // TERM EXPLAINERS: the first time a HUD term shows in a profile, one short toast says what it means (game/terms.ts; the flag is in the
+  // save's seen record). `need` queues a term, update() shows one at a time while the toast layer is visible.
+  const termQ: TermId[] = [];
+  let termWait = 0;
+  const need = (id: TermId): void => {
+    const sv = app.save;
+    if (sv && !termQ.includes(id) && !termSeen(sv.data.seen, id)) termQ.push(id);
+  };
+  on('term:need', ({ id }) => { if (isTerm(id)) need(id); });
+  function updateTerms(dt: number): void {
+    termWait = Math.max(0, termWait - dt);
+    const sv = app.save;
+    if (termWait > 0 || termQ.length === 0 || !sv) return;
+    if (hudHiddenByModal() || app.cutscene.playing !== null || host?.classList.contains('hud-off')) return;   // the toast layer is hidden: the term waits
+    const id = termQ.shift() as TermId;
+    let first = false as boolean;   // set inside the callback
+    sv.update((d) => { first = termMark(d.seen, id); });
+    if (!first) return;
+    termWait = TERM_TOAST_S;
+    ui().toast(t('term.say', { name: t(`term.${id}.n`), d: t(`term.${id}.d`) }), 'info', TERM_TOAST_S, `term:${id}`);
+  }
   // HEAT meter (the streak heat of the machine the player played last), under the quota. Hidden until that machine has heat.
   const heatEl = h('div', 'hb heat hidden', topR);
   h('span', 'lbl', heatEl, t('hud.juice.heat'));
@@ -774,9 +806,14 @@ export function createHud(): Hud {
     showLamps(v);
     if (v.hot.length > 0) addFeed(t('circuit.feed.hot', { name: v.hot.map(lampName).join(', ') }), 'gold');
   });
-  on('player:seat', ({ pid, on: sat }) => {
+  on('player:seat', ({ pid, mid, on: sat }) => {
     if (pid !== self()) return;
     seated = sat;
+    // the Big One's AÇLIK / SERİ and the coin flip's SERİ are drawn by the machines: the seat names the term to explain
+    const seat = sat ? app.world?.machines().find((m) => m.id === mid)?.def.id : undefined;
+    if (seat === 'bigone') { need('hunger'); need('series'); } else if (seat === 'coinflip') need('series');
+    // a seat term only makes sense at its seat: standing up drops the ones still waiting (they come back on the next sit)
+    if (!sat) for (const id of SEAT_TERMS) { const i = termQ.indexOf(id); if (i >= 0) termQ.splice(i, 1); }
     // Seated: the world interact prompt and the mouse-capture hint step aside (ui.css `.seated`). CSS, not a prompt
     // clear: the interaction system sends a prompt only when its text changes, so a cleared prompt would stay hidden.
     host?.classList.toggle('seated', sat);
@@ -956,6 +993,11 @@ export function createHud(): Hud {
     const late = r.shift.phase === 'lastCall' || r.shift.timeLeft() < 30;
     setCls(quota, 'late', !met && !sealed && !unset && late);
     setText(quotaShort, met || paid || unset ? '' : t('hud.quota.short', { n: money(Math.max(0, due - dep)) }));
+    const goal = goalLine({ due, deposited: dep, paid, sealed });
+    setCls(goalEl, 'hidden', !goal);
+    setCls(goalEl, 'met', !!goal && (met || paid) && !sealed);
+    if (goal) setText(goalEl, t(goal.key, { n: money(goal.n), left: money(goal.left) }));
+    if (!unset) need('quota');
   }
 
   /** A source's name on the PAYOUT chip: the Night's own House sources by kind, a charm or buff by its name, else its id. */
@@ -1008,6 +1050,7 @@ export function createHud(): Hud {
     const view = payoutChip(parts);
     const key = `${label}|${view.totalText}|${view.totalTone}|${view.parts.map((p) => `${p.tone}:${p.text}`).join('|')}`;
     setCls(payout, 'hidden', false);
+    need('payout');
     if (key === payoutKey) return;
     payoutKey = key;
     payout.replaceChildren();
@@ -1400,6 +1443,8 @@ export function createHud(): Hud {
     const at = !!r && (stage !== null || pro);
     setCls(root, 'evening-on', at);
     if (!r || !at) return;
+    need('harmony');
+    need('heat');
     const ph = r.homePhone();
     const harmony = ph?.harmony() ?? 0;
     const heat = ph?.heat() ?? 0;
@@ -1440,6 +1485,7 @@ export function createHud(): Hud {
       updateStamps(dt);
       updateHeat();
       updateMetStinger(dt);
+      updateTerms(dt);
       setRsB();   // the plan, seals and buffs change the stack's height: toasts below it re-anchor the same frame
     },
     setVisible(show: boolean): void { ui().setHudVisible(show); },

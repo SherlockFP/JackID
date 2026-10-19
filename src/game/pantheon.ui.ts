@@ -30,7 +30,9 @@ const PULSE_LAST_SEC = 5;
 const DEAL_GAP_S = 0.12;
 /** A pick: the card rises for PICK_RISE_MS, and the panel closes (or deals again) at PICK_DONE_S. */
 const PICK_RISE_MS = 220;
-const PICK_DONE_S = 0.6;
+const PICK_DONE_S = 0.9;
+/** The panel fades out over the last PICK_FADE_MS of a pick that closes it. */
+const PICK_FADE_MS = 250;
 
 const calmOn = (): boolean => !!app?.save?.data?.settings?.calm;
 const reduceMotion = (): boolean => typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -134,7 +136,8 @@ function godCard(run: DebtRun, row: HTMLElement, def: BoonDef, key: string): HTM
   if (def.god !== 'loki') {
     const fav = run.boonFavour(def.god);
     const pips = h('span', 'pt-pips', head);
-    pips.title = t('pantheon.favour', { n: fav });
+    pips.title = t('pantheon.favour', { n: fav });   // hover says what the circles are
+    pips.setAttribute('aria-label', pips.title);
     for (let i = 0; i < FAVOUR_MAX; i++) h('i', i < fav ? 'pt-pip pt-lit' : 'pt-pip', pips);
   }
   h('span', 'pt-kind', card, t(`pantheon.kind.${def.kind}`));
@@ -189,8 +192,19 @@ function showCards(run: DebtRun, fresh: boolean): void {
         ], { duration: 260, delay: i * DEAL_GAP_S * 1000, fill: 'backwards', easing: 'ease-out' });
       });
     }
+    // The countdown waits while a card is hovered or focused, so reading never costs the pick.
+    let hovered = false;
+    let focused = false;
+    const hold = (): void => run.holdBoonTimer(hovered || focused);
+    cards.forEach((c) => {
+      c.addEventListener('pointerenter', () => { hovered = true; hold(); });
+      c.addEventListener('pointerleave', () => { hovered = false; hold(); });
+      c.addEventListener('focus', () => { focused = true; hold(); });
+      c.addEventListener('blur', () => { focused = false; hold(); });
+    });
     const dealt = cards.map(() => false);
     let dealT = 0;
+    let fading = false;
     let pickT = -1;   // seconds since a pick started; -1 while the offer is open
     const startPick = (idx: number): boolean => {
       if (pickT >= 0) return true;   // a second pick while the first rises is ignored
@@ -198,12 +212,10 @@ function showCards(run: DebtRun, fresh: boolean): void {
       if (!chosen) return false;
       pickT = 0;
       chosen.classList.add('pt-picked');
+      const take = chosen.querySelector('.pt-take');
+      if (take) take.textContent = t('pantheon.taken');
       if (!reduce) chosen.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.08)' }], { duration: PICK_RISE_MS, fill: 'forwards', easing: 'ease-out' });
-      cards.forEach((c, j) => {
-        if (j === idx) return;
-        if (reduce) c.style.opacity = '0';
-        else c.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 240, fill: 'forwards' });
-      });
+      cards.forEach((c, j) => { if (j !== idx) c.classList.add('pt-out'); });   // greyed by CSS, still readable
       if (!calm) app.fx.flash(0xffd34a, 0.3, 0.25);   // the gold flash (fx.flash honours reduced flashing)
       uiSfx('boonPick', 0.9);
       return true;
@@ -221,6 +233,10 @@ function showCards(run: DebtRun, fresh: boolean): void {
       if (!alive) return false;
       if (pickT >= 0) {
         pickT += dt;
+        if (!fading && !reduce && pickT >= PICK_DONE_S - PICK_FADE_MS / 1000 && !run.boonOffer()) {
+          fading = true;
+          box.animate([{ opacity: 1 }, { opacity: 0 }], { duration: PICK_FADE_MS, fill: 'forwards' });
+        }
         if (pickT < PICK_DONE_S) return undefined;   // the countdown freezes while the card rises (the boon is already kept)
         if (run.boonOffer()) showCards(run, false);   // a second pick (golden tier): deal the rest again
         else app.ui.closePanel(PANEL);
@@ -229,8 +245,9 @@ function showCards(run: DebtRun, fresh: boolean): void {
       dealT += dt;
       cards.forEach((_, i) => { if (!dealt[i] && dealT >= i * DEAL_GAP_S) { dealt[i] = true; uiSfx('cardFlip', 0.8); } });
       const left = Math.max(0, run.boonOffer()?.left ?? 0);
-      timerTxt.textContent = t('pantheon.timer', { s: Math.ceil(left) });
-      timer.classList.toggle('pt-pulse', left > 0 && left <= PULSE_LAST_SEC);
+      const held = hovered || focused;
+      timerTxt.textContent = t(held ? 'pantheon.timer.held' : 'pantheon.timer', { s: Math.ceil(left) });
+      timer.classList.toggle('pt-pulse', !held && left > 0 && left <= PULSE_LAST_SEC);
       fill.style.width = `${Math.min(100, (left / OFFER_TIMEOUT_SEC) * 100)}%`;
       return undefined;
     });
@@ -247,9 +264,9 @@ function showCards(run: DebtRun, fresh: boolean): void {
     };
     // The veil owns its keys while it is open, whatever has focus (a capture listener runs before the game's).
     window.addEventListener('keydown', onKey, true);
-    cards[0]?.focus({ preventScroll: true });
     return () => {
       alive = false;
+      run.holdBoonTimer(false);
       window.removeEventListener('keydown', onKey, true);
       if (activePick === pickFromEvent) activePick = null;
       ui.holdToasts(false);   // the news held behind the panel shows now

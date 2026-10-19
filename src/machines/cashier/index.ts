@@ -44,7 +44,7 @@ export const def: MachineDef = {
     },
     tr: {
       name: 'Kasa',
-      desc: 'Paran mı bitti? Biletlerini burada sat. Ayrıca bilet alır, fazladan bir çekiş satar, Serbest Kumarhane’de ev kredisi verir.',
+      desc: 'Jetonun mu bitti? Biletlerini burada sat. Ayrıca bilet alır, fazladan bir çekiş satar, Serbest Kumarhane’de ev kredisi verir.',
     },
   },
 };

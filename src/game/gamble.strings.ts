@@ -60,7 +60,7 @@ const tr: Record<string, string> = {
   hsBanner: 'YÜKSEK BAHİS  x{m}',
   hsWarn: 'BAHİS VE ÖDEME x{m}. BÜYÜK KAZANÇLAR DAHA ÇOK, KÜÇÜKLER DAHA AZ ÖDER.',
   hsLocked: 'Yüksek Bahis 2. Gece açılır.',
-  hsNoFunds: 'x{m} bahis için cepte yeterli para yok ({need}).',
+  hsNoFunds: 'x{m} bahis için cepte yeterli jeton yok ({need}).',
   hsHint: '[SHIFT+H] YÜKSEK BAHİS',
   hsBoost: 'YÜKSEK BAHİS BONUSU +{n}',
   allinTitle: 'HEPSİ ŞİMDİ',

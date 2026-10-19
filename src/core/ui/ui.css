@@ -280,14 +280,15 @@
 .mh-hints .hint { display: inline-flex; align-items: center; gap: calc(3 * var(--u)); }
 
 /* ── prompts and subtitles ────────────────────────────────────────────────────────────────── */
-/* "CLICK TO CAPTURE MOUSE" (input.ts, a direct child of #ui): small, bottom centre, above the bottom hint row (the pull pips
-   and the subtitle lane). The top band belongs to the clock, the Watch line, the toasts and the banners, so it never sits there.
-   It still gives way to the interact prompt (one text lane). */
+/* "CLICK TO CAPTURE MOUSE" (input.ts, a direct child of #ui): centred and large (newcomer pass: the old small bottom line sat under
+   the subtitles and went unread). input.ts shows it while a walk-mode lock is refused and hides it on lock. It still gives way
+   to the interact prompt (one text lane). */
 .cap-hint {
-  position: absolute; left: 50%; bottom: calc(var(--lb) * var(--bar-h) + 34 * var(--u)); transform: translateX(-50%);
+  position: absolute; left: 50%; top: 64%; transform: translate(-50%, -50%);
   z-index: 6; pointer-events: none; white-space: nowrap; display: none;
-  padding: calc(1.5 * var(--u)) calc(3 * var(--u)); background: rgba(8, 8, 8, 0.7); color: #efd67b; letter-spacing: 0.04em;
-  font-family: var(--f-head); font-size: max(9px, calc(4 * var(--u))); line-height: 1;
+  padding: calc(4 * var(--u)) calc(8 * var(--u)); background: rgba(8, 8, 8, 0.82); color: #efd67b; letter-spacing: 0.04em;
+  box-shadow: inset 0 0 0 var(--u) var(--brass);
+  font-family: var(--f-head); font-size: max(16px, calc(8 * var(--u))); line-height: 1;
 }
 .px-root:has(> .px-prompt.on) > .cap-hint { display: none !important; }
 .px-subtitle {
@@ -328,11 +329,15 @@
 .px-root.mh-on .px-skip { bottom: calc(var(--mh-h, 44px) + 4 * var(--u)); }
 /* Seated: subtitles sit ABOVE the seat's control stack (--seat-bot-t = its top edge, from seatHud.ts), never over the
    controls, and take no pointer so they cannot block the seat's keys or buttons. */
+/* Seated, newcomer pass: the box moves to the top third under the instruction line (--seat-top-b) and shrinks, so it never covers
+   the table centre or the coin's landing area. */
 .px-root.seated .px-subtitle,
 .px-root.seated.mh-on .px-subtitle {
-  bottom: calc(100% - var(--seat-bot-t, calc(100% - 40 * var(--u))) + 6 * var(--u));
+  top: calc(var(--seat-top-b, calc(14 * var(--u))) + 20 * var(--u)); bottom: auto;
+  max-width: min(56vw, calc(100% - 16 * var(--u))); padding: calc(2 * var(--u)) calc(4 * var(--u));
   pointer-events: none;
 }
+.px-root.seated .px-subtitle .who { margin-bottom: calc(1 * var(--u)); }
 
 /* ── phone choices / votes ────────────────────────────────────────────────────────────────── */
 .px-choices {

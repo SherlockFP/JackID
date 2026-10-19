@@ -52,7 +52,7 @@ export const ANCHOR_PLAN: Record<keyof typeof STREET_ANCHORS, { p: [number, numb
 };
 
 /** The taxi rank: one cab at the casino door (home), one at the block (to the casino). From Night 3 on. */
-export const TAXI = { casino: { x: 11.7, z: -23.5 }, home: { x: 11.7, z: 8 } } as const;
+export const TAXI = { casino: { x: 11.7, z: -17 }, home: { x: 11.7, z: 8 } } as const;
 export const TAXI_NIGHT = 3;
 
 /** The street lamps (near pavement edge), every 10 m or so. */
@@ -80,4 +80,15 @@ export function walkCue(leg: WalkLeg, x: number, z: number): WalkCue {
   }
   if (x > CASINO_DOOR.x0 && x < FACADE_X + 0.4 && z > CASINO_DOOR.z0 && z < CASINO_DOOR.z1) return 'lift';
   return x > -1.6 && x < CORRIDOR_X1 && z > 3.0 && z < 5.2 ? 'hall' : null;
+}
+
+/**
+ * Which door the waymark hangs on (a STREET_ANCHORS key) for a walk leg, from the player's WORLD x / z. The casino door is 30 m off
+ * behind walls from the flat, so the mark leads door to door: your front door, the building door, then the street's far door.
+ * The anchors sit where the player walks (the hall, the pavement, the alcove), never in a wall.
+ */
+export function walkWaypoint(leg: WalkLeg, wx: number, wz: number): keyof typeof STREET_ANCHORS {
+  const x = wx - HOME_ORIGIN[0], z = wz - HOME_ORIGIN[2];
+  if (x >= CORRIDOR_X1) return leg === 'out' ? 'casino' : 'building';
+  return leg === 'out' && z >= 2.5 ? 'building' : 'flatDoor';
 }

@@ -22,6 +22,7 @@ import { setFlashPrefsHost } from '@/machines/_base/juice';
 import { floorPlan, type Plan } from '@/world/floorplan';
 import { NOTES, noteOpen, type NoteDef, type NoteGate } from './notes.data';
 import { BOND_IDS, BOND_MAX, type Bonds } from '../bonds';
+import { glossBody, termsSeen } from '../terms';
 
 // The placards (notes, tape, journal, and the machines' almanac and rules cards) live in the first-person overlay.
 // Machines may not import the app core, so the story layer, which may, hands them the overlay and the canvas.
@@ -105,8 +106,11 @@ export function peopleBody(b: Pick<Bonds, 'level' | 'greeting'>): string {
 }
 // ── the MAP page (wayfinding): the floor plan, drawn from the layout data (world/floorplan.ts) and the live world ───────────
 const MAP_PAGE: NoteDef = { id: 'map', kind: 'note', anchor: '', dx: 0, dz: 0, yaw: 0 };
+// ── the TERMS page (newcomer pass): the HUD words the player has met so far, each with its one-line meaning (game/terms.ts) ──────
+const GLOSS_PAGE: NoteDef = { id: 'terms', kind: 'note', anchor: '', dx: 0, dz: 0, yaw: 0 };
+const seenNow = (): Record<string, number> => app.save?.data?.seen ?? {};
 /** Pages the journal draws or writes itself: no world note behind them, so no READ button. */
-const isVirtual = (d: NoteDef): boolean => d === TALLY_PAGE || d === PEOPLE_PAGE || d === MAP_PAGE;
+const isVirtual = (d: NoteDef): boolean => d === TALLY_PAGE || d === PEOPLE_PAGE || d === MAP_PAGE || d === GLOSS_PAGE;
 /** The plan for the page: open machines are the playable ones (not system devices, not locked, not in a shut wing). */
 function planNow(maxW: number, maxH: number): Plan {
   const world = app.world, run = app.run, p = app.player;
@@ -153,11 +157,12 @@ function drawPlan(g: CanvasRenderingContext2D, ox: number, oy: number, plan: Pla
   put(g, t('way.map.you'), ox + 107, ly + 19, INK_SOFT);
 }
 
-const virtualTitle = (d: NoteDef): string | null => (d === TALLY_PAGE ? tallyTitle() : d === PEOPLE_PAGE ? t('bonds.people') : d === MAP_PAGE ? t('way.map') : null);
+const virtualTitle = (d: NoteDef): string | null => (d === TALLY_PAGE ? tallyTitle() : d === PEOPLE_PAGE ? t('bonds.people') : d === MAP_PAGE ? t('way.map') : d === GLOSS_PAGE ? t('term.page') : null);
 const titleOf = (d: NoteDef): string => virtualTitle(d) ?? t(`story.note.${d.id}.t`);
 const bodyOf = (d: NoteDef): string => {
   if (d === TALLY_PAGE) return tallyBody();
   if (d === MAP_PAGE) return '';   // drawn by drawPlan, not written
+  if (d === GLOSS_PAGE) return glossBody(seenNow(), t);
   if (d === PEOPLE_PAGE) { const b = bondBook(); return b ? peopleBody(b) : t('bonds.people.hint'); }
   return t(`story.note.${d.id}.b`);
 };
@@ -449,6 +454,7 @@ function journalPlacard(): Placard3D {
     const b = bondBook();
     if (b && BOND_IDS.some((w) => b.level(w) > 0)) l.unshift(PEOPLE_PAGE);   // the friends first, but only once there is a first one
     l.unshift(MAP_PAGE);      // the floor plan is always the first page
+    if (termsSeen(seenNow()).length) l.splice(1, 0, GLOSS_PAGE);   // the terms met so far come right after it
     return l;
   };
   const bodyRows = (d: NoteDef): string[] => wrapPx5(bodyOf(d), PAGE_W);

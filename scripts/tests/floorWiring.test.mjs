@@ -220,7 +220,7 @@ test('strings: the new HUD lines carry their placeholders in both languages, and
   assert.ok(hint.en['seat.hint'].includes('{key}') && hint.en['seat.hint'].includes('{name}'));
   assert.ok(hint.tr['seat.hint'].includes('{key}') && hint.tr['seat.hint'].includes('{name}'));
   assert.equal(hint.en['seat.hint'].replace('{key}', 'K').replace('{name}', 'the ring'), '[K] Bet the ring instead of coins');
-  assert.equal(hint.tr['seat.hint'].replace('{key}', 'K').replace('{name}', 'yüzüğü'), '[K] Para yerine yüzüğü koy');
+  assert.equal(hint.tr['seat.hint'].replace('{key}', 'K').replace('{name}', 'yüzüğü'), '[K] Jeton yerine yüzüğü koy');
   for (const lang of ['en', 'tr']) {
     assert.ok(STRS['event.watch.'][lang]['stage_auction.hud'].includes('{key}'));
     assert.ok(STRS['event.watch.'][lang]['last_call_dare.hud.ready'].includes('{key}'));

@@ -168,7 +168,7 @@ export const NIGHT_EVENT_DATA: NightEventDef[] = [
       announce: ['THE MOON IS FULL. IT IS WATCHING YOU PLAY.', 'AY DOLUNAY. SENİ OYNARKEN İZLİYOR.'] }),
   ev('audit', 'icon.pin', 2, 90,
     [{ hook: 'payout.mult', op: 'mult', value: 0.85 }, { hook: 'dread.add', op: 'add', value: 5 }], 'mood', { lightColor: 0xd8d0a0 },
-    { name: ['Audit', 'Denetim'], desc: ['Inspectors count every coin: payouts −15 %, dread +5.', 'Müfettişler her parayı sayar: ödemeler −%15, korku +5.'],
+    { name: ['Audit', 'Denetim'], desc: ['Inspectors count every coin: payouts −15 %, dread +5.', 'Müfettişler her jetonu sayar: ödemeler −%15, korku +5.'],
       announce: ['AUDIT IN PROGRESS. SMILE FOR THE CLERK.', 'DENETİM BAŞLADI. KATİBE GÜLÜMSE.'] }),
   ev('power_surge', 'icon.bolt', 1, 60,
     [{ hook: 'payout.mult', op: 'mult', value: 2 }, { hook: 'heat.gain', op: 'mult', value: 2 }, { hook: 'x.surge.fire', op: 'add', value: 0.04 }],

@@ -2,6 +2,7 @@
    a lit seal per seal kept, an empty brass ring per seal lost. A lost seal cracks: a stepped flash and a dark split, then the ring. */
 .hb.seals { position: relative; display: flex; gap: calc(3 * var(--u)); justify-content: flex-end; }
 .hb.seals.hidden { display: none; }
+.hb.seals .lbl { margin-right: calc(2 * var(--u)); font-size: max(11px, calc(6 * var(--u))); color: var(--shine); letter-spacing: .06em; align-self: center; }
 .hb.seals .seal { position: relative; display: block; width: calc(8 * var(--u)); height: calc(8 * var(--u)); box-sizing: border-box;
   border: calc(1 * var(--u)) solid #5a4220; background: transparent; }
 .hb.seals .seal.lit { border-color: #8c1f1a; background: #d2483a; }

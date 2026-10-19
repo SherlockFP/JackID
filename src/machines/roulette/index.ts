@@ -707,10 +707,11 @@ export default class RouletteWheel extends TableBase<RouletteParts, Ev, Snap, Ac
     // CONTROL BAR: only what is valid right now, with the keys bound to it
     const ctrl: HudControl[] = [];
     if (betting || st.phase === 'idle') ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.roulette.hCBet' }, action: 'betUp' });
-    if (betting && layout > 0) {
+    if (betting) {
+      // the spin key is always on the bar while betting (the coach says "place chips, then spin"); it is the big button once a chip is down
       const many = this.humans().length >= 2;
-      ctrl.push({ key: this.k('confirm'), label: { k: many ? 'm.roulette.hCReady' : 'm.roulette.hCSpin' }, action: 'confirm', primary: true });
-      ctrl.push({ key: this.k('clear'), label: { k: 'm.roulette.hCClear' }, action: 'clear' });
+      ctrl.push({ key: this.k('confirm'), label: { k: many ? 'm.roulette.hCReady' : 'm.roulette.hCSpin' }, action: 'confirm', primary: layout > 0 });
+      if (layout > 0) ctrl.push({ key: this.k('clear'), label: { k: 'm.roulette.hCClear' }, action: 'clear' });
     }
     if (betting && this.lastMine.length > 0) ctrl.push({ key: this.k('double'), label: { k: 'm.roulette.hCRebet' }, action: 'double' });
     if (betting) {

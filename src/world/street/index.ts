@@ -25,7 +25,7 @@ import type { Statics } from '../home/room';
 import { ANCHOR_PLAN, BLOCK, CASINO_DOOR, CORRIDOR_X1, ENTRY, FACADE_X, LAMPS_Z, STREET, STREET_ANCHORS, STREET_ZONE, TAXI } from './config';
 import { cat, kiosk, lampPost, oldCar } from './props';
 
-export { STREET_ANCHORS, STREET_LOOK, STREET_ZONE, STREET_ZONE_RECT, TAXI_NIGHT, walkCue, type WalkCue, type WalkLeg } from './config';
+export { STREET_ANCHORS, STREET_LOOK, STREET_ZONE, STREET_ZONE_RECT, TAXI_NIGHT, walkCue, walkWaypoint, type WalkCue, type WalkLeg } from './config';
 
 declare module '@/core/events' {
   interface GameEvents {

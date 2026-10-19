@@ -31,6 +31,8 @@ export interface ElevatorParts {
   /** Car: moves on y; its origin is the car floor centre. */
   car: THREE.Group;
   needle: THREE.Object3D;
+  /** The car's own floor indicator (back wall, over the mirror): the needle turns with the dial outside. */
+  needleIn: THREE.Object3D;
   /** Chain and padlock shown while locked. */
   lock: THREE.Group;
   /** The lit HOME sign over the doors. */
@@ -119,6 +121,12 @@ export function buildElevator(kit: KitX, tex: TexGen): ElevatorParts {
   // a smoked mirror over the back rail, framed in brass
   kit.plane(1.5, 0.95, { map: mirrorTex(tex), color: 0xc8d0d8, lit: false }, { pos: [0, 1.72, -0.867], parent: car });
   for (const sy of [-1, 1]) kit.box(1.56, 0.04, 0.02, brass, { pos: [0, 1.72 + sy * 0.495, -0.865], parent: car });
+  // the floor indicator over the mirror: the same dial and needle as outside, small
+  kit.plane(0.7, 0.26, dialMat, { pos: [0, 2.34, -0.868], parent: car });
+  const needleIn = kit.group('needleIn');
+  kit.box(0.012, 0.19, 0.01, kit.pal.red, { pos: [0, 0.095, 0], parent: needleIn });
+  needleIn.position.set(0, 2.22, -0.86);
+  car.add(needleIn);
   // a lit ceiling panel in a brass frame
   kit.box(1.1, 0.02, 1.1, kit.mat({ color: 0xffe8c0, lit: false }), { pos: [0, 2.465, 0], parent: car });
   kit.box(1.2, 0.03, 0.05, brass, { pos: [0, 2.46, 0.575], parent: car });
@@ -169,7 +177,7 @@ export function buildElevator(kit: KitX, tex: TexGen): ElevatorParts {
   paint(null);
 
   return {
-    root, gateL, gateR, car, needle, lock, sign, neon, counter, paint,
+    root, gateL, gateR, car, needle, needleIn, lock, sign, neon, counter, paint,
     dispose() {
       counter.dispose();
       root.traverse((obj) => { const m = obj as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
@@ -234,7 +242,7 @@ export class Elevator implements ElevatorProp {
   }
 
   private applyNeedle(deg: number): void {
-    this.parts.needle.rotation.z = -THREE.MathUtils.degToRad(deg);
+    this.parts.needle.rotation.z = this.parts.needleIn.rotation.z = -THREE.MathUtils.degToRad(deg);
   }
 
   /** Show or hide the chain across the doors. Padlock drop is instant here; animate in a cutscene if needed. */

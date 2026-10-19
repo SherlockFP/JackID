@@ -42,6 +42,16 @@ test('walk out: the hall shuts the door behind you, the alcove takes the lift', 
   assert.equal(cue(CFG.ANCHOR_PLAN.arrive.p[0], CFG.ANCHOR_PLAN.arrive.p[2]), null, 'the arrival spot is outside the alcove (no instant ride back)');
 });
 
+test('the waymark leads door to door: your door, the building door, then the casino (and back)', () => {
+  const wp = (leg, x, z) => { const v = HOME.at(x, 0, z); return CFG.walkWaypoint(leg, v[0], v[2]); };
+  assert.equal(wp('out', 0, 0), 'flatDoor', 'in the flat the mark hangs on your front door');
+  assert.equal(wp('out', 4, 4), 'building', 'in the corridor: the building door');
+  assert.equal(wp('out', 12, -10), 'casino', 'on the street: the casino door');
+  assert.equal(wp('home', 12, -10), 'building');
+  assert.equal(wp('home', 4, 4), 'flatDoor', 'in the corridor on the way home: your door');
+  assert.ok(CFG.TAXI.casino.z > CFG.CASINO_DOOR.z1 + 6, 'the cab waits well clear of the casino alcove');
+});
+
 test('the street is its own zone: the corridor, the street and the casino door, the room still wins inside the flat', () => {
   const z = L.ZONES.find((q) => q.id === CFG.STREET_ZONE);
   assert.ok(z, 'layout.ts has the street zone');

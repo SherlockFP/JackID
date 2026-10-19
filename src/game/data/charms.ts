@@ -148,7 +148,7 @@ const RARE: CharmDef[] = [
 
 // ── Legendary (7) ──────────────────────────────────────────────────────────────────────────────
 const LEGENDARY: CharmDef[] = [
-  charm('crown_of_coins', 'legendary', 100, null, 'N5', ['Crown of Coins', 'All payouts ×1.5'], ['Madeni Para Tacı', 'Tüm kazançlar ×1.5'], [fx('payout.mult', 'mult', 1.5)]),
+  charm('crown_of_coins', 'legendary', 100, null, 'N5', ['Crown of Coins', 'All payouts ×1.5'], ['Jeton Tacı', 'Tüm kazançlar ×1.5'], [fx('payout.mult', 'mult', 1.5)]),
   charm('perpetual_ledger', 'legendary', 90, 'LEDGER', 'W', ['Perpetual Ledger', 'Pocket coins also earn half-rate interest'], ['Sürekli Defter', 'Cepteki jetonlar da yarım oranda faiz kazanır'], [fx('x.econ.pocketInterest', 'add', 0.5)]),
   charm('engravers_plate', 'legendary', 100, 'REELS', 'N6', ['Engraver\'s Plate', 'The Big One unlocks TWIN RAILS and CORNERSTONE; patterns +1'], ['Mühendis Plakası', 'Büyük Vurgun İKİZ RAYLAR ve KÖŞE TAŞI açar; her desen +1'], [fx('x.bigone.extraPattern', 'add', 1), fx('x.bigone.patternMult', 'add', 1)]),
   charm('operators_glove', 'legendary', 100, null, 'W', ['Lift Operator\'s Glove', '+2 pulls and +30 s every Watch; Settle Early rewards doubled'], ['Asansör Operatörünün Eldiveni', 'Her Vardiya +2 çekiş ve +30 sn; Erken Kapanış ödülleri iki katı'], [fx('x.run.pullsAdd', 'add', 2), fx('x.run.clockAdd', 'add', 30)]),

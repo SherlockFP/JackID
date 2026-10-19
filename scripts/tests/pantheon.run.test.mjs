@@ -43,6 +43,19 @@ test('a paid Night 1 Dawn opens three cards from three gods; a pick is kept for 
   off(); run.dispose();
 });
 
+test('the offer timer stands still while the panel holds it', () => {
+  const run = RUN.createRun({ seed: 903, mode: 'debt' });
+  dawnAt(run, 1);
+  const left = run.boonOffer().left;
+  run.holdBoonTimer(true);
+  run.pantheon.tick(5);
+  assert.equal(run.boonOffer().left, left);
+  run.holdBoonTimer(false);
+  run.pantheon.tick(5);
+  assert.equal(run.boonOffer().left, left - 5);
+  run.dispose();
+});
+
 test('Loki swaps one card from Night 3 for 1 Ink; his boons cost Ink once, never past his cap, and no Dread', () => {
   const run = RUN.createRun({ seed: 902, mode: 'debt' });
   dawnAt(run, 3);

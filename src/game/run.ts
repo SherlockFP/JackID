@@ -589,6 +589,8 @@ export interface DebtRun extends RunApi {
   jokerTakeover(): AskWhy | 'seat' | null;
   /** The offer panel is on screen: OPEN THE FLOOR waits for a pick (or the panel's timer) instead of taking the leftmost. */
   setBoonGate(on: boolean): void;
+  /** Freeze or run the offer's countdown (the panel holds it while a card is hovered or focused). */
+  holdBoonTimer(on: boolean): void;
   /** The boons kept this run, in the order taken. */
   boons(): readonly string[];
   /** A god's Favour, 0..3. */
@@ -4340,6 +4342,8 @@ class Run implements DebtRun {
   boonOffer(): PantheonOfferView | null { return this.pantheon.offerView(); }
 
   setBoonGate(on: boolean): void { this.boonGate = on; }
+
+  holdBoonTimer(on: boolean): void { this.pantheon.held = on; }
 
   pickBoon(id: string): boolean {
     if (!this.jokerSys.canPayInk(boonDef(id)?.ink ?? 0)) return false;   // his boon would bring him home

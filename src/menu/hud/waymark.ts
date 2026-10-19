@@ -16,7 +16,7 @@ import type { InstanceId } from '@/core/types';
 import type { UIOverlayX } from '@/core/ui/ui';
 import type { WorldHost } from '@/world/world';
 import { BAR_POS, LIFT_DOOR } from '@/world/layout';
-import { STREET_ANCHORS } from '@/world/street';
+import { STREET_ANCHORS, walkWaypoint } from '@/world/street';
 import { barDirections, standSpot } from '@/world/floorplan';
 import { createTrail, trailPath } from '@/world/props/wayfinding';
 import type { Vec2 } from '@/world/actors/nav';
@@ -153,8 +153,8 @@ export function createWayfinder(host: WayfinderHost): Wayfinder {
   };
   /** The spot in the world, or null when it is not built yet. The Big One falls back to the nearest open machine. */
   const point = (target: Exclude<ObjectiveTarget, null>, from: THREE.Vector3): THREE.Vector3 | null => {
-    if (target === 'buildingDoor' || target === 'casinoDoor') {   // the walk home and out (world/street)
-      const a = world.anchor(target === 'buildingDoor' ? STREET_ANCHORS.building : STREET_ANCHORS.casino);
+    if (target === 'buildingDoor' || target === 'casinoDoor') {   // the walk home and out (world/street): door to door, where the player walks
+      const a = world.anchor(STREET_ANCHORS[walkWaypoint(target === 'buildingDoor' ? 'home' : 'out', from.x, from.z)]);
       if (!a) return null;
       a.getWorldPosition(v);
       v.y += BELL_Y;

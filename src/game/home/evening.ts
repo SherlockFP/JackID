@@ -26,6 +26,7 @@ import { h } from '@/core/ui/widgets';
 import { setDoorOut, shakeDoor as worldShakeDoor, showVisitor } from '@/world/home';
 import { setWalk, STREET_ANCHORS, TAXI_NIGHT, walkCue, type WalkLeg } from '@/world/street';
 import type { WorldHost } from '@/world/world';
+import type { ElevatorProp } from '@/world/types';
 import type { LocalPlayerHost } from '@/player/local';
 import { HOME_TIMING, type DebtRun } from '../run';
 import { HOME_AMBIENCE, HOME_ANCHORS, HOME_ORIGIN, HOME_SFX, type HomeStage, type HomeStation } from './contract';
@@ -47,6 +48,10 @@ registerStrings(knockStrings.prefix, { en: knockStrings.en, tr: knockStrings.tr 
 
 /** One step out of the lift gate on the casino floor (m). */
 const LIFT_STEP = 2.2;
+/** The ride down (street door to the pit) shows the car: this far behind the gate the player stands, facing the mirror (m). */
+const CAR_BACK = 0.9;
+/** The ride down in sim s: the car stays in view until `out`, then dark again, the arrival ding and the step out. */
+const CAR_RIDE = { out: 3.0, exit: 3.5, fadeIn: 3.7, end: 4.6 } as const;
 /** The body stands this far above the flat's floor line when placed (anchors may sit at eye height; gravity settles it). */
 const STAND_LIFT = 0.05;
 /** The peephole look (sim s): the camera eases to the eyehole, holds, and the player's own glide brings it back. */
@@ -135,7 +140,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   /** THE WALK (world/street): the leg under way; `past` = home: the key has turned (the Evening runs), out: the door is behind. */
   let walk: { leg: WalkLeg; past: boolean; doorOpen: boolean } | null = null;
   /** The lift down from the casino's street door (the prologue, the morning): its clock and beats, then what comes after. */
-  let lift: { t: number; ding: boolean; tp: boolean; fadeIn: boolean; done: () => void } | null = null;
+  let lift: { t: number; ding: boolean; tp: boolean; fadeIn: boolean; out: boolean; exit: boolean; fadeIn2: boolean; done: () => void } | null = null;
   let objectiveT = 0;
   let disposed = false;
   /** ADA'S KITCHEN TABLE (wave 78): the open overlay, the Nights already played, the offer's wait (sim s) and cooldown. */
@@ -200,6 +205,16 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     ambience(HOME_AMBIENCE, 1.5);
     atHome = true;
     return true;
+  };
+  /** The ride down: inside the car, back to the gate, facing the mirror (the dial reads G, then falls to B7). */
+  const placeCar = (): void => {
+    const d = world.anchor('elevator.door');
+    if (!d) return;
+    const p = anchorPose(d);
+    player.teleport(new THREE.Vector3(p.pos.x, 0, p.pos.z - CAR_BACK), 0);
+    const car = world.prop<ElevatorProp>('elevator');
+    car?.setFloor(8, false);
+    car?.setFloor(1);
   };
   /** The bed opened the next Night: the player steps out of the lift, in front of the gate, facing the pit. */
   const placeFloor = (): void => {
@@ -753,7 +768,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     walk = null;
     setWalk(null);
     setDoorOut(false);
-    lift = { t: 0, ding: false, tp: false, fadeIn: false, done };
+    lift = { t: 0, ding: false, tp: false, fadeIn: false, out: false, exit: false, fadeIn2: false, done };
     sfx('doorOpen', { vol: 0.7 });
     wantLock = true;
     ui().dismissToasts();
@@ -764,9 +779,12 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     if (!l) return;
     l.t += dt;
     if (!l.ding && l.t >= T.dark) { l.ding = true; sfx(HOME_SFX.ding); }
-    if (!l.tp && l.t >= T.teleport) { l.tp = true; placeFloor(); }
+    if (!l.tp && l.t >= T.teleport) { l.tp = true; placeCar(); }
     if (l.tp && !l.fadeIn && l.t >= T.fadeIn) { l.fadeIn = true; fadeTo(0, 0.9); }
-    if (l.t < T.ride) return;
+    if (l.fadeIn && !l.out && l.t >= CAR_RIDE.out) { l.out = true; sfx(HOME_SFX.ding); fadeTo(1, CAR_RIDE.exit - CAR_RIDE.out - 0.1); }
+    if (l.out && !l.exit && l.t >= CAR_RIDE.exit) { l.exit = true; placeFloor(); }
+    if (l.exit && !l.fadeIn2 && l.t >= CAR_RIDE.fadeIn) { l.fadeIn2 = true; fadeTo(0, 0.9); }
+    if (l.t < CAR_RIDE.end) return;
     lift = null;
     unlock();
     l.done();

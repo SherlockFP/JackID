@@ -55,6 +55,6 @@ export default {
     'why.machine': 'BU MAKİNEYE UYMAZ',
     'why.dup': 'ZATEN TAKILI',
     'why.full': 'İKİ YUVA DA DOLU',
-    'why.funds': 'YETERSİZ PARA',
+    'why.funds': 'YETERSİZ JETON',
   },
 };

@@ -118,6 +118,13 @@
 .hud .quota.sealed .num { color: #d2483a; }
 .hud .quota .short { font-family: var(--f-head); font-size: calc(9 * var(--u)); color: var(--amber); }
 
+/* THE GOAL STRIP under the quota (hud.ts updateQuota, game/terms.ts goalLine): one plain line, right-aligned, wrapping inside the stack. */
+.hud .hb.goal { justify-content: flex-end; text-align: right; white-space: normal; padding: calc(2 * var(--u)) calc(5 * var(--u));
+  background: rgba(8, 8, 12, .78); box-shadow: 0 0 0 calc(1 * var(--u)) #000;
+  font-family: var(--f-body); font-size: max(15px, calc(9 * var(--u))); line-height: 1.1; color: var(--ivory); }
+.hud .hb.goal.hidden { display: none; }
+.hud .hb.goal.met { color: var(--green); }
+
 /* HEAT meter under the quota (hud.ts updateHeat): a thin bar, amber to red, blinking above 75 */
 .hud .heat { flex-direction: column; align-items: flex-end; gap: calc(2 * var(--u)); }
 .hud .heat .bar i { transition: width .25s steps(4); }
@@ -279,7 +286,7 @@
    strip stays, top right: the Watch clock line, and the quota as "KOTA 0 / 24" under it. Wallet, tickets, the night bar, the plan, luck,
    seals, payout, buffs, charms and the feed come back on stand-up. Loki's grin shows only while he whispers (hud.ts .whisper). */
 .px-root.seat-focus .hud .hud-tl, .px-root.seat-focus .hud .sub, .px-root.seat-focus .hud .charms, .px-root.seat-focus .hud .feed,
-.px-root.seat-focus .hud .hud-rs > :not(.quota):not(.phone):not(.luck.whisper),
+.px-root.seat-focus .hud .hud-rs > :not(.quota):not(.goal):not(.phone):not(.luck.whisper),
 .px-root.seat-focus .hud .quota .bar, .px-root.seat-focus .hud .quota .short,
 .px-root.seat-focus .hud .luck .stars, .px-root.seat-focus .hud .luck .bonus,
 .px-root.seat-focus .px-phone-chip { display: none !important; }
@@ -290,3 +297,4 @@
 .px-root.seat-focus .hud .quota { flex-direction: row; align-items: baseline; gap: calc(3 * var(--u)); padding: calc(1 * var(--u)) calc(4 * var(--u)); box-shadow: 0 0 0 calc(1 * var(--u)) #000; }
 .px-root.seat-focus .hud .quota .lbl { font-size: max(11px, calc(6 * var(--u))); }
 .px-root.seat-focus .hud .quota .num { font-size: max(16px, calc(11 * var(--u))); }
+.px-root.seat-focus .hud .goal { font-size: max(14px, calc(8 * var(--u))); max-width: calc(120 * var(--u)); }

@@ -285,10 +285,13 @@ export class Pantheon implements ModProvider {
     return true;
   }
 
+  /** The panel holds the timer while a card is hovered or focused (not saved). */
+  held = false;
+
   /** Runs the offer timer (real seconds). Returns the ids auto-picked when it runs out, else null. */
   tick(dt: number): string[] | null {
     const o = this.offer;
-    if (!o) return null;
+    if (!o || this.held) return null;
     o.left -= dt;
     return o.left > 0 ? null : this.settle();
   }

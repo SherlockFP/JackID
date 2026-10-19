@@ -43,6 +43,8 @@ declare module '@/core/events' {
   interface GameEvents {
     /** The econ lane's high-stake flag: `need` true while the next bet wants a confirm press (the STAKE panel warns). */
     'stake:confirm': { need: boolean };
+    /** A HUD term this seat shows (a `TERMS` id of game/terms.ts): the main HUD explains it once per profile. */
+    'term:need': { id: string };
   }
 }
 
@@ -268,6 +270,7 @@ export class SeatHud {
     const show = this.shown && !this.uiBlocked && s !== null && rows.length > 0;
     this.presetsEl.style.display = show ? '' : 'none';
     if (!show || s === null) return;
+    bus.emit('term:need', { id: 'stakes' });   // SAFE / BOLD are on the row: say what they are, once
     this.presetsEl.replaceChildren();
     for (const r of rows) {
       const cls = ['shud-preset', r.key === s.active ? 'on' : '', r.key === s.armed ? 'armed' : ''].filter(Boolean).join(' ');
