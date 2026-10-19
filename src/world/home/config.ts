@@ -150,6 +150,8 @@ export const ANCHOR_PLAN = {
  * wall, east of the window). Plan boxes [x0, y0, z0, x1, y1, z1]. The stations (`fridge`, `computer`) are in index.ts.
  */
 export const FRIDGE = { box: [2.35, 0, 1.6, 3.0, 1.75, 2.3], station: [2.3, 0, 1.55, 3.0, 1.95, 2.35] } as const;
+/** The çaydanlık on the hob (the kitchen run, east wall): its interact box, clear of the fridge's (z 1.55+) and the table. */
+export const TEAPOT = { station: [2.35, 0.9, -0.4, 3.0, 1.4, 0.3] } as const;
 export const DESK = { x0: 0.75, x1: 1.9, z0: -2.45, z1: -1.85, top: 0.74, station: [0.7, 0, -2.5, 1.9, 1.45, -1.75] } as const;
 /** The lacquered wall unit (sektsiya) on the west wall, between the nightstand and the door corner: plan footprint and height. */
 export const WALL_UNIT = { x0: -3.0, x1: -2.55, z0: 0.72, z1: 2.32, h: 1.95 } as const;

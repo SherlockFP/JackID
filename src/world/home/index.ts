@@ -16,7 +16,7 @@ import { HOME_ANCHORS, type HomeRoomApi, type HomeStation } from '@/game/home/co
 import type { CollisionWorld, InteractionSystem, WorldLights } from '../types';
 import type { InteractableX } from '../interact';
 import type { LightHint } from '../sys/arch';
-import { ANCHOR_PLAN, at, DESK, FRIDGE, HOME_ZONE, SPOUSE_SEAT, SPOUSE_SIT, STATION_PRIORITY, WALL_STATIONS, WIN_X0, WIN_X1, WIN_Y0, WIN_Y1 } from './config';
+import { ANCHOR_PLAN, at, DESK, FRIDGE, HOME_ZONE, SPOUSE_SEAT, SPOUSE_SIT, STATION_PRIORITY, TEAPOT, WALL_STATIONS, WIN_X0, WIN_X1, WIN_Y0, WIN_Y1 } from './config';
 import { buildRoom, type Statics } from './room';
 import { buildFurniture } from './furniture';
 import { HomeDoor } from './door';
@@ -210,6 +210,11 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
     station('fridge', boxAt(...FRIDGE.station), 2, {
       label: () => t('home.station.fridge'),
       sub: () => t('home.station.fridge.sub'),
+    }),
+    // the çaydanlık on the hob: one free glass an Evening (src/game/food.ts `pourTea`)
+    station('tea', boxAt(...TEAPOT.station), 2, {
+      label: () => t('home.station.tea'),
+      sub: () => t('home.station.tea.sub'),
     }),
     station('computer', boxAt(...DESK.station), 2, {
       label: () => t('home.station.computer'),

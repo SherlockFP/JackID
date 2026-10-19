@@ -8,6 +8,7 @@ import { load, closeVite } from './_vite.mjs';
 after(closeVite);
 
 const F = await load('src/game/food.ts');
+const { bus } = await load('src/core/events.ts');   // same load as F: the suites share one process, a later load can be a second module graph
 const B = await load('src/game/data/buffs.ts');
 const R = await load('src/machines/tonic_vendor/rules.ts');
 const STR = (await load('src/game/food.strings.ts')).default;
@@ -25,13 +26,14 @@ test('every food has a name and a line in EN and TR, and the TR is not a copy of
   assert.deepEqual(Object.keys(STR.en).sort(), Object.keys(STR.tr).sort());
 });
 
-test('the four buff foods use existing hooks with the brief numbers, one Watch each', () => {
+test('the five buff foods use existing hooks with the brief numbers, one Watch each', () => {
   const fx = (id) => buffDef(`food.${id}`).effects;
   assert.deepEqual(fx('banana'), [{ hook: 'x.run.pullsAdd', op: 'add', value: 1 }]);
   assert.deepEqual(fx('coffee'), [{ hook: 'x.tilt.grace', op: 'add', value: 1 }]);
   assert.deepEqual(fx('sandwich'), [{ hook: 'payout.mult', op: 'mult', value: 1.01 }]);   // one ŞANS star = 1 % (src/game/luck.ts)
   assert.deepEqual(fx('energy'), [{ hook: 'x.run.clockAdd', op: 'add', value: 15 }]);
-  for (const id of ['banana', 'coffee', 'sandwich', 'energy']) {
+  assert.deepEqual(fx('tea'), [{ hook: 'dread.add', op: 'add', value: -5 }]);                 // calm: a little less Dread
+  for (const id of ['banana', 'coffee', 'sandwich', 'energy', 'tea']) {
     const d = buffDef(`food.${id}`);
     assert.deepEqual(d.duration, { kind: 'shifts', n: 1 }, `${id} lasts one Watch`);
     assert.equal(d.maxStacks, 1);
@@ -43,18 +45,21 @@ test('the four buff foods use existing hooks with the brief numbers, one Watch e
   assert.equal(F.FOOD_FX.pulls, 1);
   assert.equal(F.FOOD_FX.clockSec, 15);
   assert.equal(F.FOOD_FX.starPayout, 1.01);
+  assert.equal(F.FOOD_FX.teaDread, -5);
 });
 
-test('soup has no timed bonus; the others are sold at low prices in ascending strength order', () => {
+test('soup has no timed bonus; the others are sold at low prices, the tea the cheapest drink', () => {
   assert.equal(F.FOODS.soup.buff, null);
   const prices = F.BAR_MENU.map((id) => F.FOODS[id].price);
-  assert.deepEqual(F.BAR_MENU, ['banana', 'coffee', 'sandwich', 'energy']);
-  assert.deepEqual(prices, [8, 14, 20, 28]);
+  assert.deepEqual(F.BAR_MENU, ['banana', 'coffee', 'sandwich', 'energy', 'tea']);
+  assert.deepEqual(prices, [8, 14, 20, 28, 5]);
+  assert.equal(F.FOODS.tea.verb, 'drink');
+  assert.equal(Math.min(...prices), F.FOODS.tea.price);
   assert.ok(Math.max(...prices) <= 30, 'a snack stays cheaper than the cheapest tonic but one');
 });
 
 test('the bar food page mirrors the game prices and buff ids, and is clear of the tonic catalogue', () => {
-  assert.equal(R.FOOD_SHELF.length, R.SLOTS);
+  assert.equal(R.FOOD_SHELF.length, R.FOOD_SLOTS);
   R.FOOD_SHELF.forEach((e, i) => {
     const id = F.BAR_MENU[i];
     assert.equal(e.id, F.FOODS[id].buff);
@@ -228,6 +233,28 @@ test('the market delivers into the fridge with addToFridge', () => {
     for (let i = 0; i < 20; i++) F.addToFridge('banana');
     assert.equal(F.fridgeOf().items().length, F.FRIDGE_MAX);
     void run;
+  } finally { off(); }
+});
+
+// ── the çaydanlık at home ─────────────────────────────────────────────────────────────────────────────────────────────
+test('the çaydanlık pours one free tea an Evening, and not over a meal that is still working', () => {
+  let night = 1;
+  const run = fakeRun('intermission');
+  const adds = () => run.list.filter((b) => b.id === 'food.tea').length;
+  const off = F.mountFood({ seed: 1, selfId: 1, night: () => night, buffs: run.buffs });
+  try {
+    bus.emit('home:interact', { station: 'tea' });
+    assert.equal(adds(), 1, 'the first glass');
+    bus.emit('home:interact', { station: 'tea' });
+    assert.equal(adds(), 1, 'one an Evening');
+    night = 2;
+    run.list.length = 0;
+    run.list.push({ id: 'food.banana', data: {} });
+    bus.emit('home:interact', { station: 'tea' });
+    assert.equal(adds(), 0, 'a meal is working: the tea would replace it');
+    run.list.length = 0;
+    bus.emit('home:interact', { station: 'tea' });
+    assert.equal(adds(), 1, 'the next Evening, a free hand');
   } finally { off(); }
 });
 

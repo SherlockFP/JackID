@@ -4,7 +4,7 @@
  * step; the dose is applied with `run.buffs.add(id, { pid })` and a totem with `run.totems.grant(pid, id)`. The machine never prices anything itself.
  *
  * Controls (seated): 1–4 or ←/→ pick a bottle · Space/Enter buy · W/S flip between the TONICS and the FOOD page · E stands up.
- * The food page sells four snacks (banana, coffee, sandwich, energy drink), one food bonus at a time (src/game/food.ts).
+ * The food page sells five snacks (banana, coffee, sandwich, energy drink, çay), 1–5 pick, one food bonus at a time (src/game/food.ts).
  * It is Selim's bar: opening it emits `bar:food` for the local player, and src/game/food.ts plays him (greeting, tip, TIP / PAY BACK).
  * Every peer draws the same shelf from the same run seed and Night. `present()` plays the juice for the local choices.
  */
@@ -17,8 +17,8 @@ import type { KitX } from '@/kit';
 import { fmtNum, t as tr } from '@/core/i18n';
 import { bus } from '@/core/events';
 import { lerp } from '@/core/math';
-import { buildModel, DRAWER_SLIDE, type TonicVendorParts } from './model';
-import { FOOD_BUFF_IDS, SLOTS, foodStock, priceText, stockKey, tonicStock, wrapSlot, type TonicJuice, type TonicKind, type TonicOffer } from './rules';
+import { BOTTLE_X, buildModel, DRAWER_SLIDE, FOOD_X, type TonicVendorParts } from './model';
+import { FOOD_BUFF_IDS, FOOD_SLOTS, SLOTS, foodStock, priceText, stockKey, tonicStock, wrapSlot, type TonicJuice, type TonicKind, type TonicOffer } from './rules';
 
 declare module '@/core/events' {
   interface GameEvents {
@@ -60,7 +60,7 @@ export const def: MachineDef = {
       s_coins: 'COINS', s_dose: 'DOSE', s_length: 'LASTS',
       funds: 'NOT ENOUGH COINS', none: 'EMPTY SHELF', hand: 'HAND ALREADY FULL',
       ledger: 'APOTHECARY', ledgerHint: '1-4 PICK  SPACE DRINK  W/S FOOD',
-      ledgerFood: 'FOOD COUNTER', ledgerHintFood: '1-4 PICK  SPACE EAT  W/S TONICS', h_eat: 'EAT',
+      ledgerFood: 'FOOD COUNTER', ledgerHintFood: '1-5 PICK  SPACE EAT  W/S TONICS', h_eat: 'EAT',
       pageTonic: 'TONICS', pageFood: 'FOOD', s_food: 'FOOD', s_bonus: 'BONUS',
       free: 'FREE',
     },
@@ -71,7 +71,7 @@ export const def: MachineDef = {
       s_coins: 'PARA', s_dose: 'DOZ', s_length: 'SÜRE',
       funds: 'PARA YETMİYOR', none: 'RAF BOŞ', hand: 'ELİ DOLU',
       ledger: 'ECZANE', ledgerHint: '1-4 SEÇ  BOŞLUK İÇ  W/S YEMEK',
-      ledgerFood: 'YEMEK TEZGAHI', ledgerHintFood: '1-4 SEÇ  BOŞLUK YE  W/S TONİK', h_eat: 'YE',
+      ledgerFood: 'YEMEK TEZGAHI', ledgerHintFood: '1-5 SEÇ  BOŞLUK YE  W/S TONİK', h_eat: 'YE',
       pageTonic: 'TONİKLER', pageFood: 'YEMEK', s_food: 'YEMEK', s_bonus: 'ETKİ',
       free: 'BEDAVA',
     },
@@ -144,18 +144,22 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
   onInput(e: MachineInputEvent): void {
     if (!e.down || e.repeat) return;
     switch (e.action) {
-      case 'left': this.moveCursor(wrapSlot(this.cursor, -1)); return;
-      case 'right': this.moveCursor(wrapSlot(this.cursor, 1)); return;
+      case 'left': this.moveCursor(wrapSlot(this.cursor, -1, this.slots())); return;
+      case 'right': this.moveCursor(wrapSlot(this.cursor, 1, this.slots())); return;
       case 'up': case 'down':
-        this.foodPage = !this.foodPage; this.sfx('hover'); this.refresh(true);
+        this.foodPage = !this.foodPage; this.cursor = Math.min(this.cursor, this.slots() - 1); this.sfx('hover'); this.refresh(true);
         if (this.foodPage) bus.emit('bar:food', {});
         return;
-      case 'n1': case 'n2': case 'n3': case 'n4': this.moveCursor(Number(e.action.slice(1)) - 1); return;
+      case 'n1': case 'n2': case 'n3': case 'n4': case 'n5': this.moveCursor(Number(e.action.slice(1)) - 1); return;
       case 'primary': case 'confirm': this.buy(this.cursor); return;
     }
   }
 
+  /** The slots on this page: the tonic shelf has four, the food page five. */
+  private slots(): number { return this.foodPage ? FOOD_SLOTS : SLOTS; }
+
   private moveCursor(i: number): void {
+    if (i >= this.slots()) return;
     this.cursor = i;
     this.sfx('hover');
     this.refresh(true);
@@ -164,7 +168,7 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
   /** Purchase: refusals are checked here; the coins and the dose or totem move in the credit step. */
   private buy(i: number): void {
     const offer = this.stock()[i] ?? null;
-    if (!offer || i >= SLOTS) { void this.emit({ k: 'buy', i, kind: 'buff', id: '', price: 0, juice: 'plain', ok: false, why: 'none' }); return; }
+    if (!offer || i >= this.slots()) { void this.emit({ k: 'buy', i, kind: 'buff', id: '', price: 0, juice: 'plain', ok: false, why: 'none' }); return; }
     const run = this.ctx.run;
     const why = offer.kind === 'totem' && this.handBusy() ? 'hand'
       : offer.price > 0 && !run.canAfford(offer.price, this.selfId) ? 'funds' : '';
@@ -274,7 +278,7 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
     if (!force && key === this.repaintKey) { if (this.isLocalOccupant) this.showHud(); return; }
     this.repaintKey = key;
 
-    for (let i = 0; i < SLOTS; i++) {
+    for (let i = 0; i < FOOD_SLOTS; i++) {
       this.parts.tags[i]?.setText(priceText(stock[i] ?? null, fmtNum, this.t('free')));
     }
     this.applyPage();
@@ -287,6 +291,12 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
     const { bottles, foods, sign } = this.parts;
     for (const b of bottles) b.visible = !this.foodPage;
     for (const f of foods) f.visible = this.foodPage;
+    // the price tags follow the page: under the bottles (four), or under the five snacks
+    this.parts.tags.forEach((tag, i) => {
+      const x = (this.foodPage ? FOOD_X : BOTTLE_X)[i];
+      tag.mesh.visible = x !== undefined;
+      if (x !== undefined) tag.mesh.position.x = x;
+    });
     sign.setText(this.t(this.foodPage ? 'pageFood' : 'pageTonic'));
   }
 
@@ -294,9 +304,9 @@ export default class TonicVendor extends MachineBase<TonicVendorParts, Ev, null>
     const s = this.parts.ledger;
     s.clear(this.foodPage ? '#14100a' : '#081410');
     s.text(this.t(this.foodPage ? 'ledgerFood' : 'ledger'), 64, 10, { font: 'px5', color: this.foodPage ? '#ffd060' : '#80ffb0', align: 'center' });
-    for (let i = 0; i < SLOTS; i++) {
+    for (let i = 0; i < this.slots(); i++) {
       const o = stock[i] ?? null;
-      const y = 26 + i * 12;
+      const y = 24 + i * 10;
       const mark = i === this.cursor ? '>' : ' ';
       const name = o ? nameOf(o).slice(0, 14) : this.t('none');
       s.text(`${mark}${i + 1} ${name}`, 4, y, { font: 'px5', color: o?.juice === 'cursed' ? '#c0a0ff' : '#c8ffe0' });

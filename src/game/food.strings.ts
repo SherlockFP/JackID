@@ -1,5 +1,5 @@
 /**
- * FOOD (src/game/food.ts): the names and one-line effects of the five foods, the eating toasts and the fridge at home.
+ * FOOD (src/game/food.ts): the names and one-line effects of the six foods, the eating toasts and the fridge at home.
  * The four buff foods also have their buff names in src/game/data/buffs.ts (`buff.food.*`). Loaded by the `*.strings.ts` glob in main.ts.
  */
 export default {
@@ -13,6 +13,8 @@ export default {
     'sandwich.desc': '+1 ŞANS star on your next Watch.',
     'energy.name': 'Energy Drink',
     'energy.desc': '+15 s on your next Watch clock.',
+    'tea.name': 'Tea',
+    'tea.desc': 'A calm glass: Dread -5 on your next Watch.',
     'soup.name': 'Soup',
     'soup.desc': 'Best eaten at home, with Ada. Harmony +1.',
     'toast': '{name}. {fx}',
@@ -20,6 +22,8 @@ export default {
     'toast.soup': '{name} with Ada. She smiles. Harmony +1.',
     'toast.soupPlain': '{name} with Ada again. It is warm, and that is enough.',
     'toast.soupAlone': 'Ada is not home tonight. The soup can wait.',
+    'toast.teaDone': 'You have had your tea tonight.',
+    'toast.teaFull': 'Not now: a meal is still working.',
     'fridge.title': 'Fridge',
     'fridge.empty': 'Nothing in the fridge but the light.',
     'fridge.close': 'Shut the door',
@@ -39,6 +43,8 @@ export default {
     'sandwich.desc': 'Sonraki Vardiyada +1 ŞANS yıldızı.',
     'energy.name': 'Enerji İçeceği',
     'energy.desc': 'Sonraki Vardiya saatine +15 sn.',
+    'tea.name': 'Çay',
+    'tea.desc': 'Sakin bir bardak: sonraki Vardiyada Korku -5.',
     'soup.name': 'Çorba',
     'soup.desc': 'Evde, Ada ile içilir. Uyum +1.',
     'toast': '{name}. {fx}',
@@ -46,6 +52,8 @@ export default {
     'toast.soup': 'Ada ile {name}. Gülümsüyor. Uyum +1.',
     'toast.soupPlain': 'Ada ile yine {name}. Sıcak, ve bu yetiyor.',
     'toast.soupAlone': 'Ada bu gece evde değil. Çorba bekleyebilir.',
+    'toast.teaDone': 'Bu akşam çayını içtin.',
+    'toast.teaFull': 'Şimdi olmaz: yediğin hâlâ etkili.',
     'fridge.title': 'Buzdolabı',
     'fridge.empty': 'Buzdolabında ışıktan başka bir şey yok.',
     'fridge.close': 'Kapağı kapat',

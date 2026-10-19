@@ -1,5 +1,5 @@
 /**
- * Small PSX food props (banana, coffee mug, sandwich, energy drink can, bowl of soup). One neutral part list per food, in metres,
+ * Small PSX food props (banana, coffee mug, sandwich, energy drink can, tulip çay glass, bowl of soup). One neutral part list per food, in metres,
  * origin = the middle of the base, +Y up. Pure data, no scene: the world builds it with the kit (`buildFoodProp`, for the fridge
  * top, the kitchen counter and the bar), and the first-person hands build the same list in their own scene (src/player/viewmodel/items.ts),
  * so a thing you pick up looks like the thing on the shelf. The ids are the food ids of src/game/food.ts.
@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import type { KitX } from '@/kit';
 
-export type FoodPropId = 'banana' | 'coffee' | 'sandwich' | 'energy' | 'soup';
+export type FoodPropId = 'banana' | 'coffee' | 'sandwich' | 'energy' | 'tea' | 'soup';
 
 /** One solid piece: a box (`size` = w,h,d), a cylinder (`size` = rTop,rBottom,h) or a ring (`size` = r,tube,arc), centred on `pos`, turned by `rot` (radians). */
 export interface FoodPart {
@@ -22,6 +22,10 @@ export interface FoodPart {
   eat?: boolean;
   /** A small painted texture (`FOOD_TEX`): a pattern the part colour tints, or a full-colour label on a white part. */
   tex?: FoodTex;
+  /** On the saucer: the shelf prop has it, the hand holds the glass bare (the first-person hands skip it). */
+  plate?: boolean;
+  /** See-through glass: the part's opacity (default solid). */
+  alpha?: number;
 }
 
 // ── textures (wave 88 art pass): tiny painted maps that read at hand distance, no rng (an integer hash places the dots) ─────
@@ -93,7 +97,7 @@ export const FOOD_TEX: Readonly<Record<FoodTex, { px: number; paint: Paint }>> =
   } },
 };
 
-const p = (shape: FoodPart['shape'], size: FoodPart['size'], pos: FoodPart['pos'], color: number, rot?: FoodPart['rot'], more?: Pick<FoodPart, 'seg' | 'eat' | 'tex'>): FoodPart =>
+const p = (shape: FoodPart['shape'], size: FoodPart['size'], pos: FoodPart['pos'], color: number, rot?: FoodPart['rot'], more?: Pick<FoodPart, 'seg' | 'eat' | 'tex' | 'plate' | 'alpha'>): FoodPart =>
   ({ shape, size, pos, color, rot, ...more });
 
 const YELLOW = 0xe8c840;
@@ -148,6 +152,29 @@ function bananaParts(): FoodPart[] {
   return parts;
 }
 
+// ── the çay glass ──────────────────────────────────────────────────────────────────────────────────
+// the ince belli tulip glass of identity.ts `cayGlass` (same profile: round foot, narrow waist, flared lip) as five tapered rings on a
+// small saucer, dark amber-red tea, a thin gold rim and a sugar cube. The glass stands on the saucer (TEA_Y0 = its top).
+const TEA_Y0 = 0.009, TEA = 0x5a1408, TEA_TOP = 0x661a0a, GLASS = 0x90a0a0, TEA_GOLD = 0xc8a048;
+/** [rTop, rBottom, from y, to y] up the glass (above the saucer): foot, belly, waist, flare, lip. */
+const TEA_RINGS: ReadonlyArray<readonly [number, number, number, number]> = [
+  [0.020, 0.019, 0, 0.006], [0.014, 0.020, 0.006, 0.032], [0.013, 0.014, 0.032, 0.048], [0.018, 0.013, 0.048, 0.074], [0.0215, 0.018, 0.074, 0.094],
+];
+const TEA_FILL = 0.08, TEA_WALL = 0.0016;   // the tea stands to here (a clear band above it) and sits this far inside the glass
+const teaParts = (): FoodPart[] => [
+  p('cyl', [0.048, 0.04, 0.008], [0, 0.004, 0], 0xece6d6, undefined, { seg: 10, plate: true }),
+  p('cyl', [0.049, 0.049, 0.002], [0, 0.0085, 0], TEA_GOLD, undefined, { seg: 10, plate: true }),
+  p('box', [0.012, 0.012, 0.012], [0.034, 0.014, 0.012], 0xf2efe6, [0, 0.5, 0], { plate: true }),   // the sugar cube
+  // the tea first (opaque, a hair inside the glass), then the clear glass shell over it (see-through; the foot is solid)
+  ...TEA_RINGS.slice(1).map(([rt, rb, y0, y1]) => {
+    const t = Math.min(y1, TEA_FILL), k = (t - y0) / (y1 - y0), rTop = rb + (rt - rb) * k;   // the last ring is cut at the fill line
+    return y0 < TEA_FILL ? p('cyl', [rTop - TEA_WALL, rb - TEA_WALL, t - y0], [0, TEA_Y0 + (y0 + t) / 2, 0], TEA, undefined, { seg: 8 }) : null;
+  }).filter((x): x is FoodPart => x !== null),
+  p('cyl', [0.0188, 0.0188, 0.001], [0, TEA_Y0 + TEA_FILL, 0], TEA_TOP, undefined, { seg: 8 }),   // the tea's surface, a pinch lighter
+  ...TEA_RINGS.map(([rt, rb, y0, y1], i) => p('cyl', [rt, rb, y1 - y0], [0, TEA_Y0 + (y0 + y1) / 2, 0], GLASS, undefined, { seg: 8, alpha: i === 0 ? undefined : 0.13 })),
+  p('torus', [0.0216, 0.0013, Math.PI * 2], [0, TEA_Y0 + 0.094, 0], TEA_GOLD, [Math.PI / 2, 0, 0]),   // the thin gold rim line
+];
+
 // ── the sandwich ───────────────────────────────────────────────────────────────────────────────────
 // half a sandwich cut corner to corner: triangular slabs (3-sided cylinders, the point towards +Z); the point is the bitten end
 const SAND_R = 0.05;
@@ -179,6 +206,7 @@ export const FOOD_PARTS: Readonly<Record<FoodPropId, readonly FoodPart[]>> = {
     p('cyl', [0.0168, 0.0148, 0.006], [0, 0.003, 0], 0xc8d0d8, undefined, { seg: 12 }),
     p('box', [0.011, 0.0025, 0.007], [0, 0.1312, 0.002], 0xe8eef2),
   ],
+  tea: teaParts(),
   // a stoneware bowl with a blue band, orange soup with a cream swirl and two croutons, a spoon resting in it
   soup: [
     p('cyl', [0.062, 0.04, 0.05], [0, 0.025, 0], 0xffffff, undefined, { seg: 12, tex: 'bowl' }),
@@ -203,7 +231,8 @@ export function buildFoodProp(kit: KitX, id: FoodPropId, scale = 1): THREE.Group
   g.name = `food:${id}`;
   for (const part of FOOD_PARTS[id]) {
     const t = part.tex ? FOOD_TEX[part.tex] : null;
-    const m = kit.mat({ color: part.color, map: t && part.tex ? kit.tex.canvas(t.px, t.px, t.paint, { key: `food:${part.tex}` }) : undefined });
+    const m = kit.mat({ color: part.color, map: t && part.tex ? kit.tex.canvas(t.px, t.px, t.paint, { key: `food:${part.tex}` }) : undefined,
+      ...(part.alpha ? { transparent: true, opacity: part.alpha, depthWrite: false } : {}) });
     const mesh = part.shape === 'box'
       ? kit.box(part.size[0], part.size[1], part.size[2], m, { parent: g })
       : part.shape === 'torus'

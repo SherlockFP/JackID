@@ -106,6 +106,8 @@ export const BUFF_DATA: BuffDef[] = [
       ['Sandwich', 'Sandviç'], ['+1 ŞANS star this Watch (payouts +1 %).', 'Bu Vardiyada +1 ŞANS yıldızı (ödemeler +%1).']],
     ['energy', 'icon.bolt', [{ hook: 'x.run.clockAdd', op: 'add', value: FOOD_FX.clockSec }] as ModEffect[],
       ['Energy Drink', 'Enerji İçeceği'], ['+15 s on this Watch clock.', 'Bu Vardiya saatine +15 sn.']],
+    ['tea', 'icon.moon', [{ hook: 'dread.add', op: 'add', value: FOOD_FX.teaDread }] as ModEffect[],
+      ['Tea', 'Çay'], ['A calm glass: Dread -5 this Watch.', 'Sakin bir bardak: bu Vardiyada Korku -5.']],
   ] as const).map(([id, icon, effects, name, desc]): BuffDef => ({
     id: `food.${id}`, kind: 'buff', scope: 'player', icon, maxStacks: 1,
     duration: { kind: 'shifts', n: 1 }, reapply: 'replace', exclusive: 'food', tags: ['food'],

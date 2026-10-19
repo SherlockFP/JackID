@@ -15,11 +15,11 @@ export type TonicVendorParts = {
   drawer: THREE.Object3D;
   /** Four bottle roots (liquid + cork). Each lifts on its own sale. */
   bottles: THREE.Object3D[];
-  /** Four snacks for the food page (banana, coffee, sandwich, can), standing where the bottles stand; hidden until the page flips. */
+  /** Five snacks for the food page (banana, coffee, sandwich, can, tea) on the counter (FOOD_X); hidden until the page flips. */
   foods: THREE.Object3D[];
   /** The page sign hung under the top shelf: TONICS or FOOD. */
   sign: LabelPart;
-  /** Price tags on the counter front, one per bottle. */
+  /** Price tags on the counter front, one per bottle, plus the food page's fifth (hidden on the tonic page). */
   tags: LabelPart[];
   /** Ledger above the shelves: the four doses and their prices. */
   ledger: ScreenSurface;
@@ -32,6 +32,8 @@ export const DRAWER_SLIDE = 0.22;
 const WALL_Z = -0.42;
 const COUNTER_Z = 0.12;
 export const BOTTLE_X = [-0.42, -0.14, 0.14, 0.42];
+/** The food page has five snacks (the fifth is the çay), spread over the same counter. */
+export const FOOD_X = [-0.48, -0.24, 0, 0.24, 0.48];
 /** Liquid colours of the four bottles: green, amber, violet, red. */
 const LIQUID = [0x60e89a, 0xe0a040, 0x9a60e0, 0xe05060];
 
@@ -68,6 +70,12 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TonicVendorPar
   // ── bottles (animated) and price tags ──
   const bottles: THREE.Object3D[] = [];
   const tags: LabelPart[] = [];
+  const mkTag = (x: number): LabelPart => {
+    const tag = kit.label({ text: '--', w: 0.22, h: 0.07, px: [88, 24], color: pal.gold, bg: pal.black, font: 'vt' });
+    tag.mesh.position.set(x, COUNTER_H - 0.2, COUNTER_Z + D / 2 + 0.035);
+    root.add(tag.mesh);
+    return tag;
+  };
   BOTTLE_X.forEach((x, i) => {
     const b = new THREE.Object3D();
     b.position.set(x, COUNTER_H, COUNTER_Z - 0.05);
@@ -76,13 +84,11 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TonicVendorPar
     kit.cyl(0.02, 0.02, 0.05, pal.neonPink, { pos: [0, 0.3, 0], parent: b, seg: 6 });
     root.add(b);
     bottles.push(b);
-    const tag = kit.label({ text: '--', w: 0.22, h: 0.07, px: [88, 24], color: pal.gold, bg: pal.black, font: 'vt' });
-    tag.mesh.position.set(x, COUNTER_H - 0.2, COUNTER_Z + D / 2 + 0.035);
-    root.add(tag.mesh);
-    tags.push(tag);
+    tags.push(mkTag(x));
   });
+  tags.push(mkTag(FOOD_X[FOOD_X.length - 1]));   // the food page's fifth tag (tea); the tags move to FOOD_X when the page flips
 
-  // ── snacks (the food page): same four spots as the bottles, hidden until W/S flips the page ──
+  // ── snacks (the food page): five spots across the counter, hidden until W/S flips the page ──
   const foods: THREE.Object3D[] = [];
   const mkFood = (x: number, build: (f: THREE.Object3D) => void): void => {
     const f = new THREE.Object3D();
@@ -93,28 +99,36 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<TonicVendorPar
     foods.push(f);
   };
   // banana: a bent yellow tube with a brown tip
-  mkFood(BOTTLE_X[0], (f) => {
+  mkFood(FOOD_X[0], (f) => {
     kit.tube([[-0.1, 0.07, 0], [-0.04, 0.03, 0], [0.04, 0.03, 0], [0.1, 0.09, 0]], 0.03, 0xf2d23a, { parent: f, radialSeg: 6 });
     kit.sphere(0.018, 0x6a4a22, { pos: [0.105, 0.095, 0], parent: f });
   });
   // coffee: a white cup, a dark top and a handle
-  mkFood(BOTTLE_X[1], (f) => {
+  mkFood(FOOD_X[1], (f) => {
     kit.cyl(0.06, 0.045, 0.1, 0xf2efe6, { pos: [0, 0.05, 0], parent: f, seg: 10 });
     kit.cyl(0.052, 0.052, 0.01, 0x4a2c14, { pos: [0, 0.1, 0], parent: f, seg: 10 });
     kit.torus(0.032, 0.01, 0xf2efe6, { pos: [0.075, 0.05, 0], rot: [0, 0, 0], parent: f });
   });
   // sandwich: bread, lettuce, ham, bread
-  mkFood(BOTTLE_X[2], (f) => {
+  mkFood(FOOD_X[2], (f) => {
     kit.box(0.2, 0.04, 0.14, 0xd8b070, { pos: [0, 0.02, 0], parent: f, bevel: 0.01 });
     kit.box(0.2, 0.025, 0.15, 0x6cb04a, { pos: [0, 0.052, 0], parent: f });
     kit.box(0.19, 0.03, 0.13, 0xe49aa0, { pos: [0, 0.08, 0], parent: f });
     kit.box(0.2, 0.045, 0.14, 0xd8b070, { pos: [0, 0.117, 0], parent: f, bevel: 0.012 });
   });
   // can (the energy drink): red body, silver rims
-  mkFood(BOTTLE_X[3], (f) => {
+  mkFood(FOOD_X[3], (f) => {
     kit.cyl(0.045, 0.045, 0.16, 0xd8202a, { pos: [0, 0.08, 0], parent: f, seg: 10 });
     kit.cyl(0.047, 0.047, 0.012, 0xc9ced4, { pos: [0, 0.166, 0], parent: f, seg: 10 });
     kit.cyl(0.047, 0.047, 0.012, 0xc9ced4, { pos: [0, 0.006, 0], parent: f, seg: 10 });
+  });
+  // tea: the ince belli tulip glass (round foot, narrow waist, flared lip) of dark tea on a small saucer, a gold rim line
+  // (the same profile as world/props/food.ts `tea`; machines may not import the world)
+  mkFood(FOOD_X[4], (f) => {
+    kit.cyl(0.048, 0.04, 0.008, 0xece6d6, { pos: [0, 0.004, 0], parent: f, seg: 10 });
+    kit.cyl(0.049, 0.049, 0.002, 0xc8a048, { pos: [0, 0.0085, 0], parent: f, seg: 10 });
+    kit.lathe([[0, 0], [0.019, 0], [0.02, 0.006], [0.014, 0.032], [0.013, 0.048], [0.018, 0.074], [0.0215, 0.094]], 8, 0x9a2c0c, { pos: [0, 0.009, 0], parent: f });
+    kit.torus(0.0218, 0.0016, 0xc8a048, { pos: [0, 0.1045, 0], rot: [90, 0, 0], parent: f, seg: 10, tubeSeg: 4 });
   });
   // the page sign: a plate hung in front of the top shelf, so the page reads from the seat
   const sign = kit.label({ text: '', w: 0.5, h: 0.11, px: [160, 36], color: pal.gold, bg: pal.black, font: 'vt' });

@@ -13,8 +13,8 @@
  *
  * The coin throws (R toss, Q pass) and the held-Q tricks are `viewmodel/coinTricks.ts` (hand-keyed curves) run by `viewmodel/fidget.ts`.
  *
- * Holds (`hold`): coin (default), card, tonic, phone, ticket, ledger, gun (two-handed), totem, the five foods (banana, coffee,
- * sandwich, energy, soup: `eat` and `drink` raise them to the mouth), or any `Object3D` the caller supplies (card fan, totem, scratch
+ * Holds (`hold`): coin (default), card, tonic, phone, ticket, ledger, gun (two-handed), totem, the six foods (banana, coffee,
+ * sandwich, energy, tea, soup: `eat` and `drink` raise them to the mouth), or any `Object3D` the caller supplies (card fan, totem, scratch
  * coin…). Items hang from the hand bone, so they move with the clips. Changing the held item raises the new one from below (and
  * the old one shrinks away). One-shot animations (`play`): flip · drink · eat · throw · point · punchCard · recoil · give · grab ·
  * checkWatch · unwatch · rpsRock · rpsPaper · rpsScissors. An empty hand holds a coin (the default). In walk mode with the coin in
@@ -260,6 +260,7 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
           const g = gripOf(next), arm = handOf(next), s = arm.side, drop = next === 'coin' ? 0 : GRIP_DROP;      // the left hand mirrors the grip
           built.position.set((g.pos[0] - HOLD_AT[0]) * s, g.pos[1] - HOLD_AT[1] - drop, g.pos[2] - HOLD_AT[2]);
           built.rotation.set(g.rot[0], g.rot[1] * s, g.rot[2] * s);
+          built.userData.baseScale = g.scale ?? 1;   // the per-frame pop/fade below multiplies it (it rewrites the scale every frame)
           arm.holder.add(built); held = built; heldOwned = true;
         }
       }
@@ -386,7 +387,7 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
           held.visible = !fidget.busy;
         } else if (heldOwned) {
           if (fx.itemFade >= 0.999) gone = true;
-          held.scale.setScalar(Math.max(0.001, gone ? 0 : pop * (1 - fx.itemFade)));
+          held.scale.setScalar(Math.max(0.001, (gone ? 0 : pop * (1 - fx.itemFade)) * ((held.userData.baseScale as number | undefined) ?? 1)));
           const bite = held.userData.bite as Bite | undefined;
           if (bite) bite.pivot.scale.setComponent(bite.axis, 1 - 0.85 * fx.itemEat);
         }

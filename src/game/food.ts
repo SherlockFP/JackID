@@ -1,14 +1,15 @@
 /**
- * FOOD (client: "put food like bananas we can eat, with extra bonuses, tune them well"). Five small foods, each a readable bonus
+ * FOOD (client: "put food like bananas we can eat, with extra bonuses, tune them well"). Six small foods, each a readable bonus
  * on the existing modifier pipeline, sold at the Apothecary's food page (src/machines/tonic_vendor) and kept in the fridge at home.
  *
  *   banana      +1 pull on the next Watch             (x.run.pullsAdd +1)
  *   coffee      steadier hands: Tilt grace +1          (x.tilt.grace +1)
  *   sandwich    +1 ŞANS star on the next Watch         (payout.mult x1.01, one star = 1 %, src/game/luck.ts)
  *   energy      +15 s on the next Watch clock          (x.run.clockAdd +15)
+ *   tea         a calm glass: Dread -5 for the Watch   (dread.add -5; the cheapest drink, one free an Evening from the çaydanlık at home)
  *   soup        eaten at home with Ada: Harmony +1, once a Night (no timed bonus)
  *
- * ONE FOOD BONUS AT A TIME: a new meal replaces the old one. The four bonuses are buffs `food.*` (src/game/data/buffs.ts), each
+ * ONE FOOD BONUS AT A TIME: a new meal replaces the old one. The five bonuses are buffs `food.*` (src/game/data/buffs.ts), each
  * lasting one Watch (`shifts`). The buff defs call back here (`onFoodAdded`, `onPendingTick`), so the rules hold for every way a
  * meal arrives (the bar, the fridge) without a mount. The pull and clock numbers are read when a Watch starts, so a meal eaten
  * DURING a Watch is kept as a hidden `food.pending` buff and turns into the real bonus the moment the Watch is over: it always
@@ -34,8 +35,8 @@ import { machineName } from './progression';
 import type { BondChange, BondEvent, Bonds } from './bonds';
 import type { MachineId } from '@/core/types';
 
-export type FoodId = 'banana' | 'coffee' | 'sandwich' | 'energy' | 'soup';
-export const FOOD_IDS: readonly FoodId[] = ['banana', 'coffee', 'sandwich', 'energy', 'soup'];
+export type FoodId = 'banana' | 'coffee' | 'sandwich' | 'energy' | 'tea' | 'soup';
+export const FOOD_IDS: readonly FoodId[] = ['banana', 'coffee', 'sandwich', 'energy', 'tea', 'soup'];
 
 export interface FoodDef {
   id: FoodId;
@@ -51,18 +52,19 @@ export interface FoodDef {
 
 /**
  * Tuning (coins are Night 1 scale: a tonic costs 25 to 90). Prices stay low: a food is a snack, not a charm.
- * banana 8 buys one pull (the cheapest, the weakest); coffee 14, energy 28 and sandwich 20 cost about what the tonic they echo costs per second.
+ * tea 5 is the cheapest of all (a small calm; the house pours one free an Evening). banana 8 buys one pull (the weakest); coffee 14, energy 28 and sandwich 20 cost about what the tonic they echo costs per second.
  */
 export const FOODS: Readonly<Record<FoodId, FoodDef>> = {
   banana: { id: 'banana', buff: 'food.banana', price: 8, verb: 'eat', bar: true },
   coffee: { id: 'coffee', buff: 'food.coffee', price: 14, verb: 'drink', bar: true },
   sandwich: { id: 'sandwich', buff: 'food.sandwich', price: 20, verb: 'eat', bar: true },
   energy: { id: 'energy', buff: 'food.energy', price: 28, verb: 'drink', bar: true },
+  tea: { id: 'tea', buff: 'food.tea', price: 5, verb: 'drink', bar: true },
   soup: { id: 'soup', buff: null, price: 16, verb: 'drink', bar: false },
 };
 
 /** The bonus numbers (data/buffs.ts holds the same values as effects; the tests keep the two in step). */
-export const FOOD_FX = { pulls: 1, tiltGrace: 1, starPayout: 1.01, clockSec: 15 } as const;
+export const FOOD_FX = { pulls: 1, tiltGrace: 1, starPayout: 1.01, clockSec: 15, teaDread: -5 } as const;
 
 /** The bar's food page, in slot order. */
 export const BAR_MENU: readonly FoodId[] = FOOD_IDS.filter((id) => FOODS[id].bar);
@@ -343,6 +345,16 @@ export function mountFood(run: FoodHost): () => void {
   };
   const hasFood = (): boolean => [...FOOD_BUFFS, PENDING_BUFF].some((id) => run.buffs.has(id, { pid: run.selfId }));
 
+  // the çaydanlık at home: one free glass an Evening, drunk at once (not while another meal still works: tea would replace it)
+  let teaNight = 0;
+  const pourTea = (): void => {
+    const night = run.night();
+    if (teaNight === night) { app?.ui?.toast(t('food.toast.teaDone'), 'info', 2.5); return; }
+    if (hasFood()) { app?.ui?.toast(t('food.toast.teaFull'), 'info', 2.5); return; }
+    teaNight = night;
+    run.buffs.add('food.tea', { pid: run.selfId, source: { kind: 'system', id: 'food' } });
+  };
+
   const openBar = async (): Promise<void> => {
     const book = run.bonds?.();
     if (!book || !run.bond || barOpen || disposed) return;
@@ -393,7 +405,7 @@ export function mountFood(run: FoodHost): () => void {
   };
 
   const offs = [
-    bus.on('home:interact', ({ station }) => { if (station === 'fridge') void openFridge(); }),
+    bus.on('home:interact', ({ station }) => { if (station === 'fridge') void openFridge(); else if (station === 'tea') pourTea(); }),
     bus.on('bar:food', () => { void openBar(); }),
     bus.on('selim:ask', () => { void askSeal(); }),
   ];

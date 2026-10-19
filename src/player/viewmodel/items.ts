@@ -1,5 +1,5 @@
 /**
- * Things the first-person hand holds (PLAYER): coin, card, ticket, ledger, tonic, phone handset, totem, the shotgun and the five
+ * Things the first-person hand holds (PLAYER): coin, card, ticket, ledger, tonic, phone handset, totem, the shotgun and the six
  * foods (built from the shared part lists of src/world/props/food.ts, so the thing in your hand is the thing on the shelf).
  *
  * `GRIPS` says how each item sits in the fist: where and how it is turned in the hand frame (the fingers curl towards −Y, the
@@ -118,11 +118,13 @@ export function buildItem(kind: string, m: OwnMat): THREE.Object3D | null {
       const pivot = new THREE.Group();
       if (spec) { const at = [0, 0, 0]; at[spec.axis] = spec.from; pivot.position.fromArray(at); g.add(pivot); }
       for (const part of FOOD_PARTS[kind]) {
+        if (part.plate) continue;
         const geo = part.shape === 'box' ? boxG(part.size[0], part.size[1], part.size[2])
           : part.shape === 'torus' ? shaded(new THREE.TorusGeometry(part.size[0], part.size[1], 5, 10, part.size[2]))
           : cylG(part.size[0], part.size[1], part.size[2], part.seg ?? 10);
         const pm = m(part.color);
         if (part.tex) pm.map = foodMap(part.tex);
+        if (part.alpha) { pm.transparent = true; pm.opacity = part.alpha; pm.depthWrite = false; }
         const o = mesh(geo, pm, part.pos[0], part.pos[1], part.pos[2]);
         if (part.rot) o.rotation.set(part.rot[0], part.rot[1], part.rot[2]);
         if (spec && part.eat) { o.position.setComponent(spec.axis, part.pos[spec.axis] - spec.from); pivot.add(o); } else g.add(o);
@@ -245,6 +247,8 @@ export interface Grip {
   /** How `eat` / `drink` lift it: the pose offset (added to the grip) that holds it at the mouth, and, for a drink, the pose that tips it into the mouth. */
   lift?: Partial<HandPose>;
   tipped?: Partial<HandPose>;
+  /** Shrinks the held item (the çay glass is small in the hand; the world prop keeps its size). */
+  scale?: number;
 }
 
 const NONE: Grip = { pos: [0, 0, 0], rot: [0, 0, 0], hand: {} };
@@ -276,6 +280,12 @@ export const GRIPS: Readonly<Record<string, Grip>> = {
     tipped: { px: -0.126, py: -0.003, pz: 0.123, rx: 0.592, ry: 0.056, rz: -0.181 },
   },
   energy: { pos: [0.058, -0.028, -0.04], rot: [0, 0, Math.PI / 2], hand: { curl: 1.0, index: 0.95, thumb: 0.65, rz: -1.2 }, ...CAN_LIFT },
+  // the tulip glass held bare by its narrow waist (0.05 up the glass: the mug's rule, origin x = grip height - 0.004; y like the can), lifted like the mug
+  tea: {
+    pos: [0.018, -0.028, -0.04], rot: [0, 0, Math.PI / 2], hand: { curl: 0.6, index: 0.55, thumb: 0.5, rz: -1.2 }, scale: 0.85,   // fingertips on the foot of a small glass, the waist and lip above the fist
+    lift: { px: -0.133, py: 0.021, pz: 0.143, rx: -0.2, ry: 0, rz: -0.289 },
+    tipped: { px: -0.126, py: -0.003, pz: 0.123, rx: 0.592, ry: 0.056, rz: -0.181 },
+  },
   soup: {
     pos: [0.01, -0.04, -0.085], rot: [0, 0, Math.PI / 2], hand: { curl: 0.9, index: 0.85, thumb: 0.6, rz: -0.9 },
     lift: { px: -0.129, py: 0.023, pz: 0.189, rx: -0.199, ry: 0, rz: -0.587 },

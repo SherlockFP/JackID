@@ -144,7 +144,7 @@ export function parseScript(text) {
  *                      (both walk the player home from the casino's street door by teleport: the door's cue starts the Evening)
  *   walk:home          THE WALK HOME: the same ride, then the walk shot by shot (with --shots): the casino door, the street, the
  *                      block's entrance, the corridor with Ada's door, your door; the key turns there and the Evening begins
- *   station:<id>       fires `home:interact` for one apartment station (bed|door|peephole|chain|switch|phone|spouse|window|fridge|computer); Evening only
+ *   station:<id>       fires `home:interact` for one apartment station (bed|door|peephole|chain|switch|phone|spouse|window|fridge|tea|computer); Evening only
  *   ui:click:<css>     clicks the first DOM element matching the selector (el.click()): the home computer's tabs and buttons, the fridge
  *   home:sleep         the bed: the `home:interact` event for station `bed`; waits for the next Night to open (the sleep, ~1.8 s sim)
  *   home:talk          the spouse: station `spouse` (the first talk each Evening at Harmony 4+ is the BLESSING); records the lines
@@ -189,7 +189,7 @@ export function parseScript(text) {
  * The start config is applied once, when the run starts (see startConfigJs); its step records are first in run.steps.
  */
 /** The apartment's stations (HomeStation in src/game/home/contract.ts): `station:<id>` fires `home:interact` for one. */
-const HOME_STATIONS = ['bed', 'door', 'peephole', 'chain', 'switch', 'phone', 'spouse', 'window', 'fridge', 'computer'];
+const HOME_STATIONS = ['bed', 'door', 'peephole', 'chain', 'switch', 'phone', 'spouse', 'window', 'fridge', 'tea', 'computer'];
 /** The Watch floor events `event:<id>` can force (WATCH_EVENTS in src/game/watchEvents.ts). The page refuses an unknown id. */
 /** The story endings `ending:<id>` can play (ENDING_IDS in src/game/story/endings.ts). */
 const ENDING_IDS = ['kept_pair', 'cold_kitchen', 'alone', 'chair', 'kept', 'paid_in_full', 'he_came_home', 'descend', 'fall'];
