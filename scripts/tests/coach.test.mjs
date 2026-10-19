@@ -181,3 +181,11 @@ test('practice: two free plays change no coins, quota, luck, heat, contracts or 
   assert.ok(run.coins < coins, 'a paid play takes the stake');
   run.dispose();
 });
+
+test('seated focus: the state title over the big button steps aside when it only repeats the button', async () => {
+  const H = await load('src/machines/_base/seatHud.ts');
+  assert.equal(H.captionRepeats('ÇEVİR [BOŞLUK]', ['ÇEVİR']), true);
+  assert.equal(H.captionRepeats('BİR YÜZ SEÇ, SONRA AT', ['AT']), false);
+  assert.equal(H.captionRepeats('MAKARALAR DÖNÜYOR', []), false);
+  assert.equal(H.captionRepeats('', ['ÇEVİR']), true);
+});

@@ -274,3 +274,19 @@
    (ui.css puts it at 50% + 12u). The seated view hides it (ui.css .px-root.seated). */
 .px-root:not(.seated) .px-prompt { bottom: calc(50% + 72 * var(--u)); }
 
+
+/* SEATED FOCUS (machines/_base/seatHud.ts puts .seat-focus on #ui at a seat that takes a stake): the play owns the screen. Only a small
+   strip stays, top right: the Watch clock line, and the quota as "KOTA 0 / 24" under it. Wallet, tickets, the night bar, the plan, luck,
+   seals, payout, buffs, charms and the feed come back on stand-up. Loki's grin shows only while he whispers (hud.ts .whisper). */
+.px-root.seat-focus .hud .hud-tl, .px-root.seat-focus .hud .sub, .px-root.seat-focus .hud .charms, .px-root.seat-focus .hud .feed,
+.px-root.seat-focus .hud .hud-rs > :not(.quota):not(.phone):not(.luck.whisper),
+.px-root.seat-focus .hud .quota .bar, .px-root.seat-focus .hud .quota .short,
+.px-root.seat-focus .hud .luck .stars, .px-root.seat-focus .hud .luck .bonus,
+.px-root.seat-focus .px-phone-chip { display: none !important; }
+.px-root.seat-focus .hud .hud-top { left: auto; display: flex; flex-direction: column; align-items: flex-end; }
+.px-root.seat-focus .hud .hud-tc { padding: 0; align-items: flex-end; }
+.px-root.seat-focus .hud .clock .phase { font-size: max(11px, calc(6 * var(--u))); }
+.px-root.seat-focus .hud .hud-rs { top: calc(var(--hud-top-h, calc(16 * var(--u))) + 2 * var(--u)); }
+.px-root.seat-focus .hud .quota { flex-direction: row; align-items: baseline; gap: calc(3 * var(--u)); padding: calc(1 * var(--u)) calc(4 * var(--u)); box-shadow: 0 0 0 calc(1 * var(--u)) #000; }
+.px-root.seat-focus .hud .quota .lbl { font-size: max(11px, calc(6 * var(--u))); }
+.px-root.seat-focus .hud .quota .num { font-size: max(16px, calc(11 * var(--u))); }

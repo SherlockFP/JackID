@@ -8,8 +8,12 @@
  *   CONTROLS   the valid actions RIGHT NOW, with bound keys    controls([{key, label, action, primary}])
  *   RESULT     WIN / LOSE / PUSH / BLACKJACK + amount, 1.5 s   result(kind, amount)
  *   PAY        a machine's symbols and what each pays           pay(items)
- *   COACH      one small box over the bar, the key to press pulsing in it (coach.ts, from `coach:view`)
+ *   COACH      the instruction line while it speaks, the key to press pulsing (coach.ts, from `coach:view`)
  *   RULES      full rules card, opened by the help key         rules(lines) / dismiss()
+ *
+ * SEATED FOCUS (a seat that takes a stake, `focus`): one instruction line at the top (coach, else goal), BET / POCKET and the big
+ * button at the bottom centre with the state title as its caption, the other actions as small chips under it. The pay strip and the
+ * odds line wait behind the rules key; `seat-focus` on #ui tells the main HUD to step back to a small quota / clock strip.
  *
  * The RULES card is a 3D placard (`placard3d.ts`): a board held up in front of the eye in the first-person overlay, with
  * bitmap text and page buttons. Everything else is DOM.
@@ -55,6 +59,15 @@ const RESULT_KEY: Record<HudResultKind, string> = {
 };
 
 const txt = (x: Txt): string => (typeof x === 'string' ? x : tr(x.k, x.v));
+/** Bar actions drawn as dim chips (bet, auto, rules, leave); a play action's chip is bright. */
+const META = new Set(['help', 'exit', 'betUp', 'betDown', 'auto']);
+/** A number cell the BET / POCKET box already shows (`nBet`, `nStake`, `nBalance`, `hNBet`...): focus mode drops it. */
+const DUP_NUM = /\.(n|hN)(Bet|Stake|Balance)$/;
+/** The state title adds nothing over the big button it captions ("SPIN [SPACE]" over "SPIN"): the caption steps aside. */
+export function captionRepeats(caption: string, buttons: readonly string[]): boolean {
+  const c = caption.trim().toLocaleUpperCase();
+  return c === '' || buttons.some((b) => b.trim() !== '' && c.startsWith(b.trim().toLocaleUpperCase()));
+}
 /** Count-up length of a big win's amount on the result callout (s). */
 const RESULT_COUNT_S = 0.8;
 
@@ -120,6 +133,11 @@ export class SeatHud {
   private readonly resultT: HTMLElement;
   private readonly resultA: HTMLElement;
   private readonly numsEl: HTMLElement;
+  /** The big button (the primary action) beside BET / POCKET, the state title over it as a caption; the rest of the bar is chips. */
+  private readonly mainEl: HTMLElement;
+  private readonly capEl: HTMLElement;
+  /** The last bet the presets reported: a new one (Z / X, a preset) shows at once, a pocket-only change keeps the round's bet. */
+  private presetBet = -1;
   private readonly ctrlEl: HTMLElement;
   private readonly payEl: HTMLElement;
   /** The coach box (coach.ts): practice tag, key cap, line, rule; drawn from the last `coach:view`. */
@@ -154,6 +172,9 @@ export class SeatHud {
     this.stateEl = make('div', 'shud-state shud-panel', top);
     this.stateT = make('span', 'shud-state-t', this.stateEl);
     this.stateS = make('span', 'shud-state-s', this.stateEl);
+    // The coach line takes the goal's place while it speaks (SEATED FOCUS: one instruction line at the top).
+    this.coachEl = make('div', 'shud-coach shud-panel', top);
+    this.coachEl.style.display = 'none';
     this.goalEl = make('div', 'shud-goal shud-panel', top);
     this.payEl = make('div', 'shud-pay shud-panel', top);
     this.payEl.style.display = 'none';
@@ -168,7 +189,10 @@ export class SeatHud {
     for (let i = 0; i < 4; i++) this.bulbs.push(make('i', '', row));
     this.tiltLamp = make('span', 'shud-tilt-lamp', this.tiltEl);
     this.tiltEl.style.display = 'none';
-    this.stakeEl = make('div', 'shud-stake shud-panel tone-gold', bottom);
+    this.numsEl = make('div', 'shud-nums', bottom);
+    // One row: BET / POCKET, then the big button with the state title over it
+    const main = make('div', 'shud-row', bottom);
+    this.stakeEl = make('div', 'shud-stake shud-panel tone-gold', main);
     const betCell = make('span', 'shud-cell shud-bet', this.stakeEl);
     this.stakeL = make('span', 'shud-stake-l', betCell);
     this.stakeV = make('span', 'shud-stake-v', betCell);
@@ -177,16 +201,14 @@ export class SeatHud {
     this.pocketV = make('span', 'shud-stake-v', pocketCell);
     this.rateEl = make('div', 'shud-rate', this.stakeEl);
     this.rateEl.style.display = 'none';
+    this.mainEl = make('div', 'shud-main', main);
+    this.capEl = make('div', 'shud-cap', this.mainEl);
     // SMART STAKES: the SAFE / BOLD / BIG presets (keys 7 / 8 / 9) under the STAKE readout; drawn from `stake:presets`
     this.presetsEl = make('div', 'shud-presets', bottom);
     this.presetsEl.style.display = 'none';
-    this.numsEl = make('div', 'shud-nums', bottom);
     // The odds footer is its own row, directly above the control bar (it used to hang on the bar's top edge and cover its keys).
     this.oddsEl = make('div', 'shud-odds shud-panel', bottom);
-    this.oddsEl.style.maxWidth = '70vw'; this.oddsEl.style.whiteSpace = 'normal'; this.oddsEl.style.overflowWrap = 'anywhere';
     this.oddsEl.style.display = 'none';
-    this.coachEl = make('div', 'shud-coach shud-panel', bottom);
-    this.coachEl.style.display = 'none';
     this.ctrlEl = make('div', 'shud-ctrl shud-panel', bottom);
     this.stackRo = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => this.placeToasts()) : null;
     this.stackRo?.observe(top);
@@ -206,6 +228,8 @@ export class SeatHud {
     // the seated machine publishes before its machine shows the HUD, so the last state is kept and drawn on show()
     this.offs.push(bus.on('stake:presets', (e) => {
       this.presetsState = e.on ? e : null;
+      // a staking seat: BET shows from the first frame, not only after the first round
+      if (e.on && this.shown && e.bet !== this.presetBet) { this.presetBet = e.bet; this.stake(e.bet); }
       this.refreshPresets();
       this.pullRate(e.on ? (e.pullCost ?? 1) : null);
     }));
@@ -235,7 +259,8 @@ export class SeatHud {
     const s = this.presetsState;
     // Onboarding: a preset row waits for its Night (SeatHud.readout, set by menu/hud.ts). The key still works; only the row waits.
     const allowed = SeatHud.readout().presets;
-    const rows = s ? s.rows.filter((r) => allowed.includes(r.key)) : [];
+    // SEATED FOCUS keeps SAFE / BOLD on the row; BIG still works by its key
+    const rows = s ? s.rows.filter((r) => allowed.includes(r.key) && !(this.focus && r.key === 'big')) : [];
     const show = this.shown && !this.uiBlocked && s !== null && rows.length > 0;
     this.presetsEl.style.display = show ? '' : 'none';
     if (!show || s === null) return;
@@ -262,6 +287,9 @@ export class SeatHud {
     if (key === this.stakeKey) return;
     this.stakeKey = key;
     this.stakeEl.style.display = show ? '' : 'none';
+    // SEATED FOCUS is on at a staking seat: the main HUD (menu/hud) and this overlay drop everything but the play (seatHudLayout.css)
+    this.root.classList.toggle('focus', show);
+    if (this.shown) this.root.parentElement?.classList.toggle('seat-focus', show);   // the other seats' HUDs never touch #ui
     const tone = this.stakeNeed ? 'bad' : high ? 'warn' : 'gold';
     this.stakeEl.className = `shud-stake shud-panel tone-${tone}${this.stakeNeed ? ' need' : ''}`;
     this.stakeL.textContent = tr(this.stakeNeed ? 'hud.stake.confirm' : 'hud.seat.betL');
@@ -314,6 +342,8 @@ export class SeatHud {
 
   // ── lifecycle ─────────────────────────────────────────────────────────────────────────────────
   get visible(): boolean { return this.shown; }
+  /** SEATED FOCUS: seated at a machine that takes a stake (the BET / POCKET box is up). */
+  get focus(): boolean { return this.shown && this.stakeKnown; }
   /** The rules card is open: route the next action to `dismiss()`. */
   get blocking(): boolean { return this.card !== 'none'; }
   /** A card or a modal covers the view: DOM drawn over the world (a machine's key chips) steps aside while this is true. */
@@ -322,7 +352,8 @@ export class SeatHud {
   /** Seated: show the overlay. */
   show(): void {
     this.shown = true; this.root.classList.add('on'); this.root.parentElement?.classList.add('seated');
-    this.stakeKnown = false; this.stakeBet = 0;   // each seat reports its own stake; a seat that never does shows no STAKE readout
+    // each seat reports its own stake (its presets came before show()); a seat that never does shows no STAKE readout
+    this.stakeKnown = this.presetsState !== null; this.stakeBet = this.presetsState?.bet ?? 0; this.presetBet = this.stakeBet;
     this.refreshTilt(); this.refreshStake(); this.refreshRate(); this.refreshPresets(); this.refreshCoach(); this.placeToasts();
   }
   /**
@@ -344,8 +375,9 @@ export class SeatHud {
   hide(): void {
     this.shown = false;
     this.root.classList.remove('on');
-    this.root.parentElement?.classList.remove('seated');
+    this.root.parentElement?.classList.remove('seated', 'seat-focus');
     this.clearResult();
+    this.refreshStake();
     this.closeCard();
     this.refreshTilt();
     this.refreshRate();
@@ -363,23 +395,15 @@ export class SeatHud {
 
   // ── standard slots ────────────────────────────────────────────────────────────────────────────
   /**
-   * Seats whose top edge is a plate or readout of the machine itself (the Big One's JACKPOT plate and meter): the state box, its
-   * goal line (moved inside it, one box instead of two) and the pay strip start `pct` % down the screen, under that header. The
-   * result callout takes the same slot (the state box steps aside while it shows), so it never lands on the reels. The BET / POCKET
-   * box and the stake presets share one row (seatHudLayout.css `.hdr`: bigger numbers, a shorter stack below the reels).
+   * Seats whose top edge is a plate or readout of the machine itself (the Big One's JACKPOT plate and meter): the instruction line
+   * starts `pct` % down the screen, under that header. The result callout takes the same slot (the line steps aside while it shows),
+   * so it never lands on the reels.
    * shortcut: one fixed fraction of the screen height (the seat camera is fixed); a machine whose header moves needs its own measure.
    */
   topBelow(pct: number): void {
     this.root.classList.add('hdr');
     this.topEl.style.top = `${pct}%`;
     this.resultEl.style.top = `${pct}%`;
-    this.goalEl.classList.add('shud-goal-in');
-    this.stateEl.appendChild(this.goalEl);
-    if (!this.stakeEl.parentElement?.classList.contains('shud-row')) {
-      const row = make('div', 'shud-row');
-      this.stakeEl.before(row);
-      row.append(this.stakeEl, this.presetsEl);
-    }
     this.placeToasts();
   }
 
@@ -390,6 +414,8 @@ export class SeatHud {
     this.stateT.textContent = txt(text);
     this.stateS.textContent = sub === undefined ? '' : txt(sub);
     this.stateS.style.display = this.stateS.textContent === '' ? 'none' : '';
+    this.capEl.className = `shud-cap tone-${tone}`;
+    this.refreshCap();
     this.placeToasts();
   }
 
@@ -432,25 +458,40 @@ export class SeatHud {
   numbers(items: HudNumber[]): void {
     this.numsEl.replaceChildren();
     for (const n of items) {
-      const box = make('div', `shud-num shud-panel tone-${n.tone ?? 'gold'}`, this.numsEl);
+      const dup = typeof n.label !== 'string' && DUP_NUM.test(n.label.k);   // SEATED FOCUS hides it: the BET / POCKET box says it
+      const box = make('div', `shud-num shud-panel tone-${n.tone ?? 'gold'}${dup ? ' dup' : ''}`, this.numsEl);
       make('span', 'shud-num-l', box).textContent = txt(n.label);
       make('span', 'shud-num-v', box).textContent = txt(n.value);
     }
     this.numsEl.style.display = items.length ? '' : 'none';
   }
 
-  /** Only the actions valid right now; pass [] to clear the bar's buttons. */
+  /**
+   * Only the actions valid right now; pass [] to clear the bar's buttons. The primary action is the big button beside BET / POCKET; the
+   * rest is a row of small chips under them, rules as a "?" chip.
+   */
   controls(items: HudControl[]): void {
     this.ctrlEl.replaceChildren();
+    this.mainEl.replaceChildren(this.capEl);
     for (const c of items) {
-      const b = make('div', `shud-btn${c.primary ? ' primary' : ''}`, this.ctrlEl);
+      const cls = c.primary ? 'shud-btn main primary' : `shud-btn chip${META.has(c.action ?? '') ? ' meta' : ''}`;
+      const b = make('div', cls, c.primary ? this.mainEl : this.ctrlEl);
       if (c.action) b.dataset.action = c.action;
       make('span', 'shud-key', b).textContent = c.key;
-      make('span', 'shud-btn-l', b).textContent = txt(c.label);
+      make('span', 'shud-btn-l', b).textContent = c.action === 'help' ? '?' : txt(c.label);
     }
-    this.ctrlEl.style.display = items.length ? '' : 'none';
+    this.ctrlEl.style.display = this.ctrlEl.childElementCount ? '' : 'none';
+    this.refreshCap();
     this.coachKey = '';
     this.refreshCoach();                                  // the pulse sits on a button of the bar just built
+  }
+
+  /** The state title over the big button: hidden when it only repeats the button ("SPIN [SPACE]" over SPIN). */
+  private refreshCap(): void {
+    const labels = [...this.mainEl.querySelectorAll('.shud-btn-l')].map((e) => e.textContent ?? '');
+    const t = this.stateT.textContent ?? '';
+    this.capEl.textContent = t;
+    this.capEl.style.display = labels.length > 0 && captionRepeats(t, labels) ? 'none' : '';
   }
 
   /** The pay strip under the goal: each symbol's icon and what it pays (`×2`). Null or [] hides it. */
@@ -474,16 +515,18 @@ export class SeatHud {
    */
   private refreshCoach(): void {
     const v = this.shown ? this.coachV : null;
-    const btns = (v?.keys ?? []).flatMap((k) => [...this.ctrlEl.querySelectorAll<HTMLElement>(`.shud-btn[data-action="${k}"]`)]);
+    const btns = (v?.keys ?? []).flatMap((k) => [...this.root.querySelectorAll<HTMLElement>(`.shud-btn[data-action="${k}"]`)]);
     const line = v && (v.keys.length === 0 || btns.length > 0) ? v.line : '';
     const cap = btns.map((b) => b.querySelector('.shud-key')?.textContent ?? '').join('/');
     const key = v ? `${v.keys.join(' ')}|${cap}|${line}|${v.why}|${v.tone}|${v.tag}` : '';
     if (key === this.coachKey) return;
     this.coachKey = key;
-    for (const b of this.ctrlEl.querySelectorAll('.coach-pulse')) b.classList.remove('coach-pulse');
+    for (const b of this.root.querySelectorAll('.coach-pulse')) b.classList.remove('coach-pulse');
     for (const b of btns) b.classList.add('coach-pulse');
-    const show = !!v && (line !== '' || v.tag !== '');
+    // SEATED FOCUS: the box is the instruction line, so a bare practice tag (no line to say) leaves the goal in its place
+    const show = !!v && (line !== '' || (v.tag !== '' && !this.focus));
     this.coachEl.style.display = show ? '' : 'none';
+    this.root.classList.toggle('coaching', show);         // the coach speaks in the goal's place
     if (!v || !show) return;
     this.coachEl.className = `shud-coach shud-panel${v.tone ? ` tone-${v.tone}` : ''}`;
     this.coachEl.replaceChildren();
@@ -560,6 +603,7 @@ export class SeatHud {
   private openCard(title: string, lines: Txt[]): void {
     this.cardP?.dispose();
     this.card = 'rules';
+    this.root.classList.add('rules-on');                  // SEATED FOCUS: the pay strip and the odds come back with the rules
     const rows: string[] = [];
     for (const l of lines) for (const r of wrapPx5(`• ${txt(l)}`, CARD_TEXT_W)) rows.push(r);
     const pages = paginate(rows, rowsIn(CARD_BODY_H));
@@ -573,7 +617,7 @@ export class SeatHud {
       rest: [0, -0.03, -0.5],
       onGone: () => {
         if (this.cardP !== p) return;                              // dismissed by hand already (or replaced)
-        this.card = 'none'; this.cardP = null;
+        this.card = 'none'; this.cardP = null; this.root.classList.remove('rules-on');
       },
       paint: (c) => {
         const { g, w, h } = c;
@@ -599,6 +643,7 @@ export class SeatHud {
   }
   private closeCard(): void {
     this.card = 'none';
+    this.root.classList.remove('rules-on');
     const p = this.cardP;
     this.cardP = null;
     p?.hide();

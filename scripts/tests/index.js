@@ -53,6 +53,7 @@ import './stakes.test.mjs';
 import './music.stakes.test.mjs';
 import './music.oga.test.mjs';
 import './res360.test.mjs';
+import './settingsStyle.test.mjs';
 import './daily.test.mjs';
 import './spotlight.test.mjs';
 import './machineMods.test.mjs';

@@ -41,9 +41,28 @@ export interface Settings {
   };
 }
 
+/** The picture-style presets of the settings screen (Görüntü stili). `clean` only turns the PSX pipeline off. */
+type StyleKeys = Pick<PsxSettings, 'jitter' | 'affine' | 'dither' | 'colorBits' | 'crt'>;
+export const PSX_STYLES: { classic: StyleKeys; light: StyleKeys } = {
+  classic: { jitter: 0.5, affine: true, dither: true, colorBits: 5, crt: true },
+  light: { jitter: 0.2, affine: true, dither: true, colorBits: 6, crt: false },
+};
+export type PsxStyle = 'classic' | 'light' | 'clean' | 'custom';
+
+export function psxStyleOf(p: PsxSettings): PsxStyle {
+  if (!p.enabled) return 'clean';
+  for (const id of ['classic', 'light'] as const) {
+    const k = PSX_STYLES[id];
+    if ((Object.keys(k) as Array<keyof StyleKeys>).every((f) => p[f] === k[f])) return id;
+  }
+  return 'custom';
+}
+export function applyPsxStyle(p: PsxSettings, id: Exclude<PsxStyle, 'custom'>): PsxSettings {
+  return id === 'clean' ? { ...p, enabled: false } : { ...p, enabled: true, ...PSX_STYLES[id] };
+}
+
 export const DEFAULT_PSX: PsxSettings = {
-  enabled: true, targetHeight: 360, jitter: 0.5, affine: true, dither: true, colorBits: 5,
-  crt: true, scanlines: 0.22, vignette: 0.35, drawDistance: 'normal',
+  enabled: true, targetHeight: 360, ...PSX_STYLES.light, scanlines: 0.22, vignette: 0.35, drawDistance: 'normal',
 };
 
 export const DEFAULT_SETTINGS: Settings = {

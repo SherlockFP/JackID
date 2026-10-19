@@ -562,3 +562,254 @@ export function paintSheen(ctx: CanvasRenderingContext2D, w: number, h: number):
     ctx.fill();
   }
 }
+
+// ── The menu window: rain, lightning, landmarks, road lights, the neon sign and the room's edges ─────────────────────────
+// Every painter draws on a transparent canvas, in texels, and is seeded (createRng) so a repaint is identical.
+
+/** A tile of pale rain streaks, 1 texel wide, a soft tail above a bright head. It wraps in y, so a scrolling tile has no seam. */
+export function paintRain(ctx: CanvasRenderingContext2D, w: number, h: number, seed: string, n: number, len: readonly [number, number]): void {
+  const r = createRng(seed);
+  for (let i = 0; i < n; i++) {
+    const x = r.int(0, w - 1), y0 = r.int(0, h - 1), l = r.int(len[0], len[1]), a = r.float(0.4, 1);
+    for (let k = 0; k < l; k++) {
+      ctx.fillStyle = `rgba(200,222,255,${a * ((k + 1) / l) ** 1.6})`;
+      ctx.fillRect(x, (y0 + k) % h, 1, 1);
+    }
+  }
+}
+
+/** Wet glass: pale beads and the thin trails that sliding drops left behind (for a faint additive quad). */
+export function paintWetGlass(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  const r = createRng('menu-wet');
+  const bead = (x: number, y: number, big: boolean): void => {
+    ctx.fillStyle = `rgba(200,224,255,${r.float(0.2, 0.45)})`;
+    ctx.fillRect(x, y, big ? 2 : 1, big ? 2 : 1);
+    if (big) { ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(x, y, 1, 1); }
+  };
+  for (let i = 0; i < 28; i++) {
+    const x = r.int(2, w - 3), y = r.int(0, h - 48), l = r.int(10, 44);
+    for (let k = 0; k < l; k++) { ctx.fillStyle = `rgba(190,215,255,${0.05 + (0.1 * k) / l})`; ctx.fillRect(x, y + k, 1, 1); }
+    bead(x, y + l, true);
+  }
+  for (let i = 0; i < 220; i++) bead(r.int(0, w - 2), r.int(0, h - 2), r.chance(0.12));
+}
+
+/** One drop sliding down the glass: a 3 x 3 head with a glint, a thin trail above it (3 x 16 texels). */
+export function paintDrop(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  for (let k = 0; k < h - 3; k++) { ctx.fillStyle = `rgba(190,215,255,${0.06 + (0.3 * k) / h})`; ctx.fillRect(1, k, 1, 1); }
+  ctx.fillStyle = 'rgba(160,195,245,0.6)';
+  ctx.fillRect(0, h - 3, w, 3);
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.fillRect(0, h - 3, 1, 1);
+}
+
+/** Storm cloud streaks (white), drawn only while a flash lights them. */
+export function paintClouds(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  const r = createRng('menu-clouds');
+  for (let i = 0; i < 110; i++) {
+    const cw = r.int(20, 80), ch = r.int(2, 5), x = r.int(-20, w), y = r.int(2, h - 8);
+    ctx.fillStyle = `rgba(255,255,255,${r.float(0.1, 0.45) * Math.sin((Math.PI * y) / h) ** 1.5})`;   // thinner towards the top and bottom edge
+    ctx.fillRect(x, y, cw, ch);
+    ctx.fillRect(x + (cw >> 2), y - 1, cw >> 1, ch + 2);
+  }
+}
+
+/** A forked lightning bolt: a jagged 1-texel core in a pale halo, one branch. */
+export function paintBolt(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  const r = createRng('menu-bolt-shape');
+  const px = (x: number, y: number, a: number): void => {
+    ctx.fillStyle = `rgba(150,170,255,${a * 0.3})`; ctx.fillRect(x - 1, y, 3, 1);
+    ctx.fillStyle = `rgba(240,244,255,${a})`; ctx.fillRect(x, y, 1, 1);
+  };
+  const fork = (h * 0.4) | 0;
+  let x = w >> 1, bx = x;
+  for (let y = 0; y < h; y++) {
+    px(x, y, 1);
+    if (y === fork) bx = x;
+    if (y % 2 === 0) x = Math.min(w - 3, Math.max(2, x + r.int(-1, 1)));
+  }
+  for (let y = fork; y < h * 0.75; y++) {
+    px(bx, y, 0.7);
+    if (y % 2) bx = Math.min(w - 3, bx + r.int(0, 1));
+  }
+}
+
+/** The room's rim light for a flash: clear in the middle, cold white at the edges (the vignette, inverted). */
+export function paintRoomEdge(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  const g = ctx.createRadialGradient(w / 2, h / 2, w * 0.3, w / 2, h / 2, w * 0.74);
+  g.addColorStop(0, 'rgba(170,185,255,0)');
+  g.addColorStop(1, 'rgba(170,185,255,0.9)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+}
+
+/** A velvet drape hanging from the left of the texture: wine folds that sway, a gold cord, a wavy free edge. `side` -1 mirrors it. */
+export function paintCurtain(ctx: CanvasRenderingContext2D, w: number, h: number, side: 1 | -1): void {
+  const edge = (y: number): number => Math.round(w * (0.78 + 0.07 * Math.sin(y * 0.05 + (side > 0 ? 0 : 2)) + 0.03 * Math.sin(y * 0.17)));
+  for (let y = 0; y < h; y++) {
+    const inner = edge(y);
+    const shade = 0.5 + 0.5 * Math.min(1, y / (h * 0.2), (h - y) / (h * 0.1));   // the valance and the floor sit in shadow
+    for (let i = 0; i < inner; i++) {
+      const k = (Math.round(((Math.sin(i * 0.9 + Math.sin(y * 0.07) * 1.4) + 1) / 2) * 4) / 4) * shade * (i > inner - 3 ? 1.5 : 1);
+      ctx.fillStyle = `rgb(${Math.round(14 + 34 * k)},${Math.round(3 + 6 * k)},${Math.round(8 + 14 * k)})`;
+      ctx.fillRect(side > 0 ? i : w - 1 - i, y, 1, 1);
+    }
+  }
+  const cy = Math.round(h * 0.62), len = edge(cy) - 2;
+  ctx.fillStyle = '#2a200c';
+  ctx.fillRect(side > 0 ? 0 : w - len, cy, len, 2);   // the tie-back cord
+  ctx.fillStyle = '#140e05';
+  ctx.fillRect(side > 0 ? 0 : w - len, cy + 2, len, 1);
+}
+
+/** The back of a winged armchair seen from behind (40 x 48): a tall padded back between lower arms, legs, brass nails, a warm rim on the left. */
+export function paintChair(ctx: CanvasRenderingContext2D, _w: number, _h: number): void {
+  const block = (x0: number, x1: number, y0: number, y1: number, r: number, c: string): void => {
+    for (let y = y0; y < y1; y++) {
+      const inset = y - y0 < r ? r - Math.round(Math.sqrt(r * r - (r - (y - y0) - 0.5) ** 2)) : 0;
+      ctx.fillStyle = c;
+      ctx.fillRect(x0 + inset, y, x1 - x0 - inset * 2, 1);
+      ctx.fillStyle = 'rgba(255,150,70,0.26)';
+      ctx.fillRect(x0 + inset, y, 2, 1);
+    }
+  };
+  ctx.fillStyle = '#0a0305';
+  ctx.fillRect(5, 42, 3, 6); ctx.fillRect(32, 42, 3, 6);
+  ctx.fillStyle = '#1a0810';
+  ctx.fillRect(3, 37, 34, 6);
+  block(2, 38, 21, 38, 5, '#12050a');
+  block(9, 31, 0, 38, 10, '#16070c');
+  ctx.fillStyle = '#1f0b13';
+  ctx.fillRect(13, 7, 14, 27);
+  ctx.fillStyle = '#0c0306';
+  ctx.fillRect(19, 8, 1, 26);
+  ctx.fillStyle = 'rgba(214,170,70,0.55)';
+  for (let x = 13; x < 27; x += 3) ctx.fillRect(x, 6, 1, 1);
+  for (let x = 4; x < 36; x += 4) ctx.fillRect(x, 22, 1, 1);
+}
+
+// 3 x 5 letters of the rooftop sign, one row per number (a bit is a lit texel, left to right). The dotted capital I of KASINO
+// (Turkish) is the I glyph with a dot row above it.
+const GLYPH: Record<string, { w: number; rows: readonly number[] }> = {
+  K: { w: 3, rows: [5, 5, 6, 5, 5] },
+  A: { w: 3, rows: [2, 5, 7, 5, 5] },
+  S: { w: 3, rows: [7, 4, 7, 1, 7] },
+  I: { w: 3, rows: [7, 2, 2, 2, 7] },
+  N: { w: 4, rows: [9, 13, 11, 9, 9] },
+  O: { w: 3, rows: [7, 5, 5, 5, 7] },
+};
+const SIGN = ['K', 'A', 'S', 'I', 'N', 'O'];   // the 4th letter carries the dot
+const BROKEN = 2;                              // the S: a tube that stutters on its own
+/** The far rooftop sign (28 x 13 texels). `part`: the dark board with its legs, the lit letters, or the one broken letter. */
+export function paintNeon(ctx: CanvasRenderingContext2D, _w: number, _h: number, part: 'board' | 'word' | 'broken'): void {
+  if (part === 'board') {
+    ctx.fillStyle = '#0a0610';
+    ctx.fillRect(0, 0, 28, 10);
+    ctx.fillStyle = '#5a1030';
+    ctx.fillRect(0, 0, 28, 1); ctx.fillRect(0, 9, 28, 1); ctx.fillRect(0, 0, 1, 10); ctx.fillRect(27, 0, 1, 10);
+    ctx.fillStyle = '#07050c';
+    ctx.fillRect(4, 10, 1, 3); ctx.fillRect(23, 10, 1, 3);
+    return;
+  }
+  ctx.fillStyle = '#ff5a8c';
+  let x = 2;
+  SIGN.forEach((c, i) => {
+    if (part === 'broken' ? i === BROKEN : i !== BROKEN) {
+      GLYPH[c].rows.forEach((row, y) => { for (let k = 0; k < GLYPH[c].w; k++) if ((row >> (GLYPH[c].w - 1 - k)) & 1) ctx.fillRect(x + k, 3 + y, 1, 1); });
+      if (i === 3) ctx.fillRect(x + 1, 2, 1, 1);
+    }
+    x += GLYPH[c].w + 1;
+  });
+}
+
+/** A filled half-disc (a dome) of radius `r` standing on row `base`, one pixel row at a time. */
+function dome(ctx: CanvasRenderingContext2D, cx: number, base: number, r: number): void {
+  for (let k = 0; k < r; k++) {
+    const hw = Math.round(Math.sqrt(r * r - k * k));
+    ctx.fillRect(cx - hw, base - k - 1, hw * 2 + 1, 1);
+  }
+}
+
+/** A TV tower on a skyline texture: a slim shaft, a saucer pod with lit rooms, an aerial. Returns the aerial's tip. */
+export function paintTvTower(ctx: CanvasRenderingContext2D, x: number, top: number, h: number, body: string): { x: number; y: number } {
+  const pod = top + 24;
+  ctx.fillStyle = body;
+  ctx.fillRect(x, top, 1, 16);
+  ctx.fillRect(x - 1, top + 16, 3, h - top - 16);
+  [5, 9, 13, 9, 5].forEach((pw, i) => ctx.fillRect(x - (pw >> 1), pod + i, pw, 1));
+  ctx.fillStyle = 'rgba(120,110,160,0.3)';
+  ctx.fillRect(x - 1, top + 16, 1, pod - top - 16);
+  ctx.fillStyle = 'rgba(255,196,120,0.85)';
+  for (let k = -5; k <= 5; k += 2) ctx.fillRect(x + k, pod + 2, 1, 1);
+  return { x, y: top };
+}
+
+/** A mosque on a skyline texture (21 texels wide): hall and big dome, two minarets, warm floodlight and lit windows. It stands on
+ *  `base` and runs down to the texture foot `h`, so it reads as one more tower of the skyline. */
+export function paintMosque(ctx: CanvasRenderingContext2D, cx: number, base: number, h: number, body: string): void {
+  ctx.fillStyle = body;
+  ctx.fillRect(cx - 7, base - 6, 15, h - base + 6);
+  dome(ctx, cx, base - 6, 6);
+  ctx.fillRect(cx, base - 15, 1, 3);
+  for (const m of [cx - 9, cx + 9]) {
+    ctx.fillRect(m - 1, base - 22, 2, h - base + 22);
+    ctx.fillRect(m - 2, base - 15, 4, 1);
+    ctx.fillRect(m - 1, base - 24, 2, 2);
+    ctx.fillRect(m, base - 27, 1, 3);
+  }
+  ctx.fillStyle = 'rgba(255,170,90,0.22)';   // floodlit: the hall, the dome and the minarets above their balconies
+  ctx.fillRect(cx - 7, base - 6, 15, 6);
+  dome(ctx, cx, base - 6, 6);
+  ctx.fillRect(cx - 10, base - 24, 2, 24);
+  ctx.fillRect(cx + 8, base - 24, 2, 24);
+  ctx.fillStyle = 'rgba(255,200,140,0.4)';
+  for (let k = 0; k < 6; k++) ctx.fillRect(cx - Math.round(Math.sqrt(36 - k * k)), base - 7 - k, 1, 1);
+  ctx.fillStyle = 'rgba(255,200,120,0.85)';
+  for (let x = cx - 5; x <= cx + 5; x += 3) ctx.fillRect(x, base - 4, 1, 2);
+  ctx.fillRect(cx - 10, base - 16, 2, 1);
+  ctx.fillRect(cx + 8, base - 16, 2, 1);
+}
+
+/** A tower crane on a roof (`base` is the roofline): lattice mast, long jib, short counter jib, a hook. Returns the light on top. */
+export function paintCrane(ctx: CanvasRenderingContext2D, x: number, base: number, body: string): { x: number; y: number } {
+  const top = base - 26, apex = top - 6;
+  ctx.fillStyle = body;
+  for (let y = top; y < base; y++) {
+    ctx.fillRect(x, y, 1, 1); ctx.fillRect(x + 2, y, 1, 1);
+    if (y % 3 === 0) ctx.fillRect(x + 1, y, 1, 1);
+  }
+  ctx.fillRect(x - 28, top, 40, 1);
+  ctx.fillRect(x, apex, 3, 6);
+  for (let i = 0; i <= 28; i++) ctx.fillRect(x - i, apex + Math.round((6 * i) / 28), 1, 1);
+  for (let i = 0; i <= 10; i++) ctx.fillRect(x + 2 + i, apex + Math.round((6 * i) / 10), 1, 1);
+  ctx.fillRect(x + 8, top + 1, 4, 3);
+  ctx.fillRect(x - 20, top + 1, 1, 9);
+  ctx.fillRect(x - 21, top + 10, 3, 2);
+  ctx.fillStyle = 'rgba(120,110,160,0.3)';
+  ctx.fillRect(x - 28, top - 1, 40, 1);
+  ctx.fillStyle = 'rgba(255,196,120,0.9)';
+  ctx.fillRect(x - 28, top + 1, 1, 1);
+  return { x: x + 1, y: apex - 1 };
+}
+
+/** A far elevated road across a city texture: a thin dark deck on row `r` with a rail that catches the sky, sodium lamps above. */
+export function paintRoad(ctx: CanvasRenderingContext2D, w: number, _h: number, r: number): void {
+  ctx.fillStyle = 'rgba(8,6,16,0.95)';
+  ctx.fillRect(0, r + 1, w, 2);
+  ctx.fillStyle = 'rgba(120,110,160,0.25)';
+  ctx.fillRect(0, r + 1, w, 1);
+  ctx.fillStyle = 'rgba(255,176,96,0.6)';
+  for (let x = 3; x < w; x += 8) ctx.fillRect(x, r - 3, 1, 1);
+}
+
+/** One lane of car lights, a strip that tiles: a 2-texel white head and a 1-texel red tail, 3 apart, moving `dir` (-1 left, +1 right). */
+export function paintCars(ctx: CanvasRenderingContext2D, w: number, _h: number, dir: 1 | -1, seed: string): void {
+  const r = createRng(seed);
+  for (let x = r.int(0, 12); x < w - 8; x += r.int(14, 34)) {
+    const head = dir < 0 ? x : x + 2, tail = dir < 0 ? x + 3 : x;
+    ctx.fillStyle = 'rgba(255,238,200,0.95)';
+    ctx.fillRect(head, 0, 2, 1);
+    ctx.fillStyle = 'rgba(255,50,40,0.95)';
+    ctx.fillRect(tail, 0, 1, 1);
+  }
+}

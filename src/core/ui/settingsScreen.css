@@ -28,7 +28,9 @@
   font-family: var(--f-body); font-size: var(--fb); line-height: 1; color: var(--bone);
 }
 .st-keys .row .what { overflow-wrap: anywhere; }
-.st-keys .px-keybind { min-width: calc(52 * var(--u)); max-width: calc(112 * var(--u)); height: auto; min-height: calc(12 * var(--u)); padding: calc(2 * var(--u)) calc(4 * var(--u)); overflow: hidden; text-overflow: ellipsis; }
+.st-keys .px-keybind { min-width: calc(52 * var(--u)); max-width: calc(140 * var(--u)); height: auto; min-height: calc(12 * var(--u)); padding: calc(2 * var(--u)) calc(4 * var(--u)); overflow: hidden; text-overflow: ellipsis; }
 
 .st-foot { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: calc(6 * var(--u)); padding-top: calc(2 * var(--u)); }
 .st-foot .hint { flex: 1 1 auto; min-width: 0; font-family: var(--f-body); font-size: var(--fb); line-height: 1; color: var(--grout); overflow-wrap: anywhere; }
+.st-frame .px-cycle .val { font-variant-ligatures: none; }   /* "Hafif": the pixel font joins f+i into a dotless glyph */
+.px-root:has(.st-frame) .px-skip { display: none; }   /* the cutscene skip hint sat over the title plaque when Settings opened mid-scene */

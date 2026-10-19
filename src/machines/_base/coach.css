@@ -1,5 +1,5 @@
-/* Seat coach (_base/coach.ts, drawn by seatHud.ts): one small box over the key bar, and the key to press now pulsing in
-   the bar. Every size is in --su (the seat HUD's UI pixel unit). */
+/* Seat coach (_base/coach.ts, drawn by seatHud.ts): one box at the top in the goal's place, and the key to press now pulsing on
+   its button. Every size is in --su (the seat HUD's UI pixel unit). */
 .seat-hud .shud-coach {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: calc(var(--su) * 1) calc(var(--su) * 2);
   max-width: min(80vw, calc(var(--su) * 170)); padding: calc(var(--su) * 1.5) calc(var(--su) * 3);

@@ -17,7 +17,7 @@ import type { RunSnapshot } from '@/net/protocol';
 import { app } from '@/core/app';
 import { padActive } from '@/core/input';
 import { bus } from '@/core/events';
-import { t } from '@/core/i18n';
+import { lang, t } from '@/core/i18n';
 import { hashSeed, randomSeed } from '@/core/rng';
 import { psxMaterial } from '@/core/renderer/psxMaterial';
 import { crispRaycaster, crispTexture, markCrisp, releaseCrisp } from '@/core/ui/textOverlay';
@@ -180,7 +180,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
   const paintSet = (i: number): void => {
     const item: SetItem = SET_FACES[i];
     if (item === 'language') {
-      const v = settings().lang === 'tr' ? t('menu.val.tr') : t('menu.val.en');
+      const v = lang() === 'tr' ? t('menu.val.tr') : t('menu.val.en');
       setDie.paint(i, (c, w, h) => paintValueFace(c, w, h, { label: t('menu.face.language'), value: v, sub: '', lit: false }));
       return;
     }
@@ -362,13 +362,13 @@ export function createMenuState(): AppStateHandler<'menu'> {
         break;
       }
       case 'language':
-        app.save.setSetting('lang', s.lang === 'en' ? 'tr' : 'en');
+        app.save.setSetting('lang', lang() === 'en' ? 'tr' : 'en');
         break;
     }
     sfx('click');
     const face = setDie.frontFace();
     paintSet(face);
-    const v = item === 'language' ? (settings().lang === 'tr' ? t('menu.val.tr') : t('menu.val.en')) : valueOf(item as Exclude<SetItem, 'language'>).value;
+    const v = item === 'language' ? (lang() === 'tr' ? t('menu.val.tr') : t('menu.val.en')) : valueOf(item as Exclude<SetItem, 'language'>).value;
     popAt(setDie, v);
   };
 

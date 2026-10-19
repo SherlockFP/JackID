@@ -57,3 +57,9 @@ body:has(.sd-root, .nc-root, .px-modal, .pm-table) .px-obj { display: none !impo
 .px-wm.off .ar { display: block; }
 .px-root.hud-off .px-wm,
 body:has(.sd-root, .nc-root, .px-modal, .pm-table) .px-wm { display: none !important; }
+
+/* SEATED FOCUS (.seat-focus, machines/_base/seatHud.ts): the seat's own instruction line teaches the machine; the tutorial box, the
+   objective and the waymark step aside until the player stands (the tutorial still holds the clock). */
+.px-root.seat-focus .px-tut,
+.px-root.seat-focus .px-obj,
+.px-root.seat-focus .px-wm { display: none !important; }

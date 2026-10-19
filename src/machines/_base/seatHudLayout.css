@@ -49,21 +49,46 @@
 .seat-hud .shud-preset.armed { border-bottom-color: #ff5a4a; animation: shud-stake-blink 0.6s steps(2, start) infinite; }
 @media (prefers-reduced-motion: reduce) { .seat-hud .shud-preset.armed { animation: none; } }
 
-/* HEADER SEAT (seatHud.ts `topBelow`, the Big One): the cabinet's own JACKPOT plate and readout fill the top of the view, so the HUD
-   keeps clear of them. Top: one compact state box (key, BET, goal) and the pay strip under it; the result callout takes the same slot
-   (the box steps aside while it shows), above the reels, never over them. Bottom: one row with the big BET / POCKET box and the
-   stake presets, then the coach, the odds line and the short key bar. The streak flame is on the BET box (seatHud.css). */
-.seat-hud.hdr .shud-state { min-width: 0; padding: calc(var(--su) * 1.5) calc(var(--su) * 4); }
-.seat-hud.hdr .shud-state-s { font-size: calc(var(--su) * 6); }
+/* HEADER SEAT (seatHud.ts `topBelow`, the Big One): the cabinet's own JACKPOT plate and readout fill the top of the view, so the
+   instruction line starts under them; the result callout takes the same slot (the line steps aside while it shows), above the reels. */
 .seat-hud.hdr .shud-pay { padding: 0 calc(var(--su) * 2); gap: 0 calc(var(--su) * 2); }
 .seat-hud.hdr .shud-pay-i { font-size: max(9px, calc(var(--su) * 3)); }
 .seat-hud.hdr .shud-pay-i canvas { width: calc(var(--su) * 6); height: calc(var(--su) * 6); }
 .seat-hud.hdr.res .shud-top { visibility: hidden; }
-.seat-hud.hdr .shud-row { display: flex; align-items: flex-end; justify-content: center; gap: calc(var(--su) * 2); max-width: 98%; }
-.seat-hud.hdr .shud-stake { min-width: 0; padding: calc(var(--su) * 1.5) calc(var(--su) * 4); gap: 0 calc(var(--su) * 5); flex-wrap: nowrap; }
-.seat-hud.hdr .shud-stake-l { font-size: max(9px, calc(var(--su) * 4)); }
-.seat-hud.hdr .shud-stake-v { font-size: calc(var(--su) * 14); }
-.seat-hud.hdr .shud-pocket .shud-stake-v { font-size: calc(var(--su) * 9); }
 .seat-hud.hdr .shud-result-t { font-size: calc(var(--su) * 6); }
 .seat-hud.hdr .shud-result-a { font-size: calc(var(--su) * 12); }
 .seat-hud.hdr .shud-result.r-lose .shud-result-t, .seat-hud.hdr .shud-result.r-lose .shud-result-a, .seat-hud.hdr .shud-result.r-push .shud-result-t, .seat-hud.hdr .shud-result.r-push .shud-result-a { font-size: max(9px, calc(var(--su) * 5)); }
+
+/* ONE LAYOUT for every seat: bottom centre, one row of BET / POCKET (big) and the main button(s) with the state title over them as a
+   caption; under it the stake presets, then the other actions as a row of small chips. The coach speaks at the top, in the goal's place. */
+.seat-hud .shud-row { display: flex; align-items: flex-end; justify-content: center; gap: calc(var(--su) * 3); max-width: 98%; }
+.seat-hud .shud-stake { min-width: 0; padding: calc(var(--su) * 1.5) calc(var(--su) * 4); gap: 0 calc(var(--su) * 5); }
+.seat-hud .shud-stake-l { font-size: max(11px, calc(var(--su) * 4)); }
+.seat-hud .shud-stake-v { font-size: max(32px, calc(var(--su) * 14)); }
+.seat-hud .shud-pocket .shud-stake-v { font-size: max(20px, calc(var(--su) * 9)); }
+.seat-hud .shud-main { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: calc(var(--su) * 2); }
+.seat-hud .shud-cap {
+  flex-basis: 100%; text-align: center; padding: calc(var(--su) * 1) calc(var(--su) * 3); background: rgba(6, 9, 6, 0.9);
+  font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(13px, calc(var(--su) * 4)); line-height: 1.2;
+}
+.seat-hud .shud-cap:empty, .seat-hud:not(.focus) .shud-cap { display: none !important; }   /* off focus the state box says it */
+/* the big button: what to press now, with its key (or pad glyph). Floors in px keep it readable at 1280x800 (the Deck), where --su is small */
+.seat-hud .shud-btn.main { gap: calc(var(--su) * 2.5); padding: calc(var(--su) * 2.5) calc(var(--su) * 5); border-width: calc(var(--su) * 1.5); font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(18px, calc(var(--su) * 7)); }
+.seat-hud .shud-btn.main .shud-key { font-size: max(22px, calc(var(--su) * 9)); padding: calc(var(--su) * 1) calc(var(--su) * 2) 0; }
+/* the chips: the other actions, small; bet / auto / rules / leave dimmer than a play action */
+.seat-hud .shud-ctrl { gap: calc(var(--su) * 1.5); padding: calc(var(--su) * 1.2); }
+.seat-hud .shud-btn.chip { gap: calc(var(--su) * 1.5); padding: calc(var(--su) * 1) calc(var(--su) * 2); border-width: calc(var(--su) * 1); font-size: max(20px, calc(var(--su) * 6.5)); }
+.seat-hud .shud-btn.chip .shud-key { font-size: max(20px, calc(var(--su) * 6.5)); min-width: calc(var(--su) * 6); padding: calc(var(--su) * 0.8) calc(var(--su) * 1.2) 0; }
+.seat-hud .shud-btn.chip.meta { border-color: #5d6b55; color: #c9c4a8; background: #121812; }
+
+/* SEATED FOCUS (seatHud.ts `focus`: a seat that takes a stake). Top centre: ONE instruction line (the coach, else the goal). The state
+   title rides on the big button; the pay strip and the odds line come back with the rules card ([H]); numbers BET / POCKET already
+   shows step aside, the rest go small. menu/hud/hud.css drops the main HUD to a small quota / clock strip at the top right. */
+.seat-hud.focus .shud-state, .seat-hud.focus .shud-num.dup, .seat-hud.focus.coaching .shud-goal { display: none; }
+.seat-hud.focus:not(.rules-on) .shud-pay, .seat-hud.focus:not(.rules-on) .shud-odds { display: none !important; }
+.seat-hud.focus .shud-goal, .seat-hud.focus .shud-coach { max-width: min(56%, calc(var(--su) * 200)); }
+.seat-hud.focus .shud-goal, .seat-hud.focus .shud-coach { font-size: max(20px, calc(var(--su) * 7)); }
+.seat-hud.focus:not(.hdr) .shud-top { top: calc(var(--su) * 4); }
+.seat-hud.focus .shud-num { min-width: 0; padding: calc(var(--su) * 1) calc(var(--su) * 2.5); border-top-width: calc(var(--su) * 1); }
+.seat-hud.focus .shud-num-l { font-size: max(9px, calc(var(--su) * 4.5)); }
+.seat-hud.focus .shud-num-v { font-size: max(9px, calc(var(--su) * 4)); margin-top: calc(var(--su) * 0.5); }

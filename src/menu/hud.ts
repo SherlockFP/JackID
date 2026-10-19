@@ -57,6 +57,8 @@ const FLOOR_KEY = 'floorAct' as Action;
 const KEEPSAKE_KEY = 'keepsake' as Action;
 const CALL_KEY = 'callCheat' as Action;
 const PHONE_SECONDS = 10;
+/** Seconds Loki's grin shows on the seated (focus) HUD after he whispers. */
+const WHISPER_CHIP_S = 4;
 const FEED_LIFE = 6;
 const FEED_MAX = 4;
 const BUFF_REFRESH_S = 0.25;
@@ -289,6 +291,9 @@ export function createHud(): Hud {
   disposers.push(() => grin.dispose());
   let luckRun: unknown = null;
   let luckKey = '';
+  // SEATED FOCUS (hud.css .seat-focus) hides the luck row; his grin comes back for a few seconds while Loki whispers
+  let whisperLeft = 0;
+  on('joker:whisper', () => { whisperLeft = WHISPER_CHIP_S; });
   const luckText = (s: number): string => {
     const sign = s > 0 ? '+' : s < 0 ? '−' : '±';
     return t('luck.bonus', { s: sign, n: String(Math.abs(s)) });
@@ -1415,6 +1420,8 @@ export function createHud(): Hud {
       updateEvening();
       updateQuota(dt);
       luckRender();
+      whisperLeft = Math.max(0, whisperLeft - dt);
+      setCls(luckEl, 'whisper', whisperLeft > 0);
       sealsRender();
       updatePayout(dt);
       updatePlan();
@@ -1453,7 +1460,7 @@ export function createHud(): Hud {
       SeatHud.stakeSource = () => ({ self: -1, pocket: 0 });
       host?.style.removeProperty('--hud-top-h');
       host?.style.removeProperty('--hud-rs-b');
-      host?.classList.remove('seated');
+      host?.classList.remove('seated', 'seat-focus');
       root.remove();
     },
   };

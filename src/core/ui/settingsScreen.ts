@@ -14,13 +14,14 @@
 import './settingsScreen.css';
 import { app } from '../app';
 import { bus } from '../events';
-import { t } from '../i18n';
+import { bootParams } from '../bootParams';
+import { lang as langNow, t } from '../i18n';
 import { log } from '../log';
 import { padActive, type InputExt } from '../input';
 import { actionLabel, layerOf } from '../keymap';
 import { PERFORMANCE_PSX } from '../renderer/perfPreset';
 import type { PsxSettings } from '../renderer/types';
-import { DEFAULT_PSX, type Settings } from '../settings';
+import { DEFAULT_PSX, applyPsxStyle, psxStyleOf, type PsxStyle, type Settings } from '../settings';
 import {
   button, cycle, field, frame, h, keyBind, keyCaptureActive, modalPanel, scroll, slider, tip, toggle, uiSfx,
 } from './widgets';
@@ -52,13 +53,18 @@ export function closeSettingsScreen(): void { app.ui.closePanel(SETTINGS_PANEL);
 const S = (): Settings => app.save.data.settings;
 function put<K extends keyof Settings>(k: K, v: Settings[K]): void { app.save.setSetting(k, v); }
 function putVol(k: keyof Settings['vol'], v: number): void { put('vol', { ...S().vol, [k]: v }); }
-function putPsx<K extends keyof PsxSettings>(k: K, v: PsxSettings[K]): void { put('psx', { ...S().psx, [k]: v }); }
+/** A PSX field write; the style row (Görüntü stili) is rebuilt when the change moves the look onto or off a preset. */
+function putPsx<K extends keyof PsxSettings>(c: Ctx, k: K, v: PsxSettings[K]): void {
+  const was = psxStyleOf(S().psx);
+  put('psx', { ...S().psx, [k]: v });
+  if (psxStyleOf(S().psx) !== was) c.reload();
+}
 const pct = (v: number): string => `${Math.round(v * 100)}%`;
 
 type PresetId = 'performance' | 'standard' | 'custom';
-type PresetKeys = Pick<PsxSettings, 'targetHeight' | 'crt' | 'drawDistance'>;
-const STANDARD_PSX: PresetKeys = { targetHeight: DEFAULT_PSX.targetHeight, crt: DEFAULT_PSX.crt, drawDistance: DEFAULT_PSX.drawDistance };
-const sameKeys = (p: PsxSettings, k: PresetKeys): boolean => p.targetHeight === k.targetHeight && p.crt === k.crt && p.drawDistance === k.drawDistance;
+type PresetKeys = Partial<PsxSettings>;   // STANDARD leaves CRT to the picture style (Görüntü stili)
+const STANDARD_PSX: PresetKeys = { targetHeight: DEFAULT_PSX.targetHeight, drawDistance: DEFAULT_PSX.drawDistance };
+const sameKeys = (p: PsxSettings, k: PresetKeys): boolean => (Object.keys(k) as Array<keyof PsxSettings>).every((f) => p[f] === k[f]);
 function currentPreset(): PresetId {
   const p = S().psx;
   return sameKeys(p, PERFORMANCE_PSX) ? 'performance' : sameKeys(p, STANDARD_PSX) ? 'standard' : 'custom';
@@ -100,16 +106,23 @@ function essentialsPage(c: Ctx): void {
   }
   row(c, 'psx.targetHeight', t('settings.res'), (slot) => cycle<number>(slot, {
     options: [180, 224, 240, 288, 360].map((v) => ({ value: v, label: `${v}p` })),
-    value: S().psx.targetHeight, wrap: false, onChange: (v) => { putPsx('targetHeight', v); c.reload(); },
+    value: S().psx.targetHeight, wrap: false, onChange: (v) => { putPsx(c, 'targetHeight', v); c.reload(); },
   }));
+  const style = psxStyleOf(S().psx);
+  const styles: PsxStyle[] = style === 'custom' ? ['classic', 'light', 'clean', 'custom'] : ['classic', 'light', 'clean'];
+  row(c, 'psx.style', t('settings.style'), (slot) => cycle<PsxStyle>(slot, {
+    options: styles.map((v) => ({ value: v, label: t(`settings.style.${v}`) })),
+    value: style, onChange: (v) => { if (v !== 'custom') { put('psx', applyPsxStyle(S().psx, v)); c.reload(); } },
+  }), t('settings.style.tip'));
   slide(c, 'mouseSens', t('settings.mouseSens'), {
     min: 0.0005, max: 0.006, step: 0.0001, value: S().mouseSens, format: (v) => (v * 1000).toFixed(1), apply: (v) => put('mouseSens', v),
   });
   flag(c, 'invertY', t('settings.invertY'), S().invertY, (v) => put('invertY', v));
   row(c, 'lang', t('settings.lang'), (slot) => cycle<Settings['lang']>(slot, {
     options: [{ value: 'en', label: 'English' }, { value: 'tr', label: 'Türkçe' }],   // i18n-ok: language names are shown in their own language
-    value: S().lang, onChange: (v) => put('lang', v),
+    value: langNow(), onChange: (v) => put('lang', v),   // the language in use: a ?lang= link can differ from the saved one
   }));
+  if (bootParams.lang && S().lang !== langNow()) note(c, t('settings.lang.url'));
   flag(c, 'subtitles', t('settings.subtitles'), S().subtitles, (v) => put('subtitles', v));
 }
 
@@ -168,25 +181,25 @@ function videoPage(c: Ctx): void {
   note(c, t(cur === 'standard' ? 'settings.preset.standardHint' : 'settings.preset.performanceHint'));
 
   head(c, t('settings.sec.picture'));
-  flag(c, 'psx.enabled', t('settings.psx'), S().psx.enabled, (v) => putPsx('enabled', v));
+  flag(c, 'psx.enabled', t('settings.psx'), S().psx.enabled, (v) => putPsx(c, 'enabled', v));
   row(c, 'psx.drawDistance', t('settings.dist'), (slot) => cycle<PsxSettings['drawDistance']>(slot, {
     options: (['near', 'normal', 'far'] as const).map((v) => ({ value: v, label: t(`settings.dist.${v}`) })),
-    value: S().psx.drawDistance, wrap: false, onChange: (v) => { putPsx('drawDistance', v); c.reload(); },
+    value: S().psx.drawDistance, wrap: false, onChange: (v) => { putPsx(c, 'drawDistance', v); c.reload(); },
   }));
-  flag(c, 'psx.crt', t('settings.crt'), S().psx.crt, (v) => { putPsx('crt', v); c.reload(); });
+  flag(c, 'psx.crt', t('settings.crt'), S().psx.crt, (v) => { putPsx(c, 'crt', v); c.reload(); });   // scanlines and vignette only show with CRT on
   flag(c, 'viewmodel', t('settings.viewmodel'), S().viewmodel, (v) => put('viewmodel', v), t('settings.viewmodel.tip'));
   flag(c, 'gloves', t('settings.gloves'), S().gloves, (v) => put('gloves', v), t('settings.gloves.tip'));
 
   head(c, t('settings.sec.filters'));
-  slide(c, 'psx.jitter', t('settings.jitter'), { min: 0, max: 1, step: 0.05, value: S().psx.jitter, format: pct, apply: (v) => putPsx('jitter', v) });
-  flag(c, 'psx.affine', t('settings.affine'), S().psx.affine, (v) => putPsx('affine', v));
-  flag(c, 'psx.dither', t('settings.dither'), S().psx.dither, (v) => putPsx('dither', v));
+  slide(c, 'psx.jitter', t('settings.jitter'), { min: 0, max: 1, step: 0.05, value: S().psx.jitter, format: pct, apply: (v) => putPsx(c, 'jitter', v) });
+  flag(c, 'psx.affine', t('settings.affine'), S().psx.affine, (v) => putPsx(c, 'affine', v));
+  flag(c, 'psx.dither', t('settings.dither'), S().psx.dither, (v) => putPsx(c, 'dither', v));
   row(c, 'psx.colorBits', t('settings.colorBits'), (slot) => cycle<PsxSettings['colorBits']>(slot, {
     options: ([5, 6, 8] as const).map((v) => ({ value: v, label: `${v * 3}-bit` })),
-    value: S().psx.colorBits, wrap: false, onChange: (v) => putPsx('colorBits', v),
+    value: S().psx.colorBits, wrap: false, onChange: (v) => putPsx(c, 'colorBits', v),
   }));
-  slide(c, 'psx.scanlines', t('settings.scanlines'), { min: 0, max: 1, step: 0.05, value: S().psx.scanlines, format: pct, apply: (v) => putPsx('scanlines', v) });
-  slide(c, 'psx.vignette', t('settings.vignette'), { min: 0, max: 1, step: 0.05, value: S().psx.vignette, format: pct, apply: (v) => putPsx('vignette', v) });
+  if (S().psx.crt) slide(c, 'psx.scanlines', t('settings.scanlines'), { min: 0, max: 1, step: 0.05, value: S().psx.scanlines, format: pct, apply: (v) => putPsx(c, 'scanlines', v) });
+  if (S().psx.crt) slide(c, 'psx.vignette', t('settings.vignette'), { min: 0, max: 1, step: 0.05, value: S().psx.vignette, format: pct, apply: (v) => putPsx(c, 'vignette', v) });
 }
 
 function audioPage(c: Ctx): void {
@@ -234,6 +247,12 @@ function mount(el: HTMLElement, o: SettingsOpts): () => void {
   let scrollEl: HTMLElement | null = null;
   let bodyEl: HTMLElement | null = null;
   let closed = false;
+
+  // Keyboard or pad moving focus scrolls rows under a still pointer, and the widgets focus on mouseenter: that stole the focus
+  // back from the row just chosen. Hover that follows a nav key within 300 ms is ignored.
+  let navAt = -1e9;
+  el.addEventListener('keydown', (e) => { if (['ArrowDown', 'ArrowUp', 'KeyW', 'KeyS'].includes(e.code)) navAt = performance.now(); }, true);
+  el.addEventListener('mouseenter', (e) => { if (performance.now() - navAt < 300) e.stopPropagation(); }, true);
 
   const disposePage = (): void => { for (const d of pageOff.splice(0)) d(); };
   const focusedKey = (): string | null => {
@@ -304,6 +323,7 @@ function mount(el: HTMLElement, o: SettingsOpts): () => void {
 
   return () => {
     closed = true;
+    app.save.flush();   // Back saves at once; the 500 ms debounce is for slider drags
     live = null;
     window.removeEventListener('keydown', onKey);
     offLang();
