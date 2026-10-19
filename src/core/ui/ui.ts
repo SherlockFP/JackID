@@ -894,6 +894,7 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
       fadeAnim?.cancel(); fadeDone?.();
       fadeEl.style.opacity = String(from);
       fadeEl.style.background = color;
+      root.classList.toggle('fade-up', alpha > 0);   // a line said over a black screen (an ending card, a dark ride) stays readable: ui.css lifts the subtitle
       if (dur <= 0 || from === alpha) { fadeEl.style.opacity = String(alpha); fadeAnim = null; return Promise.resolve(); }
       return new Promise<void>((resolve) => {
         const a = fadeEl.animate([{ opacity: from }, { opacity: alpha }], { duration: dur * 1000, easing: 'linear', fill: 'forwards' });
@@ -1003,7 +1004,7 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     dispose() {
       for (const d of disposers.splice(0)) d();
       root.replaceChildren();
-      root.classList.remove('px-root', 'blocking');
+      root.classList.remove('px-root', 'blocking', 'fade-up');
     },
   };
 

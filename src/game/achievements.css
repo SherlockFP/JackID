@@ -4,8 +4,8 @@
 .ach-name { font-family: var(--f-body); font-size: var(--fb); line-height: 1.05; color: var(--ivory); overflow-wrap: anywhere; }
 .ach-g { flex: 0 0 auto; font-family: var(--f-head); font-size: var(--fh); line-height: 1; color: var(--shine); white-space: nowrap; }
 
-/* the toast: the host clips the slide at the screen edge */
-.ach-toasts { position: absolute; right: 0; bottom: calc(18 * var(--u)); z-index: 6; box-sizing: border-box; overflow: hidden; pointer-events: none;
+/* the toast: the host clips the slide at the screen edge, and rides above the letterbox bar (--lb, ui.css) so a cutscene does not cut it */
+.ach-toasts { position: absolute; right: 0; bottom: calc(var(--lb, 0) * var(--bar-h, 0px) + 18 * var(--u)); z-index: 6; box-sizing: border-box; overflow: hidden; pointer-events: none;
   width: calc(196 * var(--u)); max-width: 100%; padding: calc(3 * var(--u)) calc(6 * var(--u)) calc(3 * var(--u)) calc(3 * var(--u));
   display: flex; flex-direction: column; align-items: flex-end; gap: calc(3 * var(--u)); }
 .ach-toast { display: flex; align-items: center; gap: calc(4 * var(--u)); width: 100%; box-sizing: border-box;

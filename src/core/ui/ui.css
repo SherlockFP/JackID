@@ -298,6 +298,8 @@
   background: rgba(8, 8, 8, 0.72); text-align: center; opacity: 0; transition: opacity 0.12s steps(2, end);
 }
 .px-subtitle.on { opacity: 1; }
+/* A fade is up (ui.fade, .fade-up): the line rides above it (.px-fade is 13), or an ending card's words sit under a black screen. */
+.px-root.fade-up .px-subtitle { z-index: 14; }
 /* Hotline deal board open (hotline/index.ts sets .hl-sheet): the three offers are read on the board, so the House /
    Collector speech bubbles step aside (hidden, not moved: they would still cross the board's lower edge). */
 .px-root.hl-sheet .px-subtitle { opacity: 0; pointer-events: none; }

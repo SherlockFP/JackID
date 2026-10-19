@@ -111,6 +111,7 @@ import './bonds.test.mjs';
 import './nightLights.test.mjs';
 import './omens.test.mjs';
 import './endings.test.mjs';
+import './storyHold.test.mjs';
 import './burning.test.mjs';
 import './lokiIcon.test.mjs';
 import './inputLock.test.mjs';

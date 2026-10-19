@@ -21,6 +21,7 @@ import { placeNotes, placedNoteIds, resetNotes, openJournal, notesFound } from '
 import type { NoteGate } from './notes.data';
 import { advanceArc, markCard, watchBeat, type ChapterRecord } from './chapter';
 import { MIRA_BEAT } from './calls';
+import { holdCap, holdWithin } from './hold';
 import { showChapterTitle } from './chapterTitle';
 import { CHAPTER_TITLE_HOOK } from './cutscenes/chapterCard';
 import { ENDING_HOOK, ENDING_WITNESS, endingRecord, endingScene, freshFacts, isEnding, type EndingRecord } from './endings';
@@ -56,6 +57,8 @@ function chapterReveal(): void {
 const playedThisSession = new Set<CutsceneId>();
 /** Last scene handed to the cutscene queue; the Results hand-off waits on it. */
 let tail: Promise<CutsceneResult> = Promise.resolve('done');
+/** Seconds of scene still queued or playing (summed durations); `holdForStory` caps its wait with it. */
+let owedS = 0;
 
 // ── the live run: set by startStory, cleared by its disposer ────────────────────────────────────────
 let activeWorld: World | null = null;
@@ -75,7 +78,10 @@ export function playStory(id: CutsceneId, o: CutscenePlayOpts = {}): Promise<Cut
   if (app.net.online && !app.net.isHost) return Promise.resolve('aborted');
   if (!app.cutscene.has(id)) { log.warn('story', `unknown scene "${id}"`); return Promise.resolve('aborted'); }
   playedThisSession.add(id);
+  const dur = app.cutscene.get(id)?.duration ?? 0;
+  owedS += dur;
   const p = app.cutscene.play(id, o);
+  void p.then((): void => { owedS -= dur; });
   tail = p;
   return p;
 }
@@ -91,9 +97,13 @@ export function previewEnding(id: string): Promise<CutsceneResult> {
   return rec ? playEnding(rec) : Promise.resolve('aborted');
 }
 
-/** Resolves when every queued story scene has finished (the run-end hand-off waits on this). */
+/**
+ * Resolves when every queued story scene has finished (the run-end hand-off waits on this), or when the queued scenes' own length
+ * (plus slack) has run out on the UI clock: a scene that never ends must not hold the Results forever.
+ * shortcut: a chained scene's duration is not counted (the slack covers the endings, none chain); sum the chain if one ever does.
+ */
 export function holdForStory(): Promise<void> {
-  return tail.then((): void => undefined, (): void => undefined);
+  return holdWithin(tail, holdCap(owedS), (s) => app.timers.ui.wait(s));
 }
 
 /**
