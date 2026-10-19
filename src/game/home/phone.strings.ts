@@ -106,6 +106,7 @@ export default {
     'co.s3.2': 'I\'m on the stairs. I\'ll knock first. O.',
     'co.reply.pay': "I'll pay.",
     'co.reply.time': 'I need time.',
+    'face': 'Borrowed Face: the Collector looked past you.',
     // ── the talk at home, by Harmony (0..5); talking gives warmth only (see phone.ts). `talk.h*` is HOME (N5 on), `talk.x.h*` is ACROSS.
     // Harmony 0: from N5 "Gone to my sister's" (she is on the floor); before N5 "Not answering". ──
     'talk.h0.1': 'Nobody answers. Her chair is pushed in and the lamp is off.',
@@ -283,6 +284,7 @@ export default {
     'co.s3.2': 'Merdivendeyim. Önce kapıyı çalarım. O.',
     'co.reply.pay': 'Öderim.',
     'co.reply.time': 'Biraz zamana ihtiyacım var.',
+    'face': 'Ödünç Yüz: Tahsildar sana bakmadı bile.',
     // ── eve dönüşte konuşma, Uyum seviyesine göre (0..5). `talk.h*` EV (5. Geceden sonra), `talk.x.h*` KARŞI.
     // Uyum 0: 5. Geceden sonra "Ablama gitti" (katta, seni izliyor); öncesi "Cevap vermiyor".
     // shortcut: phone.talk() şimdilik `talk.h*` okuyor; A2 adaPhase ile ayırır. ──

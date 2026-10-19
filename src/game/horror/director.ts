@@ -1,8 +1,9 @@
 /**
- * Light-horror director (BRIEF Addendum 1, GDD §6). Owns the Dread meter and the scares: flicker and blackout bursts,
+ * Light-horror director (BRIEF Addendum 1, GDD §6). Owns the Dread meter and the scares: flicker bursts,
  * the House's PA babble with subtitles, mannequins that shift only while unobserved, whispers when luck is low, the
  * Collector's Dawn walk with coin-clink footsteps, and rare jump stingers. Calm Mode turns the scares off and keeps the
- * mood. Randomness comes from the seeded run RNG only (never Math.random). Player text is in horror.strings.ts.
+ * mood. Wave C (docs/BLESSINGS.md §3): the blackout is no longer random. It is the Lights Die, which always means "you are
+ * behind pace, deposit now" (Calm Mode keeps it as a dim, no sound), and the omens (`omen:fire`) play here as light and sound. Randomness comes from the seeded run RNG only (never Math.random). Player text is in horror.strings.ts.
  */
 import * as THREE from 'three';
 import { bus } from '@/core/events';
@@ -16,6 +17,9 @@ import type { V3, ZoneId } from '@/core/types';
 const ROAMING_PATRONS = false;
 import { ActorDirectorImpl, DarkPatrons, LiveActor, NAV_POINTS, observed, nearestViewer, type Viewer } from '@/world/actors';
 import type { ActorHandle } from '@/core/cutscene/types';
+import type { Unsub } from '@/core/types';
+import { setLightsDark } from '@/game/watchEvents';
+import { behindPace, lightsDie, type OmenKind } from '@/game/events/omens';
 import { DreadMeter, TIER_RANK, type DreadEventKind, type DreadInput, type DreadTier } from './dread';
 
 export type HorrorBeat = 'flicker' | 'blackout' | 'whisper' | 'pa' | 'jump' | 'collectorWalk' | 'patronShift' | DreadEventKind;
@@ -71,6 +75,11 @@ const PATRON_COOL: Record<DreadTier, number> = { calm: 0, uneasy: 20, haunted: 1
 const PA_EVERY = 100;                   // s, mean interval from Uneasy up
 const WHISPER_MIN = 6, WHISPER_MAX = 10;
 const JUMP_MIN = 240, JUMP_MAX = 420;
+/** The Lights Die: seconds before it can fall again, and how dark (Calm Mode only dims). */
+const DARK_COOLDOWN = 60;
+const DARK_LEVEL = 0.12, DARK_LEVEL_CALM = 0.5;
+/** Omen light: a pulse colour per omen. */
+const OMEN_COLOR: Record<OmenKind, number> = { weeping: 0xffe0a0, sigil: 0x6080ff, till: 0xffd040, reflection: 0xc0d0e0 };
 
 export class HorrorDirector {
   readonly dread = new DreadMeter();
@@ -79,8 +88,11 @@ export class HorrorDirector {
   private lastMusicDread = -1;
 
   private tFlicker = 0;
-  private tBlackout = 0;
+  private tDark = 0;
   private blackoutLeft = 0;
+  /** The dark in force was started in Calm Mode: no sound to undo. */
+  private darkCalm = false;
+  private readonly offs: Unsub[] = [];
   private tWhisper = 0;
   private tPa = 0;
   private tJump = 0;
@@ -101,10 +113,10 @@ export class HorrorDirector {
   constructor(private readonly d: HorrorDeps) {
     this.darkPatrons = new DarkPatrons({ actors: d.actors, rnd: () => d.rng.next() });
     this.tFlicker = this.jitter(FLICKER_EVERY.uneasy);
-    this.tBlackout = this.jitter(90);
     this.tWhisper = this.jitter((WHISPER_MIN + WHISPER_MAX) / 2);
     this.tPa = this.jitter(PA_EVERY);
     this.tJump = this.jitter((JUMP_MIN + JUMP_MAX) / 2);
+    this.offs.push(bus.on('omen:fire', ({ kind }) => { this.omen(kind); }));
   }
 
   /** Current Dread 0..100 (slewed). */
@@ -135,8 +147,9 @@ export class HorrorDirector {
 
     if (this.blackoutLeft > 0) {
       this.blackoutLeft -= dt;
-      if (this.blackoutLeft <= 0) this.endBlackout();
+      if (this.blackoutLeft <= 0 || !behindPace(s)) this.endBlackout();   // the bank caught up: the lights come back
     }
+    this.tickLights(dt, s, tier);
 
     if (!set.calm) this.tickScares(dt, s, tier);
     this.tickPa(dt, tier, set);
@@ -199,6 +212,7 @@ export class HorrorDirector {
 
   dispose(): void {
     this.stopDawnWalk();
+    for (const off of this.offs.splice(0)) off();
     this.darkPatrons.dispose();
     this.patrons.length = 0;
     this.endBlackout();
@@ -216,14 +230,6 @@ export class HorrorDirector {
       if (this.tFlicker <= 0) {
         this.tFlicker = this.jitter(FLICKER_EVERY[tier]);
         this.flicker(set.reduceFlashing);
-      }
-    }
-    // blackout bursts: Watched and up, a single zone at a time (whole pit when no zones given)
-    if (tier === 'watched' || tier === 'dire') {
-      this.tBlackout -= dt;
-      if (this.tBlackout <= 0 && this.blackoutLeft <= 0) {
-        this.tBlackout = this.jitter(tier === 'dire' ? 60 : 90);
-        this.blackout();
       }
     }
     // whispers: luck ≤ −3 or bad_run
@@ -255,21 +261,51 @@ export class HorrorDirector {
     bus.emit('horror:event', { kind: 'flicker', dread: this.fraction });
   }
 
+  /** THE LIGHTS DIE: the only blackout. Night 3+, Dread "watched" or worse and the bank behind pace (omens.ts). Runs in Calm Mode too. */
+  private tickLights(dt: number, s: HorrorState, tier: DreadTier): void {
+    this.tDark -= dt;
+    if (this.blackoutLeft > 0 || this.tDark > 0) return;
+    if (lightsDie({ night: s.night, tier, nightElapsed: s.nightElapsed, deposit: s.deposit, quota: s.quota })) this.blackout();
+  }
+
   private blackout(): void {
-    const lights = this.d.lights();
-    const dur = this.d.rng.float(12, 20);
-    this.blackoutLeft = dur;
-    this.d.audio.play('powerDown', { vol: 0.8 });
-    this.d.audio.setMuffle(0.6, 0.3);
-    lights?.setLevel(this.pickZone(), 0.12, 0.25);
+    const calm = this.d.settings().calm;
+    this.blackoutLeft = this.d.rng.float(12, 20);
+    this.darkCalm = calm;
+    setLightsDark(true);   // with Ash at Favour 2+ a deposit in the dark credits +10 %
+    if (!calm) {
+      this.d.audio.play('powerDown', { vol: 0.8 });
+      this.d.audio.setMuffle(0.6, 0.3);
+    }
+    this.d.lights()?.setLevel(this.pickZone(), calm ? DARK_LEVEL_CALM : DARK_LEVEL, 0.25);
+    bus.emit('floor:say', { text: t('omen.dark'), speaker: t('story.speaker.loki'), voice: 'loki', source: 'omen.dark' });
     this.notify('blackout');
   }
 
   private endBlackout(): void {
+    const was = this.blackoutLeft > 0;
     this.blackoutLeft = 0;
+    if (!was) return;
+    this.tDark = this.jitter(DARK_COOLDOWN);
+    setLightsDark(false);
     this.d.lights()?.setLevel('all', 1, 1.2);
-    this.d.audio.setMuffle(0, 1);
-    this.d.audio.play('powerUp', { vol: 0.7 });
+    if (!this.darkCalm) {
+      this.d.audio.setMuffle(0, 1);
+      this.d.audio.play('powerUp', { vol: 0.7 });
+    }
+  }
+
+  /** An omen fired (watchEvents.ts, the shrine's statues): a light pulse, plus the omen sound and mannequin shifts unless Calm. */
+  private omen(kind: OmenKind): void {
+    const set = this.d.settings();
+    this.d.lights()?.pulse('all', { color: OMEN_COLOR[kind], mul: set.reduceFlashing ? 0.15 : 0.35, dur: 0.8 });
+    if (set.calm) return;
+    this.d.audio.play('omen', { vol: 0.8, bus: 'sfx' });
+    if (kind !== 'reflection') return;
+    // the Late Reflection: the glass lags and the guests shift, seen or not
+    const viewers = this.d.viewers();
+    for (const p of this.patrons.slice(0, 3)) this.shiftPatron(p, this.dread.tier, viewers);
+    this.flicker(set.reduceFlashing);
   }
 
   private jump(reduceFlashing: boolean): void {

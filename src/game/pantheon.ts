@@ -31,8 +31,8 @@ export const FAVOUR_MAX = 3;
 export const DUOS_MAX = 2;
 /** All boon payout multipliers together stay at or under this (like the stamp build cap). */
 export const PAYOUT_CAP = 1.35;
-/** Dread Loki's swap costs the next Night (Ink once docs/JOKER.md ships). */
-export const LOKI_SWAP_DREAD = 8;
+/** Ink Loki's swap costs (docs/BLESSINGS.md §2.1; paid through the Joker, which keeps the cap). */
+export const LOKI_SWAP_INK = 1;
 /** `x.payout.atDread` applies at this Dread and above (Still Face). */
 export const STILL_FACE_DREAD = 60;
 
@@ -54,6 +54,8 @@ export interface BoonDef {
   fx?: Readonly<Record<string, number>>;
   /** A Rite that fires once: {@link Pantheon.spend} retires it. */
   once?: boolean;
+  /** Loki's price: Ink paid once when kept (docs/BLESSINGS.md §7 answer 3). The run pays it with `joker.payInk`. */
+  ink?: number;
 }
 
 const e = (hook: ModEffect['hook'], op: ModEffect['op'], value: number, priority?: number): ModEffect =>
@@ -89,10 +91,10 @@ export const BOONS: readonly BoonDef[] = [
   { id: 'mir_face', god: 'mirrors', kind: 'boon', effects: [], fx: { borrowedFace: 1 } },
   { id: 'mir_clear', god: 'mirrors', kind: 'boon', effects: [e('x.crooked.starAdd', 'add', 1)] },
   { id: 'mir_name', god: 'mirrors', kind: 'rite', effects: [], fx: { sealAdd: 1 }, once: true },
-  // Loki, the Borrowed God (swap only). Dread is the price until the Joker's Ink ships. // shortcut: Dread stands in for Ink, swap to Ink when docs/JOKER.md ships.
-  { id: 'loki_tip', god: 'loki', kind: 'boon', effects: [e('payout.mult', 'mult', 1.15), e('dread.add', 'add', 8)] },
+  // Loki, the Borrowed God (swap only). His price is Ink (Dread 8 and 10 were 2 and 3 Ink at 4 Dread an Ink).
+  { id: 'loki_tip', god: 'loki', kind: 'boon', effects: [e('payout.mult', 'mult', 1.15)], ink: 2 },
   { id: 'loki_raise', god: 'loki', kind: 'boon', effects: [e('bet.maxMult', 'mult', 2), e('loss.refund', 'set', 0, 100)] },
-  { id: 'loki_grin', god: 'loki', kind: 'boon', effects: [e('x.run.pullsAdd', 'add', 2), e('dread.add', 'add', 10)] },
+  { id: 'loki_grin', god: 'loki', kind: 'boon', effects: [e('x.run.pullsAdd', 'add', 2)], ink: 3 },
   { id: 'loki_coat', god: 'loki', kind: 'boon', effects: [], fx: { freeSwap: 1 } },
   // Duos (only DUOS_MAX can ever be taken)
   { id: 'duo_wishcoin', god: 'well', god2: 'ledgers', kind: 'duo', effects: [], fx: { depositPerStar: 0.01 } },
@@ -309,7 +311,7 @@ export class Pantheon implements ModProvider {
     return !!o && o.night >= SWAP_NIGHT && !o.swapped;
   }
 
-  /** Loki's swap on card `index`. Returns the Dread it costs the next Night (0 with Stolen Coat), or null when refused. */
+  /** Loki's swap on card `index`. Returns the Ink it costs (0 with Stolen Coat), or null when refused. */
   swap(index: number): number | null {
     const o = this.offer;
     if (!o || !this.canSwap()) return null;
@@ -317,7 +319,7 @@ export class Pantheon implements ModProvider {
     if (!next) return null;
     o.ids = next;
     o.swapped = true;
-    return this.fx('freeSwap') > 0 ? 0 : LOKI_SWAP_DREAD;
+    return this.fx('freeSwap') > 0 ? 0 : LOKI_SWAP_INK;
   }
 
   has(id: string): boolean { return this.kept.includes(id) && !this.spent.has(id); }

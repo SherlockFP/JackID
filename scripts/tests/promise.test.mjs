@@ -260,3 +260,117 @@ test('strings: EN and TR match, and every key the flow can show exists', () => {
   for (const stake of F.STAKES) for (const side of ['win', 'lose']) assert.ok(`end.${stake}.${side}` in S.en);
   for (const n of [1, 2]) for (const k of ['beat', 'beaten', 'tell']) assert.ok(k === 'tell' ? `tell.${n}` in S.en : `ada.${k}.${n}` in S.en);
 });
+
+// ── me too, kept pairs, the wager (wave A3) ──────────────────────────────────────────────────────────────────────
+const pairRound = (s, hand = 'rock') => R.playRound(s, { promise: hand, callerThrow: hand, answerThrow: hand, meToo: true });
+
+test('a kept pair: both throw the promised hand, a tie with no points and no cracks', () => {
+  const { state, entry } = pairRound(R.createMatch({ first: 'a' }));
+  assert.equal(entry.pair, true); assert.equal(entry.winner, null); assert.equal(entry.points, 0);
+  assert.equal(state.pairs, 1); assert.equal(state.seats.a.cracks + state.seats.b.cracks, 0);
+  // not a pair: no "me too", or the caller broke it, or the answerer did
+  assert.equal(round(R.createMatch(), 'rock', 'rock', 'rock').entry.pair, false);
+  assert.equal(R.playRound(R.createMatch(), { promise: 'rock', callerThrow: 'paper', answerThrow: 'paper', meToo: true }).entry.pair, false);
+  const x = R.playRound(R.createMatch(), { promise: 'rock', callerThrow: 'rock', answerThrow: 'paper', meToo: true });
+  assert.equal(x.entry.pair, false); assert.equal(x.entry.echoBroke, true);
+  assert.equal(x.state.seats.b.cracks, 1, 'a broken me-too cracks the answerer');
+});
+
+test('three kept pairs: no loser, nothing for the House to collect', () => {
+  let s = R.createMatch({ first: 'a', crackLoses: true });
+  for (let i = 0; i < 3; i++) { assert.equal(s.done, false); s = pairRound(s, R.HANDS[i]).state; s = s.done ? s : round(s, 'rock', 'rock', 'rock').state; }
+  assert.equal(s.done, true); assert.equal(s.end, 'pairs'); assert.equal(s.winner, null);
+  assert.equal(R.collectible(s), false);
+  assert.equal(R.collectible({ ...s, winner: 'a' }), true);
+});
+
+test('a broken promise breaks the chain', () => {
+  let s = pairRound(R.createMatch({ first: 'a', goal: 9 })).state;
+  s = round(s, 'rock', 'rock', 'rock').state;               // an honest tie does not reset it
+  s = pairRound(s).state;
+  assert.equal(s.pairs, 2);
+  s = round(s, 'rock', 'rock', 'rock').state;
+  s = round(s, 'rock', 'paper', 'rock').state;              // a calls rock and breaks
+  assert.equal(s.pairs, 0);
+  s = pairRound(s).state; assert.equal(s.pairs, 1); assert.equal(s.done, false);
+});
+
+test('Ada\'s echo: free at the kitchen table about 1 in 3, only for a caller with a clean card', () => {
+  const s = R.createMatch({ first: 'a' });
+  let n = 0;
+  for (let seed = 0; seed < 1500; seed++) if (R.aiEcho(s, 'b', R.ADA, seed)) n++;
+  assert.ok(n / 1500 > 0.28 && n / 1500 < 0.38, `echo ${n / 1500}`);
+  const cracked = { ...s, seats: { ...s.seats, a: { points: 0, cracks: 1 } } };
+  for (let seed = 0; seed < 200; seed++) assert.equal(R.aiEcho(cracked, 'b', R.ADA, seed), false);
+  assert.equal(R.aiEcho(s, 'b', R.STEADY, 1), false);
+});
+
+test('Ada\'s echo at the wager needs Harmony 4+, no word broken, a hint seen', () => {
+  const s = R.createMatch({ first: 'a' });
+  const ok = { harmony: 4, broken: false, hints: 1 };
+  assert.equal(R.aiEcho(s, 'b', R.ADA_WAGER, 1, ok), true);
+  for (const c of [undefined, { ...ok, harmony: 3 }, { ...ok, broken: true }, { ...ok, hints: 0 }]) assert.equal(R.aiEcho(s, 'b', R.ADA_WAGER, 1, c), false);
+});
+
+test('headless: an honest player can reach three pairs (not every time); without the trust she never echoes (seeded)', () => {
+  const ok = { harmony: 5, broken: false, hints: 2 };
+  let pairs = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const r = R.playHeadless(seed, R.HONEST, R.ADA_WAGER, { goal: 3, first: 'b', crackLoses: true }, ok);
+    if (r.end === 'pairs') { pairs++; assert.equal(R.collectible(r.state), false); }
+    const again = R.playHeadless(seed, R.HONEST, R.ADA_WAGER, { goal: 3, first: 'b', crackLoses: true }, ok);
+    assert.deepEqual(r.state.log, again.state.log);
+    const cold = R.playHeadless(seed, R.HONEST, R.ADA_WAGER, { goal: 3, first: 'b', crackLoses: true });
+    assert.notEqual(cold.end, 'pairs'); assert.ok(cold.state.log.every((e) => !e.meToo));
+  }
+  assert.ok(pairs >= 8 && pairs < 40, `pair matches ${pairs}/40`);
+});
+
+// ── the kitchen wager flow ─────────────────────────────────────────────────────────────────────────────────────
+function wagerFlow(seed, wager) {
+  const io = { result: null };
+  const flow = F.createFlow({ seed, stake: 'dishes', wager }, { render() {}, inner() {}, playHand() {}, done: (r) => { io.result = r; } });
+  return { flow, io };
+}
+function playWager(seed, wager, promiseOf, throwOf) {
+  const { flow, io } = wagerFlow(seed, wager);
+  for (let g = 0; flow.phase() !== 'closed' && g < 4000; g++) {
+    flow.update(0.1);
+    const ph = flow.phase();
+    if (ph === 'promise') flow.press(promiseOf(flow));
+    else if (ph === 'throw') flow.press(throwOf(flow));
+    else if (ph === 'end') flow.confirm();
+  }
+  return io.result;
+}
+const TRUST = { harmony: 4, broken: false, hints: 1 };
+const adaSays = (f, seed) => R.aiCall(f.state(), 'b', R.ADA_WAGER, seed).promise;
+const idx = (h) => 1 + R.HANDS.indexOf(h);
+
+test('wager: you keep every word and she echoes: three kept pairs, the true ending path', () => {
+  // you promise and throw rock; when she calls you throw her promise, so nothing is ever broken
+  const r = playWager(7, TRUST, () => 1, (f) => (f.state().caller === 'a' ? 1 : idx(adaSays(f, 7))));
+  assert.equal(r.stake, 'name'); assert.equal(r.winner, 'none'); assert.equal(r.pairs, 3); assert.equal(r.wager, 'pair');
+  assert.equal(r.cracks.you, 0);
+});
+
+test('wager: believing her promises beats her (door), doubting her loses it (kept); no trust, no pair; seeded', () => {
+  const win = (seed) => playWager(seed, TRUST, () => 1, (f) => (f.state().caller === 'a' ? 1 : idx(R.counterOf(adaSays(f, seed)))));
+  const lose = (seed) => playWager(seed, TRUST, () => 1, (f) => (f.state().caller === 'a' ? 1 : idx(R.loserTo(adaSays(f, seed)))));
+  for (const seed of [1, 2, 3, 4]) { assert.equal(win(seed).wager, 'win'); assert.equal(lose(seed).wager, 'lose'); }
+  assert.deepEqual(win(5), win(5));
+  const cold = playWager(7, { harmony: 2, broken: false, hints: 0 }, () => 1, (f) => (f.state().caller === 'a' ? 1 : idx(adaSays(f, 7))));
+  assert.equal(cold.pairs, 0); assert.notEqual(cold.wager, 'pair');
+  assert.equal(playOut(9, () => 1, () => 1).result.wager, null, 'not the wager: no outcome');
+});
+
+test('me too at the table: key 4 on her call, a kept pair when you throw her hand and she kept it', () => {
+  const { flow } = makeFlow(11);
+  run(flow, F.INTRO_SEC + 0.2);
+  flow.press(4);
+  const say = R.aiCall(flow.state(), 'b', R.ADA, 11);
+  flow.press(1 + R.HANDS.indexOf(say.promise));
+  run(flow, F.REVEAL_SEC + 0.2);
+  const e = flow.state().log[0];
+  assert.equal(e.meToo, true); assert.equal(e.pair, say.throw === say.promise);
+});

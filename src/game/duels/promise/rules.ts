@@ -7,6 +7,9 @@
  *   - A win by a caller who kept the word scores 2. Any other win scores 1. A tie scores nothing.
  *   - A caller who throws something else than the promise breaks it: their card cracks (win, tie or loss).
  *   - Three cracks lose the match, even if the points were ahead. (Home games set `crackLoses: false`: cracks only count.)
+ *   - ME TOO: the answerer may promise the same hand as the caller. If both throw it, that is a KEPT PAIR (a tie, no points). An
+ *     answerer who says "me too" and throws something else breaks that word: their card cracks. Three kept pairs in a row (a
+ *     broken word by either side resets the count) end the match with no loser, and the House has nothing to collect.
  *
  * An answerer has three ideas about a promise P:
  *   believe: throw the hand that beats P. Wins against a kept word, loses to the smart break.
@@ -27,6 +30,8 @@ export const KEPT_WIN = 2;
 export const PLAIN_WIN = 1;
 /** Headless matches stop here (a long run of ties) and count as undecided. */
 export const MAX_ROUNDS = 120;
+/** Kept pairs in a row that end the match with no loser. */
+export const PAIRS_TO_END = 3;
 
 const BEATS: Record<Hand, Hand> = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
 
@@ -56,10 +61,16 @@ export interface RoundLog {
   cracked: boolean;
   /** How the answerer treated the promise. */
   answer: AnswerKind;
+  /** The answerer said "me too". */
+  meToo: boolean;
+  /** Both kept the same promise. */
+  pair: boolean;
+  /** The answerer said "me too" and threw something else: their card cracked. */
+  echoBroke: boolean;
 }
 
 export type AnswerKind = 'believe' | 'doubt' | 'deeper';
-export type MatchEnd = 'points' | 'cracks' | 'stall';
+export type MatchEnd = 'points' | 'cracks' | 'stall' | 'pairs';
 
 export interface PromiseState {
   goal: number;
@@ -67,6 +78,8 @@ export interface PromiseState {
   /** Whether three cracks end the match (false in the kitchen: cracks only count). */
   crackLoses: boolean;
   seats: Record<Side, Seat>;
+  /** Kept pairs in the current chain (a broken word resets it). */
+  pairs: number;
   /** Who calls the next round. */
   caller: Side;
   /** The round that will be played next (1-based). */
@@ -91,6 +104,7 @@ export function createMatch(o: PromiseOptions = {}): PromiseState {
     crackLimit: Math.max(1, Math.floor(o.crackLimit ?? CRACK_LIMIT)),
     crackLoses: o.crackLoses !== false,
     seats: { a: { points: 0, cracks: 0 }, b: { points: 0, cracks: 0 } },
+    pairs: 0,
     caller: o.first ?? 'a',
     round: 1,
     done: false,
@@ -111,7 +125,10 @@ export function answerFor(promise: Hand, kind: AnswerKind): Hand {
   return kind === 'doubt' ? promise : kind === 'believe' ? counterOf(promise) : loserTo(promise);
 }
 
-export interface RoundInput { promise: Hand; callerThrow: Hand; answerThrow: Hand }
+export interface RoundInput { promise: Hand; callerThrow: Hand; answerThrow: Hand; /** The answerer promised the same hand. */ meToo?: boolean }
+
+/** Nothing for the House to collect: the match ended in kept pairs, with no loser. */
+export const collectible = (s: PromiseState): boolean => s.winner !== null;
 
 /** Plays one round. Returns a new state (the old one is untouched) and the round's log entry. */
 export function playRound(s: PromiseState, input: RoundInput): { state: PromiseState; entry: RoundLog } {
@@ -123,20 +140,29 @@ export function playRound(s: PromiseState, input: RoundInput): { state: PromiseS
   const callerWins = beats(input.callerThrow, input.answerThrow);
   const answerWins = beats(input.answerThrow, input.callerThrow);
   const winner: Side | null = callerWins ? caller : answerWins ? answerer : null;
+  const meToo = input.meToo === true;
+  const echoBroke = meToo && input.answerThrow !== input.promise;
+  const pair = meToo && kept && !echoBroke;
   const points = winner === null ? 0 : winner === caller && kept ? KEPT_WIN : PLAIN_WIN;
   const entry: RoundLog = {
     round: s.round, caller, promise: input.promise, callerThrow: input.callerThrow, answerThrow: input.answerThrow,
-    kept, winner, points, cracked: !kept, answer: answerKind(input.promise, input.answerThrow),
+    kept, winner, points, cracked: !kept, answer: answerKind(input.promise, input.answerThrow), meToo, pair, echoBroke,
   };
   const seats: Record<Side, Seat> = { a: { ...s.seats.a }, b: { ...s.seats.b } };
   if (winner) seats[winner].points += points;
   if (!kept) seats[caller].cracks += 1;
-  const next: PromiseState = { ...s, seats, log: [...s.log, entry], caller: answerer, round: s.round + 1 };
+  if (echoBroke) seats[answerer].cracks += 1;
+  const pairs = pair ? s.pairs + 1 : !kept || echoBroke ? 0 : s.pairs;
+  const next: PromiseState = { ...s, seats, pairs, log: [...s.log, entry], caller: answerer, round: s.round + 1 };
   // three cracks come first: a caller who breaks into the winning point still loses the match
   if (next.crackLoses && seats[caller].cracks >= next.crackLimit) {
     next.done = true; next.winner = answerer; next.end = 'cracks';
+  } else if (next.crackLoses && seats[answerer].cracks >= next.crackLimit) {
+    next.done = true; next.winner = caller; next.end = 'cracks';
   } else if (winner && seats[winner].points >= next.goal) {
     next.done = true; next.winner = winner; next.end = 'points';
+  } else if (pairs >= PAIRS_TO_END) {
+    next.done = true; next.end = 'pairs';
   }
   return { state: next, entry };
 }
@@ -160,20 +186,33 @@ export interface Profile {
   /** Weights for believe, doubt, deeper when answering a promise. */
   react: readonly [number, number, number];
   tell: Tell | null;
+  /** Chance of saying "me too" to a call whose caller has not broken a word yet this match. 0: never. */
+  echo: number;
+  /** The echo needs the story's trust (`EchoCtx`) on top of the chance. */
+  echoGated?: boolean;
 }
+
+/** What the story knows when Ada decides to echo (Harmony, any word ever broken to her, hints the player has seen). */
+export interface EchoCtx { harmony: number; broken: boolean; hints: number }
+/** Harmony and hints Ada wants before she says "me too" at the wager (STORY_BIBLE 5a). */
+export const ECHO_HARMONY = 4;
+export const ECHO_HINTS = 1;
 
 /** Ada at the kitchen table: keeps her word 4 times in 5, opens with paper, laughs before she breaks. */
 export const ADA: Profile = {
   id: 'ada', keep: 0.8, open: 'paper', favour: [1, 1.5, 1], react: [0.6, 0.25, 0.15],
-  tell: { onBreak: 0.9, onKeep: 0.05 },
+  tell: { onBreak: 0.9, onKeep: 0.05 }, echo: 1 / 3,
 };
 
-/** Balance partners for the headless runs. */
-export const STEADY: Profile = { id: 'steady', keep: 0.6, open: null, favour: [1, 1, 1], react: [0.4, 0.4, 0.2], tell: null };
-export const HONEST: Profile = { id: 'honest', keep: 1, open: null, favour: [1, 1, 1], react: [0.2, 0.7, 0.1], tell: null };
-export const LIAR: Profile = { id: 'liar', keep: 0.2, open: null, favour: [1, 1, 1], react: [0.5, 0.3, 0.2], tell: null };
+/** Ada at the N8 kitchen wager: she keeps every word, and says "me too" to your calls only when you have earned it. */
+export const ADA_WAGER: Profile = { ...ADA, id: 'ada.wager', keep: 1, tell: null, echo: 1, echoGated: true };
 
-export const PROFILES: Readonly<Record<string, Profile>> = { ada: ADA, steady: STEADY, honest: HONEST, liar: LIAR };
+/** Balance partners for the headless runs. */
+export const STEADY: Profile = { id: 'steady', keep: 0.6, open: null, favour: [1, 1, 1], react: [0.4, 0.4, 0.2], tell: null, echo: 0 };
+export const HONEST: Profile = { id: 'honest', keep: 1, open: null, favour: [1, 1, 1], react: [0.2, 0.7, 0.1], tell: null, echo: 0 };
+export const LIAR: Profile = { id: 'liar', keep: 0.2, open: null, favour: [1, 1, 1], react: [0.5, 0.3, 0.2], tell: null, echo: 0 };
+
+export const PROFILES: Readonly<Record<string, Profile>> = { ada: ADA, 'ada.wager': ADA_WAGER, steady: STEADY, honest: HONEST, liar: LIAR };
 
 export interface AiCall { promise: Hand; throw: Hand; tell: boolean }
 
@@ -198,6 +237,13 @@ export function aiAnswer(s: PromiseState, side: Side, p: Profile, promise: Hand,
   return answerFor(promise, kind);
 }
 
+/** Whether the answerer says "me too" to a promise (the caller must not have cracked this match). Seeded; gated profiles need `ctx`. */
+export function aiEcho(s: PromiseState, side: Side, p: Profile, seed: number, ctx?: EchoCtx): boolean {
+  if (p.echo <= 0 || s.seats[otherSide(side)].cracks > 0) return false;
+  if (p.echoGated && !(ctx && ctx.harmony >= ECHO_HARMONY && !ctx.broken && ctx.hints >= ECHO_HINTS)) return false;
+  return createRng(hashSeed(seed, p.id, 'echo', s.round, side)).chance(p.echo);
+}
+
 export interface HeadlessResult {
   winner: Side | null;
   end: MatchEnd;
@@ -210,15 +256,16 @@ export interface HeadlessResult {
 }
 
 /** A whole match between two AI profiles, for balance runs and tests. Side `a` calls first unless `o.first` says otherwise. */
-export function playHeadless(seed: number, a: Profile, b: Profile, o: PromiseOptions = {}): HeadlessResult {
+export function playHeadless(seed: number, a: Profile, b: Profile, o: PromiseOptions = {}, ctx?: EchoCtx): HeadlessResult {
   const profiles: Record<Side, Profile> = { a, b };
   let s = createMatch(o);
   while (!s.done && s.round <= MAX_ROUNDS) {
     const caller = s.caller;
     const answerer = otherSide(caller);
     const c = aiCall(s, caller, profiles[caller], seed);
-    const ans = aiAnswer(s, answerer, profiles[answerer], c.promise, seed);
-    s = playRound(s, { promise: c.promise, callerThrow: c.throw, answerThrow: ans }).state;
+    const echo = aiEcho(s, answerer, profiles[answerer], seed, ctx);
+    const ans = echo ? c.promise : aiAnswer(s, answerer, profiles[answerer], c.promise, seed);
+    s = playRound(s, { promise: c.promise, callerThrow: c.throw, answerThrow: ans, meToo: echo }).state;
   }
   const rate = (side: Side): number => {
     const calls = s.log.filter((r) => r.caller === side);

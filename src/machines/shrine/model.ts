@@ -1,7 +1,8 @@
 /**
  * Moth Shrine — procedural model (system category, slot S, PAR-SHRINE). A small dark niche in the Parlour: a wooden
- * altar shelf with eight tallow candles, one flame per candle lit this run (up to eight shown), a pewter moth on the
- * back board whose wings flutter when you light a candle, a coin dish in front and a brass price tag. Footprint
+ * altar shelf with eight tallow candles, one flame per candle lit this run (up to eight shown), four small statues of the
+ * owners behind them (a wax drip runs from the one at Favour 3), a pewter moth on the back board whose wings flutter when
+ * you light a candle, a coin dish in front and a brass price tag. Footprint
  * 0.8 × 0.8 × 2.0 m (SLOT_DIMS.S). Origin = floor centre, +Z = the customer side, the niche back is at z = WALL_Z.
  */
 import * as THREE from 'three';
@@ -9,12 +10,17 @@ import type { LabelPart } from '@/kit/types';
 import type { KitX } from '@/kit';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
+import type { GodId } from '@/game/pantheon';
+import { STATUES } from './rules';
 
 export type ShrineParts = {
   /** Eight candle roots on the altar. */
   candles: THREE.Object3D[];
   /** One flame per candle; visible when that candle is lit. */
   flames: THREE.Object3D[];
+  /** One statue per owner (shelf order), and the wax drip that runs from it at Favour 3. */
+  statues: THREE.Object3D[];
+  drips: THREE.Object3D[];
   /** The pewter moth. Its two wing roots flap on every light. */
   moth: THREE.Object3D;
   wings: THREE.Object3D[];
@@ -31,6 +37,10 @@ const SHELF_Y = 1.02;
 const TALLOW = 0xe8dcc0;
 export const FLAME = 0xffb040;
 export const MOTH_X = 0;
+/** Statue colours: the Well's water, the Ledgers' brass, Ash's ember, the Mirrors' silver. */
+export const STATUE_COLOR: Readonly<Record<string, number>> = { well: 0x5a8ad8, ledgers: 0xc8a040, ash: 0xa05030, mirrors: 0xc8d0d8 };
+const WAX = 0xf0e8d0;
+export const STATUE_X = (i: number): number => -0.27 + i * 0.18;
 
 export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ShrineParts> {
   const { pal } = kit;
@@ -65,6 +75,29 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ShrineParts> {
     flames.push(f);
   }
 
+  // ── statues (the owners): body in the god's colour, a head that tells them apart, a wax drip for Favour 3 ──
+  const statues: THREE.Object3D[] = [];
+  const drips: THREE.Object3D[] = [];
+  STATUES.forEach((god: GodId, i) => {
+    const col = STATUE_COLOR[god];
+    const s = new THREE.Object3D();
+    s.position.set(STATUE_X(i), SHELF_Y + 0.025, WALL_Z + 0.12);
+    kit.box(0.1, 0.03, 0.09, wood, { pos: [0, 0.015, 0], parent: s });                   // plinth
+    kit.cyl(0.03, 0.045, 0.2, col, { pos: [0, 0.13, 0], parent: s, seg: 8 });             // body
+    if (god === 'well') kit.cyl(0.04, 0.04, 0.012, col, { pos: [0, 0.25, 0], parent: s, seg: 10 });   // a ring
+    else if (god === 'ledgers') kit.box(0.055, 0.055, 0.055, col, { pos: [0, 0.26, 0], parent: s });  // a coin block
+    else if (god === 'ash') kit.cyl(0.004, 0.03, 0.07, col, { pos: [0, 0.27, 0], parent: s, seg: 6 }); // a match head
+    else kit.box(0.045, 0.085, 0.01, col, { pos: [0, 0.265, 0], parent: s });                            // an oval glass, no face
+    root.add(s);
+    statues.push(s);
+    const d = new THREE.Object3D();
+    d.position.set(STATUE_X(i) + 0.012, SHELF_Y + 0.025 + 0.245, WALL_Z + 0.12 + 0.03);
+    kit.cyl(0.006, 0.004, 0.06, WAX, { pos: [0, -0.03, 0], parent: d, seg: 5 });
+    d.visible = false;
+    root.add(d);
+    drips.push(d);
+  });
+
   // ── moth (animated) ──
   const moth = new THREE.Object3D();
   moth.position.set(MOTH_X, 1.55, WALL_Z + 0.06);
@@ -93,8 +126,8 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<ShrineParts> {
   light.userData = { color: FLAME, intensity: 0.7, range: 1.8, flicker: 'CANDLE' };
   root.add(light);
 
-  const parts: ShrineParts = { candles, flames, moth, wings, price };
-  kit.finalize(root, { keep: [...candles, ...flames, moth, price.mesh, light] });
+  const parts: ShrineParts = { candles, flames, statues, drips, moth, wings, price };
+  kit.finalize(root, { keep: [...candles, ...flames, ...statues, ...drips, moth, price.mesh, light] });
 
   return {
     root,

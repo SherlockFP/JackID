@@ -97,8 +97,8 @@ export interface Subtitles {
   bind(deps: Partial<SubDeps>): void;
   /** Lines waiting behind the one on screen. */
   queued(): number;
-  /** Text of the line on screen (full text, not the typed part), or null. */
-  current(): { text: string; lane: SubLane; phase: SubPhase } | null;
+  /** Text of the line on screen (full text, not the typed part), its source, or null. */
+  current(): { text: string; lane: SubLane; phase: SubPhase; source?: string } | null;
 }
 
 export function createSubtitles(initial?: Partial<SubDeps>): Subtitles {
@@ -226,7 +226,7 @@ export function createSubtitles(initial?: Partial<SubDeps>): Subtitles {
 
     current() {
       const a = active;
-      return a ? { text: a.text, lane: a.lane, phase: phaseOf(a) } : null;
+      return a ? { text: a.text, lane: a.lane, phase: phaseOf(a), source: a.source } : null;
     },
   };
   return api;

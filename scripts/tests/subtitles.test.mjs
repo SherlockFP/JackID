@@ -131,6 +131,7 @@ test('a source replaces the line on screen with the same source, at once', () =>
   q.say({ text: 'first', source: 'knock', lane: 'ambient' });
   q.say({ text: 'second', source: 'knock', lane: 'ambient' });
   assert.equal(q.current().text, 'second');
+  assert.equal(q.current().source, 'knock', 'the renderer can style a speaker by source (Loki)');
   assert.equal(q.queued(), 0);
 });
 

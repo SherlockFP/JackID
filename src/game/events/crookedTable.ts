@@ -51,6 +51,11 @@ export interface CrookedState {
   called: boolean;
   /** True on the first time this event ever starts: Tamsin explains it. */
   intro: boolean;
+  /** The Late Reflection (Mirrors Favour 2+): every table shows its dealer's HABIT from the start. */
+  late?: boolean;
+  /** Clear Glass (`x.crooked.starAdd`): stars a right call adds. Two Sets of Books (`x.crooked.payMult`): the rig pays this much more. */
+  starAdd?: number;
+  payMult?: number;
 }
 
 export interface CrookedTell { channel: Channel; key: string; vars?: Record<string, number> }
@@ -105,7 +110,7 @@ export function tableIndex(s: CrookedState, mid: MachineId): TableIx | -1 {
 /** The rigged table's bonus, while the event is still open. */
 export function rigEffects(s: CrookedState): ModEffect[] {
   if (s.called) return [];
-  return [{ hook: 'payout.mult', op: 'mult', value: RIG_MULT, scope: { machines: [s.tables[s.rigged]] } }];
+  return [{ hook: 'payout.mult', op: 'mult', value: RIG_MULT * (s.payMult ?? 1), scope: { machines: [s.tables[s.rigged]] } }];
 }
 
 /**
@@ -127,7 +132,7 @@ export function tellsAt(s: CrookedState, i: TableIx): CrookedTell[] {
   const out: CrookedTell[] = [
     { channel: 'plate', key: rig ? `tell.plate.rig.${s.vPlate}` : 'tell.plate.fair', vars: { t: i + 1 } },
   ];
-  if (s.plays[i] >= HABIT_AFTER) out.push({ channel: 'habit', key: rig ? `tell.habit.rig.${s.vHabit}` : 'tell.habit.fair', vars: { t: i + 1 } });
+  if (s.late || s.plays[i] >= HABIT_AFTER) out.push({ channel: 'habit', key: rig ? `tell.habit.rig.${s.vHabit}` : 'tell.habit.fair', vars: { t: i + 1 } });
   if (s.plays[i] >= TALLY_AFTER) {
     // The rigged table pays x1.25 on every win, so "above the card" is true of it. A table with no win says nothing either way.
     const key = s.wins[i] === 0 ? 'tell.tally.cold' : rig ? 'tell.tally.rig' : 'tell.tally.fair';
@@ -150,7 +155,7 @@ export function callCheat(s: CrookedState, mid: MachineId, quota: number): CallR
   s.called = true;
   const right = i === s.rigged;
   const { refund, fine } = callSums(s, i, quota);
-  return { right, table: i, refund, fine, luck: right ? 1 : 0, heat: right ? -1 : 1 };
+  return { right, table: i, refund, fine, luck: right ? 1 + (s.starAdd ?? 0) : 0, heat: right ? -1 : 1 };
 }
 
 export const TAMSIN_VOICE = 'tamsin';

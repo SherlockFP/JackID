@@ -156,12 +156,12 @@ test('the payout cap holds for the best build', () => {
   assert.ok(ca.payout * ca.atDread <= P.PAYOUT_CAP + 1e-9);
 });
 
-test("Loki's swap: Night 3+, once an offer, 8 Dread, free with Stolen Coat", () => {
+test("Loki's swap: Night 3+, once an offer, 1 Ink, free with Stolen Coat", () => {
   const early = make(); early.open(2);
   assert.equal(early.swap(0), null, 'not before Night 3');
   const p = make(); p.open(3);
   const was = p.offerView().candidates.map((c) => c.id);
-  assert.equal(p.swap(1), P.LOKI_SWAP_DREAD);
+  assert.equal(p.swap(1), P.LOKI_SWAP_INK);
   const now = p.offerView().candidates.map((c) => c.id);
   assert.equal(god(now[1]), 'loki');
   assert.equal(now[0], was[0]);

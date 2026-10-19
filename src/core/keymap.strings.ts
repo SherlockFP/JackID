@@ -20,7 +20,7 @@ const strings = {
     'action.fidget': 'Coin trick (walking)', 'action.cheer': 'Cheer', 'action.shrug': 'Shrug', 'action.dance': 'Dance',
     'action.answerPhone': 'Answer the phone (from anywhere)', 'action.phoneOpt1': 'Phone deal 1', 'action.phoneOpt2': 'Phone deal 2', 'action.phoneOpt3': 'Phone deal 3',
     'action.phone': 'Pocket phone (open / close)', 'action.phoneReply1': 'Phone reply 1', 'action.phoneReply2': 'Phone reply 2', 'action.phoneReply3': 'Phone reply 3',
-    'action.keepsake': 'Bet the carried keepsake (at a seat)', 'action.floorAct': 'Take the dare or bid (floor event)', 'action.callCheat': 'Call the cheat at a marked table (Crooked Table)',
+    'action.keepsake': 'Bet the carried keepsake (at a seat)', 'action.floorAct': 'Take the dare or bid (floor event)', 'action.callCheat': 'Call the cheat at a marked table (Crooked Table)', 'action.jokerAsk': 'Ask Loki', 'action.callLiar': 'Call Loki a liar',
     // machine
     'action.m.primary': 'Primary (spin / deal)', 'action.m.secondary': 'Secondary (tap RMB)',
     'action.m.up': 'Up', 'action.m.down': 'Down', 'action.m.left': 'Left', 'action.m.right': 'Right',
@@ -53,7 +53,7 @@ const strings = {
     'action.cheer': 'Alkışla', 'action.shrug': 'Omuz silk', 'action.dance': 'Dans et',
     'action.answerPhone': 'Telefonu aç (her yerden)', 'action.phoneOpt1': 'Telefon teklifi 1', 'action.phoneOpt2': 'Telefon teklifi 2', 'action.phoneOpt3': 'Telefon teklifi 3',
     'action.phone': 'Cep telefonu (aç / kapat)', 'action.phoneReply1': 'Telefon yanıtı 1', 'action.phoneReply2': 'Telefon yanıtı 2', 'action.phoneReply3': 'Telefon yanıtı 3',
-    'action.keepsake': 'Eşyayı masada bahse koy', 'action.floorAct': 'Bahsi al ya da teklif ver (salon olayı)', 'action.callCheat': 'İşaretli masada hileyi söyle (Hileli Masa)',
+    'action.keepsake': 'Eşyayı masada bahse koy', 'action.floorAct': 'Bahsi al ya da teklif ver (salon olayı)', 'action.callCheat': 'İşaretli masada hileyi söyle (Hileli Masa)', 'action.jokerAsk': "Loki'ye sor", 'action.callLiar': "Loki'nin yalanını yakala",
     // machine
     'action.m.primary': 'Ana eylem (çevir / dağıt)', 'action.m.secondary': 'İkincil (sağ tık)',
     'action.m.up': 'Yukarı', 'action.m.down': 'Aşağı', 'action.m.left': 'Sol', 'action.m.right': 'Sağ',

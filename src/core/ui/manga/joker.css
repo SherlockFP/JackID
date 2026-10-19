@@ -1,0 +1,36 @@
+/* LOKI'S VOICE (manga/joker.ts): his lines in the subtitle bar and the grin chip next to the ŞANS stars. */
+.px-subtitle[data-joker] .txt { color: var(--green); text-shadow: 0 0 calc(2 * var(--u)) rgba(90, 255, 123, 0.35); }
+.px-subtitle[data-joker] .txt::after { background: var(--green); }
+/* the plate: the corner of a court card, an upside-down J over his name */
+.px-subtitle[data-joker] .who {
+  display: inline-block; padding: calc(2 * var(--u)) calc(4 * var(--u)) calc(2 * var(--u)) calc(3 * var(--u));
+  background: var(--paper); color: var(--black); border-radius: calc(3 * var(--u)) 0 0 0;
+  box-shadow: inset 0 0 0 var(--u) var(--green);
+}
+.px-subtitle[data-joker] .who::before { content: 'J'; display: inline-block; transform: rotate(180deg); margin-right: calc(3 * var(--u)); color: var(--red); }
+
+/* the chip: a card corner, a J, and a mouth whose width and curve are his mood (data-f 0 bared teeth .. 6 wide grin) */
+.jk-chip {
+  display: inline-flex; align-items: center; gap: calc(2 * var(--u)); margin-left: calc(3 * var(--u));
+  padding: calc(1 * var(--u)) calc(3 * var(--u)); background: var(--paper); border-radius: calc(3 * var(--u)) 0 0 0;
+  box-shadow: inset 0 0 0 var(--u) var(--brass-dark); line-height: 1;
+}
+.jk-chip .jk-j { font-style: normal; font-family: var(--f-head); font-size: calc(6 * var(--u)); color: var(--red); }
+.jk-chip .jk-mouth {
+  display: inline-block; height: calc(3 * var(--u)); width: calc(4 * var(--u)); background: var(--black);
+  border-radius: 0 0 calc(3 * var(--u)) calc(3 * var(--u));
+}
+.jk-chip[data-f='0'] .jk-mouth { width: calc(7 * var(--u)); border-radius: 0; background: repeating-linear-gradient(90deg, var(--ivory) 0 var(--u), var(--black) var(--u) calc(2 * var(--u))); box-shadow: 0 0 0 var(--u) var(--black); }
+.jk-chip[data-f='1'] .jk-mouth { width: calc(6 * var(--u)); border-radius: calc(3 * var(--u)) calc(3 * var(--u)) 0 0; }
+.jk-chip[data-f='2'] .jk-mouth { width: calc(5 * var(--u)); height: var(--u); border-radius: calc(2 * var(--u)) calc(2 * var(--u)) 0 0; }
+.jk-chip[data-f='3'] .jk-mouth { width: calc(5 * var(--u)); height: var(--u); border-radius: 0; }
+.jk-chip[data-f='4'] .jk-mouth { width: calc(6 * var(--u)); height: calc(2 * var(--u)); }
+.jk-chip[data-f='5'] .jk-mouth { width: calc(8 * var(--u)); height: calc(3 * var(--u)); }
+.jk-chip[data-f='6'] .jk-mouth { width: calc(10 * var(--u)); height: calc(4 * var(--u)); }
+/* Calm Mode: a frame the HUD lies with is tinted green instead of passing as true */
+.jk-chip.lie { box-shadow: inset 0 0 0 var(--u) var(--green); }
+.jk-chip.lie .jk-mouth { background: var(--green); }
+/* he talks: the mouth works in three frame steps (a frame swap, never a light flash) */
+.jk-chip.talk .jk-mouth { animation: jk-talk 0.6s steps(3, end) 1; }
+@keyframes jk-talk { 0% { transform: scaleY(1.8); } 50% { transform: scaleY(0.6); } 100% { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .jk-chip.talk .jk-mouth { animation: none; } }

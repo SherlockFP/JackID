@@ -14,6 +14,7 @@
  */
 import { bus } from '@/core/events';
 import { log } from '@/core/log';
+import { t } from '@/core/i18n';
 import { createRng, hashSeed } from '@/core/rng';
 import type { HomePhoneApi, PhoneMessage, PhoneSave, PhoneThread } from './contract';
 import type { DebtRun } from '../run';
@@ -189,6 +190,8 @@ interface State {
   /** Missed Watch tithes in `titheNight` (wave 71): the second and later ones heat the Collector. */
   titheNight: number;
   titheMisses: number;
+  /** The Night Borrowed Face (mir_face) last turned a Heat gain away (0 = none): once a Night. */
+  faceNight: number;
   /** The Evening's visitor (wave 71, src/game/home/knock.ts owns the shape): saved with the phone, so a reload resumes the visit. */
   visit: unknown;
 }
@@ -196,7 +199,7 @@ interface State {
 function freshState(): State {
   return {
     harmony: HARMONY_START, heat: 0, msgs: [], spouseNight: 0, collectorSent: 0, heatMoved: false, margin: 0, warmNight: 0,
-    talkNight: 0, replyNight: 0, dream: null, playing: false, watchKey: '', elapsed: 0, plans: [], titheNight: 0, titheMisses: 0, visit: null,
+    talkNight: 0, replyNight: 0, dream: null, playing: false, watchKey: '', elapsed: 0, plans: [], titheNight: 0, titheMisses: 0, faceNight: 0, visit: null,
   };
 }
 
@@ -314,6 +317,13 @@ export function createPhone(run: DebtRun): HomePhoneApi {
 
   /** Heat moves by `d`. Only a GAIN spoils the quiet Night (a counter's relief must not); the chip hears every real move. */
   function bumpHeat(d: number, why = 'time'): void {
+    // Borrowed Face (mir_face): the Collector misses you once a Night. The first Heat gain of the Night is ignored.
+    const night = run.night();
+    if (d > 0 && st.faceNight !== night && run.boons?.().includes('mir_face')) {
+      st.faceNight = night;
+      bus.emit('floor:note', { text: t('phone.face'), tone: 'good' });
+      return;
+    }
     const before = st.heat;
     st.heat = clamp(st.heat + d, 0, HEAT_MAX);
     if (st.heat > before) st.heatMoved = true;
@@ -513,7 +523,7 @@ export function createPhone(run: DebtRun): HomePhoneApi {
         v: 2, harmony: st.harmony, heat: st.heat, msgs: st.msgs, spouseNight: st.spouseNight,
         collectorSent: st.collectorSent, heatMoved: st.heatMoved, margin: st.margin, warmNight: st.warmNight,
         talkNight: st.talkNight, replyNight: st.replyNight, dream: st.dream, playing: st.playing,
-        watchKey: st.watchKey, elapsed: st.elapsed, plans: st.plans, titheNight: st.titheNight, titheMisses: st.titheMisses,
+        watchKey: st.watchKey, elapsed: st.elapsed, plans: st.plans, titheNight: st.titheNight, titheMisses: st.titheMisses, faceNight: st.faceNight,
         visit: st.visit,
       };
       return JSON.parse(JSON.stringify(save)) as PhoneSave;
@@ -535,6 +545,7 @@ export function createPhone(run: DebtRun): HomePhoneApi {
         next.dream = readDream(s.dream);
         next.titheNight = intIn(s.titheNight, 0, 999, 0);
         next.titheMisses = intIn(s.titheMisses, 0, 99, 0);
+        next.faceNight = intIn(s.faceNight, 0, 999, 0);
         next.visit = s.visit && typeof s.visit === 'object' ? s.visit : null;
         next.playing = s.playing === true;
         next.watchKey = typeof s.watchKey === 'string' ? s.watchKey : '';

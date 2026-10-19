@@ -1,5 +1,5 @@
 // THE PANTHEON in the run (docs/BLESSINGS.md §6, wave B): the first offer at the Night 1 Dawn, a boon kept for the run, the overpay
-// tier shaping the offer, Loki's Dread on the next Night, the boons that act at once (First Penny, Your Name Back), Noticed, Cooked
+// tier shaping the offer, Loki's Ink (the swap and his boons), the boons that act at once (First Penny, Your Name Back), Noticed, Cooked
 // Books, the Night 2 beat at the bar, and an old save with a Night Card, a Starter Draft and an overpay pick loading clean.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -43,21 +43,28 @@ test('a paid Night 1 Dawn opens three cards from three gods; a pick is kept for 
   off(); run.dispose();
 });
 
-test('Loki swaps one card from Night 3; the Dread rides the next Night only', () => {
+test('Loki swaps one card from Night 3 for 1 Ink; his boons cost Ink once, never past his cap, and no Dread', () => {
   const run = RUN.createRun({ seed: 902, mode: 'debt' });
   dawnAt(run, 3);
   assert.equal(run.boonOffer().canSwap, true);
   assert.equal(run.swapBoon(1), true);
-  assert.equal(run.boonOffer().candidates[1].god, 'loki');
+  assert.equal(run.jokerInk(), 1, 'the swap is 1 Ink');
+  const loki = run.boonOffer().candidates[1];
+  assert.equal(loki.god, 'loki');
   assert.equal(run.swapBoon(0), false, 'once an offer');
-  run.pickBoon(run.boonOffer().candidates[0].id);
-  run.index = 3;                       // Night 4, in a Watch
+  assert.equal(run.pickBoon(loki.id), true);
+  assert.equal(run.jokerInk(), 1 + (loki.ink ?? 0), 'a Loki boon pays its Ink when kept');
   run.phase = 'play';
-  const d4 = run.mod('dread.add', 'bigone', 0);
-  run.index = 4;                       // Night 5
-  const d5 = run.mod('dread.add', 'bigone', 0);
-  assert.equal(d4 - d5, 8, 'Dread +8 on the Night after the swap, and gone after it');
+  assert.equal(run.mod('dread.add', 'bigone', 0), 0, 'no Dread from Loki any more');
   run.dispose();
+  const cap = RUN.createRun({ seed: 904, mode: 'debt' });
+  dawnAt(cap, 3);
+  cap.pantheon.restore({ offer: { night: 3, ids: ['loki_grin', 'well_soft'], picks: 1, left: 20, swapped: true } });
+  cap.jokerSys.ink = 7;
+  assert.equal(cap.pickBoon('loki_grin'), false, 'Ink 7 + 3 would bring him home: refused');
+  assert.equal(cap.pickBoon('well_soft'), true);
+  assert.equal(cap.jokerInk(), 7);
+  cap.dispose();
 });
 
 test('First Penny gives its star at once; Your Name Back puts a seal back and is spent', () => {

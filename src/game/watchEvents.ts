@@ -21,7 +21,12 @@ import { WATCH_EVENT_CHANCE } from './data/schedule';
 import { acceptDare as takeDare, dareEffects, DARE_ARM_S, rollDare, settleDare, type DareState } from './events/lastCallDare';
 import { auctionPrice, AUCTION_BID_S, bidAuction as placeBid, closeAuction, rollAuction, tickAuction, type AuctionState, type BidResult } from './events/stageAuction';
 import { rollCrate, tryOpenCrate, type CrateState } from './events/crateDrop';
-import { pickLitMachine, SINGLE_LIGHT_S, singleLightAllows, singleLightEffects } from './events/singleLight';
+import { pickLitMachine, SINGLE_LIGHT_S, singleLightAllows, singleLightEffects, sigilEffects } from './events/singleLight';
+import {
+  DARK_DEPOSIT_BONUS, OMEN_FAVOUR, SIGIL_PULLS, SIGIL_WEIGHT, reflectionReady, sigilReady, tillWeight,
+} from './events/omens';
+import { OWNERS, type GodId } from './pantheon';
+import { t } from '@/core/i18n';
 import { spinWheel, WHEEL_S, wheelEffects, wheelSpinning, type WheelSegment } from './events/wheelSpin';
 import { callCheat as callTable, CROOKED_S, recordPlay as recordTablePlay, rigEffects, rollCrooked, tableIndex, tamsinIntro, tellsAt, type CallResult, type CrookedOutcome, type CrookedState, type CrookedTell } from './events/crookedTable';
 import { NO_FLOOR, type FloorAward, type FloorOutcome, type FloorPt, type WatchFloor } from './events/types';
@@ -83,14 +88,17 @@ export const WATCH_EVENTS: readonly WatchEventDef[] = [
 /**
  * The seeded roll for one Watch: `chance` first, then the weighted event, then its length. `blocked` (a boss Night, or any other
  * event holding the floor) rolls nothing. `avoid` is the event id of the Watch before, in the same Night: it is never rolled twice
- * in a row (wave 47), so the pick is made from the rest. Pure: the caller passes a rng (the module never reads a global one).
+ * in a row (wave 47), so the pick is made from the rest. `weights` multiplies an event's weight (the omens: the Till Rings, the
+ * Sigil). Pure: the caller passes a rng (the module never reads a global one).
  */
-export function rollWatchEvent(rng: Rng, nightNo: number, blocked = false, avoid: string | null = null): { def: WatchEventDef; secs: number } | null {
+export function rollWatchEvent(
+  rng: Rng, nightNo: number, blocked = false, avoid: string | null = null, weights: Readonly<Record<string, number>> = {},
+): { def: WatchEventDef; secs: number } | null {
   if (blocked || nightNo < 2) return null;   // Night 1 has no floor events: the starters, the Bank and the Bell are the whole loop
   if (!rng.chance(WATCH_EVENT_CHANCE)) return null;
   const pool = WATCH_EVENTS.filter((d) => nightNo >= (d.minNight ?? 1) && d.id !== avoid);
   if (pool.length === 0) return null;
-  const def = rng.weighted(pool, pool.map((d) => d.weight));
+  const def = rng.weighted(pool, pool.map((d) => d.weight * (weights[d.id] ?? 1)));   // omens weigh an event up (events/omens.ts)
   return { def, secs: def.fixedS ?? rng.int(WATCH_EVENT_MIN_S, WATCH_EVENT_MAX_S) };
 }
 
@@ -109,6 +117,8 @@ export interface WatchEventView {
 export interface EventAux {
   elapsedS?: number;
   lit?: MachineId | null;
+  /** The Sigil omen (Well Favour 2+): a single_light with no play gate, the lit machine pays x2 for SIGIL_PULLS pulls. */
+  sigil?: boolean;
   seg?: WheelSegment | null;
   auction?: AuctionState;
   crate?: CrateState;
@@ -121,7 +131,11 @@ export interface EventAux {
  * memory of the last rolled event (`last`, in Night `lastNight`), so a reload does not let the same event come back at once.
  * `aux` carries the state of the wave 75 kinds (an older save has none, and those events then degrade).
  */
-export interface WatchEventSave { id: string | null; leftS: number; pulls: number | null; last?: string | null; lastNight?: number; aux?: EventAux; crookedSeen?: boolean }
+export interface WatchEventSave {
+  id: string | null; leftS: number; pulls: number | null; last?: string | null; lastNight?: number; aux?: EventAux; crookedSeen?: boolean;
+  /** Sigils fired in `night`, and the gods whose statue already wept. */
+  sigil?: { night: number; n: number }; wept?: string[];
+}
 
 export interface WatchEventHost {
   /** The Circuit's Hot test, for the pull budget (Lucky Lamp counts only pulls on HOT machines). */
@@ -130,6 +144,12 @@ export interface WatchEventHost {
   touch(): void;
   /** The floor facts the wave 75 events read (open machines, the spotlight, the Lobby spot). Absent = no floor: they degrade. */
   floor?(): WatchFloor;
+  /** A god's Favour 0..3 (the omens read it). Absent = 0. */
+  favour?(god: GodId): number;
+  /** Sum of a pantheon `fx` key over the live boons (`omenTwice`). Absent = 0. */
+  fx?(key: string): number;
+  /** A folded mod hook for the run (`x.crooked.starAdd`, `x.crooked.payMult`). Read at event start, never inside `collect`. */
+  mod?(hook: string, base: number): number;
 }
 
 /** The live event of the most recently begun run (the HUD reads it through `watchEventView`). One run per page. */
@@ -158,6 +178,15 @@ export function watchEventView(): WatchEventView | null { return live?.view() ??
 /** The machine kind that stays lit while SINGLE LIGHT runs, or null (no such event live). The world dims every other light. */
 export function singleLightLit(): MachineId | null { return live?.litMachine() ?? null; }
 
+/** The Lights Die (horror director): while the floor is dark and Ash is at Favour 2+, deposits credit more. */
+let lightsDark = false;
+let current: WatchEvents | null = null;
+export function setLightsDark(on: boolean): void {
+  if (lightsDark === on) return;
+  lightsDark = on;
+  current?.refold();
+}
+
 interface Live { def: WatchEventDef; leftS: number; pulls: number | null; aux: EventAux }
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -174,8 +203,17 @@ export class WatchEvents implements ModProvider {
   private crookedOut: CrookedOutcome[] = [];
   /** Tamsin has explained the Crooked Table once already (she only does it the first time). */
   private crookedSeen = false;
+  /** Sigils fired in `sigilNight`; gods whose weeping statue was already announced. */
+  private sigilNight = 0;
+  private sigilN = 0;
+  private wept = new Set<string>();
 
-  constructor(private readonly host: WatchEventHost) {}
+  constructor(private readonly host: WatchEventHost) { current = this; }
+
+  private favour(g: GodId): number { return this.host.favour?.(g) ?? 0; }
+
+  /** Re-folds the mods (the dark deposit bonus came or went). */
+  refold(): void { this.host.touch(); }
 
   /**
    * Watch start (before `startWatch`): ends any previous event, rolls this Watch's event and announces it. Returns the event or
@@ -188,19 +226,22 @@ export class WatchEvents implements ModProvider {
     const avoid = this.lastNight === nightNo ? this.last : null;
     // DEV force (forceNextWatchEvent): the forced def replaces the seeded roll, and only a Watch that can roll at all takes it
     const forced = forcedNext !== null && !blocked ? WATCH_EVENTS.find((d) => d.id === forcedNext) ?? null : null;
+    const sigil = sigilReady(this.favour('well'), nightNo, this.sigilNight === nightNo ? this.sigilN : 0, (this.host.fx?.('omenTwice') ?? 0) > 0);
+    const weights = { cashier_bonus: tillWeight(this.favour('ledgers')), ...(sigil ? { single_light: SIGIL_WEIGHT } : {}) };
     const roll = forced
       ? { def: forced, secs: forced.fixedS ?? rng.fork(`watchEvent.forced.${nightNo}.${watchIdx}`).int(WATCH_EVENT_MIN_S, WATCH_EVENT_MAX_S) }
-      : rollWatchEvent(rng.fork(`watchEvent.${nightNo}.${watchIdx}`), nightNo, blocked, avoid);
+      : rollWatchEvent(rng.fork(`watchEvent.${nightNo}.${watchIdx}`), nightNo, blocked, avoid, weights);
     this.last = roll ? roll.def.id : null;
     this.lastNight = nightNo;
     if (!roll) return null;
-    const aux = this.prepare(roll.def, rng.fork(`watchEvent.aux.${nightNo}.${watchIdx}`));
+    const aux = this.prepare(roll.def, rng.fork(`watchEvent.aux.${nightNo}.${watchIdx}`), sigil, reflectionReady(this.favour('mirrors'), nightNo));
     if (!aux) return null;
     if (forced) forcedNext = null;   // spent only once the event really starts (a SINGLE LIGHT with no machine open waits)
-    this.cur = { def: roll.def, leftS: roll.secs, pulls: roll.def.pullBudget ?? null, aux };
+    this.cur = { def: roll.def, leftS: roll.secs, pulls: aux.sigil ? SIGIL_PULLS : roll.def.pullBudget ?? null, aux };
     live = this;
     this.host.touch();
     bus.emit('event:start', { id: `watch.${roll.def.id}` });
+    this.omenFor(roll.def, aux, nightNo);
     // Tamsin explains the Crooked Table the first time it ever starts (not on a reload: restore() is silent)
     if (aux.crooked?.intro) {
       for (const l of tamsinIntro()) bus.emit('floor:say', { text: l.text, speaker: l.speaker ?? '', voice: l.voice ?? 'tamsin', source: l.source ?? 'crooked.tamsin' });
@@ -209,12 +250,12 @@ export class WatchEvents implements ModProvider {
   }
 
   /** Rolls the wave 75 state of one event (the seeded part). Null when the event cannot run on this floor. */
-  private prepare(def: WatchEventDef, rng: Rng): EventAux | null {
+  private prepare(def: WatchEventDef, rng: Rng, sigil: boolean, reflection: boolean): EventAux | null {
     const floor = this.floor();
     switch (def.kind ?? 'effects') {
       case 'single': {
         const lit = pickLitMachine(rng, floor);
-        return lit ? { elapsedS: 0, lit } : null;
+        return lit ? { elapsedS: 0, lit, ...(sigil ? { sigil: true } : {}) } : null;
       }
       case 'auction': return { elapsedS: 0, auction: rollAuction(rng) };
       case 'crate': return { elapsedS: 0, crate: rollCrate(rng, floor) };
@@ -222,10 +263,45 @@ export class WatchEvents implements ModProvider {
       case 'dare': return { elapsedS: 0, dare: rollDare(rng) };
       case 'crooked': {
         const crooked = rollCrooked(rng, floor, !this.crookedSeen);
-        if (crooked) this.crookedSeen = true;
+        if (crooked) {
+          this.crookedSeen = true;
+          crooked.starAdd = this.host.mod?.('x.crooked.starAdd', 0) ?? 0;   // Clear Glass (mir_clear)
+          crooked.payMult = this.host.mod?.('x.crooked.payMult', 1) ?? 1;   // Two Sets of Books (duo_twobooks)
+          if (reflection) crooked.late = true;                               // the Late Reflection
+        }
         return crooked ? { elapsedS: 0, crooked } : null;
       }
       default: return { elapsedS: 0 };
+    }
+  }
+
+  /** Loki (or the Compere) says the omen aloud; the director plays its light and sound from `omen:fire`. */
+  private say(kind: 'sigil' | 'till' | 'reflection'): void {
+    bus.emit('omen:fire', { kind });
+    const compere = kind === 'till';
+    bus.emit('floor:say', {
+      text: t(`omen.${kind}`), speaker: t(compere ? 'event.watch.compere.speaker' : 'story.speaker.loki'),
+      voice: compere ? 'compere' : 'loki', source: `omen.${kind}`,
+    });
+  }
+
+  /** An event just started: does it carry an omen? Spoken once, never on a reload. */
+  private omenFor(def: WatchEventDef, aux: EventAux, nightNo: number): void {
+    if (aux.sigil) {
+      if (this.sigilNight !== nightNo) { this.sigilNight = nightNo; this.sigilN = 0; }
+      this.sigilN += 1;
+      this.say('sigil');
+    } else if (def.id === 'cashier_bonus' && this.favour('ledgers') >= OMEN_FAVOUR) this.say('till');
+    else if (aux.crooked?.late) this.say('reflection');
+  }
+
+  /** The Weeping Statue: a god just reached Favour 3, from a boon, a candle or Noticed. Announced once per god. */
+  private weep(): void {
+    for (const g of OWNERS) {
+      if (this.wept.has(g) || this.favour(g) < 3) continue;
+      this.wept.add(g);
+      bus.emit('omen:fire', { kind: 'weeping' });
+      bus.emit('floor:note', { text: t('omen.weeping'), tone: 'info' });
     }
   }
 
@@ -233,6 +309,7 @@ export class WatchEvents implements ModProvider {
 
   /** Watch clock: `dtS` real Watch seconds (cutscenes and the tutorial hold the clock, so the event holds too). */
   tick(dtS: number): void {
+    this.weep();
     const c = this.cur;
     if (!c) return;
     c.aux.elapsedS = (c.aux.elapsedS ?? 0) + dtS;
@@ -328,6 +405,13 @@ export class WatchEvents implements ModProvider {
       this.end();
       return;
     }
+    if (c.aux.sigil) {   // the Sigil counts pulls on the lit machine, HOT or not
+      if (machineId !== c.aux.lit) return;
+      c.pulls = (c.pulls ?? SIGIL_PULLS) - 1;
+      if (c.pulls <= 0) this.end();
+      else this.host.touch();
+      return;
+    }
     if (c.pulls === null || !this.host.isHot(mid)) return;
     c.pulls -= 1;
     if (c.pulls <= 0) this.end();
@@ -374,7 +458,7 @@ export class WatchEvents implements ModProvider {
   /** The play gate of SINGLE LIGHT: with the event live, only the lit machine may be played. True everywhere else. */
   allowsPlay(mid: MachineId): boolean {
     const c = this.cur;
-    if (!c || c.def.kind !== 'single') return true;
+    if (!c || c.def.kind !== 'single' || c.aux.sigil) return true;
     return singleLightAllows(c.aux.lit, mid);
   }
 
@@ -404,6 +488,9 @@ export class WatchEvents implements ModProvider {
 
   /** The active event's effects, owner 0 (the pit). Called by the fold on every query; empty when no event runs. */
   collect(_q: ModQuery, out: ModSource[]): void {
+    if (lightsDark && this.favour('ash') >= OMEN_FAVOUR) {
+      out.push({ kind: 'event', id: 'omen.dark', owner: 0, effects: [{ hook: 'deposit.bonus', op: 'add', value: DARK_DEPOSIT_BONUS }], order: out.length });
+    }
     const c = this.cur;
     if (!c) return;
     out.push({ kind: 'event', id: `watch.${c.def.id}`, owner: 0, effects: this.effectsOf(c), order: out.length });
@@ -413,7 +500,7 @@ export class WatchEvents implements ModProvider {
   private effectsOf(c: Live): ModEffect[] {
     const a = c.aux;
     switch (c.def.kind ?? 'effects') {
-      case 'single': return a.lit ? singleLightEffects(a.lit) : [];
+      case 'single': return a.lit ? (a.sigil ? sigilEffects(a.lit) : singleLightEffects(a.lit)) : [];
       case 'wheel': return a.seg ? wheelEffects(a.seg) : [];
       case 'dare': return a.dare ? dareEffects(a.dare) : [];
       case 'crooked': return a.crooked ? rigEffects(a.crooked) : [];
@@ -427,7 +514,7 @@ export class WatchEvents implements ModProvider {
   private infoOf(c: Live): WatchEventView['info'] {
     const a = c.aux;
     switch (c.def.kind ?? 'effects') {
-      case 'single': return { key: 'event.watch.single_light.hud' };
+      case 'single': return a.sigil ? { key: 'event.watch.single_light.sigil', vars: { n: Math.max(0, c.pulls ?? 0) } } : { key: 'event.watch.single_light.hud' };
       case 'auction': {
         const au = a.auction;
         if (!au || au.phase !== 'bid') return null;
@@ -460,9 +547,10 @@ export class WatchEvents implements ModProvider {
   /** The save: the live event, or (between Watches) only the memory of the last one. Null when there is nothing to keep. */
   snapshot(): WatchEventSave | null {
     const c = this.cur;
-    if (!c && this.last === null) return null;
+    if (!c && this.last === null && this.wept.size === 0 && this.sigilN === 0) return null;
     return {
       id: c ? c.def.id : null, leftS: c ? c.leftS : 0, pulls: c ? c.pulls : null, last: this.last, lastNight: this.lastNight, crookedSeen: this.crookedSeen,
+      sigil: { night: this.sigilNight, n: this.sigilN }, wept: [...this.wept],
       ...(c ? { aux: clone(c.aux) } : {}),
     };
   }
@@ -473,6 +561,9 @@ export class WatchEvents implements ModProvider {
     this.last = s.last ?? null;
     this.lastNight = s.lastNight ?? 0;
     this.crookedSeen = !!s.crookedSeen;
+    this.sigilNight = s.sigil?.night ?? 0;
+    this.sigilN = s.sigil?.n ?? 0;
+    this.wept = new Set(s.wept ?? []);
     const def = s.id !== null ? WATCH_EVENTS.find((d) => d.id === s.id) : undefined;
     if (!def) return;
     this.cur = { def, leftS: s.leftS, pulls: s.pulls, aux: s.aux ? clone(s.aux) : { elapsedS: 0 } };

@@ -109,7 +109,6 @@ const UNCOMMON: CharmDef[] = [
   charm('brass_alarm', 'uncommon', 18, null, '', ['Brass Alarm Bell', 'Each Bell: +1 Ticket and +4 × SI coins'], ['Pirinç Alarm Zili', 'Her zilde +1 Bilet ve +4 × SI jeton'], []),
   charm('porcelain_pig', 'uncommon', 18, 'LEDGER', 'N2', ['Porcelain Pig', 'Each Bell: +4% of pocket (cap 40 × SI)'], ['Porselen Domuz', 'Her zilde cebin %4\'ü (en fazla 40 × SI)'], []),
   charm('bargain_coupon', 'uncommon', 14, null, '', ['Bargain Coupon', 'The first charm you buy each intermission costs −30%'], ['Pazarlık Kuponu', 'Her ara evredeki ilk tılsım %30 indirimli'], [fx('x.shop.discountFirst', 'add', 0.3)]),
-  charm('votive_candle', 'uncommon', 16, null, 'N4', ['Votive Candle', 'Moth Shrine odds 85/15; at Dread 50+ luck +3'], ['Adak Mumu', 'Güve Türbesi 85/15; Korku 50+ iken şans +3'], [fx('x.buff.shrineOdds', 'set', 0.85), fx('x.votive.luckAtDread', 'add', 3)]),
   charm('dowsing_rod', 'uncommon', 18, 'CURIOS', 'N3', ['Dowsing Rod', 'Mines marks one safe tile; Shell palm glints earlier'], ['Su Bulma Çubuğu', 'Mayında bir güvenli kare işaretlenir'], [fx('m.mines.scanner', 'add', 1)]),
   charm('pawn_ticket', 'uncommon', 12, null, '', ['Pawn Ticket', 'Charms sell for 70% of the price paid'], ['Rehin Bileti', 'Tılsımlar ödenen fiyatın %70\'ine satılır'], [fx('x.shop.sellMult', 'set', 0.7)]),
   charm('holy_water', 'uncommon', 20, null, 'F3', ['Holy Water Flask', 'Consumable: removes one cursed charm, then breaks'], ['Kutsal Su Şişesi', 'Tek kullanımlık: bir lanetli tılsımı kaldırır'], []),
@@ -173,7 +172,7 @@ const CURSED: CharmDef[] = [
   charm('glass_heart', 'cursed', -20, null, 'F3', ['Glass Heart', 'Luck +8; after 6 losses in a row it shatters (−25% pocket)'], ['Cam Kalp', 'Şans +8; üst üste 6 kayıptan sonra kırılır (cebin %25\'i gider)'], luckFx(8, Object.keys(CHARM_LUCK_CAP))),
 ];
 
-/** All 97 charms in GDD table order (false_bottom, rope_ladder and blank_jackid became boons, docs/BLESSINGS.md §1). Behaviours (code) are merged in by `charms/behaviours.ts`. */
+/** All 96 charms in GDD table order (false_bottom, rope_ladder and blank_jackid became boons, docs/BLESSINGS.md §1; votive_candle became shrine Favour). Behaviours (code) are merged in by `charms/behaviours.ts`. */
 export const CHARM_DATA: readonly CharmDef[] = [...COMMON, ...UNCOMMON, ...RARE, ...LEGENDARY, ...CURSED];
 
 /**
@@ -181,7 +180,7 @@ export const CHARM_DATA: readonly CharmDef[] = [...COMMON, ...UNCOMMON, ...RARE,
  * never silently changes the cut. Everything else arrives in v1.1 without system changes. Keep this list in sync with CHARM_DATA.
  */
 export const LAUNCH_CHARM_IDS: ReadonlySet<string> = new Set<string>([
-  // Wave 7: cut as inert (no reader in src after the hook renames; keep the data): stub_spike, rusty_key, tin_whistle, receipt_roll, snake_eye_ring, apology_card, ledger_pen, consolation_ribbon, brass_washer, bargain_coupon, votive_candle, pawn_ticket, holy_water, tonic_belt, mirror_shard, seven_floor_key, perpetual_ledger, card_of_all_suits, unblinking_eye.
+  // Wave 7: cut as inert (no reader in src after the hook renames; keep the data): stub_spike, rusty_key, tin_whistle, receipt_roll, snake_eye_ring, apology_card, ledger_pen, consolation_ribbon, brass_washer, bargain_coupon, pawn_ticket, holy_water, tonic_belt, mirror_shard, seven_floor_key, perpetual_ledger, card_of_all_suits, unblinking_eye.
   // #1–60
   'brass_thimble', 'billiard_chalk', 'loaded_pip', 'greased_axle', 'lead_shot', 'glass_eye', 'piggy_tooth',
   'wax_seal', 'spare_token', 'cracked_watch', 'worn_glove', 'polished_molar', 'dealers_button', 'felt_square',

@@ -16,7 +16,7 @@ import { fmtCoins, t } from '@/core/i18n';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { addTicker, h, modalPanel, uiSfx } from '@/core/ui/widgets';
 import type { DawnReceipt, DebtRun } from './run';
-import { FAVOUR_MAX, LOKI_SWAP_DREAD, OFFER_TIMEOUT_SEC, type BoonDef } from './pantheon';
+import { FAVOUR_MAX, OFFER_TIMEOUT_SEC, type BoonDef } from './pantheon';
 
 const PANEL = 'pantheon';
 /** Keys that take a card, by card index. */
@@ -173,7 +173,7 @@ function showCards(run: DebtRun, fresh: boolean): void {
     const mark = (i: number): void => { marked = i; cards.forEach((c, j) => c.classList.toggle('pt-marked', offer.canSwap && j === i)); };
     if (offer.canSwap) {
       const free = run.boons().includes('loki_coat');
-      h('p', 'pt-swap', box, free ? t('pantheon.swap.free') : t('pantheon.swap', { n: LOKI_SWAP_DREAD }));
+      h('p', 'pt-swap', box, free ? t('pantheon.swap.free') : t('pantheon.swap'));
       cards.forEach((c, i) => { c.addEventListener('pointerenter', () => mark(i)); c.addEventListener('focus', () => mark(i)); });
       mark(0);
     }

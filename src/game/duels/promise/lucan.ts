@@ -52,7 +52,7 @@ export const BREAK_EARLY = 0.12;
 export const MATH_AT = 3;
 
 /** Lucan with the mirror blinded: he reads you by nerve alone. (His calls are written in `lucanCall`.) */
-export const LUCAN: Profile = { id: 'lucan', keep: 1, open: null, favour: [1, 1, 1], react: [0.45, 0.4, 0.15], tell: null };
+export const LUCAN: Profile = { id: 'lucan', keep: 1, open: null, favour: [1, 1, 1], react: [0.45, 0.4, 0.15], tell: null, echo: 0 };
 
 export type PRAction =
   | { k: 'promise'; hand: Hand }

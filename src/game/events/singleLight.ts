@@ -7,6 +7,7 @@ import type { Rng } from '@/core/rng';
 import type { MachineId } from '@/core/types';
 import type { ModEffect } from '@/game/modifiers.types';
 import { NO_FLOOR, type WatchFloor } from './types';
+import { SIGIL_MULT } from './omens';
 
 export const SINGLE_LIGHT_S = 40;
 export const SINGLE_LIGHT_MULT = 1.5;
@@ -22,6 +23,11 @@ export function pickLitMachine(rng: Rng, floor: WatchFloor = NO_FLOOR): MachineI
 /** The lit machine's payout bonus for the event's life (scoped, so no other machine gets it). */
 export function singleLightEffects(lit: MachineId): ModEffect[] {
   return [{ hook: 'payout.mult', op: 'mult', value: SINGLE_LIGHT_MULT, scope: { machines: [lit] } }];
+}
+
+/** The Sigil omen's version: the lit machine pays x2 and nothing else is gated (omens.ts). */
+export function sigilEffects(lit: MachineId): ModEffect[] {
+  return [{ hook: 'payout.mult', op: 'mult', value: SIGIL_MULT, scope: { machines: [lit] } }];
 }
 
 /** The play gate: with the event live, only the lit machine may be played. No lit machine means no gate (degrade). */

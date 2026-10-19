@@ -94,5 +94,7 @@ import './viewmodel.test.mjs';
 import './pantheon.test.mjs';
 import './pantheon.run.test.mjs';
 import './joker.test.mjs';
+import './joker.run.test.mjs';
 import './dreadAdd.test.mjs';
 import './bonds.test.mjs';
+import './omens.test.mjs';

@@ -6,7 +6,7 @@ import { registerStrings, t } from '@/core/i18n';
 import { h } from '@/core/ui/widgets';
 import { innerLine } from '@/core/ui/manga/inner';
 import { createFlow, type Flow, type FlowResult, type FlowView, type Ref, type Stake } from './flow';
-import type { Hand } from './rules';
+import type { EchoCtx, Hand } from './rules';
 import strings from './promise.strings';
 import './promise.css';
 
@@ -17,6 +17,8 @@ export interface KitchenDeps {
   parent: HTMLElement;
   seed: number;
   stake: Stake;
+  /** Set = the N8 wager (the story's trust in Ada's echo); the stake is then her name. */
+  wager?: EchoCtx;
   /** The first-person hand pose (viewmodel `rpsRock` / `rpsPaper` / `rpsScissors`). */
   playHand(h: Hand): void;
   done(r: FlowResult): void;
@@ -50,6 +52,9 @@ export function openKitchen(d: KitchenDeps): Kitchen {
     b.addEventListener('click', () => flow.press(i + 1));
     return b;
   });
+  const me = h('button', '', keys, `4 ${t('promise.metoo')}`);
+  me.type = 'button';
+  me.addEventListener('click', () => flow.press(4));
   const fin = h('button', '', keys, t('promise.continue'));
   fin.type = 'button';
   fin.addEventListener('click', () => flow.confirm());
@@ -62,12 +67,14 @@ export function openKitchen(d: KitchenDeps): Kitchen {
     lines.textContent = '';
     for (const l of v.lines) h('div', '', lines, text(l));
     for (const b of btns) b.disabled = !v.pick;
+    me.disabled = !(v.pick && v.head?.key === 'promise.turn.throw.ada') || !!d.wager;
+    me.hidden = v.finish || !!d.wager;
     fin.hidden = !v.finish;
     for (const b of btns) b.hidden = v.finish;
     hint.textContent = t('promise.keys');
   };
 
-  const flow: Flow = createFlow({ seed: d.seed, stake: d.stake }, {
+  const flow: Flow = createFlow({ seed: d.seed, stake: d.stake, wager: d.wager }, {
     render,
     inner: (key) => innerLine(t(key)),
     playHand: d.playHand,
@@ -78,6 +85,7 @@ export function openKitchen(d: KitchenDeps): Kitchen {
     if (e.repeat) { e.preventDefault(); e.stopImmediatePropagation(); return; }
     const k = e.key;
     if (k === '1' || k === '2' || k === '3') flow.press(Number(k));
+    else if (k === '4') flow.press(4);
     else if (k === 'e' || k === 'E' || k === 'Enter' || k === ' ') flow.confirm();
     else if (k === 'Escape') flow.leave();
     else return;

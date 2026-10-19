@@ -25,6 +25,7 @@ import { dawnPlan } from '@/game/pace';
 import { watchEventView } from '@/game/watchEvents';
 import { compereLine } from '@/game/events/compere';
 import { subtitles } from '@/core/ui/subtitles';
+import { grinChip } from '@/core/ui/manga/joker';
 import { presetRevealed, revealed, ticketsShown } from './hud/disclose';
 import { STAKE_PRESET_KEYS } from '@/machines/_base/stakePresets';
 import type { BankView, DebtRun, NextQuotaPreview, OvershootView } from '@/game/run';
@@ -274,6 +275,9 @@ export function createHud(): Hud {
   h('span', 'lbl', luckEl, t('luck.label'));
   const luckStars = h('span', 'stars', luckEl, '');
   const luckBonus = h('span', 'bonus', luckEl, '');
+  // LOKI (docs/JOKER.md §6): the corner of your card beside the stars, his grin in seven frames and no number
+  const grin = grinChip(luckEl);
+  disposers.push(() => grin.dispose());
   let luckRun: unknown = null;
   let luckKey = '';
   const luckText = (s: number): string => {
@@ -303,9 +307,11 @@ export function createHud(): Hud {
     luckEl.classList.toggle('hidden', !shown);
     if (!run) return;
     const s = run.luckStars?.() ?? 0;
-    const key = String(s);
+    const g = (run as Partial<DebtRun>).jokerGrin?.() ?? { frame: 3, lie: false };
+    const key = `${s}|${g.frame}|${g.lie}`;
     if (key === luckKey) return;
     luckKey = key;
+    grin.set(g.frame, g.lie);
     luckStars.textContent = s < 0 ? `${'☆'.repeat(LUCK_MAX)} −${-s}` : '★'.repeat(s) + '☆'.repeat(LUCK_MAX - s);
     luckBonus.textContent = luckText(s);
     luckEl.classList.toggle('neg', s < 0);

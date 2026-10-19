@@ -94,12 +94,14 @@ import pullsStrings from './pulls.strings';
 import bankStrings from './bank.strings';
 import runStrings from './run.strings';
 import { houseMoodProvider } from './houseMood';
-import { Pantheon, boonDef, type GodId, type OfferTier, type PantheonOfferView, type PantheonSave } from './pantheon';
+import { LOKI_SWAP_INK, Pantheon, boonDef, type GodId, type OfferTier, type PantheonOfferView, type PantheonSave } from './pantheon';
 import pantheonStrings from './pantheon.strings';
 import { WatchTithe, type TitheResult, type TitheSave, type TitheView } from './checkpoints';
 import checkpointStrings from './checkpoints.strings';
 import { Spotlight, isSpotlightEligible, spotlightStartLine, type SpotlightSave, type SpotlightView } from './spotlight';
 import { WatchEvents, type WatchEventSave } from './watchEvents';
+import { Joker, type JokerEvent, shownFrame, grinFrame } from './joker/joker';
+import type { WhisperCtx } from './joker/whispers';
 import { sheetFromOutcome, sheetFromTells, type CallResult, type CrookedTell } from './events/crookedTable';
 import type { FloorAward, WatchFloor } from './events/types';
 import type { EventBannerShow } from './buffs/banner';
@@ -290,6 +292,8 @@ const AUDIT_NIGHT = 7;
 const AUDIT_TAX = 0.2;
 /** Machine id used for run-level modifier queries (no machine). */
 const RUN_MACHINE = 'run';
+/** LOKI: a lie call counts this long after his line starts (JOKER §2.1 says 3 s; his line of up to 8 words types in about 1 s). */
+const JOKER_CALL_S = 4;
 
 declare module '@/core/events' {
   interface GameEvents {
@@ -310,6 +314,8 @@ declare module '@/core/events' {
     'run:tithe': { pid: PlayerId; state: 'met' | 'missed'; watch: number; target: number; earned: number; shortfall: number; tickets: number };
     /** A Night starts (its first Watch begins): the grand casino props take the Night's light show from this. `night` is 1-based. */
     'night:begin': { night: number };
+    /** LOKI dares you (once a Night, at a seat): the voice asks, and the answer comes back through `jokerDare`. */
+    'joker:dare': { night: number };
   }
 }
 /** One of the biggest wins of the run (the jackpot wall reads the four largest): the machine kind and the credited coins. */
@@ -451,8 +457,9 @@ export interface RunExt {
   hollowRefused?: boolean;
   /** THE PANTHEON: the open boon offer, the boons kept, Favour. Optional. Older saves' `nightCards`, `starter` and `overpays` are dropped. */
   pantheon?: PantheonSave;
-  /** Loki's swap: the Dread it costs, for the printed Night `night` only (Ink once docs/JOKER.md ships). Optional. */
-  lokiDread?: { night: number; n: number };
+  /** LOKI (docs/JOKER.md): Trust, Ink and his limits (`Joker.snapshot`), and whether his lift-mirror line was said. Optional. */
+  joker?: unknown;
+  lokiMet?: boolean;
   /** Per-Watch floor event (wave 43): the live event and its time left. Optional: a save between Watches has none. */
   watchEvent?: WatchEventSave | null;
   /** THE EVENING (wave 69): the Home stage, the lights and chain, and the phone's slice. Optional: older saves and online runs have none. */
@@ -530,8 +537,21 @@ export interface DebtRun extends RunApi {
   boonOffer(): PantheonOfferView | null;
   /** Keep one boon of the open offer for the rest of the run. False when closed or the id is not on offer. */
   pickBoon(id: string): boolean;
-  /** Loki's swap (Night 3+, once an offer): card `index` becomes one of his. Costs Dread next Night. False when refused. */
+  /** Loki's swap (Night 3+, once an offer): card `index` becomes one of his. Costs Ink. False when refused (or past his cap). */
   swapBoon(index: number): boolean;
+  // ── LOKI (docs/JOKER.md §3, wave J2): the voice ──
+  /** Ask him about what is in front of you (Ink +1). False when there is nothing to ask about or he has nothing to say. */
+  jokerAsk(): boolean;
+  /** Call his last line a lie (within a few seconds of it). False when there is nothing to call. */
+  jokerCall(): boolean;
+  /** Answer tonight's dare. */
+  jokerDare(accept: boolean): void;
+  /** The session reports a place he talks about: a Crooked Table under foot (`id` the table), or null when the player left it. */
+  jokerMoment(ctx: 'crooked' | null, id?: string): void;
+  /** The card chip: the grin frame shown (0..6) and whether it lies (Ink 6+, one glance in three). */
+  jokerGrin(): { frame: number; lie: boolean };
+  /** His Ink 0..10 (Dread reads `inkDread` of it). */
+  jokerInk(): number;
   /** The offer panel is on screen: OPEN THE FLOOR waits for a pick (or the panel's timer) instead of taking the leftmost. */
   setBoonGate(on: boolean): void;
   /** The boons kept this run, in the order taken. */
@@ -999,8 +1019,19 @@ class Run implements DebtRun {
   private readonly pantheon: Pantheon;
   /** The offer panel is on screen: the lever waits for a pick (headless runs settle at the lever). */
   private boonGate = false;
-  /** Loki's swap Dread, for printed Night `night` only. */
-  private lokiDread = { night: 0, n: 0 };
+  /** LOKI (docs/JOKER.md): his pure rules, saved in `ext.joker`. The run calls beginNight / beginWatch / dawn and emits his events. */
+  private readonly jokerSys: Joker;
+  /** Where he may be asked right now (the last place he spoke about), or null. */
+  private jokerHere: { ctx: WhisperCtx; fact?: string } | null = null;
+  /** The moments he already spoke about this Watch (`ctx:id`): one moment, one tip. */
+  private readonly jokerSaid = new Set<string>();
+  /** Run seconds of his last line (a lie call counts within JOKER_CALL_S of it). */
+  private jokerLast = Number.NEGATIVE_INFINITY;
+  /** The grin frame on the card chip, re-rolled each time he moves (one glance). */
+  private grin = { frame: 3, lie: false };
+  private grinN = 0;
+  /** His lift-mirror line was said this run. */
+  private lokiMet = false;
   /** Per-Watch floor event (wave 43): rolled at each Bell, ticked on the Watch clock, saved mid-Watch. */
   private readonly watchEv: WatchEvents;
   /** The Crooked Table's Tally Sheet lines already sent for the live event (a line goes out once per wording). */
@@ -1057,8 +1088,6 @@ class Run implements DebtRun {
         const effs: ModEffect[] = [];
         const favour = nightDef(this.index).favour;
         if (favour !== 1) effs.push({ hook: 'payout.mult', op: 'mult', value: favour });
-        // shortcut: Loki's swap costs Dread for the next Night; it costs Ink once docs/JOKER.md ships
-        if (this.lokiDread.night === this.index + 1 && this.lokiDread.n > 0) effs.push({ hook: 'dread.add', op: 'add', value: this.lokiDread.n });
         if (isWitchingWatch(this.watches, this.watch)) {
           effs.push({ hook: 'payout.mult', op: 'inc', value: 0.05 });
           effs.push({ hook: 'dread.add', op: 'add', value: 10 });
@@ -1071,10 +1100,18 @@ class Run implements DebtRun {
 
     this.circuit = this.makeCircuitView();
     this.modsImpl.register(this.makeCircuitProvider());
-    this.watchEv = new WatchEvents({ isHot: (m) => this.circ.isHot(m), touch: () => this.modsImpl.touch(), floor: () => this.floorFacts() });
+    this.watchEv = new WatchEvents({
+      isHot: (m) => this.circ.isHot(m), touch: () => this.modsImpl.touch(), floor: () => this.floorFacts(),
+      // the omens read the pantheon (created just below; these run only once a Watch is live)
+      favour: (g) => this.pantheon.favour(g),
+      fx: (k) => this.pantheon.fx(k),
+      mod: (h, base) => this.mod(h as ModHook, RUN_MACHINE, base),   // the omens read only `x.crooked.*` hooks
+    });
     this.modsImpl.register(this.watchEv);
     // A boon kept or spent changes the mods, and the luck meter re-reads its x.luck.* numbers (it never reads mods inside collect).
     this.pantheon = new Pantheon(this.seed, () => { this.modsImpl.touch(); this.luckMeter?.retune(); });
+    this.jokerSys = new Joker(this.seed);
+    this.jokerSys.beginNight(1);
     this.modsImpl.register(this.pantheon);
     this.spotlight = new Spotlight(this.seed, () => this.modsImpl.touch());
     this.modsImpl.register(this.spotlight);
@@ -1207,10 +1244,15 @@ class Run implements DebtRun {
         this.seatedMid = p.on ? p.mid : null;
         this.oddsKey = '';
         if (p.on) { this.emitTilt(p.mid); this.refreshOdds(true); }
+        this.jokerSeat(p.on ? p.mid : null);
       }),
+      // LOKI talks through the window glass at home (never the phone, never the kitchen before Ink 8: J4)
+      bus.on('home:interact', ({ station }) => { if (station === 'window') this.jokerTip('window', `window:${this.index}`); }),
       bus.on('machine:result', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:result', p); }),
       bus.on('machine:round', (p) => { if (p.pid === this.selfId) { this.advanceContracts('machine:round', p); this.boilerRound(p.machineId); } }),
       bus.on('room:opened', () => { this.modsImpl.touch(); this.persistSoon(); this.notify(); }),
+      // the shrine (wave C): a candle lit at a statue raises that god's Favour
+      bus.on('shrine:favour', (e) => { if (e.pid === this.selfId) { this.pantheon.addFavour(e.god); this.persistSoon(); this.notify(); } }),
       bus.on('run:deposit', (p) => { if (p.pid === this.selfId) this.advanceContracts('run:deposit', { machineId: '', amount: p.amount }); }),
       bus.on('jackpot:win', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:jackpot', p); }),
       // a cutscene (the Collector speaks in them) holds the Watch clock
@@ -1936,6 +1978,9 @@ class Run implements DebtRun {
     this.ensureBoss(); // before the clock and pull mods are read below
     // the Watch's floor event (wave 43) rolls before the clock and pull mods are read (cold_snap and the clock/pull effects)
     this.watchEv.begin(this.rng, this.index + 1, this.watch, !!this.bossToday());
+    this.jokerSys.beginWatch(this.watch + 1);
+    this.jokerSaid.clear();
+    this.jokerHere = null;
     if (this.watch === 0) bus.emit('night:begin', { night: this.index + 1 });   // the first Watch of a Night: the grand light show
     this.coolBoiler();
     this.boughtThisWatch = 0;
@@ -1992,6 +2037,7 @@ class Run implements DebtRun {
       if (gain > 0) this.earn('coin', gain, 'charm:elevator_token');
     }
     this.index += 1;
+    this.jokerSys.beginNight(this.index + 1);
     // THE HOME COMPUTER (wave 77): the Evening's limits reset, and the framed photo gives its ŞANS star
     this.homeEcon?.newNight(this.index + 1);
     // THE KEEPSAKE STAKE and THE GHOST SEAT (wave 75): a new Night drops a waiting stake; the copy sits where last Night's losses were
@@ -2095,6 +2141,7 @@ class Run implements DebtRun {
         this.hStage = null; this.hLeft = 0;
         this.beginNight();
         this.emit('home:stage', { stage: null });
+        this.lokiIntro();
         break;
       case 'doomed':
         this.fall('shot');
@@ -2555,6 +2602,7 @@ class Run implements DebtRun {
       return;
     }
     const memory = sealed ? this.takeSeal() : undefined;
+    this.jokerOut(this.jokerSys.dawn());   // after the Dawn checks (J4 settles his promise here first)
     // The Dawn receipt, read once before anything resets: the quota, the deposits that paid it, the interest on them and the tithes
     // the Night's missed Watches added. The Night Cards panel reads this snapshot only (never the live books after the reset below).
     const bankAtDawn = Math.max(0, Math.floor(this.debtPaid));
@@ -2632,6 +2680,9 @@ class Run implements DebtRun {
       const fx = boonDef(id)?.fx;
       if (fx?.starNow) bus.emit('floor:luck', { star: fx.starNow, why: 'well' });   // First Penny: a star now
       if (fx?.sealAdd) { this.restoreSoulMark(); this.pantheon.spend(id); }        // Your Name Back
+      // Loki's boons cost Ink once, when kept. shortcut: an auto-pick past his cap keeps the boon unpaid; skip it in settle() if players find it
+      const ink = boonDef(id)?.ink ?? 0;
+      if (ink > 0) this.jokerOut(this.jokerSys.payInk(ink, id));
     }
     this.emit('run:boon', { pid: this.selfId, state, ids: [...ids] });
     this.notify();
@@ -3608,8 +3659,10 @@ class Run implements DebtRun {
 
   /** A duel opens (first sitting of the Night): the rival's intro scene, with the Rival's Terms on a boss Night. */
   private duelStarting(e: { rivalId: string; night: number; boss: boolean }): Promise<void> | void {
-    if (!rivalById(e.rivalId as RivalId)) return;
-    return playDuelScene(e.rivalId as RivalId, 'intro', this.seed, e.night);
+    // LOKI reads the rival once the intro is off screen (he only knows the hands he sat across: Lucan's watch, Orrin's card)
+    const tip = (): void => this.jokerTip('duel', `duel:${e.rivalId}`, e.rivalId === 'lucan' ? 'watch' : e.rivalId === 'orrin' ? 'card' : '-');
+    if (!rivalById(e.rivalId as RivalId)) { tip(); return; }
+    return playDuelScene(e.rivalId as RivalId, 'intro', this.seed, e.night).finally(tip);
   }
 
   /** A duel is settled: boss rewards, the Audit tax, then the rival's closing scene once the reveal is off screen. */
@@ -3860,7 +3913,7 @@ class Run implements DebtRun {
       ...(this.endingPathId ? { endingPath: this.endingPathId } : {}),
       hollow: { ...this.hollow }, forgiveUntil: this.forgiveUntil, houseWealth: this.houseWealth, obolMult: this.obolMult, hollowRefused: this.hollowRefused,
       ...(this.pantheon.snapshot() ? { pantheon: this.pantheon.snapshot() as PantheonSave } : {}),
-      ...(this.lokiDread.n > 0 ? { lokiDread: { ...this.lokiDread } } : {}),
+      joker: this.jokerSys.snapshot(), ...(this.lokiMet ? { lokiMet: true } : {}),
       ...(this.watchEv.snapshot() ? { watchEvent: this.watchEv.snapshot() } : {}),
       ...(this.spotlight.snapshot() ? { spotlight: this.spotlight.snapshot() as SpotlightSave } : {}),
       ...(this.tithe.snapshot() ? { tithe: this.tithe.snapshot() as TitheSave } : {}),
@@ -3940,22 +3993,99 @@ class Run implements DebtRun {
     return true;
   }
 
+  // ─ LOKI (docs/JOKER.md §3, wave J2): the voice. His rules are pure (joker/); the run times them, emits them and saves them ─
+  /** Emits his events on the bus, re-reads the grin and saves. */
+  private jokerOut(o: { events: readonly JokerEvent[] }): void {
+    if (o.events.length === 0) return;
+    for (const e of o.events) bus.emit(e.name, e.data as never);
+    this.rollGrin();
+    this.persistSoon();
+    this.notify();
+  }
+
+  /** One glance at the card: the true frame, or from Ink 6 one glance in three a wrong one (seeded per glance). */
+  private rollGrin(): void {
+    const j = this.jokerSys;
+    const frame = shownFrame(createRng(hashSeed(this.seed, 'joker.grin', this.grinN++)), j.trust, j.ink);
+    this.grin = { frame, lie: frame !== grinFrame(j.trust) };
+  }
+
+  /** He speaks (a tip, or an Ask). False when he has nothing to say. */
+  private jokerSpeak(req: { ctx: WhisperCtx; fact?: string; ask?: boolean }): boolean {
+    if (this.ended) return false;
+    const w = this.jokerSys.whisper(req);
+    if (!w) return false;
+    this.jokerLast = this.elapsed;
+    this.jokerOut(w);
+    return true;
+  }
+
+  /** A moment he talks about (JOKER §3): askable from now on, and one tip per moment a Watch (his tips per Watch still cap it). */
+  private jokerTip(ctx: WhisperCtx, key: string, fact?: string): void {
+    this.jokerHere = { ctx, fact };
+    if (this.jokerSaid.has(key)) return;
+    this.jokerSaid.add(key);
+    this.jokerSpeak({ ctx, fact });
+  }
+
+  /** Seated: the bounty board, or a floor machine (cold, or a near miss); and once a Night his dare. Never the cashier, the terminal or the bell. */
+  private jokerSeat(mid: InstanceId | null): void {
+    if (mid === null) { if (this.jokerHere?.ctx !== 'crooked') this.jokerHere = null; return; }
+    const machineId = this.worldLink?.machines().find((m) => m.instance === mid)?.machineId ?? this.circ.machineOf(mid);
+    if (machineId === 'bounty_board') { this.jokerTip('bounty', `bounty:${mid}`); return; }
+    const cat = machineId ? registry.get(machineId)?.def.category : undefined;
+    if (cat === undefined || cat === 'system' || cat === 'party') return;   // the cashier, the Debt Terminal, the bell are not his
+    this.jokerTip('machine', `seat:${mid}`, this.circ.isCold(mid) ? 'cold' : 'near');
+    if (this.inWatch() && this.jokerSys.canDare()) this.emit('joker:dare', { night: this.night() });
+  }
+
+  jokerMoment(ctx: 'crooked' | null, id = ''): void {
+    if (ctx === null) { if (this.jokerHere?.ctx === 'crooked') this.jokerHere = null; return; }
+    this.jokerTip(ctx, `${ctx}:${id}`, 'thumb');
+  }
+
+  jokerAsk(): boolean { return !!this.jokerHere && this.jokerSpeak({ ...this.jokerHere, ask: true }); }
+
+  jokerCall(): boolean {
+    if (this.elapsed - this.jokerLast > JOKER_CALL_S) return false;
+    const r = this.jokerSys.callLiar();
+    this.jokerOut(r);
+    return r.right !== null;
+  }
+
+  jokerDare(accept: boolean): void {
+    // shortcut: taking the dare counts at once, not when the pull is made; check the follow-through when J3 wires his stakes
+    this.jokerOut(this.jokerSys.dare(accept));
+  }
+
+  jokerGrin(): { frame: number; lie: boolean } { return this.grin; }
+  jokerInk(): number { return this.jokerSys.ink; }
+
+  /** His first line, once a run: the first ride down after the prologue, in the lift mirror. */
+  private lokiIntro(): void {
+    if (this.lokiMet) return;
+    this.lokiMet = true;
+    bus.emit('floor:say', { text: t('joker.ui.intro'), speaker: t('story.speaker.loki'), voice: 'loki', source: 'joker' });
+    this.persistSoon();
+  }
+
   // ─ THE PANTHEON (docs/BLESSINGS.md §2): the Dawn offer, the boons kept for the run ─
   boonOffer(): PantheonOfferView | null { return this.pantheon.offerView(); }
 
   setBoonGate(on: boolean): void { this.boonGate = on; }
 
   pickBoon(id: string): boolean {
+    if (!this.jokerSys.canPayInk(boonDef(id)?.ink ?? 0)) return false;   // his boon would bring him home
     if (!this.pantheon.pick(id)) return false;
     this.boonsTaken([id], 'picked');
     return true;
   }
 
   swapBoon(index: number): boolean {
-    const dread = this.pantheon.swap(index);
-    if (dread === null) return false;
-    // shortcut: Loki's swap costs Dread for the next Night; it costs Ink once docs/JOKER.md ships
-    if (dread > 0) this.lokiDread = { night: this.index + 2, n: dread };
+    if (!this.jokerSys.canPayInk(this.pantheon.fx('freeSwap') > 0 ? 0 : LOKI_SWAP_INK)) return false;
+    const ink = this.pantheon.swap(index);
+    if (ink === null) return false;
+    this.jokerOut(this.jokerSys.payInk(ink, 'swap'));
     this.emit('run:boon', { pid: this.selfId, state: 'swap', ids: [] });
     this.persist();
     return true;
@@ -4172,8 +4302,10 @@ class Run implements DebtRun {
     this.hollowRefused = e.hollowRefused === true;
     // Older saves' Night Card, Starter Draft and overpay picks are dropped: only `pantheon` is read (docs/BLESSINGS.md §6, B1).
     this.pantheon.restore(e.pantheon);
-    const ld = e.lokiDread;
-    this.lokiDread = ld && Number.isFinite(ld.night) && Number.isFinite(ld.n) ? { night: ld.night, n: Math.max(0, ld.n) } : { night: 0, n: 0 };
+    // an older save (no slice, or the old `lokiDread`) starts him fresh on this Night
+    if (e.joker) this.jokerSys.restore(e.joker); else this.jokerSys.beginNight(this.index + 1);
+    this.lokiMet = e.lokiMet === true;
+    this.rollGrin();
     this.watchEv.restore(e.watchEvent);
     this.spotlight.restore(e.spotlight);
     this.tithe.restore(e.tithe);

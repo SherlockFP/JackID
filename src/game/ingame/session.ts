@@ -53,6 +53,8 @@ import { applyEffects, effectsOf } from '@/game/hollow/rules';
 import { lordsHooks } from '@/machines/lordstable';
 import { hollowDoor } from '@/world/hollow';
 import { mountPantheonUi } from '@/game/pantheon.ui';
+import { inkDread } from '@/game/joker/joker';
+import { JOKER_ASK_KEY, JOKER_LIAR_KEY, mountJokerVoice } from '@/core/ui/manga/joker';
 import { mountScrounge } from '@/game/scrounge';
 import { mountFood } from '@/game/food';
 import { mountPhoneUi } from '@/game/home/phone.ui';
@@ -119,6 +121,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   // The UI the run's own state asks for. Their disposers run with the session (the phone chip must not outlive it).
   const mounts: Unsub[] = [];
   if (!params.online) mounts.push(mountPantheonUi(run));   // THE PANTHEON: the Dawn boon offer and its receipt (solo)
+  mounts.push(mountJokerVoice({ dare: (yes) => run.jokerDare(yes) }));   // LOKI: his lines, toasts and dare (docs/JOKER.md §6)
   if (run.homeOn) mounts.push(mountPhoneUi(run));
   const self = run.selfId;
   // The Lords' table (the Hollow Door): the duel's end becomes run effects, its spent Tickets come off the run, and the door seals.
@@ -289,7 +292,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       cursedCharms: cursed,
       brightBulbs: Math.max(0, Math.min(4, Math.round(bulbs))),
       // signed on purpose: dread.add is relief when negative and Dread when positive (cursed candy, moth swarm, the draft event, Loki's boons)
-      charmRelief: -run.mod('dread.add', 'run', 0),
+      // LOKI's Ink is a Dread input like a cursed charm (JOKER §2.2: 4 a point), carried until you sleep it off
+      charmRelief: -run.mod('dread.add', 'run', 0) - inkDread(run.jokerInk()),
       luck: run.luck('run', self),
       badRun: run.buffs.has('bad_run', { pid: self }),
     };
@@ -464,11 +468,16 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
 
   // THE FLOOR EVENTS and THE KEEPSAKE STAKE (wave 75), read once per step: K stakes the carried keepsake at the seat, N takes a
   // dare or bids, and E opens a CRATE DROP in reach (the crate reads the player's floor position, not the seat).
+  let atCrooked = false;
   const floorKeys = (): void => {
     const here = tableUnderFoot();
     const marked = here !== null && run.isCrookedTable(here as Parameters<typeof run.isCrookedTable>[0]);
     hud.setCallHint(marked);
     if (marked && app.input.pressed(CALL_CHEAT_ACTION)) run.floorCall(here as Parameters<typeof run.floorCall>[0]);
+    // LOKI: he names a table when you stand at one; O asks him about what is in front of you, L calls his last line a lie
+    if (marked !== atCrooked) { atCrooked = marked; run.jokerMoment(marked ? 'crooked' : null, here ?? ''); }
+    if (app.input.pressed(JOKER_ASK_KEY as Action) && !run.jokerAsk()) app.ui.toast(t('joker.ui.quiet'), 'info', 2);
+    if (app.input.pressed(JOKER_LIAR_KEY as Action)) run.jokerCall();
     if (app.input.pressed(KEEPSAKE_ACTION)) { const seat = world.seat; if (seat) run.keepsakeStake(seat.mid); }
     if (app.input.pressed(FLOOR_ACT_ACTION)) run.floorAct();
     const p = player.pos;
