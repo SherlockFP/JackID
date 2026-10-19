@@ -287,7 +287,7 @@
   position: absolute; left: 50%; bottom: calc(var(--lb) * var(--bar-h) + 34 * var(--u)); transform: translateX(-50%);
   z-index: 6; pointer-events: none; white-space: nowrap; display: none;
   padding: calc(1.5 * var(--u)) calc(3 * var(--u)); background: rgba(8, 8, 8, 0.7); color: #efd67b; letter-spacing: 0.04em;
-  font-family: var(--f-head); font-size: calc(4 * var(--u)); line-height: 1;
+  font-family: var(--f-head); font-size: max(9px, calc(4 * var(--u))); line-height: 1;
 }
 .px-root:has(> .px-prompt.on) > .cap-hint { display: none !important; }
 .px-subtitle {

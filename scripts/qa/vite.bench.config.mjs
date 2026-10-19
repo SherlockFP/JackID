@@ -5,7 +5,8 @@
 import { mergeConfig } from 'vite';
 import base from '../../vite.config.ts';
 
-export default mergeConfig(base, {
+// the root config is a function of the mode (the demo build), so resolve it before merging
+export default async (env) => mergeConfig(typeof base === 'function' ? await base(env) : base, {
   server: {
     hmr: false,
     watch: { ignored: ['**/src/**', '**/scripts/**', '**/docs/**'] },

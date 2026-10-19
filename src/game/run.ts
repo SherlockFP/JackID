@@ -316,6 +316,8 @@ declare module '@/core/events' {
     'room:blown': { zone: string };
     /** Soul Marks changed (wave 25 duels): `left` on the card, `lost` when one was just taken, `blank` at 0. */
     'duel:marks': { left: number; lost: boolean; blank: boolean };
+    /** A duel is settled and its closing scene is done (the demo ends its run on Lucan's, game/demoEnd.ts). */
+    'duel:end': { rivalId: string; night: number };
     /** Back Office exchange done: Tickets in, Obols out. */
     'room:backoffice': { tickets: number; obols: number };
     /** The Settle paid interest into the bank: `amount` coins at `pct` whole percent (the coin sound and the toast). */
@@ -3918,14 +3920,15 @@ class Run implements DebtRun {
       const tax = Math.min(Math.floor(r.net * AUDIT_TAX), Math.floor(this.coins));
       if (tax >= 1 && this.spend('coin', tax, 'duel.audit')) this.afterDuel(() => this.banner?.(t('duelrun.tax', { n: String(tax) }), { color: '#d0d0d0', hold: 5, size: 8 }));
     }
+    const over = (): void => { bus.emit('duel:end', { rivalId: r.rivalId, night: r.night }); };
     if (r.rivalId === 'vell' && r.calledCorrect === true) {
       // Vell's thrown match, called out: the Bench rules the count void and the lift opens for him (his 'won' scene is replaced)
       this.endingPathId = 'vell_release';
       this.afterDuel(() => { void import('./story/duels/ending').then((m) => m.playVellRelease()).then((): void => undefined, (): void => undefined); }, true);
     } else if (rival && !r.drew) {
       const beat = r.won ? 'won' : 'lost';
-      this.afterDuel(() => { void playDuelScene(r.rivalId as RivalId, beat, this.seed, r.night); }, true);
-    }
+      this.afterDuel(() => { void playDuelScene(r.rivalId as RivalId, beat, this.seed, r.night).then(over); }, true);
+    } else this.afterDuel(over);
     this.persist();
     this.notify();
   }

@@ -75,6 +75,28 @@ export const calmNow = (): boolean => { const s = app.save?.data?.settings; retu
 /** A toast with his sigil (green bar, icon.joker); every toast of his goes through here. */
 export function lokiToast(text: string, dur = 2.5): void { (app.ui as UIOverlayX).toast(text, 'loki', dur); }
 
+let keysEl: HTMLElement | null = null;
+/** His three keys as a small strip of chips (jester icon, then ask / call / hand) in the right stack's corner; it fades itself (joker.css). */
+export function showJokerKeys(): void {
+  const root = document.querySelector('.px-root');
+  if (!root) return;
+  if (!keysEl || !keysEl.isConnected) {
+    keysEl = document.createElement('div');
+    keysEl.className = 'jk-keys';
+    keysEl.setAttribute('aria-hidden', 'true');
+    keysEl.addEventListener('animationend', () => keysEl?.classList.remove('on'));
+    root.appendChild(keysEl);
+  }
+  keysEl.replaceChildren(jokerIcon(), ...([['ask', JOKER_ASK_KEY], ['call', JOKER_LIAR_KEY], ['hand', JOKER_HAND_KEY]] as const).map(([id, key]) => {
+    const c = document.createElement('span');
+    c.textContent = `${app.input.keyLabel(key)} ${t(`joker.ui.k.${id}`)}`;
+    return c;
+  }));
+  keysEl.classList.remove('on');
+  void keysEl.offsetWidth;   // restart the fade
+  keysEl.classList.add('on');
+}
+
 /** What the voice needs back from the run. */
 export interface JokerVoiceHost { dare(accept: boolean): void }
 
@@ -88,7 +110,7 @@ export function mountJokerVoice(host: JokerVoiceHost): () => void {
       if (ask) uiSfx('coinDrop', 0.5);   // asking him costs you
       if (hinted) return;
       hinted = true;
-      lokiToast(t('joker.ui.keys', { ask: app.input.keyLabel(JOKER_ASK_KEY), call: app.input.keyLabel(JOKER_LIAR_KEY), hand: app.input.keyLabel(JOKER_HAND_KEY) }), 7);
+      showJokerKeys();
     }),
     // no numbers: a warmer or a colder face, and his Dawn drift is silent
     bus.on('joker:trust', ({ delta, why }) => {
@@ -118,6 +140,7 @@ export function grinChip(parent: HTMLElement): GrinChip {
   const el = document.createElement('span');
   el.className = 'jk-chip';
   el.title = t('joker.ui.chip');
+  el.addEventListener('click', showJokerKeys);   // the keys again, on demand
   el.append(jokerIcon(), Object.assign(document.createElement('i'), { className: 'jk-mouth' }));
   parent.appendChild(el);
   const off = bus.on('joker:whisper', () => {

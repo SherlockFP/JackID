@@ -649,7 +649,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     const pocket = this.ctx.run.wallet();
     const hs = this._riskL?.highStakes ?? false;
     const armed = this._stakeBigArm > 0 ? 'big' : null;
-    const sig = amounts === null ? 'off' : `${this.bet}|${pocket}|${hs}|${armed}|${amounts.safe}|${amounts.bold}|${amounts.big}`;
+    const sig = amounts === null ? 'off' : `${this.bet}|${pocket}|${hs}|${armed}|${amounts.safe}|${amounts.bold}|${amounts.big}|${(this.ctx.input as { device?: string }).device}`;   // the glyphs follow the input device
     if (sig === this._stakeSig) return;
     this._stakeSig = sig;
     if (amounts === null) { this.ctx.events.emit('stake:presets', { mid: this.id, on: false, bet: this.bet, pocket, hs, active: null, armed: null, rows: [] }); return; }
@@ -814,7 +814,10 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       };
       return;
     }
-    this._offLang = this.ctx.events.on('lang:changed', () => { if (!this._disposed) { this._riskL?.onLang(); this.onLang(); } });
+    // the HUD strip repaints on a language change and when the last input device flips (key caps <-> pad glyphs)
+    const repaint = (): void => { if (!this._disposed) { this._riskL?.onLang(); this.onLang(); } };
+    const offs = [this.ctx.events.on('lang:changed', repaint), this.ctx.events.on('input:device', repaint)];
+    this._offLang = () => offs.forEach((f) => f());
     if (import.meta.env.DEV) {
       try { this._validateModel(); } catch (e) { log.warn('machine', `${this.id}: model lint failed`, e); }
     }

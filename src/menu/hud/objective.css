@@ -28,9 +28,9 @@
 .px-root.hud-off .px-tut,
 .px-root.hud-off .px-obj { display: none !important; }
 
-/* A draft, a night card or a modal is open: the guidance boxes step aside (they sit above the root's layers, z 8, and would cover its title). */
-body:has(.sd-root, .nc-root, .px-modal) .px-tut,
-body:has(.sd-root, .nc-root, .px-modal) .px-obj { display: none !important; }
+/* A draft, a night card, a modal or a duel table (Promise, Burning Wager) is open: the guidance boxes step aside (they sit above the root's layers, z 8, and would cover its title). */
+body:has(.sd-root, .nc-root, .px-modal, .pm-table) .px-tut,
+body:has(.sd-root, .nc-root, .px-modal, .pm-table) .px-obj { display: none !important; }
 
 /* The tutorial box and the objective share one corner (seated: the same top). Never both: the box carries the goal while it is up, so a frame where
    the objective had not hidden yet (or the dimmed box under a toast) cannot leave a clipped stub of one behind the other. */
@@ -56,4 +56,4 @@ body:has(.sd-root, .nc-root, .px-modal) .px-obj { display: none !important; }
 }
 .px-wm.off .ar { display: block; }
 .px-root.hud-off .px-wm,
-body:has(.sd-root, .nc-root, .px-modal) .px-wm { display: none !important; }
+body:has(.sd-root, .nc-root, .px-modal, .pm-table) .px-wm { display: none !important; }

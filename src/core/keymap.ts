@@ -10,6 +10,7 @@
  * to the unions, move them into `DEFAULT_BINDINGS` (the compiler will point at the missing keys).
  */
 import type { BindingKey } from './input/types';
+import { isPadCode, padLabel } from './input/pad';
 import { has, t, upper } from './i18n';
 
 export const DEFAULT_BINDINGS: Record<BindingKey, string[]> = {
@@ -59,6 +60,34 @@ export const EXTRA_BINDINGS: Record<string, string[]> = {
 /** Every binding key the service knows (frozen + extra) with its default codes. */
 export const ALL_DEFAULTS: Readonly<Record<string, readonly string[]>> = { ...DEFAULT_BINDINGS, ...EXTRA_BINDINGS };
 
+/**
+ * GAMEPAD table (standard mapping, see input/pad.ts), one entry per key above: A B X Y = Pad0..3, LB RB = 4 5, VIEW START = 8 9,
+ * L3 R3 = 10 11, d-pad = 12..15. `Pad6+n` = LT held + button n, `Pad7+n` = RT held + button n (LT and RT are shifts).
+ * The first code is the glyph the hints show. Walking reads the left stick as analog (the PadLs codes are digital cursors).
+ * Same-layer clashes are tested (padBindings.test.mjs); chat and the debug keys stay keyboard-only.
+ */
+const LT = (n: number): string => `Pad6+${n}`;
+const RT = (n: number): string => `Pad7+${n}`;
+export const DEFAULT_PAD_BINDINGS: Record<string, string[]> = {
+  // ── walk ──
+  fwd: ['PadLsU'], back: ['PadLsD'], left: ['PadLsL'], right: ['PadLsR'],
+  interact: ['Pad0'], crouch: ['Pad1'], fidget: ['Pad2'], toss: ['Pad3'], jump: ['Pad4'], skip: ['Pad4'], use: ['Pad5'],
+  sprint: ['Pad10'], ping: ['Pad11'], pause: ['Pad9'], journal: ['Pad8'], phone: ['Pad12'],
+  give: [LT(0)], place: [LT(1)], emote: [LT(2)], scoreboard: [LT(8)], talk: [LT(11)], answerPhone: [LT(13)],
+  jokerAsk: [LT(12)], callLiar: [LT(14)], jokerHand: [LT(15)],
+  upgrade: [RT(11)], callCheat: [RT(10)], floorAct: [RT(15)], help: [RT(8)], keepsake: [RT(9)],
+  cheer: [RT(12)], shrug: [RT(13)], dance: [RT(14)],
+  phoneOpt1: [RT(0)], phoneOpt2: [RT(1)], phoneOpt3: [RT(2)], phoneReply1: [RT(0)], phoneReply2: [RT(1)], phoneReply3: [RT(2)],
+  chat: [], debug: [], debugColliders: [],
+  // ── machine (seated) ──
+  'm.primary': ['Pad0'], 'm.secondary': ['Pad11'], 'm.exit': ['Pad1'], 'm.alt': ['Pad2'], 'm.confirm': ['Pad3'],
+  'm.up': ['Pad12', 'PadLsU'], 'm.down': ['Pad13', 'PadLsD'], 'm.left': ['Pad14', 'PadLsL'], 'm.right': ['Pad15', 'PadLsR'],
+  'm.betUp': ['Pad5'], 'm.betDown': ['Pad4'], 'm.betMax': [LT(4)], 'm.help': ['Pad10'],
+  'm.collect': [LT(0)], 'm.double': [LT(1)], 'm.clear': [LT(2)], 'm.camera': [LT(3)], 'm.auto': [LT(5)], 'm.fast': [LT(9)],
+  'm.n1': [RT(0)], 'm.n2': [RT(1)], 'm.n3': [RT(2)], 'm.n4': [RT(3)], 'm.n5': [RT(4)], 'm.n6': [RT(5)],
+  'm.n7': [RT(12)], 'm.n8': [RT(13)], 'm.n9': [RT(14)],
+};
+
 export type Layer = 'walk' | 'machine';
 export const layerOf = (key: string): Layer => (key.startsWith('m.') ? 'machine' : 'walk');
 
@@ -68,7 +97,7 @@ export const SEATED_WALK_ACTIONS: ReadonlySet<string> = new Set([
   'keepsake', 'floorAct', 'callCheat', 'jokerAsk', 'callLiar', 'jokerHand',
 ]);
 /** During a cutscene these codes act as `skip` in addition to the user's binding. */
-export const CUTSCENE_SKIP_CODES: readonly string[] = ['Space', 'Enter', 'NumpadEnter', 'Escape'];
+export const CUTSCENE_SKIP_CODES: readonly string[] = ['Space', 'Enter', 'NumpadEnter', 'Escape', 'Pad0', 'Pad9'];
 /**
  * Machine actions that may auto-repeat while their key is held (bet ladder, cursor / aim movement). Everything else
  * (primary, confirm, collect, number buttons, device letters …) fires once per physical press: key-repeat never
@@ -110,6 +139,7 @@ const SYMBOLS: Record<string, string> = {
 
 /** Human label for a key code, localized for special keys ("BOŞLUK"). */
 export function codeLabel(code: string): string {
+  if (isPadCode(code)) return padLabel(code);   // a pad code reads as its glyph ("A", "LT+X")
   const named = `ui.key.${code}`;
   if (has(named)) return t(named);
   if (SYMBOLS[code]) return SYMBOLS[code];

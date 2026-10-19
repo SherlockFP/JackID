@@ -11,9 +11,9 @@
 /* top: goal + state banner */
 .shud-top { position: absolute; top: calc(var(--su) * 3); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 2); }
 .shud-goal { font-size: calc(var(--su) * 7); line-height: 1; padding: calc(var(--su) * 1) calc(var(--su) * 3); background: rgba(6, 9, 6, 0.82); color: #f4f0dc; max-width: 92%; text-align: center; }
-.shud-goal.shud-goal-in { display: block; margin-top: calc(var(--su) * 1.5); padding: 0; font-size: calc(var(--su) * 5); background: none; box-shadow: none; color: #c9c4a8; max-width: none; }
+.shud-goal.shud-goal-in { display: block; margin-top: calc(var(--su) * 1.5); padding: 0; font-size: max(9px, calc(var(--su) * 5)); background: none; box-shadow: none; color: #c9c4a8; max-width: none; }
 .shud-state { padding: calc(var(--su) * 2) calc(var(--su) * 5); border: calc(var(--su) * 1.5) solid currentColor; text-align: center; min-width: calc(var(--su) * 60); }
-.shud-state-t { display: block; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 5); line-height: 1.2; letter-spacing: 0; }
+.shud-state-t { display: block; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--su) * 5)); line-height: 1.2; letter-spacing: 0; }
 .shud-state-s { display: block; font-size: calc(var(--su) * 7); line-height: 1; margin-top: calc(var(--su) * 1); color: #f4f0dc; }
 
 /* result callout: hangs under the goal / state stack (--seat-top-b, set by seatHud.ts), never over the machine screen.
@@ -26,15 +26,15 @@
   transition: transform 0.12s steps(3), opacity 0.12s steps(3);
 }
 .shud-result.on { opacity: 1; transform: translate(-50%, 0) scale(1); }
-.shud-result-t { display: block; font-size: calc(var(--su) * 4.5); line-height: 1.1; }
+.shud-result-t { display: block; font-size: max(9px, calc(var(--su) * 4.5)); line-height: 1.1; }
 .shud-result-a { display: block; font-size: calc(var(--su) * 10); line-height: 1.1; color: #f4f0dc; }
 .shud-result.r-win .shud-result-a, .shud-result.r-blackjack .shud-result-a, .shud-result.r-even .shud-result-a { color: currentColor; }
 /* losses and pushes stay small: one quiet line, no big number */
 .shud-result.r-lose, .shud-result.r-bust, .shud-result.r-surrender, .shud-result.r-push {
   flex-direction: row; gap: calc(var(--su) * 3); padding: calc(var(--su) * 1.5) calc(var(--su) * 4); border-width: calc(var(--su) * 1);
 }
-.shud-result.r-lose .shud-result-t, .shud-result.r-bust .shud-result-t, .shud-result.r-surrender .shud-result-t, .shud-result.r-push .shud-result-t { font-size: calc(var(--su) * 4); }
-.shud-result.r-lose .shud-result-a, .shud-result.r-bust .shud-result-a, .shud-result.r-surrender .shud-result-a, .shud-result.r-push .shud-result-a { font-size: calc(var(--su) * 4); }
+.shud-result.r-lose .shud-result-t, .shud-result.r-bust .shud-result-t, .shud-result.r-surrender .shud-result-t, .shud-result.r-push .shud-result-t { font-size: max(9px, calc(var(--su) * 4)); }
+.shud-result.r-lose .shud-result-a, .shud-result.r-bust .shud-result-a, .shud-result.r-surrender .shud-result-a, .shud-result.r-push .shud-result-a { font-size: max(9px, calc(var(--su) * 4)); }
 
 /* bottom: key numbers, then the control bar */
 /* lifted above the HUD's PULLS coin row (hud.css: bottom 10u, about 20u tall), which it used to overlap */
@@ -42,8 +42,8 @@
 .shud-bottom { position: absolute; left: 0; right: 0; bottom: calc(var(--su) * 34); display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 2.5); }
 .shud-nums { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--su) * 2); max-width: 96%; }
 .shud-num { padding: calc(var(--su) * 1.5) calc(var(--su) * 3); background: rgba(6, 9, 6, 0.9); border-top: calc(var(--su) * 1.5) solid #ffd040; min-width: calc(var(--su) * 30); text-align: center; }
-.shud-num-l { display: block; font-size: calc(var(--su) * 5.5); line-height: 1; color: #b8c0a8; }
-.shud-num-v { display: block; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 4.5); line-height: 1.3; margin-top: calc(var(--su) * 1); white-space: nowrap; }
+.shud-num-l { display: block; font-size: max(9px, calc(var(--su) * 5.5)); line-height: 1; color: #b8c0a8; }
+.shud-num-v { display: block; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--su) * 4.5)); line-height: 1.3; margin-top: calc(var(--su) * 1); white-space: nowrap; }
 .shud-ctrl { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--su) * 2); padding: calc(var(--su) * 2); background: rgba(6, 9, 6, 0.92); border: calc(var(--su) * 1) solid #2c3a2c; max-width: 98%; }
 .shud-btn { display: flex; align-items: center; gap: calc(var(--su) * 1.5); padding: calc(var(--su) * 1.2) calc(var(--su) * 2.2); background: #1b261b; border: calc(var(--su) * 1.2) solid #7dff7a; font-size: calc(var(--su) * 6.5); line-height: 1; color: #7dff7a; white-space: nowrap; }
 .shud-btn.primary { background: #ffd040; border-color: #ffd040; color: #080b08; }
@@ -73,8 +73,8 @@
 
 /* THE CIRCUIT: Tilt bulbs (GDD 3.4.3). Four amber bulbs = full-value pulls left; at 0 the red TILT label flickers faster per step. */
 .shud-tilt { display: flex; align-items: center; gap: calc(var(--su) * 3); padding: calc(var(--su) * 1.5) calc(var(--su) * 3); border-top: calc(var(--su) * 1.5) solid #ffb000; }
-.shud-tilt-l { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 4); line-height: 1.2; color: #ffb000; white-space: nowrap; }
-.shud-tilt-lamp { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3.5); line-height: 1.2; color: #5aa0ff; white-space: nowrap; }
+.shud-tilt-l { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--su) * 4)); line-height: 1.2; color: #ffb000; white-space: nowrap; }
+.shud-tilt-lamp { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--su) * 3.5)); line-height: 1.2; color: #5aa0ff; white-space: nowrap; }
 .shud-bulbs { display: flex; gap: calc(var(--su) * 2); }
 .shud-bulbs i { display: block; width: calc(var(--su) * 5); height: calc(var(--su) * 5); border-radius: 50%; background: #3a2a08; box-shadow: inset 0 0 0 calc(var(--su) * 0.5) #000; }
 .shud-bulbs i.on { background: #ffb000; box-shadow: inset 0 0 0 calc(var(--su) * 0.5) #000, 0 0 calc(var(--su) * 2) #ffb000; }

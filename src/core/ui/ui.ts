@@ -1057,6 +1057,7 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     if (mhSpec) { mhSig.hints = ''; renderHints(mhSpec); renderBet(mhSpec.bet ?? null); syncHudHeight(); }
   }));
   disposers.push(bus.on('input:rebind', refreshKeyLabels));
+  disposers.push(bus.on('input:device', refreshKeyLabels));   // pad glyphs / key caps swap
   disposers.push(bus.on('input:veil', ({ show }) => {
     veilOn = show;
     veilEl.classList.toggle('on', show);

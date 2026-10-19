@@ -12,7 +12,7 @@
 import { app } from '@/core/app';
 import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
-import { ALL_DEFAULTS, codeLabels } from '@/core/keymap';
+import type { BindingKey } from '@/core/input';
 import type { Action } from '@/core/input/types';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { portraitSrc } from '@/core/ui/manga/portrait';
@@ -75,8 +75,7 @@ export function mountPhoneUi(run: DebtRun): () => void {
   let keyLabel = 'T';
 
   const refreshKeyLabel = (): void => {
-    const bound = (app.input.bindings() as Record<string, string[] | undefined>).phone ?? ALL_DEFAULTS.phone;
-    keyLabel = codeLabels(bound, 1)[0] ?? 'T';
+    keyLabel = app.input.keyLabel('phone' as BindingKey);
     chipLabel.textContent = `${t('phone.ui.chip')} [${keyLabel}]`;
   };
 
@@ -280,6 +279,7 @@ export function mountPhoneUi(run: DebtRun): () => void {
     heatStop = app.timers.sim.after(TOAST_S, () => { b.remove(); if (heatToast === b) heatToast = null; });
   }));
   offs.push(bus.on('home:interact', ({ station }) => { if (station === 'phone') openPhone(); }));
+  offs.push(bus.on('input:device', () => { refreshKeyLabel(); sig = ''; }));   // key cap <-> pad glyph
 
   chip.addEventListener('click', () => { if (open) closePhone(); else openPhone(); });
   refreshKeyLabel();

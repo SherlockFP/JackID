@@ -8,7 +8,7 @@ Steam rules and prices were looked up on 2026-10-19; links are in the Sources se
 (`progression.ts`) plus a Free Casino sandbox with the rest. Duels: Rock, Paper, Promise; The Question; Crooked Table. Loki (the voice that lies with "we"),
 Ada (the girl across the hall), Selim (the bartender), 7 bonds. 3 name seals as lives, boons from the House's owners (Well, Ash, Ledgers, Mirrors).
 9 endings, one hidden. EN and TR. 30 achievements. Procedural, adaptive music (no music licences). Calm Mode and a photosensitivity switch.
-Co-op/Versus (2-8, P2P) exists but is not verified on two real PCs, so the copy below does not sell it. **No gamepad support exists today.**
+Co-op/Versus (2-8, P2P) exists but is not verified on two real PCs, so the copy below does not sell it. Gamepad support is built but not tried on a real pad (see Controller support below).
 
 ---
 
@@ -283,8 +283,8 @@ Steam has no gamerscore; the G stays in-game. Unlocks are not automatic: call `S
 | Topic | Status and plan |
 |---|---|
 | Cloud saves | The save is one JSON string in `localStorage` key `jackid:v1` (`src/core/save.ts`). In Electron that lives in a LevelDB folder, which Auto-Cloud should not sync. Plan: the Electron main process also writes the same string to `%APPDATA%/JackID/save.json`, and a Steam Auto-Cloud root (WinAppDataRoaming) points at it. No Steamworks code needed for Auto-Cloud; set a byte quota and file count in Steamworks. Test a second PC for conflicts. |
-| Controller support | **None.** No Gamepad API anywhere in `src`. Do not tick controller support or Steam Input tags. Launch as keyboard and mouse. A gamepad pass (menus, walking, aiming, machine seats, duels, glyphs, text entry) is real work and the biggest item before any Deck claim. |
-| Steam Deck | Expect "Unknown" or "Playable", not "Verified". Valve needs full default controls with matching glyphs, controller text entry, and a smallest on-screen font of at least 9 px at 1280x800 (12 recommended). Several HUD lines (the odds strip, hint text) are small now, **est.** under 9 px at 800p; measure them. Run the Windows build through Proton first and test the Linux Electron build second; both need a real Deck. |
+| Controller support | **Built, not yet tried on a real pad.** Gamepad API, standard (Xbox) mapping: sticks, buttons, seated actions, menus and panels by d-pad, glyphs follow the last device (`src/core/input/pad.ts`, `DEFAULT_PAD_BINDINGS` in `keymap.ts`). Missing: controller text entry (names, chat) and a real-hardware pass. Do not tick controller support or Steam Input tags until a Deck or pad run is clean. |
+| Steam Deck | Expect "Unknown" or "Playable", not "Verified". Valve needs full default controls with matching glyphs, controller text entry, and a smallest on-screen font of at least 9 px at 1280x800 (12 recommended). Every CSS font-size under 9 px at the default 1280x800 unit is now floored at 9 px (`max(9px, ...)`); text drawn into 3D screens is not covered. Re-measure on a real Deck. Run the Windows build through Proton first and test the Linux Electron build second; both need a real Deck. |
 | Platforms | Windows first (93.95% of Valve's Aug 2026 survey, via a secondary source). Linux build only after Deck testing. |
 
 ### Desktop build: Electron vs Tauri vs NW.js
@@ -308,7 +308,7 @@ The game is a Vite web app (`dist` is 80 MB, `public/assets` 75 MB, mostly asset
 ### Before the store page can go live
 1. **No Steamworks account yet.** Paperwork takes 15 to 30 days and the 30-day wait starts at payment. Everything dates from this. Start now.
 2. **No store-grade art.** No capsules, no logo files beyond the menu marquee, no trailer. The 35 QA shots are Turkish, HUD-heavy, with a pointer-lock prompt and skip bars.
-3. **Cannot claim what we do not have.** No controller support; multiplayer unverified on two real PCs (`HANDOFF.md` item 5; the smoke test used two headless pages). The page must say keyboard and mouse and stay silent on co-op.
+3. **Cannot claim what we do not have.** Controller support untried on a real pad; multiplayer unverified on two real PCs (`HANDOFF.md` item 5; the smoke test used two headless pages). The page must say keyboard and mouse and stay silent on co-op.
 4. **Compliance text is undone:** content survey, gambling and "no real money" wording, AI-content disclosure (what the AI-written text and art count as), and the Turkey legal question.
 5. **Two claims need a decision.** The brief says Northern Cyprus and late-Soviet decay, but nothing in the shots or docs says Cyprus; the art reads Turkish-Mediterranean 1970s. Either put a sign, a ferry ticket or a lira note on screen, or keep it out of copy (this kit does). And Ada in the game is a pink suit with a ponytail, while the bible says a mustard cardigan and a low knot with an amber rim. Pick one before the capsule shows her.
 6. The CC0 epic track is not in the repo or `ASSETS.md`.

@@ -31,7 +31,10 @@ import type {
   Action, BindingKey, Input, InputMode, MachineAction, MachineInputEvent, MachineSink,
 } from './input/types';
 import {
-  ALL_DEFAULTS, BUFFERABLE_MACHINE_ACTIONS, CUTSCENE_SKIP_CODES, MODAL_SWALLOWED_ACTIONS, MODAL_WALK_ACTIONS, MODIFIER_CODES,
+  PAD_LOOK_RAD_S, PAD_REPEAT_DELAY_S, PAD_REPEAT_S, PadState, isPadCode, lookCurve, padDomKey, type PadSnapshot,
+} from './input/pad';
+import {
+  ALL_DEFAULTS, BUFFERABLE_MACHINE_ACTIONS, DEFAULT_PAD_BINDINGS, CUTSCENE_SKIP_CODES, MODAL_SWALLOWED_ACTIONS, MODAL_WALK_ACTIONS, MODIFIER_CODES,
   REPEATABLE_MACHINE_ACTIONS, RESERVED_CODES, SEATED_WALK_ACTIONS, TAP_ONLY_CODES, codeLabel,
 } from './keymap';
 import { bus } from './events';
@@ -50,6 +53,8 @@ declare module './events' {
     'input:rebind': { key: string };
     /** The UI overlay gained / lost a modal-like surface (modal, choice-with-focus, flagged panel). */
     'ui:blocking': { blocking: boolean };
+    /** The last input device changed ('kb' = keyboard and mouse, 'pad' = gamepad). Key hints re-read their glyphs. */
+    'input:device': { device: 'kb' | 'pad' };
   }
 }
 
@@ -86,6 +91,10 @@ export interface InputExt extends Input {
   codesOf(key: string): string[];
   /** Every binding key with its codes (frozen + extra, copy). */
   allBindings(): Record<string, string[]>;
+  /** Which device was used last: hints show key caps for 'kb' and pad glyphs for 'pad'. */
+  readonly device: 'kb' | 'pad';
+  /** The gamepad codes of a binding key (copy; the pad table is fixed, not rebindable). */
+  padCodesOf(key: string): string[];
 }
 
 /** Parallax state of the seated camera (radians); advance with {@link stepParallax}. */
@@ -118,6 +127,10 @@ const WHEEL_MOUSE_PX = 50;        // |deltaY| at or above this = a real mouse no
 const WHEEL_STEP_PX = 100;        // trackpad accumulation per notch
 const MAX_LOOK_PX = 500;          // Chromium occasionally reports a huge movementX when the lock toggles
 const EMPTY: readonly string[] = [];
+const NO_MODS: Mods = { shift: false, ctrl: false, alt: false };
+const CLICKABLE = 'button,a[href],summary,[role=button],[role=checkbox],[role=switch],[role=tab],[role=option],input[type=checkbox],input[type=radio],input[type=button],input[type=submit]';
+/** Controls a pad press can take focus (menus, panels): the top modal first, then any marked nav control. */
+const UI_FOCUS = '.px-modals > *:last-child [data-nav], .px-modals > *:last-child button, [data-modal="1"] [data-nav], [data-modal="1"] button, [data-nav]';
 
 function isTextEl(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -170,7 +183,17 @@ class InputImpl implements InputExt {
   private readonly moveOut = { x: 0, z: 0 };
   private readonly lookOut = { dx: 0, dy: 0 };
 
-  constructor(private readonly canvas: HTMLCanvasElement, keybinds: Partial<Record<string, string[]>>) {
+  device: 'kb' | 'pad' = 'kb';
+  private readonly pad = new PadState();
+  private padT = 0;
+  private padRep = new Map<string, number>();   // held pad code -> next auto-repeat (ms)
+  private padLook = { dx: 0, dy: 0 };
+
+  constructor(
+    private readonly canvas: HTMLCanvasElement, keybinds: Partial<Record<string, string[]>>,
+    /** The gamepad source; the page's `navigator.getGamepads` by default (a test or the bench passes a fake). */
+    private readonly getPads: () => ArrayLike<Gamepad | null> = () => (typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : []),
+  ) {
     this.noLock = typeof location !== 'undefined' && new URLSearchParams(location.search).get('nolock') === '1';
     this.dragLook = this.noLock;
     for (const [k, v] of Object.entries(ALL_DEFAULTS)) this.bind[k] = [...v];
@@ -316,7 +339,7 @@ class InputImpl implements InputExt {
   /** Small non-blocking centre hint (never a veil): shown when walk-mode pointer lock was refused, hidden on lock. */
   private setCaptureHint(show: boolean): void {
     // never while seated or gliding into a seat (the seat HUD owns the screen; a refused lock during the glide is not a walk hint)
-    if (show && (this.seatGlide || this.mode !== 'walk' || this.locked)) show = false;
+    if (show && (this.seatGlide || this.mode !== 'walk' || this.locked || this.device === 'pad')) show = false;   // a pad needs no mouse capture
     if (!show && !this.hintEl) return;
     if (!this.hintEl) {
       // position, size and the hide-while-a-prompt-or-toast rule live in ui.css (.cap-hint): small, top centre
@@ -349,7 +372,8 @@ class InputImpl implements InputExt {
 
   private onKey(e: KeyboardEvent, down: boolean): void {
     const code = e.code;
-    if (!code) return;
+    if (!code || (e as unknown as { __pad?: boolean }).__pad) return;   // the pad's own synthetic keys never come back in
+    if (down) this.setDevice('kb');
     if (down) this.phys.add(code); else this.phys.delete(code);
     if (isTextEl(e.target)) return;
     if (down && (e.ctrlKey || e.metaKey || e.altKey || RESERVED_CODES.has(code))) return;   // browser shortcuts
@@ -367,6 +391,7 @@ class InputImpl implements InputExt {
     const code = `Mouse${e.button}`;
     const dragBtn = e.button === 0 || e.button === 2;
     if (down) {
+      this.setDevice('kb');
       if (e.target !== this.canvas || mode === 'ui') return;
       if (mode === 'walk' && !this.locked && !this.seatGlide) {
         // every click while walking unlocked asks for the lock again (a refused auto re-lock needs this gesture)
@@ -392,6 +417,7 @@ class InputImpl implements InputExt {
 
   private onMove(e: MouseEvent): void {
     const mode = this.mode;
+    if (Math.abs(e.movementX) + Math.abs(e.movementY) >= 3) this.setDevice('kb');
     if (this.locked) {
       if (Math.abs(e.movementX) < MAX_LOOK_PX && Math.abs(e.movementY) < MAX_LOOK_PX) { this.pendDx += e.movementX; this.pendDy += e.movementY; }
       return;
@@ -459,7 +485,13 @@ class InputImpl implements InputExt {
     const x = (this.down_.has('right') ? 1 : 0) - (this.down_.has('left') ? 1 : 0);
     const z = (this.down_.has('back') ? 1 : 0) - (this.down_.has('fwd') ? 1 : 0);
     const l = Math.hypot(x, z) || 1;
-    this.moveOut.x = x / l; this.moveOut.z = z / l;
+    let mx = x / l, mz = z / l;
+    if (this.mode === 'walk' && (this.pad.lx || this.pad.ly)) {          // left stick: analog, added to the keys and capped at 1
+      mx += this.pad.lx; mz += this.pad.ly;
+      const m = Math.hypot(mx, mz);
+      if (m > 1) { mx /= m; mz /= m; }
+    }
+    this.moveOut.x = mx; this.moveOut.z = mz;
     return this.moveOut;
   }
   look(): { dx: number; dy: number } {
@@ -506,6 +538,7 @@ class InputImpl implements InputExt {
     return out;
   }
   codesOf(key: string): string[] { return [...(this.bind[key] ?? [])]; }
+  padCodesOf(key: string): string[] { return [...(DEFAULT_PAD_BINDINGS[key] ?? [])]; }
 
   rebind(a: BindingKey, codes: string[]): void {
     const key: string = a;
@@ -527,7 +560,7 @@ class InputImpl implements InputExt {
   }
 
   keyLabel(a: BindingKey): string {
-    const c = this.bind[a]?.[0];
+    const c = (this.device === 'pad' ? DEFAULT_PAD_BINDINGS[a]?.[0] : undefined) ?? this.bind[a]?.[0];   // an action with no pad button keeps its key
     return c ? codeLabel(c) : t('ui.key.none');
   }
 
@@ -538,6 +571,7 @@ class InputImpl implements InputExt {
       if (list) list.push(key); else this.reverse.set(code, [key]);
     };
     for (const [k, codes] of Object.entries(this.bind)) for (const c of codes) add(c, k);
+    for (const [k, codes] of Object.entries(DEFAULT_PAD_BINDINGS)) for (const c of codes) add(c, k);   // the pad's own codes
     add('__pause', 'pause');                    // synthetic: pointer lock lost to Esc
   }
 
@@ -558,7 +592,8 @@ class InputImpl implements InputExt {
 
   // ── step pipeline ───────────────────────────────────────────────────────────────────────────────
   beginFrame(): void {
-    this.availDx += this.pendDx; this.availDy += this.pendDy;
+    this.pollPad();
+    this.availDx += this.pendDx + this.padLook.dx; this.availDy += this.pendDy + this.padLook.dy;
     this.pendDx = 0; this.pendDy = 0;
     if (this.mode === 'machine') {
       if (this.sink?.mouse === 'pick') this.freeLook = this.altHeld();
@@ -579,6 +614,76 @@ class InputImpl implements InputExt {
         for (const p of pq) { try { s.onPointer(p); } catch (e) { log.error('input', 'machine onPointer', e); } }
       }
     }
+  }
+
+  // ── gamepad ─────────────────────────────────────────────────────────────────────────────────────
+  private setDevice(d: 'kb' | 'pad'): void {
+    if (d === this.device) return;
+    this.device = d;
+    if (d === 'pad') this.setCaptureHint(false);
+    bus.emit('input:device', { device: d });
+  }
+
+  private pickPad(): PadSnapshot | null {
+    let list: ArrayLike<Gamepad | null>;
+    try { list = this.getPads() ?? []; } catch { return null; }
+    let any: Gamepad | null = null;
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
+      if (!p || p.connected === false) continue;
+      if (p.mapping === 'standard') return p;
+      any ??= p;
+    }
+    return any;
+  }
+
+  /** Once per frame: pad edges become queued codes (same path as keys), menus get DOM keys, the right stick turns the camera. */
+  private pollPad(): void {
+    const now = performance.now();
+    const dt = this.padT ? Math.min(0.05, Math.max(0, (now - this.padT) / 1000)) : 0;
+    this.padT = now;
+    const mode = this.mode;
+    const edges = this.pad.poll(this.pickPad(), mode !== 'walk');
+    if (this.pad.active) this.setDevice('pad');
+    const send = (code: string, down: boolean, repeat: boolean): void => {
+      this.queue.push({ code, down, repeat, t: now, mods: NO_MODS });
+      this.padKey(code, down, repeat);
+    };
+    for (const c of edges.up) { this.padRep.delete(c); send(c, false, false); }
+    for (const c of edges.down) { this.padRep.set(c, now + PAD_REPEAT_DELAY_S * 1000); send(c, true, false); }
+    for (const c of this.pad.heldCodes()) {
+      const due = this.padRep.get(c);
+      if (due !== undefined && now >= due && !edges.down.includes(c)) { this.padRep.set(c, now + PAD_REPEAT_S * 1000); send(c, true, true); }
+    }
+    this.padLook.dx = this.padLook.dy = 0;
+    if ((mode === 'walk' || mode === 'machine') && (this.pad.rx || this.pad.ry) && dt > 0) {
+      const m = Math.hypot(this.pad.rx, this.pad.ry), f = (lookCurve(m) / m) * PAD_LOOK_RAD_S * dt;
+      const st = app?.save?.data?.settings;
+      const rad = f * (st?.padSens ?? 1), sens = st?.mouseSens ?? 0.0022;   // look() is in mouse px: local.ts multiplies by mouseSens
+      this.padLook.dx = (this.pad.rx * rad) / sens;
+      this.padLook.dy = (this.pad.ry * rad * (st?.padInvertY ? -1 : 1) * (st?.invertY ? -1 : 1)) / sens;
+    }
+  }
+
+  /** Menus, panels and cutscene overlays listen for DOM keys: a pad press becomes the matching key on the focused element. */
+  private padKey(code: string, down: boolean, repeat: boolean): void {
+    const mode = this.mode;
+    if (mode === 'walk' || mode === 'machine' || typeof KeyboardEvent === 'undefined') return;
+    const k = padDomKey(code, mode);
+    if (!k) return;
+    const isArrow = k[0].startsWith('Arrow');
+    if (repeat && !isArrow) return;                                 // only cursor keys auto-repeat
+    const ui = document.getElementById('ui');
+    let ae = document.activeElement;
+    if (mode === 'ui' && down && !repeat && (isArrow || k[0] === 'Tab') && !(ae && ae !== ui && ui?.contains(ae))) {
+      const first = [...(ui?.querySelectorAll<HTMLElement>(UI_FOCUS) ?? [])].find((el) => !(el as HTMLButtonElement).disabled && el.getClientRects().length > 0);
+      if (first) { first.focus({ preventScroll: true }); return; }  // the first press only lands focus on a control
+    }
+    ae = document.activeElement;
+    const ev = new KeyboardEvent(down ? 'keydown' : 'keyup', { code: k[0], key: k[1], repeat, bubbles: true, cancelable: true, shiftKey: code === 'Pad4' });
+    Object.defineProperty(ev, '__pad', { value: true });
+    (ae ?? window).dispatchEvent(ev);
+    if (down && !repeat && k[0] === 'Enter' && !ev.defaultPrevented && ae instanceof HTMLElement && ae.matches(CLICKABLE)) ae.click();   // a key press alone never clicks
   }
 
   endStep(): void {
@@ -616,7 +721,7 @@ class InputImpl implements InputExt {
     if (mode === 'cutscene' && !skipped && (CUTSCENE_SKIP_CODES.includes(r.code) || r.code === '__pause')) this.dispatchWalk('skip', r, mode);
     // unbound at the machine (and not a live seated walk action such as Esc / Tab / F1) → device letters: delivered raw
     if (mode === 'machine' && !machineBound && !walkHandled && !swallowed && !MODIFIER_CODES.has(r.code) && !r.code.startsWith('Mouse')
-        && !r.code.startsWith('Wheel') && r.code !== '__pause' && !(r.down && r.repeat)) {   // device letters never auto-repeat
+        && !r.code.startsWith('Wheel') && !isPadCode(r.code) && r.code !== '__pause' && !(r.down && r.repeat)) {   // device letters never auto-repeat
       this.sendMachine('key', r.down, r.repeat, r);
     }
   }
@@ -745,6 +850,11 @@ export function endCutsceneMode(input: InputExt, home: InputMode): void {
   if (input.baseMode === 'cutscene') input.setMode(home);
 }
 
-export function createInput(canvas: HTMLCanvasElement, keybinds: Partial<Record<string, string[]>> = {}): InputExt {
-  return new InputImpl(canvas, keybinds);
+/** True when the last input was the gamepad (key hints name pad buttons). Works on the frozen `Input` type. */
+export const padActive = (i: Input | undefined): boolean => (i as InputExt | undefined)?.device === 'pad';
+
+export function createInput(
+  canvas: HTMLCanvasElement, keybinds: Partial<Record<string, string[]>> = {}, getPads?: () => ArrayLike<Gamepad | null>,
+): InputExt {
+  return new InputImpl(canvas, keybinds, getPads);
 }

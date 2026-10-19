@@ -39,6 +39,8 @@ const MIN_ASPECT = 4 / 3;
 const MAX_ASPECT = 21 / 9;
 /** Canvas pixel ratio cap: the post pass fills the whole canvas, so 2x DPR costs 4x fill for no visible PSX gain. */
 const PIXEL_RATIO_CAP = 1.5;
+/** How much affine (PS1-style warped) texture mapping mixes into perspective UVs when affine is on: a wobble, not a smear. */
+export const PSX_AFFINE_MIX = 0.3;
 /**
  * Adaptive internal resolution (rungs of `targetHeight`). The user's setting is never touched; the frame drops one
  * rung when the wall-clock frame time stays above SLOW_MS and climbs back after a long calm stretch.
@@ -96,8 +98,9 @@ export function createPsxRenderer(canvas: HTMLCanvasElement, initial: PsxSetting
   function derive(): void {
     const on = settings.enabled;
     uniforms.uPsxSnap.value = on && settings.jitter > 0 ? 1 : 0;
-    uniforms.uPsxAffine.value = on && settings.affine ? 1 : 0;
-    uniforms.uPsxSnapRes.value.copy(lowRes).divideScalar(2 * (1 + 2 * settings.jitter));
+    // a light touch: full affine warped big floor/wall quads past readability and a 4 px snap grid shook everything (client: "unplayable")
+    uniforms.uPsxAffine.value = on && settings.affine ? PSX_AFFINE_MIX : 0;
+    uniforms.uPsxSnapRes.value.copy(lowRes).divideScalar(1 + 2 * settings.jitter);
     psxUniforms.uPsxFogScale.value = 1;                  // draw distance lives in the scene's THREE.Fog (see fog.ts)
     psxUniforms.uPsxLowRes.value.copy(lowRes);
   }

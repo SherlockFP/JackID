@@ -1,5 +1,6 @@
 node_modules
 dist
+dist-demo
 vendor-archives
 
 # QA harness output (screenshots, bench logs) — local evidence, not source

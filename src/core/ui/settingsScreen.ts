@@ -16,7 +16,7 @@ import { app } from '../app';
 import { bus } from '../events';
 import { t } from '../i18n';
 import { log } from '../log';
-import type { InputExt } from '../input';
+import { padActive, type InputExt } from '../input';
 import { actionLabel, layerOf } from '../keymap';
 import { PERFORMANCE_PSX } from '../renderer/perfPreset';
 import type { PsxSettings } from '../renderer/types';
@@ -118,6 +118,8 @@ function controlsPage(c: Ctx): void {
   slide(c, 'fov', t('settings.fov'), {
     min: 60, max: 95, step: 1, value: S().fov, format: (v) => `${v}°`, apply: (v) => put('fov', v),
   });
+  slide(c, 'padSens', t('settings.padSens'), { min: 0.5, max: 2, step: 0.1, value: S().padSens, format: (v) => `${Math.round(v * 100)}%`, apply: (v) => put('padSens', Math.round(v * 10) / 10) });
+  flag(c, 'padInvertY', t('settings.padInvertY'), S().padInvertY, (v) => put('padInvertY', v));
 
   const keysHead = head(c, t('settings.sec.keys'));
   keysHead.dataset.anchor = 'keys';
@@ -273,7 +275,7 @@ function mount(el: HTMLElement, o: SettingsOpts): () => void {
     scrollEl.classList.add('st-scroll');
     bodyEl = h('div', 'st-body', scrollEl);
     const foot = h('div', 'st-foot', fr.body);
-    h('div', 'hint', foot, t('ui.keyhint'));
+    h('div', 'hint', foot, t(padActive(app.input) ? 'ui.keyhint.pad' : 'ui.keyhint'));
     // the ACHIEVEMENTS page (game/achievements.ui.ts) listens; core does not import the game
     button(foot, { label: t('ach.open'), onClick: () => bus.emit('achievements:open', {}) });
     const back = button(foot, { label: t('common.back'), kind: 'primary', sfx: 'back', onClick: () => closeSettingsScreen() });

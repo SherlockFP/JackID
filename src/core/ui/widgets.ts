@@ -884,15 +884,17 @@ export function keyBind(parent: Node | null, o: KeyBindOpts): KeyBind {
 export function controlsCard(parent: Node, input: InputExt): HTMLElement {
   const el = h('div', 'px-controls', parent);
   const all = input.allBindings();
+  const pad = input.device === 'pad';   // the card shows the pad buttons after a pad press
   const skip = new Set(['debug', 'debugColliders', 'skip', 'm.n2', 'm.n3', 'm.n4', 'm.n5', 'm.n6', 'm.n7', 'm.n8', 'm.n9']);
   for (const layer of ['walk', 'machine'] as const) {
     const col = h('div', 'col', el);
     h('div', 'px-h', col, t(layer === 'walk' ? 'ui.controls.walk' : 'ui.controls.seated'));
     for (const k of Object.keys(all)) {
-      if (layerOf(k) !== layer || skip.has(k) || !all[k].length) continue;
+      const codes = pad ? input.padCodesOf(k) : all[k];
+      if (layerOf(k) !== layer || skip.has(k) || !codes.length) continue;
       const row = h('div', 'row', col);
       const keys = h('span', 'keys', row);
-      codeLabels(all[k]).forEach((l) => keycap(l, keys));
+      codeLabels(codes).forEach((l) => keycap(l, keys));
       h('span', 'what', row, k === 'm.n1' ? `${actionLabel('m.n1')} …` : actionLabel(k));
     }
   }

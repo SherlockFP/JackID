@@ -15,9 +15,9 @@
   border-top: calc(var(--su) * 1.5) solid currentColor; text-align: center;
 }
 .seat-hud .shud-cell { display: flex; flex-direction: column; align-items: center; gap: calc(var(--su) * 1); }
-.seat-hud .shud-stake-l { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3.5); line-height: 1; color: #b8c0a8; white-space: nowrap; }
+.seat-hud .shud-stake-l { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--su) * 3.5)); line-height: 1; color: #b8c0a8; white-space: nowrap; }
 .seat-hud .shud-stake-v { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 8); line-height: 1.1; white-space: nowrap; color: currentColor; }
-.seat-hud .shud-pocket .shud-stake-v { font-size: calc(var(--su) * 5.5); color: #f4f0dc; }
+.seat-hud .shud-pocket .shud-stake-v { font-size: max(9px, calc(var(--su) * 5.5)); color: #f4f0dc; }
 .seat-hud .shud-stake.tone-gold { color: #ffd040; }
 .seat-hud .shud-stake.tone-warn { color: #ffb347; }
 .seat-hud .shud-stake.tone-bad { color: #ff5a4a; }
@@ -28,11 +28,11 @@
 /* Odds line (seatHud.ts `.shud-odds`): its own row in the bottom stack, directly above the control bar, centred and width-capped. */
 .seat-hud .shud-odds {
   max-width: min(70vw, calc(var(--su) * 180)); padding: calc(var(--su) * 1) calc(var(--su) * 3);
-  font-size: calc(var(--su) * 4.5); line-height: 1.1; color: #b8c0a8; text-align: center; white-space: normal; overflow-wrap: anywhere;
+  font-size: max(9px, calc(var(--su) * 4.5)); line-height: 1.1; color: #b8c0a8; text-align: center; white-space: normal; overflow-wrap: anywhere;
 }
 
 /* PULLS PER ROUND (seatHud.ts `pullRate`): shown only when a round costs more than one pull; the third row of the stake panel. */
-.seat-hud .shud-rate { flex-basis: 100%; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3); line-height: 1; color: #b8c0a8; white-space: nowrap; text-align: center; }
+.seat-hud .shud-rate { flex-basis: 100%; font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--su) * 3)); line-height: 1; color: #b8c0a8; white-space: nowrap; text-align: center; }
 
 /* SMART STAKES (stakePresets.ts): SAFE / BOLD / BIG under the STAKE readout, keys 7 / 8 / 9. The stake in play is lit;
    a BIG waiting for its second press blinks red. A preset whose digit the machine keeps shows its amount with no key cap. */
@@ -42,7 +42,7 @@
   background: rgba(6, 9, 6, 0.9); border-bottom: calc(var(--su) * 1.5) solid #2c3a2c; color: #b8c0a8; white-space: nowrap;
 }
 .seat-hud .shud-preset-k:empty { display: none; }
-.seat-hud .shud-preset-l { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3.5); line-height: 1; }
+.seat-hud .shud-preset-l { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--su) * 3.5)); line-height: 1; }
 .seat-hud .shud-preset-v { font-size: calc(var(--su) * 7); line-height: 1; color: #f4f0dc; }
 .seat-hud .shud-preset.on { color: #ffd040; border-bottom-color: #ffd040; background: rgba(40, 32, 4, 0.92); }
 .seat-hud .shud-preset.on .shud-preset-v { color: #ffd040; }
@@ -56,14 +56,14 @@
 .seat-hud.hdr .shud-state { min-width: 0; padding: calc(var(--su) * 1.5) calc(var(--su) * 4); }
 .seat-hud.hdr .shud-state-s { font-size: calc(var(--su) * 6); }
 .seat-hud.hdr .shud-pay { padding: 0 calc(var(--su) * 2); gap: 0 calc(var(--su) * 2); }
-.seat-hud.hdr .shud-pay-i { font-size: calc(var(--su) * 3); }
+.seat-hud.hdr .shud-pay-i { font-size: max(9px, calc(var(--su) * 3)); }
 .seat-hud.hdr .shud-pay-i canvas { width: calc(var(--su) * 6); height: calc(var(--su) * 6); }
 .seat-hud.hdr.res .shud-top { visibility: hidden; }
 .seat-hud.hdr .shud-row { display: flex; align-items: flex-end; justify-content: center; gap: calc(var(--su) * 2); max-width: 98%; }
 .seat-hud.hdr .shud-stake { min-width: 0; padding: calc(var(--su) * 1.5) calc(var(--su) * 4); gap: 0 calc(var(--su) * 5); flex-wrap: nowrap; }
-.seat-hud.hdr .shud-stake-l { font-size: calc(var(--su) * 4); }
+.seat-hud.hdr .shud-stake-l { font-size: max(9px, calc(var(--su) * 4)); }
 .seat-hud.hdr .shud-stake-v { font-size: calc(var(--su) * 14); }
 .seat-hud.hdr .shud-pocket .shud-stake-v { font-size: calc(var(--su) * 9); }
 .seat-hud.hdr .shud-result-t { font-size: calc(var(--su) * 6); }
 .seat-hud.hdr .shud-result-a { font-size: calc(var(--su) * 12); }
-.seat-hud.hdr .shud-result.r-lose .shud-result-t, .seat-hud.hdr .shud-result.r-lose .shud-result-a, .seat-hud.hdr .shud-result.r-push .shud-result-t, .seat-hud.hdr .shud-result.r-push .shud-result-a { font-size: calc(var(--su) * 5); }
+.seat-hud.hdr .shud-result.r-lose .shud-result-t, .seat-hud.hdr .shud-result.r-lose .shud-result-a, .seat-hud.hdr .shud-result.r-push .shud-result-t, .seat-hud.hdr .shud-result.r-push .shud-result-a { font-size: max(9px, calc(var(--su) * 5)); }

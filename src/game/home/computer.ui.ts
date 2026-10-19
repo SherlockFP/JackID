@@ -13,6 +13,7 @@ import './konsol.css';
 import { app } from '@/core/app';
 import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
+import { DEMO } from '@/core/demo';
 import { addTicker, h, modalPanel, uiSfx } from '@/core/ui/widgets';
 import type { DebtRun } from '@/game/run';
 import type { HomeEconomy, TradeResult } from '@/game/economy/homeEconomy';
@@ -22,7 +23,7 @@ import { drawKonsol, type KonsolLine } from './konsol.ui';
 
 const PANEL = 'home-pc';
 type Tab = 'home' | 'invest' | 'market' | 'konsol';
-const TABS: readonly Tab[] = ['home', 'invest', 'market', 'konsol'];
+const TABS: readonly Tab[] = DEMO ? ['home', 'invest', 'market'] : ['home', 'invest', 'market', 'konsol'];   // no cheats in the demo
 
 export function mountComputerUi(run: DebtRun): () => void {
   let alive = true;

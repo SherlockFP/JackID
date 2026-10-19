@@ -17,11 +17,11 @@
 .kh-plate.me { border-color: #7dff7a; }
 .kh-row1 { display: flex; align-items: baseline; gap: calc(var(--ku) * 1.6); }
 .kh-name { font-size: calc(var(--ku) * 5.6); line-height: 1; color: #fff; }
-.kh-tag { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 2.2); color: #ff9a6a; letter-spacing: 0; }
+.kh-tag { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--ku) * 2.2)); color: #ff9a6a; letter-spacing: 0; }
 .kh-row2 { display: flex; align-items: center; gap: calc(var(--ku) * 2); }
 .kh-cnt { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 4); color: #1a1200; background: #ffd040; padding: calc(var(--ku) * .6) calc(var(--ku) * 1.6); text-shadow: none; }
-.kh-last { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 2.6); color: #fff; background: #d6263c; padding: calc(var(--ku) * 1) calc(var(--ku) * 1.6); animation: kh-pulse .4s steps(2) infinite; }
-.kh-turn { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 2.6); color: #ffd040; }
+.kh-last { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--ku) * 2.6)); color: #fff; background: #d6263c; padding: calc(var(--ku) * 1) calc(var(--ku) * 1.6); animation: kh-pulse .4s steps(2) infinite; }
+.kh-turn { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--ku) * 2.6)); color: #ffd040; }
 @keyframes kh-pulse { 50% { filter: brightness(1.35); } }
 
 /* the colour in force, the order and the draws owed: a small strip on the right edge (the top card itself is 3D, in the middle of the felt) */
@@ -29,8 +29,8 @@
   padding: calc(var(--ku) * 1.6) calc(var(--ku) * 2.4); background: rgba(6, 9, 6, .82); }
 .kh-col { display: flex; align-items: center; gap: calc(var(--ku) * 2); font-size: calc(var(--ku) * 6); }
 .kh-col b { display: block; width: calc(var(--ku) * 5); height: calc(var(--ku) * 5); border: calc(var(--ku) * .8) solid #fff; box-sizing: border-box; }
-.kh-owed { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 3.6); color: #fff; background: #d6263c; padding: calc(var(--ku) * 1.2) calc(var(--ku) * 2.4); animation: kh-pulse .5s steps(2) infinite; }
-.kh-dir { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--ku) * 3.2); color: #8fd9ff; }
+.kh-owed { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--ku) * 3.6)); color: #fff; background: #d6263c; padding: calc(var(--ku) * 1.2) calc(var(--ku) * 2.4); animation: kh-pulse .5s steps(2) infinite; }
+.kh-dir { font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--ku) * 3.2)); color: #8fd9ff; }
 
 /* wild-card colour picker: four big squares under the HUD banner, clear of the top card and the hand */
 .kh-pick { position: absolute; left: 50%; top: calc(var(--seat-top-b, calc(var(--u, 4px) * 40)) + var(--u, 4px) * 3); transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: calc(var(--ku) * 1.4);

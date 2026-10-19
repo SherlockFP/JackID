@@ -15,6 +15,7 @@ import { openServerBrowser } from './serverBrowser';
 import type { AppStateHandler } from '@/core/states';
 import type { RunSnapshot } from '@/net/protocol';
 import { app } from '@/core/app';
+import { padActive } from '@/core/input';
 import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
 import { hashSeed, randomSeed } from '@/core/rng';
@@ -25,6 +26,7 @@ import { openKitPicker } from './kitPicker';
 import { openFoundations } from './foundations';
 import { createMetaPrestige } from './foundations.logic';
 import { buildBackground } from './menuBackground';
+import { DEMO, mainFaces, type MainFace } from '@/core/demo';
 import { buildCabinet, DIE_CENTER, type Cabinet } from './menuCabinet';
 import { MenuDie, easeOutBack, type DieHit } from './menuDie';
 import { MenuBurst } from './menuBurst';
@@ -32,10 +34,10 @@ import { makeCanvasTex, paintDieFace, paintPanel, paintValueFace, PANEL_BUTTON, 
 
 // Face order = BoxGeometry groups (+X, -X, +Y, -Y, +Z, -Z): PLAY faces you, MULTIPLAYER is one roll right, SETTINGS left,
 // FREE CASINO up, QUIT down (CONTINUE RUN takes that face while a run is saved), FOUNDATIONS round the back.
-const MAIN_FACES = ['multi', 'settings', 'free', 'quit', 'play', 'foundations'] as const;
+const MAIN_FACES = mainFaces(DEMO);
 // Six faces per cube: BACK gave way to CALM (Esc / Backspace still close the settings die).
 const SET_FACES = ['language', 'calm', 'music', 'controls', 'audio', 'graphics'] as const;
-type MainItem = typeof MAIN_FACES[number];
+type MainItem = MainFace;
 /** What a main-die face shows: its entry, or CONTINUE RUN on the QUIT face while a run is saved. */
 type FaceItem = MainItem | 'continue';
 type SetItem = typeof SET_FACES[number];
@@ -378,6 +380,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
       case 'free': goFree(); break;
       case 'settings': sfx('click'); openSettingsScreen(); break;   // the full Settings screen (the settings die below is no longer reached)
       case 'foundations': goFoundations(); break;
+      case 'credits': openCredits(); break;
       case 'quit': openInfo('quit'); break;
       case 'continue': goContinue(); break;
     }
@@ -618,10 +621,11 @@ export function createMenuState(): AppStateHandler<'menu'> {
       panelMat.opacity = fade;
       if (!die.rolling && phase !== 'burst' && phase !== 'info') {
         const item: string = onSet ? SET_FACES[die.frontFace()] : faceItem(die.frontFace());
-        const key = `${onSet ? 's' : 'm'}:${item}:${savedRun() ? 1 : 0}`;
+        const key = `${onSet ? 's' : 'm'}:${item}:${savedRun() ? 1 : 0}:${padActive(app.input)}`;
         if (key !== lastFocusKey) {
           lastFocusKey = key;
-          paintFocus(item, onSet ? 'menu.hint.settings' : 'menu.hint.roll');
+          const pad = padActive(app.input) ? '.pad' : '';   // hints name the pad buttons after a pad press
+          paintFocus(item, onSet ? `menu.hint.settings${pad}` : `menu.hint.roll${pad}`);
         }
       }
       if (phase === 'burst') {

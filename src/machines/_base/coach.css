@@ -8,10 +8,10 @@
 .seat-hud .shud-coach.tone-good { border-left-color: #7dff7a; color: #7dff7a; }
 .seat-hud .shud-coach.tone-bad { border-left-color: #ff5a4a; color: #ffb0a0; }
 .seat-hud .shud-coach-tag {
-  font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3.5); line-height: 1;
+  font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--su) * 3.5)); line-height: 1;
   padding: calc(var(--su) * 1) calc(var(--su) * 1.5); background: #39e6ff; color: #080b08; text-shadow: none;
 }
-.seat-hud .shud-coach-s { flex-basis: 100%; text-align: center; font-size: calc(var(--su) * 5); color: #b8c0a8; }
+.seat-hud .shud-coach-s { flex-basis: 100%; text-align: center; font-size: max(9px, calc(var(--su) * 5)); color: #b8c0a8; }
 .seat-hud .shud-coach-s:empty, .seat-hud .shud-coach-tag:empty, .seat-hud .shud-coach .shud-key:empty { display: none; }
 
 .seat-hud .shud-btn.coach-pulse { animation: shud-coach-pulse 0.9s ease-in-out infinite; }
@@ -24,5 +24,5 @@
 
 /* PAY STRIP (seatHud.ts `pay`): a machine's symbols with what each pays, under the goal line. */
 .seat-hud .shud-pay { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(var(--su) * 1) calc(var(--su) * 3); padding: calc(var(--su) * 1) calc(var(--su) * 3); max-width: 92%; }
-.seat-hud .shud-pay-i { display: flex; align-items: center; gap: calc(var(--su) * 1); font-family: var(--f-head, 'Press Start 2P', monospace); font-size: calc(var(--su) * 3.5); line-height: 1; color: #ffd040; white-space: nowrap; }
+.seat-hud .shud-pay-i { display: flex; align-items: center; gap: calc(var(--su) * 1); font-family: var(--f-head, 'Press Start 2P', monospace); font-size: max(9px, calc(var(--su) * 3.5)); line-height: 1; color: #ffd040; white-space: nowrap; }
 .seat-hud .shud-pay-i canvas { width: calc(var(--su) * 8); height: calc(var(--su) * 8); image-rendering: pixelated; }

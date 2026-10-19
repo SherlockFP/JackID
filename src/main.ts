@@ -24,6 +24,7 @@ import { createRng, hashSeed, randomSeed } from '@/core/rng';
 import { createSaveStore } from '@/core/save';
 import { registerStrings, setLang, t, type StringTable } from '@/core/i18n';
 import { bootParams } from '@/core/bootParams';
+import { DEMO } from '@/core/demo';
 import { log } from '@/core/log';
 import { installDebug } from '@/core/debug';
 import { startVersionCheck } from '@/core/version';
@@ -100,6 +101,7 @@ async function boot(): Promise<void> {
   const save = createSaveStore();
   save.load();
   const settings = save.data.settings;
+  if (DEMO && !save.data.demo) save.update((d) => { d.demo = true; });   // a demo save is marked, so the full game can import it
   // 4 — strings (common/ui tables first, then every `*.strings.ts` next to its code)
   registerStrings('', { en, tr });
   for (const m of Object.values(stringModules)) registerStrings(m.default.prefix, m.default);
@@ -149,6 +151,7 @@ async function boot(): Promise<void> {
   if (import.meta.env.PROD) startVersionCheck(__BUILD_ID__);   // a tab from before a deploy reloads itself (core/version.ts)
   // Wave 25 TALLY: the manga cut-in, glyph and reveal hooks for cutscenes; the run waits for the presentation before rewards and scenes
   installManga(a);
+  if (DEMO) void import('@/game/demoEnd').then((m) => m.installDemoEnd());   // the run ends on a card after Night 3
   setPresentationProbe(() => !mangaBusy());
   // Achievements: the unlock rules listen to the bus from the menu on; the toast and the page are DOM (game/achievements.ui)
   void import('@/game/achievements.ui').then((m) => m.installAchievements()).catch((e) => log.warn('boot', 'achievements failed', e));

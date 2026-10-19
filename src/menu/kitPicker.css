@@ -26,7 +26,7 @@
 /* Stakes (stakes.ts): a sticker with the best cleared stake on each card, the chip row, and the daily run toggle. */
 .kp-kit { position: relative; }
 .kp-kit.dim { opacity: .35; }
-.kp-sticker { position: absolute; top: -9px; right: 6px; padding: 2px 5px; font-family: var(--f-head, monospace); font-size: 8px;
+.kp-sticker { position: absolute; top: -9px; right: 6px; padding: 2px 5px; font-family: var(--f-head, monospace); font-size: 9px;
   color: #120c06; background: var(--shine, #efd67b); border: 1px solid #000; transform: rotate(4deg); }
 .kp-stakes { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 .kp-stakes-label { margin-right: 6px; font-family: var(--f-head, monospace); font-size: 9px; color: var(--bone, #c5bda5); }

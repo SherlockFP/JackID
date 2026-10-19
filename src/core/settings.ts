@@ -9,6 +9,8 @@ export interface Settings {
   lang: Lang;
   mouseSens: number;            // rad/px 0.0005..0.006, def 0.0022
   invertY: boolean;
+  padSens: number;              // 0.5..2 gamepad look speed (right stick), def 1
+  padInvertY: boolean;          // gamepad look: push up to look down
   fov: number;                  // 60..95, def 72
   headBob: number;              // 0..1, def 1
   viewmodel: boolean;           // first-person hands on/off (HANDS / ELLER)
@@ -48,6 +50,8 @@ export const DEFAULT_SETTINGS: Settings = {
   lang: 'en',
   mouseSens: 0.0022,
   invertY: false,
+  padSens: 1,
+  padInvertY: false,
   fov: 72,
   headBob: 1,
   viewmodel: true,
@@ -74,7 +78,7 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 const RANGES: Record<string, [number, number]> = {
-  mouseSens: [0.0005, 0.006], fov: [60, 95], headBob: [0, 1],
+  mouseSens: [0.0005, 0.006], padSens: [0.5, 2], fov: [60, 95], headBob: [0, 1],
   'vol.master': [0, 1], 'vol.sfx': [0, 1], 'vol.ui': [0, 1], 'vol.music': [0, 1], 'vol.amb': [0, 1], 'vol.voice': [0, 1],
   'psx.jitter': [0, 1], 'psx.scanlines': [0, 1], 'psx.vignette': [0, 1],
   shake: [0, 1], textScale: [1, 1.5], uiScale: [0.6, 1.3], 'proxVoice.volume': [0, 1],

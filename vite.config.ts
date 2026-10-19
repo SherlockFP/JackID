@@ -10,9 +10,9 @@ const buildId = process.env.RENDER_GIT_COMMIT?.slice(0, 7)
   || (() => { try { return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch { return ''; } })()
   || Date.now().toString(36);
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
-  define: { __APP_VERSION__: JSON.stringify(pkg.version), __BUILD_ID__: JSON.stringify(buildId) },
+  define: { __APP_VERSION__: JSON.stringify(pkg.version), __BUILD_ID__: JSON.stringify(buildId), __DEMO__: JSON.stringify(mode === 'demo') },   // the Steam demo: npm run build:demo
   plugins: [
     {
       // dist/version.json holds the id the bundle was built with; open tabs poll it (core/version.ts).
@@ -47,4 +47,4 @@ export default defineConfig({
     },
   },
   build: { target: 'es2022', assetsInlineLimit: 0, chunkSizeWarningLimit: 2000 },
-});
+}));

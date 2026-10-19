@@ -42,6 +42,8 @@ export interface SaveData {
   dailyBest?: Record<string, DailyBest>;
   /** KONSOL (game/cheats.ts): the seed of the run that took a cheat code. That run earns no achievements. Optional: older saves have none. */
   cheated?: number;
+  /** Written by the Steam demo build (core/demo.ts) so the full game can tell a demo save and import it. Optional: full-game saves have none. */
+  demo?: true;
 }
 
 export interface SaveStore {
@@ -125,6 +127,7 @@ export function migrateSave(raw: unknown): SaveData {
   d.stakeCleared = numRecord(r.stakeCleared);
   d.dailyBest = dailyBestOf(r.dailyBest);
   if (typeof r.cheated === 'number' && isFinite(r.cheated)) d.cheated = r.cheated;
+  if (r.demo === true) d.demo = true;
   return d;
 }
 

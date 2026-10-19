@@ -3,6 +3,7 @@ const strings = {
   prefix: 'ui.',
   en: {
     'keyhint': 'ESC Back · ENTER Select · ↑↓ Move',
+    'keyhint.pad': 'B Back · A Select · ↑↓ Move',
     'veil.click': 'CLICK TO CONTINUE',
     'skip.hold': 'TAP/HOLD: SKIP',
     'toggle.on': 'ON',
@@ -14,6 +15,7 @@ const strings = {
   },
   tr: {
     'keyhint': 'ESC Geri · ENTER Seç · ↑↓ Gez',
+    'keyhint.pad': 'B Geri · A Seç · ↑↓ Gez',
     'veil.click': 'DEVAM ETMEK İÇİN TIKLA',
     'skip.hold': 'DOKUN/BASILI TUT: ATLA',
     'toggle.on': 'AÇIK',

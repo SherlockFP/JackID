@@ -22,7 +22,7 @@ import * as THREE from 'three';
 import { app } from '@/core/app';
 import { bus } from '@/core/events';
 import { lang, t } from '@/core/i18n';
-import { DEFAULT_BINDINGS, codeLabels } from '@/core/keymap';
+import type { BindingKey } from '@/core/input';
 import type { InstanceId, PlayerId, Unsub } from '@/core/types';
 import type { WorldHost } from '@/world/world';
 import type { DebtRun } from '@/game/run';
@@ -84,10 +84,7 @@ function setDone(): void {
 }
 
 /** Current label of a binding for the prompt ("SPACE"), from the player's keybinds or the defaults. */
-function keyLabel(key: string): string {
-  const codes = app.save.data.settings.keybinds[key] ?? DEFAULT_BINDINGS[key as keyof typeof DEFAULT_BINDINGS] ?? [];
-  return codeLabels(codes, 1)[0] ?? '';
-}
+function keyLabel(key: string): string { return app.input.keyLabel(key as BindingKey); }   // the pad glyph after a pad press
 
 /**
  * Start the Night 1 helpers for a new run: the first-run tutorial (when it is not done yet), the objective line (Nights 1-2)

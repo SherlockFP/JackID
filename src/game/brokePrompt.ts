@@ -9,7 +9,7 @@
  */
 import { app } from '@/core/app';
 import { t, fmtCoins } from '@/core/i18n';
-import { ALL_DEFAULTS, codeLabels } from '@/core/keymap';
+import type { BindingKey } from '@/core/input';
 import type { UIOverlayX } from '@/core/ui/ui';
 import type { DebtRun } from '@/game/run';
 import type { BrokeStep } from '@/game/rescue';
@@ -22,10 +22,7 @@ export const BROKE_LAST_NIGHT = 3;
 export interface BrokePrompt { update(dt: number): void; dispose(): void }
 
 /** Current label of a binding ("P"), from the player's keybinds or the defaults. */
-function keyLabel(key: string): string {
-  const codes = app.save.data.settings.keybinds[key] ?? ALL_DEFAULTS[key] ?? [];
-  return codeLabels(codes, 1)[0] ?? '';
-}
+function keyLabel(key: string): string { return app.input.keyLabel(key as BindingKey); }   // the pad glyph after a pad press
 
 /** One numbered line of the card for a step. */
 export function stepLine(step: BrokeStep, tickets: number, phoneKey: string): string {
