@@ -58,6 +58,8 @@ export class HomeDoor {
     kit.cyl(0.011, 0.011, 0.01, lensMat, { pos: [0.45, 1.55, -0.044], rot: [90, 0, 0], parent: this.pivot, seg: 6 });
     kit.cyl(0.035, 0.035, 0.014, brass, { pos: [0.78, 1.0, -0.035], rot: [90, 0, 0], parent: this.pivot, seg: 8 });
     kit.sphere(0.034, brass, { pos: [0.78, 1.0, -0.062], parent: this.pivot, wSeg: 6, hSeg: 5 });
+    // the hall side's knob (your number is on the lintel, world/street)
+    kit.sphere(0.034, brass, { pos: [0.78, 1.0, 0.062], parent: this.pivot, wSeg: 6, hSeg: 5 });
 
     // chain: a brass track on the leaf, the slide riding it, the keeper on the free edge, and the links between them
     kit.box(0.75, 0.024, 0.02, brass, { pos: [0.475, CHAIN_Y, -0.04], parent: this.pivot });

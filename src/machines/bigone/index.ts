@@ -26,7 +26,7 @@ import { countUp, blinkOn, emitComboShow, flashPrefs, JACKPOT_COUNT_S, type Whir
 import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { KitX } from '@/kit';
 import { fmtCoins, t as tr, upper } from '@/core/i18n';
-import { SeatHud, type HudControl, type HudNumber, type HudPay, type Txt } from '@/machines/_base/seatHud';
+import { SeatHud, type HudControl, type HudPay, type Txt } from '@/machines/_base/seatHud';
 import { TAU } from '@/core/math';
 import { px5Width } from '@/core/texgen/font';
 import { buildModel, type BigOneParts } from './model';
@@ -98,7 +98,7 @@ const STEP_MAX = 0.4;
 const STEP_MIN = 0.2;
 const TALLY_CAP = 1.6;
 /** Where the seat banner starts, in % of the screen height: under the cabinet's JACKPOT plate, readout and LCD, above the reels (seatHud.topBelow). */
-const BANNER_TOP_PCT = 26;
+const BANNER_TOP_PCT = 25;
 /** Free spins tally quicker: a fixed step per pattern. */
 const QUICK_STEP = 0.14;
 /** Semitone ladder of the tally chimes: each pattern rings a note higher. */
@@ -307,7 +307,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       case 'betMax': this.maxKey(); break;
       case 'auto': this.toggleAuto(); break;
       case 'clear': this.cycleAutoSize(); break;
-      case 'fast': this.fastOn = !this.fastOn; this.sfx('click'); this.showHud(); break;
+      case 'fast': this.fastOn = !this.fastOn; this.sfx('click'); this.toast(this.t(this.fastOn ? 'fastOn' : 'fast'), 'info'); this.showHud(); break;
       case 'n1': case 'n2': case 'n3': case 'n4': case 'n5': this.toggleHold(HOLD_KEYS[a]); break;
     }
   }
@@ -352,6 +352,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     const i = AUTO_SIZES.indexOf(this.autoSize);
     this.autoSize = AUTO_SIZES[(i + 1) % AUTO_SIZES.length];
     this.sfx('click');
+    this.toast(this.t('autoSize', { n: this.autoSize }), 'info');   // the key lives behind [H] now, so say what it did
     this.showHud();
   }
 
@@ -1127,6 +1128,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
   /** The rules card: the rules, then every pattern with its multiplier, three to a line (the symbol values are the pay strip). */
   private rulesLines(): Txt[] {
     const lines: Txt[] = ['rule1', 'rule2', 'rule3', 'rule4', 'rule5', 'rule6', 'rule7', 'rule8'].map((k) => ({ k: 'm.bigone.' + k }));
+    lines.push({ k: 'm.bigone.rule9', v: { max: this.k('betMax'), size: this.k('clear'), fast: this.k('fast'), hold: `${this.k('n1')}-${this.k('n5')}` } });
     for (let i = 0; i < PATTERN_IDS.length; i += 3) {
       lines.push(PATTERN_IDS.slice(i, i + 3)
         .map((pat) => `${this.t(`pat_${pat}`)} x${pat === 'CLUSTER' ? 'n-5' : PATTERN_MULT[pat]}`)
@@ -1164,21 +1166,13 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     if (this.offer) sh.state({ k: 'm.bigone.stChase', v: { n: fmtCoins(this.offer.pot) } }, 'gold', { k: 'm.bigone.stChaseSub', v: { n: Math.round(1 / CHASE_P) } });
     else if (this.autoLeft > 0) sh.state({ k: 'm.bigone.stAuto', v: { n: this.autoLeft } }, 'cyan', { k: 'm.bigone.stAutoSub' });
     else if (busy && this.reelsTurning) sh.state({ k: 'm.bigone.stSpinning' }, 'cyan');
-    else if (busy) sh.state({ k: 'm.bigone.stReady' }, 'gold', { k: 'm.bigone.stReadySub', v: { n: fmtCoins(this.bet) } });
+    else if (busy) sh.state({ k: 'm.bigone.stReady', v: { key: '' } }, 'gold', { k: 'm.bigone.stReadySub', v: { n: fmtCoins(this.bet) } });
     else if (s.hold >= 0) sh.state({ k: 'm.bigone.stHold', v: { n: s.hold + 1 } }, 'good', { k: 'm.bigone.stHoldSub', v: { c: fmtCoins(Math.ceil(this.bet * HOLD_COST)) } });
     else if (!SeatHud.floorOpen()) sh.floorClosed();
-    else sh.state({ k: 'm.bigone.stReady' }, 'gold', { k: 'm.bigone.stReadySub', v: { n: fmtCoins(this.bet) } });
+    else sh.state({ k: 'm.bigone.stReady', v: { key: `[${this.k('primary')}]` } }, 'gold', { k: 'm.bigone.stReadySub', v: { n: fmtCoins(this.bet) } });
 
-    // KEY NUMBERS: stake, last win, jackpot meter, hunger, balance
-    const hunger = this.hungerPct();
-    const nums: HudNumber[] = [
-      { label: { k: 'm.bigone.nStake' }, value: fmtCoins(this.roundOpen ? this.roundBet : this.bet), tone: 'gold' },
-      { label: { k: 'm.bigone.nLast' }, value: fmtCoins(s.gross), tone: s.gross > 0 ? 'good' : 'neutral' },
-      { label: { k: 'm.bigone.nJackpot' }, value: fmtCoins(Math.floor(s.meter)), tone: 'gold' },
-      { label: { k: 'm.bigone.nHunger' }, value: `${Math.round(hunger * 100)}%`, tone: hunger > 0.7 ? 'bad' : 'neutral' },
-      { label: { k: 'm.bigone.nBalance' }, value: fmtCoins(this.ctx.run.wallet()), tone: 'neutral' },
-    ];
-    sh.numbers(nums);
+    // No number row: the JACKPOT plate, the LCD (TOTAL), the hunger dial and the POCKET box already show them.
+    sh.numbers([]);
 
     // CONTROL BAR: only what is valid right now
     const ctrl: HudControl[] = [];
@@ -1191,15 +1185,10 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       if (!busy && SeatHud.floorOpen()) {
         ctrl.push({ key: this.k('primary'), label: { k: 'm.bigone.cSpin' }, action: 'primary', primary: true });
         ctrl.push({ key: `${this.k('betDown')}/${this.k('betUp')}`, label: { k: 'm.bigone.cStake' }, action: 'betUp' });
-        ctrl.push({ key: this.k('betMax'), label: { k: 'm.bigone.cMax' }, action: 'betMax' });
       }
       ctrl.push({ key: this.k('auto'), label: { k: 'm.bigone.cAuto' }, action: 'auto' });
-      if (!busy) {
-        ctrl.push({ key: this.k('clear'), label: { k: 'm.bigone.cSize', v: { n: this.autoSize } }, action: 'clear' });
-        if (this.currentMods().holdOn) ctrl.push({ key: `${this.k('n1')}-${this.k('n5')}`, label: { k: 'm.bigone.cHold' }, action: 'n1' });
-      }
+      if (!busy && this.currentMods().holdOn && this.holdOpen()) ctrl.push({ key: `${this.k('n1')}-${this.k('n5')}`, label: { k: 'm.bigone.cHold' }, action: 'n1' });
     }
-    ctrl.push({ key: this.k('fast'), label: { k: this.fastOn ? 'm.bigone.cFastOn' : 'm.bigone.cFast' }, action: 'fast' });
     ctrl.push({ key: this.k('help'), label: { k: 'm.bigone.cRules' }, action: 'help' });
     ctrl.push({ key: this.k('exit'), label: { k: 'm.bigone.cLeave' }, action: 'exit' });
     sh.controls(ctrl);

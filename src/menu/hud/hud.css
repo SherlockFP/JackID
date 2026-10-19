@@ -27,6 +27,9 @@
   max-width: calc(50% - min(25%, calc(160 * var(--u))) - calc(8 * var(--u))); }
 .hud .hud-top .hb, .hud .hud-rs .hb { position: relative; left: auto; top: auto; right: auto; transform: none; }
 
+/* A letterboxed scene (the Evening's talks, a cutscene) lays its bars over the top edge: the HUD slides down by the bar's height (--lb x --bar-h), a transform so the measured --hud-top-h stays the unshifted band. */
+.hud .hud-top, .hud .hud-rs { transform: translateY(calc(var(--lb) * var(--bar-h))); }
+
 /* top-left: pocket, tickets, staff */
 .hud .wallet .num { color: var(--shine); font-size: calc(16 * var(--u)); }
 .hud .wallet.short .num { color: var(--signal); }

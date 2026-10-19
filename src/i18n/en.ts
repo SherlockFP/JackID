@@ -42,6 +42,7 @@ const en: StringTable = {
   'ui.error.webgl': 'JackID needs WebGL2. Try a current Chrome, Edge or Firefox with hardware acceleration enabled.',
   'ui.error.generic': 'Something broke: {msg}',
   'ui.error.reload': 'Reload',
+  'ui.version.new': 'A new version is out. It updates when you return to the menu.',
   'ui.stub.play': 'PLAY',
   'ui.stub.lang': 'English / Türkçe',
   'ui.stub.hint': 'Foundation build: the jackpot menu, the pit and the machines arrive next.',

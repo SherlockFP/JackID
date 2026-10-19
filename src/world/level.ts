@@ -34,6 +34,7 @@ import { buildAmbience, type Beam, type Pool } from './props/ambience';
 import { buildRooms, type RoomsBuild } from './rooms';
 import { buildHollow } from './hollow';
 import { buildHome } from './home';
+import { buildStreet } from './street';
 import { createNightCycle, nightPhaseOf, LEVELS, type NightPhase, type Spot } from './nightLights';
 
 // ── constants ───────────────────────────────────────────────────────────────────────────────────
@@ -197,7 +198,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   // floors: walkable boxes (top y 0) and visuals, split around the hero trapdoor hole in the Lobby;
   // ceilings: one plane per zone at its height, never holed
   for (const z of ZONES) {
-    const own = z.id === 'home' || z.id === 'hollow';   // the apartment and the Underneath build their own floor and ceiling (a second floor at y 0 z-fought in the flat)
+    const own = z.id === 'home' || z.id === 'hollow' || z.id === 'street';   // the apartment, the Underneath and the street build their own floor and ceiling (a second floor at y 0 z-fought in the flat)
     const ft = floorTex(z.id, tex);
     const fmat = kit.mat({ color: ft.color, map: ft.map });
     for (const piece of rectMinus(z.rect as R4, z.id === 'lobby' ? hole : null)) {
@@ -510,6 +511,14 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   Object.assign(anchors, home.anchors);
   updates.push({ update: (dt, time) => home.update(dt, time) });
   disposables.push(home);
+  // ── THE WALK HOME (world/street): the block's corridor, the night street and the casino's street door, beside the flat ──
+  const street = buildStreet({ kit, tex, seed: ctx.seed, interact: ctx.interact, collision: ctx.collision });
+  root.add(street.root);
+  lights.push(...street.lights);
+  statics.push(...street.statics);
+  Object.assign(anchors, street.anchors);
+  updates.push({ update: (dt, time) => street.update(dt, time) });
+  disposables.push(street);
 
   // ── plaques and signage (zones, shops, doors) ────────────────────────────────────────────────
   const plaque = (key: string, w: number, h: number, x: number, y: number, z: number, rot: 0 | 90 | 180 | 270, color: number) => {
@@ -518,7 +527,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     p.mesh.rotation.y = (rot * Math.PI) / 180;
     root.add(p.mesh);
   };
-  plaque('prop.sign.cashier', 1.6, 0.4, 6, 2.9, 19.7, 180, 0xffe0a0);
+  plaque('prop.sign.cashier', 1.6, 0.4, 6, 3.55, 19.84, 180, 0xffe0a0);   // over the booth (3.2 m), not behind its header
   plaque('prop.sign.charm', 1.6, 1.0, -9, 1.4, 19.84, 180, 0xffe0a0);
   plaque('prop.sign.lift', 0.5, 0.25, -6.4, 1.6, -29.8, 0, 0xffb000);
   plaque('prop.sign.parlour', 2.6, 0.35, 10.62, 4.06, 16, 270, 0xff8a8a);   // above the door casing's cornice (3.77)
@@ -701,7 +710,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     const pt = (id: string, kind: 'keep' | 'core', x: number, y: number, z: number): [Spot, THREE.Object3D] => [{ id, kind, x, z }, marker(x, y, z)];
     const marks = new Map<string, THREE.Object3D>();
     const zoneAt = (x: number, z: number): string | undefined => ZONES.find((q) => x >= q.rect[0] && x <= q.rect[2] && z >= q.rect[1] && z <= q.rect[3])?.id;
-    const spots: Spot[] = ZONES.filter((z) => z.id !== 'home' && z.id !== 'hollow')
+    const spots: Spot[] = ZONES.filter((z) => z.id !== 'home' && z.id !== 'hollow' && z.id !== 'street')
       .map((z) => ({ id: z.id as string, kind: 'floor' as const, x: (z.rect[0] + z.rect[2]) / 2, z: (z.rect[1] + z.rect[3]) / 2 }));
     for (const [spot, obj] of [
       pt('keep:bar', 'keep', BAR_POS.x, 1.8, BAR_POS.z), pt('keep:pawn', 'keep', -6, 1.8, 18.6),

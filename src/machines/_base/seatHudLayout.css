@@ -48,3 +48,22 @@
 .seat-hud .shud-preset.on .shud-preset-v { color: #ffd040; }
 .seat-hud .shud-preset.armed { border-bottom-color: #ff5a4a; animation: shud-stake-blink 0.6s steps(2, start) infinite; }
 @media (prefers-reduced-motion: reduce) { .seat-hud .shud-preset.armed { animation: none; } }
+
+/* HEADER SEAT (seatHud.ts `topBelow`, the Big One): the cabinet's own JACKPOT plate and readout fill the top of the view, so the HUD
+   keeps clear of them. Top: one compact state box (key, BET, goal) and the pay strip under it; the result callout takes the same slot
+   (the box steps aside while it shows), above the reels, never over them. Bottom: one row with the big BET / POCKET box and the
+   stake presets, then the coach, the odds line and the short key bar. The streak flame is on the BET box (seatHud.css). */
+.seat-hud.hdr .shud-state { min-width: 0; padding: calc(var(--su) * 1.5) calc(var(--su) * 4); }
+.seat-hud.hdr .shud-state-s { font-size: calc(var(--su) * 6); }
+.seat-hud.hdr .shud-pay { padding: 0 calc(var(--su) * 2); gap: 0 calc(var(--su) * 2); }
+.seat-hud.hdr .shud-pay-i { font-size: calc(var(--su) * 3); }
+.seat-hud.hdr .shud-pay-i canvas { width: calc(var(--su) * 6); height: calc(var(--su) * 6); }
+.seat-hud.hdr.res .shud-top { visibility: hidden; }
+.seat-hud.hdr .shud-row { display: flex; align-items: flex-end; justify-content: center; gap: calc(var(--su) * 2); max-width: 98%; }
+.seat-hud.hdr .shud-stake { min-width: 0; padding: calc(var(--su) * 1.5) calc(var(--su) * 4); gap: 0 calc(var(--su) * 5); flex-wrap: nowrap; }
+.seat-hud.hdr .shud-stake-l { font-size: calc(var(--su) * 4); }
+.seat-hud.hdr .shud-stake-v { font-size: calc(var(--su) * 14); }
+.seat-hud.hdr .shud-pocket .shud-stake-v { font-size: calc(var(--su) * 9); }
+.seat-hud.hdr .shud-result-t { font-size: calc(var(--su) * 6); }
+.seat-hud.hdr .shud-result-a { font-size: calc(var(--su) * 12); }
+.seat-hud.hdr .shud-result.r-lose .shud-result-t, .seat-hud.hdr .shud-result.r-lose .shud-result-a, .seat-hud.hdr .shud-result.r-push .shud-result-t, .seat-hud.hdr .shud-result.r-push .shud-result-a { font-size: calc(var(--su) * 5); }

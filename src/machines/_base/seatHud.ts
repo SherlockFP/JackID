@@ -364,13 +364,22 @@ export class SeatHud {
   // ── standard slots ────────────────────────────────────────────────────────────────────────────
   /**
    * Seats whose top edge is a plate or readout of the machine itself (the Big One's JACKPOT plate and meter): the state box, its
-   * goal line (moved inside it, one box instead of two) and the pay strip start `pct` % down the screen, under that header.
+   * goal line (moved inside it, one box instead of two) and the pay strip start `pct` % down the screen, under that header. The
+   * result callout takes the same slot (the state box steps aside while it shows), so it never lands on the reels. The BET / POCKET
+   * box and the stake presets share one row (seatHudLayout.css `.hdr`: bigger numbers, a shorter stack below the reels).
    * shortcut: one fixed fraction of the screen height (the seat camera is fixed); a machine whose header moves needs its own measure.
    */
   topBelow(pct: number): void {
+    this.root.classList.add('hdr');
     this.topEl.style.top = `${pct}%`;
+    this.resultEl.style.top = `${pct}%`;
     this.goalEl.classList.add('shud-goal-in');
     this.stateEl.appendChild(this.goalEl);
+    if (!this.stakeEl.parentElement?.classList.contains('shud-row')) {
+      const row = make('div', 'shud-row');
+      this.stakeEl.before(row);
+      row.append(this.stakeEl, this.presetsEl);
+    }
     this.placeToasts();
   }
 
@@ -504,6 +513,7 @@ export class SeatHud {
     this.resultA.style.display = amount === 0 ? 'none' : '';
     void this.resultEl.offsetWidth;                       // restart the pop-in
     this.resultEl.classList.add('on');
+    this.root.classList.add('res');
     const endMs = hold * 1000;
     let start = -1;                                       // the first frame's timestamp: the callout's clock
     let live = true;
@@ -519,7 +529,7 @@ export class SeatHud {
       }
       if (el >= endMs) {
         if (slam) this.resultA.textContent = `+${fmtCoins(amount)}`;
-        this.resultEl.classList.remove('on'); this.cancelResult = null; return;
+        this.resultEl.classList.remove('on'); this.root.classList.remove('res'); this.cancelResult = null; return;
       }
       requestAnimationFrame(tick);
     };
@@ -530,6 +540,7 @@ export class SeatHud {
     this.cancelResult?.();
     this.cancelResult = null;
     this.resultEl.classList.remove('on');
+    this.root.classList.remove('res');
   }
 
   // ── cards ─────────────────────────────────────────────────────────────────────────────────────

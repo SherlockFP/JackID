@@ -5,6 +5,11 @@
  * switch, chain, peephole, window, door), the sleep that ends in the next Night, and the doomed ride (lights, three knocks).
  * The wall phone is the phone UI's (src/game/home/phone.ui.ts): this module leaves that station alone.
  *
+ * THE WALK HOME (world/street): the ride up lands the player at the casino's street door, not in the flat. They walk the street
+ * and the block's corridor; the Evening's clock waits (`run.homeHold`) until the key turns in their door. The morning and the
+ * prologue walk the other way: out of the door, along the street, into the casino door, where the lift takes them down. From
+ * Night 3 a taxi at either end skips the street. A world without the street keeps the old straight ride.
+ *
  * Every beat is keyed on the run's stage clock, never on a wall clock: the session mounts the controller for solo runs and calls
  * `update(dt)` from the fixed step, so a paused game pauses the ride, a reload resumes it, and two seeded runs match.
  * A restore lands the player in the Evening at `home.spawn`; the doomed ride plays again from the top and then ends the run.
@@ -17,7 +22,8 @@ import { hashSeed } from '@/core/rng';
 import type { Unsub, V3 } from '@/core/types';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { h } from '@/core/ui/widgets';
-import { shakeDoor as worldShakeDoor, showVisitor } from '@/world/home';
+import { setDoorOut, shakeDoor as worldShakeDoor, showVisitor } from '@/world/home';
+import { setWalk, STREET_ANCHORS, TAXI_NIGHT, walkCue, type WalkLeg } from '@/world/street';
 import type { WorldHost } from '@/world/world';
 import type { LocalPlayerHost } from '@/player/local';
 import { HOME_TIMING, type DebtRun } from '../run';
@@ -125,8 +131,10 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
    * on a resumed or non-Home run). Sim time only: the scene and the ride count the fixed step, the run holds the clock.
    */
   let pro: 'start' | 'talk' | 'walk' | 'lift' | 'done' = run.prologueOn() ? 'start' : 'done';
-  let liftT = 0;
-  let liftBeat = { ding: false, tp: false, fadeIn: false };
+  /** THE WALK (world/street): the leg under way; `past` = home: the key has turned (the Evening runs), out: the door is behind. */
+  let walk: { leg: WalkLeg; past: boolean; doorOpen: boolean } | null = null;
+  /** The lift down from the casino's street door (the prologue, the morning): its clock and beats, then what comes after. */
+  let lift: { t: number; ding: boolean; tp: boolean; fadeIn: boolean; done: () => void } | null = null;
   let objectiveT = 0;
   let disposed = false;
   /** ADA'S KITCHEN TABLE (wave 78): the open overlay, the Nights already played, the offer's wait (sim s) and cooldown. */
@@ -167,9 +175,9 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   };
 
   // ── placing the player ─────────────────────────────────────────────────────────────────────────────
-  /** The lift arrives: the player stands inside the front door, the lights are on, the chain is off, the spouse is in her chair. */
-  const placeHome = (): boolean => {
-    const a = world.anchor(HOME_ANCHORS.spawn);
+  /** Stands the player at a Home or street anchor (false when the world has none). */
+  const placeAt = (name: string): boolean => {
+    const a = world.anchor(name);
     if (!a) return false;
     const p = anchorPose(a);
     player.teleport(new THREE.Vector3(p.pos.x, HOME_ORIGIN[1] + STAND_LIFT, p.pos.z), p.yaw);
@@ -179,6 +187,11 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     const eye = HOME_ORIGIN[1] + STAND_LIFT + player.eyeHeight;
     app.camera.position.set(p.pos.x, eye, p.pos.z);
     app.camera.quaternion.setFromEuler(new THREE.Euler(0, p.yaw, 0));
+    return true;
+  };
+  /** The lift arrives: the player stands inside the front door, the lights are on, the chain is off, the spouse is in her chair. */
+  const placeHome = (): boolean => {
+    if (!placeAt(HOME_ANCHORS.spawn)) return false;
     const home = world.home;
     home?.setLights(true);
     home?.setChain(false);
@@ -201,6 +214,91 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     atHome = false;
   };
 
+  // ── THE WALK (world/street) ────────────────────────────────────────────────────────────────────────
+  const streetBuilt = (): boolean => !!world.anchor(STREET_ANCHORS.arrive);
+  const taxiTonight = (): boolean => run.night() >= TAXI_NIGHT;
+  /** The ride up lands at the casino's street door: the flat is made ready for later, the walk home begins. */
+  const placeStreet = (): boolean => {
+    if (!placeAt(STREET_ANCHORS.arrive)) return false;
+    world.home?.setLights(true);
+    world.home?.setChain(false);
+    void world.home?.doorTo(0, 0);
+    ambience(HOME_AMBIENCE, 1.5);
+    atHome = false;
+    walk = { leg: 'home', past: false, doorOpen: false };
+    setWalk('home', taxiTonight());
+    return true;
+  };
+  /** The ride's teleport: the street when it is built (the doom still lands in the flat). */
+  const placeRide = (stage: HomeStage): boolean => (stage === 'ride' && streetBuilt() ? placeStreet() : placeHome());
+  /** The key turns in your door (or the taxi, or a jump home): the Evening's clock runs from here. */
+  const reachHome = (openDoor: boolean): void => {
+    if (!walk || walk.leg !== 'home' || walk.past) return;
+    walk.past = true;
+    setWalk(null);
+    run.homeHold(false);
+    atHome = true;
+    if (openDoor) { sfx(HOME_SFX.lockTurn); walk.doorOpen = true; void world.home?.doorTo(1, 0.9); }
+    beginEvening(true);
+  };
+  /** Straight in (the taxi's fade, or a station used while still out): at the front door, inside. */
+  const jumpHome = (): void => {
+    if (!walk || walk.leg !== 'home' || walk.past) return;
+    placeHome();
+    reachHome(false);
+    walk = null;
+  };
+  const taxiHome = (): void => {
+    if (!walk || walk.leg !== 'home' || walk.past || run.homeStage() !== 'evening') return;
+    sfx('doorSlam', { vol: 0.35, pitch: 1.3 });
+    wantLock = true;
+    fadeTo(1, 0.5);
+    app.timers.sim.after(0.7, () => {
+      if (disposed) return;
+      jumpHome();
+      unlock();
+      fadeTo(0, 0.8);
+    });
+  };
+  /** The walk out (the prologue, the morning): the front door opens from inside, the goal is the casino door. */
+  const startWalkOut = (): void => {
+    walk = { leg: 'out', past: false, doorOpen: false };
+    setDoorOut(true);
+    setWalk('casino', pro === 'done' && taxiTonight());
+  };
+  const openOut = (): void => {
+    if (!walk || walk.leg !== 'out' || walk.doorOpen || walk.past) return;
+    walk.doorOpen = true;
+    sfx(HOME_SFX.lockTurn);
+    void world.home?.doorTo(1, 0.9);
+  };
+  /** The casino door: the lift down. The prologue ends at the bottom; a morning shows the Night's banner there. */
+  const toCasino = (): void => {
+    if (pro === 'walk') { pro = 'lift'; startLift(() => { pro = 'done'; run.finishPrologue(); }); return; }
+    startLift(() => { void ui().banner(t('ingame.night', { n: run.night() })); });
+  };
+  /** Where the player stands decides the walk's next beat (config `walkCue`). */
+  const tickWalk = (): void => {
+    if (!walk || lift) return;
+    const cue = walkCue(walk.leg, player.pos.x - HOME_ORIGIN[0], player.pos.z - HOME_ORIGIN[2]);
+    if (walk.leg === 'home') {
+      if (run.homeStage() !== 'evening') return;   // the ride is still fading in
+      if (cue === 'door' && !walk.past) reachHome(true);
+      else if (cue === 'in') {
+        if (!walk.past) reachHome(false);
+        if (walk?.doorOpen) void world.home?.doorTo(0, 0.8);   // in and clear of the leaf: it shuts behind you
+        walk = null;
+      }
+      return;
+    }
+    if (cue === 'hall' && walk.doorOpen) {
+      walk.doorOpen = false;
+      walk.past = true;
+      setDoorOut(false);
+      void world.home?.doorTo(0, 0.8);
+    } else if (cue === 'lift') toCasino();
+  };
+
   // ── stages ─────────────────────────────────────────────────────────────────────────────────────────
   const startRide = (): void => {
     beats = { ding: false, tp: false, fadeIn: false, flick: 0, knocks: 0 };
@@ -213,7 +311,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
 
   const arriveEvening = (from: HomeStage | null): void => {
     if (from === 'ride') {
-      if (!beats.tp) { beats.tp = true; placeHome(); }
+      if (!beats.tp) { beats.tp = true; placeRide('ride'); }
       if (!beats.fadeIn) { beats.fadeIn = true; fadeTo(0, 0.5); }
     } else {
       // a restored Evening: the front door, out of the dark
@@ -223,9 +321,21 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
       fadeTo(0, 0.9);
     }
     unlock();
+    if (walk?.leg === 'home' && !walk.past) {
+      // on the street: the Evening waits for the door (its clock holds, the visitor and Ada come once you are in)
+      run.homeHold(true);
+      ui().dismissToasts();
+      ui().toast(t('evening.walk.home'), 'sys', 6);
+      return;
+    }
+    beginEvening(from === 'ride');
+  };
+
+  /** The Evening proper: the visitor's roll, Ada's plan, the kitchen wager, the hint. */
+  const beginEvening = (fresh: boolean): void => {
     movedFlag = false;
-    beginVisit(from === 'ride');
-    planAda(from === 'ride');
+    beginVisit(fresh);
+    planAda(fresh);
     if (wagerDue()) queueOffer();   // THE KITCHEN WAGER: Ada's table comes before the free walk
     ui().dismissToasts();   // the arrival hint is the only centre-top line of the Evening: stale toasts from the pit step aside
     ui().toast(t('evening.hint'), 'sys', 5);
@@ -244,6 +354,16 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     if (from === null) return;
     endVisit();
     adaAtDoor = false;
+    if (from === 'sleep' && atHome && streetBuilt()) {
+      // the morning: wake in the flat and walk to the casino; the Night's banner waits for the lift down
+      startWalkOut();
+      unlock();
+      fadeTo(0, 0.9);
+      ui().toast(t('evening.walk.out'), 'sys', 6);
+      const dream = dreamOf(run.homePhone());
+      if (dream) say(t(dream.key), '', 5);
+      return;
+    }
     if (atHome) placeFloor();
     unlock();
     fadeTo(0, 0.9);
@@ -269,7 +389,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
       seatWait += dt;
       if (!world.seat || seatWait >= SEAT_WAIT_SEC) {
         // no apartment built (a world without the Home room): give up on the move once the ride is over, the flow still runs
-        if (placeHome() || e >= T.ride) beats.tp = true;
+        if (placeRide(stage) || e >= T.ride) beats.tp = true;
       }
     }
     if (beats.tp && !beats.fadeIn && e >= T.fadeIn) { beats.fadeIn = true; fadeTo(0, 0.9); }
@@ -584,13 +704,15 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     if (pro !== 'done') {
       // THE PROLOGUE: the apartment is for talking and looking; the front door takes the lift down, the bed waits for Night 1
       if (pro !== 'walk' || station === 'phone') return;
-      if (station === 'door') { startLift(); return; }
+      if (station === 'door') { if (walk?.leg === 'out') openOut(); else toCasino(); return; }
       if (station === 'bed') { ui().toast(t('evening.prologue.notYet'), 'warn', 2.5); return; }
       movedFlag = true;
       touch(station);
       return;
     }
+    if (station === 'door' && walk?.leg === 'out') { openOut(); return; }   // the morning: out you go
     if (run.homeStage() !== 'evening') return;   // the Evening is the only stage with a free hand
+    jumpHome();   // a station used while still on the street (a script, a test): straight in
     if (station !== 'peephole') movedFlag = true;   // the Listener hears every touch; the look costs only its time
     if (station === 'bed') {
       if (visit?.atDoor()) { ui().toast(t('knock.blocked'), 'warn', 2.5); return; }   // not with someone at the door
@@ -602,6 +724,13 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     touch(station);
   };
   offs.push(bus.on('home:interact', ({ station }) => interact(station)));
+  offs.push(bus.on('street:taxi', ({ to }) => {
+    if (run.over || lift) return;
+    if (to === 'home') { taxiHome(); return; }
+    if (walk?.leg !== 'out') return;
+    sfx('doorSlam', { vol: 0.35, pitch: 1.3 });
+    toCasino();
+  }));
 
   // ── THE PROLOGUE (wave 72): the scene, the objective, the lift down ───────────────────────────────────────────
   /** The objective is up: the scene is over (or skipped) and the front door takes the lift down. */
@@ -610,26 +739,36 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     objectiveT = 0;
     unlock();
     ui().toast(t('evening.prologue.objective'), 'sys', 6);
+    if (!streetBuilt()) return;
+    startWalkOut();
+    say(t('evening.prologue.keys'), t('evening.speaker.spouse'), 3.5);   // Ada gives you back your keys at the door
   };
-  /** The lift down: dark, the ding, the teleport to the elevator door on the floor, back in. The run's Watch 1 opens at the end. */
-  const startLift = (): void => {
-    pro = 'lift';
+  /**
+   * The lift down: dark, the ding, the teleport to the elevator door on the floor, back in, then `done` (the prologue's end opens
+   * Night 1 Watch 1; the intro follows on the run's `home:prologue` event).
+   */
+  const startLift = (done: () => void): void => {
+    if (walk?.doorOpen) void world.home?.doorTo(0, 0);   // left open behind (a jump to the casino door): shut it
+    walk = null;
+    setWalk(null);
+    setDoorOut(false);
+    lift = { t: 0, ding: false, tp: false, fadeIn: false, done };
     sfx('doorOpen', { vol: 0.7 });
-    liftT = 0;
-    liftBeat = { ding: false, tp: false, fadeIn: false };
     wantLock = true;
     ui().dismissToasts();
     fadeTo(1, T.dark);
   };
   const tickLift = (dt: number): void => {
-    liftT += dt;
-    if (!liftBeat.ding && liftT >= T.dark) { liftBeat.ding = true; sfx(HOME_SFX.ding); }
-    if (!liftBeat.tp && liftT >= T.teleport) { liftBeat.tp = true; placeFloor(); }
-    if (liftBeat.tp && !liftBeat.fadeIn && liftT >= T.fadeIn) { liftBeat.fadeIn = true; fadeTo(0, 0.9); }
-    if (liftT < T.ride) return;
-    pro = 'done';
+    const l = lift;
+    if (!l) return;
+    l.t += dt;
+    if (!l.ding && l.t >= T.dark) { l.ding = true; sfx(HOME_SFX.ding); }
+    if (!l.tp && l.t >= T.teleport) { l.tp = true; placeFloor(); }
+    if (l.tp && !l.fadeIn && l.t >= T.fadeIn) { l.fadeIn = true; fadeTo(0, 0.9); }
+    if (l.t < T.ride) return;
+    lift = null;
     unlock();
-    run.finishPrologue();   // Night 1 Watch 1 opens on the floor now; the intro follows on the run's `home:prologue` event
+    l.done();
   };
   /** The world is built: the apartment is placed and the scene plays. A run that is not in its prologue has nothing to start. */
   const startPrologue = (): void => {
@@ -652,7 +791,8 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
 
   return {
     update(dt) {
-      if (pro === 'lift') tickLift(dt);
+      tickLift(dt);
+      tickWalk();
       if (pro === 'walk') {
         objectiveT += dt;
         if (objectiveT >= OBJECTIVE_EVERY_SEC) { objectiveT = 0; ui().toast(t('evening.prologue.objective'), 'sys', 6); }
@@ -683,6 +823,8 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     dispose() {
       disposed = true;
       for (const off of offs.splice(0)) off();
+      setWalk(null);
+      setDoorOut(false);
       world.home?.setDoorShadow(false);
       showVisitor(null);
       wantLock = false; locked = false;   // the state that follows sets its own input mode

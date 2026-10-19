@@ -33,6 +33,7 @@ const en: Record<string, string> = {
   bought: 'BOUGHT {n} TICKET', sold: 'SOLD {n} TICKET', lent: 'HOUSE CREDIT +{n}', pulled: '+1 PULL',
   funds: 'NOT ENOUGH COINS', tickets: 'NOT ENOUGH TICKETS', cap: 'TICKET LIMIT', mode: 'CLOSED IN THIS MODE', phase: 'ONLY WHILE A WATCH RUNS',
   rate: 'BUY {b} / SELL {s}',
+  plaque: 'VEZNE', plaqueSub: 'CASHIER',
 };
 
 const tr: Record<string, string> = {
@@ -64,6 +65,7 @@ const tr: Record<string, string> = {
   bought: '{n} BİLET ALINDI', sold: '{n} BİLET SATILDI', lent: 'KASA KREDİSİ +{n}', pulled: '+1 ÇEKİŞ',
   funds: 'PARA YETMİYOR', tickets: 'BİLET YETMİYOR', cap: 'BİLET SINIRI', mode: 'BU MODDA KAPALI', phase: 'YALNIZ VARDİYA SÜRERKEN',
   rate: 'AL {b} / SAT {s}',
+  plaque: 'VEZNE', plaqueSub: 'CASHIER',
 };
 
 export const STRINGS: MachineStrings = { en, tr };

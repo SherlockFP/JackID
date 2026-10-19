@@ -18,6 +18,7 @@ import type { SlotDef } from './types';
 import type { ZoneDef } from './sys/arch';
 import { HOLLOW_TABLE_SLOT } from './hollow/config';
 import { HOME_LOOK, HOME_ZONE_RECT } from './home/config';
+import { STREET_LOOK, STREET_ZONE_RECT } from './street/config';
 
 /** Metres per repeat of every 64 px floor map (stage, apartment, zone floors): one texel density, 32 per metre, at the 360p default. */
 export const FLOOR_TILE_M = 2;
@@ -273,6 +274,8 @@ export const ZONES: ZoneDef[] = [
   { id: 'hollow', rect: [108, 108, 132, 132], ...look(0x030103, 2, 14, 0x140a0a) },
   // THE APARTMENT (world/home): far offset at HOME_ORIGIN; the room only (the hallway is outside, lit by its own bulb)
   { id: 'home', rect: HOME_ZONE_RECT, ...look(HOME_LOOK.fog.color, HOME_LOOK.fog.near, HOME_LOOK.fog.far, HOME_LOOK.ambient) },
+  // THE WALK HOME (world/street): the block's corridor, the night street and the casino's street door, around the flat
+  { id: 'street', rect: STREET_ZONE_RECT, ...look(STREET_LOOK.fog.color, STREET_LOOK.fog.near, STREET_LOOK.fog.far, STREET_LOOK.ambient) },
 ];
 
 /**

@@ -37,6 +37,8 @@ export interface HomeBuild {
 let active: HomeRoomApi | null = null;
 let activeDoor: HomeDoor | null = null;
 let activeVisitors: HallVisitors | null = null;
+/** The front door opens from inside (the walk out to the casino: the prologue and the morning); otherwise it is locked for the night. */
+let doorOut = false;
 
 /** The apartment's controls for this run, or null (no world yet, or the level has not built the apartment). */
 export function homeRoom(): HomeRoomApi | null {
@@ -61,6 +63,11 @@ export function showVisitor(type: HomeVisitor | null): void {
 /** The visitor on show in the hall, or null. */
 export function visitorShown(): HomeVisitor | null {
   return activeVisitors?.current() ?? null;
+}
+
+/** THE WALK OUT: the door station reads "Go out" and is live (true), or "Locked for the night" and greyed (false). */
+export function setDoorOut(on: boolean): void {
+  doorOut = on;
 }
 
 /** Rattles the shut front door: `strength` 0..1 (default 1), `dur` seconds of sim time (default 0.25). */
@@ -193,11 +200,11 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
     station('peephole', boxAt(...WALL_STATIONS.peephole), STATION_PRIORITY.peephole, {
       label: () => t('home.station.peephole'),
     }),
-    // the door is locked for the night in wave 69: it stays focusable (so the reason shows), but greyed
+    // the door is locked for the night: it stays focusable (so the reason shows), but greyed; on the walk out it opens
     station('door', boxAt(...WALL_STATIONS.door), STATION_PRIORITY.door, {
       label: () => t('home.station.door'),
-      sub: () => t('home.station.door.sub'),
-      disabled: () => true,
+      sub: () => t(doorOut ? 'home.station.door.out' : 'home.station.door.sub'),
+      disabled: () => !doorOut,
     }),
     // the fridge (Ada's snack, the market's deliveries: src/game/food.ts) and the old PC on the desk (the economy lane's market)
     station('fridge', boxAt(...FRIDGE.station), 2, {
@@ -241,7 +248,7 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
         const m = obj as THREE.Mesh;
         if (m.geometry && !m.geometry.userData.shared) m.geometry.dispose();
       });
-      if (active === api) active = null;
+      if (active === api) { active = null; doorOut = false; }
     },
   };
 }

@@ -26,6 +26,7 @@ import { registerStrings, setLang, t, type StringTable } from '@/core/i18n';
 import { bootParams } from '@/core/bootParams';
 import { log } from '@/core/log';
 import { installDebug } from '@/core/debug';
+import { startVersionCheck } from '@/core/version';
 import { createPsxRenderer } from '@/core/renderer/psxRenderer';
 import { createTexGen } from '@/core/texgen/texgen';
 import { createAudio } from '@/core/audio/audio';
@@ -144,6 +145,7 @@ async function boot(): Promise<void> {
   a.register('ingame', inGame);
   a.register('results', createResultsState());
   installDebug(a);
+  if (import.meta.env.PROD) startVersionCheck(__BUILD_ID__);   // a tab from before a deploy reloads itself (core/version.ts)
   // Wave 25 TALLY: the manga cut-in, glyph and reveal hooks for cutscenes; the run waits for the presentation before rewards and scenes
   installManga(a);
   setPresentationProbe(() => !mangaBusy());

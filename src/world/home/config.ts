@@ -93,7 +93,7 @@ export const WIN_X1 = 0.4;
 export const WIN_Y0 = 0.9;
 export const WIN_Y1 = 2.1;
 
-/** The hallway outside the front door (x in [-1.6, 0.4], z in [2.8, 5.2]). */
+/** The hallway outside the front door (x in [-1.6, 0.4], z in [2.8, 5.2]); it runs on east as the block's corridor (world/street). */
 export const HALL_X0 = -1.6;
 export const HALL_X1 = 0.4;
 export const HALL_Z1 = 5.2;

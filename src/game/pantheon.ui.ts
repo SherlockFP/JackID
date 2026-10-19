@@ -82,6 +82,7 @@ function receiptBlock(box: HTMLElement, receipt: DawnReceipt, alive: () => boole
     if (r.key === 'pantheon.receipt.due' && receipt.tithe > 0) h('div', 'pt-rec-sub', line, t('pantheon.receipt.titheAdd', { n: fmtCoins(receipt.tithe) }));
   }
   if (receipt.memory) {
+    h('div', 'pt-rec-sub', rec, t('pantheon.receipt.missed', { n: fmtCoins(Math.max(0, receipt.due - receipt.paid)) }));   // say plainly: the quota was missed
     h('div', 'pt-rec-sub pt-rec-mem', rec, t(`run.mem.${receipt.memory}.lost`));
     h('div', 'pt-rec-sub', rec, t('pantheon.receipt.sealsLeft', { n: receipt.seals ?? 0 }));
   }

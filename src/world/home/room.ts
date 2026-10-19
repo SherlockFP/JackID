@@ -17,10 +17,11 @@ import { calendarTex, homePaperTex, plasterTex, stairwellTex, wallRugTex, worldU
 import { buildFoodProp } from '../props/food';
 import type { LightHint } from '../sys/arch';
 import {
-  at, BED, CEIL, DOOR_H, DOOR_X0, DOOR_X1, EMPTY_SEAT, HALL_X0, HALL_X1, HALL_Z1, HOME_ZONE, LIGHT, SOUTH_WALL_SOLIDS,
+  at, BED, CEIL, DOOR_H, DOOR_X0, DOOR_X1, EMPTY_SEAT, HALL_X0, HALL_Z1, HOME_ZONE, LIGHT, SOUTH_WALL_SOLIDS,
   SPOUSE_SEAT, SPOUSE_SIT, TABLE,
   WIN_X0, WIN_X1, WIN_Y0, WIN_Y1,
 } from './config';
+import { CORRIDOR_X1 } from '../street/config';
 
 export interface Statics { box: THREE.Box3; tag?: 'solid' | 'walkable' }
 
@@ -71,14 +72,15 @@ export function buildRoom(c: RoomCtx): RoomParts {
 
   // ── floors and ceilings ────────────────────────────────────────────────────────────────────
   slab(-3.3, -0.1, -2.8, 3.3, 0, 2.8, floor);
-  slab(HALL_X0 - 0.3, -0.1, 2.8, HALL_X1 + 0.3, 0, HALL_Z1 + 0.3, hallFloor);
+  // the hall runs on east as the block's ground corridor to the building door (world/street dresses it)
+  slab(HALL_X0 - 0.3, -0.1, 2.8, CORRIDOR_X1, 0, HALL_Z1 + 0.3, hallFloor);
   statics.push({ box: new THREE.Box3(new THREE.Vector3(...at(-3.3, -0.5, -2.8)), new THREE.Vector3(...at(3.3, 0, 2.8))), tag: 'walkable' });
   statics.push({
-    box: new THREE.Box3(new THREE.Vector3(...at(HALL_X0 - 0.3, -0.5, 2.8)), new THREE.Vector3(...at(HALL_X1 + 0.3, 0, HALL_Z1 + 0.3))),
+    box: new THREE.Box3(new THREE.Vector3(...at(HALL_X0 - 0.3, -0.5, 2.8)), new THREE.Vector3(...at(CORRIDOR_X1, 0, HALL_Z1 + 0.3))),
     tag: 'walkable',
   });
   worldUV(slab(-3.3, CEIL, -2.8, 3.3, CEIL + 0.12, 2.8, ceil), 2);
-  worldUV(slab(HALL_X0 - 0.3, CEIL, 2.8, HALL_X1 + 0.3, CEIL + 0.12, HALL_Z1 + 0.3, ceil), 2);
+  worldUV(slab(HALL_X0 - 0.3, CEIL, 2.8, CORRIDOR_X1, CEIL + 0.12, HALL_Z1 + 0.3, ceil), 2);
 
   // ── walls: the room (window in the north wall, front door in the south) and the hallway ─────────
   wallSlab(-3.3, 0, -2.8, -3.0, CEIL, 2.8);
@@ -89,8 +91,11 @@ export function buildRoom(c: RoomCtx): RoomParts {
   wallSlab(WIN_X0, WIN_Y1, -2.8, WIN_X1, CEIL, -2.5);
   for (const s of SOUTH_WALL_SOLIDS) wallSlab(s[0], s[1], s[2], s[3], s[4], s[5]);
   wallSlab(HALL_X0 - 0.3, 0, 2.8, HALL_X0, CEIL, HALL_Z1 + 0.3, stairwell);
-  wallSlab(HALL_X1, 0, 2.8, HALL_X1 + 0.3, CEIL, HALL_Z1 + 0.3, stairwell);
-  wallSlab(HALL_X0 - 0.3, 0, HALL_Z1, HALL_X1 + 0.3, CEIL, HALL_Z1 + 0.3, stairwell);
+  wallSlab(HALL_X0 - 0.3, 0, HALL_Z1, CORRIDOR_X1, CEIL, HALL_Z1 + 0.3, stairwell);   // Ada's door is on it, across from yours
+  wallSlab(3.3, 0, 2.5, CORRIDOR_X1, CEIL, 2.8, stairwell);                              // the corridor's north wall past the flat
+  // the stairwell paint over the flat's south wall on the corridor side (the room's paper stays inside)
+  wallSlab(HALL_X0, 0, 2.8, DOOR_X0 - 0.05, CEIL, 2.81, stairwell);
+  wallSlab(DOOR_X1 + 0.05, 0, 2.8, 3.3, CEIL, 2.81, stairwell);
 
   // door frame trims on both faces of the opening
   for (const z of [2.46, 2.8]) {

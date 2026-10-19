@@ -18,8 +18,12 @@ export default {
     'window.3': 'Your reflection looks tired. Behind it, the dark.',
     'window.4': 'A siren somewhere. It doesn\'t stop here.',
     // THE PROLOGUE (wave 72): the objective after Ada and the call, and the bed's answer before the lift
-    'prologue.objective': 'Take the lift down.',
-    'prologue.notYet': 'Not yet. The lift first.',
+    'prologue.objective': 'Walk to the casino.',
+    'prologue.notYet': 'Not yet. The casino first.',
+    'prologue.keys': 'Your keys. Don\'t lose them again.',
+    // THE WALK HOME (world/street)
+    'walk.home': 'Walk home. Your block is down the street.',
+    'walk.out': 'Walk to the casino.',
   },
   tr: {
     'lever': 'ASANSÖRE BİN',
@@ -35,7 +39,10 @@ export default {
     'window.2': 'Sokak bomboş. Çukurda bir ışık hâlâ yanıyor.',
     'window.3': 'Yansıman yorgun görünüyor. Arkasında sadece karanlık.',
     'window.4': 'Bir yerde siren çalıyor. Buraya uğramıyor.',
-    'prologue.objective': 'Asansörle aşağı in.',
-    'prologue.notYet': 'Henüz değil. Önce asansör.',
+    'prologue.objective': 'Kumarhaneye yürü.',
+    'prologue.notYet': 'Henüz değil. Önce kumarhane.',
+    'prologue.keys': 'Anahtarların. Yine kaybetme.',
+    'walk.home': 'Eve yürü. Apartman sokağın aşağısında.',
+    'walk.out': 'Kumarhaneye yürü.',
   },
 };

@@ -92,7 +92,7 @@ test('signposts: an up arrow points the way the reader of that face is walking',
 test('no pit zone is near-black: every ambient colour has a clear channel, and the fallback look mirrors the layout', () => {
   const lum = (c) => Math.max((c >> 16) & 255, (c >> 8) & 255, c & 255);
   for (const z of L.ZONES) {
-    if (z.id === 'hollow' || z.id === 'home' || z.id === 'lift') continue;
+    if (z.id === 'hollow' || z.id === 'home' || z.id === 'street' || z.id === 'lift') continue;
     assert.ok(lum(z.ambient) >= 0x2c, `${z.id} ambient 0x${z.ambient.toString(16)} is too dark`);
     assert.ok(z.fog.far >= 18, `${z.id} fog far ${z.fog.far}`);
     const g = ARCH.GDD_ZONE_LOOK[z.id];

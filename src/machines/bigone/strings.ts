@@ -24,10 +24,8 @@ export const STRINGS: MachineStrings = {
     // seat HUD (readability standard)
     goal: 'Land a pattern on the grid and dodge the curse',
     stAuto: 'AUTO · {n} LEFT', stAutoSub: 'Stops on big wins, curses and jackpots', stSpinning: 'REELS TURNING',
-    stHold: 'REEL {n} HELD', stHoldSub: 'Stays for the next spin. This spin costs {c}', stReady: 'PRESS SPIN', stReadySub: 'STAKE {n}',
-    nStake: 'BET', nLast: 'LAST WIN', nJackpot: 'JACKPOT', nHunger: 'HUNGER', nBalance: 'BALANCE',
-    cSpin: 'SPIN', cStake: 'STAKE', cMax: 'MAX', cAuto: 'AUTO', cStopAuto: 'STOP AUTO', cSize: 'SIZE {n}', cHold: 'HOLD',
-    cFast: 'FAST', cFastOn: 'FAST ON', cRules: 'RULES', cLeave: 'LEAVE',
+    stHold: 'REEL {n} HELD', stHoldSub: 'Stays for the next spin. This spin costs {c}', stReady: 'SPIN {key}', stReadySub: 'STAKE {n}',
+    cSpin: 'SPIN', cStake: 'STAKE', cAuto: 'AUTO', cStopAuto: 'STOP AUTO', cHold: 'HOLD', cRules: 'RULES', cLeave: 'LEAVE',
     rule1: 'Land a pattern on the 5 x 3 grid. Pays are multiples of your stake.',
     rule2: 'Every stake feeds the jackpot meter. A full fill of the grid wins it.',
     rule3: 'The curse eats your stake. Its clock resets each Night.',
@@ -39,6 +37,7 @@ export const STRINGS: MachineStrings = {
     cCollect: 'COLLECT {n}', cChase: 'CHASE x{m} · 1 IN {n}',
     chaseSpin: 'CHASE', chaseHit: 'CHASE HIT +{n}', chaseMiss: 'CHASE MISSED',
     rule7: 'Three Suns land on one spin: LUCKY 7, three free spins that pay half.',
+    rule9: 'Keys: {max} max stake, {size} auto size, {fast} fast spins, {hold} hold a reel.',
   },
   tr: {
     name: 'Büyük Vurgun',
@@ -59,10 +58,8 @@ export const STRINGS: MachineStrings = {
     // seat HUD (readability standard)
     goal: 'Izgarada desen yakala, laneti atlat',
     stAuto: 'OTO · {n} KALDI', stAutoSub: 'Büyük kazançta, lanette ya da jackpotta durur', stSpinning: 'MAKARALAR DÖNÜYOR',
-    stHold: 'MAKARA {n} TUTULUYOR', stHoldSub: 'Bir sonraki çevirmede kalır. Bu çevirme {c} tutar', stReady: 'ÇEVİR', stReadySub: 'BAHİS {n}',
-    nStake: 'BAHİS', nLast: 'SON KAZANÇ', nJackpot: 'JACKPOT', nHunger: 'AÇLIK', nBalance: 'BAKİYE',
-    cSpin: 'ÇEVİR', cStake: 'BAHİS', cMax: 'MAKS', cAuto: 'OTO', cStopAuto: 'OTOYU DURDUR', cSize: 'BOYUT {n}', cHold: 'TUT',
-    cFast: 'HIZLI', cFastOn: 'HIZLI AÇIK', cRules: 'KURALLAR', cLeave: 'ÇIK',
+    stHold: 'MAKARA {n} TUTULUYOR', stHoldSub: 'Bir sonraki çevirmede kalır. Bu çevirme {c} tutar', stReady: 'ÇEVİR {key}', stReadySub: 'BAHİS {n}',
+    cSpin: 'ÇEVİR', cStake: 'BAHİS', cAuto: 'OTO', cStopAuto: 'OTOYU DURDUR', cHold: 'TUT', cRules: 'KURALLAR', cLeave: 'ÇIK',
     rule1: '5 x 3 izgarada bir desen yakala. Ödemeler bahsinin katlarıdır.',
     rule2: 'Her bahis jackpot sayacını besler. Izgara tamamen dolunca sayaç senin olur.',
     rule3: 'Lanet bahsini yer. Lanet sayacı her Gece sıfırlanır.',
@@ -74,5 +71,6 @@ export const STRINGS: MachineStrings = {
     cCollect: 'AL {n}', cChase: 'KOVALA x{m} · 1/{n}',
     chaseSpin: 'KOVALA', chaseHit: 'KOVALA TUTTU +{n}', chaseMiss: 'KOVALA TUTMADI',
     rule7: 'Bir çevirmede üç Güneş gelirse: ŞANS 7, yarı ödemeli üç bedava çevirme.',
+    rule9: 'Tuşlar: {max} en yüksek bahis, {size} oto serisi, {fast} hızlı çevirme, {hold} makara tut.',
   },
 };

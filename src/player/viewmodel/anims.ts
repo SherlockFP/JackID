@@ -30,6 +30,12 @@ export interface AnimFx {
 }
 export const newFx = (): AnimFx => ({ coinY: 0, coinSpin: 0, coinScale: 1, watchLift: 0, itemEat: 0, itemFade: 0, rigY: 0, forearmRoll: 0 });
 
+/** The left forearm comes up into view and turns the back of the wrist (and the watch face) to the camera. `a` 0..1. */
+function raiseWrist(l: HandPose, fx: AnimFx, a: number): void {
+  l.py += 0.12 * a; l.px -= 0.1 * a; l.rx += 0.5 * a;
+  fx.forearmRoll = 0.85 * a;
+}
+
 export interface AnimCtx { item: string }
 /**
  * Clips an animation lays over the arms (`r` / `l`), at phase `at(k)` of the clip (default `k`: the whole clip over the animation),
@@ -153,7 +159,7 @@ export const ANIMS: Record<string, Anim> = {
     dur: 1.2, fade: [0.1, 0.22],
     run(k, _r, l, fx) {
       const a = bump(k, 0, 0.3, 0.7, 1);
-      l.py += 0.03 * a; l.pz += 0.02 * a; l.px -= 0.08 * a; l.rx += 0.25 * a; fx.forearmRoll = -0.9 * a;
+      raiseWrist(l, fx, a);
       l.rx -= 0.05 * ring(k, 0.3, 30, 6) + 0.02 * Math.sin(k * 11) * bump(k, 0.35, 0.45, 0.6, 0.7);
     },
   },
@@ -162,9 +168,9 @@ export const ANIMS: Record<string, Anim> = {
     dur: 1.4, fade: [0.12, 0.24],
     run(k, r, l, fx) {
       const a = bump(k, 0, 0.25, 0.8, 1);
-      l.py += 0.03 * a; l.pz += 0.02 * a; l.px -= 0.08 * a; l.rx += 0.25 * a; fx.forearmRoll = -0.9 * a;
+      raiseWrist(l, fx, a);
       const b = bump(k, 0.1, 0.42, 0.68, 1);
-      r.px -= 0.36 * b; r.py += 0.11 * b; r.pz += 0.01 * b; r.rx += 0.2 * b; r.rz += 0.25 * b;
+      r.px -= 0.3 * b; r.py += 0.07 * b; r.pz += 0.01 * b; r.rx += 0.2 * b; r.rz += 0.25 * b;
       r.index = lerp(r.index, 0.55, b); r.thumb = lerp(r.thumb, 0.6, b); r.curl = lerp(r.curl, 0.85, b);
       r.rz += 0.06 * Math.sin(k * 40) * bump(k, 0.4, 0.45, 0.6, 0.66);        // fiddling with the buckle
       fx.watchLift = smooth((k - 0.62) / 0.28);

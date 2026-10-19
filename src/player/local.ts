@@ -636,6 +636,7 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
   }
 
   const unsubs: Array<() => void> = [
+    bus.on('run:clock', ({ remaining }) => viewmodel.setWatchTime(remaining)),
     bus.on('buff:add', ({ owner, buff }) => { if (owner === `p:${self()}` && buff.id.startsWith('tonic.')) drinkTonic(); }),
     bus.on('settings:changed', ({ key }) => {
       if (key === 'gloves') viewmodel.setGloveColor(gloveColour(settings().gloves));

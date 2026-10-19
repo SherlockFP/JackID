@@ -34,7 +34,7 @@ import { createFidget, handAmplitude } from './viewmodel/fidget';
 import type { TossKind } from './viewmodel/coinTricks';
 import { Arm, Arms, copyPose, GLOVE_IVORY, GLOVE_LEATHER, HOLD_AT, loadArms, newPose, POSE_KEYS, spring, type ArmsSource, type ClipReq } from './viewmodel/arms';
 import { ANIMS, newFx, outBack, smooth, type Anim, type AnimFx } from './viewmodel/anims';
-import { buildGun, buildItem, buildWatch, gripOf, liftWatch, type Bite, type OwnMat } from './viewmodel/items';
+import { buildGun, buildItem, buildWatch, gripOf, liftWatch, setWatchTime, type Bite, type OwnMat } from './viewmodel/items';
 import { disposeGeometries, mat } from './viewmodel/shape';
 
 export { GLOVE_IVORY, GLOVE_LEATHER };
@@ -70,6 +70,8 @@ export interface ViewmodelHost extends Viewmodel {
   setGloveColor(c: Hex): void;
   /** Cracked-porcelain texture for the collateral look (optional; a flat bone colour is used without it). */
   setPorcelainMap(map: THREE.Texture | null): void;
+  /** The Watch clock the wristwatch dial shows (seconds left; null = no Watch running). */
+  setWatchTime(sec: number | null): void;
   /** Show or hide the wristwatch on the left wrist. */
   setWatch(on: boolean): void;
   dispose(): void;
@@ -276,6 +278,7 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
     setGloveColor(c) { bare = c === GLOVE_IVORY; arms?.setGlove(bare); },
     setLightLevel(v) { lightLevel = clamp(v, 0.2, 1); },
     setWatch(on) { watchOn = on; watch.visible = on; },
+    setWatchTime(sec) { setWatchTime(watch, sec); },
     drive(d) {
       speed = d.speed ?? 0;
       bobX = d.bobX * 0.4; bobY = d.bobY * 0.4;

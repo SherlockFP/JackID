@@ -138,6 +138,9 @@ export function parseScript(text) {
  *   lever              the terminal lever the run accepts now: OPEN THE FLOOR (with the Home layer on: TAKE THE LIFT home), else the Bell, else SETTLE
  *   home:lift          TAKE THE LIFT (run.openFloor on a paid Night with the Home layer): waits for stage `evening` (the ride, ~2.6 s sim)
  *   home:stay          the same ride, then STOP in the Evening without sleeping (a no-op when already home): drive the home by hand
+ *                      (both walk the player home from the casino's street door by teleport: the door's cue starts the Evening)
+ *   walk:home          THE WALK HOME: the same ride, then the walk shot by shot (with --shots): the casino door, the street, the
+ *                      block's entrance, the corridor with Ada's door, your door; the key turns there and the Evening begins
  *   station:<id>       fires `home:interact` for one apartment station (bed|door|peephole|chain|switch|phone|spouse|window|fridge|computer); Evening only
  *   ui:click:<css>     clicks the first DOM element matching the selector (el.click()): the home computer's tabs and buttons, the fridge
  *   home:sleep         the bed: the `home:interact` event for station `bed`; waits for the next Night to open (the sleep, ~1.8 s sim)
@@ -195,7 +198,7 @@ export function parseRunSteps(text) {
     if (!tok) continue;
     if (['stand', 'lever', 'bell', 'pawn', 'state', 'events'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
     // THE EVENING (wave 69): the lift, the apartment's stations and the phone
-    if (['home:lift', 'home:stay', 'home:sleep', 'home:talk', 'home:switch', 'home:chain', 'home:peep', 'home:knock-check', 'home:miss', 'home:visit', 'phone:open'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
+    if (['home:lift', 'home:stay', 'walk:home', 'home:sleep', 'home:talk', 'home:switch', 'home:chain', 'home:peep', 'home:knock-check', 'home:miss', 'home:visit', 'phone:open'].includes(tok)) { out.push({ kind: tok, text: tok }); continue; }
     // THE KNOCK (wave 71): set the lights or the chain to a state, and stand still
     const mh = /^home:(lights|chain):(on|off)$/.exec(tok);
     if (mh) { out.push({ kind: mh[1] === 'lights' ? 'home:lights' : 'home:chainset', on: mh[2] === 'on', text: tok }); continue; }
@@ -524,6 +527,7 @@ async function skipPrologue(cdp, shoot = null) {
     if (id === 'prologue') { await pressKey(cdp, 'Space', 900); holds++; }
     else {
       await evaluate(cdp, homeEmitJs('door')); doors++;
+      await walkOut(cdp);   // THE WALK OUT: the door opens; the bot steps into the casino's street door, where the lift waits
       // THE LIFT RIDE (wave 72): one frame shot 0.9 s after the first call (fade, ding, the teleport comes at T.teleport), once per run
       if (shoot && !shot) {
         await sleep(900);
@@ -627,20 +631,52 @@ async function waitFadeClear(ctx) {
  * Page JS: teleports the player to a named world anchor (`world.anchor(name)`), standing at its world position (the Home
  * placement's 0.05 m stand lift, as evening.ts places the lift arrival) and facing the way the anchor faces (its -Z). Visual checks.
  */
-const anchorJs = (name) => `(() => {
-  const a = window.jackid.app, w = a.world, name = ${JSON.stringify(name)};
+const anchorJs = (name, off = [0, 0, 0], yawSet = null) => `(() => {
+  const a = window.jackid.app, w = a.world, name = ${JSON.stringify(name)}, off = ${JSON.stringify(off)}, yawSet = ${JSON.stringify(yawSet)};
   if (!w || !a.player) return { ok: false, reason: 'no debt run on screen' };
   const o = w.anchor(name);
   if (!o) return { ok: false, reason: 'no anchor "' + name + '" in this world (the Home anchors need the apartment built)' };
   o.updateWorldMatrix(true, false);
   const pos = o.getWorldPosition(a.camera.position.clone());
-  pos.y += 0.05;
+  pos.x += off[0]; pos.y += 0.05 + off[1]; pos.z += off[2];
   const dir = a.camera.position.clone().set(0, 0, -1).applyQuaternion(o.getWorldQuaternion(a.camera.quaternion.clone()));
-  const yaw = Math.atan2(-dir.x, -dir.z);
+  const yaw = yawSet ?? Math.atan2(-dir.x, -dir.z);
   a.player.teleport(pos, yaw);
   const r2 = (v) => Math.round(v * 100) / 100;
   return { ok: true, anchor: name, at: [r2(pos.x), r2(pos.y), r2(pos.z)], yaw: r2(yaw) };
 })()`;
+/** Page JS: the walk's goal (world/street `walkGoal`): 'home' on the way home, 'casino' on the way out, or null. */
+const WALK_GOAL_JS = `import('/src/world/street/index.ts').then((m) => m.walkGoal(), () => null)`;
+/**
+ * THE WALK HOME by teleport: to your door from the hall (the key turns, the Evening begins), then inside, clear of the leaf (it
+ * shuts), then the usual spot inside the door. `shots` (name, anchor, offset, yaw) are taken on the way, before the door.
+ */
+async function walkHome(ctx, shots = []) {
+  const out = { shots: [] };
+  if ((await evaluate(ctx.cdp, WALK_GOAL_JS)) !== 'home') { out.walked = false; return out; }
+  for (const [name, anchor, off, yaw] of shots) {
+    await evalJson(ctx.cdp, anchorJs(anchor, off, yaw));
+    await sleep(400);
+    if (ctx.shotsDir) out.shots.push(await ctx.shoot(name));
+  }
+  await evalJson(ctx.cdp, anchorJs('street.flatDoor'));
+  await sleep(200);
+  if (ctx.shotsDir) out.shots.push(await ctx.shoot('walk-your-door.png'));
+  await sleep(1000);
+  await evalJson(ctx.cdp, anchorJs('home.spawn', [0, 0, -0.8]));
+  await sleep(1000);
+  await evalJson(ctx.cdp, anchorJs('home.spawn'));
+  out.walked = (await evaluate(ctx.cdp, WALK_GOAL_JS)) === null;
+  return out;
+}
+/** THE WALK OUT by teleport: the morning (or the prologue) straight to the casino's street door, where the lift takes the player down. */
+async function walkOut(cdp) {
+  if ((await evaluate(cdp, WALK_GOAL_JS)) !== 'casino') return false;
+  await evaluate(cdp, homeEmitJs('door'));
+  await evalJson(cdp, anchorJs('street.casinoDoor'));
+  return true;
+}
+
 /** Node: waits (sim time) until `test(home)` holds for the run's home stage and Night, the run is over, or `ms` have passed. Returns the last read. */
 async function waitHome(ctx, test, ms) {
   const t0 = nowMs();
@@ -1570,6 +1606,8 @@ async function autoNight(ctx, rec, stopAt = null) {
         // auto:night:evening stops here: the paid Evening, after the lift, before the spouse, a visitor or the bed. The apartment
         // is then driven by hand (station:, ui:click:, play:); a later auto:night carries on from the bed.
         if (stopAt === 'evening') { end = 'evening'; break; }
+        // THE WALK HOME: the lift landed at the casino's street door; the bot walks in (by teleport) so the Evening begins
+        if ((await walkHome(ctx)).walked) decide(ctx, 'walk', 'the street and the corridor to the flat (teleport)');
         // THE KNOCK: a visitor to come or at the door blocks the bed. The bot reads who it is and passes the visit by the right counter
         // (Listener: lights off and still; Leaner: chain on before the second shove; Picker: chain on and lights off), then waits him out.
         const vz = await evalJson(ctx.cdp, VISIT_JS);
@@ -1933,6 +1971,7 @@ async function runKind(ctx, s, rec) {
       return;
     }
     case 'home:stay':
+    case 'walk:home':
     case 'home:lift': {
       // TAKE THE LIFT: the paid Night's floor lever with the Home layer. The ride (fade, ding, teleport) runs on sim time; the step
       // waits for the Evening so the next step finds the player at the front door. `home:stay` is the same, and a no-op when the
@@ -1941,19 +1980,31 @@ async function runKind(ctx, s, rec) {
       const h0 = await evalJson(cdp, HOME_STAGE_JS);
       rec.night = h0?.night ?? null;
       if (s.kind === 'home:stay' && h0?.stage === 'evening') { rec.ok = true; rec.stage = 'evening'; rec.note = 'already in the Evening'; return; }
-      if (!h0 || h0.stage !== null) { rec.ok = false; rec.reason = `not on the casino floor (home stage "${h0?.stage ?? 'none'}")`; return; }
-      rec.ok = (await evaluate(cdp, `(() => { const r = window.jackid.app.run; return r.homeLiftReady?.() === true && r.openFloor() === true; })()`)) === true;
+      const onStreet = s.kind === 'walk:home' && h0?.stage === 'evening';   // the lever already rode up (auto:night:evening): walk from here
+      if (!onStreet && (!h0 || h0.stage !== null)) { rec.ok = false; rec.reason = `not on the casino floor (home stage "${h0?.stage ?? 'none'}")`; return; }
+      rec.ok = onStreet || (await evaluate(cdp, `(() => { const r = window.jackid.app.run; return r.homeLiftReady?.() === true && r.openFloor() === true; })()`)) === true;
       if (!rec.ok) {
         rec.reason = 'no lift: the Home layer is off, the Night is unpaid, the lever is held (a Night Card offer, Night 8), or the run ended';
         noteRefusal(rec, before, await evaluate(cdp, REFUSAL_JS));
         return;
       }
       // The ride is on the sim clock: one frame shot during it (lift-ride.png), then the wait for the Evening.
-      if (ctx.shotsDir) { await sleep(900); rec.shot = await ctx.shoot('lift-ride.png'); }
+      if (ctx.shotsDir && !onStreet) { await sleep(900); rec.shot = await ctx.shoot('lift-ride.png'); }
       const h = await waitHome(ctx, (x) => x.stage === 'evening', HOME_WAIT_MS);
       rec.stage = h?.stage ?? null;
       rec.ok = rec.stage === 'evening';
-      if (!rec.ok) rec.reason = `the ride did not reach the Evening (stage ${rec.stage})`;
+      if (!rec.ok) { rec.reason = `the ride did not reach the Evening (stage ${rec.stage})`; return; }
+      // THE WALK HOME: the ride lands at the casino's street door; walk:home shoots the way, the others just go in
+      await sleep(700);
+      const walked = await walkHome(ctx, s.kind !== 'walk:home' ? [] : [
+        ['walk-arrival.png', 'street.arrive', [0, 0, 0], null],
+        ['walk-casino-door.png', 'street.arrive', [4.6, 0, 7], 0.74],
+        ['walk-street.png', 'street.mid', [0, 0, 0], null],
+        ['walk-building-entrance.png', 'street.buildingDoor', [2.7, 0, -3.5], 2.22],
+        ['walk-corridor-ada-door.png', 'street.adaDoor', [0, 0, 0], null],
+      ]);
+      rec.walked = walked.walked;
+      if (walked.shots.length) rec.shots = walked.shots;
       return;
     }
     case 'home:sleep': {
@@ -1968,6 +2019,9 @@ async function runKind(ctx, s, rec) {
       rec.nightAfter = h?.night ?? null;
       rec.ok = h != null && h.stage === null && h.night > h0.night;
       if (!rec.ok) { rec.reason = `the bed did not open the next Night (stage ${rec.stage}, Night ${rec.nightAfter})`; return; }
+      // THE WALK OUT: the morning wakes in the flat; the bot goes straight to the casino's street door and rides the lift down
+      await waitFadeClear(ctx);
+      if (await walkOut(cdp)) { rec.walkedOut = true; await sleep(3200); }
       // The arrival: the player is teleported back under black, and the screen fades in. The next step starts after it has cleared.
       rec.fadeClear = await waitFadeClear(ctx);
       if (!rec.fadeClear) { rec.ok = false; rec.reason = 'the arrival fade did not clear (the screen is still dark)'; }

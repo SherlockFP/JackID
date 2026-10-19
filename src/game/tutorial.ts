@@ -29,6 +29,7 @@ import type { DebtRun } from '@/game/run';
 import type { UIOverlayX } from '@/core/ui/ui';
 import { holdClock, releaseClock } from '@/game/clockHold';
 import { inUnderneath } from '@/world/hollow';
+import { walkGoal } from '@/world/street';
 import { TILT_FREE_PULLS } from '@/game/data/schedule';
 import { createBrokePrompt } from '@/game/brokePrompt';
 import { machineName } from '@/game/progression';
@@ -403,6 +404,9 @@ function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): v
       if (disposed) return;
       if (run.night() !== night) { night = run.night(); base = { rounds: roundsAll, deposits: depositsAll }; }
       // At home (the Evening) the HUD's evening card carries the goal (rest, tomorrow's quota); "take the lift" would be wrong there.
+      // THE WALK HOME (world/street): on the street the wayfinder points at the next door (the block's, or the casino's)
+      const goal = walkGoal();
+      if (goal && !inUnderneath()) { hide(); wayfinder.update({ target: goal === 'home' ? 'buildingDoor' : 'casinoDoor', night }); return; }
       if (inUnderneath() || run.prologueOn() || run.homeStage() !== null) { hide(); wayfinder.hide(); return; }
       const sh = run.shift.state();
       const o = objectiveFor({

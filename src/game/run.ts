@@ -106,6 +106,7 @@ import { Joker, type JokerEvent, shownFrame, grinFrame } from './joker/joker';
 import type { WhisperCtx } from './joker/whispers';
 import { HABIT_AFTER, sheetFromOutcome, sheetFromTells, type CallResult, type CrookedTell } from './events/crookedTable';
 import { Bonds, bondOfRival, type BondChange, type BondEvent, type BondsSave } from './bonds';
+import { isCheated } from './cheats';
 import type { FloorAward, WatchFloor } from './events/types';
 import type { EventBannerShow } from './buffs/banner';
 import { createHomeEconomy, type EconSave, type HomeEconomy } from './economy/homeEconomy';
@@ -598,6 +599,8 @@ export interface DebtRun extends RunApi {
   homeLiftReady(): boolean;
   /** The bed: the Evening ends, the screen goes dark and the next Night opens at the end of the stage. False outside the Evening. */
   homeSleep(): boolean;
+  /** THE WALK HOME: while held, the Evening's clock waits (the player is still on the street). Not saved: a resume lands at the door. */
+  homeHold(on: boolean): void;
   /** THE PROLOGUE (wave 72): a fresh solo run starts in the apartment, before Night 1 Watch 1. True until the lift lands. */
   prologueOn(): boolean;
   /** The prologue's lift has landed on the casino floor: the prologue ends and Night 1 Watch 1 begins. False when it is not on. */
@@ -994,6 +997,7 @@ class Run implements DebtRun {
   readonly homeOn: boolean;
   private hStage: HomeStage | null = null;
   private hLeft = 0;
+  private hHold = false;
   private hLights = true;
   private hChain = false;
   private readonly hPhone: HomePhoneApi | null;
@@ -1929,7 +1933,7 @@ class Run implements DebtRun {
     return { index: this.index, due: this.quota.due, paid: this.debtPaid, deadlineAt: 0, floor: this.index + 1, total: BASE_RUN_NIGHTS };
   }
   timeLeft(): number { return this.canPlay() || this.phase === 'closing' ? this.clock.remaining : 0; }
-  isLocked(machineId: MachineId): boolean { if (this.owned.has(machineId)) return false; return isLockedFor(machineId, effectiveNight(this.night(), this.nightPaid, this.topside), this.mode, this.seed); }
+  isLocked(machineId: MachineId): boolean { if (this.owned.has(machineId) || this.mod('x.cheat.openAll', RUN_MACHINE, 0) > 0) return false; return isLockedFor(machineId, effectiveNight(this.night(), this.nightPaid, this.topside), this.mode, this.seed); }
   alive(_pid?: PlayerId): boolean { return this.living; }
   stat(key: string, add = 0): number {
     const v = (this.counters.get(key) ?? 0) + add;
@@ -2239,6 +2243,8 @@ class Run implements DebtRun {
     return true;
   }
 
+  homeHold(on: boolean): void { this.hHold = on && this.hStage === 'evening'; }
+
   prologueOn(): boolean { return this.prologue; }
 
   finishPrologue(): boolean {
@@ -2258,6 +2264,7 @@ class Run implements DebtRun {
   private setHome(stage: HomeStage | null, left: number): void {
     this.hStage = stage;
     this.hLeft = left;
+    if (stage !== 'evening') this.hHold = false;
     this.emit('home:stage', { stage });
     this.notify();
     this.persist();
@@ -2265,6 +2272,7 @@ class Run implements DebtRun {
 
   /** The Home clock: the ride arrives, the Evening falls asleep on its own, the bed opens the next Night, the doom ends the run. */
   private tickHome(dt: number): void {
+    if (this.hHold) return;   // the walk home: the Evening starts at the door
     this.hLeft -= dt;
     if (this.hLeft > 0) return;
     switch (this.hStage) {
@@ -2914,6 +2922,8 @@ class Run implements DebtRun {
   }
 
   private endRun(result: RunSummary['result'], ending?: string): void {
+    // read before the run:end emit: the achievements handler clears the mark there. A cheated run writes no bests or history.
+    const cheated = !!this.save && isCheated(this.save, this.seed);
     // THE ENDINGS: routed before anything resets (a quit or an abandoned run reaches none)
     this.endRec = this.quotaMode && result !== 'quit' && result !== 'abandoned' ? endingRecord(this.endingFacts({ result, ending })) : null;
     this.ended = true;
@@ -2921,14 +2931,14 @@ class Run implements DebtRun {
     this.clock.stop();
     this.watchEv.end();
     this.enter('over', 0);
-    if (this.quotaMode && (result === 'escaped' || (result as string) === 'won')) this.tycoonSys.recordWin(this.index + 1);
+    if (!cheated && this.quotaMode && (result === 'escaped' || (result as string) === 'won')) this.tycoonSys.recordWin(this.index + 1);
     const bonus = this.currencies.get('obol') ?? 0;   // Obols from Wash lockers and the Back Office (wave 24)
     const stake = this.stakeFx();
     const obols = this.quotaMode ? Math.round(this.runObols(result, ending) * this.obolMult * stake.obolMult) + (ending === 'descend' ? 0 : bonus) : undefined;
     const nightNo = this.index + 1;
     const day = this.dailyDayOf();
     const kit = this.config.kit ?? 'pauper';
-    const cleared = this.quotaMode && isStakeClear(result, nightNo);
+    const cleared = !cheated && this.quotaMode && isStakeClear(result, nightNo);
     const summary: RunSummary = {
       mode: this.mode, seed: this.seed, result, floor: this.index + 1, deadlines: this.index + 1, maxWallet: this.maxWallet,
       rounds: this.rounds, biggestWin: this.biggest, durationSec: Math.round(this.elapsed),
@@ -2945,15 +2955,15 @@ class Run implements DebtRun {
     this.emit('run:end', { summary });
     if (this.save) {
       // Descend banked its Obols (and the descent count) in the tycoon's prestige; every other ending banks them here.
-      const banked = ending === 'descend' ? (bonus > 0 ? this.bankObols(bonus) : null) : this.bankObols(obols ?? 0);
+      const banked = cheated ? null : ending === 'descend' ? (bonus > 0 ? this.bankObols(bonus) : null) : this.bankObols(obols ?? 0);
       this.save.update((d) => {
         d.resume = null;
-        d.history = [...d.history, summary].slice(-20);
+        if (!cheated) d.history = [...d.history, summary].slice(-20);
         // the endings seen: a "you've seen these endings" list reads `codex['ending:<id>']`
-        if (this.endRec) d.codex[`ending:${this.endRec.id}`] = (d.codex[`ending:${this.endRec.id}`] ?? 0) + 1;
+        if (this.endRec && !cheated) d.codex[`ending:${this.endRec.id}`] = (d.codex[`ending:${this.endRec.id}`] ?? 0) + 1;
         if (banked) d.meta = banked;
         if (cleared) d.stakeCleared = recordStakeClear(d.stakeCleared, kit, stake.stake);
-        if (day !== null) {
+        if (day !== null && !cheated) {
           const rec: DailyBest = { date: day, seed: this.seed, kit, night: nightNo, obols: obols ?? 0, result };
           if (dailyBetter(d.dailyBest?.[day], rec)) d.dailyBest = { ...(d.dailyBest ?? {}), [day]: rec };
         }
@@ -4201,7 +4211,7 @@ class Run implements DebtRun {
 
   /** He speaks (a tip, or an Ask). False when he has nothing to say. */
   private jokerSpeak(req: { ctx: WhisperCtx; fact?: string; ask?: boolean }): boolean {
-    if (this.ended || this.night() < 2) return false;   // he introduces himself on the Night 2 lift: Night 1 is the coach's, not his
+    if (this.ended || this.night() < 2 || this.mod('x.cheat.lokiQuiet', RUN_MACHINE, 0) > 0) return false;   // he introduces himself on the Night 2 lift: Night 1 is the coach's, not his
     const w = this.jokerSys.whisper(req);
     if (!w) return false;
     this.jokerLast = this.elapsed;
@@ -4225,7 +4235,7 @@ class Run implements DebtRun {
     const cat = machineId ? registry.get(machineId)?.def.category : undefined;
     if (cat === undefined || cat === 'system' || cat === 'party') return;   // the cashier, the Debt Terminal, the bell are not his
     this.jokerTip('machine', `seat:${mid}`, this.circ.isCold(mid) ? 'cold' : 'near');
-    if (this.night() >= 2 && this.inWatch() && this.jokerSys.canDare()) this.emit('joker:dare', { night: this.night() });
+    if (this.night() >= 2 && this.inWatch() && this.jokerSys.canDare() && this.mod('x.cheat.lokiQuiet', RUN_MACHINE, 0) <= 0) this.emit('joker:dare', { night: this.night() });
   }
 
   jokerMoment(ctx: 'crooked' | null, id = ''): void {

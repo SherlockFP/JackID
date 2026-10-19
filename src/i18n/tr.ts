@@ -42,6 +42,7 @@ const tr: StringTable = {
   'ui.error.webgl': 'JackID için WebGL2 gerekir. Donanım hızlandırması açık, güncel bir Chrome, Edge veya Firefox deneyin.',
   'ui.error.generic': 'Bir şey bozuldu: {msg}',
   'ui.error.reload': 'Yeniden yükle',
+  'ui.version.new': 'Yeni sürüm var. Menüye dönünce güncellenecek.',
   'ui.stub.play': 'OYNA',
   'ui.stub.lang': 'English / Türkçe',
   'ui.stub.hint': 'Temel sürüm: jackpot menüsü, çukur ve makineler sırada.',

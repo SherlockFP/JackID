@@ -12,7 +12,7 @@ import { app } from '@/core/app';
 import { clamp } from '@/core/math';
 import type { Hex } from '@/core/types';
 import { FOOD_BITE, FOOD_PARTS, FOOD_TEX, type FoodPropId, type FoodTex } from '@/world/props/food';
-import { ARMS_SCALE, ARMS_UNIT, HOLD_AT, type HandPose } from './arms';
+import { HOLD_AT, type HandPose } from './arms';
 import { mesh, shaded } from './shape';
 
 export type OwnMat = (c: Hex) => THREE.MeshBasicMaterial;
@@ -134,29 +134,90 @@ export function buildItem(kind: string, m: OwnMat): THREE.Object3D | null {
   return g;
 }
 
-const WATCH_BRASS = 0xb08a3a, WATCH_STRAP = 0x2a1810, WATCH_DIAL = 0xe6dec5;
-/** Where the watch sits on the left forearm bone (bone units: along the bone, on the back of the wrist). */
-const WATCH_AT = [-0.03, 0.17, 0] as const;
+const WATCH_BRASS = 0xb08a3a, WATCH_GOLD = 0xd4a84a, WATCH_STRAP = 0x2a1810, WATCH_DIAL = 0xe6dec5, WATCH_INK = 0x1c1410;
+/**
+ * The watch rides the left forearm bone (bone units, 1 = 1 m of the model; the bone runs +Y towards the hand, the back of the wrist is −X).
+ * The strap is an ellipse a little outside the skin there (the forearm is wider in Z than in X), the case sits on its −X side.
+ */
+const WATCH_AT = [0, 0.185, 0] as const;
+const STRAP_RX = 0.037, STRAP_RZ = 0.044, STRAP_W = 0.024;
+const CASE_R = 0.026, CASE_H = 0.014;
 
-/** The brass wristwatch: a strap ring round the forearm and a case with a dial on the back of the wrist (the left forearm bone's −X). Add it to that bone. */
+/** The dial: cream, a ring of hour ticks (long at 12, 3, 6 and 9), 12 at the top. */
+const paintDial = (g: CanvasRenderingContext2D, w: number, h: number): void => {
+  g.fillStyle = '#e6dec5'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#1c1410';
+  for (let i = 0; i < 12; i++) {
+    const major = i % 3 === 0, a = (i / 12) * Math.PI * 2;
+    g.save(); g.translate(w / 2, h / 2); g.rotate(a);
+    g.fillRect(-(major ? 1 : 0.5), -h / 2 + 2, major ? 2 : 1, major ? 6 : 3);
+    g.restore();
+  }
+};
+
+/**
+ * Hand angles (rad, clockwise from 12) for the Watch clock reading `sec` seconds left, read like a clock face: the long hand the
+ * seconds, the short hand the minutes (12 min a turn). `null` (no Watch running) shows ten past ten.
+ */
+export function watchHandAngles(sec: number | null): { hour: number; minute: number } {
+  if (sec === null || !Number.isFinite(sec)) return { hour: ((10 + 10 / 60) / 12) * Math.PI * 2, minute: Math.PI / 3 };
+  const s = Math.max(0, sec);
+  return { minute: ((s % 60) / 60) * Math.PI * 2, hour: ((s / 60 % 12) / 12) * Math.PI * 2 };
+}
+
+/** The brass wristwatch: a strap that wraps the wrist, a case with a bezel on the back of it, a dial with two hands. Add it to the left forearm bone. */
 export function buildWatch(m: OwnMat): THREE.Group {
   const w = new THREE.Group();
-  const strap = mesh(shaded(new THREE.CylinderGeometry(0.0235, 0.0235, 0.016, 10, 1, true)), m(WATCH_STRAP));
+  const strap = mesh(shaded(new THREE.CylinderGeometry(1, 1, STRAP_W, 14, 1, true)), m(WATCH_STRAP));
+  strap.scale.set(STRAP_RX, 1, STRAP_RZ);
+  const buckle = mesh(boxG(0.006, STRAP_W * 0.7, 0.016), m(WATCH_BRASS), STRAP_RX + 0.002, 0, 0);
+  // the case: its local +Y points out of the wrist (−X of the bone), +X towards the hand
+  const c = new THREE.Group();
+  c.rotation.z = Math.PI / 2;
+  c.position.x = -(STRAP_RX + 0.008);
+  c.add(mesh(cylG(CASE_R, CASE_R, CASE_H, 12), m(WATCH_BRASS)));
+  for (const s of [-1, 1]) c.add(mesh(boxG(0.014, 0.006, 0.018), m(WATCH_BRASS), s * (CASE_R + 0.003), -0.003, 0));   // lugs
+  const bezel = mesh(shaded(new THREE.RingGeometry(0.0215, CASE_R + 0.002, 12)), m(WATCH_GOLD), 0, CASE_H / 2 + 0.0004, 0);
+  bezel.rotation.x = -Math.PI / 2;
+  c.add(bezel);
+  // the face lies in the case's XZ plane seen from outside: x right (3 o'clock = towards the hand), 12 at the top (−Z of the bone)
   const face = new THREE.Group();
-  face.rotation.z = Math.PI / 2;
-  face.position.x = -0.0235;
-  face.add(mesh(shaded(new THREE.CylinderGeometry(0.0145, 0.0145, 0.007, 8)), m(WATCH_BRASS)),
-           mesh(shaded(new THREE.CylinderGeometry(0.0108, 0.0108, 0.002, 8)), m(WATCH_DIAL), 0, 0.0045, 0));
-  w.add(strap, face);
+  face.rotation.x = -Math.PI / 2;
+  face.position.y = CASE_H / 2 + 0.0002;
+  const dialMat = m(0xffffff);
+  dialMat.map = app?.tex?.canvas(48, 48, paintDial, { key: 'watch:dial' }) ?? null;
+  if (!dialMat.map) dialMat.color.setHex(WATCH_DIAL);
+  face.add(mesh(shaded(new THREE.CircleGeometry(0.0215, 14), 0.8), dialMat));
+  const hand = (len: number, wd: number, z: number): THREE.Group => {
+    const p = new THREE.Group();
+    p.position.z = z;
+    p.add(mesh(boxG(wd, len, 0.0006), m(WATCH_INK), 0, len / 2 - 0.002, 0));
+    face.add(p);
+    return p;
+  };
+  const hourH = hand(0.0125, 0.0034, 0.0008), minuteH = hand(0.0185, 0.0024, 0.0014);
+  face.add(mesh(cylG(0.0026, 0.0026, 0.001, 6), m(WATCH_GOLD), 0, 0, 0.0022).rotateX(Math.PI / 2));
+  c.add(face);
+  w.add(strap, buckle, c);
+  w.userData.hands = { hour: hourH, minute: minuteH };
+  setWatchTime(w, null);
   liftWatch(w, 0);
   return w;
+}
+
+/** Set the hands to the Watch clock reading `sec` seconds left (null: ten past ten). */
+export function setWatchTime(w: THREE.Object3D, sec: number | null): void {
+  const h = w.userData.hands as { hour: THREE.Object3D; minute: THREE.Object3D } | undefined;
+  if (!h) return;
+  const a = watchHandAngles(sec);
+  h.hour.rotation.z = -a.hour; h.minute.rotation.z = -a.minute;
 }
 
 /** 0..1: the watch lifts off the wrist (and dwindles out of sight at the end of the lift). */
 export function liftWatch(w: THREE.Object3D, v: number): void {
   w.position.set(WATCH_AT[0] - 0.12 * v, WATCH_AT[1] - 0.05 * v, WATCH_AT[2] + 0.04 * v);
   w.rotation.set(0.5 * v, 0, 0.6 * v);
-  w.scale.setScalar(Math.max(0.001, (1 - clamp((v - 0.85) / 0.15, 0, 1)) * ARMS_UNIT / ARMS_SCALE));
+  w.scale.setScalar(Math.max(0.001, 1 - clamp((v - 0.85) / 0.15, 0, 1)));
 }
 
 /** Double-barrel shotgun, muzzle toward −Z, origin at the grip. */

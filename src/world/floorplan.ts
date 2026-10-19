@@ -9,7 +9,7 @@ import type { InstanceId, MachineId, ZoneId } from '@/core/types';
 import { BAR_POS, BELL_POS, DEFAULT_ASSIGN, LIFT_DOOR, SLOTS, ZONES } from './layout';
 
 /** Zones that are not part of the pit floor (a car niche, the Underneath, the apartment). */
-const OFF_PLAN: readonly string[] = ['lift', 'hollow', 'home'];
+const OFF_PLAN: readonly string[] = ['lift', 'hollow', 'home', 'street'];
 const FLOOR_ZONES = ZONES.filter((z) => !OFF_PLAN.includes(z.id));
 
 /** Slot position [x, z] of the first slot the default floor gives to `machineId`, or null. */
