@@ -1,5 +1,5 @@
 /**
- * ACHIEVEMENTS, Xbox style: 30 of them worth 1000 gamerscore in all. The rules listen to the bus (they never touch the run) and write
+ * ACHIEVEMENTS, Xbox style: 31 of them (THE LAST GAME joined in wave 106) worth 1000 gamerscore in all. The rules listen to the bus (they never touch the run) and write
  * the profile save (`save.data.achievements`, a list of ids), not the run. An unlock emits `achievement:unlock`; the toast and the page
  * are DOM (src/game/achievements.ui.ts). Names and texts: `ach.<id>.name` / `ach.<id>.desc` in achievements.strings.ts.
  *
