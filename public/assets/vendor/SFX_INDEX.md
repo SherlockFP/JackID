@@ -264,6 +264,34 @@ Pack-name mapping for the converted clips (pack file name to vendored name):
 - Liminal Creaking Door (2, 4, 6, 7, 9), Monster Growl (2, 4, 6), Ambient Wind (2, 4), Ambient Wind (5) to `creak-door-2`, `-4`, `-6`, `-7`, `-9-long`, `growl-2`, `-4`, `-6`, `wind-2`, `-4`, `drone-5`.
 - Chequered Ink `Card and Board/card_draw_1..3, card_fan, card_fan_2, dice_roll_1..3, dice_shake_3, dice_grab`, `Other/slide_and_click, subtle_knock, ghost_long`, `Environment/door_knock`, `Footsteps/foley_footstep_carpet_2, _3`, `UI/select_2, select_4, pop_1, pop_3, pop_4`.
 
+## Wave 88: every interaction answers (no new clips)
+
+All procedural recipes or existing clips; the audit table is `scripts/tests/sfxCoverage.test.mjs` (interaction to sound, and a scan that every literal sound name in `src/` exists).
+
+| Interaction | Sound | Where |
+|---|---|---|
+| any toast, by kind | `msgBlip` info, `countDing` good, `error` bad and warn, `popUp` sys, `coinClink` money, `whisper` curse (0.3 to 0.45, under the sound that caused it) | `ui.ts` `TOAST_SFX` |
+| pause card open and close, seat ledger, ledger, intermission, Settings closed with the help key | `popUp` / `back` | `inGameState.ts`, `session.ts`, `settingsScreen.ts` |
+| QUOTA MET | `stamp` (the stinger still follows) | `hud.ts` |
+| last 10 s of a Watch | `clockTick`, one a second | `hud.ts` |
+| sit down, stand up | `seat` (new: cushion thump and leather creak) | `world/sys/router.ts` |
+| jump, wall bump (0.5 s gap, 1.8 m/s) | the floor's footstep scuff, a soft `thud` | `player/controller.ts` events, `local.ts` |
+| tonic drink | `foodSip` (moved from a runtime register in `food.ts` into `sfx.ts`, with `foodBite`) | `local.ts` |
+| fridge opened, Selim's tip and repay | `cabinet`, `coinDrop`, `cashRegister` | `food.ts` |
+| peephole, window, the prologue door | `drawer` (pitched up), `windGust`, `doorOpen` | `evening.ts` |
+| the apartment door swinging; the lift gate | `doorOpen` / `doorClose` (creaks for a crack), `liftDoor` | `world/home/door.ts`, `props/elevator.ts` |
+| vitrine glass rising | `liftDoor` under the `powerUp` | `session.ts` |
+| locker, vent lever, ledger, wing key and buy, the Collector | `doorOpenMetal`, `lever` + `windGust`, `cardFlip`, `lockTurn` / `purchase`, `buzzer` / `cashHandle` | `roomsHost.ts` |
+| totem placed and picked up | `totemPlace` (pitched up for the pick) | `session.ts` |
+| boon card hover | `hover` | `pantheon.ui.ts` |
+| shrine candle taken, statue aimed, back | `click`, `hover`, `back` | `shrine/index.ts` |
+| Loki: ask, lie called right or wrong, dare answered, trust toasts | `coinDrop`, `win1` / `buzzer`, `sparkle` / `back`, `sparkle` / `whisper` | `manga/joker.ts`, new event `joker:call` |
+| coach step done | `quotaTick` | `coach.ts` `onStep`, `MachineBase.ts` |
+
+Already covered and left alone: buttons, toggles, sliders, tabs, key capture (`widgets.ts`), the phone (`phone.ui.ts`), the bell, the terminal keys and
+deposit, the stamp and the cashier, the bounty board, Q coin tricks (`coinTricks.ts`), the boon offer and pick, the seal crack, Last Call, footsteps on every
+surface, land, the journal and notes (the placard's flips), the light switch, the chain and the door lock.
+
 ### Not used
 
 - ObsydianX: the other 213 files (the upbeat styles 1 to 3 and 6, the echo variants, cursor styles 1, 3 and 5).

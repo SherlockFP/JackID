@@ -98,6 +98,11 @@ export class HomeDoor {
       this.setAmt(to);
       return Promise.resolve();
     }
+    if (Math.abs(to - from) > 0.05) {   // a crack is a creak, a full swing is the door itself
+      const opening = to > from;
+      const crack = Math.max(to, from) < 0.3;
+      try { app.audio?.play(opening ? (crack ? 'doorCreakOpen' : 'doorOpen') : (crack ? 'doorCreakClose' : 'doorClose'), { vol: 0.6 }); } catch { /* audio is optional */ }
+    }
     const h = sys.run(dur, (k) => { this.setAmt(from + (to - from) * k); }, { ease: 'inOutQuad' });
     this.tw = h;
     return h.promise;

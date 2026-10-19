@@ -12,6 +12,7 @@ import type { KitX } from '@/kit';
 import { presets } from '@/kit/presets';
 import { crispNeon } from './signs';
 import { marbleTex, mirrorTex, worldUV } from './surfaces';
+import { OUTFITS, wear } from '@/kit/mannequinOutfits';
 
 /** Bottle glass colours (unlit: the back bar's glow is what lights them). */
 const GLASS = [0x8a4a14, 0x2a6a2a, 0x9ab8c0, 0x7a1420, 0xb08a3a, 0x4a2a14, 0x3a5a6a, 0xc8a050];
@@ -95,6 +96,16 @@ export function buildBar(kit: KitX, o: { parent: THREE.Object3D; root: THREE.Obj
   neon.root.rotation.y = Math.PI;
   neon.setOn(true);
   o.root.add(neon.root);
+
+  // ── Selim behind the counter, right of the taps (left, seen from the stools), facing the customers: a dark figure with a warm rim (the friend on the floor),
+  // in his waistcoat, rolled sleeves and bar towel (kit/mannequinOutfits.ts). He watches you when you come near (the mannequin's own turn).
+  // shortcut: the actor is not disposed with the bar (it freezes once the level root leaves the scene); give buildBar a dispose if the bar is ever rebuilt alone.
+  const selim = kit.mannequin({ color: 0x3a3a40, jointColor: 0x2a2a30, height: 1.8, clip: 'Idle_Loop', rim: 0xffb870, eyes: 0xffd9a0 });
+  selim.root.name = 'bar:selim';
+  selim.root.position.set(x + 0.9, 0, z + 0.86);
+  selim.root.rotation.y = Math.PI;
+  o.root.add(selim.root);
+  wear(selim, OUTFITS.selim, (id, c) => kit.prop(id, { color: c }));
 
   // ── the end of the bar: a walnut service cabinet with an ice bucket and a bottle in it ─────────
   box(0.68, 1.04, 0.66, walnut, 2.85, 0.52, 0);

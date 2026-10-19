@@ -19,6 +19,7 @@ import { ActorDirectorImpl, DarkPatrons, LiveActor, NAV_POINTS, observed, neares
 import type { ActorHandle } from '@/core/cutscene/types';
 import type { Unsub } from '@/core/types';
 import { setLightsDark } from '@/game/watchEvents';
+import { restoreNightLights } from '@/world/nightLights';
 import { behindPace, lightsDie, type OmenKind } from '@/game/events/omens';
 import { DreadMeter, TIER_RANK, type DreadEventKind, type DreadInput, type DreadTier } from './dread';
 
@@ -288,7 +289,7 @@ export class HorrorDirector {
     if (!was) return;
     this.tDark = this.jitter(DARK_COOLDOWN);
     setLightsDark(false);
-    this.d.lights()?.setLevel('all', 1, 1.2);
+    restoreNightLights(this.d.lights());   // the night cycle's levels come back (Mola half-light, Dawn dark), not a blanket 1
     if (!this.darkCalm) {
       this.d.audio.setMuffle(0, 1);
       this.d.audio.play('powerUp', { vol: 0.7 });

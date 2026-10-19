@@ -71,6 +71,7 @@ import { SLOT_DIMS, type MachineContext, type MachineDef, type MachineEnvelope, 
 import { juiceTier, streakPitch, tierTags, toWinTier, type JuiceTier } from './tiers';
 import * as juice from './juice';
 import { RiskLayer } from './riskLayer';
+import { PowerRig } from './powerRig';
 import { Coach } from './coach';
 import { GambleUi } from '@/game/gambleUi';
 import { HS_MULT, gamblesLive } from '@/game/gamble';
@@ -242,6 +243,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     this._disposed = true;
     this._offLang?.(); this._offLang = null;
     this._riskL?.dispose(); this._riskL = null;
+    this._power?.dispose(); this._power = null;
     try { this.model?.dispose?.(); } catch (e) { log.error('machine', this.id, e); }
     for (const d of this._tracked.splice(0)) { try { d.dispose(); } catch (e) { log.error('machine', this.id, e); } }
     if (this.model?.root) disposeObject3D(this.model.root, { skipShared: true });
@@ -840,10 +842,18 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     this.tick(dt);
     if (this.isHost) this.hostTick(dt);
   }
+  /** The night cycle's look on a gambling machine's screens (collapse at Dawn, boot at the opening, CLOSED at the Mola). Unseated machines only. */
+  private _power: PowerRig | null = null;
+  private nightScreens(): void {
+    if (this.def.minBet <= 0) return;
+    const p = juice.flashPrefs();
+    (this._power ??= new PowerRig(this.model.root, this.ctx.kit)).update(this.busy || this.seats.some((s) => s !== null), p.reduced || p.calm);
+  }
   /** Render step (World calls it only for visible machines). */
   _frame(dt: number, t: number): void {
     this.frame(dt, t);
     this._riskL?.frame();
+    this.nightScreens();
     if (!this.busy && this.seats.every((s) => s === null)) { this.idleShow(dt); this.attract(dt, t); }
   }
   /**
@@ -877,6 +887,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       void this.risk;                                       // the risk layer lives with the local seat
       const coach = this.def.coach?.length ? new Coach(this.def.id, this.def.coach, !this.def.shared) : null;
       this._coach = coach && (!coach.done || coach.practice) ? coach : null;
+      if (this._coach) this._coach.onStep = () => this.sfx('quotaTick', { vol: 0.5 });   // a soft tick on step done
       this._coachBet = this.bet;
       this.publishCoach(true);
     }

@@ -640,7 +640,8 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
   function atmosphere(dt: number): void {
     const cp = camera.position;
     zones.lookAt(cp.x, cp.z, target);
-    const gl = clamp(pool.globalLevel, 0, 1.2);
+    const zid = zones.zoneAt(cp.x, cp.z);
+    const gl = clamp(pool.globalLevel * (zid === 'home' || zid === 'hollow' ? 1 : pool.ambientMul), 0, 1.2);   // the night cycle darkens the casino, not the flat or the Underneath
     const dread = pool.dread;
     target.fog.multiplyScalar(gl);
     target.ambient.multiplyScalar(gl);

@@ -86,6 +86,27 @@ test('hair and the dress belong to the female option only', () => {
   assert.ok(hers.includes('ada_hair') && hers.some((n) => /^ada_dress_/.test(n)), 'Ada has both');
 });
 
+test('outfits: the Collector wears coat, gloves and collar; wear() dresses a live actor in bone space and undresses it', async () => {
+  const names = (a) => { const out = []; a.root.traverse((o) => { if (o.name) out.push(o.name); }); return out; };
+  const col = names(stand);
+  for (const b of ['spine_02', 'upperarm_l', 'hand_r', 'neck_01']) assert.ok(col.includes(`outfit_${b}`), `the Collector has cloth on ${b}`);
+  const of = await load('src/kit/mannequinOutfits.ts');
+  const off = of.wear(plain, of.OUTFITS.selim);
+  const worn = [];
+  plain.root.traverse((o) => { if (o.name.startsWith('outfit_')) worn.push(o); });
+  assert.ok(worn.length >= 6, `Selim's cloth sits on ${worn.length} bones`);
+  const v = new THREE.Vector3();
+  for (const g of worn) {
+    const pos = g.children[0].geometry.getAttribute('position');
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i);
+      assert.ok(Number.isFinite(v.x + v.y + v.z) && v.length() < 0.6, `${g.name} vertex ${i} stays near its bone: ${v.toArray()}`);
+    }
+  }
+  off();
+  assert.equal(names(plain).filter((n) => n.startsWith('outfit_')).length, 0, 'undressed');
+});
+
 test('every vertex of the full, mid and low bodies has weights summing to 1 on valid bones', async () => {
   const src = await mq.loadMannequinSource();
   assert.ok(src, 'the GLB loaded');

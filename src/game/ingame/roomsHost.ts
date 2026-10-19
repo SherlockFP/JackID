@@ -30,6 +30,7 @@ const boilerMult = (p: number): number => Math.min(BOILER.maxPayoutMult, 1 + Mat
 export function startRoomsHost(run: DebtRun, world: WorldHost): () => void {
   const ui = app.ui as UIOverlayX;
   const offs: Array<() => void> = [];
+  const snd = (name: string, vol = 1): void => { try { app.audio.play(name, { vol }); } catch { /* audio is optional */ } };
 
   // ── the Collector's question (Parlour, Nights 3–7): one answered question per Night ──────────────
   let askedNight = -1;
@@ -58,6 +59,7 @@ export function startRoomsHost(run: DebtRun, world: WorldHost): () => void {
       if (pick < 0) { ui.toast(t('roomsx.collector.timeout'), 'info'); return; }   // no answer: the question is not spent
       if (pick !== correct) {
         askedNight = night;
+        snd('buzzer', 0.5);
         if (run.spend('ticket', 1, 'collector:wrong')) ui.toast(t('roomsx.collector.wrong'), 'bad', 4);
         else ui.toast(t('roomsx.collector.wrongNone'), 'warn', 4);
         return;
@@ -71,6 +73,7 @@ export function startRoomsHost(run: DebtRun, world: WorldHost): () => void {
       const sold = sellable[i];
       const before = run.balance('obol');
       if (run.collectorBuy(sold.id)) {
+        snd('cashHandle', 0.7);
         ui.toast(t('roomsx.collector.bought', { charm: t(`charm.${sold.id}.name`), obols: String(run.balance('obol') - before) }), 'good', 4);
       } else {
         ui.toast(t('roomsx.collector.refused'), 'warn', 4);
@@ -90,23 +93,28 @@ export function startRoomsHost(run: DebtRun, world: WorldHost): () => void {
       if (!run.tycoon.unlockZone(w, key)) {
         if (key) ui.toast(t('roomsx.locked'), 'warn');
         else ui.toast(t('roomsx.noFunds', { p: String(buyPrice(run.shift.quota().due)) }), 'warn');
+        return;
       }
+      snd(key ? 'lockTurn' : 'purchase', 0.8);   // the gate's own creak and thud follow when it opens
     },
     openLocker: (n) => {
       const r = run.openLocker(n);
       if (!r.ok) {
         if (r.reason === 'used') ui.toast(t('rooms.locker.used', { n: String(n) }), 'warn');
         else if (r.reason === 'tickets') ui.toast(t('rooms.locker.noTicket', { n: String(n) }), 'warn');
+        return;
       }
+      snd('doorOpenMetal', 0.6);
     },
     pressure: () => run.rooms.p,
     vent: () => {
       if (run.rooms.p <= 0) { ui.toast(t('roomsx.ventNone'), 'info'); return; }
-      if (run.ventBoiler()) ui.toast(t('rooms.boiler.vent'), 'good');
+      if (run.ventBoiler()) { snd('lever', 0.8); snd('windGust', 0.4); ui.toast(t('rooms.boiler.vent'), 'good'); }
       else ui.toast(t('roomsx.ventFail'), 'warn');
     },
     readLedger: () => {
       const b = run.backOffice();
+      snd('cardFlip', 0.6);
       if (b.obols > 0) ui.toast(t('rooms.backOffice.paid', { obols: String(b.obols), tickets: String(b.tickets) }), 'good');
       else ui.toast(t('roomsx.office.none'), 'warn');
     },

@@ -8,6 +8,7 @@ import * as THREE from 'three';
 import type { KitX } from '@/kit';
 import type { TexGen } from '@/core/texgen/types';
 import { createRng } from '@/core/rng';
+import { bus } from '@/core/events';
 import { pendant } from '../lights';
 import { FLOOR_TILE_M } from '../layout';
 import { placeCouch } from '../props/vendorModels';
@@ -29,6 +30,9 @@ export interface RoomParts {
   readonly lights: LightHint[];
   /** The room's switch: the ceiling light and the pendant (the hall bulb stays lit). */
   setSwitched(on: boolean): void;
+  /** Per frame: the morning light eases in once the bed is used. */
+  update(dt: number): void;
+  dispose(): void;
 }
 
 export interface RoomCtx { kit: KitX; tex: TexGen; seed: number; shell: THREE.Group; dyn: THREE.Group }
@@ -192,6 +196,7 @@ export function buildRoom(c: RoomCtx): RoomParts {
   const rug = kit.mat({ color: 0xffffff, map: kit.tex.carpet('diamond', [0x5a2a24, 0x3a1a18, 0xa08050, 0x4a6a5a]) });
   slab(-1.4, 0, -0.9, 0.7, 0.012, 1.1, rug);
   slab(-1.0, 0, 3.0, -0.2, 0.012, 5.0, rug);
+  const shadeMat = kit.mat({ color: 0xe8c890, lit: false, unique: true }) as THREE.MeshBasicMaterial;   // the side lamp: on in the Evening, off once the bed is used
   const side = (x: number, z: number, lamp: boolean): void => {
     slab(x - 0.2, 0.5, z - 0.2, x + 0.2, 0.54, z + 0.2, wood);
     for (const lx of [x - 0.17, x + 0.17]) for (const lz of [z - 0.17, z + 0.17]) slab(lx - 0.015, 0, lz - 0.015, lx + 0.015, 0.5, lz + 0.015, trim);
@@ -199,7 +204,7 @@ export function buildRoom(c: RoomCtx): RoomParts {
     if (!lamp) return;
     kit.cyl(0.06, 0.08, 0.04, brass, { pos: at(x, 0.56, z), parent: shell, seg: 8 });
     kit.cyl(0.012, 0.012, 0.28, brass, { pos: at(x, 0.72, z), parent: shell, seg: 4 });
-    kit.cyl(0.09, 0.15, 0.17, kit.mat({ color: 0xe8c890, lit: false }), { pos: at(x, 0.93, z), parent: shell, seg: 8 });
+    kit.cyl(0.09, 0.15, 0.17, shadeMat, { pos: at(x, 0.93, z), parent: dyn, seg: 8 });
   };
   side(-0.8, -2.05, true);
   kit.cyl(0.06, 0.055, 0.018, kit.mat({ color: 0x5a6a70, lit: false }), { pos: at(-0.68, 0.549, -1.95), parent: shell, seg: 8 });
@@ -288,9 +293,39 @@ export function buildRoom(c: RoomCtx): RoomParts {
     range: LIGHT.hall.range, flicker: 'STEADY',
   };
 
+  // ── the morning: curtains either side of the window, and a soft daylight that eases in through them once the bed is used ──
+  const curtain = kit.mat({ color: 0x8a5a48 });
+  for (const [x0, x1] of [[WIN_X0 - 0.42, WIN_X0 + 0.04], [WIN_X1 - 0.04, WIN_X1 + 0.42]]) slab(x0, WIN_Y0 - 0.12, -2.45, x1, WIN_Y1 + 0.16, -2.36, curtain);
+  const glow = (w: number, h: number, pos: [number, number, number], rotX: number): THREE.MeshBasicMaterial => {
+    const m = new THREE.MeshBasicMaterial({ color: 0xfff0d2, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(w, h), m);
+    p.position.set(...at(...pos));
+    p.rotation.x = rotX;
+    p.visible = false;
+    dyn.add(p);
+    return m;
+  };
+  const pane = glow(WIN_X1 - WIN_X0 - 0.05, WIN_Y1 - WIN_Y0 - 0.05, [(WIN_X0 + WIN_X1) / 2, (WIN_Y0 + WIN_Y1) / 2, -2.4], 0);
+  const patch = glow(WIN_X1 - WIN_X0, 1.7, [(WIN_X0 + WIN_X1) / 2, 0.025, -1.55], -Math.PI / 2);
+  let morning = 0, morningTo = 0, shown = -1;
+  const showLamp = (on: boolean): void => { shadeMat.color.setHex(on ? 0xe8c890 : 0x5c5040); };
+  const offStage = bus.on('home:stage', ({ stage }) => {
+    if (stage === 'ride' || stage === 'evening') { showLamp(true); morning = morningTo = 0; }   // the Evening: the lamp is on, it is still night
+    else if (stage === 'sleep') { showLamp(false); morningTo = 1; }                             // the bed is used: the lamp goes off, the morning comes in
+  });
+
   return {
     statics,
     lights: [ceilingHint, pend.hint, candleHint, adaKey, hallHint],
+    update(dt: number) {
+      if (morning === morningTo && shown === morning) return;
+      morning += (morningTo - morning) * Math.min(1, dt * 2.2);
+      if (Math.abs(morningTo - morning) < 0.004) morning = morningTo;
+      shown = morning;
+      pane.opacity = 0.42 * morning; patch.opacity = 0.26 * morning;
+      pane.visible = patch.visible = morning > 0.004;
+    },
+    dispose() { offStage(); },
     setSwitched(on: boolean) {
       pend.setOn(on);
       flame.setOn(on);

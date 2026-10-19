@@ -1150,6 +1150,29 @@ def('lockTurn', (k) => {
   k.noise(0.06, { at: 0.4, vol: 0.18, filter: 'highpass', freq: 3000, env: TICK_ENV(0.06) });
   return 0.7;
 }, { pri: 7 });
+/** Sitting down or getting up at a table or cabinet: a soft cushion thump with a short leather creak on top (`pitch` up for standing). */
+def('seat', (k) => {
+  thump(k, 0, 120, 70, 0.14, 0.45);
+  k.noise(0.12, { at: 0.02, vol: 0.1, filter: 'lowpass', freq: 700, env: { a: 0.02, d: 0.1, s: 0, r: 0.02 } });
+  k.osc('sawtooth', 190, 0.12, { at: 0.06, vol: 0.025, to: 150, env: { a: 0.02, d: 0.1, s: 0, r: 0.02 } });
+  return 0.3;
+}, { pri: 4, max: 2 });
+/** A crunchy bite, three times, after the hand reaches the mouth (food.ts; moved here from a runtime register so the registry test sees it). */
+def('foodBite', (k) => {
+  for (let i = 0; i < 3; i++) {
+    const at = 0.5 + i * 0.16;
+    k.noise(0.06, { at, vol: 0.34, filter: 'bandpass', freq: 1800 + i * 350, q: 1.2, env: { a: 0.002, d: 0.04, s: 0, r: 0.02 } });
+    k.osc('triangle', 230 - i * 25, 0.05, { at, vol: 0.1, to: 120 });
+  }
+  return 1.1;
+}, { pri: 6, max: 2 });
+/** A sip and a swallow (food.ts, the tonic drink). */
+def('foodSip', (k) => {
+  k.noise(0.28, { at: 0.5, vol: 0.05, filter: 'lowpass', freq: 900, env: { a: 0.04, d: 0.1, s: 0.5, r: 0.1 } });
+  k.osc('sine', 320, 0.12, { at: 0.8, vol: 0.2, to: 140 });
+  k.osc('sine', 260, 0.14, { at: 1.0, vol: 0.18, to: 110 });
+  return 1.2;
+}, { pri: 6, max: 2 });
 
 /** Sounds longer than ~0.8 s: their voices are wired into slow-motion (`setTimeScale`) so a big win drags with the screen. */
 const LONG = ['win2', 'win3', 'winHuge', 'winRise', 'winMega', 'jackpot', 'jackpotShow', 'alarmBell', 'kachunk', 'jackpotBells', 'quotaMet', 'quotaFail', 'stinger', 'tensionRise', 'trapdoor', 'powerDown', 'powerUp', 'tapeStop',

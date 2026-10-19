@@ -215,6 +215,7 @@ function showCards(run: DebtRun, fresh: boolean): void {
     // The last card kept takes the mouse back inside the pick's own click or key (a gesture; the panel closes 0.6 s later, when it is gone).
     const keep = (id: string): void => { if (run.pickBoon(id) && !run.boonOffer() && app.player?.seat == null) void app.input.requestLock(); };
     cards.forEach((card, i) => card.addEventListener('click', () => { const id = ids[i]; if (id) keep(id); }));
+    cards.forEach((card) => card.addEventListener('mouseenter', () => uiSfx('hover', 0.5)));
     addTicker((dt) => {
       if (!alive) return false;
       if (pickT >= 0) {

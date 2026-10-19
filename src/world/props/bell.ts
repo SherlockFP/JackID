@@ -13,8 +13,8 @@ import { app } from '@/core/app';
 import { t } from '@/core/i18n';
 import { crispLabel } from './signs';
 
-/** North side of the Mouth, between the terminal (x 0) and the phone (x 4). The counter backs onto the north wall. */
-export const BELL_POS = { x: 1.9, z: -29.35 } as const;
+import { BELL_POS } from '../layout';
+export { BELL_POS };   // the spot lives in layout.ts (the floor plan and the signs read it too)
 /** Distance (m) the stand point keeps from the bell, on the floor in front of the counter. */
 export const BELL_STAND_M = 1.2;
 /** Seconds the first press stays armed. */

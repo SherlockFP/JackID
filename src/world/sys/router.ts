@@ -190,6 +190,7 @@ export class Router {
     this.phase_ = 'entering';
     this.seat_ = { mid: m.id, seat };
     app.ui.prompt(null);
+    app.audio.play('seat', { vol: 0.7 });
     const { pose, opts } = this.rig(slot, m, seat);
     slot.group.updateMatrixWorld(true);
     await (player as LocalPlayerHost).enterMachine(m.id, seat, pose, slot.group.matrixWorld, opts);
@@ -205,6 +206,7 @@ export class Router {
     this.cancelTimeout?.(); this.cancelTimeout = null;
     this.phase_ = 'free';
     this.seat_ = null;
+    app.audio.play('seat', { vol: 0.5, pitch: 3 });
     app.input.setMachineSink(null);
     app.input.setMode('walk');
     void app.player?.exitMachine();

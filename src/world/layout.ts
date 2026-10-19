@@ -230,9 +230,21 @@ export const ASSIGN: Record<'default' | GameMode, Partial<Record<InstanceId, Mac
 export interface SignSide { face: 'N' | 'S'; key: string; arrow: 'left' | 'right' | 'up' | 'down' }
 /** A double-sided hanging board centred at `pos` (y = board centre), `w` metres wide. Text keys are `prop.go.*`. */
 export interface Signpost { id: string; pos: V3; w: number; sides: readonly SignSide[] }
+/** Landmarks the signs, the floor plan and the Bar's directions read (level.ts and bell.ts build the props on these spots). */
+export const BAR_POS = { x: -6.0, z: 14.2 } as const;
+/** North side of the Mouth, between the terminal (x 0) and the phone (x 4). The Last Call Bell's counter backs onto the north wall. */
+export const BELL_POS = { x: 1.9, z: -29.35 } as const;
+/** The lift door in the Mouth's north wall. */
+export const LIFT_DOOR = { x: -4, z: -30 } as const;
+
 export const SIGNPOSTS: readonly Signpost[] = [
-  // Mouth: the N face is read walking south (leaving the lift: the floor is ahead), the S face walking north (the terminal is ahead)
-  { id: 'sp.mouth', pos: [0, 3.9, -20.6], w: 3.4, sides: [{ face: 'N', key: 'go.floor', arrow: 'up' }, { face: 'S', key: 'go.terminal', arrow: 'up' }] },
+  // Mouth: the N face is read walking south (leaving the lift: the machines are ahead), the S face walking north (the bank is ahead).
+  // Wayfinding: the lift and the Bell get their own boards beside it, over their approach lines.
+  { id: 'sp.mouth', pos: [0, 3.9, -20.6], w: 2.8, sides: [{ face: 'N', key: 'go.machines', arrow: 'up' }, { face: 'S', key: 'go.bank', arrow: 'up' }] },
+  { id: 'sp.lift', pos: [LIFT_DOOR.x, 3.9, -20.6], w: 1.9, sides: [{ face: 'N', key: 'go.lift', arrow: 'down' }, { face: 'S', key: 'go.lift', arrow: 'up' }] },
+  { id: 'sp.bell', pos: [3.0, 3.9, -20.6], w: 1.7, sides: [{ face: 'N', key: 'go.bell', arrow: 'down' }, { face: 'S', key: 'go.bell', arrow: 'up' }] },
+  // Lobby entrance: the Bar lies west of the aisle (the right hand of a southbound walker); the machines are behind a northbound one
+  { id: 'sp.bar', pos: [-3.5, 3.3, 4.3], w: 2.4, sides: [{ face: 'N', key: 'go.bar', arrow: 'right' }, { face: 'S', key: 'go.machines', arrow: 'up' }] },
   // Well: walking south the vendors are ahead (N face); walking north the terminal, phone and lift are ahead (S face)
   { id: 'sp.well', pos: [0, 3.8, -11.4], w: 3.4, sides: [{ face: 'N', key: 'go.vendors', arrow: 'up' }, { face: 'S', key: 'go.terminalPhone', arrow: 'up' }] },
   // Lobby: pawn on the west end of the south wall, cashier on the east end

@@ -162,8 +162,9 @@ export default class Shrine extends MachineBase<ShrineParts, Ev, ShrineState> {
     else if (a === 'primary' || a === 'confirm') this.choose(this.aim);
     else if (a === 'left' || a === 'right') {
       this.aim = (this.aim + (a === 'left' ? STATUES.length - 1 : 1)) % STATUES.length;
+      this.sfx('hover');
       this.refresh(true);
-    } else if (a === 'secondary') { this.choosing = false; this.refresh(true); }
+    } else if (a === 'secondary') { this.choosing = false; this.sfx('back'); this.refresh(true); }
   }
 
   /** The candle: refusals are checked here, then the player picks a statue. Nothing is paid yet. */
@@ -173,6 +174,7 @@ export default class Shrine extends MachineBase<ShrineParts, Ev, ShrineState> {
     if (check !== 'ok') { this.deny(check); return; }
     this.choosing = true;
     this.aim = Math.max(0, STATUES.findIndex((g) => favourOf(run, g) < FAVOUR_MAX));
+    this.sfx('click');   // the candle is taken up; the statue pick follows
     this.refresh(true);
   }
 

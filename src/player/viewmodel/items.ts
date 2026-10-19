@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { app } from '@/core/app';
 import { clamp } from '@/core/math';
 import type { Hex } from '@/core/types';
-import { FOOD_BITE, FOOD_PARTS, type FoodPropId } from '@/world/props/food';
+import { FOOD_BITE, FOOD_PARTS, FOOD_TEX, type FoodPropId, type FoodTex } from '@/world/props/food';
 import { ARMS_SCALE, ARMS_UNIT, HOLD_AT, type HandPose } from './arms';
 import { mesh, shaded } from './shape';
 
@@ -24,6 +24,29 @@ const cylG = (rt: number, rb: number, h: number, seg: number): THREE.CylinderGeo
 
 export function isFood(kind: string): kind is FoodPropId { return kind in FOOD_PARTS; }
 
+/** A food texture from the app's texture cache (null without an app: tests, headless builds). */
+const foodMap = (t: FoodTex): THREE.Texture | null => app?.tex?.canvas(FOOD_TEX[t].px, FOOD_TEX[t].px, FOOD_TEX[t].paint, { key: `food:${t}` }) ?? null;
+
+/** The playing-card back: a red field, a white border and a white diamond lattice (full colour, on a white part). */
+const paintCardBack = (g: CanvasRenderingContext2D, w: number, h: number): void => {
+  g.fillStyle = '#f2ecd8'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#b1202c'; g.fillRect(2, 2, w - 4, h - 4);
+  g.fillStyle = '#f2ecd8';
+  for (let y = 3; y < h - 3; y++) for (let x = 3; x < w - 3; x++) if ((x + y) % 4 === 0 || (x - y + 64) % 4 === 0) g.fillRect(x, y, 1, 1);
+  g.fillStyle = '#e8c860'; g.fillRect(w / 2 - 2, h / 2 - 2, 4, 4);
+};
+/** The handset's ear and mouth grilles: a ring of holes on a dark cup. */
+const paintGrille = (g: CanvasRenderingContext2D, w: number, h: number): void => {
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#404040';
+  for (const [x, y] of [[7, 3], [11, 5], [12, 9], [9, 12], [5, 12], [3, 8], [4, 4], [7, 7], [9, 8], [7, 10]] as const) g.fillRect(x, y, 1, 1);
+};
+const texMat = (m: OwnMat, c: Hex, key: string, px: number, paint: (g: CanvasRenderingContext2D, w: number, h: number) => void): THREE.MeshBasicMaterial => {
+  const x = m(c);
+  x.map = app?.tex?.canvas(px, px, paint, { key }) ?? null;
+  return x;
+};
+
 /** The bitten part of a food in the hand: `pivot` is scaled along `axis` (0 x, 1 y, 2 z). */
 export interface Bite { pivot: THREE.Object3D; axis: 0 | 1 | 2 }
 
@@ -32,31 +55,52 @@ export function buildItem(kind: string, m: OwnMat): THREE.Object3D | null {
   switch (kind) {
     case 'coin': {
       // a thick gold rim and, on both faces, the embossed ¢ disc of the symbol atlas (its transparent ring leaves the rim showing)
-      g.add(mesh(cylG(COIN_R, COIN_R, COIN_H, 12), m(0xc9962e)));
+      g.add(mesh(cylG(COIN_R, COIN_R, COIN_H, 16), m(0xc9962e)));
       const face = m(0xffffff);
       face.map = app?.tex?.symbol('coin', 32) ?? null;
       face.alphaTest = 0.5;
       for (const s of [1, -1]) {
-        const d = mesh(shaded(new THREE.CircleGeometry(COIN_R, 12)), face, 0, s * (COIN_H / 2 + 0.0002), 0);
+        const d = mesh(shaded(new THREE.CircleGeometry(COIN_R, 16)), face, 0, s * (COIN_H / 2 + 0.0002), 0);
         d.rotation.x = -s * Math.PI / 2;
         g.add(d);
       }
       break;
     }
-    case 'card':
-      g.add(mesh(boxG(0.042, 0.002, 0.062), m(0xf2ecd8)), mesh(boxG(0.034, 0.0022, 0.054), m(0xb1202c)));
+    case 'card': {
+      // a playing card held face down: the cream edge and the painted back on both faces
+      const back = texMat(m, 0xffffff, 'vm:cardback', 32, paintCardBack);
+      g.add(mesh(boxG(0.042, 0.002, 0.062), m(0xf2ecd8)));
+      for (const s of [1, -1]) {
+        const f = mesh(shaded(new THREE.PlaneGeometry(0.042, 0.062)), back, 0, s * 0.0015, 0);
+        f.rotation.x = -s * Math.PI / 2;
+        g.add(f);
+      }
       break;
+    }
     case 'tonic':
       g.add(mesh(cylG(0.0165, 0.0175, 0.07, 8), m(0x4aa58f), 0, 0.035, 0),
             mesh(cylG(0.0065, 0.0125, 0.026, 8), m(0x4aa58f), 0, 0.083, 0),
             mesh(cylG(0.0075, 0.0065, 0.014, 6), m(0xb08a3a), 0, 0.103, 0),
             mesh(cylG(0.0182, 0.0182, 0.028, 8), m(0xe6dec5), 0, 0.036, 0));
       break;
-    case 'phone':
-      g.add(mesh(boxG(0.05, 0.03, 0.17), m(0x26232a)),
-            mesh(boxG(0.058, 0.04, 0.034), m(0x26232a), 0, 0, -0.07),
-            mesh(boxG(0.058, 0.04, 0.034), m(0x26232a), 0, 0, 0.07));
+    case 'phone': {
+      // the wall phone's handset: a slim handle bowed up in the middle, round ear and mouth cups turned to the face (-Y), grilles
+      // on the cups and a cord stub at the mouth end
+      const body = m(0x4a4452);
+      const grille = texMat(m, 0x5a5462, 'vm:grille', 16, paintGrille);
+      g.add(mesh(boxG(0.038, 0.022, 0.11), body, 0, 0.006, 0));
+      for (const s of [1, -1]) {
+        const arm = mesh(boxG(0.036, 0.02, 0.04), body, 0, -0.002, s * 0.062);
+        arm.rotation.x = s * 0.35;
+        g.add(arm);
+        g.add(mesh(cylG(0.03, 0.026, 0.03, 10), body, 0, -0.016, s * 0.074));
+        g.add(mesh(cylG(0.024, 0.024, 0.002, 10), grille, 0, -0.032, s * 0.074));
+      }
+      const cord = mesh(cylG(0.004, 0.004, 0.03, 5), m(0x1a181e), 0, -0.004, 0.098);
+      cord.rotation.x = Math.PI / 2;
+      g.add(cord);
       break;
+    }
     case 'ticket':
       g.add(mesh(boxG(0.05, 0.002, 0.09), m(0xe8d8a0)));
       break;
@@ -74,8 +118,12 @@ export function buildItem(kind: string, m: OwnMat): THREE.Object3D | null {
       const pivot = new THREE.Group();
       if (spec) { const at = [0, 0, 0]; at[spec.axis] = spec.from; pivot.position.fromArray(at); g.add(pivot); }
       for (const part of FOOD_PARTS[kind]) {
-        const geo = part.shape === 'box' ? boxG(part.size[0], part.size[1], part.size[2]) : cylG(part.size[0], part.size[1], part.size[2], part.seg ?? 10);
-        const o = mesh(geo, m(part.color), part.pos[0], part.pos[1], part.pos[2]);
+        const geo = part.shape === 'box' ? boxG(part.size[0], part.size[1], part.size[2])
+          : part.shape === 'torus' ? shaded(new THREE.TorusGeometry(part.size[0], part.size[1], 5, 10, part.size[2]))
+          : cylG(part.size[0], part.size[1], part.size[2], part.seg ?? 10);
+        const pm = m(part.color);
+        if (part.tex) pm.map = foodMap(part.tex);
+        const o = mesh(geo, pm, part.pos[0], part.pos[1], part.pos[2]);
         if (part.rot) o.rotation.set(part.rot[0], part.rot[1], part.rot[2]);
         if (spec && part.eat) { o.position.setComponent(spec.axis, part.pos[spec.axis] - spec.from); pivot.add(o); } else g.add(o);
       }

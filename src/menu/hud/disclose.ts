@@ -49,8 +49,8 @@ export function ticketsShown(seen: boolean, held: number): boolean {
 }
 
 export type Objective = 'win' | 'deposit' | 'bell' | 'lift' | 'dawn';
-/** The world spot the objective points at (its waypoint): a machine, the Bell prop (`bell` anchor), or null for no waypoint. */
-export type ObjectiveTarget = 'bigone' | 'debt_terminal' | 'bell' | null;
+/** The world spot the objective points at (its waypoint): a machine, the Bell prop (`bell` anchor), the lift door (`elevator.door` anchor), or null for no waypoint. */
+export type ObjectiveTarget = 'bigone' | 'debt_terminal' | 'bell' | 'lift' | null;
 
 export interface ObjectiveFacts {
   /** The shift phase (`run.shift.state().phase`). */
@@ -73,7 +73,7 @@ export interface ObjectiveFacts {
  * at The Big One; quota met → ring the Bell; the pocket covers what is still owed → deposit at the terminal; otherwise win more.
  */
 export function objectiveFor(f: ObjectiveFacts): { key: Objective; target: ObjectiveTarget } {
-  if (f.paid) return { key: 'lift', target: null };
+  if (f.paid) return { key: 'lift', target: 'lift' };
   if (f.phase === 'lastCall') return { key: 'bell', target: 'bell' };
   const inWatch = f.phase === 'play' || f.phase === 'closing';
   if (!inWatch) return { key: f.phase === 'bell' || f.phase === 'settle' ? 'bell' : 'dawn', target: null };

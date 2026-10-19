@@ -11,10 +11,11 @@ import type { KitX } from '@/kit';
 import type { TexGen } from '@/core/texgen/types';
 import type { V3 } from '@/core/types';
 import { log } from '@/core/log';
+import { app } from '@/core/app';
 import type { GateDef, LevelBuild, LevelCtx, LightHint, SpawnPoint } from './sys/arch';
 import type { WorldProp } from './types';
-import { ZONES, SIGNPOSTS, STAGE_SLOTS, FLOOR_TILE_M } from './layout';
-import { bareBulb, chandelier, flickerLevel, pendant, sconce, tube } from './lights';
+import { ZONES, SIGNPOSTS, STAGE_SLOTS, FLOOR_TILE_M, BAR_POS, LIFT_DOOR } from './layout';
+import { bareBulb, builtFixtures, chandelier, flickerLevel, pendant, resetFixtures, sconce, tube } from './lights';
 import { buildColumn, buildGrille, buildVelvetCurtain, buildManagementDoor, buildSump, buildFurnace, buildCollectorChair, buildXPlate, disposeTree, SUMP_HALF, SUMP_WALL_H, SUMP_WALL_T, type GateProp } from './props/decor';
 import { createClock, type WallClock } from './props/clock';
 import { createTrapdoor, type Trapdoor } from './props/trapdoor';
@@ -33,6 +34,7 @@ import { buildAmbience, type Beam, type Pool } from './props/ambience';
 import { buildRooms, type RoomsBuild } from './rooms';
 import { buildHollow } from './hollow';
 import { buildHome } from './home';
+import { createNightCycle, nightPhaseOf, LEVELS, type NightPhase, type Spot } from './nightLights';
 
 // ── constants ───────────────────────────────────────────────────────────────────────────────────
 const T = 0.3;            // wall thickness (GDD §8.1)
@@ -158,6 +160,7 @@ function wallRun(w: WallCtx, axis: 'x' | 'z', c: number, a0: number, a1: number,
 // ── the level ───────────────────────────────────────────────────────────────────────────────────
 export function buildLevel(ctx: LevelCtx): LevelBuild {
   const kit = ctx.kit as KitX;
+  resetFixtures();   // the night cycle switches every fixture this build makes
   const tex = kit.tex;   // the tile-tagged TexGen: the raw one left every prop texture stretched once over its whole face (grilles, curtain, shaft, sump)
   const root = new THREE.Group();
   root.name = 'level:pit';
@@ -516,7 +519,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   // ── the casino bar (Lobby, behind the stage): a walnut and marble counter, a mirrored back bar of lit bottles, three stools (props/bar.ts) ──
   // The customers' side faces the stage (north); the counter is 4.4 m long, the back bar stands behind it, a service cabinet ends the bar.
   {
-    const BAR_X = -6.0, BAR_Z = 14.2;
+    const BAR_X = BAR_POS.x, BAR_Z = BAR_POS.z;
     buildBar(kit, { parent: statical, root, x: BAR_X, z: BAR_Z });
     statics.push({ box: box3(BAR_X - 2.25, 0, BAR_Z - 0.55, BAR_X + 2.25, 1.0, BAR_Z + 0.55), tag: 'solid' });
     statics.push({ box: box3(BAR_X - 2.0, 0, BAR_Z + 0.7, BAR_X + 2.0, 2.3, BAR_Z + 1.7), tag: 'solid' });
@@ -645,7 +648,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   const marker = (x: number, y: number, z: number): THREE.Object3D => { const o = new THREE.Object3D(); o.position.set(x, y, z); root.add(o); return o; };
   anchors.terminal = marker(0, 1.2, -29.0);
   anchors.trapdoor = trapdoor.root;
-  anchors['elevator.door'] = marker(-4, 1.3, -30);
+  anchors['elevator.door'] = marker(LIFT_DOOR.x, 1.3, LIFT_DOOR.z);
   anchors.elevator = elevator.root;
   anchors.clock = clock.root;
   anchors.quotaBoard = board.root;
@@ -676,6 +679,56 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     lightShow,
     lastCallBell: bell.prop,
   };
+
+  // ── THE NIGHT CYCLE (nightLights.ts): the lights, lamps, ceilings, music and crowd follow the run's phase ──
+  if (ctx.lights && !ctx.bench) {
+    const lights0 = ctx.lights;
+    const pt = (id: string, kind: 'keep' | 'core', x: number, y: number, z: number): [Spot, THREE.Object3D] => [{ id, kind, x, z }, marker(x, y, z)];
+    const marks = new Map<string, THREE.Object3D>();
+    const zoneAt = (x: number, z: number): string | undefined => ZONES.find((q) => x >= q.rect[0] && x <= q.rect[2] && z >= q.rect[1] && z <= q.rect[3])?.id;
+    const spots: Spot[] = ZONES.filter((z) => z.id !== 'home' && z.id !== 'hollow')
+      .map((z) => ({ id: z.id as string, kind: 'floor' as const, x: (z.rect[0] + z.rect[2]) / 2, z: (z.rect[1] + z.rect[3]) / 2 }));
+    for (const [spot, obj] of [
+      pt('keep:bar', 'keep', BAR_POS.x, 1.8, BAR_POS.z), pt('keep:pawn', 'keep', -6, 1.8, 18.6),
+      pt('core:terminal', 'core', 0, 1.8, -28.4), pt('core:lift', 'core', LIFT_DOOR.x, 2.4, LIFT_DOOR.z - 0.6),
+    ]) { spots.push(spot); marks.set(spot.id, obj); }
+    const settings = (): { calm?: boolean; reduceFlashing?: boolean } | undefined => app.save?.data?.settings;
+    const run = (): { shift?: { phase?: string }; nightPaid?: boolean; rules?: { quota?: boolean } } | null => app.run as never;
+    const audio = (): typeof app.audio | null => { try { return app.audio ?? null; } catch { return null; } };
+    const curPhase = (): NightPhase | null => {
+      const r = run();
+      return r?.rules?.quota ? nightPhaseOf(r.shift?.phase, !!r.nightPaid) : null;
+    };
+    const cycle = createNightCycle({
+      lights: lights0,
+      spots,
+      target: (id) => marks.get(id) ?? id,
+      phase: curPhase,
+      reduced: () => !!(settings()?.calm || settings()?.reduceFlashing),
+      busy: () => !!app.cutscene?.playing,
+      fixtures: (zone, on) => { for (const f of builtFixtures()) if ((f.zone ?? zoneAt(f.pos[0], f.pos[2])) === zone) f.setOn(on); },
+      ringBell: () => bell.prop.ring(),
+      audio: {
+        sfx: (name) => { try { audio()?.play(name, { vol: 0.7 }); } catch { /* no audio */ } },
+        duck: (bus, amount, dur) => { try { audio()?.duck(bus, amount, dur); } catch { /* no audio */ } },
+        musicState: () => audio()?.music.state ?? 'silent',
+        setMusicState: (s, fade) => { try { audio()?.music.setState(s, { fade }); } catch { /* no audio */ } },
+      },
+    });
+    // the casino's own ceilings glow with the ambient; the flat and the Underneath keep theirs (ceilFar)
+    const ceils: Array<[THREE.MeshStandardMaterial, number]> = [[ceilMat as unknown as THREE.MeshStandardMaterial, 0.5], [ceilTall as unknown as THREE.MeshStandardMaterial, 0.7]];
+    let ceilK = 1;
+    updates.push({
+      update: (dt) => {
+        cycle.update(dt);
+        const ph = curPhase();
+        const want = ph ? LEVELS[ph].ambient : 1;
+        ceilK += (want - ceilK) * Math.min(1, dt * 1.2);
+        for (const [m, base] of ceils) m.emissiveIntensity = base * ceilK;
+      },
+    });
+    disposables.push(cycle);
+  }
 
   // ── finish: merge the static shell into a few draw calls (fixtures and props stay separate) ──────
   kit.finalize(statical);

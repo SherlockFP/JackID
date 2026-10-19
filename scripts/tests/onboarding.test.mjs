@@ -61,7 +61,7 @@ test('objective: win, then deposit, then ring the Bell, in a Watch', () => {
 });
 
 test('objective: paid Night says take the lift; between Watches with the quota open says due at Dawn', () => {
-  assert.deepEqual(D.objectiveFor({ phase: 'play', paid: true, rounds: 0, deposits: 0, pocket: 0 }), { key: 'lift', target: null });
+  assert.deepEqual(D.objectiveFor({ phase: 'play', paid: true, rounds: 0, deposits: 0, pocket: 0 }), { key: 'lift', target: 'lift' });
   assert.deepEqual(D.objectiveFor({ phase: 'intermission', paid: false, rounds: 4, deposits: 1, pocket: 0 }), { key: 'dawn', target: null });
   assert.deepEqual(D.objectiveFor({ phase: 'settle', paid: false, rounds: 4, deposits: 1, pocket: 0 }), { key: 'bell', target: null });
 });

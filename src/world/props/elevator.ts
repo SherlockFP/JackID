@@ -197,6 +197,7 @@ export class Elevator implements ElevatorProp {
 
   /** Collapse both gate halves sideways (1.2 s) or close them. */
   doors(open: boolean, dur = 1.2): Promise<void> {
+    if (dur > 0 && this.open_ !== open) { try { app.audio?.play('liftDoor', { pos: this.root, vol: 0.7 }); } catch { /* audio is optional */ } }
     this.open_ = open;
     const from = open ? 0 : 1, to = open ? 1 : 0;
     return this.sched.run(dur, (k) => this.applyGates(from + (to - from) * k), easeInOutCubic);

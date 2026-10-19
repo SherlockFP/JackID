@@ -72,7 +72,7 @@ test('LOB-PAWN stands clear of the south wall (its panel back at z 19.85)', () =
 });
 
 test('signposts: an up arrow points the way the reader of that face is walking', () => {
-  const dest = { 'go.terminal': -25, 'go.terminalPhone': -25, 'go.vendors': 19 };
+  const dest = { 'go.terminal': -25, 'go.terminalPhone': -25, 'go.vendors': 19, 'go.bank': -25, 'go.lift': -25, 'go.bell': -25, 'go.machines': -4 };
   let checked = 0;
   for (const sp of L.SIGNPOSTS) {
     for (const side of sp.sides) {

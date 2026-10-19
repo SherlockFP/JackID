@@ -35,3 +35,25 @@ body:has(.sd-root, .nc-root, .px-modal) .px-obj { display: none !important; }
 /* The tutorial box and the objective share one corner (seated: the same top). Never both: the box carries the goal while it is up, so a frame where
    the objective had not hidden yet (or the dimmed box under a toast) cannot leave a clipped stub of one behind the other. */
 .px-root .px-tut:not([style*="display: none"]) ~ .px-obj { display: none !important; }
+
+/* The waymark (menu/hud/waymark.ts): a gold diamond over the objective's spot with its distance; off screen it sits on the edge with an
+   arrow toward the spot. A zero-size anchor moved with transform; the parts hang off it. */
+.px-root .px-wm { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 8; pointer-events: none; will-change: transform; }
+.px-wm .d {
+  position: absolute; left: calc(-4 * var(--u)); top: calc(-4 * var(--u)); width: calc(8 * var(--u)); height: calc(8 * var(--u));
+  background: #ffd36b; transform: rotate(45deg) scale(0.85);
+  box-shadow: 0 0 0 var(--u) #14100b, 0 0 calc(4 * var(--u)) rgba(255, 211, 107, 0.6);
+}
+.px-wm .m {
+  position: absolute; left: 0; top: calc(7 * var(--u)); transform: translateX(-50%); white-space: nowrap;
+  font-family: var(--f-body); font-size: max(var(--fb), 18px); line-height: 1; color: var(--ivory);
+  text-shadow: var(--u) 0 #14100b, calc(-1 * var(--u)) 0 #14100b, 0 var(--u) #14100b, 0 calc(-1 * var(--u)) #14100b;
+}
+.px-wm .ar {
+  display: none; position: absolute; left: calc(-3 * var(--u)); top: calc(-3 * var(--u)); width: 0; height: 0;
+  border-left: calc(3 * var(--u)) solid transparent; border-right: calc(3 * var(--u)) solid transparent; border-bottom: calc(5 * var(--u)) solid #ffd36b;
+  transform: rotate(var(--a, 0rad)) translateY(calc(-9 * var(--u)));
+}
+.px-wm.off .ar { display: block; }
+.px-root.hud-off .px-wm,
+body:has(.sd-root, .nc-root, .px-modal) .px-wm { display: none !important; }

@@ -450,6 +450,7 @@ export function createHud(): Hud {
   for (const [id, el] of anchors) ui().setAnchor(id, el);
 
   let clockAlarmed = false;
+  let clockTickSec = 0;
   let lastPhase = '';
   let bellLeft = 0;
 
@@ -726,6 +727,7 @@ export function createHud(): Hud {
     addFeed(t('hud.feed.quotaMet'), 'gold');
     ui().bump('quota', 1.4);
     goldBurst(quota, '50%', 2);
+    uiSfx('stamp', 0.7);
     metStingerLeft = MET_STINGER_CHECK_S;
   });
   on('quota:failed', () => { addFeed(t('hud.feed.quotaFailed'), 'red'); });
@@ -826,6 +828,10 @@ export function createHud(): Hud {
       }
       lastPhase = phase;
     }
+    // the Watch's last 10 s: a tick a second (the clock is frozen in a pause, so the same second does not tick twice)
+    const tickSec = (phase === 'play' || lastCall) && left > 0 && left <= 10 ? Math.ceil(left) : 0;
+    if (tickSec > 0 && tickSec !== clockTickSec) uiSfx('clockTick', 0.5);
+    clockTickSec = tickSec;
     setText(night, r ? t('hud.nightBare', { n: r.night() }) : '');
     // The Night's last Watch: one toast as it starts (once per Night and Watch).
     if (bar?.last && phase === 'play' && r) {

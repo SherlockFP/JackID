@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { app } from '@/core/app';
 import type { InputMode } from '@/core/input/types';
-import { t } from '@/core/i18n';
+import { t, upper } from '@/core/i18n';
 import { log } from '@/core/log';
 import { uiSfx } from '@/core/ui/widgets';
 import type { World } from '@/world/types';
@@ -19,6 +19,7 @@ import {
   speckle, wrapPx5, type OverlayRig,
 } from '@/machines/_base/placard3d';
 import { setFlashPrefsHost } from '@/machines/_base/juice';
+import { floorPlan, type Plan } from '@/world/floorplan';
 import { NOTES, noteOpen, type NoteDef, type NoteGate } from './notes.data';
 import { BOND_IDS, BOND_MAX, type Bonds } from '../bonds';
 
@@ -102,10 +103,61 @@ export function peopleBody(b: Pick<Bonds, 'level' | 'greeting'>): string {
     return `${t(`bonds.name.${w}`)}  ${'*'.repeat(n)}${'-'.repeat(BOND_MAX - n)}\n${t(b.greeting(w))}`;
   }).join('\n\n');
 }
-const virtualTitle = (d: NoteDef): string | null => (d === TALLY_PAGE ? tallyTitle() : d === PEOPLE_PAGE ? t('bonds.people') : null);
+// ── the MAP page (wayfinding): the floor plan, drawn from the layout data (world/floorplan.ts) and the live world ───────────
+const MAP_PAGE: NoteDef = { id: 'map', kind: 'note', anchor: '', dx: 0, dz: 0, yaw: 0 };
+/** Pages the journal draws or writes itself: no world note behind them, so no READ button. */
+const isVirtual = (d: NoteDef): boolean => d === TALLY_PAGE || d === PEOPLE_PAGE || d === MAP_PAGE;
+/** The plan for the page: open machines are the playable ones (not system devices, not locked, not in a shut wing). */
+function planNow(maxW: number, maxH: number): Plan {
+  const world = app.world, run = app.run, p = app.player;
+  const machines: Array<[number, number]> = [];
+  for (const m of world?.machines() ?? []) {
+    const s = world?.slot(m.id);
+    if (!s || m.def.category === 'system' || !world?.isZoneOpen(s.zone)) continue;
+    let locked = false;
+    try { locked = !!run?.isLocked(m.def.id); } catch { /* no run: nothing is locked */ }
+    if (!locked) machines.push([s.pos[0], s.pos[2]]);
+  }
+  return floorPlan({ zoneOpen: (z) => world?.isZoneOpen(z) ?? false, machines, you: p ? { x: p.pos.x, z: p.pos.z, yaw: p.yaw } : null }, maxW, maxH);
+}
+const PINS = ['bank', 'bell', 'lift', 'bar'] as const;
+const RED = '#b8322a';
+/** Paint the plan with its top-left at (ox, oy), then the legend under it. */
+function drawPlan(g: CanvasRenderingContext2D, ox: number, oy: number, plan: Plan): void {
+  for (const z of plan.zones) {
+    if (z.open) { g.fillStyle = PAPER_DARK; g.fillRect(ox + z.x, oy + z.y, z.w, z.h); }
+    g.fillStyle = INK_SOFT;
+    g.fillRect(ox + z.x, oy + z.y, z.w, 1); g.fillRect(ox + z.x, oy + z.y + z.h - 1, z.w, 1);
+    g.fillRect(ox + z.x, oy + z.y, 1, z.h); g.fillRect(ox + z.x + z.w - 1, oy + z.y, 1, z.h);
+    // the name at the bottom-left (the landmarks cluster on the north wall), two short lines at most
+    const name = wrapPx5(upper(t(`hud.zone.${z.id}`)), z.w - 4).slice(0, z.h >= 26 ? 2 : 1).map((r) => fitPx5(r, z.w - 4));
+    name.forEach((r, k) => put(g, r, ox + z.x + 3, oy + z.y + z.h - 3 - (name.length - k) * 8, INK_SOFT));
+  }
+  g.fillStyle = INK;
+  for (const [x, y] of plan.dots) g.fillRect(ox + x - 1, oy + y - 1, 2, 2);
+  for (const p of plan.pins) {
+    g.fillStyle = INK; g.fillRect(ox + p.x - 3, oy + p.y - 4, 7, 9);
+    put(g, String(PINS.indexOf(p.kind) + 1), ox + p.x - 2, oy + p.y - 3, CREAM);
+  }
+  if (plan.you) {
+    const { x, y, yaw } = plan.you;
+    g.fillStyle = RED; g.fillRect(ox + x - 2, oy + y - 2, 5, 5);
+    g.fillRect(ox + Math.round(x - Math.sin(yaw) * 5) - 1, oy + Math.round(y - Math.cos(yaw) * 5) - 1, 3, 3);   // the way you face (forward is -sin, -cos)
+  }
+  // legend: the numbered landmarks two to a row, then the machine dot and the red mark
+  const ly = oy + plan.h + 4;
+  PINS.forEach((k, i) => put(g, `${i + 1} ${upper(t(`way.map.${k}`))}`, ox + (i % 2) * 74, ly + Math.floor(i / 2) * 9, INK));
+  g.fillStyle = INK; g.fillRect(ox, ly + 21, 2, 2);
+  put(g, t('way.map.machines'), ox + 5, ly + 19, INK_SOFT);
+  g.fillStyle = RED; g.fillRect(ox + 100, ly + 20, 4, 4);
+  put(g, t('way.map.you'), ox + 107, ly + 19, INK_SOFT);
+}
+
+const virtualTitle = (d: NoteDef): string | null => (d === TALLY_PAGE ? tallyTitle() : d === PEOPLE_PAGE ? t('bonds.people') : d === MAP_PAGE ? t('way.map') : null);
 const titleOf = (d: NoteDef): string => virtualTitle(d) ?? t(`story.note.${d.id}.t`);
 const bodyOf = (d: NoteDef): string => {
   if (d === TALLY_PAGE) return tallyBody();
+  if (d === MAP_PAGE) return '';   // drawn by drawPlan, not written
   if (d === PEOPLE_PAGE) { const b = bondBook(); return b ? peopleBody(b) : t('bonds.people.hint'); }
   return t(`story.note.${d.id}.b`);
 };
@@ -396,6 +448,7 @@ function journalPlacard(): Placard3D {
     if (tallyLines.length) l.push(TALLY_PAGE);
     const b = bondBook();
     if (b && BOND_IDS.some((w) => b.level(w) > 0)) l.unshift(PEOPLE_PAGE);   // the friends first, but only once there is a first one
+    l.unshift(MAP_PAGE);      // the floor plan is always the first page
     return l;
   };
   const bodyRows = (d: NoteDef): string[] => wrapPx5(bodyOf(d), PAGE_W);
@@ -450,13 +503,14 @@ function journalPlacard(): Placard3D {
         put(g, fitPx5(titleOf(cur), PAGE_W), x, 8, INK);
         rule(g, x, 20, PAGE_W);
         const pages = paginate(bodyRows(cur), rowsIn(rightRows));
-        pages[Math.min(c.page, pages.length - 1)].forEach((r, k) => put(g, r, x, 26 + k * 10, INK));
+        if (cur === MAP_PAGE) drawPlan(g, x, 26, planNow(PAGE_W, rightRows - 32));
+        else pages[Math.min(c.page, pages.length - 1)].forEach((r, k) => put(g, r, x, 26 + k * 10, INK));
         if (pages.length > 1) {
           button(c, x, h - 22, 18, 13, '<', 'prev');
           button(c, x + 22, h - 22, 18, 13, '>', 'next');
           put(g, `${Math.min(c.page, pages.length - 1) + 1}/${pages.length}`, x + 52, h - 19, INK_SOFT);
         }
-        if (cur !== TALLY_PAGE && cur !== PEOPLE_PAGE) button(c, w - 14 - 56, h - 22, 56, 13, t('story.ui.read'), 'read');
+        if (!isVirtual(cur)) button(c, w - 14 - 56, h - 22, 56, 13, t('story.ui.read'), 'read');
       }
       put(g, fitPx5(t('ui.keyhint'), PAGE_W), 14, h - 8, INK_SOFT);
       button(c, 14, h - 22, 56, 13, t('story.ui.close'), 'close');
@@ -480,7 +534,7 @@ function journalPlacard(): Placard3D {
       }
       if (a === 'read' && l.length) {
         const d = l[Math.min(sel, l.length - 1)];
-        if (d !== TALLY_PAGE && d !== PEOPLE_PAGE) present(readPlacard(d), d);   // the Tally Sheet and PEOPLE are read in the journal itself
+        if (!isVirtual(d)) present(readPlacard(d), d);   // the Tally Sheet, PEOPLE and the MAP are read in the journal itself
       }
     },
     keys: {

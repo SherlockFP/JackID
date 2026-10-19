@@ -17,6 +17,7 @@ import type { InstanceId, Unsub } from '@/core/types';
 import { createRng, hashSeed } from '@/core/rng';
 import { makeFog } from '@/core/renderer/fog';
 import type { UIOverlayX } from '@/core/ui/ui';
+import { uiSfx } from '@/core/ui/widgets';
 import type { KitX } from '@/kit';
 import { createCover, type CoverProp } from '@/world/props/cover';
 import { createNewMarquee, createTableMark, type NewMarqueeProp } from '@/world/props/cover';
@@ -223,6 +224,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     ledgerOpen = false;
     ledger = null;
     app.ui.closePanel(LEDGER_PANEL);
+    uiSfx('back', 0.5);
     app.input.setMode('walk');
     void app.input.requestLock();
   };
@@ -241,6 +243,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
         mods: run.machineMods,
       });
     });
+    uiSfx('popUp', 0.5);
   };
 
   // ── totems: B places the carried totem at your feet, or picks up the nearest placed one ─────────────
@@ -249,7 +252,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
     const carried = mine.find((s) => s.pos === null);
     const p = player.pos;
     if (carried) {
-      if (run.totems.place(carried.uid, [p.x, 0, p.z])) app.ui.toast(t('ingame.totem.placed'), 'sys');
+      if (run.totems.place(carried.uid, [p.x, 0, p.z])) { app.audio.play('totemPlace', { vol: 0.8 }); app.ui.toast(t('ingame.totem.placed'), 'sys'); }
       else app.ui.toast(t('ingame.totem.refused'), 'warn');
       return;
     }
@@ -259,7 +262,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       const d = Math.hypot(s.pos[0] - p.x, s.pos[2] - p.z);
       if (d <= TOTEM_REACH_M && (!best || d < best.d)) best = { uid: s.uid, d };
     }
-    if (best && run.totems.pickup(best.uid)) app.ui.toast(t('ingame.totem.picked'), 'sys');
+    if (best && run.totems.pickup(best.uid)) { app.audio.play('totemPlace', { vol: 0.5, pitch: 5 }); app.ui.toast(t('ingame.totem.picked'), 'sys'); }
     else app.ui.toast(t('ingame.totem.none'), 'warn');
   };
 
@@ -457,6 +460,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
         buyers.get(m.id)?.(); buyers.delete(m.id);
         app.fx.burst('dust', g.localToWorld(cov.top.clone()), 28, { spread: 0.6, over: 0.8 });
         app.audio.play('powerUp', { pos: g, vol: 0.7 });
+        app.audio.play('liftDoor', { pos: g, vol: 0.5 });   // the glass slides up
         void cov.setCovered(false, 1.6).then(() => { app.audio.play('unlock', { pos: g }); covers.delete(m.id); g.remove(cov.root); cov.dispose(); });
       }
       const wantNew = !locked && run.mode !== 'free' && isNew(mid, night, run.seed);

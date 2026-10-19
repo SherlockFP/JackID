@@ -72,6 +72,10 @@ export interface UIOverlayX extends UIOverlay {
 const TOAST_ICON: Record<string, IconName> = {
   info: 'info', good: 'check', bad: 'cross', warn: 'warn', sys: 'net', money: 'coin', curse: 'curse', phone: 'bell',
 };
+/** A soft cue per toast kind, quiet so it sits under the sound that caused the toast. 'phone' and 'loki' have their own (the buzz, his card riffle). */
+export const TOAST_SFX: Readonly<Record<string, readonly [string, number]>> = {
+  info: ['msgBlip', 0.3], good: ['countDing', 0.4], bad: ['error', 0.4], warn: ['error', 0.3], sys: ['popUp', 0.3], money: ['coinClink', 0.45], curse: ['whisper', 0.3],
+};
 /** Toasts on screen at once; the rest wait in line. */
 const TOAST_VISIBLE = 2;
 /** Toasts held behind an open modal (`holdToasts`); the oldest drops past this many. */
@@ -316,6 +320,8 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     el.animate([{ transform: `translateX(${40 * px}px)`, opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }],
       { duration: 180, easing: 'cubic-bezier(.2,.8,.3,1)' });
     rec.timer = window.setTimeout(() => dismissToast(rec), rec.dur * 1000);
+    const cue = TOAST_SFX[rec.kind];
+    if (cue) uiSfx(cue[0], cue[1]);
   }
   /** Takes a shown toast off the screen. Does not promote the next one (the caller decides who takes the slot). */
   function hideToast(rec: ToastRec, quick = false): boolean {

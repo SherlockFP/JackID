@@ -128,3 +128,55 @@ panels) are stretched once, never below 16 per metre.
 - Use `Math.random`, `Date.now` or timers in builders: dressing comes from fixed tables, the seed or an integer hash.
 - Put two faces in one plane: offset at least 5 mm (1 cm for anything larger than 1 m); a decal or poster stays 5 mm off its wall.
 - Add a texture above 128 px or a real-time light for decoration.
+
+## Characters and props (wave 88)
+
+Every figure is the one mannequin rig (`src/kit/mannequin.ts`) and its clip set. A character is told apart by an outfit, one colour
+accent and a silhouette, never by a new skeleton. Code: `src/kit/mannequinOutfits.ts` (the builder and the Collector, Selim and
+Compere looks), `src/kit/mannequinLook.ts` (faces, Ada's hair and dress, the dark NPC shader), `src/machines/tallytable/rivals.ts`
+(the rivals), `src/world/props/food.ts` and `src/player/viewmodel/items.ts` (hand props).
+
+### Two kinds of people
+
+| | Ada (the one lit person) | everyone in the House |
+|---|---|---|
+| shader | lit PSX skin, warm rim, painted anime face | dark NPC: near-black body, banded rim, glowing eyes |
+| colour | warm skin, brown hair, plum dress, red hair tie | the cloth's own colour through `lift` (0.2 to 0.6) |
+| reads by | face, hair, dress details | silhouette, rim, one accent |
+
+### Outfits
+
+- Cloth is built in bone space: `tube` (a sleeve, a coat panel, a collar: a cone from a bone toward its child), `box`, `ball`, and
+  kit props (hats, the ledger, the mic, the bow tie). Pieces on one bone in one colour merge into one mesh.
+- Sizes are in the GLB's bone units (a 1.83 m rig): torso radius 0.13 to 0.19 (wider than deep, `sq` 0.82 to 0.95), upper arm 0.076,
+  forearm 0.06, thigh 0.09, neck 0.067, face at z +0.11 of `Head`. Cloth sits 1 to 2 cm proud; check the front, the shoulders and the
+  hips at 1 m for skin poking through.
+- On a dark NPC only `lift` makes cloth read. Cloth 0.2 to 0.4, the accent 0.4 to 0.6. Above 0.6 a colour glows like neon in the dark
+  and the figure stops looking like it came from somewhere else.
+- One accent per character: Tamsin jade, Lucan red and gold, Mimosa yellow, Vell none (greyscale), the Collector a gold hat band and
+  his red rim, Selim a warm amber rim and a red stripe on his towel, the Compere a red bow tie under his cold cyan rim.
+
+| who | silhouette | pieces |
+|---|---|---|
+| the Collector | tall, long coat, wide brim | overcoat with the collar up, lapels, gloves, coat skirt, hat, ledger |
+| Selim | shirtsleeves, towel on the left shoulder | waistcoat, rolled sleeves, towel, half apron |
+| the Compere | top hat, tails | tuxedo, satin lapels, white cuffs and shirt front, bow tie, hand mic |
+| Tamsin | silver bob, long scarf | dealer's waistcoat, jade scarf, white gloves |
+| Lucan | epaulettes, high collar, tails | red tailcoat, gold cuffs and buttons, pocket watch |
+| Mimosa | oversized coat, one shoe | yellow coat to the shins, sleeves over the hands, red shoe |
+| Vell | long coat, flat cap | grey raincoat with a belt, tape reels on the shoulders |
+
+### Faces
+
+- Ada: painted in head space in the skin shader (`GLSL_FACE_ANIME`): large eyes (white, iris dark at the top and warm at the bottom,
+  pupil, one catchlight on the same side), a thick upper lash line with a flick, thin brows, a hint of a nose, a small smile, cheeks.
+  Every mark has a hard edge so it stays crisp at 360 lines. Her fringe stops at the brows; the eyes are never covered.
+- House folk keep the blank face and the eye pinpoints (with a faint halo). Their form reads by a crisp edge line, a faint top light
+  and thin bands that drift up through the rim (off in Calm Mode).
+
+### Hand props
+
+- Same grips: a prop keeps its origin and extents when it is reworked, so `GRIPS` and the eat and drink poses still fit.
+- Small painted maps (`FOOD_TEX`, 16 px, 32 for the can label): a luminance pattern tinted by the part colour, or a full-colour label
+  on a white part. Painters use an integer hash, never `Math.random`.
+- Round things are round: 12 sides for cans, mugs and bowls at hand distance, a ring for a mug handle, not three boxes.

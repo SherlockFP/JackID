@@ -162,6 +162,13 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
       const loud = crouching ? 0.25 : speed > 4 ? 0.7 : 0.5;
       app.audio.play(s.name, { vol: loud * s.vol, pitch: s.pitch + app.rng.cosmetic.float(-1, 1), param: s.hardness, priority: 3 });
     },
+    jump() {
+      const s = SURFACE_SOUND[surfaceAt(ctrl.pos.x, ctrl.pos.z)];
+      app.audio.play(s.name, { vol: 0.5 * s.vol, pitch: s.pitch, param: s.hardness, priority: 3 });   // the push-off scuff
+    },
+    bump(speed) {
+      app.audio.play('thud', { vol: clamp(speed / 12, 0.12, 0.4), pitch: -4, priority: 4 });   // a soft shoulder against a wall
+    },
     land(impact) {
       app.audio.play('thud', { vol: clamp(impact / 9, 0.2, 0.9), priority: 4 });
       rig.shake(Math.min(0.012, 0.003 + impact * 0.0006), 0.2);
@@ -603,6 +610,7 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
 
   /** A tonic was drunk: the bottle comes up to the mouth (`drink`), then the hand is a coin again. */
   function drinkTonic(): void {
+    app.audio.play('foodSip', { priority: 6 });   // heard seated too
     if (!walkHands() || (viewmodel.item !== 'coin' && viewmodel.item !== 'tonic')) return;
     drinking++;
     viewmodel.hold('tonic');

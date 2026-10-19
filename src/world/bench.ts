@@ -38,7 +38,7 @@ export const ROOM = 12;                     // m, square
 const EYE = 1.62;
 const HALF = new THREE.Vector3(0.3, 0.9, 0.3);
 const WALK = 3.0, SPRINT = 5.2;
-const NOOP_LIGHTS: WorldLights = { setLevel() {}, flicker() {}, pulse() {}, strobe() {}, setDread() {}, reset() {} };
+const NOOP_LIGHTS: WorldLights = { setLevel() {}, flicker() {}, pulse() {}, strobe() {}, setDread() {}, setAmbient() {}, reset() {} };
 const STUB_VIEWMODEL: Viewmodel = { setVisible() {}, hold() {}, play: () => Promise.resolve(), setHandLook() {}, update() {} };
 
 // ── collision ────────────────────────────────────────────────────────────────────────────────────────

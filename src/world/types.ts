@@ -120,6 +120,8 @@ export interface WorldLights {
   strobe(target: WorldLightTarget, hz: number, dur: number, color?: Hex): void;
   /** 0..1 horror grade: darker rooms, colder colour, shorter fog, more flicker. */
   setDread(v: number): void;
+  /** The night cycle's ambient and fog multiplier (1 = lit, lower = dark), tweened over `dur` seconds. Separate from `setLevel('all')`, so no event resets it. */
+  setAmbient(level: number, dur?: number): void;
   reset(): void;
 }
 

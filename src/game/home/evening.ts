@@ -459,6 +459,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   /** The look through the eyehole (2.5 s): the camera goes to the lens view, a hard-edged circle closes the screen. The world's own figure stands in the hall when he is there. */
   const peephole = (): void => {
     if (peep) return;
+    sfx('drawer', { vol: 0.4, pitch: 5 });   // the little brass cover slides
     const el = h('div', 'ev-peep', ui().hudLayer);
     Object.assign(el.style, {
       position: 'absolute', left: '0', top: '0', right: '0', bottom: '0', pointerEvents: 'none', zIndex: '3', opacity: '0',
@@ -486,6 +487,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   };
 
   const windowLook = (): void => {
+    sfx('windGust', { vol: 0.3 });
     const n = (hashSeed(run.seed, run.night(), 'home.window') % WINDOW_LINES) + 1;
     say(t(`evening.window.${n}`), '', 3.5);
   };
@@ -601,6 +603,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   /** The lift down: dark, the ding, the teleport to the elevator door on the floor, back in. The run's Watch 1 opens at the end. */
   const startLift = (): void => {
     pro = 'lift';
+    sfx('doorOpen', { vol: 0.7 });
     liftT = 0;
     liftBeat = { ding: false, tp: false, fadeIn: false };
     wantLock = true;

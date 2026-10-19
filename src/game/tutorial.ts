@@ -10,7 +10,8 @@
  *
  * Wave 72: the OBJECTIVE line. On Nights 1 and 2 one line always names what to do next (`objectiveFor`, menu/hud/disclose.ts), with
  * a waypoint on the target machine. It takes the place of the tutorial box once that box is down (the box carries the same job
- * while it is up), so there is never more than one line of guidance.
+ * while it is up), so there is never more than one line of guidance. The same objective drives the wayfinder (`menu/hud/waymark.ts`):
+ * the on-screen diamond with its distance, the Night 1 floor trail and the Bar's call-out.
  *
  * Wave 27: `startTutorial` also owns the BROKE PROMPT (`brokePrompt.ts`): on every fresh Night 1, tutorial done or not, a big centre card lists
  * the ways out of an empty pocket (bank WITHDRAW, the phone, the cashier, the House loan). It rides this object so the session needs no change.
@@ -32,6 +33,7 @@ import { TILT_FREE_PULLS } from '@/game/data/schedule';
 import { createBrokePrompt } from '@/game/brokePrompt';
 import { machineName } from '@/game/progression';
 import { objectiveFor, objectiveShown, type Objective } from '@/menu/hud/disclose';
+import { createWayfinder } from '@/menu/hud/waymark';
 import '@/menu/hud/objective.css';
 
 export interface TutorialHost {
@@ -371,6 +373,7 @@ function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): v
   el.append(label, text);
   overlayEl().appendChild(el);
   const marker = createMarker(world);
+  const wayfinder = createWayfinder({ world });
 
   let roundsAll = 0, depositsAll = 0;
   const offs: Unsub[] = [];
@@ -400,7 +403,7 @@ function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): v
       if (disposed) return;
       if (run.night() !== night) { night = run.night(); base = { rounds: roundsAll, deposits: depositsAll }; }
       // At home (the Evening) the HUD's evening card carries the goal (rest, tomorrow's quota); "take the lift" would be wrong there.
-      if (!objectiveShown(night) || boxUp() || inUnderneath() || run.prologueOn() || run.homeStage() !== null) { hide(); return; }
+      if (inUnderneath() || run.prologueOn() || run.homeStage() !== null) { hide(); wayfinder.hide(); return; }
       const sh = run.shift.state();
       const o = objectiveFor({
         phase: sh.phase,
@@ -410,6 +413,9 @@ function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): v
         pocket: run.wallet(self),
         owed: run.bank().left,
       });
+      // The wayfinder follows the objective even while the tutorial box carries the words (its own gate: Nights 1-2, or a stall).
+      wayfinder.update({ target: o.target, night });
+      if (!objectiveShown(night) || boxUp()) { hide(); return; }
       const key = `${night}|${o.key}`;
       if (key !== shownKey) {
         shownKey = key;
@@ -421,9 +427,9 @@ function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): v
         const bell = world.anchor('bell');
         if (bell) marker.showAt(bell, app.time.sim);
         else marker.show(targetMid('debt_terminal'), app.time.sim);
-      } else {
-        marker.show(o.target !== null ? targetMid(o.target) : null, app.time.sim);
-      }
+      } else if (o.target === 'bigone' || o.target === 'debt_terminal') {
+        marker.show(targetMid(o.target), app.time.sim);
+      } else marker.hide();   // the lift (the wayfinder's diamond points at it) or no spot
     },
     dispose(): void {
       if (disposed) return;
@@ -431,6 +437,7 @@ function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): v
       for (const off of offs.splice(0)) off();
       el.remove();
       marker.dispose();
+      wayfinder.dispose();
     },
   };
 }

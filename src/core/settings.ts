@@ -28,6 +28,7 @@ export interface Settings {
   uiScale: number;              // 0.6..1.3 overall UI size, 1 = 100 % (the unit `floor(H / 270)` px); def 0.75 (-25 %)
   colorblind: boolean;         // shape-backed symbols/colours
   holdToConfirm: boolean;       // accessibility: dangerous actions need a hold
+  waymark: boolean;             // the objective diamond with its distance (menu/hud/waymark.ts), Advanced > Interface
   proxVoice: { enabled: boolean; pushToTalk: boolean; volume: number };
   keybinds: Partial<Record<string, string[]>>;
   net: {
@@ -64,6 +65,7 @@ export const DEFAULT_SETTINGS: Settings = {
   uiScale: 0.75,
   colorblind: false,
   holdToConfirm: false,
+  waymark: true,
   proxVoice: { enabled: false, pushToTalk: true, volume: 0.8 },
   keybinds: {},
   net: { lobbyUrl: '', useServer: true, useTab: true, useP2P: false, turn: null },

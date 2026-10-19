@@ -36,6 +36,9 @@ export const FALL_LIMIT_Y = -12;
 /** Airborne over a hole for this long ⇒ `falling`. */
 const HOLE_GRACE_S = 0.12;
 const LAND_IMPACT = 2.4;
+/** A wall hit at least this fast (m/s into the wall) thuds; the next one waits BUMP_GAP_S (pushing on a wall must not machine-gun). */
+export const BUMP_SPEED = 1.8;
+export const BUMP_GAP_S = 0.5;
 const GHOST_BOUNDS = { x: 33, zMin: -34, zMax: 22, yMin: 0.4, yMax: 7 };
 
 export interface StepInput {
@@ -54,6 +57,10 @@ export interface ControllerEvents {
   /** A foot hit the floor (every bob trough). */
   footstep(speed: number, crouching: boolean): void;
   land(impact: number): void;
+  /** The body left the floor on a jump (optional: the sound). */
+  jump?(): void;
+  /** The body hit a wall at `speed` m/s into it, rate-limited (optional: the sound). */
+  bump?(speed: number): void;
   /** Left the floor over a hole (trapdoor): camera fall sequence starts. */
   fallBegin(): void;
   /** y < FALL_LIMIT_Y — fade out. */
@@ -91,6 +98,7 @@ export class FpsController {
   private airborne = 0;
   private holeTime = 0;
   private lastStep = 0;
+  private bumpWait = 0;
   private readonly body = new THREE.Vector3();
   private readonly delta = new THREE.Vector3();
   private readonly probe = new THREE.Vector3();
@@ -165,7 +173,7 @@ export class FpsController {
     if (hs > cap && this.grounded) { v.x *= cap / hs; v.z *= cap / hs; }
 
     // vertical
-    if (this.grounded && inp.jump && !this.crouching && !this.crawl && !inp.frozen) { v.y = JUMP_SPEED; this.grounded = false; }
+    if (this.grounded && inp.jump && !this.crouching && !this.crawl && !inp.frozen) { v.y = JUMP_SPEED; this.grounded = false; this.events.jump?.(); }
     if (!this.grounded) v.y = Math.max(v.y - GRAVITY * dt, -TERMINAL_FALL);
     else v.y = 0;
 
@@ -184,6 +192,9 @@ export class FpsController {
     const r = c.moveAndSlide(this.body, half, this.delta);
     const newY = this.body.y - half.y;
     this.pos.set(this.body.x, newY, this.body.z);
+    this.bumpWait = Math.max(0, this.bumpWait - dt);
+    const into = Math.max(r.hitX ? Math.abs(v.x) : 0, r.hitZ ? Math.abs(v.z) : 0);
+    if (into >= BUMP_SPEED && this.bumpWait === 0) { this.bumpWait = BUMP_GAP_S; this.events.bump?.(into); }
     if (r.hitX) v.x = 0;
     if (r.hitZ) v.z = 0;
     this.grounded = r.grounded;

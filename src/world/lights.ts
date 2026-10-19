@@ -31,6 +31,21 @@ export interface Fixture {
   update?(dt: number, t: number): void;
 }
 
+/** Every fixture built since the level began (`resetFixtures`): the night cycle (world/nightLights.ts) switches a zone's lamps off at Dawn and on at the opening. */
+export interface BuiltFixture { pos: V3; zone?: string; setOn(on: boolean): void }
+const built: BuiltFixture[] = [];
+export const resetFixtures = (): void => { built.length = 0; };
+export const builtFixtures = (): readonly BuiltFixture[] => built;
+/** Registers a fixture; a fixture switched off stops running its own flicker `update`, so the flicker cannot light it again. */
+function reg(f: Fixture): Fixture {
+  const on = f.setOn, upd = f.update;
+  let dark = false;
+  f.setOn = (v) => { dark = !v; on(v); };
+  if (upd) f.update = (dt, t) => { if (!dark) upd(dt, t); };
+  built.push({ pos: f.hint.pos, zone: f.hint.zone, setOn: (v) => f.setOn(v) });
+  return f;
+}
+
 const hashN = (n: number): number => {
   const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return s - Math.floor(s);
@@ -81,11 +96,11 @@ export function sconce(kit: KitX, o: FixtureOpts & { facing: 0 | 90 | 180 | 270 
   lamp.root.position.set(0, 0.02, 0.1);
   root.add(lamp.root);
   lamp.setOn(true);
-  return {
+  return reg({
     root,
     hint: { id: o.id, pos: o.pos, color: o.color, intensity: o.intensity ?? 0.55, range: o.range ?? 3.5, flicker: o.flicker ?? 'CANDLE', zone: o.zone },
     setOn: (on) => lamp.setOn(on),
-  };
+  });
 }
 
 /** Table pendant: a cone shade on a stem, emissive inner face. `drop` = metres from the ceiling to the shade. */
@@ -98,11 +113,11 @@ export function pendant(kit: KitX, o: FixtureOpts & { drop: number }): Fixture {
   const lamp = kit.lamp({ r: 0.06, color: o.color, shape: 'bulb' });
   lamp.root.position.y = -0.02;
   root.add(lamp.root);
-  return {
+  return reg({
     root,
     hint: { id: o.id, pos: [o.pos[0], o.pos[1] - 0.1, o.pos[2]], color: o.color, intensity: o.intensity ?? 1.2, range: o.range ?? 4.5, flicker: o.flicker ?? 'BUZZ', zone: o.zone },
     setOn: (on) => lamp.setOn(on),
-  };
+  });
 }
 
 /**
@@ -130,13 +145,13 @@ export function chandelier(kit: KitX, o: FixtureOpts & { r: number; bulbs: numbe
   const hub = kit.lamp({ r: 0.2, color: o.color, shape: 'dome' });
   hub.root.position.set(0, o.pos[1] + 0.1, 0);
   root.add(hub.root);
-  return {
+  return reg({
     root,
     hint: { id: o.id, pos: [o.pos[0], o.pos[1] - 0.2, o.pos[2]], color: o.color, intensity: o.intensity ?? 1.6, range: o.range ?? 12, flicker: o.flicker ?? 'STEADY', zone: o.zone },
     setOn: (on) => { hub.setOn(on); bulbs.pattern(on ? 'all' : 'off'); },
     pattern: (p, hz) => bulbs.pattern(p, hz),
     update(_dt, t) { root.rotation.z = Math.sin(t * 0.63) * 0.017; },
-  };
+  });
 }
 
 /** Fluorescent tube (or a row of them) as a BulbChain light strip; `flicker` only drives the hint. */
@@ -145,7 +160,7 @@ export function tube(kit: KitX, o: FixtureOpts & { length: number; axis?: 'x' | 
   root.position.set(o.pos[0], o.pos[1], o.pos[2]);
   const strip = kit.lightStrip({ length: o.length, color: o.color, thickness: 0.06, segments: Math.max(4, Math.round(o.length * 4)), axis: o.axis ?? 'x' });
   root.add(strip.root);
-  return {
+  return reg({
     root,
     hint: { id: o.id, pos: o.pos, color: o.color, intensity: o.intensity ?? 0.9, range: o.range ?? 6, flicker: o.flicker ?? 'BUZZ', zone: o.zone },
     setOn: (on) => strip.pattern(on ? 'all' : 'off'),
@@ -153,7 +168,7 @@ export function tube(kit: KitX, o: FixtureOpts & { length: number; axis?: 'x' | 
       const lvl = flickerLevel(o.flicker ?? 'BUZZ', t, o.pos[0] * 3 + o.pos[2]);
       strip.pattern(lvl < 0.5 ? 'off' : 'all');
     },
-  };
+  });
 }
 
 /** Bare bulb on a cord from the ceiling (boiler, counting room). */
@@ -166,10 +181,10 @@ export function bareBulb(kit: KitX, o: FixtureOpts & { ceiling: number }): Fixtu
   root.add(lamp.root);
   root.position.x = o.pos[0];
   root.position.z = o.pos[2];
-  return {
+  return reg({
     root,
     hint: { id: o.id, pos: o.pos, color: o.color, intensity: o.intensity ?? 1.0, range: o.range ?? 6, flicker: o.flicker ?? 'STEADY', zone: o.zone },
     setOn: (on) => lamp.setOn(on),
     update(_dt, t) { lamp.setOn(flickerLevel(o.flicker ?? 'STEADY', t, o.pos[2]) > 0.5); },
-  };
+  });
 }

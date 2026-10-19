@@ -218,6 +218,7 @@ function accessPage(c: Ctx): void {
   }), t('settings.subtitleSpeed.tip'));
   flag(c, 'colorblind', t('settings.colorblind'), S().colorblind, (v) => put('colorblind', v));
   flag(c, 'holdToConfirm', t('settings.holdToConfirm'), S().holdToConfirm, (v) => put('holdToConfirm', v), t('settings.holdToConfirm.tip'));
+  flag(c, 'waymark', t('settings.waymark'), S().waymark, (v) => put('waymark', v), t('settings.waymark.tip'));
 }
 
 // ── the panel ─────────────────────────────────────────────────────────────────────────────────────
@@ -286,7 +287,7 @@ function mount(el: HTMLElement, o: SettingsOpts): () => void {
 
   const onKey = (e: KeyboardEvent): void => {
     if (keyCaptureActive() || e.ctrlKey || e.altKey || e.metaKey) return;
-    if (input.codesOf('help').includes(e.code)) { e.preventDefault(); e.stopImmediatePropagation(); closeSettingsScreen(); return; }
+    if (input.codesOf('help').includes(e.code)) { e.preventDefault(); e.stopImmediatePropagation(); uiSfx('back', 0.5); closeSettingsScreen(); return; }
   };
   window.addEventListener('keydown', onKey);
   // a language change re-texts everything: rebuild the whole frame, keeping the page and the focused control

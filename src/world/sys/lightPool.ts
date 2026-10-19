@@ -152,6 +152,9 @@ export class LightPool {
   readonly api: WorldLights;
   /** 0..1+ multiplier for `setLevel('all')` (ambient and fog follow it in the world). */
   globalLevel = 1;
+  /** The night cycle's ambient and fog multiplier (world.ts atmosphere); `setAmbient` tweens it. */
+  ambientMul = 1;
+  private ambientFx: Effect | null = null;
   /** Smoothed horror grade 0..1. */
   dread = 0;
 
@@ -420,9 +423,20 @@ export class LightPool {
         });
       },
       setDread(v) { pool.dreadTarget = clamp01(v); },
+      setAmbient(level, dur = 0) {
+        const from = pool.ambientMul;
+        if (pool.ambientFx) pool.effects = pool.effects.filter((e) => e !== pool.ambientFx);
+        pool.ambientFx = null;
+        if (dur <= 0) { pool.ambientMul = level; return; }
+        const e: Effect = { hints: [], t: 0, dur, run: (_e, k) => { pool.ambientMul = lerp(from, level, ease.inOutQuad(k)); } };
+        pool.ambientFx = e;
+        pool.effects.push(e);
+      },
       reset() {
         pool.effects.length = 0;
         pool.globalLevel = 1;
+        pool.ambientMul = 1;
+        pool.ambientFx = null;
         pool.dreadTarget = 0;
         for (const h of pool.hints) { h.level = 1; h.tintAmt = 0; h.fxMul = 1; h.fxColAmt = 0; }
       },

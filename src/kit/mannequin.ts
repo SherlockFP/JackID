@@ -25,12 +25,16 @@ import { VENDOR_PATHS } from './presets';
 import type { KitCtx } from './ctx';
 import { MANNEQUIN_CLIPS, MANNEQUIN_GLB, type Kit, type MannequinActor, type MannequinBone, type MannequinClip, type MannequinOpts, type MannequinPlayOpts } from './types';
 import { buildDress, buildHair, FEMALE_LIMB, FEMALE_SCALES, headBoxOf, idleRefPose, patchLook, patchNpc, seeded, waveEnv, type HeadBox } from './mannequinLook';
+import { buildOutfit, OUTFITS } from './mannequinOutfits';
 
 const D2R = Math.PI / 180;
 const DEFAULT_HEIGHT = 1.75;
 const DEFAULT_STEP_FPS = 15;
 const FACE_DEFAULT = 0xd9c7a3;                  // unpainted wood-doll
 const RIM_LIGHT = 0x8c9cd0;                     // dim cold rim (scaled down in patchLook)
+const RIM_WARM = 0xffc8a0;                      // Ada's rim: warm, she is the one lit thing that is not the House
+/** Ada's painted face (mannequinLook GLSL_FACE_ANIME): amber-brown eyes, rose lips, brows a shade under her hair, warm cheeks. */
+const ADA_FACE = { iris: 0x9a5a2a, lip: 0xc24a58, brow: 0x4a2a1c, blush: 0xf08a80 } as const;
 const NPC_RIM_HOUSE = 0x6fd8e0;                 // dark NPCs: cold cyan rim (house folk)
 const NPC_RIM_COLLECTOR = 0xc0202a;             // the Collector and his men: blood red
 const NPC_BODY_DEAD = 0x0c0b10;                 // placeholder doll while the GLB loads (dark NPC)
@@ -143,7 +147,7 @@ function lookOf(o: MannequinOpts): Look {
     }
     case 'ghost': return { main: c ?? PAL.ICE, joints: o.jointColor ?? PAL.PAPER, lit: false, opacity: 0.5 };
     case 'shadow': return { main: c ?? 0x07070b, joints: o.jointColor ?? 0x120d18, lit: true, opacity: 1, emissive: 0x050308 };
-    case 'collector': return { main: c ?? 0x12121a, joints: o.jointColor ?? PAL.GOLD, lit: true, opacity: 1, coat: true };
+    case 'collector': return { main: c ?? 0x12121a, joints: o.jointColor ?? 0x1a1418, lit: true, opacity: 1, coat: true };   // dark joints: gloved fingers
     default: {
       const main = c ?? FACE_DEFAULT;
       return { main, joints: o.jointColor ?? scaleHex(main, 0.55), lit: true, opacity: 1 };
@@ -364,7 +368,8 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
           emissive: this.look.emissive ?? 0, unique: true,
         }) as THREE.MeshLambertMaterial;
         // painted face + dim rim light (lit looks only; the ghost stays a flat translucent figure)
-        if (this.look.lit) patchLook(m, { cracks: !!this.look.cracks, sockets: this.face.sockets, smile: this.face.smile, head: src.head, rim: RIM_LIGHT });
+        const anime = this.female && !this.npc ? ADA_FACE : undefined;
+        if (this.look.lit) patchLook(m, { cracks: !!this.look.cracks, sockets: this.face.sockets, smile: this.face.smile, head: src.head, rim: anime ? RIM_WARM : RIM_LIGHT, anime });
         if (this.npc) patchNpc(m, { rim: this.npcRim, eyes: this.npcEyes, head: src.head, shimmer: 1, eyeGain: this.female ? 0.72 : 1, eyeSize: this.female ? 0.35 : 0, rimGain: this.female ? FEMALE_RIM_GAIN : 1 });
         this.mats.push(m);
         this.baseColors.push(base);
@@ -396,7 +401,9 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
       this.isReady = true;
       this.applyTintAndOpacity();
       if (this.initialMask) { const m = makeProp(this.initialMask); this.own(m); this.attach(m, 'Head'); }
-      if (this.look.coat) { const coat = makeProp('coat_long'); this.own(coat); this.attach(coat, 'pelvis'); }
+      if (this.look.coat) {                       // the Collector: overcoat, gloves, hat and ledger (mannequinOutfits)
+        for (const w of buildOutfit((n) => this.bones.get(n) ?? null, OUTFITS.collector, makeProp)) { this.own(w.obj); this.attach(w.obj, w.bone, w.o); }
+      }
       if (this.female) this.buildFemale();
       for (const a of this.attachments) if (!a.live) this.mount(a);
       const first = this.pending ?? { clip: this.initialClip, o: { fade: 0 }, resolve: () => {} };

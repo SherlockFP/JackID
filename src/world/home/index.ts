@@ -93,7 +93,7 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
   // Ada is a normal lit girl, NOT a dark other-dimension NPC (npc: false: no rim, no glowing eyes): warm skin, brown hair, a plum
   // dress and a painted face; the candle and a soft key light (room.ts) light her. The kit's female option gives build and idle.
   const spouseOpts: MannequinOpts & { npc: boolean; female: boolean; hair: number; dress: number } = {
-    color: 0xeab08c, jointColor: 0xe0a07c, style: 'plain', clip: 'Sitting_Idle_Loop', height: 1.66,
+    color: 0xd09474, jointColor: 0xcc9070, style: 'plain', clip: 'Sitting_Idle_Loop', height: 1.66,
     npc: false, female: true, hair: 0x6b3f2a, dress: 0xa8456a,
   };
   const spouse = o.kit.mannequin(spouseOpts);
@@ -227,10 +227,12 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
     update(dt, t) {
       // the rain scrolls in the shader and the spouse is driven by the kit's mannequin update; only the PC's cursor blinks here
       furniture.update(dt, t);
+      room.update(dt);   // the morning light after the bed
     },
     dispose() {
       for (const off of offs.splice(0)) off();
       door.dispose();
+      room.dispose();
       visitors.dispose();
       spouse.dispose();
       if (activeDoor === door) activeDoor = null;

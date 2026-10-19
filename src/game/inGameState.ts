@@ -19,6 +19,7 @@ import type { Bench } from '@/world/bench';
 import { startDebtSession, type DebtSession } from './ingame/session';
 import { fmtCoins, t } from '@/core/i18n';
 import type { UIOverlayX } from '@/core/ui/ui';
+import { uiSfx } from '@/core/ui/widgets';
 import { nightPaid } from '@/machines/debt_terminal/night';
 import { SKIP_HOLD_S, tutorialActive } from '@/game/tutorial';
 import { closeSettingsScreen, openSettingsScreen, settingsScreenOpen } from '@/core/ui/settingsScreen';
@@ -134,9 +135,11 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     if (on) {
       app.input.exitLock();
       showPauseCard();
+      uiSfx('popUp', 0.6);
     } else {
       resumedAt = app.time.sim;
       app.ui.closePanel(PAUSE_PANEL);
+      uiSfx('back', 0.5);
       // A seated player resumes AT the machine (the machine sink is still attached): never force walk mode over a seat,
       // or E would no longer reach the machine and the player could not stand up.
       if (app.player?.seat != null) app.input.setMode('machine');
@@ -167,6 +170,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     if (overlay !== 'ledger') return;
     overlay = null;
     app.ui.closePanel(SEAT_LEDGER_PANEL);
+    uiSfx('back', 0.5);
     restoreSeatMode();
   };
   const openSeatedLedger = (): void => {
@@ -180,6 +184,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     app.ui.panel(SEAT_LEDGER_PANEL, (el) => {
       mountLedger(el, s.run.tycoon, mid, { onClose: closeSeatedLedger, toast: (text) => app.ui.toast(text, 'sys'), mods: s.run.machineMods });
     });
+    uiSfx('popUp', 0.5);
   };
   /**
    * J is a seated action (core/keymap SEATED_WALK_ACTIONS): the input layer hands it over in the step, after the journal's
@@ -285,6 +290,7 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     }
     const key = `${s.run.night()}|${s.run.topsideOpen}`;
     if (interOpen && key === interKey) return;
+    if (!interOpen) uiSfx('popUp', 0.5);
     interOpen = true;
     interKey = key;
     app.ui.panel(INTER_PANEL, (el) => buildIntermission(el, s.run, { redraw: () => { interKey = ''; } }));

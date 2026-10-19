@@ -12,6 +12,8 @@ import * as THREE from 'three';
 import type { Hex } from '@/core/types';
 import { GLSL_CRACKS, psx } from './materials';
 import { npcFrame } from '@/core/renderer/npcFrame';
+import { scaleHex } from './palette';
+import { buildOutfit, type Piece } from './mannequinOutfits';
 
 /** Head bounds in the geometry space the shader reads (`transformed`): centre and half-extents. */
 export interface HeadBox { c: THREE.Vector3; r: THREE.Vector3 }
@@ -65,7 +67,11 @@ export interface LookPatch {
   head: HeadBox | null;
   /** Rim light colour (added after lighting, so it stays dim and cold). */
   rim: Hex;
+  /** A painted anime face instead of the doll sockets and smile (Ada): iris, lips, brows and cheeks. */
+  anime?: AnimeFace;
 }
+
+export interface AnimeFace { iris: Hex; lip: Hex; brow: Hex; blush: Hex }
 
 const rimVec = (h: Hex): THREE.Vector3 => new THREE.Vector3(((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255);
 
@@ -84,6 +90,46 @@ vec3 mqFace(vec3 col) {
 `;
 
 /**
+ * Ada's face, painted in the same head space: big eyes (white, an iris dark at the top and warm at the bottom, a pupil, one
+ * catchlight on the same side for both eyes, a thick upper lash line with a flick), thin arched brows, a hint of a nose, a small
+ * smile and soft cheeks. Every mark is a hard-edged shape: it stays crisp at the 360-line frame.
+ */
+const GLSL_FACE_ANIME = /* glsl */`
+uniform vec3 uIris;
+uniform vec3 uLip;
+uniform vec3 uBrow;
+uniform vec3 uBlush;
+vec3 mqFace(vec3 col) {
+  vec3 hp = (vMqObj - uHeadC) / max(uHeadR, vec3(1e-3));
+  float front = smoothstep(0.35, 0.7, hp.z);
+  float ax = abs(hp.x), sx = sign(hp.x);
+  float bl = 1.0 - smoothstep(0.04, 0.2, length(vec2(ax - 0.5, (hp.y + 0.2) * 1.8)));
+  col = mix(col, uBlush, bl * 0.4 * front);
+  float nose = 1.0 - step(0.035, length(vec2(hp.x, (hp.y + 0.22) * 0.8)));
+  col = mix(col, col * 0.8, nose * front);
+  float my = -0.47 + 1.1 * hp.x * hp.x;
+  float mouth = (1.0 - step(0.026, abs(hp.y - my))) * (1.0 - step(0.13, ax));
+  col = mix(col, uLip, mouth * front);
+  float by = 0.34 - 1.1 * (ax - 0.36) * (ax - 0.36);
+  float brow = (1.0 - step(0.028, abs(hp.y - by))) * step(0.2, ax) * (1.0 - step(0.58, ax));
+  col = mix(col, uBrow, brow * front);
+  vec2 e = vec2(ax - 0.37, hp.y - 0.04);
+  float ed = length(e / vec2(0.2, 0.17));
+  float id = length(vec2(ax - 0.35, hp.y - 0.03) / vec2(0.125, 0.16));
+  float top = clamp((hp.y - 0.03) / 0.32 + 0.5, 0.0, 1.0);
+  vec3 iris = mix(uIris * 1.45, uIris * 0.38, top);
+  iris = mix(iris, uIris * 0.15, 1.0 - step(0.45, id));
+  vec3 eye = mix(vec3(0.97, 0.95, 0.93), iris, 1.0 - step(1.0, id));
+  eye = mix(eye, vec3(1.0), 1.0 - step(0.05, length(vec2(hp.x - sx * 0.35 + 0.05, hp.y - 0.1))));
+  col = mix(col, eye, (1.0 - step(1.0, ed)) * front);
+  float lash = (step(0.74, ed) - step(1.3, ed)) * step(0.0, e.y);
+  lash = max(lash, 1.0 - step(1.0, length(vec2(ax - 0.6, hp.y - 0.11) / vec2(0.07, 0.035))));
+  lash = max(lash, (step(0.92, ed) - step(1.1, ed)) * step(e.y, -0.07) * 0.6);
+  return mix(col, uBrow * 0.45, lash * front);
+}
+`;
+
+/**
  * Add the scary look to a lit PSX material (`unique`: each actor owns its own uniforms). Chains onto the material's
  * existing `onBeforeCompile`, so the PSX injection and any other patch keep working.
  */
@@ -95,6 +141,10 @@ export function patchLook(m: THREE.MeshLambertMaterial, p: LookPatch): void {
     uHeadR: { value: p.head ? p.head.r : new THREE.Vector3(1, 1, 1) },
     uFace: { value: new THREE.Vector4(p.head ? p.sockets : 0, p.head ? p.smile : 0, 0, 0) },
     uRim: { value: rimVec(p.rim).multiplyScalar(0.34) },
+    uIris: { value: rimVec(p.anime?.iris ?? 0) },
+    uLip: { value: rimVec(p.anime?.lip ?? 0) },
+    uBrow: { value: rimVec(p.anime?.brow ?? 0) },
+    uBlush: { value: rimVec(p.anime?.blush ?? 0) },
   };
   m.onBeforeCompile = (shader, renderer) => {
     prev.call(m, shader, renderer);
@@ -110,7 +160,7 @@ uniform vec3 uHeadR;
 uniform vec4 uFace;
 uniform vec3 uRim;
 ${p.cracks ? GLSL_CRACKS : ''}
-${GLSL_FACE}
+${p.anime && p.head ? GLSL_FACE_ANIME : GLSL_FACE}
 void main() {`);
     const cracks = p.cracks ? '\n  diffuseColor.rgb *= mix(vec3(0.22, 0.17, 0.2), vec3(1.0), psxCrack(vMqObj * 6.0));' : '';
     f = f.replace('#include <color_fragment>', `#include <color_fragment>${cracks}\n  diffuseColor.rgb = mqFace(diffuseColor.rgb);`);
@@ -118,7 +168,7 @@ void main() {`);
     shader.vertexShader = v;
     shader.fragmentShader = f;
   };
-  m.customProgramCacheKey = () => `${prevKey.call(m)}|look${p.cracks ? 'c' : ''}`;
+  m.customProgramCacheKey = () => `${prevKey.call(m)}|look${p.cracks ? 'c' : ''}${p.anime && p.head ? 'a' : ''}`;
 }
 
 /**
@@ -192,7 +242,7 @@ float npcEyeMask(vec3 o) {
   vec3 hp = (o - uNpcHc) / max(uNpcHr, vec3(1e-3));
   float front = smoothstep(0.1, 0.5, hp.z);
   float d = length(vec2(abs(hp.x) - 0.42, (hp.y - 0.14) * 1.4)) / (1.0 + uNpcFx.z);
-  return (1.0 - smoothstep(0.075, 0.105, d)) * front * uNpcFx.x;
+  return ((1.0 - smoothstep(0.075, 0.105, d)) + (1.0 - smoothstep(0.1, 0.24, d)) * 0.16) * front * uNpcFx.x;
 }
 vec3 npcBody(vec3 c) { return vec3(0.025, 0.022, 0.03) + c * uNpcLift; }
 `;
@@ -226,10 +276,14 @@ export function patchNpc(m: THREE.MeshLambertMaterial, p: NpcLook): void {
     f = f.replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb = npcBody(diffuseColor.rgb);');
     f = f.replace('outgoingLight += vMqRim * uRim;', '');
     f = f.replace('#include <opaque_fragment>', `{
-    float npcF = pow(1.0 - abs(dot(normalize(vNpcN), normalize(vNpcV))), 2.2);
-    npcF = floor(npcF * 3.0 + 0.5) / 3.0;
+    float npcD = 1.0 - abs(dot(normalize(vNpcN), normalize(vNpcV)));
+    float npcF = floor(pow(npcD, 2.2) * 3.0 + 0.5) / 3.0;
     float npcS = step(0.93, npcNoise(vNpcObj * 14.0 + vec3(0.0, uNpcT * 0.37, 0.0))) * 0.07 * uNpcShimmer * uNpcFx.y;
-    outgoingLight += uNpcRim * (npcF * 0.44 + npcS) + uNpcEye * npcEyeMask(vNpcObj) * 1.4;
+    // well formed: a crisp line at the very edge (the figure reads whole) and a faint top light (shoulders, crown, forearms)
+    float npcForm = step(0.86, npcD) * 0.3 + max(normalize(vNpcN).y, 0.0) * 0.08;
+    // from elsewhere: thin bands drift up through the rim, stepped with the shimmer clock (still in Calm Mode)
+    float npcDrift = step(0.88, fract(vNpcObj.y * 7.0 - uNpcT * 0.05)) * npcF * 0.3 * uNpcShimmer;
+    outgoingLight += uNpcRim * (npcF * 0.44 + npcS + npcForm + npcDrift) + uNpcEye * npcEyeMask(vNpcObj) * 1.4;
   }
   #include <opaque_fragment>`);
     shader.vertexShader = v;
@@ -238,97 +292,156 @@ export function patchNpc(m: THREE.MeshLambertMaterial, p: NpcLook): void {
   m.customProgramCacheKey = () => `${prevKey.call(m)}|npc`;
 }
 
-// ── the female option (w80 ada redesign): slimmer build, long hair cards, a simple dress ─────────
-/** Bone scales (x and z; y stays 1, so no bone gets longer or shorter along itself). Effective: hips 1.05, waist 0.84, chest 0.88, neck 0.85, head 1.04. */
+// ── the female option (w80 ada redesign, w88 art pass): slimmer build, a ponytail with her hair tie, a long-sleeved dress ──
+/** Bone scales (x and z; y stays 1, so no bone gets longer or shorter along itself). Effective: hips 1.05, waist 0.84, chest 0.88, neck 0.85, head 1.04, hands 0.9 (slimmer palms and fingers). */
 export const FEMALE_SCALES: ReadonlyArray<readonly [string, number]> = [
   ['pelvis', 1.05], ['spine_01', 0.8], ['spine_02', 1.05], ['spine_03', 1], ['neck_01', 0.97], ['Head', 1.22],
-  ['thigh_l', 0.88], ['thigh_r', 0.88],
+  ['thigh_l', 0.88], ['thigh_r', 0.88], ['hand_l', 0.9], ['hand_r', 0.9],
 ];
 /** Limb scale once the clip pose is restored (replaces the automaton's 6 % long limbs): slimmer arms, no stretch. */
 export const FEMALE_LIMB = new THREE.Vector3(0.88, 1, 0.88);
 
 const HAIR_PIVOT = new THREE.Vector3(0, 0.18, -0.1);
+/** Ada's hair tie (the keepsake): a red band at the root of her ponytail. */
+export const HAIR_TIE = 0xc8303c;
+/** The rig's skull in Head-bone space (the head box: centre y 0.121, half-size 0.087 x 0.139 x 0.115; the face is at z +0.11). */
+const SKULL = { y: 0.121, z: 0.003, rx: 0.087, ry: 0.139, rz: 0.115 } as const;
+/** z of a point `lift` off the face at (x, y): the skull ellipsoid, clamped at the sides. */
+const faceZ = (x: number, y: number, lift: number): number =>
+  SKULL.z + SKULL.rz * Math.sqrt(Math.max(0.04, 1 - (x / SKULL.rx) ** 2 - ((y - SKULL.y) / SKULL.ry) ** 2)) + lift;
 
-/** Add a strip (a tapered ribbon) along `pts` ([x, y, z, half-width]) to the position / index lists. Width runs along x. */
-function ribbon(pos: number[], idx: number[], pts: ReadonlyArray<readonly [number, number, number, number]>, off: THREE.Vector3 = new THREE.Vector3()): void {
-  const base = pos.length / 3;
-  for (const [x, y, z, w] of pts) pos.push(x - w - off.x, y - off.y, z - off.z, x + w - off.x, y - off.y, z - off.z);
+type RibbonPt = readonly [number, number, number, number];
+interface Strands { pos: number[]; col: number[]; idx: number[] }
+/** Add a tapered strip along `pts` ([x, y, z, half-width], width along x) with a vertex shade per point (root to tip). */
+function ribbon(s: Strands, pts: readonly RibbonPt[], shade: (t: number) => number): void {
+  const base = s.pos.length / 3;
+  pts.forEach(([x, y, z, w], i) => {
+    const k = shade(i / Math.max(1, pts.length - 1));
+    s.pos.push(x - w, y, z, x + w, y, z);
+    s.col.push(k, k, k, k, k, k);
+  });
   for (let i = 0; i < pts.length - 1; i++) {
     const a = base + i * 2;
-    idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    s.idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
   }
 }
 
-function finishGeo(pos: number[], idx: number[]): THREE.BufferGeometry {
+function finishGeo(s: Strands): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setIndex(idx);
+  g.setAttribute('position', new THREE.Float32BufferAttribute(s.pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(s.col, 3));
+  g.setIndex(s.idx);
   g.computeVertexNormals();
   return g;
 }
 
+/** The cap: a skull shell 1 to 1.7 cm proud, open over the face and the jaw, a lighter "angel ring" band across the crown. */
+function hairCap(): THREE.BufferGeometry {
+  const sph = new THREE.SphereGeometry(1, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.8);
+  sph.scale(0.099, 0.152, 0.13);
+  sph.translate(0, 0.124, -0.006);
+  const p = sph.getAttribute('position'), ix = sph.getIndex()!;
+  const s: Strands = { pos: [], col: [], idx: [] };
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i), z = p.getZ(i);
+    const k = y > 0.2 && y < 0.236 && z > -0.05 ? 1.22 : y < 0.1 ? 0.68 : 0.84;
+    s.pos.push(p.getX(i), y, z);
+    s.col.push(k, k, k);
+  }
+  for (let t = 0; t < ix.count; t += 3) {
+    const a = ix.getX(t), b = ix.getX(t + 1), c = ix.getX(t + 2);
+    const cx = (p.getX(a) + p.getX(b) + p.getX(c)) / 3, cy = (p.getY(a) + p.getY(b) + p.getY(c)) / 3, cz = (p.getZ(a) + p.getZ(b) + p.getZ(c)) / 3;
+    if (cy < 0.035) continue;                                           // above the nape
+    if (cz > -0.01 && cy < 0.205 && Math.abs(cx) < 0.082) continue;    // the face
+    if (cz > -0.03 && cy < 0.075) continue;                            // the jaw
+    s.idx.push(a, b, c);
+  }
+  sph.dispose();
+  return finishGeo(s);
+}
+
 /**
- * Long hair in Head-bone space (+Y up, +Z face; crown at y 0.262, head half-width 0.095): a cap with the face left open,
- * a row of fringe blades, two cheek locks (all in `root`, one mesh) and a long curtain down the back (`sway`, a second mesh
- * that swings a little). About 120 triangles. Materials are the shared PSX cache; the mannequin routes them through the dark NPC look.
+ * Ada's hair in Head-bone space (+Y up, +Z the face; crown at y 0.262): a cap with the face open, a layered fringe that stops at
+ * the brows, two framing locks down to the jaw (all in `root`, one mesh), and a high ponytail tied with her red hair tie (the
+ * keepsake) in `sway`, a second group that swings from the crown. About 400 triangles; vertex shade gives the crown its sheen and
+ * the strands darker roots. Materials are the shared PSX cache.
  */
-export function buildHair(color: Hex): { root: THREE.Group; sway: THREE.Group } {
-  const mat = psx({ color, side: 'double' });
-  // cap: a slightly oversized skull shell; the forehead vertices ride up to the hairline so the face stays open
-  const cap = new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.58);
-  cap.scale(0.106, 0.142, 0.138);
-  cap.translate(0, 0.122, -0.012);
-  const cp = cap.getAttribute('position');
-  for (let i = 0; i < cp.count; i++) {
-    if (Math.abs(cp.getX(i)) < 0.078 && cp.getZ(i) > 0.03 && cp.getY(i) < 0.205) cp.setY(i, 0.205);
-  }
-  cap.computeVertexNormals();
-  const pos: number[] = [], idx: number[] = [];
-  // a point on the face-ellipsoid surface at (x, y), pushed out a little so the hair sits on top of the skin
-  const face = (x: number, y: number): number => 0.128 * Math.sqrt(Math.max(0.03, 1 - (x / 0.1) ** 2 - ((y - 0.127) / 0.145) ** 2)) + 0.012;
-  const blade = (x: number, yBot: number, w: number, lean: number): void => {
-    const pts: Array<readonly [number, number, number, number]> = [];
-    for (const [t, ww] of [[0, w], [0.5, w * 0.8], [1, w * 0.18]] as const) {
-      const y = 0.222 + (yBot - 0.222) * t, xx = x + lean * t;
-      pts.push([xx, y, face(xx, y), ww]);
+export function buildHair(color: Hex, tie: Hex = HAIR_TIE): { root: THREE.Group; sway: THREE.Group } {
+  const mat = psx({ color, side: 'double', vertexColors: true });
+  const s: Strands = { pos: [], col: [], idx: [] };
+  const root2tip = (t: number): number => 0.8 + 0.25 * t;
+  // fringe: a back row (wider, a little longer up) and a front row of pointed blades
+  const blade = (x: number, yTip: number, w: number, lean: number, lift: number): void => {
+    const pts: RibbonPt[] = [];
+    for (const [t, ww] of [[0, w], [0.35, w * 1.1], [0.7, w * 0.62], [1, w * 0.06]] as const) {
+      const y = 0.224 + (yTip - 0.224) * t, xx = x + lean * t;
+      pts.push([xx, y, faceZ(xx, y, lift), ww]);
     }
-    ribbon(pos, idx, pts);
+    ribbon(s, pts, root2tip);
   };
-  // fringe: a soft side-swept row of blades, longest on the left, with two framing locks at the cheeks
-  blade(-0.078, 0.150, 0.026, 0.01); blade(-0.045, 0.176, 0.026, 0.006); blade(-0.012, 0.186, 0.024, 0.0);
-  blade(0.02, 0.18, 0.024, -0.004); blade(0.052, 0.19, 0.024, -0.006); blade(0.082, 0.17, 0.022, -0.008);
-  for (const s of [-1, 1]) {
-    ribbon(pos, idx, [
-      [s * 0.098, 0.2, 0.025, 0.02], [s * 0.106, 0.12, 0.045, 0.019], [s * 0.108, 0.04, 0.052, 0.017], [s * 0.1, -0.05, 0.05, 0.01],
-    ]);
+  for (const [x, y] of [[-0.066, 0.18], [-0.033, 0.176], [0.002, 0.18], [0.036, 0.176], [0.066, 0.182]] as const) blade(x, y, 0.026, x * -0.06, 0.011);
+  for (const [x, y, lean] of [[-0.075, 0.166, 0.012], [-0.05, 0.16, 0.006], [-0.018, 0.168, -0.004], [0.014, 0.158, 0.004], [0.046, 0.164, -0.006], [0.074, 0.17, -0.012]] as const) blade(x, y, 0.019, lean, 0.016);
+  // framing locks in front of the ears, down to the jaw, the tips curling in
+  for (const sd of [-1, 1]) {
+    ribbon(s, [
+      [sd * 0.086, 0.205, faceZ(0.086, 0.205, 0.02), 0.016], [sd * 0.092, 0.13, 0.06, 0.019], [sd * 0.09, 0.06, 0.068, 0.016],
+      [sd * 0.082, 0.005, 0.07, 0.01], [sd * 0.072, -0.03, 0.066, 0.002],
+    ], root2tip);
   }
-  const front = finishGeo(pos, idx);
-  const merged = mergeGeos([cap, front]);
   const root = new THREE.Group();
   root.name = 'ada_hair';
-  root.add(new THREE.Mesh(merged, mat));
-  // the long curtain behind: three layers, each a tapered ribbon, hung from the pivot at the crown
-  const bp: number[] = [], bi: number[] = [];
-  ribbon(bp, bi, [[0, 0.215, -0.102, 0.078], [0, 0.1, -0.13, 0.098], [0, -0.06, -0.152, 0.108], [0, -0.22, -0.166, 0.112], [0, -0.38, -0.172, 0.096], [0, -0.47, -0.172, 0.03]], HAIR_PIVOT);
-  for (const s of [-1, 1]) {
-    ribbon(bp, bi, [[s * 0.075, 0.17, -0.098, 0.03], [s * 0.098, 0.05, -0.114, 0.04], [s * 0.108, -0.1, -0.13, 0.042], [s * 0.1, -0.26, -0.15, 0.036], [s * 0.088, -0.36, -0.158, 0.012]], HAIR_PIVOT);
+  root.add(new THREE.Mesh(mergeGeos([hairCap(), finishGeo(s)]), mat));
+  // the ponytail: a tapered tube from the back of the crown, out and down to the shoulder blades
+  const curve = new THREE.CatmullRomCurve3([
+    [0, 0.205, -0.118], [0, 0.198, -0.168], [0, 0.12, -0.205], [0, 0.0, -0.205], [0, -0.13, -0.185], [0, -0.22, -0.16],
+  ].map(([x, y, z]) => new THREE.Vector3(x, y - HAIR_PIVOT.y, z - HAIR_PIVOT.z)));
+  const TS = 12, RS = 6;
+  const tail = new THREE.TubeGeometry(curve, TS, 1, RS, false);
+  const tp = tail.getAttribute('position');
+  const radius = (t: number): number => (t < 0.15 ? 0.024 + 0.12 * t : t < 0.45 ? 0.042 : 0.042 * (1 - (t - 0.45) / 0.55) + 0.003);
+  const tcol: number[] = [];
+  const at = new THREE.Vector3(), v = new THREE.Vector3();
+  for (let j = 0; j <= TS; j++) {
+    curve.getPointAt(j / TS, at);
+    for (let k = 0; k <= RS; k++) {
+      const i = j * (RS + 1) + k;
+      v.fromBufferAttribute(tp, i).sub(at).multiplyScalar(radius(j / TS)).add(at);
+      tp.setXYZ(i, v.x, v.y, v.z);
+      const sh = 0.92 + 0.22 * Math.max(0, Math.sin((k / RS) * Math.PI * 2)) - 0.18 * (j / TS);
+      tcol.push(sh, sh, sh);
+    }
   }
+  tail.setAttribute('color', new THREE.Float32BufferAttribute(tcol, 3));
+  tail.deleteAttribute('uv');
+  tail.computeVertexNormals();
   const sway = new THREE.Group();
   sway.name = 'ada_hair_sway';
   sway.position.copy(HAIR_PIVOT);
-  sway.add(new THREE.Mesh(finishGeo(bp, bi), mat));
+  sway.add(new THREE.Mesh(tail, mat));
+  // the hair tie: a band round the root of the tail and a small bobble on top
+  const tieMat = psx({ color: tie });
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.01, 5, 10), tieMat);
+  curve.getPointAt(0.1, band.position);
+  band.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), curve.getTangentAt(0.1));
+  const bob = new THREE.Mesh(new THREE.SphereGeometry(0.014, 6, 4), tieMat);
+  bob.position.copy(band.position).add(new THREE.Vector3(0, 0.036, 0.004));
+  sway.add(band, bob);
   root.add(sway);
   root.userData.npcLift = 0.16;
   return { root, sway };
 }
 
-/** Concatenate non-indexed or indexed position+normal geometries into one indexed geometry (positions and normals only). */
+/** Concatenate indexed or non-indexed geometries (position, normal, colour) into one indexed geometry. */
 function mergeGeos(list: readonly THREE.BufferGeometry[]): THREE.BufferGeometry {
-  const pos: number[] = [], nor: number[] = [], idx: number[] = [];
+  const pos: number[] = [], nor: number[] = [], col: number[] = [], idx: number[] = [];
   for (const g of list) {
-    const p = g.getAttribute('position'), n = g.getAttribute('normal'), ix = g.getIndex();
+    const p = g.getAttribute('position'), n = g.getAttribute('normal'), c = g.getAttribute('color'), ix = g.getIndex();
     const base = pos.length / 3;
-    for (let i = 0; i < p.count; i++) { pos.push(p.getX(i), p.getY(i), p.getZ(i)); nor.push(n.getX(i), n.getY(i), n.getZ(i)); }
+    for (let i = 0; i < p.count; i++) {
+      pos.push(p.getX(i), p.getY(i), p.getZ(i));
+      nor.push(n.getX(i), n.getY(i), n.getZ(i));
+      col.push(c ? c.getX(i) : 1, c ? c.getY(i) : 1, c ? c.getZ(i) : 1);
+    }
     if (ix) for (let i = 0; i < ix.count; i++) idx.push(ix.getX(i) + base);
     else for (let i = 0; i < p.count; i++) idx.push(i + base);
     g.dispose();
@@ -336,6 +449,7 @@ function mergeGeos(list: readonly THREE.BufferGeometry[]): THREE.BufferGeometry 
   const out = new THREE.BufferGeometry();
   out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   out.setIndex(idx);
   return out;
 }
@@ -343,37 +457,36 @@ function mergeGeos(list: readonly THREE.BufferGeometry[]): THREE.BufferGeometry 
 export interface DressPiece { bone: string; obj: THREE.Group }
 
 /**
- * A simple dress in bone space: an A-line skirt (one flared cone per thigh, down to the knee) and a sleeveless bodice
- * (two short cones up the spine). Bone directions are measured from the rig, so it follows the skeleton whatever its axes are.
- * Build it before the female bone scales are applied.
+ * Ada's dress in bone space (the shared outfit builder, mannequinOutfits.ts): a long-sleeved A-line dress to the knee with a dark
+ * hem band and belt, white cuffs, a white round collar and a small red bow that matches her hair tie. Seated, the skirt stays inside
+ * the chair seat's width (0.46 m) and ends above the knee. Build it before the female bone scales are applied.
  */
 export function buildDress(bones: ReadonlyMap<string, THREE.Object3D>, color: Hex): DressPiece[] {
-  const mat = psx({ color, side: 'double' });
-  const wp = new THREE.Vector3();
-  const out: DressPiece[] = [];
-  const cone = (bone: string, child: string, rFrom: number, rTo: number, frac: number, seg = 9): void => {
-    const b = bones.get(bone), c = bones.get(child);
-    if (!b || !c) return;
-    b.updateWorldMatrix(true, false);
-    c.getWorldPosition(wp);
-    const d = b.worldToLocal(wp);
-    const len = d.length();
-    if (len < 1e-4) return;
-    const g = new THREE.CylinderGeometry(rTo, rFrom, len * frac, seg, 1, true);   // +Y end = the child end
-    g.translate(0, len * frac * 0.5, 0);
-    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize()));
-    const grp = new THREE.Group();
-    grp.name = `ada_dress_${bone}`;
-    grp.add(new THREE.Mesh(g, mat));
-    grp.userData.npcLift = 0.32;
-    out.push({ bone, obj: grp });
-  };
-  // seated, the skirt lies over the thighs: it stays inside the chair seat's width (0.46 m) and ends above the knee
-  cone('thigh_l', 'calf_l', 0.112, 0.15, 0.9);
-  cone('thigh_r', 'calf_r', 0.112, 0.15, 0.9);
-  cone('spine_01', 'spine_02', 0.13, 0.14, 1, 8);
-  cone('spine_02', 'spine_03', 0.14, 0.13, 1, 8);
-  return out;
+  const trim = 0xf4eee2, dark = scaleHex(color, 0.5);
+  const pieces: Piece[] = [
+    ...(['l', 'r'] as const).flatMap((s): Piece[] => [
+      { k: 'tube', bone: `thigh_${s}`, to: `calf_${s}`, r: [0.124, 0.155], at: [-0.06, 0.86], c: color },
+      { k: 'tube', bone: `thigh_${s}`, to: `calf_${s}`, r: [0.155, 0.16], at: [0.84, 0.92], c: dark },
+      { k: 'tube', bone: `clavicle_${s}`, to: `upperarm_${s}`, r: [0.085, 0.1], at: [0.3, 1], c: color },
+      { k: 'tube', bone: `upperarm_${s}`, to: `lowerarm_${s}`, r: [0.096, 0.082], at: [-0.25, 1], c: color },
+      { k: 'tube', bone: `lowerarm_${s}`, to: `hand_${s}`, r: [0.07, 0.066], at: [0, 0.85], c: color },
+      { k: 'tube', bone: `lowerarm_${s}`, to: `hand_${s}`, r: [0.069, 0.069], at: [0.83, 0.97], c: trim },
+    ]),
+    { k: 'tube', bone: 'spine_01', to: 'spine_02', r: [0.136, 0.15], sq: 0.95, off: [0, 0, 0.02], c: color, seg: 10 },
+    { k: 'tube', bone: 'spine_01', to: 'spine_02', r: [0.142, 0.146], at: [0, 0.32], sq: 0.95, off: [0, 0, 0.02], c: dark, seg: 10 },
+    { k: 'tube', bone: 'spine_02', to: 'spine_03', r: [0.152, 0.164], off: [0, 0, 0.008], c: color, seg: 10 },
+    { k: 'tube', bone: 'spine_03', to: 'neck_01', r: [0.172, 0.168], at: [0, 0.62], sq: 0.92, off: [0, 0, -0.016], c: color, seg: 10 },
+    { k: 'tube', bone: 'spine_03', to: 'neck_01', r: [0.168, 0.098], at: [0.62, 0.96], sq: 0.92, off: [0, 0, -0.016], c: color, seg: 10 },
+    { k: 'tube', bone: 'neck_01', to: 'Head', r: [0.1, 0.075], at: [-0.15, 0.28], c: trim, seg: 10 },
+    { k: 'box', bone: 'neck_01', size: [0.052, 0.022, 0.014], pos: [0, 0.0, 0.088], c: HAIR_TIE },
+    { k: 'box', bone: 'neck_01', size: [0.012, 0.04, 0.008], pos: [-0.012, -0.03, 0.086], rot: [0, 0, -18], c: HAIR_TIE },
+    { k: 'box', bone: 'neck_01', size: [0.012, 0.04, 0.008], pos: [0.012, -0.03, 0.086], rot: [0, 0, 18], c: HAIR_TIE },
+  ];
+  return buildOutfit((n) => bones.get(n) ?? null, pieces).map((w) => {
+    w.obj.name = `ada_dress_${w.bone}`;
+    w.obj.userData.npcLift = 0.32;
+    return { bone: w.bone, obj: w.obj as THREE.Group };
+  });
 }
 
 /** A small deterministic wave envelope: 0 → 1 in 0.35 s, hold, 1 → 0 over the last 0.6 s of `dur`. */

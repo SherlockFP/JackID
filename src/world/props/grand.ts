@@ -16,6 +16,7 @@ import { FLOOR_TILE_M } from '../layout';
 import { presets } from '@/kit/presets';
 import { Sched, easeInOutCubic, easeOutQuad } from './sched';
 import { disposeTree } from './decor';
+import { OUTFITS, wear } from '@/kit/mannequinOutfits';
 
 // ── layout ──────────────────────────────────────────────────────────────────────────────────────
 /** Atrium stage in the Lobby centre (the FLR-05 slot is kept but stays empty). Front faces north (-Z). */
@@ -116,8 +117,9 @@ export function buildStage(kit: KitX, tex: TexGen, o: { root: THREE.Group; stati
   kit.box(0.05, 0.13, 0.05, kit.pal.black, { pos: [0, 1.4, 0.02], rot: [-25, 0, 0], parent: mic });
   root.add(mic);
 
-  // the Compere: dark mannequin with a cold cyan rim, facing the room (north)
+  // the Compere: dark mannequin with a cold cyan rim, facing the room (north), in his tuxedo, top hat and hand mic (docs/ART.md)
   const compere: MannequinActor = kit.mannequin({ color: 0x4a5a70, jointColor: 0x6a7a90, style: 'plain', height: 1.85, clip: 'Idle_Loop', rim: 0x9ff0f8 });
+  wear(compere, OUTFITS.compere, (id, c) => kit.prop(id, { color: c }));
   compere.root.position.set(x, h, z - 0.05);
   compere.root.rotation.y = Math.PI;
   o.root.add(compere.root);

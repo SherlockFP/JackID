@@ -7,6 +7,7 @@ const strings = {
   prefix: 'world.',
   en: {
     'unavailable': 'Not available yet',
+    'night.closed': 'CLOSED',
     'noSeat': 'No free seat',
     'betRange': 'Bet {min}–{max}',
     'use': 'Use {name}',
@@ -25,6 +26,7 @@ const strings = {
   },
   tr: {
     'unavailable': 'Henüz kullanılamıyor',
+    'night.closed': 'KAPALI',
     'noSeat': 'Boş koltuk yok',
     'betRange': 'Bahis {min}–{max}',
     'use': 'Kullan: {name}',

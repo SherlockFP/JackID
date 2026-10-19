@@ -319,6 +319,8 @@ declare module '@/core/events' {
     'night:begin': { night: number };
     /** LOKI dares you (once a Night, at a seat): the voice asks, and the answer comes back through `jokerDare`. */
     'joker:dare': { night: number };
+    /** The player called his last line a lie: `right` = it was one (the sound answers; the Trust move comes in `joker:trust`). */
+    'joker:call': { right: boolean };
     /** BONDS: a short Dawn and Selim has one seal left: the bar asks the player, the answer goes to `selimAnswer`. */
     'selim:ask': { night: number };
   }
@@ -4150,6 +4152,7 @@ class Run implements DebtRun {
   jokerCall(): boolean {
     if (this.elapsed - this.jokerLast > JOKER_CALL_S) return false;
     const r = this.jokerSys.callLiar();
+    if (r.right !== null) bus.emit('joker:call', { right: r.right });
     this.jokerOut(r);
     return r.right !== null;
   }

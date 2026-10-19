@@ -11,7 +11,7 @@ import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
 import type { BindingKey } from '@/core/input/types';
 import { subtitles } from '../subtitles';
-import { iconEl } from '../widgets';
+import { iconEl, uiSfx } from '../widgets';
 import type { UIOverlayX } from '../ui';
 
 export const JOKER_SOURCE = 'joker';
@@ -74,8 +74,9 @@ export function mountJokerVoice(host: JokerVoiceHost): () => void {
   watch();
   let hinted = false;
   const offs = [
-    bus.on('joker:whisper', ({ keys }) => {
+    bus.on('joker:whisper', ({ keys, ask }) => {
       jokerSay(keys.map((k) => t(k)).join(' '));
+      if (ask) uiSfx('coinDrop', 0.5);   // asking him costs you
       if (hinted) return;
       hinted = true;
       lokiToast(t('joker.ui.keys', { ask: app.input.keyLabel(JOKER_ASK_KEY), call: app.input.keyLabel(JOKER_LIAR_KEY) }), 6);
@@ -83,11 +84,14 @@ export function mountJokerVoice(host: JokerVoiceHost): () => void {
     // no numbers: a warmer or a colder face, and his Dawn drift is silent
     bus.on('joker:trust', ({ delta, why }) => {
       if (why === 'dawn' || delta === 0) return;
+      uiSfx(delta > 0 ? 'sparkle' : 'whisper', 0.35);
       lokiToast(t(delta > 0 ? 'joker.ui.liked' : 'joker.ui.remember'), 2.5);
     }),
+    // a lie caught is a bright ping, a truth called a lie is a flat buzz
+    bus.on('joker:call', ({ right }) => { uiSfx(right ? 'win1' : 'buzzer', right ? 0.6 : 0.4); }),
     bus.on('joker:dare', () => {
       void app.ui.choice(t('joker.ui.dare'), [t('joker.ui.take'), t('joker.ui.refuse')], { timeout: 8 })
-        .then((i) => { if (i >= 0) host.dare(i === 0); });   // no answer is no answer: he asks again at the next seat
+        .then((i) => { if (i >= 0) { uiSfx(i === 0 ? 'sparkle' : 'back', 0.5); host.dare(i === 0); } });   // no answer is no answer: he asks again at the next seat
     }),
   ];
   return () => { for (const off of offs) off(); };

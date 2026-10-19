@@ -57,6 +57,8 @@ export class Coach {
   private pend: { gross: number; bet: number; free: boolean } | null = null;
   private note: Note | null = null;
   private offerOn = false;
+  /** Called when a step is done (the seat's soft tick). */
+  onStep: (() => void) | null = null;
 
   constructor(readonly id: string, readonly steps: readonly CoachStep[], private readonly canPractice: boolean) {
     this.stepN = Math.min(steps.length, Math.max(0, store.get(`coach.${id}`)));
@@ -78,6 +80,7 @@ export class Coach {
     if (kind === 'press' && !keysOf(s).some((k) => same(k, action))) return;
     this.stepN++;
     store.set(`coach.${this.id}`, this.stepN);
+    this.onStep?.();
   }
 
   press(action: string): void { this.advance('press', action); }

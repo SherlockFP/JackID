@@ -223,30 +223,6 @@ export function clearFoodBuffs(buffs: Pick<BuffsApi, 'has' | 'remove'>, pid: num
 }
 
 // ── eating: the show (hands, sound, toast) ───────────────────────────────────────────────────────────────────────────
-let sfxReady = false;
-function ensureSfx(): void {
-  if (sfxReady) return;
-  const audio = app?.audio as unknown as { register?: (n: string, r: (k: any, o: any) => number, m?: object) => void } | null;
-  if (!audio?.register) return;
-  sfxReady = true;
-  const env = (d: number) => ({ a: 0.002, d, s: 0, r: 0.02 });
-  // a crunchy bite, three times, after the hand reaches the mouth
-  audio.register('foodBite', (k) => {
-    for (let i = 0; i < 3; i++) {
-      const at = 0.5 + i * 0.16;
-      k.noise(0.06, { at, vol: 0.34, filter: 'bandpass', freq: 1800 + i * 350, q: 1.2, env: env(0.04) });
-      k.osc('triangle', 230 - i * 25, 0.05, { at, vol: 0.1, to: 120 });
-    }
-    return 1.1;
-  }, { pri: 6, max: 2 });
-  // a sip and a swallow
-  audio.register('foodSip', (k) => {
-    k.noise(0.28, { at: 0.5, vol: 0.05, filter: 'lowpass', freq: 900, env: { a: 0.04, d: 0.1, s: 0.5, r: 0.1 } });
-    k.osc('sine', 320, 0.12, { at: 0.8, vol: 0.2, to: 140 });
-    k.osc('sine', 260, 0.14, { at: 1.0, vol: 0.18, to: 110 });
-    return 1.2;
-  }, { pri: 6, max: 2 });
-}
 
 let busy = 0;
 function handAnim(food: FoodId): void {
@@ -265,7 +241,6 @@ function handAnim(food: FoodId): void {
 /** The meal's show: the hand lifts it (when the hands are out), a bite or a sip, and a toast with the bonus. */
 function present(food: FoodId, later: boolean): void {
   try {
-    ensureSfx();
     app?.audio?.play(FOODS[food].verb === 'eat' ? 'foodBite' : 'foodSip', { priority: 6 });
   } catch { /* audio is optional */ }
   try { handAnim(food); } catch { /* hands are optional */ }
@@ -310,6 +285,7 @@ export function mountFood(run: FoodHost): () => void {
   // the fridge is not reset here: the run clears it for a fresh run and restores it on resume (run.ts)
   let open = false;
   let disposed = false;
+  const snd = (name: string, vol = 1): void => { try { app?.audio?.play(name, { vol }); } catch { /* audio is optional */ } };
 
   const eat = (id: FoodId): void => {
     if (id === 'soup') {
@@ -333,6 +309,7 @@ export function mountFood(run: FoodHost): () => void {
   const openFridge = async (): Promise<void> => {
     if (open || disposed) return;
     open = true;
+    snd('cabinet', 0.5);
     try {
       const phone = run.homePhone?.() ?? null;
       const put = fridge.restock(run.seed, run.night(), phone?.harmony() ?? 0);
@@ -393,8 +370,9 @@ export function mountFood(run: FoodHost): () => void {
       if (n > 0 && !(run.canAfford?.(n) ?? false)) { app?.ui?.toast(t('bonds.bar.broke'), 'bad', 2.5); return; }
       if (row === 'repay') {
         // the seal comes back first; the coins move only when he took it
-        if (!run.bond({ kind: 'repay' }).refused && n > 0) run.spend?.('coin', n, 'bar.repay');
+        if (!run.bond({ kind: 'repay' }).refused && n > 0 && run.spend?.('coin', n, 'bar.repay')) snd('cashRegister', 0.6);
       } else if (run.spend?.('coin', n, 'bar.tip')) {
+        snd('coinDrop', 0.7);
         if (run.bond({ kind: 'share', who: 'selim' }).deltas.length === 0) app?.ui?.toast(t('bonds.selim.thanks'), 'info', 2.5);
       }
     } catch { /* the UI went away mid-pick */ } finally {
