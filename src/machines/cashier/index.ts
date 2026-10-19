@@ -66,6 +66,7 @@ export default class Cashier extends MachineBase<CashierParts, Ev, null> {
 
   init(): void {
     this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.seatHud.screenSeat();                             // the board carries the figures: SEATED FOCUS without a stake
     this.ctx.ui.machineHud(null);                          // the seat HUD replaces the generic bottom bar
     this.fitPose();
     window.addEventListener('resize', this.onResize);

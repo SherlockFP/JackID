@@ -335,6 +335,7 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
   init(): void {
     this.labels = new TerminalLabels(this.ctx.ui.root);     // before the seat HUD: its panels draw over the chips
     this.seatHud = new SeatHud(this.ctx.ui.root);
+    this.seatHud.screenSeat();                             // the CRT carries the figures: SEATED FOCUS without a stake
     this.ctx.ui.machineHud(null);                          // the seat HUD replaces the generic bottom bar
     this.fitPose();
     window.addEventListener('resize', this.onResize);

@@ -284,6 +284,7 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     const b = computeBlocking();
     if (b !== blockedLast) {
       blockedLast = b;
+      root.classList.toggle('blocking', b);     // objective.css hides the tutorial box, the objective and the waymark under ANY modal or modal panel
       bwLayer.classList.toggle('held', b);      // a banner in flight is out of sight while a modal is open (ui.css .px-bwl.held)
       bus.emit('ui:blocking', { blocking: b });
       if (!b) pumpBw();                         // the banners queued behind the modal come on now
@@ -1000,7 +1001,7 @@ export function createUI(root: HTMLElement, deps: UiDeps): UIOverlayX {
     dispose() {
       for (const d of disposers.splice(0)) d();
       root.replaceChildren();
-      root.classList.remove('px-root');
+      root.classList.remove('px-root', 'blocking');
     },
   };
 

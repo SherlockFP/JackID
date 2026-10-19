@@ -14,6 +14,8 @@
  * SEATED FOCUS (a seat that takes a stake, `focus`): one instruction line at the top (coach, else goal), BET / POCKET and the big
  * button at the bottom centre with the state title as its caption, the other actions as small chips under it. The pay strip and the
  * odds line wait behind the rules key; `seat-focus` on #ui tells the main HUD to step back to a small quota / clock strip.
+ * A seat with no stake whose own screen carries the figures (the bank terminal, the cashier) opts in with `screenSeat()`: the same
+ * focus, minus the BET / POCKET box and the numbers row.
  *
  * The RULES card is a 3D placard (`placard3d.ts`): a board held up in front of the eye in the first-person overlay, with
  * bitmap text and page buttons. Everything else is DOM.
@@ -127,6 +129,8 @@ export class SeatHud {
   private stakeBet = 0;
   /** True once THIS machine reported a stake (a round or `stake()`); non-staking seats (terminal, cashier, vendor) never show the readout. */
   private stakeKnown = false;
+  /** `screenSeat()`: the seat's own screen carries the figures, so SEATED FOCUS applies without a stake. */
+  private screen = false;
   private stakeNeed = false;
   private stakeKey = '';
   private readonly resultEl: HTMLElement;
@@ -283,13 +287,14 @@ export class SeatHud {
     const bet = this.stakeBet;
     const high = bet > pocket * 0.5;
     const show = this.shown && this.stakeKnown;
-    const key = `${show ? 1 : 0}|${bet}|${pocket}|${high ? 1 : 0}|${this.stakeNeed ? 1 : 0}`;
+    const focus = this.focus;
+    const key = `${show ? 1 : 0}|${focus ? 1 : 0}|${bet}|${pocket}|${high ? 1 : 0}|${this.stakeNeed ? 1 : 0}`;
     if (key === this.stakeKey) return;
     this.stakeKey = key;
     this.stakeEl.style.display = show ? '' : 'none';
-    // SEATED FOCUS is on at a staking seat: the main HUD (menu/hud) and this overlay drop everything but the play (seatHudLayout.css)
-    this.root.classList.toggle('focus', show);
-    if (this.shown) this.root.parentElement?.classList.toggle('seat-focus', show);   // the other seats' HUDs never touch #ui
+    // SEATED FOCUS is on at a staking seat (and a screen seat): the main HUD (menu/hud) and this overlay drop everything but the play (seatHudLayout.css)
+    this.root.classList.toggle('focus', focus);
+    if (this.shown) this.root.parentElement?.classList.toggle('seat-focus', focus);   // the other seats' HUDs never touch #ui
     const tone = this.stakeNeed ? 'bad' : high ? 'warn' : 'gold';
     this.stakeEl.className = `shud-stake shud-panel tone-${tone}${this.stakeNeed ? ' need' : ''}`;
     this.stakeL.textContent = tr(this.stakeNeed ? 'hud.stake.confirm' : 'hud.seat.betL');
@@ -342,8 +347,13 @@ export class SeatHud {
 
   // ── lifecycle ─────────────────────────────────────────────────────────────────────────────────
   get visible(): boolean { return this.shown; }
-  /** SEATED FOCUS: seated at a machine that takes a stake (the BET / POCKET box is up). */
-  get focus(): boolean { return this.shown && this.stakeKnown; }
+  /** SEATED FOCUS: seated at a machine that takes a stake (the BET / POCKET box is up), or at a screen seat. */
+  get focus(): boolean { return this.shown && (this.stakeKnown || this.screen); }
+  /**
+   * A seat with no stake whose own screen carries the figures (the bank terminal's CRT, the cashier's board): SEATED FOCUS applies
+   * to it too, and the numbers row (the same figures again) is dropped. Call once, after the constructor.
+   */
+  screenSeat(): void { this.screen = true; this.root.classList.add('screen'); }
   /** The rules card is open: route the next action to `dismiss()`. */
   get blocking(): boolean { return this.card !== 'none'; }
   /** A card or a modal covers the view: DOM drawn over the world (a machine's key chips) steps aside while this is true. */

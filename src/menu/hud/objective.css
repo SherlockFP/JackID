@@ -28,9 +28,12 @@
 .px-root.hud-off .px-tut,
 .px-root.hud-off .px-obj { display: none !important; }
 
-/* A draft, a night card, a modal or a duel table (Promise, Burning Wager) is open: the guidance boxes step aside (they sit above the root's layers, z 8, and would cover its title). */
-body:has(.sd-root, .nc-root, .px-modal, .pm-table) .px-tut,
-body:has(.sd-root, .nc-root, .px-modal, .pm-table) .px-obj { display: none !important; }
+/* ANY blocking UI is up (.blocking on the root, ui.ts syncBlocking: a modal, a modal panel such as the Dawn offer, the pause card) or a duel
+   table (Promise, Burning Wager: not a modal): the guidance boxes step aside (they sit above the root's layers, z 8, and would cover its title). */
+.px-root.blocking .px-tut,
+.px-root.blocking .px-obj,
+body:has(.pm-table) .px-tut,
+body:has(.pm-table) .px-obj { display: none !important; }
 
 /* The tutorial box and the objective share one corner (seated: the same top). Never both: the box carries the goal while it is up, so a frame where
    the objective had not hidden yet (or the dimmed box under a toast) cannot leave a clipped stub of one behind the other. */
@@ -56,7 +59,8 @@ body:has(.sd-root, .nc-root, .px-modal, .pm-table) .px-obj { display: none !impo
 }
 .px-wm.off .ar { display: block; }
 .px-root.hud-off .px-wm,
-body:has(.sd-root, .nc-root, .px-modal, .pm-table) .px-wm { display: none !important; }
+.px-root.blocking .px-wm,
+body:has(.pm-table) .px-wm { display: none !important; }
 
 /* SEATED FOCUS (.seat-focus, machines/_base/seatHud.ts): the seat's own instruction line teaches the machine; the tutorial box, the
    objective and the waymark step aside until the player stands (the tutorial still holds the clock). */

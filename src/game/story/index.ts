@@ -34,10 +34,15 @@ export { STORY_CALLS, storyCallFor, type StoryCall } from './calls';
  * moves its arcs; the title cards and the Night 8 reveal are played from the run's events below.
  */
 function chapterRec(): ChapterRecord | null { return app.run?.chapterRecord?.() ?? null; }
-/** The Night's title card, once per run (chapter.ts marks it). */
+/**
+ * The Night's title card, once per run (chapter.ts marks it). Opened from a seat (the Debt Terminal's bell), the scene's bars and
+ * camera would take the seat HUD away: the title text plays alone (the host's call online, as playStory).
+ */
 function chapterOpens(night: number): void {
   const c = chapterRec();
-  if (c && markCard(c, night)) void playStory(`chapter_n${night}`);
+  if (!c || !markCard(c, night)) return;
+  if (app.player?.seat != null && (!app.net.online || app.net.isHost)) showChapterTitle(night);
+  else void playStory(`chapter_n${night}`);
 }
 /** The Night 8 reveal, once per run: the second watch of the last chapter. */
 function chapterReveal(): void {

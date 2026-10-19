@@ -275,7 +275,7 @@
 .px-root:not(.seated) .px-prompt { bottom: calc(50% + 72 * var(--u)); }
 
 
-/* SEATED FOCUS (machines/_base/seatHud.ts puts .seat-focus on #ui at a seat that takes a stake): the play owns the screen. Only a small
+/* SEATED FOCUS (machines/_base/seatHud.ts puts .seat-focus on #ui at a seat that takes a stake, and at the bank terminal and the cashier): the play owns the screen. Only a small
    strip stays, top right: the Watch clock line, and the quota as "KOTA 0 / 24" under it. Wallet, tickets, the night bar, the plan, luck,
    seals, payout, buffs, charms and the feed come back on stand-up. Loki's grin shows only while he whispers (hud.ts .whisper). */
 .px-root.seat-focus .hud .hud-tl, .px-root.seat-focus .hud .sub, .px-root.seat-focus .hud .charms, .px-root.seat-focus .hud .feed,

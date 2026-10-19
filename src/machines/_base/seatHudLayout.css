@@ -92,3 +92,6 @@
 .seat-hud.focus .shud-num { min-width: 0; padding: calc(var(--su) * 1) calc(var(--su) * 2.5); border-top-width: calc(var(--su) * 1); }
 .seat-hud.focus .shud-num-l { font-size: max(9px, calc(var(--su) * 4.5)); }
 .seat-hud.focus .shud-num-v { font-size: max(9px, calc(var(--su) * 4)); margin-top: calc(var(--su) * 0.5); }
+
+/* SCREEN SEAT (seatHud.ts `screenSeat`: the bank terminal, the cashier): the machine's own screen carries the figures, so the numbers row is not drawn again under it. */
+.seat-hud.screen .shud-nums { display: none !important; }

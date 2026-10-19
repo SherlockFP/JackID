@@ -1056,7 +1056,7 @@ export default class Blackjack extends TableBase<BlackjackParts, Ev, Snap, Act> 
       ctrl.push({ key: this.k('n6'), label: { k: b.offer === 2 ? 'm.blackjack.cEvenMoney' : 'm.blackjack.cInsure' }, action: 'n6', primary: true });
       ctrl.push({ key: this.k('n7'), label: { k: 'm.blackjack.cNoIns' }, action: 'n7' });
     }
-    for (const a of legal) ctrl.push({ key: this.k(ACTION_KEY[a]), label: { k: `m.blackjack.${a}` }, action: a });
+    for (const a of legal) ctrl.push({ key: this.k(ACTION_KEY[a]), label: { k: `m.blackjack.${a}` }, action: a, primary: a === 'hit' || a === 'stand' || a === 'double' });   // SEATED FOCUS: the big buttons on your turn
     ctrl.push({ key: this.k('help'), label: { k: 'm.blackjack.cRules' }, action: 'help' });
     ctrl.push({ key: this.k('exit'), label: { k: 'm.blackjack.cLeave' }, action: 'exit' });
     sh.controls(ctrl);
