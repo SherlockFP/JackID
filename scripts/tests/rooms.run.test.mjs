@@ -56,6 +56,8 @@ test('a grille spends one Key (the wing state reads keyReady, then open); with n
   assert.equal(ROOMS.wingState('cards'), 'sealed');
   assert.equal(run.tycoon.unlockZone('cards', true), false, 'no key in hand');
   run.wingKeys = 1;
+  assert.equal(ROOMS.wingState('cards'), 'sealed', 'Night 1: the grille reads closed even with a key in hand (no KEY prompt)');
+  run.index = 1;   // Night 2
   assert.equal(ROOMS.wingState('cards'), 'keyReady');
   assert.equal(run.tycoon.unlockZone('cards', true), true);
   assert.equal(run.wingKeys, 0);

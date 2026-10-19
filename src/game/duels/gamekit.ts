@@ -9,9 +9,12 @@
  * A return ratio ("EV" in the spec: 0.75 naive, 1.5 detective) is therefore `1 + playerNet / S`.
  */
 import { hashSeed } from '@/core/rng';
-import type { CheatPlan, Clue, DuelRules, DuelState } from './types';
+import type { CheatPlan, Clue, DuelRules, DuelState, TextRef } from './types';
 
 export type Side = 'player' | 'rival';
+
+/** A literal face for a piece (a digit, a letter): language-neutral, so it needs no key. */
+export const lit = (v: string | number): TextRef => ({ text: String(v) });
 
 export const HEADLESS_STAKE = 100;
 export const RAKE = 0.05;

@@ -144,6 +144,88 @@ export function buildCeilingDressing(kit: KitX, tex: TexGen, o: CeilingOpts): vo
   }
 }
 
+export interface CeilingRose { x: number; z: number; H: number; r: number }
+
+/**
+ * Lit medallions in the ceiling (wave 81): a brass ring around a warm glowing disc with a second ring and eight spokes, centred
+ * over a room's focal point (the Big One's chandelier, the Lobby trapdoor, the Mouth route). The disc is unlit, so it glows
+ * without touching the light pool; it sits just under the bay panel.
+ */
+export function buildCeilingRoses(kit: KitX, parent: THREE.Object3D, roses: readonly CeilingRose[]): void {
+  const brass = kit.mat({ color: 0xb08a38, emissive: 0x4a3810, emissiveIntensity: 1 });
+  const glow = kit.mat({ color: 0xf0c47c, lit: false });
+  const hot = kit.mat({ color: 0xfff0c0, lit: false });
+  const dark = kit.mat({ color: 0x6a4428, emissive: 0x3c2410, emissiveIntensity: 1 });
+  for (const { x, z, H, r } of roses) {
+    kit.torus(r, 0.07, brass, { pos: [x, H - 0.13, z], rot: [90, 0, 0], parent, seg: 16, tubeSeg: 4, shade: false });
+    kit.cyl(r, r, 0.03, dark, { pos: [x, H - 0.085, z], parent, seg: 16, shade: false });
+    kit.cyl(r * 0.88, r * 0.88, 0.03, glow, { pos: [x, H - 0.1, z], parent, seg: 16, shade: false });
+    kit.torus(r * 0.55, 0.04, brass, { pos: [x, H - 0.13, z], rot: [90, 0, 0], parent, seg: 12, tubeSeg: 4, shade: false });
+    kit.cyl(r * 0.45, r * 0.45, 0.03, hot, { pos: [x, H - 0.115, z], parent, seg: 12, shade: false });
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI;
+      kit.box(r * 1.76, 0.03, 0.05, brass, { pos: [x, H - 0.125, z], rot: [0, (a * 180) / Math.PI, 0], parent, shade: false });
+    }
+  }
+}
+
+export interface CeilingStep {
+  /** Centre of the bulkhead wall; `dir` is the side the room is on (+1 = looks towards +z, -1 = towards -z). */
+  z: number; dir: 1 | -1;
+  /** Wall spans y0..y1 (the lower ceiling to the higher one). */
+  y0: number; y1: number;
+  /** Sunburst behind a sign: the sign centre's height, or omitted. */
+  sunY?: number;
+}
+
+/**
+ * Dresses the face of a ceiling step bulkhead (wave 81): the nave ceilings differ (Mouth 6, Well 9, Lobby 4.5) and the step used to
+ * be an open hole into the black attic. The wall body itself is built by level.ts; this adds the finish on the room side: a
+ * brass cornice top and bottom, a velvet panel in a brass frame, two pilasters with capitals, a warm cove strip along the top and an
+ * optional brass sunburst behind a hanging sign.
+ */
+export function buildCeilingSteps(kit: KitX, parent: THREE.Object3D, o: { x0: number; x1: number; steps: readonly CeilingStep[] }): void {
+  const brass = kit.mat({ color: 0xb08a38, emissive: 0x4a3810, emissiveIntensity: 1 });
+  const wood = kit.mat({ color: 0x5a3820, emissive: 0x2c1a0c, emissiveIntensity: 1 });
+  const velvet = kit.mat({ color: 0x6a1426, emissive: 0x3a0c16, emissiveIntensity: 1 });
+  const cove = kit.mat({ color: 0xffd890, lit: false });
+  const w = o.x1 - o.x0, xc = (o.x0 + o.x1) / 2;
+  for (const st of o.steps) {
+    const zf = st.z + st.dir * 0.15;                     // the room-side face of the wall
+    const at = (d: number): number => zf + st.dir * d;   // d metres out of the wall towards the room
+    const h = st.y1 - st.y0;
+    kit.box(w - 0.3, 0.14, 0.2, brass, { pos: [xc, st.y0 + 0.1, at(0.1)], parent, shade: false });
+    kit.box(w - 0.3, 0.12, 0.16, wood, { pos: [xc, st.y1 - 0.06, at(0.08)], parent, shade: false });
+    kit.box(w - 0.6, 0.05, 0.06, cove, { pos: [xc, st.y1 - 0.2, at(0.04)], parent, shade: false });
+    // the framed velvet panel
+    const pw = w * 0.6, ph = Math.max(1, h - 1.1), py = st.y0 + 0.55 + ph / 2;
+    kit.box(pw, ph, 0.04, velvet, { pos: [xc, py, at(0.02)], parent, shade: false });
+    for (const sy of [-1, 1]) kit.box(pw + 0.2, 0.09, 0.09, brass, { pos: [xc, py + sy * (ph / 2 + 0.04), at(0.05)], parent, shade: false });
+    for (const sx of [-1, 1]) kit.box(0.09, ph + 0.18, 0.09, brass, { pos: [xc + sx * (pw / 2 + 0.05), py, at(0.05)], parent, shade: false });
+    // pilasters with a capital and a plinth
+    for (const sx of [-1, 1]) {
+      const px = xc + sx * (w / 2 - 0.9);
+      kit.box(0.6, h - 0.2, 0.18, wood, { pos: [px, st.y0 + h / 2, at(0.09)], parent, shade: false });
+      kit.box(0.74, 0.12, 0.26, brass, { pos: [px, st.y1 - 0.2, at(0.13)], parent, shade: false });
+      kit.box(0.74, 0.16, 0.26, brass, { pos: [px, st.y0 + 0.3, at(0.13)], parent, shade: false });
+    }
+    // sunburst: brass rays fanning out of the sign, cut at the panel edge
+    if (st.sunY !== undefined) {
+      const top = py + ph / 2 - 0.15 - st.sunY;
+      const REACH = pw / 2 - 0.2;
+      for (let k = 0; k <= 12; k++) {
+        const a = (k / 12) * Math.PI;                    // 0 = +x, pi = -x, through straight up
+        const sn = Math.sin(a), cs = Math.cos(a);
+        const lim = Math.min(Math.abs(cs) > 0.01 ? REACH / Math.abs(cs) : 99, sn > 0.01 ? top / sn : 99);
+        const r0 = 1.0, r1 = Math.min(3.4, lim);
+        if (r1 - r0 < 0.3) continue;
+        const m = (r0 + r1) / 2;
+        kit.box(r1 - r0, 0.06, 0.03, brass, { pos: [xc + cs * m, st.sunY + sn * m, at(0.055)], rot: [0, 0, (a * 180) / Math.PI], parent, shade: false });
+      }
+    }
+  }
+}
+
 /**
  * The underside of the Well balconies (the ledge at `y`, both side walls, from z0 to z1): a wood soffit, corbels with a
  * diagonal brace, and a row of small lamps. Mirrors `buildBalcony`.

@@ -16,6 +16,21 @@ export const BOARD_SLOTS = 3;
 /** Contracts one player may hold at the same time. */
 export const MAX_ACTIVE = 3;
 
+/**
+ * Board art, shared by the model and the painter. Slot space, metres: `BOARD_BACK_Z` is the plane the board hangs on. The layout
+ * puts MOUTH-BOUNTY at z = -29.84 and the Mouth's north wall shows its face at z = -29.85, so the plane is the wall face; any
+ * deeper and the whole board is inside the wall (the seated view was then just the wall texture). Move the slot, move this.
+ */
+export const BOARD_BACK_Z = -0.01;
+/** Paper slip size (m). Every card is a canvas at `TEXEL` texels per metre; slip text is px5 at `SLIP_SCALE`, so one font
+ * pixel is about one pixel of the 224-line frame from the seat camera. */
+export const SLIP_W = 0.47, SLIP_H = 0.28;
+export const TEXEL = 560;
+export const SLIP_SCALE = 4;
+/** Text width on a slip, in canvas texels (paper minus a margin each side). */
+export const SLIP_PAD = 10;
+export const SLIP_TEXT_W = Math.round(SLIP_W * TEXEL) - 2 * SLIP_PAD;
+
 /** ContractDef text is inline; it is read from the strings file so the words live in one place. */
 const txt = (id: string): ContractDef['strings'] => ({
   en: { title: STRINGS.en[`c.${id}.t`] ?? id, desc: STRINGS.en[`c.${id}.d`] ?? '' },
@@ -32,10 +47,13 @@ const machine = (machineId: string, minTier?: Where['minTier'], extra?: { tags?:
 });
 
 /** One contract def from the GDD table. `text` is looked up by id in the strings file (`c.<id>.t` / `c.<id>.d`). */
-function def(id: string, goal: ContractDef['goal'], reward: RewardSpec, weight = 2): ContractDef {
+function def(id: string, goal: ContractDef['goal'], reward: RewardSpec, weight = 2, minShift?: number): ContractDef {
   const s = txt(id);
-  return { id, kind: 'bounty', goal, reward, scope: 'player', weight, strings: s };
+  return { id, kind: 'bounty', goal, reward, scope: 'player', weight, strings: s, ...(minShift ? { minShift } : {}) };
 }
+
+/** The Night the Derby opens (progression PINNED_NIGHT.derby): no derby slip before it. Declared before the catalogue uses it. */
+const DERBY_NIGHT = 3;
 
 /** The GDD §11.9 bounty catalogue, in table order. Ids are the GDD ids (`b_*`). */
 export const BOUNTY_CATALOGUE: readonly ContractDef[] = [
@@ -46,7 +64,7 @@ export const BOUNTY_CATALOGUE: readonly ContractDef[] = [
     { charm: { choose: 1, of: 1, rarity: 'uncommon' } }, 1),
   def('b_point', { on: 'machine:result', where: machine('craps', undefined, { tags: ['point'] }), count: 1 }, tickets(3)),
   def('b_mines8', { on: 'stat', where: { stat: 'mines.safe.round' }, count: 8 }, quota(0.05)),
-  def('b_derby6', { on: 'machine:result', where: machine('derby', 'big'), count: 1 }, tickets(3)),
+  def('b_derby6', { on: 'machine:result', where: machine('derby', 'big'), count: 1 }, tickets(3), 2, DERBY_NIGHT),
   def('b_holdem_2p', { on: 'machine:result', where: machine('holdem', undefined, { tags: ['two-pair+'] }), count: 1 }, quota(0.05)),
   def('b_devil2', { on: 'stat', where: { stat: 'devilstable.collect' }, count: 1 },
     { unlocks: ['pawn.rare_under_counter'] }, 1),
@@ -64,15 +82,32 @@ export const BOUNTY_CATALOGUE: readonly ContractDef[] = [
 
 export const bountyDef = (id: string): ContractDef | undefined => BOUNTY_CATALOGUE.find((d) => d.id === id);
 
+/** The machines the floor places (game/progression CORE_MACHINES; machines may not import it, bountyBoard.test.mjs keeps the copy honest). */
+const FLOOR_MACHINES: readonly string[] = ['bigone', 'coinflip', 'hilo', 'videopoker', 'mines', 'plinko', 'blackjack', 'keno', 'roulette', 'sonkart', 'derby', 'cascade'];
+/** Run stat keys some code raises with `run.stat(key, n)`. Stat contracts can only be finished for keys listed here; none are wired yet. */
+export const RAISED_STATS: ReadonlySet<string> = new Set<string>();   // shortcut: add a key when its lane starts raising it; then its contracts return to the board
+
 /**
- * Registers the catalogue on the run when the game has not already done so (idempotent). Errors from an inert or
+ * True when a player can finish this contract on the current floor: its machine is one of the core games (the only ones any
+ * slot places) and a stat goal reads a stat something raises. Machine-less goals ("any big win") always qualify.
+ */
+export function playable(d: ContractDef): boolean {
+  const id = d.goal.where?.machineId;
+  if (id !== undefined && !FLOOR_MACHINES.includes(id)) return false;
+  const stat = d.goal.where?.stat;
+  return d.goal.on !== 'stat' || (stat !== undefined && RAISED_STATS.has(stat));
+}
+
+/**
+ * Registers the playable part of the catalogue on the run when the game has not already done so (idempotent), so the board only
+ * offers what can be finished. Errors from an inert or
  * missing contracts API are swallowed: the board then simply shows what the game offers.
  */
 export function ensureCatalogue(run: RunApi): void {
   let have: Set<string>;
   try { have = new Set(run.contracts.defs().map((d) => d.id)); } catch { return; }
   for (const d of BOUNTY_CATALOGUE) {
-    if (have.has(d.id)) continue;
+    if (have.has(d.id) || !playable(d)) continue;
     try { run.contracts.register(d); } catch { /* the game owns the catalogue; keep the board readable */ }
   }
 }
@@ -113,4 +148,28 @@ export function ticketReward(d: ContractDef | undefined): number {
 /** Progress as "2 / 3" text for the slip. Clamped to the goal. */
 export function progressText(c: ContractState, goal: number): string {
   return `${Math.min(c.progress, goal)} / ${goal}`;
+}
+
+export type Reward = { kind: 'tickets' | 'quota'; n: number } | { kind: 'totem'; id: string } | { kind: 'charm' | 'unlock' | 'buff' | 'none' };
+
+/**
+ * The one reward a slip names on its last line: Tickets first (as the receipt reads), then quota, totem, charm, unlock, buff.
+ * The slip is short; the selected slip's description (HUD) says the rest.
+ */
+export function rewardOf(d: ContractDef | undefined): Reward {
+  const n = ticketReward(d);
+  if (n > 0) return { kind: 'tickets', n };
+  const frac = d?.reward.coins;
+  if (frac && typeof frac === 'object') return { kind: 'quota', n: Math.round(frac.quotaFrac * 100) };
+  const totem = d?.reward.totems?.[0];
+  if (totem) return { kind: 'totem', id: totem };
+  if (d?.reward.charm) return { kind: 'charm' };
+  if (d?.reward.unlocks?.length) return { kind: 'unlock' };
+  if (d?.reward.buffs?.length) return { kind: 'buff' };
+  return { kind: 'none' };
+}
+
+/** Toast for pressing an empty row: 'none' = no offers at all tonight, 'blank' = just an empty spot (signed rows included). */
+export function emptyWhy(row: number, offers: number): 'none' | 'blank' {
+  return row < BOARD_SLOTS && offers === 0 ? 'none' : 'blank';
 }

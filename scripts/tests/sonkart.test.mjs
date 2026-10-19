@@ -126,3 +126,51 @@ test('headless round: the player seat wins roughly a quarter of the time, and pa
   assert.ok(rtp > 0.7 && rtp < 1.3, `rtp ${rtp.toFixed(3)}`);
   console.log(`sonkart headless: hit ${(hit * 100).toFixed(1)}% rtp ${(rtp * 100).toFixed(1)}%`);
 });
+
+// ── table layout (presentation only: src/machines/sonkart/layout.ts) ─────────────────────────────────────────────
+const LAYOUT = 'src/machines/sonkart/layout.ts';
+
+test('layout: opponent fans lie on the felt, clear of the colour ring and the draw pile', async () => {
+  const L = await load(LAYOUT);
+  const w = L.CARD_W * L.FELT_SCALE, h = L.CARD_H * L.FELT_SCALE;
+  const deck = L.cardCorners({ x: L.DECK.x, z: L.DECK.z, yaw: 0 }, w, h);
+  for (const [x, z] of deck) assert.ok(Math.hypot(x, z) > L.RING_OUT, 'the draw pile stays outside the colour ring');
+  for (let seat = 0; seat < 4; seat++) {
+    for (const n of [1, 2, 5, 9]) {
+      for (const spot of L.fanSpots(seat, n)) {
+        for (const [x, z] of L.cardCorners(spot, w, h)) {
+          const r = Math.hypot(x, z);
+          assert.ok(r < L.FELT_R - 0.005, `seat ${seat} n ${n}: a corner at ${r.toFixed(3)} m is off the felt`);
+          assert.ok(r > L.RING_OUT + 0.05, `seat ${seat} n ${n}: a corner at ${r.toFixed(3)} m crowds the ring`);
+          for (const [dx, dz] of deck) assert.ok(Math.hypot(x - dx, z - dz) > 0.04, `seat ${seat} n ${n}: a card touches the draw pile`);
+        }
+      }
+    }
+  }
+});
+
+test('layout: a fan reads upright for its owner and the top card for the seat that looks at it', async () => {
+  const L = await load(LAYOUT);
+  for (let seat = 0; seat < 4; seat++) {
+    const [dx, dz] = L.SEAT_DIR[seat];
+    const mid = L.fanSpots(seat, 1)[0];
+    // the card's top edge (local -Z, turned by yaw) points from the owner at the centre of the table
+    assert.ok(Math.abs(-Math.sin(mid.yaw) + dx) < 1e-9 && Math.abs(-Math.cos(mid.yaw) + dz) < 1e-9, `seat ${seat}`);
+  }
+  assert.equal(L.seatYaw(0), 0, 'seat 0 sees the table the way it is modelled');
+});
+
+test('layout: chairs fit the L footprint and the seat camera looks down 35-45 degrees at the middle of the table', async () => {
+  const L = await load(LAYOUT);
+  for (let seat = 0; seat < 4; seat++) {
+    const c = L.chairAt(seat);
+    assert.ok(Math.abs(c.x) + 0.23 <= 1.3 && Math.abs(c.z) + 0.23 <= 0.9 + 1e-9, `chair ${seat} sticks out of the 2.6 x 1.8 m footprint`);
+    const cam = L.seatCamera(seat);
+    const run = Math.hypot(cam.pos[0], cam.pos[2]);
+    const pitch = (Math.atan2(cam.pos[1] - L.FELT_Y, run) * 180) / Math.PI;
+    assert.ok(pitch >= 35 && pitch <= 45, `seat ${seat}: pitch ${pitch.toFixed(1)}`);
+    // the camera sits on the seat's side and looks across the table, so every seat sees the same picture
+    const [dx, dz] = L.SEAT_DIR[seat];
+    assert.ok(cam.pos[0] * dx + cam.pos[2] * dz > 0 && cam.look[0] * dx + cam.look[2] * dz > 0);
+  }
+});

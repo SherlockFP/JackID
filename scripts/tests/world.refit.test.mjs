@@ -145,3 +145,42 @@ test('the buy sub-line no longer claims a bare "Opens now" next to the OPENS NIG
   assert.doesNotMatch(S.en['buy.sub'], /^Opens now/);
   assert.ok(S.en['buy.sub'].includes('{n}') && S.tr['buy.sub'].includes('{n}'));
 });
+
+// ── Wave 81: the interior pass (ceiling steps closed, the lived-in nave, the clock face) ─────────────────────────────────
+test('wave 81: the Mouth to Well and Well to Lobby ceiling steps are closed with a bulkhead, and no wing ceiling sits below the 3.2 m lintel', () => {
+  const level = src('src/world/level.ts');
+  assert.match(level, /parlour: 3\.2, counting: 3\.2/, 'wing ceilings reach the doorway lintel (no slot into the attic)');
+  assert.match(level, /z: -18\.1, dir: 1, y0: CEILING\.mouth, y1: CEILING\.well/);
+  assert.match(level, /z: 2\.1, dir: -1, y0: CEILING\.lobby, y1: CEILING\.well/);
+  assert.match(level, /buildCeilingSteps\(/);
+  assert.match(level, /buildCeilingRoses\(/);
+  assert.match(level, /JACK·ID/, 'the neon the bulkhead carries stays');
+});
+
+test('wave 81: the lounge plan keeps every walking piece off machines, their standing zones, doorway lanes and the central aisle', async () => {
+  const LP = await load('src/world/props/loungePlan.ts');
+  const slots = L.SLOTS.filter((s) => !L.STAGE_SLOTS.includes(s.id));
+  const plan = LP.planLounge(slots.map((s) => LP.slotRect(s)));
+  const solid = plan.items.filter((i) => ['plant', 'chair', 'table', 'bench', 'cart', 'torch'].includes(i.k));
+  assert.ok(solid.length >= 20, `only ${solid.length} walking pieces`);
+  for (const i of solid) {
+    const fp = [i.x - 0.3, i.z - 0.3, i.x + 0.3, i.z + 0.3];
+    for (const s of slots) {
+      const r = LP.slotRect(s);
+      assert.ok(fp[2] <= r[0] || fp[0] >= r[2] || fp[3] <= r[1] || fp[1] >= r[3], `${i.k} at ${i.x},${i.z} stands on ${s.id}`);
+    }
+    assert.ok(Math.abs(i.x) > 1.4 || i.z < -30 || i.z > 20, `${i.k} at ${i.x},${i.z} is in the central aisle`);
+  }
+  for (const k of ['rug', 'frame', 'sconce', 'pendant', 'ropes']) assert.ok(plan.items.some((i) => i.k === k), `${k} missing`);
+  // the first five minutes: the Mouth, the Well and the Lobby each carry a lamp light and a rug
+  for (const z of ['mouth', 'well', 'lobby']) assert.ok(plan.lights.some((l) => l.zone === z), `${z} has no lounge light`);
+  assert.ok(plan.lights.length <= 14, 'the lounge adds a handful of light hints, not a field of them');
+});
+
+test('wave 81: the wall clock face is a round dial with evenly spaced numerals, a rim deadline band and no baked XIII', () => {
+  const clock = src('src/world/props/clock.ts');
+  assert.match(clock, /alphaTest: 0\.5/, 'the dial is cut round');
+  assert.match(clock, /Math\.PI; a <= Math\.PI \* 1\.5/, 'the deadline band runs 9 to 12 o\'clock');
+  assert.doesNotMatch(clock, /'XIII', cx/, 'the XIII is a label that shows on Night 8, not baked into the face');
+  assert.match(clock, /xiii\.visible = false/);
+});

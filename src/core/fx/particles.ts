@@ -527,7 +527,7 @@ export class ParticleSystem implements FxSystem {
     clinkFn = (x, y, z, impact) => {
       if (this.clinkTokens < 1 || !app?.audio) return;
       this.clinkTokens -= 1;
-      app.audio.play('coinLand', { pos: new THREE.Vector3(x, y, z), vol: clamp(impact / 4, 0.25, 0.8), pitch: rr(-2, 3), priority: 2 });
+      app.audio.play('coinClink', { pos: new THREE.Vector3(x, y, z), vol: clamp(impact / 4, 0.25, 0.8), pitch: rr(-2, 3), priority: 2 });   // one short clink, not coinLand's 0.5 s settle roll
     };
     rippleFn = (x, y, z) => this.ripple(x, y, z);
   }

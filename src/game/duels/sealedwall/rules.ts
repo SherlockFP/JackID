@@ -18,8 +18,8 @@
  */
 import { createRng, hashSeed } from '@/core/rng';
 import * as M from '@/machines/mahjong/rules';
-import { FAIR_KIND, POT, runHeadless, settleNet, type Side, type TurnState } from '../gamekit';
-import type { CallTarget, CheatPlan, Clue, DuelRules, RevealScript, TextRef } from '../types';
+import { FAIR_KIND, POT, lit, runHeadless, settleNet, type Side, type TurnState } from '../gamekit';
+import type { Board, CallTarget, CheatPlan, Clue, DuelRules, Piece, RevealScript, TextRef } from '../types';
 
 export const ID = 'sealedwall';
 export const RIVAL = 'tamsin';
@@ -228,7 +228,7 @@ export function step(st: import('../types').DuelState, actor: Side, action: SWAc
       s.river.push({ tile, by: 'rival', taken: null, sleeve: true });           // she keeps all 8 tiles
       ev.push({ k: 'discard', by: 'rival', tile });
       clues.push({ channel: 'table', round: s.round, key: 'duel.sw.table.cuff' });
-      const data = { tile, name: tileName(tile), copies, accounted: WALL + 1, expected: WALL };
+      const data = { tile, name: tileName(tile), nameKey: `duel.sw.t.${M.isDragon(tile) ? `d${M.rankOf(tile)}` : M.suitOf(tile)}`, rank: M.rankOf(tile), copies, accounted: WALL + 1, expected: WALL };
       clues.push({ channel: 'math', round: s.round, key: copies >= M.COPIES + 1 ? 'duel.sw.math.five' : 'duel.sw.math.tally', data });
     } else {
       const i = hand.indexOf(action.tile);
@@ -266,17 +266,25 @@ export const revealFair: RevealScript = { saw: 'duel.sw.fair.saw', happened: 'du
 
 // ── HUD hooks (all text goes through i18n keys) ───────────────────────────────────────────────────────
 const who = (b: Side): string => (b === 'player' ? 'You' : 'Rival');
-const tileRef = (t: number): TextRef => ({ key: 'duel.sw.tile', data: { name: tileName(t) } });
+/** What a string needs to name a tile in any language: the machine turns `nameKey` + `rank` into `{name}`. */
+const tileData = (t: number): Record<string, unknown> => ({ tile: t, rank: M.rankOf(t), nameKey: `duel.sw.t.${M.isDragon(t) ? `d${M.rankOf(t)}` : M.suitOf(t)}` });
+const tileRef = (t: number): TextRef => ({ key: 'duel.sw.tile', data: tileData(t) });
+
+/** A tile on the table: the rank big, the suit as the caption and the colour. Dragons show their colour letter. */
+function tilePiece(t: number, extra: Partial<Piece> = {}): Piece {
+  const suit = M.suitOf(t);
+  return { top: M.isDragon(t) ? { key: `duel.sw.dragon.${M.rankOf(t)}` } : lit(M.rankOf(t)), sub: { key: `duel.sw.suit.${suit}` }, tone: suit, ...extra };
+}
 
 export function describeAction(a: SWAction): TextRef {
-  return a.k === 'discard' ? { key: 'duel.sw.act.discard', data: { name: tileName(a.tile), tile: a.tile } } : { key: `duel.sw.act.${a.k}` };
+  return a.k === 'discard' ? { key: 'duel.sw.act.discard', data: tileData(a.tile) } : { key: `duel.sw.act.${a.k}` };
 }
 
 export function describeEvent(e: unknown): TextRef {
   const o = e as { k: string; by?: Side; tile?: number };
   if (o.k === 'end') return { key: 'duel.sw.ev.end' };
   if (o.k === 'win') return { key: `duel.sw.ev.win${who(o.by!)}` };
-  return { key: `duel.sw.ev.${o.k}${who(o.by!)}`, data: o.tile === undefined ? undefined : { name: tileName(o.tile), tile: o.tile } };
+  return { key: `duel.sw.ev.${o.k}${who(o.by!)}`, data: o.tile === undefined ? undefined : tileData(o.tile) };
 }
 
 export function describe(st: import('../types').DuelState): TextRef[] {
@@ -285,6 +293,29 @@ export function describe(st: import('../types').DuelState): TextRef[] {
     { key: 'duel.sw.line.hand', data: { tiles: s.hands.player.map(tileName).join(' · ') } },
     { key: 'duel.sw.line.wall', data: { n: s.wall.length - s.pos, turn: s.round, turns: TURNS } },
   ];
+}
+
+/**
+ * Your hand face up, the river face up (her discards on top: the last one is the tile you may take), the wall count. Her hand is not shown:
+ * its size would give the sleeve trick away.
+ */
+export function board(st: import('../types').DuelState): Board {
+  const s = st as SWState;
+  const discard = legal(s);                                              // the discards you may pick, in order
+  const hand: Piece[] = [];
+  s.hands.player.forEach((t) => {
+    const act = s.phase === 'disc' ? discard.findIndex((a) => a.k === 'discard' && a.tile === t) : -1;
+    hand.push(tilePiece(t, act >= 0 && !hand.some((p) => p.act === act) ? { act } : {}));
+  });
+  const up = upcard(s, 'player');
+  const river = s.river.filter((r) => r.taken === null).slice(-8).map((r) => tilePiece(r.tile, { mark: up && r === s.river[s.river.length - 1] ? 'next' : r.by === 'player' ? 'mine' : 'his' }));
+  return {
+    zones: [
+      { label: { key: 'duel.sw.zone.hand' }, pieces: hand },
+      { label: { key: 'duel.sw.zone.river' }, pieces: river },
+    ],
+    notes: [{ key: 'duel.sw.note.wall', data: { n: s.wall.length - s.pos, turn: s.round, turns: TURNS } }],
+  };
 }
 
 export function callTargets(st: import('../types').DuelState): CallTarget[] {
@@ -298,7 +329,7 @@ export const sealedWall: DuelRules<SWAction> & { verdict: typeof verdict; reveal
   id: ID, rival: RIVAL, makePlan, init, legal, step, rivalAct, call,
   settle: settleNet, reveal, revealFair, verdict,
   turnOf: (s) => (s as SWState).turn,
-  describeAction, describeEvent, describe, callTargets,
+  describeAction, describeEvent, describe, callTargets, board, goal: 'duel.sw.goal',
   playHeadless: (seed, policy) => runHeadless<SWAction>({
     rules: sealedWall,
     move: (s) => pickMove(s as SWState, 'player'),

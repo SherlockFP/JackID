@@ -106,11 +106,18 @@ export const LIGHT = {
   ceiling: { color: 0xffe2b0, intensity: 0.7, range: 4.6 },
   pendant: { color: 0xffb070, intensity: 0.55, range: 3.2 },
   hall: { color: 0xffd9a0, intensity: 0.55, range: 3.5 },
+  candle: { color: 0xffa24a, intensity: 0.4, range: 2.4 },
 } as const;
 
 /** The seated spouse's chair (the mannequin sits here, facing the door) and the empty chair opposite it. */
 export const SPOUSE_SEAT = { x: 1.6, z: -0.75 } as const;
 export const EMPTY_SEAT = { x: 1.6, z: 1.25 } as const;
+/**
+ * How the seated spouse sits on that chair. The `Sitting_Idle_Loop` clip puts the pelvis 0.18 x height behind the actor root (kit/mannequin
+ * `SEATED_HIP`), so the root goes `fwd` in front of the chair centre or the hips sit in the backrest (it did, wave 80). `fwd` keeps her
+ * dress 3 cm clear of the backrest and her hair in front of it; `y` and the seat height put the seat contact on the cushion, the soles 3 cm off the floor.
+ */
+export const SPOUSE_SIT = { fwd: 0.23, y: -0.025, seat: 0.42 } as const;
 
 /** Furniture plan (local): the bed's footprint, the kitchen table's footprint and top height. */
 export const BED = { x0: -2.95, x1: -1.1, z0: -1.3, z1: 0.1, h: 0.42 } as const;

@@ -18,8 +18,8 @@
  * Host only: the state holds the tape. Public information is `publicEvents`, `clues` and `log`.
  */
 import { createRng, hashSeed } from '@/core/rng';
-import { POT, runHeadless, settleNet, type Side, type TurnState } from '../gamekit';
-import type { CallTarget, CheatPlan, Clue, DuelRules, DuelState, RevealScript, TextRef } from '../types';
+import { POT, lit, runHeadless, settleNet, type Side, type TurnState } from '../gamekit';
+import type { Board, CallTarget, CheatPlan, Clue, DuelRules, DuelState, RevealScript, TextRef } from '../types';
 
 export const ID = 'lastcount';
 export const RIVAL = 'vell';
@@ -180,7 +180,27 @@ export const revealFair: RevealScript = { saw: 'duel.lc.fair.saw', happened: 'du
 // ── HUD hooks ─────────────────────────────────────────────────────────────────────────────────────────
 const who = (b: Side): string => (b === 'player' ? 'You' : 'Rival');
 
-export const describeAction = (a: LCAction): TextRef => ({ key: `duel.lc.act.${a.k}` });
+/** With the state, the button carries its odds ("HIGHER · 54%"); the odds are public: they come from the cards already shown. */
+export function describeAction(a: LCAction, st?: DuelState): TextRef {
+  if (!st) return { key: `duel.lc.act.${a.k}` };
+  const s = st as LCState;
+  const od = odds(s.tape.slice(0, s.shown));
+  return { key: `duel.lc.act.${a.k}Odds`, data: { odds: Math.round((a.k === 'higher' ? od.higher : od.lower) * 100) } };
+}
+
+/** The tape on the table: the cards shown face up, the next one face down, the rest face down. Hidden ranks never leave this function. */
+export function board(st: DuelState): Board {
+  const s = st as LCState;
+  const pieces = s.tape.map((rank, i) => {
+    if (i < s.shown) return { top: lit(rank), mark: i === s.shown - 1 && !s.done ? ('now' as const) : undefined };
+    return { top: lit('?'), down: true, mark: i === s.shown ? ('next' as const) : undefined };
+  });
+  return {
+    zones: [{ label: { key: 'duel.lc.zone.tape', data: { shown: s.shown, total: TAPE } }, pieces }],
+    score: { you: s.pts.player, him: s.pts.rival },
+    notes: [{ key: 'duel.lc.note.equal' }],
+  };
+}
 
 export function describeEvent(e: unknown): TextRef {
   const o = e as { k: string; by?: Side; dir?: string; cur?: number; hitOdds?: number; i?: number; rank?: number; hit?: boolean; you?: number; him?: number };
@@ -209,7 +229,7 @@ export const lastCount: DuelRules<LCAction> & { verdict: typeof verdict; revealF
   id: ID, rival: RIVAL, makePlan, init, legal, step, rivalAct, call, settle,
   reveal, revealFair, verdict,
   turnOf: (s) => (s as LCState).turn,
-  describeAction, describeEvent, describe, callTargets,
+  describeAction, describeEvent, describe, callTargets, board, goal: 'duel.lc.goal',
   playHeadless: (seed, policy) => runHeadless<LCAction>({
     rules: lastCount,
     move: (s) => pickMove(s),

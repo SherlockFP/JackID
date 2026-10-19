@@ -397,7 +397,11 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
       if (pc.local) fx.slowmo(0.4, 0.9);
       lampHeads.blink(10, balDur); lampTails.blink(10, balDur);
       const tease = ev.near ? this.nearMiss({ dur: balDur, at: dish, lamps: [lampHeads, lampTails] }) : Promise.resolve();
+      let rock = 0;
       await Promise.all([tease, this.anim(balDur, (k) => {
+        // every flip: the rim ticks once per swing and the ticks climb, so the wait for the verdict is heard (a near miss has its own riser)
+        const swing = Math.floor(k * 6);
+        if (swing > rock && !ev.near) { rock = swing; this.sfx('reelTick', { vol: 0.4, param: 0.15 + 0.12 * swing }); }
         const amp = 0.12 * (1 - k);
         coin.rotation.x = balance + lean * smoothstep(0, 1, k) + Math.sin(k * Math.PI * 6) * amp;
         coin.rotation.z = Math.sin(k * Math.PI * 7) * 0.07 * (1 - k);
@@ -471,7 +475,7 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
     if (tier === 'medium' || tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot') {
       // celebrate spawns its own coins + jingle: only add the count-up
       void this.celebrate(tier, { amount: ev.amount, marquee, lamps: [lampHeads, lampTails], restore: () => this.idleChase(), fast: pc.fast });
-      await countUp(this.ctx, 0, ev.amount, pc.fast ? 0.1 : 1.2 * this.speed, (v) => this.drawScreen(v));
+      await countUp(this.ctx, 0, ev.amount, pc.fast ? 0.1 : 1.2 * this.speed, (v) => this.drawScreen(v), { tick: true });
     } else {
       await this.pourCoins(ev.amount, { bet: ev.bet, fast: pc.fast, onCount: (v) => this.drawScreen(v) });
     }

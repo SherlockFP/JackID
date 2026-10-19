@@ -18,8 +18,8 @@ import { clamp, lerp } from '@/core/math';
 import { createRng, hashSeed } from '@/core/rng';
 
 export interface FidgetPose { px: number; py: number; pz: number; rx: number; ry: number; rz: number; curl: number; index: number; thumb: number }
-/** The slice of a viewmodel hand the tricks need (structurally matches the viewmodel's Hand). */
-export interface FidgetHand { readonly root: THREE.Object3D; readonly holder: THREE.Object3D; readonly pose: FidgetPose }
+/** The slice of a viewmodel hand the tricks need (structurally matches the viewmodel's Hand): `palm` is the hand frame the anchors live in. */
+export interface FidgetHand { readonly palm: THREE.Object3D; readonly holder: THREE.Object3D; readonly pose: FidgetPose }
 export interface Fidget {
   /** True while the trick coin replaces the held coin. */
   readonly busy: boolean;
@@ -63,8 +63,8 @@ const bump = (k: number, a: number, b: number, c: number, d: number): number => 
 function arc(o: Out, a: THREE.Vector3, b: THREE.Vector3, e: number, h: number): void { o.pos.copy(a).lerp(b, e); o.pos.y += h; }
 
 // ── hand-local anchors (metres; the right hand, fingers towards −Z) ──────────────────────────────
-const PALM = { x: 0, y: 0.016, z: -0.02 };
-const KN_X0 = -0.027, KN_X1 = 0.027, KN_Y = 0.0205, KN_Z = -0.045;   // index / pinky knuckle row, edge-on coin height
+const PALM = { x: 0, y: 0.017, z: -0.02 };
+const KN_X0 = -0.0245, KN_X1 = 0.025, KN_Y = 0.0215, KN_Z = -0.041;   // index / pinky knuckle row, edge-on coin height
 
 // ── tricks ────────────────────────────────────────────────────────────────────────────────────────
 /** 1. Flip up with a spin and catch it on the palm; the wrist follows through, the fingers close on the catch. */
@@ -172,11 +172,11 @@ export function createFidget(right: FidgetHand, left: FidgetHand, coin: THREE.Ob
   const makeCtx = (live: boolean): Ctx => ({
     P(h, x, y, z) {
       const v = new THREE.Vector3(x, y, z);
-      return live ? hands[h].root.localToWorld(v) : v;
+      return live ? hands[h].palm.localToWorld(v) : v;
     },
     Q(h, x, y, z) {
       const q = new THREE.Quaternion();
-      if (live) { hands[h].root.getWorldQuaternion(q); q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z))); }
+      if (live) { hands[h].palm.getWorldQuaternion(q); q.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(x, y, z))); }
       return q;
     },
   });

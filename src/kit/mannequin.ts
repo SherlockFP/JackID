@@ -174,10 +174,20 @@ export interface FemaleOpts {
   /** Dress colour (default dark wine). */
   dress?: Hex;
 }
+/** Ada's rim runs 1.45x the house rim: she sits in the dimmest corner of the flat and must still read as a figure. */
+const FEMALE_RIM_GAIN = 1.45;
 const HAIR_DEFAULT = 0x2a2230;
 const DRESS_DEFAULT = 0x5a2a3c;
 const WAVE_SECONDS = 2.6;
 const GREET_NEAR = 4, GREET_FAR = 6;           // m: a wave starts when you come inside GREET_NEAR after having been beyond GREET_FAR
+
+/**
+ * Where the pelvis sits in the `Sitting_*` clips, per metre of actor height (measured on the rig): `back` behind the root, `up`
+ * above it, and the lowest seat-contact vertex (`contact`) below the pelvis. To sit an actor on a flat seat whose top is at y = `s`
+ * and whose centre is `c`: root = c + `back * height` toward the table (less ~0.02 to clear a backrest), y = s - (`up` - `contact`) * height.
+ * The kit's casino seats do the first part with `stand` (0.3 m forward). A root left at the chair centre puts the hips in the backrest.
+ */
+export const SEATED_HIP = { back: 0.1812, up: 0.2961, contact: 0.0397 } as const;
 
 /** What the dealer rig (dealer.ts) needs on top of the public actor. */
 export interface MannequinInternal extends MannequinActor {
@@ -355,7 +365,7 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
         }) as THREE.MeshLambertMaterial;
         // painted face + dim rim light (lit looks only; the ghost stays a flat translucent figure)
         if (this.look.lit) patchLook(m, { cracks: !!this.look.cracks, sockets: this.face.sockets, smile: this.face.smile, head: src.head, rim: RIM_LIGHT });
-        if (this.npc) patchNpc(m, { rim: this.npcRim, eyes: this.npcEyes, head: src.head, shimmer: 1, eyeGain: this.female ? 0.72 : 1, eyeSize: this.female ? 0.35 : 0 });
+        if (this.npc) patchNpc(m, { rim: this.npcRim, eyes: this.npcEyes, head: src.head, shimmer: 1, eyeGain: this.female ? 0.72 : 1, eyeSize: this.female ? 0.35 : 0, rimGain: this.female ? FEMALE_RIM_GAIN : 1 });
         this.mats.push(m);
         this.baseColors.push(base);
         sm.material = m;
@@ -575,7 +585,7 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
         const mesh = n as THREE.Mesh;
         if (!mesh.isMesh || !(mesh.material as THREE.MeshLambertMaterial).isMeshLambertMaterial) return;
         const m = (mesh.material as THREE.MeshLambertMaterial).clone();
-        patchNpc(m, { rim: this.npcRim, eyes: null, head: null, shimmer: 0.6, lift: lift ?? undefined });
+        patchNpc(m, { rim: this.npcRim, eyes: null, head: null, shimmer: 0.6, lift: lift ?? undefined, rimGain: this.female ? FEMALE_RIM_GAIN : 1 });
         mesh.material = m;
       });
     }
@@ -590,7 +600,7 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
     /** Register more bones whose animation pose must be restored each frame before procedural layers modify them. */
     addProc(names: readonly string[]): void {
       for (const n of names) if (!this.procNames.includes(n)) this.procNames.push(n);
-      if (this.isReady) this.captureAnimPose();
+      if (this.isReady) { this.restoreAnimPose(); this.captureAnimPose(); }
     }
     /** Run `fn(dt)` every frame after the clip pose is restored: `pre` = before head tracking, `post` = after. */
     onPose(fn: (dt: number) => void, phase: 'pre' | 'post' = 'pre'): () => void {
@@ -607,9 +617,19 @@ export function makeMannequins(ctx: KitCtx, makeProp: (id: string) => THREE.Grou
       const step = this.stepFps && this.stepFps > 0 ? 1 / this.stepFps : 0;
       if (step > 0) {
         this.acc += dt;
-        if (this.acc >= step) { this.mixer.update(this.acc); this.acc = 0; this.captureAnimPose(); }
-      } else if (dt > 0) { this.mixer.update(dt); this.captureAnimPose(); }
+        if (this.acc >= step) { this.restoreAnimPose(); this.mixer.update(this.acc); this.acc = 0; this.captureAnimPose(); }
+      } else if (dt > 0) { this.restoreAnimPose(); this.mixer.update(dt); this.captureAnimPose(); }
       this.postPose(dt);
+    }
+
+    /**
+     * Put the clip's captured pose back on the bones. The mixer skips a property whose track value did not change (constant
+     * scale tracks, still keys), so without this the capture after a step would read back last frame's procedural layers
+     * (limb stretch, head jitter, look) and every frame would stack them again: thighs grew 6 % per step into a giant sheet.
+     */
+    private restoreAnimPose(): void {
+      for (const [n, q] of this.procAnim) this.bones.get(n)?.quaternion.copy(q);
+      for (const [n, s] of this.procScale) this.bones.get(n)?.scale.copy(s);
     }
 
     private captureAnimPose(): void {

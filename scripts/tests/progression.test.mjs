@@ -101,9 +101,15 @@ test('locks: covered until its Night, always-open devices never lock, the Free C
   assert.equal(P.isLockedFor('bigone', 1, 'debt'), false);
   assert.equal(P.isLockedFor('sonkart', 6, 'coop'), true);
   assert.equal(P.isLockedFor('sonkart', 7, 'coop'), false);
-  for (const id of ['debt_terminal', 'hotline', 'cashier', 'charm_vendor', 'jukebox', 'tonic_vendor', 'bounty_board', 'shrine', 'tallytable', 'devilstable']) {
+  for (const id of ['debt_terminal', 'hotline', 'cashier', 'charm_vendor', 'jukebox', 'tonic_vendor', 'shrine', 'tallytable', 'devilstable']) {
     assert.equal(P.isLockedFor(id, 1, 'debt'), false, id);
   }
+  // Night 1 is one loop: the Bounty Board (slips) is tarped until Night 2, in every mode but the Free Casino
+  assert.equal(P.isLockedFor('bounty_board', 1, 'debt'), true, 'bounty board closed on Night 1');
+  assert.equal(P.isLockedFor('bounty_board', 2, 'debt'), false, 'bounty board open from Night 2');
+  assert.equal(P.isLockedFor('bounty_board', 1, 'free'), false);
+  assert.equal(P.unlockNightOf('bounty_board'), 2, 'the tarp plate reads OPENS NIGHT 2');
+  assert.equal(P.isFreeOnly('bounty_board'), false, 'still part of every Debt Run floor');
   for (const id of CORE) assert.equal(P.isLockedFor(id, 1, 'free'), false, id);
   assert.equal(P.isLockedFor('claw', 1, 'free'), false);
   assert.equal(P.isFreeOnly('claw'), true);
@@ -163,16 +169,17 @@ test('a Debt Run is built from core machines and always-open devices only; every
   for (const mode of ['coop', 'versus']) assert.deepEqual(L.assignment(mode), asg, mode);
 });
 
-test('busy floor keeps the core-only rule, and the Free Casino keeps every machine of the old floor', () => {
+test('busy floor keeps the core-only rule, and the Free Casino places the core games and no cut machine (wave 81)', () => {
   const busy = L.assignment('debt', { busyFloor: true });
   for (const id of Object.values(busy)) assert.ok(P.isCore(id) || P.ALWAYS_OPEN.has(id), id);
   const free = L.assignment('free');
   const ids = new Set(Object.values(free));
-  for (const id of ['claw', 'pachislot', 'fruitmachine', 'baccarat', 'bingo', 'derby', 'tombola', 'shellgame', 'fortuneteller', 'threecard', 'tavla', 'pisti', 'lootbox', 'stacker', 'elevator']) {
-    assert.ok(ids.has(id), `${id} missing from the Free Casino`);
-  }
   for (const id of CORE) assert.ok(ids.has(id), `${id} missing from the Free Casino`);
+  for (const [slot, id] of Object.entries(free)) assert.ok(P.isCore(id) || P.ALWAYS_OPEN.has(id), `${slot}: cut machine ${id} on the Free Casino floor`);
+  for (const id of ['elevator', 'bandit', 'scratch', 'pachinko', 'craps', 'cyclone', 'mahjong', 'claw']) assert.ok(!ids.has(id), `${id} must not stand on the floor`);
+  for (const [slot, id] of Object.entries(L.assignment('free', { busyFloor: true }))) assert.ok(P.isCore(id) || P.ALWAYS_OPEN.has(id), `busy ${slot}: ${id}`);
   assert.deepEqual(L.ASSIGN.free, L.FREE_ASSIGN);
+  for (const id of L.FLOOR_READY) assert.ok(P.isCore(id), `${id} is in FLOOR_READY but is not a core game`);
 });
 
 test('the duel tables, shrine and Parlour devices survive the rework', () => {
@@ -184,9 +191,8 @@ test('the duel tables, shrine and Parlour devices survive the rework', () => {
 });
 
 test('the Pit Deck shuffle is a Free Casino feature: any other mode keeps the fixed floor', () => {
-  const cat = [['videopoker', 'M', 'CARDS', 'SWINGY'], ['scratch', 'M', 'REELS', 'SWINGY'], ['cyclone', 'M', 'WHEELS', 'STEADY'],
-    ['pachinko', 'M', 'DROPS', 'WILD'], ['pachislot', 'M', 'REELS', 'WILD'], ['fortuneteller', 'M', 'CURIOS', 'STEADY'],
-    ['hilo', 'M', 'CARDS', 'WILD'], ['bandit', 'S', 'REELS', 'WILD']]
+  const cat = [['videopoker', 'M', 'CARDS', 'SWINGY'], ['mines', 'M', 'DROPS', 'WILD'], ['plinko', 'M', 'WHEELS', 'STEADY'],
+    ['cascade', 'M', 'REELS', 'WILD'], ['hilo', 'M', 'CARDS', 'WILD'], ['keno', 'S', 'CURIOS', 'STEADY'], ['derby', 'S', 'DICE', 'SWINGY']]
     .map(([id, slotSize, suit, volatility]) => ({ id, slotSize, tier: 1, seats: 1, suit, volatility }));
   const fixed = Object.fromEntries(L.ROSTER_PADS.filter((p) => L.DEFAULT_ASSIGN[p]).map((p) => [p, L.DEFAULT_ASSIGN[p]]));
   for (let seed = 1; seed <= 20; seed++) assert.deepEqual(L.rosterFor(seed, cat, 'debt'), fixed);
@@ -318,6 +324,9 @@ test('run: BUY opens a covered machine for the rest of the run, takes coins, ref
   const RUN = await load('src/game/run.ts');
   const run = RUN.createRun({ seed: 77, mode: 'debt' });
   assert.equal(run.isLocked('roulette'), true);
+  assert.equal(run.buyPriceOf('roulette'), 0, 'Night 1: the tarp says OPENS NIGHT n, it does not sell');
+  assert.equal(run.buyMachine('roulette'), false);
+  run.index = 1;   // Night 2: the BUY prompt is back
   assert.equal(run.buyPriceOf('bigone'), 0, 'a starter is open, not for sale');
   const price = run.buyPriceOf('roulette');
   assert.ok(price > 0);
@@ -346,10 +355,11 @@ test('run: the Free Casino sells nothing, and owned machines survive a save roun
   assert.equal(free.buyPriceOf('roulette'), 0);
   free.dispose();
   const run = RUN.createRun({ seed: 79, mode: 'debt' });
+  run.index = 1;   // Night 2: nothing is for sale on Night 1
   run.earn('coin', 5000, 'test');
-  assert.equal(run.buyMachine('mines'), true);
+  assert.equal(run.buyMachine('roulette'), true);
   const snap = run.snapshot();
-  assert.deepEqual(snap.ext.owned, ['mines']);
+  assert.deepEqual(snap.ext.owned, ['roulette']);
   run.dispose();
 });
 

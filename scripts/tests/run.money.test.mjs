@@ -111,6 +111,21 @@ test('tutorial: the spin step teaches four pulls, then another machine (the TILT
   assert.doesNotMatch(tr, /TİLT|TILT/, 'no TILT step in the Turkish tutorial either');
 });
 
+test('tutorial: no Pawn Window step, and one name for the terminal (the registry\'s own) in the tutorial, objective, Mola and broke strings', async () => {
+  const MOLA = (await load('src/game/ingame/intermission.strings.ts')).default;
+  const RESCUE = (await load('src/game/rescue.strings.ts')).default;
+  const DT = (await load('src/machines/debt_terminal/index.ts')).def.strings;
+  for (const lang of ['en', 'tr']) {
+    const name = DT[lang].name;
+    assert.equal(TUT.default[lang].pawn, undefined, `${lang}: the pawn step is gone (the Starter Draft introduces charms)`);
+    const lines = { ...Object.fromEntries(Object.entries(TUT.default[lang]).map(([k, v]) => [`tut.${k}`, v])), ...Object.fromEntries(Object.entries(MOLA[lang]).map(([k, v]) => [`interm.${k}`, v])), 'rescue.broke.bell': RESCUE[lang]['broke.bell'] };
+    for (const k of ['tut.deposit', 'tut.obj.deposit', 'tut.obj.bell', 'tut.broke.bank', 'interm.hintFloor', 'interm.hintBell', 'rescue.broke.bell']) {
+      assert.ok(lines[k].toLocaleLowerCase(lang).includes(name.toLocaleLowerCase(lang)), `${lang} ${k} says "${name}": ${lines[k]}`);
+    }
+    for (const [k, v] of Object.entries(lines)) assert.doesNotMatch(v, /debt terminal|borç terminal/i, `${lang} ${k}`);
+  }
+});
+
 // Cash starvation (wave 14): the float on the first deposit of a Watch, the dead pocket that rings the rescue call, and the
 // Debt Terminal framing that keeps the keypad clear of the control bar at 4:3 and 16:9.
 test('float: the first deposit of a Watch leaves min(30 % of the pocket, 2 cheapest bets); ALL goes below it only when confirmed', async () => {

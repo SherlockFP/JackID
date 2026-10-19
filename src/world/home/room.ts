@@ -9,11 +9,12 @@ import type { KitX } from '@/kit';
 import type { TexGen } from '@/core/texgen/types';
 import { createRng } from '@/core/rng';
 import { pendant } from '../lights';
+import { FLOOR_TILE_M } from '../layout';
 import { placeCouch } from '../props/vendorModels';
 import type { LightHint } from '../sys/arch';
 import {
   at, BED, CEIL, DOOR_H, DOOR_X0, DOOR_X1, EMPTY_SEAT, HALL_X0, HALL_X1, HALL_Z1, HOME_ZONE, LIGHT, SOUTH_WALL_SOLIDS,
-  SPOUSE_SEAT, TABLE,
+  SPOUSE_SEAT, SPOUSE_SIT, TABLE,
   WIN_X0, WIN_X1, WIN_Y0, WIN_Y1,
 } from './config';
 
@@ -47,8 +48,10 @@ export function buildRoom(c: RoomCtx): RoomParts {
     g.fillStyle = '#5a5246'; g.fillRect(0, h - 6, w, 6);
   });
   const wall = kit.mat({ color: 0xffffff, map: wallTex });
-  const floor = kit.mat({ color: 0xffffff, map: kit.tex.wood(0x6a4a30) });
-  const hallFloor = kit.mat({ color: 0xffffff, map: kit.tex.concrete(0x4a4440) });
+  // vendored boards and stone tile at the shared floor density (the kit tags a 64 px vendor map as 1 m: widen it to FLOOR_TILE_M)
+  const floorMap = (p: string): THREE.Texture => { const m = kit.tex.vendor(p, { size: 64 }); m.userData.tile = FLOOR_TILE_M; return m; };
+  const floor = kit.mat({ color: 0xd8a880, map: floorMap('sbs-tiny2/128x128/Wood/Wood_01-128x128.png') });
+  const hallFloor = kit.mat({ color: 0x9a8a78, map: floorMap('sbs-horror/128x128/Floor/Horror_Floor_12-128x128.png') });
   const ceil = kit.mat({ color: 0x2c2926 });
   const trim = kit.mat({ color: kit.pal.woodDark });
   const wood = kit.mat({ color: kit.pal.wood });
@@ -147,10 +150,10 @@ export function buildRoom(c: RoomCtx): RoomParts {
   for (const lx of [TABLE.x0 + 0.06, TABLE.x1 - 0.06]) for (const lz of [TABLE.z0 + 0.06, TABLE.z1 - 0.06]) {
     slab(lx - 0.03, 0, lz - 0.03, lx + 0.03, TABLE.top - 0.04, lz + 0.03, trim);
   }
-  const seatChair = kit.chair({ h: 0.48, seat: kit.pal.wood, wood: kit.pal.woodDark });
+  const seatChair = kit.chair({ h: SPOUSE_SIT.seat, seat: kit.pal.wood, wood: kit.pal.woodDark });
   seatChair.position.set(...at(SPOUSE_SEAT.x, 0, SPOUSE_SEAT.z));
   shell.add(seatChair);
-  const emptyChair = kit.chair({ h: 0.48, seat: kit.pal.wood, wood: kit.pal.woodDark });
+  const emptyChair = kit.chair({ h: SPOUSE_SIT.seat, seat: kit.pal.wood, wood: kit.pal.woodDark });
   emptyChair.position.set(...at(EMPTY_SEAT.x, 0, EMPTY_SEAT.z));
   emptyChair.rotation.y = Math.PI;
   shell.add(emptyChair);
@@ -216,6 +219,19 @@ export function buildRoom(c: RoomCtx): RoomParts {
   pend.setOn(true);
   dyn.add(pend.root);
 
+  // a candle in a saucer at the near edge of the table: a small warm light on Ada (her rim is the only other light on her)
+  const candleAt = at(SPOUSE_SEAT.x, TABLE.top, TABLE.z0 + 0.1);
+  kit.cyl(0.05, 0.05, 0.008, cream, { pos: [candleAt[0], candleAt[1] + 0.004, candleAt[2]], parent: shell, seg: 8 });
+  kit.cyl(0.014, 0.014, 0.07, cream, { pos: [candleAt[0], candleAt[1] + 0.043, candleAt[2]], parent: shell, seg: 6 });
+  const flame = kit.lamp({ r: 0.012, color: LIGHT.candle.color, shape: 'bulb' });
+  flame.root.position.set(candleAt[0], candleAt[1] + 0.088, candleAt[2]);
+  flame.setOn(true);
+  dyn.add(flame.root);
+  const candleHint: LightHint = {
+    id: 'home:candle', pos: [candleAt[0], candleAt[1] + 0.11, candleAt[2]], color: LIGHT.candle.color, intensity: LIGHT.candle.intensity,
+    range: LIGHT.candle.range, flicker: 'CANDLE', zone: HOME_ZONE,
+  };
+
   // the hallway bulb hangs outside the zone: the switch does not reach it, and its light leaks under the door
   kit.cyl(0.006, 0.006, 0.4, black, { pos: at(-0.6, 2.4, 3.9), parent: dyn, seg: 4 });
   const hallLamp = kit.lamp({ r: 0.09, color: LIGHT.hall.color, shape: 'bulb' });
@@ -229,10 +245,11 @@ export function buildRoom(c: RoomCtx): RoomParts {
 
   return {
     statics,
-    lights: [ceilingHint, pend.hint, hallHint],
+    lights: [ceilingHint, pend.hint, candleHint, hallHint],
     setSwitched(on: boolean) {
       ceilingLamp.setOn(on);
       pend.setOn(on);
+      flame.setOn(on);
       lever.rotation.x = on ? -0.45 : 0.45;
       pilotOn.visible = on;
       pilotOff.visible = !on;

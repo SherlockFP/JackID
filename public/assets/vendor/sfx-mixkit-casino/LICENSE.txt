@@ -1,0 +1,12 @@
+Mixkit Sound Effects Free License (https://mixkit.co/license/#sfxFree)
+"Items under the Mixkit Sound Effects Free License can be used in your commercial and non-commercial projects for free."
+"You're permitted to download, copy, modify, distribute and publicly perform the Sound Effect Items on any web or social media platform, in podcasts and in video games..."
+Not to be redistributed on their own (as stock, in a tool or template). No attribution required.
+
+Files (Mixkit id in the name, source https://mixkit.co/free-sound-effects/casino/):
+- slot_wheel_1932.mp3            "Slot machine wheel"
+- slot_random_wheel_1930.mp3     "Slot machine random wheel"
+- casino_win_notification_1986.mp3 "Casino win notification"
+- casino_win_alarm_coins_1990.mp3  "Casino win alarm and coins"
+- classic_winner_alarm_1997.mp3    "Classic winner alarm"
+- casino_bells_reward_1981.mp3     "Casino bells reward"

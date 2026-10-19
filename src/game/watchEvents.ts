@@ -1,7 +1,7 @@
 /**
- * Per-Watch floor events (wave 43, director: decisions and moments in every Watch). Each Watch from Night 1 rolls one short
+ * Per-Watch floor events (wave 43, director: decisions and moments in every Watch). Each Watch from Night 2 rolls one short
  * event with a seeded chance (`WATCH_EVENT_CHANCE`, data/schedule.ts), lasting 45-60 s of Watch clock unless the event fixes
- * its own length. Boss Nights roll none.
+ * its own length. Night 1 and boss Nights roll none.
  *
  * Pure rules + one ModProvider: most effects are declarative ModEffects folded by the run's mod pipeline (no machine code).
  * Wave 75 adds five events from Night 2 (`src/game/events/**`): SINGLE LIGHT, STAGE AUCTION, CRATE DROP, WHEEL SPIN and
@@ -86,7 +86,7 @@ export const WATCH_EVENTS: readonly WatchEventDef[] = [
  * in a row (wave 47), so the pick is made from the rest. Pure: the caller passes a rng (the module never reads a global one).
  */
 export function rollWatchEvent(rng: Rng, nightNo: number, blocked = false, avoid: string | null = null): { def: WatchEventDef; secs: number } | null {
-  if (blocked || nightNo < 1) return null;
+  if (blocked || nightNo < 2) return null;   // Night 1 has no floor events: the starters, the Bank and the Bell are the whole loop
   if (!rng.chance(WATCH_EVENT_CHANCE)) return null;
   const pool = WATCH_EVENTS.filter((d) => nightNo >= (d.minNight ?? 1) && d.id !== avoid);
   if (pool.length === 0) return null;

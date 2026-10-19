@@ -12,7 +12,7 @@
  * hits off (`setAudioCalm`).
  */
 import type { PlayOpts } from './types';
-import { Kit, pick, rnd, sampleStore } from './synth';
+import { Kit, pick, rnd, sampleStore, semi } from './synth';
 import type { SfxDef } from './sfx';
 
 const V = `${import.meta.env.BASE_URL}assets/vendor/`;
@@ -24,6 +24,8 @@ const c = (dir: string, file: string, o: Omit<Clip, 'u'> = {}): Clip => ({ u: `$
 const many = (dir: string, files: string[], o: Omit<Clip, 'u'> = {}): Clip[] => files.map((f) => c(dir, f, o));
 
 const OWL = 'sfx-owlish-more-sfx', LAL = 'sfx-laleksic-various', RUB = 'sfx-rubberduck-metal-wood', QDOOR = 'sfx-qubodup-doors';
+const MIX = 'sfx-mixkit-casino', OGA = 'sfx-oga-wins';
+const LATCH = c(OWL, 'key_lock_door_30.wav');
 const GROUPS = {
   ring: [c('sfx-chirptone-ringtone', 'chirptone.wav')],
   phoneClick: [c(OWL, 'phone2.wav')],
@@ -33,7 +35,9 @@ const GROUPS = {
   keys: [...many(RUB, ['keys_01.ogg', 'keys_03.ogg', 'keys_05.ogg', 'keys_07.ogg']), c(LAL, 'pickup_keys.wav')],
   keyTurn: many(OWL, ['key_lock_door_04.wav', 'key_lock_door_11.wav', 'key_lock_door_39.wav']),
   lockClunk: [c(OWL, 'key_lock_door_51.wav'), c(LAL, 'lock.wav'), c(RUB, 'lock_open_01.ogg')],
-  latch: [c(OWL, 'key_lock_door_30.wav')],
+  latch: [LATCH],
+  // the click under a reel stop: the latch and two short metal hits (never auditioned in the game: peak-normalised and kept low)
+  clack: [LATCH, c(RUB, 'metal_hit_01.ogg', { dur: 0.2 }), c(RUB, 'metal_hit_02.ogg', { dur: 0.2 })],
   rattle: [c(OWL, 'key_lock_door_48.wav', { dur: 1.2 }), c(LAL, 'cant_open.wav')],
   doorOpenWood: [...many(QDOOR, Array.from({ length: 8 }, (_, i) => `qubodup-DoorOpen0${i + 1}.ogg`)), c(LAL, 'door_open.wav')],
   doorCloseWood: [...many(QDOOR, Array.from({ length: 10 }, (_, i) => `qubodup-DoorClose${String(i + 1).padStart(2, '0')}.ogg`)), c(RUB, 'wood_close_01.ogg'), c(RUB, 'wood_close_02.ogg'), c(LAL, 'door_close.wav')],
@@ -49,13 +53,24 @@ const GROUPS = {
   liftDoor: [c('sfx-pagdev-elevator-door', 'elevator_door.wav')],
   bell: [c(LAL, 'bell.wav', { dur: 1.7 })],
   drawer: [c(LAL, 'drawer_open.wav')],
+  // ── the casino loop (Mixkit casino, Mixkit SFX Free License; OpenGameArt win jingles, CC0). Windows measured offline
+  //    (scripts/qa/sfxLoud.mjs): the wheel whirr repeats every 0.4 s from 0.4 s to 4.0 s; the notification chime rings 0.1–2.1 s;
+  //    the jingle (F major) is 2.3 s; the fanfare (G major) runs 16 s at a steady level, accents at 0, 1.25, 2.25, 8.5 s; the
+  //    winner alarm rings flat from 0 to 10.4 s; the alarm-with-coins clip rattles from 0.2 to 15.5 s.
+  wheel: [c(MIX, 'slot_wheel_1932.mp3')],
+  winChime: [c(MIX, 'casino_win_notification_1986.mp3', { off: 0.09 })],
+  winJingle: [c(OGA, 'win_jingle_fupi.ogg', { dur: 2.4 })],
+  fanfare: [c(OGA, 'win_fanfare_gchoc.ogg')],
+  alarm: [c(MIX, 'classic_winner_alarm_1997.mp3')],
+  coinAlarm: [c(MIX, 'casino_win_alarm_coins_1990.mp3', { off: 0.2 })],
+  bellsReward: [c(MIX, 'casino_bells_reward_1981.mp3', { off: 0.1 })],
   rat: { attack: [c('sfx-qubodup-rat', 'rat_attack.ogg')], pain: [c('sfx-qubodup-rat', 'rat_pain.ogg')], death: [c('sfx-qubodup-rat', 'rat_death.ogg')] },
   // The long files: loaded one at a time on demand and kept in a small LRU pool (POOL_MAX).
   cheer: [
     [c('sfx-quendel-crowd-cheering', 'quendel_06_soft_cheering_ii.mp3', { off: 1, dur: 2.6 }), c('sfx-quendel-crowd-cheering', 'quendel_05_soft_cheering_i.mp3', { off: 1, dur: 2.6 })],                       // big
     [c('sfx-quendel-crowd-cheering', 'quendel_04_strong_cheering_ii_short.mp3', { off: 0.5, dur: 3.6 }), c('sfx-quendel-crowd-cheering', 'quendel_08_rhythmic_cheering.mp3', { off: 0.5, dur: 3.6 })],   // huge
     [c('sfx-quendel-crowd-cheering', 'quendel_03_strong_cheering_i.mp3', { off: 0.5, dur: 4.6 }), c('sfx-quendel-crowd-cheering', 'quendel_04_strong_cheering_ii_short.mp3', { off: 0.5, dur: 4.6 })],  // mega
-    [c('sfx-quendel-crowd-cheering', 'quendel_03_strong_cheering_i.mp3', { off: 0.5, dur: 6 }), c('sfx-quendel-crowd-cheering', 'quendel_08_rhythmic_cheering.mp3', { off: 0.5, dur: 6 })],               // jackpot
+    [c('sfx-quendel-crowd-cheering', 'quendel_03_strong_cheering_i.mp3', { off: 0.5, dur: 8 }), c('sfx-quendel-crowd-cheering', 'quendel_08_rhythmic_cheering.mp3', { off: 0.5, dur: 8 })],               // jackpot
   ] as readonly Group[],
   // Horror hits, quietest/shortest first so `param` 0..1 climbs from a quick scare to a heavy one.
   horror: [
@@ -79,7 +94,17 @@ export const WARM_URLS: string[] = [
   ...GROUPS.lockClunk, ...GROUPS.latch, ...GROUPS.rattle, ...GROUPS.doorOpenWood, ...GROUPS.doorCloseWood, ...GROUPS.doorOpenMetal,
   ...GROUPS.doorCloseMetal, ...GROUPS.slamWood, ...GROUPS.slamMetal, ...GROUPS.squeakOpen, ...GROUPS.squeakClose, ...GROUPS.squeak,
   ...GROUPS.knock, ...GROUPS.liftDoor, ...GROUPS.bell, ...GROUPS.drawer, ...GROUPS.rat.attack, ...GROUPS.rat.pain, ...GROUPS.rat.death,
+  ...GROUPS.clack, ...GROUPS.wheel, ...GROUPS.winChime, ...GROUPS.winJingle, ...GROUPS.fanfare, ...GROUPS.alarm, ...GROUPS.coinAlarm,
+  ...GROUPS.bellsReward,
 ].map((x) => x.u).filter((u, i, a) => a.indexOf(u) === i);
+
+/** Every recorded file real.ts can play (the loudness harness decodes them all; a test checks each one exists). */
+export const CLIP_URLS: string[] = [...new Set(JSON.stringify(GROUPS).match(/"u":"[^"]+"/g)!.map((m) => m.slice(5, -1)))];
+
+/** The casino-loop clips the recipes in sfx.ts play directly (with their procedural version as the fallback). */
+export type WinClip = 'wheel' | 'winChime' | 'winJingle' | 'fanfare' | 'alarm' | 'coinAlarm' | 'bellsReward' | 'lockClunk';
+/** Play one of the casino-loop clips into the recipe's Kit (peak `vol` before the recipe's trim). False = not decoded yet: use the synth. */
+export function winClip(k: Kit, id: WinClip, o: ClipOpts = {}): boolean { return play(k, GROUPS[id], { rand: 0, ...o }); }
 
 // ── Calm ──────────────────────────────────────────────────────────────────────────────────────────
 let calm = false;
@@ -100,7 +125,7 @@ function touch(u: string): void {
 const isLong = (cl: Clip): boolean => cl.u.includes('quendel') || cl.u.includes('psychhead');
 const lastPick = new WeakMap<Group, string>();
 
-interface ClipOpts { at?: number; vol?: number; rate?: number; rand?: number; dur?: number; a?: number; r?: number; pan?: number }
+interface ClipOpts { at?: number; vol?: number; rate?: number; rand?: number; off?: number; dur?: number; a?: number; r?: number; pan?: number }
 /** Play a random ready clip of `group` (peak `vol`); false when none is decoded yet (and kicks off the next load). */
 function play(k: Kit, group: Group, o: ClipOpts = {}): boolean {
   const ready = group.filter((x) => sampleStore.has(x.u));
@@ -110,7 +135,7 @@ function play(k: Kit, group: Group, o: ClipOpts = {}): boolean {
   const cand = ready.length > 1 ? ready.filter((x) => x.u !== prev) : ready;
   const cl = pick(cand);
   lastPick.set(group, cl.u);
-  const ok = k.clip(cl.u, { ...o, vol: (o.vol ?? 0.5) * (cl.lv ?? 1), off: cl.off, dur: Math.min(cl.dur ?? Infinity, o.dur ?? Infinity) });
+  const ok = k.clip(cl.u, { ...o, vol: (o.vol ?? 0.5) * (cl.lv ?? 1), off: (cl.off ?? 0) + (o.off ?? 0), dur: Math.min(cl.dur ?? Infinity, o.dur ?? Infinity) });
   if (ok && isLong(cl)) touch(cl.u);
   return ok;
 }
@@ -196,11 +221,20 @@ export function installReal(defs: Map<string, SfxDef>, makeDef: (names: string |
     return 1.2;
   });
 
+  // ── slot mechanics: a recorded click under the synthesised clack so a stop and a lever throw have a real edge ──
+  // (kept low: the synthesised hit already peaks near 0.6 full scale at the same instant)
+  layer(['reelStop'], (k, o, t) => { play(k, GROUPS.clack, { vol: 0.15 * t, rate: semi((o.param ?? 0) * 7), dur: 0.25 }); return 0.3; });
+  layer(['lever'], (k, _o, t) => {
+    play(k, GROUPS.latch, { vol: 0.15 * t, dur: 0.25 });
+    play(k, GROUPS.lockClunk, { at: 0.16, vol: 0.25 * t, rate: 0.85, dur: 0.4 });
+    return 0.56;
+  });
+
   // ── crowd cheers by win tier: param 0.4 big, 0.7 huge, 0.9 mega, 1 jackpot (winJingle) ──
   replace(['cheer'], (k, o, t) => {
     const p = o.param ?? 0.5, tier = p >= 0.95 ? 3 : p >= 0.8 ? 2 : p >= 0.6 ? 1 : 0;
     const g = GROUPS.cheer[tier], len = g[0].dur ?? 3;
-    if (!play(k, g, { vol: (0.34 + tier * 0.04) * t, a: 0.25, r: 0.9, rand: 0.03 })) return null;
+    if (!play(k, g, { vol: (0.34 + tier * 0.04) * t, a: tier === 3 ? 1.6 : 0.25, r: 0.9, rand: 0.03 })) return null;   // the jackpot crowd swells in
     return len + 0.4;
   });
 

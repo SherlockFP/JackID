@@ -435,6 +435,11 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
     const step = pc.fast ? 0 : stepMs / 1000;
     for (let i = 0; i < numbers.length; i++) {
       const n = numbers[i];
+      if (from + i === DRAWN - 1 && mine.size > 0 && step) {          // the last ball of the draw, with a ticket in play: a held breath, same for every game
+        this.sfx('tensionRise', { vol: 0.6, param: 0 });
+        await this.wait(0.55);
+        if (this.disposed) return;
+      }
       this.st.last.push(n);
       const relay = this.parts.relayLamps[from + i];
       relay.setColor(LAMP_DRAWN);
@@ -442,7 +447,7 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
       setLamp(this.parts.board, n, 'drawn');
       commitBoard(this.parts.board);
       this.parts.leds.next.set(String(n));
-      this.sfx('tileClack', { vol: 0.8 });
+      this.sfx('tileClack', { vol: 0.8, pitch: Math.min(6, (from + i) * 0.3) });   // the clacks climb through the draw
       if (mine.has(n)) {
         hits++;
         this.sfx('chime', { pitch: Math.min(12, hits * 2), vol: 0.7 });
@@ -504,7 +509,7 @@ export default class KenoLounge extends TableBase<KenoParts, Ev, Snap, Act> {
       this.ctx.fx.popText(at, text, ev.payout > ev.stake ? GOLD : GREEN, { dur: 1.2, rise: 0.3 });
       if (mine) {
         void this.celebrate(tier, {
-          amount: ev.payout, at, lamps: this.parts.relayLamps, fast: pc.fast,
+          amount: ev.payout, bet: ev.stake, at, lamps: this.parts.relayLamps, fast: pc.fast,
           restore: () => { this.paintBoard(); this.paintDesks(); },
         });
       }

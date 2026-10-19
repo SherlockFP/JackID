@@ -24,12 +24,11 @@ import { openSettingsScreen } from '@/core/ui/settingsScreen';
 import { openKitPicker } from './kitPicker';
 import { openFoundations } from './foundations';
 import { createMetaPrestige } from './foundations.logic';
-import { buildBackdrop, type Backdrop } from './menuBackdrop';
-import { buildDrums, type Drums } from './menuDrums';
+import { buildBackground } from './menuBackground';
 import { buildCabinet, DIE_CENTER, type Cabinet } from './menuCabinet';
 import { MenuDie, easeOutBack, type DieHit } from './menuDie';
 import { MenuBurst } from './menuBurst';
-import { bodyText, fitText, GOLD_HI, makeCanvasTex, paintDieFace, paintPanel, paintValueFace, panelText, PANEL_BUTTON, type CanvasTex, type PanelOpts } from './menuArt';
+import { makeCanvasTex, paintDieFace, paintPanel, paintValueFace, PANEL_BUTTON, type CanvasTex, type PanelOpts } from './menuArt';
 
 // Face order = BoxGeometry groups (+X, -X, +Y, -Y, +Z, -Z): PLAY faces you, MULTIPLAYER is one roll right, SETTINGS left,
 // FREE CASINO up, QUIT down (CONTINUE RUN takes that face while a run is saved), FOUNDATIONS round the back.
@@ -47,7 +46,7 @@ const PANEL_PX = { w: 1120, h: 480 };
 const PANEL_M = { w: 4.48, h: 1.92 };
 const PANEL_AT = new THREE.Vector3(0, -2.32, 1.31);   // in front of the cabinet's bottom bezel and the glass (GLASS_Z 1.16)
 /** The JACKID marquee (the cabinet paints it; its own plane stays hidden): 512 x 96 texture on the same aspect. */
-const TITLE_AT = new THREE.Vector3(0, 2.75, 0.78);
+const TITLE_AT = new THREE.Vector3(0, 3.0, 0.78);   // its bottom edge (2.6) clears the cabinet top (2.41)
 const TITLE_M = { w: 4.2, h: 4.2 * 96 / 512 };
 /** Per-value steps for the controls face (mouse sensitivity). */
 const SENS = [0.001, 0.0022, 0.0035, 0.005];
@@ -79,12 +78,8 @@ export function createMenuState(): AppStateHandler<'menu'> {
   const cab: Cabinet = buildCabinet();
   scene.add(cab.root);
 
-  const backdrop: Backdrop = buildBackdrop();
-  scene.add(backdrop.root);
-
-  // Giant reel drums close to the camera (left / right / top): the menu is read from inside the machine.
-  const drums: Drums = buildDrums();
-  scene.add(drums.root);
+  const bg = buildBackground();
+  scene.add(bg.root);
 
   const mainDie = new MenuDie(MAIN_DIE_SIZE);
   mainDie.base.copy(DIE_CENTER);
@@ -96,28 +91,6 @@ export function createMenuState(): AppStateHandler<'menu'> {
   scene.add(setDie.root);
   const burst = new MenuBurst(scene, mainDie, cab);
 
-  // Ultra-wide (21:9) framing: the two side reels sit at the frame edges, which leaves a dark gap between them and the cabinet.
-  // Two slimmer reels (clones of the side drums: shared geometry and materials) fill it, so the cabinet reads as the middle of a
-  // row of reels instead of a narrow column. They only show past 2:1, and their spin follows the real drums.
-  const sideReels: Array<{ g: THREE.Object3D; from: THREE.Object3D; k: number }> = [];
-  for (const [i, from] of [drums.root.children[0], drums.root.children[1]].entries()) {
-    if (!from) continue;
-    const g = from.clone(true);
-    g.scale.setScalar(0.64);
-    g.position.set(i === 0 ? -3.95 : 3.95, 0.4, 1.7);
-    g.visible = false;
-    scene.add(g);
-    sideReels.push({ g, from, k: -1.3 });
-  }
-  const frameWide = (): void => {
-    const a = app.camera.aspect || 1;
-    const on = a > 2.0;
-    for (const r of sideReels) {
-      if (r.g.visible !== on) r.g.visible = on;
-      if (on) { const sp = r.g.children[0], src = r.from.children[0]; if (sp && src) sp.rotation.y = src.rotation.y * r.k; }
-    }
-  };
-
   // Text in the scene (the menu has no DOM overlay): the marquee's JACKID texture as the title, and one canvas panel
   // under the glass for the focused entry, the credits and the quit card.
   const titleMesh = new THREE.Mesh(new THREE.PlaneGeometry(TITLE_M.w, TITLE_M.h), psxMaterial({ map: cab.marquee.tex, color: 0xffffff, lit: false }));
@@ -125,7 +98,8 @@ export function createMenuState(): AppStateHandler<'menu'> {
   scene.add(titleMesh);
   const panel: CanvasTex = makeCanvasTex(PANEL_PX.w, PANEL_PX.h);
   crispTexture(panel.tex);   // linear + mipmapped: the text is drawn smaller than its texture and must not shimmer
-  const panelMesh = new THREE.Mesh(new THREE.PlaneGeometry(PANEL_M.w, PANEL_M.h), psxMaterial({ map: panel.tex, color: 0xffffff, lit: false }));
+  const panelMat = psxMaterial({ map: panel.tex, color: 0xffffff, lit: false, transparent: true, unique: true }) as THREE.MeshBasicMaterial;
+  const panelMesh = new THREE.Mesh(new THREE.PlaneGeometry(PANEL_M.w, PANEL_M.h), panelMat);
   panelMesh.position.copy(PANEL_AT);
   // the panel lives in its own scene, drawn by the crisp pass (menuState's frame hands it to the renderer as the overlay)
   const panelScene = new THREE.Scene();
@@ -142,6 +116,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
   let hoverDie: MenuDie | null = null;
   let lastHoverSound = -1;
   let lastFocusKey = '';
+  let fade = 1;                            // the plate dims while the die rolls, so old text never sits beside the new face
   let panelButton = false;                 // the panel now shows the CREDITS button (the SETTINGS face is in front)
   let infoFrom: 'main' | 'settings' = 'main';   // the phase the credits / quit card came from
   let unsubSettings: (() => void) | null = null;
@@ -214,40 +189,17 @@ export function createMenuState(): AppStateHandler<'menu'> {
   /** The text panel under the glass (see paintPanel). Any panel without the button clears the CREDITS hit area. */
   const paintInfo = (o: PanelOpts): void => {
     panelButton = Boolean(o.button);
-    panel.paint((c, w, h) => {
-      // The controls line is set here, not by paintPanel: it is fitted to 84% of the panel width at no more than 0.10 of its
-      // height, and sits well above the inner frame line, so the longest Turkish hint never runs into the frame (21:9 report).
-      // The inner frame line (menuArt frame) sits at (w / 40) * 2.2 from the edge, so on a wide plate (21:9) it is a big share of
-      // the height. The title is drawn here (paintPanel gets an empty one) so its top clears that line on every aspect, and the
-      // hint sits above the line with a margin, its size fitted to the room between the body and the line.
-      const frameIn = (w / 40) * 2.2 + Math.max(2, w / 96) / 2;
-      paintPanel(c, w, h, { ...o, title: '', hint: undefined });
-      const tTop = frameIn + h * 0.025, tBot = (o.bodyTop ?? 0.33) * h - h * 0.015;
-      const tPx = Math.max(10, Math.min(h * 0.14, tBot - tTop));
-      fitText(c, o.title, w / 2, Math.max(h * 0.185, tTop + tPx / 2), w * 0.9, tPx, GOLD_HI);
-      if (!o.hint) return;
-      const floor = h - frameIn - Math.max(6, h * 0.03);      // lowest pixel the hint may reach
-      const ceil = h * 0.7;                                    // keep clear of the title and the body text
-      let px = Math.round(h * 0.1);
-      for (; px > 12; px -= 2) {
-        c.font = `${px}px "VT323", monospace`;
-        if (c.measureText(o.hint).width <= w * 0.84 && floor - px >= ceil) break;
-      }
-      bodyText(c, o.hint, w / 2, floor - px / 2, px, '#8fd9ff', 'center');
-    });
+    panel.paint((c, w, h) => paintPanel(c, w, h, o));
   };
 
-  /** The focused entry: its name, its description (two lines at most), the control hint and, on the SETTINGS face,
-   *  the CREDITS button (click it or press I). */
-  const paintFocus = (item: string, descKey: string, hintKey: string): void => {
+  /** The focused entry: a compact plate with the control hint and, on the SETTINGS face, the CREDITS button (click it or
+   *  press I). The die already names its face, so the plate does not. */
+  const paintFocus = (item: string, hintKey: string): void => {
     paintInfo({
-      title: t(`menu.face.${item}`), body: t(descKey), maxLines: 2, hint: t(hintKey),
+      title: '', compact: true, hint: t(hintKey),
       button: item === 'settings' ? `${t('menu.face.credits')}  (${t('menu.key.credits')})` : undefined,
     });
   };
-
-  /** Description key of a main entry (PLAY says it replaces a saved run). */
-  const mainDescKey = (item: string): string => (item === 'play' && savedRun() ? 'menu.desc.playReplace' : `menu.desc.${item}`);
 
   const repaintAll = (): void => {
     for (let i = 0; i < 6; i++) { paintMain(i); paintSet(i); }
@@ -370,7 +322,7 @@ export function createMenuState(): AppStateHandler<'menu'> {
     infoFrom = phase;
     phase = 'info';
     paintInfo(kind === 'credits'
-      ? { title: t('menu.credits.title'), body: t('menu.credits.body').split('|'), bodyTop: 0.28, bodyH: 0.5, hint: t('menu.hint.info') }
+      ? { title: t('menu.credits.title'), body: t('menu.credits.body').split('|'), bodyTop: 0.27, bodyH: 0.46, hint: t('menu.hint.info') }
       : { title: t('menu.quit.title'), body: t('menu.quit.body'), hint: t('menu.hint.info') });
     sfx('chime');
   };
@@ -592,16 +544,13 @@ export function createMenuState(): AppStateHandler<'menu'> {
 
   // ── camera ─────────────────────────────────────────────────────────────────────────────────────
 
-  /** Far enough that the whole cabinet (5.1 m tall, 5.4 m wide) and its marquee fit the frame. */
+  /** Height fit: the cabinet, the marquee above it and the plate below always fill the view height, so a wide screen
+   *  (21:9) shows more background instead of a smaller cabinet. Only a narrow screen is fitted by width. */
   const cameraDistance = (): number => {
     const tanV = Math.tan((CAM_FOV * Math.PI) / 360);
-    const byHeight = 1.15 + 3.45 / tanV;
+    const byHeight = 1.15 + 3.7 / tanV;
     const byWidth = 1.15 + CAB_HALF_WIDTH / (tanV * Math.max(0.2, app.camera.aspect || 1));
-    // wide screens (16:9, 21:9): the height fit leaves empty side room, so lean in a little; the marquee and the
-    // panel keep a safe margin (never below 90% of the fit)
-    const a = app.camera.aspect || 1;
-    const lean = a > 1.6 ? Math.min(0.1, (a - 1.6) * 0.1) : 0;
-    return Math.max(byHeight * (1 - lean), byWidth);
+    return Math.max(byHeight, byWidth);
   };
 
   return {
@@ -661,18 +610,18 @@ export function createMenuState(): AppStateHandler<'menu'> {
       mainDie.update(dt);
       setDie.update(dt);
       cab.update(dt, time);
-      backdrop.update(dt, time);
-      drums.update(dt, time);
-      frameWide();
+      bg.update(time, app.camera);
       // the panel under the glass follows the die once it stops rolling: the focused entry and its controls
       const onSet = setDie.root.visible && phase !== 'main';
       const die = onSet ? setDie : mainDie;
+      fade += ((die.rolling ? 0.1 : 1) - fade) * (1 - Math.exp(-dt * 14));
+      panelMat.opacity = fade;
       if (!die.rolling && phase !== 'burst' && phase !== 'info') {
         const item: string = onSet ? SET_FACES[die.frontFace()] : faceItem(die.frontFace());
         const key = `${onSet ? 's' : 'm'}:${item}:${savedRun() ? 1 : 0}`;
         if (key !== lastFocusKey) {
           lastFocusKey = key;
-          paintFocus(item, onSet ? `menu.desc.${item}` : mainDescKey(item), onSet ? 'menu.hint.settings' : 'menu.hint.roll');
+          paintFocus(item, onSet ? 'menu.hint.settings' : 'menu.hint.roll');
         }
       }
       if (phase === 'burst') {

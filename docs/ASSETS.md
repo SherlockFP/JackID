@@ -77,6 +77,15 @@ All ten packs are wired into game code (see "Loaded by the game" below).
 | `sfx-psychhead-horror-hits/` | Horror Hit Soundpack 1, psychhead_ | https://opengameart.org/content/horror-hit-soundpack-1 | CC0 1.0 | 8 WAV (Bassy, Very Bassy, Mid, High), 7.3 MB |
 | `sfx-qubodup-rat/` | Squeaky Rat, qubodup | https://opengameart.org/content/squeaky-rat | CC0 1.0 | 3 OGG (attack, death, pain), 0.02 MB |
 
+**Added 2026-10-19 (casino loop, wave 82):**
+
+| Folder | Pack and author | Source | Licence | Vendored |
+|---|---|---|---|---|
+| `sfx-mixkit-casino/` | Casino sound effects, Mixkit (slot wheel, random wheel, win notification, win alarm and coins, classic winner alarm, bells reward) | https://mixkit.co/free-sound-effects/casino/ | Mixkit Sound Effects Free License (https://mixkit.co/license/#sfxFree): free in games, no attribution required, not to be redistributed on their own | 6 MP3, 1.6 MB |
+| `sfx-oga-wins/` | "Win Fanfare", gchoc; "Win Jingle" (fretless), Fupi | https://opengameart.org/content/win-fanfare, https://opengameart.org/content/win-jingle | CC0 1.0 | 2 OGG, 0.4 MB |
+
+Courtesy credit (not required): "Casino sounds from Mixkit; win fanfare by gchoc and win jingle by Fupi (CC0), OpenGameArt".
+
 **Credit line (CC BY 4.0, required):** "Crowd cheering sounds by Gregor Quendel, CC BY 4.0"
 (https://creativecommons.org/licenses/by/4.0/). Shown on the Credits screen in EN and TR
 (`src/menu/menu.strings.ts`). Audio is unedited; only the filenames were shortened. Wired in: see "Loaded by the game" below.
@@ -95,13 +104,14 @@ Each row names the file that loads the asset. A pack not listed here is vendored
 
 | What | Loaded by | Packs |
 |---|---|---|
-| Recorded sounds (the ten `sfx-*` packs above, with the procedural fallback kept for each name) | `src/core/audio/real.ts`, installed from `src/core/audio/sfx.ts` | owlish-more-sfx, laleksic-various, rubberduck-metal-wood, qubodup-doors, pagdev-elevator-door, starninjas-crowd (loop), chirptone-ringtone, quendel-crowd-cheering, psychhead-horror-hits, qubodup-rat |
+| Recorded sounds (the ten `sfx-*` packs above, with the procedural fallback kept for each name) | `src/core/audio/real.ts`, installed from `src/core/audio/sfx.ts` | owlish-more-sfx, laleksic-various, rubberduck-metal-wood, qubodup-doors, pagdev-elevator-door, starninjas-crowd (loop), chirptone-ringtone, quendel-crowd-cheering, psychhead-horror-hits, qubodup-rat, mixkit-casino (reel whirr, win chime, alarms, bells), oga-wins (fanfare, jingle) |
 | Casino sound set (cards, chips, dice) | `src/core/audio/sfx.ts` (`DIR`) | kenney-casino-audio |
 | Textures (PSX pipeline, 32 or 64 px) | `src/kit/presets.ts` (named presets: wood, felt, brushed, plate, tufted, velvet, rust, cloth), `src/world/level.ts` (boiler grating, parlour wood, walls, wainscot), `src/world/props/decor.ts` (marble), `src/world/props/trapdoor.ts`, `src/world/props/vendorModels.ts` | sbs-synthetic (wood, felt, leather, fabric, stone), sbs-tiny2 (wood), sbs-tiny3 (grating, cloth, metal), sbs-horror (walls, metal), phobicpaul-lowpoly64 (plate) |
 | Pixel fonts, sign faces | `src/world/props/signs.ts` (`public`, `chetyre`) | ggbot-public-pixel, hanshuyuri-chetyre |
 | Toast capitals İ Ö Ü | `src/core/ui/ui.css` (`JackID Toast Caps`, toast text only; Public Pixel, scaled to VT323's cap height so the dot does not rise) | ggbot-public-pixel |
 | Mannequin (dealers, staff, cutscene actors) | `src/kit/types.ts` (`MANNEQUIN_GLB`) | quaternius-ual |
 | PSX couch (apartment) | `src/world/props/vendorModels.ts` | duhgless-psx-couch-2 |
+| First-person arms (rigged GLB, 52 bones, 18 clips, fingerless gloves; texture through the vendor pipeline at 128 px) | `src/player/viewmodel/arms.ts` (`GLB`, `look`) | drillimpact-psx-arms: "PSX First Person Arms" v1.1.0, Drillimpact, https://drillimpact.itch.io/psx-first-person-arms-free, CC0 1.0 (credit not required; courtesy line: "First-person arms by Drillimpact (CC0)"). `arms_gloves_01.png` is the default, `arms_01.png` (bare hands) shows with Settings, Gloves off |
 | Medieval tavern interior (OBJ pieces, async) | `src/world/props/vendorModels.ts` (`TAVERN`), placed from `src/world/level.ts` | battleroach-medieval-tavern |
 
 **Not loaded yet:** `gualtierisgg-rpg-furniture-2` (36 FBX, no code path) and `skeddles-thintel` (ASCII only, no Turkish glyphs). The Thintel credit line stays on the Credits screen because the licence needs it while the font is vendored.

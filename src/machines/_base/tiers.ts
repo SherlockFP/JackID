@@ -168,6 +168,20 @@ export function streakSteps(n: number): number {
   return Math.min(STREAK_STEP_CAP, Math.max(0, Math.floor(n) - STREAK_MIN + 1));
 }
 
+/**
+ * Semitones a spin cue (lever, button, reel start / stop, the reel whirr) is raised by a win streak of `n`: +0.5 per win after
+ * the first, capped at +4. Softer than {@link streakSteps} (which starts at the third win and lifts the jingle): the machine
+ * itself starts to sound hotter from the second win on.
+ */
+export function streakPitch(n: number): number {
+  return Math.min(4, Math.max(0, Math.floor(n) - 1) * 0.5);
+}
+
+/** Brightness multiplier of the win light pulse for a streak of `n`: +5 % per win after the first, capped at +40 %. */
+export function streakGlow(n: number): number {
+  return 1 + Math.min(8, Math.max(0, Math.floor(n) - 1)) * 0.05;
+}
+
 /** Anticipation before an impact of tier `t`, in sim seconds: `big` 0.6 s, `huge` and up 1.2 s, lower tiers none. */
 export function windupSec(t: JuiceTier): number {
   return t === 'big' ? 0.6 : tierAtLeast(t, 'huge') ? 1.2 : 0;

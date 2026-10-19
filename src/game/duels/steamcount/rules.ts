@@ -19,8 +19,8 @@
  * Host only: the state holds the roll counter. Public information is `publicEvents`, `clues` and `log`.
  */
 import { createRng, hashSeed } from '@/core/rng';
-import { FAIR_KIND, POT, runHeadless, settleNet, other, type Side, type TurnState } from '../gamekit';
-import type { CallTarget, CheatPlan, Clue, DuelRules, DuelState, RevealScript, TextRef } from '../types';
+import { FAIR_KIND, POT, lit, runHeadless, settleNet, other, type Side, type TurnState } from '../gamekit';
+import type { Board, CallTarget, CheatPlan, Clue, DuelRules, DuelState, Piece, RevealScript, TextRef } from '../types';
 
 export const ID = 'steamcount';
 export const RIVAL = 'kuro';
@@ -208,6 +208,19 @@ export function describe(st: DuelState): TextRef[] {
   ];
 }
 
+/** The gauge as a bar, the last roll as two dice (public: both sides watch it), the round score. */
+export function board(st: DuelState): Board {
+  const s = st as SCState;
+  const last = [...s.log].reverse().find((e) => (e as { k?: string }).k === 'roll') as { by: Side; a: number; b: number } | undefined;
+  const dice: Piece[] = s.gauge > 0 && last ? [last.a, last.b].map((n) => ({ top: lit(n), mark: last.by === 'player' ? ('mine' as const) : ('his' as const) })) : [];
+  return {
+    zones: dice.length ? [{ label: { key: 'duel.sc.zone.dice', data: { sum: (last?.a ?? 0) + (last?.b ?? 0) } }, pieces: dice }] : [],
+    meter: { label: { key: 'duel.sc.zone.gauge', data: { gauge: s.gauge } }, value: s.gauge, max: BLOW, danger: HOT },
+    score: { you: s.roundWins.player, him: s.roundWins.rival, of: ROUNDS_TO_WIN },
+    notes: [{ key: 'duel.sc.note.vent', data: { left: Math.max(0, BLOW - s.gauge), vent: Math.round(s.gauge * VENT_UNIT * s.stake) } }],
+  };
+}
+
 export const callTargets = (): CallTarget[] => [{ target: CALL_DICE, label: { key: 'duel.sc.call' } }];
 
 // ── headless ──────────────────────────────────────────────────────────────────────────────────────────
@@ -215,7 +228,7 @@ export const steamCount: DuelRules<SCAction> & { verdict: typeof verdict; reveal
   id: ID, rival: RIVAL, makePlan, init, legal, step, rivalAct, call,
   settle: settleNet, reveal, revealFair, verdict,
   turnOf: (s) => (s as SCState).turn,
-  describeAction, describeEvent, describe, callTargets,
+  describeAction, describeEvent, describe, callTargets, board, goal: 'duel.sc.goal',
   playHeadless: (seed, policy) => runHeadless<SCAction>({
     rules: steamCount,
     move: (s) => pickMove(s as SCState, 'player'),

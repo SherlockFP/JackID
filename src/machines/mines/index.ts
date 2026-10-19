@@ -475,7 +475,7 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
     if (ev.res === 'safe') {
       this.parkSocket(ev.cell, true);
       this.sfx('chime', { vol: 0.8, pitch: Math.min(12, ev.n - 1) });   // rising ping, one semitone per safe tile
-      this.sfx('coinLand', { vol: 0.6 });
+      this.sfx('coinClink', { vol: 0.6 });                              // the coin drops in its socket: one clink, the chime carries the rest
       if (ev.mult >= 10) this.sfx('heartbeat', { vol: Math.min(1, 0.3 + ev.mult / 200) });
       fx.sparks(tile, 4 + Math.min(12, ev.n * 2), GOLD);
       fx.glow(tile, GOLD, 0.18 + 0.02 * ev.n, 0.4);
@@ -557,7 +557,7 @@ export default class Mines extends MachineBase<MinesParts, Ev, Snap> {
         // a medium-plus cash-out gets the full show (coins, flash, pop, jingle) and keeps the on-screen count-up under it
         void this.celebrate(tier, { amount: ev.gross - bet, bet, fast: pc.fast });
         if (!pc.fast && (tier === 'huge' || tier === 'mega' || tier === 'jackpot')) fx.shake(0.04, 0.5, { roll: 1.6 });
-        await countUp(this.ctx, 0, ev.gross, pc.fast ? 0.1 : 1.0 * this.speed, (v) => this.drawScreen(v));
+        await countUp(this.ctx, 0, ev.gross, pc.fast ? 0.1 : 1.0 * this.speed, (v) => this.drawScreen(v), { tick: true });
       } else {
         await this.pourCoins(ev.gross, { bet, fast: pc.fast, onCount: (v) => this.drawScreen(v) });
       }

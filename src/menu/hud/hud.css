@@ -38,13 +38,37 @@
 
 /* top-centre: watch clock, night line */
 .hud .clock { display: flex; align-items: baseline; gap: calc(4 * var(--u)); white-space: nowrap; }
-.hud .clock .num { font-size: calc(16 * var(--u)); color: var(--ivory); }
+.hud .clock .phase { color: var(--ivory); }
 .hud .sub { display: flex; align-items: center; gap: calc(6 * var(--u)); white-space: nowrap; }
-.hud .clock.lastcall .num, .hud .clock.lastcall .phase { color: var(--signal); animation: hud-blink .5s steps(2, start) infinite; }
+.hud .clock.lastcall .phase { color: var(--signal); animation: hud-blink .5s steps(2, start) infinite; }
+/* the last minute of a Watch: amber and a slow pulse; the Night's last Watch: red (the same pulse in its last minute) */
+.hud .clock.soon .phase { color: var(--amber); animation: nbar-pulse .9s ease-in-out infinite alternate; }
+.hud .clock.last .phase { color: #ff5a4a; }
+/* NIGHT TIMELINE (nightBar.ts): one segment per Watch, a gap per Mola, a sun for Dawn. Marker = the current segment's fill edge. */
+.hud .nbar { display: flex; align-items: center; flex: 1 1 auto; min-width: calc(110 * var(--u)); height: calc(7 * var(--u)); gap: calc(2 * var(--u)); }
+.hud .nbar .seg { position: relative; flex: 1 1 0; height: 100%; background: #26222c; box-shadow: 0 0 0 calc(1 * var(--u)) #000; }
+.hud .nbar .f { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--bone); }
+.hud .nbar .seg.cur .f { background: var(--shine); }
+.hud .nbar .seg.cur .f::after { content: ''; position: absolute; right: 0; top: calc(-1 * var(--u)); bottom: calc(-1 * var(--u)); width: calc(1 * var(--u)); background: #fff; }
+.hud .nbar .seg.nx { box-shadow: 0 0 0 calc(1 * var(--u)) var(--shine); }
+.hud .nbar .gap { flex: 0 0 calc(4 * var(--u)); height: 100%; background: #000; text-align: center; overflow: hidden;
+  font-family: var(--f-head); font-size: max(9px, calc(5 * var(--u))); line-height: calc(7 * var(--u)); color: var(--shine); }
+.hud .nbar .gap.on { flex-basis: calc(28 * var(--u)); background: #3a2f14; animation: nbar-pulse 1.2s ease-in-out infinite alternate; }
+.hud .nbar.soon .seg.cur .f { background: var(--amber); animation: nbar-pulse .9s ease-in-out infinite alternate; }
+.hud .nbar.last .seg.cur .f { background: var(--signal); }
+.hud .nbar.last .seg.cur { box-shadow: 0 0 0 calc(1 * var(--u)) var(--signal); }
+.hud .sun { display: inline-flex; align-items: center; gap: calc(2 * var(--u)); font-style: normal; font-family: var(--f-head);
+  font-size: max(9px, calc(5 * var(--u))); color: var(--bone); }
+.hud .sun::before { content: ''; width: calc(7 * var(--u)); height: calc(7 * var(--u)); border-radius: 50%; background: #5a4a2a; box-shadow: 0 0 0 calc(1 * var(--u)) #000; }
+.hud .sun.on { color: var(--shine); }
+.hud .sun.on::before { background: var(--shine); box-shadow: 0 0 0 calc(1 * var(--u)) #000, 0 0 calc(4 * var(--u)) var(--amber); }
+.hud .sun.dawn::before { animation: nbar-pulse .6s ease-in-out infinite alternate; }
+@keyframes nbar-pulse { from { opacity: 1; } to { opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .hud .clock.soon .phase, .hud .nbar .gap.on, .hud .nbar.soon .seg.cur .f, .hud .sun.dawn::before { animation: none; } }
 /* Intermission (MOLA): the top line is a call to action, in the shine colour, and may wrap rather than clip */
 .hud .clock.interm { max-width: 100%; flex-wrap: wrap; justify-content: center; }
 /* one line when it fits (the Mola line, ~47 characters at 6u), and a clean two-line wrap inside its slot when it does not. */
-.hud .clock.interm .phase { color: var(--shine); white-space: normal; max-width: 100%; font-size: max(10px, calc(6 * var(--u))); text-align: center; line-height: 1.2; }
+.hud .clock.interm .phase { color: var(--shine); white-space: normal; max-width: 100%; text-align: center; line-height: 1.2; }
 .hud .phase { font-family: var(--f-head); font-size: max(11px, calc(8 * var(--u))); color: var(--bone); }
 .hud .night { font-family: var(--f-head); font-size: max(11px, calc(8 * var(--u))); color: var(--bone); }
 /* THE CIRCUIT: Hot / Cold Lamps line under the night line (walk mode) */
@@ -239,7 +263,3 @@
    (ui.css puts it at 50% + 12u). The seated view hides it (ui.css .px-root.seated). */
 .px-root:not(.seated) .px-prompt { bottom: calc(50% + 72 * var(--u)); }
 
-/* ELAPSED readout beside the Watch clock: the inline 13 px at 70% opacity was unreadable, so it takes the body face at 12 UI px
-   (3/4 of the clock digits), full bone colour. !important beats the inline style set in hud.ts. */
-.hud .clock .elapsed { font-family: var(--f-body) !important; font-size: calc(12 * var(--u)) !important; line-height: 1; opacity: 1 !important;
-  color: var(--bone) !important; margin-left: calc(4 * var(--u)) !important; }

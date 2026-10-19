@@ -28,7 +28,7 @@
  */
 import { createRng, hashSeed } from '@/core/rng';
 import { POT, channelsOf, runHeadless, settleNet, type Side as Who, type TurnState } from '../gamekit';
-import type { CallTarget, CheatPlan, Clue, DuelRules, DuelState, RevealScript, TextRef } from '../types';
+import type { Board, CallTarget, CheatPlan, Clue, DuelRules, DuelState, Piece, RevealScript, TextRef, Zone } from '../types';
 import {
   HANDS, aiAnswer, counterOf, createMatch, loserTo, playRound,
   type Hand, type Profile, type PromiseState, type RoundLog,
@@ -316,6 +316,32 @@ export function describe(st: DuelState): TextRef[] {
   return out;
 }
 
+/**
+ * The word on the table, your staged throw (your own hand) or, between rounds, the hands of the last round. His committed throw is not in
+ * the data until the round settles.
+ */
+export function board(st: DuelState): Board {
+  const s = st as PRState;
+  const hand = (h: Hand, mark?: Piece['mark']): Piece => ({ top: { key: `promise.hand.${h}` }, tone: HANDS.indexOf(h), mark });
+  const zones: Zone[] = [];
+  if (s.promise) zones.push({ label: { key: s.m.caller === 'b' ? 'duel.pr.zone.wordHim' : 'duel.pr.zone.wordYou' }, pieces: [hand(s.promise, 'next')] });
+  if (s.mine) zones.push({ label: { key: 'duel.pr.zone.yours' }, pieces: [hand(s.mine, 'mine')] });
+  const last = s.m.log[s.m.log.length - 1];
+  if (!s.promise && last) {
+    const mineThrow = last.caller === 'a' ? last.callerThrow : last.answerThrow;
+    const hisThrow = last.caller === 'a' ? last.answerThrow : last.callerThrow;
+    zones.push({
+      label: { key: 'duel.pr.zone.last' },
+      pieces: [hand(mineThrow, last.winner === 'a' ? 'win' : last.winner === 'b' ? 'lose' : 'mine'), hand(hisThrow, last.winner === 'b' ? 'win' : last.winner === 'a' ? 'lose' : 'his')],
+    });
+  }
+  return {
+    zones,
+    score: { you: s.m.seats.a.points, him: s.m.seats.b.points, of: s.m.goal },
+    notes: [{ key: 'duel.pr.note.cracks', data: { yc: s.m.seats.a.cracks, hc: s.m.seats.b.cracks, limit: s.m.crackLimit } }],
+  };
+}
+
 export const callTargets = (): CallTarget[] => [{ target: CALL_MIRROR, label: { key: 'duel.pr.call' } }];
 
 // ── headless (balance runs, tests) ───────────────────────────────────────────────────────────────────────
@@ -343,7 +369,7 @@ export const lucanDuel: DuelRules<PRAction> & { verdict: typeof verdict; revealF
   id: ID, rival: RIVAL, makePlan, init, legal, step, rivalAct, call,
   settle: settleNet, reveal, revealFair, verdict, rewards,
   turnOf: (s) => (s as PRState).turn,
-  describeAction, describeEvent, describe, callTargets,
+  describeAction, describeEvent, describe, callTargets, board, goal: 'duel.pr.goal',
   playHeadless: (seed, policy) => runHeadless<PRAction>({
     rules: lucanDuel,
     move: (s, l) => pickMove(s, l),

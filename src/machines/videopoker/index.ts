@@ -377,7 +377,7 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     await this.wait(0.2);
     for (let i = 0; i < 5; i++) {
       this.backs &= ~(1 << i);
-      this.sfx('cardFlip', { vol: 0.8 });
+      this.sfx('cardFlip', { vol: 0.8, pitch: i });             // the five flips climb a semitone each
       this.drawScreen();
       await this.wait(0.12);
     }
@@ -395,10 +395,11 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     if (!pc.fast) {
       this.backs = replaced;
       this.refresh();
+      let flipped = 0;
       for (let i = 0; i < 5; i++) {
         if (!((replaced >> i) & 1)) continue;
         this.backs &= ~(1 << i);
-        this.sfx('cardFlip');
+        this.sfx('cardFlip', { pitch: flipped++ });             // the new cards climb, the last one is the highest
         this.drawScreen();
         await this.wait(0.15);
       }
@@ -464,9 +465,8 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     } else if (ev.res === 'push') {
       this.sfx('bell');
     } else {
-      this.sfx('lose');
       this.ctx.fx.shake(0.01, 0.2);
-      this.commiserate({ amount: this.roundBet, at: screen.mesh });
+      this.commiserate({ amount: this.roundBet, at: screen.mesh });   // plays the dud itself
     }
     this.refresh();
     if (!pc.fast) await this.wait(0.6);
@@ -485,7 +485,7 @@ export default class VideoPoker extends MachineBase<VideoPokerParts, Ev, State> 
     if (tier === 'medium' || tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot') {
       // a royal already had its jackpot show at the draw: collect only counts the pot up under it
       if (tier !== 'jackpot') void this.celebrate(tier, { amount: ev.amount, bet: ev.bet, marquee, fast: pc.fast, at: screen.mesh });
-      await countUp(this.ctx, 0, ev.amount, pc.fast ? 0.1 : 1.2 * this.speed, (v) => this.drawScreen(v));
+      await countUp(this.ctx, 0, ev.amount, pc.fast ? 0.1 : 1.2 * this.speed, (v) => this.drawScreen(v), { tick: true });
     } else {
       await this.pourCoins(ev.amount, { bet: ev.bet, fast: pc.fast, onCount: (v) => this.drawScreen(v) });
     }

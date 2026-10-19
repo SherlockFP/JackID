@@ -377,7 +377,7 @@ const PIT_SIZES = ['S', 'M', 'L', 'XL'];
  * A synthetic catalogue on FLOOR_READY ids (the line-up draws only those): solo tier-1 entries spanning every size, suit
  * and volatility class. The metadata is synthetic; the ids are real so the whitelist lets them through.
  */
-const PIT_IDS = ['videopoker', 'scratch', 'cyclone', 'pachinko', 'pachislot', 'fortuneteller', 'hilo', 'bandit', 'tavla', 'threecard'];
+const PIT_IDS = ['videopoker', 'mines', 'plinko', 'hilo', 'cascade', 'keno', 'derby', 'sonkart'];   // Wave 81: the core games only
 function pitCatalog() {
   return PIT_IDS.map((id, i) => ({ id, slotSize: PIT_SIZES[i % 4], tier: 1, seats: 1, suit: PIT_SUITS[i % 6], volatility: PIT_VOL[i % 3] }));
 }
@@ -387,7 +387,7 @@ test('pit deck: only FLOOR_READY machines are drawn, even from a wider catalogue
   const { rosterFor, FLOOR_READY } = await load('src/world/layout.ts');
   const wide = [
     ...pitCatalog(),
-    ...['claw', 'plinko', 'mines', 'lootbox', 'stacker', 'elevator'].map((id, i) => ({ id, slotSize: 'S', tier: 1, seats: 1, suit: 'REELS', volatility: i % 2 ? 'WILD' : 'STEADY' })),
+    ...['claw', 'scratch', 'cyclone', 'lootbox', 'stacker', 'elevator'].map((id, i) => ({ id, slotSize: 'S', tier: 1, seats: 1, suit: 'REELS', volatility: i % 2 ? 'WILD' : 'STEADY' })),
   ];
   for (let seed = 1; seed <= 30; seed++) {
     for (const id of Object.values(rosterFor(seed, wide))) {
@@ -464,13 +464,11 @@ test('pit deck: the guard keeps the GDD §8.6 devices when the catalogue cannot 
   assert.deepEqual(rosterFor(7, modeOut, 'debt'), defaults, 'no machine in this mode');
 });
 
-test('pit deck: with the real FLOOR_READY machines the line-up passes the guard on most seeds (≥ 4 suits)', async () => {
+test('pit deck: with the real FLOOR_READY machines the line-up passes the guard on most seeds (≥ 3 suits, wave 81)', async () => {
   const { rosterFor, FLOOR_READY, ROSTER_PADS, DEFAULT_ASSIGN } = await load('src/world/layout.ts');
-  // real ids with their real size, tier, suit and volatility class (game/suits.ts, data/machineProfiles.ts, def.slotSize)
+  // real ids with their real size, tier, suit and volatility class (game/suits.ts, data/machineProfiles.ts, def.slotSize): the solo core games
   const real = [
-    ['videopoker', 'M', 1, 'CARDS', 'SWINGY'], ['scratch', 'M', 1, 'REELS', 'SWINGY'], ['cyclone', 'M', 2, 'WHEELS', 'STEADY'],
-    ['pachinko', 'M', 2, 'DROPS', 'WILD'], ['pachislot', 'M', 2, 'REELS', 'WILD'], ['fortuneteller', 'M', 2, 'CURIOS', 'STEADY'],
-    ['hilo', 'M', 2, 'CARDS', 'WILD'], ['bandit', 'S', 1, 'REELS', 'WILD'],
+    ['videopoker', 'M', 1, 'CARDS', 'SWINGY'], ['hilo', 'M', 2, 'CARDS', 'WILD'], ['mines', 'M', 2, 'CURIOS', 'STEADY'], ['plinko', 'M', 2, 'DROPS', 'STEADY'],
   ].map(([id, slotSize, tier, suit, volatility]) => ({ id, slotSize, tier, seats: 1, suit, volatility }));
   assert.ok(real.every((c) => FLOOR_READY.has(c.id)), 'catalogue ids are floor-ready');
   const defaults = Object.fromEntries(ROSTER_PADS.map((p) => [p, DEFAULT_ASSIGN[p]]));

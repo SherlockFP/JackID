@@ -34,6 +34,7 @@ import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game
 import type { InstanceId, PlayerId } from '@/core/types';
 import { initial, mmss, Roller, signed } from './hud/fmt';
 import { createProcPops, goldBurst, pegBadge, pegLabel, playProcTick, renderSetChips, setChipName } from './hud/charmProc';
+import { barView, leftText } from './hud/nightBar';
 import { countUpSec, heatTone, overTierLevel, overTierSting, quotaCrossings, rollPitch, TickGate } from './hud/juiceMath';
 import { FIXED_STEP } from '@/core/loop';
 import { charmDef } from '@/game/charms/engine';
@@ -204,14 +205,15 @@ export function createHud(): Hud {
 
   // ── top-centre: clock + night line ──────────────────────────────────────────────────────────────
   const clock = h('div', 'clock', topC);
-  const clockNum = h('span', 'num', clock, '00:00');
   const clockPhase = h('span', 'phase', clock, '');
-  // ELAPSED: the run's time so far (mm:ss), small, beside the Watch clock. Sim time, so it stops with the game's pauses.
-  const elapsedEl = h('span', 'elapsed', clock, '');
-  elapsedEl.style.cssText = 'margin-left:10px;font-size:13px;opacity:0.7;font-variant-numeric:tabular-nums;white-space:nowrap';
-  // One clock line (the Watch clock above); the night line under it. The wall-clock "SAAT" line was a duplicate and is gone.
+  // One readout line above ("WATCH 1/3 · 4:53 LEFT"); under it the Night number and the NIGHT TIMELINE: one segment per Watch, a
+  // gap per Mola, a sun for Dawn (nightBar.ts). The segments are rebuilt only when a Night's Watch count changes.
   const sub = h('div', 'sub', topC);
   const night = h('span', 'night', sub, '');
+  const nbar = h('div', 'nbar hidden', sub);
+  const sun = h('i', 'sun hidden', sub, t('hud.clock.dawn'));
+  let barSegs: { seg: HTMLElement; fill: HTMLElement; gap: HTMLElement | null }[] = [];
+  let lastWatchToast = '';
   // THE CIRCUIT: the Watch's Hot / Cold Lamps. Deferred out of the centre column (legibility pass): the chase line is a
   // long, live line and the centre keeps one slot per message kind (phase / event / toasts / banner / prompt). It reads just
   // as well under the wallet at the top left, and its news already has a feed line (`circuit.feed.hot`).
@@ -413,10 +415,6 @@ export function createHud(): Hud {
   let clockAlarmed = false;
   let lastPhase = '';
   let bellLeft = 0;
-  // ELAPSED (run time): sim seconds since this run began; restarts when the run object changes.
-  let elapsedRun: unknown = null;
-  let elapsedSim = 0;
-  let elapsedSeen = 0;
 
   function addFeed(text: string, cls = ''): void {
     const el = h('div', `ln ${cls}`, feed, text);
@@ -768,12 +766,20 @@ export function createHud(): Hud {
     const interm = phase === 'intermission';
     setCls(clock, 'lastcall', lastCall);
     setCls(clock, 'interm', interm);
+    const seg = sh?.segment;
+    const bar = r && seg ? barView({ phase, seg: seg.index, count: seg.count, left, duration: sh?.duration ?? 0, settled: settledAt === seg.index }) : null;
     // Settle (wave 42, decision 2): the bank stays open and the top line counts down to the lever, one line, no clock number.
     const settling = phase === 'settle';
     const settleSec = settling ? Math.ceil((r as (typeof r & { bank?: () => BankView }) | null)?.bank?.()?.settleLeft ?? 0) : 0;
-    setText(clockNum, interm || settling ? '' : mmss(left));
     // Closing (director wave 41): the last 3 s of a Watch, the deposits / withdrawals / Pawn still open, so the label says so.
-    setText(clockPhase, interm ? t('interm.topBar') : settling ? t('bank.settle', { s: settleSec }) : bell ? t('hud.clock.bell', { s: bellN }) : phase === 'closing' ? t('hud.clock.closing') : lastCall ? t('hud.clock.lastCall') : r?.window() === 'dawn' ? t('hud.clock.dawn') : t('hud.clock.watch'));
+    // Mola: what comes next. Dawn: the sun. A Watch: which one and the time left (Last Call keeps its blink and the time).
+    const w = seg ? seg.index + 1 : 0;
+    setText(clockPhase, !r || !seg ? '' : interm ? (bar && bar.next >= 0 ? t('hud.clock.mola', { w: bar.next + 1, c: seg.count }) : t('hud.clock.molaNight', { n: r.night() + 1 }))
+      : settling ? t('bank.settle', { s: settleSec }) : bell ? t('hud.clock.bell', { s: bellN }) : phase === 'closing' ? t('hud.clock.closing')
+      : lastCall ? `${t('hud.clock.lastCall')} · ${leftText(left)}` : r.window() === 'dawn' ? t('hud.clock.dawn') : t('hud.clock.left', { w, c: seg.count, t: leftText(left) }));
+    setCls(clock, 'soon', !!bar && bar.soon && !lastCall);
+    setCls(clock, 'last', !!bar && bar.last);
+    renderBar(bar);
     if (phase !== lastPhase) {
       if (lastCall && !clockAlarmed) {
         clockAlarmed = true;
@@ -783,16 +789,38 @@ export function createHud(): Hud {
       }
       lastPhase = phase;
     }
-    if (r !== elapsedRun) { elapsedRun = r; elapsedSim = 0; elapsedSeen = app.time.sim; }
-    elapsedSim += Math.max(0, app.time.sim - elapsedSeen);
-    elapsedSeen = app.time.sim;
-    setText(elapsedEl, r ? mmss(elapsedSim) : '');
-    if (r) {
-      const n = r.night();
-      const seg = sh?.segment;
-      // Intermission: the night number only (the Watch segment belongs to the Watch clock, which is not running).
-      setText(night, seg && !interm ? t('hud.night', { n, w: seg.index + 1, c: seg.count }) : t('hud.nightBare', { n }));
+    setText(night, r ? t('hud.nightBare', { n: r.night() }) : '');
+    // The Night's last Watch: one toast as it starts (once per Night and Watch).
+    if (bar?.last && phase === 'play' && r) {
+      const key = `${r.night()}:${seg?.index}`;
+      if (key !== lastWatchToast) { lastWatchToast = key; ui().toast(t('hud.clock.lastWatch'), 'warn', 3.5); }
     }
+  }
+
+  /** The NIGHT TIMELINE: fills, the current Watch, the Mola's next Watch, amber / red and the sun (see nightBar.ts for the maths). */
+  function renderBar(v: ReturnType<typeof barView> | null): void {
+    setCls(nbar, 'hidden', !v);
+    setCls(sun, 'hidden', !v);
+    if (!v) return;
+    if (barSegs.length !== v.fill.length) {
+      nbar.textContent = '';
+      barSegs = v.fill.map((_, k) => {
+        const gap = k > 0 ? h('i', 'gap', nbar) : null;
+        const seg = h('b', 'seg', nbar);
+        return { seg, fill: h('i', 'f', seg), gap };
+      });
+    }
+    barSegs.forEach((b, k) => {
+      const wPct = `${Math.round(v.fill[k] * 1000) / 10}%`;
+      if (b.fill.style.width !== wPct) b.fill.style.width = wPct;
+      setCls(b.seg, 'cur', v.cur === k);
+      setCls(b.seg, 'nx', v.next === k);
+      if (b.gap) { setCls(b.gap, 'on', v.next === k); setText(b.gap, v.next === k ? t('hud.clock.molaTag') : ''); }
+    });
+    setCls(nbar, 'soon', v.soon);
+    setCls(nbar, 'last', v.last);
+    setCls(sun, 'on', v.dawn || (v.last && v.soon));
+    setCls(sun, 'dawn', v.dawn);
   }
 
   /**
@@ -832,20 +860,22 @@ export function createHud(): Hud {
     const q = r.shift.quota();
     const due = Math.max(0, q.due);
     const dep = Math.max(0, q.deposited);
-    const frac = due > 0 && !nightPaid(r) ? Math.min(1, dep / due) : 1;
+    const paid = nightPaid(r);
+    // no quota set yet (before the Night opens, Watch clock 00:00) and not paid: nothing to pay, so no "0 / 0" and no full green bar
+    const unset = due <= 0 && !paid;
+    const frac = unset ? 0 : due > 0 && !paid ? Math.min(1, dep / due) : 1;
     // the deposited figure rolls toward the amount (the Roller, as the wallet's), a Night's first read sets it at once
     if (!quotaSeen) { quotaRoll.set(dep, true); quotaSeen = true; } else quotaRoll.set(dep);
     quotaRoll.tick(dt);
-    setText(quotaNum, `${money(Math.round(quotaRoll.shown))} / ${money(due)}`);
+    setText(quotaNum, unset ? '-' : `${money(Math.round(quotaRoll.shown))} / ${money(due)}`);
     setQuotaBar(frac, r.night());
-    const paid = nightPaid(r);
-    const met = paid || q.met || (due > 0 && dep >= due);
+    const met = !unset && (paid || q.met || (due > 0 && dep >= due));
     if (paid) setText(quotaNum, t('hud.paidTag', { n: r.night() }));   // short tag: it must not clip the top banner
     setCls(quota, 'met', met);
-    setCls(quota, 'short', !met);
+    setCls(quota, 'short', !met && !unset);
     const late = r.shift.phase === 'lastCall' || r.shift.timeLeft() < 30;
-    setCls(quota, 'late', !met && late);
-    setText(quotaShort, met || paid ? '' : t('hud.quota.short', { n: money(Math.max(0, due - dep)) }));
+    setCls(quota, 'late', !met && !unset && late);
+    setText(quotaShort, met || paid || unset ? '' : t('hud.quota.short', { n: money(Math.max(0, due - dep)) }));
   }
 
   /** A source's name on the PAYOUT chip: the Night's own House sources by kind, a charm or buff by its name, else its id. */

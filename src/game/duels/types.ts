@@ -58,8 +58,12 @@ export interface DuelRules<A = unknown> {
   turnOf?(s: DuelState): 'player' | 'rival'
   /** What the call picker offers (a tile in the river, 'GHOST', 'LOADED DICE'). Default: one generic CHEAT target. */
   callTargets?(s: DuelState): CallTarget[]
-  /** How a legal action reads on the HUD. Default: its label, k or kind field. */
-  describeAction?(a: A): TextRef
+  /** How a legal action reads on the HUD (`s` = the state it is offered in, for odds). Default: its label, k or kind field. */
+  describeAction?(a: A, s?: DuelState): TextRef
+  /** The pieces on the table as the seated player sees them (public information and their own hand only), drawn big by the machine. */
+  board?(s: DuelState): Board
+  /** i18n key: one plain line that says what you do and how you win. */
+  goal?: string
   /** Extra lines for the player's own view of the table (own hand, own charges). Never rival secrets. */
   describe?(s: DuelState): TextRef[]
   /** How one public event reads on the Tally Sheet. Default: its key (i18n) or a compact dump. */
@@ -70,8 +74,30 @@ export interface DuelRules<A = unknown> {
   revealFair?: RevealScript
 }
 
-/** An i18n key plus variables, or a literal for numbers. */
+/** An i18n key plus variables, or a literal for numbers. A data entry named `xKey` is a key the machine translates into `x`. */
 export interface TextRef { key?: string; data?: Record<string, unknown>; text?: string }
+
+/** One thing on the table: a card, tile, die, locker, hand or counter. `top` is the big face, `sub` a small caption. */
+export interface Piece {
+  top: TextRef
+  sub?: TextRef
+  /** Face down: only a back is drawn, never the face. */
+  down?: boolean
+  /** now = the one in play, next = the one to be answered, mine / his = whose it is, win / lose = how the last round went. */
+  mark?: 'now' | 'next' | 'mine' | 'his' | 'win' | 'lose'
+  /** Colour group 0..3 (a suit, a locker). */
+  tone?: number
+  /** Index into the legal actions this piece picks (a tile you may discard); the machine lights it with the cursor. */
+  act?: number
+}
+export interface Zone { label: TextRef; pieces: Piece[] }
+export interface Board {
+  zones: Zone[]
+  score?: { you: number; him: number; of?: number }
+  /** A bar: a gauge that fills up to `max` (`danger` = where it turns red). */
+  meter?: { label: TextRef; value: number; max: number; danger?: number }
+  notes?: TextRef[]
+}
 /** One entry of the call picker. The target is passed to DuelRules.call unchanged. */
 export interface CallTarget { target: unknown; label: TextRef }
 

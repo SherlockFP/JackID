@@ -1,9 +1,9 @@
 /**
  * Night 1 guided onboarding (first run only). A small top-centre prompt and a floor glow with a bobbing arrow point at the
- * next thing to do: walk to The Big One → spin it → deposit at the Debt Terminal → buy a charm at the Pawn Window in the intermission.
- * (Wave 72: the TILT and HOT steps are gone; those readouts wait for Night 2, see `menu/hud/disclose.ts`.)
+ * next thing to do: walk to The Big One → spin it → deposit at the Bank Terminal. (The charm comes from the Starter Draft, so
+ * there is no Pawn Window step.) (Wave 72: the TILT and HOT steps are gone; those readouts wait for Night 2, see `menu/hud/disclose.ts`.)
  *
- * Steps 1-3 (walk, spin, deposit) hold the Watch clock (`clockHold`), so the first Watch never runs out while the player is still
+ * The steps (walk, spin, deposit) hold the Watch clock (`clockHold`), so the first Watch never runs out while the player is still
  * being shown how to play. The box shows a small "clock paused" tag while it holds. Nothing here takes input or changes the input mode. The first-run flag is `save.stats['tutorial.n1']`; it is set when the
  * tutorial finishes, is skipped (hold Esc for about a second) or the run leaves Night 1. A run that ends or is quit mid-way
  * keeps the flag unset, so the next first run shows it again.
@@ -53,12 +53,6 @@ const FLAG = 'tutorial.n1';
 /** Hold Esc this long (seconds) to skip. A shorter press is a pause (the pause card opens on its release). */
 export const SKIP_HOLD_S = 1;
 const GOLD = 0xffd36b;
-/** The first three steps (walk, spin, deposit) hold the Watch clock. */
-const HOLD_STEPS = 3;
-
-/** A modal panel is on screen (the Night Card, the pause card …; `modalPanel` marks it `data-modal="1"`). The Pawn tip waits behind it. */
-const modalUp = (): boolean => typeof document !== 'undefined' && document.querySelector('[data-modal="1"]') !== null;
-
 /** The tutorial currently on screen (one at a time). Lets the pause card and Esc see it without a handle on the session. */
 let active: { skip(): void } | null = null;
 
@@ -68,14 +62,13 @@ export function tutorialActive(): boolean { return active !== null; }
 /** Skips the tutorial that is on screen, if any: sets the first-run flag and removes the prompt. */
 export function skipTutorial(): void { active?.skip(); }
 
-type Target = 'bigone' | 'debt_terminal' | 'charm_vendor';
-interface Step { key: 'walk' | 'spin' | 'deposit' | 'pawn'; target: Target | null; }
+type Target = 'bigone' | 'debt_terminal';
+interface Step { key: 'walk' | 'spin' | 'deposit'; target: Target; }
 
 const STEPS: readonly Step[] = [
   { key: 'walk', target: 'bigone' },
   { key: 'spin', target: 'bigone' },
   { key: 'deposit', target: 'debt_terminal' },
-  { key: 'pawn', target: 'charm_vendor' },
 ];
 
 /** True once the first-run tutorial has been finished or skipped. */
@@ -176,7 +169,7 @@ function startSteps(host: TutorialHost): Tutorial & { shown(): boolean } | null 
   const self = run.selfId;
 
   // ── facts, counted from the bus; each step compares against a baseline taken when it starts ─────────────
-  let rounds = 0, others = 0, deposits = 0, bought = 0;
+  let rounds = 0, others = 0, deposits = 0;
   let seatMid: InstanceId | null = null;
   const offs: Unsub[] = [];
   // Every round counts for the spin step (any machine); `others` (rounds off The Big One) is what the TILT step waits for.
@@ -186,7 +179,6 @@ function startSteps(host: TutorialHost): Tutorial & { shown(): boolean } | null 
     if (e.machineId !== 'bigone') others++;
   }));
   offs.push(bus.on('run:deposit', (e) => { if (e.pid === self) deposits++; }));
-  offs.push(bus.on('charm:add', (e) => { if (e.pid === self) bought++; }));
   offs.push(bus.on('player:seat', (e) => { if (e.pid === self) seatMid = e.on ? e.mid : null; }));
 
   // ── machine lookup (cached once found) ─────────────────────────────────────────────────────────────
@@ -232,7 +224,7 @@ function startSteps(host: TutorialHost): Tutorial & { shown(): boolean } | null 
   let idx = 0;
   let age = 0;
   let total = 0;
-  let base = { rounds: 0, others: 0, deposits: 0, bought: 0 };
+  let base = { rounds: 0, others: 0, deposits: 0 };
   /** Sim time (app.time.sim) the Esc hold began, for SKIP_HOLD_S. */
   let holdFrom: number | null = null;
   /** Sim time the last update saw; the step timers advance by the sim time that passed since. */
@@ -242,7 +234,7 @@ function startSteps(host: TutorialHost): Tutorial & { shown(): boolean } | null 
   const enter = (i: number): void => {
     idx = i;
     age = 0;
-    base = { rounds, others, deposits, bought };
+    base = { rounds, others, deposits };
   };
   enter(0);
 
@@ -255,7 +247,6 @@ function startSteps(host: TutorialHost): Tutorial & { shown(): boolean } | null 
       case 'walk': return seatMid !== null;
       case 'spin': return rounds - base.rounds >= TILT_FREE_PULLS;   // four full-pay pulls, then the player moves on
       case 'deposit': return deposits > base.deposits;
-      case 'pawn': return bought > base.bought;
     }
   };
 
@@ -272,7 +263,6 @@ function startSteps(host: TutorialHost): Tutorial & { shown(): boolean } | null 
         return t('econ.spinAny', { key: keyLabel('m.primary') });
       }
       case 'deposit': return t('tut.deposit', { rate: run.interestPct(), n: run.shift.state().segment?.count ?? 3 });
-      default: return t(`tut.${s.key}`);
     }
   };
 
@@ -335,14 +325,10 @@ function startSteps(host: TutorialHost): Tutorial & { shown(): boolean } | null 
       // Leaving Night 1 ends the tutorial.
       if (run.night() !== 1) { finish(); return; }
 
-      // Only a Watch shows the steps. The pawn step shows only while the Pawn window is open (the Mola, `run.pawn.open()`) and no
-      // other modal (the Night Card) is on screen. The Bell's countdown, the settle, and Dawn hide the box; the step waits and
+      // Only a Watch shows the steps. The Bell's countdown, the settle, and Dawn hide the box; the step waits and
       // resumes with the next Watch.
       const phase = run.shift.state().phase;
-      const playing = phase === 'play' || phase === 'lastCall';
-      const pawnStep = STEPS[idx]?.key === 'pawn';
-      const pawnOpen = phase === 'intermission' && run.pawn.open() && !modalUp();
-      if (pawnStep ? !pawnOpen : !playing) { hide(); return; }
+      if (phase !== 'play' && phase !== 'lastCall') { hide(); return; }
 
       total += sdt;
       age += sdt;
@@ -355,18 +341,12 @@ function startSteps(host: TutorialHost): Tutorial & { shown(): boolean } | null 
       if (idx >= STEPS.length) { finish(); return; }
 
       const s = STEPS[idx];
-      const holding = idx < HOLD_STEPS;
-      if (holding) holdClock('tutorial', 3); else releaseClock('tutorial');
+      holdClock('tutorial', 3);
       line.textContent = text(s);
       hint.textContent = `${t('tut.step', { i: idx + 1, total: STEPS.length })}  ·  ${t('tut.skip')}`;
-      tag.style.display = holding ? '' : 'none';
       el.style.display = '';
       placeFeed();
-
-      // The pawn window is only worth pointing at in the intermission.
-      const wanted = s.target === 'charm_vendor' && run.shift.phase !== 'intermission' ? null
-        : s.target !== null ? targetMid(s.target) : null;
-      marker.show(wanted, total);
+      marker.show(targetMid(s.target), total);
     },
     dispose,
   };

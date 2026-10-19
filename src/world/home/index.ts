@@ -16,7 +16,7 @@ import { HOME_ANCHORS, type HomeRoomApi, type HomeStation } from '@/game/home/co
 import type { CollisionWorld, InteractionSystem, WorldLights } from '../types';
 import type { InteractableX } from '../interact';
 import type { LightHint } from '../sys/arch';
-import { ANCHOR_PLAN, at, DESK, FRIDGE, HOME_ZONE, SPOUSE_SEAT, STATION_PRIORITY, WALL_STATIONS, WIN_X0, WIN_X1, WIN_Y0, WIN_Y1 } from './config';
+import { ANCHOR_PLAN, at, DESK, FRIDGE, HOME_ZONE, SPOUSE_SEAT, SPOUSE_SIT, STATION_PRIORITY, WALL_STATIONS, WIN_X0, WIN_X1, WIN_Y0, WIN_Y1 } from './config';
 import { buildRoom, type Statics } from './room';
 import { buildFurniture } from './furniture';
 import { HomeDoor } from './door';
@@ -97,7 +97,7 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
     rim: 0xd9913a, eyes: 0xffc27a, female: true, hair: 0x2a2230, dress: 0x5a2a3c,
   };
   const spouse = o.kit.mannequin(spouseOpts);
-  spouse.root.position.set(...at(SPOUSE_SEAT.x, 0, SPOUSE_SEAT.z));
+  spouse.root.position.set(...at(SPOUSE_SEAT.x, SPOUSE_SIT.y, SPOUSE_SEAT.z + SPOUSE_SIT.fwd));
   root.add(spouse.root);
 
   // the three hall visitors (hidden until the game shows one); they stand in the corridor outside the door

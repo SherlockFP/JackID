@@ -6,23 +6,32 @@
 import type { MachineStrings } from '@/machines/_base/types';
 
 const en: Record<string, string> = {
-  h_pick: 'PICK', h_sign: 'SIGN', h_cash: 'CASH IN', h_drop: 'DROP', h_leave: 'LEAVE',
+  h_prev: 'PREV', h_next: 'NEXT', h_sign: 'SIGN', h_cash: 'CASH IN', h_drop: 'DROP', h_leave: 'LEAVE',
   ledger: 'BOUNTY BOARD', offers: 'OFFERS', active: 'SIGNED',
-  pays: 'PAYS {n}', none: 'NO SLIPS TONIGHT', full: 'THREE SLIPS ALREADY',
+  none: 'NO NEW SLIPS TONIGHT', blank: 'NOTHING PINNED HERE', full: 'THREE SLIPS ALREADY',
   gone: 'SLIP TAKEN', notdone: 'NOT FINISHED', claimed: 'ALREADY PAID', expired: 'EXPIRED AT DAWN',
   signed: 'SIGNED: {n}', cashed: 'PAID: {n}', dropped: 'DROPPED: {n}',
-  stamp: 'PAID', tickets: '{n} TICKETS', quota: '{n} % OF QUOTA',
-  s_slips: 'SLIPS', s_tickets: 'TICKETS', s_pick: 'SLIP',
+  // the card on the cork when no offer is left (n = slips you have signed)
+  'note_signed.one': 'No new slips tonight. Finish the one you signed.',
+  'note_signed.other': 'No new slips tonight. Finish the {n} you signed.',
+  note_none: 'No slips tonight. New ones go up every Night.',
+  stamp: 'PAID', 'tickets.one': '{n} TICKET', 'tickets.other': '{n} TICKETS', quota: '{n} % QUOTA',
+  r_charm: 'A CHARM', r_unlock: 'A RARE ITEM', r_buff: 'A BONUS',
+  s_slips: 'SLIPS', s_tickets: 'TICKETS', s_pick: 'SELECTED',
 };
 
 const tr: Record<string, string> = {
-  h_pick: 'SEÇ', h_sign: 'İMZALA', h_cash: 'TAHSİL ET', h_drop: 'BIRAK', h_leave: 'AYRIL',
+  h_prev: 'ÖNCEKİ', h_next: 'SONRAKİ', h_sign: 'İMZALA', h_cash: 'TAHSİL ET', h_drop: 'BIRAK', h_leave: 'AYRIL',
   ledger: 'İLAN PANOSU', offers: 'TEKLİFLER', active: 'İMZALI',
-  pays: '{n} ÖDER', none: 'BU GECE PUSULA YOK', full: 'ZATEN ÜÇ PUSULA VAR',
+  none: 'BU GECE YENİ PUSULA YOK', blank: 'BURASI BOŞ', full: 'ZATEN ÜÇ PUSULA VAR',
   gone: 'PUSULA ALINDI', notdone: 'BİTMEDİ', claimed: 'ZATEN ÖDENDİ', expired: 'ŞAFAKTA SÜRESİ DOLDU',
   signed: 'İMZALANDI: {n}', cashed: 'ÖDENDİ: {n}', dropped: 'BIRAKILDI: {n}',
-  stamp: 'ÖDENDİ', tickets: '{n} BİLET', quota: 'KOTANIN %{n}’İ',
-  s_slips: 'PUSULA', s_tickets: 'BİLET', s_pick: 'PUSULA',
+  'note_signed.one': 'Bu gece yeni pusula yok. İmzaladığın pusulayı bitir.',
+  'note_signed.other': 'Bu gece yeni pusula yok. İmzaladığın {n} pusulayı bitir.',
+  note_none: 'Bu gece pusula yok. Yenileri her gece asılır.',
+  stamp: 'ÖDENDİ', 'tickets.one': '{n} BİLET', 'tickets.other': '{n} BİLET', quota: 'KOTA %{n}',
+  r_charm: 'BİR TILSIM', r_unlock: 'NADİR EŞYA', r_buff: 'BONUS',
+  s_slips: 'PUSULA', s_tickets: 'BİLET', s_pick: 'SEÇİLİ',
 
   'c.b_bj_streak.t': 'Üst Üste Üç El',
   'c.b_bj_streak.d': 'Blackjack’te üst üste 3 el kazan. 3 bilet.',
@@ -34,7 +43,7 @@ const tr: Record<string, string> = {
   'c.b_four_suits.d': 'Bir Vardiyada 4 farklı takımda kazan. Sonraki molada Seyrek bir tılsım.',
   'c.b_point.t': 'Nokta',
   'c.b_point.d': 'Zar masasında bir nokta yap. 3 bilet.',
-  'c.b_mines8.t': 'Sekiz Güvenli Kare',
+  'c.b_mines8.t': 'Sekiz Güvenli',
   'c.b_mines8.d': 'Tek bir Mayın turunda 8 güvenli kare aç. Kotanın %5’i.',
   'c.b_derby6.t': 'Yarış ×6',
   'c.b_derby6.d': 'Derbi bahsini en az ×6’da kazan. 3 bilet.',

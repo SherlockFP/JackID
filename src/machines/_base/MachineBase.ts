@@ -65,7 +65,7 @@ import { log } from '@/core/log';
 import { clamp } from '@/core/math';
 import { t as tr, fmtCoins, registerStrings, type I18nVars } from '@/core/i18n';
 import { SLOT_DIMS, type MachineContext, type MachineDef, type MachineEnvelope, type MachineEvent, type MachineModel, type PresentCtx } from './types';
-import { juiceTier, tierTags, toWinTier, type JuiceTier } from './tiers';
+import { juiceTier, streakPitch, tierTags, toWinTier, type JuiceTier } from './tiers';
 import * as juice from './juice';
 import { RiskLayer } from './riskLayer';
 import { GambleUi } from '@/game/gambleUi';
@@ -88,6 +88,9 @@ const PRIMARY_ONLY = new Set(['bingopin', 'coinpusher', 'pachinko', 'shellgame',
 
 /** Machines that already queue their own primary presses while busy (plinko `queueDrop`): the base must not queue too. */
 const QUEUES_OWN = new Set(['plinko']);
+
+/** Spin cues a win streak lifts (`streakPitch`): the thunk and the reels of a machine on a run sound hotter. */
+const SPIN_CUES = new Set(['lever', 'button', 'reelStart', 'reelStop', 'coinInsert']);
 
 /** Cue strings for the press queue (`ui.ctl.*`, same prefix as the controls lane). */
 registerStrings('ui.', {
@@ -649,8 +652,12 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   // ── feedback ──
   protected sfx(name: SfxName | string, o?: PlayOpts): void {
     const speaker = this.model?.anchors?.speaker;
-    this.ctx.audio.play(name, speaker ? { pos: speaker, ...o } : o);
+    const hot = SPIN_CUES.has(name) ? streakPitch(this.winStreak) : 0;     // a win streak lifts the spin cues (local occupant only)
+    const opts = hot > 0 ? { ...o, pitch: (o?.pitch ?? 0) + hot } : o;
+    this.ctx.audio.play(name, speaker ? { pos: speaker, ...opts } : opts);
   }
+  /** The reels' whirr loop for a spin (see juice.whirr): `stopped(done, total)` per landing reel, `end()` after the last. */
+  protected whirr(vol?: number): juice.Whirr { return juice.whirr(this, vol); }
   protected t(key: string, vars?: I18nVars): string { return tr(`m.${this.def.id}.${key}`, vars); }
   protected hud(spec: MachineHudSpec | null): void { if (this.isLocalOccupant) this.ctx.ui.machineHud(spec); }
   protected toast(text: string, kind?: ToastKind): void { if (this.isLocalOccupant) this.ctx.ui.toast(text, kind); }

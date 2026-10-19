@@ -16,8 +16,8 @@
  * Host only: the state holds the prize position. Public information is `publicEvents`, `clues` and `log`.
  */
 import { createRng, hashSeed } from '@/core/rng';
-import { FAIR_KIND, POT, runHeadless, settleNet, type Side, type TurnState } from '../gamekit';
-import type { CallTarget, CheatPlan, Clue, DuelRules, DuelState, RevealScript, TextRef } from '../types';
+import { FAIR_KIND, POT, lit, runHeadless, settleNet, type Side, type TurnState } from '../gamekit';
+import type { Board, CallTarget, CheatPlan, Clue, DuelRules, DuelState, RevealScript, TextRef } from '../types';
 
 export const ID = 'lockershuffle';
 export const RIVAL = 'mimosa';
@@ -186,6 +186,23 @@ export function describe(st: DuelState): TextRef[] {
   return lines;
 }
 
+/**
+ * Three lockers. Once she has shuffled, the one the prize started under is marked (she showed it) and the announced swap count is on the
+ * note. The real position and the real swap count stay hidden.
+ */
+export function board(st: DuelState): Board {
+  const s = st as LSState;
+  const shuffled = s.turn === 'player' && s.counted > 0 && !s.done;
+  return {
+    zones: [{
+      label: { key: 'duel.ls.zone.lockers' },
+      pieces: LETTER.map((l, i) => ({ top: lit(l), tone: i, sub: shuffled && i === s.start ? { key: 'duel.ls.start' } : undefined, mark: shuffled && i === s.start ? ('now' as const) : undefined })),
+    }],
+    score: { you: s.roundWins.player, him: s.roundWins.rival, of: ROUNDS_TO_WIN },
+    notes: shuffled ? [{ key: 'duel.ls.note.count', data: { start: LETTER[s.start], n: s.announced } }] : [{ key: 'duel.ls.note.round', data: { round: s.round, rounds: ROUNDS_MAX } }],
+  };
+}
+
 export const callTargets = (): CallTarget[] => [{ target: CALL_KEY, label: { key: 'duel.ls.call' } }];
 
 // ── headless ──────────────────────────────────────────────────────────────────────────────────────────
@@ -193,7 +210,7 @@ export const lockerShuffle: DuelRules<LSAction> & { verdict: typeof verdict; rev
   id: ID, rival: RIVAL, makePlan, init, legal, step, rivalAct, call,
   settle: settleNet, reveal, revealFair, verdict,
   turnOf: (s) => (s as LSState).turn,
-  describeAction, describeEvent, describe, callTargets,
+  describeAction, describeEvent, describe, callTargets, board, goal: 'duel.ls.goal',
   playHeadless: (seed, policy) => runHeadless<LSAction>({
     rules: lockerShuffle,
     move: (s) => pickMove(s),

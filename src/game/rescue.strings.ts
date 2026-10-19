@@ -10,7 +10,7 @@ export default {
     'deal.rescue.boon': 'Get {c} coins now',
     'deal.rescue.cost': 'Tonight\'s quota +{q}',
     'toast.pocketEmpty': 'Pocket empty. The Collector is calling.',
-    'broke.bell': 'BELL: at the Debt Terminal, ring the Bell. This Watch ends and the bank keeps growing.',
+    'broke.bell': 'BELL: at the Bank Terminal, ring the Bell. This Watch ends and the bank keeps growing.',
   },
   tr: {
     'call.rescue': 'Cepler şimdiden boş mu? Tahsildar borç verebilir. Aldığın, bu Gecenin kotasına eklenir, hem de fazlasıyla.',

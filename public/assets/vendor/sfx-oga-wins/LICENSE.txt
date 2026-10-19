@@ -1,0 +1,3 @@
+CC0 (public domain) from OpenGameArt:
+- win_fanfare_gchoc.ogg: "Win Fanfare" by gchoc, https://opengameart.org/content/win-fanfare
+- win_jingle_fupi.ogg: "Win Jingle" (fretless) by Fupi, https://opengameart.org/content/win-jingle

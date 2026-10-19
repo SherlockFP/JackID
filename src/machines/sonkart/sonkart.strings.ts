@@ -21,8 +21,6 @@ const en: Record<string, string> = {
   nPot: "POT",
   nOwed: "OWED",
   nColour: "COLOUR",
-  nCards: "CARDS",
-  nBalance: "BALANCE",
   cAnte: "ANTE",
   cBet: "BET",
   cHouse: "HOUSE RULES",
@@ -69,10 +67,9 @@ const en: Record<string, string> = {
   eNotSeated: 'Take a seat first', eBusy: 'A round is already running', eNeedAnte: 'Ante up first',
   eBadPhase: 'Wait for the next round', eMinPlayers: 'Need two players', sitOut: 'You sit this round out',
   bot1: 'Rattle', bot2: 'Mrs Gloom', bot3: 'Tin Tom', bot4: 'Madame Wick',
-  // table overlay (kartHud)
-  hTop: 'TOP CARD', hLast: 'LAST CARD!', hTurn: 'PLAYING', hOrderF: 'ORDER >>', hOrderB: 'ORDER <<', hOwed: 'DRAW {n}',
+  // table overlay (kartHud: name chips, colour strip, colour picker)
+  hLast: 'LAST CARD!', hTurn: 'PLAYING', hOrderF: 'ORDER >>', hOrderB: 'ORDER <<', hOwed: 'DRAW {n}',
   hPick: 'PICK A COLOUR', hPickSub: '1-4 or click  ·  {play} keeps {c}  ·  {cancel} cancels',
-  kS: 'SKIP', kV: 'REV', kW: 'WILD', kW4: '+4', kDebt: 'DEBT', kColl: 'COLL', kCurse: 'CURSE', kJack: 'JACK',
   cAuto: 'AUTO ANTE', nAuto: 'AUTO', pAutoOn: 'Auto ante ON', pAutoOff: 'Auto ante OFF',
   // house habits (shown on the plate) and typewriter quips (no voices: a few text blips)
   pr_rash: 'RASH', pr_hoard: 'HOARDER', pr_grudge: 'GRUDGE', pr_shark: 'SHARK',
@@ -98,8 +95,6 @@ const tr: Record<string, string> = {
   nPot: "HAVUZ",
   nOwed: "BORÇ",
   nColour: "RENK",
-  nCards: "KART",
-  nBalance: "BAKİYE",
   cAnte: "BAHİS KOY",
   cBet: "BAHİS",
   cHouse: "KASA KURALLARI",
@@ -147,9 +142,8 @@ const tr: Record<string, string> = {
   eBadPhase: 'Sıradaki eli bekle', eMinPlayers: 'En az iki oyuncu gerekli', sitOut: 'Bu elde izliyorsun',
   bot1: 'Çıngırak', bot2: 'Bayan Gölge', bot3: 'Teneke Tom', bot4: 'Madam Fitil',
   // masa katmanı (kartHud)
-  hTop: 'ÜSTTEKİ KART', hLast: 'SON KART!', hTurn: 'OYNUYOR', hOrderF: 'SIRA >>', hOrderB: 'SIRA <<', hOwed: '{n} ÇEK',
+  hLast: 'SON KART!', hTurn: 'OYNUYOR', hOrderF: 'SIRA >>', hOrderB: 'SIRA <<', hOwed: '{n} ÇEK',
   hPick: 'BİR RENK SEÇ', hPickSub: '1-4 ya da tıkla  ·  {play} {c} rengini tutar  ·  {cancel} iptal',
-  kS: 'ATLA', kV: 'TERS', kW: 'JOKER', kW4: '+4', kDebt: 'BORÇ', kColl: 'TOPLA', kCurse: 'LANET', kJack: 'JACK',
   cAuto: 'OTO BAHİS', nAuto: 'OTO', pAutoOn: 'Oto bahis AÇIK', pAutoOff: 'Oto bahis KAPALI',
   pr_rash: 'ATILGAN', pr_hoard: 'SAKLAYICI', pr_grudge: 'KİNCİ', pr_shark: 'KÖPEKBALIĞI',
   q_rash_atk: 'Pat!', q_rash_caught: 'Eyvah.', q_rash_win: 'Yaşasın!',

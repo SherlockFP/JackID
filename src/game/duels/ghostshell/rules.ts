@@ -20,8 +20,8 @@
  */
 import { createRng, hashSeed } from '@/core/rng';
 import { ROUNDS_TO_WIN, ROUND_CHARGES, ROUND_SHELLS } from '@/machines/devilstable/rules';
-import { FAIR_KIND, POT, runHeadless, settleNet, other, type Side, type TurnState } from '../gamekit';
-import type { CallTarget, CheatPlan, Clue, DuelRules, DuelState, RevealScript, TextRef } from '../types';
+import { FAIR_KIND, POT, lit, runHeadless, settleNet, other, type Side, type TurnState } from '../gamekit';
+import type { Board, CallTarget, CheatPlan, Clue, DuelRules, DuelState, RevealScript, TextRef } from '../types';
 
 export const ID = 'ghostshell';
 export const RIVAL = 'lucan';
@@ -213,6 +213,18 @@ export function describe(st: DuelState): TextRef[] {
   ];
 }
 
+/** What Lucan announced for the tray (live and blank left on his count, not the real magazine) and both sides' charges. */
+export function board(st: DuelState): Board {
+  const s = st as GSState;
+  return {
+    zones: [
+      { label: { key: 'duel.gs.zone.tray' }, pieces: [{ top: lit(s.ann.live), sub: { key: 'duel.gs.live' }, tone: 0 }, { top: lit(s.ann.blank), sub: { key: 'duel.gs.blank' }, tone: 1 }] },
+      { label: { key: 'duel.gs.zone.charges' }, pieces: [{ top: lit(s.charges.player), sub: { key: 'duel.gs.you' }, mark: 'mine' }, { top: lit(s.charges.rival), sub: { key: 'duel.gs.him' }, mark: 'his' }] },
+    ],
+    score: { you: s.roundWins.player, him: s.roundWins.rival, of: ROUNDS_TO_WIN },
+  };
+}
+
 export const callTargets = (): CallTarget[] => [{ target: CALL_GHOST, label: { key: 'duel.gs.call' } }];
 
 // ── headless ──────────────────────────────────────────────────────────────────────────────────────────
@@ -220,7 +232,7 @@ export const ghostShell: DuelRules<GSAction> & { verdict: typeof verdict; reveal
   id: ID, rival: RIVAL, makePlan, init, legal, step, rivalAct, call,
   settle: settleNet, reveal, revealFair, verdict,
   turnOf: (s) => (s as GSState).turn,
-  describeAction, describeEvent, describe, callTargets,
+  describeAction, describeEvent, describe, callTargets, board, goal: 'duel.gs.goal',
   playHeadless: (seed, policy) => runHeadless<GSAction>({
     rules: ghostShell,
     move: (s) => pickMove(s as GSState, 'player'),

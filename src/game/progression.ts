@@ -17,7 +17,8 @@
  * Night arithmetic: the machines of Night n open the moment Night n-1's quota is paid (the Dawn), so the player sees them
  * covered on the way in and uncovered at the Dawn. `effectiveNight(night, paid)` turns the run's state into that number.
  *
- * Always-open devices (vendors, terminals, story tables) are never locked: see `ALWAYS_OPEN`.
+ * Always-open devices (vendors, terminals, story tables) are never locked: see `ALWAYS_OPEN`. One exception: the Bounty Board is
+ * tarped on Night 1 and opens on Night 2 (`unlockNightOf`), so Night 1 stays one loop.
  *
  * What the other lanes read (WIRING, see the task report):
  *   run.isLocked(id)  ->  `isLockedFor(id, effectiveNight(night(), nightPaid), mode, seed)`
@@ -124,6 +125,7 @@ export const UNLOCK_SCHEDULE: readonly UnlockStep[] = scheduleFor();
 
 /** The Night a core machine opens (1 to 7), `1` for always-open devices, `Infinity` for Free-Casino-only machines. */
 export function unlockNightOf(id: MachineId, seed?: number): number {
+  if (id === 'bounty_board') return FIRST_UNLOCK_NIGHT;   // always on the floor, but tarped on Night 1 (the slips wait for Night 2)
   if (ALWAYS_OPEN.has(id)) return 1;
   for (const s of scheduleFor(seed)) if (s.ids.includes(id)) return s.night;
   return Infinity;
@@ -171,7 +173,6 @@ export function inMode(id: MachineId, mode: GameMode | string | undefined): bool
 /** True when the machine is covered / locked on `night`: not yet scheduled, or not part of this mode. */
 export function isLockedFor(id: MachineId, night: number, mode: GameMode | string | undefined, seed?: number): boolean {
   if (!isProgressive(mode)) return false;
-  if (ALWAYS_OPEN.has(id)) return false;
   return unlockNightOf(id, seed) > Math.max(1, Math.floor(night));
 }
 

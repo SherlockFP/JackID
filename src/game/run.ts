@@ -10,7 +10,7 @@
  * Indices: `shift.index` / `debt.index` are 0-based; `night()` is the printed 1-based Night number.
  */
 import type { GambleRunPort, GambleReason } from './gamble';
-import { isLockedFor, effectiveNight, isProgressive, tierOf, nightQuota, buyPrice, ghostWager, houseCut, expectedCut, machineName } from './progression';
+import { FIRST_UNLOCK_NIGHT, isLockedFor, effectiveNight,isProgressive, tierOf, nightQuota, buyPrice, ghostWager, houseCut, expectedCut, machineName } from './progression';
 import type {
   ActiveRule, BetLimits, BetOpts, BuffsApi, CharmDef, CharmState, CollateralApi, ContractDef, ContractGoal, ContractsApi, ContractState, CurrencyId,
   DebtState, EcoSource, JackpotPool, JackpotsApi, ModBreakdown, ModBreakdownStep, ModEffect, ModHook, ModProvider, ModQuery,
@@ -1137,7 +1137,7 @@ class Run implements DebtRun {
     this.modsImpl.register(roomsProvider({ opened: () => this.tycoonSys.state().zones, rooms: () => this.rooms }));
     bindWingSource({
       opened: () => this.tycoonSys.state().zones,
-      keys: () => this.wingKeys,
+      keys: () => (this.night() < FIRST_UNLOCK_NIGHT ? 0 : this.wingKeys),   // Night 1: every grille reads closed (the Dawn key waits for Night 2)
       managerKey: () => this.managerKey || ((this.tycoonSys.prestige.state().nodes?.F6 ?? 0) > 0),
     });
     this.tycoon = this.tycoonSys;
@@ -2512,6 +2512,7 @@ class Run implements DebtRun {
 
   buyPriceOf(machineId: MachineId): number {
     if (this.ended || !isProgressive(this.mode) || this.owned.has(machineId) || !tierOf(machineId)) return 0;
+    if (this.night() < FIRST_UNLOCK_NIGHT) return 0;   // Night 1 is the three starters only: the tarps just say when they open
     if (!isLockedFor(machineId, effectiveNight(this.night(), this.nightPaid, this.topside), this.mode, this.seed)) return 0;
     return buyPrice(machineId, this.priceQuota());
   }

@@ -378,8 +378,7 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
     } else {
       // BUST: power-down, the ladder drains, the flaps go blank
       if (pc.local) fx.shake(0.008, 0.25);
-      this.sfx('powerDown');
-      this.commiserate({ amount: ev.bet, at: flapNext.root });
+      this.commiserate({ amount: ev.bet, at: flapNext.root });         // the quiet dud; the rungs draining are the rest of the bust
       marquee.chase('blink', 1.5);
       await this.drainLadder(prevRun, pc);
       if (ev.refund > 0) {
@@ -418,7 +417,7 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
     this.drawWin(0);
     if (tier === 'medium' || tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot') {
       void this.celebrate(tier, { amount: ev.amount, marquee, lamps: [], restore: () => this.idleChase(), fast: pc.fast });
-      await countUp(this.ctx, 0, ev.amount, 1.2 * this.speed, (v) => this.drawWin(v));
+      await countUp(this.ctx, 0, ev.amount, 1.2 * this.speed, (v) => this.drawWin(v), { tick: true });
     } else {
       await this.pourCoins(ev.amount, { bet: ev.bet, fast: pc.fast, onCount: (v) => this.drawWin(v) });
     }
@@ -525,7 +524,7 @@ export default class HiLo extends MachineBase<HiloParts, Ev, State> {
       if (!painted && k >= 0.5) { painted = true; this.paintFace(f, c); }
     });
     this.setLeaves(f, FLAP_REST);
-    this.sfx('reelStop', { vol: 0.5 });
+    this.sfx('reelStop', { vol: 0.5, param: Math.min(1, this.state.steps / 8) });   // the card lands higher the longer the ladder
   }
 
   private setLeaves(f: FlapCard, rot: number): void {

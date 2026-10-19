@@ -20,8 +20,8 @@
  * Host only: the state holds the deck and both hands. Public information is `publicEvents`, `clues` and `log`.
  */
 import { createRng, hashSeed } from '@/core/rng';
-import { FAIR_KIND, POT, runHeadless, settleNet, type Side, type TurnState } from '../gamekit';
-import type { CallTarget, CheatPlan, Clue, DuelRules, DuelState, RevealScript, TextRef } from '../types';
+import { FAIR_KIND, POT, lit, runHeadless, settleNet, type Side, type TurnState } from '../gamekit';
+import type { Board, CallTarget, CheatPlan, Clue, DuelRules, DuelState, RevealScript, TextRef } from '../types';
 
 export const ID = 'thequestion';
 export const RIVAL = 'orrin';
@@ -231,6 +231,22 @@ export function describe(st: DuelState): TextRef[] {
   ];
 }
 
+/** Your two cards (the one you stand on is marked), his two face down, what the round is worth. His cards are never in the data. */
+export function board(st: DuelState): Board {
+  const s = st as TQState;
+  const mine = s.hand.player;
+  const stand = mine[0] >= mine[1] ? 0 : 1;
+  return {
+    zones: [
+      { label: { key: 'duel.tq.zone.you' }, pieces: mine.map((r, i) => ({ top: lit(r), mark: i === stand ? ('now' as const) : undefined })) },
+      { label: { key: 'duel.tq.zone.him' }, pieces: [{ top: lit('?'), down: true }, { top: lit('?'), down: true }] },
+      { label: { key: 'duel.tq.zone.worth' }, pieces: [{ top: lit(`x${s.value}`), mark: s.value > 1 ? ('next' as const) : undefined, sub: { key: 'duel.tq.pts' } }] },
+    ],
+    score: { you: s.pts.player, him: s.pts.rival, of: POINTS_TO_WIN },
+    notes: [{ key: 'duel.tq.note.deck', data: { round: s.round, rounds: ROUNDS_MAX, stock: DECK - s.dpos, pile: s.pile + s.extra } }],
+  };
+}
+
 export const callTargets = (): CallTarget[] => [{ target: CALL_DECK, label: { key: 'duel.tq.call' } }];
 
 // ── headless ──────────────────────────────────────────────────────────────────────────────────────────
@@ -238,7 +254,7 @@ export const theQuestion: DuelRules<TQAction> & { verdict: typeof verdict; revea
   id: ID, rival: RIVAL, makePlan, init, legal, step, rivalAct, call,
   settle: settleNet, reveal, revealFair, verdict,
   turnOf: (s) => (s as TQState).turn,
-  describeAction, describeEvent, describe, callTargets,
+  describeAction, describeEvent, describe, callTargets, board, goal: 'duel.tq.goal',
   playHeadless: (seed, policy) => runHeadless<TQAction>({
     rules: theQuestion,
     move: (s) => pickMove(s),

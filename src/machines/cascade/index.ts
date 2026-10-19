@@ -31,6 +31,7 @@ import { fmtCoins } from '@/core/i18n';
 import { TAU } from '@/core/math';
 import type { Rng } from '@/core/rng';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
+import { flashPrefs } from '@/machines/_base/juice';
 import { buildModel, type CascadeParts } from './model';
 import { CascadeView, orbColour } from './view';
 import {
@@ -320,6 +321,7 @@ export default class Cascade extends MachineBase<CascadeParts, Ev, State> {
     view.foot.r = fmtCoins(before);
     view.banner = null;
     this.setLamps(true);
+    if (!pc.fast) this.spinLights();
     if (pc.local) this.showHud();
 
     // ── the lever, the old symbols drop away, the new grid drops in ──
@@ -628,6 +630,13 @@ export default class Cascade extends MachineBase<CascadeParts, Ev, State> {
     marquee.chase(feat ? 'chase' : 'off', 3);
     side.forEach((c) => c.pattern(feat ? 'chase' : 'alt', feat ? 6 : 0.6));
     lamps.orbL.setOn(feat); lamps.orbR.setOn(feat); lamps.crown.setOn(feat);
+  }
+  /** The symbols drop: the marquee and side bulbs chase fast until the round ends (`refresh` → `restoreLamps`); slower under reduce-flashing / Calm. */
+  private spinLights(): void {
+    const p = flashPrefs();
+    const hz = p.reduced || p.calm ? 4 : 9;
+    this.parts.marquee.chase('chase', hz);
+    this.parts.side.forEach((c) => c.pattern('chase', hz));
   }
   private setLamps(on: boolean): void {
     const { lamps } = this.parts;

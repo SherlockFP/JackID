@@ -162,6 +162,8 @@ export interface NpcLook {
   eyeSize?: number;
   /** How much of the base colour survives the near-black body (default 0.10; dresses and hair use more). */
   lift?: number;
+  /** Rim brightness multiplier (default 1): a dim room needs a stronger rim to read the figure. */
+  rimGain?: number;
 }
 
 /** Hash and value noise for the shimmer, the eye mask and the body darkening (shared by every NPC material). */
@@ -206,7 +208,7 @@ export function patchNpc(m: THREE.MeshLambertMaterial, p: NpcLook): void {
   const prevKey = m.customProgramCacheKey;
   const eyes = p.eyes !== null && p.head !== null;
   const uniforms = {
-    uNpcRim: { value: rimVec(p.rim) },
+    uNpcRim: { value: rimVec(p.rim).multiplyScalar(p.rimGain ?? 1) },
     uNpcEye: { value: rimVec(p.eyes ?? p.rim).multiplyScalar(p.eyeGain ?? 1) },
     uNpcHc: { value: p.head ? p.head.c : new THREE.Vector3() },
     uNpcHr: { value: p.head ? p.head.r : new THREE.Vector3(1, 1, 1) },
@@ -366,10 +368,11 @@ export function buildDress(bones: ReadonlyMap<string, THREE.Object3D>, color: He
     grp.userData.npcLift = 0.32;
     out.push({ bone, obj: grp });
   };
-  cone('thigh_l', 'calf_l', 0.125, 0.19, 0.94);
-  cone('thigh_r', 'calf_r', 0.125, 0.19, 0.94);
-  cone('spine_01', 'spine_02', 0.105, 0.115, 1, 8);
-  cone('spine_02', 'spine_03', 0.115, 0.108, 1, 8);
+  // seated, the skirt lies over the thighs: it stays inside the chair seat's width (0.46 m) and ends above the knee
+  cone('thigh_l', 'calf_l', 0.112, 0.15, 0.9);
+  cone('thigh_r', 'calf_r', 0.112, 0.15, 0.9);
+  cone('spine_01', 'spine_02', 0.13, 0.14, 1, 8);
+  cone('spine_02', 'spine_03', 0.14, 0.13, 1, 8);
   return out;
 }
 

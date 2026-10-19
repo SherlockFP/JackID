@@ -37,17 +37,33 @@ export function buildPad(kit: Kit, size: SlotSize): PadParts {
   const d = SLOT_DIMS[size];
   const w = d.w * 0.96, dp = d.d * 0.96;
   const root = kit.group('pad');
-  kit.box(w, 0.07, dp, pal.woodDark, { pos: [0, 0.035, 0], parent: root });
-  kit.box(w - 0.14, 0.012, dp - 0.14, pal.carpet, { pos: [0, 0.076, 0], parent: root });
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      kit.cyl(0.035, 0.04, 0.1, pal.brass, { pos: [sx * (w / 2 - 0.07), 0.05, sz * (dp / 2 - 0.07)], seg: 6, parent: root });
-    }
-  }
+  const bay = kit.group('padBay');   // the static parts: merged into a few draw calls below
+  root.add(bay);
+  // a reserved bay (wave 81; it was a flat pink velvet slab that read as a ramp): a dark wood plinth with a brass-edged green baize
+  // inlay, four brass stanchions and a velvet rope across the front and both sides (the back carries the FOR LEASE sign)
+  kit.box(w, 0.06, dp, pal.woodDark, { pos: [0, 0.03, 0], parent: bay });
+  kit.box(w - 0.16, 0.012, dp - 0.16, pal.felt, { pos: [0, 0.066, 0], parent: bay });
+  for (const sz of [-1, 1]) kit.box(w - 0.12, 0.016, 0.03, pal.brass, { pos: [0, 0.068, sz * (dp / 2 - 0.07)], parent: bay, shade: false });
+  for (const sx of [-1, 1]) kit.box(0.03, 0.016, dp - 0.12, pal.brass, { pos: [sx * (w / 2 - 0.07), 0.068, 0], parent: bay, shade: false });
+  const px = w / 2 - 0.06, pz = dp / 2 - 0.06, top = 0.86;
+  const post = (x: number, z: number): void => {
+    kit.cyl(0.07, 0.08, 0.03, pal.brass, { pos: [x, 0.075, z], seg: 8, parent: bay });
+    kit.cyl(0.018, 0.022, top - 0.07, pal.brass, { pos: [x, 0.07 + (top - 0.07) / 2, z], seg: 6, parent: bay });
+    kit.sphere(0.04, pal.gold, { pos: [x, top + 0.02, z], wSeg: 6, hSeg: 4, parent: bay });
+  };
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) post(sx * px, sz * pz);
+  const rope = (a: [number, number], b: [number, number]): void => {
+    const y = top - 0.04;
+    kit.tube([[a[0], y, a[1]], [(a[0] + b[0]) / 2, y - 0.1, (a[1] + b[1]) / 2], [b[0], y, b[1]]], 0.013, pal.red, { seg: 6, radialSeg: 3, parent: bay });
+  };
+  rope([-px, pz], [px, pz]);
+  rope([-px, -pz], [-px, pz]);
+  rope([px, -pz], [px, pz]);
   // the sign stands near the back edge so it never blocks the player's view of the pad
   const z = -dp / 2 + 0.22;
-  kit.cyl(0.022, 0.028, 1.35, pal.brass, { pos: [0, 0.07 + 0.675, z], seg: 6, parent: root });
-  kit.box(0.84, 0.3, 0.03, pal.black, { pos: [0, 1.52, z], parent: root });
+  kit.cyl(0.022, 0.028, 1.35, pal.brass, { pos: [0, 0.07 + 0.675, z], seg: 6, parent: bay });
+  kit.box(0.84, 0.3, 0.03, pal.black, { pos: [0, 1.52, z], parent: bay });
+  kit.finalize(bay);
   try {
     const neon = crispNeon(kit as unknown as KitX, { text: { key: 'world.forLease' }, h: 0.2, color: pal.neonYellow, flicker: 0.12, font: 'chetyre' });
     neon.root.position.set(0, 1.52, z + 0.03);

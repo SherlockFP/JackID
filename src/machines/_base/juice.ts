@@ -1,8 +1,8 @@
 /**
  * Machine juice helpers (base-machines WP). BRIEF ADDENDUM 8 "JUICE IS KING": every interaction =
  * anticipation → action → impact → follow-through. This file standardises the machine-side half so ~40 machines
- * feel alike: tiered win celebrations, loss feedback, near-miss tease, coin pours with a count-up, the win streak,
- * and the attract-mode scheduler. Particles / screen effects come from `ctx.fx`, sounds from `ctx.audio` (win jingles via
+ * feel alike: tiered win celebrations, loss feedback, near-miss tease, the reel whirr, coin pours with a count-up, the win
+ * streak, and the attract-mode scheduler. Particles / screen effects come from `ctx.fx`, sounds from `ctx.audio` (win jingles via
  * `audio.winJingle`, never `music.stinger`: DECISIONS G); this file only decides WHEN and HOW MUCH, per tier
  * (GDD §10.4, ART_BIBLE §9).
  *
@@ -28,7 +28,7 @@ import { setPostLevel } from '@/core/fx';
 import type { WinTier } from '@/game/types';
 import { fmtCoins, t as tr } from '@/core/i18n';
 import {
-  netWin, streakSteps, tierAtLeast, toWinTier, tierMin, winFeel, windupSec, STREAK_MIN, TIER_FLOOR_MULT,
+  juiceTier, netWin, streakGlow, streakPitch, streakSteps, tierAtLeast, toWinTier, tierMin, winFeel, windupSec, STREAK_MIN, TIER_FLOOR_MULT,
   type JuiceTier, type WinFeel,
 } from './tiers';
 import type { MachineContext, MachineModel } from './types';
@@ -93,15 +93,17 @@ export interface TierShow {
   glow: Hex;
 }
 
+// small and medium add no layer sound: win1 carries its own coin chime and win2 its own coin cascade, and a second sparkle /
+// cascade on top made the early tiers a wash. The jackpot show runs 8 s (was 6): the longest, loudest moment in the game.
 export const TIER_SHOW: Readonly<Record<JuiceTier, TierShow>> = {
   none:    { show: 0,   hz: 0,  sfx: null,       glow: 0 },
   push:    { show: 0.4, hz: 2,  sfx: 'coin',     glow: 0xe8d35a },
-  small:   { show: 1.2, hz: 6,  sfx: 'sparkle',  glow: 0xffce5a },
-  medium:  { show: 2,   hz: 8,  sfx: 'coinShower', glow: 0xffce5a },
+  small:   { show: 1.2, hz: 6,  sfx: null,       glow: 0xffce5a },
+  medium:  { show: 2,   hz: 8,  sfx: null,       glow: 0xffce5a },
   big:     { show: 3,   hz: 8,  sfx: 'chime',    glow: 0xffd040 },
   huge:    { show: 5,   hz: 10, sfx: 'chime',    glow: 0xffd040 },
   mega:    { show: 7,   hz: 12, sfx: 'bell',       glow: 0xffd040 },
-  jackpot: { show: 6,   hz: 14, sfx: 'jackpotSiren', glow: 0xfff0a0 },
+  jackpot: { show: 8,   hz: 14, sfx: 'jackpotSiren', glow: 0xfff0a0 },
 };
 
 const GOLD_FLASH: Hex = 0xffd040;
@@ -111,6 +113,9 @@ const STREAK_COL: Hex = 0xff9a20;
 /** A streak show lasts at least this long (s) and its bulbs chase at least this fast (Hz). */
 const STREAK_SHOW = 1.5;
 const STREAK_HZ = 8;
+
+/** Hosts whose win show is running. `pourCoins` skips its own coin sounds for them: the show already pours. */
+const showing = new WeakSet<JuiceHost>();
 
 function anchorOf(host: JuiceHost, ...names: string[]): THREE.Object3D {
   const a = host.model.anchors;
@@ -202,11 +207,15 @@ export function celebrate(host: JuiceHost, tier: JuiceTier, o: CelebrateOpts = {
     if (!fast) winFeelLayer(host, shown, feel, at, dist, sp, zoomOk);
     ctx.fx.winBurst(shown === 'mega' ? 'huge' : shown, at, { amount: showPop && !own ? pop : undefined, flyToWallet: host.isLocalOccupant && !fast });
     if (own) winPop(host, feel, at, pop as number);
-    ctx.audio.winJingle(toWinTier(tier), { pos: speaker, pitch: tier === 'jackpot' ? 0 : feel.pitch + streakSteps(streak) });
-    if (show.sfx && !fast) ctx.audio.play(show.sfx, { pos: speaker, vol: 0.8, pitch: tier === 'jackpot' ? 0 : feel.pitch });
-    ctx.fx.lightPulse(at, { color: show.glow, mul: tier === 'small' ? 1.15 : tier === 'medium' ? 1.3 : 1.7, dur: 0.5 });
+    // level rises with the multiple (0.75 at x1 up to 1.1 at x50; the engine plays a jackpot 25 % louder still). Pitch too, for
+    // small and medium only: big and up play the recorded fanfare, which must stay in its key (and over it, the layer sound)
+    const pitched = !tierAtLeast(tier, 'big');
+    ctx.audio.winJingle(toWinTier(tier), { pos: speaker, pitch: pitched ? feel.pitch + streakSteps(streak) : 0, vol: 0.75 + 0.35 * feel.k });
+    if (show.sfx && !fast) ctx.audio.play(show.sfx, { pos: speaker, vol: 0.8 });
+    // a hot machine glows a little brighter with every win in a row
+    ctx.fx.lightPulse(at, { color: show.glow, mul: (tier === 'small' ? 1.15 : tier === 'medium' ? 1.3 : 1.7) * streakGlow(streak), dur: 0.5 });
     if (!fast) escalate(host, shown, at, speaker, sp, zoomOk);
-    if (hot && !fast) streakPop(host, at, streak);
+    if (hot && !fast) streakPop(host, at, streak, speaker, sp);
   };
   const runShow = (): void => {
     if (host.disposed || runSec <= 0) return;
@@ -220,7 +229,8 @@ export function celebrate(host: JuiceHost, tier: JuiceTier, o: CelebrateOpts = {
   if (windup > 0) ctx.timers.wait(windup * sp).then(land);
   else land();
   if (fast || runSec <= 0) { o.restore?.(); return Promise.resolve(); }
-  return ctx.timers.wait((windup + runSec) * sp).then(() => { if (!host.disposed) o.restore?.(); });
+  showing.add(host);                                             // the show owns the coin sounds until it ends (see pourCoins)
+  return ctx.timers.wait((windup + runSec) * sp).then(() => { showing.delete(host); if (!host.disposed) o.restore?.(); });
 }
 
 /**
@@ -253,23 +263,24 @@ function windupFor(host: JuiceHost, o: CelebrateOpts, shown: JuiceTier, speaker:
 }
 
 /**
- * The multiplier-scaled half of a win (see {@link winFeel}): screen flash, coin pour, coin-pour sound. Tiers from `big` up
- * already get a fountain, a flash and a shake from `winBurst` / {@link escalate}, so they only get the pitch and the pop.
+ * The multiplier-scaled half of a win (see {@link winFeel}): coin sound, screen flash, coin pour. Tiers from `big` up
+ * already get a fountain, a flash and a shake from `winBurst` / {@link escalate}, so they only get the sound and the flash.
  * Screen-space parts only run for the player (or a spectator standing at the machine).
  */
 function winFeelLayer(host: JuiceHost, shown: JuiceTier, feel: WinFeel, at: THREE.Object3D, dist: number, sp: number, zoomOk: boolean): void {
   const { ctx } = host;
   const near = host.isLocalOccupant || dist <= 3;
   const tall = tierAtLeast(shown, 'big');
+  const speaker = anchorOf(host, 'speaker');
+  // ONE coin sound per win: a small win's jingle carries its own three clinks (a chime and a few coins, nothing more); every
+  // bigger one gets a pour under the jingle (louder with the multiple). The jackpot has its coin rain instead.
+  if (shown !== 'small' && shown !== 'jackpot') ctx.audio.play('coinPour', { pos: speaker, vol: 0.35 + 0.5 * feel.k });
   // reduce-flashing is applied by fx.flash itself (alpha and gap); calm drops the win flash here
   if (near && shown !== 'jackpot' && feel.flashAlpha > 0 && !flashPrefs().calm) ctx.fx.flash(feel.flashColor, feel.flashAlpha, feel.flashDur);
   if (tall) return;
   if (near && feel.shake > 0) ctx.fx.shake(feel.shake, 0.18 + 0.4 * feel.k, { roll: feel.shake * 40 });
   if (near && feel.zoom > 0 && zoomOk) ctx.fx.zoomPunch(feel.zoom, 0.3);
-  const speaker = anchorOf(host, 'speaker');
   ctx.fx.coins(at, feel.coins, { spread: 0.12 + 0.1 * feel.k, up: 1.6 + 1.6 * feel.k, over: feel.pourDur * sp });
-  ctx.audio.coins(Math.min(40, feel.coins), { pos: speaker, pitch: feel.pitch });
-  if (feel.k > 0.25) ctx.audio.play('coinPour', { pos: speaker, vol: 0.5 + 0.6 * feel.k, pitch: feel.pitch });
 }
 
 /** The win pop: bigger and warmer with the multiplier, flying into the wallet counter for the player. */
@@ -281,12 +292,16 @@ function winPop(host: JuiceHost, feel: WinFeel, at: THREE.Object3D, amount: numb
   });
 }
 
-/** The streak tag on a hot win: "x3 STREAK", a little bigger with each win in a row. */
-function streakPop(host: JuiceHost, at: THREE.Object3D, streak: number): void {
+/**
+ * The streak tag on a hot win: "x3 STREAK", a little bigger with each win in a row, and a two-note bell ping that climbs a
+ * semitone per win (it comes 0.25 s after the jingle, so it is heard as its own cue).
+ */
+function streakPop(host: JuiceHost, at: THREE.Object3D, streak: number, speaker: THREE.Object3D, sp: number): void {
   at.getWorldPosition(tmpV3a);
   host.ctx.fx.popText([tmpV3a.x, tmpV3a.y + 0.7, tmpV3a.z], tr('juice.streak', { n: streak }), STREAK_COL, {
     dur: 1.2, rise: 0.45, scale: 1.1 + 0.1 * clamp(streak - STREAK_MIN, 0, 7),
   });
+  host.ctx.timers.wait(0.25 * sp).then(() => { if (!host.disposed) host.ctx.audio.play('streakPing', { pos: speaker, vol: 0.55, pitch: streakSteps(streak) }); });
 }
 
 /** The extra layers that make each tier feel bigger than the one below (see {@link celebrate}). */
@@ -313,12 +328,13 @@ function escalate(host: JuiceHost, shown: JuiceTier, at: THREE.Object3D, speaker
   if (shown === 'jackpot') {
     pitWave(host, at, sp);
     ctx.timers.wait(0.4 * sp).then(() => { if (!host.disposed) ctx.audio.play('jackpotBells', { pos: speaker, vol: 0.9 }); });
-    const rain = ctx.audio.play('coinRain', { pos: speaker, vol: 0.7, loop: true });   // coin rain loop under the waves
-    ctx.timers.wait(3.2 * sp).then(() => rain?.stop(0.6));
-    // coin rain: six waves from ceiling height over the first 3 s
+    ctx.timers.wait(3.4 * sp).then(() => { if (!host.disposed) ctx.audio.play('jackpotBells', { pos: speaker, vol: 0.7, pitch: 2 }); });   // second shower: the show runs 8 s
+    const rain = ctx.audio.play('coinRain', { pos: speaker, vol: 0.7, loop: true });   // coin rain under the waves, as long as the count
+    ctx.timers.wait(JACKPOT_COUNT_S * sp).then(() => rain?.stop(0.8));
+    // coin rain: ten waves from ceiling height over the first 5 s
     at.getWorldPosition(tmpV3a);
     const bx = tmpV3a.x, by = tmpV3a.y + 3.2, bz = tmpV3a.z;
-    for (let w = 0; w < 6; w++) {
+    for (let w = 0; w < 10; w++) {
       ctx.timers.wait(w * 0.5 * sp).then(() => {
         if (host.disposed) return;
         ctx.fx.coins([bx + host.cosmetic.float(-2, 2), by, bz + host.cosmetic.float(-1.5, 1.5)], 24, { spread: 1.4, up: 0, over: 1.2 });
@@ -332,11 +348,12 @@ function floorStrobe(host: JuiceHost, tier: JuiceTier, at: THREE.Object3D, sp: n
   if (flashPrefs().reduced) return;
   const { ctx } = host;
   const show = TIER_SHOW[tier];
-  ctx.events.emit('juice:floorStrobe', { tier: toWinTier(tier), hz: show.hz, dur: show.show, color: show.glow });
+  const dur = Math.min(show.show, 6);                                // the strobe keeps its 6 s cap however long the jackpot show runs
+  ctx.events.emit('juice:floorStrobe', { tier: toWinTier(tier), hz: show.hz, dur, color: show.glow });
   at.getWorldPosition(tmpV3a);
   const bx = tmpV3a.x, by = tmpV3a.y, bz = tmpV3a.z;
   const gap = 0.25;                                                  // four strobe flashes a second
-  const steps = Math.min(16, Math.round(show.show / gap));           // budget cap: 16 flashes per show
+  const steps = Math.min(16, Math.round(dur / gap));                 // budget cap: 16 flashes per show
   for (let i = 0; i < steps; i++) {
     ctx.timers.wait(i * gap * sp).then(() => {
       if (host.disposed) return;
@@ -410,6 +427,44 @@ export async function nearMiss(host: JuiceHost, o: NearMissOpts = {}): Promise<v
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
+// Reel whirr
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+/** The loop under a reel spin (see {@link whirr}). */
+export interface Whirr {
+  /** A reel landed: `done` of `total` are down. The whirr thins out (lower and quieter) with each one. */
+  stopped(done: number, total: number): void;
+  /** The last reel is down: the whirr ends. Safe to call twice. */
+  end(): void;
+}
+
+/** Longest a whirr may run (sim s). A machine disposed mid-spin, or a state exit, can never strand the loop voice. */
+const WHIRR_MAX_S = 8;
+
+/**
+ * The reels' whirr, started with the spin: one loop voice that spools up from -5 to +2 semitones in 0.35 s (a win streak
+ * adds up to +4: a hot machine sounds hotter), drops a notch and some level with every reel that lands, and ends with the
+ * last. The thunk (`lever` / `button`) and the `reelStart` swoosh are played by the caller.
+ */
+export function whirr(host: JuiceHost, vol = 0.5): Whirr {
+  const { ctx } = host;
+  const base = streakPitch(host.winStreak ?? 0);
+  const v = ctx.audio.play('reelLoop', { pos: anchorOf(host, 'speaker'), loop: true, param: 0.6, vol, pitch: base - 5 });
+  if (v) {
+    void ctx.tweens.run(0.35, (k) => { if (v.playing) v.setPitch(base - 5 + 7 * k); }, { ease: 'outQuad' });
+    void ctx.timers.wait(WHIRR_MAX_S).then(() => v.stop(0.1));
+  }
+  return {
+    stopped(done, total) {
+      if (!v?.playing || host.disposed) return;
+      const left = Math.max(0, 1 - done / total);
+      v.setPitch(base + 2 - 6 * (1 - left));
+      v.setVol(vol * (0.4 + 0.6 * left));
+    },
+    end() { v?.stop(0.12); },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
 // Coins + count-up
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 export interface PourOpts {
@@ -421,6 +476,8 @@ export interface PourOpts {
   onCount?: (value: number) => void;
   /** The `+net` pop when the pour lands (local player). Pass `false` when a `celebrate` of the same win already pops it. */
   pop?: boolean;
+  /** A small or medium PROFIT (payout above the stake, `bet` given) also rings its win chime, pitched and leveled by the multiple. */
+  chime?: boolean;
   fast?: boolean;
   /** Time multiplier (Speed upgrade; MachineBase fills it in). */
   speed?: number;
@@ -445,8 +502,16 @@ export function pourCoins(host: JuiceHost, amount: number, o: PourOpts = {}): Pr
   const dur = o.fast ? 0.1 : clamp(0.4 + n * 0.03, 0.4, 2.4) * (o.speed ?? 1);
   if (!o.fast) {
     ctx.fx.coins(o.from ?? anchorOf(host, 'coinOut', 'prompt', 'speaker'), n, { spread: 0.05, up: 1.2, over: dur });
-    ctx.audio.play('coinPour', { pos: speaker });
-    ctx.audio.coins(Math.min(n, 40), { pos: speaker });
+    // a win show running on this host already pours (and its jingle clinks): pouring twice is the noise, not the reward
+    if (!showing.has(host)) {
+      ctx.audio.play('coinPour', { pos: speaker });
+      ctx.audio.coins(Math.min(n, 40), { pos: speaker });
+      const tier = o.bet && o.bet > 0 ? juiceTier(amount, o.bet) : 'none';
+      if (o.chime && (tier === 'small' || tier === 'medium')) {
+        const feel = winFeel(amount / (o.bet as number));
+        ctx.audio.winJingle(tier, { pos: speaker, pitch: feel.pitch, vol: 0.75 + 0.35 * feel.k });
+      }
+    }
   }
   const landed = (): void => {
     if (o.fast || o.pop === false || host.disposed || !host.isLocalOccupant) return;
@@ -467,9 +532,35 @@ function tallyPop(host: JuiceHost, amount: number, from?: THREE.Object3D): void 
   });
 }
 
-/** Eased integer count-up on the sim clock (LED windows, "WIN 1,250"). Resolves at the end. */
-export function countUp(ctx: MachineContext, from: number, to: number, dur: number, onValue: (v: number) => void): Promise<void> {
-  return ctx.tweens.run(dur, (k) => onValue(Math.round(lerp(from, to, k))), { ease: 'outCubic' }).promise;
+/** Seconds a jackpot's count-up runs from the impact (the coin rain lasts as long; Big One counts its jackpot over it). */
+export const JACKPOT_COUNT_S = 6;
+
+/** Count-up sound options: `tick` rolls a tick under the count, `end` lands it (default 'countDing'; null = silent). */
+export interface CountSound { tick?: boolean; end?: SfxName | null }
+
+/** Tick times (0..1 of the count): spaced (i / n)^0.7, so the gaps shrink and the roll accelerates into the landing. */
+export function countTicks(n: number): number[] {
+  return Array.from({ length: n }, (_, i) => Math.pow((i + 1) / (n + 1), 0.7));
+}
+
+/**
+ * Eased integer count-up on the sim clock (LED windows, "WIN 1,250"). Resolves at the end. With `snd.tick` a rolling tick runs
+ * under it (about 16 a second, never more ticks than units counted), climbing an octave and speeding up, then the count lands on
+ * `snd.end`. Counts shorter than 0.25 s (fast mode) stay silent.
+ */
+export function countUp(ctx: MachineContext, from: number, to: number, dur: number, onValue: (v: number) => void, snd: CountSound = {}): Promise<void> {
+  const loud = !!snd.tick && dur >= 0.25;
+  const marks = loud ? countTicks(Math.min(40, Math.round(dur * 16), Math.abs(Math.round(to - from)))) : [];
+  let next = 0;
+  // the ticks run on linear time: the eased value below slows down, the roll does not
+  if (marks.length) {
+    ctx.tweens.run(dur, (u) => {
+      for (; next < marks.length && u >= marks[next]; next++) ctx.audio.play('numberTick', { vol: 0.5, pitch: (12 * next) / marks.length });
+    });
+  }
+  return ctx.tweens.run(dur, (k) => onValue(Math.round(lerp(from, to, k))), { ease: 'outCubic' }).promise.then(() => {
+    if (loud && snd.end !== null) ctx.audio.play(snd.end ?? 'countDing', { vol: 0.8 });
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -501,12 +592,20 @@ export function comboTwinkle(ctx: MachineContext, root: THREE.Object3D, ev: Comb
 export const IDLE_GLINT_S = 12;
 
 /**
- * One idle glint: a 1.5 s gold light pulse on each marquee / bulb chain (at most two). It changes no pattern, so the
- * machine's own idle pattern is never disturbed. Off under reduce-flashing.
+ * One idle sparkle: three soft gold-white-gold pulses 0.35 s apart (under 3 a second) on each marquee / bulb chain (at most
+ * two, the second a beat behind the first). It changes no pattern, so the machine's own idle pattern is never disturbed. Off
+ * under reduce-flashing and Calm.
  */
 export function idleGlint(host: JuiceHost, roots: readonly THREE.Object3D[]): void {
-  if (host.disposed || flashPrefs().reduced) return;
-  for (const r of roots.slice(0, 2)) host.ctx.fx.lightPulse(r, { color: GOLD_WAVE, mul: 1.3, radius: 4, dur: 1.5 });
+  const p = flashPrefs();
+  if (host.disposed || p.reduced || p.calm) return;
+  roots.slice(0, 2).forEach((r, j) => {
+    for (let i = 0; i < 3; i++) {
+      host.ctx.timers.wait(i * 0.35 + j * 0.15).then(() => {
+        if (!host.disposed) host.ctx.fx.lightPulse(r, { color: i === 1 ? 0xfff6d0 : GOLD_WAVE, mul: 1.45 - 0.1 * i, radius: 4, dur: 0.55 });
+      });
+    }
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────

@@ -57,6 +57,18 @@ test('the five wave 75 events are on the list from Night 2, and Night 1 never ro
   }
 });
 
+test('Night 1 rolls no floor event at all (the first Night is one loop); Night 2 does', () => {
+  const rng = R.createRng(101);
+  const we = makeWE();
+  let n2 = 0;
+  for (let k = 0; k < 500; k++) {
+    assert.equal(WE.rollWatchEvent(rng.fork(`one.${k}`), 1), null, 'rollWatchEvent on Night 1');
+    assert.equal(we.begin(rng.fork(`begin.${k}`), 1, k % 3, false), null, 'begin on Night 1');
+    if (WE.rollWatchEvent(rng.fork(`two.${k}`), 2)) n2++;
+  }
+  assert.ok(n2 > 250, `Night 2 still rolls events (${n2} of 500)`);
+});
+
 test('Night 2 rolls every wave 75 event, and the older events still roll', () => {
   const rng = R.createRng(20261018);
   const seen = new Set();

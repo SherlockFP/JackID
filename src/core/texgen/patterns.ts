@@ -328,57 +328,62 @@ export function mesh(c: Hex = P22, cell = 4): Pix {
 
 // ── casino carpet ────────────────────────────────────────────────────────────────────────────────
 export type CarpetVariant = 'atrium' | 'slots' | 'felt' | 'parlour';
-interface CarpetDef { base: Hex; lattice: Hex; star: Hex; starC: Hex; pips: [Hex, Hex, Hex, Hex]; halo: [Hex, Hex] }
+interface CarpetDef { base: Hex; lattice: Hex; star: Hex; starC: Hex }
 const CARPETS: Record<CarpetVariant, CarpetDef> = {
-  atrium: { base: P12, lattice: P23, star: P24, starC: P19, pips: [P15, P19, P32, P42], halo: [P42, P35] },
-  slots: { base: P40, lattice: P42, star: P38, starC: P10, pips: [P43, P20, P38, P46], halo: [P37, P37] },
-  felt: { base: P28, lattice: P22, star: P09, starC: P14, pips: [P14, P19, P09, P01], halo: [P13, P13] },
-  parlour: { base: P11, lattice: P21, star: P08, starC: P15, pips: [P08, P08, P08, P08], halo: [P41, P41] },
+  atrium: { base: P12, lattice: P23, star: P24, starC: P19 },
+  slots: { base: P40, lattice: P42, star: P38, starC: P10 },
+  felt: { base: P28, lattice: P22, star: P09, starC: P14 },
+  parlour: { base: P11, lattice: P21, star: P08, starC: P15 },
 };
-const STAR5 = ['..#..', '..#..', '#####', '..#..', '..#..'];
-const SUIT_ORDER = ['H', 'D', 'C', 'S'] as const;
 
 /** Resolve a free-form colour list to a carpet definition (matches a named variant by its base colour). */
-function carpetDef(colors: readonly Hex[]): { def: CarpetDef; variant: CarpetVariant | null } {
-  if (!colors.length) return { def: CARPETS.atrium, variant: 'atrium' };
-  for (const [v, d] of Object.entries(CARPETS) as Array<[CarpetVariant, CarpetDef]>) if (d.base === colors[0] && colors.length === 1) return { def: d, variant: v };
+function carpetDef(colors: readonly Hex[]): CarpetDef {
+  if (!colors.length) return CARPETS.atrium;
+  for (const d of Object.values(CARPETS)) if (d.base === colors[0] && colors.length === 1) return d;
   const base = colors[0], lattice = colors[1] ?? snap15(lighten(base, 0.45)), star = colors[2] ?? snap15(lighten(lattice, 0.4)), starC = colors[3] ?? snap15(lighten(star, 0.6));
-  return { def: { base, lattice, star, starC, pips: [star, starC, lattice, snap15(mix(star, base, 0.5))], halo: [lattice, snap15(mix(lattice, base, 0.5))] }, variant: null };
+  return { base, lattice, star, starC };
 }
 
-/** 64×64 signature casino carpet: diamond lattice, four-point stars, suit pips, dotted halos, wear and burns. */
-export function carpetCasino(variant: CarpetVariant, wear = 0.35): Pix {
-  return paintCarpet(CARPETS[variant], variant, wear, seedOf('carpet', variant));
+/** 64×64 (2 m at 32 texels/m) signature casino carpet, see `paintCarpet`. `wear` is kept for the API: wear dither was the moiré, so it is gone. */
+export function carpetCasino(variant: CarpetVariant, _wear = 0.35): Pix {
+  return paintCarpet(CARPETS[variant]);
 }
-function paintCarpet(d: CarpetDef, variant: CarpetVariant | null, wear: number, seed: number): Pix {
-  const p = new Pix(64, 64), rng = createRng(seed);
+/**
+ * Bold shapes only, so it reads at 360p and does not shimmer when minified (no 1 px lines, no dither, no noise): a 3 px diagonal lattice
+ * on a 32 px diamond cell, a gold inner diamond and 4-point star with a teal heart in every cell, gold studs at the lattice crossings.
+ * Cell centres sit at (16i, 16j) with i+j odd, crossings with i+j even; every write wraps, so the tile is seamless.
+ */
+function paintCarpet(d: CarpetDef): Pix {
+  const p = new Pix(64, 64), rim = snap15(mix(d.star, d.base, 0.45));
   p.rect(0, 0, 64, 64, d.base);
-  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) if ((x + y) % 16 === 0 || (x - y + 64) % 16 === 0) p.px(x, y, d.lattice);
-  const halo = (cx: number, cy: number, col: Hex): void => {
-    for (let dy = -5; dy <= 5; dy++) {
-      const dx = 5 - Math.abs(dy);
-      for (const sx of dx === 0 ? [0] : [-dx, dx]) if (Math.abs(sx) % 2 === 0) p.pxw(cx + sx, cy + dy, col);
-    }
-  };
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) if (((x + y + 1) & 31) < 3 || ((x - y + 65) & 31) < 3) p.px(x, y, d.lattice);
   for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
-    const ax = 8 + 16 * i, ay = 16 * j, bx = 16 * i, by = 8 + 16 * j;
-    halo(ax, ay, d.halo[0]); halo(bx, by, d.halo[1]);
-    STAR5.forEach((row, r) => { for (let c = 0; c < 5; c++) if (row[c] === '#') p.pxw(ax - 2 + c, ay - 2 + r, d.star); });
-    p.pxw(ax, ay, d.starC);
-    const suit = (i + j) % 4;
-    if (variant === 'parlour') {
-      for (let c = -2; c <= 2; c++) for (let r = -1; r <= 1; r++) if (Math.abs(c) + Math.abs(r) <= 3 && !(Math.abs(c) === 2 && r !== 0)) p.pxw(bx + c, by + r, P08);
-      p.pxw(bx, by, P01);
-    } else {
-      PIP5[SUIT_ORDER[suit]].forEach((row, r) => { for (let c = 0; c < 5; c++) if (row[c] === '#') p.pxw(bx - 2 + c, by - 2 + r, d.pips[suit]); });
+    const cx = 16 * i, cy = 16 * j;
+    for (let dy = -12; dy <= 12; dy++) for (let dx = -12; dx <= 12; dx++) {
+      const ax = Math.abs(dx), ay = Math.abs(dy), man = ax + ay;
+      if ((i + j) & 1) {
+        if (man <= 2) p.pxw(cx + dx, cy + dy, d.starC);
+        else if ((ax <= 1 && ay <= 6) || (ay <= 1 && ax <= 6) || (man <= 8 && ax <= 1 && ay <= 7) || (ax + ay === 3 && ax * ay === 2)) p.pxw(cx + dx, cy + dy, d.star);
+        else if (man >= 10 && man <= 11) p.pxw(cx + dx, cy + dy, rim);
+      } else if (man <= 2) p.pxw(cx + dx, cy + dy, rim);
     }
   }
-  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
-    if (fbm(x / 64, y / 64, 4, 4, 3, seed) < wear && bayer(x, y) < 6) { const cur = p.get(x, y); if (cur !== T) p.px(x, y, darker(cur)); }
-  }
-  if (variant !== 'felt') for (let i = 0; i < 3; i++) {
-    const x = rng.int(2, 60), y = rng.int(2, 60);
-    p.frame(x - 1, y - 1, 4, 4, P21); p.rect(x, y, 2, 2, P02);
+  return p;
+}
+
+/** 64×64 staggered stars: gold plus with a teal heart, rim-coloured studs between them. [base, stud/ink, star, heart]. */
+function paintStars(colors: readonly Hex[]): Pix {
+  const base = colors[0] ?? P12, ink = colors[1] ?? snap15(lighten(base, 0.4)), star = colors[2] ?? snap15(lighten(ink, 0.4)), heart = colors[3] ?? snap15(lighten(star, 0.6));
+  const p = new Pix(64, 64);
+  p.rect(0, 0, 64, 64, base);
+  for (let r = 0; r < 4; r++) for (let k = 0; k < 2; k++) {
+    const cy = 8 + 16 * r, cx = 16 + 32 * k + (r & 1 ? 16 : 0);
+    for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) {
+      const ax = Math.abs(dx), ay = Math.abs(dy);
+      if (ax + ay <= 1) p.pxw(cx + dx, cy + dy, heart);
+      else if ((ax <= 1 && ay <= 5) || (ay <= 1 && ax <= 5)) p.pxw(cx + dx, cy + dy, star);
+    }
+    for (const sx of [-16, 16]) for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (Math.abs(dx) + Math.abs(dy) <= 2) p.pxw(cx + sx + dx, cy + dy, ink);
   }
   return p;
 }
@@ -388,9 +393,9 @@ export type CarpetPattern = 'diamond' | 'swirl' | 'stars' | 'teeth';
 export function carpet(pattern: CarpetPattern, colors: readonly Hex[]): Pix {
   const seed = seedOf('carpet', pattern, ...colors);
   if (pattern === 'diamond') {
-    const { def, variant } = carpetDef(colors);
-    return paintCarpet(def, variant, 0.35, seed);
+    return paintCarpet(carpetDef(colors));
   }
+  if (pattern === 'stars') return paintStars(colors);
   const base = colors[0] ?? P12, c1 = colors[1] ?? snap15(lighten(base, 0.4)), c2 = colors[2] ?? snap15(lighten(c1, 0.4)), c3 = colors[3] ?? snap15(darken(base, 0.5));
   const p = new Pix(64, 64), rng = createRng(seed);
   p.rect(0, 0, 64, 64, base);
@@ -406,13 +411,6 @@ export function carpet(pattern: CarpetPattern, colors: readonly Hex[]): Pix {
       }
       p.disc(cx, cy, 1.5, c2);
       for (const [dx, dy] of [[16, 16], [-16, 16], [16, -16], [-16, -16]]) { p.pxw(cx + dx, cy + dy, c3); p.pxw(cx + dx + 1, cy + dy, c3); p.pxw(cx + dx, cy + dy + 1, c3); }
-    }
-  } else if (pattern === 'stars') {
-    for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
-      const cx = 8 + i * 16 + (j & 1 ? 8 : 0), cy = 8 + j * 16;
-      for (let k = -3; k <= 3; k++) { p.pxw(cx + k, cy, c1); p.pxw(cx, cy + k, c1); }
-      for (let k = -2; k <= 2; k++) { p.pxw(cx + k, cy + k, c2); p.pxw(cx + k, cy - k, c2); }
-      p.pxw(cx, cy, c3); p.pxw(cx + 8, cy + 8, c1); p.pxw(cx + 7, cy + 8, c1); p.pxw(cx + 8, cy + 7, c1);
     }
   } else {
     // teeth: staggered rows of triangular teeth

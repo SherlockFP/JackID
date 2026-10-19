@@ -26,6 +26,7 @@ import { META_NODES, ORDER_PRICING, PATRON_RATE, STAFF_DEFS, STAFF_TRACK, WING_D
 import { createCatalog, machineDefOf, sizeFits, type Catalog, type TycoonDef } from './catalog';
 import { TycoonMods } from './provider';
 import { KEYRING, parlourAutoOpens } from '@/game/rooms';
+import { isFreeOnly } from '@/game/progression';
 
 /** Host-side dependencies supplied by the run / world. Everything optional has a safe single-player default. */
 export interface TycoonDeps {
@@ -357,7 +358,7 @@ class TycoonImpl implements Tycoon {
     const run = this.run();
     return registry.ids().filter((id) => {
       const d = machineDefOf(id);
-      return !!d && d.category !== 'system' && sizeFits(d.slotSize, slot) && !run.isLocked(id);
+      return !!d && d.category !== 'system' && !isFreeOnly(id) && sizeFits(d.slotSize, slot) && !run.isLocked(id);   // Wave 81: the cut machines are never for sale, in the Free Casino either
     });
   }
 

@@ -407,6 +407,8 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
   private landed(p: PuckEv): void {
     this.setLamp(p.slot, colourFor(p.mult));
     this.sfx('thud', { vol: 0.5 });
+    // a puck that lands on a paying slot rings it: the tick climbs with the slot's multiple (x2 +4, x4 +8, x8 and up +12)
+    if (p.mult >= 2) this.sfx('lineUp', { vol: 0.7, pitch: Math.min(12, Math.round(4 * Math.log2(p.mult))) });
     if (p.mult >= 2 || p.golden) {
       this.ctx.fx.popText(this.parts.slotLamps, `×${p.mult}`, p.golden ? GOLD : colourFor(p.mult), { dur: 0.9, rise: 0.25, scale: 0.9 + 0.1 * p.mult });
     }
@@ -423,7 +425,7 @@ export default class Plinko extends MachineBase<PlinkoParts, Ev, State> {
       if (tierAtLeast(tier, 'medium')) {
         await this.celebrate(tier, { amount: ev.gross, marquee, restore: () => this.idleChase() });
       } else {
-        await this.pourCoins(ev.gross, { bet: ev.bet, onCount: (v) => this.drawLeds(v) });
+        await this.pourCoins(ev.gross, { bet: ev.bet, chime: true, onCount: (v) => this.drawLeds(v) });
       }
     } else {
       this.commiserate({ amount: ev.bet, at: this.model.anchors.label });

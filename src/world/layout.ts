@@ -19,6 +19,9 @@ import type { ZoneDef } from './sys/arch';
 import { HOLLOW_TABLE_SLOT } from './hollow/config';
 import { HOME_LOOK, HOME_ZONE_RECT } from './home/config';
 
+/** Metres per repeat of every 64 px floor map (stage, apartment, zone floors): one texel density, 32 per metre, at the 360p default. */
+export const FLOOR_TILE_M = 2;
+
 type Rot = 0 | 90 | 180 | 270;
 const S = (id: InstanceId, zone: ZoneId, size: SlotSize, x: number, z: number, rotY: Rot, y?: number): SlotDef =>
   y === undefined ? { id, size, zone, pos: [x, 0, z], rotY } : { id, size, zone, pos: [x, 0, z], rotY, y };
@@ -187,35 +190,16 @@ export const DEFAULT_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
   'LAU-10': 'tallytable', 'CNT-03': 'tallytable',
 };
 
-/** The Free Casino floor: the full GDD §8.6 table of every machine (sandbox mode: all open), plus the Wave 27 pit instances. */
-const LEGACY_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
-  'MOUTH-01': 'fortuneteller', 'MOUTH-TERM': 'debt_terminal', 'MOUTH-PHONE': 'hotline', 'MOUTH-BOUNTY': 'bounty_board',
-  'WELL-01': 'bigone', 'WELL-02': 'roulette', 'WELL-03': 'blackjack', 'WELL-04': 'bandit', 'WELL-06': 'bandit', 'WELL-07': 'shellgame',
-  'WELL-08': 'hilo', 'WELL-09': 'plinko', 'WELL-11': 'mines', 'WELL-13': 'coinflip',
-  'LOB-01': 'scratch', 'LOB-PAWN': 'charm_vendor', 'LOB-PHONE2': 'hotline', 'LOB-DESK': 'threecard',
-  'LOB-CASH': 'cashier', 'LOB-JUKE': 'jukebox', 'LOB-TONIC': 'tonic_vendor',
-  'MID-01': 'elevator', 'MID-02': 'derby', 'MID-03': 'claw', 'MID-04': 'claw', 'MID-05': 'stacker', 'MID-06': 'cyclone',
-  'CARD-01': 'mahjong', 'CARD-06': 'mahjong', 'CARD-02': 'baccarat', 'CARD-03': 'cardwar', 'CARD-04': 'videopoker', 'CARD-05': 'videopoker',
-  'LAU-01': 'bingo', 'LAU-02': 'keno', 'LAU-03': 'pachinko', 'LAU-04': 'pachinko', 'LAU-05': 'pachinko',
-  'LAU-06': 'coinpusher', 'LAU-07': 'lottoblower', 'LAU-08': 'bingopin',
-  'BOI-01': 'craps', 'BOI-02': 'sicbo', 'BOI-03': 'dicetower', 'BOI-04': 'teetotum', 'BOI-05': 'coinflip',
-  'GAL-01': 'pachislot', 'GAL-02': 'pachislot', 'GAL-03': 'pachislot', 'GAL-04': 'fruitmachine', 'GAL-05': 'fruitmachine',
-  'GAL-06': 'lootbox', 'GAL-07': 'bandit', 'GAL-08': 'bandit',
-  'WH-01': 'bigsix', 'WH-02': 'tombola', 'WH-03': 'fantan',
-  'PAR-01': 'devilstable', 'PAR-02': 'pisti', 'PAR-03': 'sonkart', 'PAR-04': 'tavla', 'PAR-SHRINE': 'shrine',
-  // Wave 25 Tally Bench: one duel table per rival venue (Lucan in the Parlour, Tamsin in the Jade Room, Kuro in the Boiler)
-  'PAR-05': 'tallytable', 'CARD-08': 'tallytable', 'BOI-07': 'tallytable',
-  // Wave 25 phase 2: Mimosa's table in the Wash (side duel, Night 4) and Vell's in the Counting Room (Night 8 boss)
-  'LAU-10': 'tallytable', 'CNT-03': 'tallytable',
-};
 /** Slots that stay empty on purpose: the Lobby atrium stage stands on FLR-05 (no pad, no machine). */
 export const STAGE_SLOTS: readonly InstanceId[] = ['FLR-05'];
+/**
+ * The Free Casino floor (sandbox mode, everything open). Wave 81: the same twelve core games, system devices and story tables as the
+ * Debt Run and nothing else. The cut machines (elevator, bandit, scratch, pachinko, craps, cyclone, mahjong ...) stay registered but
+ * no slot places them. The Free Casino fills three more Well pads with core games.
+ */
 export const FREE_ASSIGN: Partial<Record<InstanceId, MachineId>> = {
-  ...LEGACY_ASSIGN,
-  'FLR-01': 'hilo', 'FLR-02': 'coinflip', 'FLR-03': 'scratch', 'FLR-04': 'bandit',
-  'FLR-06': 'sonkart', 'FLR-07': 'keno',
-  'WELL-12': 'cascade',   // Wave 80: the Free Casino shows the Cascade on the same Well pad as the Debt Run
-  [HOLLOW_TABLE_SLOT.id]: 'lordstable',
+  ...DEFAULT_ASSIGN,
+  'WELL-08': 'hilo', 'WELL-09': 'plinko', 'WELL-13': 'coinflip',
 };
 
 /** GDD §8.6 busy-floor override: pad → device (host option, default on with ≥ 4 players). Core machines only. */
@@ -223,24 +207,17 @@ export const BUSY_FLOOR: Partial<Record<InstanceId, MachineId>> = {
   'WELL-05': 'videopoker', 'WELL-10': 'plinko', 'LOB-02': 'hilo', 'LOB-TAPE': 'coinflip',
   'LAU-09': 'hilo', 'MID-07': 'mines', 'BOI-06': 'plinko', 'WH-04': 'roulette',
 };
-/** The same override for the Free Casino (the original GDD table). */
-const LEGACY_BUSY_FLOOR: Partial<Record<InstanceId, MachineId>> = {
-  'WELL-05': 'videopoker', 'WELL-10': 'bandit', 'WELL-12': 'coinflip', 'LOB-02': 'scratch',
-  'GAL-09': 'bandit', 'GAL-10': 'pachislot', 'GAL-13': 'pachislot', 'GAL-14': 'bandit',
-  'LAU-09': 'pachinko', 'MID-07': 'mines', 'BOI-06': 'dicetower', 'WH-04': 'roulette',
-};
-
 /**
  * Pads with no default device (GDD §8.6 "PAD"). In a Debt Run these are the tycoon's expansion pads: the order UI offers the
  * machines open that Night (`run.isLocked`). The busy-floor override fills some of them with core machines.
  */
 export const DEFAULT_PADS: readonly InstanceId[] = SLOTS.filter((s) => !(s.id in DEFAULT_ASSIGN)).map((s) => s.id);
 
-/** Slot → device map for a mode. Free Casino = every machine; every other mode = the progressive core floor. */
+/** Slot → device map for a mode. Free Casino = the core games, all open; every other mode = the progressive core floor. */
 export function assignment(mode: GameMode, o: { busyFloor?: boolean } = {}): Partial<Record<InstanceId, MachineId | null>> {
   const free = mode === 'free';
   const base = free ? FREE_ASSIGN : DEFAULT_ASSIGN;
-  return o.busyFloor ? { ...base, ...(free ? LEGACY_BUSY_FLOOR : BUSY_FLOOR) } : { ...base };
+  return o.busyFloor ? { ...base, ...BUSY_FLOOR } : { ...base };
 }
 
 /** Shape read by WORLD-SYS: `ASSIGN.default` plus one entry per game mode. */
@@ -330,19 +307,8 @@ export const ROSTER_PADS: readonly InstanceId[] = ['WELL-04', 'WELL-06', 'WELL-0
  * (`ROSTER_FIXED`) are never drawn, whatever this list says.
  */
 export const FLOOR_READY: ReadonlySet<MachineId> = new Set<MachineId>([
-  'bigone', 'coinflip', 'tavla', 'threecard', 'videopoker', 'scratch', 'cyclone', 'roulette', 'pachinko', 'pachislot',
-  'fortuneteller', 'hilo', 'blackjack', 'bandit',
-  // WAVE 20 integrator pass (1280x720 bench screenshots): whole play surface in frame, clear of the HUD strips, readable.
-  'craps', 'keno', 'devilstable', 'pisti', 'sonkart', 'fruitmachine', 'lootbox', 'coinpusher', 'bigsix', 'bingopin',
-  'cardwar', 'derby', 'reddog', 'shellgame', 'stacker', 'lottoblower',
-  // WAVE 21 views-e (1280x720 bench screenshots): play surface and labels in frame, clear of the HUD strips and occluders.
-  'tombola', 'dicetower', 'fantan', 'teetotum', 'bingo',
-  // WAVE 22 views-d (1280x720 bench screenshots): whole surface + labels in frame, clear of the HUD strips, figures legible.
-  'baccarat', 'mines', 'plinko', 'sicbo', 'claw',   // (the Wave 72 core ten are all listed: bigone coinflip hilo videopoker mines plinko roulette blackjack keno sonkart)
-  // WAVE 24 (Little Wall): bench seat view passed at 1280x720; placed at CARD-01 and CARD-06 in the Jade Room.
-  'mahjong',
-  // WAVE 80: the Cascade takes the Well pad WELL-12 (its seat view is checked in its own lane's bench pass).
-  'cascade',
+  // Wave 81: only the twelve core games (game/progression.ts CORE_PLAN). The cut machines are never placed, shuffled in or drawn.
+  'bigone', 'coinflip', 'hilo', 'videopoker', 'mines', 'plinko', 'roulette', 'blackjack', 'keno', 'sonkart', 'derby', 'cascade',
 ]);
 /** Machines that never move, whatever the line-up: the marquee and table games, plus the vendors and terminals. */
 export const ROSTER_FIXED: ReadonlySet<MachineId> = new Set<MachineId>([
@@ -366,8 +332,8 @@ export interface RosterCandidate {
   suit?: string;
   volatility?: Volatility;
 }
-/** At least this many distinct suits among the rolled pads (GDD §3.4.1 has six). */
-export const ROSTER_MIN_SUITS = 4;
+/** At least this many distinct suits among the rolled pads (GDD §3.4.1 has six; wave 81: the solo core games span only CARDS, DROPS and CURIOS, so the floor is three). */
+export const ROSTER_MIN_SUITS = 3;
 /**
  * Highest unlock tier in the line-up pool. The spec asks for tier 1, but in the registry only bandit, scratch and
  * videopoker are solo and tier 1 (bigone, roulette and blackjack are fixed), which can never pass the suit rule.

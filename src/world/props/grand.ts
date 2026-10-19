@@ -12,6 +12,7 @@ import type { BulbChain, MannequinActor, ScreenSurface } from '@/kit/types';
 import { t, upper } from '@/core/i18n';
 import type { JackpotWallProp, LightShowProp, PrizeCaseProp, StageProp, WorldLights } from '../types';
 import type { LightHint } from '../sys/arch';
+import { FLOOR_TILE_M } from '../layout';
 import { Sched, easeInOutCubic, easeOutQuad } from './sched';
 import { disposeTree } from './decor';
 
@@ -48,7 +49,9 @@ export function buildStage(kit: KitX, tex: TexGen, o: { root: THREE.Group; stati
     new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1));
 
   // platform, brass nosing, dark front fascia (merged into the static shell)
-  const wood = kit.mat({ color: 0x6a4a30, map: tex.wood(0x4a2c18) });
+  const boards = tex.vendor('sbs-tiny2/128x128/Wood/Wood_03-128x128.png', { size: 64 });
+  boards.userData.tile = FLOOR_TILE_M;   // same texel density as the zone floors
+  const wood = kit.mat({ color: 0x946240, map: boards });
   kit.box(w, h, d, wood, { pos: [x, h / 2, z], parent: o.statical });
   kit.box(w + 0.08, 0.03, 0.08, kit.pal.brass, { pos: [x, h, z - d / 2], parent: o.statical });
   kit.box(w, 0.02, 0.02, kit.pal.brass, { pos: [x, 0.02, z - d / 2 - 0.02], parent: o.statical });

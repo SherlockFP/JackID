@@ -17,8 +17,11 @@
  * Run hooks (optional, `run.duel`, see game/duels/stakes.ts `DuelRunHooks`): Soul Marks, the rival's Pledge charm,
  * Calm / Free coins-only, the Night's encounter, and the end-of-duel report for boss rewards.
  *
- * Controls (seated): 1 / 2 / 3 or left / right + Space = stake tier · left / right (A D, W S) = pick a move · Space / Enter / LMB
- * = play it · C = call the cheat (pick what you saw, Space to confirm, C again cancels) · T (or Q) = Tally Sheet · H rules.
+ * Controls (seated): 1 / 2 / 3 or left / right + Space = stake tier · left / right (A D, W S) or 1-8 = pick a move · Space / Enter / LMB
+ * = play it · C = call the cheat (pick what you saw, Space to confirm, C again cancels) · T (or Q) = Tally Sheet (closed by default) · H rules.
+ *
+ * What the player sees (board.ts, sheet.ts): the game's pieces large on a felt plate over the table (each duel's `board` hook), one goal line,
+ * the options as big buttons with their keys, the rival's move played out on the plate, and a short collapsible Tally Sheet.
  */
 import * as THREE from 'three'
 import type { Json, PlayerId } from '@/core/types'
@@ -33,7 +36,7 @@ import type { Kit } from '@/kit/types'
 import * as manga from '@/core/ui/manga'
 import { gamblersEye } from '@/core/ui/manga/eye'
 import '@/game/duels/autoload'
-import { duelForRival } from '@/game/duels/registry'
+import { duelForRival, getDuel } from '@/game/duels/registry'
 import { setPhotoSource } from '@/game/duels/promise/lucan'
 import { applyPromiseRewards } from '@/game/duels/promise/rewards'
 import {
@@ -42,10 +45,12 @@ import {
 import {
   MARK_DREAD, RIVAL_PLEDGE_OBOLS, pledgeCost, settleStake, stakeUnit, type DuelRunHooks, type StakeSettlement,
 } from '@/game/duels/stakes'
-import type { DuelRules, StakeTier, TextRef } from '@/game/duels/types'
+import type { Board, DuelRules, Piece, StakeTier, TextRef } from '@/game/duels/types'
 import { CHANNEL_COLOR, buildModel, type TallyParts } from './model'
 import { lookOf } from './rivals'
-import { TallyPanel, type SheetLine } from './sheet'
+import { RIVAL_CHAIR_Z, seatedRoot } from './seat'
+import { TallySheet, type SheetLine } from './sheet'
+import { TallyBoard, textVars, type ChoiceItem, type ChoiceView, type PieceView } from './board'
 import { STRINGS } from './strings'
 
 // ── wire types ───────────────────────────────────────────────────────────────────────────────
@@ -68,6 +73,9 @@ const CLUE_PAUSE = 1.4
 const FORFEIT_WINDOW = 3
 const GUARD_S = 25
 const GOLD = 0xffd040, RED = 0xff5a4a
+/** Lines of the latest move the plate shows, and the time the rival's rows take to play out. */
+const LAST_ROWS = 2
+const ROWS_S = 2.4
 
 export const def: MachineDef = {
   id: 'tallytable',
@@ -103,17 +111,18 @@ const freshHost = (): Host => ({
 })
 
 const json = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T
-const vars = (d?: Record<string, unknown>): Record<string, string | number> => {
-  const out: Record<string, string | number> = {}
-  if (d) for (const [k, x] of Object.entries(d)) if (typeof x === 'string' || typeof x === 'number') out[k] = x
-  return out
-}
+const vars = (d?: Record<string, unknown>): Record<string, string | number> => textVars(d, tr, has)
 
 export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
   private view: PublicView = freshView()
   private host: Host = freshHost()
   private seatHud?: SeatHud
-  private panel?: TallyPanel
+  private panel?: TallySheet
+  private board?: TallyBoard
+  /** The table as the seated player sees it (from the host's private prompt), and the latest move as text, for the plate. */
+  private tb: Board | null = null
+  private lastRefs: TextRef[] = []
+  private offBlock: (() => void) | null = null
   // local (seated player) UI state
   private tiers: Tiers | null = null
   private mine: Prompt | null = null
@@ -134,7 +143,9 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
 
   init(): void {
     this.seatHud = new SeatHud(this.ctx.ui.root)
-    this.panel = new TallyPanel(this.ctx.ui.root)
+    this.panel = new TallySheet(this.ctx.ui.root)
+    this.board = new TallyBoard(this.ctx.ui.root)
+    this.offBlock = this.ctx.events.on('ui:blocking', ({ blocking }) => { this.board?.setBlocked(blocking); this.panel?.setBlocked(blocking) })
     this.hud(null)                                        // the seat HUD replaces the generic bottom bar
     // Promise mode: the photo keepsake the player carries can be set in front of Lucan's watch (docs/STORY_BIBLE.md 5a)
     this.offPhoto = setPhotoSource(() => {
@@ -146,8 +157,10 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
   dispose(): void {
     this.offKey?.(); this.offKey = null
     this.offPhoto?.(); this.offPhoto = null
+    this.offBlock?.(); this.offBlock = null
     this.seatHud?.dispose()
     this.panel?.dispose()
+    this.board?.dispose()
     super.dispose()
   }
 
@@ -158,6 +171,8 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
       this.sfx('chime')
       this.seatHud?.show()
       this.panel?.show()
+      this.board?.show()
+      this.parts.notary.setVisible(false)               // a standing figure would fill the steep seat view (seat.ts)
       this.bindSheetKey()
       this.showHud()
       this.seatHud?.firstTip('tallytable', this.tipLines())
@@ -171,7 +186,9 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
       this.offKey?.(); this.offKey = null
       this.tiers = null; this.mine = null; this.callMode = false; this.sent = 0; this.paid = null
       this.noDuel = false; this.adjourned = false
-      this.hud(null); this.seatHud?.hide(); this.panel?.hide()
+      this.hud(null); this.seatHud?.hide(); this.panel?.hide(); this.board?.hide()
+      this.clearTable()
+      this.parts.notary.setVisible(true)
     }
     this.paintAll()
   }
@@ -423,6 +440,8 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
     const h = this.host
     const pid = h.pid
     const night = s.night
+    const table = s.board()                                       // the last move changed the table; the prompt stops with the duel
+    if (pid !== null && table) void this.emitPrivate(pid, { k: 'board', b: table as unknown as Json })
     const paid = this.payOut(s, pid, true)
     void this.emit({ k: 'paid', ...paid } as unknown as Ev)
     this.promiseBonus(s)
@@ -490,6 +509,7 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
         const d = e as unknown as Extract<DuelEvent, { k: 'seal' }>
         reduce(this.view, d)
         this.noDuel = false; this.adjourned = false; this.paid = null; this.mine = null; this.callMode = false; this.sent = 0
+        this.clearTable()
         this.applyRival(d.rival)
         this.paintAll()
         if (local && !pc.fast && !d.quiet) {
@@ -510,6 +530,7 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
       case 'nodue': this.noDuel = true; this.adjourned = false; this.showHud(); return
       case 'reset':
         this.view = freshView(); this.mine = null; this.callMode = false; this.sent = 0; this.paid = null
+        this.clearTable()
         this.paintAll()
         return
       case 'stake': {
@@ -536,6 +557,9 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
         const d = e as unknown as Extract<DuelEvent, { k: 'act' }>
         reduce(this.view, d)
         this.sfx(d.who === 'rival' ? 'click' : 'tileClack', { vol: 0.45 })
+        if (d.who === 'rival') this.rivalGesture()
+        if (local && !pc.fast && d.who === 'rival' && d.rows.length > 1) await this.playRows(d.rows)       // his move happens in front of you, row by row
+        else this.lastRefs = d.rows
         this.paintAll()
         // Promise mode: a key throw (Lucan's winning call) cuts to his eye for 0.6 s with the thought and the sting
         if (local && !pc.fast && d.rows.some((r) => r.data && r.data.eye)) await this.guard(gamblersEye({ rival: this.view.rival, kind: 'wide', line: 'duel.pr.eye.wide' }))
@@ -600,11 +624,15 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
         this.mine = null; this.callMode = false
         this.paintAll()
         return
+      case 'board':
+        if (local) { this.tb = (e as unknown as { b: Board }).b; this.showHud() }
+        return
       case 'mine': {
         if (!local) return
         const p = (e as unknown as { p: Prompt }).p
         const turnChanged = !this.mine || this.mine.v !== p.v
         this.mine = p
+        if (p.board) this.tb = p.board
         this.sent = 0
         if (turnChanged) this.cur = clamp(this.cur, 0, Math.max(0, (this.callMode ? p.targets.length : p.actions.length) - 1))
         if (!p.canCall) this.callMode = false
@@ -628,8 +656,7 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
     }
     if (channel === 'tell') {
       this.sfx('sparkle', { vol: 0.5 })
-      void P.rival.play('Sitting_Talking_Loop')
-      void this.wait(1.6).then(() => P.rival.play('Sitting_Idle_Loop'))
+      this.rivalGesture(1.6)
       if (show) void manga.cutin(this.view.rival, 'smirk', has(key) ? key : undefined)
     } else if (channel === 'table') {
       this.tableHook(typeof data.hook === 'string' ? data.hook : 'glint')
@@ -672,6 +699,33 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
     try { await Promise.race([p, this.ctx.timers.wait(sec)]) } catch { /* presentation failed: carry on */ }
   }
 
+  /** The rival talks with his hands for a moment, then sits still again. */
+  private rivalGesture(sec = 1.4): void {
+    const P = this.parts
+    void P.rival.play('Sitting_Talking_Loop')
+    void this.wait(sec).then(() => P.rival.play('Sitting_Idle_Loop'))
+  }
+
+  /** Writes a move's rows on the plate one at a time (a locker shuffle is eight swaps), a tick for each, in about ROWS_S seconds. */
+  private async playRows(rows: TextRef[]): Promise<void> {
+    const step = clamp(ROWS_S / rows.length, 0.15, 0.5)
+    this.lastRefs = []
+    for (const r of rows) {
+      this.lastRefs = [...this.lastRefs, r]
+      this.sfx('click', { vol: 0.25 })
+      this.showHud()
+      await this.wait(step)
+    }
+  }
+
+  /** A new duel, or the seat is empty: the plate, the Sheet and the last move start blank. */
+  private clearTable(): void {
+    this.tb = null
+    this.lastRefs = []
+    this.board?.reset()
+    this.panel?.reset()
+  }
+
   private showResult(): void {
     const p = this.paid, sh = this.seatHud
     if (!p || !sh || !this.isLocalOccupant) return
@@ -707,6 +761,8 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
     for (const off of this.dress.splice(0)) { try { off() } catch { /* already detached */ } }
     P.rival.setTint(look.body, 1)
     P.rival.root.scale.setScalar(look.height / 1.76)
+    const seat = seatedRoot(look.height, RIVAL_CHAIR_Z, 1)       // a taller or shorter rival still sits ON the cushion
+    P.rival.root.position.set(0, seat.y, seat.z)
     this.dress = look.dress(this.ctx.kit, P.rival)
   }
 
@@ -734,7 +790,7 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
   private paintSheet(): void {
     const panel = this.panel
     if (!panel) return
-    panel.labels(this.t('sheetTitle'), this.t(panel.isOpen ? 'sheetHint' : 'sheetOpenHint', { sheet: 'T' }), this.t('sheetEmpty'))
+    panel.labels(this.t('sheetTitle'), 'T', this.t('sheetEmpty'))
     const tags = { player: this.t('whoPlayer'), rival: this.t('whoRival'), sys: this.t('whoSys'), tell: this.t('chTell'), table: this.t('chTable'), math: this.t('chMath') }
     const lines: SheetLine[] = this.view.sheet.map((r) => ({
       r: r.r,
@@ -754,7 +810,6 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
       if (v.phase !== 'seal' || v.S > 0) {
         sc.text(`${this.t('nRound')} ${v.round || '-'}`, sc.w / 2, 22, { font: 'px5', color: '#f4f0dc', align: 'center' })
         sc.text(`${this.t('nStake')} ${v.S || '-'}`, sc.w / 2, 38, { font: 'px5', color: '#7dff7a', align: 'center' })
-        sc.text(this.t('nCluesVal', { n: v.clues.length }), sc.w / 2, 54, { font: 'px5', color: '#ff42a5', align: 'center' })
       }
     })
   }
@@ -784,53 +839,51 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
     ]
   }
 
-  /** Tier labels for the SEAL picker. */
-  private tierItems(): string[] {
+  /** The key label of option `i` (1-8 are bound; a longer list has no digit and is walked with the arrows). */
+  private nk(i: number): string { return i < 8 ? this.k(`n${i + 1}` as MachineAction) : '' }
+
+  /** The three stake tiers as buttons: name big, what it costs under it; an unavailable tier is dimmed. */
+  private tierItems(): ChoiceItem[] {
     const t = this.tiers
     if (!t) return []
     const no = this.t('tierNo')
-    return [
-      `${this.t('tierCoins')}: ${t.coins ? this.t('tierCoinsD', { n: fmtCoins(t.S) }) : no}`,
-      `${this.t('tierPledge')}: ${t.pledge === 'ticket' ? this.t('tierPledgeTickets') : t.pledge === 'obol' ? this.t('tierPledgeObol') : t.calm ? this.t('tierCalm') : no}`,
-      `${this.t('tierSoul')}: ${t.soul > 0 ? this.t('tierSoulD', { n: t.soul }) : t.calm ? this.t('tierCalm') : no}`,
+    const rows: Array<[string, string, boolean]> = [
+      [this.t('tierCoins'), t.coins ? this.t('tierCoinsD', { n: fmtCoins(t.S) }) : no, t.coins],
+      [this.t('tierPledge'), t.pledge === 'ticket' ? this.t('tierPledgeTickets') : t.pledge === 'obol' ? this.t('tierPledgeObol') : t.calm ? this.t('tierCalm') : no, t.pledge !== ''],
+      [this.t('tierSoul'), t.soul > 0 ? this.t('tierSoulD', { n: t.soul }) : t.calm ? this.t('tierCalm') : no, t.soul > 0],
     ]
+    return rows.map(([label, sub, ok], i) => ({ key: this.nk(i), label, sub, off: !ok }))
   }
 
-  /** The seat HUD: goal, banner, key numbers, the controls that work right now, and the picker / Sheet panel. */
+  /** The seat HUD: the one goal line, the banner, the hint row of keys that work now; the choice bar and the plate are board.ts. */
   private showHud(): void {
-    const sh = this.seatHud, panel = this.panel
+    const sh = this.seatHud
     if (!sh || !this.isLocalOccupant) return
     const v = this.view, m = this.mine
     const rival = v.rival ? this.t(`rivalName_${v.rival}`) : ''
-    const keys = { go: this.k('primary'), call: this.k('alt'), sheet: 'T' }
+    const keys = { go: this.k('primary'), call: this.k('alt'), left: this.k('left'), right: this.k('right') }
     const ctrl: HudControl[] = []
-    sh.goal({ k: v.game === 'promise' ? 'm.tallytable.goalPromise' : 'm.tallytable.goal' })
+    const rules = v.game ? getDuel(v.game) : undefined
+    sh.goal({ k: rules?.goal ?? (v.game === 'promise' ? 'm.tallytable.goalPromise' : 'm.tallytable.goal') })
 
-    let picker: { title: string; items: string[]; cursor: number; tone: 'move' | 'call' } | null = null
+    let choice: ChoiceView | null = null
     if (this.noDuel) sh.state({ k: 'm.tallytable.stNoDuel' }, 'neutral', { k: 'm.tallytable.stNoDuelSub' })
     else if (this.adjourned) sh.state({ k: 'm.tallytable.stAdjourned' }, 'neutral', { k: 'm.tallytable.stAdjournedSub' })
     else if (v.phase === 'seal') {
-      sh.state({ k: 'm.tallytable.stSeal' }, 'gold', { k: 'm.tallytable.stSealSub' })
+      sh.state({ k: 'm.tallytable.stSeal' }, 'gold')
       const items = this.tierItems()
-      if (items.length) picker = { title: this.t('tierCoins') + ' / ' + this.t('tierPledge') + ' / ' + this.t('tierSoul'), items, cursor: this.tierCur, tone: 'move' }
-      ctrl.push({ key: `${this.k('n1')}-${this.k('n3')}`, label: { k: 'm.tallytable.cTier' }, action: 'n1', primary: true })
+      if (items.length) choice = { title: '', items, cursor: this.tierCur, tone: 'tier', hint: this.t('hintTier', { n1: this.k('n1'), n3: this.k('n3') }) }
     } else if (v.phase === 'rounds') {
       if (this.callMode && m) {
-        sh.state({ k: 'm.tallytable.stCall' }, 'bad', { k: 'm.tallytable.stCallSub', v: keys })
-        picker = { title: this.t('pickCall'), items: m.targets.map((r) => this.say(r)), cursor: this.cur, tone: 'call' }
-        ctrl.push({ key: keys.go, label: { k: 'm.tallytable.cCall' }, action: 'primary', primary: true })
-        ctrl.push({ key: `${this.k('left')}/${this.k('right')}`, label: { k: 'm.tallytable.cPick' }, action: 'left' })
+        sh.state({ k: 'm.tallytable.stCall' }, 'bad')
+        choice = { title: this.t('pickCall'), items: m.targets.map((r, i) => ({ key: this.nk(i), label: this.say(r) })), cursor: this.cur, tone: 'call', hint: this.t('hintCall', keys) }
         ctrl.push({ key: keys.call, label: { k: 'm.tallytable.cCancel' }, action: 'alt' })
       } else if (m?.myTurn) {
-        sh.state({ k: 'm.tallytable.stYou' }, 'good', { k: 'm.tallytable.stYouSub', v: keys })
-        const acts = m.actions.map((r) => this.say(r))
-        const lines = m.lines.map((r) => this.say(r))
-        picker = { title: this.t('pickTitle'), items: acts, cursor: this.cur, tone: 'move' }
-        if (lines.length) picker.title = `${this.t('pickTitle')}  ${lines.join('  ')}`
-        ctrl.push({ key: keys.go, label: { k: 'm.tallytable.cPlay' }, action: 'primary', primary: true })
-        ctrl.push({ key: `${this.k('left')}/${this.k('right')}`, label: { k: 'm.tallytable.cMove' }, action: 'left' })
+        sh.state({ k: 'm.tallytable.stYou' }, 'good')
+        choice = { title: '', items: m.actions.map((r, i) => ({ key: this.nk(i), label: this.say(r) })), cursor: this.cur, tone: 'move', hint: this.t('hintMove', keys) }
       } else {
-        sh.state({ k: 'm.tallytable.stRival', v: { rival } }, 'cyan', { k: 'm.tallytable.stRivalSub' })
+        sh.state({ k: 'm.tallytable.stRival', v: { rival } }, 'cyan')
+        if (v.turn === 'rival') choice = { title: this.t('stRival', { rival }), items: [], cursor: 0, tone: 'wait', hint: '' }
       }
       if (m?.canCall && !this.callMode) ctrl.push({ key: keys.call, label: { k: 'm.tallytable.cCall' }, action: 'alt' })
     } else if (v.phase === 'ruling') sh.state({ k: 'm.tallytable.stRuling' }, 'gold')
@@ -838,23 +891,37 @@ export default class TallyTable extends TableBase<TallyParts, Ev, Snap, Act> {
     else if (v.phase === 'done') sh.state({ k: 'm.tallytable.stDone' }, 'neutral')
     else sh.state({ k: 'm.tallytable.stSeal' }, 'neutral')
 
-    const nums: HudNumber[] = []
-    if (v.phase !== 'seal' || v.S > 0) {
-      nums.push({ label: { k: 'm.tallytable.nRound' }, value: String(v.round || '-'), tone: 'neutral' })
-      nums.push({
-        label: { k: 'm.tallytable.nStake' },
-        value: v.tier === 'coins' ? fmtCoins(v.S) : { k: v.tier === 'pledge' ? 'm.tallytable.tierPledge' : 'm.tallytable.tierSoul' },
-        tone: 'gold',
-      })
-      nums.push({ label: { k: 'm.tallytable.nCall' }, value: { k: v.called || m?.canCall === false ? 'm.tallytable.nCallUsed' : 'm.tallytable.nCallOpen' }, tone: v.called ? 'bad' : 'good' })
-      nums.push({ label: { k: 'm.tallytable.nClues' }, value: { k: 'm.tallytable.nCluesVal', v: { n: v.clues.length } }, tone: 'cyan' })
-    }
-    sh.numbers(nums)
+    sh.numbers([])                                          // round and stake live on the plate
     ctrl.push({ key: 'T', label: { k: 'm.tallytable.cSheet' }, action: 'collect' })
     ctrl.push({ key: this.k('help'), label: { k: 'm.tallytable.cRules' }, action: 'help' })
     ctrl.push({ key: this.k('exit'), label: { k: 'm.tallytable.cLeave' }, action: 'exit' })
     sh.controls(ctrl)
-    panel?.picker(picker)
+    this.board?.choice(choice)
+    this.paintPlate()
+  }
+
+  /** The plate: names and points, whose turn, the pieces of the game, the latest move, one note. Hidden until the first prompt. */
+  private paintPlate(): void {
+    const b = this.board
+    if (!b || !this.isLocalOccupant) return
+    const v = this.view, tb = this.tb
+    if (!tb) { b.clearBoard(); return }
+    const rival = this.t(`rivalName_${v.rival}`)
+    const picking = !this.callMode && !!this.mine?.myTurn
+    const piece = (p: Piece): PieceView => ({ top: this.say(p.top), sub: p.sub ? this.say(p.sub) : undefined, down: p.down, mark: p.mark, tone: p.tone, sel: picking && p.act === this.cur })
+    const turn = v.phase === 'rounds' ? (v.turn === 'player' ? 'you' : v.turn === 'rival' ? 'him' : 'none') : 'none'
+    const stake = v.tier === 'coins' ? fmtCoins(v.S) : this.t(v.tier === 'pledge' ? 'tierPledge' : 'tierSoul')
+    b.paint({
+      names: { you: this.t('whoPlayer'), him: rival },
+      turn,
+      turnText: turn === 'you' ? this.t('turnYou') : turn === 'him' ? this.t('turnHim') : v.phase === 'ruling' ? this.t('turnRuling') : '',
+      meta: `${this.t('nRound')} ${v.round || '-'}  ·  ${this.t('nStake')} ${stake}`,
+      score: tb.score ?? null,
+      meter: tb.meter ? { label: this.say(tb.meter.label), value: tb.meter.value, max: tb.meter.max, danger: tb.meter.danger } : null,
+      zones: tb.zones.map((z) => ({ label: this.say(z.label), pieces: z.pieces.map(piece) })),
+      last: this.lastRefs.slice(-LAST_ROWS).map((r) => this.say(r)),
+      notes: (tb.notes ?? []).map((n) => this.say(n)),
+    })
   }
 
   // ── clocks ────────────────────────────────────────────────────────────────────────────────────

@@ -1,32 +1,46 @@
 /**
- * Bounty Board — procedural model (system category, slot M, MOUTH-BOUNTY). A cork board on the Mouth wall with three
- * paper slips pinned in a row (the offers), a ledger screen above them and a red rubber stamp hung on a hook beside
- * the board. The stamp drops on every paid contract. Footprint 1.2 × 1.0 × 3.2 m (SLOT_DIMS.M).
- * Origin = floor centre, +Z = the customer side, the board is at z = WALL_Z.
+ * Bounty Board — procedural model (system category, slot M, MOUTH-BOUNTY). A cork board hung on the Mouth's north wall:
+ * a title plank, two columns of paper slips (OFFERS on the left, the slips you SIGNED on the right), a note card for the
+ * empty board, a brass ledge with a lamp and a red rubber stamp. The stamp drops on every paid contract. Footprint
+ * 1.2 × 1.0 × 3.2 m (SLOT_DIMS.M). Origin = floor centre, +Z = the customer side. The board hangs on BOARD_BACK_Z (the wall
+ * face), not on the slot's back edge: the slot sits half a metre inside the wall.
+ *
+ * Every slip, header and note is a `Card`: a plane with its own canvas (the machine paints it, see index.ts). The seat
+ * camera frames the cork from 1.55 m, so the whole board and the text on it fit one 224-line frame.
  */
 import * as THREE from 'three';
-import type { LampPart, ScreenSurface } from '@/kit/types';
+import type { LampPart } from '@/kit/types';
 import type { KitX } from '@/kit';
 import type { MachineModel } from '@/machines/_base/types';
 import type { ModelOpts } from '@/machines/_base/MachineBase';
-import { BOARD_SLOTS } from './rules';
+import { crispTexture } from '@/core/ui/textOverlay';
+import { BOARD_BACK_Z, BOARD_SLOTS, MAX_ACTIVE, SLIP_H, SLIP_W, TEXEL } from './rules';
+
+/** A paper (or plank) with a canvas of its own. `g` paints the face in texels; set `tex.needsUpdate` after painting. */
+export interface Card { root: THREE.Object3D; g: CanvasRenderingContext2D; tex: THREE.CanvasTexture; w: number; h: number }
 
 export type BountyBoardParts = {
-  /** Paper slips pinned on the cork, one per offer. Each lifts and flutters on sign. */
-  slips: THREE.Object3D[];
-  /** Rubber stamp on the hook; slams down on a paid contract. */
+  /** Pinned offers, left column, rows 1-3. Hidden when the row is empty. */
+  offers: Card[];
+  /** Signed slips, right column, rows 4-6. Hidden when the row is empty. A signed slip flutters on sign. */
+  signed: Card[];
+  /** Tall note card over the offers column: why the board is empty. */
+  note: Card;
+  /** Plank title, OFFERS header, SIGNED header. */
+  heads: [Card, Card, Card];
+  /** Rubber stamp on the ledge; slams down on a paid contract. */
   stamp: THREE.Object3D;
-  /** 128 × 96 px ledger: offers and signed slips with progress. */
-  screen: ScreenSurface;
   lamp: LampPart;
 };
 
-export const W = 1.2, D = 0.2, H = 3.2;
-const WALL_Z = -0.35;
-/** Slip pin positions along the board (three across, upper-middle of the board). */
-export const SLIP_X = [-0.36, 0, 0.36];
-export const SLIP_Y = 1.62;
+export const W = 1.2, H = 3.2;
 export const STAMP_LIFT = 0.12;
+
+const COL_X = 0.245;                 // column centres (±), slips 0.47 wide leave a 0.02 gap in the middle
+const GAP = 0.025;
+const SLIP_TOP = 2.245;
+const LEDGE_Y = 1.1;
+const CORK_Y0 = 1.27, CORK_Y1 = 2.37;
 
 export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BountyBoardParts> {
   const { pal } = kit;
@@ -34,65 +48,76 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<BountyBoardPar
   const at = (x: number, y: number, z: number, extra: { seg?: number } = {}): { pos: [number, number, number]; parent: THREE.Object3D; seg?: number } => ({ pos: [x, y, z], parent: root, ...extra });
   const frame = o.variant % 2 ? pal.woodDark : pal.wood;
   const cork = 0x8a6440;
-  const front = WALL_Z + D / 2 + 0.05;
+  const front = BOARD_BACK_Z + 0.04;                                   // cork centre; its back face (0.015) clears the wainscot (0.01)
+  const corkH = CORK_Y1 - CORK_Y0, corkY = (CORK_Y0 + CORK_Y1) / 2;
 
   // ── board and frame (static) ──
-  kit.box(W, H, 0.06, pal.black, at(0, H / 2, WALL_Z - 0.02));                              // wall backing
-  kit.box(W - 0.1, 1.9, 0.03, cork, at(0, 1.9, front));                                    // cork sheet
-  for (const sx of [-1, 1]) kit.box(0.06, 2.04, 0.08, frame, at(sx * (W / 2 - 0.05), 1.92, front)); // frame sides (meet the top rail, no corner gap)
-  kit.box(W, 0.07, 0.1, frame, at(0, 2.97, front));                                         // frame top
-  kit.box(W, 0.07, 0.1, frame, at(0, 0.88, front));                                         // frame bottom
-  kit.box(W, 0.06, 0.12, pal.brass, at(0, 0.87, front + 0.04));                             // brass ledge
-  kit.box(W, 0.9, 0.06, frame, at(0, 0.45, front - 0.02));                                  // lower panel
+  kit.box(W, CORK_Y0 - 0.06, 0.06, frame, at(0, (CORK_Y0 - 0.06) / 2, front - 0.02));                 // lower panel (face 0.04: proud of the wainscot)
+  kit.box(W - 0.1, corkH, 0.03, cork, at(0, corkY, front));                                         // cork sheet
+  for (const sx of [-1, 1]) kit.box(0.06, corkH + 0.12, 0.08, frame, at(sx * (W / 2 - 0.05), corkY, front)); // frame sides (meet the rails, no corner gap)
+  kit.box(W, 0.06, 0.1, frame, at(0, CORK_Y1 + 0.03, front));                                       // frame top
+  kit.box(W, 0.06, 0.1, frame, at(0, CORK_Y0 - 0.03, front));                                       // frame bottom
+  kit.box(0.9, 0.13, 0.05, frame, at(0, CORK_Y1 + 0.13, front));                                    // title plank
+  kit.box(W, 0.05, 0.12, pal.brass, at(0, LEDGE_Y, front + 0.04));                                  // brass ledge
 
-  // ── slips (animated) ──
-  const slips: THREE.Object3D[] = [];
-  SLIP_X.slice(0, BOARD_SLOTS).forEach((x) => {
-    const s = new THREE.Object3D();
-    s.position.set(x, SLIP_Y, front + 0.04);
-    kit.box(0.26, 0.4, 0.01, 0xefe2b8, { pos: [0, 0, 0], parent: s });                     // paper
-    kit.cyl(0.012, 0.012, 0.02, pal.brass, { pos: [0, 0.17, 0.01], parent: s, seg: 6 });    // pin
-    root.add(s);
-    slips.push(s);
-  });
+  // ── cards (canvas planes; painted by the machine) ──
+  const card = (w: number, h: number, x: number, y: number, z: number): Card => {
+    const pw = Math.round(w * TEXEL), ph = Math.round(h * TEXEL);
+    const tex = kit.tex.canvas(pw, ph, () => undefined, { wrap: 'clamp' });
+    crispTexture(tex, 4);                                              // linear + mips: px5 stays readable minified (as the sic bo / roulette sheets)
+    const node = new THREE.Object3D();
+    node.position.set(x, y, z);
+    kit.plane(w, h, kit.mat({ map: tex, lit: false, snap: false, affine: false, unique: true }), { shade: false, parent: node });
+    root.add(node);
+    return { root: node, g: (tex.image as HTMLCanvasElement).getContext('2d')!, tex, w: pw, h: ph };
+  };
+  const zCard = front + 0.03;
+  const rowY = (i: number): number => SLIP_TOP - SLIP_H / 2 - i * (SLIP_H + GAP);
+  const offers = Array.from({ length: BOARD_SLOTS }, (_, i) => card(SLIP_W, SLIP_H, -COL_X, rowY(i), zCard));
+  const signed = Array.from({ length: MAX_ACTIVE }, (_, i) => card(SLIP_W, SLIP_H, COL_X, rowY(i), zCard));
+  const stackH = BOARD_SLOTS * SLIP_H + (BOARD_SLOTS - 1) * GAP;
+  const note = card(SLIP_W, stackH, -COL_X, SLIP_TOP - stackH / 2, zCard);
+  const headY = SLIP_TOP + 0.035 + 0.025;
+  const heads: BountyBoardParts['heads'] = [
+    card(0.82, 0.1, 0, CORK_Y1 + 0.13, front + 0.03),
+    card(SLIP_W, 0.07, -COL_X, headY, zCard),
+    card(SLIP_W, 0.07, COL_X, headY, zCard),
+  ];
 
-  // ── stamp on a hook (animated) ──
+  // ── stamp on the ledge (animated) ──
   const stamp = new THREE.Object3D();
-  stamp.position.set(0.52, 1.1, front + 0.1);
+  stamp.position.set(0.5, LEDGE_Y + 0.045, front + 0.12);
   kit.cyl(0.02, 0.02, 0.22, pal.black, { pos: [0, 0.11, 0], parent: stamp, seg: 8 });       // handle
   kit.box(0.1, 0.03, 0.08, 0xc02828, { pos: [0, 0, 0], parent: stamp });                    // red face
   root.add(stamp);
 
-  // ── ledger screen and lamp ──
-  const screen = kit.screen({ w: 0.56, h: 0.42, px: [128, 96], bezel: pal.black });
-  screen.mesh.position.set(0, 2.55, front + 0.02);
-  root.add(screen.mesh);
-  // lamp at x -0.44: its glow sprite must stay inside the 1.2 m footprint
-  kit.cyl(0.05, 0.06, 0.08, pal.brass, at(-0.44, 0.94, front + 0.2, { seg: 10 }));
+  // ── lamp on the ledge ──
+  // x -0.5: its glow sprite must stay inside the 1.2 m footprint
+  kit.cyl(0.05, 0.06, 0.08, pal.brass, at(-0.5, LEDGE_Y + 0.065, front + 0.2, { seg: 10 }));
   const lamp = kit.lamp({ r: 0.05, color: 0xff8a50, shape: 'dome' });
-  lamp.root.position.set(-0.44, 1.1, front + 0.2);
+  lamp.root.position.set(-0.5, LEDGE_Y + 0.23, front + 0.2);
   root.add(lamp.root);
 
   // ── anchors ──
   const prompt = new THREE.Object3D(); prompt.position.set(0, 1.9, front + 0.5); root.add(prompt);
-  const coinOut = new THREE.Object3D(); coinOut.position.set(0.52, 0.95, front + 0.35); root.add(coinOut);
+  const coinOut = new THREE.Object3D(); coinOut.position.set(0.45, LEDGE_Y + 0.2, front + 0.35); root.add(coinOut);
   const light = new THREE.Object3D();
-  light.position.set(-0.44, 1.4, front + 0.3);
-  light.userData = { color: 0xff8a50, intensity: 0.5, range: 2.0, flicker: 'STEADY' };
+  light.position.set(0, 1.9, front + 0.6);
+  light.userData = { color: 0xff8a50, intensity: 0.6, range: 2.4, flicker: 'STEADY' };
   root.add(light);
 
-  const parts: BountyBoardParts = { slips, stamp, screen, lamp };
-  kit.finalize(root, { keep: [...slips, stamp, screen.mesh, lamp.root, light] });
+  const parts: BountyBoardParts = { offers, signed, note, heads, stamp, lamp };
+  kit.finalize(root, { keep: [...offers.map((c) => c.root), ...signed.map((c) => c.root), note.root, ...heads.map((c) => c.root), stamp, lamp.root, light] });
 
   return {
     root,
     parts,
-    playPose: { pos: new THREE.Vector3(0, 1.6, 1.0), look: new THREE.Vector3(0, 1.8, -0.2), fov: 60, mouse: 'primary' },
+    // the cork and the plank in one frame (1.0 – 2.65 m at the board, about 1.6 m tall); 1.55 m back, a hair above the middle
+    playPose: { pos: new THREE.Vector3(0, 1.78, zCard + 1.55), look: new THREE.Vector3(0, 1.83, zCard), fov: 55, mouse: 'primary' },
     colliders: [
-      { min: [-W / 2, 0, WALL_Z - 0.04], max: [W / 2, H, WALL_Z + 0.04] },
+      { min: [-W / 2, 0, BOARD_BACK_Z - 0.04], max: [W / 2, H, front + 0.05] },
     ],
-    interact: { min: [-W / 2, 0.3, WALL_Z], max: [W / 2, H, front + 0.6] },
-    anchors: { speaker: prompt, prompt, light, coinOut, insideGlass: screen.mesh },
-    dispose: () => { screen.dispose(); },
+    interact: { min: [-W / 2, 0.3, BOARD_BACK_Z], max: [W / 2, H, front + 0.6] },
+    anchors: { speaker: prompt, prompt, light, coinOut },
   };
 }

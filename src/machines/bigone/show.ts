@@ -7,6 +7,8 @@
  * rainbow. The pit strobe stays at 3 Hz or less (juiceFx), and the symbol cycle is motion inside the cell, not a flash.
  */
 
+import { MAW } from './rules';
+
 /** Tally size that starts the combo show. */
 export const COMBO_MIN = 3;
 /** Ceiling for any rhythm in the show (Hz). Calm / reduceFlashing lower it to CALM_HZ_MAX. */
@@ -52,6 +54,27 @@ export function comboPlan(n: number, o: FlashOpts): ComboPlan {
     crownHz: hzCap(3, o),
     marchHz: hzCap(3, o),
   };
+}
+
+/**
+ * Longest run of one symbol on a single row that ends on reel `i` (1 = nothing lined up), read from the grid the reels show
+ * (row-major, 5 columns): the line-up tick says what the player can see. The curse's MAW cells and blanks never line up.
+ */
+export function lineRun(grid: readonly number[], i: number): number {
+  let best = 1;
+  for (let r = 0; r < 3; r++) {
+    const s = grid[r * 5 + i];
+    if (!(s >= 0) || s === MAW) continue;
+    let n = 1;
+    while (n <= i && grid[r * 5 + i - n] === s) n++;
+    if (n > best) best = n;
+  }
+  return best;
+}
+
+/** Semitones of the line-up tick for a run of `n` (2 = a pair is the base note, then up a third, a fifth, an octave). */
+export function lineUpPitch(n: number): number {
+  return [0, 0, 0, 4, 7, 12][Math.min(5, Math.max(0, Math.floor(n)))];
 }
 
 /** Idle / live symbol frame 0..SYM_FRAMES-1 at render time `t`: `hz` steps a second, `phase` staggers neighbours. */

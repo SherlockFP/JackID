@@ -11,6 +11,7 @@ import type { DebtRun } from '@/game/run';
 import type { WorldHost } from '@/world/world';
 import { setRoomsBridge, type WingId } from '@/world/rooms';
 import { BOILER, LOCKER, buyPrice, isKeyringWing, wingState, bindWingSource } from '@/game/rooms';
+import { FIRST_UNLOCK_NIGHT } from '@/game/progression';
 import { chairVisible } from '@/world/rooms/logic';
 import { createRng } from '@/core/rng';
 import { charmDef } from '@/game/charms/engine';
@@ -109,7 +110,7 @@ export function startRoomsHost(run: DebtRun, world: WorldHost): () => void {
       if (b.obols > 0) ui.toast(t('rooms.backOffice.paid', { obols: String(b.obols), tickets: String(b.tickets) }), 'good');
       else ui.toast(t('roomsx.office.none'), 'warn');
     },
-    buyPrice: (w) => (isKeyringWing(w) ? buyPrice(run.shift.quota().due) : null),
+    buyPrice: (w) => (isKeyringWing(w) && run.night() >= FIRST_UNLOCK_NIGHT ? buyPrice(run.shift.quota().due) : null),   // no BUY on Night 1
     collectorStatus: () => collectorStatus(),
     askCollector: () => { void askCollector(); },
   });

@@ -52,7 +52,7 @@ const FLICKER: readonly number[] = [0, 0.12, 0.26, 0.55, 0.66, 1.0, 1.1, 1.35];
 const WINDOW_LINES = 4;
 /** THE PROLOGUE (wave 72): the scene's id (story/cutscenes/prologue.cutscene.ts) and the objective's repeat (sim s). */
 export const PROLOGUE_CUT = 'prologue';
-const OBJECTIVE_EVERY_SEC = 20;
+const OBJECTIVE_EVERY_SEC = 60;   // the "take the lift down" toast: once at the start, then at most every minute
 
 /** World position, yaw and look direction of an anchor. Forward is the anchor's -Z, the walk and camera convention (-sin yaw, -cos yaw). */
 export function anchorPose(o: THREE.Object3D): { pos: THREE.Vector3; yaw: number; dir: THREE.Vector3 } {

@@ -28,7 +28,11 @@ export type SfxName =
   | 'tapeStop' | 'tinnitus' | 'defib' | 'gunBlank' | 'gunLoad' | 'shellEject' | 'tileClack' | 'cardSlap'
   | 'totemPlace' | 'totemPulse' | 'porcelainCrack' | 'jackpotSiren' | 'jackpotBells' | 'creak' | 'drip' | 'footstepWet'
   // wave 27 audio: coin insert, coin rain loop (jackpot), near-miss riser, per-pattern tally tick
-  | 'coinInsert' | 'coinRain' | 'tensionRise' | 'tallyTick';
+  | 'coinInsert' | 'coinRain' | 'tensionRise' | 'tallyTick'
+  // wave 81 spin feel: symbols lining up, a win-streak ping, a short debris clink for falling coins
+  | 'lineUp' | 'streakPing' | 'coinClink'
+  // wave 82 casino loop: count-up landing, jackpot count end, slot alarm bell, the full jackpot show
+  | 'countDing' | 'kachunk' | 'alarmBell' | 'jackpotShow';
 
 /** Defaults a registered recipe plays with (same meaning as the built-in table). All optional. */
 export interface SfxRegisterMeta {

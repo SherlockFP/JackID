@@ -177,3 +177,27 @@ real footstep files. The three `floor_creak` files from laleksic are the nearest
 | `rat_attack.ogg` | 0.2 s | rat squeak, attack | rat critter attacks |
 | `rat_death.ogg` | 0.4 s | rat squeak, dying | rat dies, critter caught |
 | `rat_pain.ogg` | 0.15 s | rat squeak, hurt | rat hit |
+
+## Casino loop clips (added 2026-10-19, wave 82)
+
+These were measured offline (length, 100 ms level envelope, onsets, pitch-class balance), not auditioned.
+They are loaded by `src/core/audio/real.ts` (`winClip`) and played from the recipes in `src/core/audio/sfx.ts`,
+each with its procedural version as the fallback.
+
+### sfx-mixkit-casino/ (MP3, Mixkit Sound Effects Free License: free in games, no credit required; see `LICENSE.txt`)
+
+| File | Length | What it sounds like (measured) | Used for |
+|---|---|---|---|
+| `slot_wheel_1932.mp3` | 6.1 s | steady reel whirr from 0.1 to 4.3 s, a pattern that repeats every 0.4 s | `reelLoop`: 0.8 s chunks cut on a 0.4 s turn, under the procedural detents |
+| `slot_random_wheel_1930.mp3` | 5.1 s | flat whirr from 0.1 to 3.2 s, few onsets (no clear reel stops) | not used yet |
+| `casino_win_notification_1986.mp3` | 4.0 s | steady chime 0.1 to 2.1 s (Eb / Ab) | `win1` (small): first 0.9 s |
+| `casino_win_alarm_coins_1990.mp3` | 16.6 s | alarm ringing with coins, a 0.22 s pulse, 0.2 to 15.5 s (D / G) | `coinRain` loop (jackpot count), `winMega` layer |
+| `classic_winner_alarm_1997.mp3` | 10.6 s | flat alarm bell 0 to 10.4 s (A / Bb / C) | `alarmBell`, the start of `jackpotShow` |
+| `casino_bells_reward_1981.mp3` | 5.7 s | bell reward 0.1 to 3.8 s | `jackpotBells` |
+
+### sfx-oga-wins/ (OGG, CC0; see `LICENSE.txt`)
+
+| File | Length | What it sounds like (measured) | Used for |
+|---|---|---|---|
+| `win_fanfare_gchoc.ogg` | 16.3 s | fanfare at a steady level, G major, accents at 0, 1.25, 2.25 and 8.5 s | `win3` (2.8 s from 0 or 8.5 s), `winHuge` (4.2 s), `winMega` (5.6 s), `jackpotShow` (9.6 s) |
+| `win_jingle_fupi.ogg` | 3.8 s | rising jingle, 2.3 s of sound, F major | `win2` (medium) |

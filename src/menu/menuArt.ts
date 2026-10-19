@@ -3,6 +3,7 @@
  * translated strings). Textures are NoColorSpace + nearest filtering (DECISIONS C14, PSX look).
  */
 import * as THREE from 'three';
+import { createRng } from '@/core/rng';
 
 export const GOLD = '#e6b23a';
 export const GOLD_HI = '#ffe08a';
@@ -67,14 +68,14 @@ export function bodyText(ctx: CanvasRenderingContext2D, text: string, x: number,
   ctx.fillText(text, x, y);
 }
 
-function frame(ctx: CanvasRenderingContext2D, w: number, h: number, border: string, inset: number): void {
+function frame(ctx: CanvasRenderingContext2D, w: number, h: number, border: string, inset: number, u = w): void {
   ctx.strokeStyle = border;
-  ctx.lineWidth = Math.max(4, w / 28);
+  ctx.lineWidth = Math.max(4, u / 28);
   ctx.strokeRect(inset, inset, w - inset * 2, h - inset * 2);
-  ctx.lineWidth = Math.max(2, w / 96);
+  ctx.lineWidth = Math.max(2, u / 96);
   ctx.strokeRect(inset * 2.2, inset * 2.2, w - inset * 4.4, h - inset * 4.4);
   ctx.fillStyle = border;
-  const k = w / 22;
+  const k = u / 22;
   for (const [x, y] of [[inset, inset], [w - inset, inset], [inset, h - inset], [w - inset, h - inset]] as const) {
     ctx.fillRect(x - k / 2, y - k / 2, k, k);
   }
@@ -222,8 +223,8 @@ export function panelText(ctx: CanvasRenderingContext2D, text: string, x: number
   fitText(ctx, text, x, y, maxW, px0, color, 'center');
 }
 
-/** The info panel's CREDITS button, as fractions of the panel (centre x / y, width / height). Painter and picker share it. */
-export const PANEL_BUTTON = { cx: 0.5, cy: 0.68, w: 0.5, h: 0.15 };
+/** The CREDITS button of the compact plate, as fractions of the panel (centre x / y, width / height). Painter and picker share it. */
+export const PANEL_BUTTON = { cx: 0.5, cy: 0.653, w: 0.36, h: 0.17 };
 
 /** What the info panel shows. Prose wraps to `maxLines` (the size shrinks to fit); a list keeps its lines. The body block
  *  sits in `bodyTop..bodyTop+bodyH` (fractions of the panel height). `button` draws the CREDITS button, `hint` the controls line. */
@@ -237,11 +238,13 @@ export interface PanelOpts {
   button?: string;
   bodyTop?: number;
   bodyH?: number;
+  /** A strip at the foot of the panel with only the CREDITS button and the controls hint (the die already names its face).
+   *  It is tall enough for the button when there is one, a slim strip for the hint alone otherwise. */
+  compact?: boolean;
 }
 
-/** Greedy word wrap at pixel size `px` (VT323). */
-function wrapWords(ctx: CanvasRenderingContext2D, text: string, maxW: number, px: number): string[] {
-  ctx.font = `${px}px ${BODY}`;
+/** Greedy word wrap at `maxW`. */
+function greedyWrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
   const out: string[] = [];
   let line = '';
   for (const word of text.split(' ')) {
@@ -251,6 +254,18 @@ function wrapWords(ctx: CanvasRenderingContext2D, text: string, maxW: number, px
   }
   if (line) out.push(line);
   return out;
+}
+
+/** Word wrap at pixel size `px` (VT323) that keeps the greedy line count but narrows the measure, so no line is an orphan word. */
+function wrapWords(ctx: CanvasRenderingContext2D, text: string, maxW: number, px: number): string[] {
+  ctx.font = `${px}px ${BODY}`;
+  let best = greedyWrap(ctx, text, maxW);
+  for (let w = maxW * 0.94; best.length > 1 && w > maxW * 0.4; w *= 0.94) {
+    const l = greedyWrap(ctx, text, w);
+    if (l.length !== best.length || l.some((x) => ctx.measureText(x).width > w)) break;
+    best = l;
+  }
+  return best;
 }
 
 /** The largest size (at most `px0`) at which the body fits: lines within `maxW`, the block within `maxH`, prose within `maxLines`. */
@@ -267,9 +282,9 @@ function fitBody(ctx: CanvasRenderingContext2D, body: string | string[], maxW: n
 }
 
 /** A single line in the body face, shrunk until it fits `maxW`. */
-function fitLine(ctx: CanvasRenderingContext2D, text: string, maxW: number, px0: number): number {
+function fitLine(ctx: CanvasRenderingContext2D, text: string, maxW: number, px0: number, min = 14): number {
   let px = px0;
-  for (; px > 14; px -= 2) {
+  for (; px > min; px -= 2) {
     ctx.font = `${px}px ${BODY}`;
     if (ctx.measureText(text).width <= maxW) break;
   }
@@ -287,28 +302,37 @@ function drawButton(ctx: CanvasRenderingContext2D, w: number, h: number, label: 
   fitText(ctx, label, w / 2, b.cy * h, bw * 0.9, bh * 0.5, GOLD_HI);
 }
 
-/** Info panel under the glass (480 x 240 -> 960 x 480 texels; drawn in the crisp pass at native size). Title, body,
- *  optional CREDITS button, one controls line at the bottom. Every size is fitted, so nothing runs off the frame. */
+/** Info panel under the glass (1120 x 480 texels; drawn in the crisp pass at native size). The full card has a title, a body
+ *  and the controls line; the compact plate only the CREDITS button (if any) and the controls line. Every size is fitted,
+ *  so nothing runs off the frame. */
 export function paintPanel(ctx: CanvasRenderingContext2D, w: number, h: number, o: PanelOpts): void {
-  const g = ctx.createLinearGradient(0, 0, 0, h);
+  const y0 = o.compact ? (o.button ? 0.44 : 0.7) * h : 0;   // the compact plate sits at the foot of the texture
+  const ph = h - y0;
+  ctx.save();
+  ctx.translate(0, y0);
+  const g = ctx.createLinearGradient(0, 0, 0, ph);
   g.addColorStop(0, '#120812');
   g.addColorStop(1, '#050205');
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(0, 0, w, ph);
   ctx.fillStyle = 'rgba(255,200,90,0.05)';
-  for (let y = 0; y < h; y += 4) ctx.fillRect(0, y, w, 1);
-  frame(ctx, w, h, GOLD, w / 40);
-  // the title and the body sit clear of the inner frame line (about 0.11 h in from each edge)
-  fitText(ctx, o.title, w / 2, h * 0.185, w * 0.9, h * 0.14, GOLD_HI);
-  const { px, lines } = fitBody(ctx, o.body ?? o.lines ?? [], w * 0.9, (o.bodyH ?? 0.3) * h, Math.round(h * 0.16), o.maxLines);
-  const step = px * 1.25;
-  let y = (o.bodyTop ?? 0.33) * h + step / 2;
-  for (const line of lines) {
-    bodyText(ctx, line, w / 2, y, px, '#f2d9a0', 'center');
-    y += step;
+  for (let y = 0; y < ph; y += 4) ctx.fillRect(0, y, w, 1);
+  frame(ctx, w, ph, GOLD, h / 40, h);   // inset by the full height, so the wide plate keeps a thin frame and room for its bands
+  ctx.restore();
+  if (!o.compact) {
+    // bands inside the frame: title (to .25), body (.27 .. .73), controls hint (.78 .. .91)
+    fitText(ctx, o.title, w / 2, h * 0.17, w * 0.9, h * 0.13, GOLD_HI);
+    const { px, lines } = fitBody(ctx, o.body ?? o.lines ?? [], w * 0.88, (o.bodyH ?? 0.33) * h, Math.round(h * 0.15), o.maxLines);
+    const step = px * 1.25;
+    let y = (o.bodyTop ?? 0.27) * h + step / 2;
+    for (const line of lines) {
+      bodyText(ctx, line, w / 2, y, px, '#f2d9a0', 'center');
+      y += step;
+    }
   }
   if (o.button) drawButton(ctx, w, h, o.button);
-  if (o.hint) bodyText(ctx, o.hint, w / 2, h * 0.845, fitLine(ctx, o.hint, w * 0.9, Math.round(h * 0.14)), '#8fd9ff', 'center');   // above the inner frame line
+  // the hint never drops below h * 0.075 texels (14 px on screen at 720p)
+  if (o.hint) bodyText(ctx, o.hint, w / 2, h * (o.compact ? 0.86 : 0.845), fitLine(ctx, o.hint, w * 0.86, Math.round(h * 0.1), Math.round(h * 0.075)), '#8fd9ff', 'center');
 }
 
 /** A neighbour peek (the menu facets that roll in from the sides): dark enamel, gold frame, the hero entry with
@@ -429,4 +453,112 @@ export function paintWall(ctx: CanvasRenderingContext2D, w: number, h: number): 
   v.addColorStop(1, 'rgba(0,0,0,0.75)');
   ctx.fillStyle = v;
   ctx.fillRect(0, 0, w, h);
+}
+
+/** Screen vignette: clear in the middle, near-black at the rim. */
+export function paintVignette(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  const g = ctx.createRadialGradient(w / 2, h / 2, w * 0.18, w / 2, h / 2, w * 0.72);
+  g.addColorStop(0, 'rgba(3,1,5,0)');
+  g.addColorStop(1, 'rgba(3,1,5,0.9)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+}
+
+/** Night sky behind the skyline: near-black blue, a dim warm glow along the horizon (texture y 0.5), a few faint stars. */
+export function paintSky(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#04050d');
+  g.addColorStop(0.3, '#080a1a');
+  g.addColorStop(0.45, '#1a1530');
+  g.addColorStop(0.5, '#38243a');
+  g.addColorStop(0.56, '#1a1226');
+  g.addColorStop(1, '#07050c');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  const r = createRng('menu-sky');
+  for (let i = 0; i < 45; i++) {
+    ctx.fillStyle = `rgba(190,200,255,${0.15 + r.next() * 0.3})`;
+    ctx.fillRect(Math.floor(r.next() * w), Math.floor(r.next() * h * 0.4), 1, 1);
+  }
+}
+
+/** One tower of a painted skyline, in texels: `top` is its roofline, `peak` the highest point (crown or mast). */
+export interface Tower { x: number; w: number; top: number; peak: number }
+export interface SkylineOpts {
+  seed: string;
+  /** Roofline range, as fractions of the texture height (0 = top). */
+  top: readonly [number, number];
+  /** Tower width range in texels. */
+  width: readonly [number, number];
+  body: string;
+  /** Window grid pitch in texels (a lit window is half of it). */
+  cell: number;
+  /** Chance that a window on a lit tower is on. */
+  lit: number;
+  /** Extra towers forced at a place: `x` and `top` as fractions of the texture, `w` in texels. */
+  tall?: ReadonlyArray<{ x: number; w: number; top: number }>;
+}
+const WARM = ['#ffb45a', '#ffd48a', '#ff9a4a'];
+const COOL = ['#8fc8ff', '#c8e4ff', '#7ab0e8'];
+
+/** A row of tower silhouettes standing on the bottom edge of a transparent texture, each with a grid of warm and cool lit
+ *  windows (some towers dark, some bright). Returns the towers: window (col, row) of a tower sits at
+ *  x + 2 + col * cell, top + cell + row * cell, which is where the menu's flickering lights go. */
+export function paintSkyline(ctx: CanvasRenderingContext2D, w: number, h: number, o: SkylineOpts): Tower[] {
+  const r = createRng(o.seed);
+  const towers: Tower[] = [];
+  for (let x = -o.width[0]; x < w;) {
+    const bw = r.int(o.width[0], o.width[1]);
+    const top = Math.round(h * r.float(o.top[0], o.top[1]));
+    towers.push({ x, w: bw, top, peak: top });
+    x += bw + r.int(0, 2);
+  }
+  for (const f of o.tall ?? []) towers.push({ x: Math.round(f.x * w - f.w / 2), w: f.w, top: Math.round(f.top * h), peak: Math.round(f.top * h) });
+  const win = Math.max(1, o.cell >> 1);
+  for (const t of towers) {
+    ctx.fillStyle = o.body;
+    ctx.fillRect(t.x, t.top, t.w, h - t.top);
+    if (t.w >= 6 * o.cell && r.chance(0.4)) {   // a stepped crown
+      ctx.fillRect(t.x + (t.w >> 2), t.top - 2 * o.cell, t.w >> 1, 2 * o.cell);
+      t.peak = t.top - 2 * o.cell;
+    }
+    if (r.chance(0.25)) { ctx.fillRect(t.x + (t.w >> 1), t.top - 5 * o.cell, 1, 5 * o.cell); t.peak = t.top - 5 * o.cell; }   // a mast
+    ctx.fillStyle = 'rgba(120,110,160,0.3)';
+    ctx.fillRect(t.x, t.top, t.w, 1);   // the roofline catches a little sky
+    const on = o.lit * r.float(0.2, 1);
+    for (let cy = t.top + o.cell; cy < h - 1; cy += o.cell) {
+      for (let cx = t.x + 2; cx + win <= t.x + t.w - 1; cx += o.cell) {
+        if (!r.chance(on)) continue;
+        ctx.globalAlpha = r.float(0.3, 0.85);
+        ctx.fillStyle = r.pick(r.chance(0.7) ? WARM : COOL);
+        ctx.fillRect(cx, cy, win, win);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+  return towers;
+}
+
+/** A band of haze (white, tinted by the material): clear at the top, thickest at texture y `peak`, thinning to the bottom. */
+export function paintHaze(ctx: CanvasRenderingContext2D, w: number, h: number, peak: number): void {
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, 'rgba(255,255,255,0)');
+  g.addColorStop(peak, 'rgba(255,255,255,0.8)');
+  g.addColorStop(1, 'rgba(255,255,255,0.2)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+}
+
+/** Faint slanted streaks, the room's reflection on the window glass (white, tinted and dimmed by the material). */
+export function paintSheen(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  for (const [x, bw, a] of [[0.12, 0.05, 0.5], [0.2, 0.014, 0.35], [0.55, 0.09, 0.4], [0.7, 0.02, 0.3]] as const) {
+    ctx.fillStyle = `rgba(255,255,255,${a})`;
+    ctx.beginPath();
+    ctx.moveTo(x * w, 0);
+    ctx.lineTo((x + bw) * w, 0);
+    ctx.lineTo((x + bw) * w - h * 0.6, h);
+    ctx.lineTo(x * w - h * 0.6, h);
+    ctx.closePath();
+    ctx.fill();
+  }
 }

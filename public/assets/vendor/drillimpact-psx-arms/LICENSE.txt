@@ -1,0 +1,4 @@
+PSX First Person Arms (v1.1.0) by Drillimpact
+https://drillimpact.itch.io/psx-first-person-arms-free
+License: CC0 1.0 Universal (public domain). Author: "free for commercial use. No credit is required."
+Files: arms_rig.glb (1176 tris, 52 bones incl. fingers, 18 clips), arms_01.png (bare), arms_gloves_01.png (black gloves)

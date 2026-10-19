@@ -17,7 +17,7 @@
  */
 import { hashSeed } from '@/core/rng'
 import { planSeedOf, sealPlan, type PlanVault } from './plan'
-import type { CallTarget, CheatPlan, Clue, DuelRules, DuelState, RevealScript, StakeTier, TextRef } from './types'
+import type { Board, CallTarget, CheatPlan, Clue, DuelRules, DuelState, RevealScript, StakeTier, TextRef } from './types'
 
 export type Who = 'player' | 'rival'
 export type DuelPhase = 'seal' | 'rounds' | 'ruling' | 'reveal' | 'done'
@@ -161,7 +161,7 @@ export interface SessionOpts {
 }
 
 /** What the seated player is shown (sent PRIVATELY, only to them). `v` guards against stale input. */
-export interface Prompt { v: number; myTurn: boolean; actions: TextRef[]; lines: TextRef[]; targets: TextRef[]; canCall: boolean }
+export interface Prompt { v: number; myTurn: boolean; actions: TextRef[]; lines: TextRef[]; targets: TextRef[]; canCall: boolean; board: Board | null }
 
 export interface DuelResult { net: number; calledCorrect: boolean | null; won: boolean; drew: boolean; verdict: 'CHEAT' | 'FAIR'; tier: StakeTier; S: number }
 
@@ -256,11 +256,17 @@ export class DuelSession {
     return {
       v: this.steps,
       myTurn,
-      actions: myTurn ? r.legal(this.st).map((a) => json(r.describeAction ? r.describeAction(a) : defaultActionText(a))) : [],
+      actions: myTurn ? r.legal(this.st).map((a) => json(r.describeAction ? r.describeAction(a, this.st) : defaultActionText(a))) : [],
       lines: json(r.describe?.(this.st) ?? []),
       targets: this.callTargets().map((c) => json(c.label)),
       canCall: !this.called,
+      board: this.board(),
     }
+  }
+
+  /** The table as the player sees it. Still readable after the last move (the machine sends it once more when the duel ends). */
+  board(): Board | null {
+    return json(this.rules.board?.(this.st) ?? null)
   }
 
   callTargets(): CallTarget[] {

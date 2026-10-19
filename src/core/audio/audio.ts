@@ -335,6 +335,7 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
 
   function playDef(name: string, d: SfxDef, o: PlayOpts): Voice | null {
     if (o.param !== undefined) o = { ...o, param: Number.isFinite(o.param) ? clamp(o.param, 0, 1) : 0.5 };
+    if (d.meta.jitter) o = { ...o, pitch: (o.pitch ?? 0) + rnd(-d.meta.jitter, d.meta.jitter) };   // a little variation per play
     if (ctx.state !== 'running') return null;
     const now = ctx.currentTime, pri = o.priority ?? d.meta.pri ?? 5;
     if (!o.loop && pri < 9 && !allow(name, d.meta.max ?? 5, now)) return null;
@@ -478,11 +479,12 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
     winJingle(tier: WinTier, o: PlayOpts = {}) {
       const n = winSfx(tier);
       if (!n) return;
-      play(n, o);
-      if (tier === 'big') { addHold('music', 0.4, 1.8); void play('cheer', { param: 0.4, vol: 0.6 }); }
-      else if (tier === 'huge') { addHold('music', 0.5, 3.2); void play('cheer', { param: 0.7, vol: 0.8 }); }
-      else if (tier === 'mega') { addHold('music', 0.6, 4.2); void play('cheer', { param: 0.9, vol: 0.9 }); }
-      else if (tier === 'jackpot') { addHold('music', 0.65, 5.5); void play('cheer', { param: 1, vol: 1 }); }
+      play(n, tier === 'jackpot' ? { ...o, vol: (o.vol ?? 1) * 1.25 } : o);   // the jackpot is the loudest thing on the floor
+      // the music ducks for as long as the fanfare window of the tier plays (win3 2.8 s, winHuge 4.2, winMega 5.6, jackpotShow 9.6)
+      if (tier === 'big') { addHold('music', 0.45, 3); void play('cheer', { param: 0.4, vol: 0.6 }); }
+      else if (tier === 'huge') { addHold('music', 0.55, 4.6); void play('cheer', { param: 0.7, vol: 0.8 }); }
+      else if (tier === 'mega') { addHold('music', 0.65, 6.2); void play('cheer', { param: 0.9, vol: 0.9 }); }
+      else if (tier === 'jackpot') { addHold('music', 0.8, 10); void play('cheer', { param: 1, vol: 1 }); }
     },
     coins(n: number, o: PlayOpts = {}) { playDef('coins', { run: coinCascade(n), meta: { pri: 4, max: 4, gain: 1 } }, o); },
     ambience(id, fade = 1.5) { ambWant = id; if (ctx.state === 'running') applyAmbience(fade); },
@@ -569,13 +571,40 @@ export const sfxNames = (): string[] => [...SFX_DEFS.keys()];
  * (`audio.loadSamples(...)`) for layered sounds to include them. Used for loudness calibration.
  */
 export async function renderSfx(name: string, o: PlayOpts & { seconds?: number; sampleRate?: number } = {}): Promise<AudioBuffer> {
-  const d = SFX_DEFS.get(name);
-  if (!d) throw new Error(`audio: no recipe "${name}"`);
+  return renderMix([{ ...o, name }], o);
+}
+
+/** One layer of {@link renderMix}: a recipe started `at` seconds in; a `loop` layer runs its chunks for `loopFor` seconds. */
+export interface MixLayer extends PlayOpts { name: string; at?: number; loopFor?: number }
+/**
+ * Render several recipes into one offline buffer, the way a win show stacks them (pitch, the recipe's jitter, trim). With
+ * `volumes` the layers also pass through the bus gains, the master gain and the master compressor, so the result is what the
+ * player hears at those settings. Used by scripts/qa/sfxLoud.mjs to measure the win ladder.
+ */
+export async function renderMix(layers: readonly MixLayer[], o: { seconds?: number; sampleRate?: number; volumes?: Record<Bus | 'master', number> } = {}): Promise<AudioBuffer> {
   const sr = o.sampleRate ?? 44100, off = new OfflineAudioContext(2, Math.ceil(sr * (o.seconds ?? 4)), sr);
-  const host: KitHost = { ctx: off, noise: bankFor(sr), pitch: null, sample: (u) => sampleStore.get(u) ?? null, track() {} };
-  const out = off.createGain();
-  out.gain.value = (o.vol ?? 1) * (d.meta.gain ?? 1); out.connect(off.destination);
-  d.run(new Kit(host, out, 0.005), o);
+  let dest: AudioNode = off.destination;
+  const bus = {} as Record<Bus, AudioNode>;
+  if (o.volumes) {
+    const m = off.createGain(), comp = off.createDynamicsCompressor();
+    m.gain.value = taper(o.volumes.master);
+    comp.threshold.value = -12; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.22;
+    m.connect(comp); comp.connect(off.destination); dest = m;
+  }
+  for (const b of BUSES) { const g = off.createGain(); g.gain.value = o.volumes ? taper(o.volumes[b]) : 1; g.connect(dest); bus[b] = g; }
+  for (const l of layers) {
+    const d = SFX_DEFS.get(l.name);
+    if (!d) throw new Error(`audio: no recipe "${l.name}"`);
+    const semis = (l.pitch ?? 0) + (d.meta.jitter ? rnd(-d.meta.jitter, d.meta.jitter) : 0);
+    let pitch: ConstantSourceNode | null = null;
+    if (semis) { pitch = off.createConstantSource(); pitch.offset.value = semis * 100; pitch.start(); }
+    const host: KitHost = { ctx: off, noise: bankFor(sr), pitch, sample: (u) => sampleStore.get(u) ?? null, track() {} };
+    const out = off.createGain();
+    out.gain.value = clamp(l.vol ?? 1, 0, 2) * (d.meta.gain ?? 1); out.connect(bus[l.bus ?? d.meta.bus ?? 'sfx']);
+    const t0 = 0.005 + (l.at ?? 0), end = t0 + (l.loopFor ?? 0);
+    let t = t0;
+    do t += Math.max(0.05, d.run(new Kit(host, out, t), l)); while (l.loop && t < end);
+  }
   return off.startRendering();
 }
 

@@ -38,7 +38,7 @@ export interface Settings {
 }
 
 export const DEFAULT_PSX: PsxSettings = {
-  enabled: true, targetHeight: 224, jitter: 0.5, affine: true, dither: true, colorBits: 5,
+  enabled: true, targetHeight: 360, jitter: 0.5, affine: true, dither: true, colorBits: 5,
   crt: true, scanlines: 0.22, vignette: 0.35, drawDistance: 'normal',
 };
 

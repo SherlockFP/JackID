@@ -105,6 +105,8 @@ export function migrateSave(raw: unknown): SaveData {
   d.stats = numRecord(r.stats);
   d.unlocks = strArr(r.unlocks, 2000);
   d.seen = numRecord(r.seen);
+  // one-time bump: saves from before the 360p default get it once; a later lower choice sticks
+  if (!d.seen['settings.res360']) { d.settings.psx.targetHeight = Math.max(d.settings.psx.targetHeight, DEFAULT_SETTINGS.psx.targetHeight); d.seen['settings.res360'] = 1; }
   if (Array.isArray(r.history)) d.history = (r.history as RunSummary[]).filter((h) => h && typeof h === 'object' && typeof h.seed === 'number').slice(-20);
   const rs = r.resume as RunSnapshot | null | undefined;
   d.resume = rs && typeof rs === 'object' && typeof rs.seed === 'number' && typeof rs.mode === 'string' ? rs : null;

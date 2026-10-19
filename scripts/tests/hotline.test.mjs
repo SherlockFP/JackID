@@ -25,7 +25,7 @@ function mockRun(o = {}) {
   const log = { earned: [], spent: [], dread: [], charms: [], jackpot: [] };
   const run = {
     seed: o.seed ?? 1, selfId: 1, log,
-    night: () => o.night ?? 1,
+    night: () => o.night ?? 2,   // Night 1 never rings (own test below): the default is the first Night the phone works
     shift: { state: () => ({ segment: { index: o.watch ?? 0, count: o.count ?? 3 }, duration: o.duration ?? 150, stake: 1 }), quota: () => ({ due: 300 }), extend: noop },
     mod: (hook, _m, base) => (o.mods && o.mods[hook] ? o.mods[hook](base) : base),
     buffs: {
@@ -48,16 +48,16 @@ function startWatch(hl) { phases('play'); return hl.scheduledAt(); }
 function ringOf(hl) { const s = startWatch(hl); if (s < 0) return null; for (let t = 0; t < 400 && !hl.phone(); t += 1) hl.tick(1); return hl.phone(); }
 
 // ── scheduling ───────────────────────────────────────────────────────────────────────────────────────
-test('ring chance is ~45 % per Watch on Night 1 and deterministic per (seed, Night, Watch)', () => {
+test('ring chance is ~45 % per Watch from Night 2 (Watch 2, not the guaranteed first one) and deterministic per (seed, Night, Watch)', () => {
   let rang = 0;
   const N = 600;
   for (let seed = 1; seed <= N; seed++) {
-    const hl = HL.createHotline(mockRun({ seed }));
+    const hl = HL.createHotline(mockRun({ seed, watch: 1 }));
     if (startWatch(hl) >= 0) rang++;
     phases('settle'); hl.dispose();
   }
   assert.ok(rang / N > 0.38 && rang / N < 0.52, `rate ${rang / N}`);
-  const a = HL.createHotline(mockRun({ seed: 9 })), b = HL.createHotline(mockRun({ seed: 9 }));
+  const a = HL.createHotline(mockRun({ seed: 9, watch: 1 })), b = HL.createHotline(mockRun({ seed: 9, watch: 1 }));
   assert.equal(startWatch(a), startWatch(b));
   phases('settle'); a.dispose(); b.dispose();
 });
@@ -71,7 +71,7 @@ test('the call lands between 20 % and 65 % of the Watch clock', () => {
   }
 });
 
-test('from Night 2 the first Watch always rings; Night 1 has no guarantee; mute silences everything', () => {
+test('Night 1 never rings; from Night 2 the first Watch always rings; mute silences everything', () => {
   const zero = { 'x.phone.callChance': () => 0 };
   for (let seed = 1; seed <= 40; seed++) {
     const n2 = HL.createHotline(mockRun({ seed, night: 2, watch: 2, count: 3, mods: zero }));
@@ -80,9 +80,11 @@ test('from Night 2 the first Watch always rings; Night 1 has no guarantee; mute 
     const early = HL.createHotline(mockRun({ seed, night: 2, watch: 0, count: 3, mods: zero }));
     assert.ok(startWatch(early) >= 0, 'N2 first watch rings');
     phases('settle'); early.dispose();
-    const n1 = HL.createHotline(mockRun({ seed, night: 1, watch: 2, count: 3, mods: zero }));
-    assert.equal(startWatch(n1), -1, 'N1 has no guarantee');
-    phases('settle'); n1.dispose();
+    for (const watch of [0, 1, 2]) {
+      const n1 = HL.createHotline(mockRun({ seed, night: 1, watch, count: 3, mods: { 'x.phone.callChance': () => 1 } }));
+      assert.equal(startWatch(n1), -1, `N1 Watch ${watch + 1} is silent even at a 100 % chance`);
+      phases('settle'); n1.dispose();
+    }
     const mute = HL.createHotline(mockRun({ seed, night: 2, watch: 2, count: 3, mods: { ...zero, 'x.phone.mute': () => 1 } }));
     assert.equal(startWatch(mute), -1, 'muted');
     phases('settle'); mute.dispose();
@@ -124,7 +126,7 @@ test('a call has 3 distinct deals, rings 20 s (+ringTime) and then goes dead', (
 
 test('pick up, then choose: result event, call ends, bad choices are ignored', () => {
   const res = capture('hotline:result'), end = capture('phone:end');
-  const run = mockRun({ seed: 11, night: 1, mods: { 'x.phone.callChance': () => 1 } });
+  const run = mockRun({ seed: 11, night: 2, mods: { 'x.phone.callChance': () => 1 } });
   const hl = HL.createHotline(run);
   const call = ringOf(hl);
   hl.answer(0); assert.ok(hl.phone(), 'choosing before pick-up does nothing');
@@ -453,6 +455,7 @@ test('real Watch: with the Coiled Cord the phone rings, the deal is struck, the 
   assert.equal(run.grantCharm('coiled_cord'), true);
   const hl = HL.createHotline(run, { host: { addPulls: noop } });
   const ring = capture('phone:ring'), res = capture('hotline:result'), end = capture('phone:end');
+  run.index = 1;   // Night 2: the phone is silent on Night 1
   assert.equal(run.startWatch(), true);
   let call = null;
   for (let i = 0; i < 600 && !call; i++) { run.tick(0.5); hl.tick(0.5); call = hl.phone(); }

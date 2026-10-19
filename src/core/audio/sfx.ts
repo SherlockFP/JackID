@@ -10,7 +10,7 @@
  */
 import type { AmbienceId, Bus, PlayOpts } from './types';
 import type { WinTier } from '@/game/types';
-import { installReal, CROWD_LOOP } from './real';
+import { installReal, CROWD_LOOP, audioCalm, winClip } from './real';
 import { Kit, arng, chance, hz, noiseMakeup, pick, rnd, rndi, semi, windowPeak, type NoiseBank, type NoiseColor } from './synth';
 
 export interface SfxMeta {
@@ -23,6 +23,8 @@ export interface SfxMeta {
   gain?: number;
   /** Sound lasts long enough to be worth wiring into slow-motion / pitch (set by {@link LONG}). */
   long?: boolean;
+  /** Random pitch per play, ± semitones (added to `PlayOpts.pitch`): repeated spins never sound identical. */
+  jitter?: number;
 }
 export type KitRecipe = (k: Kit, o: PlayOpts) => number;
 export interface SfxDef { run: KitRecipe; meta: SfxMeta }
@@ -35,16 +37,22 @@ const LOOP_ENV = { a: LOOP_FADE, d: 0.001, s: 1, r: LOOP_FADE };
 /**
  * Per-recipe loudness trim. Calibrated offline with `renderSfx` (samples loaded): the median peak of three renders is
  * normalised to 0.60 full scale (UI ticks 0.45, big jingles 0.72), clamped to 0.3–3. Re-run when a recipe changes.
+ * Wave 81 (spin feel) set button, lever, reelLoop/reelSpin, reelStop, lose, numberTick and the new lineUp / streakPing / coinClink
+ * by comparison with the recipes they replaced (same loudest layer), NOT by a render: re-measure them with `renderSfx`.
+ * `lose` is the quiet dud, so it sits near 0.3 full scale, well under the win sounds.
+ * Wave 82 (casino loop: recorded wheel / chimes / fanfare / alarm layers, countDing, kachunk, alarmBell, jackpotShow): also set by
+ * analogy, NOT rendered. Measure with `node scripts/qa/sfxLoud.mjs` (headless, muted) and copy the numbers in.
  */
 const TRIM: Record<string, number> = {
-  click: 1.13, hover: 3, button: 0.86, popUp: 1.19, numberTick: 3, quotaTick: 2.16, charmTick: 2.2,
+  click: 1.13, hover: 3, button: 0.8, popUp: 1.19, numberTick: 2.6, quotaTick: 2.16, charmTick: 2.2,
   beep: 2.37, error: 1.64, chime: 1.64, lever: 0.46, ratchet: 1.73, reelStart: 1.11,
-  reelLoop: 1.75, reelSpin: 1.91, reelTick: 2.79, reelStop: 0.69, crank: 1.75, motor: 0.47,
+  reelLoop: 1.75, reelSpin: 1.91, reelTick: 2.79, reelStop: 0.66, crank: 1.75, motor: 0.47,
+  lineUp: 0.9, streakPing: 1.2, coinClink: 1, countDing: 1, kachunk: 0.7, alarmBell: 1, jackpotShow: 0.6,
   gunClick: 2.6, gunBlank: 2.4, blankClick: 2.4, gunLoad: 1.09, shellRack: 1.17, shellEject: 2.53,
   gunShot: 0.38, coin: 0.78, coinDrop: 0.65, coinFlick: 2.99, coinLand: 0.57, coinShower: 0.81,
   coinPour: 0.64, coinMagnet: 0.89, chip: 0.85, chipStack: 0.84, card: 0.77, cardFlip: 0.9,
   shuffle: 0.81, cardSlap: 0.77, dice: 0.68, diceRoll: 0.66, diceLand: 0.74, wheelTick: 2.45,
-  ballRoll: 2.82, ballBounce: 1.8, ballDrop: 1.17, bell: 1.01, buzzer: 1.22, lose: 1.76,
+  ballRoll: 2.82, ballBounce: 1.8, ballDrop: 1.17, bell: 1.01, buzzer: 1.22, lose: 0.5,
   whoosh: 1.2, thud: 0.6, glass: 1.08, glassBreak: 1.08, win1: 0.87, win2: 0.61,
   win3: 0.8, winHuge: 0.5, winRise: 0.8, winMega: 0.6, winPush: 0.85, jackpot: 0.62, jackpotSiren: 1.77, jackpotBells: 1.76,
   stinger: 0.57, quotaMet: 0.82, quotaFail: 0.46, upgrade: 1.05, purchase: 1.06, cashRegister: 0.89,
@@ -157,12 +165,14 @@ def('click', (k) => {
   return 0.05;
 }, { bus: 'ui', pri: 8, max: 3 });
 def('hover', (k) => { k.osc('sine', rnd(1900, 2100), 0.035, { vol: 0.14, to: 2500, env: { a: 0.004, d: 0.03, s: 0, r: 0.005 } }); return 0.05; }, { bus: 'ui', pri: 4, max: 2 });
+/** The spin / flip button: a low thunk, the contact click, then the cap bottoming out. */
 def('button', (k) => {
-  thump(k, 0, 260, 110, 0.06, 0.5, 'triangle');
-  snap(k, 0, 0.5, 2500, 0.01, 1);
-  k.osc('square', 880, 0.02, { vol: 0.07 });
-  return 0.08;
-}, { bus: 'ui', pri: 8, max: 3 });
+  thump(k, 0, 190, 80, 0.1, 0.6, 'triangle');
+  snap(k, 0, 0.5, 2300, 0.01, 1);
+  snap(k, 0.05, 0.2, 1500, 0.012, 2);
+  k.osc('sine', 1100, 0.03, { vol: 0.07, to: 700 });
+  return 0.12;
+}, { bus: 'ui', pri: 8, max: 3, jitter: 0.5 });
 def('popUp', (k, o) => {
   const f = 280 * semi((o.param ?? 0.4) * 10);
   k.osc('sine', f, 0.08, { vol: 0.35, to: f * 3, env: { a: 0.005, d: 0.075, s: 0, r: 0.01 } });
@@ -170,10 +180,11 @@ def('popUp', (k, o) => {
   snap(k, 0, 0.18, 2800, 0.006);
   return 0.12;
 }, { bus: 'ui', pri: 6, max: 3 });
+/** Count-up tick. The body is pitched (the HUD roll climbs an octave through PlayOpts.pitch): a bare noise click would not show the climb. */
 def('numberTick', (k) => {
-  snap(k, 0, 0.3, rnd(3800, 4600), 0.006, 4);
-  k.osc('sine', rnd(1450, 1700), 0.01, { vol: 0.06 });
-  return 0.03;
+  snap(k, 0, 0.22, rnd(3800, 4600), 0.006, 4);
+  k.osc('triangle', rnd(1450, 1700), 0.03, { vol: 0.11, env: { a: 0.001, d: 0.026, s: 0, r: 0.006 } });
+  return 0.04;
 }, { bus: 'ui', pri: 3, max: 3 });
 def('quotaTick', (k, o) => {
   const f = 500 + 900 * (o.param ?? 0.5);
@@ -201,17 +212,19 @@ def('chime', (k, o) => {
 }, { pri: 5 });
 
 // ── slots / mechanics ─────────────────────────────────────────────────────────────────────────────
+/** The throw: grab, a ratchet down the stroke and the end-stop clunk at 0.16 s (the lever visuals bottom out at 0.1–0.15 s). */
 def('lever', (k) => {
   thump(k, 0, 170, 80, 0.08, 0.55, 'triangle'); snap(k, 0, 0.5, 1000, 0.025, 1.5);       // grab
-  for (let i = 0; i < 7; i++) {                                                          // ratchet down the stroke
-    const t = 0.05 + i * (0.04 + i * 0.006);
+  for (let i = 0; i < 6; i++) {                                                          // ratchet down the stroke
+    const t = 0.025 + i * (0.02 + i * 0.003);
     snap(k, t, 0.4, 2300 - i * 120, 0.009, 7);
     k.osc('square', 520 - i * 25, 0.012, { at: t, vol: 0.04 });
   }
-  k.noise(0.28, { at: 0.04, vol: 0.14, filter: 'bandpass', freq: 500, to: 1400, q: 1.6, env: { a: 0.04, d: 0.24, s: 0, r: 0.02 } });
-  thump(k, 0.4, 120, 42, 0.16, 0.9); snap(k, 0.4, 0.7, 1500, 0.03, 1.1); ring(k, 0.4, 620, 0.22, 0.09);   // end-stop clunk
-  return 0.7;
-}, { pri: 7 });
+  k.noise(0.15, { at: 0.02, vol: 0.14, filter: 'bandpass', freq: 500, to: 1400, q: 1.6, env: { a: 0.03, d: 0.12, s: 0, r: 0.02 } });
+  thump(k, 0.16, 120, 42, 0.18, 0.9); snap(k, 0.16, 0.7, 1500, 0.03, 1.1); ring(k, 0.16, 620, 0.22, 0.09);   // end-stop clunk
+  snap(k, 0.3, 0.12, 2000, 0.01, 4);                                                      // the arm springs back
+  return 0.5;
+}, { pri: 7, jitter: 0.4 });
 /** param 0..1 → 4..14 clicks. */
 def('ratchet', (k, o) => {
   const n = Math.round(4 + (o.param ?? 0.4) * 10);
@@ -222,20 +235,35 @@ def('ratchet', (k, o) => {
   }
   return n * 0.032 + 0.03;
 }, { pri: 5 });
+/** Spool-up as the reels kick in: a rising motor note and air, a short ratchet. The thump is small: the lever or button just gave the thunk. */
 def('reelStart', (k) => {
-  thump(k, 0, 150, 70, 0.08, 0.55); snap(k, 0, 0.5, 1800, 0.025, 1.2);
+  thump(k, 0, 150, 70, 0.08, 0.4); snap(k, 0, 0.35, 1800, 0.025, 1.2);
   k.osc('sawtooth', 50, 0.4, { at: 0.02, vol: 0.2, to: 170, curve: 'lin', lp: 400, lpTo: 1400, env: { a: 0.05, d: 0.3, s: 0.6, r: 0.08 } });
   k.noise(0.4, { at: 0.02, vol: 0.28, filter: 'bandpass', freq: 300, to: 1800, q: 1.2, env: { a: 0.12, d: 0.25, s: 0.4, r: 0.06 } });
   for (let i = 0; i < 4; i++) snap(k, 0.08 + i * 0.05, 0.25, 2600, 0.008, 6);
   return 0.5;
-}, { pri: 6 });
-/** Spinning reel strip. param 0..1 = speed. Loop-safe. */
+}, { pri: 6, jitter: 0.4 });
+/**
+ * Spinning reels: the recorded slot wheel (Mixkit) under procedural detents. The detents are ratchet ticks whose rate follows the
+ * voice pitch, so they slow with the reels as juice.whirr lowers it after each stop (and with slow-motion); the recording rides the
+ * same pitch. Wheel chunks start on one of its 0.4 s turns, so 0.8 s chunks join in phase. Without the recording: air through the
+ * drum plus a low motor hum (80 / 120 Hz: whole cycles per chunk) under the detents. param 0..1 = speed. Loop-safe.
+ */
 def(['reelLoop', 'reelSpin'], (k, o) => {
-  const sp = o.param ?? 0.5, dur = o.loop ? 0.4 : 0.8, env = o.loop ? LOOP_ENV : { a: 0.02, d: 0.01, s: 1, r: 0.08 };
-  k.noise(dur, { vol: 0.2, filter: 'bandpass', freq: 1400, q: 1.5, env, am: [20 + sp * 16, 0.9] });
-  k.osc('sawtooth', 62, dur, { vol: 0.1, lp: 300, env });
-  const n = Math.max(1, Math.round(dur / (0.04 - sp * 0.012)));      // whole ticks per chunk: even spacing across loop seams
-  for (let i = 0; i < n; i++) snap(k, (i * dur) / n, 0.2, 2600, 0.007, 6);
+  const sp = o.param ?? 0.5, dur = 0.8, env = o.loop ? LOOP_ENV : { a: 0.03, d: 0.01, s: 1, r: 0.1 };
+  const rate = semi(((k.host.pitch as ConstantSourceNode | null)?.offset.value ?? 0) / 100);
+  const real = winClip(k, 'wheel', { off: 0.4 + 0.4 * rndi(0, 7), dur: dur + env.r, vol: 0.5, a: env.a, r: env.r });
+  if (!real) {
+    k.noise(dur, { vol: 0.14, color: 'pink', filter: 'bandpass', freq: 650 + sp * 500, q: 0.8, env, am: [7 + sp * 5, 0.3] });
+    k.osc('triangle', 80, dur, { vol: 0.1, lp: 500, env });
+    k.osc('triangle', 120, dur, { vol: 0.05, lp: 700, env });
+  }
+  const n = Math.max(2, Math.round(dur * (14 + sp * 10) * rate));
+  for (let i = 0; i < n; i++) {
+    const t = ((i + 0.5 + rnd(-0.12, 0.12)) * dur) / n, v = rnd(0.13, 0.19) * (real ? 0.7 : 1);
+    snap(k, t, v, rnd(2300, 2900), 0.006, 6);
+    k.osc('triangle', 1500, 0.012, { at: t, vol: v * 0.25 });
+  }
   return dur;
 }, { pri: 5, max: 2 });
 def('reelTick', (k, o) => {
@@ -244,15 +272,26 @@ def('reelTick', (k, o) => {
   k.osc('sine', f, 0.016, { vol: 0.16, to: f * 0.65 });
   return 0.03;
 }, { pri: 3, max: 4 });
-/** param 0..1 = reel index → pitch climbs up to +5 semitones. */
+/**
+ * One reel landing: the drum arrives, the pawl clacks, a metal note rings and the arm rebounds. param 0..1 = reel index → the
+ * body and the note climb a fifth (+7 semitones), so five stops rise like a short scale. Layered with a recorded click (real.ts).
+ */
 def('reelStop', (k, o) => {
-  const s = semi((o.param ?? 0) * 5);
-  thump(k, 0, 140 * s, 55, 0.12, 0.85); snap(k, 0, 0.7, 1800, 0.03, 1);
-  snap(k, 0, 0.35, 4200, 0.006, 3);
-  ring(k, 0.005, 900 * s, 0.25, 0.1);
-  snap(k, 0.09, 0.25, 2200, 0.008, 5);                                                   // rebound
+  const s = semi((o.param ?? 0) * 7);
+  thump(k, 0, 140 * s, 55, 0.12, 0.8); snap(k, 0, 0.65, 2000 * s, 0.02, 1.1);
+  snap(k, 0, 0.35, 4600, 0.006, 3);
+  ring(k, 0.003, 1000 * s, 0.22, 0.1);
+  k.osc('triangle', 520 * s, 0.07, { vol: 0.16, to: 480 * s, env: { a: 0.001, d: 0.06, s: 0, r: 0.01 } });   // a short pitched pip: the climb is heard
+  snap(k, 0.075, 0.2, 2400 * s, 0.01, 5);                                                   // rebound
   return 0.4;
-}, { pri: 6 });
+}, { pri: 6, jitter: 0.3 });
+/** Symbols lined up on a row. PlayOpts.pitch climbs with the run (2 → 0, 3 → +4, 4 → +7, 5 → +12). Bright, short, tonal. */
+def('lineUp', (k) => {
+  k.osc('sine', 1568, 0.14, { vol: 0.3, env: { a: 0.001, d: 0.12, s: 0, r: 0.02 } });
+  k.osc('sine', 2349, 0.1, { vol: 0.12, env: { a: 0.001, d: 0.08, s: 0, r: 0.02 } });
+  snap(k, 0, 0.25, 4800, 0.006, 3);
+  return 0.18;
+}, { pri: 6, max: 3, jitter: 0.15 });
 def('crank', (k, o) => {
   const dur = o.loop ? 0.5 : 0.8, env = o.loop ? LOOP_ENV : { a: 0.02, d: 0.01, s: 1, r: 0.06 };
   const n = Math.max(1, Math.round(dur / 0.083)), st = dur / n;
@@ -320,6 +359,8 @@ def('coinLand', (k) => {
   k.osc('sine', 2900, 0.1, { at: t, vol: 0.05, env: { a: 0.005, d: 0.09, s: 0, r: 0.01 } });
   return t + 0.15;
 }, { pri: 4 });
+/** One short clink, for a fountain's falling coins (fx particles): a landing is not a full coinLand settle, or sixty coins turn into noise. */
+def('coinClink', (k) => { clink(k, 0, 0.45, rnd(2400, 3400), 0.07); return 0.12; }, { pri: 2, max: 4 });
 def('coinShower', (k) => { cascade(k, 0, 1.2, 24, 0.4); return 1.6; }, { pri: 5 });
 /** param 0..1 intensity. Loop-safe. */
 def('coinPour', (k, o) => {
@@ -425,13 +466,13 @@ def('buzzer', (k) => {
   k.noise(0.5, { vol: 0.08, filter: 'lowpass', freq: 600, env });
   return 0.6;
 }, { pri: 8 });
+/** A losing round: a short, quiet dud (a soft thud and one falling note). Never a jeer: losses are quick and quiet (pillar 4). */
 def('lose', (k) => {
-  // "womp womp" — muted trombone slides
-  const notes: [number, number, number][] = [[233, 0, 0.22], [220, 0.27, 0.22], [208, 0.54, 0.22], [196, 0.81, 0.6]];
-  for (const [f, t, d] of notes) k.osc('sawtooth', f, d, { at: t, vol: 0.28, to: t > 0.8 ? 138 : f * 0.97, glide: d, lp: 760, lpTo: 330, q: 1.2, vib: [5.2, 28], env: { a: 0.03, d: 0.05, s: 0.8, r: 0.07 } });
-  thump(k, 0, 120, 55, 0.12, 0.4);
-  return 1.5;
-}, { pri: 8 });
+  thump(k, 0, 170, 88, 0.16, 0.5);
+  k.osc('triangle', 196, 0.24, { vol: 0.18, to: 139, lp: 650, env: { a: 0.008, d: 0.22, s: 0, r: 0.04 } });
+  k.noise(0.08, { at: 0.005, vol: 0.06, filter: 'lowpass', freq: 600, env: TICK_ENV(0.08) });
+  return 0.3;
+}, { pri: 6, jitter: 0.7 });
 def('whoosh', (k, o) => {
   const dur = 0.2 + (o.param ?? 0.4) * 0.5;
   k.noise(dur, { vol: 0.5, filter: 'bandpass', freq: 300, to: 2800, q: 1.2, env: { a: dur * 0.55, d: dur * 0.45, s: 0, r: 0.03 } });
@@ -449,30 +490,54 @@ def('glassBreak', (k) => {
   for (let i = 0; i < 26; i++) { const t = Math.pow(rnd(0, 1), 1.6) * 0.75; ring(k, t, rnd(3000, 9000), rnd(0.03, 0.09), 0.08 * (1 - t), { ratios: [1, 1.7], amps: [1, 0.4], pan: rnd(-0.7, 0.7) }); }
   return 0.95;
 }, { pri: 7 });
+/** Small win: the recorded win chime, cut short (synth: one of three bell arpeggios), three coin clinks on a coin tick. */
+const WIN1_ARP = [['G5', 'B5', 'D6', 'G6'], ['C6', 'E6', 'G6', 'C7'], ['E5', 'G5', 'B5', 'E6']];
 def('win1', (k) => {
   thump(k, 0, 210, 90, 0.09, 0.45, 'triangle'); snap(k, 0, 0.3, 2600, 0.012, 1.2);
-  ['G5', 'B5', 'D6', 'G6'].forEach((n, i) => bellNote(k, 0.015 + i * 0.065, hz(n), 0.32 - i * 0.02, 0.7));
+  if (!winClip(k, 'winChime', { dur: 0.9, r: 0.35, vol: 0.45 })) pick(WIN1_ARP).forEach((n, i) => bellNote(k, 0.015 + i * 0.065, hz(n), 0.32 - i * 0.02, 0.7));
   for (let i = 0; i < 3; i++) clink(k, 0.12 + i * 0.07, 0.3);
-  sparkle(k, 0.28, 0.4, 5, 0.06);
+  sparkle(k, 0.28, 0.4, 3, 0.06);
   return 0.9;
-}, { pri: 8 });
+}, { pri: 8, jitter: 0.4 });
+/** A win streak: two quick bell notes a fifth apart. PlayOpts.pitch climbs with the streak (juice.celebrate). */
+def('streakPing', (k) => {
+  bellNote(k, 0, hz('E6'), 0.2, 0.45);
+  bellNote(k, 0.075, hz('B6'), 0.22, 0.7);
+  sparkle(k, 0.1, 0.25, 4, 0.05);
+  return 0.8;
+}, { pri: 6, max: 2 });
+/** Medium win: the recorded rising jingle (synth: brass stab and a six-bell arpeggio, one of two voicings) over a coin cascade. */
+const WIN2_ARP = [['C5', 'E5', 'G5', 'C6', 'E6', 'G6'], ['G4', 'C5', 'E5', 'G5', 'C6', 'E6']];
 def('win2', (k) => {
   thump(k, 0, 150, 60, 0.18, 0.7); snap(k, 0, 0.35, 2000, 0.02, 1);
-  brass(k, 0, [hz('C4'), hz('E4'), hz('G4')], 0.28, 0.24);
-  ['C5', 'E5', 'G5', 'C6', 'E6', 'G6'].forEach((n, i) => bellNote(k, 0.02 + i * 0.055, hz(n), 0.3, 0.8));
-  cascade(k, 0.12, 0.9, 18, 0.36); sparkle(k, 0.35, 0.6, 8, 0.07);
-  bellNote(k, 0.42, hz('C7'), 0.2, 1.2);
-  return 1.7;
-}, { pri: 8 });
+  const real = winClip(k, 'winJingle', { vol: 0.55, r: 0.3 });
+  if (!real) {
+    brass(k, 0, [hz('C4'), hz('E4'), hz('G4')], 0.28, 0.24);
+    pick(WIN2_ARP).forEach((n, i) => bellNote(k, 0.02 + i * 0.055, hz(n), 0.3, 0.8));
+    bellNote(k, 0.42, hz('C7'), 0.2, 1.2);
+  }
+  cascade(k, 0.12, 0.9, 16, 0.32); sparkle(k, 0.35, 0.6, 8, 0.07);
+  return real ? 2.4 : 1.7;
+}, { pri: 8, jitter: 0.3 });
+/**
+ * The fanfare windows (OpenGameArt, G major): big plays one of two phrase starts (0 s or the 8.5 s accent), huge, mega and the
+ * jackpot play longer from the top. The synth brass and pads below are the fallback until the file is decoded.
+ */
+const fanfare = (k: Kit, at: number, dur: number, vol: number, off = 0): boolean => winClip(k, 'fanfare', { at, off, dur, vol, r: Math.min(1.6, dur * 0.3) });
+/** Big win: the fanfare (2.8 s), a G-major bell accent, a coin cascade (synth: brass stabs, bells, pad). */
 def('win3', (k) => {
   thump(k, 0, 80, 40, 0.5, 0.8); snap(k, 0, 0.4, 1500, 0.03, 1);
   k.noise(1.1, { at: 0.02, vol: 0.2, filter: 'highpass', freq: 5000, env: { a: 0.02, d: 1.08, s: 0, r: 0.05 } });
+  cascade(k, 0.15, 1.3, 18, 0.34); sparkle(k, 0.5, 0.9, 10, 0.07);
+  if (fanfare(k, 0, 2.8, 0.6, pick([0, 8.5]))) {
+    ['G6', 'B6', 'D7'].forEach((n, i) => bellNote(k, 0.3 + i * 0.07, hz(n), 0.12, 0.9));
+    return 3;
+  }
   brass(k, 0, [hz('C4'), hz('E4'), hz('G4')], 0.14, 0.26, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
   brass(k, 0.16, [hz('C4'), hz('E4'), hz('G4')], 0.14, 0.26, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
   brass(k, 0.34, [hz('G4'), hz('C5'), hz('E5')], 0.9, 0.3);
   ['C6', 'E6', 'G6', 'C7', 'E7'].forEach((n, i) => bellNote(k, 0.38 + i * 0.07, hz(n), 0.28, 0.9));
   for (let i = 0; i < 8; i++) bellNote(k, 0.75 + i * 0.12, hz(i % 2 ? 'G6' : 'C7'), 0.2 - i * 0.015, 0.7);
-  cascade(k, 0.15, 1.3, 18, 0.34); sparkle(k, 0.5, 0.9, 10, 0.07);
   pad(k, 0.38, [hz('C5'), hz('E5'), hz('G5'), hz('C6')], 1.4, 0.12);
   return 2.5;
 }, { pri: 9 });
@@ -481,12 +546,13 @@ def('winHuge', (k) => {
   thump(k, 0.5, 70, 30, 0.8, 0.9); k.noise(1.2, { at: 0.5, vol: 0.4, filter: 'lowpass', freq: 3500, to: 200, env: { a: 0.002, d: 1.2, s: 0, r: 0.05 } });
   k.noise(1.5, { at: 0.5, vol: 0.2, filter: 'highpass', freq: 5000, env: { a: 0.02, d: 1.5, s: 0, r: 0.05 } });
   const T = 0.5;
+  cascade(k, T + 0.1, 2.2, 30, 0.34); sparkle(k, T + 0.3, 1.8, 16, 0.07);
+  if (fanfare(k, T, 4.2, 0.6)) return T + 4.4;
   brass(k, T, [hz('C4'), hz('E4'), hz('G4'), hz('C5')], 0.14, 0.3, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
   brass(k, T + 0.17, [hz('C4'), hz('E4'), hz('G4'), hz('C5')], 0.14, 0.3, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
   brass(k, T + 0.36, [hz('G4'), hz('C5'), hz('E5'), hz('G5')], 1.5, 0.34);
   pad(k, T, [hz('C3'), hz('G3'), hz('E4'), hz('B4')], 2.6, 0.2);
   for (let r = 0; r < 2; r++) ['C6', 'E6', 'G6', 'C7', 'E7'].forEach((n, i) => bellNote(k, T + 0.4 + r * 0.45 + i * 0.065, hz(n), 0.26 - r * 0.04, 1));
-  cascade(k, T + 0.1, 2.2, 30, 0.34); sparkle(k, T + 0.3, 1.8, 16, 0.07);
   bellNote(k, T + 2.4, hz('C7'), 0.3, 1.6);
   return 3.9;
 }, { pri: 9 });
@@ -503,19 +569,19 @@ def('winRise', (k) => {
   bellNote(k, 0.5, hz('C6'), 0.2, 1);
   return 1.1;
 }, { pri: 9, max: 2 });
-/** Mega win jingle (≈3.6 s): riser into a bright brass fanfare, a bell shimmer and a coin-shower tail. */
+/** Mega win (≈6.4 s): riser into the fanfare (5.6 s) with the recorded alarm-and-coins under it (synth: brass fanfare, bells). */
 def('winMega', (k) => {
   riser(k, 0, 0.6, 0.28, 300, 6500);
   const T = 0.6;
   thump(k, T, 90, 36, 0.6, 0.9); snap(k, T, 0.45, 1400, 0.03, 1);
+  cascade(k, T + 0.2, 2.4, 34, 0.34); sparkle(k, T + 0.6, 2.2, 18, 0.07);
+  if (fanfare(k, T, 5.6, 0.6)) { winClip(k, 'coinAlarm', { at: T + 0.3, dur: 3.2, vol: 0.3, a: 0.2, r: 1 }); return T + 5.8; }
   brass(k, T, [hz('C4'), hz('E4'), hz('G4')], 0.16, 0.26, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
   brass(k, T + 0.18, [hz('C4'), hz('E4'), hz('G4')], 0.16, 0.26, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
   brass(k, T + 0.36, [hz('F4'), hz('A4'), hz('C5')], 0.4, 0.3);
   brass(k, T + 0.8, [hz('G4'), hz('B4'), hz('D5'), hz('G5')], 2.2, 0.34);
   pad(k, T, [hz('C3'), hz('G3'), hz('E4'), hz('C5')], 3, 0.2);
   ['C6', 'E6', 'G6', 'C7', 'E7', 'G7'].forEach((n, i) => bellNote(k, T + 0.4 + i * 0.09, hz(n), 0.26 - i * 0.02, 1.2));
-  cascade(k, T + 0.2, 2.4, 34, 0.34);
-  sparkle(k, T + 0.6, 2.2, 18, 0.07);
   bellNote(k, T + 2.6, hz('C7'), 0.3, 1.6);
   return 3.6;
 }, { pri: 10, max: 2 });
@@ -537,16 +603,53 @@ def('jackpot', (k) => {
   bellNote(k, T + 3.7, hz('C7'), 0.34, 2); bellNote(k, T + 3.7, hz('C6'), 0.3, 2.4); sparkle(k, T + 3.7, 1.2, 10, 0.06);
   return 6.4;
 }, { pri: 10, max: 2 });
-/** Rotating beacon siren (seamless 1.6 s chunk = 2 LFO cycles) with bell pings. Loop-safe. */
+/**
+ * The slot-cabinet alarm bell: the recorded winner alarm, or a clapper hammering at 18 Hz on an inharmonic bell over the bell's
+ * hum. Calm plays it shorter and softer (the callers pass that in).
+ */
+function alarm(k: Kit, at: number, dur: number, vol: number): void {
+  if (winClip(k, 'alarm', { at, dur, vol, r: Math.min(0.8, dur * 0.3) })) return;
+  const f = 1240;
+  for (let t = 0; t < dur; t += 1 / 18) {
+    const v = vol * Math.min(1, (dur - t) / 0.4);
+    ring(k, at + t, f, 0.11, v * 0.45, { ratios: [1, 2.32, 4.25], amps: [1, 0.55, 0.3] });
+    snap(k, at + t, v * 0.25, 4200, 0.004, 3);
+  }
+  k.osc('sine', f, dur, { at, vol: vol * 0.12, env: { a: 0.01, d: 0.05, s: 1, r: 0.3 } });
+}
+def('alarmBell', (k) => { const calm = audioCalm(), d = calm ? 1.2 : 2.4; alarm(k, 0, d, calm ? 0.3 : 0.5); return d + 0.1; }, { pri: 9, max: 1 });
+/**
+ * The jackpot as juice.celebrate plays it (winJingle 'jackpot'; the plain 'jackpot' above stays the short stinger other machines
+ * and the menu use): the alarm bell rings, the boom lands, the fanfare runs 9.6 s, a G-major bell rain and a long coin cascade.
+ * juice adds the siren, the crowd swell, the bell showers, the coin-alarm rain for the count and the final kachunk.
+ */
+def('jackpotShow', (k) => {
+  const calm = audioCalm();
+  alarm(k, 0, calm ? 1.4 : 3.2, calm ? 0.25 : 0.42);
+  thump(k, 0, 60, 28, 1.4, 1); thump(k, 0, 200, 60, 0.3, 0.6);
+  k.noise(2.2, { vol: 0.4, filter: 'lowpass', freq: 5000, to: 150, env: { a: 0.002, d: 2.2, s: 0, r: 0.1 } });
+  if (!fanfare(k, 0.05, 9.6, 0.55)) {
+    const C = [hz('C4'), hz('E4'), hz('G4'), hz('C5')], F = [hz('F4'), hz('A4'), hz('C5'), hz('F5')];
+    brass(k, 0, C, 0.2, 0.34, { a: 0.012, d: 0.06, s: 0.6, r: 0.08 }); brass(k, 0.24, C, 0.2, 0.34, { a: 0.012, d: 0.06, s: 0.6, r: 0.08 });
+    brass(k, 0.5, F, 0.5, 0.34); brass(k, 1.1, [hz('G4'), hz('B4'), hz('D5'), hz('G5')], 0.5, 0.34);
+    brass(k, 1.7, [hz('C4'), hz('E4'), hz('G4'), hz('C5'), hz('E5')], 2.2, 0.38);
+  }
+  const scale = ['G6', 'A6', 'B6', 'D7', 'E7'];
+  for (let t = 0; t < 3.6; t += rnd(0.08, 0.16)) bellNote(k, 0.15 + t, hz(pick(scale)), 0.13 * (1 - t / 4.2), 1);   // bell rain
+  cascade(k, 0.1, 3.4, 40, 0.34); sparkle(k, 0.4, 3.4, 26, 0.08);
+  return 10;
+}, { pri: 10, max: 2 });
+/** Rotating beacon siren (seamless 1.6 s chunk = 2 LFO cycles) with bell pings. Loop-safe. Half level in Calm. */
 def('jackpotSiren', (k, o) => {
-  const v = 0.22 * (0.6 + 0.4 * (o.param ?? 1));
+  const v = 0.22 * (0.6 + 0.4 * (o.param ?? 1)) * (audioCalm() ? 0.5 : 1);
   k.osc('sawtooth', 1050, 1.6, { vol: v, lp: 3500, env: LOOP_ENV, tap: ({ src, at, end }) => k.lfo(src.frequency, 1.25, 450, at, end) });
   for (let i = 0; i < 4; i++) k.fm(1760, 1, 1.2, 0.35, { at: i * 0.4, vol: 0.08 });
   for (let i = 0; i < 2; i++) thump(k, i * 0.8, 85, 60, 0.3, 0.14);
   return 1.6;
 }, { pri: 7, max: 2 });
-/** Bell shower used by jackpot-style celebrations (also standalone). */
+/** Bell shower used by jackpot-style celebrations (also standalone): the recorded reward bells, or a synth bell shower. */
 def('jackpotBells', (k) => {
+  if (winClip(k, 'bellsReward', { dur: 2.8, r: 0.8, vol: 0.5 })) return 3;
   const scale = ['C6', 'E6', 'G6', 'A6', 'C7', 'E7'];
   for (let t = 0; t < 1.8; t += rnd(0.05, 0.1)) bellNote(k, t, hz(pick(scale)), 0.22 * (1 - t / 2.2), 1);
   return 2.8;
@@ -875,6 +978,8 @@ def('coinInsert', (k) => {
 }, { pri: 6, max: 4 });
 /** Coin rain: a dense shower of clinks over a hiss. Loop-safe (chunks crossfade); one-shot is 1.8 s. */
 def('coinRain', (k, o) => {
+  // the jackpot's long rain: 6 s chunks of the recorded alarm-and-coins (juice stops it when the count lands)
+  if (o.loop && winClip(k, 'coinAlarm', { off: rnd(0, 8), dur: 6 + LOOP_FADE, vol: 0.4, a: 0.12, r: LOOP_FADE })) return 6;
   const dur = o.loop ? 0.6 : 1.8, env = o.loop ? LOOP_ENV : { a: 0.02, d: 0.01, s: 1, r: 0.2 };
   k.noise(dur, { vol: 0.05, filter: 'bandpass', freq: 6000, q: 1.2, env });
   const n = Math.max(2, Math.round(dur * 16));
@@ -895,6 +1000,21 @@ def('tallyTick', (k) => {
   snap(k, 0, 0.22, 3800, 0.005, 3);
   return 0.04;
 }, { bus: 'ui', pri: 4, max: 12 });
+/** A count-up lands (juice.countUp): a register-bell ding a fifth wide over one coin clink. */
+def('countDing', (k) => {
+  bellNote(k, 0, hz('E6'), 0.3, 0.8); bellNote(k, 0.003, hz('B6'), 0.15, 0.6);
+  clink(k, 0, 0.3, 3100, 0.1, 0);
+  return 0.9;
+}, { bus: 'ui', pri: 7, max: 2, jitter: 0.2 });
+/** The jackpot count is done: the latch (ka), the heavy drum dropping home (chunk, with a recorded lock clunk), the register bell. */
+def('kachunk', (k) => {
+  snap(k, 0, 0.6, 2600, 0.012, 2); ring(k, 0.002, 1700, 0.06, 0.08);
+  thump(k, 0.075, 150, 45, 0.25, 1); snap(k, 0.075, 0.6, 900, 0.03, 1); ring(k, 0.08, 420, 0.3, 0.1);
+  k.noise(0.12, { at: 0.075, vol: 0.25, filter: 'lowpass', freq: 600, env: TICK_ENV(0.12) });
+  winClip(k, 'lockClunk', { at: 0.06, vol: 0.4, rate: 0.8, dur: 0.4 });
+  bellNote(k, 0.2, hz('G6'), 0.28, 1.2); bellNote(k, 0.2, hz('D7'), 0.14, 0.9);
+  return 1.4;
+}, { pri: 9, max: 1 });
 
 // ── gamble risk layer (gamble:fx → gambleFx.ts) ───────────────────────────────────────────────────
 /** Ladder opens: a riser into a bright bell arpeggio (≈1.4 s). */
@@ -1032,8 +1152,8 @@ def('lockTurn', (k) => {
 }, { pri: 7 });
 
 /** Sounds longer than ~0.8 s: their voices are wired into slow-motion (`setTimeScale`) so a big win drags with the screen. */
-const LONG = ['win2', 'win3', 'winHuge', 'winRise', 'winMega', 'jackpot', 'jackpotBells', 'quotaMet', 'quotaFail', 'stinger', 'tensionRise', 'trapdoor', 'powerDown', 'powerUp', 'tapeStop',
-  'tinnitus', 'defib', 'totemPlace', 'lose', 'bell', 'upgrade', 'unlock', 'coinShower', 'glassBreak', 'shuffle', 'dice', 'printer', 'whisper', 'creak',
+const LONG = ['win2', 'win3', 'winHuge', 'winRise', 'winMega', 'jackpot', 'jackpotShow', 'alarmBell', 'kachunk', 'jackpotBells', 'quotaMet', 'quotaFail', 'stinger', 'tensionRise', 'trapdoor', 'powerDown', 'powerUp', 'tapeStop',
+  'tinnitus', 'defib', 'totemPlace', 'bell', 'upgrade', 'unlock', 'coinShower', 'glassBreak', 'shuffle', 'dice', 'printer', 'whisper', 'creak',
   'phoneRing', 'clockAlarm', 'cashRegister', 'elevatorDing', 'gunShot', 'door', 'doorCreak', 'heartbeat', 'liftDing', 'bedCreak'];
 for (const n of LONG) { const d = SFX_DEFS.get(n); if (d) d.meta.long = true; }
 for (const n of ['gambleOpen', 'allinDrum', 'allinHit', 'allinMiss']) { const d = SFX_DEFS.get(n); if (d) d.meta.long = true; }
@@ -1114,7 +1234,7 @@ export function winSfx(tier: WinTier): string | null {
     case 'big': return 'win3';
     case 'huge': return 'winHuge';
     case 'mega': return 'winMega';
-    case 'jackpot': return 'jackpot';
+    case 'jackpot': return 'jackpotShow';
   }
 }
 

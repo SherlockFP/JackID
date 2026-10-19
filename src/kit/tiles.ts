@@ -10,7 +10,7 @@ import type { TexGen, VendorTexOpts } from '@/core/texgen/types';
 
 /** Metres per tile for the procedural pattern generators. */
 const TILE_M = {
-  solid: 1, noise: 0.5, felt: 0.5, wood: 0.5, metal: 0.5, chrome: 0.5, carpet: 1.5, tiles: 1, brick: 1,
+  solid: 1, noise: 0.5, felt: 0.5, wood: 0.5, metal: 0.5, chrome: 0.5, carpet: 2, tiles: 1, brick: 1,
   concrete: 1, rust: 0.5, grime: 0.5, stripes: 0.5, checker: 0.5,
 } as const;
 

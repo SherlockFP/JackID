@@ -1,9 +1,9 @@
 /**
  * THE HOTLINE (game side): CloverPit-style phone bargains. The booth (`machines/hotline`) is only a view of this module.
  *
- *   • Once per Watch the phone may ring: a seeded ~45 % chance (`x.phone.callChance`; Coiled Cord = 100 %, Blank JackID's
- *     `x.phone.mute` = never). From Night 2 the FIRST Watch of every Night always rings; a Night still silent at its last Watch
- *     gets a call there too.
+ *   • Night 1 never rings. From Night 2 the phone may ring once per Watch: a seeded ~45 % chance (`x.phone.callChance`; Coiled
+ *     Cord = 100 %, Blank JackID's `x.phone.mute` = never). The FIRST Watch of every Night always rings; a Night still silent at
+ *     its last Watch gets a call there too.
  *   • It rings for 20 s (`x.phone.ringTime` adds), then the caller offers THREE deals. Pick one (1 / 2 / 3), within 15 s.
  *   • A deal is a boon with a price. Everything is expressed through the existing pipeline: buffs (`run.buffs`, which fold into
  *     `run.mod()`), `earn` / `spend`, `grantCharm`, `addDread`, `shift.extend`, `jackpotAdd`. Three run-private actions have no
@@ -556,10 +556,10 @@ export function createHotline(run: RunApi, opts: HotlineOpts = {}): Hotline {
     const rng = createRng(hashSeed('hotline.ring', run.seed, night, w.index));
     const roll = rng.next();
     const at = w.seconds * (RING_FROM + (RING_TO - RING_FROM) * rng.next());
-    if (run.mod('x.phone.mute', MID, 0) > 0) return;
-    // From Night 2 the first Watch of every Night always rings (the phone is the player's way out of a dry first Watch); later
+    if (night < 2 || run.mod('x.phone.mute', MID, 0) > 0) return;   // Night 1 is silent: the phone starts on Night 2
+    // The first Watch of every Night always rings (the phone is the player's way out of a dry first Watch); later
     // Watches keep the seeded 45 %, and a Night that has not rung by its last Watch still gets its call.
-    const forced = night >= 2 && (w.index === 0 || (w.index >= w.count - 1 && st.rangThisNight === 0));
+    const forced = w.index === 0 || (w.index >= w.count - 1 && st.rangThisNight === 0);
     const p = clamp(run.mod('x.phone.callChance', MID, CALL_CHANCE), 0, 1);
     if (forced || roll < p) st.ringAt = at;
   }

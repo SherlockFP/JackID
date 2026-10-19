@@ -86,6 +86,13 @@ export default {
     'pr.ev.switchok': 'You change your hand. He is not looking.',
     'pr.ev.end.you': 'The match is yours.',
     'pr.ev.end.him': 'The match is his.',
+    // table board
+    'pr.goal': 'First to 4 points. Say a hand, then throw. A kept word scores double.',
+    'pr.zone.wordHim': 'LUCAN\'S WORD',
+    'pr.zone.wordYou': 'YOUR WORD',
+    'pr.zone.yours': 'YOUR THROW',
+    'pr.zone.last': 'LAST ROUND  ·  you, then him',
+    'pr.note.cracks': 'Cracks: you {yc}, Lucan {hc}  ·  {limit} cracks lose',
   } as Table,
   tr: {
     ...pre(hands('tr')),
@@ -123,5 +130,11 @@ export default {
     'pr.ev.switchok': 'Elini değiştirdin. Bakmıyor.',
     'pr.ev.end.you': 'Maç senin.',
     'pr.ev.end.him': 'Maç onun.',
+    'pr.goal': 'İlk 4 puana varan kazanır. Bir el söyle, sonra at. Tutulan söz çift puan.',
+    'pr.zone.wordHim': 'LUCAN\'IN SÖZÜ',
+    'pr.zone.wordYou': 'SENİN SÖZÜN',
+    'pr.zone.yours': 'SENİN ELİN',
+    'pr.zone.last': 'SON TUR  ·  sen, sonra o',
+    'pr.note.cracks': 'Çatlak: sen {yc}, Lucan {hc}  ·  {limit} çatlak kaybettirir',
   } as Table,
 };

@@ -5,8 +5,9 @@
  *    `rules.ts` roll the grid, and the outcome is packed into a `spin` event and an `eval` event. The `eval` event
  *    carries the settle as its `credit` (settle-before-present, DECISIONS G).
  *  - `present()` is the only place state changes and the reels move, on every peer.
- *  - juice: lever pull, reel spin-up, staggered stops (1.00 + 0.25 n s) with a bounce, tease crawl on the last reel,
- *    cell and pattern lamps, coin pour, tiered win shows through `celebrate` (big / huge / mega / jackpot), curse
+ *  - juice: lever pull, reel spin-up and whirr (bulbs chase fast, the whirr thins out as reels land), staggered stops
+ *    (0.75 + 0.2 n s) with a bounce and a clack that climbs reel to reel, a tick when symbols line up on a row, tease crawl
+ *    on the last reel, cell and pattern lamps, coin pour, tiered win shows through `celebrate` (big / huge / mega / jackpot), curse
  *    (red flash, chroma glitch), jackpot (lid, medallion, gold count-up).
  *  - autoplay (G) with a size cycled by Backspace; it stops on big wins, curses, jackpots, no funds and no pulls.
  *
@@ -20,8 +21,8 @@ import type * as THREE from 'three';
 import { MachineBase } from '@/machines/_base/MachineBase';
 import { registerDebugForce } from '@/core/debugForce';
 import type { MachineDef, MachineModel, PresentCtx } from '@/machines/_base/types';
-import { juiceTier, tierAtLeast } from '@/machines/_base/tiers';
-import { countUp, blinkOn, emitComboShow, flashPrefs } from '@/machines/_base/juice';
+import { juiceTier, tierAtLeast, windupSec } from '@/machines/_base/tiers';
+import { countUp, blinkOn, emitComboShow, flashPrefs, JACKPOT_COUNT_S, type Whirr } from '@/machines/_base/juice';
 import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import type { KitX } from '@/kit';
 import { fmtCoins, t as tr, upper } from '@/core/i18n';
@@ -36,7 +37,7 @@ import {
 } from './rules';
 import { STRINGS } from './strings';
 import { SYMBOL_BG, paintSymbol } from './symbols';
-import { COMBO_MIN, IDLE_HZ, LIVE_HZ, comboPlan, hzCap, symFrame, type FlashOpts } from './show';
+import { COMBO_MIN, IDLE_HZ, LIVE_HZ, comboPlan, hzCap, lineRun, lineUpPitch, symFrame, type FlashOpts } from './show';
 import { gildLevels } from './stamps';
 
 export { playHeadless };
@@ -104,7 +105,8 @@ const TALLY_NOTES = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16];
 const TALLY_INK = ['#c8e8ff', '#ffe27a', '#ffb000', '#ff7a1a', '#ff4fa0', '#ffffff'];
 const CURSE_SHOW = 3.2;
 const FORCE_CHASE_TRIES = 400;          // debug force: re-rolls allowed to find a chaseable line win
-const JACKPOT_COUNT = 2.0;
+/** The jackpot count starts at the show's impact (after its windup) and runs as long as the coin rain. */
+const JACKPOT_WINDUP = windupSec('jackpot');
 const LAST10 = 10;
 /** Extra seconds the reels 2 to 4 hold back while two jackpot symbols stand side by side. */
 const JP_EXTRA = [0, 0, 0.3, 0.7, 1.3];
@@ -207,6 +209,15 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     this.refresh();
     this.bulbsIdle();
     this.attractor.every('medal', 9, () => this.spinMedal(), { first: 4 });
+    this.attractor.every('twinkle', 13, () => this.twinkle(), { first: 7, jitter: 4 });
+  }
+
+  /** Attract sparkle: the crown bulbs twinkle for a second and a half, then the idle chase returns. Not under reduce-flashing / Calm. */
+  private twinkle(): void {
+    const o = flashOpts();
+    if (this.busy || this.occupant !== null || this.comboOn || o.reduced || o.calm) return;
+    this.parts.bulbs.crown.setPattern('twinkle', 8);
+    void this.wait(1.5).then(() => { if (!this.disposed && !this.busy && this.occupant === null) this.bulbsIdle(); });
   }
 
   // ── attract: the pattern plate chases, the medallion turns now and then ─────────────────────────
@@ -477,11 +488,13 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     this.drawText(this.t('chaseSpin'));
     if (!pc.fast) {
       this.sfx('reelStart');
-      const spinLoop = this.ctx.audio.play('reelLoop', { loop: true, param: 0.6, vol: 0.7 });
+      const spin = this.whirr();
+      let down = 0;
+      this.bulbsSpin();
       this.reelsTurning = true;
-      await Promise.all([0, 1, 2, 3, 4].map((i) => this.spinReel(i, STOP_T[i] * FREE_SPEED)));
+      await Promise.all([0, 1, 2, 3, 4].map((i) => this.spinReel(i, STOP_T[i] * FREE_SPEED, false, () => spin.stopped(++down, 5))));
       this.reelsTurning = false;
-      spinLoop?.stop(0.06);
+      spin.end();
       if (this.isLocalOccupant) this.showHud();
     }
     s.gross = ev.amount;
@@ -501,6 +514,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     }
     this.clearHighlights();
     this.drawScreen();
+    if (!this.comboOn && !this.disposed) this.bulbsIdle();
   }
 
   /** The pot is collected: the callout names the net, the top screen shows the pot. */
@@ -540,7 +554,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     const free = ev.free > 0;
     // anticipation: lever pull and spin button (a free spin skips the lever), reels paint a random strip under the stop faces
     if (!free) {
-      this.sfx('coinInsert');
+      this.sfx('coinInsert', { vol: 0.6 });
       this.sfx('lever');
       void this.parts.buttons.spin.press(0.15);
       void this.anim(0.15, (k) => { p.lever.rotation.x = LEVER_PULL * k; }, 'outQuad')
@@ -548,7 +562,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     }
     for (let i = 0; i < 5; i++) this.paintReel(i, ev.grid);
     this.sfx('reelStart');
-    const spinLoop = this.ctx.audio.play('reelLoop', { loop: true, param: 0.6, vol: 0.7 });   // the reels hum until the last one stops
+    const spin = this.whirr();                              // spools up, thins out as each reel lands, ends with the last
+    this.bulbsSpin();
     this.drawScreen();
     if (free) this.drawText(this.t('freeN', { n: ev.free, of: LUCKY_SPINS }));
 
@@ -563,16 +578,18 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
       ? STOP_T[i] * FREE_SPEED
       : STOP_T[i] + (ev.respin && i >= 3 ? 0.8 : 0) + (tReel >= 0 && i >= tReel ? crawl : 0) + jpExtra(i));
     const runs: Promise<void>[] = [];
+    const turning = ev.hold >= 0 ? 4 : 5;
+    let down = 0;
     for (let i = 0; i < 5; i++) {
       if (i === ev.hold) { runs.push(Promise.resolve()); continue; }   // held reel stays put
-      runs.push(this.spinReel(i, stopOf(i), i === tReel || (lock >= 2 && i === jpLast)));
+      runs.push(this.spinReel(i, stopOf(i), i === tReel || (lock >= 2 && i === jpLast), () => this.landed(i, ev.grid, ++down, turning, spin)));
     }
     if (tReel >= 0) void this.teaseShow(ev, tReel, stopOf(tReel - 1), crawl);
     if (lock >= 2) void this.jackpotTease(ev, lock, stopOf(1), jpExtra(jpLast) + 0.5);
     this.reelsTurning = true;
     await Promise.all(runs);
     this.reelsTurning = false;
-    spinLoop?.stop(0.06);
+    spin.end();
     if (this.isLocalOccupant) this.showHud();
     for (const c of ev.coalesced) this.flashCell(c);
     this.drawScreen();
@@ -586,7 +603,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     for (let c = reel - ev.tLen; c < reel; c++) cells.push(ev.tRow * 5 + c);
     this.lightCells(cells, 1);
     this.drawText(this.t('tease'));
-    this.sfx('tensionRise', { vol: 0.8, param: Math.min(1, (crawl + 0.35) / 1.6) });   // the riser climbs through the held breath
+    if (!this.comboOn) this.parts.bulbs.window.pattern('chase', flashOpts().reduced || flashOpts().calm ? 4 : 14);   // the window bulbs race
+    // nearMiss plays the riser (as long as the crawl) and the heartbeat: a second riser here only doubled it
     await this.nearMiss({ dur: crawl + 0.35, at: this.parts.screens.top.mesh, lamps: this.parts.paylineLamps });
   }
 
@@ -605,6 +623,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     this.lightCells(cells, 1);
     this.drawText(this.t('jpTease'));
     this.sfx('tensionRise', { vol: 0.9, param: 1 });
+    for (let t = 0; t < dur - 0.3; t += 0.8) void this.wait(t).then(() => { if (!this.disposed) this.sfx('heartbeat', { vol: 0.85, param: Math.min(1, t / dur + 0.3) }); });   // the pulse quickens
     p.bulbs.crown.setPattern('chase', hz);
     p.bulbs.window.setPattern('chase', hz);
     p.ledStrip.pattern('chase', hz);
@@ -639,8 +658,29 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     }).then(() => { if (seq === this.ledSeq) set(target); });
   }
 
-  /** One reel: whole turns that end with facet 0 at the front, decelerating, then a bounce. `slow` = the anticipating reel (ticks rise). */
-  private spinReel(i: number, dur: number, slow = false): Promise<void> {
+  /** A reel landed: the whirr thins out, and symbols lined up on a row tick a moment after the clack (the run sets the pitch). */
+  private landed(i: number, grid: readonly number[], down: number, total: number, spin: Whirr): void {
+    spin.stopped(down, total);
+    const run = lineRun(grid, i);
+    if (run >= 2) void this.wait(0.05).then(() => { if (!this.disposed) this.sfx('lineUp', { vol: 0.7, pitch: lineUpPitch(run) }); });
+  }
+
+  /** The reels turn: crown, window and LED strip chase fast (slower under reduce-flashing / Calm). Back to rest in `bulbsIdle`. */
+  private bulbsSpin(): void {
+    if (this.comboOn) return;
+    const o = flashOpts();
+    const hz = o.reduced || o.calm ? 4 : 10;
+    const p = this.parts;
+    p.bulbs.crown.pattern('chase', hz);
+    p.bulbs.window.pattern('chase', hz * 0.8);
+    p.ledStrip.pattern('chase', hz);
+  }
+
+  /**
+   * One reel: whole turns that end with facet 0 at the front, decelerating, then a bounce. `slow` = the anticipating reel (ticks
+   * rise). `land` runs as the reel clacks into place. The stops rise in pitch from reel to reel (param = reel / 4).
+   */
+  private spinReel(i: number, dur: number, slow = false, land?: () => void): Promise<void> {
     const reel = this.parts.reels[i];
     const a0 = reel.root.rotation.x;
     const end = Math.ceil((a0 + (4 + i) * TAU) / TAU) * TAU;
@@ -652,7 +692,8 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
         if (f !== facet) { facet = f; this.sfx('reelTick', { vol: 0.55, pitch: Math.min(14, (k - 0.8) * 70) }); }
       }
     }, slow ? 'outExpo' : 'outCubic').then(async () => {
-      this.sfx('reelStop', { vol: 0.8 + 0.05 * i });
+      this.sfx('reelStop', { vol: 0.8 + 0.05 * i, param: i / 4 });
+      land?.();
       await this.anim(BOUNCE, (k) => { reel.root.rotation.x = end + 0.08 * Math.sin(Math.PI * k); });
       reel.root.rotation.x = 0;
     });
@@ -704,6 +745,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     }
     this.clearHighlights();
     this.drawScreen();
+    if (!this.comboOn && !this.disposed) this.bulbsIdle();   // the spin chase and any tease race end here
   }
 
   /** LUCKY 7 lands: the three sevens light, the top screen names the bonus, and the room jumps. */
@@ -833,6 +875,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     });
     this.clearHighlights();
     this.drawScreen();
+    if (!this.comboOn && !this.disposed) this.bulbsIdle();
   }
 
   private async presentJackpot(ev: EvalEv, pc: PresentCtx): Promise<void> {
@@ -845,14 +888,15 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     const calm = flashOpts().reduced || flashOpts().calm;
     p.bulbs.crown.setPattern('rainbow', calm ? 3 : 10);
     p.bulbs.window.setPattern('blink', calm ? 3 : 8);
-    this.flashLed(JACKPOT_COUNT * this.speed + 1.5, calm ? 2 : 8);
+    this.flashLed((JACKPOT_WINDUP + JACKPOT_COUNT_S) * this.speed + 1.5, calm ? 2 : 8);
     this.drawText(this.t('jpBanner'));
     fx.popText(p.medallion, this.t('jpBanner'), GOLD, { dur: 2.2, rise: 0.5, scale: 2 });
     fx.coins(p.medallion, 48, { spread: 0.6, up: 2.4, over: 2.6 });   // the coin shower from the crown
     const net = Math.max(0, this.netOf(ev.gross, ev.stake, pc.local));   // the count and the pop land on the WIN callout's figure
     await Promise.all([
       this.celebrate('jackpot', { amount: net, mult: ev.gross / Math.max(1, ev.stake), bulbs: p.bulbs.window, lamps: p.last10, restore: () => this.bulbsIdle() }),
-      countUp(this.ctx, 0, net, JACKPOT_COUNT * this.speed, (v) => this.drawScreen(v)),
+      // the count rolls from the impact under the coin rain and lands on the kachunk
+      this.wait(JACKPOT_WINDUP).then(() => countUp(this.ctx, 0, net, JACKPOT_COUNT_S * this.speed, (v) => this.drawScreen(v), { tick: true, end: 'kachunk' })),
       this.anim(0.4, (k) => { p.topLid.rotation.x = LID_OPEN * k; }, 'outBack')
         .then(() => this.anim(0.4, (k) => { p.topLid.rotation.x = LID_OPEN * (1 - k); })),
       this.anim(1.4, (k) => { p.medallion.rotation.y = TAU * 3 * k; }, 'outCubic'),

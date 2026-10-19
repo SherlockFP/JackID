@@ -10,9 +10,10 @@ import * as THREE from 'three';
 import type { KitX } from '@/kit';
 import type { TexGen } from '@/core/texgen/types';
 import type { V3 } from '@/core/types';
+import { log } from '@/core/log';
 import type { GateDef, LevelBuild, LevelCtx, LightHint, SpawnPoint } from './sys/arch';
 import type { WorldProp } from './types';
-import { ZONES, SIGNPOSTS } from './layout';
+import { ZONES, SIGNPOSTS, STAGE_SLOTS, FLOOR_TILE_M } from './layout';
 import { bareBulb, chandelier, flickerLevel, pendant, sconce, tube } from './lights';
 import { buildColumn, buildGrille, buildVelvetCurtain, buildManagementDoor, buildSump, buildFurnace, buildCollectorChair, buildXPlate, disposeTree, SUMP_HALF, SUMP_WALL_H, SUMP_WALL_T, type GateProp } from './props/decor';
 import { createClock, type WallClock } from './props/clock';
@@ -22,8 +23,10 @@ import { createQuotaBoard, type QuotaBoard } from './props/quotaBoard';
 import { buildStage, buildJackpotWall, buildPrizeCase, buildBalcony, createLightShow, PRIZE_CASE, STAGE, type ShowTarget } from './props/grand';
 import { buildSignposts } from './props/signposts';
 import { crispLabel, crispNeon } from './props/signs';
-import { buildCeilingDressing, buildBalconyUndersides } from './props/ceiling';
+import { buildCeilingDressing, buildBalconyUndersides, buildCeilingRoses, buildCeilingSteps, type CeilingStep } from './props/ceiling';
 import { buildLastCallBell } from './props/bell';
+import { buildLounge } from './props/lounge';
+import { planLounge, slotRect, type Rect } from './props/loungePlan';
 import { placeTavern } from './props/vendorModels';
 import { buildRooms, type RoomsBuild } from './rooms';
 import { buildHollow } from './hollow';
@@ -41,26 +44,26 @@ const STAGE_X = STAGE.x, STAGE_Z = STAGE.z;    // WELL-01 dais 4 × 4 × 0.15
 const FIXTURE_GAIN = 1.8;
 const FIXTURE_RANGE = 1.2;
 
+// parlour and counting rose to 3.2 in wave 81: below the 3.2 m doorway lintel the wing ceiling left a slot into the black attic
 const CEILING: Record<string, number> = {
   mouth: 6.0, well: 9.0, lobby: 4.5, midway: 4.0, cards: 3.2, laundry: 5.0, boiler: 3.6,
-  gallery: 4.0, wheels: 6.0, parlour: 2.6, counting: 2.8, lift: 2.6,
+  gallery: 4.0, wheels: 6.0, parlour: 3.2, counting: 3.2, lift: 2.6,
 };
 
-/** Floor texture per zone (ART_BIBLE §6.1 / GDD §8.3 floor themes). */
-function floorTex(id: string, tex: TexGen, kit: KitX): { map: THREE.Texture; color: number; tile: number } {
+/** Floor texture per zone (ART_BIBLE §6.1 / GDD §8.3 floor themes). Every map is 64 px and repeats every FLOOR_TILE_M, so all floors share one texel density. */
+const GOLD = 0xc89c3c, TEAL = 0x2aa898;
+function floorTex(id: string, tex: TexGen): { map: THREE.Texture; color: number } {
+  const v = (p: string): THREE.Texture => tex.vendor(p, { size: 64 });
   switch (id) {
-    case 'mouth': return { map: tex.tiles(0x4a3a2a, 0x6a5238, 2), color: 0xffffff, tile: 2 };
-    case 'well': return { map: tex.carpet('swirl', [0x5a0a14, 0x8a6a2a]), color: 0xffffff, tile: 2 };
-    case 'lobby': return { map: tex.carpet('diamond', [0x3a0a10, 0x5a1a20]), color: 0xffffff, tile: 2 };
-    case 'midway': return { map: tex.carpet('stars', [0x2a0a4a, 0x1a0630]), color: 0xffffff, tile: 2 };
-    case 'cards': return { map: tex.felt(0x0a4a2a), color: 0xffffff, tile: 2 };
-    case 'laundry': return { map: tex.tiles(0xb8c4c8, 0x8a9499, 3), color: 0xffffff, tile: 1 };
-    case 'boiler': return { map: kit.tex.vendor('sbs-tiny3/128x128/Grating/Grating_05-128x128.png', { size: 64 }), color: 0x6a5040, tile: 2 };
-    case 'gallery': return { map: tex.carpet('stars', [0x2a0a3a, 0x0a0a2a]), color: 0xffffff, tile: 2 };
-    case 'wheels': return { map: tex.carpet('diamond', [0x6a0a14, 0x3a0608]), color: 0xffffff, tile: 2 };
-    case 'parlour': return { map: tex.vendor('sbs-tiny2/128x128/Wood/Wood_07-128x128.png', { size: 64 }), color: 0x8a6a48, tile: 2 };
-    case 'counting': return { map: tex.concrete(0x3a3430), color: 0xffffff, tile: 2 };
-    default: return { map: tex.wood(0x6a4a30), color: 0xffffff, tile: 2 };
+    case 'mouth': case 'well': case 'lobby': return { map: tex.carpet('diamond', [0x6e1426, 0x45091a, GOLD, TEAL]), color: 0xffffff };   // one burgundy nave carpet, gold and teal motifs
+    case 'midway': return { map: tex.carpet('stars', [0x34186a, 0x4c2a90, GOLD, TEAL]), color: 0xffffff };
+    case 'cards': return { map: tex.carpet('diamond', [0x0f5a38, 0x083a22, 0xe0c060, 0x60d0b0]), color: 0xffffff };
+    case 'laundry': return { map: v('sbs-horror/128x128/Floor/Horror_Floor_12-128x128.png'), color: 0xa8d4dc };   // stone tile, cool tint
+    case 'boiler': return { map: v('sbs-synthetic/128x128/Metal/Synth-Metal_05-128x128.png'), color: 0xd8a888 };   // warm steel plate
+    case 'gallery': return { map: tex.carpet('stars', [0x201a5a, 0x342c90, GOLD, TEAL]), color: 0xffffff };
+    case 'wheels': return { map: tex.carpet('diamond', [0x7a1c14, 0x4a0e0a, GOLD, TEAL]), color: 0xffffff };
+    case 'counting': return { map: v('sbs-synthetic/128x128/Wood/Synth-Wood_14-128x128.png'), color: 0xb08858 };   // counting-house boards
+    default: return { map: v('sbs-tiny2/128x128/Wood/Wood_03-128x128.png'), color: 0xc89868 };                    // parlour boards (and the lift niche)
   }
 }
 
@@ -78,10 +81,10 @@ function boxWorldUV(mesh: THREE.Mesh, tile: number): void {
   }
   uv.needsUpdate = true;
 }
-function planeWorldUV(mesh: THREE.Mesh, w: number, h: number, tile: number): void {
+function planeWorldUV(mesh: THREE.Mesh, w: number, h: number, tile: number, u0 = 0, v0 = 0): void {
   const geo = mesh.geometry as THREE.BufferGeometry;
   const pos = geo.attributes.position, uv = geo.attributes.uv;
-  for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + w / 2) / tile, (pos.getY(i) + h / 2) / tile);
+  for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + w / 2 + u0) / tile, (pos.getY(i) + h / 2 + v0) / tile);
   uv.needsUpdate = true;
 }
 
@@ -100,10 +103,11 @@ function rectMinus(r: R4, hole: R4 | null): R4[] {
 }
 
 /** Plane facing up (floor) or down (ceiling) covering a rect at height y. */
-function horizontal(kit: KitX, r: R4, y: number, mat: THREE.Material, up: boolean, tile: number, parent: THREE.Object3D): THREE.Mesh {
+function horizontal(kit: KitX, r: R4, y: number, mat: THREE.Material, up: boolean, tile: number, parent: THREE.Object3D, worldAligned = false): THREE.Mesh {
   const w = r[2] - r[0], d = r[3] - r[1];
   const m = kit.plane(w, d, mat, { rot: [up ? -90 : 90, 0, 0], pos: [(r[0] + r[2]) / 2, y, (r[1] + r[3]) / 2], parent, segW: Math.max(1, Math.round(w / 4)), segH: Math.max(1, Math.round(d / 4)) });
-  planeWorldUV(m, w, d, tile); // the plane's local x/y span w and d before its rotation
+  // the plane's local x/y span w and d before its rotation; a floor is aligned to the world (u = x, v = -z) so split pieces and neighbours keep one phase
+  if (worldAligned) planeWorldUV(m, w, d, tile, r[0], -r[3]); else planeWorldUV(m, w, d, tile);
   return m;
 }
 
@@ -179,19 +183,23 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     g.fill();
   }, { wrap: 'repeat' });
   // the ceiling carries its own glow (the point lights stand below it and never reached it): emissive from its own pattern
-  const ceilMat = kit.mat({ map: coffer, color: 0xd8c8a8, emissive: 0xffffff, emissiveMap: coffer, emissiveIntensity: 0.32 });
+  const ceilMat = kit.mat({ map: coffer, color: 0xd8c8a8, emissive: 0xffffff, emissiveMap: coffer, emissiveIntensity: 0.5 });
+  const ceilFar = kit.mat({ map: coffer, color: 0xd8c8a8, emissive: 0xffffff, emissiveMap: coffer, emissiveIntensity: 0.32 });   // the Underneath and the apartment keep their dark ceilings
+  // the tall rooms (Mouth, Well, Wheel House) sit far above the light pool, so their ceilings glow a little more on their own
+  const ceilTall = kit.mat({ map: coffer, color: 0xe0d0a8, emissive: 0xffffff, emissiveMap: coffer, emissiveIntensity: 0.7 });
   const wf: WallCtx = { kit, root: shell, wall: wallMatDeco, wain: wainMat, statics, meshes: [] };
 
   // floors: walkable boxes (top y 0) and visuals, split around the hero trapdoor hole in the Lobby;
   // ceilings: one plane per zone at its height, never holed
   for (const z of ZONES) {
-    const ft = floorTex(z.id, tex, kit);
+    const ft = floorTex(z.id, tex);
     const fmat = kit.mat({ color: ft.color, map: ft.map });
     for (const piece of rectMinus(z.rect as R4, z.id === 'lobby' ? hole : null)) {
-      horizontal(kit, piece, 0, fmat, true, ft.tile, statical);
+      horizontal(kit, piece, 0, fmat, true, FLOOR_TILE_M, statical, true);
       statics.push({ box: box3(piece[0], -0.5, piece[1], piece[2], 0, piece[3]), tag: 'walkable' });
     }
-    horizontal(kit, z.rect as R4, CEILING[z.id] ?? 4.5, ceilMat, false, 2, shell);
+    const ch = CEILING[z.id];
+    horizontal(kit, z.rect as R4, ch ?? 4.5, ch === undefined ? ceilFar : ch >= 6 ? ceilTall : ceilMat, false, 2, shell);
   }
 
   // coffered beams, lit bay panels, hanging lamps, vents and cables under every zone ceiling (wave 77: no more dark void)
@@ -205,6 +213,23 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     ],
   });
   buildBalconyUndersides(kit, statical, { y: 6.4, z0: -17.4, z1: 1.4 });
+  // the nave ceilings step (Mouth 6 -> Well 9 -> Lobby 4.5): without a wall at each step the black attic showed through above the
+  // lower ceiling, with the JACK·ID neon and the signs hanging in front of it. Close both steps and dress their faces.
+  const STEPS: readonly CeilingStep[] = [
+    { z: -18.1, dir: 1, y0: CEILING.mouth, y1: CEILING.well },
+    { z: 2.1, dir: -1, y0: CEILING.lobby, y1: CEILING.well, sunY: 7.0 },
+  ];
+  for (const st of STEPS) {
+    const body = kit.box(22, st.y1 - st.y0 + 0.02, T, wallMatDeco, { pos: [0, (st.y0 - 0.02 + st.y1) / 2, st.z], parent: shell });
+    boxWorldUV(body, 2);
+  }
+  // the finishing pieces are decoration: a failure here must never drop the whole pit to the fallback hall
+  try {
+    buildCeilingSteps(kit, statical, { x0: -10.85, x1: 10.85, steps: STEPS });
+    buildCeilingRoses(kit, statical, [
+      { x: 0, z: -4, H: CEILING.well, r: 1.85 }, { x: 0, z: 13.25, H: CEILING.lobby, r: 1.5 }, { x: 0, z: -24, H: CEILING.mouth, r: 1.6 },
+    ]);
+  } catch (e) { log.error('world', 'ceiling finish failed', e); }
 
   // ── walls ───────────────────────────────────────────────────────────────────────────────────
   const deco = wallMatDeco, ox = wallMatOx;
@@ -591,6 +616,22 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   const lightShow = createLightShow({ targets: shows, lights: ctx.lights, wall });
   updates.push({ update: (dt) => lightShow.update?.(dt) });
   disposables.push(lightShow);
+
+  // ── Wave 81 interior pass: rugs, planters, supper tables, banquettes, lamps, art and a chair rail in the nave, a few props per wing.
+  // The plan drops any walking piece that would touch a machine, its standing zone, a column, a doorway lane or the central aisle.
+  {
+    const blockers: Rect[] = [
+      ...ctx.slots.filter((s) => !STAGE_SLOTS.includes(s.id)).map((s) => slotRect(s)),   // the stage stands on FLR-05: it is a lane in the plan
+      ...statics.filter((s) => s.tag === 'solid' && s.box.max.y > 0.5 && Math.min(s.box.max.x - s.box.min.x, s.box.max.z - s.box.min.z) > 0.35)
+        .map((s): Rect => [s.box.min.x, s.box.min.z, s.box.max.x, s.box.max.z]),
+    ];
+    try {
+      const plan = planLounge(blockers);
+      const lounge = buildLounge(kit, { parent: statical, plan, clock: { x: 0, y: 4.3, z: -29.7 } });
+      statics.push(...lounge.statics);
+      lights.push(...plan.lights);
+    } catch (e) { log.error('world', 'lounge dressing failed', e); }
+  }
 
   // ── anchors (cutscene targets) ─────────────────────────────────────────────────────────────
   const marker = (x: number, y: number, z: number): THREE.Object3D => { const o = new THREE.Object3D(); o.position.set(x, y, z); root.add(o); return o; };
