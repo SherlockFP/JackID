@@ -129,6 +129,7 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
   let lightsOn = true;
   let chainOn = false;
   let spouseHere = true;
+  let spouseAcross = false;
 
   const api: HomeRoomApi = {
     setLights(on) {
@@ -143,8 +144,9 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
     },
     chainOn: () => chainOn,
     doorTo: (amount, dur) => door.doorTo(amount, dur),
-    setSpouse(present) {
+    setSpouse(present, phase) {
       spouseHere = present;
+      spouseAcross = phase === 'across';
       spouse.setVisible(present);
     },
     setDoorShadow(on) {
@@ -172,7 +174,7 @@ export function buildHome(o: { kit: KitX; tex: TexGen; seed: number; interact?: 
     }),
     station('spouse', boxAt(1.0, 0, -1.2, 2.2, 1.45, -0.2), 2, {
       label: () => t('home.station.spouse'),
-      sub: () => (spouseHere ? undefined : t('home.station.spouse.sub')),
+      sub: () => (spouseHere ? undefined : t(spouseAcross ? 'home.station.spouse.sub.across' : 'home.station.spouse.sub')),
       disabled: () => !spouseHere,
     }),
     station('phone', boxAt(1.95, 0.9, -2.75, 2.45, 1.6, -2.1), 2, {

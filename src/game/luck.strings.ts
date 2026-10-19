@@ -25,6 +25,7 @@ export default {
     'why.promise': 'kept your word',
     'why.frame': 'her photo on the desk',
     'why.crooked': 'caught the crooked table',
+    'why.well': 'the Well',
   },
   tr: {
     'label': 'ŞANS',
@@ -46,5 +47,6 @@ export default {
     'why.promise': 'sözünü tuttun',
     'why.frame': 'masadaki fotoğraf',
     'why.crooked': 'hileli masayı yakaladın',
+    'why.well': 'Kuyu',
   },
 };

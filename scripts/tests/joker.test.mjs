@@ -253,20 +253,79 @@ test('the kitchen: he is silent below Ink 8, and a silent call changes nothing',
 
 // ── Trust moves ──────────────────────────────────────────────────────────────────────────────────────────
 
-test('Trust moves: dare +1 (max +1 a Watch), refuse -1, feed +1, clerk card -1, broken promise -2, admit -2 once; clamped to -3..+3', () => {
+test('Trust moves: dare +1, refuse -1, feed +1, clerk card -1, broken promise -2, admit -2 once; clamped to -3..+3', () => {
   const j = make();
-  assert.equal(j.dare(true).delta, 1); assert.equal(j.dare(true).delta, 0, 'second dare in the Watch'); assert.equal(j.trust, 1);
-  j.beginWatch(2); assert.equal(j.dare(true).delta, 1);
-  assert.equal(j.dare(false).delta, -1);
-  assert.equal(j.trust, 1);
+  assert.equal(j.dare(true).delta, 1); assert.equal(j.trust, 1);
+  assert.equal(j.dare(false).delta, 0, 'a second answer the same Night is not a dare');
   assert.equal(j.admit().delta, -2); assert.equal(j.admit().delta, 0, 'once a run'); assert.equal(j.trust, -1);
   for (let i = 0; i < 6; i++) j.trustMove('broke');
-  assert.equal(j.trust, -3, 'floor');
-  for (let i = 0; i < 9; i++) j.trustMove('feed');
-  assert.equal(j.trust, 3, 'ceiling');
+  assert.equal(j.trust, -3, 'floor: a fall is never capped');
+  for (let n = 2; n <= 8; n++) { j.beginNight(n); j.beginWatch(1); j.trustMove('feed'); }
+  assert.equal(j.trust, 3, 'ceiling, a step a Night');
+  j.trustMove('feed');
+  assert.equal(j.trust, 3);
   const e = j.trustMove('broke');
   assert.deepEqual(e.events.map((x) => x.name), ['joker:trust']);
   assert.deepEqual(e.events[0].data, { trust: 1, delta: -2, why: 'broke' });
+});
+
+test('dares: he offers one a Night, so a second answer the same Night changes nothing; a refusal is -1 once', () => {
+  const j = make();
+  assert.equal(j.canDare(), true);
+  const a = j.dare(false);
+  assert.deepEqual([a.asked, a.delta, j.trust], [true, -1, -1]);
+  assert.equal(j.canDare(), false);
+  const b = j.dare(true);
+  assert.deepEqual([b.asked, b.delta, b.events.length, j.trust], [false, 0, 0, -1]);
+  j.beginWatch(2);
+  assert.equal(j.canDare(), false, 'a new Watch is not a new Night');
+  j.beginNight(2); j.beginWatch(1);
+  assert.equal(j.canDare(), true);
+  assert.deepEqual([j.dare(true).delta, j.trust], [1, 0]);
+});
+
+test('Trust rises at most +1 a Night whatever you do, and falls without a cap', () => {
+  const j = make();
+  assert.equal(j.dare(true).delta, 1);
+  assert.equal(j.trustMove('feed').delta, 0, 'a card the same Night');
+  assert.equal(j.trustMove('asked').delta, 0);
+  assert.equal(j.trustMove('kept').delta, 0);
+  assert.equal(j.trust, 1);
+  assert.equal(j.trustMove('broke').delta, -2, 'a fall is not capped'); assert.equal(j.trust, -1);
+  assert.equal(j.trustMove('feed').delta, 0, 'the cap counts the gains of the Night, so a fall does not buy a second step'); assert.equal(j.trust, -1);
+  j.beginNight(2); j.beginWatch(1);
+  assert.equal(j.trustMove('kept').delta, 1); assert.equal(j.trust, 0);
+});
+
+test('the Dawn decay: Trust drifts 1 toward 0 unless it moved that Night; the drift is not a move', () => {
+  const j = make(1, { trust: 2 });
+  assert.equal(j.dawn().delta, -1); assert.equal(j.trust, 1);
+  assert.deepEqual(j.dawn().events.map((e) => e.data.why), ['dawn'], 'a second Dawn on the same Night drifts again (the drift moved nothing)');
+  assert.equal(j.trust, 0);
+  assert.equal(j.dawn().delta, 0, 'at 0 there is nowhere to drift');
+  const k = make(1, { trust: -2 });
+  assert.equal(k.dawn().delta, 1); assert.equal(k.trust, -1);
+  // a Night where it moved holds, up or down
+  const up = make(1, { trust: 1 }); up.dare(true);
+  assert.equal(up.dawn().delta, 0); assert.equal(up.trust, 2);
+  const down = make(1, { trust: -1 }); down.trustMove('broke');
+  assert.equal(down.dawn().delta, 0); assert.equal(down.trust, -3);
+  // a capped move that changed nothing is not a move
+  const flat = make(1, { trust: 3 }); flat.trustMove('feed');
+  assert.equal(flat.dawn().delta, -1, 'a favour at the ceiling moved nothing');
+  // a Night later with no favours, it drifts
+  up.beginNight(2); up.beginWatch(1);
+  assert.equal(up.dawn().delta, -1); assert.equal(up.trust, 1);
+});
+
+test('a player who does every favour is at +3 on the third Dawn, not before; one who stops drifts back', () => {
+  const j = make();
+  const day = (n) => { j.beginNight(n); j.beginWatch(1); j.dare(true); j.trustMove('feed'); j.trustMove('kept'); j.dawn(); return j.trust; };
+  assert.deepEqual([1, 2, 3].map(day), [1, 2, 3]);
+  assert.equal(j.wordReady, true, 'held at the third Dawn');
+  j.beginNight(4); j.beginWatch(1); j.dawn();
+  assert.equal(j.trust, 2, 'a quiet Night');
+  assert.equal(j.wordReady, true, 'but the word stays earned');
 });
 
 test('catching a lie is +1 once a Night, calling a truth a liar is -1, and each whisper can be called once', () => {
@@ -307,16 +366,18 @@ test('his hand finishes a reply to Ada once a Night, at Ink 8-9 only', () => {
 
 // ── his word ─────────────────────────────────────────────────────────────────────────────────────────────
 
-test('his word: earned at Trust +3, always true with no tell, once a run, and it holds when Trust falls', () => {
+test('his word: earned at Trust +3 held at a Dawn, always true with no tell, once a run, and it holds when Trust falls', () => {
   const j = make(4, { ink: 9 });
   assert.equal(j.wordReady, false);
   assert.equal(j.whisper({ ctx: 'wager', ask: true, onHisWord: true }).onHisWord, false, 'not earned: a normal Ask');
   j.ink = 9; j.trust = 2; j.trustMove('feed');
-  assert.equal(j.trust, 3); assert.equal(j.wordReady, true);
+  assert.equal(j.trust, 3); assert.equal(j.wordReady, false, 'earned by holding it at a Dawn, not by touching it');
+  j.dawn();
+  assert.equal(j.wordReady, true);
   j.trust = -3;
   assert.equal(j.wordReady, true, 'holds');
   for (let i = 0; i < 40; i++) {
-    const k = new J.Joker(i); k.beginNight(8); k.beginWatch(1); k.ink = 8; k.trust = 3; k.trustMove('feed');
+    const k = new J.Joker(i); k.beginNight(8); k.beginWatch(1); k.ink = 8; k.trust = 3; k.dawn();
     const w = k.whisper({ ctx: 'wager', ask: true, onHisWord: true });
     assert.equal(w.truth, true); assert.equal(w.we, false); assert.equal(w.onHisWord, true);
     for (const lang of ['en', 'tr']) assert.equal(W.saysWe(lang, text(lang, w.keys)), false);
@@ -677,6 +738,7 @@ test('save round trip: snapshot -> JSON -> restore gives the same Loki, and the 
   const b = new J.Joker(123);
   b.restore(snap);
   assert.deepEqual(b.snapshot(), a.snapshot());
+  assert.deepEqual([snap.moved, snap.gained.n >= 0], [a.snapshot().moved, true]);
   assert.deepEqual([b.trust, b.ink, b.mood, b.frame, b.coffeeOn, b.wordReady, b.fedCards, b.promise], [a.trust, a.ink, a.mood, a.frame, a.coffeeOn, a.wordReady, a.fedCards, a.promise]);
   const next = (j) => { j.beginNight(5); j.beginWatch(1); const w = j.whisper({ ctx: 'duel' }); const u = j.unasked('matchPoint', { duel: 'promise', rival: 'lucan' }); return [w && w.keys, u.struck, j.callLiar().right, j.snapshot()]; };
   assert.deepEqual(next(a), next(b));

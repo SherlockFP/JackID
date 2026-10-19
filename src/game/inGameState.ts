@@ -62,13 +62,13 @@ export function createInGameState(): AppStateHandler<'ingame'> {
   /** Free-roam Intermission: the HUD hint line and the paid-Night bookkeeping for the summary toast. */
   let interHint: InterHint | null = null;
   let wasPaid = false;
-  /** The paid-Night summary is due and waits for the Dawn Night Card offer to close (see syncHint). */
+  /** The paid-Night summary is due and waits for the Dawn boon offer to close (see syncHint). */
   let summaryDue = false;
   /** The quota of the Night in play, sampled while it is still unpaid: the Dawn title card's paid figure is this due plus the surplus. */
   let dueSeen = 0;
   /** The highest overshoot tier granted at this Dawn (`quota:overshoot`, emitted in order, so the last one is the highest); null when none. */
   let overTier: string | null = null;
-  /** This session is online: no Night Card panel is mounted there (nightCards.ui is solo only), so the offer never holds the summary. */
+  /** This session is online: no boon panel is mounted there (pantheon.ui is solo only), so the offer never holds the summary. */
   let online = false;
   let storyOff: (() => void) | null = null;
   let offs: Array<() => void> = [];
@@ -258,9 +258,9 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     wasPaid = paid;
     if (!paid) summaryDue = false;
     // The summary toast layer sits above the panels (ui.css: toasts z 5, panels z 4), so it waits while a Dawn choice modal is up:
-    // the Night Card offer (solo only: no panel online, where it times out unseen) or the overshoot charm pick (every session).
-    // Each closes on a pick or its own timer, and the summary then shows once.
-    const choiceUp = (!online && !!s.run.nightCardOffer()) || !!s.run.overpayOffer();
+    // the boon offer (solo only: no panel online, where it times out unseen). It closes on a pick or its own timer, and the summary
+    // then shows once.
+    const choiceUp = !online && !!s.run.boonOffer();
     if (summaryDue && !choiceUp) { summaryDue = false; showSummary(s); }
     // seated (or walking up to a seat, or in machine mode): the hint never sits over the Pawn or terminal view
     const seated = app.player?.seat != null || s.world.seat != null || app.input.mode === 'machine';

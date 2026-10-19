@@ -57,10 +57,10 @@ function storeOf(run) {
   return { snap, store: { data: { ...SAVE.defaultSave(), resume: snap }, update(fn) { fn(this.data); }, flush() {} } };
 }
 /** Collects the bus events of a kind for the length of a test. */
-/** Night 1 end to end: the paid Dawn (no Night Card offer on it), the lift, the Evening and the bed, which opens Night 2. */
+/** Night 1 end to end: the paid Dawn (its boon offer is settled at the lever), the lift, the Evening and the bed, which opens Night 2. */
 function eveningOfNight1(run) {
   paidDawn(run);
-  assert.equal(run.nightCardOffer(), null, 'the Night 1 Dawn opens no offer (the first is the Night 2 Dawn)');
+  assert.ok(run.boonOffer(), 'the Night 1 Dawn opens the first boon offer');
   assert.equal(run.openFloor(), true);
   walk(run, T().ride + 0.1);
   assert.equal(run.homeSleep(), true, 'the bed');
@@ -134,30 +134,30 @@ test('the Evening has no soft lock: it falls asleep on its own after 120 sim sec
   run.dispose();
 });
 
-test('the lift is a Night Card gate like OPEN THE FLOOR: the lever waits for the pick, and the kept card starts the Night after the bed', () => {
+test('the lift is a boon gate like OPEN THE FLOOR: the lever waits for the pick, and the boon is kept for the run', () => {
   const run = home(703);
-  run.setNightCardGate(true);
-  eveningOfNight1(run);
+  run.setBoonGate(true);
   paidDawn(run);
-  assert.ok(run.nightCardOffer(), 'the Night 2 Dawn opened the offer');
+  assert.ok(run.boonOffer(), 'the Night 1 Dawn opened the offer');
   assert.equal(run.openFloor(), false, 'the open offer holds the lever');
   assert.equal(run.lastRefusal(), 'nightCard');
   assert.equal(run.homeStage(), null);
-  const pick = run.nightCardOffer().candidates[0].id;
-  assert.equal(run.pickNightCard(pick), true);
-  assert.equal(run.openFloor(), true, 'the lever goes once a card is kept');
+  const pick = run.boonOffer().candidates[0].id;
+  assert.equal(run.pickBoon(pick), true);
+  assert.equal(run.openFloor(), true, 'the lever goes once a boon is kept');
   assert.equal(run.homeStage(), 'ride');
   walk(run, T().ride + 0.1);
   run.homeSleep();
   walk(run, T().sleep + 0.1);
-  assert.equal(run.nightCard()?.id, pick, 'the kept card starts Night 3');
+  assert.deepEqual(run.boons(), [pick], 'the boon rides into Night 2 and stays');
   run.dispose();
-  // without the panel (headless) an open offer is settled by its first card at the lever, as before
+  // without the panel (headless) an open offer is settled by its leftmost card at the lever
   const bare = home(704);
-  eveningOfNight1(bare);
   paidDawn(bare);
+  const first = bare.boonOffer().candidates[0].id;
   assert.equal(bare.openFloor(), true);
-  assert.equal(bare.nightCardOffer(), null, 'the lift settled the offer');
+  assert.equal(bare.boonOffer(), null, 'the lift settled the offer');
+  assert.deepEqual(bare.boons(), [first]);
   bare.dispose();
 });
 
@@ -243,22 +243,23 @@ test('a missed quota in a solo run: the doomed ride, then run:end fell with endi
   run.dispose();
 });
 
-test('the outs come first: false_bottom pays a near miss and rope_ladder buys an overtime Watch; only then the doom', () => {
+test('the outs come first: Rounding Error writes off a near miss and Overtime buys a Watch; only then the doom', () => {
   const near = home(711);
-  near.charmBox.add(near.selfId, 'false_bottom', 4);
-  near.debtPaid = Math.floor(near.quota.due * 0.95);
+  near.pantheon.restore({ kept: ['ledg_round'] });
+  near.debtPaid = Math.ceil(near.quota.due * 0.95);
   near.syncQuota();
   near.phase = 'collection';
   near.dawn();
-  assert.equal(near.nightPaid, true, 'false_bottom made the quota');
+  assert.equal(near.nightPaid, true, 'ledg_round made the quota');
   assert.equal(near.homeStage(), null);
   assert.equal(near.homeLiftReady(), true);
   near.dispose();
 
   const rope = home(712);
-  rope.charmBox.add(rope.selfId, 'rope_ladder', 4);
+  rope.pantheon.restore({ kept: ['ash_overtime'] });
   missedDawn(rope);
-  assert.equal(rope.homeStage(), null, 'rope_ladder: an overtime Watch, not the doom');
+  assert.equal(rope.homeStage(), null, 'ash_overtime: an overtime Watch, not the doom');
+  assert.equal(rope.pantheon.fx('overtime'), 0, 'the Rite is spent');
   assert.equal(rope.shift.phase, 'intermission');
   assert.equal(rope.over, false);
   rope.soulMarkCount = 1;
@@ -438,7 +439,8 @@ test('the bed closes the Night with a dream: rolled once by the phone, and a qui
   assert.ok(d, 'the bed rolled a dream');
   assert.equal(d.night, 1, 'the dream belongs to the Night that closed');
   assert.ok(['good', 'plain', 'cold'].includes(d.tier), d.tier);
-  assert.ok(d.key.startsWith(`phone.dream.${d.tier}.`), d.key);
+  // Night 1 is Ada's 'across' phase: good and cold dreams come from the `.x.` pool (plain is shared)
+  assert.ok(d.key.startsWith(`phone.dream.${d.tier}.`) || d.key.startsWith(`phone.dream.x.${d.tier}.`), d.key);
   // a Dawn paid to exactly the quota has no margin: the Evening's thin-margin rule takes one, the quiet Night (no reply, no talk) one more
   assert.equal(phone.harmony(), Math.max(0, h0 - 2), 'a thin Evening and a quiet Night each drop one Harmony');
   run.dispose();

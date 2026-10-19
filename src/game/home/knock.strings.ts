@@ -33,7 +33,7 @@ export default {
     'toll.other': 'The toll: {n} coins.',
     'stolen': 'He took your {name} on the way out.',
     'harmony': 'Ada heard all of it. She\'s frightened.',
-    // Ada at the door: two soft knocks (the Collector knocks three times). shortcut: unwired until A2 (adaPhase) schedules her night knock from N6.
+    // Ada at the door: two soft knocks (the Collector knocks three times).
     'ada.knock': 'Two soft knocks. Ada.',
     'ada.peep': 'ADA. Standing very still, facing the door.',
   },

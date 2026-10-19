@@ -7,6 +7,11 @@
  * Director decision (Oct 2026): the meter no longer feeds the luck hook. Each star is a flat payout bonus instead:
  * `payout.mult` = 1 + 0.01 × stars (−2 % .. +5 %), added through the modifier pipeline by `provider()`.
  *
+ * THE PANTHEON (docs/BLESSINGS.md §2.3): the Well's boons tune the meter through the run port: `x.luck.perStar` (First Penny),
+ * `x.luck.failSoft` (Soft Landing: a missed Dawn or tithe costs a star less), `x.luck.max` (The Well Answers), and two duo
+ * numbers (`sealedNoStars`, `depositPerStar`). The meter never reads the mods inside `collect` (that would recurse): the run
+ * calls `retune()` when a boon is kept or spent, and the numbers are cached until then.
+ *
  * The meter listens to the bus itself. Each move emits `luck:change` (the HUD toasts it with the reason). The run creates it,
  * restores it from `resume.ext.luck`, saves `snapshot()`, and calls `dispose()` on exit.
  */
@@ -42,20 +47,27 @@ export interface LuckMeter {
   snapshot(): unknown;
   /** Restores the stars from a save (a damaged slice reads as 0). Silent: no `luck:change`. */
   restore(s: unknown): void;
+  /** Re-reads the boon numbers from the run port (call when a boon is kept or spent). */
+  retune(): void;
   /** Unsubscribes from the bus. */
   dispose(): void;
 }
 
-/** The run side the meter reads: nothing today, so the port stays open for later luck rules. */
-export type LuckRunPort = object;
-
-const clampStars = (v: number): number => Math.min(LUCK_MAX, Math.max(LUCK_MIN, Math.round(v)));
+/** The run side the meter reads: a run-level mod (`x.luck.*`) and a boon number (the pantheon's `fx`). Both optional. */
+export interface LuckRunPort {
+  x?(hook: `x.luck.${string}`, base: number): number;
+  fx?(key: string): number;
+}
 
 /** `touch` tells the run's modifier pipeline that a provider's answer changed (the run passes its `touch`). */
-export function createLuckMeter(_run: LuckRunPort, touch: () => void = () => {}): LuckMeter {
+export function createLuckMeter(run: LuckRunPort, touch: () => void = () => {}): LuckMeter {
   let stars = 0;
   let disposed = false;
   let lastMove: LuckChange | null = null;
+  const tune = { perStar: LUCK_PAYOUT_PER_STAR, max: LUCK_MAX, soft: 0, sealedFree: false, depositPerStar: 0 };
+  const clampStars = (v: number): number => Math.min(tune.max, Math.max(LUCK_MIN, Math.round(v)));
+  /** A loss of `n` stars, softened by Soft Landing (never below 0). */
+  const loss = (n: number): number => -Math.max(0, n - tune.soft);
   const move = (d: number, why = ''): void => {
     if (disposed || d === 0) return;
     const before = stars;
@@ -68,10 +80,11 @@ export function createLuckMeter(_run: LuckRunPort, touch: () => void = () => {})
   const offs = [
     bus.on('quota:met', () => move(1, 'quota')),
     bus.on('quota:overshoot', () => move(1, 'overshoot')),
-    bus.on('quota:failed', () => move(-2, 'failed')),
-    bus.on('quota:sealed', () => move(-2, 'failed')),   // a missed Dawn that cost a seal, not the run: the same two stars
+    bus.on('quota:failed', () => move(loss(2), 'failed')),
+    // a missed Dawn that cost a seal, not the run: the same two stars (none with Still Water)
+    bus.on('quota:sealed', () => move(tune.sealedFree ? 0 : loss(2), 'failed')),
     bus.on('home:heat', ({ delta, why }) => move(delta > 0 ? -1 : delta < 0 ? 1 : 0, why)),
-    bus.on('run:tithe', (e) => { if (e.state === 'missed') move(-1, 'tithe'); }),
+    bus.on('run:tithe', (e) => { if (e.state === 'missed') move(loss(1), 'tithe'); }),
     bus.on('run:rescue', (e) => { if (e.state === 'taken') move(-1, 'loan'); }),
     // THE KEEPSAKE STAKE and THE GHOST SEAT (wave 75): a keepsake that comes back, and a round that matches the ghost
     // the kitchen table's Rock, Paper, Promise (mid 'promise') is a kept word, not a keepsake coming back
@@ -82,10 +95,12 @@ export function createLuckMeter(_run: LuckRunPort, touch: () => void = () => {})
     // THE HOME COMPUTER (wave 77): the framed photo bought on the MARKET gives its star when a Night begins
     bus.on('econ:frame', (e: FrameEvent) => move(e.star, 'frame')),
   ];
-  const payoutMult = (): number => 1 + LUCK_PAYOUT_PER_STAR * stars;
+  const payoutMult = (): number => 1 + tune.perStar * stars;
   const source = (): ModSource[] => (stars === 0 ? [] : [{
     kind: 'house', id: 'luck', owner: 0,
-    effects: [{ hook: 'payout.mult', op: 'mult', value: payoutMult() }],
+    effects: tune.depositPerStar > 0 && stars > 0
+      ? [{ hook: 'payout.mult', op: 'mult', value: payoutMult() }, { hook: 'deposit.bonus', op: 'add', value: tune.depositPerStar * stars }]   // Wishing Coin
+      : [{ hook: 'payout.mult', op: 'mult', value: payoutMult() }],
   }]);
   const providerObj: ModProvider = {
     kind: 'house',
@@ -97,6 +112,14 @@ export function createLuckMeter(_run: LuckRunPort, touch: () => void = () => {})
     last: (): LuckChange | null => lastMove,
     provider: (): ModProvider => providerObj,
     snapshot: (): unknown => ({ v: 1, stars }),
+    retune(): void {
+      tune.perStar = run.x?.('x.luck.perStar', LUCK_PAYOUT_PER_STAR) ?? LUCK_PAYOUT_PER_STAR;
+      tune.max = Math.max(LUCK_MAX, Math.round(run.x?.('x.luck.max', LUCK_MAX) ?? LUCK_MAX));
+      tune.soft = Math.max(0, Math.round(run.x?.('x.luck.failSoft', 0) ?? 0));
+      tune.sealedFree = (run.fx?.('sealedNoStars') ?? 0) > 0;
+      tune.depositPerStar = Math.max(0, run.fx?.('depositPerStar') ?? 0);
+      touch();
+    },
     restore(s: unknown): void {
       const v = s && typeof s === 'object' ? (s as { stars?: unknown }).stars : undefined;
       stars = typeof v === 'number' && Number.isFinite(v) ? clampStars(v) : 0;

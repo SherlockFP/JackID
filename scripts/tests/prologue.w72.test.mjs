@@ -1,5 +1,5 @@
-// THE PROLOGUE (wave 72): a fresh solo Debt Run starts in the apartment. The run holds the clock (no Watch, no draft, no lever) until
-// the lift lands (`finishPrologue`), a resumed save skips it, the Starter Draft opens only in the Night 1 Mola (after the first Watch),
+// THE PROLOGUE (wave 72): a fresh solo Debt Run starts in the apartment. The run holds the clock (no Watch, no lever) until
+// the lift lands (`finishPrologue`), a resumed save skips it,
 // and the Evening's knock fixes hold: a bed before the visitor fails the visit (Heat, toll), and a verdict's save records 'leave'.
 // The scene itself (story/cutscenes/prologue.cutscene.ts) and its strings are checked for their keys in EN and TR.
 import { test, before, after } from 'node:test';
@@ -43,15 +43,13 @@ function listen(kind) {
   return { got, off };
 }
 
-test('a fresh Home-layer run is in its prologue: no Watch, no lever, no draft until the lift lands', () => {
+test('a fresh Home-layer run is in its prologue: no Watch and no lever until the lift lands', () => {
   const run = home(7301);
   assert.equal(run.prologueOn(), true, 'a fresh solo run starts in the prologue');
   assert.equal(run.startWatch(), false, 'the prologue holds the clock: no Watch yet');
   assert.equal(run.openFloor(), false, 'the lever does nothing in the prologue');
-  assert.equal(run.openStarterDraft(), false, 'no starter draft in the prologue');
   walk(run, 30);
   assert.equal(run.phase, 'intermission', 'the clock does not run in the prologue');
-  assert.equal(run.starterDraft(), null);
 });
 
 test('finishPrologue opens Night 1 Watch 1 once, and announces it on home:prologue', () => {
@@ -74,23 +72,6 @@ test('a resumed save skips the prologue (no scene, no hold on the clock)', () =>
   const back = RUN.resumeRun(store, { home: true });
   assert.ok(back, 'the save resumes');
   assert.equal(back.prologueOn(), false, 'a resumed run is not in its prologue');
-});
-
-test('the Starter Draft opens only in the Night 1 Mola, after the first Watch, never before the first Bell', () => {
-  const run = home(7304);
-  run.finishPrologue();
-  assert.equal(run.openStarterDraft(), false, 'not on the first frame of Watch 1');
-  assert.equal(run.phase, 'bell', 'the lift landed: Watch 1 is in its Bell');
-  assert.equal(run.openStarterDraft(), false, 'not during the Bell or the first play');
-  // run the first Watch out (the clock ends it) and the settle: the Mola follows
-  for (let i = 0; i < 2400 && !(run.phase === 'intermission' && run.watch >= 1) && !run.over; i++) walk(run, 0.5, 0.25);
-  assert.equal(run.phase, 'intermission', 'the first Watch has ended');
-  assert.ok(run.watch >= 1, 'the Mola is after the first Watch');
-  assert.equal(run.openStarterDraft(), true, 'the Mola opens the starter draft (the UI shows it once the Mola is quiet)');
-  assert.equal(run.openStarterDraft(), false, 'it opens once');
-  assert.equal(run.starterDraft()?.candidates.length, 3);
-  assert.equal(run.pickStarter(run.starterDraft().candidates[0].id), true);
-  assert.equal(run.startWatch(), true, 'the next Watch starts once the card is taken');
 });
 
 test('the bed cannot dodge a planned visit: asleep before the visitor fails the visit (Heat and toll apply)', () => {

@@ -135,20 +135,22 @@ test("Vell's thrown match, called out, sets the vell_release ending path (saved)
 test('beating the Night 3 boss at the table pays BOSS_REWARD and a Wing Key, once', () => {
   const run = fresh(40, 3);
   const t0 = run.balance('ticket');
+  const charms0 = run.charms().length;
   const report = { rivalId: 'lucan', gameId: 'ghostshell', night: 3, boss: true, tier: 'coins', S: 30, won: true, drew: false, net: 30, calledCorrect: true };
   run.duel.onDuelEnd(report);
   assert.equal(run.wingKeys, 1, 'a Wing Key at once');
   for (let i = 0; i < 6; i++) run.tick(1);                          // the reward waits a beat for the reveal to clear
   assert.equal(run.balance('ticket') - t0, 3, 'BOSS_REWARD Tickets');
-  assert.ok(run.overpayOffer(), 'and the Rare charm choice (1 of 3)');
+  assert.equal(run.charms().length, charms0 + 1, 'and a Rare charm (the first seeded card of 3)');
   run.duel.onDuelEnd(report);                                        // a second report for the same Night pays nothing more
   assert.equal(run.wingKeys, 1);
   run.dispose();
   const lost = fresh(41, 3);
+  const lostCharms = lost.charms().length;
   lost.duel.onDuelEnd({ ...report, won: false, net: -30, calledCorrect: null });
   for (let i = 0; i < 6; i++) lost.tick(1);
   assert.equal(lost.wingKeys, 0);
-  assert.equal(lost.overpayOffer(), null);
+  assert.equal(lost.charms().length, lostCharms);
   lost.dispose();
 });
 

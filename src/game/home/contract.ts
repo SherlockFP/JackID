@@ -46,8 +46,8 @@ export interface HomeRoomApi {
   chainOn(): boolean;
   /** Swing the front door to `amount` (0 shut .. 1 open) over `dur` seconds. */
   doorTo(amount: number, dur: number): Promise<void>;
-  /** Show or hide the seated spouse (absent on a night of Harmony 0). */
-  setSpouse(present: boolean): void;
+  /** Show or hide the seated Ada. `phase` words the empty chair: across the hall ("Not answering", the default is "Gone to her sister's"). */
+  setSpouse(present: boolean, phase?: 'across' | 'home'): void;
   /** A short light strip under the door that shows a visitor's shadow (wave 70 uses it; wave 69 builds it, off). */
   setDoorShadow(on: boolean): void;
 }

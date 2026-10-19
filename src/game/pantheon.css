@@ -1,0 +1,71 @@
+/* The pantheon's offer (pantheon.ui.ts): the Dawn receipt, then one card per god. Manga-lite like the other Dawn panels: cream
+   paper, heavy ink borders, halftone dots, a skewed title bar. Each god has a CSS sigil (no art file): the Well a ring of water,
+   Ledgers a coin with a slot, Ash a burnt match, Mirrors an oval glass with no face, Loki a green grin.
+   Sizes are design px times --dpx (= --u / 1.5, the HUD rule in ui.css). The veil wraps onto phone widths with no side scroll.
+   The veil is a light tint only: ui.ts already drops a dark backdrop behind this modal. */
+.pt-root { --dpx: calc(var(--u, 1.5px) / 1.5);
+  position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: calc(16 * var(--dpx)); box-sizing: border-box;
+  background: rgba(4, 3, 2, .35); font-family: var(--f-body, monospace); color: #15100a; }
+.pt-box { width: min(calc(860 * var(--dpx)), 100%); max-height: 100%; overflow: auto; padding: calc(16 * var(--dpx)); box-sizing: border-box;
+  background: #f4ecd8; border: calc(3 * var(--dpx)) solid #000; box-shadow: calc(6 * var(--dpx)) calc(6 * var(--dpx)) 0 #000; }
+.pt-title { display: inline-block; margin: 0 0 calc(10 * var(--dpx)); padding: calc(6 * var(--dpx)) calc(12 * var(--dpx)); font-family: var(--f-head, monospace); font-size: calc(12 * var(--dpx)); font-weight: normal;
+  line-height: 1.4; color: #f4ecd8; background: #000; transform: skewX(-8deg); }
+.pt-hint, .pt-swap { margin: 0 0 calc(12 * var(--dpx)); font-size: calc(17 * var(--dpx)); line-height: 1.2; color: #2a2016; }
+.pt-swap { margin: calc(12 * var(--dpx)) 0 0; color: #1d6b2a; }
+.pt-row { display: flex; flex-wrap: wrap; gap: calc(12 * var(--dpx)); }
+.pt-card { flex: 1 1 calc(170 * var(--dpx)); min-width: 0; min-height: calc(200 * var(--dpx)); display: flex; flex-direction: column; align-items: flex-start; gap: calc(6 * var(--dpx));
+  padding: calc(10 * var(--dpx)); box-sizing: border-box; font: inherit; color: inherit; text-align: left; cursor: pointer; background-color: #fffdf5;
+  background-image: radial-gradient(rgba(0, 0, 0, .12) calc(1 * var(--dpx)), transparent calc(1.3 * var(--dpx))); background-size: calc(7 * var(--dpx)) calc(7 * var(--dpx));
+  border: calc(3 * var(--dpx)) solid #000; box-shadow: calc(4 * var(--dpx)) calc(4 * var(--dpx)) 0 #000; transition: transform .08s, box-shadow .08s; }
+.pt-card:hover, .pt-card:focus { transform: translate(calc(-3 * var(--dpx)), calc(-3 * var(--dpx)));
+  background-color: #ffeda6; box-shadow: calc(7 * var(--dpx)) calc(7 * var(--dpx)) 0 #000, 0 0 0 calc(4 * var(--dpx)) #b3201c; outline: none; }
+.pt-card.pt-marked { box-shadow: calc(4 * var(--dpx)) calc(4 * var(--dpx)) 0 #000, 0 0 0 calc(3 * var(--dpx)) #2f9a3e; }
+.pt-card.pt-picked { background-color: #ffe27a; box-shadow: calc(6 * var(--dpx)) calc(6 * var(--dpx)) 0 #000, 0 0 0 calc(3 * var(--dpx)) #ffd34a; }
+.pt-rite { background-color: #fff3e0; border-color: #6b1a12; }
+.pt-duo { background-color: #eef6ff; }
+.pt-head { display: flex; align-items: center; gap: calc(6 * var(--dpx)); width: 100%; }
+.pt-key { font-family: var(--f-head, monospace); font-size: calc(10 * var(--dpx)); color: #000; }
+.pt-god { flex: 1 1 auto; min-width: 0; font-family: var(--f-head, monospace); font-size: calc(8 * var(--dpx)); line-height: 1.3; color: #2a2016; overflow-wrap: anywhere; }
+.pt-pips { display: flex; gap: calc(2 * var(--dpx)); }
+.pt-pip { width: calc(6 * var(--dpx)); height: calc(6 * var(--dpx)); border: calc(1.5 * var(--dpx)) solid #000; border-radius: 50%; box-sizing: border-box; }
+.pt-pip.pt-lit { background: #b3201c; }
+.pt-kind { font-family: var(--f-head, monospace); font-size: calc(9 * var(--dpx)); padding: calc(3 * var(--dpx)) calc(7 * var(--dpx)); color: #fff; background: #000; transform: skewX(-8deg); }
+.pt-rite .pt-kind { background: #6b1a12; }
+.pt-duo .pt-kind { background: #23507a; }
+.pt-god-loki .pt-kind { background: #1d6b2a; }
+.pt-name { font-family: var(--f-head, monospace); font-size: calc(11 * var(--dpx)); line-height: 1.3; color: #000; }
+.pt-desc { font-size: calc(16 * var(--dpx)); line-height: 1.15; color: #2a2016; }
+.pt-debt { font-size: calc(13 * var(--dpx)); line-height: 1.15; font-style: italic; color: #6b1a12; }
+.pt-take { margin-top: auto; font-family: var(--f-head, monospace); font-size: calc(10 * var(--dpx)); color: #000; text-decoration: underline; }
+/* The sigils: one small CSS mark per god, drawn in ink and the god's colour. */
+.pt-sigil { position: relative; flex: 0 0 auto; width: calc(16 * var(--dpx)); height: calc(16 * var(--dpx)); box-sizing: border-box; }
+.pt-sig-well { border: calc(3 * var(--dpx)) solid #2a6fb3; border-radius: 50%; box-shadow: inset 0 0 0 calc(1.5 * var(--dpx)) #9fd0ff; }
+.pt-sig-ledgers { border-radius: 50%; background: #d9a514; border: calc(2 * var(--dpx)) solid #000; }
+.pt-sig-ledgers::after { content: ''; position: absolute; left: 25%; right: 25%; top: 42%; height: 16%; background: #000; }
+.pt-sig-ash::before { content: ''; position: absolute; left: 44%; width: 12%; top: 25%; bottom: 0; background: #8a6a3a; }
+.pt-sig-ash::after { content: ''; position: absolute; left: 30%; width: 40%; top: 0; height: 36%; border-radius: 50%; background: #111; }
+.pt-sig-mirrors { width: calc(12 * var(--dpx)); border: calc(2 * var(--dpx)) solid #000; border-radius: 50%; background: linear-gradient(135deg, #f2f6fa 30%, #9aa9b8); }
+.pt-sig-loki { border-bottom: calc(4 * var(--dpx)) solid #2f9a3e; border-radius: 0 0 50% 50%; height: calc(10 * var(--dpx)); }
+/* The Dawn receipt: last Night's settlement, counted up in the modal's head. */
+.pt-receipt { margin: 0 0 calc(12 * var(--dpx)); padding: calc(8 * var(--dpx)) calc(10 * var(--dpx)); box-sizing: border-box; background: #fffdf5;
+  border: calc(2 * var(--dpx)) solid #000; box-shadow: calc(3 * var(--dpx)) calc(3 * var(--dpx)) 0 #000; }
+.pt-rec-title { display: inline-block; margin: 0 0 calc(6 * var(--dpx)); padding: calc(3 * var(--dpx)) calc(8 * var(--dpx)); font-family: var(--f-head, monospace); font-size: calc(10 * var(--dpx));
+  line-height: 1.4; color: #fff; background: #0f6f63; transform: skewX(-8deg); }
+.pt-rec-title.pt-sealed { background: #b3201c; }
+.pt-rec-grid { display: flex; flex-wrap: wrap; gap: calc(6 * var(--dpx)) calc(18 * var(--dpx)); }
+.pt-rec-row { display: flex; flex-direction: column; min-width: calc(110 * var(--dpx)); }
+.pt-rec-k { font-size: calc(15 * var(--dpx)); line-height: 1.1; color: #2a2016; }
+.pt-rec-v { font-family: var(--f-head, monospace); font-size: calc(14 * var(--dpx)); line-height: 1.3; color: #000; font-variant-numeric: tabular-nums; }
+.pt-rec-sub { font-family: var(--f-head, monospace); font-size: calc(11 * var(--dpx)); line-height: 1.2; color: #b3361f; font-variant-numeric: tabular-nums; }
+.pt-rec-mem { margin-top: calc(6 * var(--dpx)); font-size: calc(13 * var(--dpx)); color: #000; }
+.pt-go { margin-top: calc(10 * var(--dpx)); padding: calc(6 * var(--dpx)) calc(14 * var(--dpx)); font-family: var(--f-head, monospace); font-size: calc(11 * var(--dpx)); color: #000; cursor: pointer;
+  background: #ffe9a8; border: calc(3 * var(--dpx)) solid #000; box-shadow: calc(3 * var(--dpx)) calc(3 * var(--dpx)) 0 #000; }
+.pt-go:hover, .pt-go:focus { background: #ffd34a; outline: none; }
+/* The countdown: a bar that drains over the 20 s, and the last 5 s pulse red. */
+.pt-timer { display: flex; align-items: center; gap: calc(10 * var(--dpx)); margin: 0 0 calc(12 * var(--dpx)); font-family: var(--f-head, monospace); font-size: calc(12 * var(--dpx)); line-height: 1.3; color: #000; }
+.pt-timer-bar { flex: 1 1 auto; height: calc(12 * var(--dpx)); background: #fffdf5; border: calc(2 * var(--dpx)) solid #000; overflow: hidden; }
+.pt-timer-bar > i { display: block; height: 100%; width: 100%; background: #0f6f63; }
+.pt-timer.pt-pulse { color: #b3201c; animation: pt-pulse .5s steps(2, end) infinite; }
+.pt-timer.pt-pulse .pt-timer-bar > i { background: #b3201c; }
+@keyframes pt-pulse { 50% { opacity: .2; } }
+@media (max-width: 560px) { .pt-card { flex-basis: 100%; min-height: 0; } }

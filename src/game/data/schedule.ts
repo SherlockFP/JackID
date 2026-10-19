@@ -229,17 +229,17 @@ export type OvershootMarkTier = OvershootTier & { restoreMark?: boolean };
 /**
  * Overpay tiers on `r = principal ÷ quota` (GDD §2.6.5). Cumulative; each tier is awarded once per Night. The principal is the
  * pocket coins put in this Night (interest left out, `run.ts` principalNow), so the tiers are earned by play (decision D1).
- * The two top tiers (Overshoot depth) sit above golden: JACKPOT SEAL (3x) pays 5 Tickets and a Legendary charm to pick
- * from two (a Rare pair before Night 5, when the Legendary pool is empty); HOUSE ENVY (4x) restores a lost Soul Mark, or pays
- * 3 Obols when the card is full. Coins above the quota are sealed until Dawn (`run.ts` overshootLocked): BREAK SEAL takes them
+ * The charm picks are gone (docs/BLESSINGS.md §2.1): favoured is Noticed (+1 Favour, `run.ts` grantTier), and uncommon, golden
+ * and seal shape the Dawn's boon offer (`run.ts` offerTier: 4 cards, keep 2, a Rite slot). JACKPOT SEAL (3x) also pays 5 Tickets;
+ * HOUSE ENVY (4x) restores a lost Soul Mark, or pays 3 Obols when the card is full. Coins above the quota are sealed until Dawn (`run.ts` overshootLocked): BREAK SEAL takes them
  * out and forfeits every tier of the Night (decision D2), so the top tiers cost real liquidity.
  */
 export const OVERSHOOT_TIERS: readonly OvershootMarkTier[] = [
   { id: 'gratuity', ratio: 1.1, reward: { currencies: { coin: 0, ticket: 2, obol: 0 }, text: 'game.overshoot.gratuity' } },
   { id: 'favoured', ratio: 1.25, reward: { buffs: [{ id: 'favoured' }], text: 'game.overshoot.favoured' } },
-  { id: 'uncommon', ratio: 1.5, reward: { charm: { choose: 1, of: 3, rarity: 'uncommon' }, text: 'game.overshoot.uncommon' } },
-  { id: 'golden', ratio: 2, reward: { charm: { choose: 1, of: 3, rarity: 'rare' }, nextQuotaDiscount: 0.05, text: 'game.overshoot.golden' } },
-  { id: 'seal', ratio: 3, reward: { currencies: { coin: 0, ticket: 5, obol: 0 }, charm: { choose: 1, of: 2, rarity: 'legendary' }, text: 'hud.plan.ov.seal' } },
+  { id: 'uncommon', ratio: 1.5, reward: { text: 'game.overshoot.uncommon' } },
+  { id: 'golden', ratio: 2, reward: { nextQuotaDiscount: 0.05, text: 'game.overshoot.golden' } },
+  { id: 'seal', ratio: 3, reward: { currencies: { coin: 0, ticket: 5, obol: 0 }, text: 'hud.plan.ov.seal' } },
   { id: 'envy', ratio: 4, restoreMark: true, reward: { currencies: { coin: 0, ticket: 0, obol: 3 }, text: 'hud.plan.ov.envy' } },
 ];
 

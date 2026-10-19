@@ -76,6 +76,23 @@ test('ŞANS ignores events after dispose, restore is silent, and the save surviv
   again.dispose();
 });
 
+test('the Well tunes ŞANS through the run port: a richer star, a higher cap, a softer fall, Still Water and Wishing Coin', () => {
+  const xs = { 'x.luck.perStar': 0.015, 'x.luck.max': 7, 'x.luck.failSoft': 1 };
+  const fxs = { sealedNoStars: 1, depositPerStar: 0.01 };
+  const m = L.createLuckMeter({ x: (h, b) => xs[h] ?? b, fx: (k) => fxs[k] ?? 0 });
+  m.retune();
+  m.restore({ stars: 9 });
+  assert.equal(m.stars(), 7, 'The Well Answers lifts the cap to 7');
+  assert.ok(Math.abs(m.payoutMult() - (1 + 0.015 * 7)) < 1e-12, 'First Penny: 1.5 % a star');
+  assert.ok(effectsOf(m).some((e) => e.hook === 'deposit.bonus' && Math.abs(e.value - 0.07) < 1e-12), 'Wishing Coin: +1 % deposits a star');
+  m.restore({ stars: 0 });
+  bus.emit('quota:failed', { index: 0 });
+  assert.equal(m.stars(), -1, 'Soft Landing: a fall costs one star, not two');
+  bus.emit('quota:sealed', { index: 0, left: 2, memory: 'street' });
+  assert.equal(m.stars(), -1, 'Still Water: a sealed Dawn costs no stars');
+  m.dispose();
+});
+
 // The machines that stayed at or under 99 % at luck +10 keep their RTP guard (the luck hook itself is still read by the machines).
 // The seven that went over at +10 were the reason the meter fed the luck hook; the meter no longer does, so they are not sampled.
 for (const id of ['plinko', 'blackjack']) {

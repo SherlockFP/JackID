@@ -29,7 +29,7 @@ test('the overpay ladder: JACKPOT SEAL (3x) and HOUSE ENVY (4x) sit above golden
   const seal = tiers.find((t) => t.id === 'seal');
   assert.equal(seal.ratio, 3);
   assert.deepEqual(seal.reward.currencies, { coin: 0, ticket: 5, obol: 0 }, 'JACKPOT SEAL: 5 Tickets');
-  assert.deepEqual(seal.reward.charm, { choose: 1, of: 2, rarity: 'legendary' }, 'and a Legendary charm, choose 1 of 2');
+  assert.ok(tiers.every((t) => !t.reward.charm), 'no tier picks a charm: the tiers shape the boon offer (docs/BLESSINGS.md §2.1)');
   const envy = tiers.find((t) => t.id === 'envy');
   assert.equal(envy.ratio, 4);
   assert.equal(envy.restoreMark, true, 'HOUSE ENVY restores a Soul Mark');
@@ -54,7 +54,7 @@ test('the bank reads the top tiers: 3x is JACKPOT SEAL, 4x is HOUSE ENVY, and th
   run.dispose();
 });
 
-test('JACKPOT SEAL at Dawn on Night 1: 5 Tickets, and a choice of two (Rare: Legendary charms unlock at Night 5)', () => {
+test('JACKPOT SEAL at Dawn on Night 1: 5 Tickets, and the boon offer shows four cards', () => {
   const run = RUN.createRun({ seed: 72, mode: 'debt' });
   const due = run.quota.due;
   claim(run, LOWER);
@@ -63,27 +63,30 @@ test('JACKPOT SEAL at Dawn on Night 1: 5 Tickets, and a choice of two (Rare: Leg
   run.syncQuota();
   run.dawn();
   assert.equal(run.balance('ticket'), tickets + 5, 'five Tickets');
-  const offer = run.overpayOffer();
-  assert.ok(offer, 'the choice is queued, never lost');
-  assert.equal(offer.rarity, 'rare', 'the Legendary pool is empty before Night 5, so the offer falls back to Rare');
-  assert.equal(offer.candidates.length, 2, 'choose 1 of 2');
-  assert.ok(offer.candidates.every((d) => d.rarity === 'rare'));
+  const offer = run.boonOffer();
+  assert.ok(offer, 'the paid Dawn opens the boon offer');
+  assert.equal(offer.candidates.length, 4, 'the seal tier shows four cards');
+  assert.equal(offer.picks, 1);
   run.dispose();
 });
 
-test('JACKPOT SEAL from Night 5: the choice of two is Legendary', () => {
-  const run = RUN.createRun({ seed: 79, mode: 'debt' });
-  run.index = 4;                                 // Night 5: crown_of_coins and understudy unlock
-  const due = run.quota.due;
-  claim(run, LOWER);
-  run.debtPaid = 3 * due;
-  run.syncQuota();
-  run.dawn();
-  const offer = run.overpayOffer();
-  assert.equal(offer?.rarity, 'legendary');
-  assert.equal(offer?.candidates.length, 2, 'choose 1 of 2 Legendary charms');
-  assert.ok(offer.candidates.every((d) => d.rarity === 'legendary'));
-  run.dispose();
+test('the overpay tiers shape the offer: 1.5x shows four cards, 2x keeps two, under 1.5x shows three', () => {
+  const at = (seed, ratio, claimed) => {
+    const run = RUN.createRun({ seed, mode: 'debt' });
+    claim(run, claimed);
+    run.debtPaid = Math.ceil(ratio * run.quota.due);
+    run.syncQuota();
+    run.dawn();
+    const o = run.boonOffer();
+    run.dispose();
+    return o;
+  };
+  assert.equal(at(90, 1, []).candidates.length, 3, 'a plain paid Dawn: three cards');
+  const unc = at(91, 1.5, ['gratuity', 'favoured']);
+  assert.equal(unc.candidates.length, 4);
+  assert.equal(unc.picks, 1);
+  const gold = at(92, 2, ['gratuity', 'favoured', 'uncommon']);
+  assert.equal(gold.picks, 2, 'golden: keep two');
 });
 
 test('HOUSE ENVY at Dawn with a Soul Mark lost: the Mark goes back on the card and no Obols are paid', () => {
@@ -203,7 +206,7 @@ test('D1: the overpay tiers ignore interest: a bank that the Settle interest car
   run.dawn();
   assert.deepEqual(run.quota.claimed, [], 'Dawn claims nothing');
   assert.equal(run.balance('ticket'), tickets, 'no Gratuity either');
-  assert.equal(run.overpayOffer(), null, 'and no charm choice');
+  assert.equal(run.boonOffer()?.candidates.length, 3, 'and the plain three-card offer');
   run.dispose();
 });
 
@@ -239,7 +242,7 @@ test('D2: BREAK SEAL releases the coins above the quota and forfeits every overp
   run.dawn();
   assert.deepEqual(run.quota.claimed, [], 'the Dawn pays no overpay tier: they are forfeit');
   assert.equal(run.balance('ticket'), tickets, 'no JACKPOT SEAL Tickets');
-  assert.equal(run.overpayOffer(), null, 'and no charm choice');
+  assert.equal(run.boonOffer()?.candidates.length, 3, 'and the plain three-card offer');
   run.dispose();
 });
 
@@ -294,11 +297,12 @@ test('D1/D2 save: the interest split and a broken seal survive a save and a resu
   run.dispose();
 });
 
-test('D4: the JACKPOT SEAL label says what the pool pays: LEGENDARY is RARE before Night 5 (EN and TR)', async () => {
+test('D4: the JACKPOT SEAL label says what the tier pays: 5 Tickets and a boon offer (EN and TR)', async () => {
   const PLAN = await load('src/menu/hud/plan.strings.ts');
   const en = PLAN.default.en['ov.seal'];
   const tr = PLAN.default.tr['ov.seal'];
-  assert.match(en, /LEGENDARY \(RARE before Night 5\)/, 'the label names the Rare fallback');
-  assert.match(tr, /NADİR/, 'the Turkish label names the Rare fallback');
+  assert.match(en, /5 TICKETS/, 'the label names the Tickets');
+  assert.match(en, /BOON/, 'the seal tier feeds the boon offer (pantheon), not a charm pick');
+  assert.match(tr, /LÜTUF/, 'the Turkish label names the boon offer');
   assert.deepEqual(Object.keys(PLAN.default.en).sort(), Object.keys(PLAN.default.tr).sort(), 'EN and TR keep the same keys');
 });

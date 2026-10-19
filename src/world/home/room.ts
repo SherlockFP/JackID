@@ -203,14 +203,7 @@ export function buildRoom(c: RoomCtx): RoomParts {
   const pilotOff = kit.box(0.04, 0.03, 0.012, kit.mat({ color: 0x2a2622, lit: false }), { pos: at(0.7, 1.31, 2.468), parent: dyn });
 
   // ── the lights ────────────────────────────────────────────────────────────────────────────────
-  // a fixture hung from the ceiling: a rose plate, a short stem, an open cone shade and the bulb under it
-  kit.cyl(0.09, 0.09, 0.03, cream, { pos: at(0, CEIL - 0.015, 0), parent: shell, seg: 10 });
-  kit.cyl(0.012, 0.012, 0.16, black, { pos: at(0, CEIL - 0.11, 0), parent: shell, seg: 5 });
-  kit.cyl(0.05, 0.2, 0.13, kit.mat({ color: 0xcdb98e, side: 'double' }), { pos: at(0, CEIL - 0.255, 0), parent: shell, seg: 12 });
-  const ceilingLamp = kit.lamp({ r: 0.06, color: LIGHT.ceiling.color, shape: 'bulb' });
-  ceilingLamp.root.position.set(...at(0, CEIL - 0.36, 0));
-  ceilingLamp.setOn(true);
-  dyn.add(ceilingLamp.root);
+  // the ceiling light is a bare point light (the pendant below is the one visible fixture: a second shade at the room centre read as a stray blob)
   const ceilingHint: LightHint = {
     id: 'home:ceiling', pos: at(0, CEIL - 0.25, 0), color: LIGHT.ceiling.color, intensity: LIGHT.ceiling.intensity,
     range: LIGHT.ceiling.range, flicker: 'STEADY', zone: HOME_ZONE,
@@ -257,7 +250,6 @@ export function buildRoom(c: RoomCtx): RoomParts {
     statics,
     lights: [ceilingHint, pend.hint, candleHint, adaKey, hallHint],
     setSwitched(on: boolean) {
-      ceilingLamp.setOn(on);
       pend.setOn(on);
       flame.setOn(on);
       lever.rotation.x = on ? -0.45 : 0.45;

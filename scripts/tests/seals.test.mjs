@@ -45,7 +45,7 @@ test('a missed Dawn with 3 seals costs one seal, not the run: paid, no offer, -2
   assert.equal(run.over, false, 'the run goes on');
   assert.equal(run.duel.soulMarks(), 2);
   assert.equal(run.nightPaid, true, 'the Night counts as paid');
-  assert.equal(run.nightCardOffer(), null, 'no offer on a sealed Dawn');
+  assert.equal(run.boonOffer(), null, 'no offer on a sealed Dawn');
   assert.equal(run.luckStars(), -2, 'the same two stars as a fall');
   assert.equal(sealed.seen.length, 1);
   assert.equal(sealed.seen[0].left, 2);

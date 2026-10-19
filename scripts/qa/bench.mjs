@@ -128,7 +128,7 @@ export function parseScript(text) {
  * parseScript list syntax). Steps (see scripts/qa/README.md, "Debt-run driver"):
  *   goto:<machineId>   teleport in front of the floor machine, face it, press E (devtools occupy as the fallback)
  *   goto:hot           the same, for the Hot cabinet (the first Hot Lamp lit now, run.circuit.lamps().hot[0])
- *   nightcard:<1|2>    pick Night Card <1|2> of the offer: the id at that index of run.nightCardOffer().candidates goes to run.pickNightCard(id)
+ *   nightcard:<1|2|3>  keep boon <n> of the Dawn offer: the id at that index of run.boonOffer().candidates goes to run.pickBoon(id)
  *   nightcard:best     pick the card with the highest expected value (CARD_EV, summarizeOffer): risk-on (payouts) when ahead of the
  *                      Dawn projection, quota-lowering when behind; logs the reason; ties keep card 1
  *   play:<keys>xN      press the keys (parseScript syntax, e.g. play:Space:150,wait:300x3), N times (default 1)
@@ -240,7 +240,7 @@ export function parseRunSteps(text) {
     m0 = /^banner:(\d+)$/.exec(tok);
     if (m0) { out.push({ kind: 'banner', ms: Number(m0[1]), text: tok }); continue; }
       if (tok === 'goto:hot') { out.push({ kind: 'goto', hot: true, text: tok }); continue; }
-    m0 = /^nightcard:([12]|best)$/.exec(tok);
+    m0 = /^nightcard:([1-4]|best)$/.exec(tok);
     if (m0) { out.push(m0[1] === 'best' ? { kind: 'nightcard', best: true, text: tok } : { kind: 'nightcard', n: Number(m0[1]), text: tok }); continue; }
     let m = /^goto:([a-z][a-z0-9_]*)$/.exec(tok);
     if (m) { out.push({ kind: 'goto', machine: m[1], text: tok }); continue; }
@@ -273,7 +273,7 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1|2|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:stay | station:<id> | ui:click:<css selector> | home:sleep | home:talk | home:switch | home:chain | home:chain:<on|off> | home:lights:<on|off> | home:still:<ms> | home:visit | home:peep | home:knock-check | home:miss | anchor:<name> | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | auto:night:evening | event:<id> | duel:promise | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1-4|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:stay | station:<id> | ui:click:<css selector> | home:sleep | home:talk | home:switch | home:chain | home:chain:<on|off> | home:lights:<on|off> | home:still:<ms> | home:visit | home:peep | home:knock-check | home:miss | anchor:<name> | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | auto:night:evening | event:<id> | duel:promise | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
   const once = (kind) => {
@@ -473,7 +473,7 @@ async function stepFrames(cdp, ms) {
  */
 const PAGE_MODULES = [
   '/src/core/i18n.ts', '/src/game/charms/engine.ts', '/src/game/charms/sets.ts', '/src/game/daily.ts',
-  '/src/game/data/charmsEngines.ts', '/src/game/data/kits.ts', '/src/game/data/schedule.ts', '/src/game/nightCards.ts',
+  '/src/game/data/charmsEngines.ts', '/src/game/data/kits.ts', '/src/game/data/schedule.ts',
   '/src/game/pace.ts', '/src/game/spotlight.ts', '/src/game/stakes.ts', '/src/game/watchEvents.ts',
   '/src/machines/_base/stakePresets.ts', '/src/machines/bigone/rules.ts',
 ];
@@ -713,10 +713,10 @@ const DAWN_JS = `(async () => { const r = window.jackid.app.run; if (!r) return 
 
 /**
  * Page JS helper (inlined into the page scripts): the ids of the open Night Card offer, in offer order (card 1 first), or null
- * when no offer is open. run.nightCardOffer() returns { candidates: NightCardDef[], left, night }, so the ids are read from it.
+ * when no offer is open. run.boonOffer() returns { candidates: BoonDef[], picks, left, night, canSwap }, so the ids are read from it.
  */
 const NIGHT_CARD_IDS_JS = `function nightCardIds(r) {
-  const o = r.nightCardOffer?.();
+  const o = r.boonOffer?.();
   return o && Array.isArray(o.candidates) && o.candidates.length ? o.candidates.map((c) => c.id) : null;
 }`;
 
@@ -732,43 +732,29 @@ const NIGHT_CARD_OFFER_JS = `(async () => {
   const none ={ missing: false, night: null, have: null, quotaBase: null, cards: null };
   const r = window.jackid.app.run;
   if (!r) return none;
-  if (typeof r.pickNightCard !== 'function') return { ...none, missing: true };
-  const o = r.nightCardOffer?.();
+  if (typeof r.pickBoon !== 'function') return { ...none, missing: true };
+  const o = r.boonOffer?.();
   if (!o || !Array.isArray(o.candidates) || !o.candidates.length) return none;
-  const { nightCardPreview } = await import('/src/game/nightCards.ts');
   const { quotaFor } = await import('/src/game/data/schedule.ts');
-  const { t, lang } = await import('/src/core/i18n.ts');
+  const { t } = await import('/src/core/i18n.ts');
   const b = r.bank();
-  // The plain next-Night read (ladder + overshoot discount + notice), not the bare ladder: otherwise every card shows a phantom change.
-  const quotaBase = r.nextQuotaPreview?.(1)?.due ?? quotaFor(o.night);
-  const comma = lang() === 'tr';
-  const vars = (v) => {
-    const out = {};
-    for (const [k, x] of Object.entries(v)) out[k] = k === 'x' ? String(x).replace('.', comma ? ',' : '.') : x;
-    return out;
-  };
-  // The exact read the game's own panel uses (ladder + discount + assessment + House notice + the card's multiplier).
-  const dueWith = (m) => r.nextQuotaPreview?.(m)?.due ?? null;
-  const cards = o.candidates.map((def) => {
-    const lines = nightCardPreview(def, o.night, dueWith);
-    const q = lines.find((p) => p.key === 'quota');
-    return {
-      id: def.id, tone: def.tone, lines,
-      text: lines.map((p) => t('nightcard.prev.' + p.key, vars(p.vars))).join(' · '),
-      quotaTo: q ? q.vars.to : (dueWith(1) ?? quotaBase),
-    };
-  });
+  // The plain next-Night read (ladder + overshoot discount + notice), not the bare ladder.
+  const quotaBase = r.nextQuotaPreview?.()?.due ?? quotaFor(o.night);
+  // shortcut: boons have no preview lines (their card face is the numbers), so every card scores on the base quota; score the effects if the bot needs a real pick.
+  const cards = o.candidates.map((def) => ({
+    id: def.id, tone: def.kind, lines: [], text: t('pantheon.' + def.id + '.desc'), quotaTo: quotaBase,
+  }));
   // The Dawn projection (the same read as the state record's dawn): met says the bank covers the quota at Dawn (the ahead/behind switch).
   const dawn = await (async () => { ${DAWN_BODY} })();
   return { missing: false, night: o.night, have: b.pocket + b.balance, quotaBase, cards, dawn, houseCut: houseCutOf(r) };
 })()`;
 
-/** Page JS: takes the offered card `id` (run.pickNightCard takes the id, not the index). Resolves to true when the run accepts it. */
+/** Page JS: takes the offered card `id` (run.pickBoon takes the id, not the index). Resolves to true when the run accepts it. */
 function pickNightCardJs(id) {
   return `(() => {
     const r = window.jackid.app.run;
-    if (!r || typeof r.pickNightCard !== 'function') return false;
-    return r.pickNightCard(${JSON.stringify(id)}) === true;
+    if (!r || typeof r.pickBoon !== 'function') return false;
+    return r.pickBoon(${JSON.stringify(id)}) === true;
   })()`;
 }
 
@@ -925,7 +911,7 @@ const RUN_STATE_JS = `(async () => {
   return {
     lamps: { hot: lampOf(lv.hot), cold: lampOf(lv.cold) },
     event: ev ? { id: ev.id, leftS: ev.leftS, pulls: ev.pulls } : null,
-    nightCard: r.nightCard?.()?.id ?? null,        // the Night Card picked for this Night (id), or null
+    nightCard: r.boons?.().at(-1) ?? null,         // the last boon kept (id), or null
     nightCardOffer: nightCardIds(r),               // the offered card ids while the offer is open, else null
     phase: r.shift.phase, night: r.night(), watch: typeof r.watch === 'number' ? r.watch + 1 : null,
     pocket: b.pocket, bank: b.balance, withdrawable: b.withdrawable, quotaDue: b.due, quotaLeft: b.left,
@@ -935,7 +921,7 @@ const RUN_STATE_JS = `(async () => {
     quotaSplit: quotaSplitOf(r),                   // { base, titheAdded }: the quota before the tithes, and the coins the missed tithes added
     nightDone: r.nightPaid, topside: r.topsideOpen,
     over: r.over, seated: a.player?.seat?.mid ?? null, intro: a.cutscene.playing ?? null,
-    starterOffer: r.starterDraft()?.candidates.map((d) => d.id) ?? null, starterLeft: r.starterDraft()?.left ?? null,
+    starterOffer: r.starterDraft?.()?.candidates.map((d) => d.id) ?? null, starterLeft: r.starterDraft?.()?.left ?? null,
     starterPending: r.starterPending?.() === true,   // the offer is still to come (Night 1, none made yet): the first read waits for it
     homeStage: r.homeStage?.() ?? null,              // THE EVENING: 'ride' | 'evening' | 'sleep' | 'doomed', or null on the casino floor
     home: r.homeOn ? r.homeState() : null,           // { stage, left (sim s), lights, chain }, or null without the Home layer
@@ -1841,12 +1827,12 @@ async function runKind(ctx, s, rec) {
     case 'goto': return gotoMachine(ctx, s.hot ? { hot: true } : s.machine, rec);
     case 'nightcard': {
       // Night Card <n> (1-based), or `best` (the highest expected value, see CARD_EV and summarizeOffer). The offer's id at that
-      // index goes to run.pickNightCard(id). The record keeps the offer: `offer` (the ids), `cards` (each with its preview lines
+      // index goes to run.pickBoon(id). The record keeps the offer: `offer` (the ids), `cards` (each with its preview lines
       // and EV), `index`, `id`; for `best` also `best`, `mode` (ahead / behind / unknown) and `why` (the reason).
       rec.card = s.best ? 'best' : s.n;
       const before = await evaluate(cdp, REFUSAL_JS);
       const o = await evalJson(cdp, NIGHT_CARD_OFFER_JS);
-      if (o.missing) { rec.ok = false; rec.reason = 'no Night Card on this build (run.pickNightCard is missing)'; return; }
+      if (o.missing) { rec.ok = false; rec.reason = 'no boon offer on this build (run.pickBoon is missing)'; return; }
       const sum = summarizeOffer(o);
       rec.offer = sum?.ids ?? null;
       rec.cards = sum?.cards ?? null;

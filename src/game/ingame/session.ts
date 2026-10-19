@@ -52,11 +52,9 @@ import { startGrandCasino } from './grandCasino';
 import { applyEffects, effectsOf } from '@/game/hollow/rules';
 import { lordsHooks } from '@/machines/lordstable';
 import { hollowDoor } from '@/world/hollow';
-import { mountDraftUi } from '@/game/draft.ui';
-import { mountNightCardsUi } from '@/game/nightCards.ui';
+import { mountPantheonUi } from '@/game/pantheon.ui';
 import { mountScrounge } from '@/game/scrounge';
 import { mountFood } from '@/game/food';
-import { mountOverpayUi } from '@/game/overpay.ui';
 import { mountPhoneUi } from '@/game/home/phone.ui';
 import { mountEvening, type Evening } from '@/game/home/evening';
 
@@ -118,14 +116,10 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
         : undefined,
     });
   app.run = run;
-  // The UI the run's own state asks for. Their disposers run with the session (the draft ticker and the phone chip must not outlive it).
+  // The UI the run's own state asks for. Their disposers run with the session (the phone chip must not outlive it).
   const mounts: Unsub[] = [];
-  // The Starter Draft: a fresh run opens it, and a resumed Night 1 does too while the offer can still open or is open (a saved open
-  // offer holds the Bell, so without the panel the run would wait on a card nobody can take).
-  if (!params.online && (!params.resume || run.starterPending() || run.starterDraft() !== null)) mounts.push(mountDraftUi(run));
-  if (!params.online) mounts.push(mountNightCardsUi(run));
+  if (!params.online) mounts.push(mountPantheonUi(run));   // THE PANTHEON: the Dawn boon offer and its receipt (solo)
   if (run.homeOn) mounts.push(mountPhoneUi(run));
-  mounts.push(mountOverpayUi(run));
   const self = run.selfId;
   // The Lords' table (the Hollow Door): the duel's end becomes run effects, its spent Tickets come off the run, and the door seals.
   lordsHooks.apply = (end) => {

@@ -9,7 +9,7 @@ const strings = {
     'station.bed.sub': 'Until the next Night',
     'station.spouse': 'Talk',
     'station.spouse.sub': 'Gone to her sister\'s',
-    // shortcut: before N5 the station is hidden and Harmony 0 reads "Not answering"; A2 (adaPhase) uses this key then.
+    // before N5 the chair is empty except on her visit Evenings: it reads "Not answering"
     'station.spouse.sub.across': 'Not answering',
     'station.phone': 'Phone',
     'station.switch': 'Light',

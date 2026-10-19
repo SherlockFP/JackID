@@ -31,7 +31,7 @@ export interface DreadInput {
   cursedCharms: number;
   /** Brighter Bulbs level, 0..4. */
   brightBulbs: number;
-  /** Relief from calming charms / tonics (points, ≥ 0). */
+  /** Relief from calming charms / tonics (points, signed: negative adds Dread, e.g. cursed `dread.add` effects). */
   charmRelief: number;
 }
 

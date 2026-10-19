@@ -22,7 +22,8 @@ import type { WorldHost } from '@/world/world';
 import type { LocalPlayerHost } from '@/player/local';
 import { HOME_TIMING, type DebtRun } from '../run';
 import { HOME_AMBIENCE, HOME_ANCHORS, HOME_ORIGIN, HOME_SFX, type HomeStage, type HomeStation } from './contract';
-import { dreamOf, hooksOf } from './phone';
+import { dreamOf, hooksOf, HARMONY_START } from './phone';
+import { ADA_KNOCK_NIGHT, adaPhase, adaSeated } from './ada';
 import { CRACK_AMOUNT, createVisit, newVisit, pickCharm, readVisit, rollVisit, tollOf, type KnockIO, type Visit, type VisitResult } from './knock';
 import { charmDef } from '../charms/engine';
 import type { KeepsakeId } from '../keepsake';
@@ -52,6 +53,10 @@ const FLICKER: readonly number[] = [0, 0.12, 0.26, 0.55, 0.66, 1.0, 1.1, 1.35];
 const WINDOW_LINES = 4;
 /** THE PROLOGUE (wave 72): the scene's id (story/cutscenes/prologue.cutscene.ts) and the objective's repeat (sim s). */
 export const PROLOGUE_CUT = 'prologue';
+/** ADA (story A2): a visit Evening's knock lands this long after the arrival; her night knock (N6+, texts unanswered) after this, and she stands there this long. */
+const VISIT_KNOCK_SEC = 5;
+const NIGHT_KNOCK_SEC = 30;
+const AT_DOOR_SEC = 15;
 const OBJECTIVE_EVERY_SEC = 60;   // the "take the lift down" toast: once at the start, then at most every minute
 
 /** World position, yaw and look direction of an anchor. Forward is the anchor's -Z, the walk and camera convention (-sin yaw, -cos yaw). */
@@ -129,7 +134,10 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   let offerCool = 0;
   let offering = false;
 
-  const spousePresent = (): boolean => (run.homePhone()?.harmony() ?? 3) > 0;
+  /** Ada is at the table (always in the prologue; then by phase: a visit Evening across the hall, every Evening from N5 unless Harmony 0). */
+  let adaHere = true;
+  /** Ada stands in the hall (her night knock): the peephole shows her. */
+  let adaAtDoor = false;
 
   // ── small presentation helpers ─────────────────────────────────────────────────────────────────────
   const fadeTo = (alpha: number, dur: number): void => {
@@ -172,7 +180,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     const home = world.home;
     home?.setLights(true);
     home?.setChain(false);
-    home?.setSpouse(spousePresent());
+    home?.setSpouse(pro !== 'done' || adaHere, adaPhase(run.night()));
     ambience(HOME_AMBIENCE, 1.5);
     atHome = true;
     return true;
@@ -213,9 +221,9 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
       fadeTo(0, 0.9);
     }
     unlock();
-    world.home?.setSpouse(spousePresent());
     movedFlag = false;
     beginVisit(from === 'ride');
+    planAda(from === 'ride');
     ui().dismissToasts();   // the arrival hint is the only centre-top line of the Evening: stale toasts from the pit step aside
     ui().toast(t('evening.hint'), 'sys', 5);
   };
@@ -225,14 +233,14 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     wantLock = true;
     sfx(HOME_SFX.bed);
     fadeTo(1, T.sleep - 0.3);
-    // a flat of Harmony 0 has no Ada: the bed shows the note instead
-    // shortcut: always `evening.note` (gone to her sister's); A2 shows `evening.note.across` while adaPhase is 'across' (before N5).
-    if ((run.homePhone()?.harmony() ?? 3) <= 0) say(t('evening.note'), t('evening.speaker.note'), 3.5);
+    // Harmony 0 has no Ada: the bed shows the note instead (across the hall: her door stays shut)
+    if ((run.homePhone()?.harmony() ?? HARMONY_START) <= 0) say(t(adaPhase(run.night()) === 'across' ? 'evening.note.across' : 'evening.note'), t('evening.speaker.note'), 3.5);
   };
 
   const leaveHome = (from: HomeStage | null): void => {
     if (from === null) return;
     endVisit();
+    adaAtDoor = false;
     if (atHome) placeFloor();
     unlock();
     fadeTo(0, 0.9);
@@ -360,6 +368,40 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     visit = createVisit(st, io);
     visit.resume();   // caught mid-act: a fail; the door and the hall start over
   };
+  /** Two soft knocks at the door (hers; the Collector's are three and hard). Calm Mode keeps the sound down; the caption stays. */
+  const softKnock = (): void => {
+    if (!calmish().calm) { sfxAt(HOME_SFX.knock, { vol: 0.35 }); app.timers.sim.after(0.5, () => sfxAt(HOME_SFX.knock, { vol: 0.35 })); }
+    caption('ada.knock');
+  };
+  /**
+   * Who sits at the table this Evening (story A2, ada.ts). Across the hall she only visits: on a fresh arrival the chair is empty
+   * until her knock, then she sits. From N6, with a text of hers unanswered, she knocks at night and stands in the hall (the peephole).
+   */
+  const planAda = (fresh: boolean): void => {
+    const night = run.night();
+    const phone = run.homePhone();
+    const here = adaSeated(run.seed, night, phone?.harmony() ?? HARMONY_START);
+    const visiting = fresh && here && adaPhase(night) === 'across';
+    adaHere = here && !visiting;
+    world.home?.setSpouse(adaHere, adaPhase(night));
+    const live = (): boolean => !disposed && run.homeStage() === 'evening' && run.night() === night;
+    if (visiting) {
+      app.timers.sim.after(VISIT_KNOCK_SEC, () => {
+        if (!live()) return;
+        softKnock();
+        say(t('evening.visit.knock'), t('evening.speaker.spouse'), 3.5);
+        adaHere = true;
+        world.home?.setSpouse(true, 'across');
+      });
+    } else if (fresh && night >= ADA_KNOCK_NIGHT && !visit && phone?.messages().some((m) => m.thread === 'spouse' && m.answered === null)) {
+      app.timers.sim.after(NIGHT_KNOCK_SEC, () => {
+        if (!live() || visit?.atDoor()) return;
+        softKnock();
+        adaAtDoor = true;
+        app.timers.sim.after(AT_DOOR_SEC, () => { adaAtDoor = false; });
+      });
+    }
+  };
   const endVisit = (): void => {
     visit?.abandon();
     visit = null;
@@ -423,7 +465,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
       background: 'radial-gradient(circle at 50% 50%, rgba(0,0,0,0) 0, rgba(0,0,0,0) 16%, rgba(20,14,8,0.6) 21%, rgb(0,0,0) 27%)',
     } satisfies Partial<CSSStyleDeclaration>);
     // a visitor shows once his shadow is on the strip (the act); before that, and after, the hall is empty
-    const there = visit?.acting() ? visit.state.kind : null;
+    const there = visit?.acting() ? visit.state.kind : adaAtDoor ? 'ada' : null;
     peep = { el, t: 0 };
     const a = world.anchor(HOME_ANCHORS.peephole);
     if (a) {
@@ -433,7 +475,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
       const to: V3 = [look.x, look.y, look.z];
       void player.cinematic([{ pos, look: to, dur: PEEP_MOVE_SEC }, { pos, look: to, dur: PEEP_SEC - PEEP_MOVE_SEC }]);
     }
-    say(t(there ? `knock.peep.${there}` : 'evening.peephole'), '', PEEP_SEC + 0.6);
+    say(t(there === 'ada' ? 'knock.ada.peep' : there ? `knock.peep.${there}` : 'evening.peephole'), '', PEEP_SEC + 0.6);
   };
   const tickPeep = (dt: number): void => {
     if (!peep) return;
@@ -465,7 +507,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   /** After the spouse has spoken, offer the game (once per Night, only in the Evening, never with someone at the door). */
   const queueOffer = (): void => {
     if (pro !== 'done' || run.homeStage() !== 'evening' || kitchen || offering || offerWait >= 0 || offerCool > 0) return;
-    if (!spousePresent() || kitchenPlayed.has(run.night()) || visit?.atDoor()) return;
+    if (!adaHere || kitchenPlayed.has(run.night()) || visit?.atDoor()) return;
     offerWait = talk.reduce((n, l) => n + l.sec, Math.max(0, talkWait)) + 0.4;
   };
   const offer = async (): Promise<void> => {

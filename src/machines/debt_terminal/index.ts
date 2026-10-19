@@ -163,19 +163,17 @@ export const def: MachineDef = {
       notQuota: "Not a quota Watch: nothing to deposit toward tonight",
       watchClosed: "Watch closed: deposits open again between Watches",
       nothingDeposit: "Nothing to deposit: the pocket is empty",
-      watchEnding: "The Watch is closing — lever in {s} s",
+      watchEnding: "The Watch is closing: lever in {s} s",
       watchRunning: "Watch still running — ring the Bell first",
       belling: "The Bell is already ringing",
       settling: "Settling — {s} s",
       noWatch: "No Watch is running right now",
       nightUnpaid: "Quota first: the floor opens once the Night is paid",
-      nightCard: "Pick tonight's Night Card first (1 / 2)",
+      nightCard: 'Pick a boon first (1 / 2 / 3)',
       quotaShort: "Quota not met yet: settle once it is paid",
-      c_float: 'keeps {n} in pocket (float)',
       allConfirm: "ALL empties your pocket. Press ALL again to confirm",
       restConfirm: "REST: deposit {n}? Press REST again to confirm",
       c_bank: 'BANK', c_pocket: 'POCKET', c_left: 'LEFT TO PAY', c_metBig: 'QUOTA MET', c_interest: 'BELL INTEREST',
-      c_rate: '{r}% A WATCH, MAX +{c}', c_pulls: 'PLAY {n} MORE PULLS FOR IT', c_with: 'WITH THIS: +{n}',
       c_take: 'TAKE OUT', c_lose: 'YOU LOSE', c_loseInt: '-{n} INTEREST EVERY BELL', c_loseNone: 'NO INTEREST LOST',
       c_loseQ: 'QUOTA LEFT {a} > {b}', c_loseMet: 'QUOTA NOT MET ANY MORE', c_loseTier: 'OVERPAY REWARD LOST',
       c_wdPick: 'PICK AN AMOUNT', c_wdClosed: 'WITHDRAW IS CLOSED NOW', c_wdEmpty: 'NOTHING IN THE BANK TO TAKE',
@@ -263,19 +261,17 @@ export const def: MachineDef = {
       notQuota: "Kota nöbeti değil: bu gece için yatıracak bir şey yok",
       watchClosed: "Nöbet kapandı: yatırma, nöbetler arasında yeniden açılır",
       nothingDeposit: "Yatırılacak bir şey yok: cep boş",
-      watchEnding: "Nöbet kapanıyor — kol {s} sn sonra",
+      watchEnding: "KAPANIYOR · KOL {s} SN SONRA",
       watchRunning: "Nöbet sürüyor — önce zili çal",
       belling: "Zil zaten çalıyor",
       settling: "Kapanıyor — {s} sn",
       noWatch: "Şu an çalışan bir nöbet yok",
       nightUnpaid: "Önce kota: gece ödenince kat açılır",
-      nightCard: "Önce bu gecenin Gece Kartını seç (1 / 2)",
+      nightCard: "Önce bir lütuf seç (1 / 2 / 3)",
       quotaShort: "Kota henüz tamam değil: ödenince kapat",
-      c_float: 'cepte {n} kalır (yedek akçe)',
       allConfirm: "HEPSİ cebini boşaltır. Onaylamak için HEPSİ'ye tekrar bas",
       restConfirm: "KALAN: {n} yatırılsın mı? Onaylamak için KALAN'a tekrar bas",
       c_bank: 'BANKA', c_pocket: 'CEP', c_left: 'ÖDENECEK', c_metBig: 'KOTA TAMAM', c_interest: 'ZİL FAİZİ',
-      c_rate: 'VARDİYA BAŞI %{r}, EN FAZLA +{c}', c_pulls: 'İÇİN {n} ÇEKİŞ DAHA OYNA', c_with: 'BUNUNLA: +{n}',
       c_take: 'ÇEKİLEN', c_lose: 'KAYBEDERSİN', c_loseInt: 'HER ZİLDE -{n} FAİZ', c_loseNone: 'FAİZ KAYBI YOK',
       c_loseQ: 'KALAN KOTA {a} > {b}', c_loseMet: 'KOTA ARTIK TAMAM DEĞİL', c_loseTier: 'FAZLA ÖDEME ÖDÜLÜ GİDER',
       c_wdPick: 'BİR TUTAR SEÇ', c_wdClosed: 'ÇEKME ŞİMDİ KAPALI', c_wdEmpty: 'BANKADA ÇEKİLECEK YOK',
@@ -1096,16 +1092,9 @@ export default class DebtTerminal extends MachineBase<DebtParts, Ev, null> {
       fig(lv, RIGHT, 168, bank.left > 0 ? red : green, 8, 490);
       if (bank.ratePct > 0) {
         label(this.t('c_interest'), 12, 234, amber, 38);
-        fig(`+${fmtNum(bank.interestNext)}`, RIGHT, 236, hot, 4, 240);
-        const withIt = amt > 0 ? bank.interestAt(bank.balance + amt) : 0;
-        if (withIt > bank.interestNext) label(this.t('c_with', { n: fmtNum(withIt) }), 12, 270, hot, 32);
-        else if (bank.pullsToQualify > 0) label(this.t('c_pulls', { n: bank.pullsToQualify }), 12, 270, red, 30);
-        else label(this.t('c_rate', { r: bank.ratePct, c: fmtNum(bank.interestCap) }), 12, 270, dim, 30);
+        fig(`+${fmtNum(bank.interestNext)}`, RIGHT, 234, hot, 5, 240);
       }
       box(302);
-      // the float of this Watch: what every deposit leaves in the pocket (fixed for the Watch, see float.ts)
-      const floor = this.ctx.run.depositFloor?.() ?? 0;
-      if (floor > 0) label(this.t('c_float', { n: fmtNum(floor) }), 12, 346, cyan, 30);
     } else if (this.mode === 'wd') {
       if (bank.sealed) {
         // THE SEAL (decision D2): what BREAK would take out, how long it waits, and what taking it out costs

@@ -14,7 +14,7 @@ const FIRST_NIGHT: Readonly<Record<Reveal, number>> = {
   hot: 2,           // the Hot Lamp line
   tilt: 2,          // the Tilt bulbs at the seat
   floorEvents: 2,   // the Watch floor-event timer
-  cards: 2,         // Night Cards: the first offer opens at the Night 2 Dawn (nightCards.ts gates the offer itself)
+  cards: 2,         // boon offers (pantheon.ts gates the offer itself; the first comes at the Night 1 Dawn)
   tithe: 3,         // the Watch tithe
   spotlight: 4,     // the Spotlight chip
   overshoot: 4,     // the OVERSHOOT line

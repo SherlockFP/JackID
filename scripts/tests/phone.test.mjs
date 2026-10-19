@@ -8,9 +8,10 @@ import { load, closeVite } from './_vite.mjs';
 
 after(closeVite);
 
-let PH, EV, STR, BUFFS, CHARMS;
+let PH, ADA, EV, STR, BUFFS, CHARMS;
 before(async () => {
   PH = await load('src/game/home/phone.ts');
+  ADA = await load('src/game/home/ada.ts');
   EV = await load('src/core/events.ts');
   STR = (await load('src/game/home/phone.strings.ts')).default;
   BUFFS = await load('src/game/data/buffs.ts');
@@ -155,7 +156,7 @@ function spouseWithSend(seeds = 2000) {
   for (let seed = 1; seed <= seeds; seed++) {
     const run = mockRun({ seed, count: 3, paid: 0, coins: 500, due: 100 });
     const got = withPhone(run, (p) => playNight(p, run, { paidAt: () => 0 }));
-    const m = got.find((g) => g.thread === 'spouse' && /^phone\.sp\.(rent|trip|fridge)\.t$/.test(g.textKey));
+    const m = got.find((g) => g.thread === 'spouse' && /^phone\.sp\.(rent|trip|fridge)(\.x)?\.t$/.test(g.textKey));
     if (m) return { seed, msg: m };
   }
   throw new Error('no send-spouse message found');
@@ -240,17 +241,17 @@ test('the Collector: "I need time" adds one Heat, "I\'ll pay" adds none, and Hea
 test('onEvening: a warm margin gives +1 Harmony; a thin one gives -1 Harmony and +1 Heat; a quiet Night gives -1 Heat', () => {
   const run = mockRun({ seed: 8, due: 100, carried: 30 });
   withPhone(run, (p) => {
-    assert.equal(p.harmony(), 3);
+    assert.equal(p.harmony(), PH.HARMONY_START);
     p.onEvening();                       // 30 % over: warm
-    assert.equal(p.harmony(), 4);
+    assert.equal(p.harmony(), 3);
     assert.equal(p.heat(), 0, 'a quiet Night at Heat 0 stays at 0');
     run.st.carried = 0;                  // paid exactly: thin
     p.onEvening();
-    assert.equal(p.harmony(), 3);
+    assert.equal(p.harmony(), 2);
     assert.equal(p.heat(), 1);
     run.st.carried = 10;                 // 10 % over: neither warm nor thin. The Night after the thin one had no Heat change.
     p.onEvening();
-    assert.equal(p.harmony(), 3);
+    assert.equal(p.harmony(), 2);
     assert.equal(p.heat(), 0, 'a quiet Night cools the Heat by one');
   });
 });
@@ -296,17 +297,17 @@ test('talk: the lines follow Harmony; talking gives warmth only: +1 once a Night
   const run = mockRun({ seed: 10, due: 100, carried: 10, night: 1 });
   withPhone(run, (p) => {
     p.onEvening();                       // 10 % over: neither warm nor thin
-    assert.equal(p.harmony(), 3);
+    assert.equal(p.harmony(), 2);
     const lines = p.talk();
-    assert.deepEqual(lines.map((l) => l.key), ['phone.talk.h3.1', 'phone.talk.h3.2']);
-    assert.equal(p.harmony(), 4, 'the first talk of a Night with a margin gives +1');
+    assert.deepEqual(lines.map((l) => l.key), ['phone.talk.x.h2.1', 'phone.talk.x.h2.2'], 'across the hall (N1-N4)');
+    assert.equal(p.harmony(), 3, 'the first talk of a Night with a margin gives +1');
     p.talk();
     p.talk();
-    assert.equal(p.harmony(), 4, 'at most once a Night');
+    assert.equal(p.harmony(), 3, 'at most once a Night');
     run.st.night = 2;
     p.onEvening();
     p.talk();
-    assert.equal(p.harmony(), 5, 'the next Night gives its own warmth');
+    assert.equal(p.harmony(), 4, 'the next Night gives its own warmth');
     assert.equal(run.log.buffs.length, 0, 'talking grants no buff; the dream does');
   });
 });
@@ -315,9 +316,9 @@ test('talk: a thin Night (under 5 %) gives no warmth', () => {
   const run = mockRun({ seed: 10, due: 100, carried: 4, night: 1 });
   withPhone(run, (p) => {
     p.onEvening();                       // 4 % over: thin, so −1 Harmony and +1 Heat
-    assert.equal(p.harmony(), 2);
+    assert.equal(p.harmony(), 1);
     p.talk();
-    assert.equal(p.harmony(), 2, 'no warmth on a thin Night');
+    assert.equal(p.harmony(), 1, 'no warmth on a thin Night');
     assert.equal(p.heat(), 1);
   });
 });
@@ -349,7 +350,7 @@ test('the Night closes on the bed: a good dream grants blessed, a cold one restl
       const d = PH.dreamOf(p);
       assert.equal(d.tier, tier, `harmony ${harmony}`);
       assert.equal(d.night, 4);
-      assert.ok(d.key.startsWith(`phone.dream.${tier}.`), d.key);
+      assert.ok(d.key.startsWith(tier === 'plain' ? 'phone.dream.plain.' : `phone.dream.x.${tier}.`), d.key);   // N4 is across; plain is shared
       assert.deepEqual(run.log.buffs.map((b) => b.id), buff ? [buff] : []);
     });
   }
@@ -455,7 +456,7 @@ test('snapshot/restore keeps Harmony, Heat, replies and the one-per-Night rule',
   assert.equal(q.heat(), p.heat());
   assert.deepEqual(q.messages(), p.messages());
   q.restore(undefined);
-  assert.equal(q.harmony(), 3, 'an older save with no phone gives a fresh phone');
+  assert.equal(q.harmony(), PH.HARMONY_START, 'an older save with no phone gives a fresh phone');
   assert.equal(q.messages().length, 0);
   p.dispose();
   q.dispose();
@@ -570,4 +571,76 @@ test('replyCoinCost is zero for words and the stored cost for a send reply', () 
   assert.equal(PH.replyCoinCost(send, 1), 0, 'a word costs nothing');
   assert.equal(PH.replyCoinCost({ ...msg, thread: 'collector' }, 0), 0);
   assert.equal(run.st.coins, 500);
+});
+
+// ── ADA'S PHASE (story A2) ───────────────────────────────────────────────────────────────────────
+test('adaPhase: across the hall on N1-N4, at home from N5; the pool infix follows', () => {
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 8].map(ADA.adaPhase), ['across', 'across', 'across', 'across', 'home', 'home', 'home']);
+  assert.equal(ADA.poolOf(4), '.x');
+  assert.equal(ADA.poolOf(5), '');
+});
+
+test('HARMONY_START is 2, and a fresh phone starts there', () => {
+  assert.equal(PH.HARMONY_START, 2);
+  withPhone(mockRun(), (p) => assert.equal(p.harmony(), 2));
+});
+
+test('Ada at the table: home needs Harmony above 0; across the hall she visits only at Harmony 2+, some Evenings, seeded', () => {
+  for (let seed = 1; seed <= 50; seed++) {
+    assert.equal(ADA.adaSeated(seed, 5, 0), false, 'N5+, Harmony 0: gone');
+    assert.equal(ADA.adaSeated(seed, 6, 1), true, 'N5+: every Evening');
+    assert.equal(ADA.adaSeated(seed, 2, 0), false);
+    assert.equal(ADA.adaSeated(seed, 2, 1), false, 'across, Harmony 1: not answering');
+    assert.equal(ADA.adaSeated(seed, 2, 3), ADA.adaSeated(seed, 2, 3), 'seeded');
+  }
+  const visits = Array.from({ length: 200 }, (_, i) => ADA.adaSeated(i + 1, 3, 2)).filter(Boolean).length;
+  assert.ok(visits > 60 && visits < 180, `some Evenings, not all: ${visits}/200`);
+});
+
+test('the phone sends the across pool on N1-N4 and the home pool from N5; the card messages are one text', () => {
+  const keysOn = (night) => {
+    const out = new Set();
+    for (let seed = 1; seed <= 60; seed++) {
+      const run = mockRun({ seed, night, count: 3, paid: 0 });
+      withPhone(run, (p) => { for (const m of playNight(p, run, { paidAt: () => 0 })) if (m.thread === 'spouse') out.add(m); });
+    }
+    return [...out];
+  };
+  const across = keysOn(3), home = keysOn(6);
+  assert.ok(across.length && home.length);
+  assert.ok(across.every((m) => /^phone\.sp\.[a-z]+\.x\.t$/.test(m.textKey) && m.replies.every((r) => /\.x\.r\d$/.test(r))));
+  assert.ok(home.every((m) => /^phone\.sp\.[a-z]+\.t$/.test(m.textKey) && m.replies.every((r) => /\.r\d$/.test(r))));
+  for (const m of across) for (const k of [m.textKey, ...m.replies]) assert.ok(k.slice('phone.'.length) in STR.en && k.slice('phone.'.length) in STR.tr, k);
+});
+
+test('an across message replies like any other (the .x. text keys map to the same reply table)', () => {
+  const run = mockRun({ seed: 1, night: 2, count: 3, paid: 0 });
+  withPhone(run, (p) => {
+    const msg = playNight(p, run, { paidAt: () => 0 }).find((m) => m.thread === 'spouse' && !/card/.test(m.textKey));
+    if (!msg) return;   // this seed rolled no random message
+    const h0 = p.harmony();
+    assert.ok(p.reply(msg.id, 1), 'the reply is accepted');
+    assert.equal(p.harmony(), h0 + (PH.SPOUSE_MESSAGES.find((d) => msg.textKey.startsWith(`phone.sp.${d.id}.`)).replies[1].harmony));
+  });
+});
+
+test('the phase pool survives the save: a restored phone keeps its messages and talks in the phase of the Night', () => {
+  const run = mockRun({ seed: 5, night: 3 });
+  const p = PH.createPhone(run);
+  p.restore({ harmony: 4 });
+  const q = PH.createPhone(run);
+  q.restore(JSON.parse(JSON.stringify(p.snapshot())));
+  assert.equal(q.harmony(), 4);
+  assert.equal(q.talk()[0].key, 'phone.talk.x.h4.1');
+  run.st.night = 5;
+  assert.equal(q.talk()[0].key, 'phone.talk.h4.1');
+  p.dispose();
+  q.dispose();
+});
+
+test('Ada has the same lines in both phases: talk, text and dream keys exist in EN and TR', () => {
+  for (const lang of ['en', 'tr']) {
+    for (let h = 0; h <= 5; h++) for (const n of [1, 2]) assert.ok(`talk.x.h${h}.${n}` in STR[lang], `${lang} talk.x.h${h}.${n}`);
+    for (const tier of ['good', 'cold']) for (let n = 1; n <= PH.DREAM_VARIANTS; n++) assert.ok(`dream.x.${tier}.${n}` in STR[lang], `${lang} dream.x.${tier}.${n}`);
+  }
 });

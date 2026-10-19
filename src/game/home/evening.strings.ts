@@ -7,9 +7,9 @@ export default {
     'speaker.spouse': 'ADA',
     'speaker.note': 'NOTE',
     'note': 'On the pillow: "Gone to my sister\'s. Pay what you owe."',
-    // shortcut: before N5 she lives across the hall, so Harmony 0 reads this instead; A2 (adaPhase) switches `note` and `note.across`.
+    // before N5 she lives across the hall, so Harmony 0 reads this instead
     'note.across': 'Her door stays shut. Not answering.',
-    // A visit Evening (Harmony 2+, before N5): two soft knocks. shortcut: unwired until A2.
+    // A visit Evening (Harmony 2+, before N5): two soft knocks
     'visit.knock': 'Two soft knocks. Ada, with a bowl in both hands.',
     'door': 'Locked for the night.',
     'peephole': 'The hall is empty.',

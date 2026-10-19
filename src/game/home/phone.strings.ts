@@ -9,7 +9,7 @@ export default {
   en: {
     // ── Ada (thread id `spouse`). Two pools per message id, same reply kinds. `sp.<id>.*` is the HOME pool (N5 on: she lives
     // with you, and the grip grows). `sp.<id>.x.*` is the ACROSS pool (N1 to N4: the neighbour you are trying to impress).
-    // shortcut: phone.ts still sends only the home pool; A2 (adaPhase) switches to `.x.` before N5. Plain dreams are shared. ──
+    // Plain dreams are shared. ──
     'sp.rent.t': "Rent is due on the first. I covered half. I'm not keeping score, but I am writing it down.",
     'sp.rent.r0': 'Send {cost} coins for the rent.',
     'sp.rent.r1': "I'll sort it after this Watch.",
@@ -107,8 +107,7 @@ export default {
     'co.reply.pay': "I'll pay.",
     'co.reply.time': 'I need time.',
     // ── the talk at home, by Harmony (0..5); talking gives warmth only (see phone.ts). `talk.h*` is HOME (N5 on), `talk.x.h*` is ACROSS.
-    // Harmony 0: from N5 "Gone to my sister's" (she is on the floor); before N5 "Not answering".
-    // shortcut: phone.talk() reads `talk.h*` only; A2 switches by adaPhase. ──
+    // Harmony 0: from N5 "Gone to my sister's" (she is on the floor); before N5 "Not answering". ──
     'talk.h0.1': 'Nobody answers. Her chair is pushed in and the lamp is off.',
     'talk.h0.2': "One wet cup in the sink and nobody to explain it. The note says she's gone to her sister's.",
     'talk.h1.1': "She says she's fine. She doesn't look up from the sink.",
@@ -135,7 +134,6 @@ export default {
     'talk.x.h5.2': "She says the corridor is quieter with you in it. She doesn't let go.",
     // ── the dream, rolled when the Night closes on the bed (tier by Harmony and calm; the banner shows it) ──
     // `dream.*` is HOME (from N6 a good dream has one thing wrong in it: the last good line). `dream.x.good|cold.*` is ACROSS. Plain is shared.
-    // shortcut: phone.ts rolls `dream.*` only; A2 switches good and cold by adaPhase.
     'dream.good.1': 'You dreamed the lift kept rising and opened onto your own kitchen.',
     'dream.good.2': 'You dreamed every window in the building was lit, yours and hers. You woke up smiling.',
     'dream.good.3': 'You dreamed of a street that knew your name and let you through. Ada stood at the end of it, awake, watching you the whole way.',

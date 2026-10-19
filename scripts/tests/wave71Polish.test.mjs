@@ -1,5 +1,5 @@
 // Wave 71 polish (strings): the Collector's receipt keys exist in both languages, the Turkish HUD leftovers are gone (SPOT:, SONRAKİ V,
-// the garbled interest line) and the Night plan and draft strings keep their shape.
+// the garbled interest line) and the Night plan and bank strings keep their shape.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { load, closeVite } from './_vite.mjs';
@@ -9,7 +9,7 @@ after(closeVite);
 const RESULTS = await load('src/menu/hud/results.strings.ts');
 const PLAN = await load('src/menu/hud/plan.strings.ts');
 const SPOT = await load('src/game/spotlight.strings.ts');
-const DRAFT = await load('src/game/draft.strings.ts');
+const BANK = await load('src/game/bank.strings.ts');
 
 test('the Collector receipt has its title, subtitle, stamp and three figures in EN and TR', () => {
   for (const lang of ['en', 'tr']) {
@@ -37,7 +37,7 @@ test('the Turkish spotlight chip says SPOTLIGHT, not SPOT', () => {
 });
 
 test('the Turkish bank interest line is one uppercase form in every variant', () => {
-  const tr = DRAFT.default.tr;
+  const tr = BANK.default.tr;
   for (const k of ['interest', 'interest.short', 'interest.none']) {
     assert.ok(tr[k].startsWith('BANKA +'), k);
     assert.ok(tr[k].includes('FAİZ (%{pct})'), k);

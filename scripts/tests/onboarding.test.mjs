@@ -1,15 +1,14 @@
 // Onboarding (wave 72): the progressive-disclosure schedule by printed Night (src/menu/hud/disclose.ts), the objective line's
-// choice of target (objectiveFor), and the Night Card offer that opens at the Night 2 Dawn, not Night 1 (src/game/nightCards.ts).
+// choice of target (objectiveFor). The boon offer's Night gate lives in pantheon.test.mjs.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { load, closeVite } from './_vite.mjs';
 
 after(closeVite);
 
-let D, NC;
+let D;
 before(async () => {
   D = await load('src/menu/hud/disclose.ts');
-  NC = await load('src/game/nightCards.ts');
 });
 
 test('Night 1 shows only the basics: no payout, projection, Hot, Tilt, floor events, cards, tithe, spotlight or overshoot', () => {
@@ -65,12 +64,4 @@ test('objective: paid Night says take the lift; between Watches with the quota o
   assert.deepEqual(D.objectiveFor({ phase: 'play', paid: true, rounds: 0, deposits: 0, pocket: 0 }), { key: 'lift', target: null });
   assert.deepEqual(D.objectiveFor({ phase: 'intermission', paid: false, rounds: 4, deposits: 1, pocket: 0 }), { key: 'dawn', target: null });
   assert.deepEqual(D.objectiveFor({ phase: 'settle', paid: false, rounds: 4, deposits: 1, pocket: 0 }), { key: 'bell', target: null });
-});
-
-test('Night Cards: no offer at the Night 1 Dawn; the first offer opens at the Night 2 Dawn', () => {
-  const cards = new NC.NightCards(() => 0, 7301, () => {});
-  assert.equal(cards.openOffer(1), false, 'Night 1 Dawn must not open a card');
-  assert.equal(cards.offerView(), null);
-  assert.equal(cards.openOffer(2), true, 'Night 2 Dawn opens the first card');
-  assert.equal(cards.offerView()?.candidates.length, NC.NIGHT_CARD_OFFER_SIZE);
 });

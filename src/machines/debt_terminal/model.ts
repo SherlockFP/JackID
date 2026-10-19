@@ -143,7 +143,7 @@ export function buildModel(kit: KitX, o: ModelOpts): MachineModel<DebtParts> {
   keyLabels.userData.kitKeep = true;                       // dynamic-looking labels: never merged into the model
   for (const id of KEYS) {
     const lb = kit.label({
-      text: { key: `m.debt_terminal.k_${id}` }, w: KEY_W * 0.96, h: KEY_H * 0.86, px: [192, 96],
+      text: { key: `m.debt_terminal.k_${id}` }, w: KEY_W * 0.96, h: KEY_H * 0.86, px: [128, 64],
       color: id === 'enter' || id === 'wd' ? 0xffffff : 0x1a1206, bg: null, font: 'px5',   // the bitmap font: whole-pixel letters, full Turkish
     });
     labelParts[id] = lb;

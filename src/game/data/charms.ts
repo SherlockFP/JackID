@@ -81,7 +81,7 @@ const COMMON: CharmDef[] = [
   charm('receipt_roll', 'common', 8, 'LEDGER', 'N2', ['Receipt Roll', 'Each deposit of 10%+ of quota prints a free scratch card (max 3 per Night)'], ['Fiş Rulosu', 'Kotanın %10\'undan fazla her yatırım bedava kazı kart basar (Gece başına en fazla 3)'], [fx('x.econ.onDeposit', 'add', 1)]),
 ];
 
-// ── Uncommon (37) ──────────────────────────────────────────────────────────────────────────────
+// ── Uncommon (36) ──────────────────────────────────────────────────────────────────────────────
 const UNCOMMON: CharmDef[] = [
   charm('moth_lantern', 'uncommon', 18, 'REELS', '', ['Moth Lantern', 'The Big One gains GHOST (wild) at weight 4'], ['Güve Feneri', 'Büyük Vurgun\'a HAYALET (joker) eklenir, ağırlık 4'], [fx('x.bigone.symbolWeight[GHOST]', 'add', 4)]),
   charm('hot_coal', 'uncommon', 16, null, 'N2', ['Hot Coal', 'Hot Lamp ×2.0 instead of ×1.5; +1 Hot Lamp per Watch'], ['Sıcak Kömür', 'Sıcak Lamba ×2.0 (×1.5 yerine); Vardiya başına +1 Sıcak Lamba'], [fx('x.lamp.hotMult', 'set', 2), fx('x.lamp.hotCount', 'add', 1)]),
@@ -98,7 +98,6 @@ const UNCOMMON: CharmDef[] = [
   charm('magnet_coin', 'uncommon', 20, 'DROPS', '', ['Magnet Coin', 'Claw magnet ×3; Coin Pusher gold chance +2%'], ['Mıknatıs Jeton', 'Pençe mıknatısı ×3; Jeton İtici altın şansı +%2'], [fx('m.claw.magnet', 'mult', 3), fx('m.coinpusher.goldCoin', 'add', 0.02)]),
   charm('night_owl', 'uncommon', 16, null, '', ['Night Owl', 'During Last Call, payouts +40%'], ['Gece Baykuşu', 'Son Çağrı sırasında kazançlar +%40'], []),
   charm('spare_number', 'uncommon', 20, 'DROPS', 'N2', ['Spare Number', 'Extra private number or ball on lottery devices'], ['Yedek Numara', 'Piyango cihazlarında +1 özel numara veya top'], [fx('m.keno.extraNumber', 'add', 1), fx('x.lottoblower.extraBall', 'add', 1)]),
-  charm('false_bottom', 'uncommon', 22, 'LEDGER', '', ['False Bottom', 'At Dawn, a shortfall of 10% or less is forgiven; the charm breaks'], ['Yanlış Dip', 'Şafakta kotanın %10\'undan az açık affedilir; tılsım kırılır'], []),
   charm('long_thumbnail', 'uncommon', 16, 'REELS', 'N2', ['Long Thumbnail', 'Scratch cards cost −20%'], ['Uzun Başparmak', 'Kazı kartlar %20 ucuz'], [fx('m.scratch.discount', 'add', 20)]),
   charm('metronome', 'uncommon', 18, 'WHEELS', 'N3', ['Metronome', 'Luck +10 on timing devices'], ['Metronom', 'Zamanlama cihazlarında şans +10'], luckFx(10, ['cyclone', 'pachislot', 'stacker'])),
   charm('red_thread', 'uncommon', 16, null, '', ['Red Thread', 'First instance you play each Watch: Tilt grace +3 and +10%'], ['Kırmızı İplik', 'Vardiya\'da oynadığın ilk makine: TİLT +3 ve +%10'], [fx('x.tilt.grace', 'add', 3), fx('x.red.firstPlay', 'inc', 0.1)]),
@@ -148,7 +147,7 @@ const RARE: CharmDef[] = [
   charm('elevator_token', 'rare', 35, 'LEDGER', 'N2', ['Elevator Token', 'At every Ascent, gain 5% of pocket (max 300 × SI)'], ['Asansör Jetonu', 'Her yükselişte cebin %5\'i (en fazla 300 × SI)'], [fx('x.econ.onAscend', 'add', 0.05)]),
 ];
 
-// ── Legendary (8) ──────────────────────────────────────────────────────────────────────────────
+// ── Legendary (7) ──────────────────────────────────────────────────────────────────────────────
 const LEGENDARY: CharmDef[] = [
   charm('crown_of_coins', 'legendary', 100, null, 'N5', ['Crown of Coins', 'All payouts ×1.5'], ['Madeni Para Tacı', 'Tüm kazançlar ×1.5'], [fx('payout.mult', 'mult', 1.5)]),
   charm('perpetual_ledger', 'legendary', 90, 'LEDGER', 'W', ['Perpetual Ledger', 'Pocket coins also earn half-rate interest'], ['Sürekli Defter', 'Cepteki jetonlar da yarım oranda faiz kazanır'], [fx('x.econ.pocketInterest', 'add', 0.5)]),
@@ -157,10 +156,9 @@ const LEGENDARY: CharmDef[] = [
   charm('card_of_all_suits', 'legendary', 110, null, 'A:full_circuit', ['Card of All Suits', 'Every machine counts as every suit for punch cells'], ['Tüm Takımların Kartı', 'Her makine kart hücreleri için her takım sayılır'], [fx('x.card.suitWildcard', 'set', 1)]),
   charm('blackout_lamp', 'legendary', 90, null, 'A:blackout', ['Blackout Lamp', 'Each punch also punches one adjacent cell'], ['Karartma Lambası', 'Her delme bitişik bir hücreyi de deler'], [fx('x.card.punchExtra', 'add', 1)]),
   charm('property_deed', 'legendary', 95, 'TYCOON', 'D', ['Property Deed', 'Assessment 8% → 4%; Holdings depreciate faster'], ['Mülk Senedi', 'Değerleme %8 → %4; Varlıklar daha hızlı değer kaybeder'], [fx('x.tycoon.assessRate', 'set', 0.04)]),
-  charm('rope_ladder', 'legendary', 90, null, 'N6', ['Rope Ladder', 'Once per run, a failed Dawn gives an Overtime Watch; then breaks'], ['İp Merdiven', 'Run başına bir kez başarısız şafakta Ekstra Vardiya; sonra kırılır'], []),
 ];
 
-// ── Cursed (11) ────────────────────────────────────────────────────────────────────────────────
+// ── Cursed (10) ────────────────────────────────────────────────────────────────────────────────
 const CURSED: CharmDef[] = [
   charm('wet_ledger', 'cursed', -25, null, 'F3', ['Wet Ledger', 'Interest −3% (floor 0%)'], ['Islak Defter', 'Faiz −%3 (en az %0)'], [fx('x.econ.interestAdd', 'add', -0.03)]),
   charm('sand_hourglass', 'cursed', -20, null, 'F3', ['Sand Hourglass', 'Watch clock −40 s; +2 pulls per Watch'], ['Kum Saati', 'Vardiya saati −40 sn; Vardiya başına +2 çekiş'], [fx('x.run.clockAdd', 'add', -40), fx('x.run.pullsAdd', 'add', 2)]),
@@ -173,10 +171,9 @@ const CURSED: CharmDef[] = [
   charm('pawn_ticket_13', 'cursed', -50, null, 'F3', ['Pawn Ticket No. 13', 'Occupies a peg; the Pawn Window offers one item at −50%'], ['Rehin Bileti No. 13', 'Bir çivi işgal eder; Rehin Penceresi bir ürünü %50 indirimle sunar'], [fx('x.shop.discountSlot', 'set', 0.5)]),
   charm('cracked_mirror', 'cursed', -30, null, 'F3', ['Cracked Mirror', 'All wins ×1.4; one instance per zone is out of order each Bell'], ['Çatlak Ayna', 'Tüm kazançlar ×1.4; her zilde her bölgede bir makine arızalı'], [fx('payout.mult', 'mult', 1.4), fx('x.buff.out_of_order', 'add', 1)]),
   charm('glass_heart', 'cursed', -20, null, 'F3', ['Glass Heart', 'Luck +8; after 6 losses in a row it shatters (−25% pocket)'], ['Cam Kalp', 'Şans +8; üst üste 6 kayıptan sonra kırılır (cebin %25\'i gider)'], luckFx(8, Object.keys(CHARM_LUCK_CAP))),
-  charm('blank_jackid', 'cursed', 0, null, 'A:all_tapes', ['Blank JackID', '+25% payouts; the House no longer addresses you'], ['Adsız JackID', 'Kazançlar +%25; Ev seni artık anmaz'], [fx('payout.mult', 'inc', 0.25), fx('x.phone.mute', 'set', 1)]),
 ];
 
-/** All 100 charms in GDD table order. Behaviours (code) are merged in by `charms/behaviours.ts`. */
+/** All 97 charms in GDD table order (false_bottom, rope_ladder and blank_jackid became boons, docs/BLESSINGS.md §1). Behaviours (code) are merged in by `charms/behaviours.ts`. */
 export const CHARM_DATA: readonly CharmDef[] = [...COMMON, ...UNCOMMON, ...RARE, ...LEGENDARY, ...CURSED];
 
 /**
@@ -184,7 +181,7 @@ export const CHARM_DATA: readonly CharmDef[] = [...COMMON, ...UNCOMMON, ...RARE,
  * never silently changes the cut. Everything else arrives in v1.1 without system changes. Keep this list in sync with CHARM_DATA.
  */
 export const LAUNCH_CHARM_IDS: ReadonlySet<string> = new Set<string>([
-  // Wave 7: cut as inert (no reader in src after the hook renames; keep the data): stub_spike, rusty_key, tin_whistle, receipt_roll, snake_eye_ring, apology_card, ledger_pen, consolation_ribbon, brass_washer, bargain_coupon, votive_candle, pawn_ticket, holy_water, false_bottom, tonic_belt, mirror_shard, seven_floor_key, perpetual_ledger, card_of_all_suits, unblinking_eye.
+  // Wave 7: cut as inert (no reader in src after the hook renames; keep the data): stub_spike, rusty_key, tin_whistle, receipt_roll, snake_eye_ring, apology_card, ledger_pen, consolation_ribbon, brass_washer, bargain_coupon, votive_candle, pawn_ticket, holy_water, tonic_belt, mirror_shard, seven_floor_key, perpetual_ledger, card_of_all_suits, unblinking_eye.
   // #1–60
   'brass_thimble', 'billiard_chalk', 'loaded_pip', 'greased_axle', 'lead_shot', 'glass_eye', 'piggy_tooth',
   'wax_seal', 'spare_token', 'cracked_watch', 'worn_glove', 'polished_molar', 'dealers_button', 'felt_square',

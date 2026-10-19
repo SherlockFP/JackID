@@ -35,6 +35,10 @@ export const UNASKED_INK = 2;
 /** From Ink 6 this share of his true lines gets a "we"; from Ink 8 this share of his lies drops it. */
 export const TRUE_WE_CHANCE = 0.25;
 export const LIE_DROP_CHANCE = 0.5;
+/** At each Dawn Trust drifts this far toward 0 unless it moved that Night (he forgets a favour you stop feeding). */
+export const TRUST_DECAY = 1;
+/** Trust rises by at most this much a Night, whatever you do (he warms slowly); it falls without limit. */
+export const TRUST_NIGHT_GAIN = 1;
 /** Kept words heal at most this much Ink a Night. */
 export const KEPT_HEAL_MAX = 2;
 /** Free tips a Watch at Ink 0 (one more from Ink 2). */
@@ -158,7 +162,7 @@ export function symptoms(ink: number): Symptoms {
 type Cap = 'watch' | 'night' | 'run';
 /** Every Trust move: the change and how often it can count. */
 export const TRUST_MOVES = {
-  dare: { d: 1, cap: 'watch' },        // take a dare: max +1 a Watch
+  dare: { d: 1, cap: 'night' },        // take a dare: he offers one a Night, so +1 a Night
   feed: { d: 1 },                      // feed him a marked card
   kept: { d: 1 },                      // keep a promise made to him (checked at Dawn)
   caught: { d: 1, cap: 'night' },      // catch a lie: C within 3 s of a lie, once a Night
@@ -189,6 +193,10 @@ export interface JokerSave {
   fed: string[]; handed: string[];
   healed: { night: number; n: number };
   lastAskMachine: string | null;
+  /** The Night Trust last moved (for the Dawn decay). */
+  moved: number;
+  /** Trust gained so far in the Night `night` (for the Night's cap). */
+  gained: { night: number; n: number };
   coffee: 0 | 1 | 2;
   promise: { id: string; night: number } | null;
   last: { n: number; truth: boolean; called: boolean } | null;
@@ -250,6 +258,8 @@ export class Joker {
   private handed: string[] = [];
   private healed = { night: 0, n: 0 };
   private lastAskMachine: string | null = null;
+  private movedNight = -1;
+  private gained = { night: -1, n: 0 };
   private coffee: 0 | 1 | 2 = 0;
   private promiseOpen: { id: string; night: number } | null = null;
   private last: { n: number; truth: boolean; called: boolean } | null = null;
@@ -264,7 +274,7 @@ export class Joker {
   get symptoms(): Symptoms { return symptoms(this.ink); }
   /** Dread the Ink adds right now. */
   get dread(): number { return inkDread(this.ink); }
-  /** His word is earned (Trust +3 once) and not spent. */
+  /** His word is earned (Trust +3 held at a Dawn, once) and not spent. */
   get wordReady(): boolean { return this.wordOffered && !this.wordSpent; }
   get tally(): Readonly<Tally> { return this.tallyNow; }
   get fedCards(): readonly string[] { return this.fed; }
@@ -304,10 +314,17 @@ export class Joker {
   // ── Trust ──
   private shiftTrust(d: number, why: string, out: JokerEvent[]): number {
     const before = this.trust;
+    if (d > 0 && why !== 'dawn') {   // he warms slowly: at most TRUST_NIGHT_GAIN a Night
+      if (this.gained.night !== this.night) this.gained = { night: this.night, n: 0 };
+      d = Math.min(d, TRUST_NIGHT_GAIN - this.gained.n);
+      this.gained.n += Math.max(0, d);
+    }
     this.trust = clamp(this.trust + d, TRUST_MIN, TRUST_MAX);
-    if (this.trust >= TRUST_MAX) this.wordOffered = true;
     const delta = this.trust - before;
-    if (delta !== 0) out.push({ name: 'joker:trust', data: { trust: this.trust, delta, why } });
+    if (delta !== 0) {
+      if (why !== 'dawn') this.movedNight = this.night;
+      out.push({ name: 'joker:trust', data: { trust: this.trust, delta, why } });
+    }
     return delta;
   }
 
@@ -319,8 +336,25 @@ export class Joker {
     return { delta: this.shiftTrust(m.d, move, events), events };
   }
 
-  /** Answer a dare: yes is +1 (max +1 a Watch), no is -1. */
-  dare(accept: boolean): Outcome & { delta: number } { return this.trustMove(accept ? 'dare' : 'refuse'); }
+  /** He offers one dare a Night at most: true when he may offer now. */
+  canDare(): boolean { return this.used['dareAsked'] !== this.tok('night'); }
+  /** Answer a dare: yes is +1, no is -1. He offers one a Night, so a second answer the same Night is not a dare (`asked` false) and changes nothing. */
+  dare(accept: boolean): Outcome & { delta: number; asked: boolean } {
+    if (!this.once('dareAsked', 'night')) return { delta: 0, asked: false, events: [] };
+    return { ...this.trustMove(accept ? 'dare' : 'refuse'), asked: true };
+  }
+
+  /**
+   * Dawn: Trust drifts 1 toward 0 unless it moved this Night (call it after the Dawn promise check and the cards). Returns the drift.
+   * Trust +3 held at a Dawn earns his word. Together with the Night's cap (+1) a player who does every favour is there on the third Dawn;
+   * without the cap and the decay it was two Nights, and every Night that anyone did a favour kept the decay from ever firing.
+   */
+  dawn(): Outcome & { delta: number } {
+    const events: JokerEvent[] = [];
+    if (this.trust >= TRUST_MAX) this.wordOffered = true;   // held at Dawn: earned, and it stays earned if Trust falls later
+    if (this.movedNight === this.night || this.trust === 0) return { delta: 0, events };
+    return { delta: this.shiftTrust(this.trust > 0 ? -TRUST_DECAY : TRUST_DECAY, 'dawn', events), events };
+  }
 
   /** He asks one promise a Night at most: true when he may ask now. */
   canAskPromise(): boolean { return this.promiseOpen === null && this.used['promiseAsked'] !== this.tok('night'); }
@@ -535,7 +569,7 @@ export class Joker {
     return {
       v: 1, trust: this.trust, ink: this.ink, night: this.night, watch: this.watch, n: this.n, tk: this.tk, un: this.un, tips: this.tips,
       used: { ...this.used }, admitted: this.admitted, wordOffered: this.wordOffered, wordSpent: this.wordSpent,
-      fed: [...this.fed], handed: [...this.handed], healed: { ...this.healed }, lastAskMachine: this.lastAskMachine, coffee: this.coffee,
+      fed: [...this.fed], handed: [...this.handed], healed: { ...this.healed }, lastAskMachine: this.lastAskMachine, moved: this.movedNight, gained: { ...this.gained }, coffee: this.coffee,
       promise: this.promiseOpen ? { ...this.promiseOpen } : null, last: this.last ? { ...this.last } : null, tally: { ...this.tallyNow },
     };
   }
@@ -560,6 +594,8 @@ export class Joker {
     this.handed = ids(o.handed).filter((x) => !this.fed.includes(x));
     this.healed = { night: num(o.healed?.night, 0, 99, 0), n: num(o.healed?.n, 0, KEPT_HEAL_MAX, 0) };
     this.lastAskMachine = typeof o.lastAskMachine === 'string' ? o.lastAskMachine : null;
+    this.movedNight = num(o.moved, -1, 99, -1);
+    this.gained = { night: num(o.gained?.night, -1, 99, -1), n: num(o.gained?.n, 0, 99, 0) };
     this.coffee = o.coffee === 1 || o.coffee === 2 ? o.coffee : 0;
     this.promiseOpen = o.promise && typeof o.promise.id === 'string' ? { id: o.promise.id, night: num(o.promise.night, 0, 99, 0) } : null;
     this.last = o.last && typeof o.last === 'object' ? { n: num(o.last.n, 0, 1e9, 0), truth: o.last.truth === true, called: o.last.called === true } : null;

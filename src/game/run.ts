@@ -92,12 +92,10 @@ import {
 import type { LedgerFind } from './story/quests';
 import pullsStrings from './pulls.strings';
 import bankStrings from './bank.strings';
-import draftStrings from './draft.strings';
 import runStrings from './run.strings';
-import { STARTER_TIMEOUT_SEC, starterOffer } from './draft';
 import { houseMoodProvider } from './houseMood';
-import { NightCards, type NightCardDef, type NightCardSave } from './nightCards';
-import nightCardStrings from './nightCards.strings';
+import { Pantheon, boonDef, type GodId, type OfferTier, type PantheonOfferView, type PantheonSave } from './pantheon';
+import pantheonStrings from './pantheon.strings';
 import { WatchTithe, type TitheResult, type TitheSave, type TitheView } from './checkpoints';
 import checkpointStrings from './checkpoints.strings';
 import { Spotlight, isSpotlightEligible, spotlightStartLine, type SpotlightSave, type SpotlightView } from './spotlight';
@@ -229,8 +227,6 @@ declare module '@/core/events' {
   }
 }
 
-/** Seconds of sim time an overpay choice waits for the player before the first candidate is taken automatically. */
-const OVERPAY_TIMEOUT_SEC = 30;
 /** Hot-path saves (every win) are coalesced: at most one serialise per this many sim seconds. */
 const SAVE_SOON_SEC = 2;
 
@@ -244,20 +240,6 @@ function restoredDoor(h: DoorState | undefined): DoorState {
   const status: DoorStatus = keep.includes(h.status) ? h.status : 'closed';
   return { ...initDoor(), status, trigger: h.trigger ?? null, phoneSpent: h.phoneSpent === true, lord: h.lord ?? null, ended: h.ended ?? null };
 }
-
-/** The starter offer restored from a save. An open offer keeps its timer (it runs down in the Bell, so a resumed run never sticks). */
-function restoredStarter(s: StarterState | undefined): StarterState | null {
-  if (!s || typeof s !== 'object' || !Array.isArray(s.ids)) return null;
-  const ids = s.ids.filter((id): id is string => typeof id === 'string');
-  return { ids, open: s.open === true && ids.length > 0, left: Number.isFinite(s.left) ? Math.max(0, s.left) : STARTER_TIMEOUT_SEC };
-}
-
-/** A pending overpay choice (GDD §2.6.5): take one of `candidates`, or it auto-picks when `left` reaches 0. */
-export interface OverpayOffer { rarity: CharmDef['rarity']; candidates: CharmDef[]; left: number }
-/** Queue entry: `ids` are the candidate charm ids, frozen when the offer was rolled (so a save restores the same choice). */
-interface PendingOverpay { rarity: CharmDef['rarity']; ids: string[]; left: number }
-/** The Starter Draft (draft wave): the three charm ids on offer, whether the card panel is still open, and the timer (sim s). */
-interface StarterState { ids: string[]; open: boolean; left: number }
 
 /** Bell strike length (GDD §2.3). */
 const BELL_SEC = 2;
@@ -319,13 +301,11 @@ declare module '@/core/events' {
     'duel:marks': { left: number; lost: boolean; blank: boolean };
     /** Back Office exchange done: Tickets in, Obols out. */
     'room:backoffice': { tickets: number; obols: number };
-    /** Starter Draft (draft wave): the player took a starting charm (`picked`) or the timer did (`auto`). Closes the card panel. */
-    'run:draft': { pid: PlayerId; state: 'picked' | 'auto'; charm: string };
     /** The Settle paid interest into the bank: `amount` coins at `pct` whole percent (the coin sound and the toast). */
     'run:interest': { pid: PlayerId; amount: number; pct: number };
-    /** Night Cards (director): the Dawn offer opened (`offer`), a card kept (`picked`) or auto-picked (`auto`), and the Night that
-     *  starts with its card (`started`). `card` is the card id, or null for `offer`. */
-    'run:nightcard': { pid: PlayerId; state: 'offer' | 'picked' | 'auto' | 'started'; card: string | null };
+    /** THE PANTHEON (docs/BLESSINGS.md §2): the Dawn offer opened (`offer`), a boon kept (`picked`, the offer may stay open for a
+     *  second pick), the timer or the lever took the leftmost (`auto`), or Loki swapped a card (`swap`). `ids` are the boons taken. */
+    'run:boon': { pid: PlayerId; state: 'offer' | 'picked' | 'auto' | 'swap'; ids: string[] };
     /** Watch tithe (wave 58): a quota Watch's Settle. `met` pays `tickets`; `missed` adds `shortfall` to tonight's quota. */
     'run:tithe': { pid: PlayerId; state: 'met' | 'missed'; watch: number; target: number; earned: number; shortfall: number; tickets: number };
     /** A Night starts (its first Watch begins): the grand casino props take the Night's light show from this. `night` is 1-based. */
@@ -353,8 +333,7 @@ export const STAKE_CONFIRM_REASON: RefusalReason = 'confirm';
 /** Pull grant toasts (`pulls.grant`, `pulls.r.*`). Registered here too so headless tests see them without the main.ts glob. */
 registerStrings(pullsStrings.prefix, { en: pullsStrings.en, tr: pullsStrings.tr });
 registerStrings(bankStrings.prefix, { en: bankStrings.en, tr: bankStrings.tr });
-registerStrings(draftStrings.prefix, { en: draftStrings.en, tr: draftStrings.tr });
-registerStrings(nightCardStrings.prefix, { en: nightCardStrings.en, tr: nightCardStrings.tr });
+registerStrings(pantheonStrings.prefix, { en: pantheonStrings.en, tr: pantheonStrings.tr });
 registerStrings(checkpointStrings.prefix, { en: checkpointStrings.en, tr: checkpointStrings.tr });
 registerStrings(runStrings.prefix, { en: runStrings.en, tr: runStrings.tr });
 registerStrings(keepsakeStrings.prefix, { en: keepsakeStrings.en, tr: keepsakeStrings.tr });
@@ -394,7 +373,7 @@ function contractMatches(w: NonNullable<ContractGoal['where']>, ev: ContractEv):
 export interface RunExt {
   v: 1;
   index: number; watch: number; watches: number; overtimeIdx: number;
-  phase: ShiftPhase; phaseLeft: number; nightDone: boolean; topside: boolean; metFired: boolean; ropeUsed: boolean;
+  phase: ShiftPhase; phaseLeft: number; nightDone: boolean; topside: boolean; metFired: boolean;
   clock: ClockSnapshot; clockLen: number; lastCallSec: number;
   pulls: number; pullsMax: number; watchPulls: number; boughtThisWatch: number;
   tickets: number; debtPaid: number; dreadPts: number;
@@ -415,8 +394,6 @@ export interface RunExt {
   pawnRerolls?: number;
   discount: number; nextDiscount: number; elapsed: number; maxWallet: number; biggest: number; rounds: number;
   rng: [number, number, number, number];
-  /** Pending overpay choices (optional: older v1 saves have none). */
-  overpays?: PendingOverpay[];
   /** Tycoon layer state (owned machines, levels, staff). Optional: older saves have none. */
   tycoon?: Partial<TycoonState>;
   /** Host ms wall clock at save time; resume credits the time away to the tycoon (idle income). */
@@ -472,10 +449,10 @@ export interface RunExt {
   houseWealth?: number;
   obolMult?: number;
   hollowRefused?: boolean;
-  /** Starter Draft (draft wave): the offer and whether it is still open. Optional: older saves have none. */
-  starter?: StarterState;
-  /** Night Cards (director): the open Dawn offer and the card kept for the next Night. Optional: older saves have none. */
-  nightCards?: NightCardSave;
+  /** THE PANTHEON: the open boon offer, the boons kept, Favour. Optional. Older saves' `nightCards`, `starter` and `overpays` are dropped. */
+  pantheon?: PantheonSave;
+  /** Loki's swap: the Dread it costs, for the printed Night `night` only (Ink once docs/JOKER.md ships). Optional. */
+  lokiDread?: { night: number; n: number };
   /** Per-Watch floor event (wave 43): the live event and its time left. Optional: a save between Watches has none. */
   watchEvent?: WatchEventSave | null;
   /** THE EVENING (wave 69): the Home stage, the lights and chain, and the phone's slice. Optional: older saves and online runs have none. */
@@ -549,31 +526,18 @@ export interface DebtRun extends RunApi {
   tick(dt: number): void;
   /** Write any coalesced save now. Call on page hide / unload (`tick` also flushes within SAVE_SOON_SEC). */
   flush(): void;
-  /** Overpay choice at the head of the queue (null when none). The UI shows `candidates` and calls `pickOverpay`. */
-  overpayOffer(): OverpayOffer | null;
-  /** Take one candidate of the head offer. False when there is no such offer, or the charm has no free peg. */
-  pickOverpay(charmId: string): boolean;
-  /** Take the first candidate that fits and drop the offer (the timeout fallback; also used by `tick`). */
-  autoPickOverpay(): boolean;
-  /**
-   * Starter Draft (draft wave, wave 72): open the three-charm offer in the Night 1 Mola (after the first Bell), never before it and
-   * never during the prologue. Once per run. False when it is not due yet, already offered, or the run is not a Debt Run.
-   */
-  openStarterDraft(): boolean;
-  /** The Starter Draft is still to come (Night 1, no offer made yet): the UI keeps asking `openStarterDraft` until it opens. */
-  starterPending(): boolean;
-  /** The open starter offer: its three charms and the timer (sim s, runs in every phase, the Bell waits for it). Null when closed. */
-  starterDraft(): { candidates: CharmDef[]; left: number } | null;
-  /** Take one starter charm: closes the offer and lets the Bell strike. False when closed or the id is not on offer. */
-  pickStarter(charmId: string): boolean;
-  /** Night Cards: the open Dawn offer (two cards, seconds left), or null. OPEN THE FLOOR settles it with its first card. */
-  nightCardOffer(): { candidates: NightCardDef[]; left: number; night: number } | null;
-  /** Keep one card of the open offer for the next Night. False when closed or the id is not on offer. */
-  pickNightCard(cardId: string): boolean;
-  /** The Night Card panel is on screen: OPEN THE FLOOR waits for a pick (or the panel's timer) instead of taking card 1. */
-  setNightCardGate(on: boolean): void;
-  /** The card kept for the Night in progress, or null. */
-  nightCard(): NightCardDef | null;
+  /** THE PANTHEON: the open boon offer at a paid Dawn (cards, picks left, seconds left, Loki's swap), or null. OPEN THE FLOOR settles it. */
+  boonOffer(): PantheonOfferView | null;
+  /** Keep one boon of the open offer for the rest of the run. False when closed or the id is not on offer. */
+  pickBoon(id: string): boolean;
+  /** Loki's swap (Night 3+, once an offer): card `index` becomes one of his. Costs Dread next Night. False when refused. */
+  swapBoon(index: number): boolean;
+  /** The offer panel is on screen: OPEN THE FLOOR waits for a pick (or the panel's timer) instead of taking the leftmost. */
+  setBoonGate(on: boolean): void;
+  /** The boons kept this run, in the order taken. */
+  boons(): readonly string[];
+  /** A god's Favour, 0..3. */
+  boonFavour(god: GodId): number;
   /** Intermission → Bell (the BELL ROPE). */
   startWatch(): boolean;
   /**
@@ -647,8 +611,8 @@ export interface DebtRun extends RunApi {
   bank(): BankView;
   /** Watch tithe (wave 58): this Watch's target, net winnings so far, met and the shortfall (`on` false outside a tithe Watch). */
   watchTithe(): TitheView;
-  /** NEXT NIGHT: the exact quota of the Night after the paid one (null while a Night runs). `extraMult` previews a card (1 = none). */
-  nextQuotaPreview(extraMult?: number): NextQuotaPreview | null;
+  /** NEXT NIGHT: the exact quota of the Night after the paid one (null while a Night runs). */
+  nextQuotaPreview(): NextQuotaPreview | null;
   /** What `withdraw(amount)` would do, without doing it (what the player gives up). */
   withdrawPreview(amount: number): WithdrawPreview;
   /**
@@ -941,7 +905,6 @@ class Run implements DebtRun {
   private baseEventChance = 0.35;
   private readonly plays = new Map<string, number>();
   private readonly banner: EventBannerShow | undefined;
-  private ropeUsed = false;
   /** Rescue loans (wave 13): quota added tonight, calls used tonight, seconds until the line may ring again. */
   private loanQuota = 0;
   /** Watch tithe (wave 58): per-Watch net winnings against 12 % of the Night quota; missed tithes add to tonight's quota. */
@@ -1032,11 +995,12 @@ class Run implements DebtRun {
   private rounds = 0;
   private dirty = false;
   private sinceFlush = 0;
-  private overpays: PendingOverpay[] = [];
-  /** Starter Draft (draft wave): null until `openStarterDraft`. Holds the Bell while open. */
-  private starter: StarterState | null = null;
-  /** Night Cards (director): the Dawn offer and the card kept for the next Night. Provider registered in the constructor. */
-  private readonly nightCards: NightCards;
+  /** THE PANTHEON (docs/BLESSINGS.md §2): the Dawn boon offer and the boons kept for the run. Provider registered in the constructor. */
+  private readonly pantheon: Pantheon;
+  /** The offer panel is on screen: the lever waits for a pick (headless runs settle at the lever). */
+  private boonGate = false;
+  /** Loki's swap Dread, for printed Night `night` only. */
+  private lokiDread = { night: 0, n: 0 };
   /** Per-Watch floor event (wave 43): rolled at each Bell, ticked on the Watch clock, saved mid-Watch. */
   private readonly watchEv: WatchEvents;
   /** The Crooked Table's Tally Sheet lines already sent for the live event (a line goes out once per wording). */
@@ -1093,6 +1057,8 @@ class Run implements DebtRun {
         const effs: ModEffect[] = [];
         const favour = nightDef(this.index).favour;
         if (favour !== 1) effs.push({ hook: 'payout.mult', op: 'mult', value: favour });
+        // shortcut: Loki's swap costs Dread for the next Night; it costs Ink once docs/JOKER.md ships
+        if (this.lokiDread.night === this.index + 1 && this.lokiDread.n > 0) effs.push({ hook: 'dread.add', op: 'add', value: this.lokiDread.n });
         if (isWitchingWatch(this.watches, this.watch)) {
           effs.push({ hook: 'payout.mult', op: 'inc', value: 0.05 });
           effs.push({ hook: 'dread.add', op: 'add', value: 10 });
@@ -1107,8 +1073,9 @@ class Run implements DebtRun {
     this.modsImpl.register(this.makeCircuitProvider());
     this.watchEv = new WatchEvents({ isHot: (m) => this.circ.isHot(m), touch: () => this.modsImpl.touch(), floor: () => this.floorFacts() });
     this.modsImpl.register(this.watchEv);
-    this.nightCards = new NightCards(() => this.index, this.seed, () => this.modsImpl.touch());
-    this.modsImpl.register(this.nightCards);
+    // A boon kept or spent changes the mods, and the luck meter re-reads its x.luck.* numbers (it never reads mods inside collect).
+    this.pantheon = new Pantheon(this.seed, () => { this.modsImpl.touch(); this.luckMeter?.retune(); });
+    this.modsImpl.register(this.pantheon);
     this.spotlight = new Spotlight(this.seed, () => this.modsImpl.touch());
     this.modsImpl.register(this.spotlight);
 
@@ -1254,7 +1221,10 @@ class Run implements DebtRun {
     // THE EVENING: the phone belongs to the Home layer (solo only); an online run has none (`homePhone()` is null).
     this.hPhone = this.homeOn ? createPhone(this) : null;
     this.homeEcon = this.homeOn ? this.makeHomeEconomy() : null;
-    this.luckMeter = createLuckMeter(this, () => this.modsImpl.touch());
+    this.luckMeter = createLuckMeter({
+      x: (hook, base) => this.mod(hook, RUN_MACHINE, base),
+      fx: (key) => this.pantheon.fx(key),
+    }, () => this.modsImpl.touch());
     this.modsImpl.register(this.luckMeter.provider());
     // THE PROLOGUE (wave 72): a fresh Home-layer run opens in the apartment; a resumed save skips it (its Night is already on).
     this.prologue = this.homeOn && opts.prologue === true && resume === null;
@@ -1300,8 +1270,7 @@ class Run implements DebtRun {
     let ceiling = def.maxBet * si * capMult;
     // Night 1 stake safety: one wrong press cannot end the run, so the top stake is a third of the starting pocket.
     if (this.quotaMode && this.index === 0) ceiling = Math.min(ceiling, Math.max(def.minBet, night1StakeCap(START.pocket)));
-    // Night Cards: HIGH TABLE doubles the floor (never above the ceiling, so the ladder keeps one stake).
-    const minBet = Math.min(def.minBet * this.nightCards.fx().minBetMult, Math.max(def.minBet, ceiling));
+    const minBet = def.minBet;
     const ladder = (def.betSteps ?? bettingLadder(minBet, ceiling)).filter((v) => v >= minBet && v <= ceiling);
     const max = snapDown(ceiling, ladder) || minBet;
     return { min: minBet, max, ladder };
@@ -1906,11 +1875,6 @@ class Run implements DebtRun {
     }
     if (this.pawn.rev !== this.pawnRev) { this.pawnRev = this.pawn.rev; this.persistSoon(); }
     if (this.stamps.rev !== this.stampRev) { this.stampRev = this.stamps.rev; this.persistSoon(); }
-    const head = this.overpays[0];
-    if (head) {
-      head.left -= dt;
-      if (head.left <= 0) this.autoPickOverpay();
-    }
     if (this.clockAcc >= 1) {
       this.clockAcc -= 1;
       this.emit('run:clock', { remaining: this.clock.remaining });
@@ -1923,20 +1887,17 @@ class Run implements DebtRun {
     tickClockHold(dt);
     this.itemSys.tick(dt);
     if (this.duelAfter.length) this.tickDuelAfter(dt);
-    // Night Cards: the Dawn offer's 20 s timer runs in intermission too (OPEN THE FLOOR settles it early with the first card).
-    const autoCard = this.nightCards.tick(dt);
-    if (autoCard) { this.emit('run:nightcard', { pid: this.selfId, state: 'auto', card: autoCard }); this.notify(); this.persist(); }
+    // THE PANTHEON: the Dawn offer's 20 s timer runs in intermission too (OPEN THE FLOOR settles it early with the leftmost).
+    const auto = this.pantheon.tick(dt);
+    if (auto) this.boonsTaken(auto, 'auto');
     if (this.phase === 'play' || this.phase === 'lastCall') this.tycoonSys.tick(dt);
     if (!this.rules.timed) return;
     this.applyFloorOutcomes();
     this.applyCrooked();
-    // The Starter Draft's timer runs in every phase (its countdown is on screen); the Bell waits for the offer.
-    const starterHolds = this.tickStarter(dt);
     if (this.hStage !== null) this.tickHome(dt);
     if (this.ended) return;   // the doom ended the run
     switch (this.phase) {
       case 'bell':
-        if (starterHolds) break;   // the Starter Draft holds the Bell until a charm is taken (or its timer runs out)
         this.phaseLeft -= dt;
         if (this.phaseLeft <= 0) this.startPlay();
         break;
@@ -1974,7 +1935,7 @@ class Run implements DebtRun {
     const isOvertime = this.watch === this.overtimeIdx;
     this.ensureBoss(); // before the clock and pull mods are read below
     // the Watch's floor event (wave 43) rolls before the clock and pull mods are read (cold_snap and the clock/pull effects)
-    this.watchEv.begin(this.rng, this.index + 1, this.watch, !!this.bossToday() || this.nightCards.fx().noFloorEvents);
+    this.watchEv.begin(this.rng, this.index + 1, this.watch, !!this.bossToday());
     if (this.watch === 0) bus.emit('night:begin', { night: this.index + 1 });   // the first Watch of a Night: the grand light show
     this.coolBoiler();
     this.boughtThisWatch = 0;
@@ -2011,12 +1972,11 @@ class Run implements DebtRun {
     // THE EVENING: the lever at home is the bed (the fade, then the next Night); mid-lift or mid-sleep it waits.
     if (this.hStage === 'evening') return this.homeSleep();
     if (this.hStage !== null) return this.refuse('noWatch');
-    // Night Cards: with the panel on screen the lever waits for a pick (the panel's own timer still auto-picks, so nothing
-    // soft-locks). Headless runs and tests have no panel: there an open offer is settled by its first card.
-    if (this.nightCardGate && this.nightCardOffer()) return this.refuse('nightCard');
+    // THE PANTHEON: with the panel on screen the lever waits for a pick (the panel's own timer still auto-picks, so nothing
+    // soft-locks). Headless runs and tests have no panel: there an open offer is settled by its leftmost cards.
+    if (this.boonGate && this.pantheon.pending()) return this.refuse('nightCard');
     this.refusal = null;
-    const settled = this.nightCards.settle();
-    if (settled) this.emit('run:nightcard', { pid: this.selfId, state: 'auto', card: settled });
+    this.settleBoons();
     // The Home layer takes the lever for the lift (solo Debt Run, not Night 8); every other run opens the next Night at once.
     if (this.homeLiftReady()) { this.setHome('ride', HOME_TIMING.ride); return true; }
     this.beginNight();
@@ -2025,8 +1985,7 @@ class Run implements DebtRun {
 
   /** The next Night begins (the old OPEN THE FLOOR body): the lever without the Home layer, and the end of the bed's sleep. */
   private beginNight(): void {
-    const settled = this.nightCards.settle();   // a no-op after openFloor settled the offer; the sleep arrives here with it closed
-    if (settled) this.emit('run:nightcard', { pid: this.selfId, state: 'auto', card: settled });
+    this.settleBoons();   // a no-op after openFloor settled the offer; the sleep arrives here with it closed
     // Ascent: the pit rises one floor. The Elevator Token pays 5 % of the pocket (max 300 × SI).
     if (this.charmBox.has(this.selfId, 'elevator_token')) {
       const gain = Math.min(Math.floor(this.coins * 0.05), 300 * nightDef(this.index).si);
@@ -2042,7 +2001,7 @@ class Run implements DebtRun {
     if (seat) this.banner?.(t('ghost.seat', { machine: machineName(seat.machineId as MachineId) }), { hold: 4, size: 8 });
     this.ledger = { night: this.index + 1, float: 0, interest: 0, tickets: 0, cut: 0, carried: 0 };   // a new Night's books start empty (before its float)
     const nd = nightDef(this.index);
-    this.watches = Math.max(1, nd.watches + this.nightCards.fx().watchAdd);   // Night Cards: RUSH NIGHT drops a Watch
+    this.watches = Math.max(1, nd.watches + this.pantheon.fx('watchAdd'));   // Short Night (ash_short) drops a Watch
     this.watch = 0;
     this.overtimeIdx = -1;
     this.nightDone = false;
@@ -2057,14 +2016,11 @@ class Run implements DebtRun {
     this.shiftState.floor = this.index + 1;
     this.shiftState.stake = nd.si;
     this.shiftState.segment = { index: 0, count: this.watches };
+    // Cooked Books (ledg_books, once): this Night's quota has no wealth floor
+    if (this.mod('x.house.noticeOff', RUN_MACHINE, 0) > 0) { this.houseWealth = 0; this.pantheon.spend('ledg_books'); }
     this.houseFloat();
     this.recomputeQuota();
     this.prepareBoss();
-    const keptCard = this.nightCards.started();   // Night Cards: the card kept at the Dawn before this Night, if any
-    if (keptCard) {
-      this.banner?.(t('nightcard.started', { name: t(`nightcard.${keptCard.id}.name`) }), { color: '#ff7a5a', hold: 4, size: 16 });
-      this.emit('run:nightcard', { pid: this.selfId, state: 'started', card: keptCard.id });
-    }
     // Machine of the Night (wave 55): one open floor kind is this Night's spotlight; the banner names it.
     const spot = this.spotlight.begin(this.index, (this.worldLink?.machines() ?? [])
       .filter((m) => !this.worldLink?.locked?.(m.instance) && isSpotlightEligible(m.machineId, registry.get(m.machineId)?.def.category))
@@ -2196,7 +2152,7 @@ class Run implements DebtRun {
    * player can still shop while the Watch ends). Not in Bell, play, Settle or Dawn.
    */
   private shopOpen(): boolean {
-    return (this.phase === 'intermission' || this.phase === 'closing') && !this.ended && !this.nightCards.fx().pawnClosed;
+    return (this.phase === 'intermission' || this.phase === 'closing') && !this.ended;
   }
 
   /**
@@ -2558,6 +2514,7 @@ class Run implements DebtRun {
     if (this.skipRest === 0 && this.watch + 1 < this.watches) {
       this.watch += 1;
       this.enter('intermission', 0);
+      if (this.index === 1 && this.watch === 1) this.godsBeat();
     } else {
       this.skipRest = 0;
       this.tycoonSys.onDawn();
@@ -2573,15 +2530,14 @@ class Run implements DebtRun {
     this.releaseMarkEscrow();   // a Mark still on the table is on the card again before the card is read for a seal
     const due = this.quota.due;
     let paid = this.debtPaid >= due;
-    // shortcut: the false_bottom and rope_ladder branches are dead (no shop row sells either); BLESSINGS wave 2 moves them behind the ledg_round / ash_overtime boons, then delete the charm rows
-    if (!paid && this.charmBox.has(this.selfId, 'false_bottom') && due - this.debtPaid <= 0.1 * due) {
-      this.charmBox.remove(this.selfId, 'false_bottom');
+    // Rounding Error (ledg_round): a shortfall of up to 5 % is written off, at each Dawn
+    if (!paid && due - this.debtPaid <= this.pantheon.fx('writeOffPct') * due) {
       this.debtPaid = due;
       paid = true;
     }
-    if (!paid && !this.ropeUsed && this.charmBox.has(this.selfId, 'rope_ladder')) {
-      this.charmBox.remove(this.selfId, 'rope_ladder');
-      this.ropeUsed = true;
+    // Overtime (ash_overtime, the Ash Rite, once a run): a short Dawn first plays one more Watch, before a seal is taken
+    if (!paid && this.pantheon.fx('overtime') > 0) {
+      this.pantheon.spend('ash_overtime');
       this.overtimeIdx = this.watches;
       this.watches += 1;
       this.watch = this.overtimeIdx;
@@ -2643,11 +2599,49 @@ class Run implements DebtRun {
     this.nightDone = true;
     if (nightDef(this.index).no === BASE_RUN_NIGHTS) this.topside = true;
     this.spotlight.end();   // Machine of the Night: the Night is over, the spotlight and its x1.25 end
-    // Night Cards: every paid Dawn with a Night after it (from Night 1 on) opens the two-card offer for that Night. A sealed Dawn has no offer.
-    if (!sealed && !this.topside && this.nightCards.openOffer(this.index + 1)) this.emit('run:nightcard', { pid: this.selfId, state: 'offer', card: null });
+    // THE PANTHEON: every paid Dawn with a Night after it (from Night 1 on) opens the boon offer. A sealed Dawn has none.
+    if (!sealed && !this.topside) {
+      if (this.pantheon.fx('starEachDawn') > 0) bus.emit('floor:luck', { star: 1, why: 'well' });   // The Well Answers
+      const opts = { tier: this.offerTier(), sealsMissing: this.soulMarkCount + this.markEscrow < SOUL_MARKS_PER_RUN };
+      if (this.pantheon.open(this.index + 1, opts)) this.emit('run:boon', { pid: this.selfId, state: 'offer', ids: [] });
+    }
     this.enter('intermission', 0);
     this.emit('quota:update', { quota: this.quota });
     this.persist();
+  }
+
+  /** THE OWNERS (docs/BLESSINGS.md §4): Night 2's first Mola, at the bar, Selim and Loki name the gods. Subtitles only. */
+  private godsBeat(): void {
+    const say = (n: number, who: 'selim' | 'loki', voice: string): void => {
+      bus.emit('floor:say', { text: t(`story.gods.${n}`), speaker: t(`story.speaker.${who}`), voice, source: `pantheon.beat.${n}` });
+    };
+    say(1, 'selim', 'bartender');
+    say(2, 'selim', 'bartender');
+    say(3, 'loki', 'loki');
+  }
+
+  /** The overpay tier this Dawn reached shapes the offer (docs/BLESSINGS.md §2.1): 1.5x shows 4 cards, 2x keeps 2, 3x holds a Rite. */
+  private offerTier(): OfferTier {
+    const has = (id: string): boolean => this.quota.claimed.some((c) => c.id === id);
+    return has('seal') ? 'seal' : has('golden') ? 'golden' : has('uncommon') ? 'uncommon' : 'base';
+  }
+
+  /** Boons were taken (a pick, the timer or the lever): the Rites that act at once act, the UI hears it, the save keeps it. */
+  private boonsTaken(ids: readonly string[], state: 'picked' | 'auto'): void {
+    for (const id of ids) {
+      const fx = boonDef(id)?.fx;
+      if (fx?.starNow) bus.emit('floor:luck', { star: fx.starNow, why: 'well' });   // First Penny: a star now
+      if (fx?.sealAdd) { this.restoreSoulMark(); this.pantheon.spend(id); }        // Your Name Back
+    }
+    this.emit('run:boon', { pid: this.selfId, state, ids: [...ids] });
+    this.notify();
+    this.persist();
+  }
+
+  /** Closes an open offer with its leftmost cards (the lever and the bed never wait on a headless offer). */
+  private settleBoons(): void {
+    const ids = this.pantheon.settle();
+    if (ids && ids.length > 0) this.boonsTaken(ids, 'auto');
   }
 
   /** A short Dawn takes one name seal and the memory with it. The HUD cracks the seal on `quota:sealed`; the Dawn receipt prints the line. */
@@ -2665,6 +2659,7 @@ class Run implements DebtRun {
    */
   private houseNotice(): void {
     if (nightDef(this.index).no >= BASE_RUN_NIGHTS) return;   // no base Night follows the last one
+    if (this.mod('x.house.noticeOff', RUN_MACHINE, 0) > 0) return;   // Cooked Books: the next quota has no wealth floor
     const opts = { discount: this.nextDiscount, holdings: this.tycoonSys.holdings(), assessRate: this.mod('x.tycoon.assessRate', RUN_MACHINE, 0.08) };
     const plain = quotaFor(this.index + 1, opts);
     const noticed = quotaFor(this.index + 1, { ...opts, wealth: this.houseWealth });
@@ -2916,9 +2911,8 @@ class Run implements DebtRun {
     const cands = this.lampCandidates();
     const rng = createRng(hashSeed('lamps', this.seed, this.index, this.watch));
     const lamps = this.night() >= LAMP_FIRST_NIGHT;
-    const lampFx = this.nightCards.fx();   // Night Cards: LAMP FESTIVAL sets 2 HOT and no COLD for its Night
-    const hot = Math.max(0, (lampFx.hotLamps ?? hotLampCount(this.night())) + Math.round(this.mod('x.lamp.hotCount', RUN_MACHINE, 0)));
-    const cold = lampFx.noColdLamps ? 0 : coldLampCount(this.night(), Math.round(this.mod('x.lamp.coldCount', RUN_MACHINE, 0)) + this.stakeFx().coldLamps);
+    const hot = Math.max(0, hotLampCount(this.night()) + Math.round(this.mod('x.lamp.hotCount', RUN_MACHINE, 0)));
+    const cold = coldLampCount(this.night(), Math.round(this.mod('x.lamp.coldCount', RUN_MACHINE, 0)) + this.stakeFx().coldLamps);
     // No candidate can take a Lamp at this pocket, though some readable machine would: the banner says the pocket is too low.
     const pocketShort = lamps && hot + cold > 0 && cands.length === 0 && this.lampCandidates(Number.POSITIVE_INFINITY).length > 0;
     this.circ.startWatch(rng, cands, {
@@ -2972,12 +2966,11 @@ class Run implements DebtRun {
 
   /**
    * NEXT NIGHT (wave 55): the exact quota of the Night after the paid one, as recomputeQuota will read it when that Night opens:
-   * the ladder with the next discount, Assessment and the House notice, the quota multipliers of the charms, and the card kept for
-   * that Night. `extraMult` previews a card not yet kept (1 = none). In the Dawn collection the Night is still unpaid, so the numbers
+   * the ladder with the next discount, Assessment and the House notice, and the quota multipliers (charms, boons). In the Dawn collection the Night is still unpaid, so the numbers
    * are projected from the wealth the Dawn will read (`projected`); from the Dawn's payment on they are read as the run holds them.
    * `k` is the step from tonight's quota. Null while a Night is running, after the last base Night, or once the run has ended.
    */
-  nextQuotaPreview(extraMult = 1): NextQuotaPreview | null {
+  nextQuotaPreview(): NextQuotaPreview | null {
     if (!this.quotaMode || this.ended || this.topside || nightDef(this.index).no >= BASE_RUN_NIGHTS) return null;
     const dawnNow = this.phase === 'collection' && !this.nightDone;
     if (!this.nightDone && !dawnNow) return null;
@@ -2993,14 +2986,8 @@ class Run implements DebtRun {
       }
       discount = Math.min(0.15, discount);
     }
-    // Multipliers: every quota.mult of the mod pipeline except the paid Night's card (it ends with its Night), plus the card kept for
-    // the next Night and the previewed one. The fold is the pipeline's own (foldEffects), so the clamp matches.
-    const common = this.explain('quota.mult', RUN_MACHINE, 1).steps
-      .filter((s) => !s.source.id.startsWith('nightcard.'))
-      .map((s) => ({ op: s.op, value: s.value }));
-    const kept = this.nightCards.keptFor(idx);
-    const keptEffs = (kept?.effects ?? []).filter((e) => e.hook === 'quota.mult').map((e) => ({ op: e.op, value: e.value }));
-    const mult = foldEffects('quota.mult', 1, [...common, ...keptEffs, { op: 'mult', value: extraMult }]);
+    if (this.mod('x.house.noticeOff', RUN_MACHINE, 0) > 0) wealth = 0;   // Cooked Books: no wealth floor on the next quota
+    const mult = this.mod('quota.mult', RUN_MACHINE, 1);
     const holdings = this.tycoonSys.holdings();
     const rate = this.mod('x.tycoon.assessRate', RUN_MACHINE, 0.08);
     const due = this.dueOf(idx, {
@@ -3038,6 +3025,9 @@ class Run implements DebtRun {
       this.marksChanged(false);
       return;
     }
+    // Noticed (1.25x): +1 Favour with the god of the last boon kept; before any boon it pays its old reward
+    const god = tier.id === 'favoured' ? this.pantheon.lastGod() : null;
+    if (god && god !== 'loki') { this.pantheon.addFavour(god); return; }
     this.grant(tier.reward);
   }
 
@@ -3062,17 +3052,13 @@ class Run implements DebtRun {
       if ('id' in offer) {
         this.charmBox.add(this.selfId, offer.id, this.pegs());
       } else {
-        // "Choose 1 of 3": roll the candidates now, queue them, and let the UI call pickOverpay (auto-pick on timeout).
-        let rarity = Array.isArray(offer.rarity) ? offer.rarity[0] : offer.rarity;
+        // shortcut: a "choose 1 of N" charm (boss, slips) is granted as the first seeded card that fits, since the pick panel went
+        // with the overpay queue (docs/BLESSINGS.md §2.1); give it a panel again if playtests miss the choice.
+        const rarity = Array.isArray(offer.rarity) ? offer.rarity[0] : offer.rarity;
         const owned = (id: string): boolean => this.charmBox.has(this.selfId, id);
-        let cands = choiceOffer(this.rng.fork(`overpay:${this.index}:${this.overpays.length}:${rarity}`), rarity, offer.of, owned, this.index);
-        // Legendary charms unlock by Night (N5 and later): before that the pool is empty, so a Legendary offer falls back to a Rare
-        // choice rather than paying nothing. The queued offer carries the rarity it really is.
-        if (!cands.length && rarity === 'legendary') {
-          rarity = 'rare';
-          cands = choiceOffer(this.rng.fork(`overpay:${this.index}:${this.overpays.length}:rare`), rarity, offer.of, owned, this.index);
+        for (const d of choiceOffer(this.rng.fork(`charm:${this.index}:${rarity}`), rarity, offer.of, owned, this.index)) {
+          if (this.charmBox.add(this.selfId, d.id, this.pegs())) break;
         }
-        if (cands.length) this.overpays.push({ rarity, ids: cands.map((d) => d.id), left: OVERPAY_TIMEOUT_SEC });
       }
     }
     this.notify();
@@ -3845,7 +3831,7 @@ class Run implements DebtRun {
       owned: [...this.owned], allIn: this.allInWatch,
       v: 1, index: this.index, watch: this.watch, watches: this.watches, overtimeIdx: this.overtimeIdx,
       phase: this.phase, phaseLeft: this.phaseLeft, nightDone: this.nightDone, topside: this.topside,
-      metFired: this.metFired, ropeUsed: this.ropeUsed,
+      metFired: this.metFired,
       clock: this.clock.snapshot(), clockLen: this.clockLen, lastCallSec: this.lastCallSec,
       pulls: this.pullCount, pullsMax: this.pullsMax, watchPulls: this.watchPulls, boughtThisWatch: this.boughtThisWatch,
       tickets: this.tickets, debtPaid: this.debtPaid, ledger: { ...this.ledger }, dreadPts: this.dreadPts,
@@ -3854,7 +3840,6 @@ class Run implements DebtRun {
       discount: this.discount, nextDiscount: this.nextDiscount, elapsed: this.elapsed,
       maxWallet: this.maxWallet, biggest: this.biggest, rounds: this.rounds,
       rng: this.rng.getState(),
-      overpays: this.overpays.map((o) => ({ rarity: o.rarity, ids: [...o.ids], left: o.left })),
       tycoon: JSON.parse(JSON.stringify(this.tycoonSys.state())) as Partial<TycoonState>,
       savedAt: Date.now(),
       buffs: this.buffSys.buffs.snapshot(),
@@ -3874,8 +3859,8 @@ class Run implements DebtRun {
       ...(this.lostMemories.length > 0 ? { lostMemories: [...this.lostMemories] } : {}),
       ...(this.endingPathId ? { endingPath: this.endingPathId } : {}),
       hollow: { ...this.hollow }, forgiveUntil: this.forgiveUntil, houseWealth: this.houseWealth, obolMult: this.obolMult, hollowRefused: this.hollowRefused,
-      ...(this.starter ? { starter: { ids: [...this.starter.ids], open: this.starter.open, left: this.starter.left } } : {}),
-      ...(this.nightCards.snapshot() ? { nightCards: this.nightCards.snapshot() as NightCardSave } : {}),
+      ...(this.pantheon.snapshot() ? { pantheon: this.pantheon.snapshot() as PantheonSave } : {}),
+      ...(this.lokiDread.n > 0 ? { lokiDread: { ...this.lokiDread } } : {}),
       ...(this.watchEv.snapshot() ? { watchEvent: this.watchEv.snapshot() } : {}),
       ...(this.spotlight.snapshot() ? { spotlight: this.spotlight.snapshot() as SpotlightSave } : {}),
       ...(this.tithe.snapshot() ? { tithe: this.tithe.snapshot() as TitheSave } : {}),
@@ -3947,14 +3932,6 @@ class Run implements DebtRun {
     this.save?.flush();
   }
 
-  // ── overpay choice (GDD §2.6.5) ─────────────────────────────────────────────────────────────────
-  overpayOffer(): OverpayOffer | null {
-    const head = this.overpays[0];
-    if (!head) return null;
-    const candidates = head.ids.map((id) => charmDef(id)).filter((d): d is CharmDef => d !== undefined);
-    return { rarity: head.rarity, candidates, left: head.left };
-  }
-
   grantCharm(charmId: string): boolean {
     if (!charmDef(charmId)) return false;
     if (!this.charmBox.add(this.selfId, charmId, this.pegs())) return false;
@@ -3963,109 +3940,40 @@ class Run implements DebtRun {
     return true;
   }
 
-  pickOverpay(charmId: string): boolean {
-    const head = this.overpays[0];
-    if (!head || !head.ids.includes(charmId)) return false;
-    if (!this.charmBox.add(this.selfId, charmId, this.pegs())) return this.refuse('limit');
-    this.overpays.shift();
-    this.notify();
+  // ─ THE PANTHEON (docs/BLESSINGS.md §2): the Dawn offer, the boons kept for the run ─
+  boonOffer(): PantheonOfferView | null { return this.pantheon.offerView(); }
+
+  setBoonGate(on: boolean): void { this.boonGate = on; }
+
+  pickBoon(id: string): boolean {
+    if (!this.pantheon.pick(id)) return false;
+    this.boonsTaken([id], 'picked');
+    return true;
+  }
+
+  swapBoon(index: number): boolean {
+    const dread = this.pantheon.swap(index);
+    if (dread === null) return false;
+    // shortcut: Loki's swap costs Dread for the next Night; it costs Ink once docs/JOKER.md ships
+    if (dread > 0) this.lokiDread = { night: this.index + 2, n: dread };
+    this.emit('run:boon', { pid: this.selfId, state: 'swap', ids: [] });
     this.persist();
     return true;
   }
 
-  autoPickOverpay(): boolean {
-    const head = this.overpays.shift();
-    if (!head) return false;
-    let took = false;
-    for (const id of head.ids) {
-      if (this.charmBox.add(this.selfId, id, this.pegs())) { took = true; break; }
-    }
-    this.notify();
-    this.persist();
-    return took;
-  }
-
-  // ── starter draft (draft wave) ───────────────────────────────────────────────────────────────────────
-  /**
-   * The Starter Draft is still to come: Night 1 of a timed quota run with no offer made yet. The UI keeps asking until it opens;
-   * it is no longer pending once the offer is made (open or taken) or the run leaves Night 1.
-   */
-  starterPending(): boolean {
-    return !this.ended && this.rules.timed && this.quotaMode && this.index === 0 && this.starter === null;
-  }
-
-  openStarterDraft(): boolean {
-    if (!this.starterPending() || this.prologue) return false;
-    // Wave 72: only in the Night 1 Mola, after the first Watch has ended (the first Bell or the clock). Never on the first frame:
-    // the Watch 1 floor and the Bell are free until then.
-    if (this.phase !== 'intermission' || (this.watch < 1 && !this.nightDone)) return false;
-    const ids = starterOffer(this.seed, (id) => this.charmBox.has(this.selfId, id));
-    if (ids.length === 0) return false;
-    this.starter = { ids, open: true, left: STARTER_TIMEOUT_SEC };
-    this.notify();
-    this.persist();
-    return true;
-  }
-
-  starterDraft(): { candidates: CharmDef[]; left: number } | null {
-    const s = this.starter;
-    if (!s?.open) return null;
-    return { candidates: s.ids.map((id) => charmDef(id)).filter((d): d is CharmDef => d !== undefined), left: s.left };
-  }
-
-  pickStarter(charmId: string): boolean {
-    return this.takeStarter(charmId, 'picked');
-  }
-
-  // ─ Night Cards (director): the Dawn offer, the card kept for the next Night ─
-  nightCardOffer(): { candidates: NightCardDef[]; left: number; night: number } | null { return this.nightCards.offerView(); }
-
-  private nightCardGate = false;
-  setNightCardGate(on: boolean): void { this.nightCardGate = on; }
-
-  pickNightCard(cardId: string): boolean {
-    if (!this.nightCards.pick(cardId)) return false;
-    this.emit('run:nightcard', { pid: this.selfId, state: 'picked', card: cardId });
-    this.notify();
-    this.persist();
-    return true;
-  }
-
-  nightCard(): NightCardDef | null { return this.nightCards.current(); }
+  boons(): readonly string[] { return this.pantheon.list(); }
+  boonFavour(god: GodId): number { return this.pantheon.favour(god); }
 
   /** Machine of the Night (wave 55): this Night's spotlight for the HUD chip, or null. */
   spotlightView(): SpotlightView | null { return this.spotlight.current(); }
 
-  /** Takes one starter charm (the player's pick, or the timer's first card that fits). Closes the offer. */
-  private takeStarter(charmId: string, state: 'picked' | 'auto'): boolean {
-    const s = this.starter;
-    if (!s?.open || !s.ids.includes(charmId)) return false;
-    if (!this.charmBox.add(this.selfId, charmId, this.pegs())) return state === 'picked' ? this.refuse('limit') : false;
-    s.open = false;
-    this.emit('run:draft', { pid: this.selfId, state, charm: charmId });
-    this.notify();
-    this.persist();
-    return true;
-  }
-
-  /** The starter draft's timer (every phase): true while the offer is open. At zero it takes the first card that fits. */
-  private tickStarter(dt: number): boolean {
-    const s = this.starter;
-    if (!s?.open) return false;
-    s.left -= dt;
-    if (s.left > 0) return true;
-    for (const id of s.ids) if (this.takeStarter(id, 'auto')) break;
-    if (this.starter?.open) this.starter.open = false;
-    return false;
-  }
-
   /** The Settle's interest, said as a bank note: the amount (with the coin sound, `run:interest`), the rate, or why it paid nothing. */
   private interestNote(pid: PlayerId, earned: number, pct: number, shortBy: number): void {
     if (earned > 0) {
-      this.bankNote('draft.interest', { n: earned, pct });
+      this.bankNote('bank.interest', { n: earned, pct });
       this.emit('run:interest', { pid, amount: earned, pct });
-    } else if (shortBy > 0) this.bankNote('draft.interest.short', { pct, k: shortBy });
-    else this.bankNote('draft.interest.none', { pct });
+    } else if (shortBy > 0) this.bankNote('bank.interest.short', { pct, k: shortBy });
+    else this.bankNote('bank.interest.none', { pct });
   }
 
   /** Launch charm pool of one rarity (lootbox and claw prizes read it through `Reflect`). Unlock-gated charms are left out. */
@@ -4222,7 +4130,7 @@ class Run implements DebtRun {
     const e = s.ext;
     this.index = e.index; this.watch = e.watch; this.watches = e.watches; this.overtimeIdx = e.overtimeIdx;
     this.phase = e.phase; this.phaseLeft = e.phaseLeft; this.nightDone = e.nightDone; this.topside = e.topside;
-    this.metFired = e.metFired; this.ropeUsed = e.ropeUsed;
+    this.metFired = e.metFired;
     this.clock.restore(e.clock); this.clockLen = e.clockLen; this.lastCallSec = e.lastCallSec;
     this.pullCount = this.rules.unlimitedPulls ? Number.POSITIVE_INFINITY : e.pulls;
     this.pullsMax = e.pullsMax; this.watchPulls = e.watchPulls; this.boughtThisWatch = e.boughtThisWatch;
@@ -4242,7 +4150,6 @@ class Run implements DebtRun {
     this.discount = e.discount; this.nextDiscount = e.nextDiscount; this.elapsed = e.elapsed;
     this.maxWallet = e.maxWallet; this.biggest = e.biggest; this.rounds = e.rounds;
     this.rng.setState(e.rng);
-    this.overpays = (e.overpays ?? []).map((o) => ({ rarity: o.rarity, ids: [...o.ids], left: o.left }));
     this.coins = s.wallets[this.selfId] ?? this.rules.startWallet;
     this.charmBox.restore(this.selfId, s.charms[this.selfId] ?? []);
     this.living = s.alive[this.selfId] ?? true;
@@ -4263,8 +4170,10 @@ class Run implements DebtRun {
     this.houseWealth = typeof e.houseWealth === 'number' && e.houseWealth > 0 ? e.houseWealth : 0;
     this.obolMult = typeof e.obolMult === 'number' && e.obolMult > 0 ? e.obolMult : 1;
     this.hollowRefused = e.hollowRefused === true;
-    this.starter = restoredStarter(e.starter);
-    this.nightCards.restore(e.nightCards);
+    // Older saves' Night Card, Starter Draft and overpay picks are dropped: only `pantheon` is read (docs/BLESSINGS.md §6, B1).
+    this.pantheon.restore(e.pantheon);
+    const ld = e.lokiDread;
+    this.lokiDread = ld && Number.isFinite(ld.night) && Number.isFinite(ld.n) ? { night: ld.night, n: Math.max(0, ld.n) } : { night: 0, n: 0 };
     this.watchEv.restore(e.watchEvent);
     this.spotlight.restore(e.spotlight);
     this.tithe.restore(e.tithe);

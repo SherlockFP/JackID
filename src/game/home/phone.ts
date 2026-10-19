@@ -5,7 +5,7 @@
  *
  * Messages arrive during Watches only (shift phase 'play'). Every roll is a fresh stream, hashSeed(run seed, Night, Watch,
  * 'msg.<thread>'), so a seeded run and a bench replay get the same phone. A reply applies once; coins go through `run.spend`;
- * Harmony (spouse, 0..5, start 3) and Heat (Collector, 0..6, start 0) are clamped. Time is sim seconds from `tick(dt)`.
+ * Harmony (Ada's bond, 0..5, start 2) and Heat (Collector, 0..6, start 0) are clamped. Time is sim seconds from `tick(dt)`.
  *
  * The Night closes on the bed (`home:stage` 'sleep', Design pillar 7: one mechanic, many readings). Closing it costs one
  * Harmony when no spouse reply and no talk came that Night, and rolls the Night's dream from Harmony and calm (1 − dread):
@@ -18,6 +18,7 @@ import { createRng, hashSeed } from '@/core/rng';
 import type { HomePhoneApi, PhoneMessage, PhoneSave, PhoneThread } from './contract';
 import type { DebtRun } from '../run';
 import { advanceArc, SPOUSE_CARD_BEAT } from '../story/chapter';
+import { poolOf } from './ada';
 
 declare module '@/core/events' {
   interface GameEvents {
@@ -27,7 +28,7 @@ declare module '@/core/events' {
 }
 
 // ── rules (numbers from the spec; tune here, nowhere else) ────────────────────────────────────────────────────────────
-export const HARMONY_START = 3;
+export const HARMONY_START = 2;
 export const HARMONY_MAX = 5;
 export const HEAT_MAX = 6;
 /** Chance that a spouse message is planned for a Watch 1 or 2 (at most one per Night). */
@@ -111,7 +112,10 @@ export const COLLECTOR_VARIANTS = 3;
 /** Dream text variants per tier: keys `phone.dream.<tier>.<n>` (n = 1..DREAM_VARIANTS). */
 export const DREAM_VARIANTS = 3;
 
-const SPOUSE_BY_TEXT: ReadonlyMap<string, SpouseDef> = new Map([...SPOUSE_MESSAGES, ...CARD_MESSAGES].map((d) => [`phone.sp.${d.id}.t`, d]));
+const SPOUSE_BY_TEXT: ReadonlyMap<string, SpouseDef> = new Map([
+  ...[...SPOUSE_MESSAGES, ...CARD_MESSAGES].map((d): [string, SpouseDef] => [`phone.sp.${d.id}.t`, d]),
+  ...SPOUSE_MESSAGES.map((d): [string, SpouseDef] => [`phone.sp.${d.id}.x.t`, d]),   // the across pool (cards have one text for both)
+]);
 
 /** Coins a `send` reply costs for a Night's quota: a share of it, at least one coin. */
 export function coinCost(due: number, share: number): number {
@@ -328,15 +332,14 @@ export function createPhone(run: DebtRun): HomePhoneApi {
     return `${p.thread}:${p.night}:${p.watch + 1}:0`;
   }
 
-  // shortcut: always the home pool (`phone.sp.<id>.*`). The across pool (`phone.sp.<id>.x.*`, same reply kinds) is written; A2 picks it
-  // while adaPhase(night) is 'across' (before N5), and SPOUSE_BY_TEXT must then map the `.x.` text keys too.
   function deliverSpouse(p: Plan): void {
     const def = p.card ? CARD_MESSAGES[p.pick % CARD_MESSAGES.length] : SPOUSE_MESSAGES[p.pick % SPOUSE_MESSAGES.length];
     const cost = def.share ? coinCost(run.debt().due, def.share) : 0;
+    const pool = p.card ? '' : poolOf(p.night);   // N1-N4 she texts from across the hall; the card messages are one text for both
     push({
       id: msgId(p), thread: 'spouse', night: p.night, watch: p.watch + 1,
-      textKey: `phone.sp.${def.id}.t`, vars: { cost },
-      replies: def.replies.map((_, i) => `phone.sp.${def.id}.r${i}`),
+      textKey: `phone.sp.${def.id}${pool}.t`, vars: { cost },
+      replies: def.replies.map((_, i) => `phone.sp.${def.id}${pool}.r${i}`),
       read: false, answered: null,
     });
     st.spouseNight = p.night;
@@ -397,7 +400,7 @@ export function createPhone(run: DebtRun): HomePhoneApi {
     const n = r.int(1, DREAM_VARIANTS);
     const calm = 1 - clamp(run.dread(), 0, 1);
     const tier = dreamTier(st.harmony, calm, roll);
-    st.dream = { night, tier, key: `phone.dream.${tier}.${n}` };
+    st.dream = { night, tier, key: `phone.dream${tier === 'plain' ? '' : poolOf(night)}.${tier}.${n}` };   // plain dreams are shared
     if (tier === 'good') run.buffs.add('blessed', { source: { kind: 'phone', id: 'spouse' } });
     else if (tier === 'cold') run.buffs.add('restless', { source: { kind: 'phone', id: 'spouse' } });
   }
@@ -493,8 +496,8 @@ export function createPhone(run: DebtRun): HomePhoneApi {
       const h = st.harmony;
       const night = run.night();
       const lines: Array<{ key: string; vars?: Record<string, string | number> }> = [
-        { key: `phone.talk.h${h}.1` },
-        { key: `phone.talk.h${h}.2` },
+        { key: `phone.talk${poolOf(night)}.h${h}.1` },
+        { key: `phone.talk${poolOf(night)}.h${h}.2` },
       ];
       st.talkNight = night;
       // warmth only: +1 Harmony at most once a Night, and only when the Night was paid with a real margin
