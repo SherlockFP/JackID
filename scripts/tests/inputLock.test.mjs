@@ -103,3 +103,21 @@ test('a cutscene that starts under a panel and ends after it closes leaves input
   endCutsceneMode(input, 'walk');
   assert.equal(input.mode, 'machine');
 });
+
+test('look filter: first move after a lock and any single spike over 25% of the screen width (500 px floor) are dropped', async () => {
+  const { win, input } = rig({ allow: { v: true } });
+  win.innerWidth = 4000;
+  const move = (dx, dy) => { const e = new Event('mousemove'); e.movementX = dx; e.movementY = dy; win.dispatchEvent(e); };
+  input.setMode('walk');
+  await input.requestLock();
+  assert.equal(input.locked, true);
+  move(40, 10);                                   // the stray first event: ignored
+  assert.equal(input.pendDx, 0);
+  move(30, -5);                                   // normal move
+  assert.deepEqual([input.pendDx, input.pendDy], [30, -5]);
+  move(249, 0);                                   // a fast flick under 25% of 4000px still counts
+  assert.equal(input.pendDx, 279);
+  move(1000, 0);                                  // a spike: dropped
+  move(0, -1900);
+  assert.deepEqual([input.pendDx, input.pendDy], [279, -5]);
+});

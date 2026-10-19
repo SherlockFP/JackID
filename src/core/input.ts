@@ -125,7 +125,13 @@ const TAP_MOVE_PX = 4;            // pointer travel (px) above which an RMB hold
 const SEAT_REPLAY_MS = 1500;      // a press buffered during the glide-in is replayed only if younger than this
 const WHEEL_MOUSE_PX = 50;        // |deltaY| at or above this = a real mouse notch (fires immediately)
 const WHEEL_STEP_PX = 100;        // trackpad accumulation per notch
-const MAX_LOOK_PX = 500;          // Chromium occasionally reports a huge movementX when the lock toggles
+const MAX_LOOK_FRAC = 0.25;       // Chromium occasionally reports a huge movementX when the lock toggles: drop any one event past this share of the screen width
+const MIN_LOOK_CAP = 500;         // never below the old fixed cap: a small window must not eat a real 125 Hz flick
+/** True when one mouse event's delta is a believable look move (not a lock-toggle spike). */
+function sane(dx: number, dy: number, screenW: number): boolean {
+  const lim = Math.max(MIN_LOOK_CAP, (screenW > 0 ? screenW : 2000) * MAX_LOOK_FRAC);
+  return Math.abs(dx) < lim && Math.abs(dy) < lim;
+}
 const EMPTY: readonly string[] = [];
 const NO_MODS: Mods = { shift: false, ctrl: false, alt: false };
 const CLICKABLE = 'button,a[href],summary,[role=button],[role=checkbox],[role=switch],[role=tab],[role=option],input[type=checkbox],input[type=radio],input[type=button],input[type=submit]';
@@ -169,6 +175,7 @@ class InputImpl implements InputExt {
   private sink: MachineSink | null = null;
   private listeners = new Map<string, Set<(down: boolean) => void>>();
   private expectUnlock = false;
+  private skipFirstMove = false;   // set on lock acquire, cleared by the first mousemove after it
   private lockPending: Promise<boolean> | null = null;
   private veil = false;
   private rmbT = -1;                       // RMB press time (ms), −1 = up
@@ -330,6 +337,7 @@ class InputImpl implements InputExt {
       else if (this.mode === 'walk' || this.mode === 'cutscene') this.pushPause();   // the browser ate Esc
     }
     if (this.locked) {
+      if (!was) this.skipFirstMove = true;
       this.setVeil(false);
       if (this.dragLook) { this.dragLook = false; this.dragging = false; this.applyCursor(this.mode); }
     }
@@ -419,13 +427,14 @@ class InputImpl implements InputExt {
     const mode = this.mode;
     if (Math.abs(e.movementX) + Math.abs(e.movementY) >= 3) this.setDevice('kb');
     if (this.locked) {
-      if (Math.abs(e.movementX) < MAX_LOOK_PX && Math.abs(e.movementY) < MAX_LOOK_PX) { this.pendDx += e.movementX; this.pendDy += e.movementY; }
+      if (this.skipFirstMove) { this.skipFirstMove = false; return; }   // the first event after a (re)lock carries the stray delta
+      if (sane(e.movementX, e.movementY, window.innerWidth)) { this.pendDx += e.movementX; this.pendDy += e.movementY; }
       return;
     }
     this.updateNdc(e);
     if (this.phys.has('Mouse2')) this.rmbMoved = Math.max(this.rmbMoved, Math.hypot(e.clientX - this.rmbX, e.clientY - this.rmbY));
     if (mode === 'walk' && this.dragging) {                          // drag-to-look (unlocked fallback)
-      if (Math.abs(e.movementX) < MAX_LOOK_PX && Math.abs(e.movementY) < MAX_LOOK_PX) { this.pendDx += e.movementX; this.pendDy += e.movementY; }
+      if (sane(e.movementX, e.movementY, window.innerWidth)) { this.pendDx += e.movementX; this.pendDy += e.movementY; }
       return;
     }
     if (mode === 'machine') {
