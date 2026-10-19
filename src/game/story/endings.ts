@@ -91,16 +91,17 @@ const RULES: ReadonlyArray<readonly [EndingId, (f: EndingFacts) => boolean]> = [
   ['kept_pair', (f) => clean(f) && f.kitchen === 'pair'],
   // shortcut: a clean win with no kitchen on record reads as COLD KITCHEN; the N8 flow always plays the kitchen first
   ['cold_kitchen', (f) => clean(f)],
-  // below the two burns: a clean Wager then the machine still plays its full scene
+  // below the two burns: a clean Wager then the machine still plays its full scene. ALONE: the machine won with nobody left at home
+  // (Harmony 0); its old route (a paid Night 8 that ends without the machine: STAY UP is gone) stays for old saves and the preview
+  ['alone', (f) => (f.lastGame === 'win' && f.harmony <= 0) || (f.lastGame === null && !f.descended && (f.paid || f.wager === 'win'))],
   ['last_game', (f) => f.lastGame === 'win'],
   ['descend', (f) => f.descended],
-  ['alone', (f) => f.paid || f.wager === 'win'],
 ];
 /** One set of facts on top of {@link freshFacts} that reaches each ending (the dev preview `previewEnding` and the tests). */
 export const ENDING_WITNESS: Readonly<Record<EndingId, Partial<EndingFacts>>> = {
   kept_pair: { night: 8, paid: true, kitchen: 'pair', pairs: 3, wager: 'win' },
   cold_kitchen: { night: 8, paid: true, kitchen: 'win', wager: 'win' },
-  alone: { night: 8, paid: true },
+  alone: { night: 8, paid: true, lastGame: 'win', harmony: 0 },
   chair: { night: 8, paid: true, kitchen: 'win', wager: 'lose' },
   kept: { night: 7, kitchen: 'lose' },
   paid_in_full: { night: 7, deal: 1 },

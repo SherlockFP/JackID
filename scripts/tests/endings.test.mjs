@@ -69,11 +69,11 @@ test('every routing branch', () => {
 });
 
 test('the priority order is the documented one, and each rule beats every later rule', () => {
-  assert.deepEqual([...E.PRIORITY], ['he_came_home', 'paid_in_full', 'fall', 'kept', 'chair', 'kept_pair', 'cold_kitchen', 'last_game', 'descend', 'alone']);
+  assert.deepEqual([...E.PRIORITY], ['he_came_home', 'paid_in_full', 'fall', 'kept', 'chair', 'kept_pair', 'cold_kitchen', 'alone', 'last_game', 'descend']);
   assert.deepEqual([...E.PRIORITY].sort(), [...E.ENDING_IDS].sort(), 'every ending is routable, once');
   const witness = {
     he_came_home: { cameHome: true }, paid_in_full: { deal: 1 }, fall: { fell: true }, kept: { kitchen: 'lose' }, chair: { wager: 'lose' },
-    kept_pair: { kitchen: 'pair', wager: 'win' }, cold_kitchen: { kitchen: 'win', wager: 'win' }, last_game: { lastGame: 'win' }, descend: { descended: true }, alone: { paid: true },
+    kept_pair: { kitchen: 'pair', wager: 'win' }, cold_kitchen: { kitchen: 'win', wager: 'win' }, last_game: { lastGame: 'win' }, descend: { descended: true }, alone: { lastGame: 'win', harmony: 0 },
   };
   for (const [id, o] of Object.entries(witness)) assert.equal(route(o), id, `${id} alone`);
   for (let i = 0; i < E.PRIORITY.length; i++) {

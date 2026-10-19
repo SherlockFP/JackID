@@ -34,6 +34,8 @@ declare module '@/core/events' {
   interface GameEvents {
     /** The luck meter moved (wave 73 re-tune). `why` names the source event; the HUD toasts it. */
     'luck:change': LuckChange;
+    /** The Nazar Boncuğu shield took a star loss whole (the HUD says so: otherwise nothing moves on screen). */
+    'luck:shield': Record<string, never>;
   }
 }
 
@@ -85,7 +87,7 @@ export function createLuckMeter(run: LuckRunPort, touch: () => void = () => {}):
     if (disposed || d === 0) return;
     tuneIn();   // a charm bought or sold changes the numbers without a boon: read them fresh before every move
     // Nazar Boncuğu: the first loss of a Night that would really cost a star is blocked whole (one that cannot move the meter is not spent on)
-    if (d < 0 && tune.shield > 0 && !night.shielded && clampStars(stars + d) !== stars) { night.shielded = true; return; }
+    if (d < 0 && tune.shield > 0 && !night.shielded && clampStars(stars + d) !== stars) { night.shielded = true; bus.emit('luck:shield', {}); return; }
     const before = stars;
     stars = clampStars(stars + d);
     if (stars === before) return;

@@ -28,6 +28,7 @@ export default {
     'why.well': 'the Well',
     'why.titheMet': 'a shift goal met',
     'why.bigWin': 'a big win',
+    'shield': 'Nazar Boncuğu kept a star.',
   },
   tr: {
     'label': 'ŞANS',
@@ -39,6 +40,7 @@ export default {
     'why.overshoot': 'kota fazlası',
     'why.failed': 'kota tutmadı',
     'why.tithe': 'vergi ödenmedi',
+    'shield': 'Nazar Boncuğu bir yıldızı korudu.',
     'why.loan': 'borç alındı',
     'why.time': 'geç verilen cevap',
     'why.deal': 'Tahsildar ile anlaşma',

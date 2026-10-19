@@ -318,6 +318,7 @@ export function createHud(): Hud {
     loan: 'luck.why.loan', time: 'luck.why.time', deal: 'luck.why.deal', thin: 'luck.why.thin', quiet: 'luck.why.quiet',
     titheMet: 'luck.why.titheMet', bigWin: 'luck.why.bigWin',
   };
+  on('luck:shield', () => { if (app.run && revealed(nightNow(), 'luck')) ui().toast(t('luck.shield'), 'good', 3.5); });
   on('luck:change', ({ delta, why }) => {
     if (!app.run || !revealed(nightNow(), 'luck')) return;
     const n = delta > 0 ? '+1' : '-1';
