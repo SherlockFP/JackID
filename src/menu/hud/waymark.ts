@@ -57,9 +57,9 @@ export function placeMark(c: { x: number; y: number; z: number }, p00: number, p
 export interface Box { x0: number; y0: number; x1: number; y1: number }
 
 /**
- * Keeps the diamond and its distance label off the HUD's corner panels (the wallet column top-left, the quota stack top-right). A mark that
- * lands on a panel slides out the short way: sideways toward the screen centre, or down under it. An edge arrow (off screen) only slides
- * down, so it stays on the edge. `px` is the UI pixel scale: the diamond's half width and its reach above and (with the label) below the point.
+ * Keeps the diamond and its distance label off the HUD's corner panels (the wallet column top-left, the quota stack top-right) and the
+ * subtitle box at the bottom. A mark that lands on a panel slides out the short way: sideways toward the screen centre, or down under it
+ * (up over a bottom panel). An edge arrow (off screen) only slides down, so it stays on the edge. `px` is the UI pixel scale: the diamond's half width and its reach above and (with the label) below the point.
  */
 export function clearOfPanels(m: Mark, panels: readonly Box[], px: number, w: number, h: number): Mark {
   const hw = 12 * px, up = 10 * px, down = 7 * px + 20;
@@ -67,7 +67,8 @@ export function clearOfPanels(m: Mark, panels: readonly Box[], px: number, w: nu
   for (const b of panels) {
     if (x + hw <= b.x0 || x - hw >= b.x1 || y + down <= b.y0 || y - up >= b.y1) continue;
     const toX = x < w / 2 ? b.x1 + hw : b.x0 - hw;
-    if (m.on && Math.abs(toX - x) <= b.y1 + up - y) x = toX; else y = b.y1 + up;
+    if (b.y0 > h / 2) y = b.y0 - down - 8 * px;   // a bottom panel (the subtitle box): up and over it with the label clear of its speaker line, never down into it
+    else if (m.on && Math.abs(toX - x) <= b.y1 + up - y) x = toX; else y = b.y1 + up;
   }
   return { ...m, x, y: Math.min(y, h - down) };
 }
@@ -93,11 +94,11 @@ export function waymarkWanted(night: number, enabled: boolean, stalled: boolean)
   return enabled && (objectiveShown(night) || stalled);
 }
 
-/** The visible HUD panels of the two top corners, in the overlay's frame (a hidden panel has no size and is skipped). */
+/** The visible HUD panels of the two top corners and the spoken line's box (`.on`), in the overlay's frame (a hidden panel has no size and is skipped). */
 function cornerPanels(root: HTMLElement): Box[] {
   const o = root.getBoundingClientRect();
   const out: Box[] = [];
-  for (const el of root.querySelectorAll<HTMLElement>('.hud-tl > *, .hud-rs > *')) {
+  for (const el of root.querySelectorAll<HTMLElement>('.hud-tl > *, .hud-rs > *, .px-subtitle.on')) {
     const r = el.getBoundingClientRect();
     if (r.width > 0 && r.height > 0) out.push({ x0: r.left - o.left, y0: r.top - o.top, x1: r.right - o.left, y1: r.bottom - o.top });
   }

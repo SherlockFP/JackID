@@ -58,6 +58,9 @@ test('clearOfPanels: a mark under a corner panel slides out of it; an edge arrow
   const l = W.clearOfPanels({ x: 38, y: 150, on: false, angle: -Math.PI / 2 }, [left, right], px, w, h);
   assert.ok(l.x === 38 && l.y >= left.y1 + 10 * px - 1e-6, `the left column too, ${JSON.stringify(l)}`);
   assert.ok(W.clearOfPanels({ x: 100, y: 1070, on: false, angle: 0 }, [], px, w, h).y <= h - 41, 'never below the screen');
+  const sub = { x0: 600, y0: 900, x1: 1320, y1: 1000 };   // the subtitle box
+  const over = W.clearOfPanels({ x: 900, y: 930, on: true, angle: 0 }, [sub], px, w, h);
+  assert.ok(over.x === 900 && over.y + 7 * px + 20 <= sub.y0 + 1e-6, `a mark on the subtitle box rises above it, ${JSON.stringify(over)}`);
 });
 
 test('stall clock: 20 s without 1 m of progress latches; progress resets it; a new spot restarts it', () => {

@@ -1449,9 +1449,8 @@ export function createHud(): Hud {
   function updateEvening(): void {
     const r = app.run;
     const stage = (r as (typeof r & { homeStage?: () => string | null }) | null)?.homeStage?.() ?? null;
-    // the prologue (wave 72) is in the apartment before Night 1: the pit stack gives way to the card here too
-    const pro = (r as (typeof r & { prologueOn?: () => boolean }) | null)?.prologueOn?.() === true;
-    const at = !!r && (stage !== null || pro);
+    // not the prologue: its flat and its walk out are the morning, not the Evening (no stage is set there)
+    const at = !!r && stage !== null;
     setCls(root, 'evening-on', at);
     if (!r || !at) return;
     need('harmony');
