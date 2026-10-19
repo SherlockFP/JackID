@@ -28,10 +28,11 @@ test('the Turkish Night plan speaks of Nöbet, not the V abbreviation', () => {
   assert.ok(tr.ends.startsWith('NÖBET {w}/{n}'));
 });
 
-test('the Turkish spotlight chip says SPOTLIGHT, not SPOT', () => {
+test('the Turkish spotlight chip is plain Turkish (GÖZDE), not the English SPOTLIGHT', () => {
   const tr = SPOT.default.tr;
   for (const k of ['chip', 'chip.one', 'chip.other']) {
-    assert.ok(tr[k].startsWith('SPOTLIGHT: '), k);
+    assert.ok(tr[k].startsWith('GÖZDE: '), k);
+    assert.ok(!/SPOTLIGHT/.test(tr[k]), k);
     assert.ok(!/\bSPOT:/.test(tr[k]), k);
   }
 });
