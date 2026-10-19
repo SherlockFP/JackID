@@ -319,7 +319,7 @@ export async function runTour(ctx, h) {
   await section('night 2', async () => {
     ctx.tourHooks = {
       async afterWalkOut() {                                      // the lift ride down, with Loki's line
-        await h.sleep(900);
+        if (!(await h.waitInCar(cdp, 700))) await h.sleep(900);   // shot inside the car, as Night 1's (a fixed wait landed before the teleport)
         await snap('night2-lift', `Boolean(document.querySelector('.px-subtitle.on')) || 'no line on screen'`, { tries: 4 });
       },
     };

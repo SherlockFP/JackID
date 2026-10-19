@@ -55,6 +55,7 @@ import { Router, type SeatPhase } from './sys/router';
 import { SlotRec } from './sys/slot';
 import { newLook, ZoneMap } from './sys/zones';
 import { homeRoom } from './home';
+import { SeatHud } from '@/machines/_base/seatHud';
 
 declare module '@/core/events' {
   interface GameEvents {
@@ -341,6 +342,8 @@ export function createWorld(opts: WorldBuildOpts, camera: THREE.Camera): WorldHo
       const pid = m.seats.find((p): p is PlayerId => p !== null);
       return pid === undefined ? '' : t('common.occupied', { name: m.ctx.net.playerName(pid) });
     }
+    // Dawn / the Mola: the seat is still free (the seat HUD says FLOOR CLOSED), so the prompt says so before the walk up.
+    if (m.def.category !== 'system' && !SeatHud.floorOpen()) return t('world.floorClosed');
     if (m.def.maxBet <= 0) return '';
     // The run's real limit (Night 1 stake cap, the Night's stake index), not the catalogue range.
     const lim = runOf().betLimits(m.def.id, m.id);

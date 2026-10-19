@@ -101,6 +101,7 @@ import './bountyBoard.test.mjs';
 import './viewmodel.test.mjs';
 import './pantheon.test.mjs';
 import './pantheon.run.test.mjs';
+import './quota.preview.test.mjs';
 import './joker.test.mjs';
 import './joker.run.test.mjs';
 import './joker.hand.test.mjs';

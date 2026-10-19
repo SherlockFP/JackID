@@ -40,5 +40,5 @@ body:has(.pm-table) .cap-hint { display: none !important; }
 .pm-burning .pm-call { font-size: calc(15 * var(--u)); color: var(--shine); min-height: 1.1em; margin-top: calc(2 * var(--u)); }
 .pm-burning .pm-lines { min-height: 3.2em; }
 .pm-burning .pm-keys button { font-size: calc(11 * var(--u)); }
-.pm-burning .pm-burn { color: var(--amber); margin-top: calc(3 * var(--u)); }
+.pm-burning .pm-burn { color: var(--amber); margin-top: calc(3 * var(--u)); font-size: calc(10 * var(--u)); line-height: 1.15; }   /* it carries the rule: four short lines, not six */
 .pm-burning.final { box-shadow: inset 0 0 0 calc(2 * var(--u)) var(--signal), 0 0 0 var(--u) var(--void); }

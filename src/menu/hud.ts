@@ -32,6 +32,7 @@ import { STAKE_PRESET_KEYS } from '@/machines/_base/stakePresets';
 import type { BankView, DebtRun, NextQuotaPreview, OvershootView } from '@/game/run';
 import type { BrokeHelp, BrokeStep } from '@/game/rescue';
 import { inUnderneath } from '@/world/hollow';
+import { LIFT_DOOR } from '@/world/layout';
 import { WIN_TIERS, type BuffState, type CharmState, type WinTier } from '@/game/types';
 import type { InstanceId, PlayerId } from '@/core/types';
 import { initial, mmss, Roller, signed } from './hud/fmt';
@@ -362,7 +363,7 @@ export function createHud(): Hud {
     if (run && sealsRun !== run) { sealsRun = run; sealsKey = -1; }
     const marks = run?.duel?.soulMarks();   // absent on bench and online runs: no strip
     sealsEl.classList.toggle('hidden', marks === undefined || run?.mode === 'free');
-    if (marks !== undefined && run?.mode !== 'free') need('seal');
+    if (marks !== undefined && run?.mode !== 'free' && !seated) need('seal');   // seated, the seal row is hidden: no toast about it
     if (marks === undefined || marks === sealsKey) return;
     sealsKey = marks;
     sealCells(marks, SOUL_MARKS_PER_RUN).forEach((lit, i) => setCls(sealPips[i]!, 'lit', lit));
@@ -1092,7 +1093,7 @@ export function createHud(): Hud {
     const next = r && (r.window() === 'dawn' || nightPaid(r))
       ? (r as (typeof r & { nextQuotaPreview?: () => NextQuotaPreview | null }) | null)?.nextQuotaPreview?.() ?? null
       : null;
-    if (r && next && bank) { showNextNight(next, bank.pocket, bank.balance); return; }
+    if (r && next && bank) { showNextNight(next, bank.pocket, bank.balance, !!(r as typeof r & { boonOffer?: () => unknown }).boonOffer?.()); return; }
     const show = !!r && !!q && !!seg && !!bank && q.due > 0 && r.window() === 'watch' && !nightPaid(r);
     setCls(plan, 'hidden', !show);
     // The broke line leaves with the plan: home, Dawn, a paid Night, a Night change. planKey resets so it redraws when it returns.
@@ -1186,11 +1187,11 @@ export function createHud(): Hud {
    * from tonight's (×k). It turns red when the quota is above what the player holds: pocket + 2 × bank. A projected Dawn (not yet
    * paid) reads the same way. Written on change only.
    */
-  function showNextNight(next: NextQuotaPreview, pocketRaw: number, bankRaw: number): void {
+  function showNextNight(next: NextQuotaPreview, pocketRaw: number, bankRaw: number, offerOpen: boolean): void {
     const pocket = Math.max(0, Math.floor(pocketRaw));
     const banked = Math.max(0, Math.floor(bankRaw));
     const red = next.due > pocket + 2 * banked;
-    const key = `N|${next.night}|${next.due}|${next.k}|${red}|${next.projected}`;
+    const key = `N|${next.night}|${next.due}|${next.k}|${red}|${next.projected}|${offerOpen}`;
     setCls(plan, 'hidden', false);
     if (key === planKey) return;
     planKey = key;
@@ -1199,7 +1200,8 @@ export function createHud(): Hud {
     setCls(plan, 'gap', red);
     setCls(planNext, 'hidden', false);
     planNext.style.color = red ? '#ff5a4a' : '';
-    setText(planNext, t('hud.plan.night', { q: money(next.due), k }));
+    // an open boon offer can still move it (a quota boon): the figure reads as provisional until the pick
+    setText(planNext, t(offerOpen ? 'hud.plan.nightSoft' : 'hud.plan.night', { q: money(next.due), k }));
     for (const el of [planBank, planOver, planPocket, planBroke, planEnds, planTithe, planUnpaid]) setCls(el, 'hidden', true);
   }
 
@@ -1457,11 +1459,21 @@ export function createHud(): Hud {
     heatPips.forEach((p, i) => setCls(p, 'on', i < heat));
   }
 
+  /**
+   * The lift car (the niche behind the gate, `LIFT_DOOR`): every ride, up or down, stands the player in it. The view is the car, so the
+   * pit's secondary stack steps aside (`.in-car` on #ui, evening.css) and the pocket, the quota and the lines stay.
+   */
+  function updateCar(): void {
+    const p = app.player?.pos;
+    host?.classList.toggle('in-car', !!p && Math.abs(p.x - LIFT_DOOR.x) < 0.8 && p.z < LIFT_DOOR.z - 0.3 && p.z > LIFT_DOOR.z - 1.6);
+  }
+
   return {
     el: root,
     update(dt: number): void {
       updateWallet(dt);
       updateClock(dt);
+      updateCar();
       updateEvening();
       updateQuota(dt);
       luckRender();
@@ -1506,7 +1518,7 @@ export function createHud(): Hud {
       SeatHud.stakeSource = () => ({ self: -1, pocket: 0 });
       host?.style.removeProperty('--hud-top-h');
       host?.style.removeProperty('--hud-rs-b');
-      host?.classList.remove('seated', 'seat-focus');
+      host?.classList.remove('seated', 'seat-focus', 'in-car');
       root.remove();
     },
   };

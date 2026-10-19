@@ -96,6 +96,13 @@
 /* SCREEN SEAT (seatHud.ts `screenSeat`: the bank terminal, the cashier): the machine's own screen carries the figures, so the numbers row is not drawn again under it. */
 .seat-hud.screen .shud-nums { display: none !important; }
 
+/* SEATED TOASTS (ui.css anchors the column under the HUD's right stack, --hud-rs-b). That stack slides down by the letterbox bars
+   (hud.css translateY(--lb x --bar-h), after a cutscene or a talk) but the column did not, so a term explainer shown as the bars
+   leave landed on the quota and goal strip. The column takes the same shift, and its text drops to HUD size so a two-line
+   explainer stays small. `body` lifts the specificity over ui.css, whatever the bundle order. */
+body .px-root.seated .px-toasts { transform: translateY(calc(var(--lb, 0) * var(--bar-h, 0px))); }
+body .px-root.seated .px-toast { font-size: max(14px, calc(var(--u) * 11)); }
+
 /* A duel overlay is open (Promise / Burning Wager, game/duels/promise: .pm-table): its own buttons own keys 1 to 3, so the seated machine's
    key bar, big button and coach line step aside (the same pattern as the .cap-hint rule in promise.css). They return when the panel closes. */
 body:has(.pm-table) .seat-hud .shud-ctrl,
