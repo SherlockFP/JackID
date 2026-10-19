@@ -13,7 +13,7 @@ const MAP = { isTexture: true };
 
 test('rows are unique and use only known letters', () => {
   assert.equal(new Set(w.ZOO_ROWS).size, w.ZOO_ROWS.length);
-  for (const r of w.ZOO_ROWS) assert.match(r, /^[LmevdtaAFSNCicbkn]*$/, r);
+  for (const r of w.ZOO_ROWS) assert.match(r, /^[LmevdtaAFSNCicbkng]*$/, r);
 });
 
 test('letters map to material options', () => {
@@ -44,4 +44,10 @@ test('translucent, alpha test, no fog, no snap, scroll, and patched rows', () =>
 test('the mirrored light-pool size matches the world pool', async () => {
   const { POOL_SIZE } = await load('src/world/sys/lightPool.ts');
   assert.equal(w.POOL_LIGHTS, POOL_SIZE);
+});
+
+test('the ghost rows: Loki\'s body, outfit and marks are warmed, and a ghost row is a patched (unique) material', () => {
+  for (const r of ['Lvbkng', 'Ldng', 'Lvdng', 'Lvng', 'Lmvng', 'g']) assert.ok(w.ZOO_ROWS.includes(r), r);
+  assert.equal(w.zooOpts('g', MAP).unique, true);
+  assert.equal(w.zooOpts('g', MAP).lit, false, 'his marks are unlit');
 });

@@ -448,11 +448,12 @@ export class Joker {
   /**
    * He speaks. `ask` is the card key (Ink +1, +10 points of truth); a tip is free but limited per Watch; `onHisWord` is the once-a-run
    * answer that is always true and has no tell. Returns null when he has nothing to say (no tips left, the kitchen below Ink 8, no
-   * entry for the fact, he is home), and then nothing changes.
+   * entry for the fact, he is home), and then nothing changes. `free`: a tip that does not count against the Watch (the Burning Wager,
+   * where he speaks before every throw of the Champion's).
    */
-  whisper(req: { ctx: WhisperCtx; ask?: boolean; fact?: string; onHisWord?: boolean; exclude?: readonly string[] }): WhisperOut | null {
+  whisper(req: { ctx: WhisperCtx; ask?: boolean; fact?: string; onHisWord?: boolean; exclude?: readonly string[]; free?: boolean }): WhisperOut | null {
     const ask = req.ask === true;
-    if (this.cameHome || (!ask && this.tips >= tipsPerWatch(this.ink))) return null;
+    if (this.cameHome || (!ask && !req.free && this.tips >= tipsPerWatch(this.ink))) return null;
     const r = createRng(hashSeed(this.seed, this.night, this.watch, 'joker', this.n));
     const def = pickWhisper(r.fork('pick'), req.ctx, { fact: req.fact, ink: this.ink, exclude: req.exclude });
     if (!def) return null;
@@ -464,7 +465,7 @@ export class Joker {
     this.record(w, events);
     if (onHisWord) this.wordSpent = true;
     if (ask) this.shiftInk(1, 'ask', events);
-    else this.tips += 1;
+    else if (!req.free) this.tips += 1;
     return { ...w, events };
   }
 

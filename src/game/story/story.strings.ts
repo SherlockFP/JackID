@@ -29,6 +29,7 @@ export default {
     'speaker.clerk': 'THE CLERK',
     'speaker.selim': 'SELIM',
     'speaker.loki': 'LOKI',
+    'speaker.compere': 'THE COMPERE',
     // THE OWNERS (docs/BLESSINGS.md §4): Night 2's first Mola at the bar, Selim and Loki name the gods (run.ts godsBeat)
     'gods.1': 'See the marks on your card? The owners. Old guests pray to them.',
     'gods.2': 'Pick one, kardeş. They keep count either way.',
@@ -131,6 +132,7 @@ export default {
     'speaker.clerk': 'KATİP',
     'speaker.selim': 'SELİM',
     'speaker.loki': 'LOKİ',
+    'speaker.compere': 'SUNUCU',
     'gods.1': 'Kartındaki işaretleri gördün mü? Sahipler. Eski müşteriler onlara dua eder.',
     'gods.2': 'Birini seç, kardeş. Nasılsa sayıyorlar.',
     'gods.3': 'Tanrı mı? İkisiyle oturdum. Bahşişleri berbat.',

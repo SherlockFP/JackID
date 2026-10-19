@@ -16,7 +16,7 @@ export const TOUR_SHOTS = [
   'bigone-coach', 'bigone-spin', 'bigone-win', 'bank-booth', 'bank-deposit', 'cashier', 'coin-trick-r', 'coin-trick-q',
   'last-call', 'mola-closed', 'dawn-dark', 'boon-offer', 'boon-picked', 'lift-up',
   'walk-street', 'walk-corridor', 'walk-your-door', 'evening', 'chapter-title', 'pause-card', 'journal-plan', 'phone-inbox',
-  'konsol', 'achievements', 'night2-lift', 'night2-loki',
+  'konsol', 'achievements', 'night2-lift', 'night2-loki', 'burning-wager',
 ];
 const MIN_MEAN = 1.5;   // mean brightness (0-255) under this is a black frame
 
@@ -333,6 +333,16 @@ export async function runTour(ctx, h) {
     await h.pressKey(cdp, 'KeyO', 80);                            // ask Loki
     await h.sleep(900);
     await snap('night2-loki', `Boolean(document.querySelector('.px-toast-loki, .toast-loki, [class*=loki]')) || 'no Loki line on screen'`);
+  });
+
+  // ── THE BURNING WAGER, opened early (DEV): the Night 8 table on the stage, the board and Loki behind the Champion's chair ──
+  await section('burning wager', async () => {
+    const r = await step('duel:burning');
+    if (!r.ok) throw new Error(r.reason ?? 'duel:burning failed');
+    await step('play:Space:1200');                                // a hold skips the sit-down scene
+    await waitReal(async () => (await h.evaluate(cdp, 'Boolean(document.querySelector(".pm-burning"))')) === true, 20000, 'the Burning Wager board');
+    await h.sleep(1800);
+    await snap('burning-wager', "Boolean(document.querySelector('.pm-burning')) || 'no Burning Wager board'");
   });
 
   return finish();

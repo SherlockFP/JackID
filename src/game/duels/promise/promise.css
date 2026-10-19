@@ -25,3 +25,20 @@ body:has(.pm-table) .cap-hint { display: none !important; }
 .pm-keys button:hover:not(:disabled) { box-shadow: inset 0 0 0 var(--u) var(--amber); }
 .pm-keys button:disabled { opacity: 0.35; cursor: default; }
 .pm-hint { margin-top: calc(4 * var(--u)); opacity: 0.6; }
+/* THE BURNING WAGER (burning.ts): the same panel as a tall board on the left, so the table, the Champion and the figure behind him stay
+   in view. Body font for the running text (more words a line); brass edge, red at match point. */
+.pm-table.pm-burning {
+  left: calc(8 * var(--u)); top: calc(22 * var(--u)); bottom: auto; transform: none; width: min(44%, calc(150 * var(--u)));
+  font-family: var(--f-body); font-size: calc(12 * var(--u)); line-height: 1.05;
+  box-shadow: inset 0 0 0 calc(2 * var(--u)) var(--brass), 0 0 0 var(--u) var(--void);
+}
+.pm-burning .pm-title { font-family: var(--f-head); font-size: var(--fh); }
+/* the stake under the title, in the body font (the head font would take five lines here) */
+.pm-burning .pm-title > span:last-child { flex-basis: 100%; text-align: left; font-family: var(--f-body); font-size: calc(12 * var(--u)); color: var(--bone); }
+.pm-burning .pm-score { font-size: calc(19 * var(--u)); color: var(--paper); margin: calc(5 * var(--u)) 0 calc(2 * var(--u)); }
+.pm-burning .pm-mp { font-family: var(--f-head); font-size: var(--fh); color: var(--coral); letter-spacing: 0.2em; min-height: 1.3em; margin-top: calc(3 * var(--u)); }
+.pm-burning .pm-call { font-size: calc(15 * var(--u)); color: var(--shine); min-height: 1.1em; margin-top: calc(2 * var(--u)); }
+.pm-burning .pm-lines { min-height: 3.2em; }
+.pm-burning .pm-keys button { font-size: calc(11 * var(--u)); }
+.pm-burning .pm-burn { color: var(--amber); margin-top: calc(3 * var(--u)); }
+.pm-burning.final { box-shadow: inset 0 0 0 calc(2 * var(--u)) var(--signal), 0 0 0 var(--u) var(--void); }

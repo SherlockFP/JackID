@@ -311,16 +311,17 @@ describe('the run', () => {
   const paidDawn = (run) => { run.debtPaid = run.quota.due; run.syncQuota(); run.phase = 'collection'; run.dawn(); };
   const at = (night, seed) => { const run = RUN.createRun({ seed, mode: 'debt', home: true }); run.index = night - 1; return run; };
   const game = (wager, pairs = 0, you = 0) => ({ left: false, wager, pairs, cracks: { you, ada: 0 } });
-  /** Plays the N8 kitchen wager in the Evening that opens Night 8, then Night 8 paid and the lift up. */
-  function finale(kitchen, seed) {
+  /** Plays the N8 kitchen wager in the Evening that opens Night 8, then Night 8 paid and the Burning Wager (won clean by default). */
+  function finale(kitchen, seed, wager = { wager: 'win', cracks: 0 }) {
     const run = at(7, seed);
     run.kitchenDone(game(kitchen, kitchen === 'pair' ? 3 : 0));
     run.index = 7;
     paidDawn(run);
     assert.equal(run.topsideOpen, true);
+    assert.equal(run.wagerDue(), true, 'the paid Night 8 Dawn opens the Burning Wager');
     const ends = [];
     const off = EV.bus.on('run:end', ({ summary }) => ends.push(summary));
-    assert.equal(run.stayUp(), true);
+    run.burningWager(wager);
     off();
     run.dispose();
     return { rec: run.endingRecord(), summary: ends[0] };
@@ -342,6 +343,20 @@ describe('the run', () => {
     run.stayUp();
     assert.equal(run.endingRecord().id, 'alone', 'no kitchen on record: the lift does not stand in for the Wager');
     run.dispose();
+  });
+
+  test('the lift no longer stands in for the Wager: a kitchen on record and STAY UP is ALONE; a cracked win is ALONE; a loss is THE CHAIR', () => {
+    const run = at(7, 9109);
+    run.kitchenDone(game('pair', 3));
+    run.index = 7;
+    paidDawn(run);
+    run.stayUp();
+    assert.equal(run.endingRecord().id, 'alone');
+    run.dispose();
+    assert.equal(finale('pair', 9110, { wager: 'win', cracks: 1 }).rec.id, 'alone');
+    const chair = finale('win', 9111, { wager: 'lose', cracks: 0 });
+    assert.equal(chair.rec.id, 'chair');
+    assert.equal(chair.summary.ending, 'chair');
   });
 
   test('losing to Ada ends the run on the spot: KEPT', () => {

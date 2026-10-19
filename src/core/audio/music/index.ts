@@ -25,9 +25,12 @@ import { JUKEBOX } from './songs/jukebox';
 import { Stingers } from './stingers';
 import { setWinKey } from '../winBand';
 import { audioCalm } from '../real';
+import { app } from '../../app';
 import { bus } from '../../events';
 import { CUES, hitOf, lastCallOf, missOf } from './songs/cues';
 import { HOLD, STAKE, STAKES_TO_I, StakesMeter, betStakes, dreadStakes, gambleStakes } from './stakes';
+import { FADE, OGA, barWanted, epicWanted, mixOf, type OgaId } from './oga';
+import { OgaLayer } from './ogaLayer';
 
 declare module '../../events' {
   interface GameEvents {
@@ -128,6 +131,10 @@ export function createMusic(host: MusicHost): MusicApi {
   const built = new Map<string, SongDef>();
   let lastPump = ctx.currentTime, wallet = 0, usualBet = 0, chaseUntil = 0;
   const lastSting = new Map<string, number>(), stingTimes: number[] = [];
+  // the recorded tracks (oga.ts) ride on the bed, through the stinger duck: they are never wanted at boot, so nothing loads until needed
+  const oga = { drunken_saloon: new OgaLayer(ctx, rig.duckGain, OGA.drunken_saloon), determined_pursuit: new OgaLayer(ctx, rig.duckGain, OGA.determined_pursuit) };
+  const bedK = new Ramp(1);                                     // the bed's share while a recording is in
+  let barOn = false, epicOn = false, lastOga = -1;
 
   // beat clock (driven by the audible arrangement)
   const beatEv: BeatEvent = { bpm: 90, beat: 0, bar: 0, phase: 0 };
@@ -280,7 +287,26 @@ export function createMusic(host: MusicHost): MusicApi {
     rig.setDetune(rise + sag + detuneBias, 0.35);
     // calm beds sit ~5 dB under tense ones (the glue compressor would otherwise flatten the difference); dread pulls back ~2 dB
     const idle = !cur && fading.length === 0;
-    rig.setLevel(idle ? 0 : jukeId ? 1 : (0.56 + 0.44 * smooth(0, 0.85, i)) * (1 - 0.25 * d), idle ? 0.8 : 0.4);
+    rig.setLevel(idle ? 0 : (jukeId ? 1 : (0.56 + 0.44 * smooth(0, 0.85, i)) * (1 - 0.25 * d)) * bedK.at(now), idle ? 0.8 : 0.4);
+  }
+
+  /** The saloon under the bar, the pursuit at the top of the stakes (decisions in oga.ts), at ~5 Hz. */
+  function pumpOga(now: number, stakes: number, dread: number): void {
+    oga.drunken_saloon.tick(now); oga.determined_pursuit.tick(now);
+    if (now - lastOga < 0.2) return;
+    lastOga = now;
+    let at: { x: number; z: number } | null = null;
+    try { at = app.camera.position; } catch { /* no app yet (previews, tests): the zone alone decides */ }
+    const floor = KEEPS_JUKE.has(state);
+    barOn = barWanted(barOn, { zone, x: at?.x ?? null, z: at?.z ?? null, dread, floor, juke: jukeId });
+    const busy = CUE_ORDER.some((c) => c !== 'burning_wager' && c !== 'lastcall' && cues.has(c));
+    epicOn = epicWanted(epicOn, { stakes, cue: cues.has('burning_wager'), busy, floor, juke: jukeId, calm: audioCalm() });
+    if (barOn) oga.drunken_saloon.load();
+    if (epicOn) oga.determined_pursuit.load();
+    const m = mixOf(barOn && oga.drunken_saloon.ready, epicOn && oga.determined_pursuit.ready);
+    oga.drunken_saloon.set(m.bar, m.bar ? FADE.in : FADE.out);
+    oga.determined_pursuit.set(m.epic, m.epic ? FADE.in : FADE.out);
+    bedK.to(m.bed, now, m.bar || m.epic ? FADE.in : FADE.out);
   }
 
   function pump(): void {
@@ -294,6 +320,7 @@ export function createMusic(host: MusicHost): MusicApi {
     const s = meter.tick(now, now - lastPump);
     lastPump = now;
     const i = Math.max(effI.at(now), s * STAKES_TO_I), d = effD.at(now);
+    pumpOga(now, s, d);
     if (cur) {
       const a = cur.arr;
       a.i = i; a.d = d; a.s = s; a.tempoMul = tempoOf(cur.song, i); a.state = state;
@@ -431,7 +458,7 @@ export function createMusic(host: MusicHost): MusicApi {
     onBeat(fn: (e: BeatEvent) => void): Unsub { beatSubs.add(fn); return () => { beatSubs.delete(fn); }; },
 
     play(trackId: string, o?: { fade?: number }): void {
-      if (!jukeById.has(trackId) && !BEDS[trackId]) { log.warn('music', `unknown track "${trackId}"`); return; }
+      if (!jukeById.has(trackId) && !BEDS[trackId] && !OGA[trackId as OgaId]?.juke) { log.warn('music', `unknown track "${trackId}"`); return; }
       const fade = o?.fade ?? 1.5;
       jukeId = trackId;
       retarget(fade);
@@ -453,6 +480,7 @@ export function createMusic(host: MusicHost): MusicApi {
       return {
         state, zone, jukeId, song: cur?.song.id ?? null, key: cur?.key ?? null, userI, userD, stakes: meter.value, cues: [...cues],
         effI: effI.at(now), effD: effD.at(now), fading: fading.length, bar: cur?.arr.barNo ?? 0, load: rig.load(now), lookahead,
+        oga: { saloon: barOn, pursuit: epicOn, loaded: [oga.drunken_saloon.ready, oga.determined_pursuit.ready], bed: bedK.at(now) },
       };
     },
   };

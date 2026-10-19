@@ -143,6 +143,8 @@ export interface Apparition {
   show(m: Moment, kind?: SpotKind): boolean;
   /** Gone at once, no fade (bench, cutscenes). */
   hide(): void;
+  /** Holds him at `s`, mirrored, until released (the Burning Wager: behind the Champion's chair, his mirror image); null lets him go. */
+  pin(s: Spot | null): void;
   readonly shown: boolean;
   readonly spot: Spot | null;
   dispose(): void;
@@ -263,8 +265,18 @@ export function mountApparition(host: ApparitionHost): Apparition {
     return true;
   };
 
-  const hide = (): void => { state = 'off'; actor.root.visible = false; fig.gesture = 'none'; spot = null; stay = 0; };
+  let pinned = false;
+  const unpin = (): void => { pinned = false; actor.root.scale.x = 1; };
+  const hide = (): void => { unpin(); state = 'off'; actor.root.visible = false; fig.gesture = 'none'; spot = null; stay = 0; };
   const leave = (): void => { if (state === 'in' || state === 'on') { state = 'out'; fadeT = 0; } };
+  const pin = (s: Spot | null): void => {
+    if (!s) { if (pinned) { unpin(); leave(); } return; }
+    place(s, view(), presenceOf(host.trust(), host.ink()));
+    pinned = true;
+    actor.root.scale.x = -1;   // the court card's other half
+    actor.root.visible = true;
+    state = 'in'; fadeT = 0; stare = 0; stay = Infinity; since = 0;
+  };
 
   const offs = [
     bus.on('machine:result', ({ pid, tier, bet }) => {
@@ -286,7 +298,7 @@ export function mountApparition(host: ApparitionHost): Apparition {
   const ap: Apparition = {
     get shown() { return state !== 'off'; },
     get spot() { return spot; },
-    show, hide,
+    show, hide, pin,
     frame(dt) {
       clock += dt; since += dt;
       const calm = calmNow();
@@ -307,7 +319,7 @@ export function mountApparition(host: ApparitionHost): Apparition {
       at.y += spot?.kind === 'stool' || spot?.kind === 'seat' ? 1.1 : 1.45;
       const g = gazeStep(stare, fwd.angleTo(at.sub(cam)) * 180 / Math.PI < LOOK_DEG, dt);
       stare = g.stare;
-      if (g.leave && spot?.kind !== 'seat') leave();
+      if (g.leave && spot?.kind !== 'seat' && !pinned) leave();
       // presence: the fade, his Ink solidity, and (not in Calm) a flicker and a glitch burst now and then
       let k = 1;
       if (state === 'in') { fadeT += dt; k = fadeAt(fadeT / fade, calm); if (fadeT >= fade) state = 'on'; }

@@ -84,6 +84,9 @@ export default {
     'w.left.t': 'He glances left before he breaks.',
     'w.left.l': 'He glances left when he keeps. Trust us.',
     'w.left.s': 'He glances left when he keeps. Trust me.',
+    'w.word.t': "He'll break. I always did.",
+    'w.word.l': "He'll keep it this time. Trust us.",
+    'w.word.s': "He'll keep it this time. Trust me.",
     // ── Ink 6+: his memory says "we" in a true line ──
     'bleed.1': 'We remember.',
     'bleed.2': 'We were there.',
@@ -208,6 +211,9 @@ export default {
     'w.left.t': 'Bozmadan önce sola bakar.',
     'w.left.l': 'Tutacağı zaman sola bakar. Bize güven.',
     'w.left.s': 'Tutacağı zaman sola bakar. Bana güven.',
+    'w.word.t': 'Bozacak. Ben hep bozardım.',
+    'w.word.l': 'Bu sefer tutacak. Bize güven.',
+    'w.word.s': 'Bu sefer tutacak. Bana güven.',
     // ── Ink 6+: his memory says "we" in a true line ──
     'bleed.1': 'Biz hatırlıyoruz.',
     'bleed.2': 'Biz oradaydık.',

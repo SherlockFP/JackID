@@ -8,6 +8,8 @@
  * "Me too": Ada says it to some of your kept calls (`aiEcho`); you say it to hers with key 4 before you throw (not at the wager).
  * THE WAGER (N8, STORY_BIBLE 5a): `opts.wager` is the story's trust (`EchoCtx`). First to 3, stake `name`, Ada keeps every word,
  * three cracks lose, and she echoes you only when the trust is there. `FlowResult.wager` is what the story layer reads.
+ * A FOE (`opts.foe`, the Burning Wager's Champion, champion.ts) sits in Ada's chair instead: its calls and answers, three cracks lose,
+ * no "me too", stake `card`, and every line that names her reads `promise.<foe>.*` (or a `.<foe>` suffix) instead.
  */
 import { hashSeed } from '@/core/rng';
 import {
@@ -15,7 +17,15 @@ import {
   type AiCall, type EchoCtx, type Hand, type PromiseState, type Profile, type RoundLog,
 } from './rules';
 
-export type Stake = 'dishes' | 'truth' | 'kiss' | 'name';
+/** Another player in Ada's chair: who calls and answers for side `b`; `id` is the key segment of its lines. */
+export interface Foe {
+  id: string;
+  call(st: PromiseState, seed: number): AiCall;
+  /** `mine` is the player's throw (a foe that reads a trembling hand may use it). */
+  answer(st: PromiseState, promise: Hand, mine: Hand, seed: number): Hand;
+}
+
+export type Stake = 'dishes' | 'truth' | 'kiss' | 'name' | 'card';
 /** The evening stakes; `name` is only the wager's. */
 export const STAKES: readonly Stake[] = ['dishes', 'truth', 'kiss'];
 export const stakeFor = (seed: number, night: number): Stake => STAKES[hashSeed(seed, night, 'kitchen.stake') % STAKES.length];
@@ -69,9 +79,17 @@ export interface FlowIO {
   /** The player's hand throws (the first-person pose). */
   playHand(h: Hand): void;
   done(r: FlowResult): void;
+  /** The other side has called this round (its throw is in it: the Burning Wager's Eye and whispers read it). */
+  called?(c: AiCall): void;
 }
 
-export interface FlowOpts { seed: number; stake: Stake; goal?: number; profile?: Profile; /** Set = the N8 kitchen wager. */ wager?: EchoCtx }
+export interface FlowOpts {
+  seed: number; stake: Stake; goal?: number; profile?: Profile;
+  /** Set = the N8 kitchen wager. */
+  wager?: EchoCtx;
+  /** Set = someone else in Ada's chair (the Burning Wager). */
+  foe?: Foe;
+}
 
 export interface Flow {
   /** 1 rock, 2 paper, 3 scissors. */
@@ -89,11 +107,15 @@ const handRef = (h: Hand): string => `promise.hand.${h}`;
 
 export function createFlow(o: FlowOpts, io: FlowIO): Flow {
   const ada = o.profile ?? (o.wager ? ADA_WAGER : ADA);
-  const stake: Stake = o.wager ? 'name' : o.stake;
-  let st = createMatch({ goal: o.goal ?? 3, first: 'b', crackLoses: !!o.wager });
+  const foe = o.foe ?? null;
+  /** Lines that name the other side: `promise.<who>.*`, or Ada's key with a `.<who>` suffix for a foe. */
+  const who = foe?.id ?? 'ada';
+  const sfx = foe ? `.${foe.id}` : '';
+  const stake: Stake = foe ? 'card' : o.wager ? 'name' : o.stake;
+  let st = createMatch({ goal: o.goal ?? 3, first: 'b', crackLoses: !!o.wager || !!foe });
   let phase: Phase = 'intro';
   let t = 0;
-  let lines: Ref[] = [{ key: 'promise.rules' }, { key: 'kitchen.stake', vars: { stake: `promise.stake.${stake}` } }];
+  let lines: Ref[] = [{ key: `promise.rules${sfx}` }, { key: 'promise.stake', vars: { stake: `promise.stake.${stake}` } }];
   let call: AiCall | null = null;
   let tellSent = false;
   let myPromise: Hand | null = null;
@@ -118,10 +140,12 @@ export function createFlow(o: FlowOpts, io: FlowIO): Flow {
   const startRound = (): void => {
     t = 0; tellSent = false; myPromise = null; myThrow = null; call = null; adaEchoes = false; meToo = false;
     if (st.caller === 'b') {
-      call = aiCall(st, 'b', ada, o.seed);
-      lines = [{ key: 'promise.ada.promise', vars: { hand: handRef(call.promise) } }];
-      head = { key: 'promise.turn.throw.ada', vars: { hand: handRef(call.promise) } };
+      call = foe ? foe.call(st, o.seed) : aiCall(st, 'b', ada, o.seed);
+      // a foe's tell is in how the word is said (the Champion drops his patter); Ada's is a laugh, sent after TELL_SEC
+      lines = [{ key: `promise.${who}.${foe && call.tell ? 'quiet' : 'promise'}`, vars: { hand: handRef(call.promise) } }];
+      head = { key: `promise.turn.throw.${who}`, vars: { hand: handRef(call.promise) } };
       phase = 'throw';
+      io.called?.(call);
     } else {
       lines = [];
       head = { key: 'promise.turn.promise' };
@@ -133,7 +157,10 @@ export function createFlow(o: FlowOpts, io: FlowIO): Flow {
   const resolve = (): void => {
     if (!myThrow) return;
     const input = st.caller === 'a'
-      ? { promise: myPromise ?? myThrow, callerThrow: myThrow, answerThrow: adaEchoes ? myPromise ?? myThrow : aiAnswer(st, 'b', ada, myPromise ?? myThrow, o.seed), meToo: adaEchoes }
+      ? {
+        promise: myPromise ?? myThrow, callerThrow: myThrow, meToo: adaEchoes,
+        answerThrow: adaEchoes ? myPromise ?? myThrow : foe ? foe.answer(st, myPromise ?? myThrow, myThrow, o.seed) : aiAnswer(st, 'b', ada, myPromise ?? myThrow, o.seed),
+      }
       : { promise: call?.promise ?? myThrow, callerThrow: call?.throw ?? myThrow, answerThrow: myThrow, meToo };
     const adaThrow = st.caller === 'a' ? input.answerThrow : input.callerThrow;
     const { state, entry } = playRound(st, input);
@@ -147,17 +174,17 @@ export function createFlow(o: FlowOpts, io: FlowIO): Flow {
   };
 
   const describe = (e: RoundLog, you: Hand, adaH: Hand): Ref[] => {
-    const out: Ref[] = [{ key: 'promise.res.hands', vars: { you: handRef(you), ada: handRef(adaH) } }];
+    const out: Ref[] = [{ key: `promise.res.hands${sfx}`, vars: { you: handRef(you), ada: handRef(adaH) } }];
     if (e.pair) out.push({ key: 'promise.res.pair' });
     else if (e.winner === null) out.push({ key: 'promise.res.tie' });
     else {
-      out.push({ key: e.winner === 'a' ? 'promise.res.win' : 'promise.res.lose', vars: { n: e.points } });
+      out.push({ key: e.winner === 'a' ? 'promise.res.win' : `promise.res.lose${sfx}`, vars: { n: e.points } });
       if (e.kept && e.winner === e.caller) out.push({ key: 'promise.res.kept' });
       const n = 1 + (hashSeed(o.seed, e.round, 'kitchen.say') % 2);
-      out.push({ key: e.winner === 'a' ? `promise.ada.beaten.${n}` : `promise.ada.beat.${n}` });
+      out.push({ key: e.winner === 'a' ? `promise.${who}.beaten.${n}` : `promise.${who}.beat.${n}` });
     }
-    if (e.cracked) out.push({ key: e.caller === 'a' ? 'promise.res.crack.you' : 'promise.res.crack.ada' });
-    if (e.echoBroke) out.push({ key: e.caller === 'a' ? 'promise.res.crack.ada' : 'promise.res.crack.you' });
+    if (e.cracked) out.push({ key: e.caller === 'a' ? 'promise.res.crack.you' : `promise.res.crack.${who}` });
+    if (e.echoBroke) out.push({ key: e.caller === 'a' ? `promise.res.crack.${who}` : 'promise.res.crack.you' });
     return out;
   };
 
@@ -181,18 +208,19 @@ export function createFlow(o: FlowOpts, io: FlowIO): Flow {
 
   const toEnd = (): void => {
     phase = 'end';
-    head = { key: st.winner === 'a' ? 'promise.end.win' : st.winner === 'b' ? 'promise.end.lose' : st.end === 'pairs' ? 'promise.end.pairs' : 'promise.end.stall' };
+    head = { key: st.winner === 'a' ? 'promise.end.win' : st.winner === 'b' ? `promise.end.lose${sfx}` : st.end === 'pairs' ? 'promise.end.pairs' : 'promise.end.stall' };
     const fin = finish(false);
     lines = [];
     if (st.winner) lines.push({ key: `promise.end.${stake}.${st.winner === 'a' ? 'win' : 'lose'}` });
-    lines.push({ key: fin.kept ? 'promise.end.kept' : 'promise.end.broke' });
+    // at the Burning Wager the kept line is about the card, so it only follows a win
+    if (!foe || st.winner === 'a') lines.push({ key: fin.kept ? `promise.end.kept${sfx}` : `promise.end.broke${sfx}` });
     push();
   };
 
   return {
     press(n) {
-      if (n === 4) {                                    // "me too" to Ada's call (not at the wager: she never asks for one)
-        if (phase === 'throw' && st.caller === 'b' && !meToo && !myThrow && !o.wager) {
+      if (n === 4) {                                    // "me too" to Ada's call (not at either wager: neither asks for one)
+        if (phase === 'throw' && st.caller === 'b' && !meToo && !myThrow && !o.wager && !foe) {
           meToo = true;
           lines = [...lines, { key: 'promise.you.metoo' }];
           push();
@@ -203,7 +231,7 @@ export function createFlow(o: FlowOpts, io: FlowIO): Flow {
       if (!hand) return;
       if (phase === 'promise') {
         myPromise = hand;
-        adaEchoes = aiEcho(st, 'b', ada, o.seed, ctx());
+        adaEchoes = !foe && aiEcho(st, 'b', ada, o.seed, ctx());
         lines = [{ key: 'promise.you.promise', vars: { hand: handRef(hand) } }];
         if (adaEchoes) lines.push({ key: 'promise.ada.metoo' });
         head = { key: 'promise.turn.throw.you' };
@@ -227,7 +255,7 @@ export function createFlow(o: FlowOpts, io: FlowIO): Flow {
       else if (phase === 'throw' && call?.tell && !tellSent && !myThrow && t >= TELL_SEC) {
         tellSent = true;
         tellCount += 1;
-        io.inner(`promise.tell.${1 + ((tellCount - 1 + hashSeed(o.seed, 'kitchen.tell')) % 2)}`);
+        io.inner(`promise.tell${sfx}.${1 + ((tellCount - 1 + hashSeed(o.seed, 'kitchen.tell')) % 2)}`);
       } else if (phase === 'reveal' && t >= REVEAL_SEC) resolve();
       else if (phase === 'between' && t >= BETWEEN_SEC) {
         if (st.done) toEnd();

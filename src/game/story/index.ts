@@ -19,7 +19,7 @@ import type { World } from '@/world/types';
 import { wingState } from '@/game/rooms';
 import { placeNotes, placedNoteIds, resetNotes, openJournal, notesFound } from './notes';
 import type { NoteGate } from './notes.data';
-import { advanceArc, markCard, type ChapterRecord } from './chapter';
+import { advanceArc, markCard, watchBeat, type ChapterRecord } from './chapter';
 import { MIRA_BEAT } from './calls';
 import { showChapterTitle } from './chapterTitle';
 import { CHAPTER_TITLE_HOOK } from './cutscenes/chapterCard';
@@ -119,7 +119,6 @@ export function startStory(world: World, params: InGameParams, gate: NoteGate | 
   let live = true;
   const offs: Array<() => void> = [];
   const once = new Set<string>();
-  let watchNight = -1, watches = 0;
   nightNow = 1;
   activeGate = gate ?? defaultGate();
   resetNotes();
@@ -169,7 +168,7 @@ export function startStory(world: World, params: InGameParams, gate: NoteGate | 
   }));
   // the first locker of the run: its contents are a note, a charm, coins or a blank JackID
   offs.push(bus.on('room:locker', () => fire('locker', 'locker')));
-  // Night arc: the Audit lands on the second Watch of Night 7 (WAVE24 §3). A Watch is a `watch` window; they count per Night.
+  // the printed Night, for the note gate
   offs.push(bus.on('shift:phase', ({ index }) => {
     if (!live) return;
     nightNow = index + 1;
@@ -183,20 +182,20 @@ export function startStory(world: World, params: InGameParams, gate: NoteGate | 
     // the Collector's arc: the knock of Night 5 is its second beat (the knock itself is the visitor lane's)
     if (night === 5) { const c = chapterRec(); if (c) advanceArc(c, 'collector', 2); }
   }));
-  offs.push(bus.on('run:window', ({ window, night }) => {
+  offs.push(bus.on('run:window', ({ night }) => {
     if (!live) return;
     nightNow = night;
-    if (night !== watchNight) { watchNight = night; watches = 0; }
-    if (window === 'watch') {
-      watches++;
-      if (night === 7 && watches === 2) {
-        fire('audit', 'audit');
-        const c = chapterRec();
-        if (c) advanceArc(c, 'clerk', 1);
-      }
-      if (night === 8 && watches === 2) chapterReveal();
-    }
     refreshStoryNotes();
+  }));
+  // the Audit (Night 7) and the reveal (Night 8) land on the second Watch: a real Watch start, never the end of a Dawn
+  offs.push(bus.on('watch:begin', ({ night, watch }) => {
+    if (!live) return;
+    const beat = watchBeat(night, watch);
+    if (beat === 'audit') {
+      fire('audit', 'audit');
+      const c = chapterRec();
+      if (c) advanceArc(c, 'clerk', 1);
+    } else if (beat === 'reveal') chapterReveal();
   }));
 
   // Mira's thread: each of her calls moves her arc (N2, N5, N8). The call itself is played by the hotline.

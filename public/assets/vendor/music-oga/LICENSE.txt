@@ -1,0 +1,26 @@
+Recorded music under the score: CC0 1.0 Universal (Public Domain Dedication)
+=========================================================================
+
+Both tracks are released by their authors under CC0 1.0, as stated on their OpenGameArt pages (checked 2026-10-19).
+CC0 needs no credit; a courtesy credit is in docs/ASSETS.md.
+
+CC0 deed (https://creativecommons.org/publicdomain/zero/1.0/): "The person who associated a work with this deed has
+dedicated the work to the public domain by waiving all of his or her rights to the work worldwide under copyright law,
+including all related and neighboring rights, to the extent allowed by law. You can copy, modify, distribute and perform
+the work, even for commercial purposes, all without asking permission."
+
+drunken_saloon.ogg
+  "Drunken Saloon" by iamoneabe: a jazzy, bluesy, loopable noir bar tune.
+  Source:  https://opengameart.org/content/drunken-saloon
+  Licence: CC0 1.0
+  Original: drunken_saloon.mp3 (320 kbps, 170.667 s; the measured pulse is about 90 bpm, 256 beats).
+  Change:  re-encoded to Ogg Opus, 96 kbps, with no edit (same length to the sample, so it loops as the author made it).
+
+determined_pursuit.ogg
+  "Determined Pursuit (epic orchestra loop)" by Emma_MA: frantic strings, horns and drums, loopable.
+  Source:  https://opengameart.org/content/determined-pursuit-epic-orchestra-loop
+  Licence: CC0 1.0
+  Original: determined_pursuit_loop.wav (16-bit stereo 44.1 kHz, 108.000 s).
+  Change:  resampled to 48 kHz and re-encoded to Ogg Opus, 128 kbps, with no edit (same length to the sample).
+
+Re-encoding: scripts/qa/musicEncode.mjs (WebCodecs Opus in headless Chrome, Ogg muxed by the script).

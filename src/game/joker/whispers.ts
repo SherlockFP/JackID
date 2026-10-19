@@ -47,6 +47,7 @@ export const WHISPERS: readonly WhisperDef[] = [
   w('quiet', 'wager', 'him', 'quiet'),
   w('opens', 'wager', 'him', 'opens'),
   w('left', 'wager', 'him', 'left'),
+  w('word', 'wager', 'him', 'word'),        // his word at the Burning Wager's match point (always on his word: true, no tell)
 ];
 
 /** The bleed prefixes (strings `joker.bleed.1..N`): from Ink 6 some true lines start with his memory saying "we". */

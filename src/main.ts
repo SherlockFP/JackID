@@ -197,12 +197,14 @@ async function boot(): Promise<void> {
   };
   // then the PSX programs the floor links on its first frame, a few per idle slice (renderer/shaderWarm.ts)
   const idled = (): Promise<void> => new Promise((r) => idle(r, 120));   // a busy menu still gives a slice every 120 ms
+  let ghost: import('@/kit/mannequinLook').GhostUniforms | undefined;   // one uniform set for the zoo's ghost rows
   idle(() => {
     void inGame.preload().then(() => warmup()).then(() => Promise.all([import('@/core/renderer/shaderWarm'), import('@/kit/mannequinLook')]))
       .then(([w, look]) => w.warmShaders(renderer.three, idled, (m, row) => {
         // the same tags the mannequin puts on its figures, so the NPC programs land under the keys the floor asks for
-        if (row.includes('k')) look.patchLook(m, { cracks: false, sockets: 0.5, smile: 0, head: null, rim: 0x8c9cd0 });
-        if (row.includes('n')) look.patchNpc(m, { rim: 0x8c9cd0, eyes: null, head: null, shimmer: 0.6 });
+        if (row.includes('k')) look.patchLook(m as THREE.MeshLambertMaterial, { cracks: false, sockets: 0.5, smile: 0, head: null, rim: 0x8c9cd0 });
+        if (row.includes('n')) look.patchNpc(m as THREE.MeshLambertMaterial, { rim: 0x8c9cd0, eyes: null, head: null, shimmer: 0.6 });
+        if (row.includes('g')) look.patchGhost(m, ghost ??= look.ghostUniforms(0x5aff7b));   // Loki's figure (game/joker/lokiArt.ts)
       }));
   });
 }

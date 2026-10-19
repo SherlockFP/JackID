@@ -7,8 +7,9 @@
  * No world is built: the zoo owns its materials, and it must keep them alive (a program is freed when its last material goes).
  *
  * Variants are rows of letters: L lit, m map, e emissive map, v vertex colours, d double sided, t translucent, a alpha test,
- * A additive, F no fog, S no snap, N no affine, C scroll, i instanced, c instance colours, b skinned, k look patch, n NPC patch
- * (the last two are applied by the caller's `patch`, so core does not import the kit).
+ * A additive, F no fog, S no snap, N no affine, C scroll, i instanced, c instance colours, b skinned, k look patch, n NPC patch,
+ * g memory-ghost patch (Loki's figure, kit/mannequinLook.ts `patchGhost`; the last three are applied by the caller's `patch`, so core
+ * does not import the kit).
  */
 import * as THREE from 'three';
 import type { PsxMatOpts } from './types';
@@ -20,6 +21,8 @@ export const ZOO_ROWS = [
   'SNmAt', 'CmvdaF',
   'L', 'Li', 'Lit', 'Lv', 'Lvd', 'Ld', 'Lm', 'Lmv', 'Lmev', 'LNmv', 'LNmvd', 'LNmev', 'Lmda', 'Lmdt', 'LSNmv',
   'Lvbkn', 'Ldn', 'Lvdn', 'Lvn', 'Lmvn',
+  // Loki's ghost: his body, his outfit and his lit marks (game/joker/lokiArt.ts), so his first showing does not link them mid-frame
+  'Lvbkng', 'Ldng', 'Lvdng', 'Lvng', 'Lmvng', 'g',
 ] as const;
 
 /** Letters to material options (pure). */
@@ -39,7 +42,7 @@ export function zooOpts(row: string, map: THREE.Texture): PsxMatOpts {
     snap: !has('S'),
     affine: !has('N'),
     scroll: has('C') ? [0.1, 0] : undefined,
-    unique: has('k') || has('n'),   // patched materials are mutated per owner
+    unique: has('k') || has('n') || has('g'),   // patched materials are mutated per owner
   };
 }
 
@@ -50,11 +53,11 @@ const LIGHT_COUNTS = [0, POOL_LIGHTS];
 
 const keep: THREE.Scene[] = [];        // the zoo must outlive the call (see above)
 
-export type ZooPatch = (m: THREE.MeshLambertMaterial, row: string) => void;
+export type ZooPatch = (m: THREE.Material, row: string) => void;
 
 function meshFor(row: string, map: THREE.Texture, geo: THREE.BufferGeometry, patch: ZooPatch | undefined): THREE.Mesh {
   const mat = psxMaterial(zooOpts(row, map));
-  if (/[kn]/.test(row) && mat instanceof THREE.MeshLambertMaterial) patch?.(mat, row);
+  if (/[kng]/.test(row)) patch?.(mat, row);
   if (row.includes('b')) {
     const sm = new THREE.SkinnedMesh(geo, mat);
     sm.bind(new THREE.Skeleton([new THREE.Bone()]));

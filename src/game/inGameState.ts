@@ -283,7 +283,8 @@ export function createInGameState(): AppStateHandler<'ingame'> {
     if (!s || !s.ready() || ending || paused) { interHint?.set(null); return; }
     syncHint(s);
     const phase = s.run.shift.phase;
-    const want = phase === 'intermission' && s.run.rules.timed && !s.run.over && s.run.topsideOpen;
+    // a story run plays the Burning Wager instead (story/wager.ts): its outcome ends the run, so STAY UP never shows there
+    const want = phase === 'intermission' && s.run.rules.timed && !s.run.over && s.run.topsideOpen && !s.run.wagerDue();
     if (!want) {
       if (interOpen) { app.ui.closePanel(INTER_PANEL); interOpen = false; interKey = ''; }
       return;

@@ -111,6 +111,12 @@ export function advanceArc(c: ChapterRecord, arc: ArcId, beat: number): boolean 
   return true;
 }
 
+/** The story beat a Watch opens with: the Audit on Night 7's second Watch, the Night 8 reveal on Night 8's (story/index.ts, `watch:begin`). */
+export function watchBeat(night: number, watch: number): 'audit' | 'reveal' | null {
+  if (watch !== 2) return null;
+  return night === 7 ? 'audit' : night === CHAPTER_LAST_NIGHT ? 'reveal' : null;
+}
+
 /** The i18n keys of a Night's title card: `story.chapter.n<N>.title` and `.line`. Null outside the chapter spine. */
 export function chapterKeys(night: number): { title: string; line: string } | null {
   if (!Number.isInteger(night) || night < 1 || night > CHAPTER_LAST_NIGHT) return null;

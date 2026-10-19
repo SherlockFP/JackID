@@ -34,7 +34,8 @@ export class Rig {
   private readonly hiss: GainNode;
   private readonly crackle: GainNode;
   private readonly rain: GainNode;
-  private readonly duckGain: GainNode;
+  /** The stinger duck: everything that rides on the bed (the recorded tracks) joins here so a stinger ducks it too. */
+  readonly duckGain: GainNode;
   private readonly bed: GainNode;                // level of the bed only (stingers join after it)
   private readonly tail: GainNode;                 // sum point before the wobble delay
   private readonly srcs: AudioScheduledSourceNode[] = [];

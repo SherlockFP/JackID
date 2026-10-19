@@ -62,6 +62,7 @@ import { mountScrounge } from '@/game/scrounge';
 import { mountFood } from '@/game/food';
 import { mountPhoneUi } from '@/game/home/phone.ui';
 import { mountEvening, type Evening } from '@/game/home/evening';
+import { mountWager } from '@/game/story/wager';
 
 export interface DebtSession {
   readonly world: WorldHost;
@@ -187,6 +188,8 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   const online = params.online ? startOnlineHooks(scene, player, run) : null;
   // THE EVENING: the lift, the apartment's stations and the doomed ride (solo runs); the run owns the stage, this shows it
   const evening: Evening | null = run.homeOn ? mountEvening(run, world, player) : null;
+  // THE BURNING WAGER: the Night 8 table on the stage (solo story runs, like the Evening)
+  const wager = run.homeOn ? mountWager(run, world, player, loki) : null;
 
   const hud = createHud();
   let ready = false;
@@ -522,6 +525,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       floorKeys();
       run.tick(dt);
       evening?.update(dt);
+      wager?.update(dt);
       horror.update(dt, horrorState(), dt);
       online?.fixedUpdate(dt);
     },
@@ -567,6 +571,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       for (const a of actors.all()) actors.despawn(a);
       totemView.dispose();
       evening?.dispose();
+      wager?.dispose();
       for (const off of mounts.splice(0)) off();
       run.dispose();
       online?.dispose();

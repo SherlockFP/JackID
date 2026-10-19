@@ -27,7 +27,8 @@ export interface KitchenDeps {
 
 export interface Kitchen { update(dt: number): void; flow(): Flow; dispose(): void }
 
-const text = (r: Ref): string => {
+/** A flow line as text (a var that is itself a `promise.` key is translated first). The Burning Wager's board reads it too. */
+export const text = (r: Ref): string => {
   const vars: Record<string, string | number> = {};
   for (const [k, v] of Object.entries(r.vars ?? {})) vars[k] = typeof v === 'string' && v.startsWith('promise.') ? t(v) : v;
   return t(r.key, vars);

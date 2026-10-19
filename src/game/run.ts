@@ -327,6 +327,9 @@ declare module '@/core/events' {
     'run:tithe': { pid: PlayerId; state: 'met' | 'missed'; watch: number; target: number; earned: number; shortfall: number; tickets: number };
     /** A Night starts (its first Watch begins): the grand casino props take the Night's light show from this. `night` is 1-based. */
     'night:begin': { night: number };
+    /** A Watch starts (the Bell rings it in): 1-based `night` and `watch`. The story's Watch beats read this (never `run:window`, which
+     *  also fires at the end of a Dawn). */
+    'watch:begin': { night: number; watch: number };
     /** LOKI dares you (once a Night, at a seat): the voice asks, and the answer comes back through `jokerDare`. */
     'joker:dare': { night: number };
     /** The player called his last line a lie: `right` = it was one (the sound answers; the Trust move comes in `joker:trust`). */
@@ -575,6 +578,11 @@ export interface DebtRun extends RunApi {
   jokerInk(): number;
   /** His true Trust (−3..3, no lie): how near his apparition stands (game/joker/apparition.ts). */
   jokerTrust(): number;
+  /** THE BURNING WAGER: he whispers about the Champion's habit `fact` before a throw (free, true or a lie by his rules); `word` spends his
+   *  word (true, no tell). False when he says nothing. */
+  jokerWager(fact: string, word?: boolean): boolean;
+  /** His word is earned and not spent (JOKER §4). */
+  jokerWordReady(): boolean;
   /** Give him the hand at this seat for its next round (JOKER §4): null when he took it, else why not. Costs Ink. */
   jokerTakeover(): AskWhy | 'seat' | null;
   /** The offer panel is on screen: OPEN THE FLOOR waits for a pick (or the panel's timer) instead of taking the leftmost. */
@@ -643,8 +651,13 @@ export interface DebtRun extends RunApi {
    * the N8 kitchen wager (`r.wager` set) is recorded, and a lost wager ends the run (KEPT). A left game counts for nothing.
    */
   kitchenDone(r: Pick<FlowResult, 'left' | 'wager' | 'pairs' | 'cracks'>): void;
-  /** THE ENDINGS: the Burning Wager is over and the run ends on it. For the Wager flow (the Champion's play, not built yet). */
+  /** THE ENDINGS: the Burning Wager is over and the run ends on it (story/wager.ts, the Champion's table on the stage). */
   burningWager(r: { wager: 'win' | 'lose'; cracks: number; lokiHand?: boolean; word?: boolean }): void;
+  /**
+   * THE BURNING WAGER: Night 8 is paid and the Wager is still to play (a solo story run). The session opens it while this holds.
+   * Restart rule: the match itself is not saved, so a resume opens it again from 0:0 (seeded, the same match).
+   */
+  wagerDue(): boolean;
   /** THE ENDINGS: the facts the run would end on now (`end`: how it is ending). The tests and the dev preview read them. */
   endingFacts(end?: { result: RunSummary['result']; ending?: string }): EndingFacts;
   /** THE ENDINGS: the ending this run reached, set when it ends (null before, and for a quit or a run with no ending). */
@@ -1906,6 +1919,8 @@ class Run implements DebtRun {
     else this.endRun('lost', 'chair');
   }
 
+  wagerDue(): boolean { return this.homeOn && this.topside && !this.ended && this.chapterRec.wager === null; }
+
   endingFacts(end?: { result: RunSummary['result']; ending?: string }): EndingFacts {
     const c = this.chapterRec;
     const f: EndingFacts = {
@@ -1916,9 +1931,6 @@ class Run implements DebtRun {
       cameHome: this.jokerSys.cameHome, trust: this.jokerSys.trust, visitUsed: this.jokerSys.snapshot().used.visit === 1,
       harmony: this.hPhone?.harmony() ?? HARMONY_START, waiting: this.bondBook.floor(),
     };
-    // shortcut: the Burning Wager is not built, so the lift out of a paid Night 8 after the kitchen wager stands in for it, won clean.
-    // Drop this when the Champion's play calls burningWager().
-    if (end?.ending === 'elevator' && f.wager === null && f.kitchen !== null) f.wager = 'win';
     return f;
   }
 
@@ -2145,6 +2157,7 @@ class Run implements DebtRun {
     this.jokerHere = null;
     this.lokiHand = null;
     if (this.watch === 0) bus.emit('night:begin', { night: this.index + 1 });   // the first Watch of a Night: the grand light show
+    bus.emit('watch:begin', { night: this.index + 1, watch: this.watch + 1 });
     this.coolBoiler();
     this.boughtThisWatch = 0;
     this.clockLen = isOvertime ? OVERTIME_SEC : Math.max(10, Math.round(this.mod('x.run.clockAdd', RUN_MACHINE, nd.clock)));
@@ -2834,7 +2847,7 @@ class Run implements DebtRun {
     this.stats.nightsPaid = (this.stats.nightsPaid ?? 0) + 1;
     this.syncQuota();
     this.nightDone = true;
-    this.bond({ kind: 'dawn' });   // neglect, and Selim's unpaid loans come due. shortcut: the Night 8 call before the Burning Wager waits for A5
+    this.bond({ kind: 'dawn' });   // neglect, and Selim's unpaid loans come due. On Night 8 this is the call right before the Burning Wager
     if (nightDef(this.index).no === BASE_RUN_NIGHTS) this.topside = true;
     if (this.dealEnds()) return;
     this.spotlight.end();   // Machine of the Night: the Night is over, the spotlight and its x1.25 end
@@ -4233,7 +4246,7 @@ class Run implements DebtRun {
   }
 
   /** He speaks (a tip, or an Ask). False when he has nothing to say. */
-  private jokerSpeak(req: { ctx: WhisperCtx; fact?: string; ask?: boolean }): boolean {
+  private jokerSpeak(req: { ctx: WhisperCtx; fact?: string; ask?: boolean; onHisWord?: boolean; free?: boolean }): boolean {
     if (this.ended || this.night() < 2 || this.mod('x.cheat.lokiQuiet', RUN_MACHINE, 0) > 0) return false;   // he introduces himself on the Night 2 lift: Night 1 is the coach's, not his
     const w = this.jokerSys.whisper(req);
     if (!w) return false;
@@ -4286,6 +4299,8 @@ class Run implements DebtRun {
   jokerGrin(): { frame: number; lie: boolean } { return this.grin; }
   jokerInk(): number { return this.jokerSys.ink; }
   jokerTrust(): number { return this.jokerSys.trust; }
+  jokerWager(fact: string, word = false): boolean { return this.jokerSpeak({ ctx: 'wager', fact, free: true, onHisWord: word }); }
+  jokerWordReady(): boolean { return this.jokerSys.wordReady; }
 
   // ─ LOKI'S HAND (docs/JOKER.md §4, wave J3): the Change of Hands at a floor machine. The next round there is his ─
   jokerTakeover(): AskWhy | 'seat' | null {

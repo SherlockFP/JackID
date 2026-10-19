@@ -119,12 +119,30 @@ The new sound names for the gods' blessings (`boonOffer`, `boonPick`, `omen`, `s
   outside the brief (cloth, plastic, kitchen, drink, stationery, camera, velcro, taps, toilet, microwave).
 - No page is marked AI-generated. The horror-hit comment thread asks about AI tools and the author says none were used.
 
+## Recorded music, 2026-10-19 (`music-oga/`): licences and credits
+Two real tracks under the procedural score, both CC0 1.0 (stated on their OpenGameArt pages; the licence text and sources are in `public/assets/vendor/music-oga/LICENSE.txt`). CC0 needs no credit.
+Courtesy line (not required): "Drunken Saloon by iamoneabe and Determined Pursuit by Emma_MA (CC0), OpenGameArt".
+
+| File | Source | Licence | What it is |
+|---|---|---|---|
+| `music-oga/drunken_saloon.ogg` | "Drunken Saloon", iamoneabe. https://opengameart.org/content/drunken-saloon | CC0 1.0 | 170.7 s, Ogg Opus 96 kbps, 2.07 MB (the 320 kbps MP3 was 6.8 MB). Jazzy, bluesy noir bar tune. Plays under the bar (see below) and from the jukebox by id |
+| `music-oga/determined_pursuit.ogg` | "Determined Pursuit (epic orchestra loop)", Emma_MA. https://opengameart.org/content/determined-pursuit-epic-orchestra-loop | CC0 1.0 | 108.0 s, Ogg Opus 128 kbps, 1.75 MB (the 16-bit WAV was 19 MB). Frantic strings, horns and drums. Plays at the top of the stakes |
+
+Both files are whole loops with no edit: the encoded file has exactly the source's sample count (`scripts/qa/musicEncode.mjs` checks it, and measures the join; both joins are click-free), so the engine loops the decoded buffer sample-exact. They are fetched and decoded the first time they are wanted (never at boot), at 24 kHz (the master chain low-passes at 11 kHz): about 33 MB and 21 MB once loaded.
+To re-encode: `node scripts/qa/musicEncode.mjs <dir with the two originals> <out dir> [<dir for the loop-seam wavs>]` (headless Chrome, WebCodecs Opus; no ffmpeg).
+
+**When they play** (`src/core/audio/music/oga.ts` decides, `ogaLayer.ts` plays, `index.ts` wires; the procedural bed keeps running underneath and ducks, so the beat clock and the stakes overlay stay alive, and if a file is not loaded the bed simply stays at full level):
+- Drunken Saloon: in a floor state, in the lobby within 7 m of the bar (stays until 10 m), dread under 0.35 (stays until 0.5), no other jukebox song playing. The bed ducks to 8 %; 3 s in, 3.5 s out. It keeps its place while you are away. `music.play('drunken_saloon')` plays it anywhere on the floor. It is not in `catalog()`: the jukebox machine is a fixed 3 x 4 grid of twelve keys on a 96 px screen.
+- Determined Pursuit: in a floor state with no jukebox song and Calm off, when the stakes reach 0.8 (stays until they fall under 0.55, about 2.4 s after the moment ends) or at once for the Burning Wager cue. The bed ducks to 22 %. It starts 18 s into the loop, where the full orchestra enters (the first 18 s are a quiet intro, 5 dB under the rest; starting inside it dips the crossfade), and it yields to a chase or a rival's duel theme (it would bury them).
+- Both ride the music bus, so the music volume, the win-show duck and the stinger duck apply.
+
 ## Loaded by the game (checked against the code, 2026-10-19)
 Each row names the file that loads the asset. A pack not listed here is vendored but not loaded.
 
 | What | Loaded by | Packs |
 |---|---|---|
 | Recorded sounds (the `sfx-*` packs above, with the procedural fallback kept for each name; wave 83 adds interface tones, cards, dice, footsteps by floor, creaks, growls, wind, knocks and the blessings magic set) | `src/core/audio/real.ts`, installed from `src/core/audio/sfx.ts` | obsydianx-ui, ci-400, halfwits-dice, heyheythere-footsteps, liminal-horror, polar-magic, owlish-more-sfx, laleksic-various, rubberduck-metal-wood, qubodup-doors, pagdev-elevator-door, starninjas-crowd (loop), chirptone-ringtone, quendel-crowd-cheering, psychhead-horror-hits, qubodup-rat, mixkit-casino (reel whirr, win chime, alarms, bells), oga-wins (fanfare, jingle) |
+| Recorded music under the score (Ogg Opus, loaded on first need) | `src/core/audio/music/ogaLayer.ts`, decided by `oga.ts`, wired in `index.ts` | music-oga |
 | Casino sound set (cards, chips, dice) | `src/core/audio/sfx.ts` (`DIR`) | kenney-casino-audio |
 | Textures (PSX pipeline, 32 or 64 px) | `src/kit/presets.ts` (named presets: wood, felt, brushed, plate, tufted, velvet, rust, cloth), `src/world/level.ts` (boiler grating, parlour wood, walls, wainscot), `src/world/props/decor.ts` (marble), `src/world/props/trapdoor.ts`, `src/world/props/vendorModels.ts` | sbs-synthetic (wood, felt, leather, fabric, stone), sbs-tiny2 (wood), sbs-tiny3 (grating, cloth, metal), sbs-horror (walls, metal), phobicpaul-lowpoly64 (plate) |
 | Pixel fonts, sign faces | `src/world/props/signs.ts` (`public`, `chetyre`) | ggbot-public-pixel, hanshuyuri-chetyre |

@@ -175,6 +175,8 @@ export function parseScript(text) {
  *   auto:night1        a whole Night 1 in one step (the prologue and the lift are skipped before any step): the Watches, deposits, Bells, the Dawn boon, then stops in the paid Evening. Refuses to start past Night 1
  *   event:<id>         DEV: the next Watch that can roll rolls this floor event (the chance and the weighted pick are skipped)
  *   duel:promise       DEV: opens Ada's kitchen table (Rock, Paper, Promise) in the Evening, the game's own seed and stake
+ *   duel:burning       DEV: starts the Burning Wager (story/wager.ts) on the casino floor: the Compere sits down (wager_sit), then the
+ *                      board opens at the stage table (1/2/3 throw, 4 Eye, 5 his word, E finish). Its outcome ends the run
  *   ending:<id>        DEV: plays story ending <id> (kept_pair, cold_kitchen, kept, or a card) as a run that reached it would, and
  *                      waits for it (story/index.ts previewEnding); records the cutscene result
  *   events             record and print the live floor event (watchEvents.ts watchEventView), null between Watches
@@ -296,7 +298,7 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1-4|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:stay | station:<id> | ui:click:<css selector> | home:sleep | home:talk | home:switch | home:chain | home:chain:<on|off> | home:lights:<on|off> | home:still:<ms> | home:visit | home:peep | home:knock-check | home:miss | anchor:<name> | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | auto:night:evening | auto:night1 | event:<id> | duel:promise | ending:<id> | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1-4|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:stay | station:<id> | ui:click:<css selector> | home:sleep | home:talk | home:switch | home:chain | home:chain:<on|off> | home:lights:<on|off> | home:still:<ms> | home:visit | home:peep | home:knock-check | home:miss | anchor:<name> | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | auto:night:evening | auto:night1 | event:<id> | duel:<promise|burning> | ending:<id> | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
   const once = (kind) => {
@@ -1542,12 +1544,26 @@ function watchRec(ctx, st, ev) {
  * stake (stakeFor), through a dynamic import of the game's own modules. Needs the Evening (home:stay first). The overlay is then
  * played with play:Digit1 / Digit2 / Digit3 and play:KeyE. A setInterval ticks its clock (sim time under the fixed clock). The
  * Tally Table duels (sealedwall, ghostshell, ...) start from their table, so they are refused here.
+ * `burning` starts the Burning Wager through the session's own mount (story/wager.ts `liveWager().open()`): the sit-down scene plays
+ * (play:Space:1200 skips it), then the board opens on the session's sim clock, so nothing here ticks it.
  */
 async function duelStep(ctx, s, rec) {
   const { cdp } = ctx;
+  if (s.id === 'burning') {
+    const r = await evalJson(cdp, `(async () => {
+      const w = (await import('/src/game/story/wager.ts')).liveWager();
+      if (!w) return { ok: false, reason: 'no Burning Wager mount (a solo story run, home on, is needed)' };
+      return { ok: w.open() };
+    })()`);
+    Object.assign(rec, { id: s.id }, r);
+    rec.ok = r?.ok === true;
+    if (!rec.ok) rec.reason = r?.reason ?? 'already running';
+    await sleep(300);
+    return;
+  }
   if (s.id !== 'promise') {
     rec.ok = false;
-    rec.reason = `only duel:promise starts directly (the kitchen table); the Tally Table duels start from the table (goto:tallytable)`;
+    rec.reason = `only duel:promise and duel:burning start directly; the Tally Table duels start from the table (goto:tallytable)`;
     return;
   }
   const h0 = await evalJson(cdp, HOME_STAGE_JS);

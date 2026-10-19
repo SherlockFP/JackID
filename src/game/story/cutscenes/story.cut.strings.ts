@@ -49,6 +49,12 @@ export default {
     'audit.1': 'Audit in progress. Keep your hands where the Clerk can count them.',
     'audit.2': 'The Clerk doesn\'t look up. It turns a page, and the biggest figure in the book gets written a little smaller.',
     'audit.3': 'Honest columns are exempt. You know which ones are yours.',
+    // THE BURNING WAGER (wager_sit.cutscene.ts): the Compere puts the mic down and sits
+    'wager.1': 'Ladies and gentlemen! One last table tonight.',
+    'wager.2': 'The pink light on him dies. Under it, green.',
+    'wager.3': 'The Clerk reads his name aloud.',
+    'wager.4': 'In your head, nothing. For once, he has nothing to say.',
+    'wager.5': 'Come. Sit. Let\'s see whose hands those are.',
   },
   tr: {
     'intro.1': 'Zemin soğuk. Işık yanlış.',
@@ -96,5 +102,10 @@ export default {
     'audit.1': 'Denetim sürüyor. Ellerinizi Katip sayabilecek şekilde tutun.',
     'audit.2': 'Katip başını kaldırmaz. Bir sayfa çevirir, defterdeki en büyük rakam biraz daha küçük yazılır.',
     'audit.3': 'Dürüst sütunlar muaf. Hangilerinin sizin olduğunu biliyorsunuz.',
+    'wager.1': 'Hanımlar, beyler! Bu gece son bir masa daha.',
+    'wager.2': 'Üstündeki pembe ışık sönüyor. Altında yeşil.',
+    'wager.3': 'Katip adını yüksek sesle okuyor.',
+    'wager.4': 'Kafanın içinde ses yok. İlk kez söyleyecek bir şeyi yok.',
+    'wager.5': 'Gel. Otur. Bakalım o eller kimin.',
   },
 };
