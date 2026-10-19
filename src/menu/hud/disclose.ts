@@ -18,7 +18,7 @@ const FIRST_NIGHT: Readonly<Record<Reveal, number>> = {
   tithe: 3,         // the Watch tithe
   spotlight: 4,     // the Spotlight chip
   overshoot: 4,     // the OVERSHOOT line
-  luck: 2,          // the ŞANS meter (game/luck.ts): from Night 2, when the first quota is paid
+  luck: 3,          // the ŞANS meter (game/luck.ts): Night 3, so Night 2 does not add every new readout at once (luck still runs from the first paid quota)
 };
 
 /** True when the readout `what` is shown on printed Night `night`. */

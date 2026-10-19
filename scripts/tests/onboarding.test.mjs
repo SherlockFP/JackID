@@ -23,6 +23,8 @@ test('Night 2 adds Hot, Tilt, payout, projection, floor events and Night Cards',
   }
   assert.equal(D.revealed(2, 'tithe'), false);
   assert.equal(D.revealed(2, 'spotlight'), false);
+  assert.equal(D.revealed(2, 'luck'), false, 'the luck meter waits for Night 3');
+  assert.equal(D.revealed(3, 'luck'), true);
 });
 
 test('Night 3 adds the tithe; Night 4 adds the spotlight and overshoot', () => {
