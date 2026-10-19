@@ -13,7 +13,7 @@ import { pendant } from '../lights';
 import { FLOOR_TILE_M } from '../layout';
 import { placeCouch } from '../props/vendorModels';
 import { presets } from '@/kit/presets';
-import { homePaperTex, plasterTex, worldUV, HOME_PAPER_TILE } from '../props/surfaces';
+import { calendarTex, homePaperTex, plasterTex, stairwellTex, wallRugTex, worldUV, HOME_PAPER_TILE } from '../props/surfaces';
 import { buildFoodProp } from '../props/food';
 import type { LightHint } from '../sys/arch';
 import {
@@ -48,11 +48,12 @@ export function buildRoom(c: RoomCtx): RoomParts {
     return mesh;
   };
   /** A papered wall: the texture is mapped in world metres (skirting on the floor, picture rail under the ceiling on every piece). */
-  const wallSlab = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): void => { worldUV(slab(x0, y0, z0, x1, y1, z1, wall, true), HOME_PAPER_TILE); };
+  const wallSlab = (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, m: THREE.Material = wall): void => { worldUV(slab(x0, y0, z0, x1, y1, z1, m, true), HOME_PAPER_TILE); };
 
   // ── materials (the palette from kit.pal; procedural textures for the walls, floors and the window) ──
   // wave 87 (ART.md §2 Home): faded sage paper over cream beadboard and a dark skirting, plaster ceiling, real wood and cloth
   const wall = kit.mat({ color: 0xd8d0c4, map: homePaperTex(tex) });
+  const stairwell = kit.mat({ color: 0xd8d0c4, map: stairwellTex(tex) });   // the block's common hall: green oil paint under whitewash
   const M = presets(kit.tex);
   // vendored boards and stone tile at the shared floor density (the kit tags a 64 px vendor map as 1 m: widen it to FLOOR_TILE_M)
   const floorMap = (p: string): THREE.Texture => { const m = kit.tex.vendor(p, { size: 64 }); m.userData.tile = FLOOR_TILE_M; return m; };
@@ -87,9 +88,9 @@ export function buildRoom(c: RoomCtx): RoomParts {
   wallSlab(WIN_X0, 0, -2.8, WIN_X1, WIN_Y0, -2.5);
   wallSlab(WIN_X0, WIN_Y1, -2.8, WIN_X1, CEIL, -2.5);
   for (const s of SOUTH_WALL_SOLIDS) wallSlab(s[0], s[1], s[2], s[3], s[4], s[5]);
-  wallSlab(HALL_X0 - 0.3, 0, 2.8, HALL_X0, CEIL, HALL_Z1 + 0.3);
-  wallSlab(HALL_X1, 0, 2.8, HALL_X1 + 0.3, CEIL, HALL_Z1 + 0.3);
-  wallSlab(HALL_X0 - 0.3, 0, HALL_Z1, HALL_X1 + 0.3, CEIL, HALL_Z1 + 0.3);
+  wallSlab(HALL_X0 - 0.3, 0, 2.8, HALL_X0, CEIL, HALL_Z1 + 0.3, stairwell);
+  wallSlab(HALL_X1, 0, 2.8, HALL_X1 + 0.3, CEIL, HALL_Z1 + 0.3, stairwell);
+  wallSlab(HALL_X0 - 0.3, 0, HALL_Z1, HALL_X1 + 0.3, CEIL, HALL_Z1 + 0.3, stairwell);
 
   // door frame trims on both faces of the opening
   for (const z of [2.46, 2.8]) {
@@ -151,6 +152,8 @@ export function buildRoom(c: RoomCtx): RoomParts {
   slab(-2.05, 0.6, -1.27, -1.12, 0.64, 0.07, blanket);
   slab(-2.88, 0.6, -1.05, -2.55, 0.72, -0.6, cream);
   slab(-2.88, 0.6, -0.35, -2.55, 0.72, -0.1, cream);
+  // the carpet on the wall over the bed (docs/ART.md "Identity"), 1 cm off the paper
+  kit.plane(1.32, 1.1, kit.mat({ color: 0xe0d0c0, map: wallRugTex(tex) }), { pos: at(-2.99, 1.66, -0.6), rot: [0, 90, 0], parent: shell });
 
   // ── the kitchen: the table with a solid top, two chairs (the spouse's faces the door), a counter on the east wall ──
   slab(TABLE.x0, TABLE.top - 0.04, TABLE.z0, TABLE.x1, TABLE.top, TABLE.z1, wood, true);
@@ -181,8 +184,13 @@ export function buildRoom(c: RoomCtx): RoomParts {
   slab(2.985, 0.94, -0.34, 2.995, 1.5, 1.54, tile);                                   // splash, 5 mm proud of the paper
   slab(2.65, 1.55, -0.34, 3.0, 2.2, 1.54, paint, true);                               // wall cupboards
   for (let i = 0; i < 3; i++) slab(2.635, 1.58, -0.31 + i * 0.6, 2.65, 2.17, -0.31 + i * 0.6 + 0.56, paint);
-  kit.cyl(0.07, 0.08, 0.16, chrome, { pos: at(2.75, 1.02, -0.05), parent: shell, seg: 8 });   // kettle
-  kit.box(0.08, 0.02, 0.02, chrome, { pos: at(2.66, 1.06, -0.05), rot: [0, 0, 25], parent: shell });
+  // a two-ring hob on the worktop with the çaydanlık on it: the big kettle below, the demlik on top, both spouts to the room
+  slab(2.56, 0.94, -0.3, 2.96, 0.975, 0.18, M.enamel(0xe0dccc, 0.6));
+  for (const bz of [-0.17, 0.07]) kit.cyl(0.07, 0.07, 0.01, black, { pos: at(2.74, 0.98, bz), parent: shell, seg: 10 });
+  kit.lathe([[0, 0], [0.075, 0], [0.085, 0.06], [0.07, 0.12], [0.045, 0.135]], 10, chrome, { pos: at(2.74, 0.985, -0.17), parent: shell });
+  kit.lathe([[0, 0], [0.045, 0], [0.058, 0.05], [0.045, 0.09], [0.02, 0.1], [0, 0.105]], 8, chrome, { pos: at(2.74, 1.12, -0.17), parent: shell });
+  for (const [sy, sl] of [[1.04, 0.09], [1.16, 0.06]] as const) kit.cyl(0.008, 0.012, sl, chrome, { pos: at(2.64, sy, -0.17), rot: [0, 0, 55], parent: shell, seg: 5 });
+  kit.box(0.02, 0.012, 0.012, black, { pos: at(2.74, 1.235, -0.17), parent: shell });
   const mug = buildFoodProp(kit, 'coffee');
   mug.position.set(...at(2.72, 0.94, 1.2));
   shell.add(mug);
@@ -237,6 +245,8 @@ export function buildRoom(c: RoomCtx): RoomParts {
     figure(48, h - 4, 0.6, '#7a4a3a');
   });
   kit.plane(0.56, 0.5, kit.mat({ color: 0xffffff, map: photoTex, lit: false }), { pos: at(2.93, 1.5, -1.2), rot: [0, -90, 0], parent: shell });
+  // the calendar on its nail beside it: a harbour and a castle over the days of one month
+  kit.plane(0.28, 0.42, kit.mat({ color: 0xd8d0c0, map: calendarTex(tex) }), { pos: at(2.99, 1.55, -0.6), rot: [0, -90, 0], parent: shell });
 
   // ── the coat hook beside the door (the coat is only dressing) ──────────────────────────────────
   kit.cyl(0.012, 0.012, 0.07, brass, { pos: at(-2.2, 1.7, 2.46), rot: [90, 0, 0], parent: shell, seg: 6 });

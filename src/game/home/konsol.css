@@ -1,0 +1,18 @@
+/* KONSOL: the fourth tab of the home computer (a green prompt on the CRT) and the HİLE tag. The tab reuses the computer's tokens
+   (--pc-ink, --pc-dim, --pc-warn from computer.css); the tag lives in the main overlay, so it uses the overlay's --u. */
+.pc-term { display: flex; flex-direction: column; gap: calc(2 * var(--dpx)); min-height: calc(190 * var(--dpx)); padding: calc(8 * var(--dpx));
+  box-sizing: border-box; background: #010a04; border: calc(2 * var(--dpx)) solid var(--pc-dim); }
+.pc-t { overflow-wrap: anywhere; white-space: pre-wrap; }
+.pc-t-in { color: var(--pc-dim); }
+.pc-t-err { color: var(--pc-warn); text-shadow: none; }
+.pc-t-ask { color: #f3e27a; }
+.pc-prompt { display: flex; align-items: center; gap: calc(6 * var(--dpx)); margin-top: auto; }
+.pc-prompt .px-text { flex: 1 1 auto; margin: 0; }
+.pc-prompt .px-text input { padding: 0; background: transparent; box-shadow: none; color: var(--pc-ink); caret-color: var(--pc-ink);
+  font-size: calc(18 * var(--dpx)); text-transform: uppercase; text-shadow: inherit; }
+.pc-prompt .px-text input:focus { box-shadow: none; }
+
+.konsol-tag { position: absolute; right: calc(4 * var(--u)); bottom: calc(4 * var(--u)); z-index: 4; pointer-events: none;
+  padding: calc(2 * var(--u)) calc(4 * var(--u)); font-family: var(--f-head); font-size: var(--fh); line-height: 1;
+  color: var(--void); background: var(--amber); box-shadow: 0 0 0 var(--u) var(--void); }
+.konsol-tag[hidden] { display: none; }

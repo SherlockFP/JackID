@@ -62,10 +62,11 @@ test('every sfx the slot machines and the juice helpers play has a recipe', () =
   for (const n of names) assert.ok(sfx.SFX_DEFS.has(n), `no recipe "${n}"`);
 });
 
-test('the spin cues vary a little per play, and a loss is a short dud, not a jingle', () => {
-  for (const n of ['button', 'lever', 'reelStart', 'reelStop', 'win1', 'win2', 'lose']) {
+test('the spin cues vary a little per play (the win cues stay in key), and a loss is a short dud, not a jingle', () => {
+  for (const n of ['button', 'lever', 'reelStart', 'reelStop', 'lose']) {
     assert.ok((sfx.SFX_DEFS.get(n).meta.jitter ?? 0) > 0, `${n} has pitch jitter`);
   }
+  for (const n of ['win1', 'win2', 'win3', 'jackpotShow']) assert.ok(!sfx.SFX_DEFS.get(n).meta.jitter, `${n} is not detuned`);
   const lose = sfx.SFX_DEFS.get('lose');
   assert.ok(!lose.meta.long, 'the dud is not slowed by slow-motion');
   assert.ok(lose.meta.gain < 1, 'the dud sits well under the win sounds');
@@ -101,6 +102,13 @@ test('the win ladder maps to its recipes; the jackpot plays the full show, the c
   assert.equal(sfx.winSfx('jackpot'), 'jackpotShow');
   for (const n of ['jackpotShow', 'alarmBell', 'countDing', 'kachunk', 'jackpot']) assert.ok(sfx.SFX_DEFS.has(n), n);
   assert.ok(sfx.SFX_DEFS.get('jackpotShow').meta.long, 'the jackpot show drags with slow-motion');
+});
+
+test('the win cues count as long as juice does: the jackpot rollup is JACKPOT_COUNT_S, longer tiers count longer', async () => {
+  const juice = await load('src/machines/_base/juice.ts');
+  assert.equal(sfx.WIN_COUNT.jackpot, juice.JACKPOT_COUNT_S);
+  const order = ['medium', 'big', 'huge', 'mega', 'jackpot'].map((t) => sfx.WIN_COUNT[t]);
+  for (let i = 1; i < order.length; i++) assert.ok(order[i] > order[i - 1], `tier ${i} counts longer`);
 });
 
 test('countTicks: the count-up roll accelerates (gaps shrink) and stays inside the count', async () => {

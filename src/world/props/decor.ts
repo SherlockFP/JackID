@@ -8,6 +8,7 @@ import type { KitX } from '@/kit';
 import type { TexGen } from '@/core/texgen/types';
 import type { WorldProp } from '../types';
 import { Sched, easeInOutCubic, easeOutQuad, lcg } from './sched';
+import { mirrorColumnTex } from './surfaces';
 
 export interface GateProp extends WorldProp {
   setOpen(open: boolean, dur?: number): Promise<void>;
@@ -31,6 +32,9 @@ export function buildColumn(kit: KitX, tex: TexGen, o: { h: number; pos: [number
     kit.cyl(r, r, 0.08, marble, { pos: [0, shaftTop + y, 0], parent: root, seg: 8 });
   }
   kit.box(0.9, 0.04, 0.9, brass, { pos: [0, o.h - 0.02, 0], parent: root });
+  // a band of smoked mirror tiles at eye height between two brass rings (docs/ART.md "Identity": the mirrored columns of a 90s casino)
+  kit.cyl(0.312, 0.312, 1.6, kit.mat({ map: mirrorColumnTex(tex), color: 0xc8d0d8, lit: false }), { pos: [0, 1.8, 0], parent: root, seg: 8, open: true });
+  for (const y of [1.0, 2.6]) kit.cyl(0.33, 0.33, 0.05, brass, { pos: [0, y, 0], parent: root, seg: 8 });
   root.position.set(o.pos[0], o.pos[1], o.pos[2]);
   return { root, radius: 0.45 };
 }

@@ -46,6 +46,17 @@ function reg(f: Fixture): Fixture {
   return f;
 }
 
+/**
+ * A lit thing that is not a pooled fixture (a neon sign, a bulb string, a lamp the level builds itself): the night cycle switches it
+ * with its zone (the zone is `zone`, else the one `pos` falls in), so Dawn darkens it with the rest of the floor.
+ */
+export function registerLamp(pos: V3, setOn: (on: boolean) => void, zone?: string): void { built.push({ pos, zone, setOn }); }
+/** The same for an unlit glow surface: `mat` must be a unique material (`kit.mat({ ..., unique: true })`) so merging leaves it alone. */
+export function registerGlow(mat: THREE.MeshBasicMaterial, pos: V3, zone?: string): void {
+  const lit = mat.color.clone(), dark = lit.clone().multiplyScalar(0.12);
+  registerLamp(pos, (on) => mat.color.copy(on ? lit : dark), zone);
+}
+
 const hashN = (n: number): number => {
   const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return s - Math.floor(s);

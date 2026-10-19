@@ -2,17 +2,18 @@
 // run-enders that come before the Wager", bonds that never gate an ending, Loki's variants (docs/STORY_BIBLE.md §9), Ada's end, the save
 // record and its tolerant reader, and the nine cutscene files (three full scenes, six cards): ids, line counts, timing, hooks, anchors, and
 // EN+TR copy with no dashes.
-import { test, before, after } from 'node:test';
+import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { load, closeVite } from './_vite.mjs';
 
 after(closeVite);
 
-let E, B, STR, TABLES, HOME, CARD, ALL;
+let E, B, CH, STR, TABLES, HOME, CARD, ALL;
 const SCENES = {};
 before(async () => {
   E = await load('src/game/story/endings.ts');
   B = await load('src/game/bonds.ts');
+  CH = await load('src/game/story/chapter.ts');
   ALL = [...B.BOND_IDS];
   CARD = await load('src/game/story/cutscenes/endingCard.ts');
   HOME = (await load('src/game/home/contract.ts')).HOME_ANCHORS;
@@ -288,4 +289,111 @@ test('the copy: same keys in EN and TR, same placeholders, no empty value, no da
   assert.equal(STR.en['kept_pair.9'], 'Ha. There you are.');
   assert.equal(STR.tr['kept_pair.9'], 'Hah. İşte buradasın.');
   assert.equal(STR.en['he_came_home.3'], 'Sit down. I beat you once.');
+});
+
+// ── the wiring (A5): a real run fills the facts, routes, saves the record, and keeps the facts through a resume ─────────────────
+
+test('each ending has a witness that routes to it, and its scene id resolves to a cutscene file', () => {
+  for (const id of E.ENDING_IDS) {
+    const rec = E.endingRecord(F(E.ENDING_WITNESS[id]));
+    assert.equal(rec?.id, id, `${id} witness`);
+    assert.equal(SCENES[rec.id].id, E.endingScene(rec.id), `${id}: the scene played is the file's`);
+  }
+});
+
+describe('the run', () => {
+  let RUN, EV;
+  before(async () => {
+    RUN = await load('src/game/run.ts');
+    EV = await load('src/core/events.ts');
+    (await load('src/machines/_base/registry.ts')).load();
+  });
+  const paidDawn = (run) => { run.debtPaid = run.quota.due; run.syncQuota(); run.phase = 'collection'; run.dawn(); };
+  const at = (night, seed) => { const run = RUN.createRun({ seed, mode: 'debt', home: true }); run.index = night - 1; return run; };
+  const game = (wager, pairs = 0, you = 0) => ({ left: false, wager, pairs, cracks: { you, ada: 0 } });
+  /** Plays the N8 kitchen wager in the Evening that opens Night 8, then Night 8 paid and the lift up. */
+  function finale(kitchen, seed) {
+    const run = at(7, seed);
+    run.kitchenDone(game(kitchen, kitchen === 'pair' ? 3 : 0));
+    run.index = 7;
+    paidDawn(run);
+    assert.equal(run.topsideOpen, true);
+    const ends = [];
+    const off = EV.bus.on('run:end', ({ summary }) => ends.push(summary));
+    assert.equal(run.stayUp(), true);
+    off();
+    run.dispose();
+    return { rec: run.endingRecord(), summary: ends[0] };
+  }
+
+  test('a drawn kitchen wager (three kept pairs) then Night 8: KEPT PAIR, and the summary keeps its own tag', () => {
+    const { rec, summary } = finale('pair', 9101);
+    assert.equal(rec.id, 'kept_pair');
+    assert.equal(rec.pairs, 3);
+    assert.equal(rec.ada, 'beside');
+    assert.equal(summary.endingId, 'kept_pair');
+    assert.equal(summary.ending, 'elevator', 'results and Obols still read the run tag');
+  });
+
+  test('Ada beaten at the wager then Night 8: COLD KITCHEN; no wager at all: ALONE', () => {
+    assert.equal(finale('win', 9102).rec.id, 'cold_kitchen');
+    const run = at(8, 9103);
+    paidDawn(run);
+    run.stayUp();
+    assert.equal(run.endingRecord().id, 'alone', 'no kitchen on record: the lift does not stand in for the Wager');
+    run.dispose();
+  });
+
+  test('losing to Ada ends the run on the spot: KEPT', () => {
+    const run = at(7, 9104);
+    run.kitchenDone(game('lose'));
+    assert.equal(run.over, true);
+    assert.equal(run.endingRecord().id, 'kept');
+    assert.equal(run.endingRecord().ada, 'gone');
+    run.dispose();
+  });
+
+  test('a crack at an ordinary table is a broken word; a left game counts for nothing', () => {
+    const run = at(3, 9105);
+    run.kitchenDone({ ...game(null), left: true, cracks: { you: 2, ada: 0 } });
+    assert.equal(run.chapterRecord().broken, false);
+    run.kitchenDone(game(null, 0, 1));
+    assert.equal(run.chapterRecord().broken, true);
+    assert.equal(run.chapterRecord().kitchen, null, 'an ordinary game is not the wager');
+    run.dispose();
+  });
+
+  test('the Night 7 deal signed ends the run at that Dawn: PAID IN FULL', () => {
+    const run = at(7, 9106);
+    run.chapterRecord().deal = 1;
+    paidDawn(run);
+    assert.equal(run.over, true);
+    assert.equal(run.endingRecord().id, 'paid_in_full');
+    run.dispose();
+  });
+
+  test('a quit reaches no ending', () => {
+    const run = at(8, 9107);
+    run.chapterRecord().deal = 1;
+    run.quit();
+    assert.equal(run.endingRecord(), null);
+    run.dispose();
+  });
+
+  test('the facts survive a save mid-run: kitchen, pairs, hints and the broken word', () => {
+    const run = at(7, 9108);
+    EV.bus.emit('phone:story', { callId: 1, id: 'mira_n7', speaker: 'story.speaker.mira', lines: [] });
+    run.kitchenDone(game(null, 0, 1));
+    run.kitchenDone(game('pair', 3));
+    const facts = run.endingFacts();
+    assert.equal(run.chapterRecord().hints, 1 << CH.PAIR_HINTS.indexOf('mira'));
+    assert.equal(CH.hintsHeard(run.chapterRecord()), 1);
+    const snap = JSON.parse(JSON.stringify(run.snapshot()));
+    const store = { data: { resume: snap }, update(fn) { fn(this.data); }, flush() {} };
+    const back = RUN.resumeRun(store, { home: true });
+    assert.deepEqual(back.endingFacts(), facts);
+    assert.deepEqual(back.chapterRecord(), run.chapterRecord());
+    back.dispose();
+    run.dispose();
+  });
 });

@@ -4,20 +4,25 @@
  * the debt left to the House and what paying it buys back, the ventures' income and the Collector's freeze warning),
  * INVESTMENTS (buy and sell ventures) and MARKET (food for the fridge, the deadbolt, the photo frame, reroll slips).
  *
- * Keys: 1 / 2 / 3 switch tabs, Esc closes. Every rule lives in src/game/economy (`run.homeEconomy()`); this file only draws and
+ * A fourth tab, KONSOL (4), takes cheat codes (src/game/cheats.ts, konsol.ui.ts).
+ * Keys: 1 / 2 / 3 / 4 switch tabs, Esc closes. Every rule lives in src/game/economy (`run.homeEconomy()`); this file only draws and
  * forwards clicks. The panel closes itself when the Evening ends. `mountComputerUi(run)` returns the disposer (the run calls it).
  */
 import './computer.css';
+import './konsol.css';
 import { app } from '@/core/app';
 import { bus } from '@/core/events';
 import { t } from '@/core/i18n';
 import { addTicker, h, modalPanel, uiSfx } from '@/core/ui/widgets';
 import type { DebtRun } from '@/game/run';
 import type { HomeEconomy, TradeResult } from '@/game/economy/homeEconomy';
+import { createCheats } from '@/game/cheats';
+import { mountCheatTag } from '@/game/cheats.hud';
+import { drawKonsol, type KonsolLine } from './konsol.ui';
 
 const PANEL = 'home-pc';
-type Tab = 'home' | 'invest' | 'market';
-const TABS: readonly Tab[] = ['home', 'invest', 'market'];
+type Tab = 'home' | 'invest' | 'market' | 'konsol';
+const TABS: readonly Tab[] = ['home', 'invest', 'market', 'konsol'];
 
 export function mountComputerUi(run: DebtRun): () => void {
   let alive = true;
@@ -25,6 +30,10 @@ export function mountComputerUi(run: DebtRun): () => void {
   let tab: Tab = 'home';
   let status = '';
   let screen: HTMLElement | null = null;
+  // KONSOL: the cheat console tab. The first code marks the run CHEATED (src/game/cheats.ts) and the HILE tag shows in the corner.
+  const cheats = createCheats(run, app.save);
+  const tagOff = mountCheatTag(cheats.cheated());
+  const konsolLog: KonsolLine[] = [];
 
   const econ = (): HomeEconomy | null => run.homeEconomy();
 
@@ -122,7 +131,8 @@ export function mountComputerUi(run: DebtRun): () => void {
     const body = h('div', 'pc-body', screen);
     if (tab === 'home') drawHome(body, e);
     else if (tab === 'invest') drawInvest(body, e);
-    else drawMarket(body, e);
+    else if (tab === 'market') drawMarket(body, e);
+    else drawKonsol(body, cheats, konsolLog, draw);
     h('div', 'pc-status', screen, status);
     h('div', 'pc-foot', screen, t('pc.close'));
   }
@@ -140,7 +150,8 @@ export function mountComputerUi(run: DebtRun): () => void {
       h('div', 'pc-scan', crt);
       draw();
       const onKey = (ev: KeyboardEvent): void => {
-        const i = ['1', '2', '3'].indexOf(ev.key);
+        if (ev.target instanceof HTMLInputElement) return;   // typing into the console
+        const i = ['1', '2', '3', '4'].indexOf(ev.key);
         if (i < 0) return;
         ev.preventDefault();
         ev.stopImmediatePropagation();
@@ -174,5 +185,7 @@ export function mountComputerUi(run: DebtRun): () => void {
     alive = false;
     off();
     close();
+    cheats.dispose();
+    tagOff();
   };
 }

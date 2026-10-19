@@ -42,20 +42,18 @@ export function createBrokePrompt(run: DebtRun): BrokePrompt {
   const el = document.createElement('div');
   el.className = 'px-broke';
   el.setAttribute('role', 'alert');
+  // a small bottom-left strip, not a centre card: it can stay up for a while (e.g. everything banked), so it must not cover play
   el.style.cssText = [
-    'position:absolute', 'left:50%', 'top:20%', 'transform:translateX(-50%)', 'z-index:40', 'pointer-events:none',
-    'width:min(78%,760px)', 'padding:14px 20px 16px', 'box-sizing:border-box',
-    'background:rgba(8,6,2,0.92)', 'border:3px solid var(--amber,#ffb000)', 'box-shadow:0 0 0 3px var(--void,#000)',
-    'color:var(--ivory,#f4efe0)', 'font-family:var(--f-body,var(--f-head,monospace))', 'font-size:clamp(14px,2.2vw,22px)', 'line-height:1.35',
+    'position:absolute', 'left:16px', 'bottom:96px', 'z-index:40', 'pointer-events:none',
+    'max-width:min(46%,380px)', 'padding:5px 9px', 'box-sizing:border-box',
+    'background:rgba(8,6,2,0.82)', 'border:2px solid var(--amber,#ffb000)',
+    'color:var(--ivory,#f4efe0)', 'font-family:var(--f-body,var(--f-head,monospace))', 'font-size:clamp(11px,1vw,14px)', 'line-height:1.3',
     'text-align:left', 'display:none',
   ].join(';');
   const title = document.createElement('div');
-  title.style.cssText = 'font-family:var(--f-head,monospace);font-size:clamp(18px,3.2vw,34px);color:var(--amber,#ffb000);margin-bottom:6px;letter-spacing:1px';
-  const sub = document.createElement('div');
-  sub.style.cssText = 'color:var(--grout,#b8b090);margin-bottom:10px';
-  const list = document.createElement('ol');
-  list.style.cssText = 'margin:0;padding-left:1.6em';
-  el.append(title, sub, list);
+  title.style.cssText = 'font-family:var(--f-head,monospace);font-size:clamp(11px,1.05vw,15px);color:var(--amber,#ffb000);letter-spacing:1px';
+  const list = document.createElement('div');   // only the first way out: the order is the run's own
+  el.append(title, list);
   const hudHost: HTMLElement = (app.ui as UIOverlayX | undefined)?.hudLayer ?? document.body;
   hudHost.appendChild(el);
 
@@ -78,14 +76,8 @@ export function createBrokePrompt(run: DebtRun): BrokePrompt {
       const key = JSON.stringify([help.steps, help.minBet, help.pocket, phoneKey, run.balance('ticket')]);
       if (key !== sig) {
         sig = key;
-        title.textContent = t('tut.broke.title');
-        sub.textContent = t('tut.broke.sub', { min: fmtCoins(help.minBet) });
-        list.replaceChildren(...help.steps.map((s) => {
-          const li = document.createElement('li');
-          li.style.cssText = 'margin:3px 0';
-          li.textContent = stepLine(s, run.balance('ticket'), phoneKey);
-          return li;
-        }));
+        title.textContent = `${t('tut.broke.title')} · ${t('tut.broke.min', { min: fmtCoins(help.minBet) })}`;
+        list.textContent = stepLine(help.steps[0], run.balance('ticket'), phoneKey);
       }
       if (!shown) { el.style.display = ''; shown = true; }
     },

@@ -40,7 +40,8 @@ export const DEFAULT_BINDINGS: Record<BindingKey, string[]> = {
 
 /** §11.6 walk-side actions not yet in the frozen `Action` union. Keys are binding keys, same syntax as above. */
 export const EXTRA_BINDINGS: Record<string, string[]> = {
-  jump: ['Space'], fidget: ['KeyQ'], cheer: ['Digit7'], shrug: ['Digit8'], dance: ['Digit9'],
+  jump: ['Space'], fidget: ['KeyQ'], toss: ['KeyR'],   // Q passes the coin, hold Q = fancy tricks; R tosses it (walk only: seated, R is m.double)
+  cheer: ['Digit7'], shrug: ['Digit8'], dance: ['Digit9'],
   // the phone from anywhere (walking or seated): KeyP picks up a ringing line; 1 / 2 / 3 choose a deal while the sheet is up
   answerPhone: ['KeyP'], phoneOpt1: ['Digit1'], phoneOpt2: ['Digit2'], phoneOpt3: ['Digit3'],
   // the pocket phone (wave 69): T opens or closes the threads while walking; 1 / 2 / 3 answer while it is open

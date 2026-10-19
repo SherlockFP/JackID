@@ -129,6 +129,30 @@ panels) are stretched once, never below 16 per metre.
 - Put two faces in one plane: offset at least 5 mm (1 cm for anything larger than 1 m); a decal or poster stays 5 mm off its wall.
 - Add a texture above 128 px or a real-time light for decoration.
 
+## Identity: Cyprus casino × late-Soviet (wave 90)
+
+The House is a Northern Cyprus casino of the 90s set in the bones of an older Soviet-era building. Turkish players should know the
+place; the Soviet past shows only as faded leftovers, never as politics. Code: `src/world/props/identity.ts` (signs, the mosaic, the
+rate board, the Boiler panels and the small Turkish props), the painters in `src/world/props/surfaces.ts`, the flat in `src/world/home/*`.
+
+- **Signs speak Turkish first.** A sign is `crispBilingual`: the Turkish word big, the English one small under it (KASİNO / CASINO,
+  HOŞ GELDİNİZ / WELCOME, YİNE BEKLERİZ / COME AGAIN, ÇIKIŞ / EXIT, DÖVİZ / EXCHANGE). Both string tables hold the same sign text; text
+  a player reads as prose (the poster slogans) is translated. Gold on oxblood in a brass frame, like the BÜYÜK VURGUN wall; exits are
+  green boxes beside each doorway on its wing face.
+- **The everyday Turkish layer.** Tulip çay glasses on gold-lined saucers on the bar and the lounge tables (`cayGlass`), a semaver on the
+  bar's service cabinet, a tavla game left open on the tables without a lamp, a nazar boncuğu by the cashier, kilim runners at every
+  wing door (`kilimTex`), the exchange board with TL / STG / EUR / USD (codes and digits only, no brands), mirrored bands on the nave
+  columns, palms, red velvet and gold. One or two of each, where people would leave them. No flags, no tourist kitsch.
+- **The Soviet leftovers.** Constructivist posters (red, black and cream geometry, a slogan about luck and work, never a hammer and
+  sickle or a real slogan) on the far side of each wing door; a red star on the old clock's dial; the smalt mosaic over the Lobby desk
+  (a worker raising a die); precast concrete panels in the Boiler, the back of house. They read as older than the casino: faded,
+  dusty, a tile missing.
+- **The flat** is a khrushchyovka room lived in by a Turkish family: a lacquered wall unit (sektsiya) with good glasses, a crystal bowl
+  and the small TV under a doily, a carpet on the wall over the bed, a çaydanlık on a two-ring hob, a calendar with a harbour on it, a
+  stairwell painted green to 1.5 m under whitewash. Stations, anchors and Ada's chair do not move for dressing.
+- **Rules.** Painted maps follow the density rules above (a poster or panel stretched once, the kilim 32 per metre); a decal or plate
+  sits 5 mm or more off its surface; dressing is static kit geometry under `statical`, the sign plates keep their own material.
+
 ## Characters and props (wave 88)
 
 Every figure is the one mannequin rig (`src/kit/mannequin.ts`) and its clip set. A character is told apart by an outfit, one colour

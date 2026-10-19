@@ -151,5 +151,7 @@ export const ANCHOR_PLAN = {
  */
 export const FRIDGE = { box: [2.35, 0, 1.6, 3.0, 1.75, 2.3], station: [2.3, 0, 1.55, 3.0, 1.95, 2.35] } as const;
 export const DESK = { x0: 0.75, x1: 1.9, z0: -2.45, z1: -1.85, top: 0.74, station: [0.7, 0, -2.5, 1.9, 1.45, -1.75] } as const;
+/** The lacquered wall unit (sektsiya) on the west wall, between the nightstand and the door corner: plan footprint and height. */
+export const WALL_UNIT = { x0: -3.0, x1: -2.55, z0: 0.72, z1: 2.32, h: 1.95 } as const;
 /** The desk chair (turned to face the desk, north). */
 export const DESK_CHAIR = { x: 1.3, z: -1.45 } as const;

@@ -102,6 +102,11 @@ const tierIndex = (tier: WinTier): number => WIN_TIERS.indexOf(tier);
 const SMALL = WIN_TIERS.indexOf('small');
 const BIG = WIN_TIERS.indexOf('big');
 const HUGE = WIN_TIERS.indexOf('huge');
+const MEGA = WIN_TIERS.indexOf('mega');
+/** A mega or jackpot gain rolls into the wallet slower (this share of the speed) for this long (s), bumping the counter as it climbs. */
+const BIG_ROLL_S = 2.5;
+const BIG_ROLL_RATE = 0.3;
+const BIG_ROLL_PULSE_S = 0.18;
 /** A tier's win pop is scaled by this many ms after its machine:result (the payout follows it in the same tick). */
 const WIN_LINK_MS = 600;
 /** The centre figure holds this long after it lands, before its rise and fade (UI seconds). */
@@ -204,6 +209,7 @@ export function createHud(): Hud {
   let ticketsSeen = false;
   // The wallet's roll ticks: where the current rise started (the pitch climbs over it), and the 12 Hz throttle.
   let rollStart = 0;
+  let bigRoll = 0, bigPulse = 0;
   const rollGate = new TickGate();
 
   // ── top-centre: clock + night line ──────────────────────────────────────────────────────────────
@@ -683,6 +689,7 @@ export function createHud(): Hud {
     if (pid !== self()) return;
     const idx = tierIndex(tier);
     lastWin = { idx, at: performance.now() };
+    if (idx >= MEGA) { bigRoll = BIG_ROLL_S; bigPulse = 0; }
     if (idx < BIG) return;
     const mult = bet > 0 ? Math.round(gross / bet) : 0;
     addFeed(t('hud.feed.win', { who: t('hud.feed.you'), x: mult, machine: machineName(machineId) }), idx >= HUGE ? 'gold' : '');
@@ -771,7 +778,11 @@ export function createHud(): Hud {
       if (w !== roll.target && w > roll.shown) rollStart = roll.shown;
       roll.set(w);
     }
-    const moved = roll.tick(dt);
+    // a mega or jackpot rolls in slowly, the counter pulsing on the climb
+    const big = bigRoll > 0 && roll.target > roll.shown;
+    bigRoll = Math.max(0, bigRoll - dt);
+    const moved = roll.tick(big ? dt * BIG_ROLL_RATE : dt);
+    if (big && (bigPulse += dt) >= BIG_ROLL_PULSE_S) { bigPulse = 0; ui().bump('wallet', 0.8); }
     // the rising roll ticks at most 12 Hz, pitched up with its progress (0 at the rise's start, an octave at its end)
     if (roll.target > roll.shown && rollGate.pass(dt, moved)) {
       rollTick((roll.shown - rollStart) / Math.max(1, roll.target - rollStart), 0.22);

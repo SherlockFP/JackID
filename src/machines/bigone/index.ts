@@ -97,6 +97,8 @@ const BOUNCE = 0.12;
 const STEP_MAX = 0.4;
 const STEP_MIN = 0.2;
 const TALLY_CAP = 1.6;
+/** Where the seat banner starts, in % of the screen height: under the cabinet's JACKPOT plate, readout and LCD, above the reels (seatHud.topBelow). */
+const BANNER_TOP_PCT = 26;
 /** Free spins tally quicker: a fixed step per pattern. */
 const QUICK_STEP = 0.14;
 /** Semitone ladder of the tally chimes: each pattern rings a note higher. */
@@ -1155,6 +1157,7 @@ export default class BigOne extends MachineBase<BigOneParts, Ev, State> {
     const s = this.state;
     const busy = this.inRound || this.busy || this.roundOpen;
     sh.goal({ k: 'm.bigone.goal' });
+    sh.topBelow(BANNER_TOP_PCT);   // the state box and goal start under the cabinet's own JACKPOT plate and LCD
     sh.stake(this.bet);
 
     // STATE: a chase on offer, auto, spinning, a held reel, or ready for the next spin

@@ -4,7 +4,7 @@
  * owned here and disposed at the end of the run.
  */
 import * as THREE from 'three';
-import type { Kit, MannequinActor } from '@/kit/types';
+import type { Kit, MannequinActor, MannequinOpts } from '@/kit/types';
 import type { ActorCue, ActorSpec, CutTarget } from './types';
 import { ease, type Ease } from '../tween';
 import { clamp, lerpAngle } from '../math';
@@ -55,9 +55,10 @@ export class CutActors {
   }
 
   spawn(key: string, spec: ActorSpec): void {
-    const actor = this.kit.mannequin({
-      color: spec.color, height: spec.height, mask: spec.mask ?? null, clip: spec.clip,
-    });
+    const opts: MannequinOpts & { female?: boolean } = {
+      color: spec.color, height: spec.height, mask: spec.mask ?? null, clip: spec.clip, npc: spec.npc, rim: spec.rim, female: spec.female,
+    };
+    const actor = this.kit.mannequin(opts);
     actor.root.position.set(spec.pos[0], spec.pos[1], spec.pos[2]);
     actor.root.rotation.y = spec.rotY * DEG;
     actor.setVisible(spec.visible ?? true);

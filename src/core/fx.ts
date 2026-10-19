@@ -176,6 +176,9 @@ export function createFx(): FxApi {
       const big = tier === 'big' || tier === 'huge' || tier === 'mega' || tier === 'jackpot';
       const at3: PosLike = [x, y, z];
       const coins = (n: number, over: number): void => ps.burst('coins', x, y, z, n, { over, dir: [0, 1, 0.6] });
+      // a win never flashes, tints, splits colour or zooms for a player who asked for no flashing or for Calm; it shakes half as hard
+      const flashOk = !reduce() && !app.save.data.settings.calm;
+      const calm = flashOk ? 1 : 0.5;
 
       switch (tier) {
         case 'push':
@@ -193,8 +196,8 @@ export function createFx(): FxApi {
         case 'big':
           coins(40, 1.2);
           api.sparks(at3, 28, color);
-          api.flash(GOLD, 0.35, 0.05);
-          api.shake(0.02, 0.5, { roll: 0.8 });
+          if (flashOk) api.flash(GOLD, 0.35, 0.05);
+          api.shake(0.02 * calm, 0.5, { roll: 0.8 });
           api.hitstop(0.06);
           api.lightPulse(at3, { color, mul: 2, radius: 8, dur: 0.6 });
           break;
@@ -202,9 +205,9 @@ export function createFx(): FxApi {
           coins(100, 2);
           api.confetti(at3, 80);
           api.sparks(at3, 40, color);
-          api.flash(GOLD, 0.45, 0.05);
-          api.shake(0.03, 0.7, { roll: 1.1 });
-          api.zoomPunch(0.05, 0.5);
+          if (flashOk) api.flash(GOLD, 0.45, 0.05);
+          api.shake(0.03 * calm, 0.7, { roll: 1.1 });
+          if (flashOk) api.zoomPunch(0.05, 0.5);
           api.hitstop(0.08);
           api.lightPulse(at3, { color, mul: 2.4, radius: 10, dur: 0.9 });
           break;
@@ -212,9 +215,9 @@ export function createFx(): FxApi {
           coins(160, 2.5);
           api.confetti(at3, 120);
           api.sparks(at3, 50, color);
-          api.flash(GOLD, 0.55, 0.05);
-          api.shake(0.04, 0.75, { roll: 1.3 });
-          api.zoomPunch(0.06, 0.55);
+          if (flashOk) api.flash(GOLD, 0.55, 0.05);
+          api.shake(0.04 * calm, 0.75, { roll: 1.3 });
+          if (flashOk) api.zoomPunch(0.06, 0.55);
           api.hitstop(0.1);
           api.lightPulse(at3, { color, mul: 2.8, radius: 12, dur: 1.0 });
           break;
@@ -222,13 +225,11 @@ export function createFx(): FxApi {
           coins(200, 3);
           api.confetti(at3, 160);
           api.sparks(at3, 60, color);
-          api.flash(PAPER, 0.7, 0.033);
-          app.timers.ui.after(0.06, () => api.flash(GOLD, 0.3, 0.05));
-          api.shake(0.05, 0.8, { roll: 1.5 });
-          api.zoomPunch(0.07, 0.6);
+          if (flashOk) { api.flash(PAPER, 0.7, 0.033); app.timers.ui.after(0.06, () => api.flash(GOLD, 0.3, 0.05)); }
+          api.shake(0.05 * calm, 0.8, { roll: 1.5 });
+          if (flashOk) api.zoomPunch(0.07, 0.6);
           api.hitstop(0.12);
-          api.tint(GOLD, 0.25, 1.6);
-          api.chroma(1.5, 0.8);
+          if (flashOk) { api.tint(GOLD, 0.25, 1.6); api.chroma(1.5, 0.8); }
           api.lightPulse(at3, { color, mul: 3, radius: 14, dur: 1.2 });
           break;
         default:

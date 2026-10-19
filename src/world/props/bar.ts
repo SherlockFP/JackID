@@ -1,7 +1,8 @@
 /**
  * The casino bar in the Lobby (wave 87, docs/ART.md §2 "Bar"): a walnut counter with raised panels, a veined marble top, a brass
  * nosing and foot rail, three leather stools; behind it a back bar with a marble shelf cabinet, a smoked mirror, two lit glass shelves
- * of bottles, side columns, a crown with a BAR neon, and the life left on the counters (glasses, an ashtray, chip stacks, taps).
+ * of bottles, side columns, a crown with a BAR neon, the life left on the counters (glasses, çay on saucers, an ashtray, chip stacks,
+ * taps) and a semaver on the service cabinet.
  * It replaced the vendored medieval tavern pieces, which read as flat brown slabs at the 360p render.
  *
  * Every part is a static kit primitive under `parent` (the level's `statical`, merged by kit.finalize). The colliders stay in
@@ -11,7 +12,9 @@ import * as THREE from 'three';
 import type { KitX } from '@/kit';
 import { presets } from '@/kit/presets';
 import { crispNeon } from './signs';
+import { registerGlow, registerLamp } from '../lights';
 import { marbleTex, mirrorTex, worldUV } from './surfaces';
+import { cayGlass, semaver } from './identity';
 import { OUTFITS, wear } from '@/kit/mannequinOutfits';
 
 /** Bottle glass colours (unlit: the back bar's glow is what lights them). */
@@ -22,7 +25,8 @@ export function buildBar(kit: KitX, o: { parent: THREE.Object3D; root: THREE.Obj
   const { parent, x, z } = o;
   const walnut = P.wood('walnut'), dark = P.wood('dark'), mahog = P.wood('mahogany'), brass = P.brass(), leather = P.leather(0x5a1418, false);
   const marble = kit.mat({ color: 0xffffff, map: marbleTex(kit.tex, 0x1e2c24, 0xb8c8a8) });
-  const glow = kit.mat({ color: 0xffc070, lit: false });
+  const glow = kit.mat({ color: 0xffc070, lit: false, unique: true }) as THREE.MeshBasicMaterial;   // unique: the night cycle darkens it at Dawn (registerGlow)
+  registerGlow(glow, [x, 1.5, z + 1.43]);
   const ash = kit.mat({ color: 0x2a2a30, lit: false });
   const box = (w: number, h: number, d: number, m: THREE.Material, px: number, py: number, pz: number): THREE.Mesh =>
     kit.box(w, h, d, m, { pos: [x + px, py, z + pz], parent });
@@ -51,7 +55,8 @@ export function buildBar(kit: KitX, o: { parent: THREE.Object3D; root: THREE.Obj
   for (let i = 0; i < 12; i++) bottle(-1.9 + i * 0.34, 0.72, 0.53, i + 3, 0.7);
 
   // ── things left on the counter ──────────────────────────────────────────────────────────────
-  for (const [gx, gz, k] of [[-1.7, -0.25, 0], [-1.45, -0.32, 1], [-0.5, -0.2, 2], [0.9, -0.28, 0], [1.6, -0.22, 1]] as const) glass(gx, 1.06, gz, k);
+  for (const [gx, gz, k] of [[-1.7, -0.25, 0], [-0.5, -0.2, 2], [1.6, -0.22, 1]] as const) glass(gx, 1.06, gz, k);
+  for (const [gx, gz] of [[-1.42, -0.3], [0.85, -0.26], [1.05, -0.32]] as const) cayGlass(kit, parent, x + gx, 1.06, z + gz);   // tea, the house drink
   ashtray(0.25, 1.06, -0.25);
   chips(-1.05, 1.06, -0.3, 5); chips(-0.95, 1.06, -0.18, 3); chips(1.25, 1.06, -0.3, 4);
   for (const tx of [-0.25, 0, 0.25]) {                                 // beer taps
@@ -95,6 +100,7 @@ export function buildBar(kit: KitX, o: { parent: THREE.Object3D; root: THREE.Obj
   neon.root.position.set(x, 2.43, z + 1.29);
   neon.root.rotation.y = Math.PI;
   neon.setOn(true);
+  registerLamp([x, 2.43, z + 1.29], neon.setOn);
   o.root.add(neon.root);
 
   // ── Selim behind the counter, right of the taps (left, seen from the stools), facing the customers: a dark figure with a warm rim (the friend on the floor),
@@ -112,8 +118,8 @@ export function buildBar(kit: KitX, o: { parent: THREE.Object3D; root: THREE.Obj
   const capTop = box(0.74, 0.05, 0.72, marble, 2.85, 1.065, 0);
   worldUV(capTop, 2);
   for (const sy of [0.08, 0.98]) box(0.7, 0.03, 0.68, brass, 2.85, sy, 0);
-  cyl(0.11, 0.09, 0.2, P.chrome(), 2.85, 1.19, 0, 8);
-  cyl(0.035, 0.035, 0.2, kit.mat({ color: 0x2a6a2a, lit: false }), 2.88, 1.33, 0.02);
+  semaver(kit, parent, x + 2.85, 1.09, z + 0.05, 180);                   // the tea urn, its tap to the customers
+  for (const tz of [-0.27, -0.16]) cayGlass(kit, parent, x + 2.64, 1.09, z + tz);
 
   /** One bottle (body, shoulder, neck, cap) standing at local (bx, by, bz), colour picked from the table by `k`, scaled by `s`. */
   function bottle(bx: number, by: number, bzz: number, k: number, s: number): void {

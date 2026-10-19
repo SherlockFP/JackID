@@ -101,7 +101,7 @@ export function crispFilters(tex: THREE.Texture): void {
   tex.needsUpdate = true;
 }
 
-interface PlateOpts { text: TextSource; w: number; h: number; color: Hex; bg: Hex | null; frame?: Hex | null; ppm?: number; font?: SignFont }
+interface PlateOpts { text: TextSource; w: number; h: number; color: Hex; bg: Hex | null; frame?: Hex | null; ppm?: number; font?: SignFont; sub?: TextSource; subColor?: Hex }
 interface Plate { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; setText(t: TextSource): void }
 
 function makePlate(kit: KitX, o: PlateOpts): Plate {
@@ -122,14 +122,19 @@ function makePlate(kit: KitX, o: PlateOpts): Plate {
       g.fillRect(0, 0, wpx, frameW); g.fillRect(0, hpx - frameW, wpx, frameW);
       g.fillRect(0, 0, frameW, hpx); g.fillRect(wpx - frameW, 0, frameW, hpx);
     }
-    if (str) {
-      const pad = frameW + Math.round(hpx * 0.1);
-      // the largest whole scale whose cap block plus two accent rows fits the height, then shrunk until the line fits the width
-      let s = Math.max(1, Math.floor(hpx / (CAP + 4)));
-      while (s > 1 && kit.tex.measure(str, { font: 'px5', scale: s }) > wpx - pad * 2) s--;
-      const y = Math.max(2 * s, Math.round((hpx - CAP * s) / 2));
-      kit.tex.drawText(g, str, Math.round(wpx / 2), y, { font: 'px5', scale: s, color: css(o.color), align: 'center' });
-    }
+    const pad = frameW + Math.round(hpx * 0.1);
+    /** One line in the band [top, top + bh): the largest whole scale whose cap block plus two accent rows fits, shrunk until it fits the width. */
+    const line = (txt: string, top: number, bh: number, color: Hex): void => {
+      if (!txt) return;
+      let s = Math.max(1, Math.floor(bh / (CAP + 4)));
+      while (s > 1 && kit.tex.measure(txt, { font: 'px5', scale: s }) > wpx - pad * 2) s--;
+      const y = top + Math.max(2 * s, Math.round((bh - CAP * s) / 2));
+      kit.tex.drawText(g, txt, Math.round(wpx / 2), y, { font: 'px5', scale: s, color: css(color), align: 'center' });
+    };
+    // a bilingual sign: the Turkish line big on top, the English line small under it (docs/ART.md "Identity")
+    const split = o.sub ? Math.round(hpx * 0.64) : hpx;
+    line(str, 0, split, o.color);
+    if (o.sub) line(upper(resolve(o.sub)), split - frameW, hpx - split, o.subColor ?? o.color);
     texture.needsUpdate = true;
   };
   paint();
@@ -145,6 +150,15 @@ function makePlate(kit: KitX, o: PlateOpts): Plate {
 /** A flat text plate (drop-in for `kit.label`): dark ground, bright letters, a thin frame, readable at any distance. */
 export function crispLabel(kit: KitX, o: { text: TextSource; w: number; h: number; color: Hex; bg?: Hex | null; frame?: Hex | null; ppm?: number; font?: SignFont }): LabelPart {
   const p = makePlate(kit, { text: o.text, w: o.w, h: o.h, color: o.color, bg: o.bg === undefined ? 0x1a120c : o.bg, frame: o.frame, ppm: o.ppm, font: o.font });
+  return { mesh: p.mesh, setText: p.setText };
+}
+
+/**
+ * A two-line plate in the casino's sign style: `text` big (the Turkish word), `sub` small under it (the English one). Both are string
+ * keys, repainted on a language change like every crisp sign.
+ */
+export function crispBilingual(kit: KitX, o: { text: TextSource; sub: TextSource; w: number; h: number; color: Hex; subColor?: Hex; bg?: Hex | null; frame?: Hex | null; ppm?: number }): LabelPart {
+  const p = makePlate(kit, { text: o.text, sub: o.sub, subColor: o.subColor, w: o.w, h: o.h, color: o.color, bg: o.bg === undefined ? 0x1a120c : o.bg, frame: o.frame, ppm: o.ppm });
   return { mesh: p.mesh, setText: p.setText };
 }
 

@@ -13,7 +13,8 @@ import { SLOT_DIMS, type SlotSize } from '@/core/types';
 
 /** [x0, z0, x1, z1] in metres. */
 export type Rect = readonly [number, number, number, number];
-export type RugTone = 'red' | 'green' | 'navy';
+/** `kilim` is the flat-woven runner of the wings (docs/ART.md "Identity"). */
+export type RugTone = 'red' | 'green' | 'navy' | 'kilim';
 
 export type LoungeItem =
   | { k: 'rug'; rect: Rect; tone: RugTone }
@@ -185,7 +186,7 @@ export function planLounge(blockers: readonly Rect[]): LoungePlan {
   for (const { side, door } of wings) {
     const [z0, z1] = door;
     const x0 = side * (WALL + 0.45), x1 = side * (WALL + 4.6);
-    add({ k: 'rug', rect: [Math.min(x0, x1), z0 - 0.2, Math.max(x0, x1), z1 + 0.2], tone: 'red' });
+    add({ k: 'rug', rect: [Math.min(x0, x1), z0 - 0.2, Math.max(x0, x1), z1 + 0.2], tone: 'kilim' });
     for (const [dz, k] of [[z0 - 1.1, 'plant'], [z1 + 1.1, 'plant']] as const) {
       const x = side * (WALL + 1.0);
       if (k === 'plant') solid({ k: 'plant', x, z: dz, h: 1.5 }, rect(x, dz, 0.45, 0.45));

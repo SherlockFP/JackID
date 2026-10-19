@@ -70,14 +70,16 @@ import { createTycoon, type Tycoon } from './tycoon';
 import { createBuffSystem, type BuffSystem } from './buffs';
 import { createItemSystem, type ItemSystem } from './items';
 import { createHotline, type Hotline, type HotlineSave } from './hotline';
-import { createPhone, hooksOf } from './home/phone';
+import { createPhone, hooksOf, DEAL_NIGHT, HARMONY_START } from './home/phone';
 import { createLuckMeter, type LuckMeter } from './luck';
 import { createKeepsakes, type KeepsakeId, type KeepsakeOutcome, type KeepsakeSave, type Keepsakes } from './keepsake';
 import { createGhostSeat, type GhostMatch, type GhostSave, type GhostSeat, type GhostSeatInfo } from './ghostSeat';
 import keepsakeStrings from './keepsake.strings';
 import ghostStrings from './ghostSeat.strings';
 import computerStrings from './home/computer.strings';
-import { cloneChapter, freshChapter, readChapter, type ChapterRecord } from './story/chapter';
+import { cloneChapter, freshChapter, hearHint, readChapter, type ChapterRecord } from './story/chapter';
+import { endingRecord, freshFacts, type EndingFacts, type EndingRecord } from './story/endings';
+import type { FlowResult } from './duels/promise/flow';
 import type { HomePhoneApi, HomeSave, HomeStage } from './home/contract';
 import {
   DOOR_FIRST_NIGHT, PHONE_HOUR, PHONE_MINUTE, initDoor, reveal as doorReveal, ring as doorRing, answer as doorAnswer, enter as doorEnter,
@@ -220,6 +222,12 @@ export interface OvershootView {
 }
 /** The Collector's rescue loan: the call rang (`'ring'`), the loan was taken (`'taken'`) or the call ended unanswered (`'lapsed'`). */
 export interface RunRescueEvent { pid: PlayerId; state: 'ring' | 'taken' | 'lapsed'; coins: number; quota: number; due: number }
+declare module '@/net/protocol' {
+  interface RunSummary {
+    /** THE ENDINGS (story A5): the ending reached (`EndingId`). `ending` keeps the run's own tag, which results and Obols read. */
+    endingId?: string;
+  }
+}
 declare module '@/core/events' {
   interface GameEvents {
     'run:wintier': RunWinTierEvent;
@@ -620,6 +628,19 @@ export interface DebtRun extends RunApi {
   bonds(): Bonds;
   /** BONDS: one event in tonight's printed Night: the toasts, the `bond:change` events and the save. */
   bond(ev: BondEvent): BondChange;
+  /** THE SECOND NAME: the live chapter record (the finale's facts live in it, so a resume keeps them). */
+  chapterRecord(): ChapterRecord;
+  /**
+   * THE ENDINGS (story A5): a game at Ada's table is over. A crack is a word to her broken (she stops saying "me too" at the wager);
+   * the N8 kitchen wager (`r.wager` set) is recorded, and a lost wager ends the run (KEPT). A left game counts for nothing.
+   */
+  kitchenDone(r: Pick<FlowResult, 'left' | 'wager' | 'pairs' | 'cracks'>): void;
+  /** THE ENDINGS: the Burning Wager is over and the run ends on it. For the Wager flow (the Champion's play, not built yet). */
+  burningWager(r: { wager: 'win' | 'lose'; cracks: number; lokiHand?: boolean; word?: boolean }): void;
+  /** THE ENDINGS: the facts the run would end on now (`end`: how it is ending). The tests and the dev preview read them. */
+  endingFacts(end?: { result: RunSummary['result']; ending?: string }): EndingFacts;
+  /** THE ENDINGS: the ending this run reached, set when it ends (null before, and for a quit or a run with no ending). */
+  endingRecord(): EndingRecord | null;
   /** The Hot Lamp the next Bell will roll (the hotline's lamp deal and Selim's tip), or null. */
   nextHot(): { mid: string; machineId: string } | null;
   /** Selim's last seal at a short Dawn: the player's answer to `selim:ask` (no answer in time reads as no). */
@@ -988,6 +1009,8 @@ class Run implements DebtRun {
   private readonly ghostSeat: GhostSeat = createGhostSeat();
   /** THE SECOND NAME (wave 73): the chapter record, saved in `resume.ext.chapter`. */
   private chapterRec: ChapterRecord = freshChapter();
+  /** THE ENDINGS: the record `endRun` routed (story/endings.ts). */
+  private endRec: EndingRecord | null = null;
   /** BONDS (§10): pure rules in bonds.ts, saved in `resume.ext.bonds`; every move goes through `bond()`. */
   private readonly bondBook: Bonds;
   /** Selim's last seal waits on the player at a short Dawn ('ask'), then carries the answer into the re-run `dawn()`. */
@@ -1261,7 +1284,12 @@ class Run implements DebtRun {
       // LOKI talks through the window glass at home (never the phone, never the kitchen before Ink 8: J4)
       bus.on('home:interact', ({ station }) => { if (station === 'window') this.jokerTip('window', `window:${this.index}`); }),
       // BONDS: picking up Mira's wrong number is showing up: it raises her bond once a Night (a 'talk' never would, and her N7 call needs bond 2)
-      bus.on('phone:story', ({ id }) => { if (id.startsWith('mira')) this.bond({ kind: 'show', who: 'mira' }); }),
+      bus.on('phone:story', ({ id }) => {
+        if (id.startsWith('mira')) this.bond({ kind: 'show', who: 'mira' });
+        if (id === 'mira_n7') hearHint(this.chapterRec, 'mira');   // the kept pair, said outright (calls.ts gates it on mira.pair)
+      }),
+      // Selim's kept-pair line at the bar (food.ts says it under the generic 'bonds.selim' source, so the text tells it apart)
+      bus.on('floor:say', ({ source, text }) => { if (source === 'bonds.selim' && text === t('bonds.selim.pairLine')) hearHint(this.chapterRec, 'selim'); }),
       bus.on('machine:result', (p) => { if (p.pid === this.selfId) this.advanceContracts('machine:result', p); }),
       bus.on('machine:round', (p) => { if (p.pid === this.selfId) { this.advanceContracts('machine:round', p); this.boilerRound(p.machineId); } }),
       bus.on('room:opened', () => { this.modsImpl.touch(); this.persistSoon(); this.notify(); }),
@@ -1828,6 +1856,55 @@ class Run implements DebtRun {
   }
   /** THE SECOND NAME (wave 73): the live chapter record (story code reads it and marks beats through `chapter.ts`). */
   chapterRecord(): ChapterRecord { return this.chapterRec; }
+
+  // ── THE ENDINGS (story A5, docs/STORY_BIBLE.md "A5 wiring plan") ───────────────────────────────────────
+  kitchenDone(r: Pick<FlowResult, 'left' | 'wager' | 'pairs' | 'cracks'>): void {
+    if (this.ended || r.left) return;
+    const c = this.chapterRec;
+    if (r.cracks.you > 0) c.broken = true;
+    if (r.wager) {
+      c.kitchen = r.wager;
+      c.pairs = Math.max(0, Math.trunc(r.pairs));
+    }
+    this.persistSoon();
+    if (r.wager === 'lose') this.endRun('lost', 'kept');   // KEPT: you stay
+  }
+
+  burningWager(r: { wager: 'win' | 'lose'; cracks: number; lokiHand?: boolean; word?: boolean }): void {
+    if (this.ended) return;
+    const c = this.chapterRec;
+    c.wager = r.wager;
+    c.cracks = Math.max(0, Math.trunc(r.cracks));
+    c.lokiHand = r.lokiHand === true;
+    c.word = r.word === true;
+    if (r.wager === 'win') this.endRun('escaped', 'elevator');
+    else this.endRun('lost', 'chair');
+  }
+
+  endingFacts(end?: { result: RunSummary['result']; ending?: string }): EndingFacts {
+    const c = this.chapterRec;
+    const f: EndingFacts = {
+      ...freshFacts(),
+      night: nightDef(this.index).no, paid: this.topside, fell: end?.result === 'fell', seals: this.soulMarkCount,
+      descended: end?.ending === 'descend', deal: c.deal, kitchen: c.kitchen, pairs: c.pairs,
+      wager: c.wager, cracks: c.cracks, lokiHand: c.lokiHand, wordAtMatchPoint: c.word,
+      cameHome: this.jokerSys.cameHome, trust: this.jokerSys.trust, visitUsed: this.jokerSys.snapshot().used.visit === 1,
+      harmony: this.hPhone?.harmony() ?? HARMONY_START, waiting: this.bondBook.floor(),
+    };
+    // shortcut: the Burning Wager is not built, so the lift out of a paid Night 8 after the kitchen wager stands in for it, won clean.
+    // Drop this when the Champion's play calls burningWager().
+    if (end?.ending === 'elevator' && f.wager === null && f.kitchen !== null) f.wager = 'win';
+    return f;
+  }
+
+  endingRecord(): EndingRecord | null { return this.endRec; }
+
+  /** PAID IN FULL: the Night 7 deal was signed, so the run ends at that Dawn (or, answered in the Evening, before Night 8 opens). */
+  private dealEnds(): boolean {
+    if (this.ended || !this.quotaMode || nightDef(this.index).no !== DEAL_NIGHT || this.chapterRec.deal !== 1) return false;
+    this.endRun('lost', 'paid');
+    return true;
+  }
   charms(pid?: PlayerId): readonly CharmState[] { return this.charmBox.list(pid ?? this.selfId); }
   loseCharm(id: string): boolean {
     // THE HOME COMPUTER (wave 77): with the deadbolt in, a Picker at the door cannot reach a charm
@@ -2090,6 +2167,7 @@ class Run implements DebtRun {
 
   /** The next Night begins (the old OPEN THE FLOOR body): the lever without the Home layer, and the end of the bed's sleep. */
   private beginNight(): void {
+    if (this.dealEnds()) return;
     this.settleBoons();   // a no-op after openFloor settled the offer; the sleep arrives here with it closed
     // Ascent: the pit rises one floor. The Elevator Token pays 5 % of the pocket (max 300 × SI).
     if (this.charmBox.has(this.selfId, 'elevator_token')) {
@@ -2728,6 +2806,7 @@ class Run implements DebtRun {
     this.nightDone = true;
     this.bond({ kind: 'dawn' });   // neglect, and Selim's unpaid loans come due. shortcut: the Night 8 call before the Burning Wager waits for A5
     if (nightDef(this.index).no === BASE_RUN_NIGHTS) this.topside = true;
+    if (this.dealEnds()) return;
     this.spotlight.end();   // Machine of the Night: the Night is over, the spotlight and its x1.25 end
     // THE PANTHEON: every paid Dawn with a Night after it (from Night 1 on) opens the boon offer. A sealed Dawn has none.
     if (!sealed && !this.topside) {
@@ -2835,6 +2914,8 @@ class Run implements DebtRun {
   }
 
   private endRun(result: RunSummary['result'], ending?: string): void {
+    // THE ENDINGS: routed before anything resets (a quit or an abandoned run reaches none)
+    this.endRec = this.quotaMode && result !== 'quit' && result !== 'abandoned' ? endingRecord(this.endingFacts({ result, ending })) : null;
     this.ended = true;
     this.rescue.hangUp();
     this.clock.stop();
@@ -2854,6 +2935,7 @@ class Run implements DebtRun {
       players: [{ id: this.selfId, name: '', placement: 1, wallet: this.coins }],
       stats: { ...this.stats },
       ...(ending ? { ending } : {}),
+      ...(this.endRec ? { endingId: this.endRec.id } : {}),
       ...(obols !== undefined ? { obols } : {}),
       // Stakes and the daily tag: the receipt reads them (results.ts); RunSummary has no fields for them yet.
       ...(this.quotaMode ? { stake: stake.stake } : {}),
@@ -2867,6 +2949,8 @@ class Run implements DebtRun {
       this.save.update((d) => {
         d.resume = null;
         d.history = [...d.history, summary].slice(-20);
+        // the endings seen: a "you've seen these endings" list reads `codex['ending:<id>']`
+        if (this.endRec) d.codex[`ending:${this.endRec.id}`] = (d.codex[`ending:${this.endRec.id}`] ?? 0) + 1;
         if (banked) d.meta = banked;
         if (cleared) d.stakeCleared = recordStakeClear(d.stakeCleared, kit, stake.stake);
         if (day !== null) {
@@ -2884,7 +2968,8 @@ class Run implements DebtRun {
    * run's total deposited (so it grows with every Night paid) and the Foundations gain.
    */
   private runObols(result: RunSummary['result'], ending?: string): number {
-    const outcome: ObolOutcome = ending === 'descend' ? 'descend' : result === 'fell' ? 'fell' : result === 'escaped' ? 'topside' : 'quit';
+    // a story loss (KEPT, PAID IN FULL, THE CHAIR) pays as a fall
+    const outcome: ObolOutcome = ending === 'descend' ? 'descend' : result === 'fell' || result === 'lost' ? 'fell' : result === 'escaped' ? 'topside' : 'quit';
     const prestige = this.tycoonSys.prestige;
     if (outcome === 'descend') return prestige.preview().obols;
     return obolsFor({ deposited: this.stats.deposited ?? 0, outcome, gain: prestige.preview().multiplier });
@@ -3754,6 +3839,7 @@ class Run implements DebtRun {
     const pair = e.rivalId === 'lucan' && this.bondBook.useOnce('lucan.pair');
     // LOKI reads the rival once the intro is off screen (he only knows the hands he sat across: Lucan's watch, Orrin's card)
     const tip = (): void => {
+      if (pair) hearHint(this.chapterRec, 'lucan');
       if (pair) bus.emit('floor:say', { text: t('story.duel.rival.lucan.hint.pair'), speaker: t('story.duel.rival.lucan.name'), voice: 'dealer', source: 'bonds.lucan.pair' });
       this.jokerTip('duel', `duel:${e.rivalId}`, e.rivalId === 'lucan' ? 'watch' : e.rivalId === 'orrin' ? 'card' : '-');
     };

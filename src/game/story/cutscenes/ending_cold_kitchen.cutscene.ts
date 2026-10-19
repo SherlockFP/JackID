@@ -1,7 +1,7 @@
 /**
  * COLD KITCHEN / SOĞUK MUTFAK (STORY wave A5, STORY_BIBLE §4 Endings): you beat Ada at the kitchen wager, then win the Wager clean. The
  * card burns and you are free; the Champion, beaten: "You did what I couldn't."; at home the kitchen light is on and her chair is still.
- * About 42 s, skippable. NOT TRIGGERED YET: the N8 flow plays it with `vars: { loki: t(record.lokiLine) }` (Loki burns with the card, or
+ * About 42 s, skippable. story/index.ts plays it at the run's end with `vars: { loki: t(record.lokiLine) }` (Loki burns with the card, or
  * stays if his word was spent at match point). Selim pouring you a drink (bond 3, `record.waiting`) is the wiring's tag, not this scene's.
  *
  * Hooks (the wiring registers them, a missing hook only logs): `ending.burn`, `ending.home` ({ ada: 'still' } dresses the flat).

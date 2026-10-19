@@ -11,6 +11,8 @@
 import type { AmbienceId, Bus, PlayOpts } from './types';
 import type { WinTier } from '@/game/types';
 import { installReal, CROWD_LOOP, audioCalm, winClip } from './real';
+import { band, type Band } from './winBand';
+import { D } from './music/dsp';
 import { Kit, arng, chance, hz, noiseMakeup, pick, rnd, rndi, semi, windowPeak, type NoiseBank, type NoiseColor } from './synth';
 
 export interface SfxMeta {
@@ -42,19 +44,21 @@ const LOOP_ENV = { a: LOOP_FADE, d: 0.001, s: 1, r: LOOP_FADE };
  * `lose` is the quiet dud, so it sits near 0.3 full scale, well under the win sounds.
  * Wave 82 (casino loop: recorded wheel / chimes / fanfare / alarm layers, countDing, kachunk, alarmBell, jackpotShow): also set by
  * analogy, NOT rendered. Measure with `node scripts/qa/sfxLoud.mjs` (headless, muted) and copy the numbers in.
+ * Wave 89: the home cues (knock, chainRattle, lightSwitch, bedCreak, phoneBuzz, lockTurn) and seat / foodBite / foodSip were rendered and trimmed
+ * so each peaks near its neighbours (click 0.39, footstep 0.49, door 0.54; the food and seat sounds sit softest, 0.37-0.44).
  */
 const TRIM: Record<string, number> = {
   click: 1.13, hover: 3, button: 0.8, popUp: 1.19, numberTick: 2.6, quotaTick: 2.16, charmTick: 2.2,
   beep: 2.37, error: 1.64, chime: 1.64, lever: 0.46, ratchet: 1.73, reelStart: 1.11,
   reelLoop: 1.75, reelSpin: 1.91, reelTick: 2.79, reelStop: 0.66, crank: 1.75, motor: 0.47,
-  lineUp: 0.9, streakPing: 1.2, coinClink: 1, countDing: 1, kachunk: 0.7, alarmBell: 1, jackpotShow: 0.44,
+  lineUp: 0.9, streakPing: 1.2, coinClink: 1, countDing: 1, kachunk: 0.7, alarmBell: 1, jackpotShow: 0.58,
   gunClick: 2.6, gunBlank: 2.4, blankClick: 2.4, gunLoad: 1.09, shellRack: 1.17, shellEject: 2.53,
   gunShot: 0.38, coin: 0.78, coinDrop: 0.65, coinFlick: 2.99, coinLand: 0.57, coinShower: 0.81,
   coinPour: 0.64, coinMagnet: 0.89, chip: 0.85, chipStack: 0.84, card: 0.77, cardFlip: 0.9,
   shuffle: 0.81, cardSlap: 0.77, dice: 0.68, diceRoll: 0.66, diceLand: 0.74, wheelTick: 2.45,
   ballRoll: 2.82, ballBounce: 1.8, ballDrop: 1.17, bell: 1.01, buzzer: 1.22, lose: 0.5,
-  whoosh: 1.2, thud: 0.6, glass: 1.08, glassBreak: 1.08, win1: 0.72, win2: 0.61,
-  win3: 0.33, winHuge: 0.35, winRise: 0.8, winMega: 0.62, winPush: 0.85, jackpot: 0.62, jackpotSiren: 1.77, jackpotBells: 1.76,
+  whoosh: 1.2, thud: 0.6, glass: 1.08, glassBreak: 1.08, win1: 0.8, win2: 0.79,
+  win3: 0.54, winHuge: 0.63, winRise: 0.8, winMega: 0.75, winPush: 0.85, jackpot: 0.62, jackpotSiren: 1.77, jackpotBells: 1.76,
   stinger: 0.57, quotaMet: 0.82, quotaFail: 0.46, upgrade: 1.05, purchase: 1.06, cashRegister: 0.89,
   unlock: 1.15, buffGain: 1.02, buffLose: 1.24, stamp: 0.64, printer: 1.82, sparkle: 3,
   whisper: 0.9, whispers: 0.98, heartbeat: 0.45, lightFlicker: 2.14, powerDown: 1.02, powerUp: 0.98,
@@ -63,9 +67,10 @@ const TRIM: Record<string, number> = {
   phonePickup: 1.46, clockTick: 2.71, clockAlarm: 2.65, trapdoor: 0.66, elevator: 2.03, elevatorDing: 1.69,
   typewriter: 1.81, tileClack: 1.42, door: 0.83, doorCreak: 3, doorSlam: 0.53, footstep: 1.52,
   footstepCarpet: 1.61, footstepConcrete: 1.23, footstepMetal: 1.35, footstepWood: 1.07, footstepWet: 1.1, boom: 0.44,
-  coinInsert: 0.78, coinRain: 1.75, tensionRise: 0.83, tallyTick: 2.8,
+  coinInsert: 0.78, coinRain: 1.75, tensionRise: 0.6, tallyTick: 2.8,
   gambleOpen: 0.8, gambleStep: 0.9, gambleBust: 0.6, allinDrum: 0.8, allinHit: 0.75, allinMiss: 0.5,
-  knock: 0.8, chainRattle: 1.05, lightSwitch: 1.61, bedCreak: 2.6, phoneBuzz: 2.6, liftDing: 0.86, msgBlip: 2.3, lockTurn: 0.73,
+  knock: 0.6, chainRattle: 0.65, lightSwitch: 1.2, bedCreak: 1.95, phoneBuzz: 1.3, liftDing: 0.86, msgBlip: 2.3, lockTurn: 0.7,
+  seat: 1.1, foodBite: 1.7, foodSip: 1.9,
 };
 
 function def(names: string | string[], run: KitRecipe, meta: SfxMeta = {}): void {
@@ -490,15 +495,42 @@ def('glassBreak', (k) => {
   for (let i = 0; i < 26; i++) { const t = Math.pow(rnd(0, 1), 1.6) * 0.75; ring(k, t, rnd(3000, 9000), rnd(0.03, 0.09), 0.08 * (1 - t), { ratios: [1, 1.7], amps: [1, 0.4], pan: rnd(-0.7, 0.7) }); }
   return 0.95;
 }, { pri: 7 });
-/** Small win: the recorded win chime, cut short (synth: one of three bell arpeggios), three coin clinks on a coin tick. */
-const WIN1_ARP = [['G5', 'B5', 'D6', 'G6'], ['C6', 'E6', 'G6', 'C7'], ['E5', 'G5', 'B5', 'E6']];
+// ── win cues: composed in C major on the music engine's patches and moved to the score's key (winBand.ts) ──────────────
+// Every tier shares one signature: the ding-ding (G6 → C7, 5 → 1). From medium up the win counts with a ROLLUP: a bell ding that
+// repeats faster and climbs higher while the number rolls, and lands on that ding-ding. At most three things sound at once.
+/** Seconds each tier's rollup counts (medium up). The jackpot's is juice.ts JACKPOT_COUNT_S: the coin rain and Big One count as long. */
+export const WIN_COUNT: Readonly<Partial<Record<WinTier, number>>> = { medium: 1, big: 1.6, huge: 2.4, mega: 3.2, jackpot: 6 };
+/** The rollup's ladder: the major pentatonic, G5 to C7 (no semitone rubs over the I and V chords under it). */
+const ROLL = [79, 81, 84, 86, 88, 91, 93, 96];
+/** The rollup: dings from 7 to 16 a second, stepping up ROLL with the count, then the ding-ding. Returns when the last ding sounds. */
+function rollup(b: Band, at: number, len: number, vel: number): number {
+  for (let t = 0; t < len - 0.04;) {
+    const u = t / len;
+    b.n('bell', at + t, ROLL[Math.min(ROLL.length - 1, Math.floor(u * ROLL.length))], 0.3, vel * (0.7 + 0.3 * u));
+    t += 1 / (7 + 9 * u);
+  }
+  return dingDing(b, at + len, vel * 1.15);
+}
+/** The landing: G6 then C7 on the bell (long ring), the vibes an octave under. */
+function dingDing(b: Band, at: number, vel: number): number {
+  b.n('bell', at, 91, 1, vel, 1); b.n('vibes', at, 79, 0.8, vel * 0.8);
+  b.n('bell', at + 0.13, 96, 1.6, vel * 1.1, 1); b.n('vibes', at + 0.13, 84, 1.2, vel * 0.8);
+  return at + 0.13;
+}
+/** Coins pouring under a count: the recorded pours back to back (synth clinks until the files are decoded). */
+function coinBed(k: Kit, at: number, len: number, vol: number): void {
+  for (let t = 0; t < len; t += rnd(0.38, 0.5)) {
+    if (!winClip(k, 'coinsBig', { at: at + t, vol: vol * rnd(0.75, 1), rand: 0.08, dur: 0.8, r: 0.25 })) cascade(k, at + t, 0.4, 5, vol * 0.7);
+  }
+}
+const C_MAJ = [60, 64, 67, 72];
+/** Small win: the ding-ding and three coin clinks. */
 def('win1', (k) => {
-  thump(k, 0, 210, 90, 0.09, 0.45, 'triangle'); snap(k, 0, 0.3, 2600, 0.012, 1.2);
-  if (!winClip(k, 'winChime', { dur: 0.9, r: 0.35, vol: 0.45 })) pick(WIN1_ARP).forEach((n, i) => bellNote(k, 0.015 + i * 0.065, hz(n), 0.32 - i * 0.02, 0.7));
-  for (let i = 0; i < 3; i++) clink(k, 0.12 + i * 0.07, 0.3);
-  sparkle(k, 0.28, 0.4, 3, 0.06);
-  return 0.9;
-}, { pri: 8, jitter: 0.4 });
+  const b = band(k, 3);
+  dingDing(b, 0, 0.75);
+  for (let i = 0; i < 3; i++) clink(k, 0.16 + i * 0.07, 0.2);
+  return 1.6;
+}, { pri: 8 });
 /** A win streak: two quick bell notes a fifth apart. PlayOpts.pitch climbs with the streak (juice.celebrate). */
 def('streakPing', (k) => {
   bellNote(k, 0, hz('E6'), 0.2, 0.45);
@@ -506,56 +538,39 @@ def('streakPing', (k) => {
   sparkle(k, 0.1, 0.25, 4, 0.05);
   return 0.8;
 }, { pri: 6, max: 2 });
-/** Medium win: the recorded rising jingle (synth: brass stab and a six-bell arpeggio, one of two voicings) over a coin cascade. */
-const WIN2_ARP = [['C5', 'E5', 'G5', 'C6', 'E6', 'G6'], ['G4', 'C5', 'E5', 'G5', 'C6', 'E6']];
+/** Medium win: a four-note bell arpeggio up the C chord, then the rollup over the count with coins under it. Calm counts shorter. */
 def('win2', (k) => {
-  thump(k, 0, 150, 60, 0.18, 0.7); snap(k, 0, 0.35, 2000, 0.02, 1);
-  const real = winClip(k, 'winJingle', { vol: 0.55, r: 0.3 });
-  if (!real) {
-    brass(k, 0, [hz('C4'), hz('E4'), hz('G4')], 0.28, 0.24);
-    pick(WIN2_ARP).forEach((n, i) => bellNote(k, 0.02 + i * 0.055, hz(n), 0.3, 0.8));
-    bellNote(k, 0.42, hz('C7'), 0.2, 1.2);
-  }
-  cascade(k, 0.12, 0.9, 16, 0.32); sparkle(k, 0.35, 0.6, 8, 0.07);
-  return real ? 2.4 : 1.7;
-}, { pri: 8, jitter: 0.3 });
+  const b = band(k, 5);
+  [72, 76, 79, 84].forEach((m, i) => { b.n('bell', i * 0.07, m, 0.6, 0.55 + 0.08 * i); b.n('vibes', i * 0.07, m - 12, 0.6, 0.5); });
+  const end = rollup(b, 0.4, (WIN_COUNT.medium as number) * (audioCalm() ? 0.6 : 1), 0.6);
+  coinBed(k, 0.3, end - 0.3, 0.34);
+  return end + 1.4;
+}, { pri: 8 });
 /**
- * The fanfare windows (OpenGameArt, G major): big plays one of two phrase starts (0 s or the 8.5 s accent), huge, mega and the
- * jackpot play longer from the top. The synth brass and pads below are the fallback until the file is decoded.
+ * Big, huge and mega: a rising vibes arpeggio that lands on a brass stab, a kick and a crash; the rollup over `count` s with coins
+ * under it (mega: strings hold the chord under the count and the crowd cheers the landing); a brass hit on the ding-ding.
  */
-const fanfare = (k: Kit, at: number, dur: number, vol: number, off = 0): boolean => winClip(k, 'fanfare', { at, off, dur, vol, r: Math.min(1.6, dur * 0.3) });
-/** Big win: the fanfare (2.8 s), a G-major bell accent, a coin cascade (synth: brass stabs, bells, pad). */
-def('win3', (k) => {
-  thump(k, 0, 80, 40, 0.5, 0.8); snap(k, 0, 0.4, 1500, 0.03, 1);
-  k.noise(1.1, { at: 0.02, vol: 0.2, filter: 'highpass', freq: 5000, env: { a: 0.02, d: 1.08, s: 0, r: 0.05 } });
-  cascade(k, 0.15, 1.3, 18, 0.34); sparkle(k, 0.5, 0.9, 10, 0.07);
-  if (fanfare(k, 0, 2.8, 0.6, pick([0, 8.5]))) {
-    ['G6', 'B6', 'D7'].forEach((n, i) => bellNote(k, 0.3 + i * 0.07, hz(n), 0.12, 0.9));
-    return 3;
-  }
-  brass(k, 0, [hz('C4'), hz('E4'), hz('G4')], 0.14, 0.26, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
-  brass(k, 0.16, [hz('C4'), hz('E4'), hz('G4')], 0.14, 0.26, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
-  brass(k, 0.34, [hz('G4'), hz('C5'), hz('E5')], 0.9, 0.3);
-  ['C6', 'E6', 'G6', 'C7', 'E7'].forEach((n, i) => bellNote(k, 0.38 + i * 0.07, hz(n), 0.28, 0.9));
-  for (let i = 0; i < 8; i++) bellNote(k, 0.75 + i * 0.12, hz(i % 2 ? 'G6' : 'C7'), 0.2 - i * 0.015, 0.7);
-  pad(k, 0.38, [hz('C5'), hz('E5'), hz('G5'), hz('C6')], 1.4, 0.12);
-  return 2.5;
-}, { pri: 9 });
-def('winHuge', (k) => {
-  riser(k, 0, 0.5, 0.3, 400, 6000); k.osc('sine', 200, 0.5, { vol: 0.12, to: 1600, env: { a: 0.45, d: 0.05, s: 0.5, r: 0.03 } });
-  thump(k, 0.5, 70, 30, 0.8, 0.9); k.noise(1.2, { at: 0.5, vol: 0.4, filter: 'lowpass', freq: 3500, to: 200, env: { a: 0.002, d: 1.2, s: 0, r: 0.05 } });
-  k.noise(1.5, { at: 0.5, vol: 0.2, filter: 'highpass', freq: 5000, env: { a: 0.02, d: 1.5, s: 0, r: 0.05 } });
-  const T = 0.5;
-  cascade(k, T + 0.1, 2.2, 30, 0.34); sparkle(k, T + 0.3, 1.8, 16, 0.07);
-  if (fanfare(k, T, 4.2, 0.6)) return T + 4.4;
-  brass(k, T, [hz('C4'), hz('E4'), hz('G4'), hz('C5')], 0.14, 0.3, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
-  brass(k, T + 0.17, [hz('C4'), hz('E4'), hz('G4'), hz('C5')], 0.14, 0.3, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
-  brass(k, T + 0.36, [hz('G4'), hz('C5'), hz('E5'), hz('G5')], 1.5, 0.34);
-  pad(k, T, [hz('C3'), hz('G3'), hz('E4'), hz('B4')], 2.6, 0.2);
-  for (let r = 0; r < 2; r++) ['C6', 'E6', 'G6', 'C7', 'E7'].forEach((n, i) => bellNote(k, T + 0.4 + r * 0.45 + i * 0.065, hz(n), 0.26 - r * 0.04, 1));
-  bellNote(k, T + 2.4, hz('C7'), 0.3, 1.6);
-  return 3.9;
-}, { pri: 9 });
+function bigCue(k: Kit, count: number, mega: boolean): number {
+  const calm = audioCalm(), b = band(k, count + 5), c = calm ? count * 0.6 : count, T = 0.32;
+  [60, 64, 67, 72, 76, 79, 84].forEach((m, i) => b.n('vibes', i * 0.045, m, 0.5, 0.5 + 0.06 * i));
+  for (const m of C_MAJ) b.n('brass', T, m, 0.32, 0.75);
+  b.n('drums', T, D.KICK, 0.1, 0.6);
+  if (!calm) b.n('drums', T, D.CRASH, 0.1, 0.75);
+  if (mega) for (const m of [48, 55, 64, 67]) b.n('strings', T + 0.2, m, c, 0.55);
+  const end = rollup(b, T + 0.3, c, 0.75);
+  coinBed(k, T + 0.2, end - T - 0.2, 0.34);
+  for (const m of C_MAJ) b.n('brass', end - 0.13, m, 0.45, 0.5);
+  if (mega && !calm) cheerAt(k, end - 0.13, 'winMega', 0.9, 0.5);
+  return end + 1.8;
+}
+/** The crowd cheer (the recorded one; the synth swell until it is decoded) `at` s into a cue, at `lv` of its own level whatever the cue's trim. */
+function cheerAt(k: Kit, at: number, cue: string, param: number, lv: number): void {
+  const g = k.ctx.createGain();
+  g.gain.value = lv / (SFX_DEFS.get(cue)?.meta.gain ?? 1); g.connect(k.out);
+  SFX_DEFS.get('cheer')?.run(new Kit(k.host, g, k.t + at), { param });
+}
+def('win3', (k) => bigCue(k, WIN_COUNT.big as number, false), { pri: 9 });
+def('winHuge', (k) => bigCue(k, WIN_COUNT.huge as number, false), { pri: 9 });
 /** Push (part of the stake back): two clinks and a bell, so even a small return is heard. */
 def('winPush', (k) => {
   clink(k, 0, 0.42); clink(k, 0.09, 0.3); bellNote(k, 0.03, hz('E5'), 0.2, 0.5);
@@ -569,22 +584,7 @@ def('winRise', (k) => {
   bellNote(k, 0.5, hz('C6'), 0.2, 1);
   return 1.1;
 }, { pri: 9, max: 2 });
-/** Mega win (≈6.4 s): riser into the fanfare (5.6 s) with the recorded alarm-and-coins under it (synth: brass fanfare, bells). */
-def('winMega', (k) => {
-  riser(k, 0, 0.6, 0.28, 300, 6500);
-  const T = 0.6;
-  thump(k, T, 90, 36, 0.6, 0.9); snap(k, T, 0.45, 1400, 0.03, 1);
-  cascade(k, T + 0.2, 2.4, 34, 0.34); sparkle(k, T + 0.6, 2.2, 18, 0.07);
-  if (fanfare(k, T, 5.6, 0.6)) { winClip(k, 'coinAlarm', { at: T + 0.3, dur: 3.2, vol: 0.3, a: 0.2, r: 1 }); return T + 5.8; }
-  brass(k, T, [hz('C4'), hz('E4'), hz('G4')], 0.16, 0.26, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
-  brass(k, T + 0.18, [hz('C4'), hz('E4'), hz('G4')], 0.16, 0.26, { a: 0.012, d: 0.05, s: 0.6, r: 0.06 });
-  brass(k, T + 0.36, [hz('F4'), hz('A4'), hz('C5')], 0.4, 0.3);
-  brass(k, T + 0.8, [hz('G4'), hz('B4'), hz('D5'), hz('G5')], 2.2, 0.34);
-  pad(k, T, [hz('C3'), hz('G3'), hz('E4'), hz('C5')], 3, 0.2);
-  ['C6', 'E6', 'G6', 'C7', 'E7', 'G7'].forEach((n, i) => bellNote(k, T + 0.4 + i * 0.09, hz(n), 0.26 - i * 0.02, 1.2));
-  bellNote(k, T + 2.6, hz('C7'), 0.3, 1.6);
-  return 3.6;
-}, { pri: 10, max: 2 });
+def('winMega', (k) => bigCue(k, WIN_COUNT.mega as number, true), { pri: 10, max: 2 });
 /** The big one: riser → boom → fanfare (C → A♭) → bell rain → coin flood → shimmer. */
 def('jackpot', (k) => {
   for (let i = 0; i < 14; i++) { const t = 0.9 * Math.pow(i / 14, 0.8); k.osc('sine', 700 + i * 70, 0.05, { at: t, vol: 0.14, env: { a: 0.002, d: 0.05, s: 0, r: 0.01 } }); snap(k, t, 0.25, 3000, 0.008, 3); }
@@ -619,25 +619,41 @@ function alarm(k: Kit, at: number, dur: number, vol: number): void {
 }
 def('alarmBell', (k) => { const calm = audioCalm(), d = calm ? 1.2 : 2.4; alarm(k, 0, d, calm ? 0.3 : 0.5); return d + 0.1; }, { pri: 9, max: 1 });
 /**
- * The jackpot as juice.celebrate plays it (winJingle 'jackpot'; the plain 'jackpot' above stays the short stinger other machines
- * and the menu use): the alarm bell rings, the boom lands, the fanfare runs 9.6 s, a G-major bell rain and a long coin cascade.
- * juice adds the siren, the crowd swell, the bell showers, the coin-alarm rain for the count and the final kachunk.
+ * The jackpot as juice.celebrate plays it (winJingle 'jackpot', after the tensionRise windup: the drum roll build; the plain
+ * 'jackpot' above stays the short stinger other machines and the menu use). In C major, at 140 bpm:
+ *   0       the downbeat: crash, boom, the brass on the I chord; the Mixkit winner alarm rings 2 s under it
+ *   0 .. 6  the fanfare loop on the held major chord: strings hold it, the brass plays "taa - ta-taa" every bar, kick on the beat,
+ *           snare on 2 and 4; the rollup rings on top; the coins pour under (the count: WIN_COUNT.jackpot = JACKPOT_COUNT_S)
+ *   6 - 1 beat  the V chord and a snare pickup; 6: the resolve, I chord on brass and strings, crash, the ding-ding, the crowd
+ * Calm: no alarm, crash, snare or crowd, and the band plays softer.
  */
 def('jackpotShow', (k) => {
-  const calm = audioCalm();
-  alarm(k, 0, calm ? 1.4 : 3.2, calm ? 0.25 : 0.42);
-  thump(k, 0, 60, 28, 1.4, 1); thump(k, 0, 200, 60, 0.3, 0.6);
-  k.noise(2.2, { vol: 0.4, filter: 'lowpass', freq: 5000, to: 150, env: { a: 0.002, d: 2.2, s: 0, r: 0.1 } });
-  if (!fanfare(k, 0.05, 9.6, 0.55)) {
-    const C = [hz('C4'), hz('E4'), hz('G4'), hz('C5')], F = [hz('F4'), hz('A4'), hz('C5'), hz('F5')];
-    brass(k, 0, C, 0.2, 0.34, { a: 0.012, d: 0.06, s: 0.6, r: 0.08 }); brass(k, 0.24, C, 0.2, 0.34, { a: 0.012, d: 0.06, s: 0.6, r: 0.08 });
-    brass(k, 0.5, F, 0.5, 0.34); brass(k, 1.1, [hz('G4'), hz('B4'), hz('D5'), hz('G5')], 0.5, 0.34);
-    brass(k, 1.7, [hz('C4'), hz('E4'), hz('G4'), hz('C5'), hz('E5')], 2.2, 0.38);
+  const calm = audioCalm(), N = WIN_COUNT.jackpot as number, BEAT = 60 / 140, b = band(k, N + 6), sv = calm ? 0.6 : 1;
+  b.n('drums', 0, D.BOOM, 0.1, 0.9);
+  if (!calm) { b.n('drums', 0, D.CRASH, 0.1, 0.9); winClip(k, 'alarm', { at: 0.05, dur: 2, vol: 0.14, a: 0.05, r: 0.9 }); }
+  for (const m of [48, ...C_MAJ]) b.n('brass', 0, m, BEAT * 1.6, 0.95 * sv);
+  for (const m of [48, 55, 64, 67, 72]) b.n('strings', BEAT * 2, m, N - BEAT * 3, 0.6 * sv);
+  const V = N - BEAT;
+  for (let beat = 2; beat * BEAT < V - 0.01; beat++) {
+    const t = beat * BEAT, inBar = beat % 4, up = 0.85 + 0.45 * (t / N);   // the loop swells toward the landing
+    b.n('drums', t, D.KICK, 0.1, 0.6 * up * sv);
+    if (!calm && inBar % 2 === 1) b.n('drums', t, D.SNARE, 0.1, 0.45);
+    // the fanfare figure: a long chord on 1, a short one on the and of 3, a long one on 4 (the top note steps C6 / E6 by bar)
+    const top = Math.floor(beat / 4) % 2 ? 76 : 72;
+    if (inBar === 0) for (const m of [60, 64, 67, top]) b.n('brass', t, m, BEAT * 1.4, 0.32 * up * sv);
+    if (inBar === 2) for (const m of [60, 64, 67, top]) b.n('brass', t + BEAT * 0.5, m, BEAT * 0.3, 0.28 * up * sv);
+    if (inBar === 3) for (const m of [60, 64, 67, top]) b.n('brass', t, m, BEAT * 0.8, 0.32 * up * sv);
   }
-  const scale = ['G6', 'A6', 'B6', 'D7', 'E7'];
-  for (let t = 0; t < 3.6; t += rnd(0.08, 0.16)) bellNote(k, 0.15 + t, hz(pick(scale)), 0.13 * (1 - t / 4.2), 1);   // bell rain
-  cascade(k, 0.1, 3.4, 40, 0.34); sparkle(k, 0.4, 3.4, 26, 0.08);
-  return 10;
+  const end = rollup(b, 0.5, N - 0.5, 0.9 * sv);
+  coinBed(k, 0.4, N - 0.4, 0.36 * sv);
+  // the cadence: V with a snare pickup, then the resolve on the count's last ding
+  for (const m of [55, 59, 62, 67, 71]) b.n('brass', V, m, BEAT * 0.85, 0.6 * sv);
+  if (!calm) for (let i = 0; i < 4; i++) b.n('drums', V + (i * BEAT) / 4, D.SNARE, 0.1, 0.4 + 0.12 * i);
+  for (const m of [48, 60, 64, 67, 72, 76]) b.n('brass', N, m, 2, 0.85 * sv);
+  for (const m of [36, 48, 55, 64, 72]) b.n('strings', N, m, 2.4, 0.7 * sv);
+  b.n('drums', N, D.BOOM, 0.1, 0.9 * sv);
+  if (!calm) { b.n('drums', N, D.CRASH, 0.1, 0.9); cheerAt(k, N, 'jackpotShow', 0.9, 0.8); }
+  return end + 3;
 }, { pri: 10, max: 2 });
 /** Rotating beacon siren (seamless 1.6 s chunk = 2 LFO cycles) with bell pings. Loop-safe. Half level in Calm. */
 def('jackpotSiren', (k, o) => {
@@ -986,11 +1002,19 @@ def('coinRain', (k, o) => {
   for (let i = 0; i < n; i++) clink(k, ((i + rnd(0.1, 0.9)) * dur) / n, rnd(0.1, 0.2), rnd(2900, 5200), rnd(0.05, 0.09));
   return dur;
 }, { pri: 7, max: 2 });
-/** Near-miss anticipation: a riser with accelerating ticks that lands on a thud. param 0..1 scales the length (0.6–1.6 s). */
+/**
+ * Anticipation (a near miss, the last reel of a two-match, a big win's windup, the jackpot's drum roll build): 0.6 + param s.
+ * A snare roll swelling from 12 to 28 hits a second, a heartbeat that quickens, and the V7 chord (G B D F) climbing on the vibes
+ * over a string swell: it wants the I chord the win lands on (or is left hanging by a miss). The thud lands at the end as before.
+ * In the score's key (winBand.ts). Calm: no roll, softer.
+ */
 def('tensionRise', (k, o) => {
-  const L = 0.6 + 1.0 * (o.param ?? 1);
-  riser(k, 0, L - 0.1, 0.2, 260, 4200);
-  for (let i = 0; i < 12; i++) { const t = L * Math.pow(i / 12, 1.8); k.osc('sine', 900 + i * 60, 0.04, { at: t, vol: 0.08 + 0.01 * i, env: { a: 0.002, d: 0.035, s: 0, r: 0.01 } }); }
+  const L = 0.6 + 1.0 * (o.param ?? 1), calm = audioCalm(), b = band(k, L + 2.5), sv = calm ? 0.6 : 1;
+  if (!calm) for (let t = 0; t < L - 0.14; t += 1 / (12 + 16 * (t / L))) b.n('drums', t, D.SNARE, 0.1, 0.12 + 0.45 * (t / L) ** 1.5);
+  for (let t = 0.02, i = 0; t < L; t += 0.5 - 0.22 * (t / L), i++) b.n('drums', t, D.HEART, 0.1, 0.55 * sv);
+  const climb = [55, 59, 62, 65, 67, 71, 74, 77, 79, 83];
+  climb.forEach((m, i) => b.n('vibes', (L - 0.12) * Math.pow(i / climb.length, 0.8), m, 0.35, (0.35 + 0.05 * i) * sv));
+  for (const m of [43, 55, 59, 65]) b.n('strings', 0, m, L - 0.05, 0.45 * sv);
   thump(k, L - 0.12, 110, 50, 0.25, 0.7); snap(k, L - 0.12, 0.5, 1600, 0.02, 1);
   return L;
 }, { pri: 8, max: 2 });

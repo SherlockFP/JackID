@@ -11,26 +11,26 @@
  "missing": [],
  "cues": {
   "button": {
-   "peak": 0.487,
-   "peakDb": -6.2,
+   "peak": 0.485,
+   "peakDb": -6.3,
    "stDb": -28.7,
    "len": 0.07
   },
   "lever": {
-   "peak": 0.436,
-   "peakDb": -7.2,
-   "stDb": -25.7,
+   "peak": 0.432,
+   "peakDb": -7.3,
+   "stDb": -25.5,
    "len": 0.56
   },
   "reelStart": {
-   "peak": 0.447,
-   "peakDb": -7,
+   "peak": 0.452,
+   "peakDb": -6.9,
    "stDb": -19.7,
    "len": 0.48
   },
   "reelStop": {
-   "peak": 0.537,
-   "peakDb": -5.4,
+   "peak": 0.523,
+   "peakDb": -5.6,
    "stDb": -25.7,
    "len": 0.19
   },
@@ -41,26 +41,26 @@
    "len": 0.9
   },
   "lineUp": {
-   "peak": 0.356,
-   "peakDb": -9,
+   "peak": 0.367,
+   "peakDb": -8.7,
    "stDb": -30.8,
    "len": 0.09
   },
   "lose": {
-   "peak": 0.27,
+   "peak": 0.269,
    "peakDb": -11.4,
-   "stDb": -30.3,
+   "stDb": -30.1,
    "len": 0.14
   },
   "numberTick": {
-   "peak": 0.322,
-   "peakDb": -9.9,
-   "stDb": -37.5,
+   "peak": 0.312,
+   "peakDb": -10.1,
+   "stDb": -37.4,
    "len": 0.03
   },
   "countDing": {
-   "peak": 0.712,
-   "peakDb": -2.9,
+   "peak": 0.71,
+   "peakDb": -3,
    "stDb": -20.9,
    "len": 0.59
   },
@@ -71,19 +71,19 @@
    "len": 0.59
   },
   "coinClink": {
-   "peak": 0.667,
-   "peakDb": -3.5,
-   "stDb": -29.8,
+   "peak": 0.633,
+   "peakDb": -4,
+   "stDb": -29.9,
    "len": 0.06
   },
   "heartbeat": {
-   "peak": 0.509,
-   "peakDb": -5.9,
-   "stDb": -23.9,
+   "peak": 0.627,
+   "peakDb": -4.1,
+   "stDb": -21.5,
    "len": 0.3
   },
   "kachunk": {
-   "peak": 0.797,
+   "peak": 0.798,
    "peakDb": -2,
    "stDb": -18.6,
    "len": 1.02
@@ -94,93 +94,213 @@
    "stDb": -18,
    "len": 2.4
   },
+  "tensionRise": {
+   "peak": 0.593,
+   "peakDb": -4.5,
+   "stDb": -19.6,
+   "len": 2.25
+  },
   "win1": {
-   "peak": 0.44,
-   "peakDb": -7.1,
-   "stDb": -20.6,
-   "len": 0.9
+   "peak": 0.445,
+   "peakDb": -7,
+   "stDb": -20.2,
+   "len": 3.02
   },
   "win2": {
-   "peak": 0.442,
-   "peakDb": -7.1,
-   "stDb": -19.6,
-   "len": 2.13
+   "peak": 0.577,
+   "peakDb": -4.8,
+   "stDb": -18.5,
+   "len": 5.02
   },
   "win3": {
-   "peak": 0.314,
-   "peakDb": -10,
-   "stDb": -20.9,
-   "len": 2.79
+   "peak": 0.709,
+   "peakDb": -3,
+   "stDb": -17.4,
+   "len": 6
   },
   "winHuge": {
-   "peak": 0.51,
-   "peakDb": -5.8,
-   "stDb": -18.6,
-   "len": 4
+   "peak": 0.838,
+   "peakDb": -1.5,
+   "stDb": -16.1,
+   "len": 6
   },
   "winMega": {
-   "peak": 0.671,
-   "peakDb": -3.5,
-   "stDb": -14.7,
-   "len": 4
+   "peak": 0.967,
+   "peakDb": -0.3,
+   "stDb": -14.6,
+   "len": 6
   },
   "jackpotShow": {
-   "peak": 0.895,
-   "peakDb": -1,
-   "stDb": -13.8,
-   "len": 4
+   "peak": 0.87,
+   "peakDb": -1.2,
+   "stDb": -14,
+   "len": 10.6
+  },
+  "seat": {
+   "peak": 0.436,
+   "peakDb": -7.2,
+   "stDb": -25.8,
+   "len": 0.14
+  },
+  "foodBite": {
+   "peak": 0.434,
+   "peakDb": -7.2,
+   "stDb": -30.5,
+   "len": 0.86
+  },
+  "foodSip": {
+   "peak": 0.364,
+   "peakDb": -8.8,
+   "stDb": -25.1,
+   "len": 1.11
+  },
+  "knock": {
+   "peak": 0.65,
+   "peakDb": -3.7,
+   "stDb": -17.5,
+   "len": 0.97
+  },
+  "chainRattle": {
+   "peak": 0.432,
+   "peakDb": -7.3,
+   "stDb": -25.3,
+   "len": 0.73
+  },
+  "lightSwitch": {
+   "peak": 0.444,
+   "peakDb": -7.1,
+   "stDb": -33.7,
+   "len": 0.07
+  },
+  "bedCreak": {
+   "peak": 0.498,
+   "peakDb": -6,
+   "stDb": -20,
+   "len": 1.57
+  },
+  "phoneBuzz": {
+   "peak": 0.298,
+   "peakDb": -10.5,
+   "stDb": -19.1,
+   "len": 0.41
+  },
+  "liftDing": {
+   "peak": 0.45,
+   "peakDb": -6.9,
+   "stDb": -22.7,
+   "len": 3.7
+  },
+  "msgBlip": {
+   "peak": 0.45,
+   "peakDb": -6.9,
+   "stDb": -24.1,
+   "len": 0.18
+  },
+  "lockTurn": {
+   "peak": 0.551,
+   "peakDb": -5.2,
+   "stDb": -26.8,
+   "len": 0.99
+  },
+  "phoneOpen": {
+   "peak": 0.354,
+   "peakDb": -9,
+   "stDb": -33.8,
+   "len": 0.25
+  },
+  "phoneClose": {
+   "peak": 0.24,
+   "peakDb": -12.4,
+   "stDb": -35.3,
+   "len": 0.17
+  },
+  "chipClack": {
+   "peak": 0.354,
+   "peakDb": -9,
+   "stDb": -38.8,
+   "len": 0.21
+  },
+  "click": {
+   "peak": 0.382,
+   "peakDb": -8.4,
+   "stDb": -23.9,
+   "len": 0.15
+  },
+  "footstep": {
+   "peak": 0.489,
+   "peakDb": -6.2,
+   "stDb": -19.8,
+   "len": 0.18
+  },
+  "door": {
+   "peak": 0.55,
+   "peakDb": -5.2,
+   "stDb": -22.4,
+   "len": 1.11
+  },
+  "creak": {
+   "peak": 0.628,
+   "peakDb": -4,
+   "stDb": -15.3,
+   "len": 1.58
+  },
+  "clockTick": {
+   "peak": 0.589,
+   "peakDb": -4.6,
+   "stDb": -32.3,
+   "len": 0.02
   }
  },
  "tiers": {
   "small": {
-   "peak": 0.312,
-   "peakDb": -10.1,
-   "stDb": -23.7,
-   "len": 0.91
+   "peak": 0.328,
+   "peakDb": -9.7,
+   "stDb": -23.9,
+   "len": 2.5
   },
   "medium": {
-   "peak": 0.354,
-   "peakDb": -9,
-   "stDb": -21.2,
-   "len": 1.91
+   "peak": 0.392,
+   "peakDb": -8.1,
+   "stDb": -21.9,
+   "len": 3.5
   },
   "big": {
-   "peak": 0.448,
-   "peakDb": -7,
-   "stDb": -19.2,
-   "len": 3.4
+   "peak": 0.524,
+   "peakDb": -5.6,
+   "stDb": -20.1,
+   "len": 5
   },
   "huge": {
-   "peak": 0.547,
-   "peakDb": -5.2,
-   "stDb": -17.6,
-   "len": 5.9
+   "peak": 0.582,
+   "peakDb": -4.7,
+   "stDb": -18.2,
+   "len": 7
   },
   "mega": {
-   "peak": 0.587,
-   "peakDb": -4.6,
-   "stDb": -15.5,
-   "len": 7.4
+   "peak": 0.678,
+   "peakDb": -3.4,
+   "stDb": -16.5,
+   "len": 9
   },
   "jackpot": {
-   "peak": 0.773,
-   "peakDb": -2.2,
-   "stDb": -13.6,
-   "len": 10.86
+   "peak": 0.788,
+   "peakDb": -2.1,
+   "stDb": -13.3,
+   "len": 11.81
   }
  },
  "headroom": {
   "jackpotRaw": {
-   "peak": 1.436,
-   "peakDb": 3.1,
+   "peak": 1.46,
+   "peakDb": 3.3,
    "stDb": -9.7,
-   "len": 10.85
+   "len": 11.8
   },
   "jackpotMax": {
-   "peak": 0.955,
+   "peak": 0.953,
    "peakDb": -0.4,
-   "stDb": -10.9,
-   "len": 10.86
+   "stDb": -10.6,
+   "len": 11.95
   }
  },
  "trims": {
@@ -198,20 +318,31 @@
   "heartbeat": 0.45,
   "kachunk": 0.7,
   "alarmBell": 1,
-  "win1": 0.72,
-  "win2": 0.61,
-  "win3": 0.33,
-  "winHuge": 0.35,
-  "winMega": 0.62,
-  "jackpotShow": 0.44,
-  "coinPour": 0.64,
-  "tensionRise": 0.83,
-  "chime": 1.64,
-  "cheer": 1,
-  "winRise": 0.8,
-  "bell": 1.01,
-  "jackpotSiren": 1.77,
-  "jackpotBells": 1.76,
-  "coinRain": 1.75
+  "tensionRise": 0.6,
+  "win1": 0.8,
+  "win2": 0.79,
+  "win3": 0.54,
+  "winHuge": 0.63,
+  "winMega": 0.75,
+  "jackpotShow": 0.58,
+  "seat": 1.1,
+  "foodBite": 1.7,
+  "foodSip": 1.9,
+  "knock": 0.6,
+  "chainRattle": 0.65,
+  "lightSwitch": 1.2,
+  "bedCreak": 1.95,
+  "phoneBuzz": 1.3,
+  "liftDing": 0.86,
+  "msgBlip": 2.3,
+  "lockTurn": 0.7,
+  "phoneOpen": 1.1,
+  "phoneClose": 1.1,
+  "chipClack": 0.9,
+  "click": 1.13,
+  "footstep": 1.52,
+  "door": 0.83,
+  "creak": 2.73,
+  "clockTick": 2.71
  }
 }

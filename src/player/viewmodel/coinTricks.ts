@@ -153,6 +153,59 @@ const inspect: Trick = {
   sfx: [[0.95, 'coinTrickFlick', 0.3], [1.25, 'coinTrickClink', 0.25], [1.95, 'coinTrickCatch', 0.25]],
 };
 
+// ── the two quick throws (R and Q): the hands are keyed here, the coin's flight is solved in fidget.ts ──
+/** A throw: the coin leaves at `launch` (s), flies `flight` s (peaking `height` m over the line between the palms, `turns` flips), `dur` s in all. */
+export interface Toss {
+  name: string; dur: number; launch: number; flight: number; height: number; turns: number;
+  /** The tumble axis: x flips end over end going up, z going sideways. */
+  axis: 'x' | 'z';
+  /** The throwing hand and the catching hand (R lands in the hand it left, so it has only the first). */
+  thrower: Trick; catcher?: Trick;
+  /** Volume of the flick at the launch and of the catch on landing. */
+  flick: number; catchVol: number;
+}
+const role = (name: string, dur: number, keys: Trick['keys']): Trick => ({ name, dur, keys, sfx: [] });
+
+/** R: a quick toss and catch in one hand: dip, flick, up and back, a small dip on the catch, 0.45 s. */
+const upToss: Toss = {
+  name: 'toss', dur: 0.45, launch: 0.07, flight: 0.3, height: 0.075, turns: 3, axis: 'x', flick: 0.4, catchVol: 0.35,
+  thrower: role('toss.hand', 0.45, {
+    py: [[0, 0], [0.05, -0.012], [0.1, 0.016], [0.2, 0.01], [0.33, 0.004], [0.38, -0.014], [0.45, 0]],
+    pz: [[0, 0], [0.05, 0.008], [0.1, -0.012], [0.38, 0.004], [0.45, 0]],
+    rx: [[0, 0], [0.05, -0.07], [0.11, 0.14], [0.25, 0.04], [0.38, -0.06], [0.45, 0]],
+    wp: [[0, 0], [0.05, -0.14], [0.11, 0.3], [0.25, 0.08], [0.38, -0.16], [0.45, 0]],
+    thumb: [[0, 0], [0.04, 0.4], [0.09, -0.35], [0.25, 0], [0.38, 0.15], [0.45, 0]],
+    index: [[0, 0], [0.05, 0.18], [0.1, -0.14], [0.3, -0.06], [0.38, 0.1], [0.45, 0]],
+    curl: [[0, 0], [0.05, 0.1], [0.1, -0.14], [0.3, -0.1], [0.38, 0.1], [0.45, 0]],
+  }),
+};
+
+/** Q: the coin crosses from one palm to the other (0.5 s). The thrower sweeps in and follows through; the catcher opens, reaches, dips. */
+const passToss: Toss = {
+  name: 'pass', dur: 0.5, launch: 0.08, flight: 0.34, height: 0.05, turns: 2, axis: 'z', flick: 0.4, catchVol: 0.4,
+  thrower: role('pass.throw', 0.5, {
+    px: [[0, 0], [0.06, 0.012], [0.13, -0.034], [0.28, -0.03], [0.5, 0]],
+    py: [[0, 0], [0.06, -0.01], [0.13, 0.012], [0.3, 0.006], [0.5, 0]],
+    wp: [[0, 0], [0.06, -0.12], [0.13, 0.26], [0.3, 0.08], [0.5, 0]],
+    wr: [[0, 0], [0.06, 0.12], [0.14, -0.25], [0.32, -0.1], [0.5, 0]],
+    thumb: [[0, 0], [0.05, 0.4], [0.11, -0.35], [0.3, 0], [0.5, 0]],
+    index: [[0, 0], [0.06, 0.16], [0.13, -0.12], [0.3, -0.05], [0.5, 0]],
+  }),
+  catcher: role('pass.catch', 0.5, {
+    px: [[0, 0], [0.12, -0.012], [0.3, -0.024], [0.42, -0.016], [0.5, 0]],
+    py: [[0, 0], [0.16, 0.01], [0.32, 0.012], [0.42, -0.016], [0.47, 0.002], [0.5, 0]],
+    wp: [[0, 0], [0.3, 0.16], [0.42, -0.2], [0.5, 0]],
+    wr: [[0, 0], [0.3, 0.1], [0.42, 0.04], [0.5, 0]],
+    curl: [[0, 0], [0.12, -0.12], [0.3, -0.2], [0.42, -0.04], [0.5, 0]],
+    index: [[0, 0], [0.12, -0.12], [0.3, -0.18], [0.42, 0.04], [0.5, 0]],
+    thumb: [[0, 0], [0.2, -0.25], [0.3, -0.25], [0.42, 0.2], [0.5, 0]],
+  }),
+};
+export const TOSSES = { up: upToss, pass: passToss } as const;
+export type TossKind = keyof typeof TOSSES;
+/** Holding Q this long (s) plays the old tricks instead of passing the coin. */
+export const HOLD_TRICK_S = 0.4;
+
 export const TRICKS: readonly Trick[] = [thumbFlip, knuckleRoll, fingerSpin, inspect];
 /** The knuckle roll: held key loops it; also the idle roll. */
 export const ROLL_TRICK = 1;

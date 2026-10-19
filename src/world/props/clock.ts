@@ -60,6 +60,17 @@ function faceTexture(tex: TexGen): THREE.Texture {
       const a = (i / 12) * Math.PI * 2, card = i % 3 === 0, sc = card ? 3 : 2, r = card ? 78 : 82;
       tex.drawText(g, ROMAN[i], Math.round(cx + Math.sin(a) * r), Math.round(cy - Math.cos(a) * r - (7 * sc) / 2), { font: 'px5', color: '#1a0f08', align: 'center', scale: sc });
     }
+    // a faded red star above VI: the clock is older than the casino (docs/ART.md "Identity"), filled pixel by pixel so its edges stay hard
+    const pts = Array.from({ length: 10 }, (_, k) => { const t = -Math.PI / 2 + (k * Math.PI) / 5, rr = k % 2 ? 6 : 15; return [cx + Math.cos(t) * rr, cy + 46 + Math.sin(t) * rr]; });
+    g.fillStyle = '#b8342a';
+    for (let y = cy + 30; y < cy + 62; y++) for (let x = cx - 16; x < cx + 16; x++) {
+      let inside = false;
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        const [xi, yi] = pts[i], [xj, yj] = pts[j];
+        if ((yi > y + 0.5) !== (yj > y + 0.5) && x + 0.5 < ((xj - xi) * (y + 0.5 - yi)) / (yj - yi) + xi) inside = !inside;
+      }
+      if (inside) g.fillRect(x, y, 1, 1);
+    }
   }, { wrap: 'clamp' });
 }
 

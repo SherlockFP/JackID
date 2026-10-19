@@ -15,7 +15,7 @@ import { app } from '@/core/app';
 import type { GateDef, LevelBuild, LevelCtx, LightHint, SpawnPoint } from './sys/arch';
 import type { WorldProp } from './types';
 import { ZONES, SIGNPOSTS, STAGE_SLOTS, FLOOR_TILE_M, BAR_POS, LIFT_DOOR } from './layout';
-import { bareBulb, builtFixtures, chandelier, flickerLevel, pendant, resetFixtures, sconce, tube } from './lights';
+import { bareBulb, builtFixtures, chandelier, flickerLevel, pendant, registerLamp, resetFixtures, sconce, tube } from './lights';
 import { buildColumn, buildGrille, buildVelvetCurtain, buildManagementDoor, buildSump, buildFurnace, buildCollectorChair, buildXPlate, disposeTree, SUMP_HALF, SUMP_WALL_H, SUMP_WALL_T, type GateProp } from './props/decor';
 import { createClock, type WallClock } from './props/clock';
 import { createTrapdoor, type Trapdoor } from './props/trapdoor';
@@ -157,7 +157,10 @@ function wallRun(w: WallCtx, axis: 'x' | 'z', c: number, a0: number, a1: number,
   }
 }
 
-// ── the level ───────────────────────────────────────────────────────────────────────────────────
+/** How strong the Dawn spill from the lift shaft gets (a faint wash, not a light). */
+const MORNING_OPACITY = 0.3;
+
+// ── the level ───────────────────────────────────────────────────────────────────────────────
 export function buildLevel(ctx: LevelCtx): LevelBuild {
   const kit = ctx.kit as KitX;
   resetFixtures();   // the night cycle switches every fixture this build makes
@@ -388,6 +391,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   const string = kit.bulbChain({ path: [[-29, 3.7, -28.5], [-13, 3.7, -28.5]], count: 16, colors: [0xff4d6d, 0xffd23f, 0x3bceac], r: 0.05 });
   string.pattern('chase', 4);
   root.add(string.root);
+  registerLamp([-21, 3.7, -28.5], (on) => string.pattern(on ? 'chase' : 'off', 4), 'midway');
   lights.push({ id: 'midway:chase', pos: [-21, 3.5, -28.5], color: 0xff4d6d, intensity: 0.7, range: 8, flicker: 'CHASE', zone: 'midway' });
   lights.push({ id: 'midway:uv', pos: [-21, 3.4, -20], color: 0x6a2cff, intensity: 0.6, range: 7, flicker: 'STEADY', zone: 'midway' });
 
@@ -408,6 +412,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   const dice = crispNeon(kit, { text: { key: 'prop.sign.dice' }, h: 0.5, color: 0xff4a3a, flicker: 0.3, font: 'chetyre' });
   dice.root.position.set(22, 2.6, -29.8);
   root.add(dice.root);
+  registerLamp([22, 2.6, -29.8], dice.setOn, 'boiler');
   lights.push({ id: 'boiler:dice', pos: [22, 2.6, -29.4], color: 0xff4a3a, intensity: 0.7, range: 4, flicker: 'BUZZ', zone: 'boiler' });
 
   // Slot Gallery: magenta and cyan neon strips along the ceiling
@@ -425,7 +430,9 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   pBulb.root.position.set(0, -(CEILING.parlour - 2.2), 0);
   pivot.add(pBulb.root);
   root.add(pivot);
-  updates.push({ update: (_dt, t) => { pivot.rotation.z = Math.sin((t / 3.1) * Math.PI * 2) * (12 * Math.PI / 180); pBulb.setOn(flickerLevel('STEADY', t) > 0.5); } });
+  let parlourLit = true;   // the night cycle (registerLamp): the flicker below must not relight it at Dawn
+  registerLamp([19.5, 2.2, 16], (on) => { parlourLit = on; if (!on) pBulb.setOn(false); }, 'parlour');
+  updates.push({ update: (_dt, t) => { pivot.rotation.z = Math.sin((t / 3.1) * Math.PI * 2) * (12 * Math.PI / 180); if (parlourLit) pBulb.setOn(flickerLevel('STEADY', t) > 0.5); } });
   lights.push({ id: 'parlour:bulb', pos: [19.5, 2.2, 16], color: 0xffd9a0, intensity: 1.1, range: 5, flicker: 'STEADY', zone: 'parlour' });
   const eyes = kit.group('devilEyes');
   for (const dz of [-0.14, 0.14]) {
@@ -441,6 +448,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     const c = kit.lamp({ r: 0.05, color: 0xffcf7a, shape: 'dome' });
     c.root.position.set(x, 1.1, z);
     root.add(c.root);
+    registerLamp([x, 1.1, z], c.setOn, 'counting');
     lights.push({ id: `counting:candle${i}`, pos: [x, 1.2, z], color: 0xffcf7a, intensity: 0.5, range: 2.5, flicker: 'CANDLE', zone: 'counting' });
   }
   const furnace = buildFurnace(kit, tex, { pos: [-30, 0, 18.5], rotY: 90 });
@@ -552,6 +560,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
       n.root.rotation.y = yaw;
       n.setOn(true);
       root.add(n.root);
+      registerLamp(pos, n.setOn);   // its zone is the one the sign hangs in
       const nx = Math.sin(yaw) * 0.8, nz = Math.cos(yaw) * 0.8;   // the light stands a little in front of the sign
       lights.push({ id: `sign:${id}`, pos: [pos[0] + nx, pos[1] - 0.3, pos[2] + nz], color, intensity: 0.8, range: 6, flicker: 'STEADY' });
     };
@@ -595,7 +604,13 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   updates.push({ update: (dt) => prizes.prop.update?.(dt) });
   statics.push({ box: box3(PRIZE_CASE.x - PRIZE_CASE.w / 2, 0, PRIZE_CASE.z - PRIZE_CASE.d / 2, PRIZE_CASE.x + PRIZE_CASE.w / 2, PRIZE_CASE.h, PRIZE_CASE.z + PRIZE_CASE.d / 2), tag: 'solid' });
   lights.push({ id: 'lobby:prizeCase', pos: [PRIZE_CASE.x, 1.7, PRIZE_CASE.z - 0.7], color: 0xffe9b0, intensity: 0.7, range: 3.5, flicker: 'STEADY', zone: 'lobby' });
-  const shows: ShowTarget[] = [stage.prop.footlights, wall.border];
+  // the marquee bulbs (footlights, jackpot wall border) follow the night cycle too: the light show's 'all' rest must not relight them at Dawn
+  const dimmable = (tg: ShowTarget, at: V3): ShowTarget => {
+    let dark = false;
+    registerLamp(at, (on) => { dark = !on; tg.pattern(on ? 'all' : 'off'); });
+    return { pattern: (p, hz) => tg.pattern(dark ? 'off' : p, hz) };
+  };
+  const shows: ShowTarget[] = [dimmable(stage.prop.footlights, [0, 1.2, 11]), dimmable(wall.border, [0, 3.4, 0.2])];
   {
     // chandeliers: one over the stage (lit), two small ones over the Well side aisles (visual only, the pool is full enough)
     const lobbyCh = chandelier(kit, { id: 'lobby:chandelier', pos: [STAGE_X, 3.75, STAGE_Z - 0.9], r: 1.5, bulbs: 16, ceiling: CEILING.lobby, color: 0xffd890, intensity: 1.0, range: 8, zone: 'lobby', tiers: 1 });
@@ -718,10 +733,31 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
     // the casino's own ceilings glow with the ambient; the flat and the Underneath keep theirs (ceilFar)
     const ceils: Array<[THREE.MeshStandardMaterial, number]> = [[ceilMat as unknown as THREE.MeshStandardMaterial, 0.5], [ceilTall as unknown as THREE.MeshStandardMaterial, 0.7]];
     let ceilK = 1;
+    // Dawn: a faint warm morning spill out of the lift shaft, on the floor and in the doorway. The pool lights follow zone levels, so this is
+    // two additive planes (no pool light), faded in with the cycle's Dawn and out at the opening.
+    const spillMat = kit.mat({
+      map: kit.tex.canvas(32, 32, (g, gw, gh) => {
+        const grad = g.createRadialGradient(gw / 2, gh / 2, 1, gw / 2, gh / 2, gw / 2);
+        grad.addColorStop(0, 'rgba(255,255,255,0.9)'); grad.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = grad; g.fillRect(0, 0, gw, gh);
+      }, { wrap: 'clamp' }),
+      color: 0xffd9a0, lit: false, additive: true, transparent: true, opacity: 0, affine: false, snap: false, unique: true,
+    }) as THREE.MeshBasicMaterial;
+    const spill = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 4.6), spillMat);
+    spill.rotation.x = -Math.PI / 2;
+    spill.position.set(LIFT_DOOR.x, 0.03, LIFT_DOOR.z + 2.2);
+    const doorGlow = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 3.2), spillMat);
+    doorGlow.position.set(LIFT_DOOR.x, 1.5, LIFT_DOOR.z + 0.3);
+    for (const m of [spill, doorGlow]) { m.renderOrder = 1; m.userData.noMerge = true; root.add(m); }
+    spill.visible = doorGlow.visible = false;
+    let morningK = 0;
     updates.push({
       update: (dt) => {
         cycle.update(dt);
         const ph = curPhase();
+        morningK += ((ph === 'dawn' ? 1 : 0) - morningK) * Math.min(1, dt * 0.8);
+        spillMat.opacity = MORNING_OPACITY * morningK;
+        spill.visible = doorGlow.visible = morningK > 0.01;
         const want = ph ? LEVELS[ph].ambient : 1;
         ceilK += (want - ceilK) * Math.min(1, dt * 1.2);
         for (const [m, base] of ceils) m.emissiveIntensity = base * ceilK;

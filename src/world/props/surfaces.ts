@@ -305,3 +305,196 @@ export function posterTex(tex: TexGen, i: number): THREE.Texture {
     }
   }, { key: `env:poster:${k}`, wrap: 'clamp' });
 }
+
+// ── identity: a Cyprus casino over a late-Soviet building (docs/ART.md "Identity") ──────────────────
+/** A flat-woven kilim, 64 px = 2 m (tagged `tile` 2 so a rug maps it in metres): a madder field, stepped lozenges in a half-dropped lattice, hooked lines between. */
+export type KilimTone = 'madder' | 'indigo';
+const KILIM: Record<KilimTone, { field: string; a: string; b: string; ink: string; line: string }> = {
+  madder: { field: '#8a2418', a: '#d8a850', b: '#1c3a5a', ink: '#2a1410', line: '#e8dcc0' },
+  indigo: { field: '#1e2c4a', a: '#c8902e', b: '#8a2418', ink: '#0e1424', line: '#d8ccb0' },
+};
+export function kilimTex(tex: TexGen, tone: KilimTone = 'madder'): THREE.Texture {
+  const c = KILIM[tone];
+  const t = tex.canvas(64, 64, (g, w, h) => {
+    px(g, 0, 0, w, h, c.field);
+    const loz = (cx: number, cy: number, col: string): void => {
+      for (let dy = -7; dy <= 7; dy++) {
+        const half = (7 - Math.abs(dy)) & ~1;   // stepped by two: the woven look
+        px(g, cx - half - 1, cy + dy, half * 2 + 2, 1, c.ink);
+        if (half > 0) px(g, cx - half, cy + dy, half * 2, 1, col);
+        if (half > 3) px(g, cx - half + 3, cy + dy, half * 2 - 6, 1, c.field);
+      }
+      px(g, cx - 1, cy - 1, 2, 2, c.line);
+    };
+    loz(16, 16, c.a); loz(48, 48, c.a); loz(48, 16, c.b); loz(16, 48, c.b);
+    for (let y = 0; y < h; y += 4) { px(g, 31, y, 2, 2, c.line); px(g, 0, (y + 2) % h, 1, 1, c.ink); }
+    for (let x = 0; x < w; x += 4) px(g, x, 31, 2, 2, c.line);
+    mottle(g, w, h, 0.14, tone === 'madder' ? 611 : 617);
+  }, { key: `env:kilim:${tone}` });
+  if (t.userData.tile === undefined) t.userData.tile = 2;
+  return t;
+}
+
+/** The wall carpet over the bed (48 x 40, stretched once): a deep red field, a cream border with a running hook, a central medallion, corner pieces. */
+export function wallRugTex(tex: TexGen): THREE.Texture {
+  return tex.canvas(48, 40, (g, w, h) => {
+    px(g, 0, 0, w, h, '#5a1418');
+    px(g, 1, 1, w - 2, h - 2, '#c8b890'); px(g, 4, 4, w - 8, h - 8, '#2a1018'); px(g, 5, 5, w - 10, h - 10, '#7a1c22');
+    for (let x = 2; x < w - 2; x += 3) { px(g, x, 2, 1, 1, '#5a1418'); px(g, x + 1, h - 3, 1, 1, '#5a1418'); }
+    for (let y = 2; y < h - 2; y += 3) { px(g, 2, y, 1, 1, '#5a1418'); px(g, w - 3, y + 1, 1, 1, '#5a1418'); }
+    const cx = w / 2, cy = h / 2;
+    for (let dy = -10; dy <= 10; dy++) {
+      const half = Math.round((10 - Math.abs(dy)) * 1.4);
+      px(g, cx - half, cy + dy, half * 2, 1, '#1c2a4a');
+      if (half > 3) px(g, cx - half + 2, cy + dy, half * 2 - 4, 1, '#c89848');
+      if (half > 7) px(g, cx - half + 5, cy + dy, half * 2 - 10, 1, '#7a1c22');
+    }
+    px(g, cx - 2, cy - 2, 4, 4, '#e8dcc0');
+    for (const [x, y] of [[6, 6], [w - 12, 6], [6, h - 12], [w - 12, h - 12]]) { px(g, x, y, 6, 6, '#c89848'); px(g, x + 1, y + 1, 4, 4, '#1c2a4a'); }
+    mottle(g, w, h, 0.16, 733);
+  }, { key: 'env:wallRug', wrap: 'clamp' });
+}
+
+/** Constructivist posters left in the building (32 x 48): red, black and cream geometry; the bottom 12 rows are a cream band for the slogan plate. */
+export const CONSTRUCT_COUNT = 3;
+export function constructTex(tex: TexGen, i: number): THREE.Texture {
+  const k = ((i % CONSTRUCT_COUNT) + CONSTRUCT_COUNT) % CONSTRUCT_COUNT;
+  return tex.canvas(32, 48, (g, w, h) => {
+    const RED = '#b8241c', INK = '#141010', CREAM = '#e4d6b4';
+    const disc = (cx: number, cy: number, r: number, col: string): void => {
+      for (let y = Math.floor(cy - r); y <= cy + r; y++) for (let x = Math.floor(cx - r); x <= cx + r; x++) if (Math.hypot(x - cx, y - cy) < r) px(g, x, y, 1, 1, col);
+    };
+    px(g, 0, 0, w, h, k === 1 ? INK : CREAM);
+    if (k === 0) {
+      // a red wedge driven into a black disc, a die riding the wedge
+      disc(20, 14, 10, INK);
+      for (let y = 4; y < 34; y++) { const x0 = Math.round(2 + (y - 4) * 0.55); px(g, x0, y, Math.max(1, 18 - Math.round((y - 4) * 0.55)), 1, RED); }
+      px(g, 4, 26, 7, 7, CREAM); px(g, 5, 27, 2, 2, INK); px(g, 8, 30, 2, 2, INK);
+    } else if (k === 1) {
+      // red rays from a cream sun, a raised arm holding a gold coin
+      for (let a = 0; a < 9; a++) { const t = -Math.PI + (a / 8) * Math.PI; for (let r = 7; r < 30; r++) px(g, Math.round(16 + Math.cos(t) * r), Math.round(30 + Math.sin(t) * r), 2, 1, a % 2 ? RED : '#5a1410'); }
+      disc(16, 30, 6, CREAM);
+      px(g, 14, 12, 4, 20, RED); px(g, 13, 8, 6, 5, '#d0a070');
+      disc(16, 6, 3.5, '#d8a840');
+    } else {
+      // a black stair climbing to a red bar: the plan beaten
+      for (let s = 0; s < 5; s++) px(g, 3 + s * 5, 32 - s * 5, 5, 4 + s * 5, INK);
+      for (let y = 0; y < 8; y++) px(g, 2 + y, 6 + y, 26, 2, RED);
+      px(g, 22, 22, 6, 6, RED);
+    }
+    px(g, 0, h - 12, w, 12, CREAM);
+    px(g, 0, h - 12, w, 1, RED);
+    mottle(g, w, h, 0.2, 811 + k);
+    for (let y = 0; y < h; y++) if (hash01(y * 31 + k) < 0.06) px(g, 0, y, w, 1, 'rgba(255,240,210,0.08)');   // sun fade
+  }, { key: `env:construct:${k}`, wrap: 'clamp' });
+}
+
+/** The Lobby mosaic (96 x 48, 3 px per smalt tile, stretched once over 3.2 x 1.6 m): a worker raising a die against a sunburst, a red star high left. */
+export function mosaicTex(tex: TexGen): THREE.Texture {
+  return tex.canvas(96, 48, (g) => {
+    px(g, 0, 0, 96, 48, '#4a4238');                                        // grout
+    const cell = (cx: number, cy: number): string => {
+      const dx = cx - 16, dy = cy - 15;
+      if (Math.abs(cx - 4) + Math.abs(cy - 3) < 3) return '#c8281c';                                // the star
+      if (cx >= 13 && cx <= 18 && cy >= 2 && cy <= 6) return (cx === 14 && cy === 3) || (cx === 17 && cy === 5) ? '#141414' : '#ece4d0';   // the die
+      if (cx >= 14 && cx <= 17 && cy >= 7 && cy <= 15) return cy < 9 ? '#d0a070' : '#b8441c';       // the worker: face, then the red shirt
+      if ((cx === 13 || cx === 18) && cy >= 6 && cy <= 9) return '#d0a070';                         // the raised arms
+      if (cy >= 13 && Math.abs(dx) < 6) return '#6a3a20';
+      const a = Math.atan2(dy, dx), ray = Math.floor(((a + Math.PI) / (Math.PI * 2)) * 18) % 2;
+      return ray ? '#d8a840' : (Math.hypot(dx, dy) < 9 ? '#2a6aa8' : '#1c3e6a');
+    };
+    for (let cy = 0; cy < 16; cy++) for (let cx = 0; cx < 32; cx++) {
+      px(g, cx * 3, cy * 3, 2, 2, cell(cx, cy));
+      const r = hash01(cx * 977 + cy * 131);
+      if (r < 0.3) px(g, cx * 3, cy * 3, 2, 2, `rgba(0,0,0,${(0.08 + r * 0.3).toFixed(3)})`);
+      else if (r > 0.85) px(g, cx * 3, cy * 3, 1, 1, 'rgba(255,250,230,0.25)');
+      if (hash01(cx * 53 + cy * 4241) < 0.04) px(g, cx * 3, cy * 3, 2, 2, '#4a4238');           // a lost tile
+    }
+  }, { key: 'env:mosaic', wrap: 'clamp' });
+}
+
+/** A precast concrete panel (48 x 96 = 1.5 x 3 m, stretched once): board-marked grey, four tie holes, a rust run under one, a dark chamfer. */
+export function concretePanelTex(tex: TexGen): THREE.Texture {
+  return tex.canvas(48, 96, (g, w, h) => {
+    px(g, 0, 0, w, h, '#8a8478');
+    mottle(g, w, h, 0.3, 9001);
+    for (let y = 6; y < h; y += 8) px(g, 1, y, w - 2, 1, 'rgba(40,36,30,0.18)');
+    for (const [x, y] of [[10, 22], [38, 22], [10, 74], [38, 74]]) {
+      px(g, x - 1, y - 1, 3, 3, '#3a3630');
+      if (x === 38 && y === 22) for (let k = 0; k < 18; k++) px(g, x + (k > 9 ? 1 : 0), y + 2 + k, 1, 1, `rgba(120,60,24,${(0.45 - k * 0.02).toFixed(3)})`);
+    }
+    for (let x = 0; x < w; x++) if (hash01(x * 7 + 3) < 0.6) px(g, x, h - 6 + Math.floor(hash01(x * 13) * 3), 1, 6, 'rgba(30,26,20,0.2)');
+    px(g, 0, 0, w, 1, '#4a4640'); px(g, 0, h - 1, w, 1, '#3a3630'); px(g, 0, 0, 1, h, '#4a4640'); px(g, w - 1, 0, 1, h, '#3a3630');
+  }, { key: 'env:concretePanel', wrap: 'clamp' });
+}
+
+/** Smoked mirror tiles round a column shaft (64 x 32, wrapped once round the 8 faces): one 8 px panel per face, a pale streak, a dark seam. */
+export function mirrorColumnTex(tex: TexGen): THREE.Texture {
+  return tex.canvas(64, 32, (g, w, h) => {
+    for (let y = 0; y < h; y++) px(g, 0, y, w, 1, rgb(34 + y, 38 + y * 0.8, 46 + y * 0.5));
+    for (let f = 0; f < 8; f++) {
+      px(g, f * 8, 0, 1, h, '#141a1e');
+      for (let y = 0; y < h; y++) px(g, f * 8 + 2 + (Math.floor((y + f * 5) / 8) % 4), y, 1, 1, 'rgba(210,225,235,0.14)');
+    }
+    mottle(g, w, h, 0.12, 4747);
+  }, { key: 'env:mirrorColumn' });
+}
+
+/** The cashier's exchange board rows: code, buy, sell. Codes and digits only, so the board needs no translation. */
+export const RATES: ReadonlyArray<readonly [string, string, string]> = [['STG', '48.20', '48.90'], ['EUR', '38.10', '38.70'], ['USD', '34.30', '34.80'], ['TL', '1.00', '1.00']]; // i18n-ok: ISO-style currency codes, the same in every language
+/** The exchange board's face (96 x 48, stretched once over 1 x 0.5 m): the RATES rows in amber on black, a dim rule under each. */
+export function rateBoardTex(tex: TexGen): THREE.Texture {
+  return tex.canvas(96, 48, (g, w) => {
+    px(g, 0, 0, w, 48, '#0c0a08');
+    RATES.forEach(([code, buy, sell], i) => {
+      const y = 3 + i * 11;
+      px(g, 1, y + 9, w - 2, 1, '#2a2218');
+      tex.drawText(g, code, 3, y, { font: 'px5', color: '#ffd040' });
+      tex.drawText(g, buy, 60, y, { font: 'px5', color: '#ff9a30', align: 'right' });
+      tex.drawText(g, sell, 93, y, { font: 'px5', color: '#ff9a30', align: 'right' });
+    });
+  }, { key: 'env:rates', wrap: 'clamp' });
+}
+
+/** The kitchen calendar (32 x 48, stretched once): a harbour with a castle and two boats, a spiral, the year, a grid of days with one ringed in red. */
+export function calendarTex(tex: TexGen): THREE.Texture {
+  return tex.canvas(32, 48, (g, w) => {
+    px(g, 0, 0, w, 48, '#ece4d0');
+    px(g, 1, 3, w - 2, 18, '#7ab0d0'); px(g, 1, 14, w - 2, 7, '#2a5a8a');
+    px(g, 3, 8, 9, 6, '#b89a6a'); px(g, 4, 6, 2, 2, '#b89a6a'); px(g, 9, 6, 2, 2, '#b89a6a');
+    for (const x of [16, 23]) { px(g, x, 15, 5, 2, '#e8e0d0'); px(g, x + 2, 11, 1, 4, '#3a2a1a'); }
+    for (let x = 2; x < w; x += 3) px(g, x, 0, 1, 2, '#3a3a3a');
+    tex.drawText(g, '1989', w / 2, 23, { font: 'px5', color: '#a82418', align: 'center' });
+    for (let r = 0; r < 5; r++) for (let c = 0; c < 7; c++) px(g, 2 + c * 4, 32 + r * 3, 2, 1, c === 6 ? '#a82418' : '#4a4038');
+    px(g, 9, 37, 5, 1, '#c8281c'); px(g, 9, 39, 5, 1, '#c8281c'); px(g, 9, 37, 1, 3, '#c8281c'); px(g, 13, 37, 1, 3, '#c8281c');
+  }, { key: 'env:calendar', wrap: 'clamp' });
+}
+
+/** A crocheted doily (16 x 16, alpha-tested): rings of white thread with holes between the spokes. */
+export function doilyTex(tex: TexGen): THREE.Texture {
+  return tex.canvas(16, 16, (g) => {
+    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+      const d = Math.hypot(x + 0.5 - 8, y + 0.5 - 8);
+      if (d > 7.6) continue;
+      const ring = Math.floor(d) % 3, spoke = Math.floor(((Math.atan2(y - 8, x - 8) + Math.PI) / (Math.PI * 2)) * 12) % 2;
+      if (ring !== 1 || spoke) px(g, x, y, 1, 1, '#f2eee4');
+    }
+  }, { key: 'env:doily', wrap: 'clamp' });
+}
+
+/** The flat's stairwell wall (84 px = 2.6 m like the paper, floor to ceiling): green oil paint to 1.5 m under a brown line, chipped whitewash above. */
+export function stairwellTex(tex: TexGen): THREE.Texture {
+  return tex.canvas(84, 84, (g, w, h) => {
+    const line = h - 49;                                                          // 1.5 m up
+    px(g, 0, 0, w, line, '#b8b4a4');
+    mottle(g, w, line, 0.22, 5151);
+    px(g, 0, line, w, h - line, '#3e5a46');
+    px(g, 0, line, w, 2, '#4a2e1c');
+    for (let i = 0; i < 26; i++) {                                                // chips in the paint, the plaster showing
+      const x = Math.floor(hash01(i * 71 + 1) * w), y = line + 3 + Math.floor(hash01(i * 37 + 9) * (h - line - 10));
+      px(g, x, y, 1 + (i % 2), 1, '#8a8a78');
+    }
+    mottle(g, w, h, 0.1, 5153);
+    px(g, 0, h - 4, w, 4, '#2a2018');
+  }, { key: 'env:stairwell' });
+}

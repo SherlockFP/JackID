@@ -68,7 +68,7 @@ import { log } from '@/core/log';
 import { clamp } from '@/core/math';
 import { t as tr, fmtCoins, registerStrings, type I18nVars } from '@/core/i18n';
 import { SLOT_DIMS, type MachineContext, type MachineDef, type MachineEnvelope, type MachineEvent, type MachineModel, type PresentCtx } from './types';
-import { juiceTier, streakPitch, tierTags, toWinTier, type JuiceTier } from './tiers';
+import { juiceTier, streakHeat, streakPitch, tierTags, toWinTier, type JuiceTier } from './tiers';
 import * as juice from './juice';
 import { RiskLayer } from './riskLayer';
 import { PowerRig } from './powerRig';
@@ -255,6 +255,13 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
   get isHost(): boolean { return this.ctx.net.isHost; }
   get selfId(): PlayerId { return this.ctx.net.selfId; }
   get occupant(): PlayerId | null { return this.seats[0] ?? null; }
+  /** The streak flame on the seat HUD's bet box (seatHud.css `data-streak`): heat 1..5 from the 3rd win in a row, none below. */
+  private showStreak(): void {
+    const d = this.ctx.ui.root?.dataset;
+    if (!d) return;
+    const h = streakHeat(this._streak);
+    if (h > 0) d.streak = String(h); else delete d.streak;
+  }
   /** Wins in a row for the local occupant (0 for everyone else). Read by `juice.celebrate` for the streak show. */
   get winStreak(): number { return this.isLocalOccupant ? this._streak : 0; }
   get localSeat(): number { return this.seats.indexOf(this.ctx.net.selfId); }
@@ -553,7 +560,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     const credited = this.ctx.run.win(gross, this.src, meta);
     if (this.isLocalOccupant) this._coach?.result(gross, bet);
     // win streak (presentation only): a win extends it, a loss ends it, a push leaves it as it was
-    if (this.isLocalOccupant) { if (gross > bet) this._streak++; else if (gross < bet) this._streak = 0; }
+    if (this.isLocalOccupant) { if (gross > bet) this._streak++; else if (gross < bet) this._streak = 0; this.showStreak(); }
     this.busy = false;
     this.offerGamble(credited);
     if (this.isLocalOccupant) this.fitBet();          // a lost round can leave the pocket under the current bet
@@ -877,7 +884,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
       this._aliasHeld.clear();
       this._pend = null; this._pendHeld = false;
       this._watchWrapped = false;                           // a seat taken after the close (a restored ladder) is wrapped up too
-      this._streak = 0;
+      this._streak = 0; this.showStreak();
       this.rng = createRng(seed);
       this._releaseRequested = false;
       this.bet = clamp(this.bet, this.def.minBet, this.def.maxBet);
@@ -901,7 +908,7 @@ export abstract class MachineBase<P extends object = Record<string, THREE.Object
     if (local) {
       this._riskL?.onRelease();
       this._hsMult = 1;
-      this._streak = 0;
+      this._streak = 0; this.showStreak();
       this._pend = null; this._pendHeld = false;
       this.disarmBig();
       this._stakeSig = '';

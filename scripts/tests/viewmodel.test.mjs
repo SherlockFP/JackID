@@ -229,22 +229,143 @@ const skeleton = (vm) => { vm.scene.updateMatrixWorld(true); return TRACKED.map(
 const trickCoin = (vm) => { const c = vm.scene.children[1]; return c && c.visible ? c : null; };
 const coinPos = (vm) => trickCoin(vm)?.getWorldPosition(new THREE.Vector3()) ?? null;
 
-test('spamming the trick key (every 0.05 s for 3 s) never pops: no bone and no coin jumps in one frame', async () => {
-  const vm = await make();
-  let prev = skeleton(vm), prevCoin = null, maxBone = 0, maxCoin = 0;
-  for (let f = 0; f < 180; f++) {
-    if (f % 3 === 0) { vm.trick(true); vm.trick(false); }          // 0.05 s at 60 fps
-    vm.update(1 / 60);
+/** The right and left hand bones: the coin must be in one of them or on its way. */
+const handsOf = (vm) => [bone(vm, 'handR').getWorldPosition(new THREE.Vector3()), bone(vm, 'handL').getWorldPosition(new THREE.Vector3())];
+/** Which hand the coin is at (0 right, 1 left), or -1 when it is in flight (further than SOCKET from both hand bones). */
+const SOCKET = 0.1;
+const whichHand = (vm) => { const c = coinPos(vm); if (!c) return 0; const [r, l] = handsOf(vm); const dr = c.distanceTo(r), dl = c.distanceTo(l); return Math.min(dr, dl) > SOCKET ? -1 : dr < dl ? 0 : 1; };
+
+/** Plays `frames` frames at `fps` with `act(f)` called before each; returns the biggest bone and coin step and how often the coin was far from both hands. */
+const drive = (vm, frames, fps, act) => {
+  let prev = skeleton(vm), prevCoin = null, maxBone = 0, maxCoin = 0, lost = 0;
+  for (let f = 0; f < frames; f++) {
+    act(f);
+    vm.update(1 / fps);
     const cur = skeleton(vm);
     cur.forEach((p, i) => { maxBone = Math.max(maxBone, p.distanceTo(prev[i])); });
     prev = cur;
     const c = coinPos(vm);
     if (c && prevCoin) maxCoin = Math.max(maxCoin, c.distanceTo(prevCoin));
+    if (c) { const [r, l] = handsOf(vm); if (Math.min(c.distanceTo(r), c.distanceTo(l)) > 0.4) lost++; }
     prevCoin = c;
   }
-  assert.ok(maxBone < 0.035, `a bone moved ${maxBone.toFixed(4)} m in one frame`);
-  assert.ok(maxCoin < 0.06, `the coin moved ${maxCoin.toFixed(4)} m in one frame`);
+  return { maxBone, maxCoin, lost };
+};
+
+test('spamming R (every 0.05 s for 3 s) never pops: no bone and no coin jumps in one frame, and the coin is never lost', async () => {
+  const vm = await make();
+  const r = drive(vm, 180, 60, (f) => { if (f % 3 === 0) vm.toss('up'); });          // 0.05 s at 60 fps
+  assert.ok(r.maxBone < 0.035, `a bone moved ${r.maxBone.toFixed(4)} m in one frame`);
+  assert.ok(r.maxCoin < 0.06, `the coin moved ${r.maxCoin.toFixed(4)} m in one frame`);
+  assert.equal(r.lost, 0);
   vm.dispose();
+});
+
+test('spamming Q (a tap every 0.05 s for 3 s) juggles without a pop either', async () => {
+  const vm = await make();
+  const r = drive(vm, 180, 60, (f) => { if (f % 3 === 0) { vm.trick(true); vm.trick(false); } });
+  assert.ok(r.maxBone < 0.035, `a bone moved ${r.maxBone.toFixed(4)} m in one frame`);
+  assert.ok(r.maxCoin < 0.06, `the coin moved ${r.maxCoin.toFixed(4)} m in one frame`);
+  assert.equal(r.lost, 0);
+  vm.dispose();
+});
+
+test('R is one quick toss: the coin goes up from the palm, lands in the same hand in about 0.45 s, and the held coin shows again', async () => {
+  const vm = await make();
+  vm.toss('up');
+  const ys = [], hands = [];
+  for (let f = 0; f < 60; f++) { vm.update(1 / 60); const c = coinPos(vm); ys.push(c ? c.y - handsOf(vm)[0].y : null); hands.push(whichHand(vm)); }
+  const air = ys.filter((y) => y !== null), rise = Math.max(...air) - ys[0];
+  assert.ok(rise > 0.04 && rise < 0.12, `the coin rises ${rise.toFixed(3)} m`);
+  const gone = ys.findIndex((y) => y === null) / 60;
+  assert.ok(gone > 0.4 && gone < 0.5, `the toss lasts ${gone.toFixed(2)} s`);
+  assert.ok(hands.every((h) => h <= 0), 'never at the left hand');
+  vm.dispose();
+});
+
+test('Q passes the coin hand to hand: right to left on the first press, left to right on the next, each about 0.5 s', async () => {
+  const vm = await make();
+  const seen = [];
+  for (let n = 0; n < 4; n++) {
+    vm.trick(true); vm.trick(false);
+    let flew = false, f = 0;
+    for (; f < 60; f++) { vm.update(1 / 60); const w = whichHand(vm); if (w === -1) flew = true; if (flew && w !== -1) break; }
+    assert.ok(flew, 'the coin crossed in the air');
+    assert.ok(f / 60 > 0.3 && f / 60 < 0.6, `pass ${n} took ${(f / 60).toFixed(2)} s`);
+    for (let k = 0; k < 40; k++) vm.update(1 / 60);                    // settle
+    seen.push(whichHand(vm));
+  }
+  assert.deepEqual(seen, [1, 0, 1, 0], 'left, right, left, right');
+  vm.dispose();
+});
+
+test('the left palm is a real coin socket: a coin passed there sits in the left hand, not beside it', async () => {
+  const vm = await make();
+  vm.trick(true); vm.trick(false);
+  for (let f = 0; f < 80; f++) vm.update(1 / 60);
+  const [r, l] = handsOf(vm), c = coinPos(vm);
+  assert.ok(c, 'the trick coin stays in the left hand (the held coin is in the right)');
+  assert.ok(c.distanceTo(l) < SOCKET && c.distanceTo(l) < c.distanceTo(r), `coin ${c.distanceTo(l).toFixed(3)} m from the left hand`);
+  vm.dispose();
+});
+
+test('the catching hand dips on the catch and the throwing hand moves through the throw', async () => {
+  const vm = await make();
+  const y0 = handsOf(vm), ys = { r: [], l: [] };
+  vm.trick(true); vm.trick(false);
+  for (let f = 0; f < 36; f++) { vm.update(1 / 60); const [r, l] = handsOf(vm); ys.r.push(r.y - y0[0].y); ys.l.push(l.y - y0[1].y); }
+  assert.ok(Math.min(...ys.l.slice(22)) < Math.max(...ys.l.slice(10, 24)) - 0.006, 'the left hand dips on the catch');
+  assert.ok(Math.max(...ys.r) - Math.min(...ys.r) > 0.01, 'the right hand moves through the throw');
+  vm.dispose();
+});
+
+test('a tap passes the coin, holding Q for 0.4 s plays the fancy tricks and the coin ends in the right hand', async () => {
+  const vm = await make();
+  vm.trick(true);
+  for (let f = 0; f < 45; f++) vm.update(1 / 60);                     // 0.75 s held: the cycle has begun
+  assert.ok(trickCoin(vm), 'a trick coin is playing');
+  assert.notEqual(whichHand(vm), 1, 'not passed to the left hand');
+  vm.trick(false);
+  for (let f = 0; f < 60 * 5; f++) vm.update(1 / 60);
+  assert.equal(trickCoin(vm), null, 'released and done: the held coin shows again in the right hand');
+  vm.dispose();
+});
+
+test('a fancy trick asked with the coin in the left hand waits for it to come back, with no jump on the way', async () => {
+  const vm = await make();
+  vm.trick(true); vm.trick(false);
+  for (let f = 0; f < 40; f++) vm.update(1 / 60);
+  assert.equal(whichHand(vm), 1);
+  vm.trick(true, 0); vm.trick(false);
+  const r = drive(vm, 200, 60, () => {});
+  assert.ok(r.maxCoin < 0.06 && r.maxBone < 0.035 && r.lost === 0, `coin ${r.maxCoin.toFixed(3)} bone ${r.maxBone.toFixed(3)}`);
+  assert.equal(trickCoin(vm), null, 'the trick ran and the coin is back in the right hand');
+  vm.dispose();
+});
+
+test('the throws do not depend on the frame rate (R and Q chained, 30 against 120 fps)', async () => {
+  const run = async (fps) => {
+    const vm = await make();
+    const out = [];
+    let frame = 0;
+    const to = (sec) => { while (frame / fps < sec - 1e-9) { vm.update(1 / fps); frame++; } };
+    for (const [sec, act] of [[0, () => vm.toss('up')], [0.2, () => vm.toss('up')], [0.4, () => { vm.trick(true); vm.trick(false); }], [0.9, () => { vm.trick(true); vm.trick(false); }]]) { to(sec); act(); }
+    for (const sec of [1.0, 1.15, 1.3, 1.6]) { to(sec); out.push(...skeleton(vm).flatMap((p) => p.toArray()), ...(coinPos(vm)?.toArray() ?? [0, 0, 0])); }
+    vm.dispose();
+    return out;
+  };
+  const a = await run(30), b = await run(120);
+  for (let i = 0; i < a.length; i++) assert.ok(Math.abs(a[i] - b[i]) < 0.03, `channel ${i}: ${a[i]} vs ${b[i]}`);
+});
+
+test('R and Q have one walk action each; seated, R and Q belong to the machine', async () => {
+  const K = await load('src/core/keymap.ts');
+  assert.deepEqual(K.ALL_DEFAULTS.toss, ['KeyR']);
+  assert.deepEqual(K.ALL_DEFAULTS.fidget, ['KeyQ']);
+  const walk = Object.keys(K.ALL_DEFAULTS).filter((k) => K.layerOf(k) === 'walk');
+  for (const code of ['KeyR', 'KeyQ']) assert.equal(walk.filter((k) => K.ALL_DEFAULTS[k].includes(code)).length, 1, `${code} has one walk action`);
+  assert.ok(!K.SEATED_WALK_ACTIONS.has('toss') && !K.SEATED_WALK_ACTIONS.has('fidget'), 'not live while seated');
+  assert.deepEqual([K.ALL_DEFAULTS['m.double'], K.ALL_DEFAULTS['m.collect']], [['KeyR'], ['KeyQ']]);
 });
 
 test('every trick, cut into by the next from any frame, blends within 0.12 s and the coin is always in the hand or in flight from it', async () => {
@@ -346,6 +467,17 @@ test('the trick curves: smooth, flat at holds, every trick starts and ends on th
     const turn = (v) => Math.abs(v - 2 * Math.PI * Math.round(v / (2 * Math.PI)));
     assert.ok(turn(curves.cspin(trick.dur)) < 1e-6 && turn(curves.crx(trick.dur)) < 1e-6, `${trick.name} ends flat`);
     if (trick.loop) for (const ch of T.CHANNELS) assert.ok(Math.abs(curves[ch](trick.loop[0]) - curves[ch](trick.loop[1])) < 1e-9, `${trick.name}.${ch} matches across the loop`);
+  }
+});
+
+test('the throws: every hand curve starts and ends at rest, and the coin lands before the throw ends', async () => {
+  const T = await load('src/player/viewmodel/coinTricks.ts');
+  for (const toss of Object.values(T.TOSSES)) {
+    assert.ok(toss.launch + toss.flight < toss.dur, `${toss.name} lands before it ends`);
+    for (const role of [toss.thrower, toss.catcher].filter(Boolean)) {
+      const c = T.curvesOf(role);
+      for (const ch of T.CHANNELS) assert.ok(Math.abs(c[ch](0) - T.REST[ch]) < 1e-9 && Math.abs(c[ch](toss.dur) - T.REST[ch]) < 1e-9, `${role.name}.${ch} starts and ends at rest`);
+    }
   }
 });
 

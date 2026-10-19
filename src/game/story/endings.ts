@@ -2,7 +2,7 @@
  * THE ENDINGS (story wave A5, docs/STORY_BIBLE.md §4 "Endings", §5a, §9 "His part in each ending", §10 Bonds): which of the nine endings a
  * run reaches, and what it writes into the save. Pure rules and data: no DOM, no bus, no run import, no clock. The run fills an
  * {@link EndingFacts} when it ends (the A5 wiring plan in the bible), calls {@link endingRecord}, stores the record and plays
- * {@link endingScene}. Nothing calls this yet.
+ * {@link endingScene}: `run.ts endRun()` routes it, `story/index.ts` plays it.
  *
  * Priority (first match wins, {@link PRIORITY}). The kept pair tops everything the Night 8 floor can produce. Only three run-enders can
  * be written over it, because each ends the run before the Burning Wager can be won clean:
@@ -91,6 +91,18 @@ const RULES: ReadonlyArray<readonly [EndingId, (f: EndingFacts) => boolean]> = [
   ['descend', (f) => f.descended],
   ['alone', (f) => f.paid || f.wager === 'win'],
 ];
+/** One set of facts on top of {@link freshFacts} that reaches each ending (the dev preview `previewEnding` and the tests). */
+export const ENDING_WITNESS: Readonly<Record<EndingId, Partial<EndingFacts>>> = {
+  kept_pair: { night: 8, paid: true, kitchen: 'pair', pairs: 3, wager: 'win' },
+  cold_kitchen: { night: 8, paid: true, kitchen: 'win', wager: 'win' },
+  alone: { night: 8, paid: true },
+  chair: { night: 8, paid: true, kitchen: 'win', wager: 'lose' },
+  kept: { night: 7, kitchen: 'lose' },
+  paid_in_full: { night: 7, deal: 1 },
+  he_came_home: { night: 6, cameHome: true },
+  descend: { night: 4, descended: true },
+  fall: { night: 3, fell: true, seals: 0 },
+};
 /** The evaluation order of {@link routeEnding}. */
 export const PRIORITY: readonly EndingId[] = RULES.map(([id]) => id);
 

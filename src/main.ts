@@ -147,6 +147,8 @@ async function boot(): Promise<void> {
   // Wave 25 TALLY: the manga cut-in, glyph and reveal hooks for cutscenes; the run waits for the presentation before rewards and scenes
   installManga(a);
   setPresentationProbe(() => !mangaBusy());
+  // Achievements: the unlock rules listen to the bus from the menu on; the toast and the page are DOM (game/achievements.ui)
+  void import('@/game/achievements.ui').then((m) => m.installAchievements()).catch((e) => log.warn('boot', 'achievements failed', e));
 
   // 7 — fonts (Turkish glyph coverage), never blocking longer than 3 s
   const glyphs = 'ÇĞİÖŞÜçğıöşü';
@@ -186,11 +188,20 @@ async function boot(): Promise<void> {
 
   // 8/9 — everything a run needs but the menu does not, once the menu is up: the run chunk (machines, cutscenes), the procedural
   // atlases and the 7 MB arms/mannequin GLB. The first `ingame` enter waits for `warmup()`, so nothing pops in.
-  const idle = (fn: () => void): void => {
-    if ('requestIdleCallback' in window) window.requestIdleCallback(fn, { timeout: 1500 });
+  const idle = (fn: () => void, timeout = 1500): void => {
+    if ('requestIdleCallback' in window) window.requestIdleCallback(fn, { timeout });
     else setTimeout(fn, 200);
   };
-  idle(() => { void inGame.preload().then(() => warmup()); });
+  // then the PSX programs the floor links on its first frame, a few per idle slice (renderer/shaderWarm.ts)
+  const idled = (): Promise<void> => new Promise((r) => idle(r, 120));   // a busy menu still gives a slice every 120 ms
+  idle(() => {
+    void inGame.preload().then(() => warmup()).then(() => Promise.all([import('@/core/renderer/shaderWarm'), import('@/kit/mannequinLook')]))
+      .then(([w, look]) => w.warmShaders(renderer.three, idled, (m, row) => {
+        // the same tags the mannequin puts on its figures, so the NPC programs land under the keys the floor asks for
+        if (row.includes('k')) look.patchLook(m, { cracks: false, sockets: 0.5, smile: 0, head: null, rim: 0x8c9cd0 });
+        if (row.includes('n')) look.patchNpc(m, { rim: 0x8c9cd0, eyes: null, head: null, shimmer: 0.6 });
+      }));
+  });
 }
 
 boot().catch((e) => fatal(t('ui.error.generic', { msg: String((e as Error)?.message ?? e) })));

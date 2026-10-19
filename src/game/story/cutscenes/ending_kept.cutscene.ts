@@ -1,7 +1,7 @@
 /**
  * KEPT / SAKLI (STORY wave A5, STORY_BIBLE §4 Endings): you lose the kitchen wager. Ada, who never lies, keeps the letter of it: you
  * stay, and she goes down in your place and gives the House her name for your card. At Dawn the card on the table has one name, her flat
- * is empty and her phone says "Stay home." Loki likes the trade. About 45 s, skippable. NOT TRIGGERED YET: the N8 Evening plays it when
+ * is empty and her phone says "Stay home." Loki likes the trade. About 45 s, skippable. story/index.ts plays it when
  * the kitchen flow ends with `wager: 'lose'`.
  *
  * Hooks (the wiring registers them, a missing hook only logs): `ending.home` ({ ada: 'seat' } at the start, { ada: 'gone' } when she

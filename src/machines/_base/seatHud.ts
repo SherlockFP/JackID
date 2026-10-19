@@ -92,6 +92,7 @@ function make<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, parent
 
 export class SeatHud {
   private readonly root: HTMLElement;
+  private readonly topEl: HTMLElement;
   private readonly goalEl: HTMLElement;
   private readonly stateEl: HTMLElement;
   private readonly stateT: HTMLElement;
@@ -149,6 +150,7 @@ export class SeatHud {
     this.root = make('div', 'seat-hud', mount);
     // Top band order (fixed): the Night / Watch clock line (HUD band, above), then the state banner, then the machine tooltip.
     const top = make('div', 'shud-top', this.root);
+    this.topEl = top;
     this.stateEl = make('div', 'shud-state shud-panel', top);
     this.stateT = make('span', 'shud-state-t', this.stateEl);
     this.stateS = make('span', 'shud-state-s', this.stateEl);
@@ -360,6 +362,18 @@ export class SeatHud {
   }
 
   // ── standard slots ────────────────────────────────────────────────────────────────────────────
+  /**
+   * Seats whose top edge is a plate or readout of the machine itself (the Big One's JACKPOT plate and meter): the state box, its
+   * goal line (moved inside it, one box instead of two) and the pay strip start `pct` % down the screen, under that header.
+   * shortcut: one fixed fraction of the screen height (the seat camera is fixed); a machine whose header moves needs its own measure.
+   */
+  topBelow(pct: number): void {
+    this.topEl.style.top = `${pct}%`;
+    this.goalEl.classList.add('shud-goal-in');
+    this.stateEl.appendChild(this.goalEl);
+    this.placeToasts();
+  }
+
   goal(text: Txt): void { this.goalEl.textContent = txt(text); this.placeToasts(); }
 
   state(text: Txt, tone: HudTone = 'gold', sub?: Txt): void {

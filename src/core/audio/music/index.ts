@@ -23,6 +23,7 @@ import { Arrangement, type BeatMark } from './sequencer';
 import { BEDS } from './songs/beds';
 import { JUKEBOX } from './songs/jukebox';
 import { Stingers } from './stingers';
+import { setWinKey } from '../winBand';
 
 const PUMP_MS = 25;
 const LOOKAHEAD = 0.22, LOOKAHEAD_MAX = 1.8;
@@ -151,6 +152,7 @@ export function createMusic(host: MusicHost): MusicApi {
   function newArrangement(song: SongDef, at: number, fadeIn: number): Arrangement {
     const s = seeded ? hashSeed(seed, 'music', song.id) : hashSeed(seed, song.id, ++plays);
     const arr = new Arrangement(rig, song, { seed: s, state });
+    setWinKey(song.key, song.mode);                              // the win cues play in the newest song's key
     const now = ctx.currentTime;
     arr.i = effI.at(now); arr.d = effD.at(now);
     arr.tempoMul = tempoOf(song, arr.i);

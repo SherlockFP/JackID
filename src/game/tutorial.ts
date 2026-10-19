@@ -412,6 +412,7 @@ function startObjective(host: TutorialHost, boxUp: () => boolean): { update(): v
         deposits: depositsAll - base.deposits,
         pocket: run.wallet(self),
         owed: run.bank().left,
+        broke: run.brokeHelp()?.steps[0]?.id ?? null,
       });
       // The wayfinder follows the objective even while the tutorial box carries the words (its own gate: Nights 1-2, or a stall).
       wayfinder.update({ target: o.target, night });

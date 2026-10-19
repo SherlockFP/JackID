@@ -40,6 +40,8 @@ export interface SaveData {
   stakeCleared?: Record<string, number>;
   /** Daily run (game/daily.ts): the best result per UTC day, `YYYY-MM-DD`. Optional: older saves have none. */
   dailyBest?: Record<string, DailyBest>;
+  /** KONSOL (game/cheats.ts): the seed of the run that took a cheat code. That run earns no achievements. Optional: older saves have none. */
+  cheated?: number;
 }
 
 export interface SaveStore {
@@ -122,6 +124,7 @@ export function migrateSave(raw: unknown): SaveData {
   if (typeof r.hollowSeen === 'number' && isFinite(r.hollowSeen) && r.hollowSeen >= 0) d.hollowSeen = Math.floor(r.hollowSeen);
   d.stakeCleared = numRecord(r.stakeCleared);
   d.dailyBest = dailyBestOf(r.dailyBest);
+  if (typeof r.cheated === 'number' && isFinite(r.cheated)) d.cheated = r.cheated;
   return d;
 }
 

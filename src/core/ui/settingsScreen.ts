@@ -273,6 +273,8 @@ function mount(el: HTMLElement, o: SettingsOpts): () => void {
     bodyEl = h('div', 'st-body', scrollEl);
     const foot = h('div', 'st-foot', fr.body);
     h('div', 'hint', foot, t('ui.keyhint'));
+    // the ACHIEVEMENTS page (game/achievements.ui.ts) listens; core does not import the game
+    button(foot, { label: t('ach.open'), onClick: () => bus.emit('achievements:open', {}) });
     const back = button(foot, { label: t('common.back'), kind: 'primary', sfx: 'back', onClick: () => closeSettingsScreen() });
     back.el.dataset.sk = 'back';
     renderPage(false);

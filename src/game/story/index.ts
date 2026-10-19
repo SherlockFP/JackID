@@ -11,6 +11,7 @@
  */
 import { app } from '@/core/app';
 import { bus } from '@/core/events';
+import { t } from '@/core/i18n';
 import { log } from '@/core/log';
 import type { CutsceneId, CutscenePlayOpts, CutsceneResult } from '@/core/cutscene/types';
 import type { InGameParams } from '@/core/states';
@@ -20,6 +21,8 @@ import { placeNotes, placedNoteIds, resetNotes, openJournal, notesFound } from '
 import type { NoteGate } from './notes.data';
 import { advanceArc, markCard, type ChapterRecord } from './chapter';
 import { MIRA_BEAT } from './calls';
+import { ENDING_HOOK, ENDING_WITNESS, endingRecord, endingScene, freshFacts, isEnding, type EndingRecord } from './endings';
+import type { DebtRun } from '@/game/run';
 
 export { openJournal, notesFound };
 export { STORY_CALLS, storyCallFor, type StoryCall } from './calls';
@@ -70,6 +73,17 @@ export function playStory(id: CutsceneId, o: CutscenePlayOpts = {}): Promise<Cut
   return p;
 }
 
+/** THE ENDINGS (A5): the routed ending's scene, with Loki's last line as the `{loki}` var. */
+export function playEnding(rec: EndingRecord): Promise<CutsceneResult> {
+  return playStory(endingScene(rec.id), { vars: { loki: rec.lokiLine ? t(rec.lokiLine) : '' } });
+}
+
+/** DEV / QA (bench step `ending:<id>`): plays an ending as a run that reached it would. Aborted for an unknown id. */
+export function previewEnding(id: string): Promise<CutsceneResult> {
+  const rec = isEnding(id) ? endingRecord({ ...freshFacts(), ...ENDING_WITNESS[id] }) : null;
+  return rec ? playEnding(rec) : Promise.resolve('aborted');
+}
+
 /** Resolves when every queued story scene has finished (the run-end hand-off waits on this). */
 export function holdForStory(): Promise<void> {
   return tail.then((): void => undefined, (): void => undefined);
@@ -116,14 +130,25 @@ export function startStory(world: World, params: InGameParams, gate: NoteGate | 
 
   // the Collector's visit (cutscenes/mafia_visit): the front door swings open at its cue; a seek jumps straight to open
   offs.push(app.cutscene.registerHook('home.doorOpen', (_args, ctx) => { void app.world?.home?.doorTo(1, ctx.seeking ? 0 : 0.8); }));
+  // THE ENDINGS: the flat is dressed (`ada`: 'seat' / 'still' at the table, 'gone' down in your place); the card leaves your hand
+  offs.push(app.cutscene.registerHook(ENDING_HOOK.home, (args) => {
+    const ada = args && typeof args === 'object' && !Array.isArray(args) ? args.ada : null;
+    app.world?.home?.setSpouse(ada !== 'gone', 'home');
+  }));
+  // shortcut: the burn only empties the hand (the scene's flash and flicker carry it); a burning card prop waits for the viewmodel lane
+  offs.push(app.cutscene.registerHook(ENDING_HOOK.burn, () => { app.player?.viewmodel.hold('none'); }));
 
   offs.push(bus.on('quota:met', () => { if (live) void playStory('quota_met'); }));
   offs.push(bus.on('run:end', ({ summary }) => {
     if (!live) return;
+    const rec = (app.run as Partial<Pick<DebtRun, 'endingRecord'>> | null)?.endingRecord?.() ?? null;
     // a missed quota at home (solo) ends with the Collector's visit, not the trapdoor (WAVE69 §7)
     if (summary.ending === 'shot') void playStory('mafia_visit');
     else if (summary.result === 'fell') void playStory('quota_fail');
-    else if (summary.result === 'escaped' && summary.ending !== 'descend') void playStory('ending_elevator');
+    // KEPT PAIR and COLD KITCHEN carry their own lift
+    else if (summary.result === 'escaped' && summary.ending !== 'descend' && !rec?.burned) void playStory('ending_elevator');
+    // THE ENDINGS (A5): the routed ending follows the scene above; the Results hand-off waits for both (holdForStory)
+    if (rec) void playEnding(rec);
   }));
   offs.push(bus.on('tycoon:prestige', () => { if (live) void playStory('descend'); }));
   offs.push(bus.on('tycoon:milestone', ({ feature }) => {

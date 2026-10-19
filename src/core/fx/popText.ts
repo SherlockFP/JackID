@@ -15,6 +15,7 @@ import { app } from '../app';
 import { clamp } from '../math';
 import { GLSL_BAYER, psxUniforms } from '../renderer/psxMaterial';
 import type { FxSystem } from './layer';
+import { countValue, digitSlots, popScale, SLAM_S } from './popAnim';
 
 const ATLAS_UPLOAD_MS = 1000 / 15;   // glyph atlas re-upload cap (≤ 15 Hz)
 const CELL = 10;               // 8 px glyph + 1 px outline each side
@@ -123,7 +124,7 @@ class GlyphAtlas {
 
 const VERT = /* glsl */`
 attribute vec4 aAnchor;   // xyz world
-attribute vec4 aOff;      // x, y px offset (already scaled), z pixel scale
+attribute vec4 aOff;      // x, y px offset (already scaled), z, w pixel scale (x, y: squash and stretch)
 attribute vec4 aUV;
 attribute vec4 aColor;
 uniform vec2 uPsxLowRes;
@@ -135,7 +136,7 @@ void main() {
   vColor = aColor;
   if (clip.w < 0.05) { gl_Position = vec4(3.0, 3.0, 0.0, 1.0); return; }
   vec2 hres = uPsxLowRes * 0.5;
-  vec2 px = floor(clip.xy / clip.w * hres + 0.5) + aOff.xy + (position.xy + 0.5) * ${CELL}.0 * aOff.z;
+  vec2 px = floor(clip.xy / clip.w * hres + 0.5) + aOff.xy + (position.xy + 0.5) * ${CELL}.0 * aOff.zw;
   gl_Position = vec4(px / hres, 0.0, 1.0);
 }
 `;
@@ -159,7 +160,12 @@ interface Pop {
   text: string; color: Hex; r: number; g: number; b: number;
   age: number; dur: number; worldDur: number; rise: number; scale: number;
   flyTo?: string; onArrive?: () => void; sfx?: PopTextOpts['sfx']; shake: boolean; stack: number;
+  /** Odometer: seconds the digits roll (0 = none), their slots in `glyphs` and the number they land on. */
+  count: number; slots: number[] | null; target: number;
+  wobble: boolean; slam: boolean;
 }
+
+const DIGITS = '0123456789';
 
 const cssColor = (c: Hex): string => `#${(c & 0xffffff).toString(16).padStart(6, '0')}`;
 
@@ -174,6 +180,8 @@ export class PopTextSystem implements FxSystem {
   private readonly attrs: THREE.InstancedBufferAttribute[];
   private pops: Pop[] = [];
   private readonly camPos = new THREE.Vector3();
+  private readonly sxy = [1, 1];
+  private digitGlyphs: Array<Glyph | null> | null = null;
 
   constructor() {
     this.geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0]), 3));
@@ -210,11 +218,16 @@ export class PopTextSystem implements FxSystem {
       if (p.age < 0.7 && Math.abs(p.x - x) < 0.4 && Math.abs(p.y - y) < 0.5 && Math.abs(p.z - z) < 0.4) stack = Math.max(stack, p.stack + 1);
     }
     if (this.pops.length >= MAX_POPS) this.pops.shift();
+    const shown = chars.join('');
+    const count = o.count && o.count > 0 ? o.count : 0;
+    const dg = count ? digitSlots(shown) : null;
+    if (count) this.digitGlyphs ??= [...DIGITS].map((c) => this.atlas.get(c));
     this.pops.push({
-      x, y, z, text: chars.join(''), glyphs: chars.map((c) => this.atlas.get(c)),
+      x, y, z, text: shown, glyphs: chars.map((c) => this.atlas.get(c)),
       color, r: ((color >> 16) & 255) / 255, g: ((color >> 8) & 255) / 255, b: (color & 255) / 255,
-      age: 0, dur, worldDur: o.flyTo ? Math.max(0.35, dur * 0.6) : dur, rise: o.rise ?? 0.4, scale: o.scale ?? 1,
+      age: 0, dur, worldDur: o.flyTo ? Math.max(0.35, dur * 0.6) : dur, rise: o.slam ? 0 : o.rise ?? 0.4, scale: o.scale ?? 1,
       flyTo: o.flyTo, onArrive: o.onArrive, sfx: o.sfx, shake: !!o.shake, stack,
+      count, slots: dg && dg.slots.length ? dg.slots : null, target: dg?.value ?? 0, wobble: !!o.wobble, slam: !!o.slam,
     });
     if (o.sfx && !o.flyTo) app.audio.play(o.sfx, { vol: 0.7 });
   }
@@ -238,21 +251,27 @@ export class PopTextSystem implements FxSystem {
         const wy = p.y + p.rise * (1 - Math.pow(1 - k, 3));
         const dx = this.camPos.x - p.x, dy = this.camPos.y - wy, dz = this.camPos.z - p.z;
         const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        let ps = Math.max(1, Math.min(5, Math.round(2 * p.scale)));
-        if (p.age < 0.1) ps += 1;                                   // pop-in: one pixel step bigger for a few frames
+        let ps = Math.max(1, Math.min(p.slam ? 6 : 5, Math.round(2 * p.scale)));
         if (dist > 14) ps = Math.max(1, ps - 1);
-        const w = p.glyphs.length * ADVANCE * ps;
+        if (p.slots && layer === 0) this.roll(p);
+        // squash and stretch on landing: at spawn, again when a count lands, and after a slam's fall
+        const land = p.slots && p.age >= p.count ? p.age - p.count : p.slam ? p.age - SLAM_S : p.age;
+        popScale(p.age, p.slots && p.age < p.count ? -1 : land, ps, p.slam, this.sxy);
+        const sx = this.sxy[0], sy = this.sxy[1];
+        const w = p.glyphs.length * ADVANCE * sx;
         let ox = -w / 2;
         let oy = ps * 2 + p.stack * (CELL + 2) * ps;
-        if (p.shake && p.age < 0.28) ox += Math.round(Math.sin(p.age * 90) * 3 * ps * (1 - p.age / 0.28));
-        oy += Math.round(Math.sin(p.age * 9) * ps * 0.5);
+        const st = p.slam ? p.age - SLAM_S : p.age;                  // a slam shakes on impact, not while it falls
+        if (p.shake && st >= 0 && st < 0.28) ox += Math.round(Math.sin(st * 90) * 3 * ps * (1 - st / 0.28));
+        if (!p.wobble) oy += Math.round(Math.sin(p.age * 9) * ps * 0.5);
         const fade = p.flyTo ? 1 : p.age > p.dur * 0.7 ? clamp(1 - (p.age - p.dur * 0.7) / (p.dur * 0.3), 0, 1) : 1;
         for (let c = 0; c < p.glyphs.length && n < CAP; c++) {
           const gl = p.glyphs[c];
           if (!gl || gl.fill < 0) continue;
           const i4 = n * 4;
           this.aAnchor[i4] = p.x; this.aAnchor[i4 + 1] = wy; this.aAnchor[i4 + 2] = p.z; this.aAnchor[i4 + 3] = 0;
-          this.aOff[i4] = ox + c * ADVANCE * ps - ps; this.aOff[i4 + 1] = oy - ps; this.aOff[i4 + 2] = ps; this.aOff[i4 + 3] = 0;
+          const wy2 = p.wobble ? Math.round(Math.sin(p.age * 10 + c * 0.9) * ps * 0.75) : 0;   // letters bob in a wave
+          this.aOff[i4] = ox + c * ADVANCE * sx - sx; this.aOff[i4 + 1] = oy + wy2 - sy; this.aOff[i4 + 2] = sx; this.aOff[i4 + 3] = sy;
           this.atlas.uv(layer === 0 ? gl.outline : gl.fill, this.aUV, i4);
           if (layer === 0) { this.aColor[i4] = this.aColor[i4 + 1] = this.aColor[i4 + 2] = 0.04; } else { this.aColor[i4] = p.r; this.aColor[i4 + 1] = p.g; this.aColor[i4 + 2] = p.b; }
           this.aColor[i4 + 3] = fade;
@@ -267,6 +286,14 @@ export class PopTextSystem implements FxSystem {
       a.clearUpdateRanges();
       if (n > 0) { a.addUpdateRange(0, n * 4); a.needsUpdate = true; }
     }
+  }
+
+  /** Odometer: write the rolled value into the digit slots, right to left, zero padded (no allocation). */
+  private roll(p: Pop): void {
+    const slots = p.slots as number[];
+    const dg = this.digitGlyphs as Array<Glyph | null>;
+    let v = countValue(p.target, p.age, p.count);
+    for (let i = slots.length - 1; i >= 0; i--) { p.glyphs[slots[i]] = dg[v % 10]; v = Math.floor(v / 10); }
   }
 
   /** The world phase is over: let the HUD carry the number into its counter. */

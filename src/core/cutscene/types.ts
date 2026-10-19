@@ -69,6 +69,8 @@ export interface ActorSpec {
   visible?: boolean;                      // default true
   /** Props parented to a bone from t=0 (key into the kit's prop builders, e.g. 'hat_collector', 'coin'). */
   props?: Array<{ prop: string; bone: string; pos?: V3; rot?: V3; scale?: number }>;
+  /** Optional look passthroughs to `kit.mannequin` (story A5, Ada lit in the lift): `npc: false` is a lit figure, not a dark NPC. */
+  npc?: boolean; female?: boolean; rim?: Hex;
 }
 export interface ActorCue {
   t: number;

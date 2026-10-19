@@ -4,7 +4,9 @@
  *   - door casings: walnut pilasters on plinths, a brass-banded entablature and lined jambs on every nave doorway (both faces)
  *   - light pools: a soft additive disc on the floor under each lamp, so the light reads as pools with dark between them
  *   - haze: faint additive cones under the main pendants and the stage spot (smoke in the air)
- *   - posters: framed wordless show bills on the wing side of the doorways, skipped where a machine stands
+ *   - posters: framed bills on the wing side of the doorways, skipped where a machine stands: a wordless show bill on one side, a
+ *     faded constructivist poster with its slogan on the other (docs/ART.md "Identity")
+ *   - ÇIKIŞ / EXIT boxes over every doorway on its wing face, and the identity dressing (props/identity.ts)
  *
  * All static kit primitives under `parent` (the level's `statical`, merged by kit.finalize: the pools and cones share one additive
  * material each, so they cost a draw call apiece in all). No real-time lights, no timers, no rng.
@@ -12,7 +14,9 @@
 import * as THREE from 'three';
 import type { KitX } from '@/kit';
 import { presets } from '@/kit/presets';
-import { poolTex, posterTex, POSTER_COUNT } from './surfaces';
+import { constructTex, CONSTRUCT_COUNT, poolTex, posterTex, POSTER_COUNT } from './surfaces';
+import { crispBilingual, crispLabel } from './signs';
+import { buildIdentity } from './identity';
 
 /** [x0, z0, x1, z1] in metres. */
 type Rect = readonly [number, number, number, number];
@@ -38,6 +42,10 @@ export function buildAmbience(kit: KitX, o: {
 }): void {
   const P = presets(kit.tex);
   const { parent } = o;
+  buildIdentity(kit, { parent });
+  // one ÇIKIŞ / EXIT plate, cloned over every doorway (the clones share its material and its repaint on a language change)
+  const exit = crispBilingual(kit, { text: { key: 'prop.id.exit' }, sub: { key: 'prop.id.exitSub' }, w: 0.5, h: 0.24, color: 0xe8ffe0, subColor: 0xc8f0c8, bg: 0x0c5a2a, frame: 0xd8f0d8, ppm: 200 });
+  const slogans = Array.from({ length: CONSTRUCT_COUNT }, (_, i) => crispLabel(kit, { text: { key: `prop.id.slogan${i}` }, w: 0.66, h: 0.14, color: 0x8a1810, bg: null, ppm: 520 }));
   const wood = P.wood('dark'), walnut = P.wood('walnut'), brass = P.brass();
   const box = (w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number): THREE.Mesh =>
     kit.box(w, h, d, m, { pos: [x, y, z], parent });
@@ -64,18 +72,34 @@ export function buildAmbience(kit: KitX, o: {
     const wout = (depth: number): number => wing - s * (depth / 2 - 0.01);
     for (const pz of [d.z0 - 0.09, d.z1 + 0.09]) box(0.06, LINTEL + 0.12, 0.18, wood, wout(0.06), (LINTEL + 0.12) / 2, pz);
     box(0.06, 0.16, gap + 0.36, wood, wout(0.06), LINTEL + 0.06, zc);
+    // the exit box beside the doorway (the low wings have no wall over the lintel), facing into the wing, clear of the poster below it
+    const ez = d.z1 + 0.47;
+    box(0.05, 0.28, 0.54, P.metal(0x2a2a2a), wout(0.05), 2.56, ez);
+    const ex = exit.mesh.clone();
+    ex.position.set(wing - s * 0.046, 2.56, ez);
+    ex.rotation.y = s < 0 ? Math.PI / 2 : -Math.PI / 2;
+    parent.add(ex);
 
     // posters on the wing face, one each side of the doorway, unless a machine stands there
     const px = wing - s * 0.04;
     for (const [k, pz] of [[0, d.z0 - 1.05], [1, d.z1 + 1.05]] as const) {
       const r: Rect = [Math.min(px, wing) - 0.6, pz - 0.5, Math.max(px, wing) + 0.6, pz + 0.5];
-      if (o.blockers.some((b) => r[0] < b[2] + 0.4 && r[2] > b[0] - 0.4 && r[1] < b[3] + 0.4 && r[3] > b[1] - 0.4)) continue;
+      // only a machine on the wing side hides the poster (one against the nave face of the same wall used to drop it)
+      const wingSide = (b: Rect): boolean => s * ((b[0] + b[2]) / 2 - d.x) < 0;
+      if (o.blockers.some((b) => wingSide(b) && r[0] < b[2] + 0.4 && r[2] > b[0] - 0.4 && r[1] < b[3] + 0.4 && r[3] > b[1] - 0.4)) continue;
       const art = Math.abs(Math.round(d.x + d.z0 * 3 + k)) % POSTER_COUNT;
       box(0.04, 1.14, 0.8, walnut, wing - s * 0.01, 1.75, pz);                 // frame (1 cm into the wall)
       box(0.02, 1.2, 0.86, brass, wing - s * 0.005, 1.75, pz);                 // gilt edge, a hair proud of the wall only
-      kit.plane(0.7, 1.05, { map: posterTex(kit.tex, art), color: 0xc8bca8, lit: false }, {
+      const old = k === 1, ci = Math.abs(Math.round(d.z0 + d.x)) % CONSTRUCT_COUNT;   // the far side keeps a leftover from the building's past
+      kit.plane(0.7, 1.05, { map: old ? constructTex(kit.tex, ci) : posterTex(kit.tex, art), color: old ? 0xb8ac98 : 0xc8bca8, lit: false }, {
         pos: [wing - s * 0.035, 1.75, pz], rot: [0, s < 0 ? 90 : -90, 0], parent, shade: false,
       });
+      if (old) {   // the slogan sits on the poster's cream band, 6 mm proud of the paper
+        const sl = slogans[ci].mesh.clone();
+        sl.position.set(wing - s * 0.041, 1.75 - 1.05 / 2 + 0.13, pz);
+        sl.rotation.y = s < 0 ? Math.PI / 2 : -Math.PI / 2;
+        parent.add(sl);
+      }
     }
   }
 

@@ -182,6 +182,11 @@ export function streakGlow(n: number): number {
   return 1 + Math.min(8, Math.max(0, Math.floor(n) - 1)) * 0.05;
 }
 
+/** Heat of the seat HUD's streak flame for `n` wins in a row: 0 below {@link STREAK_MIN}, then 1 per win, capped at 5. */
+export function streakHeat(n: number): number {
+  return Math.min(5, Math.max(0, Math.floor(n) - STREAK_MIN + 1));
+}
+
 /** Anticipation before an impact of tier `t`, in sim seconds: `big` 0.6 s, `huge` and up 1.2 s, lower tiers none. */
 export function windupSec(t: JuiceTier): number {
   return t === 'big' ? 0.6 : tierAtLeast(t, 'huge') ? 1.2 : 0;

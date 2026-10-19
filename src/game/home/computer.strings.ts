@@ -11,6 +11,7 @@ export default {
     'tab.home': 'HOME',
     'tab.invest': 'INVESTMENTS',
     'tab.market': 'MARKET',
+    'tab.konsol': 'KONSOL',
     'pocket': 'Pocket: {n} coins',
     'closed': 'The computer only works in the Evening, at home.',
 
@@ -84,6 +85,7 @@ export default {
     'tab.home': 'ANA EKRAN',
     'tab.invest': 'YATIRIMLAR',
     'tab.market': 'PAZAR',
+    'tab.konsol': 'KONSOL',
     'pocket': 'Cep: {n} jeton',
     'closed': 'Bilgisayar sadece akşam, evdeyken çalışır.',
 

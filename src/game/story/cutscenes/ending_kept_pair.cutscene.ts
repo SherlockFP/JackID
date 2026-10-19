@@ -1,13 +1,13 @@
 /**
  * KEPT PAIR / SÖZ SÖZE, the true ending (STORY wave A5, STORY_BIBLE §4 Endings): the card burns clean (n26, the first this year),
  * the lift rises with Ada beside you, the lift phone rings and she picks up (Mira, "Thanks for picking up."), and at home she beats
- * you at her game for the first time: "There you are." About 49 s, skippable. NOT TRIGGERED YET: the N8 flow plays it with
+ * you at her game for the first time: "There you are." About 49 s, skippable. story/index.ts plays it at the run's end with
  * `vars: { loki: t(record.lokiLine) }` (Loki burns with the card, or stays if his word was spent at match point).
  *
  * Hooks (the wiring registers them, a missing hook only logs): `ending.burn` (the card burns), `ending.home` ({ ada: 'seat' } dresses the flat).
  * LAYOUT (VERIFY in the engine): part 1 looks from the player's eye at the Compere's stage (`stage.compere`); part 2 sits inside the
  * lift car at (-4, 0, -31.1) (level.ts: lift root (-4, 0, -30), car 1.8 m wide, doors toward +z); part 3 is the flat (`home.*`).
- * Ada's face is lit by the light cue only: ActorSpec has no `npc: false` / rim yet (see the A5 wiring plan).
+ * Ada is a lit figure (`npc: false`, `female`), not a dark NPC, so the warm light cue lights her face.
  */
 import type { CutsceneDef, CutTarget } from '@/core/cutscene/types';
 import type { V3 } from '@/core/types';
@@ -27,7 +27,7 @@ const def: CutsceneDef = {
   fadeIn: 0.6,
   fadeOut: 1.2,
   actors: {
-    ada: { kind: 'mannequin', pos: ADA_AT, rotY: 0, color: 0xc89a2c, height: 1.62, clip: 'Idle_Loop' },
+    ada: { kind: 'mannequin', pos: ADA_AT, rotY: 0, color: 0xc89a2c, height: 1.62, clip: 'Idle_Loop', npc: false, female: true },
   },
   tracks: [
     { kind: 'camera', handheld: 0.1, keys: [

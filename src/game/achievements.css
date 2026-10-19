@@ -1,0 +1,29 @@
+/* ACHIEVEMENTS: the unlock toast (bottom right, slides in) and the page. Sizes are multiples of the overlay's --u. */
+.ach-ring { flex: 0 0 auto; display: grid; place-items: center; width: calc(18 * var(--u)); height: calc(18 * var(--u)); border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--shine), var(--gold) 55%, var(--brass)); box-shadow: 0 0 0 var(--u) var(--void); }
+.ach-name { font-family: var(--f-body); font-size: var(--fb); line-height: 1.05; color: var(--ivory); overflow-wrap: anywhere; }
+.ach-g { flex: 0 0 auto; font-family: var(--f-head); font-size: var(--fh); line-height: 1; color: var(--shine); white-space: nowrap; }
+
+/* the toast: the host clips the slide at the screen edge */
+.ach-toasts { position: absolute; right: 0; bottom: calc(18 * var(--u)); z-index: 6; box-sizing: border-box; overflow: hidden; pointer-events: none;
+  width: calc(196 * var(--u)); max-width: 100%; padding: calc(3 * var(--u)) calc(6 * var(--u)) calc(3 * var(--u)) calc(3 * var(--u));
+  display: flex; flex-direction: column; align-items: flex-end; gap: calc(3 * var(--u)); }
+.ach-toast { display: flex; align-items: center; gap: calc(4 * var(--u)); width: 100%; box-sizing: border-box;
+  padding: calc(3 * var(--u)) calc(5 * var(--u)) calc(3 * var(--u)) calc(3 * var(--u)); background: #0d0d15;
+  box-shadow: 0 0 0 var(--u) var(--void), 0 0 0 calc(2 * var(--u)) var(--green);
+  transform: translateX(115%); transition: transform 0.4s steps(8, end); }
+.ach-toast.in { transform: translateX(0); }
+.ach-txt { flex: 1 1 auto; min-width: 0; }
+.ach-head { font-family: var(--f-head); font-size: var(--fh); line-height: 1.4; color: var(--green); white-space: nowrap; }
+
+/* the page */
+.ach-sum { font-family: var(--f-head); font-size: var(--fh); line-height: 1.4; color: var(--shine); }
+.ach-count { margin-bottom: calc(4 * var(--u)); font-family: var(--f-body); font-size: var(--fb); color: var(--grout); }
+.ach-row { display: flex; align-items: center; gap: calc(5 * var(--u)); padding: calc(3 * var(--u)) 0; opacity: 0.55;
+  border-top: var(--u) dashed var(--ash); }
+.ach-row .ach-ring { filter: grayscale(1) brightness(0.6); }
+.ach-row.on { opacity: 1; }
+.ach-row.on .ach-ring { filter: none; }
+.ach-info { flex: 1 1 auto; min-width: 0; }
+.ach-desc { font-family: var(--f-body); font-size: var(--fb); line-height: 1.05; color: var(--bone); overflow-wrap: anywhere; }
+.ach-foot { display: flex; justify-content: flex-end; margin-top: calc(5 * var(--u)); }

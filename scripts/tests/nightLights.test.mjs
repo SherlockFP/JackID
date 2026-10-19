@@ -160,3 +160,24 @@ test('the bell is shorter than the opening: the Watch does not cut the section-b
   assert.deepEqual(on, ['mouth', 'well', 'lobby', 'parlour'], 'every zone still came on, lift outward');
   cycle.dispose();
 });
+
+// Dawn leftovers: a lamp or glow the level builds itself is registered, so the zone's fixtures() switch reaches it.
+test('registerLamp and registerGlow join the built fixtures and switch with the zone', async () => {
+  const L = await load('src/world/lights.ts');
+  const THREE = await import('three');
+  L.resetFixtures();
+  let on = true;
+  L.registerLamp([1, 2, 3], (v) => { on = v; }, 'lobby');
+  const mat = new THREE.MeshBasicMaterial({ color: 0xffc070 });
+  L.registerGlow(mat, [0, 1, 0]);
+  const fx = L.builtFixtures();
+  assert.equal(fx.length, 2);
+  assert.equal(fx[0].zone, 'lobby');
+  fx[0].setOn(false);
+  assert.equal(on, false);
+  fx[1].setOn(false);
+  assert.ok(mat.color.r < 0.2, 'the glow goes dark');
+  fx[1].setOn(true);
+  assert.equal(mat.color.getHex(), 0xffc070, 'and comes back to its own colour');
+  L.resetFixtures();
+});

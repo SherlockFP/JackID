@@ -148,7 +148,7 @@ export const WARM_URLS: string[] = [
 export const CLIP_URLS: string[] = [...new Set(JSON.stringify(GROUPS).match(/"u":"[^"]+"/g)!.map((m) => m.slice(5, -1)))];
 
 /** The casino-loop clips the recipes in sfx.ts play directly (with their procedural version as the fallback). */
-export type WinClip = 'wheel' | 'winChime' | 'winJingle' | 'fanfare' | 'alarm' | 'coinAlarm' | 'bellsReward' | 'lockClunk';
+export type WinClip = 'wheel' | 'winChime' | 'winJingle' | 'fanfare' | 'alarm' | 'coinAlarm' | 'bellsReward' | 'lockClunk' | 'coinsBig';
 /** Play one of the casino-loop clips into the recipe's Kit (peak `vol` before the recipe's trim). False = not decoded yet: use the synth. */
 export function winClip(k: Kit, id: WinClip, o: ClipOpts = {}): boolean { return play(k, GROUPS[id], { rand: 0, ...o }); }
 

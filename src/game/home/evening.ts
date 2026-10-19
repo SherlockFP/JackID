@@ -32,6 +32,8 @@ import knockStrings from './knock.strings';
 import { openKitchen, type Kitchen } from '../duels/promise/kitchen';
 import { stakeFor, type FlowResult } from '../duels/promise/flow';
 import type { Hand } from '../duels/promise/rules';
+import { BASE_RUN_NIGHTS } from '../data/schedule';
+import { hintsHeard } from '../story/chapter';
 
 registerStrings(strings.prefix, { en: strings.en, tr: strings.tr });
 registerStrings(knockStrings.prefix, { en: knockStrings.en, tr: knockStrings.tr });
@@ -224,6 +226,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     movedFlag = false;
     beginVisit(from === 'ride');
     planAda(from === 'ride');
+    if (wagerDue()) queueOffer();   // THE KITCHEN WAGER: Ada's table comes before the free walk
     ui().dismissToasts();   // the arrival hint is the only centre-top line of the Evening: stale toasts from the pit step aside
     ui().toast(t('evening.hint'), 'sys', 5);
   };
@@ -506,6 +509,8 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   };
 
   // ── ADA'S KITCHEN TABLE (wave 78): Rock, Paper, Promise, once per Evening ──────────────────────────────────────────
+  /** THE KITCHEN WAGER (STORY_BIBLE 5a): the Evening that opens Night 8 plays for her name, until it is settled. */
+  const wagerDue = (): boolean => run.night() === BASE_RUN_NIGHTS - 1 && run.chapterRecord().kitchen === null;
   /** After the spouse has spoken, offer the game (once per Night, only in the Evening, never with someone at the door). */
   const queueOffer = (): void => {
     if (pro !== 'done' || run.homeStage() !== 'evening' || kitchen || offering || offerWait >= 0 || offerCool > 0) return;
@@ -513,6 +518,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     offerWait = talk.reduce((n, l) => n + l.sec, Math.max(0, talkWait)) + 0.4;
   };
   const offer = async (): Promise<void> => {
+    if (wagerDue()) { startKitchen(); return; }
     offering = true;
     let pick = 1;
     try { pick = await ui().choice(t('promise.offer.title'), [t('promise.offer.play'), t('promise.offer.no')], { timeout: 12 }); } catch { pick = 1; }
@@ -523,6 +529,8 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   const finishKitchen = (r: FlowResult): void => {
     kitchen = null;
     unlock();
+    run.kitchenDone(r);   // a broken word, the wager's outcome; a lost wager ends the run (KEPT)
+    if (run.over) return;
     if (r.left) { ui().toast(t('promise.leave'), 'info', 3); offerCool = 20; return; }
     kitchenPlayed.add(run.night());
     if (!r.kept) return;
@@ -535,10 +543,12 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     if (kitchen) return;
     wantLock = true;
     tryLock();
+    const chap = run.chapterRecord();
     kitchen = openKitchen({
       parent: ui().hudLayer,
       seed: hashSeed(run.seed, run.night(), 'promise'),
       stake: stakeFor(run.seed, run.night()),
+      ...(wagerDue() ? { wager: { harmony: run.homePhone()?.harmony() ?? HARMONY_START, broken: chap.broken, hints: hintsHeard(chap) } } : {}),
       playHand: (hd: Hand) => { try { void player.viewmodel.play(hd === 'rock' ? 'rpsRock' : hd === 'paper' ? 'rpsPaper' : 'rpsScissors'); } catch { /* hands are optional */ } },
       done: finishKitchen,
     });
@@ -584,6 +594,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     if (station !== 'peephole') movedFlag = true;   // the Listener hears every touch; the look costs only its time
     if (station === 'bed') {
       if (visit?.atDoor()) { ui().toast(t('knock.blocked'), 'warn', 2.5); return; }   // not with someone at the door
+      if (wagerDue() && adaHere) { startKitchen(); return; }   // the wager first: she is waiting at the table
       run.homeSleep();
       return;
     }

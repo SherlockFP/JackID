@@ -6,13 +6,15 @@
  *
  *   node scripts/qa/sfxLoud.mjs            measure and write the fixture
  *   node scripts/qa/sfxLoud.mjs --dry      measure and print only
+ *   node scripts/qa/sfxLoud.mjs --wav DIR  render small / medium / big / jackpot (as TIERS stacks them, default volumes) to DIR/<prefix>-<tier>.wav
+ *                                           (--prefix NAME, default "new"); measures nothing
  *
  * Re-run after changing a recipe, a TRIM, a clip level in real.ts, or the tier layers in juice.ts (TIERS below mirrors them).
  * Zero dependencies, same launcher pattern as bench.mjs (own Vite + own Chrome on free ports, temp profile, killed on exit).
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,6 +23,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const CHROME = process.env.QA_CHROME || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const OUT = join(ROOT, 'scripts', 'tests', 'fixtures', 'sfxLoudness.json');
 const DRY = process.argv.includes('--dry');
+const argOf = (f) => { const i = process.argv.indexOf(f); return i > 0 ? process.argv[i + 1] : undefined; };
+const WAV = argOf('--wav'), PREFIX = argOf('--prefix') ?? 'new';
 const log = (...a) => process.stderr.write(`[sfxLoud] ${a.join(' ')}\n`);
 
 /** Default settings volumes (src/core/settings.ts DEFAULTS.vol). */
@@ -28,38 +32,23 @@ const VOLUMES = { master: 0.8, sfx: 0.9, ui: 0.8, music: 0.6, amb: 0.7, voice: 0
 /** Every slider at the top: the headroom check renders the jackpot here too. */
 const MAX_VOLUMES = { master: 1, sfx: 1, ui: 1, music: 1, amb: 1, voice: 1 };
 /** Single cues: rendered alone, no bus chain (the same numbers the TRIM table is calibrated on). */
-const CUES = ['button', 'lever', 'reelStart', 'reelStop', 'reelLoop', 'lineUp', 'lose', 'numberTick', 'countDing', 'streakPing', 'coinClink', 'heartbeat', 'kachunk', 'alarmBell', 'win1', 'win2', 'win3', 'winHuge', 'winMega', 'jackpotShow'];
+const CUES = ['button', 'lever', 'reelStart', 'reelStop', 'reelLoop', 'lineUp', 'lose', 'numberTick', 'countDing', 'streakPing', 'coinClink', 'heartbeat', 'kachunk', 'alarmBell', 'tensionRise', 'win1', 'win2', 'win3', 'winHuge', 'winMega', 'jackpotShow',
+  // the quiet home / food / seat cues, measured against their neighbours (click, footstep, door, creak, clockTick)
+  'seat', 'foodBite', 'foodSip', 'knock', 'chainRattle', 'lightSwitch', 'bedCreak', 'phoneBuzz', 'liftDing', 'msgBlip', 'lockTurn',
+  'phoneOpen', 'phoneClose', 'chipClack', 'click', 'footstep', 'door', 'creak', 'clockTick'];
 
-// juice.celebrate for the local player at the tier's typical multiple: winJingle (vol 0.75 + 0.35·k, pitch from winFeel) and the
-// engine's cheer, the TIER_SHOW layer, winFeelLayer's coins, escalate's extras. k = ln(mult) / ln(50); pitch = FEEL_PITCH.
+// juice.celebrate for the local player at the tier's typical multiple: the windup riser (big 0.6 s, huge and up 1.2 s), then the
+// tier's cue alone via winJingle (vol 0.75 + 0.35·k; the engine plays the jackpot 50 % louder). k = ln(mult) / ln(50).
+// The cues carry their own rollup, coins and crowd; the score's duck is not modelled (no music here).
 const k = (m) => Math.min(1, Math.log(m) / Math.log(50));
 const jv = (m) => 0.75 + 0.35 * k(m);
 const TIERS = {
-  small: { mult: 2, s: 2.5, layers: [{ name: 'win1', vol: jv(2), pitch: 0 }] },
-  medium: { mult: 5, s: 3.5, layers: [{ name: 'win2', vol: jv(5), pitch: 2 }, { name: 'coinPour', vol: 0.35 + 0.5 * k(5) }] },
-  big: { mult: 10, s: 5, layers: [
-    { name: 'tensionRise', vol: 0.9, param: 0 },
-    { name: 'win3', at: 0.6, vol: jv(10) }, { name: 'chime', at: 0.6, vol: 0.45 }, { name: 'coinPour', at: 0.6, vol: 0.35 + 0.5 * k(10) },
-    { name: 'cheer', at: 0.6, param: 0.4, vol: 0.6 },
-  ] },
-  huge: { mult: 25, s: 7, layers: [
-    { name: 'tensionRise', vol: 0.9, param: 0.6 },
-    { name: 'winHuge', at: 1.2, vol: jv(25) }, { name: 'chime', at: 1.2, vol: 0.8 }, { name: 'coinPour', at: 1.2, vol: 0.35 + 0.5 * k(25) },
-    { name: 'winRise', at: 1.2, vol: 0.8 }, { name: 'cheer', at: 1.2, param: 0.7, vol: 0.8 },
-  ] },
-  mega: { mult: 50, s: 9, layers: [
-    { name: 'tensionRise', vol: 0.9, param: 0.6 },
-    { name: 'winMega', at: 1.2, vol: jv(50) }, { name: 'bell', at: 1.2, vol: 0.8 }, { name: 'coinPour', at: 1.2, vol: 0.85 },
-    { name: 'winRise', at: 1.2, vol: 0.8 }, { name: 'cheer', at: 1.2, param: 0.9, vol: 0.9 },
-  ] },
-  jackpot: { mult: 100, s: 12, layers: [
-    { name: 'tensionRise', vol: 0.9, param: 0.6 },
-    { name: 'jackpotShow', at: 1.2, vol: jv(100) * 1.5 }, { name: 'jackpotSiren', at: 1.2, vol: 0.55 }, { name: 'winRise', at: 1.2, vol: 0.5 },
-    { name: 'cheer', at: 1.2, param: 1, vol: 1 },
-    { name: 'jackpotBells', at: 1.6, vol: 0.9 }, { name: 'jackpotBells', at: 4.6, vol: 0.7, pitch: 2 },
-    { name: 'coinRain', at: 1.2, vol: 0.7, loop: true, loopFor: 6 },
-    { name: 'kachunk', at: 7.2, vol: 0.8 },
-  ] },
+  small: { mult: 2, s: 2.5, layers: [{ name: 'win1', vol: jv(2) }] },
+  medium: { mult: 5, s: 3.5, layers: [{ name: 'win2', vol: jv(5) }] },
+  big: { mult: 10, s: 5, layers: [{ name: 'tensionRise', vol: 0.9, param: 0 }, { name: 'win3', at: 0.6, vol: jv(10) }] },
+  huge: { mult: 25, s: 7, layers: [{ name: 'tensionRise', vol: 0.9, param: 0.6 }, { name: 'winHuge', at: 1.2, vol: jv(25) }] },
+  mega: { mult: 50, s: 9, layers: [{ name: 'tensionRise', vol: 0.9, param: 0.6 }, { name: 'winMega', at: 1.2, vol: jv(50) }] },
+  jackpot: { mult: 100, s: 12, layers: [{ name: 'tensionRise', vol: 0.9, param: 0.6 }, { name: 'jackpotShow', at: 1.2, vol: jv(100) * 1.5 }] },
 };
 
 /** Page side: decode every clip once, then render and measure. Peak = sample peak; st = loudest 400 ms RMS window (dBFS). */
@@ -85,8 +74,22 @@ const PAGE = (task) => `(async () => {
   };
   const med = (xs, key) => xs.map((x) => x[key]).sort((a, b) => a - b)[1];
   const three = async (fn) => { const r = []; for (let i = 0; i < 3; i++) { fill(); r.push(stats(await fn())); } return { peak: med(r, 'peak'), peakDb: med(r, 'peakDb'), stDb: med(r, 'stDb'), len: med(r, 'len') }; };
+  if (task.wav) {
+    // 16-bit stereo PCM, base64: the node side adds the RIFF header
+    const wav = {};
+    for (const t of task.wav) {
+      fill();
+      const d = task.tiers[t], buf = await A.renderMix(d.layers, { seconds: d.s, volumes: task.volumes });
+      const L = buf.getChannelData(0), Rr = buf.getChannelData(1), pcm = new Int16Array(L.length * 2);
+      for (let i = 0; i < L.length; i++) { pcm[2 * i] = Math.max(-1, Math.min(1, L[i])) * 32767; pcm[2 * i + 1] = Math.max(-1, Math.min(1, Rr[i])) * 32767; }
+      const bytes = new Uint8Array(pcm.buffer); let bin = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      wav[t] = { sr: buf.sampleRate, b64: btoa(bin), stats: stats(buf) };
+    }
+    return JSON.stringify({ missing, wav });
+  }
   const out = { missing, cues: {}, tiers: {}, headroom: {}, trims: {} };
-  for (const n of task.cues) out.cues[n] = await three(() => A.renderSfx(n, { seconds: 4, param: n === 'reelLoop' ? 0.6 : undefined }));
+  for (const n of task.cues) out.cues[n] = await three(() => A.renderSfx(n, { seconds: n === 'jackpotShow' ? 11 : n.startsWith('win') ? 6 : 4, param: n === 'reelLoop' ? 0.6 : undefined }));
   for (const [t, d] of Object.entries(task.tiers)) out.tiers[t] = await three(() => A.renderMix(d.layers, { seconds: d.s, volumes: task.volumes }));
   // headroom: the jackpot stacks about ten layers. Raw = the sum before the buses and the master compressor (it may pass 1: the
   // compressor is what holds it); max = through the chain with every slider at 1, which must not clip.
@@ -136,9 +139,24 @@ try {
   await send('Page.navigate', { url: `http://127.0.0.1:${vport}/assets/vendor/SFX_INDEX.md` });
   await new Promise((r) => setTimeout(r, 1500));
   log('rendering (about a minute)...');
-  const m = await send('Runtime.evaluate', { expression: PAGE({ cues: CUES, tiers: TIERS, volumes: VOLUMES, maxVolumes: MAX_VOLUMES }), awaitPromise: true, returnByValue: true, timeout: 600_000 });
+  const m = await send('Runtime.evaluate', { expression: PAGE({ cues: CUES, tiers: TIERS, volumes: VOLUMES, maxVolumes: MAX_VOLUMES, wav: WAV ? ['small', 'medium', 'big', 'jackpot'] : null }), awaitPromise: true, returnByValue: true, timeout: 600_000 });
   if (m.result?.exceptionDetails || m.error) throw new Error(JSON.stringify(m.result?.exceptionDetails ?? m.error).slice(0, 1500));
   const res = JSON.parse(m.result.result.value);
+  if (WAV) {
+    mkdirSync(WAV, { recursive: true });
+    for (const [t, w] of Object.entries(res.wav)) {
+      const pcm = Buffer.from(w.b64, 'base64'), h = Buffer.alloc(44);
+      h.write('RIFF', 0); h.writeUInt32LE(36 + pcm.length, 4); h.write('WAVEfmt ', 8); h.writeUInt32LE(16, 16); h.writeUInt16LE(1, 20);
+      h.writeUInt16LE(2, 22); h.writeUInt32LE(w.sr, 24); h.writeUInt32LE(w.sr * 4, 28); h.writeUInt16LE(4, 32); h.writeUInt16LE(16, 34);
+      h.write('data', 36); h.writeUInt32LE(pcm.length, 40);
+      const f = join(WAV, `${PREFIX}-${t}.wav`);
+      writeFileSync(f, Buffer.concat([h, pcm]));
+      console.log(`${f}  peak ${w.stats.peak}  loudest-400ms ${w.stats.stDb} dB  len ${w.stats.len}s`);
+    }
+    if (res.missing.length) log(`WARNING: clips failed to decode: ${res.missing.join(', ')}`);
+    ws.close();
+    process.exit(0);
+  }
   const fixture = { note: 'written by scripts/qa/sfxLoud.mjs; peak = sample peak, stDb = loudest 400 ms RMS (dBFS); tiers through default bus volumes + master compressor', volumes: VOLUMES, ...res };
   console.log(JSON.stringify(fixture, null, 1));
   if (res.missing.length) log(`WARNING: clips failed to decode: ${res.missing.join(', ')}`);

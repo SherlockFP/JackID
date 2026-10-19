@@ -28,7 +28,7 @@ import {
   type KitHost, type NoiseBank,
 } from './synth';
 import {
-  SAMPLE_URLS, SFX_DEFS, buildAmbience, coinCascade, winSfx, type AmbBed, type SfxDef,
+  SAMPLE_URLS, SFX_DEFS, WIN_COUNT, buildAmbience, coinCascade, winSfx, type AmbBed, type SfxDef,
 } from './sfx';
 import { blipVoiceFor, charEvent, planBlips, renderBlips, scheduleBlip } from './blip';
 import { wireGambleFx } from './gambleFx';
@@ -492,11 +492,9 @@ export function createAudio(volumes: Record<Bus | 'master', number>): AudioEngin
       const n = winSfx(tier);
       if (!n) return;
       play(n, tier === 'jackpot' ? { ...o, vol: (o.vol ?? 1) * 1.5 } : o);   // the jackpot is the loudest thing on the floor (jackpotShow's TRIM holds its solo cue under full scale)
-      // the music ducks for as long as the fanfare window of the tier plays (win3 2.8 s, winHuge 4.2, winMega 5.6, jackpotShow 9.6)
-      if (tier === 'big') { addHold('music', 0.45, 3); void play('cheer', { param: 0.4, vol: 0.6 }); }
-      else if (tier === 'huge') { addHold('music', 0.55, 4.6); void play('cheer', { param: 0.7, vol: 0.8 }); }
-      else if (tier === 'mega') { addHold('music', 0.65, 6.2); void play('cheer', { param: 0.9, vol: 0.9 }); }
-      else if (tier === 'jackpot') { addHold('music', 0.8, 10); void play('cheer', { param: 1, vol: 1 }); }
+      // the score ducks under a counting win (medium a little; big and up to about 30 %) until the landing has rung, then swells back
+      const count = WIN_COUNT[tier];
+      if (count) addHold('music', tier === 'medium' ? 0.35 : 0.7, count + 2);
     },
     coins(n: number, o: PlayOpts = {}) { playDef('coins', { run: coinCascade(n), meta: { pri: 4, max: 4, gain: 1 } }, o); },
     ambience(id, fade = 1.5) { ambWant = id; if (ctx.state === 'running') applyAmbience(fade); },

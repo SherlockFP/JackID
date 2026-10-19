@@ -11,14 +11,14 @@
  * animation's own fade in and out. On top of the clip the hands keep the additive pose: breathing, walk bob, a lift to the
  * mouth, finger curls (rock, paper and scissors are curls on the finger bones), the wristwatch on the left forearm.
  *
- * The Q coin tricks are `viewmodel/coinTricks.ts` (hand-keyed curves) run by `viewmodel/fidget.ts`.
+ * The coin throws (R toss, Q pass) and the held-Q tricks are `viewmodel/coinTricks.ts` (hand-keyed curves) run by `viewmodel/fidget.ts`.
  *
  * Holds (`hold`): coin (default), card, tonic, phone, ticket, ledger, gun (two-handed), totem, the five foods (banana, coffee,
  * sandwich, energy, soup: `eat` and `drink` raise them to the mouth), or any `Object3D` the caller supplies (card fan, totem, scratch
  * coin…). Items hang from the hand bone, so they move with the clips. Changing the held item raises the new one from below (and
  * the old one shrinks away). One-shot animations (`play`): flip · drink · eat · throw · point · punchCard · recoil · give · grab ·
  * checkWatch · unwatch · rpsRock · rpsPaper · rpsScissors. An empty hand holds a coin (the default). In walk mode with the coin in
- * hand, Q plays a coin trick (`./viewmodel/fidget.ts`); after ~8 s of standing still a short knuckle walk plays on its own.
+ * hand, R tosses it and Q passes it to the other hand, holding Q plays a fancy trick (`./viewmodel/fidget.ts`); after ~8 s of standing still a short knuckle walk plays on its own.
  * `setHandLook` shows the unsettling finger-tax and porcelain collateral looks. The facade feeds head-bob and look deltas through
  * `drive()` once per frame.
  *
@@ -31,6 +31,7 @@ import { log } from '@/core/log';
 import type { Hex } from '@/core/types';
 import type { HeldItem, Viewmodel } from './types';
 import { createFidget, handAmplitude } from './viewmodel/fidget';
+import type { TossKind } from './viewmodel/coinTricks';
 import { Arm, Arms, copyPose, GLOVE_IVORY, GLOVE_LEATHER, HOLD_AT, loadArms, newPose, POSE_KEYS, spring, type ArmsSource, type ClipReq } from './viewmodel/arms';
 import { ANIMS, newFx, outBack, smooth, type Anim, type AnimFx } from './viewmodel/anims';
 import { buildGun, buildItem, buildWatch, gripOf, liftWatch, type Bite, type OwnMat } from './viewmodel/items';
@@ -57,8 +58,10 @@ export interface ViewmodelHost extends Viewmodel {
   /** Settles once the arms are in the scene (or could not be loaded: then there are no hands). */
   readonly ready: Promise<void>;
   drive(d: ViewmodelDrive): void;
-  /** The coin-trick key (Q) went down or up: a press cuts into the next trick at once, held loops the knuckle roll. `which` picks a trick (tests, bench). */
+  /** The Q key went down or up: a tap passes the coin to the other hand, held 0.4 s plays the fancy tricks (the knuckle roll loops while held). `which` plays that trick at once (tests, bench). */
   trick(down: boolean, which?: number): void;
+  /** Throw the coin (R: `up`, Q: `pass` to the other hand); asked in the air it follows the catch with no gap. */
+  toss(kind: TossKind): void;
   /** 0..1 brightness of the surroundings. */
   setLightLevel(v: number): void;
   /** The arms are bare skin under the gloves: the jacket colour is kept for the day the sleeves come back. */
@@ -225,6 +228,7 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
     scene, camera, ready,
     get item() { return item; },
     trick(down, which) { fidget.press(down, which); },
+    toss(kind) { fidget.toss(kind); },
     setVisible(on) { visible = on; rig.visible = on; if (gun) gun.visible = on; if (!on) fidget.reset(); },
     hold(next, obj) {
       if (next === 'none' && !obj) next = 'coin';           // an empty hand holds a coin: the Q tricks always have one

@@ -277,6 +277,7 @@ export class WatchEvents implements ModProvider {
 
   /** Loki (or the Compere) says the omen aloud; the director plays its light and sound from `omen:fire`. */
   private say(kind: 'sigil' | 'till' | 'reflection'): void {
+    if (this.quiet()) return;
     bus.emit('omen:fire', { kind });
     const compere = kind === 'till';
     bus.emit('floor:say', {
@@ -299,6 +300,7 @@ export class WatchEvents implements ModProvider {
   private weep(): void {
     for (const g of OWNERS) {
       if (this.wept.has(g) || this.favour(g) < 3) continue;
+      if (this.quiet()) return;   // the statue weeps once the quiet Night is over
       this.wept.add(g);
       bus.emit('omen:fire', { kind: 'weeping' });
       bus.emit('floor:note', { text: t('omen.weeping'), tone: 'info' });
@@ -306,6 +308,9 @@ export class WatchEvents implements ModProvider {
   }
 
   private floor(): WatchFloor { return this.host.floor?.() ?? NO_FLOOR; }
+
+  /** KONSOL's SAKINGECE (`x.cheat.quiet`): no omen is spoken, lit or sounded tonight. The sigil and the rest still work, unannounced. */
+  private quiet(): boolean { return (this.host.mod?.('x.cheat.quiet', 0) ?? 0) > 0; }
 
   /** Watch clock: `dtS` real Watch seconds (cutscenes and the tutorial hold the clock, so the event holds too). */
   tick(dtS: number): void {

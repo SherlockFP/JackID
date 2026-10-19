@@ -48,9 +48,9 @@ export function ticketsShown(seen: boolean, held: number): boolean {
   return seen || held > 0;
 }
 
-export type Objective = 'win' | 'deposit' | 'bell' | 'lift' | 'dawn';
+export type Objective = 'win' | 'deposit' | 'bell' | 'lift' | 'dawn' | 'broke.bank' | 'broke.cashier' | 'broke.phone' | 'broke.loan';
 /** The world spot the objective points at (its waypoint): a machine, the Bell prop (`bell` anchor), the lift door (`elevator.door` anchor), or null for no waypoint. */
-export type ObjectiveTarget = 'bigone' | 'debt_terminal' | 'bell' | 'lift' | null;
+export type ObjectiveTarget = 'bigone' | 'debt_terminal' | 'cashier' | 'bell' | 'lift' | null;
 
 export interface ObjectiveFacts {
   /** The shift phase (`run.shift.state().phase`). */
@@ -65,7 +65,11 @@ export interface ObjectiveFacts {
   pocket: number;
   /** Quota coins still owed tonight (`run.bank().left`, 0 = met). Left out: the older deposit-count rule applies. */
   owed?: number;
+  /** The pocket can't cover the cheapest bet: the first way out (`run.brokeHelp().steps[0].id`), null or left out when not broke. */
+  broke?: 'bell' | 'bank' | 'phone' | 'cashier' | 'loan' | null;
 }
+
+const BROKE_TARGET: Record<'bank' | 'phone' | 'cashier' | 'loan', ObjectiveTarget> = { bank: 'debt_terminal', cashier: 'cashier', phone: null, loan: null };
 
 /**
  * The one objective for Nights 1 and 2, from the player's state, re-read every frame. Paid: take the lift home. Last Call: ring the
@@ -77,6 +81,9 @@ export function objectiveFor(f: ObjectiveFacts): { key: Objective; target: Objec
   if (f.phase === 'lastCall') return { key: 'bell', target: 'bell' };
   const inWatch = f.phase === 'play' || f.phase === 'closing';
   if (!inWatch) return { key: f.phase === 'bell' || f.phase === 'settle' ? 'bell' : 'dawn', target: null };
+  // broke: point at the first way out (the run orders them), so an empty pocket is never a dead end
+  if (f.broke === 'bell') return { key: 'bell', target: 'bell' };
+  if (f.broke) return { key: `broke.${f.broke}`, target: BROKE_TARGET[f.broke] };
   if (f.rounds === 0) return { key: 'win', target: 'bigone' };
   if (f.owed === undefined) {
     // the older rule (no owed figure given): a deposit is still to come while coins sit in the pocket

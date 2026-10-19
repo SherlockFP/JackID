@@ -166,8 +166,11 @@ export function parseScript(text) {
  *                      OVERSHOOT line is on screen; shot it, then auto:night carries on)
  *   auto:night:evening the same, but stops in the paid Evening (after the lift, before the spouse, a visitor or the bed), so the
  *                      apartment is driven by hand: station:, ui:click:, play:. A later auto:night carries on from the bed
+ *   auto:night1        a whole Night 1 in one step (the prologue and the lift are skipped before any step): the Watches, deposits, Bells, the Dawn boon, then stops in the paid Evening. Refuses to start past Night 1
  *   event:<id>         DEV: the next Watch that can roll rolls this floor event (the chance and the weighted pick are skipped)
  *   duel:promise       DEV: opens Ada's kitchen table (Rock, Paper, Promise) in the Evening, the game's own seed and stake
+ *   ending:<id>        DEV: plays story ending <id> (kept_pair, cold_kitchen, kept, or a card) as a run that reached it would, and
+ *                      waits for it (story/index.ts previewEnding); records the cutscene result
  *   events             record and print the live floor event (watchEvents.ts watchEventView), null between Watches
  *   shot:<name>        screenshot to <shots>/<name>.png (needs --shots; a name already taken gets -2, -3, never overwritten)
  *   wait:<ms>          pause
@@ -180,6 +183,8 @@ export function parseScript(text) {
 /** The apartment's stations (HomeStation in src/game/home/contract.ts): `station:<id>` fires `home:interact` for one. */
 const HOME_STATIONS = ['bed', 'door', 'peephole', 'chain', 'switch', 'phone', 'spouse', 'window', 'fridge', 'computer'];
 /** The Watch floor events `event:<id>` can force (WATCH_EVENTS in src/game/watchEvents.ts). The page refuses an unknown id. */
+/** The story endings `ending:<id>` can play (ENDING_IDS in src/game/story/endings.ts). */
+const ENDING_IDS = ['kept_pair', 'cold_kitchen', 'alone', 'chair', 'kept', 'paid_in_full', 'he_came_home', 'descend', 'fall'];
 const WATCH_EVENT_IDS = ['happy_minute', 'lucky_lamp', 'dealers_break', 'cold_snap', 'jackpot_whisper', 'high_roller', 'tilt_holiday',
   'tilt_switch', 'loose_slots', 'cashier_bonus', 'draft', 'single_light', 'stage_auction', 'crate_drop', 'wheel_spin',
   'last_call_dare', 'crooked_table'];
@@ -227,6 +232,9 @@ export function parseRunSteps(text) {
     if (tok === 'auto:night:event') { out.push({ kind: 'auto', stopAt: 'event', text: tok }); continue; }
     if (tok === 'auto:night:quota') { out.push({ kind: 'auto', stopAt: 'quota', text: tok }); continue; }
     if (tok === 'auto:night:evening') { out.push({ kind: 'auto', stopAt: 'evening', text: tok }); continue; }
+    // Night 1 end to end: skipPrologue has done the scene and the lift before any step; the bot then plays Watch 1..n (the Big One
+    // and the rest by its rotation), deposits, rings the Bell, takes the Dawn boon and stops in the paid Evening.
+    if (tok === 'auto:night1') { out.push({ kind: 'auto', stopAt: 'evening', night1: true, text: tok }); continue; }
     // THE WATCH EVENT, forced (DEV): the next Watch that can roll rolls this event
     const mev = /^event:([a-z_]{1,40})$/.exec(tok);
     if (mev) {
@@ -237,6 +245,13 @@ export function parseRunSteps(text) {
     // THE KITCHEN GAME, started directly (DEV): Ada's Rock, Paper, Promise on the Evening's kitchen table
     const mdu = /^duel:([a-z_]{1,40})$/.exec(tok);
     if (mdu) { out.push({ kind: 'duel', id: mdu[1], text: tok }); continue; }
+    // THE ENDINGS, previewed (DEV): one ending's scene or card, with the line Loki would say there
+    const mend = /^ending:([a-z_]{1,40})$/.exec(tok);
+    if (mend) {
+      if (!ENDING_IDS.includes(mend[1])) throw new Error(`bad ending in "${tok}" (ending:<${ENDING_IDS.join('|')}>)`);
+      out.push({ kind: 'ending', id: mend[1], text: tok });
+      continue;
+    }
     let m0 = /^shot:([A-Za-z0-9_-]{1,60})$/.exec(tok);
     if (m0) { out.push({ kind: 'shot', name: m0[1], text: tok }); continue; }
     m0 = /^banner:(\d+)$/.exec(tok);
@@ -275,7 +290,7 @@ export function parseRunSteps(text) {
       out.push({ kind: 'play', keys: parseScript(m[1]), n, text: tok });
       continue;
     }
-    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1-4|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:stay | station:<id> | ui:click:<css selector> | home:sleep | home:talk | home:switch | home:chain | home:chain:<on|off> | home:lights:<on|off> | home:still:<ms> | home:visit | home:peep | home:knock-check | home:miss | anchor:<name> | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | auto:night:evening | event:<id> | duel:promise | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
+    throw new Error(`bad --run step "${tok}" (goto:<id> | goto:hot | nightcard:<1-4|best> | play:<keys>xN | stand | bank:deposit:<n> | bank:withdraw:<n> | lever | bell | pawn | pawn:buy:<slot> | pawn:look | home:lift | home:stay | station:<id> | ui:click:<css selector> | home:sleep | home:talk | home:switch | home:chain | home:chain:<on|off> | home:lights:<on|off> | home:still:<ms> | home:visit | home:peep | home:knock-check | home:miss | anchor:<name> | phone:open | phone:reply:<1-3> | auto:night | auto:night:event | auto:night:quota | auto:night:evening | auto:night1 | event:<id> | duel:promise | ending:<id> | events | banner:<ms> | shot:<name> | wait:<ms> | state | kit:<id> | stake:<n> | daily)`);
   }
   if (!out.length) throw new Error('--run needs at least one step, e.g. "goto:coinflip;play:Space:150x3;state"');
   const once = (kind) => {
@@ -492,9 +507,16 @@ const framesOf = (cdp) => evaluate(cdp, clock.step ? 'window.__qaClock.frames()'
  * again). The ride ends with the run's Watch 1 opening (`run.prologueOn()` false). A resumed run has no prologue: nothing happens.
  */
 async function skipPrologue(cdp, shoot = null) {
-  const t0 = nowMs();
+  let t0 = nowMs();
   const on = () => evaluate(cdp, 'window.jackid.app.run?.prologueOn?.() === true');
-  if (!(await on())) return { played: false, doors: 0 };
+  // The scene only starts once the world is built (evening.ts startPrologue waits on world.ready), so a first look can see
+  // prologueOn() true with no scene yet, or no run at all. Wait for the scene to start, or for the run to say there is none.
+  const started = await waitFor(
+    () => evaluate(cdp, '(() => { const a = window.jackid.app; return a.run ? (a.cutscene.playing === "prologue" || a.run.prologueOn?.() !== true) : false; })()'),
+    30_000, 'prologue start',
+  ).then(() => true, () => false);
+  if (!started || !(await on())) return { played: false, doors: 0 };
+  t0 = nowMs();
   let doors = 0, holds = 0, shot = null;
   while (await on()) {
     if (nowMs() - t0 > 60_000) throw new Error('prologue: the lift never took the bot down (still on after 60 s)');
@@ -2164,7 +2186,12 @@ async function runKind(ctx, s, rec) {
     }
     case 'pawnbuy': return pawnBuy(ctx, s.slot, rec);
     case 'pawnlook': return pawnLook(ctx, rec);
-    case 'auto': return autoNight(ctx, rec, s.stopAt ?? null);
+    case 'auto':
+      if (s.night1) {
+        const n = (await readState(ctx)).night;
+        if (n > 1) { rec.ok = false; rec.reason = `auto:night1 is Night 1 only (the run is in Night ${n})`; return; }
+      }
+      return autoNight(ctx, rec, s.stopAt ?? null);
     case 'event': {
       // DEV: the next Watch that can roll rolls this event (watchEvents.ts forceNextWatchEvent, reached by a dynamic import).
       const r = await evalJson(cdp, `(async () => {
@@ -2177,6 +2204,14 @@ async function runKind(ctx, s, rec) {
       return;
     }
     case 'duel': return duelStep(ctx, s, rec);
+    case 'ending': {
+      // DEV: the ending's scene (story/index.ts previewEnding), awaited on sim time; 'done' or 'skipped' is a pass
+      const r = await evalJson(cdp, `(async () => (await import('/src/game/story/index.ts')).previewEnding(${JSON.stringify(s.id)}))()`);
+      Object.assign(rec, { id: s.id, result: r });
+      rec.ok = r === 'done' || r === 'skipped';
+      if (!rec.ok) rec.reason = `the scene did not play (${r})`;
+      return;
+    }
     case 'events': {
       const ev = await evalJson(cdp, EVENT_JS);
       rec.event = ev;

@@ -60,6 +60,17 @@ test('objective: win, then deposit, then ring the Bell, in a Watch', () => {
   assert.deepEqual(D.objectiveFor({ ...base, rounds: 3, deposits: 1 }), { key: 'bell', target: null });
 });
 
+test('objective: an empty pocket points at the first way out (bank, cashier, phone, loan, or the Bell)', () => {
+  const base = { phase: 'play', paid: false, rounds: 2, deposits: 1, pocket: 0, owed: 20 };
+  assert.deepEqual(D.objectiveFor({ ...base, broke: 'bank' }), { key: 'broke.bank', target: 'debt_terminal' });
+  assert.deepEqual(D.objectiveFor({ ...base, broke: 'cashier' }), { key: 'broke.cashier', target: 'cashier' });
+  assert.deepEqual(D.objectiveFor({ ...base, broke: 'phone' }), { key: 'broke.phone', target: null });
+  assert.deepEqual(D.objectiveFor({ ...base, broke: 'loan' }), { key: 'broke.loan', target: null });
+  assert.deepEqual(D.objectiveFor({ ...base, broke: 'bell' }), { key: 'bell', target: 'bell' });
+  assert.deepEqual(D.objectiveFor({ ...base, broke: null }), { key: 'win', target: 'bigone' }, 'not broke: the normal chain');
+  assert.deepEqual(D.objectiveFor({ ...base, phase: 'intermission', broke: 'bank' }), { key: 'dawn', target: null }, 'only in a Watch');
+});
+
 test('objective: paid Night says take the lift; between Watches with the quota open says due at Dawn', () => {
   assert.deepEqual(D.objectiveFor({ phase: 'play', paid: true, rounds: 0, deposits: 0, pocket: 0 }), { key: 'lift', target: 'lift' });
   assert.deepEqual(D.objectiveFor({ phase: 'intermission', paid: false, rounds: 4, deposits: 1, pocket: 0 }), { key: 'dawn', target: null });

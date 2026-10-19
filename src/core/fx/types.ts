@@ -48,6 +48,12 @@ export interface PopTextOpts {
   sfx?: SfxName;
   /** Quick horizontal shake on spawn (big numbers). */
   shake?: boolean;
+  /** Roll the text's digits up from 0 over this many seconds (odometer), then bounce once on landing. */
+  count?: number;
+  /** Letters bob in a wave for the whole life (big wins, near-miss tease). */
+  wobble?: boolean;
+  /** Slam in from a huge size and hold in place (no rise): the JACKPOT stamp. */
+  slam?: boolean;
 }
 
 export interface ShakeOpts {
