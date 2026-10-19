@@ -373,7 +373,7 @@ export function buildLevel(ctx: LevelCtx): LevelBuild {
   fx(pendant(kit, { id: 'mouth:pend1', pos: [6, 5.0, -24], drop: CEILING.mouth - 5.0, color: 0xffb45a, intensity: 1.2, range: 9, flicker: 'STEADY', zone: 'mouth' }));
   lights.push({ id: 'mouth:terminal', pos: [0, 1.8, -28.4], color: 0xffb000, intensity: 0.9, range: 4, flicker: 'SICK', zone: 'mouth' });
   lights.push({ id: 'mouth:booth', pos: [4, 2.2, -28.4], color: 0xffd34a, intensity: 0.6, range: 3, flicker: 'BUZZ', zone: 'mouth' });
-  lights.push({ id: 'mouth:lift', pos: [-4, 2.4, -31.1], color: 0xfff2d0, intensity: 1.0, range: 4, flicker: 'DYING', zone: 'lift' });
+  lights.push({ id: 'mouth:lift', pos: [-4, 2.4, -31.1], color: 0xfff2d0, intensity: 1.0, range: 4, flicker: 'RARE', zone: 'lift' });   // the car's lamp: steady, one stutter a minute or so
 
   // Well: the chandelier ring (r 3 m, 24 bulbs, y 7.5) and the dais cone
   const wellChandelier = chandelier(kit, { id: 'well:chandelier', pos: [0, 7.5, -4], r: 3.0, bulbs: 24, ceiling: CEILING.well, color: 0xffb347, intensity: 1.6, range: 12, zone: 'well', tiers: 2 });

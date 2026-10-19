@@ -257,6 +257,7 @@ vLit = floor(lit * 32.0) / 32.0;           // 5-bit lighting steps
 | `STEADY` | 1.0 | sealed fixtures |
 | `BUZZ` | `1 + 0.04·sin(2π·47t) + U(−0.02, 0.02)` | neon, fluorescent, CRT |
 | `DYING` | 1.0. An event fires every U(2, 9) s: 1–4 blackouts of U(40, 120) ms (value 0.08), separated by U(30, 90) ms | broken tubes, sump work lights |
+| `RARE` | `DYING`'s stutter, but the event fires every U(40, 120) s | a lamp that is nearly steady (the lift car) |
 | `CANDLE` | `0.85 + 0.15·vnoise(t·6)` | candles, sconces, fireplace |
 | `SICK` | `0.6 + 0.4·max(0, sin(2π·0.7t))³` | curse, Devil's lamp |
 | `STROBE(f)` | square wave at f Hz, 50% duty | jackpot shows, alarms |

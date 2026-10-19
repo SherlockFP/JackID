@@ -222,7 +222,8 @@ test('a missed quota in a solo run: the doomed ride, then run:end fell with endi
   assert.equal(run.deposit(1, true), false, 'the books are shut');
   // the lights and the knocks fall inside the doom's clock, in this order, before the end
   const D = T().doomed;
-  assert.ok(D.flickerAt >= T().ride, 'the lights flicker once the ride is over');
+  assert.ok(D.flickerAt >= D.ride, 'the lights flicker once the ride home is over (the doomed ride is the short one: no car)');
+  assert.ok(T().ride > D.ride, 'the lift up (the car) is the longer ride');
   assert.ok(D.flickerEnd > D.flickerAt && D.knocks[0] > D.flickerEnd, 'then the knocks');
   assert.equal(D.knocks.length, 3, 'three knocks');
   assert.ok(D.knocks.every((k, i) => i === 0 || k > D.knocks[i - 1]) && D.end > D.knocks[2], 'in order, then the end');

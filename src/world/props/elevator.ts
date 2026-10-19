@@ -118,8 +118,8 @@ export function buildElevator(kit: KitX, tex: TexGen): ElevatorParts {
     for (const sx of [-1, 1]) if (py < 1) kit.box(0.72, ph, 0.02, mahog, { pos: [sx * 0.42, py, -0.865], parent: car });
   }
   for (const sx of [-1, 1]) kit.box(0.03, 0.04, 1.7, brass, { pos: [sx * 0.86, 1.0, 0], parent: car });
-  // a smoked mirror over the back rail, framed in brass
-  kit.plane(1.5, 0.95, { map: mirrorTex(tex), color: 0xc8d0d8, lit: false }, { pos: [0, 1.72, -0.867], parent: car });
+  // a smoked mirror over the back rail, framed in brass (the lit silvering: the pane is unlit, so a dark ground would read as a black panel)
+  kit.plane(1.5, 0.95, { map: mirrorTex(tex, true), color: 0xc8d0d8, lit: false }, { pos: [0, 1.72, -0.867], parent: car });
   for (const sy of [-1, 1]) kit.box(1.56, 0.04, 0.02, brass, { pos: [0, 1.72 + sy * 0.495, -0.865], parent: car });
   // the floor indicator over the mirror: the same dial and needle as outside, small
   kit.plane(0.7, 0.26, dialMat, { pos: [0, 2.34, -0.868], parent: car });
@@ -232,13 +232,13 @@ export class Elevator implements ElevatorProp {
     this.parts.car.position.y = 0;
   }
 
-  /** Floor dial needle: 1 = B7 (left), 8 = G (right). Values beyond the printed scale overshoot a little. */
-  setFloor(n: number, animate = true): void {
+  /** Floor dial needle: 1 = B7 (left), 8 = G (right). Values beyond the printed scale overshoot a little. `dur` = the sweep in s. */
+  setFloor(n: number, animate = true, dur = 0.6): void {
     const deg = -90 + ((Math.min(Math.max(n, -1), 9) - 1) / 7) * 180;
     this.needleTarget = Math.max(-100, Math.min(100, deg));
     if (!animate) { this.needleDeg = this.needleTarget; this.applyNeedle(this.needleDeg); return; }
     const from = this.needleDeg;
-    this.sched.run(0.6, (k) => { this.needleDeg = from + (this.needleTarget - from) * k; this.applyNeedle(this.needleDeg); }, easeOutQuad);
+    this.sched.run(dur, (k) => { this.needleDeg = from + (this.needleTarget - from) * k; this.applyNeedle(this.needleDeg); }, easeOutQuad);
   }
 
   private applyNeedle(deg: number): void {

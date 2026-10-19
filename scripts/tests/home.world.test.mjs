@@ -60,6 +60,16 @@ test('the switch reaches the ceiling light and the pendant (zone home); the hall
   assert.ok(cfg.LIGHT.ceiling.intensity > 0 && cfg.LIGHT.pendant.intensity > 0 && cfg.LIGHT.hall.intensity > 0);
 });
 
+test('a fresh run starts facing the room: the window is dead ahead of the spawn and the wall unit is far off to the side', () => {
+  const { p, yaw } = cfg.ANCHOR_PLAN.spawn;
+  const fwd = [-Math.sin(yaw), -Math.cos(yaw)];                                  // the game's convention (config.ts)
+  const off = (x, z) => Math.abs(Math.atan2(fwd[0] * (z - p[2]) - fwd[1] * (x - p[0]), fwd[0] * (x - p[0]) + fwd[1] * (z - p[2]))) * 180 / Math.PI;
+  assert.ok(off((cfg.WIN_X0 + cfg.WIN_X1) / 2, -cfg.ROOM_Z) < 15, 'the window is straight ahead');
+  const u = cfg.WALL_UNIT;
+  assert.ok(off((u.x0 + u.x1) / 2, (u.z0 + u.z1) / 2) > 60, 'the wall unit is out of the opening view (it was a cabinet from a metre away in a client shot)');
+  assert.ok(off(cfg.SPOUSE_SEAT.x, cfg.SPOUSE_SEAT.z) < 50, 'Ada is in the opening view');
+});
+
 test('every contract anchor is planned, and only those', () => {
   const want = Object.values(contract.HOME_ANCHORS).sort();
   const have = Object.keys(cfg.ANCHOR_PLAN).map((k) => contract.HOME_ANCHORS[k]).sort();

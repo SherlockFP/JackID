@@ -273,16 +273,17 @@ const SELIM_ASK_SEC = 20;
 /**
  * The Home stages in sim seconds (docs/WAVE69_HOME.md). The run owns the clock of every stage, so a headless run walks the whole
  * Evening on its own; the controller (src/game/home/evening.ts) reads the same numbers to time its fades, sounds and teleports.
- *  - `ride`: the lift up. Dark by `dark`, the ding and the teleport at `teleport`, back in by the end; the Evening starts then.
+ *  - `ride`: the lift up, inside the car (the ride down plays the same beats: evening.ts CAR_RIDE). Dark by `dark` (ding), into the car at
+ *    `teleport`, faded in at `fadeIn` with the floor dial rising B7 to G, the arrival ding and out to the street door at the end; the Evening starts then.
  *  - `evening`: the walk in the apartment. At zero the player falls asleep on their own, so nothing can soft-lock.
  *  - `sleep`: bedCreak and the fade to black; the next Night opens at the end.
- *  - `doomed`: the same ride home, then the lights flicker (`flickerAt` to `flickerEnd`), three knocks and the end (`end`).
+ *  - `doomed`: the old short ride home (`doomed.ride`: dark, ding, teleport to the flat, no car), then the lights flicker (`flickerAt` to `flickerEnd`), three knocks and the end (`end`).
  */
 export const HOME_TIMING = {
-  ride: 2.6, dark: 0.8, teleport: 1.0, fadeIn: 1.4,
+  ride: 4.6, dark: 0.8, teleport: 1.0, fadeIn: 1.4,
   evening: 120,
   sleep: 1.8,
-  doomed: { flickerAt: 2.6, flickerEnd: 4.2, knocks: [4.7, 5.6, 6.5] as readonly number[], end: 8.0 },
+  doomed: { ride: 2.6, flickerAt: 2.6, flickerEnd: 4.2, knocks: [4.7, 5.6, 6.5] as readonly number[], end: 8.0 },
 } as const;
 /** Overtime Watch from the Rope Ladder (GDD §4.2 #89). */
 const OVERTIME_PULLS = 5;

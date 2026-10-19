@@ -8,7 +8,8 @@ import * as THREE from 'three';
 import type { LightHint } from '../sys/arch';
 import { buildFoodProp } from '../props/food';
 import { at, DESK, DESK_CHAIR, FRIDGE, HOME_ZONE, WALL_UNIT } from './config';
-import { doilyTex } from '../props/surfaces';
+import { doilyTex, tvGlassTex } from '../props/surfaces';
+import { cayGlass } from '../props/identity';
 import type { RoomCtx, Statics } from './room';
 import { presets } from '@/kit/presets';
 
@@ -85,49 +86,98 @@ export function buildFurniture(c: RoomCtx): FurnitureParts {
   statics.push(solid([DESK_CHAIR.x - 0.2, 0, DESK_CHAIR.z - 0.2, DESK_CHAIR.x + 0.2, 0.5, DESK_CHAIR.z + 0.2]));
 
   // ── the wall unit (docs/ART.md "Identity"): a lacquered sektsiya on the west wall between the nightstand and the door corner.
-  // A glass cabinet of good glasses and the crystal bowl, the small TV in the open niche with a doily on it, a wardrobe door, low cupboards.
+  // Walnut carcass and mahogany veneer doors (the kit's two wood presets: the grain is the texture), a glass-fronted bay of good glasses and
+  // the crystal bowl, the small CRT TV in the open niche with a lace doily on it, a cobalt vase above, a wardrobe door, low cupboards.
+  // Glass is a faint tint, never the kit's glint tile (it smears into a light shaft over a door this size); every decal takes a polygon offset.
   {
     const { x0: ux0, x1: ux1, z0: uz0, z1: uz1, h: uh } = WALL_UNIT, front = ux1;
-    const lacquer = M.woodStain(0x5a2a16), dark = M.woodStain(0x2a140a), brass = M.brass();
-    slab(ux0, 0.04, uz0, ux1 - 0.02, 0.72, uz1, lacquer);                                        // the low cupboards' body
-    slab(ux0, 0.72, uz0, ux0 + 0.02, uh, uz1, lacquer);                                          // back
-    for (const [z0, z1] of [[uz0, uz0 + 0.03], [uz1 - 0.03, uz1]]) slab(ux0, 0.72, z0, ux1 - 0.02, uh, z1, lacquer);   // sides
-    slab(ux0, uh - 0.03, uz0, ux1 - 0.02, uh, uz1, lacquer);                                     // top
-    slab(ux0 + 0.02, 0, uz0 + 0.02, ux1 - 0.04, 0.04, uz1 - 0.02, seam);                          // plinth, set back
-    slab(ux0, uh, uz0 - 0.01, ux1 + 0.01, uh + 0.04, uz1 + 0.01, dark);                           // cornice
-    for (let i = 0; i < 3; i++) {                                                                 // three low cupboard doors with pulls
-      const z0 = uz0 + 0.03 + i * ((uz1 - uz0 - 0.06) / 3), z1 = z0 + (uz1 - uz0 - 0.06) / 3 - 0.02;
-      slab(front - 0.02, 0.08, z0, front, 0.7, z1, lacquer);
-      slab(front, 0.6, (z0 + z1) / 2 - 0.05, front + 0.015, 0.62, (z0 + z1) / 2 + 0.05, brass);
+    const veneer = M.wood('mahogany'), brass = M.brass(), chrome = M.chrome();
+    const tint = (color: number, opacity: number): THREE.Material => kit.mat({ color, transparent: true, opacity, depthWrite: false, side: 'double' });
+    /** A decal plane (a screen, a doily): `kit.decal` carries the polygon offset; it stands at (x, y, z), turned `rot` degrees. */
+    const decal = (tex: THREE.Texture, w: number, h: number, x: number, y: number, z: number, rot: [number, number, number], alphaTest = 0.5): void => {
+      const d = kit.decal({ tex, w, h, alphaTest });
+      d.position.set(...at(x, y, z));
+      d.rotation.set(...rot.map((r) => (r * Math.PI) / 180) as [number, number, number]);
+      shell.add(d);
+    };
+    const gz0 = uz0 + 0.03, gz1 = uz0 + 0.52;                      // the glass bay (north)
+    const nz0 = gz1 + 0.03, nz1 = nz0 + 0.6, tz = (nz0 + nz1) / 2;  // the niche (middle); the wardrobe is south of it
+
+    // the carcass: plinth, low body, a lipped deck, back, sides, top and a cornice
+    slab(ux0 + 0.02, 0, uz0 + 0.02, front - 0.06, 0.08, uz1 - 0.02, trim);
+    slab(ux0, 0.08, uz0, front - 0.03, 0.72, uz1, wood);
+    slab(ux0, 0.72, uz0, front + 0.01, 0.76, uz1, trim);
+    slab(ux0, 0.76, uz0, ux0 + 0.02, uh, uz1, wood);
+    slab(ux0, 0.76, uz0, front, uh - 0.03, uz0 + 0.03, wood);
+    slab(ux0, 0.76, uz1 - 0.03, front, uh - 0.03, uz1, wood);
+    slab(ux0, uh - 0.03, uz0, front, uh, uz1, wood);
+    slab(ux0, uh, uz0 - 0.01, front + 0.02, uh + 0.04, uz1 + 0.01, trim);
+    slab(ux0 + 0.02, 0.76, gz1, front, uh - 0.03, gz1 + 0.03, wood);                              // the divider
+
+    // three low cupboard doors: a veneer leaf, a walnut panel 1 cm proud of it and a brass bar
+    const dw = (uz1 - uz0 - 0.06) / 3;
+    for (let i = 0; i < 3; i++) {
+      const z0 = uz0 + 0.03 + i * dw, z1 = z0 + dw - 0.02, zm = (z0 + z1) / 2;
+      slab(front - 0.03, 0.1, z0, front - 0.005, 0.7, z1, veneer);
+      slab(front - 0.005, 0.15, z0 + 0.05, front + 0.005, 0.6, z1 - 0.05, wood);
+      slab(front - 0.005, 0.64, zm - 0.05, front + 0.02, 0.66, zm + 0.05, brass);
     }
-    slab(front - 0.02, 0.72, uz0, front + 0.005, 0.75, uz1, dark);                               // the waist rail
-    // the glass cabinet (north bay): a pale back, two shelves of glasses, the crystal bowl
-    const gz0 = uz0 + 0.04, gz1 = uz0 + 0.52;
-    slab(ux0 + 0.01, 0.76, gz0, ux0 + 0.02, uh - 0.05, gz1, kit.mat({ color: 0xc8b890 }));
-    const crystal = kit.mat({ color: 0xd0e4ec, lit: false });
-    for (const [sy, n] of [[1.12, 5], [1.48, 4]] as const) {
-      slab(ux0 + 0.02, sy - 0.015, gz0, front - 0.04, sy, gz1, kit.mat({ color: 0x9ab8c0, lit: false }));
-      for (let k = 0; k < n; k++) kit.cyl(0.024, 0.018, 0.09, crystal, { pos: at(ux0 + 0.2, sy + 0.045, gz0 + 0.06 + k * ((gz1 - gz0 - 0.12) / (n - 1))), parent: shell, seg: 6 });
+
+    // the glass bay: a warm veneer back so the pale glass shows, three walnut shelves, a lamp bar on the back
+    slab(ux0 + 0.02, 0.76, gz0, ux0 + 0.03, uh - 0.03, gz1, veneer);
+    for (const sy of [1.0, 1.3, 1.6]) slab(ux0 + 0.03, sy - 0.018, gz0, front - 0.035, sy, gz1, wood);
+    slab(ux0 + 0.03, 1.78, gz0 + 0.05, ux0 + 0.035, 1.835, gz1 - 0.05, kit.mat({ color: 0xf0dcb0, lit: false }));
+    const gm = (gz0 + gz1) / 2, glassX = ux0 + 0.2;
+    const crystal = tint(0xc8e4f0, 0.72);
+    kit.lathe([[0, 0], [0.045, 0], [0.045, 0.008], [0.012, 0.022], [0.012, 0.05], [0.04, 0.07], [0.085, 0.1], [0.11, 0.135], [0.104, 0.135], [0.08, 0.11], [0.03, 0.08], [0, 0.075]], 10, crystal, { pos: at(glassX, 0.76, gm), parent: shell, shade: false });   // the crystal bowl on its foot
+    for (let k = 0; k < 4; k++) { const [cx, cy, cz] = at(ux0 + 0.27, 1.0, gz0 + 0.085 + k * 0.105); cayGlass(kit, shell, cx, cy, cz); }   // tulip çay glasses on saucers
+    for (let k = 0; k < 3; k++) {                                                                 // goblets
+      kit.lathe([[0, 0], [0.03, 0], [0.03, 0.004], [0.006, 0.012], [0.006, 0.075], [0.03, 0.105], [0.033, 0.15], [0.028, 0.15], [0.024, 0.11], [0, 0.082]], 8, tint(0xd0e4ee, 0.7), { pos: at(glassX, 1.3, gz0 + 0.1 + k * 0.145), parent: shell, shade: false });
     }
-    kit.lathe([[0, 0], [0.04, 0], [0.05, 0.02], [0.11, 0.07], [0.12, 0.09]], 10, crystal, { pos: at(ux0 + 0.22, 0.75, (gz0 + gz1) / 2), parent: shell });   // the crystal bowl
-    // a plain tinted pane: the kit's glint tile smears into a white blob over a door this size (docs/ART.md, Materials)
-    const pane = kit.plane(gz1 - gz0, uh - 0.85, kit.mat({ color: 0x9ab8c8, lit: false, transparent: true, opacity: 0.14 }), { pos: at(front - 0.01, (0.78 + uh - 0.05) / 2, (gz0 + gz1) / 2), rot: [0, 90, 0], parent: dyn, shade: false });
+    [0x7a2a24, 0x2a4a3a, 0xa08850, 0x2a3a5a, 0x6a4a2a].forEach((c, k) => {                        // a short row of books on the top shelf
+      kit.box(0.14, 0.2 - (k % 2) * 0.03, 0.035, kit.mat({ color: c }), { pos: at(ux0 + 0.18, 1.6 + 0.1 - (k % 2) * 0.015, gz0 + 0.06 + k * 0.04), parent: shell });
+    });
+
+    // the glass door: a veneer frame round a faint tint and two thin edge lights
+    const dx0 = front - 0.03, dx1 = front - 0.005, dy0 = 0.78, dy1 = 1.9, fw = 0.035, rail = 0.06;
+    slab(dx0, dy0, gz0, dx1, dy1, gz0 + fw, veneer);
+    slab(dx0, dy0, gz1 - fw, dx1, dy1, gz1, veneer);
+    slab(dx0, dy0, gz0 + fw, dx1, dy0 + rail, gz1 - fw, veneer);
+    slab(dx0, dy1 - rail, gz0 + fw, dx1, dy1, gz1 - fw, veneer);
+    slab(front - 0.005, 1.15, gz1 - fw + 0.009, front + 0.02, 1.4, gz1 - fw + 0.021, brass);
+    const pw = gz1 - gz0 - 2 * fw, ph = dy1 - dy0 - 2 * rail, py = (dy0 + dy1) / 2, paneX = front - 0.0175;
+    const pane = kit.plane(pw, ph, kit.mat({ color: 0x9ab8c8, lit: false, transparent: true, opacity: 0.1, depthWrite: false }), { pos: at(paneX, py, gm), rot: [0, 90, 0], parent: dyn, shade: false });
     pane.renderOrder = 2;
-    slab(ux0, 0.75, gz1, front, uh - 0.03, gz1 + 0.03, lacquer);                                 // the divider
-    // the open niche (middle bay): the small TV with a doily, a lace runner under it
-    const nz0 = gz1 + 0.03, nz1 = nz0 + 0.6, tz = (nz0 + nz1) / 2;
-    slab(ux0 + 0.02, 0.75, nz0, ux0 + 0.03, 1.55, nz1, dark);                                     // the niche's dark back
-    slab(ux0 + 0.02, 1.55, nz0, front, 1.58, nz1, dark);                                          // its top shelf
-    slab(ux0 + 0.06, 0.75, tz - 0.25, ux0 + 0.42, 1.12, tz + 0.25, kit.mat({ color: 0x3a3a38 }));  // the TV
-    slab(ux0 + 0.42, 0.79, tz - 0.21, ux0 + 0.425, 1.07, tz + 0.12, kit.mat({ color: 0x1c2a34, lit: false }));   // its dark screen
-    for (const dy of [0.85, 0.93]) slab(ux0 + 0.42, dy, tz + 0.16, ux0 + 0.43, dy + 0.04, tz + 0.2, seam);   // two knobs
-    kit.plane(0.36, 0.36, kit.mat({ map: doilyTex(kit.tex), color: 0xffffff, alphaTest: 0.5 }), { pos: at(ux0 + 0.24, 1.126, tz), rot: [-90, 0, 0], parent: shell, shade: false });
-    kit.box(0.02, 0.06, 0.06, kit.mat({ color: 0x8a6a3a }), { pos: at(ux0 + 0.24, 1.158, tz + 0.05), parent: shell });       // a little brass horse on the doily
-    kit.lathe([[0, 0], [0.03, 0], [0.05, 0.06], [0.025, 0.16], [0.035, 0.2]], 8, kit.mat({ color: 0x2a5a8a }), { pos: at(ux0 + 0.22, 1.58, tz + 0.1), parent: shell });   // a cobalt vase
-    // the wardrobe bay (south): a closed body, a tall door with a pull
-    slab(ux0, 0.75, nz1, front - 0.02, uh - 0.03, uz1 - 0.03, lacquer);
-    slab(front - 0.02, 0.77, nz1 + 0.02, front, uh - 0.03, uz1 - 0.03, lacquer);
-    slab(front, 1.25, nz1 + 0.05, front + 0.015, 1.45, nz1 + 0.07, brass);
+    const edge = kit.mat({ color: 0xdff0f6, lit: false, additive: true, transparent: true, opacity: 0.2, unique: true });
+    edge.polygonOffset = true; edge.polygonOffsetFactor = -2; edge.polygonOffsetUnits = -2;
+    for (const [w, h, y, z] of [[0.012, ph, py, gz0 + fw + 0.006], [pw, 0.012, dy1 - rail - 0.006, gm]] as const) {
+      const lit = kit.plane(w, h, edge, { pos: at(paneX + 0.001, y, z), rot: [0, 90, 0], parent: dyn, shade: false });
+      lit.renderOrder = 3;
+    }
+
+    // the niche: a dark back, a shelf above the TV, the small CRT (dark walnut case, a plastic bezel, glass, chrome trim, knobs, a grille)
+    slab(ux0 + 0.02, 0.76, nz0, ux0 + 0.03, uh - 0.03, nz1, trim);
+    slab(ux0 + 0.03, 1.55, nz0, front - 0.01, 1.58, nz1, trim);
+    const tvx0 = ux0 + 0.06, tvx1 = ux0 + 0.4, tvTop = 1.12, bz = tz - 0.225, bezel = M.plastic(0x2e2c2a);
+    slab(tvx0, 0.76, tz - 0.24, tvx1, tvTop, tz + 0.24, wood);
+    slab(tvx1, 0.78, bz, tvx1 + 0.012, 1.1, tz + 0.225, bezel);
+    const sx = tvx1 + 0.012, sw = 0.28, sh = 0.21, sy = 0.94, sc = tz + 0.065;                    // the glass: 28 x 21 cm, left of the controls
+    decal(tvGlassTex(kit.tex), sw, sh, sx + 0.003, sy, sc, [0, 90, 0], 0);
+    for (const [y0, y1, z0, z1] of [[sy + sh / 2, sy + sh / 2 + 0.012, sc - sw / 2 - 0.012, sc + sw / 2 + 0.012], [sy - sh / 2 - 0.012, sy - sh / 2, sc - sw / 2 - 0.012, sc + sw / 2 + 0.012],
+      [sy - sh / 2, sy + sh / 2, sc - sw / 2 - 0.012, sc - sw / 2], [sy - sh / 2, sy + sh / 2, sc + sw / 2, sc + sw / 2 + 0.012]]) slab(sx, y0, z0, sx + 0.006, y1, z1, chrome);
+    for (const ky of [1.03, 0.96]) kit.cyl(0.014, 0.014, 0.018, chrome, { pos: at(sx + 0.009, ky, tz - 0.155), rot: [0, 0, 90], parent: shell, seg: 8 });
+    slab(sx, 0.8, tz - 0.205, sx + 0.004, 0.9, tz - 0.105, M.grille());
+    decal(doilyTex(kit.tex), 0.3, 0.3, ux0 + 0.23, tvTop + 0.004, tz, [-90, 0, 0]);               // the lace on top
+    slab(ux0 + 0.2, tvTop + 0.004, tz + 0.04, ux0 + 0.24, tvTop + 0.032, tz + 0.1, kit.mat({ color: 0x8a6a3a }));    // a little brass horse on the doily: body, neck
+    slab(ux0 + 0.21, tvTop + 0.032, tz + 0.09, ux0 + 0.23, tvTop + 0.06, tz + 0.11, kit.mat({ color: 0x8a6a3a }));
+    kit.lathe([[0, 0], [0.03, 0], [0.05, 0.06], [0.026, 0.15], [0.02, 0.19], [0.034, 0.215]], 10, kit.mat({ color: 0x2a5a8a }), { pos: at(ux0 + 0.22, 1.58, tz + 0.1), parent: shell });   // a cobalt vase
+
+    // the wardrobe bay (south): a closed body, a tall veneer door with two walnut panels and a pull
+    slab(ux0, 0.76, nz1, front - 0.03, uh - 0.03, uz1 - 0.03, wood);
+    slab(front - 0.03, 0.78, nz1 + 0.02, front - 0.005, uh - 0.05, uz1 - 0.04, veneer);
+    slab(front - 0.005, 0.86, nz1 + 0.06, front + 0.005, 1.3, uz1 - 0.08, wood);
+    slab(front - 0.005, 1.38, nz1 + 0.06, front + 0.005, 1.84, uz1 - 0.08, wood);
+    slab(front - 0.005, 1.2, nz1 + 0.035, front + 0.02, 1.45, nz1 + 0.048, brass);
     statics.push(solid([ux0, 0, uz0, ux1, uh, uz1]));
   }
 

@@ -121,7 +121,8 @@ export async function runTour(ctx, h) {
         await snap('casino-door');
       },
     };
-    const p = await h.skipPrologue(cdp, () => snap('lift-down').then((r) => r.file), marks);
+    // the shot is taken inside the car (skipPrologue waits for the teleport and 1.3 s of the ride), not at the flat's door
+    const p = await h.skipPrologue(cdp, () => snap('lift-down', `(${h.IN_CAR_JS}) || 'the player is not in the lift car'`).then((r) => r.file), marks);
     h.log(`tour prologue: played ${p.played}`);
     await h.skipIntro(cdp);
     // the Night's title card plays when Night 1's first Watch opens (the lift landing): shot it 1.7 s in (the title is up from 0.8 s)
@@ -241,8 +242,8 @@ export async function runTour(ctx, h) {
         if (st.nightDone && !st.nightCardOffer && st.homeStage === null && !T.done.has('lift-up')) {
           T.done.add('lift-up');
           await step('lever');                                    // TAKE THE LIFT
-          await h.sleep(900);
-          await snap('lift-up');
+          await h.waitInCar(cdp, 1300);                           // the car fades in 0.4 s after the teleport, the dial rises for 1.6 s
+          await snap('lift-up', `(${h.IN_CAR_JS}) || 'the player is not in the lift car'`);
           return true;
         }
         return false;

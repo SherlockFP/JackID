@@ -48,10 +48,15 @@ registerStrings(knockStrings.prefix, { en: knockStrings.en, tr: knockStrings.tr 
 
 /** One step out of the lift gate on the casino floor (m). */
 const LIFT_STEP = 2.2;
-/** The ride down (street door to the pit) shows the car: this far behind the gate the player stands, facing the mirror (m). */
+/** Both lift rides (down to the pit, up to the street door) show the car: this far behind the gate the player stands, facing the mirror (m). */
 const CAR_BACK = 0.9;
-/** The ride down in sim s: the car stays in view until `out`, then dark again, the arrival ding and the step out. */
-const CAR_RIDE = { out: 3.0, exit: 3.5, fadeIn: 3.7, end: 4.6 } as const;
+/**
+ * A car ride in sim s, after `HOME_TIMING.dark / teleport / fadeIn`: the car stays in view until `out` (the dial reaches its floor, the
+ * arrival ding), then dark again, `exit` the step out, back in at `fadeIn`. The ride ends at `HOME_TIMING.ride`.
+ */
+const CAR_RIDE = { out: 3.0, exit: 3.5, fadeIn: 3.7 } as const;
+/** The beats of a car ride already played. */
+interface CarBeats { ding: boolean; tp: boolean; fadeIn: boolean; out: boolean; exit: boolean; fadeIn2: boolean }
 /** The body stands this far above the flat's floor line when placed (anchors may sit at eye height; gravity settles it). */
 const STAND_LIFT = 0.05;
 /** The peephole look (sim s): the camera eases to the eyehole, holds, and the player's own glide brings it back. */
@@ -120,7 +125,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
   let wantLock = false;
   let locked = false;
   let faded = false;
-  let beats = { ding: false, tp: false, fadeIn: false, flick: 0, knocks: 0 };
+  let beats = { ding: false, tp: false, fadeIn: false, out: false, exit: false, fadeIn2: false, flick: 0, knocks: 0 };
   let seatWait = 0;
   /** The spouse's lines in flight: the next one shows when `wait` runs out (sim s). */
   let talk: Array<{ text: string; sec: number }> = [];
@@ -206,15 +211,29 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     atHome = true;
     return true;
   };
-  /** The ride down: inside the car, back to the gate, facing the mirror (the dial reads G, then falls to B7). */
-  const placeCar = (): void => {
+  /** Inside the car, back to the gate, facing the mirror. The dial waits at the floor the ride leaves (down: G, up: B7). */
+  const placeCar = (up: boolean): void => {
     const d = world.anchor('elevator.door');
     if (!d) return;
     const p = anchorPose(d);
     player.teleport(new THREE.Vector3(p.pos.x, 0, p.pos.z - CAR_BACK), 0);
-    const car = world.prop<ElevatorProp>('elevator');
-    car?.setFloor(8, false);
-    car?.setFloor(1);
+    world.prop<ElevatorProp>('elevator')?.setFloor(up ? 1 : 8, false);
+  };
+  /**
+   * One car ride on its own clock `t` (down: the prologue and the morning; up: the Evening's ride): dark, ding, into the car, in with the
+   * dial running, the arrival ding, dark, `land` (the step out), back in.
+   */
+  const carBeats = (b: CarBeats, t: number, up: boolean, land: () => void): void => {
+    if (!b.ding && t >= T.dark) { b.ding = true; sfx(HOME_SFX.ding); }
+    if (!b.tp && t >= T.teleport) { b.tp = true; placeCar(up); }
+    if (b.tp && !b.fadeIn && t >= T.fadeIn) {
+      b.fadeIn = true;
+      fadeTo(0, 0.9);
+      world.prop<ElevatorProp>('elevator')?.setFloor(up ? 8 : 1, true, CAR_RIDE.out - T.fadeIn);   // the dial runs while the car is in view
+    }
+    if (b.fadeIn && !b.out && t >= CAR_RIDE.out) { b.out = true; sfx(HOME_SFX.ding); fadeTo(1, CAR_RIDE.exit - CAR_RIDE.out - 0.1); }
+    if (b.out && !b.exit && t >= CAR_RIDE.exit) { b.exit = true; land(); }
+    if (b.exit && !b.fadeIn2 && t >= CAR_RIDE.fadeIn) { b.fadeIn2 = true; fadeTo(0, 0.9); }
   };
   /** The bed opened the next Night: the player steps out of the lift, in front of the gate, facing the pit. */
   const placeFloor = (): void => {
@@ -317,7 +336,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
 
   // ── stages ─────────────────────────────────────────────────────────────────────────────────────────
   const startRide = (): void => {
-    beats = { ding: false, tp: false, fadeIn: false, flick: 0, knocks: 0 };
+    beats = { ding: false, tp: false, fadeIn: false, out: false, exit: false, fadeIn2: false, flick: 0, knocks: 0 };
     seatWait = 0;
     wantLock = true;
     ui().dismissToasts();   // the lift starts clean: the pit's news (a stale toast, a quota line) does not ride up with the player
@@ -327,8 +346,8 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
 
   const arriveEvening = (from: HomeStage | null): void => {
     if (from === 'ride') {
-      if (!beats.tp) { beats.tp = true; placeRide('ride'); }
-      if (!beats.fadeIn) { beats.fadeIn = true; fadeTo(0, 0.5); }
+      if (!beats.exit) { beats.exit = true; placeRide('ride'); }
+      if (!beats.fadeIn2) { beats.fadeIn2 = true; fadeTo(0, 0.5); }
     } else {
       // a restored Evening: the front door, out of the dark
       const s = run.homeState();
@@ -397,20 +416,30 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     else leaveHome(from);
   };
 
-  /** The ride, in the run's stage clock: dark, ding, the teleport under black, the fade back in. The doom goes on from there. */
+  /**
+   * The ride, in the run's stage clock. Up: the car, then the street door. Doomed: dark, ding, the teleport under black, the fade back
+   * in, and the doom goes on from there.
+   */
   const rideBeats = (dt: number, stage: HomeStage, left: number): void => {
     const e = (stage === 'doomed' ? D.end : T.ride) - left;
+    if (stage === 'ride') {
+      if (!beats.tp && e >= T.teleport && world.seat) {   // the lever is pulled from the terminal's seat: it gets a second to stand before the car
+        seatWait += dt;
+        if (seatWait < SEAT_WAIT_SEC) return;
+      }
+      carBeats(beats, e, true, () => { placeRide('ride'); });
+      return;
+    }
     if (!beats.ding && e >= T.dark) { beats.ding = true; sfx(HOME_SFX.ding); }
     if (!beats.tp && e >= T.teleport) {
       seatWait += dt;
       if (!world.seat || seatWait >= SEAT_WAIT_SEC) {
         // no apartment built (a world without the Home room): give up on the move once the ride is over, the flow still runs
-        if (placeRide(stage) || e >= T.ride) beats.tp = true;
+        if (placeRide(stage) || e >= D.ride) beats.tp = true;
       }
     }
     if (beats.tp && !beats.fadeIn && e >= T.fadeIn) { beats.fadeIn = true; fadeTo(0, 0.9); }
-    if (stage !== 'doomed') return;
-    if (e >= T.ride) unlock();
+    if (e >= D.ride) unlock();
     // the doom: the lights flicker (never in Calm or with reduced flashing), then three knocks at the door
     const m = calmish();
     if (e >= D.flickerAt && !m.calm && !m.noFlash) {
@@ -778,13 +807,8 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     const l = lift;
     if (!l) return;
     l.t += dt;
-    if (!l.ding && l.t >= T.dark) { l.ding = true; sfx(HOME_SFX.ding); }
-    if (!l.tp && l.t >= T.teleport) { l.tp = true; placeCar(); }
-    if (l.tp && !l.fadeIn && l.t >= T.fadeIn) { l.fadeIn = true; fadeTo(0, 0.9); }
-    if (l.fadeIn && !l.out && l.t >= CAR_RIDE.out) { l.out = true; sfx(HOME_SFX.ding); fadeTo(1, CAR_RIDE.exit - CAR_RIDE.out - 0.1); }
-    if (l.out && !l.exit && l.t >= CAR_RIDE.exit) { l.exit = true; placeFloor(); }
-    if (l.exit && !l.fadeIn2 && l.t >= CAR_RIDE.fadeIn) { l.fadeIn2 = true; fadeTo(0, 0.9); }
-    if (l.t < CAR_RIDE.end) return;
+    carBeats(l, l.t, false, placeFloor);
+    if (l.t < T.ride) return;
     lift = null;
     unlock();
     l.done();

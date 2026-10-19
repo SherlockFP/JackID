@@ -34,7 +34,7 @@ export interface ZoneDef {
   gated?: boolean;
 }
 
-export type FlickerId = 'STEADY' | 'BUZZ' | 'DYING' | 'CANDLE' | 'SICK' | 'STROBE' | 'CHASE' | 'RING' | (string & {});
+export type FlickerId = 'STEADY' | 'BUZZ' | 'DYING' | 'RARE' | 'CANDLE' | 'SICK' | 'STROBE' | 'CHASE' | 'RING' | (string & {});
 
 /** A place a pooled point light may be parked (ART_BIBLE §1.7, TECH_SPEC §5.5). */
 export interface LightHint {

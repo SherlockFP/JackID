@@ -194,18 +194,28 @@ export function marbleTex(tex: TexGen, ground = 0x2a3a30, vein = 0xc8d0b8): THRE
   }, { key: `env:marble:${ground}:${vein}` });
 }
 
-/** Smoked mirror (clamped, stretched once over a landscape pane): a dark blue-grey ground warmed at the bottom, two thin pale streaks, a darker silvering rim. */
-export function mirrorTex(tex: TexGen): THREE.Texture {
+/**
+ * Smoked mirror (clamped, stretched once over a landscape pane): a dark blue-grey ground warmed at the bottom, two thin pale streaks, a darker silvering rim.
+ * `lit` (the lift car, an unlit pane under its own lamp): a lighter silvering with a faint warm cast of that lamp, so it reads as glass.
+ */
+export function mirrorTex(tex: TexGen, lit = false): THREE.Texture {
+  const k = lit ? 2.3 : 1;
   return tex.canvas(64, 32, (g, w, h) => {
-    for (let y = 0; y < h; y++) px(g, 0, y, w, 1, rgb(30 + y * 0.9, 34 + y * 0.6, 40 + y * 0.3));
+    for (let y = 0; y < h; y++) px(g, 0, y, w, 1, rgb((30 + y * 0.9) * k, (34 + y * 0.6) * k, (40 + y * 0.3) * k));
+    if (lit) {   // the car in the glass: the lamp warm at the top, the brass rail, the wine-red carpet at the bottom, a darker silvering at the edges
+      px(g, 0, 0, w, 9, 'rgba(255,214,150,0.14)');
+      px(g, 0, 19, w, 1, 'rgba(200,160,70,0.35)');
+      px(g, 0, 24, w, 8, 'rgba(90,16,32,0.32)');
+      px(g, 0, 0, 3, h, 'rgba(0,0,0,0.22)'); px(g, w - 3, 0, 3, h, 'rgba(0,0,0,0.22)');
+    }
     for (let y = 0; y < h; y++) {
       const x1 = Math.round(y * 1.2) + 8, x2 = Math.round(y * 1.2) + 13;
-      px(g, x1, y, 2, 1, 'rgba(200,220,230,0.12)');
-      px(g, x2, y, 1, 1, 'rgba(200,220,230,0.08)');
+      px(g, x1, y, 2, 1, `rgba(200,220,230,${0.12 * k})`);
+      px(g, x2, y, 1, 1, `rgba(200,220,230,${0.08 * k})`);
     }
     mottle(g, w, h, 0.14, 515);
     px(g, 0, 0, w, 1, '#141a1e'); px(g, 0, h - 1, w, 1, '#141a1e'); px(g, 0, 0, 1, h, '#141a1e'); px(g, w - 1, 0, 1, h, '#141a1e');
-  }, { key: 'env:mirror', wrap: 'clamp' });
+  }, { key: lit ? 'env:mirror:lit' : 'env:mirror', wrap: 'clamp' });
 }
 
 /** A soft round light pool (clamped, additive): a dithered disc that fades to black at the rim. */
@@ -470,16 +480,37 @@ export function calendarTex(tex: TexGen): THREE.Texture {
   }, { key: 'env:calendar', wrap: 'clamp' });
 }
 
-/** A crocheted doily (16 x 16, alpha-tested): rings of white thread with holes between the spokes. */
+/**
+ * A crocheted doily (32 x 32, alpha-tested, painted as the lace it is): a scalloped rim, a ring of eyelets under the scallops, a spoked
+ * wheel and a rosette. The thread is cream (never pure white, so it does not glare in the dark room) with the stitch edges one tone down.
+ */
 export function doilyTex(tex: TexGen): THREE.Texture {
-  return tex.canvas(16, 16, (g) => {
-    for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
-      const d = Math.hypot(x + 0.5 - 8, y + 0.5 - 8);
-      if (d > 7.6) continue;
-      const ring = Math.floor(d) % 3, spoke = Math.floor(((Math.atan2(y - 8, x - 8) + Math.PI) / (Math.PI * 2)) * 12) % 2;
-      if (ring !== 1 || spoke) px(g, x, y, 1, 1, '#f2eee4');
+  return tex.canvas(32, 32, (g) => {
+    const N = 32, on: boolean[][] = Array.from({ length: N }, () => new Array<boolean>(N).fill(false));
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const d = Math.hypot(x + 0.5 - 16, y + 0.5 - 16), a = Math.atan2(y + 0.5 - 16, x + 0.5 - 16), crest = Math.cos(a * 14);
+      if (d > 14.6 + crest) continue;                                              // outside the scalloped rim
+      const spoke = Math.floor(((a + Math.PI) / (Math.PI * 2)) * 14 + 0.5) % 2 === 0;
+      on[y][x] = d > 13 || (d > 10.8 ? crest < 0.3 : d > 9.4 || (d > 6 ? spoke || d < 7 || d > 8.4 : d > 4.6 || d < 1.7 || d > 3.6 || Math.cos(a * 6) > 0.1));
     }
-  }, { key: 'env:doily', wrap: 'clamp' });
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      if (!on[y][x]) continue;
+      const edge = (on[y][x + 1] ? 0 : 1) + (on[y][x - 1] ? 0 : 1) + (on[y + 1]?.[x] ? 0 : 1) + (on[y - 1]?.[x] ? 0 : 1);
+      px(g, x, y, 1, 1, edge >= 2 ? '#a89878' : edge === 1 ? '#cec0a0' : (x + y) % 5 === 0 ? '#e2d8c0' : '#ece4d0');
+    }
+  }, { key: 'env:doily2', wrap: 'clamp' });
+}
+
+/** The small TV's dark glass (32 x 24, one stretch): a deep blue-grey tube, a dimmer rim, scanlines and a short glint in the top corner only. */
+export function tvGlassTex(tex: TexGen): THREE.Texture {
+  return tex.canvas(32, 24, (g, w, h) => {
+    px(g, 0, 0, w, h, '#0c1318');
+    px(g, 2, 2, w - 4, h - 4, '#121e26');
+    px(g, 5, 4, w - 10, h - 8, '#182832');
+    for (let y = 1; y < h; y += 2) px(g, 0, y, w, 1, 'rgba(0,0,0,0.18)');
+    px(g, 3, 3, 5, 1, 'rgba(160,190,205,0.35)'); px(g, 3, 4, 1, 3, 'rgba(160,190,205,0.35)');
+    px(g, 0, 0, 1, 1, '#000'); px(g, w - 1, 0, 1, 1, '#000'); px(g, 0, h - 1, 1, 1, '#000'); px(g, w - 1, h - 1, 1, 1, '#000');
+  }, { key: 'env:tvglass', wrap: 'clamp' });
 }
 
 /** The flat's stairwell wall (84 px = 2.6 m like the paper, floor to ceiling): green oil paint to 1.5 m under a brown line, chipped whitewash above. */

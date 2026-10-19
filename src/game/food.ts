@@ -224,18 +224,24 @@ export function clearFoodBuffs(buffs: Pick<BuffsApi, 'has' | 'remove'>, pid: num
 
 // ── eating: the show (hands, sound, toast) ───────────────────────────────────────────────────────────────────────────
 
+/** The part of the viewmodel a meal needs. */
+export interface MealHands { readonly item?: string; hold(i: string): void; play(a: string): Promise<void> }
 let busy = 0;
-function handAnim(food: FoodId): void {
-  const pl = app?.player;
-  const vm = pl?.viewmodel as unknown as { item?: string; hold(i: string): void; play(a: string): Promise<void> } | undefined;
-  if (!pl || !vm || pl.mode !== 'walk') return;
-  if (vm.item !== 'coin' && vm.item !== 'none') return;
+/** The hand shows one meal: it comes up, a bite or a sip, and when the animation is done (its `done` point, the tail still plays) the hand holds its coin again. */
+export function showMeal(vm: MealHands, food: FoodId): void {
   busy++;
   vm.hold(food);
   void vm.play(FOODS[food].verb).then(() => {
     busy--;
     if (busy === 0 && vm.item === food) vm.hold('coin');
   });
+}
+function handAnim(food: FoodId): void {
+  const pl = app?.player;
+  const vm = pl?.viewmodel as unknown as MealHands | undefined;
+  if (!pl || !vm || pl.mode !== 'walk') return;
+  if (vm.item !== 'coin' && vm.item !== 'none') return;
+  showMeal(vm, food);
 }
 
 /** The meal's show: the hand lifts it (when the hands are out), a bite or a sip, and a toast with the bonus. */

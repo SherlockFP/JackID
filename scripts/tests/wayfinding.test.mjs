@@ -43,6 +43,23 @@ test('placeMark: an edge point always sits inside the padded box', () => {
   }
 });
 
+test('clearOfPanels: a mark under a corner panel slides out of it; an edge arrow slides down and stays on the edge; a clear mark is left alone', () => {
+  const px = 3, w = 1920, h = 1080;
+  const right = { x0: 1500, y0: 12, x1: 1908, y1: 400 };   // the quota stack
+  const left = { x0: 12, y0: 12, x1: 260, y1: 200 };        // the wallet column
+  const clear = { x: 900, y: 500, on: true, angle: 0 };
+  assert.deepEqual(W.clearOfPanels(clear, [left, right], px, w, h), clear, 'clear of both: untouched');
+  const under = W.clearOfPanels({ x: 1700, y: 380, on: true, angle: 0 }, [left, right], px, w, h);   // 20 px above the stack's bottom edge
+  assert.ok(under.y >= right.y1 + 10 * px - 1e-6 && under.x === 1700, `slides down under the stack, ${JSON.stringify(under)}`);
+  const inside = W.clearOfPanels({ x: 1520, y: 200, on: true, angle: 0 }, [left, right], px, w, h);   // near the stack's left side: out sideways
+  assert.ok(inside.x <= right.x0 - 12 * px + 1e-6 && inside.y === 200, `slides out to the left, ${JSON.stringify(inside)}`);
+  const edge = W.clearOfPanels({ x: w - 38, y: 150, on: false, angle: Math.PI / 2 }, [left, right], px, w, h);
+  assert.ok(edge.x === w - 38 && edge.y >= right.y1 + 10 * px - 1e-6 && !edge.on && edge.angle === Math.PI / 2, `an arrow stays on the edge and keeps its turn, ${JSON.stringify(edge)}`);
+  const l = W.clearOfPanels({ x: 38, y: 150, on: false, angle: -Math.PI / 2 }, [left, right], px, w, h);
+  assert.ok(l.x === 38 && l.y >= left.y1 + 10 * px - 1e-6, `the left column too, ${JSON.stringify(l)}`);
+  assert.ok(W.clearOfPanels({ x: 100, y: 1070, on: false, angle: 0 }, [], px, w, h).y <= h - 41, 'never below the screen');
+});
+
 test('stall clock: 20 s without 1 m of progress latches; progress resets it; a new spot restarts it', () => {
   const s = W.createStall();
   assert.equal(s.update('bigone', 30, 0), false);

@@ -12,7 +12,7 @@ import { load, closeVite, ROOT } from './_vite.mjs';
 
 after(closeVite);
 
-let VM, ARMS, ANIMS, ITEMS, FOOD, SRC;
+let VM, ARMS, ANIMS, ITEMS, FOOD, MEAL, SRC;
 before(async () => {
   VM = await load('src/player/viewmodel.ts');
   ARMS = await load('src/player/viewmodel/arms.ts');
@@ -23,6 +23,7 @@ before(async () => {
   ANIMS = (await load('src/player/viewmodel/anims.ts')).ANIMS;
   ITEMS = await load('src/player/viewmodel/items.ts');
   FOOD = await load('src/world/props/food.ts');
+  MEAL = await load('src/game/food.ts');
 });
 
 const DRIVE = { bobX: 0, bobY: 0, sprint: false, crouch: 0, grounded: true, lookDx: 0, lookDy: 0, aspect: 16 / 9, speed: 0 };
@@ -49,6 +50,8 @@ const sample = (vm) => {
 };
 /** The held food's bite pivot, if it has one. */
 const pivotOf = (vm) => { let found = null; vm.scene.traverse((o) => { if (o.userData.bite) found = o.userData.bite; }); return found; };
+/** The trick coin (the second thing in the scene, after the rig), or null when it is the held coin that shows. */
+const trickCoinOf = (vm) => { const c = vm.scene.children[1]; return c && c.visible ? c : null; };
 
 test('the arms are the rigged GLB: one skinned mesh of 1176 triangles, both hands low in frame at rest (the wrist at the bottom edge)', async () => {
   const vm = await make();
@@ -153,6 +156,58 @@ test('eat and drink resolve before their tail ends, so the game can swap the ite
     vm.dispose();
   }
   assert.ok(ANIMS.drink.dur >= 1.3 && ANIMS.drink.dur <= 1.6 && ANIMS.eat.dur <= 1.6, 'a bite or a sip takes about a second and a half');
+});
+
+test('meals always end in the clean rest pose: drink, eat, a Q pass, drink (through showMeal), no item left in either hand, the coin back in the right', async () => {
+  const BONES = ['shoulderR', 'forearmR', 'handR', 'f_index01R', 'f_index03R', 'thumb03R', 'f_pinky03R', 'shoulderL', 'forearmL', 'handL', 'f_index03L', 'thumb03L'];
+  const read = (vm) => { vm.scene.updateMatrixWorld(true); return BONES.map((n) => { const o = bone(vm, n); return [o.getWorldPosition(new THREE.Vector3()), o.getWorldQuaternion(new THREE.Quaternion())]; }); };
+  const meshes = (vm) => ['handR', 'handL'].map((n) => { let k = 0; bone(vm, n).traverse((o) => { if (o.isMesh) k++; }); return k; });
+  let frames = 0;
+  const run = async (vm, n) => { for (let f = 0; f < n; f++) { vm.update(1 / 60); frames++; await Promise.resolve(); } };    // a microtask per frame: an animation's promise resolves between frames, as in the game
+  const vm = await make();
+  frames = 0;
+  const steps = [['coffee', 100], ['banana', 100], [null, 54], ['soup', 100]];
+  for (const [food, n] of steps) {
+    if (food) MEAL.showMeal(vm, food);
+    else { vm.trick(true); vm.trick(false); }                                       // the Q pass: the coin goes to the left hand
+    await run(vm, n);
+  }
+  assert.equal(vm.item, 'coin', 'the hand holds its coin again');
+  await run(vm, 120);
+  // the reference never ate: it put something away at the same moment instead, so both stand the same time since their last change
+  const ref = await make();
+  await run(ref, frames - 120 - 90);
+  ref.hold('tonic'); ref.hold('coin');
+  await run(ref, 120 + 90);
+  const a = read(vm), b = read(ref);
+  a.forEach(([p, q], i) => {
+    assert.ok(p.distanceTo(b[i][0]) < 0.004, `${BONES[i]} is ${(p.distanceTo(b[i][0]) * 100).toFixed(1)} cm off its rest place`);
+    assert.ok(q.angleTo(b[i][1]) < 0.06, `${BONES[i]} is turned ${q.angleTo(b[i][1]).toFixed(2)} rad off its rest`);
+  });
+  assert.deepEqual(meshes(vm), meshes(ref), 'nothing is left attached to either hand');
+  assert.equal(pivotOf(vm), null, 'no food in the hand');
+  assert.equal(trickCoinOf(vm), null, 'the coin is in the right hand, not left in the left');
+  vm.dispose(); ref.dispose();
+});
+
+test('a meal ends without a snap: the hand swaps back to its coin without a jump, and the cup never grows back once it is being put away', async () => {
+  for (const food of ['coffee', 'banana']) {
+    const vm = await make();
+    MEAL.showMeal(vm, food);
+    let prev = sample(vm), cup = null, size = 1, grew = 0;
+    for (let f = 0; f < 150; f++) {
+      vm.update(1 / 60); await Promise.resolve();
+      const cur = sample(vm);
+      if (f > 3) for (let i = 0; i < cur.length; i++) assert.ok(Math.abs(cur[i] - prev[i]) < (i % 6 < 3 ? 0.04 : 0.16), `${food} frame ${f} channel ${i}: moved ${Math.abs(cur[i] - prev[i]).toFixed(3)}`);
+      prev = cur;
+      if (f === 40) bone(vm, 'handR').traverse((o) => { if (!cup && o.isMesh && o.geometry.type !== 'CircleGeometry' && o.geometry.type !== 'CylinderGeometry' || (!cup && o.userData.bite)) cup = o.userData.bite ? o : o.parent; });
+      if (f > 60 && cup) { if (cup.scale.x > size + 1e-6) grew++; size = cup.scale.x; }
+    }
+    assert.ok(cup, `found the ${food} in the hand`);
+    assert.equal(vm.item, 'coin');
+    assert.equal(grew, 0, `the ${food} only ever shrinks once it is on its way out`);
+    vm.dispose();
+  }
 });
 
 test('a banana and a sandwich shorten bite by bite; drinks have no bite', async () => {

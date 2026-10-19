@@ -369,6 +369,23 @@ test('light pool: setLevel dims by zone, strobe/pulse are transient, reset resto
   p.dispose();
 });
 
+test('light pool: RARE (the lift lamp) stutters like DYING but a minute or so apart, not every few seconds', () => {
+  const dim = (flicker) => {
+    const { p } = pool();
+    p.add({ id: 'l', pos: { x: 0, y: 3, z: 0 }, color: 0xffffff, intensity: 1, range: 8, flicker });
+    const cam = V(0, 1.6, 0);
+    tick(p, cam, 1);
+    const base = Math.max(...p.lights.map((l) => l.intensity));
+    let n = 0;
+    for (let i = 0; i < 300 * 60; i++) { p.update(1 / 60, cam); if (Math.max(...p.lights.map((l) => l.intensity)) < base * 0.5) n++; }
+    p.dispose();
+    return n;
+  };
+  const rare = dim('RARE'), dying = dim('DYING');
+  assert.ok(dying > 100, `DYING dims often (${dying} frames in 5 min)`);
+  assert.ok(rare * 5 < dying, `RARE dims far less (${rare} vs ${dying})`);
+});
+
 // ── Pit Deck (WAVE8 item 8): the seeded random line-up for the flexible pads ─────────────────────────
 const PIT_SUITS = ['REELS', 'CARDS', 'DICE', 'WHEELS', 'DROPS', 'CURIOS'];
 const PIT_VOL = ['STEADY', 'SWINGY', 'WILD'];

@@ -89,16 +89,17 @@ class Hint {
       case 'STROBE': v = Math.sin(TAU * (reduced ? 3 : 6) * t + this.phase) >= 0 ? 1 : 0.1; break;
       case 'CHASE': v = 0.6 + 0.4 * (Math.sin(TAU * 2.5 * t + this.phase * TAU) >= 0 ? 1 : 0); break;
       case 'RING': v = ringing ? (Math.sin(TAU * 2 * t) >= 0 ? 1.15 : 0.25) : 1; break;
-      case 'DYING': v = this.dying(t, rng); break;
+      case 'DYING': v = this.dying(t, rng, 2, 9); break;
+      case 'RARE': v = this.dying(t, rng, 40, 120); break;   // the same stutter, but a minute or so apart (the lift lamp)
       default: break;
     }
     if (reduced && v !== 1) v = Math.max(1 + (v - 1) * 0.25, this.flicker === 'DYING' ? 0.6 : 0);
     return v;
   }
 
-  private dying(t: number, rng: Rng): number {
+  private dying(t: number, rng: Rng, calmLo: number, calmHi: number): number {
     if (this.dyingBursts.length === 0 && t >= this.dyingNext) {
-      // 1–4 blackouts of 40–120 ms separated by 30–90 ms, then 2–9 s of calm
+      // 1–4 blackouts of 40–120 ms separated by 30–90 ms, then calmLo–calmHi s of calm
       let at = t;
       const n = rng.int(1, 4);
       for (let i = 0; i < n; i++) {
@@ -106,7 +107,7 @@ class Hint {
         this.dyingBursts.push(at, at + len);
         at += len + rng.float(0.03, 0.09);
       }
-      this.dyingNext = at + rng.float(2, 9);
+      this.dyingNext = at + rng.float(calmLo, calmHi);
     }
     for (let i = 0; i < this.dyingBursts.length; i += 2) {
       if (t >= this.dyingBursts[i] && t < this.dyingBursts[i + 1]) return 0.08;

@@ -63,7 +63,7 @@ export interface ElevatorProp extends WorldProp {
   /** Cabin ride between floors (the Ascent / final ride). */
   ride(dir: 'up' | 'down', dur?: number): Promise<void>;
   /** Floor dial needle (1 = start; beyond the printed scale in endless). */
-  setFloor(n: number, animate?: boolean): void;
+  setFloor(n: number, animate?: boolean, dur?: number): void;
 }
 export interface ClockProp extends WorldProp {
   /** 0..1 progress of the shift on the wall clock face. */

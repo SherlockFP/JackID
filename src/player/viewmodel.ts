@@ -89,6 +89,8 @@ const GRIP_DROP = 0.025;
 const GUN_HOME = new THREE.Vector3(0.135, -0.135, -0.3);
 /** A new item rises from below on a spring; the old one shrinks away over this long (s). */
 const RAISE_DROP = 0.07, LEAVE_S = 0.12, FADE_OUT_S = 0.2;
+/** The grip follows the item this fast (1/s); a hand that lets go of something and goes back to its coin opens this slowly for RELEASE_S, so a fist and a rolled wrist never whip open. */
+const GRIP_RATE = 14, RELEASE_RATE = 5, RELEASE_S = 0.9;
 /** The Change of Hands lasts this long (docs/JOKER.md §4: 2.5 s in all). */
 const LOKI_HAND_S = 2.5;
 /** Clips an item holds on the arms while it is in the hand (`t` = where in the clip). The phone is held in the left hand. */
@@ -139,10 +141,10 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
   let heldAge = 1;                                   // s since the item was raised (it grows in over its first moments)
   let gone = false;                                  // the food has been eaten (or the drink put away): it stays gone until the item changes
   let gun: THREE.Group | null = null;
-  const leaving: Array<{ obj: THREE.Object3D; t: number }> = [];
+  const leaving: Array<{ obj: THREE.Object3D; t: number; s0: number }> = [];
   const raise = { x: 0, v: 0 };                      // 1 just after the item changed, settling to 0: the hands come up from below
-  let anim: { name: string; t: number; def: Anim; resolve: () => void; resolved: boolean } | null = null;
-  let ending: { def: Anim; t: number; w: number } | null = null;     // the animation that was interrupted, fading out
+  let anim: { name: string; t: number; def: Anim; item: string; resolve: () => void; resolved: boolean } | null = null;   // `item`: what was in the hand when it began (an eat or drink lifts THAT, even after the hand has swapped back to the coin)
+  let ending: { def: Anim; t: number; w: number; item: string } | null = null;     // the animation that was interrupted, fading out
   let visible = true;
   let clock = 0;
   let porcelain = false;
@@ -153,7 +155,7 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
   let sprintK = 0, swayX = 0, swayY = 0;
   let speed = 0, walkK = 0, walkPhase = 0, watchOn = true;
   let lokiT = 0, lokiLag = false;                    // his hand: seconds of green left, and the Ink 8+ drift
-  let holdClips = HOLD_CLIPS.phone, holdK = 0;       // the clips of the item in the hand, and how far they have come in
+  let holdClips = HOLD_CLIPS.phone, holdK = 0, release = 0;       // the clips of the item in the hand, and how far they have come in
 
   const mount = (src: ArmsSource | null): void => {
     if (!src || disposed) return;
@@ -178,7 +180,7 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
   };
   const releaseItem = (): void => {
     if (held) {
-      if (heldOwned) leaving.push({ obj: held, t: 0 });     // the old item shrinks away on the hand while the new one rises
+      if (heldOwned) leaving.push({ obj: held, t: 0, s0: held.scale.x });     // the old item shrinks away on the hand while the new one rises
       else held.removeFromParent();
     }
     held = null; heldOwned = false;
@@ -199,10 +201,10 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
   };
 
   /** Runs `def` at `t` into the hands' poses, blended by `w` (the pose it added is scaled; the item effects go to `out`). */
-  const layer = (def: Anim, t: number, w: number, out: AnimFx): void => {
+  const layer = (def: Anim, t: number, w: number, out: AnimFx, of: string): void => {
     if (w <= 0) return;
     copyPose(snap.r, right.pose); copyPose(snap.l, left.pose);
-    def.run(clamp(t / def.dur, 0, 1), right.pose, left.pose, out, { item });
+    def.run(clamp(t / def.dur, 0, 1), right.pose, left.pose, out, { item: of });
     if (w >= 1) return;
     for (const key of POSE_KEYS) {
       right.pose[key] = snap.r[key] + (right.pose[key] - snap.r[key]) * w;
@@ -240,7 +242,7 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
     hold(next, obj) {
       if (next === 'none' && !obj) next = 'coin';           // an empty hand holds a coin: the Q tricks always have one
       if (!obj && next === item && (held || gun)) return;   // already in the hand (callers re-hold while an item is up)
-      const first = item === 'none';
+      const first = item === 'none', was = item;
       fidget.reset();
       releaseItem();
       item = next;
@@ -262,14 +264,15 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
         }
       }
       setBase();
-      if (!first) raise.x = 1;
+      if (next === 'coin' && was !== 'coin') release = RELEASE_S;
+      if (!first && next !== 'coin') raise.x = 1;           // a new thing comes up from below; the empty hand going back to its coin must not drop (it snapped both hands after every meal)
     },
     play(name) {
       const def = ANIMS[name];
       if (!def) return Promise.resolve();
       fidget.stop();
-      if (anim) { ending = { def: anim.def, t: anim.t, w: envelope(anim.def, anim.t) }; anim.resolve(); }
-      return new Promise<void>((resolve) => { anim = { name, t: 0, def, resolve, resolved: false }; });
+      if (anim) { ending = { def: anim.def, t: anim.t, w: envelope(anim.def, anim.t), item: anim.item }; anim.resolve(); }
+      return new Promise<void>((resolve) => { anim = { name, t: 0, def, item, resolve, resolved: false }; });
     },
     setHandLook(o) {
       if (o.fingers !== undefined) { const n = clamp(Math.round(o.fingers), 0, 5); right.setFingers(n); left.setFingers(n); }
@@ -313,7 +316,8 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
       arms?.setTint(lokiT > 0 ? Math.min(1, lokiT / 0.3, (LOKI_HAND_S - lokiT) / 0.2) : 0);   // in fast, out fast, his green in between
 
       // grip → live pose
-      const k = 1 - Math.exp(-14 * dt);
+      const k = 1 - Math.exp(-(release > 0 ? RELEASE_RATE : GRIP_RATE) * dt);
+      release = Math.max(0, release - dt);
       for (const key of POSE_KEYS) { live.r[key] = lerp(live.r[key], base.r[key], k); live.l[key] = lerp(live.l[key], base.l[key], k); }
       copyPose(right.pose, live.r); copyPose(left.pose, live.l);
 
@@ -350,11 +354,11 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
       const clipsR: ClipReq[] = [], clipsL: ClipReq[] = [];
       if (ending) {
         ending.w -= dt / FADE_OUT_S;
-        if (ending.w <= 0) ending = null; else { layer(ending.def, ending.t, ending.w, scratchFx); clipsOf(ending.def, ending.t, ending.w, clipsR, clipsL); }
+        if (ending.w <= 0) ending = null; else { layer(ending.def, ending.t, ending.w, scratchFx, ending.item); clipsOf(ending.def, ending.t, ending.w, clipsR, clipsL); }
       }
       if (anim) {
         const w = envelope(anim.def, anim.t);
-        layer(anim.def, anim.t, w, fx);
+        layer(anim.def, anim.t, w, fx, anim.item);
         clipsOf(anim.def, anim.t, w, clipsR, clipsL);
         stepAnim(dt);
       }
@@ -390,7 +394,7 @@ export function createViewmodel(_sleeveColor: Hex = 0x7a1a20, gloveColor: Hex = 
       for (let i = leaving.length - 1; i >= 0; i--) {
         const e = leaving[i];
         e.t += dt;
-        if (e.t >= LEAVE_S) dropLeaving(i); else e.obj.scale.setScalar(Math.max(0.001, 1 - smooth(e.t / LEAVE_S)));
+        if (e.t >= LEAVE_S) dropLeaving(i); else e.obj.scale.setScalar(Math.max(0.001, e.s0 * (1 - smooth(e.t / LEAVE_S))));
       }
       rig.position.set(swayX + bobX, swayY + bobY + fx.rigY, 0);
       if (gun) {

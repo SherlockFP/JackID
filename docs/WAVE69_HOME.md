@@ -9,6 +9,8 @@ director sign-off: lanes build in parallel against it.
 2. The intermission lever now reads **TAKE THE LIFT / ASANSÖRE BİN** (solo debt runs only).
    - Pressing it starts stage `ride`: input locks, the screen fades to dark (`app.ui.fade`), `liftDing` plays, and the player
      teleports to `home.spawn`. The screen fades back in and stage `evening` begins.
+     (Since the street walk: the ride lasts `HOME_TIMING.ride` = 4.6 s and shows the car, the same beats as the ride down: dark, the
+     teleport into the car, the floor dial rising B7 to G, the arrival ding, then out at the casino's street door.)
    - Online runs and Night 8 topside keep the old lever (`openFloor`).
 3. **The Evening** is a free walk in the apartment with these stations, each an E prompt that emits `home:interact`:
    - **bed**: sleep. Stage `sleep`: fade out, `bedCreak`, then `run.openFloor()` opens the next Night. The player teleports

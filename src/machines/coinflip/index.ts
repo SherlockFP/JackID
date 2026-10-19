@@ -27,7 +27,7 @@ import type { MachineAction, MachineInputEvent } from '@/core/input/types';
 import { SeatHud, type HudControl, type HudNumber, type Txt } from '@/machines/_base/seatHud';
 import type { TweenHandle } from '@/core/tween';
 import type { Kit } from '@/kit/types';
-import { fmtCoins } from '@/core/i18n';
+import { fmtCoins, lang } from '@/core/i18n';
 import { lerp, smoothstep, TAU } from '@/core/math';
 import { buildModel, coinRestY, COIN_R, type CoinFlipParts } from './model';
 import {
@@ -91,7 +91,7 @@ export const def: MachineDef = {
       stPick: 'PICK A SIDE, THEN FLIP', stPickSub: 'You call it, the coin decides',
       stAir: 'IN THE AIR', stAirSub: 'Watch the coin balance on its edge',
       stWon: 'YOU WON: RIDE OR COLLECT', stWonSub: 'Ride for x{n} or take the pot',
-      nStake: 'BET', nCall: 'YOUR CALL', nChance: 'CHANCE', nPot: 'WINNINGS', nNext: 'NEXT WIN',
+      nStake: 'BET', nCall: 'YOUR CALL', nChance: 'ODDS', nPot: 'WINNINGS', nNext: 'NEXT WIN',
       nStreak: 'STREAK', nBalance: 'BALANCE',
       cHeads: 'HEADS', cTails: 'TAILS', cEdge: 'EDGE', cFlip: 'FLIP', cRide: 'RIDE', cCollect: 'COLLECT', cBet: 'BET',
       cRules: 'RULES', cLeave: 'LEAVE',
@@ -114,7 +114,7 @@ export const def: MachineDef = {
       stPick: 'BİR YÜZ SEÇ, SONRA AT', stPickSub: 'Tahmini sen yap, sonucu para belirler',
       stAir: 'HAVADA', stAirSub: 'Paranın kenarında dengelenişini izle',
       stWon: 'KAZANDIN: DEVAM ET YA DA AL', stWonSub: 'x{n} için devam et, ya da kasayı al',
-      nStake: 'BAHİS', nCall: 'TAHMİNİN', nChance: 'ŞANS', nPot: 'KASA', nNext: 'SONRAKİ',
+      nStake: 'BAHİS', nCall: 'TAHMİNİN', nChance: 'OLASILIK', nPot: 'KASA', nNext: 'SONRAKİ',
       nStreak: 'SERİ', nBalance: 'BAKİYE',
       cHeads: 'TURA', cTails: 'YAZI', cEdge: 'KENAR', cFlip: 'AT', cRide: 'DEVAM', cCollect: 'KASAYI AL', cBet: 'BAHİS',
       cRules: 'KURALLAR', cLeave: 'AYRIL',
@@ -123,7 +123,7 @@ export const def: MachineDef = {
       rule2: 'Devam edince merdiven yükselir: 1,9x, 3,6x, 7x, 13x. İstediğin an kasayı alabilirsin.',
       rule3: 'Kaybettiğin atışta o atışa koyduğun tutar gider. Kasayla ayrılırsan elindeki kasa ödenir.',
       rule4: 'Merdiven 13 katta biter ve kasa kendiliğinden ödenir.',
-      rule5: 'Tura ya da yazı atışının her birinde kazanma şansı yaklaşık {p}.',
+      rule5: 'Tura ya da yazı atışının her birinde kazanma olasılığı yaklaşık {p}.',
       rule6: `KENAR (3): 60 atıştan birinde para kenarında durur ve atılan tutarın ${EDGE_MULT} katını öder. Değilse kaybedersin.`,
     },
   },
@@ -551,7 +551,10 @@ export default class CoinFlip extends MachineBase<CoinFlipParts, Ev, State> {
   private k(a: MachineAction): string { return this.ctx.input.keyLabel(`m.${a}`); }
 
   /** The chance of one heads/tails flip winning, as a whole percentage (hooks included). */
-  private chance(): string { return `${Math.round(clampP(this.mod(HOOK_P, WIN_P)) * 100)}%`; }
+  private chance(): string {
+    const n = Math.round(clampP(this.mod(HOOK_P, WIN_P)) * 100);
+    return lang() === 'tr' ? `%${n}` : `${n}%`;   // Turkish writes the sign first
+  }
 
   private rulesLines(): Txt[] {
     return [

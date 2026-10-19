@@ -53,6 +53,25 @@ export function placeMark(c: { x: number; y: number; z: number }, p00: number, p
   return { x: w / 2 + dx * k, y: h / 2 + dy * k, on: false, angle: Math.atan2(dx, -dy) };
 }
 
+/** A screen rectangle in px (the overlay's frame). */
+export interface Box { x0: number; y0: number; x1: number; y1: number }
+
+/**
+ * Keeps the diamond and its distance label off the HUD's corner panels (the wallet column top-left, the quota stack top-right). A mark that
+ * lands on a panel slides out the short way: sideways toward the screen centre, or down under it. An edge arrow (off screen) only slides
+ * down, so it stays on the edge. `px` is the UI pixel scale: the diamond's half width and its reach above and (with the label) below the point.
+ */
+export function clearOfPanels(m: Mark, panels: readonly Box[], px: number, w: number, h: number): Mark {
+  const hw = 12 * px, up = 10 * px, down = 7 * px + 20;
+  let { x, y } = m;
+  for (const b of panels) {
+    if (x + hw <= b.x0 || x - hw >= b.x1 || y + down <= b.y0 || y - up >= b.y1) continue;
+    const toX = x < w / 2 ? b.x1 + hw : b.x0 - hw;
+    if (m.on && Math.abs(toX - x) <= b.y1 + up - y) x = toX; else y = b.y1 + up;
+  }
+  return { ...m, x, y: Math.min(y, h - down) };
+}
+
 /**
  * The no-progress clock. `update(key, dist, dt)` returns true once `limitS` seconds passed without getting `stepM` closer to the
  * spot `key`; it stays true until the key changes. A new key restarts it.
@@ -72,6 +91,17 @@ export function createStall(limitS = STALL_S, stepM = STALL_STEP_M): { update(ke
 /** True when the diamond shows: the setting is on, and it is Night 1-2 or the player has stalled. */
 export function waymarkWanted(night: number, enabled: boolean, stalled: boolean): boolean {
   return enabled && (objectiveShown(night) || stalled);
+}
+
+/** The visible HUD panels of the two top corners, in the overlay's frame (a hidden panel has no size and is skipped). */
+function cornerPanels(root: HTMLElement): Box[] {
+  const o = root.getBoundingClientRect();
+  const out: Box[] = [];
+  for (const el of root.querySelectorAll<HTMLElement>('.hud-tl > *, .hud-rs > *')) {
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) out.push({ x0: r.left - o.left, y0: r.top - o.top, x1: r.right - o.left, y1: r.bottom - o.top });
+  }
+  return out;
 }
 
 // ── the DOM diamond ────────────────────────────────────────────────────────────────────────────────
@@ -135,6 +165,8 @@ export function createWayfinder(host: WayfinderHost): Wayfinder {
   let shownLeg = 0;
   let selimSaid = flagSet('selim');
   let seen = app.time.sim;
+  let panels: Box[] = [];
+  let panelsAt = -Infinity;   // sim s of the last measure: the corner panels are read four times a second, not every frame
   const found = new Map<string, InstanceId>();
   const legs = new Map<number, Vec2[]>();
 
@@ -237,7 +269,10 @@ export function createWayfinder(host: WayfinderHost): Wayfinder {
       const px = (app.ui as UIOverlayX | undefined)?.px ?? 3;
       const e = cam.projectionMatrix.elements;
       // the top band (clock, night bar) is the tallest HUD strip; the bottom row (pulls, phone hint) is shorter
-      diamond.show(placeMark(c, e[0], e[5], window.innerWidth, window.innerHeight, { x: 10 * px + 8, top: Math.max(96, 44 * px), bottom: Math.max(60, 22 * px) }), dist);
+      const w = window.innerWidth, hh = window.innerHeight;
+      const mark = placeMark(c, e[0], e[5], w, hh, { x: 16 * px + 8, top: Math.max(96, 44 * px), bottom: Math.max(60, 22 * px) });
+      if (app.time.sim - panelsAt >= 0.25) { panelsAt = app.time.sim; panels = cornerPanels(overlay); }
+      diamond.show(clearOfPanels(mark, panels, px, w, hh), dist);
     },
     dispose() { diamond.dispose(); trail.dispose(); },
   };

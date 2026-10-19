@@ -139,7 +139,7 @@ export function parseScript(text) {
  *   bank:deposit:<n>   Debt Terminal deposit of n coins (run.deposit)
  *   bank:withdraw:<n>  take n coins back from the bank into the pocket (run.withdraw, the broke path)
  *   lever              the terminal lever the run accepts now: OPEN THE FLOOR (with the Home layer on: TAKE THE LIFT home), else the Bell, else SETTLE
- *   home:lift          TAKE THE LIFT (run.openFloor on a paid Night with the Home layer): waits for stage `evening` (the ride, ~2.6 s sim)
+ *   home:lift          TAKE THE LIFT (run.openFloor on a paid Night with the Home layer): waits for stage `evening` (the ride in the car, 4.6 s sim)
  *   home:stay          the same ride, then STOP in the Evening without sleeping (a no-op when already home): drive the home by hand
  *                      (both walk the player home from the casino's street door by teleport: the door's cue starts the Evening)
  *   walk:home          THE WALK HOME: the same ride, then the walk shot by shot (with --shots): the casino door, the street, the
@@ -588,16 +588,34 @@ async function skipPrologue(cdp, shoot = null, marks = null) {   // marks: the t
       if (marks?.door && !marks.doorDone) { marks.doorDone = true; await sleep(1200); await marks.door(); }
       await evaluate(cdp, homeEmitJs('door')); doors++;
       if (marks?.street && !marks.streetDone && (await evaluate(cdp, WALK_GOAL_JS)) === 'casino') { marks.streetDone = true; await marks.street(); }
-      await walkOut(cdp);   // THE WALK OUT: the door opens; the bot steps into the casino's street door, where the lift waits
-      // THE LIFT RIDE (wave 72): one frame shot 0.9 s after the first call (fade, ding, the teleport comes at T.teleport), once per run
-      if (shoot && !shot) {
-        await sleep(900);
-        shot = await shoot('prologue-lift-ride.png');
-      }
+      const atDoor = await walkOut(cdp);   // THE WALK OUT: the door opens; the bot steps into the casino's street door, where the lift waits
+      // THE LIFT RIDE: one frame shot inside the car once the bot has stepped out to the street door (the car is in view 1.4 s to 3.0 s into the ride), once per run
+      if (shoot && !shot && atDoor && (await waitInCar(cdp, 1300))) shot = await shoot('prologue-lift-ride.png');
     }
     await sleep(250);
   }
   return { played: holds > 0, holds, doors, shot };
+}
+
+/** Page JS: the player stands in the lift car (the ride's teleport has happened): just behind the gate, inside its width. */
+const IN_CAR_JS = `(() => { const a = window.jackid.app, d = a.world && a.world.anchor('elevator.door'), p = a.player && a.player.pos; if (!d || !p) return false; const w = d.getWorldPosition(d.position.clone()); return Math.abs(p.x - w.x) < 0.8 && p.z < w.z - 0.3 && p.z > w.z - 1.6; })()`;
+/**
+ * Waits (sim time) until the player is in the lift car, then `afterMs` more (the car fades in 0.4 s after the teleport and the dial runs for 1.6 s).
+ * The screen veil is a CSS fade on the wall clock while the manual sim clock stands still between steps, so a real second passes before the shot
+ * for the veil to clear. False when no car came.
+ */
+async function waitInCar(cdp, afterMs) {
+  for (let i = 0; i < 80; i++) {
+    if (await evaluate(cdp, IN_CAR_JS)) {
+      const t0 = await evaluate(cdp, 'window.jackid.app.time.sim');
+      await sleep(afterMs);
+      log(`car: in at sim ${t0.toFixed(2)} s, shot at ${(await evaluate(cdp, 'window.jackid.app.time.sim')).toFixed(2)} s`);
+      if (clock.step) await new Promise((r) => setTimeout(r, 1100));
+      return true;
+    }
+    await sleep(100);
+  }
+  return false;
 }
 
 /** Skips the story intro with real Space taps: one tap (80 ms, a tap not a hold) each 1.2 s once it has played that long. */
@@ -643,7 +661,7 @@ const BANK_JS = 'window.jackid.app.run.bank().balance';
 const REFUSAL_JS = '(window.jackid.app.run.lastRefusal?.() ?? null)';
 
 // ── THE EVENING (wave 69): the lift, the apartment's stations and the phone ─────────────────────────────────────────────────────
-/** Sim ms the Evening steps wait for a stage: the ride (2.6 s), the sleep (1.8 s) and a margin; a stuck stage fails the step. */
+/** Sim ms the Evening steps wait for a stage: the ride (4.6 s), the sleep (1.8 s) and a margin; a stuck stage fails the step. */
 const HOME_WAIT_MS = 10_000;
 /** Page JS: the run's home stage and Night, or null without a run. */
 const HOME_STAGE_JS = '(() => { const r = window.jackid.app.run; return r ? { stage: r.homeStage?.() ?? null, night: r.night(), over: r.over === true } : null; })()';
@@ -2521,7 +2539,7 @@ function nightLine(n) {
 const keyParams = (code) => { const k = keyInfo(code); return { code: k.code, key: k.key, windowsVirtualKeyCode: k.vk, nativeVirtualKeyCode: k.vk }; };
 const TOUR_HELPERS = {
   evaluate, evalJson, sleep, pressKey, sendKey, keyParams, clickAt, nowMs, log, exec, parseRunSteps, stepFrames, waitRoundIdle,
-  autoNight, walkHome, settlePanels, skipPrologue, skipIntro, anchorJs, BET_TAP_JS, BANK_JS, BIGONE_STATE_JS, FADE_CLEAR_JS,
+  autoNight, walkHome, settlePanels, skipPrologue, skipIntro, waitInCar, IN_CAR_JS, anchorJs, BET_TAP_JS, BANK_JS, BIGONE_STATE_JS, FADE_CLEAR_JS,
 };
 
 /**
