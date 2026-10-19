@@ -101,6 +101,7 @@ import './pantheon.run.test.mjs';
 import './joker.test.mjs';
 import './joker.run.test.mjs';
 import './joker.hand.test.mjs';
+import './apparition.test.mjs';
 import './dreadAdd.test.mjs';
 import './bonds.test.mjs';
 import './nightLights.test.mjs';

@@ -63,6 +63,12 @@ export function jokerSay(text: string): void {
   app.audio?.play('cardFlip', { vol: 0.45 });
 }
 
+/** One of his lines is coming in or typing now: the apparition's grin flaps and he shows (game/joker/apparition.ts). */
+export function jokerTalking(): boolean {
+  const c = subtitles.current();
+  return c?.source === JOKER_SOURCE && (c.phase === 'in' || c.phase === 'typing');
+}
+
 /** Calm Mode, reduced motion or reduced flashing: his visuals soften (docs/JOKER.md §6). */
 export const calmNow = (): boolean => { const s = app.save?.data?.settings; return !!s && (s.calm === true || !!s.reduceMotion || !!s.reduceFlashing); };
 

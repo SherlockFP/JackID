@@ -144,7 +144,7 @@ export function mountComputerUi(run: DebtRun): () => void {
     status = '';
     app.ui.panel(PANEL, (host) => {
       const root = h('div', 'pc-root', host);
-      modalPanel(root, { escClose: true, dim: true });
+      modalPanel(host, { escClose: true, dim: true });
       const crt = h('div', 'pc-crt', root);
       screen = h('div', 'pc-screen', crt);
       h('div', 'pc-scan', crt);

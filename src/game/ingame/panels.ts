@@ -94,10 +94,10 @@ export function buildPause(el: HTMLElement, o: PauseOpts): () => void {
       txt(p, fit(r.label, 72), 18, y, r.danger ? CARD_DANGER : CARD_INK);
       if (r.hold && holding) p.rect(6, y + 11, Math.round((CARD_W - 12) * hold), 1, CARD_DANGER);
     });
-    if (o.live) txt(p, fit(t('pauselive.label'), 88, { micro: true }), CARD_W / 2, CARD_H - 25, CARD_LIVE, { micro: true, align: 'center' });
-    // two micro lines (5 px tall): the hold hint sits 17 px up from the bottom, the key line 8 px up, so they never touch
-    txt(p, fit(t('ingame.pause.holdHint'), 88, { micro: true }), CARD_W / 2, CARD_H - 17, 0x9c8a62, { micro: true, align: 'center' });
-    txt(p, fit(t('ui.keyhint'), 88, { micro: true }), CARD_W / 2, CARD_H - 8, 0x7a6a4c, { micro: true, align: 'center' });
+    if (o.live) txt(p, fit(t('pauselive.label'), 88, { micro: true }), CARD_W / 2, CARD_H - 31, CARD_LIVE, { micro: true, align: 'center' });
+    // two micro lines (5 px tall) clear of the 2 px frame: the hold hint 22 px up from the bottom, the key line 13 px up
+    txt(p, fit(t('ingame.pause.holdHint'), 84, { micro: true }), CARD_W / 2, CARD_H - 22, 0x9c8a62, { micro: true, align: 'center' });
+    txt(p, fit(t('ingame.pause.keys'), 84, { micro: true }), CARD_W / 2, CARD_H - 13, 0x7a6a4c, { micro: true, align: 'center' });
   });
 
   const press = (i: number): void => {

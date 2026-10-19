@@ -157,7 +157,7 @@ export function tails(c: Hex, lift?: number, len = 0.5): Piece[] {
 }
 
 // ── the looks ──────────────────────────────────────────────────────────────────────────────────────
-export type OutfitId = 'collector' | 'selim' | 'compere';
+export type OutfitId = 'collector' | 'selim' | 'compere' | 'loki';
 
 /**
  * THE COLLECTOR (Tahsildar): a tired, precise debt man. A long charcoal overcoat with its collar up, black leather gloves, the
@@ -219,4 +219,28 @@ const COMPERE: Piece[] = [
   { k: 'prop', id: 'mic', lift: 0.54 },
 ];
 
-export const OUTFITS: Readonly<Record<OutfitId, readonly Piece[]>> = { collector: COLLECTOR, selim: SELIM, compere: COMPERE };
+/**
+ * LOKI, the borrowed memory (docs/JOKER.md §1): the Compere as he was when he still won. A slim black suit with the Compere's satin
+ * on narrow lapels, a white shirt open at the collar, the Compere's red worn as a loosened tie, slicked-back hair and a playing card
+ * between the right fingers. No hat, no tails, no mic: the hint is in the cloth and the colours, not the costume. The green grin
+ * pin and the face are lit marks the apparition adds (game/joker/lokiArt.ts).
+ */
+const SLIM = 0x121216, HAIR = 0x0e0c0c;
+const LOKI: Piece[] = [
+  ...torso(SLIM, 0.4, -0.006, 1),
+  { k: 'tube', bone: 'pelvis', to: 'spine_01', r: [0.17, 0.158], at: [-0.75, 0.2], sq: 0.84, off: [0, 0, 0.012], c: SLIM, lift: 0.4 },   // jacket skirt over the hips
+  { k: 'box', bone: 'spine_03', size: [0.085, 0.19, 0.012], pos: [0, 0.09, 0.172], rot: [-14, 0, 0], c: 0xf2f0ea, lift: 0.62 },        // shirt in the V
+  { k: 'tube', bone: 'neck_01', to: 'Head', r: [0.074, 0.08], at: [0, 0.4], c: 0xf2f0ea, lift: 0.62 },                                  // open collar
+  ...lapels(SATIN, 0.56, 0.05),
+  ...sleeves(SLIM, 0.4, 0xf2f0ea),
+  // the loosened tie: the knot pulled down and off-centre, the blade hanging a little crooked
+  { k: 'box', bone: 'spine_03', size: [0.036, 0.034, 0.02], pos: [0.01, 0.15, 0.182], rot: [-14, 0, -8], c: 0xd02030, lift: 0.66 },
+  { k: 'box', bone: 'spine_03', size: [0.042, 0.2, 0.01], pos: [0.016, 0.03, 0.188], rot: [-10, 0, -5], c: 0xd02030, lift: 0.66 },
+  // slicked back: a low crown swept to the nape, the forehead left clear
+  { k: 'ball', bone: 'Head', r: 0.1, pos: [0, 0.222, -0.036], scale: [0.96, 0.56, 1.22], c: HAIR, lift: 0.5 },
+  { k: 'ball', bone: 'Head', r: 0.1, pos: [0, 0.14, -0.062], scale: [0.93, 0.9, 0.7], c: HAIR, lift: 0.5 },
+  // a card between the right fingers
+  { k: 'box', bone: 'hand_r', size: [0.006, 0.09, 0.064], pos: [0, 0.13, 0.03], rot: [0, 0, 8], c: 0xf4f0e6, lift: 0.9 },
+];
+
+export const OUTFITS: Readonly<Record<OutfitId, readonly Piece[]>> = { collector: COLLECTOR, selim: SELIM, compere: COMPERE, loki: LOKI };

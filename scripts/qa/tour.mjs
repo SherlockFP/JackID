@@ -124,6 +124,12 @@ export async function runTour(ctx, h) {
     const p = await h.skipPrologue(cdp, () => snap('lift-down').then((r) => r.file), marks);
     h.log(`tour prologue: played ${p.played}`);
     await h.skipIntro(cdp);
+    // the Night's title card plays when Night 1's first Watch opens (the lift landing): shot it 1.7 s in (the title is up from 0.8 s)
+    for (let i = 0; i < 30 && (await h.evaluate(cdp, 'window.jackid.app.cutscene.playing')) !== 'chapter_n1'; i++) await h.sleep(200);
+    if (await h.evaluate(cdp, `window.jackid.app.cutscene.playing === 'chapter_n1'`)) {
+      for (let i = 0; i < 40 && (await h.evaluate(cdp, 'window.jackid.app.cutscene.time')) < 1.7; i++) await h.sleep(100);
+      await snap('chapter-title', `document.querySelector('.chapter-title')?.classList.contains('in') || 'no chapter title on screen'`);
+    }
     await h.sleep(800);
     await snap('casino-arrival', `Boolean(document.querySelector('.px-wm:not(.off)')) || 'no waymark'`);
   });
@@ -294,10 +300,10 @@ export async function runTour(ctx, h) {
     await h.sleep(600);
     await snap('konsol', `[...document.querySelectorAll('.pc-tab-on')].some((b) => /KONSOL/i.test(b.textContent)) || 'the KONSOL tab is not open'`);
     if (!pc.ok) T.errors.push({ section: 'station:computer', error: pc.reason ?? pc.error ?? 'not ok' });
-    // Esc does not close the home computer: game/home/computer.ui.ts marks its inner .pc-root as the modal (modalPanel(root)), not the
-    // panel (host), so the UI never sees a modal (no input block, no Esc). The tour closes the panel itself and says so.
+    // Esc closes the home computer (its panel is the modal). If it does not, the tour closes the panel itself and says so.
+    await escapeFrom('.pc-tabs');
     if (await h.evaluate(cdp, `Boolean(document.querySelector('.pc-tabs'))`)) {
-      T.notes.push('Esc does not close the home computer (computer.ui.ts passes .pc-root to modalPanel, not the panel): the tour closed the panel directly');
+      T.notes.push('Esc did not close the home computer: the tour closed the panel directly');
       await h.evaluate(cdp, `(window.jackid.app.ui.closePanel('home-pc'), true)`);
       await h.sleep(300);
     }

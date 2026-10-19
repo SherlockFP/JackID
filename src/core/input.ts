@@ -61,6 +61,8 @@ export interface MachineInputEventX extends MachineInputEvent { code: string; mo
 export interface InputExt extends Input {
   /** True while the seated player holds RMB past the tap window (camera free-look; `look()` delivers deltas). */
   readonly freeLook: boolean;
+  /** The mode the game set, ignoring the UI overlay (`mode` reads 'ui' under a panel). Restore from this, never from `mode`. */
+  readonly baseMode: InputMode;
   /** Drop every user rebinding and persist. */
   resetBindings(): void;
   /** True when walk look comes from drag-to-look (lock refused, or `?nolock=1`) instead of pointer lock. */
@@ -210,6 +212,8 @@ class InputImpl implements InputExt {
 
   // ── mode ────────────────────────────────────────────────────────────────────────────────────────
   get mode(): InputMode { return this.uiBlocked || this.domText || this.textEl ? 'ui' : this.base; }
+
+  get baseMode(): InputMode { return this.base; }
 
   setMode(m: InputMode): void { this.setFlags(() => { this.base = m; }); }
 
@@ -731,6 +735,14 @@ class InputImpl implements InputExt {
 
 function sameCodes(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((c, i) => c === b[i]);
+}
+
+/**
+ * A cutscene ends: hand the input back to `home`, but only when the cutscene's own mode is still the base. The effective
+ * `mode` reads 'ui' under a panel, so it can neither say what to restore nor whether the lock is still ours.
+ */
+export function endCutsceneMode(input: InputExt, home: InputMode): void {
+  if (input.baseMode === 'cutscene') input.setMode(home);
 }
 
 export function createInput(canvas: HTMLCanvasElement, keybinds: Partial<Record<string, string[]>> = {}): InputExt {

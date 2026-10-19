@@ -494,3 +494,91 @@ export function waveEnv(t: number, dur: number): number {
   const k = (e0: number, e1: number, x: number): number => { const u = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return u * u * (3 - 2 * u); };
   return k(0, 0.35, t) * (1 - k(dur - 0.6, dur, t));
 }
+
+// ── Loki's memory ghost (docs/JOKER.md §6): the apparition's own patch, on top of the NPC look ─────────────────
+/** One apparition's live values. Every material of the figure shares this object, so one write reaches them all. */
+export interface GhostUniforms {
+  uGhT: { value: number };
+  /** Presence 0..1: a 4x4 ordered dither drops this share of fragments (no blending, no sort, stays PSX). */
+  uGhA: { value: number };
+  /** Glitch amount 0..1: horizontal slices and the chromatic edge. 0 in Calm Mode. */
+  uGhG: { value: number };
+  /** Scanline depth 0..1. */
+  uGhS: { value: number };
+  uGhRim: { value: THREE.Vector3 };
+  /** World box the figure is drawn in (a mirror's glass); a huge box elsewhere. */
+  uGhMin: { value: THREE.Vector3 };
+  uGhMax: { value: THREE.Vector3 };
+}
+
+export function ghostUniforms(rim: Hex): GhostUniforms {
+  return {
+    uGhT: { value: 0 }, uGhA: { value: 1 }, uGhG: { value: 0 }, uGhS: { value: 1 },
+    uGhRim: { value: rimVec(rim) },
+    uGhMin: { value: new THREE.Vector3(-1e5, -1e5, -1e5) }, uGhMax: { value: new THREE.Vector3(1e5, 1e5, 1e5) },
+  };
+}
+
+const GLSL_GHOST_V = /* glsl */`
+varying vec3 vGhW;
+uniform float uGhT;
+uniform float uGhG;
+float ghHash(float n) { return fract(sin(n * 127.1) * 43758.5453); }
+`;
+const GLSL_GHOST_F = /* glsl */`
+varying vec3 vGhW;
+uniform float uGhT;
+uniform float uGhA;
+uniform float uGhG;
+uniform float uGhS;
+uniform vec3 uGhRim;
+uniform vec3 uGhMin;
+uniform vec3 uGhMax;
+float ghBayer(vec2 p) {
+  ivec2 q = ivec2(mod(p, 4.0));
+  const float m[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+  return (m[q.x + q.y * 4] + 0.5) / 16.0;
+}
+`;
+
+/**
+ * The memory ghost on a PSX material (lit or unlit): a phosphor tint and a faceted rim (flat face normals from screen derivatives,
+ * so it works on unlit marks too), scanlines, an ordered-dither presence, horizontal glitch slices that shift whole bands of the
+ * figure sideways, a red and cyan split on the silhouette edge while it glitches, and a world clip box for mirror reflections.
+ * Chains onto the existing `onBeforeCompile` (run `patchNpc` first on the body). No light, no blending: one program per flag set.
+ */
+export function patchGhost(m: THREE.Material, u: GhostUniforms): void {
+  const prev = m.onBeforeCompile;
+  const prevKey = m.customProgramCacheKey;
+  m.onBeforeCompile = (shader, renderer) => {
+    prev.call(m, shader, renderer);
+    Object.assign(shader.uniforms, u);
+    let v = shader.vertexShader, f = shader.fragmentShader;
+    v = v.replace('void main() {', `${GLSL_GHOST_V}\nvoid main() {`);
+    v = v.replace('#include <project_vertex>', `#include <project_vertex>
+  vGhW = (modelMatrix * vec4(transformed, 1.0)).xyz;
+  {
+    float gw = max(gl_Position.w, 1e-3);
+    float gs = floor(uGhT * 11.0);
+    float gh = ghHash(floor(gl_Position.y / gw * 16.0) * 7.13 + gs * 3.71);
+    gl_Position.x += step(1.0 - 0.16 * uGhG, gh) * (gh - 0.92) * 1.6 * gw * uGhG;
+  }`);
+    f = f.replace('void main() {', `${GLSL_GHOST_F}\nvoid main() {`);
+    f = f.replace('#include <opaque_fragment>', `{
+    if (any(lessThan(vGhW, uGhMin)) || any(greaterThan(vGhW, uGhMax))) discard;
+    vec3 gn = normalize(cross(dFdx(vGhW), dFdy(vGhW)));
+    float gf = 1.0 - abs(dot(gn, normalize(cameraPosition - vGhW)));
+    float gl = dot(outgoingLight, vec3(0.3, 0.59, 0.11));
+    outgoingLight = mix(outgoingLight, gl * uGhRim * 2.2, 0.5) + uGhRim * (gf * gf * 0.85 + 0.12);
+    float side = dot(gn, vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]));
+    outgoingLight += (side > 0.0 ? vec3(0.9, 0.1, 0.3) : vec3(0.1, 0.75, 1.0)) * step(0.78, gf) * 0.5 * uGhG;
+    outgoingLight *= 1.0 - uGhS * 0.32 * step(0.5, fract(gl_FragCoord.y * 0.5));
+    if (ghBayer(gl_FragCoord.xy) >= uGhA * mix(1.45, 0.55, gf * gf)) discard;   // a near-solid core, the edges dissolve
+  }
+  #include <opaque_fragment>`);
+    shader.vertexShader = v;
+    shader.fragmentShader = f;
+  };
+  m.customProgramCacheKey = () => `${prevKey.call(m)}|ghost`;
+  m.needsUpdate = true;
+}

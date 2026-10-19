@@ -32,6 +32,7 @@ import type { InputMode } from '../input/types';
 import type { AppStateId } from '../states';
 import type { LocalPlayer } from '@/player/types';
 import { app } from '../app';
+import { endCutsceneMode, type InputExt } from '../input';
 import { bus } from '../events';
 import { t } from '../i18n';
 import { log } from '../log';
@@ -149,7 +150,7 @@ class Run {
     const a = app, def = this.def;
     bus.emit('cutscene:start', { id: def.id });
     if (this.locked) {
-      this.prevMode = a.input.mode;
+      this.prevMode = (a.input as InputExt).baseMode;
       a.input.setMode('cutscene');
       this.player = a.player;
       this.player?.setCutscene(true);
@@ -424,8 +425,9 @@ class Run {
     subtitles.clear('cutscene');
     if (this.def.letterbox !== false) { void a.ui.letterbox(0, 0.4); cutLetterbox(false); }
     if (this.locked) {
-      // a state change already set its own mode: only undo what is still ours
-      if (a.input.mode === 'cutscene') a.input.setMode(this.prevMode === 'cutscene' ? 'walk' : this.prevMode);
+      // a state change already set its own mode: only undo what is still ours. The mode is derived from where the player is
+      // now (seated or standing), not from the mode saved at start: a panel up at start made that a stale 'ui'.
+      endCutsceneMode(a.input as InputExt, a.player ? (a.player.seat != null ? 'machine' : 'walk') : this.prevMode === 'cutscene' ? 'walk' : this.prevMode);
       try { this.player?.setCutscene(false); } catch { /* player already disposed */ }
     }
     if (this.hidHud && a.state === this.startState) a.ui.setHudVisible(true);

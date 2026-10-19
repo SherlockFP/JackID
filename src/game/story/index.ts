@@ -175,18 +175,20 @@ export function startStory(world: World, params: InGameParams, gate: NoteGate | 
     nightNow = index + 1;
     refreshStoryNotes();
   }));
+  // THE SECOND NAME: each Night opens with its title card when its first Watch opens. `run:window` is wrong for this: it fires
+  // at the end of Dawn, still carrying the old Night, under the boon panel.
+  offs.push(bus.on('night:begin', ({ night }) => {
+    if (!live) return;
+    chapterOpens(night);
+    // the Collector's arc: the knock of Night 5 is its second beat (the knock itself is the visitor lane's)
+    if (night === 5) { const c = chapterRec(); if (c) advanceArc(c, 'collector', 2); }
+  }));
   offs.push(bus.on('run:window', ({ window, night }) => {
     if (!live) return;
     nightNow = night;
     if (night !== watchNight) { watchNight = night; watches = 0; }
     if (window === 'watch') {
       watches++;
-      // THE SECOND NAME: each Night opens with its title card on the first Watch
-      if (watches === 1) {
-        chapterOpens(night);
-        // the Collector's arc: the knock of Night 5 is its second beat (the knock itself is the visitor lane's)
-        if (night === 5) { const c = chapterRec(); if (c) advanceArc(c, 'collector', 2); }
-      }
       if (night === 7 && watches === 2) {
         fire('audit', 'audit');
         const c = chapterRec();

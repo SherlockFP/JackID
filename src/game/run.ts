@@ -573,6 +573,8 @@ export interface DebtRun extends RunApi {
   jokerGrin(): { frame: number; lie: boolean };
   /** His Ink 0..10 (Dread reads `inkDread` of it). */
   jokerInk(): number;
+  /** His true Trust (−3..3, no lie): how near his apparition stands (game/joker/apparition.ts). */
+  jokerTrust(): number;
   /** Give him the hand at this seat for its next round (JOKER §4): null when he took it, else why not. Costs Ink. */
   jokerTakeover(): AskWhy | 'seat' | null;
   /** The offer panel is on screen: OPEN THE FLOOR waits for a pick (or the panel's timer) instead of taking the leftmost. */
@@ -4283,6 +4285,7 @@ class Run implements DebtRun {
 
   jokerGrin(): { frame: number; lie: boolean } { return this.grin; }
   jokerInk(): number { return this.jokerSys.ink; }
+  jokerTrust(): number { return this.jokerSys.trust; }
 
   // ─ LOKI'S HAND (docs/JOKER.md §4, wave J3): the Change of Hands at a floor machine. The next round there is his ─
   jokerTakeover(): AskWhy | 'seat' | null {

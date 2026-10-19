@@ -57,6 +57,7 @@ import { mountPantheonUi } from '@/game/pantheon.ui';
 import { inkDread } from '@/game/joker/joker';
 import { JOKER_ASK_KEY, JOKER_HAND_KEY, JOKER_LIAR_KEY, lokiToast, mountJokerVoice } from '@/core/ui/manga/joker';
 import { mountJokerHand } from '@/core/ui/manga/jokerHand';
+import { mountApparition } from '@/game/joker/apparition';
 import { mountScrounge } from '@/game/scrounge';
 import { mountFood } from '@/game/food';
 import { mountPhoneUi } from '@/game/home/phone.ui';
@@ -167,6 +168,18 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
   app.player = player;
   // LOKI'S HAND: the takeover on screen, the green hands, and the Ink symptoms (docs/JOKER.md §2.2, §4)
   mounts.push(mountJokerHand({ ink: () => run.jokerInk(), hands: (o) => player.viewmodel.jokerHand(o) }));
+  // LOKI, SEEN: his apparition beside you when he speaks and at your big moments (docs/JOKER.md §6); one pooled figure
+  const loki = mountApparition({
+    kit: app.kit, root: world.root, camera: app.camera, seed: run.seed, selfId: self,
+    trust: () => run.jokerTrust(), ink: () => run.jokerInk(),
+    active: () => !run.over && run.night() >= 2 && run.mod('x.cheat.lokiQuiet', 'run', 0) <= 0,
+    machines: () => world.machines().flatMap((m) => {
+      const s = world.slot(m.id);
+      return s && !world.isLocked(m.id) ? [{ id: m.id, machineId: m.def.id, pos: s.pos, rotY: s.rotY, size: s.size }] : [];
+    }),
+    seat: () => world.seat,
+  });
+  mounts.push(() => loki.dispose());
   // Online runs spawn on the Mouth rows, one per seat (MP-only branch; single-player keeps the solo spawn).
   const spawn = params.online ? world.spawn('mouth', Math.max(0, app.net.selfId - 1)) : world.spawn('solo');
   player.teleport(new THREE.Vector3(spawn.pos[0], spawn.pos[1], spawn.pos[2]), spawn.yaw);
@@ -529,6 +542,7 @@ export function startDebtSession(params: InGameParams, scene: THREE.Scene): Debt
       player.frame(dt, alpha);
       tutorial?.update(dt);
       world.frame(dt, app.time.sim);
+      loki.frame(dt);
       online?.frame(dt);
       totemView.sync(run.totems.list());
       for (let i = pops.length - 1; i >= 0; i--) {

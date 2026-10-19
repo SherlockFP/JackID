@@ -14,7 +14,7 @@
 import * as THREE from 'three';
 import type { InstanceId, PlayerId, PlayPose } from '@/core/types';
 import type { Action } from '@/core/input/types';
-import type { InputExt } from '@/core/input';
+import { endCutsceneMode, type InputExt } from '@/core/input';
 import type { PlayerFx } from '@/game/types';
 import type { CollisionWorld } from '@/world/types';
 import { app } from '@/core/app';
@@ -120,9 +120,9 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
   let fx: PlayerFx = { vignette: 0, muffle: 0, garble: 0, actionSpeed: 1, moveSpeed: 1, crawl: false };
   let fadedOut = false;
   let fallT = -1;                                   // seconds since the fall sequence began, −1 = not falling
-  let inputBefore: 'walk' | 'machine' | 'menu' | 'ui' | 'cutscene' | null = null;
   let sprintK = 0;
   let lightLevel = 1, lightTimer = 0;
+  let echoIn = -1, echoSound: { name: (typeof SURFACE_SOUND)[Surface]['name']; vol: number; pitch: number; param: number } | null = null;   // Ink 6+: a faint second step (JOKER symptoms)
   let lookDxFrame = 0, lookDyFrame = 0;
 
   // seat pose (world)
@@ -160,7 +160,13 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
     footstep(speed, crouching) {
       const s = SURFACE_SOUND[surfaceAt(ctrl.pos.x, ctrl.pos.z)];
       const loud = crouching ? 0.25 : speed > 4 ? 0.7 : 0.5;
-      app.audio.play(s.name, { vol: loud * s.vol, pitch: s.pitch + app.rng.cosmetic.float(-1, 1), param: s.hardness, priority: 3 });
+      const pitch = s.pitch + app.rng.cosmetic.float(-1, 1);
+      app.audio.play(s.name, { vol: loud * s.vol, pitch, param: s.hardness, priority: 3 });
+      // Ink 6+: about one step in five comes back 120 ms later, fainter. Calm Mode keeps the floor quiet.
+      if (echoIn < 0 && !settings().calm && ((app.run as { jokerInk?(): number } | null)?.jokerInk?.() ?? 0) >= 6 && app.rng.cosmetic.float(0, 1) < 0.2) {
+        echoIn = 0.12;
+        echoSound = { name: s.name, vol: loud * s.vol * 0.35, pitch: pitch - 1, param: s.hardness };
+      }
     },
     jump() {
       const s = SURFACE_SOUND[surfaceAt(ctrl.pos.x, ctrl.pos.z)];
@@ -427,12 +433,10 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
       rig.suspended = on;
       const input = app.input;
       if (on) {
-        if (input.mode !== 'cutscene') inputBefore = input.mode;
         input.setMode('cutscene');
         viewmodel.setVisible(false);
       } else {
-        if (input.mode === 'cutscene') input.setMode(inputBefore && inputBefore !== 'cutscene' ? inputBefore : phase === 'free' ? 'walk' : 'machine');
-        inputBefore = null;
+        endCutsceneMode(input as InputExt, phase === 'free' ? 'walk' : 'machine');
         viewmodel.setVisible(settings().viewmodel && phase === 'free' && !ghost);
         void rig.glide(0.5, 'inOutCubic');
       }
@@ -537,9 +541,15 @@ export function createLocalPlayer(camera: THREE.PerspectiveCamera, id: PlayerId 
 
       // ── hands ──
       const eye = camera.position;
+      if (echoIn >= 0 && (echoIn -= dt) < 0 && echoSound) {
+        app.audio.play(echoSound.name, { vol: echoSound.vol, pitch: echoSound.pitch, param: echoSound.param, priority: 3 });
+        echoSound = null;
+      }
       lightTimer -= dt;
       if (lightTimer <= 0) {
         lightTimer = 0.25;
+        // the floor's music follows the room: the same few-times-a-second check (the engine crossfades on a bar line)
+        try { app.audio.music.setZone(app.world?.zoneAt({ x: eye.x, y: eye.y, z: eye.z }) ?? null); } catch { /* no audio / world */ }
         const w = app.world as (typeof app.world & { lightLevelAt?(p: THREE.Vector3): number }) | null;
         lightLevel = deps.lightAt ? deps.lightAt(eye) : (w?.lightLevelAt?.(eye) ?? 1);
         viewmodel.setLightLevel(0.35 + 0.65 * lightLevel);

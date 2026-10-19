@@ -79,3 +79,27 @@ test('a click anywhere (pointerdown) retakes a refused lock', async () => {
   await flush();
   assert.equal(input.locked, true);
 });
+
+test('a cutscene that starts under a panel and ends after it closes leaves input in walk mode', async () => {
+  const { endCutsceneMode } = await load('src/core/input.ts');
+  const { input } = rig({ allow: { v: true } });
+  input.setMode('walk');
+  bus.emit('ui:blocking', { blocking: true });          // the Dawn panel is up
+  assert.equal(input.mode, 'ui');
+  assert.equal(input.baseMode, 'walk', 'the saved mode is the base, not the effective ui');
+  input.setMode('cutscene');                             // the chapter card starts under it
+  bus.emit('ui:blocking', { blocking: false });          // the panel closes mid-scene
+  assert.equal(input.mode, 'cutscene');
+  endCutsceneMode(input, 'walk');                        // the scene ends
+  assert.equal(input.mode, 'walk');
+  // ending while a panel is still up must not strand the base in 'cutscene'
+  input.setMode('cutscene');
+  bus.emit('ui:blocking', { blocking: true });
+  endCutsceneMode(input, 'walk');
+  bus.emit('ui:blocking', { blocking: false });
+  assert.equal(input.mode, 'walk');
+  // a state change that already set its own mode is left alone
+  input.setMode('machine');
+  endCutsceneMode(input, 'walk');
+  assert.equal(input.mode, 'machine');
+});

@@ -17,6 +17,7 @@
 import * as THREE from 'three';
 import { app } from '@/core/app';
 import { bus } from '@/core/events';
+import { endCutsceneMode, type InputExt } from '@/core/input';
 import { fmtCoins, registerStrings, t } from '@/core/i18n';
 import { hashSeed } from '@/core/rng';
 import type { Unsub, V3 } from '@/core/types';
@@ -164,7 +165,7 @@ export function mountEvening(run: DebtRun, world: WorldHost, player: LocalPlayer
     wantLock = false;
     if (!locked) return;
     locked = false;
-    if (app.input.mode === 'cutscene' && !app.cutscene.playing) app.input.setMode('walk');
+    if (!app.cutscene.playing) endCutsceneMode(app.input as InputExt, 'walk');
   };
   /** A line for the player: the subtitle bar, or a toast when subtitles are off (the lines carry the Evening's news). */
   const say = (text: string, who: string, sec: number): void => {
