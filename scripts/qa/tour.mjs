@@ -333,7 +333,8 @@ export async function runTour(ctx, h) {
     await h.pressKey(cdp, 'Digit0', 60);
     await h.pressKey(cdp, 'KeyO', 80);                            // ask Loki
     await h.sleep(900);
-    await snap('night2-loki', `Boolean(document.querySelector('.px-toast-loki, .toast-loki, [class*=loki]')) || 'no Loki line on screen'`);
+    // his line is a subtitle now (.px-subtitle[data-joker], core/ui/manga/joker.css), not a toast
+    await snap('night2-loki', `Boolean(document.querySelector('.px-subtitle.on[data-joker], .px-toast-loki, [class*=loki]')) || 'no Loki line on screen'`);
   });
 
   // ── THE BURNING WAGER, opened early (DEV): the Night 8 table on the stage, the board and Loki behind the Champion's chair ──

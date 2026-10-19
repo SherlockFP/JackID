@@ -42,6 +42,7 @@ test('the Dawn preview, the preview after the Dawn and the opened Night agree; a
     const mult = (PAN.boonDef(cand.id)?.effects ?? []).filter((e) => e.hook === 'quota.mult').reduce((m, e) => m * e.value, 1);
     assert.equal(run.pickBoon(cand.id), true);
     const picked = run.nextQuotaPreview();
+    assert.ok(Math.abs(picked.mult - atDawn.mult * mult) < 1e-9, 'seed ' + seed + ': the preview carries the boon multiplier the HUD names');
     if (mult !== 1) assert.notEqual(picked.due, atDawn.due, 'seed ' + seed + ': ' + cand.id + ' (x' + mult + ') is a quota change the preview shows once it is picked');
     assert.equal(run.openFloor(), true);
     assert.equal(run.quota.due, picked.due, 'seed ' + seed + ' (' + cand.id + '): Night 2 opens on the quota the preview showed after the pick');

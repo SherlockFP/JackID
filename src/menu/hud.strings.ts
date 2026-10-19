@@ -3,6 +3,7 @@ export default {
   prefix: 'hud.',
   en: {
     'tickets': 'TIX',
+    'pocket': 'POCKET',
     'staff.perMin': '+{n}/min',
     'clock.left': 'WATCH {w}/{c} · {t} LEFT',
     'clock.mola': 'MOLA · NEXT: WATCH {w}/{c}',
@@ -68,6 +69,7 @@ export default {
   },
   tr: {
     'tickets': 'BİLET',
+    'pocket': 'CEP',
     'staff.perMin': '+{n}/dk',
     'clock.left': 'VARDİYA {w}/{c} · {t} KALDI',
     'clock.mola': 'MOLA · SIRADAKİ: VARDİYA {w}/{c}',

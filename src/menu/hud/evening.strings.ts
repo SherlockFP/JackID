@@ -7,6 +7,7 @@ export default {
   en: {
     'evening.title': 'EVENING',
     'evening.objective': 'Rest. Tomorrow: quota {q}',
+    'evening.objectiveBoon': 'Rest. Tomorrow: quota {q} (boons/charms ×{m})',
     'evening.rest': 'Rest.',
     'evening.harmony': 'HARMONY',
     'evening.heat': 'HEAT',
@@ -14,6 +15,7 @@ export default {
   tr: {
     'evening.title': 'AKŞAM',
     'evening.objective': 'Dinlen. Yarın kota: {q}',
+    'evening.objectiveBoon': 'Dinlen. Yarın kota: {q} (lütuf/tılsım ×{m})',
     'evening.rest': 'Dinlen.',
     'evening.harmony': 'UYUM',
     'evening.heat': 'ISI',

@@ -208,6 +208,7 @@ export function createHud(): Hud {
 
   // ── top-left: pocket, tickets, staff ────────────────────────────────────────────────────────────
   const wallet = h('div', 'hb wallet', topL);
+  h('span', 'lbl', wallet, t('hud.pocket'));
   h('i', 'coin', wallet);   // a drawn coin, not the "¢" glyph (it reads as cents)
   const walletNum = h('span', 'num', wallet, '0');
   const tix = h('div', 'hb tix', topL);
@@ -1182,6 +1183,12 @@ export function createHud(): Hud {
       : t('hud.plan.ends', { w: watch, n: seg.count, p: pullsTxt, c: clock }));
   }
 
+  /** The run's quota multiplier as the player reads it ("1,05"), or '' when boons and charms leave the quota alone. */
+  function quotaMultText(mult: number): string {
+    const s = String(Math.round(mult * 100) / 100);
+    return s === '1' ? '' : s.replace('.', lang() === 'tr' ? ',' : '.');
+  }
+
   /**
    * NEXT NIGHT (wave 55): at Dawn and in Mola the NIGHT PLAN is this one line, the exact quota of the coming Night and its step
    * from tonight's (×k). It turns red when the quota is above what the player holds: pocket + 2 × bank. A projected Dawn (not yet
@@ -1191,7 +1198,7 @@ export function createHud(): Hud {
     const pocket = Math.max(0, Math.floor(pocketRaw));
     const banked = Math.max(0, Math.floor(bankRaw));
     const red = next.due > pocket + 2 * banked;
-    const key = `N|${next.night}|${next.due}|${next.k}|${red}|${next.projected}|${offerOpen}`;
+    const key = `N|${next.night}|${next.due}|${next.k}|${next.mult}|${red}|${next.projected}|${offerOpen}`;
     setCls(plan, 'hidden', false);
     if (key === planKey) return;
     planKey = key;
@@ -1201,7 +1208,8 @@ export function createHud(): Hud {
     setCls(planNext, 'hidden', false);
     planNext.style.color = red ? '#ff5a4a' : '';
     // an open boon offer can still move it (a quota boon): the figure reads as provisional until the pick
-    setText(planNext, t(offerOpen ? 'hud.plan.nightSoft' : 'hud.plan.night', { q: money(next.due), k }));
+    const m = quotaMultText(next.mult);
+    setText(planNext, offerOpen || !m ? t(offerOpen ? 'hud.plan.nightSoft' : 'hud.plan.night', { q: money(next.due), k }) : t('hud.plan.nightBoon', { q: money(next.due), k, m }));
     for (const el of [planBank, planOver, planPocket, planBroke, planEnds, planTithe, planUnpaid]) setCls(el, 'hidden', true);
   }
 
@@ -1261,6 +1269,7 @@ export function createHud(): Hud {
       return;
     }
     pullsPeak = Math.max(pullsPeak, n);
+    if (pullsPeak > 0) need('pulls');
     const key = `${pullsPeak}:${n}`;
     if (key === pullsKey) return;
     pullsKey = key;
@@ -1451,10 +1460,11 @@ export function createHud(): Hud {
     const harmony = ph?.harmony() ?? 0;
     const heat = ph?.heat() ?? 0;
     const next = (r as typeof r & { nextQuotaPreview?: () => NextQuotaPreview | null }).nextQuotaPreview?.() ?? null;
-    const key = `${harmony}|${heat}|${next ? next.due : -1}`;
+    const key = `${harmony}|${heat}|${next ? next.due : -1}|${next ? next.mult : 1}`;
     if (key === evKey) return;
     evKey = key;
-    setText(evObj, next ? t('hud.evening.objective', { q: money(next.due) }) : t('hud.evening.rest'));
+    const m = next ? quotaMultText(next.mult) : '';
+    setText(evObj, next ? (m ? t('hud.evening.objectiveBoon', { q: money(next.due), m }) : t('hud.evening.objective', { q: money(next.due) })) : t('hud.evening.rest'));
     harmPips.forEach((p, i) => setCls(p, 'on', i < harmony));
     heatPips.forEach((p, i) => setCls(p, 'on', i < heat));
   }

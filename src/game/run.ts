@@ -169,6 +169,8 @@ export interface NextQuotaPreview {
   due: number;
   /** The step from tonight's quota (due ÷ tonight's, one decimal). */
   k: number;
+  /** The run's quota multiplier from boons and charms (1 = none); the HUD names it as the reason for the step. */
+  mult: number;
   /** True in the Dawn collection, before the payment: the numbers are projected from the Dawn's wealth. */
   projected: boolean;
 }
@@ -3275,7 +3277,7 @@ class Run implements DebtRun {
     });
     const tonight = this.quota.due;
     const k = tonight > 0 ? Math.round((due / tonight) * 10) / 10 : 1;
-    return { night: nightDef(idx).no, due, k, projected: dawnNow };
+    return { night: nightDef(idx).no, due, k, mult, projected: dawnNow };
   }
 
   private syncQuota(): void {

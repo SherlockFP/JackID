@@ -21,6 +21,7 @@ export default {
     'stakes.n': 'SAFE / BOLD', 'stakes.d': 'SAFE bets about 5% of your coins, BOLD about 15%.',
     'harmony.n': 'HARMONY', 'harmony.d': 'Your bond with Ada. At zero she leaves.',
     'heat.n': 'HEAT', 'heat.d': 'The Collector\'s eye. At 3 he freezes your best investment.',
+    'pulls.n': 'PULLS', 'pulls.d': 'Spins you have left this Watch. Leftover pulls turn into tickets.',
   },
   tr: {
     'say': '{name}: {d}',
@@ -38,5 +39,6 @@ export default {
     'stakes.n': 'GÜVENLİ / CESUR', 'stakes.d': 'GÜVENLİ jetonun %5\'i, CESUR %15\'i kadar bahis.',
     'harmony.n': 'UYUM', 'harmony.d': 'Ada ile aran. Sıfırda yanından gider.',
     'heat.n': 'ISI', 'heat.d': 'Tahsildar\'ın dikkati. 3 olunca yatırımını dondurur.',
+    'pulls.n': 'ÇEKİŞ', 'pulls.d': 'Bu vardiyada kalan çevirme hakkın. Artanlar bilet olur.',
   },
 };
