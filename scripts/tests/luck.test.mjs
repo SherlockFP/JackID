@@ -137,6 +137,24 @@ test('Nazar Boncuğu is not spent by a loss that could not move the meter (alrea
   m.dispose();
 });
 
+test('a missed tithe costs one star a Night, however many Watches miss it (wave 107)', () => {
+  const m = L.createLuckMeter({});
+  // a HomePhone left alive by another test warms its Heat on a missed tithe, and each warm costs this meter a star too: count them out
+  let warm = 0;
+  const off = bus.on('home:heat', ({ delta }) => { if (delta > 0) warm += 1; });
+  bus.emit('night:begin', { night: 3 });
+  m.restore({ stars: 4 });
+  for (let w = 0; w < 3; w++) bus.emit('run:tithe', tithe('missed'));
+  assert.equal(m.stars(), 4 - 1 - warm, 'three misses, one star');
+  const before = m.stars();
+  warm = 0;
+  bus.emit('night:begin', { night: 4 });
+  bus.emit('run:tithe', tithe('missed'));
+  assert.equal(m.stars(), Math.max(-2, before - 1 - warm), 'a new Night costs again');
+  off();
+  m.dispose();
+});
+
 test('Full Bucket and Lucky Hand: a star by play, once a Night each, and only while the boon is held', () => {
   const fxs = {};
   const m = L.createLuckMeter({ fx: (k) => fxs[k] ?? 0 });

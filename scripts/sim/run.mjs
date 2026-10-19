@@ -193,6 +193,12 @@ const list = (name) => { const v = argVal(name, ''); return v ? v.split(',').map
 const SCH = await load('src/game/data/schedule.ts');
 const CKP = await load('src/game/checkpoints.ts');   // Watch tithe (wave 58): 20 % of the Night quota earned in play each Watch, from Night 3
 const NO_TITHE = args.includes('--no-tithe');       // the old game: no Watch tithe
+// APPROXIMATE SANS METER (src/game/luck.ts): quota met +1, each overshoot tier +1 (principal = bank less interest), failed -2 (ends the run here), missed tithe -1,
+// rescue loan -1, clamp -2..5. NOT seen by the sim: sealed Dawn (a short Dawn ends the run here), heat, keepsakes, ghost, photo, promise, boons, name seals.
+// A missed tithe costs at most one star per Night (the game since wave 107); --luck-tithe-each: the old one-a-Watch rule.
+const LUCK_ONCE = !args.includes('--luck-tithe-each');
+const luckMove = (S, d) => { S.luck = Math.min(5, Math.max(-2, S.luck + d)); };
+const LUCK = { stars: Array.from({ length: 8 }, () => []), tix: [], n8: [] };
 const TITH = { on: new Array(8).fill(0), met: new Array(8).fill(0), short: new Array(8).fill(0) };   // per Night, all runs
 const PROG = await load('src/game/progression.ts');
 const CIR = await load('src/game/circuit.ts');
@@ -492,11 +498,11 @@ function shop(S, bot, due, rng) {
 function playRun(bot, runIdx) {
   const rng = RNG.createRng((SEED + runIdx * 7919) >>> 0);
   const circ = new CIR.Circuit();
-  const out = { paid: [], pocket: [], quota: [], charms: [], fund: [], dueP: [] };
+  const out = { paid: [], pocket: [], quota: [], charms: [], fund: [], dueP: [], luck: [], tix: [] };
   // the quota of the next Night: the ladder, or the House's wealth floor (from HN_FROM; Night 1 reads the starting pocket)
   let nextQuota = SCH.houseNoticeQuota(1, dueOf(NIGHTS[0]), START_POCKET, HN_SHARE, HN_FROM, HN_CAP);
   const S = {
-    idx: 0, pocket: START_POCKET, tickets: 2, debt: 0, held: [], nightsPaid: 0, shopNight: 0, shopWatch: 0,
+    idx: 0, luck: 0, pocket: START_POCKET, tickets: 2, debt: 0, held: [], nightsPaid: 0, shopNight: 0, shopWatch: 0,
     cs: { rungs: 0, last: null, pressure: 0, charge: 0, wicks: 0, streak: 0, cuckoo: false, snow: 0 },
     pawn: null,
   };
@@ -519,6 +525,8 @@ function playRun(bot, runIdx) {
     FREE.n[idx] += 1; if (S.pocket >= nightQuota) FREE.free[idx] += 1;
     let due = nightQuota;
     let loans = 0;
+    let metFired = false, titheHit = false;
+    const luckMet = () => { if (!metFired && S.debt >= due) { metFired = true; luckMove(S, 1); } };   // quota:met, once a Night
     S.cs.snow = 0; S.cs.wicks = 0;
     let intNight = 0;   // interest the Terminal accrued on this Night (all Watches), for the int% metric
 
@@ -573,6 +581,7 @@ function playRun(bot, runIdx) {
           S.pocket -= cand.price; owned.add(cand.id); TYC.bought[idx] += 1; TYC.price[idx] += cand.price;
         }
       }
+      luckMet();
       fx0 = runFx(S);
       const lampRng = RNG.createRng((SEED * 31 + runIdx * 1009 + idx * 37 + w * 3 + 1) >>> 0);
       circ.startWatch(lampRng, lampCands.filter((c) => CIR.lampEligible(c, S.pocket)), { lamps: nd.no >= SCH.LAMP_FIRST_NIGHT, hot: SCH.hotLampCount(nd.no) + fx0.hotCount, cold: SCH.coldLampCount(nd.no), newIsHot: false });
@@ -648,7 +657,7 @@ function playRun(bot, runIdx) {
         const projected = S.debt * Math.pow(1 + Math.max(0, rate), nd.watches - w);
         if (S.pocket < lim.min && projected < due && S.debt < due && loans < (ECO.RESCUE_MAX_PER_NIGHT ?? 3) && RESC.rescueTerms) {
           const loan = RESC.rescueTerms(due);
-          S.pocket += loan.coins; due += loan.quota; loans += 1; TOT.loans += 1; loanedRun = true;
+          S.pocket += loan.coins; due += loan.quota; loans += 1; TOT.loans += 1; loanedRun = true; luckMove(S, -1);
           if (idx === 0 && stuckW) N1.byLoan += 1;
         }
         let bet = banked || bot === 'minbet' ? (lim.min <= S.pocket ? lim.min : 0)
@@ -707,7 +716,7 @@ function playRun(bot, runIdx) {
         const earnedT = Math.max(0, Math.floor(tWon - tStaked));
         TITH.on[idx] += 1;
         if (earnedT >= tTarget) { S.tickets = Math.min(SCH.TICKET_CAP, S.tickets + CKP.TITHE_TICKETS); TITH.met[idx] += 1; }
-        else { due += tTarget - earnedT; TITH.short[idx] += tTarget - earnedT; }
+        else { due += tTarget - earnedT; TITH.short[idx] += tTarget - earnedT; if (!(LUCK_ONCE && titheHit)) luckMove(S, -1); titheHit = true; }
       }
 
       if (!isCamp(bot) && (!humanLike(bot) || w === nd.watches - 1)) {
@@ -733,6 +742,7 @@ function playRun(bot, runIdx) {
         const prices = S.pawn.stock(1).filter((x) => x && x.price > 0).map((x) => x.price);
         N1.molaN += 1; if (prices.length && Math.min(...prices) <= pocketNow) N1.molaAfford += 1;
       }
+      luckMet();
       if (S.debt >= due * 0.25) S.cs.snow = Math.min(3, S.cs.snow + 1);
       S.cs.rungs = S.cs.rungs; // rungs persist across Watches (data bag), tilt does not
     }
@@ -742,6 +752,9 @@ function playRun(bot, runIdx) {
     if (S.debt < due) { H?.end({ nightsPaid: S.nightsPaid, wealth: S.pocket + S.debt }); out.charms = S.held.length; return out; }
     // overpay rewards: 1.5x -> pick an Uncommon, 2x -> pick a Rare (best priority of the three)
     const ratio = S.debt / due;
+    luckMet();
+    for (const t of SCH.OVERSHOOT_TIERS) if ((S.debt - intNight) / due >= t.ratio) luckMove(S, 1);
+    out.luck.push(S.luck); out.tix.push(S.tickets);
     for (const [need, rarity] of [[1.5, 'uncommon'], [2, 'rare']]) {
       if (ratio < need || S.held.length >= 6) continue;
       const offer = ENG.choiceOffer(rng.fork(`overpay:${idx}:${rarity}`), rarity, 3, (id) => S.held.includes(id), idx);
@@ -912,6 +925,7 @@ for (const bot of BOTS) {
   CHARM_COUNT.sum.fill(0); CHARM_COUNT.n.fill(0); BOUGHT.clear(); FLOAT_PAID.fill(0);
   TITH.on.fill(0); TITH.met.fill(0); TITH.short.fill(0);
   const reached = new Array(SCH.BASE_RUN_NIGHTS).fill(0);
+  LUCK.stars.forEach((a) => { a.length = 0; }); LUCK.n8.length = 0; LUCK.tix.length = 0;
   const pockets = Array.from({ length: SCH.BASE_RUN_NIGHTS }, () => []);
   const quotas = Array.from({ length: SCH.BASE_RUN_NIGHTS }, () => []);
   const fundSum = new Array(SCH.BASE_RUN_NIGHTS).fill(0), dueSum = new Array(SCH.BASE_RUN_NIGHTS).fill(0);
@@ -919,6 +933,7 @@ for (const bot of BOTS) {
   Object.assign(N1, { stuckRuns: 0, stuckEvents: 0, byWithdraw: 0, byTickets: 0, byLoan: 0, molaAfford: 0, molaN: 0, paid: 0 }); N1.mola.length = 0; N1.dawn.length = 0;
   for (let r = 0; r < RUNS; r++) {
     const res = playRun(bot, r);
+    res.luck.forEach((v, k) => LUCK.stars[k].push(v)); if (res.luck.length === SCH.BASE_RUN_NIGHTS) { LUCK.n8.push(res.luck[7]); LUCK.tix.push(res.tix[7]); }
     res.paid.forEach((no, k) => { reached[no - 1]++; pockets[no - 1].push(res.pocket[k]); quotas[no - 1].push(res.quota[k]); fundSum[no - 1] += res.fund[k]; dueSum[no - 1] += res.dueP[k]; });
   }
   const rows = [];
@@ -937,6 +952,14 @@ for (const bot of BOTS) {
   results[bot + '_quotaIntPct'] = allDue ? +(100 * allFund / allDue).toFixed(1) : 0;
   // Watch tithe (wave 58): N3..N8, the share of tithe Watches met and the mean shortfall a missed one added (coins, all runs).
   if (!NO_TITHE) console.log(`${bot.padEnd(8)} tithe N3..N8 met% ${TITH.on.slice(2).map((n, i) => (n ? String(Math.round(100 * TITH.met[i + 2] / n)).padStart(3) : '  -')).join(' ')}  shortfall/Watch ${TITH.on.slice(2).map((n, i) => (n ? Math.round(TITH.short[i + 2] / n) : 0)).join(' ')}`);
+  {
+    const m = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+    const odds = (st) => Math.min(65, Math.max(2, 5 + 3 * st)) / 100;
+    const dist = [-2, -1, 0, 1, 2, 3, 4, 5].map((v) => `${v}:${LUCK.n8.filter((x) => x === v).length}`).join(' ');
+    const o = m(LUCK.n8.map(odds));
+    const win = (k) => m(LUCK.n8.map((st) => 1 - Math.pow(1 - odds(st), k)));
+    console.log(`${bot.padEnd(8)} LUCK${LUCK_ONCE ? ' (tithe once/Night)' : ''} mean stars at Dawn N1..N8 (survivors) ${LUCK.stars.map((a) => a.length ? m(a).toFixed(2) : '-').join(' ')}  | N8 paid ${LUCK.n8.length}/${RUNS}: stars mean ${m(LUCK.n8).toFixed(2)} dist {${dist}}  odds/pull ${(100 * o).toFixed(1)}%  tickets ${m(LUCK.tix).toFixed(1)}  win with 1/2/3 seals ${[1, 2, 3].map((k) => (100 * win(k)).toFixed(1) + '%').join(' ')} (seals not tracked: 3 assumed)`);
+  }
   if (BRIEF) { console.log(`${bot.padEnd(8)} reach% ${rows.map((r) => String(Math.round(r.reachPct)).padStart(3)).join(' ')}  pocket ${rows.map((r) => fmtCoins(r.medianPocket)).join(' ')}  quota ${rows.map((r) => fmtCoins(r.quota)).join(' ')}  pocket/quota ${rows.map((r) => r.pqRatio).join(' ')}  charms ${rows.map((r) => r.charms).join(' ')}  int% ${rows.map((r) => r.intPct).join(' ')}  hold>=quota% ${rows.map((r) => Math.round(r.freePct)).join(' ')}  quota-int ${results[bot + '_quotaIntPct']}%  rtp ${results[bot + '_rtp']}`); continue; }
   console.log(`\n${bot}  (${RUNS} runs, ${((Date.now() - t0) / 1000).toFixed(1)} s${SCALE_LADDER ? ', ladder scaled by SI' : ''}${NO_CHARMS ? ', no charms' : ''}${isCamp(bot) ? '' : `, stake ${BET_FRAC * 100} % of pocket`})`);
   if (bot === 'human' && !NO_TYCOON) console.log(`tycoon: runs that owned a machine ${TYC.runs}/${RUNS} (avg owned ${(TYC.ownedEnd / Math.max(1, TYC.runs)).toFixed(1)}); per run N1..N8 bought [${TYC.bought.map((x) => (x / RUNS).toFixed(2)).join(' ')}], coins spent [${TYC.price.map((x) => Math.round(x / RUNS)).join(' ')}], house cut [${TYC.cut.map((x) => Math.round(x / RUNS)).join(' ')}]`);

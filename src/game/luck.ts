@@ -1,7 +1,7 @@
 /**
  * THE LUCK METER (Wave 73, pillar 2: luck is earned at home and in the Night's standing). A run-wide score from −2 to 5 stars,
  * moved by the bus events of the run itself: a quota paid (+1), an overshoot (+1), a quota failed (−2), a Collector Heat gain
- * (−1) or cool-off (+1), a missed Watch tithe (−1), a rescue loan (−1), a keepsake that comes back (+1), a ghost match (+1), a word
+ * (−1) or cool-off (+1), a missed Watch tithe (−1, once a Night: wave 107), a rescue loan (−1), a keepsake that comes back (+1), a ghost match (+1), a word
  * kept at the kitchen table (+1, reason `promise`) and the framed photo from the home computer (+1 when a Night begins).
  *
  * Director decision (Oct 2026): the meter no longer feeds the luck hook. Each star is a flat payout bonus instead:
@@ -70,8 +70,9 @@ export function createLuckMeter(run: LuckRunPort, touch: () => void = () => {}):
   let disposed = false;
   let lastMove: LuckChange | null = null;
   const tune = { perStar: LUCK_PAYOUT_PER_STAR, max: LUCK_MAX, soft: 0, shield: 0, sealedFree: false, depositPerStar: 0 };
-  /** Once-a-Night flags (reset when a Night begins): Nazar Boncuğu's blocked loss, Full Bucket's tithe star, Lucky Hand's big-win star. */
-  const night = { shielded: false, tithed: false, bigWin: false };
+  /** Once-a-Night flags (reset when a Night begins): Nazar Boncuğu's blocked loss, Full Bucket's tithe star, Lucky Hand's big-win star,
+   *  and the missed tithe's star (wave 107: one a Night; at one a Watch the meter sat at its floor by Night 8 in 63 % of the sim's runs). */
+  const night = { shielded: false, tithed: false, bigWin: false, titheLost: false };
   const tuneIn = (): void => {
     tune.perStar = run.x?.('x.luck.perStar', LUCK_PAYOUT_PER_STAR) ?? LUCK_PAYOUT_PER_STAR;
     tune.max = Math.max(LUCK_MAX, Math.round(run.x?.('x.luck.max', LUCK_MAX) ?? LUCK_MAX));
@@ -103,7 +104,7 @@ export function createLuckMeter(run: LuckRunPort, touch: () => void = () => {}):
     bus.on('quota:sealed', () => move(tune.sealedFree ? 0 : loss(2), 'failed')),
     bus.on('home:heat', ({ delta, why }) => move(delta > 0 ? -1 : delta < 0 ? 1 : 0, why)),
     bus.on('run:tithe', (e) => {
-      if (e.state === 'missed') move(loss(1), 'tithe');
+      if (e.state === 'missed') { if (!night.titheLost) { night.titheLost = true; move(loss(1), 'tithe'); } }
       else if (!night.tithed && (run.fx?.('starOnTithe') ?? 0) > 0) { night.tithed = true; move(1, 'titheMet'); }   // Full Bucket
     }),
     // Lucky Hand: a win of x10 or more earns a star (once a Night)
@@ -112,7 +113,7 @@ export function createLuckMeter(run: LuckRunPort, touch: () => void = () => {}):
       night.bigWin = true;
       move(1, 'bigWin');
     }),
-    bus.on('night:begin', () => { night.shielded = night.tithed = night.bigWin = false; }),
+    bus.on('night:begin', () => { night.shielded = night.tithed = night.bigWin = night.titheLost = false; }),
     bus.on('run:rescue', (e) => { if (e.state === 'taken') move(-1, 'loan'); }),
     // THE KEEPSAKE STAKE and THE GHOST SEAT (wave 75): a keepsake that comes back, and a round that matches the ghost
     // the kitchen table's Rock, Paper, Promise (mid 'promise') is a kept word, not a keepsake coming back
@@ -149,6 +150,7 @@ export function createLuckMeter(run: LuckRunPort, touch: () => void = () => {}):
       const o = s && typeof s === 'object' ? (s as { stars?: unknown; night?: Record<string, unknown> }) : {};
       stars = typeof o.stars === 'number' && Number.isFinite(o.stars) ? clampStars(o.stars) : 0;
       night.shielded = o.night?.shielded === true; night.tithed = o.night?.tithed === true; night.bigWin = o.night?.bigWin === true;
+      night.titheLost = o.night?.titheLost === true;
       touch();
     },
     dispose(): void {
